@@ -14,13 +14,29 @@ Your provider API key is stored encrypted on the server. After you save a key th
 
 Turning TTS on does not make anything speak by itself. It reveals the **Speak** button on each message and the **Auto-play** options. You still choose what gets read and when.
 
+## Voice, sound effects, and music are chosen separately
+
+Game Mode can generate three kinds of audio, and each one picks its own connection:
+
+| Purpose | What it covers | Chosen in |
+| --- | --- | --- |
+| Voice | Spoken chat messages, game narration, combat lines | **Voice** default, or a game's voice pin |
+| Sound effects | Short generated effects for scenes | **Sound effects** default, or a game's pin |
+| Music | Area and encounter tracks | **Music** default, or a game's pin |
+
+The **Connection defaults** section of the Connections panel has a row for each. Voice is the base: a lane with no default of its own uses the Voice default, then the Voice fallback, then the app-level Text to Speech settings. So if you only ever set the Voice default, everything keeps using it, exactly as before these rows existed.
+
+Set the others when you want different engines for different work, such as a local engine for voice and ElevenLabs for music.
+
+Only ElevenLabs generates sound effects and music today, and each connection has to opt in with the **Game sound effects** and **Game music** switches in its editor. A connection that cannot do a job is not offered for it, and its switches are hidden rather than shown greyed out.
+
 ## Step 1: Create an audio connection
 
 1. Open the **Connections** panel.
 2. In the **Text to Speech** card, click **Create**. If you already have an audio connection, the card names it and offers **Edit** instead.
 3. Give the connection a name you will recognise later, such as "ElevenLabs" or "Laptop Chatterbox", and save it.
 
-The editor opens on the new connection. If you keep several engines, mark the one you want as the audio **Default** in the **Connection defaults** section of the panel. That is the engine chats and games speak with unless a game pins its own.
+The editor opens on the new connection. If you keep several engines, mark the one you want as the **Voice** default in the **Connection defaults** section of the panel. That is the engine chats and games speak with unless a game pins its own.
 
 ## Step 2: Pick the source and enter a key
 
@@ -174,7 +190,7 @@ The speaker-icon button opens a **Line volume** slider from 0 to 100 percent, de
 
 The app saves generated audio in your browser so it does not need to generate the same line twice. The **Cached clips** panel shows a live count and total size.
 
-Click the **Export cached TTS clips** button (the download icon) to save every cached clip to your device as separate audio files. The cache trims its oldest clips on its own. There is no manual clear button inside the app, so clear your browser data if you want to empty it.
+Click the **Export cached TTS clips** button (the download icon) to save every cached clip to your device as separate audio files. The trash button beside it empties the cache after a confirmation. Anything you play again after that is generated again.
 
 ## TTS in each chat mode
 
@@ -183,6 +199,8 @@ The same TTS setup serves every mode, with a few per-mode extras:
 - Roleplay uses the **Roleplay messages** auto-play toggle and the per-message **Speak** controls. See [Roleplay Mode: Getting Started](../roleplay/getting-started.md).
 - Conversation Mode uses the **Conversation messages** toggle and the same **Speak** controls. Spoken audio calls are a larger feature covered in [Conversation Audio and Video Calls](../conversation/calls.md).
 - Game Mode uses the **Game narration** toggle. Game Mode also has its own audio mixer with a **TTS** channel next to **Master**, **Music**, **Sound Effects**, and **Ambient**. That channel sets the overall volume of spoken game audio and starts at 100 percent. See [Game Mode: Getting Started](../game/getting-started.md).
+
+A game can pin its own connection for each of the three purposes. The setup wizard asks when you create the game, and the **Game Audio** card in the chat settings drawer changes them afterwards, along with whether the game generates sound effects and music at all. A lane you leave unpinned follows the app-level default for that purpose.
 
 ## Phonetic name (pronunciation in calls)
 

@@ -1412,6 +1412,130 @@ Deferred: a per-chat audio override, matching the per-chat model connection. The
 place, since `useEffectiveTTSConfig` takes an optional connection id and speak requests carry one end
 to end, so it is a chat-settings block plus one schema field.
 
+### Voice, sound effects, and music each pick their own engine
+
+One audio connection answered for everything. The `defaultForAgents` flag is scoped by provider, so
+`provider === "audio"` had exactly one default slot, and a game's `audioConnectionId` was documented
+as covering "speech, game sound effects, and music" at once. Anyone running a local voice engine and
+wanting ElevenLabs music had to choose which one to give up.
+
+Audio now has three routing lanes: speech, sound effects, and music. Each resolves down its own
+chain, an explicitly requested connection, then that lane's own default and fallback, then the base
+audio pair, then the app-level settings, so a lane nobody has pointed anywhere behaves exactly as it
+did. Setting the Music default to a second ElevenLabs account changes what scores a scene and
+nothing else.
+
+Capability stopped being a source name. `cfg.source !== "elevenlabs"` answered two different
+questions at once, may this backend do it and do we have code that does it, and the same literal was
+repeated in the game surface, the setup wizard, the connection editor, and the audio fields.
+`TTS_SOURCE_DEFINITIONS` now carries `supportsGameSoundEffects` and `supportsGameMusic`, the route
+keeps a separate dispatch guard naming the only generator that exists, and every client surface asks
+the table. Adding a second music engine is a data row plus a generator rather than a grep.
+
+Behavior changes worth knowing:
+
+- **A purpose default outranks the base audio default for its own lane**, and only for that lane.
+  Nothing changes until a purpose default or fallback is set, because the purpose chain falls
+  through to the pair that already answered.
+- **`gameAudioEnabled` is the one answer to whether an engine may generate**: the source supports
+  the purpose and the connection opted in. A missing API key is deliberately not folded in, since
+  that is a configuration error with its own message rather than a statement about the engine.
+  `speechEnabled` stays a speech gate; game audio has never consulted it and still does not, because
+  silencing narration is not a reason to stop scoring a scene.
+- **`POST /api/tts/game-audio` resolves by `kind`**, so a caller that sends no connection id reaches
+  the engine that lane was pointed at rather than the one that speaks. Its 400 for an incapable
+  connection lost the "ElevenLabs" wording, and a capable source with no generator gets a distinct
+  message.
+- **`GET /api/tts/effective-config` takes `?purpose=`** and answers with `purpose` and
+  `gameAudioEnabled` beside the existing fields. A speech request sends no parameter, so its URL is
+  unchanged, and `TTSResolutionOrigin` grew `purpose_default` and `purpose_fallback` additively.
+- **A game pins one connection per lane.** `GameSetupConfig` gained `voiceConnectionId`,
+  `sfxConnectionId`, and `musicConnectionId`, stored as `gameVoiceConnectionId`,
+  `gameSfxConnectionId`, and `gameMusicConnectionId`. The names end in `ConnectionId` because the
+  dangling-reference sweep matches that shape at any depth, which is the whole reason the pins need
+  no cleanup code. `audioConnectionId` still covers every lane a purpose pin does not name, so
+  existing games are untouched, and a setup config or shared file written before the split fills all
+  three lanes on import.
+- **New wizard runs never write `audioConnectionId`.** A share exported now and imported into a
+  build without the per-lane fields loses its audio pin and falls back to the defaults. Writing the
+  old key as well would re-merge the lanes for every game created from now on, which is the worse
+  failure.
+- **The setup wizard previews from the server's own answer** per lane rather than from a copy of its
+  resolution order. The one exception is the case the old screen already handled: when nothing
+  answers but a capable connection exists, the preview names it and the wizard pins it, because
+  neither the server nor `GameSurface` picks a first row on its own.
+- **A running game can be repointed.** The wizard chose engines once and nothing could change them
+  afterwards, and the sound effect and music switches were written at creation and never editable.
+  A Game Audio card in the chat settings drawer owns all five.
+- **Generated game audio is cached on disk by prompt hash**, independent of the connection, and a
+  context track that already exists is never regenerated. Pointing music at a different engine
+  therefore replays what the previous one composed until the asset is deleted in the Game Assets
+  panel. Left as is: re-composing every existing track on an engine switch spends real money for a
+  result nobody asked for.
+
+The exclusivity sweep was generalized rather than copied. Granting a role flag has to clear it on
+every other row competing in the same category, and that logic existed four times in
+`connections.storage.ts`, once per (side, code path), with the flag name spelled in three places
+each. Six pairs would have meant six copies, so it is one parameterized helper in
+`services/storage/connection-role-flags.ts` and the existing pairs call it too.
+
+Patches to upstream files, all of which a merge can revert silently:
+
+- `packages/server/src/services/storage/connections.storage.ts`: **the merge-cost centre.** The four
+  `defaultForAgents`/`fallbackForAgents` exclusivity blocks are collapsed onto
+  `enforceRoleFlagExclusivity`, and `defaultCategoryForProvider` moved to
+  `services/storage/connection-role-flags.ts` and is imported back. **On a conflict inside
+  `create()` or `update()`, take upstream verbatim outside the exclusivity blocks, and re-express
+  any change upstream made inside one as a helper argument or a new `RoleFlagPair` rather than
+  restoring the block.** `connection-role-flag-exclusivity.regression.ts` pins each block's
+  observable behaviour, provider scoping for media categories, pool checking for language, the
+  exempt row on a same-category provider change, and pair mutual exclusion, so a mis-merge fails
+  loudly instead of silently dropping a default.
+- `packages/server/src/db/schema/connections.ts`, `packages/shared/src/schemas/connection.schema.ts`,
+  `packages/shared/src/types/connection.ts`: the four `default_for_*`/`fallback_for_*` columns. No
+  `STORAGE_VERSION` bump: additive columns with a `notNull().default("false")` normalize to the
+  default on every row written before they existed.
+- `packages/server/src/routes/tts.routes.ts`: the game-audio gate reads the resolution's capability
+  answer, the request `kind` names the lane, and `ttsQuerySchema` takes a purpose. The upstream-owned
+  source-text pins in this file are outside those ranges.
+- `packages/server/src/routes/game.routes.ts`, `packages/shared/src/types/game.ts`: the three setup
+  fields and their chat-metadata writes; the initial-setup snapshot records the voice pin for its
+  single audio row.
+- `packages/shared/src/constants/tts-sources.ts`, `packages/shared/src/types/tts.ts`,
+  `packages/shared/src/index.ts`: capability columns, `toTTSSourceId`, the origin union, and the two
+  response fields.
+- `packages/client/src/components/game/GameSurface.tsx`: three pins instead of one resolved id, and
+  the surface no longer resolves speech at all, since narration and combat resolve the prop they are
+  given. Its `/tts/game-audio` call is pinned as source text by `open-issues.regression.ts`; only
+  the variable inside the body changed.
+- `packages/client/src/components/panels/ConnectionsPanel.tsx`: two more default pairs and the
+  option lists behind them. The pair component itself needed no change.
+- `packages/client/src/components/game/GameSetupWizard.tsx`: the audio card became
+  `components/game/GameAudioSetupSection.tsx`. **On a conflict, keep the component call and port
+  upstream's intent into that file.**
+- `packages/client/src/components/chat/ChatSettingsDrawer.tsx`: one memo and one mount for
+  `components/chat/GameAudioSettingsCard.tsx`.
+- `packages/client/src/components/connections/ConnectionEditor.tsx`,
+  `components/connections/audio/AudioSourceFields.tsx`, `lib/connection-filters.ts`,
+  `lib/connection-transfer.ts`, `lib/game-setup-share.ts`, `hooks/use-tts.ts`,
+  `hooks/use-connections.ts`: capability reads the shared table, the new flags travel with an
+  export, and the effective-config hook takes a purpose. `useEffectiveTTSConfig` is now the speech
+  lane of `useEffectiveAudioConfig`, so its call sites are unchanged.
+
+Renaming the audio defaults row to Voice and rewording the section description left two English keys
+unused; `ko.json` and `zh-Hans.json` carried translations of them, which `check-locales.mjs` rejects,
+so those entries are removed with the English ones. The wizard's single-select copy retired four more
+the same way.
+
+Proven by `scripts/regressions/tts/tts-audio-purpose-routing.regression.ts`,
+`connection-role-flag-exclusivity.regression.ts`, and the extended
+`tts-audio-connection-ux.regression.ts` and `tts-shared-contract.regression.ts`.
+
+Deferred: a game-audio provider registry. The capability table gates which sources may generate, but
+the generator itself is still ElevenLabs-specific in the route, so a second capable backend needs its
+own generator before its table flags can turn on. Ambience is the obvious fourth purpose whenever
+something generates it; nothing does today.
+
 ### Speaker tags have one grammar, and it is well-formed markup
 
 Group chat dialogue colouring asked models for `<speaker="Amy">`, which is not valid markup: an

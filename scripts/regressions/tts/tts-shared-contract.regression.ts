@@ -15,6 +15,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  AUDIO_PARAMETERS_MAX_BYTES,
   TTS_CHUNK_CHARS_DEFAULT,
   TTS_CHUNK_CHARS_MAX,
   TTS_CHUNK_CHARS_MIN,
@@ -36,7 +37,18 @@ import {
   TTS_SOURCES_WITH_MODEL_LISTING,
   ttsSourceSupportsGameAudio,
 } from "../../../packages/shared/src/constants/tts-sources.js";
-import { GAME_AUDIO_PURPOSES } from "../../../packages/shared/src/constants/audio-purposes.js";
+import { AUDIO_PURPOSES, GAME_AUDIO_PURPOSES } from "../../../packages/shared/src/constants/audio-purposes.js";
+import {
+  AUDIO_PARAMETER_SETS,
+  audioParameterDefinition,
+  audioParameterSetsFor,
+} from "../../../packages/shared/src/constants/audio-parameters.js";
+import {
+  audioParameterPaths,
+  audioParametersFor,
+  readParameterPath,
+  writeParameterPath,
+} from "../../../packages/shared/src/utils/audio-parameters.js";
 import {
   AUDIO_CONNECTION_IDENTITY_FIELDS,
   applyAudioConnectionSettings,
@@ -175,7 +187,11 @@ assert.equal(TTS_SOURCE_DEFINITIONS.elevenlabs.supportsGameMusic, true, "ElevenL
 {
   const restore = TTS_SOURCE_DEFINITIONS.openai.supportsGameMusic;
   TTS_SOURCE_DEFINITIONS.openai.supportsGameMusic = true;
-  assert.equal(ttsSourceSupportsGameAudio("openai", "music"), true, "capability must follow the table, not a source id");
+  assert.equal(
+    ttsSourceSupportsGameAudio("openai", "music"),
+    true,
+    "capability must follow the table, not a source id",
+  );
   assert.equal(ttsSourceSupportsGameAudio("openai", "sfx"), false, "each purpose must read its own column");
   TTS_SOURCE_DEFINITIONS.openai.supportsGameMusic = restore;
 }
@@ -412,6 +428,148 @@ for (const [file, source] of [
   assert.doesNotMatch(source, /"http:\/\/localhost:8000"/u, `${file} must not re-inline the PocketTTS base URL`);
   assert.doesNotMatch(source, /"pocket-tts"/u, `${file} must not re-inline the PocketTTS model`);
   assert.doesNotMatch(source, /"alba"/u, `${file} must not re-inline the PocketTTS voice`);
+}
+
+// ── Extra provider parameters are a knob like any other ──
+// They ride the same derivation as the tuning fields, so they are per source,
+// per connection, and inheritable without any of those three being restated.
+{
+  const profileFields = Object.keys(ttsSourceProfileSchema.shape);
+  assert.ok(profileFields.includes("audioParameters"), "parameters must be saved per source");
+  assert.ok(
+    Object.keys(audioConnectionSettingsSchema.shape).includes("audioParameters"),
+    "parameters must be settable per connection",
+  );
+
+  const parameterized = ttsConfigSchema.parse({
+    source: "openai",
+    audioParameters: { speech: { exaggeration: 0.7 }, music: { force_instrumental: false } },
+  });
+  assert.deepEqual(
+    ttsSourceProfileFromConfig(parameterized).audioParameters,
+    { speech: { exaggeration: 0.7 }, music: { force_instrumental: false } },
+    "parameters reach the saved profile so a source switch keeps them",
+  );
+
+  // A connection owns its lanes outright. Merging them with the app-level map
+  // would make a parameter unremovable: clearing the row would re-expose the
+  // inherited value rather than restoring the backend's own default.
+  const overlaid = applyAudioConnectionSettings(parameterized, { audioParameters: { speech: { cfg_weight: 0.2 } } });
+  assert.deepEqual(
+    overlaid.audioParameters,
+    { speech: { cfg_weight: 0.2 } },
+    "a connection's parameter map replaces the app-level one rather than merging into it",
+  );
+
+  assert.deepEqual(audioParametersFor(parameterized, "speech"), { exaggeration: 0.7 }, "the selector reads its lane");
+  assert.deepEqual(audioParametersFor(parameterized, "sfx"), {}, "an unset lane sends nothing");
+  assert.deepEqual(
+    audioParametersFor(ttsConfigSchema.parse({}), "speech"),
+    {},
+    "a config nobody parameterized sends nothing",
+  );
+
+  // Every request carries these, so one oversized blob would tax all of them.
+  const withinCap = "x".repeat(AUDIO_PARAMETERS_MAX_BYTES - 20);
+  assert.doesNotThrow(
+    () => ttsConfigSchema.parse({ audioParameters: { speech: { note: withinCap } } }),
+    "a record inside the cap is accepted",
+  );
+  assert.throws(
+    () => ttsConfigSchema.parse({ audioParameters: { speech: { note: "x".repeat(AUDIO_PARAMETERS_MAX_BYTES) } } }),
+    "a record over the cap is rejected",
+  );
+}
+
+// ── Dotted paths reach nested keys without flattening their siblings ──
+{
+  const nested = writeParameterPath({ voice_settings: { stability: 0.5 } }, "voice_settings.style", 0.3);
+  assert.deepEqual(
+    nested,
+    { voice_settings: { stability: 0.5, style: 0.3 } },
+    "writing one nested key must leave the others alone",
+  );
+  assert.equal(readParameterPath(nested, "voice_settings.style"), 0.3, "a dotted path reads back");
+  assert.equal(readParameterPath(nested, "voice_settings.missing"), undefined, "an absent leaf reads undefined");
+  assert.equal(readParameterPath({ flat: 1 }, "flat.deeper"), undefined, "a scalar parent reads undefined");
+
+  // Clearing prunes, or an emptied voice_settings would still be sent.
+  assert.deepEqual(
+    writeParameterPath(
+      writeParameterPath(nested, "voice_settings.style", undefined),
+      "voice_settings.stability",
+      undefined,
+    ),
+    {},
+    "clearing the last nested key removes the parent",
+  );
+  assert.deepEqual(
+    audioParameterPaths({ exaggeration: 0.7, voice_settings: { style: 0.3 } }).sort(),
+    ["exaggeration", "voice_settings.style"],
+    "stored keys enumerate as dotted paths so an unknown one stays visible",
+  );
+}
+
+// ── The catalog describes engines; it never decides what is sent ──
+{
+  const sourceIds = new Set<string>(TTS_SOURCE_IDS);
+  const purposes = new Set<string>(AUDIO_PURPOSES);
+  const setIds = new Set<string>();
+  for (const set of AUDIO_PARAMETER_SETS) {
+    assert.ok(!setIds.has(set.id), `${set.id}: duplicate set id`);
+    setIds.add(set.id);
+    assert.ok(set.sources.length > 0, `${set.id}: a set nobody can reach is dead weight`);
+    assert.ok(set.purposes.length > 0, `${set.id}: a set with no lane can never be offered`);
+    for (const source of set.sources) assert.ok(sourceIds.has(source), `${set.id}: unknown source ${source}`);
+    for (const purpose of set.purposes) assert.ok(purposes.has(purpose), `${set.id}: unknown purpose ${purpose}`);
+
+    const keys = new Set<string>();
+    for (const parameter of set.parameters) {
+      assert.ok(!keys.has(parameter.key), `${set.id}: duplicate key ${parameter.key}`);
+      keys.add(parameter.key);
+      if (parameter.min !== undefined && parameter.max !== undefined) {
+        assert.ok(parameter.min <= parameter.max, `${parameter.key}: min above max would clamp every value`);
+      }
+      if (parameter.kind === "enum") {
+        assert.ok(parameter.options && parameter.options.length > 0, `${parameter.key}: an enum needs options`);
+      }
+      // A placeholder is the backend's own default, so an out-of-range one
+      // would advertise a value the control cannot express.
+      if (typeof parameter.placeholder === "number") {
+        if (parameter.min !== undefined) assert.ok(parameter.placeholder >= parameter.min, `${parameter.key}: low`);
+        if (parameter.max !== undefined) assert.ok(parameter.placeholder <= parameter.max, `${parameter.key}: high`);
+      }
+      if (parameter.kind === "enum" && typeof parameter.placeholder === "string") {
+        assert.ok(parameter.options?.includes(parameter.placeholder), `${parameter.key}: placeholder not an option`);
+      }
+    }
+  }
+
+  // Scoping is what stops a music knob being offered while editing speech.
+  const speechSets = audioParameterSetsFor("openai", "speech").map((set) => set.id);
+  assert.ok(speechSets.includes("chatterbox"), "the OpenAI-compatible lane offers Chatterbox");
+  assert.deepEqual(audioParameterSetsFor("openai", "music"), [], "no music set exists for an OpenAI-compatible row");
+  assert.deepEqual(
+    audioParameterSetsFor("elevenlabs", "speech").map((set) => set.id),
+    ["elevenlabs-voice"],
+    "ElevenLabs speech offers only its voice settings",
+  );
+
+  assert.equal(
+    audioParameterDefinition("openai", "speech", "exaggeration")?.kind,
+    "number",
+    "a known key resolves to its definition",
+  );
+  assert.equal(
+    audioParameterDefinition("openai", "speech", "not_a_real_key"),
+    undefined,
+    "an unknown key has no definition, which is how a free row is chosen",
+  );
+  assert.equal(
+    audioParameterDefinition("elevenlabs", "speech", "exaggeration"),
+    undefined,
+    "definitions are scoped to the sources that accept them",
+  );
 }
 
 console.info("TTS shared contract regression passed.");

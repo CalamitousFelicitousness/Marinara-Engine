@@ -72,6 +72,7 @@ export * from "./schemas/home-widget.schema.js";
 // Constants
 export * from "./constants/providers.js";
 export * from "./constants/audio-purposes.js";
+export * from "./constants/audio-parameters.js";
 export * from "./constants/tts-sources.js";
 export * from "./constants/defaults.js";
 export * from "./constants/chat-mode-agent-policy.js";
@@ -130,6 +131,7 @@ export * from "./utils/skill-check-format.js";
 export * from "./utils/generation-guide.js";
 export * from "./utils/lorebook-keyword-matching.js";
 export * from "./utils/speaker-tags.js";
+export * from "./utils/audio-parameters.js";
 export * from "./utils/regex-safety.js";
 export * from "./utils/game-state-text.js";
 export * from "./utils/custom-tracker-fields.js";

@@ -2,7 +2,7 @@
 // TTS Types
 // ──────────────────────────────────────────────
 import { z } from "zod";
-import type { AudioPurpose } from "../constants/audio-purposes.js";
+import { AUDIO_PURPOSES, type AudioPurpose } from "../constants/audio-purposes.js";
 import { TTS_SOURCE_IDS, type TTSSourceId } from "../constants/tts-sources.js";
 
 export const ttsSourceSchema = z.enum(TTS_SOURCE_IDS);
@@ -33,6 +33,36 @@ export const TTS_MAX_RETRIES_DEFAULT = 1;
 export const TTS_CONCURRENCY_MIN = 1;
 export const TTS_CONCURRENCY_MAX = 4;
 export const TTS_CONCURRENCY_DEFAULT = 1;
+
+/** Serialized ceiling for one lane's parameters. Every request carries them. */
+export const AUDIO_PARAMETERS_MAX_BYTES = 8_192;
+
+/**
+ * Extra provider parameters for one routing lane, merged into the outbound
+ * request body. Values are unconstrained because no backend's schema is knowable
+ * here: a wrong key is the provider's error to report, not this app's to guess.
+ * Nested objects are kept, since ElevenLabs takes its knobs inside voice_settings.
+ */
+const audioParameterRecordSchema = z.record(z.unknown()).superRefine((value, ctx) => {
+  if (JSON.stringify(value).length > AUDIO_PARAMETERS_MAX_BYTES) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `Parameters must serialize to at most ${AUDIO_PARAMETERS_MAX_BYTES} characters`,
+    });
+  }
+});
+export type AudioParameterRecord = z.infer<typeof audioParameterRecordSchema>;
+
+// Keyed off AUDIO_PURPOSES so a new lane cannot be parameterized in one place
+// and silently unparameterizable in another.
+export const audioParametersSchema = z
+  .object(
+    Object.fromEntries(AUDIO_PURPOSES.map((purpose) => [purpose, audioParameterRecordSchema.optional()])) as {
+      [K in AudioPurpose]: z.ZodOptional<typeof audioParameterRecordSchema>;
+    },
+  )
+  .default({});
+export type AudioParameterMap = z.infer<typeof audioParametersSchema>;
 
 function normalizeDialoguePauseMs(value: number): number {
   const wholeSeconds = Math.round(value / 1000);
@@ -172,6 +202,8 @@ const ttsConfigBaseSchema = z.object({
     .min(TTS_CONCURRENCY_MIN)
     .max(TTS_CONCURRENCY_MAX)
     .default(TTS_CONCURRENCY_DEFAULT),
+  /** Per-lane extra parameters merged into the outbound provider request. */
+  audioParameters: audioParametersSchema,
   dialogueOnly: z.boolean().default(false),
   /** Use a short auxiliary LLM call to separate Roleplay dialogue by speaker before autoplay. */
   roleplaySpeakerExtractorEnabled: z.boolean().default(false),
@@ -229,6 +261,7 @@ export const ttsSourceProfileSchema = ttsConfigBaseSchema.pick({
   chunkCharLimit: true,
   maxRetries: true,
   generationConcurrency: true,
+  audioParameters: true,
 });
 export type TTSSourceProfile = z.infer<typeof ttsSourceProfileSchema>;
 

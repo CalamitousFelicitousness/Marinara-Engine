@@ -1234,6 +1234,11 @@ Patches to upstream files: `packages/server/src/config/runtime-config.ts`,
 `docs/connections/local-self-hosted.md`, `docs/media/tts-setup.md`. The runtime-config and docs
 edits are the collision-prone ones: upstream owns the flag defaults and the configuration table.
 
+Merge recipe for that table: keep the fork's rows and the fork's row order. The prose under it
+reads "Set the first two to `false`", which means `PROVIDER_LOCAL_URLS_ENABLED` and
+`TTS_LOCAL_URLS_ENABLED`. Upstream orders them provider, image, tts, so taking upstream's order
+silently repoints that sentence at the image flag. Conflicted this way at the 2026-08-29 sync.
+
 Proven by `scripts/regressions/tts/tts-speak-timeout-abort.regression.ts` (LAN allowed with the flag
 absent, denied with it `false`, loopback unconditional) and
 `scripts/regressions/tts/tts-shared-contract.regression.ts` (source definitions carry no URL-policy

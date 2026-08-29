@@ -10516,9 +10516,16 @@ function GameSurfaceComponent({
 
   useEffect(() => {
     if (combatUiActive || normalizedWidgets.length === 0) {
-      compactHudWidgetsRef.current = false;
+      // Reset to the same width heuristic the state initializes with, NOT a
+      // flat false: widgets arrive after the queries resolve, and a false
+      // reset here mounts the (CSS-hidden) desktop widget rail on mobile for
+      // the frames until updateWidgetLayout measures — long enough on a slow
+      // device for both the mobile and desktop copies of a widget to coexist
+      // in the DOM (#5618).
+      const compactByWidth = typeof window !== "undefined" && window.innerWidth < 768;
+      compactHudWidgetsRef.current = compactByWidth;
       compactHudReleaseWidthRef.current = null;
-      setCompactHudWidgets(false);
+      setCompactHudWidgets(compactByWidth);
       return;
     }
 

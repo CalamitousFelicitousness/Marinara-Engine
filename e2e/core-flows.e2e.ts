@@ -1,4 +1,12 @@
-import { expect, test, type APIRequestContext, type Locator, type Page, type Route, type TestInfo } from "@playwright/test";
+import {
+  expect,
+  test,
+  type APIRequestContext,
+  type Locator,
+  type Page,
+  type Route,
+  type TestInfo,
+} from "@playwright/test";
 import AdmZip from "adm-zip";
 import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
@@ -406,9 +414,9 @@ test("Art scale sliders stay interactive at the largest display size", async ({ 
     await control.scrollIntoViewIfNeeded();
     await expect(slider).toBeVisible();
 
-    const box = await slider.boundingBox();
-    expect(box).not.toBeNull();
-    expect(box!.width).toBeGreaterThanOrEqual(80);
+    const initialBox = await slider.boundingBox();
+    expect(initialBox).not.toBeNull();
+    expect(initialBox!.width).toBeGreaterThanOrEqual(80);
     const min = Number((await slider.getAttribute("min")) ?? 0);
     const max = Number((await slider.getAttribute("max")) ?? 100);
     const midpoint = min + (max - min) / 2;
@@ -418,7 +426,15 @@ test("Art scale sliders stay interactive at the largest display size", async ({ 
       [0.25, "low"],
       [0.65, "high"],
     ] as const) {
-      await page.mouse.click(box!.x + box!.width * fraction, box!.y + box!.height / 2);
+      // Re-measure per click and click element-relative: changing a scale
+      // slider resizes content around it, and a raw page.mouse.click at
+      // absolute coordinates from a stale box lands off the slider with no
+      // stability wait — the click silently misses and the poll below times
+      // out (#5618). locator.click waits for the element to be stable and
+      // positions relative to its box at dispatch time.
+      const box = await slider.boundingBox();
+      expect(box).not.toBeNull();
+      await slider.click({ position: { x: box!.width * fraction, y: box!.height / 2 } });
       if (direction === "high") {
         await expect.poll(async () => Number(await slider.inputValue())).toBeGreaterThan(midpoint);
       } else {
@@ -8692,7 +8708,10 @@ test("Game widget editing and log deletion follow Chroma while weather effects r
     if (testInfo.project.name.includes("mobile")) {
       await page.getByTitle("Chroma clock", { exact: true }).click();
     }
-    const editWidgetButton = page.getByTitle("Edit Chroma clock");
+    // filter({ visible: true }): the desktop widget rail mounts CSS-hidden
+    // during layout transitions, and a hidden duplicate still trips strict
+    // mode even though only one copy is ever visible (#5618).
+    const editWidgetButton = page.getByTitle("Edit Chroma clock").filter({ visible: true });
     await expect(editWidgetButton).toBeVisible();
     await expect(editWidgetButton.locator("svg")).toHaveCSS("color", chromeTextColor);
 
@@ -16916,7 +16935,10 @@ test("home browser hub scales cleanly and opens FAQ as a bookmark window", async
   await expect(page.locator("[data-home-widget-id]")).toHaveCount(4);
   await expectHomeWidgetHeightsMatch(page, baselineCompactHeight);
 
-  await activateControl(widgetManager.getByRole("switch", { name: "Hide Daily encounter — Character of the Day" }), testInfo);
+  await activateControl(
+    widgetManager.getByRole("switch", { name: "Hide Daily encounter — Character of the Day" }),
+    testInfo,
+  );
   await expect(page.locator("[data-home-widget-id]")).toHaveCount(3);
   await expectHomeWidgetHeightsMatch(page, baselineCompactHeight);
 
@@ -18376,7 +18398,10 @@ test("mobile composers preserve history position and restore focus in Conversati
   // plain dispatchEvent evaluation) plus outright focus refusals — each time
   // through a different step of its dense interaction sequence. The same
   // contract runs in full on mobile-chromium.
-  test.skip(testInfo.project.name.includes("webkit"), "Quarantined on webkit: engine freeze/focus instability (#5594).");
+  test.skip(
+    testInfo.project.name.includes("webkit"),
+    "Quarantined on webkit: engine freeze/focus instability (#5594).",
+  );
   test.setTimeout(180_000);
 
   const chatIds: string[] = [];
@@ -18460,9 +18485,7 @@ test("mobile composers preserve history position and restore focus in Conversati
           .catch(() => false);
         if (!composerFocused) {
           await textarea.focus({ timeout: 2_000 }).catch(() => undefined);
-          composerFocused = await textarea
-            .evaluate((element) => document.activeElement === element)
-            .catch(() => false);
+          composerFocused = await textarea.evaluate((element) => document.activeElement === element).catch(() => false);
         }
         if (!composerFocused) await page.waitForTimeout(250);
       }

@@ -237,7 +237,12 @@ import {
 } from "../../services/generation/spotify-agent-runtime.js";
 
 type PersonaContext = {
+  // Persona-store ID only. A character-backed user identity keeps this null so
+  // persona lookups, lorebooks, and persona galleries stay correct. [PR #5583]
   personaId: string | null;
+  // ID of the active user identity regardless of source (persona or character).
+  identityId: string | null;
+  identitySource: "persona" | "character" | null;
   personaName: string;
   personaDescription: string;
   personaFields: { personality?: string; scenario?: string; backstory?: string; appearance?: string };
@@ -603,6 +608,8 @@ async function resolvePersonaContext(
 ): Promise<PersonaContext> {
   let personaName = "User";
   let personaId: string | null = null;
+  let identityId: string | null = null;
+  let identitySource: "persona" | "character" | null = null;
   let personaDescription = "";
   let personaFields: PersonaContext["personaFields"] = {};
   let personaStats: any = null;
@@ -616,10 +623,21 @@ async function resolvePersonaContext(
   });
 
   if (!persona) {
-    return { personaId, personaName, personaDescription, personaFields, personaStats, rpgStats };
+    return {
+      personaId,
+      identityId,
+      identitySource,
+      personaName,
+      personaDescription,
+      personaFields,
+      personaStats,
+      rpgStats,
+    };
   }
 
-  personaId = persona.id as string;
+  identityId = persona.id as string;
+  identitySource = persona.source;
+  personaId = persona.source === "persona" ? (persona.id as string) : null;
   personaName = persona.name;
   personaDescription = cardPromptText(persona.description);
   const personaAvatarPath = typeof persona.avatarPath === "string" ? persona.avatarPath : null;
@@ -640,7 +658,17 @@ async function resolvePersonaContext(
     }
   }
 
-  return { personaId, personaName, personaDescription, personaFields, personaAvatarPath, personaStats, rpgStats };
+  return {
+    personaId,
+    identityId,
+    identitySource,
+    personaName,
+    personaDescription,
+    personaFields,
+    personaAvatarPath,
+    personaStats,
+    rpgStats,
+  };
 }
 
 export function resolveRetryAgentContextPolicy(resolvedAgents: readonly ResolvedAgent[]): {
@@ -1063,6 +1091,8 @@ async function buildRetryAgentContext(args: {
   }
   if (personaContext.personaId) {
     agentContext.memory._personaId = personaContext.personaId;
+  }
+  if (personaContext.identityId) {
     agentContext.memory._personaAvatarPath = personaContext.personaAvatarPath ?? null;
   }
 
@@ -1175,16 +1205,16 @@ async function buildRetryAgentContext(args: {
         if (spriteCharacter) perChar.push(spriteCharacter);
       }
       const includePersonaSprite =
-        !!personaContext.personaId &&
+        !!personaContext.identityId &&
         (hasPersonaExpressionSource ||
           !restrictToSelectedSprites ||
-          selectedSpriteIds.has(personaContext.personaId) ||
+          selectedSpriteIds.has(personaContext.identityId) ||
           chatMeta.expressionAvatarsEnabled === true);
-      if (personaContext.personaId && includePersonaSprite) {
-        const sprites = listCharacterSprites(personaContext.personaId);
+      if (personaContext.identityId && includePersonaSprite) {
+        const sprites = listCharacterSprites(personaContext.identityId);
         if (sprites) {
           const spritePersona = buildAvailableSpriteCharacter(
-            personaContext.personaId,
+            personaContext.identityId,
             personaContext.personaName,
             sprites,
             spriteDisplayModes,
@@ -1195,14 +1225,14 @@ async function buildRetryAgentContext(args: {
       const expressionTargetIds = new Set<string>();
       if (lastAssistant?.characterId && typeof lastAssistant.characterId === "string") {
         expressionTargetIds.add(lastAssistant.characterId);
-      } else if (lastAssistant?.role === "user" && personaContext.personaId) {
-        expressionTargetIds.add(personaContext.personaId);
+      } else if (lastAssistant?.role === "user" && personaContext.identityId) {
+        expressionTargetIds.add(personaContext.identityId);
       }
       if (
-        personaContext.personaId &&
+        personaContext.identityId &&
         agentContext.recentMessages.some((message) => message.role === "user" && message.content.trim())
       ) {
-        expressionTargetIds.add(personaContext.personaId);
+        expressionTargetIds.add(personaContext.identityId);
       }
       const targetedSprites =
         expressionTargetIds.size > 0

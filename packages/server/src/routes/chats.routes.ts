@@ -189,6 +189,19 @@ function toSafeExportName(name: string, fallback: string) {
   return safe || fallback;
 }
 
+// Shared by chat create and update: a stored character identity must exist and
+// parse as a valid character card. [PR #5583]
+async function isValidCharacterIdentity(db: Parameters<typeof createCharactersStorage>[0], characterId: string) {
+  const character = await createCharactersStorage(db).getById(characterId);
+  if (!character) return false;
+  try {
+    const rawData = typeof character.data === "string" ? JSON.parse(character.data) : character.data;
+    return characterDataSchema.safeParse(rawData).success;
+  } catch {
+    return false;
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
@@ -981,6 +994,9 @@ export async function chatsRoutes(app: FastifyInstance) {
     if (input.mode === "game" && input.personaCharacterId) {
       return reply.status(400).send({ error: "Character identities are not available in Game chats." });
     }
+    if (input.personaCharacterId && !(await isValidCharacterIdentity(app.db, input.personaCharacterId))) {
+      return reply.status(400).send({ error: "Selected character identity is invalid or unavailable." });
+    }
     const body = req.body as Record<string, unknown>;
     // No connection picked (no starred preset): seed the user's default so the
     // setup wizard shows what generation would fall back to anyway.
@@ -1022,17 +1038,9 @@ export async function chatsRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: "Character identities are not available in Game chats." });
     }
     if (data.personaCharacterId) {
-      const character = await createCharactersStorage(app.db).getById(data.personaCharacterId);
-      let valid = false;
-      if (character) {
-        try {
-          const rawData = typeof character.data === "string" ? JSON.parse(character.data) : character.data;
-          valid = characterDataSchema.safeParse(rawData).success;
-        } catch {
-          valid = false;
-        }
+      if (!(await isValidCharacterIdentity(app.db, data.personaCharacterId))) {
+        return reply.status(400).send({ error: "Selected character identity is invalid or unavailable." });
       }
-      if (!valid) return reply.status(400).send({ error: "Selected character identity is invalid or unavailable." });
     }
     const identityBefore =
       data.personaId !== undefined || data.personaCharacterId !== undefined

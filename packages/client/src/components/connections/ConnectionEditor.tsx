@@ -112,6 +112,8 @@ import {
   type ComfyUiLoraSetting,
   type ImageDefaultsService,
   type ImageGenerationDefaultsProfile,
+  toTTSSourceId,
+  ttsSourceSupportsGameAudio,
   type ImageGenerationQuality,
   type ImageStyleProfileSettings,
   type VideoDefaultsService,
@@ -801,8 +803,14 @@ export function ConnectionEditor() {
       audioSource: isAudioProvider ? localAudioSource || null : null,
       audioVoice: isAudioProvider ? localAudioVoice || null : null,
       // Only ElevenLabs can generate game sound effects / music today.
-      audioSoundEffects: isAudioProvider && localAudioSource === "elevenlabs" ? localAudioSoundEffects : false,
-      audioMusic: isAudioProvider && localAudioSource === "elevenlabs" ? localAudioMusic : false,
+      audioSoundEffects:
+        isAudioProvider && ttsSourceSupportsGameAudio(toTTSSourceId(localAudioSource), "sfx")
+          ? localAudioSoundEffects
+          : false,
+      audioMusic:
+        isAudioProvider && ttsSourceSupportsGameAudio(toTTSSourceId(localAudioSource), "music")
+          ? localAudioMusic
+          : false,
       audioSettings: isAudioProvider ? localAudioSettings : null,
     };
     // Only send API key if user typed a new one
@@ -1016,8 +1024,14 @@ export function ConnectionEditor() {
       videoService,
       audioSource: isAudioProvider ? localAudioSource || null : null,
       audioVoice: isAudioProvider ? localAudioVoice || null : null,
-      audioSoundEffects: isAudioProvider && localAudioSource === "elevenlabs" ? localAudioSoundEffects : false,
-      audioMusic: isAudioProvider && localAudioSource === "elevenlabs" ? localAudioMusic : false,
+      audioSoundEffects:
+        isAudioProvider && ttsSourceSupportsGameAudio(toTTSSourceId(localAudioSource), "sfx")
+          ? localAudioSoundEffects
+          : false,
+      audioMusic:
+        isAudioProvider && ttsSourceSupportsGameAudio(toTTSSourceId(localAudioSource), "music")
+          ? localAudioMusic
+          : false,
       audioSettings: isAudioProvider ? localAudioSettings : null,
       imageEndpointId:
         isImageProvider && selectedImageService === "runpod_comfyui" ? localImageEndpointId || null : null,

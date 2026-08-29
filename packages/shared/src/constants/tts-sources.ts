@@ -154,6 +154,15 @@ export function ttsSourceMaxInputChars(source: TTSSourceId): number {
   return TTS_SOURCE_DEFINITIONS[source].maxInputChars;
 }
 
+/**
+ * A stored audioSource value narrowed to a known source. Anything unrecognized
+ * reads as ElevenLabs, which is what an audio connection with no source set
+ * resolves to server-side.
+ */
+export function toTTSSourceId(value: unknown): TTSSourceId {
+  return typeof value === "string" && value in TTS_SOURCE_DEFINITIONS ? (value as TTSSourceId) : "elevenlabs";
+}
+
 /** Whether a source may generate one of the game-audio purposes. */
 export function ttsSourceSupportsGameAudio(source: TTSSourceId, purpose: GameAudioPurpose): boolean {
   const definition = TTS_SOURCE_DEFINITIONS[source];

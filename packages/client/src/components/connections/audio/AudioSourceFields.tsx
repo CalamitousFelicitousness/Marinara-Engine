@@ -16,7 +16,11 @@ import { useEffect, useMemo, useState } from "react";
 import { Check, Loader2, Play, RefreshCw, Square } from "lucide-react";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { TTS_SOURCE_DEFINITIONS, TTS_SOURCES_WITH_MODEL_LISTING } from "@marinara-engine/shared";
+import {
+  TTS_SOURCE_DEFINITIONS,
+  TTS_SOURCES_WITH_MODEL_LISTING,
+  ttsSourceSupportsGameAudio,
+} from "@marinara-engine/shared";
 import type { AudioGenerationSource } from "@marinara-engine/shared";
 import { useTTSModels, useTTSVoices } from "../../../hooks/use-tts";
 import { ttsService } from "../../../lib/tts-service";
@@ -78,6 +82,10 @@ export function AudioSourceFields({
   const { t: localizeUi } = useUiTranslation();
   const definition = TTS_SOURCE_DEFINITIONS[source];
   const endpointOverridden = Boolean(baseUrl) && baseUrl !== definition.defaultBaseUrl;
+  // Which switches this backend can honor. Naming a source here instead would
+  // put the answer in a second place from the gate that enforces it.
+  const supportsSoundEffects = ttsSourceSupportsGameAudio(source, "sfx");
+  const supportsMusic = ttsSourceSupportsGameAudio(source, "music");
   const [endpointOpen, setEndpointOpen] = useState(endpointOverridden);
   const [previewing, setPreviewing] = useState(false);
 
@@ -344,26 +352,32 @@ export function AudioSourceFields({
           : localizeUi("ui.connections.audioconnectionsettings.testVoice")}
       </button>
 
-      {source === "elevenlabs" ? (
+      {supportsSoundEffects || supportsMusic ? (
         <div className="space-y-2">
-          <SettingsSwitch
-            label={localizeUi("ui.connections.connectioneditor.gameSoundEffects")}
-            description={localizeUi(
-              "ui.connections.connectioneditor.letGameModeGenerateSoundEffectsWithThisConnection",
-            )}
-            checked={soundEffects}
-            onChange={onSoundEffectsChange}
-          />
-          <SettingsSwitch
-            label={localizeUi("ui.connections.connectioneditor.gameMusic")}
-            description={localizeUi("ui.connections.connectioneditor.letGameModeGenerateMusicWithThisConnection")}
-            checked={music}
-            onChange={onMusicChange}
-          />
+          {supportsSoundEffects ? (
+            <SettingsSwitch
+              label={localizeUi("ui.connections.connectioneditor.gameSoundEffects")}
+              description={localizeUi(
+                "ui.connections.connectioneditor.letGameModeGenerateSoundEffectsWithThisConnection",
+              )}
+              checked={soundEffects}
+              onChange={onSoundEffectsChange}
+            />
+          ) : null}
+          {supportsMusic ? (
+            <SettingsSwitch
+              label={localizeUi("ui.connections.connectioneditor.gameMusic")}
+              description={localizeUi("ui.connections.connectioneditor.letGameModeGenerateMusicWithThisConnection")}
+              checked={music}
+              onChange={onMusicChange}
+            />
+          ) : null}
         </div>
       ) : (
         <p className="rounded-xl bg-[var(--secondary)]/40 px-3 py-2 text-[0.625rem] text-[var(--muted-foreground)] ring-1 ring-[var(--border)]">
-          {localizeUi("ui.connections.connectioneditor.soundEffectAndMusicGenerationCurrentlyRequiresTheElevenlabs")}
+          {localizeUi("ui.connections.connectioneditor.value1CantGenerateSoundEffectsOrMusic", {
+            value1: definition.name,
+          })}
         </p>
       )}
     </div>

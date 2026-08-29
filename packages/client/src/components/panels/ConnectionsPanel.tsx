@@ -75,6 +75,7 @@ import {
   Film,
   Music,
   Mic,
+  Volume2,
   Loader2,
   HardDriveDownload,
   MessageSquareText,
@@ -85,6 +86,7 @@ import { cn } from "../../lib/utils";
 import { sortBasicPanelItems } from "../../lib/panel-sort";
 import { downloadJsonFile, sanitizeExportFilenamePart } from "../../lib/download-json";
 import { downloadZipFile } from "../../lib/download-zip";
+import { audioConnectionSupportsPurpose } from "../../lib/connection-filters";
 import {
   CONNECTION_EXPORT_WARNING,
   createConnectionExportEnvelope,
@@ -732,6 +734,13 @@ type ConnectionRowData = {
   imageEndpointId?: string | null;
   videoGenerationSource?: string | null;
   videoService?: string | null;
+  audioSource?: string | null;
+  audioSoundEffects?: boolean | string;
+  audioMusic?: boolean | string;
+  defaultForSfx?: boolean | string;
+  fallbackForSfx?: boolean | string;
+  defaultForMusic?: boolean | string;
+  fallbackForMusic?: boolean | string;
   defaultParameters?: string | null;
   promptPresetId?: string | null;
   maxContext?: number;
@@ -790,7 +799,15 @@ function formatDefaultConnectionOption(connection: ConnectionRowData, fallbackMo
   return `${connection.name} - ${model}`;
 }
 
-type ConnectionDefaultField = "isDefault" | "defaultForAgents" | "fallbackForMain" | "fallbackForAgents";
+type ConnectionDefaultField =
+  | "isDefault"
+  | "defaultForAgents"
+  | "fallbackForMain"
+  | "fallbackForAgents"
+  | "defaultForSfx"
+  | "fallbackForSfx"
+  | "defaultForMusic"
+  | "fallbackForMusic";
 
 function isEnabledConnectionRole(value: boolean | string | undefined): boolean {
   return value === true || value === "true";
@@ -992,6 +1009,29 @@ function ConnectionDefaultsSection({ connectionsList }: { connectionsList: Conne
     () => connectionsList.filter((connection) => connection.provider === "audio"),
     [connectionsList],
   );
+  // Only engines that can actually generate for the lane, plus whatever holds
+  // the flag today: a connection that lost the capability must stay visible so
+  // its stale default can be seen and cleared.
+  const sfxConnections = useMemo(
+    () =>
+      audioConnections.filter(
+        (connection) =>
+          audioConnectionSupportsPurpose(connection, "sfx") ||
+          isEnabledConnectionRole(connection.defaultForSfx) ||
+          isEnabledConnectionRole(connection.fallbackForSfx),
+      ),
+    [audioConnections],
+  );
+  const musicConnections = useMemo(
+    () =>
+      audioConnections.filter(
+        (connection) =>
+          audioConnectionSupportsPurpose(connection, "music") ||
+          isEnabledConnectionRole(connection.defaultForMusic) ||
+          isEnabledConnectionRole(connection.fallbackForMusic),
+      ),
+    [audioConnections],
+  );
 
   return (
     <section
@@ -1009,7 +1049,7 @@ function ConnectionDefaultsSection({ connectionsList }: { connectionsList: Conne
             {localizeUi("ui.panels.connectiondefaultssection.defaults")}
           </div>
           <div className="text-[0.6875rem] text-[var(--muted-foreground)]">
-            {localizeUi("ui.panels.connectiondefaultssection.mainAgentsImagesAndVideosDefaultsAndFallbacks")}
+            {localizeUi("ui.panels.connectiondefaultssection.defaultsAndFallbacksForEachKindOfWork")}
           </div>
         </div>
         <button
@@ -1068,14 +1108,32 @@ function ConnectionDefaultsSection({ connectionsList }: { connectionsList: Conne
             fallbackModelLabel="Video generation"
           />
           <ConnectionDefaultPair
-            title={localizeUi("ui.panels.connectiondefaultssection.audio")}
-            icon={<Music size="0.875rem" />}
+            title={localizeUi("ui.panels.connectiondefaultssection.voice")}
+            icon={<Mic size="0.875rem" />}
             connections={audioConnections}
             primaryField="defaultForAgents"
             fallbackField="fallbackForAgents"
             primaryEmptyLabel={localizeUi(
               "ui.panels.connectiondefaultssection.useTheFallbackThenTheTextToSpeechSettings",
             )}
+            fallbackModelLabel={localizeUi("ui.panels.connectiondefaultssection.audioGeneration")}
+          />
+          <ConnectionDefaultPair
+            title={localizeUi("ui.panels.connectiondefaultssection.soundEffects")}
+            icon={<Volume2 size="0.875rem" />}
+            connections={sfxConnections}
+            primaryField="defaultForSfx"
+            fallbackField="fallbackForSfx"
+            primaryEmptyLabel={localizeUi("ui.panels.connectiondefaultssection.useTheFallbackThenTheVoiceDefaults")}
+            fallbackModelLabel={localizeUi("ui.panels.connectiondefaultssection.audioGeneration")}
+          />
+          <ConnectionDefaultPair
+            title={localizeUi("ui.panels.connectiondefaultssection.music")}
+            icon={<Music size="0.875rem" />}
+            connections={musicConnections}
+            primaryField="defaultForMusic"
+            fallbackField="fallbackForMusic"
+            primaryEmptyLabel={localizeUi("ui.panels.connectiondefaultssection.useTheFallbackThenTheVoiceDefaults")}
             fallbackModelLabel={localizeUi("ui.panels.connectiondefaultssection.audioGeneration")}
           />
         </div>

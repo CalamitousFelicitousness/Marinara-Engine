@@ -7288,7 +7288,6 @@
   "ui.panels.connectiondefaultssection.expandConnectionDefaults": "展开连接默认值",
   "ui.panels.connectiondefaultssection.images": "图片",
   "ui.panels.connectiondefaultssection.main": "主连接",
-  "ui.panels.connectiondefaultssection.mainAgentsImagesAndVideosDefaultsAndFallbacks": "主连接、智能体、图片和视频的默认与备用连接",
   "ui.panels.connectiondefaultssection.videos": "视频",
   "ui.panels.connectionrow.addToRandomPool": "添加到随机池",
   "ui.panels.connectionrow.deleteConnection": "删除连接",

@@ -1,4 +1,9 @@
-import { LOCAL_SIDECAR_CONNECTION_ID } from "@marinara-engine/shared";
+import {
+  LOCAL_SIDECAR_CONNECTION_ID,
+  toTTSSourceId,
+  ttsSourceSupportsGameAudio,
+  type GameAudioPurpose,
+} from "@marinara-engine/shared";
 
 export type ConnectionProviderLike = {
   id?: string | null;
@@ -53,6 +58,20 @@ export function filterAudioGenerationConnections<
   return (connections ?? []).filter(
     (connection) => connection.provider === "audio" && !isConnectionFlagTrue(connection.profileImportReviewRequired),
   );
+}
+
+/**
+ * Whether an audio connection may generate for a game purpose: its backend can
+ * do it at all, and this connection opted in. The same two terms the server
+ * answers with, so a picker never offers a row the route would refuse.
+ */
+export function audioConnectionSupportsPurpose(
+  connection: { provider?: unknown; audioSource?: unknown; audioSoundEffects?: unknown; audioMusic?: unknown },
+  purpose: GameAudioPurpose,
+): boolean {
+  if (connection.provider !== "audio") return false;
+  if (!ttsSourceSupportsGameAudio(toTTSSourceId(connection.audioSource), purpose)) return false;
+  return isConnectionFlagTrue(purpose === "sfx" ? connection.audioSoundEffects : connection.audioMusic);
 }
 
 export function createLocalSidecarConnectionOption(modelDisplayName?: string | null): LocalSidecarConnectionOption {

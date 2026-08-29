@@ -164,6 +164,95 @@ for (const [file, path] of [
   );
 }
 
+// ── Every lane is pointed from the same place ──
+// Sound effects and music get their own default and fallback rows beside the
+// voice pair. The pair component is generic over the flag name, so the pins that
+// matter are which fields each row writes and that nothing offers an engine the
+// route would then refuse.
+{
+  const panel = readSource("packages/client/src/components/panels/ConnectionsPanel.tsx");
+  for (const [primary, fallback] of [
+    ["defaultForSfx", "fallbackForSfx"],
+    ["defaultForMusic", "fallbackForMusic"],
+  ] as const) {
+    assert.match(panel, new RegExp(String.raw`primaryField="${primary}"`, "u"), `a ${primary} row must exist`);
+    assert.match(panel, new RegExp(String.raw`fallbackField="${fallback}"`, "u"), `paired with ${fallback}`);
+    assert.match(
+      panel,
+      new RegExp(String.raw`\|\s*"${primary}"`, "u"),
+      `${primary} must be a value the pair component accepts`,
+    );
+  }
+  assert.match(
+    panel,
+    /audioConnectionSupportsPurpose\(connection, "sfx"\)/u,
+    "the sound effect options must be engines that can generate sound effects",
+  );
+  assert.match(
+    panel,
+    /audioConnectionSupportsPurpose\(connection, "music"\)/u,
+    "and the music options engines that can generate music",
+  );
+  // A connection that loses the capability still holds the flag until someone
+  // clears it, so it has to stay in the list that can clear it.
+  assert.match(
+    panel,
+    /isEnabledConnectionRole\(connection\.defaultForSfx\)/u,
+    "a stale sound effect default must stay visible to be cleared",
+  );
+  assert.match(
+    panel,
+    /isEnabledConnectionRole\(connection\.defaultForMusic\)/u,
+    "and a stale music default likewise",
+  );
+
+  // The empty option names what actually answers next, the way the voice pair's
+  // does. "None" would describe a silence that never happens.
+  const catalogText = readSource("packages/client/src/localization/locales/en.json");
+  const catalog = JSON.parse(catalogText) as Record<string, string>;
+  const purposeEmptyLabel = catalog["ui.panels.connectiondefaultssection.useTheFallbackThenTheVoiceDefaults"];
+  assert.ok(purposeEmptyLabel, "the purpose pairs need an empty-option label");
+  assert.match(purposeEmptyLabel, /fallback/iu, "which names the fallback");
+  assert.match(purposeEmptyLabel, /Voice/u, "and then the lane it falls through to");
+  assert.match(
+    panel,
+    /ui\.panels\.connectiondefaultssection\.useTheFallbackThenTheVoiceDefaults/u,
+    "and the panel must render it",
+  );
+}
+
+// ── Capability is asked, never spelled out ──
+// The same fact reached five files as `=== "elevenlabs"`. It is one table now,
+// and a copy that drifts would offer a switch the server refuses to honor.
+{
+  const editor = readSource("packages/client/src/components/connections/ConnectionEditor.tsx");
+  const fields = readSource("packages/client/src/components/connections/audio/AudioSourceFields.tsx");
+  const filters = readSource("packages/client/src/lib/connection-filters.ts");
+
+  assert.match(
+    editor,
+    /ttsSourceSupportsGameAudio\(toTTSSourceId\(localAudioSource\), "sfx"\)/u,
+    "the editor must ask the table before storing a sound effect opt-in",
+  );
+  assert.doesNotMatch(
+    editor,
+    /localAudioSource === "elevenlabs"/u,
+    "and must not decide capability by naming a backend",
+  );
+  assert.match(fields, /ttsSourceSupportsGameAudio\(source, "sfx"\)/u, "the switches follow the table");
+  assert.match(fields, /ttsSourceSupportsGameAudio\(source, "music"\)/u, "for both purposes");
+  assert.match(filters, /ttsSourceSupportsGameAudio\(toTTSSourceId\(connection\.audioSource\)/u, "and so do the pickers");
+
+  // Scoped to the capability switches: the source literal near the voice
+  // controls is a synthesis-settings rule and legitimately stays.
+  const switchBlock = fields.slice(fields.indexOf("gameSoundEffects"));
+  assert.doesNotMatch(
+    switchBlock,
+    /source === "elevenlabs"/u,
+    "the game audio switches must not be gated on a source literal",
+  );
+}
+
 // ── The editor owns the engine, the card owns playback ──
 {
   const editor = readSource("packages/client/src/components/connections/ConnectionEditor.tsx");

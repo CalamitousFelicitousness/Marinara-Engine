@@ -50,6 +50,10 @@ export type CreateConnectionPayload = {
   useForRandom?: boolean;
   defaultForAgents?: boolean;
   fallbackForAgents?: boolean;
+  defaultForSfx?: boolean;
+  fallbackForSfx?: boolean;
+  defaultForMusic?: boolean;
+  fallbackForMusic?: boolean;
   enableCaching?: boolean;
   anthropicExtendedCacheTtl?: boolean;
   cachingAtDepth?: number;

@@ -27,6 +27,10 @@ export type ConnectionTransferRow = {
   useForRandom?: unknown;
   defaultForAgents?: unknown;
   fallbackForAgents?: unknown;
+  defaultForSfx?: unknown;
+  fallbackForSfx?: unknown;
+  defaultForMusic?: unknown;
+  fallbackForMusic?: unknown;
   embeddingModel?: unknown;
   embeddingBaseUrl?: unknown;
   embeddingConnectionId?: unknown;
@@ -68,6 +72,10 @@ export type SafeConnectionExport = {
   useForRandom: boolean;
   defaultForAgents: boolean;
   fallbackForAgents: boolean;
+  defaultForSfx: boolean;
+  fallbackForSfx: boolean;
+  defaultForMusic: boolean;
+  fallbackForMusic: boolean;
   embeddingModel: string;
   embeddingBaseUrl: string;
   embeddingConnectionId: string | null;
@@ -143,6 +151,10 @@ export function normalizeImportedConnectionEntry(value: unknown): ConnectionImpo
       useForRandom: false,
       defaultForAgents: false,
       fallbackForAgents: false,
+      defaultForSfx: false,
+      fallbackForSfx: false,
+      defaultForMusic: false,
+      fallbackForMusic: false,
       enableCaching: asBoolean(value.enableCaching),
       anthropicExtendedCacheTtl: asBoolean(value.anthropicExtendedCacheTtl),
       cachingAtDepth: asNonNegativeInteger(value.cachingAtDepth, 5),
@@ -198,6 +210,10 @@ function serializeConnectionForExport(connection: ConnectionTransferRow): SafeCo
     useForRandom: asBoolean(connection.useForRandom),
     defaultForAgents: asBoolean(connection.defaultForAgents),
     fallbackForAgents: asBoolean(connection.fallbackForAgents),
+    defaultForSfx: asBoolean(connection.defaultForSfx),
+    fallbackForSfx: asBoolean(connection.fallbackForSfx),
+    defaultForMusic: asBoolean(connection.defaultForMusic),
+    fallbackForMusic: asBoolean(connection.fallbackForMusic),
     embeddingModel: asString(connection.embeddingModel),
     embeddingBaseUrl: asString(connection.embeddingBaseUrl),
     embeddingConnectionId: asNullableString(connection.embeddingConnectionId),

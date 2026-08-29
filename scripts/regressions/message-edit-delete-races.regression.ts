@@ -31,9 +31,8 @@ process.env.DATA_DIR = dataDir;
 process.env.FILE_STORAGE_DIR = storeDir;
 
 const { createFileNativeDB, encodeShardKey } = await import("../../packages/server/src/db/file-backed-store.js");
-const { createChatsStorage, withMessageExtraPatchQueue } = await import(
-  "../../packages/server/src/services/storage/chats.storage.js"
-);
+const { createChatsStorage, withMessageExtraPatchQueue } =
+  await import("../../packages/server/src/services/storage/chats.storage.js");
 
 const chatRow = (id: string) => ({ id, name: id, mode: "conversation" });
 const messageRow = (id: string, chatId: string, content: string) => ({
@@ -59,16 +58,17 @@ writeShard("messages", "c1", [
   messageRow("m-race", "c1", "race me"),
   messageRow("m-tear", "c1", "old text"),
 ]);
-writeShard("message_swipes", "c1", [
-  swipeRow("s-race", "m-race", "race me"),
-  swipeRow("s-tear", "m-tear", "old text"),
-]);
+writeShard("message_swipes", "c1", [swipeRow("s-race", "m-race", "race me"), swipeRow("s-tear", "m-tear", "old text")]);
 
 const db = await createFileNativeDB();
 const storage = createChatsStorage(db);
 const settle = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 try {
+  // Warm-up: load the chat unit before any timed block, so the sleeps below
+  // budget for in-memory work only, never the first lazy shard load.
+  await storage.getMessage("m-hold");
+
   // ── #5599: a delete waits for the per-message queue ──
   {
     let release!: () => void;
@@ -109,46 +109,96 @@ try {
     assert.equal(await storage.getMessage("m-bulk"), null, "the queued bulk delete completes once the queue frees");
   }
 
-  // ── #5599: edit-then-delete resolves in queue order — the edit wins ──
+  // ── #5599: a delete landing mid-edit no longer nulls the edit out ──
+  // Deterministic injection: the edit's SECOND getMessage call (its post-write
+  // re-read) fires the delete and gives it time to run. Pre-fix the delete is
+  // unqueued, completes inside the gap, and the edit's re-read returns null —
+  // the silent-404 symptom. Post-fix the delete waits on the queue, the edit
+  // completes with its result, and the delete lands after.
   {
-    const edit = storage.updateMessageContent("m-race", "edited before deletion");
-    const deletion = storage.removeMessage("m-race");
-    const edited = await edit;
-    await deletion;
+    const originalGetMessage = storage.getMessage.bind(storage);
+    let editReads = 0;
+    let injectedDeletion: Promise<void> | null = null;
+    storage.getMessage = (async (id: string) => {
+      if (id === "m-race") {
+        editReads += 1;
+        if (editReads === 2) {
+          storage.getMessage = originalGetMessage;
+          injectedDeletion = storage.removeMessage("m-race");
+          await settle(200);
+        }
+      }
+      return originalGetMessage(id);
+    }) as typeof storage.getMessage;
+    const edited = await storage.updateMessageContent("m-race", "edited before deletion");
+    storage.getMessage = originalGetMessage;
+    assert.notEqual(injectedDeletion, null, "the injection point was reached");
+    await injectedDeletion;
     assert.equal(
       edited?.content,
       "edited before deletion",
-      "an edit enqueued before a delete completes with its result instead of a silent null",
+      "an in-flight edit completes with its result instead of a silent null when a delete lands mid-edit",
     );
     assert.equal(await storage.getMessage("m-race"), null, "the delete still lands afterward");
   }
 
   // ── #5600: a flush initiated mid-edit cannot persist a torn pair ──
+  // Deterministic injection: the edit's getSwipes call marks the exact window
+  // between the messages-row write and the swipe-mirror write. A flush is
+  // fired from the OUTER (non-transaction) context inside that window and
+  // given time to finish. Pre-fix it wrote the messages shard while the swipe
+  // shard kept the old text — the crash-persisted tear. With the edit inside
+  // a transaction, the store parks that flush until commit, so the on-disk
+  // pair can never be torn.
   {
-    const gen0 = db._fileStore.getTableWriteGeneration("messages");
-    const edit = storage.updateMessageContent("m-tear", "EDITED TEXT");
-    // Wait for the edit's FIRST write (the messages row) to be marked, then
-    // flush. Pre-fix the flush wrote the messages shard while the swipe
-    // mirror was still unwritten — the exact crash-persisted state. With the
-    // edit inside a transaction, the flush blocks until commit and writes a
-    // consistent pair.
-    let waited = 0;
-    while (db._fileStore.getTableWriteGeneration("messages") === gen0 && waited < 4000) {
-      await new Promise((resolve) => setImmediate(resolve));
-      waited += 1;
-    }
-    assert.notEqual(waited, 4000, "the edit's first write was observed");
-    await db._fileStore.flush();
-    const messagesShard = readFileSync(shardPath("messages", "c1"), "utf8");
-    const swipesShard = readFileSync(shardPath("message_swipes", "c1"), "utf8");
-    const messageEdited = messagesShard.includes("EDITED TEXT");
-    const swipeEdited = swipesShard.includes("EDITED TEXT");
+    const originalGetSwipes = storage.getSwipes.bind(storage);
+    let midEditSnapshot: { messageEdited: boolean; swipeEdited: boolean } | null = null;
+    storage.getSwipes = (async (messageId: string) => {
+      if (messageId === "m-tear") {
+        storage.getSwipes = originalGetSwipes;
+        // Escape the ambient transaction context: a flush from inside it
+        // returns without writing, which would prove nothing. setImmediate
+        // callbacks run outside the AsyncLocalStorage transaction scope only
+        // if scheduled from outside — so signal a pre-armed outer waiter.
+        armFlush();
+        await flushWindowDone;
+      }
+      return originalGetSwipes(messageId);
+    }) as typeof storage.getSwipes;
+
+    let armFlush!: () => void;
+    const flushArmed = new Promise<void>((resolve) => {
+      armFlush = resolve;
+    });
+    let finishWindow!: () => void;
+    const flushWindowDone = new Promise<void>((resolve) => {
+      finishWindow = resolve;
+    });
+    const outerFlushDriver = (async () => {
+      await flushArmed;
+      const flushAttempt = db._fileStore.flush();
+      // Give a pre-fix flush ample time to write the torn pair to disk; the
+      // post-fix flush is parked by the store until the transaction commits.
+      await Promise.race([flushAttempt, settle(400)]);
+      midEditSnapshot = {
+        messageEdited: readFileSync(shardPath("messages", "c1"), "utf8").includes("EDITED TEXT"),
+        swipeEdited: readFileSync(shardPath("message_swipes", "c1"), "utf8").includes("EDITED TEXT"),
+      };
+      finishWindow();
+      await flushAttempt;
+    })();
+
+    const edited = await storage.updateMessageContent("m-tear", "EDITED TEXT");
+    storage.getSwipes = originalGetSwipes;
+    await outerFlushDriver;
+    assert.notEqual(midEditSnapshot, null, "the mid-edit flush window was exercised");
+    const snapshot = midEditSnapshot!;
     assert.equal(
-      messageEdited,
-      swipeEdited,
-      `the on-disk pair must be consistent after a mid-edit flush (message edited: ${messageEdited}, swipe edited: ${swipeEdited})`,
+      snapshot.messageEdited && !snapshot.swipeEdited,
+      false,
+      `a mid-edit flush must not persist the edit on the message while the swipe keeps the old text ` +
+        `(message edited: ${snapshot.messageEdited}, swipe edited: ${snapshot.swipeEdited})`,
     );
-    const edited = await edit;
     assert.equal(edited?.content, "EDITED TEXT", "the edit completes normally");
     await db._fileStore.flush();
     assert.equal(

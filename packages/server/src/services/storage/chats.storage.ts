@@ -68,6 +68,17 @@ const metadataPatchQueues = new Map<string, Promise<void>>();
 const messageExtraPatchQueues = new Map<string, Promise<void>>();
 const swipeExtraPatchQueues = new Map<string, Promise<void>>();
 
+/**
+ * LOCK ORDER (#5599/#5600): the message patch queue is always acquired
+ * BEFORE the store's transaction slot — updateMessageContent takes the queue
+ * and then opens db.transaction, and the delete paths hold the queue across
+ * plain writes that wait out active transactions. A db.transaction callback
+ * must therefore NEVER call a queue-taking message API (updateMessageContent,
+ * updateMessageExtra, add/remove/setActiveSwipe, removeMessage(s), ...) —
+ * that is the reverse order and deadlocks the whole store with no timeout.
+ * Same discipline as the experience-lock → metadata-queue order documented
+ * further down. The queues are not reentrant either.
+ */
 async function withPatchQueue<T>(
   queues: Map<string, Promise<void>>,
   key: string,

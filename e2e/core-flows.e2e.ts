@@ -5086,7 +5086,11 @@ test("mobile transcript swipes navigate Conversation and Roleplay alternatives",
   };
 
   try {
-    await page.addInitScript(() => {
+    // Registered on the CONTEXT so the per-fixture pages below inherit it.
+    // Safe alongside each page's own chat-id writer: the two scripts touch
+    // disjoint keys, so their (documented-as-undefined) relative order
+    // cannot matter.
+    await page.context().addInitScript(() => {
       localStorage.setItem(
         "marinara-engine-ui",
         JSON.stringify({
@@ -5100,26 +5104,35 @@ test("mobile transcript swipes navigate Conversation and Roleplay alternatives",
     });
 
     for (const fixture of fixtures) {
-      // One navigation per fixture instead of goto → set → reload: init
-      // scripts accumulate and run in registration order, so the latest
-      // fixture's chat id wins before the app boots. The removed reload was
-      // where mobile WebKit intermittently crashed with an engine-internal
-      // error (#5633).
-      await page.addInitScript((chatId) => localStorage.setItem("marinara-active-chat-id", chatId), fixture.chatId);
-      await page.goto("/");
+      // A fresh page per fixture, carrying exactly ONE chat-id init script:
+      // Playwright documents the evaluation order of multiple init scripts
+      // as undefined, so accumulating per-fixture writers on one page could
+      // boot the wrong chat. One navigation per fixture also removes the
+      // former goto → set → reload dance whose reload was where mobile
+      // WebKit intermittently crashed with an engine-internal error (#5633).
+      const chatPage = await page.context().newPage();
+      try {
+        await chatPage.addInitScript(
+          (chatId) => localStorage.setItem("marinara-active-chat-id", chatId),
+          fixture.chatId,
+        );
+        await chatPage.goto("/");
 
-      const messageRow = page.locator(`[data-message-id="${fixture.messageId}"]`);
-      await expect(messageRow).toContainText(fixture.first);
-      await dispatchSwipe(messageRow, "left");
-      await expect(messageRow).toContainText(fixture.second);
+        const messageRow = chatPage.locator(`[data-message-id="${fixture.messageId}"]`);
+        await expect(messageRow).toContainText(fixture.first);
+        await dispatchSwipe(messageRow, "left");
+        await expect(messageRow).toContainText(fixture.second);
 
-      const composer = page.locator('[data-chat-composer="true"]:visible');
-      await composer.fill("Touching the composer must not navigate");
-      await dispatchSwipe(composer, "right");
-      await expect(messageRow).toContainText(fixture.second);
+        const composer = chatPage.locator('[data-chat-composer="true"]:visible');
+        await composer.fill("Touching the composer must not navigate");
+        await dispatchSwipe(composer, "right");
+        await expect(messageRow).toContainText(fixture.second);
 
-      await dispatchSwipe(messageRow, "right");
-      await expect(messageRow).toContainText(fixture.first);
+        await dispatchSwipe(messageRow, "right");
+        await expect(messageRow).toContainText(fixture.first);
+      } finally {
+        await chatPage.close();
+      }
     }
   } finally {
     await Promise.allSettled(fixtures.map((fixture) => request.delete(`/api/chats/${fixture.chatId}`)));

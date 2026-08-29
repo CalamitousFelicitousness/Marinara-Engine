@@ -1311,7 +1311,7 @@ source text, and passes unedited.
 
 ### A TTS engine is a saved connection, not a settings page
 
-Text to Speech was configured in a card that edited one settings blob, while audio _connections_
+Text to Speech was configured in a card that edited one settings blob, while audio *connections*
 already existed and the server already preferred them. That left two editors for the same effective
 settings and no way to keep more than one engine: the blob held a saved profile per source,
 reachable only by switching a dropdown, so anyone running a cloud voice and a local one had to

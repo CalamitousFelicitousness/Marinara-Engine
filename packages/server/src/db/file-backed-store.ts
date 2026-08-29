@@ -231,6 +231,14 @@ export type FileNativeStoreTestHooks = {
   beforeTableWrite?: (table: string, serializedRows: string) => Promise<void> | void;
   writerLeaseScopeId?: string;
   writerLeaseBootId?: string;
+  /**
+   * Regression seam (#5631): runs after a plain (non-transaction) write has
+   * cleared the write gate, before its mutation applies. Lets a regression
+   * place the apply at a chosen point relative to a transaction's lifecycle
+   * — the one-tick scheduling freedom the gate race exposed, made
+   * deterministic. Never invoked for transaction-context writes.
+   */
+  afterWritableTurn?: () => Promise<void> | void;
 };
 
 type SelectFromBuilder<TProjection extends Projection | undefined> = {
@@ -2856,6 +2864,7 @@ class FileTableStore {
         await this.transactionQueue;
       }
     }
+    await this.testHooks?.afterWritableTurn?.();
   }
 
   private assertWritable() {

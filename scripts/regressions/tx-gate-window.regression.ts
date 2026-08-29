@@ -65,14 +65,6 @@ writeShard("messages", "c1", [messageRow("m1", "c1", "persisted before the race"
 writeShard("chats", "c2", [chatRow("c2")]);
 writeShard("messages", "c2", [messageRow("m2", "c2", "pre-transaction text")]);
 
-const db = await createFileNativeDB();
-const storage = createChatsStorage(db);
-const settle = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const fileStore = (db as any)._fileStore;
-const originalGate = fileStore.waitForWritableTurn;
-
 let releaseA!: () => void;
 const aGate = new Promise<void>((resolve) => {
   releaseA = resolve;
@@ -86,17 +78,21 @@ const applyPause = new Promise<void>((resolve) => {
   releaseApplyPause = resolve;
 });
 let applyPauseArmed = false;
+let applyPauseTaken = false;
 
 // The injected pause between gate-pass and apply — the scheduling freedom the
-// one-tick hazard window exposes, made deterministic. Transaction-context
-// calls (exempt from the gate by design) never take it.
-fileStore.waitForWritableTurn = async function patchedGate(this: unknown) {
-  await originalGate.call(fileStore);
-  if (applyPauseArmed && !fileStore.txContext.getStore()) {
+// one-tick hazard window exposes, made deterministic. The hook only fires for
+// plain writes; transaction-context writes never reach it.
+const db = await createFileNativeDB({
+  afterWritableTurn: async () => {
+    if (!applyPauseArmed) return;
     applyPauseArmed = false;
+    applyPauseTaken = true;
     await applyPause;
-  }
-};
+  },
+});
+const storage = createChatsStorage(db);
+const settle = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 let insertError: unknown = null;
 try {
@@ -175,13 +171,16 @@ try {
 
   const rolledBack = await storage.getMessage("m2");
   assert.equal(rolledBack?.content, "pre-transaction text", "the transaction's own mutation rolled back");
+
+  // Anti-vacuity: the staged pause must actually have engaged, or the pin
+  // proved nothing about the apply's placement.
+  assert.equal(applyPauseTaken, true, "the raced insert took the staged gate-to-apply pause");
 } finally {
   // Never leave a gate parked: an assertion mid-block must not wedge the
   // store's close (which waits out the transaction queue) or the runner.
   releaseA();
   releaseB();
   releaseApplyPause();
-  fileStore.waitForWritableTurn = originalGate;
   await db._fileStore.close();
   rmSync(dataDir, { recursive: true, force: true });
 }

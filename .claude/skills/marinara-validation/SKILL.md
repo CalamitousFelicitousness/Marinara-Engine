@@ -104,6 +104,14 @@ its readiness gate. The same launcher spawned directly reaches both stacks in
 17–37s. Ruled out: slowness, piped stdout, stale browsers, the fork `.env`
 patch. Suspected: how Playwright spawns the webServer through a shell.
 
+**It did not reproduce on 2026-08-29.** Two consecutive
+`pnpm smoke:ui --grep "onnection" --project=desktop-chromium` runs each brought
+up both stacks and passed 10/10. `--project` does not narrow the webServer:
+`playwright.config.ts` runs one `node ./e2e/start-servers.mjs` either way, and
+both runs logged two `tsx watch` plus two `vite` processes, so the mobile client
+that used to hang did start. Try the plain command first now. Two successes are
+not a fix, so keep the procedure below for when it hangs again.
+
 Do not re-diagnose this. Use the two-step procedure, which is reliable:
 
 ```bash
@@ -164,12 +172,13 @@ PID is dead is reclaimed automatically at next boot with a
 
 ## Known-failing specs — do not chase these
 
-**Regression suite re-measured 2026-08-29: 180/190 pass, and only
-`launcher/update` fails on its own merits; see below for the nine that were
-blocked by the writer lease.** The Playwright specs in this section are still
-unverified since the 2026-08-20 sync (447 commits) and have not been re-run
-since. Re-confirm before trusting them; treat an unexpected pass as good news,
-not a mystery.
+**Regression suite re-measured 2026-08-29 after the upstream sync, with the app
+stopped: 196/197 pass. `launcher/update.regression.mjs` is the only failure, and
+it is red by fork design.** A clean run has no lease failures at all; the nine
+seen earlier that day were contention from a running app, not the suite. The
+Playwright specs in this section are still unverified since the 2026-08-20 sync
+(447 commits) and have not been re-run since. Re-confirm before trusting them;
+treat an unexpected pass as good news, not a mystery.
 
 These Playwright specs fail on a clean tree at `HEAD` with all work stashed,
 deterministically, at the same durations every run:
@@ -201,8 +210,10 @@ node ./scripts/run-regressions.mjs --filter scripts/regressions/author-note-pres
 
 ### Regression suite: one expected failure, as of 2026-08-29
 
-**Re-measured 2026-08-29: 180/190 pass. Only `launcher/update.regression.mjs`
-fails on its own merits.** Every other lane in the table below now passes,
+**Re-measured 2026-08-29 after the upstream sync through `ff3415792`, app
+stopped: 196/197 pass. Only `launcher/update.regression.mjs` fails on its own
+merits.** The lane count rose from 190 to 197 with that sync. Every other lane
+in the table below now passes,
 including the four that were red at the 2026-08-21 sync:
 `open-issues.regression.ts`, `prompt.regression.ts`,
 `manual-agent-retry-resolution.regression.ts`, and

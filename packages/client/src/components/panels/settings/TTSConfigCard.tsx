@@ -457,7 +457,11 @@ function TtsSearchableSelect({
     setOpen(false);
     setSearch("");
     if (restoreFocus) {
-      triggerRef.current?.focus();
+      // Deferred one frame: focusing synchronously races the panel unmount
+      // and any concurrent re-render of the trigger row — the focus call can
+      // land on a node that detaches a beat later, dropping focus to <body>
+      // (#5633). After the frame, the ref points at whatever node survived.
+      requestAnimationFrame(() => triggerRef.current?.focus());
     }
   }, []);
 

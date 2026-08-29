@@ -46,12 +46,26 @@ cleared) and never about the never-populated one.
 `ConnectionDefaultPair` takes an optional `emptyHint` rendered only when the lane has no
 connections.
 
-NanoGPT was checked and does not qualify. Sound effects have no endpoint at all. Music exists at
-`POST /api/v1/audio/speech`, the same endpoint this fork already calls, but takes `{model, input}`
-with no duration parameter, while the music path is built around scene-driven `music_length_ms` and
-an ElevenLabs `prompt` content key. Enabling it needs a generic game-audio provider path, not a
-capability flag. `tts.routes.ts:1014` already excludes NanoGPT explicitly for the related
-ElevenLabs-proxy case.
+NanoGPT can serve both lanes, and the reason it does not yet is the response mode rather than any
+missing parameter. Probed against the live API on 2026-08-29, because the docs are incomplete here
+and wrong in one place:
+
+- 27 music models and 4 sound-effect models, all under `category: audio_music` with
+  `capabilities.text_to_music`. There is no `text_to_sfx`, so a sound effect is a model choice
+  (`mirelo-ai/sfx1.6/text-to-audio`, `fal-ai/stable-audio-3/small/sfx/text-to-audio`), not a lane.
+- `GET /api/v1/audio-models` carries per-model `supported_parameters` with `min_duration` and
+  `max_duration` (1 to 300s on ACE-Step, 1 to 60s on Mirelo SFX). `duration` is honored: a request
+  for 99999 clamped to exactly 300.000s of audio. No doc page documents this parameter and
+  `music-generation` says the opposite, that duration "may be influenced by the prompt".
+- The call is asynchronous. `POST /api/v1/audio/speech` answers `202 {status, runId, cost}` with a
+  `Bearer` key, then `GET /api/tts/status?runId=&model=` with an `x-api-key` header answers
+  `{status, audioUrl}`. The auth header differs between the two.
+
+That last point is the actual work. Every TTS provider here returns bytes synchronously, so
+`buildSpeechRequest` cannot express submit-poll-fetch; NanoGPT needs a second response mode in the
+provider contract. The rest is mapping: `input` rather than `prompt` (what `contentKey()` exists
+for) and `duration` seconds rather than `music_length_ms`. `tts.routes.ts:1014` already excludes
+NanoGPT for the related ElevenLabs-proxy case, on the same 202 behaviour.
 
 Proven by `scripts/regressions/tts/tts-audio-connection-ux.regression.ts`. With one supporting
 source the values alone cannot separate a derivation from a literal, so the lane also pins the

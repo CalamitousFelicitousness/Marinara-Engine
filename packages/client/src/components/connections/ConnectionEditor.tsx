@@ -22,6 +22,7 @@ import {
 import { usePresets } from "../../hooks/use-presets";
 import { SECRET_FIELD_PROPS } from "../../lib/secret-field-props";
 import { AudioSourceFields } from "./audio/AudioSourceFields";
+import { AudioParameterSection } from "./audio/AudioParameterSection";
 import { AudioSynthesisDefaults } from "./audio/AudioSynthesisDefaults";
 import { AudioVoiceCasting } from "./audio/AudioVoiceCasting";
 import {
@@ -2014,6 +2015,21 @@ export function ConnectionEditor() {
           )}
 
           {isAudioProvider && (
+            <AudioParameterSection
+              connectionId={connectionDetailId ?? ""}
+              source={toTTSSourceId(localAudioSource)}
+              soundEffects={localAudioSoundEffects}
+              music={localAudioMusic}
+              value={localAudioSettings.audioParameters}
+              onChange={(next) => {
+                setLocalAudioSettings({ ...localAudioSettings, audioParameters: next });
+                markDirty();
+              }}
+              dirty={dirty}
+            />
+          )}
+
+          {isAudioProvider && (
             <AudioVoiceCasting
               connectionId={connectionDetailId ?? ""}
               source={localAudioSource as AudioGenerationSource}
@@ -2558,8 +2574,10 @@ export function ConnectionEditor() {
             </FieldGroup>
           )}
 
-          {/* ── Rate Limit (requests per minute) ── */}
-          {!isMediaGenerationProvider && (
+          {/* ── Rate Limit (requests per minute) ──
+              Audio included: the value was always saved and registered, but the
+              field was hidden here and nothing on the TTS path read it. */}
+          {(!isMediaGenerationProvider || isAudioProvider) && (
             <FieldGroup
               label={localizeUi("ui.connections.connectioneditor.maxRequestsPerMinute")}
               icon={

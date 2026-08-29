@@ -18,6 +18,7 @@ export const ttsKeys = {
   all: ["tts"] as const,
   config: ["tts", "config"] as const,
   effectiveConfig: (purpose: AudioPurpose, scope: string) => ["tts", "effective-config", purpose, scope] as const,
+  effectiveRequest: (purpose: AudioPurpose, scope: string) => ["tts", "effective-request", purpose, scope] as const,
   voices: (source: TTSSource, scope: string) => ["tts", "voices", source, scope] as const,
   models: (source: TTSSource, scope: string) => ["tts", "models", source, scope] as const,
 };
@@ -91,6 +92,36 @@ export function useEffectiveAudioConfig(purpose: AudioPurpose, connectionId?: st
 /** What a speak request would use. The speech lane of {@link useEffectiveAudioConfig}. */
 export function useEffectiveTTSConfig(connectionId?: string) {
   return useEffectiveAudioConfig("speech", connectionId);
+}
+
+/** The request body a lane would send, built and not sent, with the key masked. */
+export interface TTSEffectiveRequestResponse {
+  url: string;
+  headers: Record<string, string>;
+  body: unknown;
+  multipart: boolean;
+  purpose: AudioPurpose;
+  resolvedConnectionId: string | null;
+  resolvedConnectionName: string | null;
+  resolvedSource: TTSSource;
+}
+
+/**
+ * What this connection would actually send. Enabled only when asked for, since
+ * it describes the SAVED row: an unsaved parameter is not in it yet, and the
+ * editor says so rather than showing a stale body as though it were current.
+ */
+export function useEffectiveAudioRequest(purpose: AudioPurpose, connectionId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ttsKeys.effectiveRequest(purpose, connectionId),
+    queryFn: () => {
+      const params = new URLSearchParams({ connectionId });
+      if (purpose !== "speech") params.set("purpose", purpose);
+      return api.get<TTSEffectiveRequestResponse>(`/tts/effective-request?${params.toString()}`);
+    },
+    enabled: enabled && Boolean(connectionId),
+    staleTime: 0,
+  });
 }
 
 export function useUpdateTTSConfig() {

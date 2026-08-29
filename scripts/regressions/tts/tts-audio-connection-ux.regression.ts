@@ -157,11 +157,7 @@ for (const [file, path] of [
     /rows\.find\(\(connection\) => isConnectionFlagTrue\(connection\.defaultForAgents\)\)/u,
     "GameSurface must not re-derive the server's audio resolution order",
   );
-  assert.doesNotMatch(
-    surface,
-    /defaultForSfx|defaultForMusic/u,
-    "and must not re-derive the purpose chains either",
-  );
+  assert.doesNotMatch(surface, /defaultForSfx|defaultForMusic/u, "and must not re-derive the purpose chains either");
 }
 
 // ── A running game can be repointed ──
@@ -175,21 +171,13 @@ for (const [file, path] of [
     assert.match(card, new RegExp(String.raw`renderLane\("${key}"`, "u"), `${key} must be settable per game`);
   }
   assert.match(drawer, /<GameAudioSettingsCard/u, "and the card must be mounted in the drawer");
-  assert.match(
-    drawer,
-    /\[key\]: id \}\)/u,
-    "each lane writes its own metadata key rather than a shared one",
-  );
+  assert.match(drawer, /\[key\]: id \}\)/u, "each lane writes its own metadata key rather than a shared one");
   assert.match(
     card,
     /enabled=\{metadata\.gameAudioSoundEffectsEnabled !== false\}/u,
     "the sound effect switch lives here too, showing this game's stored state",
   );
-  assert.match(
-    card,
-    /enabled=\{metadata\.gameAudioMusicEnabled !== false\}/u,
-    "and the music switch likewise",
-  );
+  assert.match(card, /enabled=\{metadata\.gameAudioMusicEnabled !== false\}/u, "and the music switch likewise");
   // An older game's all-purpose pin is what an unpinned lane reaches, so the
   // empty option has to say that rather than claim the app default answers.
   assert.match(
@@ -300,11 +288,7 @@ for (const [file, path] of [
     /isEnabledConnectionRole\(connection\.defaultForSfx\)/u,
     "a stale sound effect default must stay visible to be cleared",
   );
-  assert.match(
-    panel,
-    /isEnabledConnectionRole\(connection\.defaultForMusic\)/u,
-    "and a stale music default likewise",
-  );
+  assert.match(panel, /isEnabledConnectionRole\(connection\.defaultForMusic\)/u, "and a stale music default likewise");
 
   // The empty option names what actually answers next, the way the voice pair's
   // does. "None" would describe a silence that never happens.
@@ -341,7 +325,11 @@ for (const [file, path] of [
   );
   assert.match(fields, /ttsSourceSupportsGameAudio\(source, "sfx"\)/u, "the switches follow the table");
   assert.match(fields, /ttsSourceSupportsGameAudio\(source, "music"\)/u, "for both purposes");
-  assert.match(filters, /ttsSourceSupportsGameAudio\(toTTSSourceId\(connection\.audioSource\)/u, "and so do the pickers");
+  assert.match(
+    filters,
+    /ttsSourceSupportsGameAudio\(toTTSSourceId\(connection\.audioSource\)/u,
+    "and so do the pickers",
+  );
 
   // Scoped to the capability switches: the source literal near the voice
   // controls is a synthesis-settings rule and legitimately stays.
@@ -477,6 +465,59 @@ for (const [file, path] of [
     card,
     /const handleClearCachedClips[\s\S]{0,900}?setTtsCacheSummary\(\{ count: 0, bytes: 0 \}\)/u,
     "and the summary stops reporting what was just deleted",
+  );
+}
+
+// ── Engine parameters are edited on the connection that sends them ──
+{
+  const editor = readSource("packages/client/src/components/connections/ConnectionEditor.tsx");
+  assert.match(
+    editor,
+    /<AudioParameterSection[\s\S]{0,400}?value=\{localAudioSettings\.audioParameters\}/u,
+    "the section reads and writes the same settings object as its neighbours",
+  );
+  assert.match(
+    editor,
+    /<AudioParameterSection[\s\S]{0,700}?dirty=\{dirty\}/u,
+    "and knows about unsaved edits, since the preview describes the saved row",
+  );
+
+  // The value was always saved and registered in the throttle registry; only
+  // the field was hidden, and nothing on the TTS path read it.
+  assert.match(
+    editor,
+    /\{\(!isMediaGenerationProvider \|\| isAudioProvider\) && \(/u,
+    "the requests-per-minute field is reachable for an audio connection",
+  );
+
+  const section = readSource("packages/client/src/components/connections/audio/AudioParameterSection.tsx");
+  assert.match(
+    section,
+    /ttsSourceSupportsGameAudio\(source, candidate\)/u,
+    "lanes come from the shared capability table",
+  );
+  for (const id of ["elevenlabs", "openai", "pockettts", "xai", "nanogpt"]) {
+    assert.doesNotMatch(section, new RegExp(`=== "${id}"`, "u"), `the section must not name ${id} directly`);
+  }
+
+  // A lane cleared to nothing is removed, not stored as an empty object: the
+  // difference between inheriting and pinning an answer nobody chose.
+  assert.match(
+    section,
+    /if \(Object\.keys\(next\)\.length === 0\) delete map\[active\];/u,
+    "an emptied lane stops being stored",
+  );
+
+  const paramEditor = readSource("packages/client/src/components/connections/audio/AudioParameterEditor.tsx");
+  assert.match(
+    paramEditor,
+    /audioParameterPaths\(value\)\.filter\(\(path\) => !knownKeys\.has\(path\)\)/u,
+    "a stored key the catalog does not describe still gets a row rather than vanishing",
+  );
+  assert.match(
+    paramEditor,
+    /if \(!trimmed\) return \{ ok: true, value: \{\} \};/u,
+    "emptying the JSON box clears the lane rather than failing to parse",
   );
 }
 

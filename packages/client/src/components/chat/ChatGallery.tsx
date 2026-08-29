@@ -257,15 +257,21 @@ export function ChatGallery({
     unpinImage(id);
     setConfirmDeleteId(null);
     if (lightbox?.id === id) setLightbox(null);
-    remove.mutate(id, {
-      onSuccess: () => {
-        toast.success(localizeUi("ui.chat.chatgallery.imageDeleted"));
+    // The image's own chatId is the owner (a Game-mode gallery shows sibling
+    // sessions' images too); fall back to the open chat only if the row is
+    // somehow not in the list.
+    remove.mutate(
+      { imageId: id, chatId: image?.chatId ?? chatId },
+      {
+        onSuccess: () => {
+          toast.success(localizeUi("ui.chat.chatgallery.imageDeleted"));
+        },
+        onError: (error) => {
+          if (wasPinned && image) pinImage({ ...image, chatId });
+          toast.error(error instanceof Error ? error.message : localizeUi("ui.chat.chatgallery.failedToDeleteImage"));
+        },
       },
-      onError: (error) => {
-        if (wasPinned && image) pinImage({ ...image, chatId });
-        toast.error(error instanceof Error ? error.message : localizeUi("ui.chat.chatgallery.failedToDeleteImage"));
-      },
-    });
+    );
   };
 
   const handleBatchDownload = useCallback(async () => {
@@ -331,7 +337,7 @@ export function ChatGallery({
         const wasPinned = useGalleryStore.getState().pinnedImages.some((item) => item.id === image.id);
         unpinImage(image.id);
         try {
-          await remove.mutateAsync(image.id);
+          await remove.mutateAsync({ imageId: image.id, chatId: image.chatId });
         } catch {
           failedDeletes += 1;
           if (wasPinned) pinImage({ ...image, chatId });

@@ -193,6 +193,13 @@ export type FileNativeStoreController = {
    */
   getFullyResidentLazyTables: () => ReadonlySet<string>;
   /**
+   * Snapshot of every in-memory row of one table across all resident units
+   * (#5613) — for cross-chat scans that must see rows the condition language
+   * cannot address (null/malformed owner keys in the UNASSIGNED unit). The
+   * row objects are shared and must be treated as immutable.
+   */
+  getResidentLazyRows: (table: string) => ReadonlyArray<Record<string, unknown>>;
+  /**
    * Marks shard keys dirty without touching LRU state. Present ONLY when the
    * store was created with test hooks — production controllers never expose
    * an arbitrary dirty-mark mutation.
@@ -536,6 +543,35 @@ export function encodeShardKey(rawKey: string): string {
     return `%h${createHash("sha256").update(rawKey, "utf8").digest("hex").slice(0, 32)}`;
   }
   return encoded;
+}
+
+/**
+ * Best-effort inverse of encodeShardKey for callers that scan the shard
+ * directory itself (#5613). The store never needs this — rows carry their own
+ * keys — so it exists only to let an on-disk scan hand an unreadable shard to
+ * the real loader by key. Returns null for anything the percent form cannot
+ * round-trip: the `%h` hash fallback, and any name outside the encoder's
+ * output grammar. Note the deliberate ambiguity of the UNASSIGNED shard: both
+ * the empty key and a literal "orphaned-rows" id encode to the same filename,
+ * and this returns the literal.
+ */
+export function decodeShardKey(encoded: string): string | null {
+  if (!encoded || encoded.startsWith("%h")) return null;
+  const bytes: number[] = [];
+  for (let i = 0; i < encoded.length; ) {
+    const char = encoded[i]!;
+    if (char === "%") {
+      const hex = encoded.slice(i + 1, i + 3);
+      if (!/^[0-9A-F]{2}$/.test(hex)) return null;
+      bytes.push(Number.parseInt(hex, 16));
+      i += 3;
+    } else {
+      if (!/[a-z0-9-]/.test(char)) return null;
+      bytes.push(char.charCodeAt(0));
+      i += 1;
+    }
+  }
+  return Buffer.from(bytes).toString("utf8");
 }
 
 const FILE_BACKED_TABLE_SET = new Set<string>(FILE_BACKED_TABLES);
@@ -1225,8 +1261,11 @@ function shardFilePath(rootDir: string, table: string, encodedKey: string) {
   return join(shardDirPath(rootDir, table), `${encodedKey}.json`);
 }
 
-/** Shard data files only — never .bak/.tmp/.corrupt/.pre-shard/sentinel/artifact names. */
-function isShardDataFileName(name: string) {
+/** Shard data files only — never .bak/.tmp/.corrupt/.pre-shard/sentinel/artifact names.
+ *  Exported so on-disk scans outside the store (#5613) classify entries exactly
+ *  like the store's own discovery — a name this rejects is invisible to the
+ *  store and must be invisible to those scans too. */
+export function isShardDataFileName(name: string) {
   return /^[^.][^\\/]*\.json$/.test(name);
 }
 
@@ -3190,6 +3229,17 @@ class FileTableStore {
     return leased;
   }
 
+  getResidentLazyRows(table: string): ReadonlyArray<Row> {
+    // Every row of the table currently in memory, whatever unit it belongs to
+    // (#5613): the condition language can only address rows by column values,
+    // which cannot express "any row in this unit" for rows whose owner key is
+    // null or malformed — those live in the pinned UNASSIGNED unit and would
+    // otherwise be unreachable without a whole-table lease. The array is a
+    // snapshot; the row objects are shared, which is safe because rows are
+    // immutable once stored (#4730 — every mutation replaces).
+    return [...(this.tables.get(table) ?? [])];
+  }
+
   markDirty(table: string, shardKeys?: Iterable<string>) {
     // The generation stays keyed on the BARE logical table name for every
     // shard write — the #4705 contract ("something in this table changed")
@@ -4828,6 +4878,7 @@ export async function createFileNativeDB(testHooks?: FileNativeStoreTestHooks): 
     getTableWriteGeneration: (table) => store.getTableWriteGeneration(table),
     getResidentChatUnits: () => store.getResidentChatUnits(),
     getFullyResidentLazyTables: () => store.getFullyResidentLazyTables(),
+    getResidentLazyRows: (table) => store.getResidentLazyRows(table),
     ...(testHooks
       ? { markShardDirty: (table: string, shardKeys: Iterable<string>) => store.markDirty(table, shardKeys) }
       : {}),

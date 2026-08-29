@@ -31,10 +31,6 @@ export function createGalleryStorage(db: DB) {
         .orderBy(desc(chatImages.createdAt));
     },
 
-    async listByFilePath(filePath: string) {
-      return db.select().from(chatImages).where(eq(chatImages.filePath, filePath)).orderBy(desc(chatImages.createdAt));
-    },
-
     /** Chat-scoped filePath lookup (keeps the lazy file store from loading every chat's shards). */
     async listByChatAndFilePath(chatId: string, filePath: string) {
       return db

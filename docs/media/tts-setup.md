@@ -28,7 +28,11 @@ The **Connection defaults** section of the Connections panel has a row for each.
 
 Set the others when you want different engines for different work, such as a local engine for voice and ElevenLabs for music.
 
-Only ElevenLabs generates sound effects and music today, and each connection has to opt in with the **Game sound effects** and **Game music** switches in its editor. A connection that cannot do a job is not offered for it, and its switches are hidden rather than shown greyed out.
+ElevenLabs and NanoGPT generate sound effects and music today, and each connection has to opt in with the **Game sound effects** and **Game music** switches in its editor. A connection that cannot do a job is not offered for it, and its switches are hidden rather than shown greyed out.
+
+NanoGPT works differently from ElevenLabs and needs one extra step. It has no sound-effect or music endpoint of its own: the kind of audio you get is decided by which model you name, so a NanoGPT connection generates nothing for a lane until you set a **model** parameter for it under Engine parameters. Add the **NanoGPT music** or **NanoGPT sound effects** set for a ready-made pair of fields. `ACE-Step-v1.5-Base` is a reasonable starting music model and `mirelo-ai/sfx1.6/text-to-audio` a reasonable sound-effect one, but the list changes without notice, so treat those as examples rather than recommendations.
+
+NanoGPT also takes its time. Rather than answering with audio, it accepts the job and hands back a ticket, and Marinara waits for the result behind the scenes. Nothing extra is needed from you, but a track can take noticeably longer to appear than an ElevenLabs one, and the wait counts against the same timeout.
 
 ## Step 1: Create an audio connection
 

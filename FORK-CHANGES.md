@@ -33,6 +33,53 @@ The spread must stay above `onClick` so the explicit click handler wins.
 
 ## Fork-only additions
 
+### NanoGPT generates sound effects and music, through a job
+
+Game audio was ElevenLabs only, in three `cfg.source !== "elevenlabs"` guards and one generator.
+NanoGPT can serve both lanes, and the reason it could not was the response mode: every TTS provider
+here returns bytes synchronously, and `buildSpeechRequest` had no way to say "this answered with a
+ticket".
+
+`TTSProviderRequest.job?: TTSJobResolution` says it. The resolution is pure like the request it
+rides on, so `services/tts/job-resolution.ts` performs no I/O of its own: the caller passes its
+`send`, keeping one outbound helper, one deadline and one abort chain, which is the invariant
+`tts-types.ts` exists to state. That is also what lets the polling loop be asserted without a server.
+
+Whether a submission answers with a job is a property of the **model**, not the backend. NanoGPT
+returns audio inline for a speech model and 202 with a run id for a music model, on the same
+endpoint, so the job is detected from the response content type and never declared in config. The
+submission body is therefore never consumed to find out which arrived.
+
+`audioParameters` from the per-purpose parameters work carries the whole configuration, so this adds
+no schema field, no column, and no `STORAGE_VERSION` bump. NanoGPT picks the lane by model id, and a
+model id is exactly the vendor knob that bag was built for. `AUDIO_PARAMETER_SETS` gains a NanoGPT
+music and sound-effect set so `model` and `duration` render as fields rather than raw JSON.
+
+Verified against the live API on 2026-08-29 rather than its docs, which omit the parameter and
+contradict it in prose. Three shape differences are pinned by the regression because assuming any of
+them would have shipped a parser that works for music and fails for sound effects:
+
+- run ids are a dashed UUID for one model and 32 bare hex for another, so the format is never
+  validated;
+- the finished audio is served from a host that varies per run, so it is never pinned;
+- a sound-effect status carries `audioUrls[]` beside `audioUrl`.
+
+`duration` is seconds where ElevenLabs counts milliseconds, and the backend clamps rather than
+refusing: 99999 returned exactly 300.000s on ACE-Step. An unset model is a `TTSConfigurationError`,
+never a guessed vendor id, because a wrong guess silently bills the wrong engine.
+
+`applyAudioParameters` no longer warns when a parameter's value is identical to what the request
+computed. NanoGPT reads the model out of the same bag it later merges, so every game request would
+otherwise have logged an override that changed nothing.
+
+Patches to upstream files: `routes/tts.routes.ts` (three guards generalized to
+`ttsSourceSupportsGameAudio`, the generator renamed from `generateElevenLabsGameAudio` and given the
+job branch) and `shared/src/constants/tts-sources.ts` (the two NanoGPT capability flags).
+
+Proven by `scripts/regressions/tts/tts-nanogpt-game-audio.regression.ts`, which pins both verified
+response shapes, the auth-header change between submit and poll, repeated polling on pending, and
+the failure path.
+
 ### An empty sound-effects or music lane says what would fill it
 
 The Defaults card offers Sound effects and Music rows unconditionally, but only ElevenLabs declares

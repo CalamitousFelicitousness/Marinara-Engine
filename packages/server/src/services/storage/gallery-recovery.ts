@@ -11,12 +11,21 @@
 // tables' shards) into memory, so on installs where most chats have
 // images this walk quietly reproduced the eager boot #5592 removed.
 // For chats whose unit is not resident we therefore peek the chat's
-// chat_images shard file straight off disk instead: a non-resident unit
-// can hold no unflushed writes (writes force residency first, and
-// eviction only runs after a successful flush), so the file IS the
-// current state. Anything unreadable falls back to the real loader so
-// the full recovery ladder (.bak fallback, quarantine) stays in charge
-// of corruption — and only that one chat's unit loads.
+// chat_images shard file straight off disk instead. That is sound while
+// chat_images has not been converted to fully resident (checked below):
+// a non-resident unit then holds no unflushed writes — writes force
+// residency first, and eviction only runs after a successful flush — so
+// the file IS the current state. Anything the peek cannot interpret
+// exactly the way the loader would (unreadable file, non-canonical row
+// shapes, duplicate ids) falls back to the real loader so the full
+// recovery ladder (.bak fallback, quarantine, heal) stays in charge —
+// and only that one chat's unit loads.
+//
+// Known accepted gap (matches lazy scoped-query semantics generally): a
+// row misfiled into ANOTHER chat's shard file is invisible here until
+// its host unit loads, so its image can be re-registered as a duplicate
+// row. The pre-#5612 scan only avoided that by loading every unit —
+// the exact behavior this fix removes.
 import { existsSync, readdirSync, readFileSync, statSync } from "fs";
 import { logger } from "../../lib/logger.js";
 import { join, extname } from "path";
@@ -31,9 +40,13 @@ const IMAGE_EXTS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif"]);
 
 /**
  * The filePaths recorded in one chat's chat_images shard file, read without
- * loading the unit. Returns null when the peek cannot be trusted — an
- * unreadable file, a non-array root, or a lone .bak from an interrupted
- * flush — so the caller falls back to the real loader.
+ * loading the unit. Returns null whenever the peek cannot mirror the loader
+ * EXACTLY — an unreadable file, a non-array root, a lone .bak from an
+ * interrupted flush, a duplicate primary key (the loader dedupes), or any row
+ * not in the canonical serializer shape (the loader's normalizeRow also
+ * accepts dbName-form keys like chat_id/file_path, and attribution of rows
+ * with a missing chatId is the loader's call) — so the caller falls back to
+ * the real loader instead of risking duplicate re-registration.
  */
 function peekChatImageFilePaths(storageRootDir: string, chatId: string): Set<string> | null {
   const shardPath = join(storageRootDir, "tables", "chat_images", `${encodeShardKey(chatId)}.json`);
@@ -46,14 +59,21 @@ function peekChatImageFilePaths(storageRootDir: string, chatId: string): Set<str
     const parsed = JSON.parse(readFileSync(shardPath, "utf8")) as unknown;
     if (!Array.isArray(parsed)) return null;
     const paths = new Set<string>();
+    const seenIds = new Set<string>();
     for (const row of parsed) {
-      // Skip what a real load would also drop or not attribute to this chat:
-      // malformed rows heal away at first touch, and a misfiled stray row
-      // belongs to another chat's gallery.
+      // A malformed row heals away at first touch, so the loader drops it too.
       if (!row || typeof row !== "object") continue;
-      const candidate = row as { chatId?: unknown; filePath?: unknown };
-      if (candidate.chatId !== chatId) continue;
-      if (typeof candidate.filePath === "string") paths.add(candidate.filePath);
+      const candidate = row as { id?: unknown; chatId?: unknown; filePath?: unknown };
+      // A clean stray — canonical shape, some OTHER chat's id — is the one
+      // non-matching row the loader also would not attribute to this chat.
+      if (typeof candidate.chatId === "string" && candidate.chatId !== chatId) continue;
+      // Everything else must be exactly the serializer's own output for this
+      // chat. Anything off-shape goes to the loader.
+      if (candidate.chatId !== chatId) return null;
+      if (typeof candidate.id !== "string" || typeof candidate.filePath !== "string") return null;
+      if (seenIds.has(candidate.id)) return null;
+      seenIds.add(candidate.id);
+      paths.add(candidate.filePath);
     }
     return paths;
   } catch {
@@ -67,7 +87,11 @@ async function knownFilePathsFor(
   chatId: string,
   chatImagesIsLazy: boolean,
 ): Promise<Set<string>> {
-  if (chatImagesIsLazy && !store.getResidentChatUnits().has(chatId)) {
+  if (
+    chatImagesIsLazy &&
+    !store.getFullyResidentLazyTables().has("chat_images") &&
+    !store.getResidentChatUnits().has(chatId)
+  ) {
     const peeked = peekChatImageFilePaths(store.rootDir, chatId);
     if (peeked) return peeked;
     logger.warn(
@@ -75,8 +99,10 @@ async function knownFilePathsFor(
       chatId,
     );
   }
-  // Resident unit, eager mode, or an unreadable shard: the store answers, from
-  // memory in the first two cases and via a single unit load in the third.
+  // Resident unit, whole-table lease, eager mode, or an unreadable shard: the
+  // store answers — from memory in the first three cases (a leased table's
+  // pending writes never reach disk between flushes, so the files cannot be
+  // trusted there), via a single unit load in the last.
   const rows = await db.select({ filePath: chatImages.filePath }).from(chatImages).where(eq(chatImages.chatId, chatId));
   return new Set(rows.map((r) => r.filePath));
 }

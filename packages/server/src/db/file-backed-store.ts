@@ -188,6 +188,11 @@ export type FileNativeStoreController = {
   /** Chat units currently resident under lazy loading (#5592) — diagnostics and regression introspection. */
   getResidentChatUnits: () => ReadonlySet<string>;
   /**
+   * Lazy tables that an unscopable query permanently converted to fully resident
+   * (#5611) — diagnostics and regression introspection. Empty is the healthy state.
+   */
+  getFullyResidentLazyTables: () => ReadonlySet<string>;
+  /**
    * Marks shard keys dirty without touching LRU state. Present ONLY when the
    * store was created with test hooks — production controllers never expose
    * an arbitrary dirty-mark mutation.
@@ -461,10 +466,13 @@ const LAZY_UNIT_TABLES: ReadonlySet<string> =
 const LAZY_UNIT_LOAD_ORDER: readonly string[] = [...LAZY_UNIT_TABLES];
 
 /**
- * Whether a table participates in lazy per-chat residency in THIS process
- * (false for every table under MARINARA_EAGER_STORAGE). Callers that read
- * shard files from disk directly (#5612) must check this first: for an eager
- * or fully-resident table the in-memory rows are the truth, not the files.
+ * Whether a table is in the lazy per-chat residency TIER in this process
+ * (false for every table under MARINARA_EAGER_STORAGE). This is static tier
+ * membership only — a lazy table can still have been converted to fully
+ * resident at runtime by an unscopable query, in which case memory (not the
+ * shard files) is the truth. Callers that read shard files from disk directly
+ * (#5612) must check BOTH: this predicate AND the store controller's
+ * getFullyResidentLazyTables().
  */
 export function isLazyUnitTable(table: string): boolean {
   return LAZY_UNIT_TABLES.has(table);
@@ -3171,6 +3179,17 @@ class FileTableStore {
     return new Set(this.loadedUnits);
   }
 
+  getFullyResidentLazyTables(): ReadonlySet<string> {
+    // Same snapshot rule as getResidentChatUnits. Eager tables live in
+    // fullyResidentTables from construction, so report only the lazy tier —
+    // an entry here means an unscopable query leased the whole table (#5611).
+    const leased = new Set<string>();
+    for (const table of this.fullyResidentTables) {
+      if (LAZY_UNIT_TABLES.has(table)) leased.add(table);
+    }
+    return leased;
+  }
+
   markDirty(table: string, shardKeys?: Iterable<string>) {
     // The generation stays keyed on the BARE logical table name for every
     // shard write — the #4705 contract ("something in this table changed")
@@ -4808,6 +4827,7 @@ export async function createFileNativeDB(testHooks?: FileNativeStoreTestHooks): 
     getQuarantinedTables: () => store.getQuarantinedTables(),
     getTableWriteGeneration: (table) => store.getTableWriteGeneration(table),
     getResidentChatUnits: () => store.getResidentChatUnits(),
+    getFullyResidentLazyTables: () => store.getFullyResidentLazyTables(),
     ...(testHooks
       ? { markShardDirty: (table: string, shardKeys: Iterable<string>) => store.markDirty(table, shardKeys) }
       : {}),

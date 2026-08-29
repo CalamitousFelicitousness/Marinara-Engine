@@ -6,16 +6,20 @@
 
 import { BaseTTSProvider } from "./base-tts-provider.js";
 import { clampXaiSpeed, openAiHeaders } from "./tts-endpoints.js";
-import type { TTSSpeechInput, TTSSpeechRequest } from "./tts-types.js";
+import type { TTSSpeechInput, TTSProviderRequest } from "./tts-types.js";
 
 export class XaiTTSProvider extends BaseTTSProvider {
-  buildSpeechRequest(input: TTSSpeechInput): TTSSpeechRequest {
+  protected override contentKey(): string {
+    return "text";
+  }
+
+  buildSpeechRequest(input: TTSSpeechInput): TTSProviderRequest {
     const format = this.resolveAudioFormat();
 
     return {
       url: `${this.baseUrl}/tts`,
       headers: openAiHeaders(this.cfg.apiKey),
-      body: JSON.stringify({
+      body: this.jsonBody({
         text: input.text,
         voice_id: input.voice || "eve",
         language: "auto",

@@ -35,6 +35,7 @@ import { getChatGenerationTimeoutMs } from "../config/runtime-config.js";
 import { safeFetch } from "../utils/security.js";
 import { ttsUrlPolicy } from "../services/tts/url-policy.js";
 import { createTTSProvider } from "../services/tts/provider-registry.js";
+import { buildElevenLabsGameAudioRequest } from "../services/tts/elevenlabs.provider.js";
 import {
   buildElevenLabsTextInput,
   buildOfficialPocketTtsForm,
@@ -293,29 +294,25 @@ async function generateElevenLabsGameAudio(
     // Generate below.
   }
 
-  const endpoint = kind === "sfx" ? "/v1/sound-generation" : "/v1/music";
   // Longer compositions take the provider longer to render; give context
   // tracks the headroom a 2-minute piece needs.
   const timeoutMs = context ? 300_000 : 180_000;
-  const response = await safeFetch(`${elevenLabsApiRoot(configuredBaseUrl(cfg))}${endpoint}`, {
+  const request = buildElevenLabsGameAudioRequest(cfg, {
+    kind,
+    prompt: normalizedPrompt,
+    ...(context?.lengthMs !== undefined ? { lengthMs: context.lengthMs } : {}),
+  });
+  const response = await safeFetch(request.url, {
     method: "POST",
-    headers: elevenLabsHeaders(cfg.apiKey),
-    body: JSON.stringify(
-      kind === "sfx"
-        ? { text: normalizedPrompt, prompt_influence: 0.3 }
-        : {
-            prompt: normalizedPrompt,
-            music_length_ms: context ? (context.lengthMs ?? 120_000) : 30_000,
-            force_instrumental: true,
-          },
-    ),
+    headers: request.headers,
+    body: request.body,
     signal: AbortSignal.timeout(timeoutMs),
     policy: {
       allowLocal: false,
       allowedProtocols: ["https:"],
     },
     maxResponseBytes: MAX_GAME_AUDIO_BYTES,
-    decodeCompressedResponse: true,
+    decodeCompressedResponse: request.decodeCompressedResponse,
   });
   if (!response.ok) {
     const detail = readProviderErrorDetail(await response.text().catch(() => ""));

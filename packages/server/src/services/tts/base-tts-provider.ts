@@ -9,8 +9,14 @@
 // Providers do no I/O. The route performs the single outbound call, so the
 // deadline, abort chain, URL policy, and response cap cannot drift per backend.
 
-import { TTS_SOURCE_DEFINITIONS, type TTSAudioFormat, type TTSConfig } from "@marinara-engine/shared";
-import type { TTSSpeechInput, TTSSpeechRequest } from "./tts-types.js";
+import {
+  audioParametersFor,
+  TTS_SOURCE_DEFINITIONS,
+  type TTSAudioFormat,
+  type TTSConfig,
+} from "@marinara-engine/shared";
+import { applyAudioParameters } from "./audio-parameter-merge.js";
+import type { TTSSpeechInput, TTSProviderRequest } from "./tts-types.js";
 
 export abstract class BaseTTSProvider {
   constructor(
@@ -19,11 +25,37 @@ export abstract class BaseTTSProvider {
   ) {}
 
   /** Pure: builds the request without sending it. */
-  abstract buildSpeechRequest(input: TTSSpeechInput): TTSSpeechRequest;
+  abstract buildSpeechRequest(input: TTSSpeechInput): TTSProviderRequest;
 
   /** Model id after this backend's aliasing, which the route reports on. */
   resolveModel(): string {
     return this.configuredModel();
+  }
+
+  /**
+   * Body key holding the text to speak. Overridden where a backend names it
+   * something else, and read by the parameter merge as the one key a stored
+   * parameter may not replace.
+   */
+  protected contentKey(): string {
+    return "input";
+  }
+
+  /**
+   * Serializes a speech body with this connection's speech parameters merged in.
+   * Providers call this instead of JSON.stringify so the merge, and the guard
+   * that comes with it, cannot be forgotten by a backend added later.
+   *
+   * Always the speech lane: sound effects and music are not synthesized through
+   * a provider, and their parameters reach the game-audio builder instead.
+   */
+  protected jsonBody(payload: Record<string, unknown>): string {
+    return JSON.stringify(
+      applyAudioParameters(payload, audioParametersFor(this.cfg, "speech"), {
+        protectedKey: this.contentKey(),
+        label: "speech",
+      }),
+    );
   }
 
   /** Configured model, or the source default when the field was left empty. */

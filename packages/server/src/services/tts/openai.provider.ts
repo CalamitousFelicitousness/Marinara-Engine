@@ -22,10 +22,10 @@ import {
   openAiHeaders,
   openAiModelSupportsSpeechInstructions,
 } from "./tts-endpoints.js";
-import type { TTSSpeechInput, TTSSpeechRequest } from "./tts-types.js";
+import type { TTSSpeechInput, TTSProviderRequest } from "./tts-types.js";
 
 export class OpenAITTSProvider extends BaseTTSProvider {
-  buildSpeechRequest(input: TTSSpeechInput): TTSSpeechRequest {
+  buildSpeechRequest(input: TTSSpeechInput): TTSProviderRequest {
     const model = this.resolveModel();
     const instructions = openAiModelSupportsSpeechInstructions(model)
       ? buildSpeechInstructions({ speaker: input.speaker, tone: input.tone })
@@ -34,7 +34,7 @@ export class OpenAITTSProvider extends BaseTTSProvider {
     return {
       url: `${this.baseUrl}/audio/speech`,
       headers: openAiHeaders(this.cfg.apiKey),
-      body: JSON.stringify({
+      body: this.jsonBody({
         model,
         input: input.text,
         voice: input.voice || this.defaultVoice(),
@@ -78,7 +78,7 @@ export class NanoGptTTSProvider extends OpenAITTSProvider {
     }
   }
 
-  override buildSpeechRequest(input: TTSSpeechInput): TTSSpeechRequest {
+  override buildSpeechRequest(input: TTSSpeechInput): TTSProviderRequest {
     const model = this.resolveModel();
     // NanoGPT's ElevenLabs-branded models take an emotion cue in the text and
     // reject a speed parameter, exactly as ElevenLabs does.
@@ -101,7 +101,7 @@ export class NanoGptTTSProvider extends OpenAITTSProvider {
     return {
       url: `${nanoGptV1BaseUrl(this.baseUrl)}/audio/speech`,
       headers: nanoGptHeaders(this.cfg.apiKey),
-      body: JSON.stringify({
+      body: this.jsonBody({
         model,
         input: text,
         voice: input.voice || this.defaultVoice(),

@@ -2,6 +2,9 @@
 // LLM Provider — Abstract Base
 // ──────────────────────────────────────────────
 import { logger } from "../../lib/logger.js";
+// Shared with the audio parameter merge so the prototype pollution guard has
+// exactly one definition.
+import { deepMergeRequestBody, isPlainRecord } from "../../lib/request-body-merge.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import {
   getChatGenerationTimeoutMs,
@@ -873,25 +876,4 @@ export function parseEmbeddingResponse(json: unknown): number[][] {
   }
 
   return items.map((item) => item.embedding);
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object" && !Array.isArray(value);
-}
-
-function isUnsafeRequestBodyKey(key: string): boolean {
-  return key === "__proto__" || key === "constructor" || key === "prototype";
-}
-
-function deepMergeRequestBody(target: Record<string, unknown>, source: Record<string, unknown>): void {
-  for (const [key, value] of Object.entries(source)) {
-    if (isUnsafeRequestBodyKey(key)) continue;
-    if (value === undefined) continue;
-    const current = target[key];
-    if (isPlainRecord(current) && isPlainRecord(value)) {
-      deepMergeRequestBody(current, value);
-    } else {
-      target[key] = value;
-    }
-  }
 }

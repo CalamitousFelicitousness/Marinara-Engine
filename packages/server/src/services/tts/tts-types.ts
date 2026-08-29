@@ -12,12 +12,13 @@ export interface TTSSpeechInput {
 }
 
 /**
- * A ready-to-send provider request. Providers build this and nothing else, so
- * the outbound call happens in exactly one place and the deadline, the abort
- * chain, the URL policy, and the size cap cannot drift apart per backend.
- * Being pure also means request shapes can be asserted without a live server.
+ * A ready-to-send provider request. Speech providers and the game-audio builder
+ * produce this and nothing else, so the outbound call happens in exactly one
+ * place and the deadline, the abort chain, the URL policy, and the size cap
+ * cannot drift apart per backend. Being pure also means request shapes can be
+ * asserted without a live server, and shown to the user before one is made.
  */
-export interface TTSSpeechRequest {
+export interface TTSProviderRequest {
   url: string;
   headers: Record<string, string>;
   body: string | FormData;

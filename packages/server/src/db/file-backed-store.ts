@@ -461,6 +461,16 @@ const LAZY_UNIT_TABLES: ReadonlySet<string> =
 const LAZY_UNIT_LOAD_ORDER: readonly string[] = [...LAZY_UNIT_TABLES];
 
 /**
+ * Whether a table participates in lazy per-chat residency in THIS process
+ * (false for every table under MARINARA_EAGER_STORAGE). Callers that read
+ * shard files from disk directly (#5612) must check this first: for an eager
+ * or fully-resident table the in-memory rows are the truth, not the files.
+ */
+export function isLazyUnitTable(table: string): boolean {
+  return LAZY_UNIT_TABLES.has(table);
+}
+
+/**
  * Shard for child rows whose parent is unknown (orphans in corrupt installs).
  * Chosen to encode to itself for a readable filename; a real owner key equal
  * to this string would merely share the file — rows carry their own keys, so

@@ -193,6 +193,13 @@ export type FileNativeStoreController = {
    */
   getFullyResidentLazyTables: () => ReadonlySet<string>;
   /**
+   * Snapshot of every in-memory row of one table across all resident units
+   * (#5613) — for cross-chat scans that must see rows the condition language
+   * cannot address (null/malformed owner keys in the UNASSIGNED unit). The
+   * row objects are shared and must be treated as immutable.
+   */
+  getResidentLazyRows: (table: string) => ReadonlyArray<Record<string, unknown>>;
+  /**
    * Marks shard keys dirty without touching LRU state. Present ONLY when the
    * store was created with test hooks — production controllers never expose
    * an arbitrary dirty-mark mutation.
@@ -1254,8 +1261,11 @@ function shardFilePath(rootDir: string, table: string, encodedKey: string) {
   return join(shardDirPath(rootDir, table), `${encodedKey}.json`);
 }
 
-/** Shard data files only — never .bak/.tmp/.corrupt/.pre-shard/sentinel/artifact names. */
-function isShardDataFileName(name: string) {
+/** Shard data files only — never .bak/.tmp/.corrupt/.pre-shard/sentinel/artifact names.
+ *  Exported so on-disk scans outside the store (#5613) classify entries exactly
+ *  like the store's own discovery — a name this rejects is invisible to the
+ *  store and must be invisible to those scans too. */
+export function isShardDataFileName(name: string) {
   return /^[^.][^\\/]*\.json$/.test(name);
 }
 
@@ -3219,6 +3229,17 @@ class FileTableStore {
     return leased;
   }
 
+  getResidentLazyRows(table: string): ReadonlyArray<Row> {
+    // Every row of the table currently in memory, whatever unit it belongs to
+    // (#5613): the condition language can only address rows by column values,
+    // which cannot express "any row in this unit" for rows whose owner key is
+    // null or malformed — those live in the pinned UNASSIGNED unit and would
+    // otherwise be unreachable without a whole-table lease. The array is a
+    // snapshot; the row objects are shared, which is safe because rows are
+    // immutable once stored (#4730 — every mutation replaces).
+    return [...(this.tables.get(table) ?? [])];
+  }
+
   markDirty(table: string, shardKeys?: Iterable<string>) {
     // The generation stays keyed on the BARE logical table name for every
     // shard write — the #4705 contract ("something in this table changed")
@@ -4857,6 +4878,7 @@ export async function createFileNativeDB(testHooks?: FileNativeStoreTestHooks): 
     getTableWriteGeneration: (table) => store.getTableWriteGeneration(table),
     getResidentChatUnits: () => store.getResidentChatUnits(),
     getFullyResidentLazyTables: () => store.getFullyResidentLazyTables(),
+    getResidentLazyRows: (table) => store.getResidentLazyRows(table),
     ...(testHooks
       ? { markShardDirty: (table: string, shardKeys: Iterable<string>) => store.markDirty(table, shardKeys) }
       : {}),

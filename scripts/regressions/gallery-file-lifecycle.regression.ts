@@ -31,7 +31,7 @@ process.env.FILE_STORAGE_DIR = storeDir;
 
 const { and, eq } = await import("../../packages/server/src/db/file-query.js");
 const { createFileNativeDB, encodeShardKey } = await import("../../packages/server/src/db/file-backed-store.js");
-const { chatImages } = await import("../../packages/server/src/db/schema/index.js");
+const { chatImages, chats } = await import("../../packages/server/src/db/schema/index.js");
 const { galleryFileHasReferences, unlinkGalleryFileIfUnreferenced } =
   await import("../../packages/server/src/services/image/gallery-file-lifecycle.js");
 
@@ -79,6 +79,27 @@ rmSync(shardPath("chat_images", "g5"));
 // g6: a malformed row in a shard whose real rows do NOT reference the probe.
 writeShard("chats", "g6", [chatRow("g6")]);
 writeShard("chat_images", "g6", ["malformed-not-a-row", imageRow("img-7", "g6", "g6/other.png")]);
+// h9: a chat whose id encodes to the undecodable %h hash form (over 120
+// chars), with a corrupt shard and a valid .bak. The filename cannot be
+// decoded, so the check must attribute it by matching the encoding over the
+// eager chats table and hand it to the loader. Deliberately NOT g-prefixed:
+// its unit loads during the first full sweep (hash names sort before
+// letters, so its handoff is attempted first) and the g-unit asserts must
+// not see it.
+const hashChatId = `h9-${"x".repeat(120)}`;
+writeShard("chats", hashChatId, [chatRow(hashChatId)]);
+writeShard("chat_images", hashChatId, [imageRow("img-9", hashChatId, "h9/hashed.png")]);
+writeFileSync(`${shardPath("chat_images", hashChatId)}.bak`, readFileSync(shardPath("chat_images", hashChatId)));
+writeFileSync(shardPath("chat_images", hashChatId), "{corrupt json!");
+// Orphan-unit rows: chatId null, absent, and non-string. These land in the
+// pinned always-resident UNASSIGNED unit, which no per-key query can reach —
+// only a scan of the resident rows themselves sees them (found by the
+// adversarial verification pass: the first draft unlinked their files).
+writeShard("chat_images", "orphaned-rows", [
+  { id: "img-o1", chatId: null, filePath: "orphan/null.png", createdAt: "2026-08-28T10:00:00.000Z" },
+  { id: "img-o2", filePath: "orphan/missing.png", createdAt: "2026-08-28T10:00:00.000Z" },
+  { id: "img-o3", chatId: 42, filePath: "orphan/numeric.png", createdAt: "2026-08-28T10:00:00.000Z" },
+]);
 
 const db = await createFileNativeDB();
 const leased = () => db._fileStore.getFullyResidentLazyTables();
@@ -137,10 +158,32 @@ try {
   assert.equal(resident().has("g6"), true, "the malformed-row shard's unit loads so repair can run");
   assert.equal(leased().size, 0, "no scenario so far leased the table");
 
+  // ── Rows the query layer cannot address still count as references ──
+  assert.equal(
+    await galleryFileHasReferences(db, "orphan/null.png"),
+    true,
+    "a row with a null chatId in the orphan unit is a reference",
+  );
+  assert.equal(
+    await galleryFileHasReferences(db, "orphan/missing.png"),
+    true,
+    "a row with no chatId at all is a reference",
+  );
+  assert.equal(
+    await galleryFileHasReferences(db, "orphan/numeric.png"),
+    true,
+    "a row with a non-string chatId is a reference",
+  );
+
   // ── Unreferenced path: full sweep over now-trusted shards, no NEW loads ──
   const residentBeforeMiss = residentFixtureUnits();
   assert.equal(await galleryFileHasReferences(db, "g1/gone.png"), false, "an unreferenced path reports false");
   assert.deepEqual(residentFixtureUnits(), residentBeforeMiss, "a full-sweep miss loads no additional units");
+  assert.equal(
+    await galleryFileHasReferences(db, "g1/gone.png"),
+    false,
+    "the memoized second sweep answers identically",
+  );
 
   // ── Memory is authoritative for resident units, both directions ──
   await db.insert(chatImages).values(imageRow("img-8", "g1", "g1/fresh.png"));
@@ -150,6 +193,14 @@ try {
     "an unflushed new row in a resident unit counts as a reference",
   );
   await db.delete(chatImages).where(and(eq(chatImages.chatId, "g2"), eq(chatImages.id, "img-3")));
+  // Premise pin: the assertion below is only meaningful while the deleted row
+  // is still in the on-disk shard (inside the flush debounce). If timing ever
+  // breaks this, fail loudly instead of testing nothing.
+  assert.equal(
+    readFileSync(shardPath("chat_images", "g2"), "utf8").includes("img-3"),
+    true,
+    "the deleted row is still in the stale disk shard when the check runs",
+  );
   assert.equal(
     await galleryFileHasReferences(db, "g2/own.png"),
     false,
@@ -175,6 +226,46 @@ try {
   );
   assert.equal(existsSync(join(dataDir, "gallery", "g1", "shared.png")), true, "the referenced file stays on disk");
 
+  // ── Hash-form shard name: attributed through the eager chats table ──
+  assert.equal(
+    await galleryFileHasReferences(db, "h9/hashed.png"),
+    true,
+    "a reference behind an unreadable hash-named shard is recovered via the chats-table match",
+  );
+  assert.equal(resident().has(hashChatId), true, "the hash-named shard's unit loads through the ladder");
+  assert.equal(
+    await galleryFileHasReferences(db, "h9/not-there.png"),
+    false,
+    "the hash-named shard, once attributed and healed, does not poison unrelated answers",
+  );
+
+  // ── Junk entries the store's discovery ignores are ignored here too ──
+  writeFileSync(join(storeDir, "tables", "chat_images", ".json"), "junk");
+  writeFileSync(join(storeDir, "tables", "chat_images", "x.json.tmp"), "junk");
+  writeFileSync(join(storeDir, "tables", "chat_images", "y.json.bak.bak"), "junk");
+  assert.equal(
+    await galleryFileHasReferences(db, "g1/still-gone.png"),
+    false,
+    "artifact filenames invisible to the store's discovery cannot disable cleanup",
+  );
+
+  // ── A non-canonical shard filename no chat matches: conservative TRUE ──
+  // "%68" percent-decodes to "h", but encodeShardKey("h") is "h" — a
+  // different file — so a naive handoff would read the WRONG shard. With no
+  // chat matching the name either, the check must assume referenced, and
+  // only after the rest of the sweep found nothing.
+  writeFileSync(join(storeDir, "tables", "chat_images", "%68.json"), "{corrupt json!");
+  assert.equal(
+    await galleryFileHasReferences(db, "g1/shared.png"),
+    true,
+    "real references are still found ahead of the unattributable-shard fallback",
+  );
+  assert.equal(
+    await galleryFileHasReferences(db, "phantom/nowhere.png"),
+    true,
+    "an unattributable unreadable shard forces the conservative answer for unproven paths",
+  );
+
   // ── A leased table (from any other source) still answers correctly ──
   await db.select().from(chatImages).where(eq(chatImages.prompt, "force-lease"));
   assert.equal(leased().has("chat_images"), true, "an unscoped query elsewhere still leases (control)");
@@ -182,6 +273,11 @@ try {
     await galleryFileHasReferences(db, "g1/shared.png"),
     true,
     "with the table leased, the plain-query path answers from memory",
+  );
+  assert.equal(
+    await galleryFileHasReferences(db, "phantom/nowhere.png"),
+    false,
+    "the lease loads every discovered shard, so the plain-query path is precise again",
   );
 } finally {
   await db._fileStore.close();

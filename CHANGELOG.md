@@ -23,6 +23,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Numeric settings fields no longer silently lose an edit typed while a previous change in the same field was still saving: the echo of the earlier save could overwrite the value mid-typing, and a panel re-rendering at the wrong moment could discard the edit without saving anything. In-progress typing is now protected and a pending edit is committed even when its input is torn down — this covers every numeric field built on the shared draft input (agent run intervals, connection and preset editors, game sheets, and the rest) (#5636).
 - Profile preview uploads now remain available until they are imported, cancelled, or the server stops instead of expiring after 30 minutes and forcing another upload (#5624).
 - Profile imports now upload and scan the selected JSON or ZIP only once, reusing the reviewed server-side preview when import is confirmed; an unsupported or corrupt individual asset is skipped and reported as a warning while the rest of the valid profile continues restoring (#5624).
 - Profile ZIP import and export no longer impose archive, individual-asset, or restored-total byte ceilings, and native character, persona, PNG card, and CharX imports no longer reject otherwise valid image galleries by byte size; paths, media contents, and archive structure remain validated, while profile executable content stays quarantined (#5624).

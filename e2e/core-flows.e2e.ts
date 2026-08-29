@@ -13769,6 +13769,158 @@ test("Secret Plot run interval stays editable across repeated commits", async ({
   }
 });
 
+test("chat settings survive a stale autonomous-unread echo", async ({ page, request }, testInfo) => {
+  test.skip(!testInfo.project.name.includes("desktop"), "Stale-echo cache coherence is covered on desktop.");
+
+  // #5641: mutations that write their response chat straight into the cache
+  // used to bypass the per-field metadata version guard. The app clears
+  // autonomous-unread residue automatically when a chat opens; if that
+  // DELETE's response — a snapshot from before the user's next metadata edit
+  // — is consumed after the edit, it reverted the edit client-side and
+  // unmounted the settings section it gates, with nothing pending to correct
+  // it. Forward the DELETE to the server immediately but hold its RESPONSE
+  // until after the user toggles Secret Plot on, making the echo
+  // deterministically stale on every runner.
+  let chatId: string | undefined;
+  let releaseUnreadEcho: (() => void) | undefined;
+  try {
+    const chatResponse = await request.post("/api/chats", {
+      data: { name: "Stale Echo Coherence Smoke", mode: "roleplay", characterIds: [] },
+    });
+    expect(chatResponse.ok()).toBeTruthy();
+    const chat = (await chatResponse.json()) as { id: string };
+    chatId = chat.id;
+    const metadataResponse = await request.patch(`/api/chats/${chat.id}/metadata`, {
+      data: {
+        enableAgents: true,
+        activeAgentIds: ["director"],
+        narrativeDirectorSecretPlotEnabled: false,
+        autonomousUnreadCount: 2,
+        autonomousUnreadAt: new Date().toISOString(),
+      },
+    });
+    expect(metadataResponse.ok()).toBeTruthy();
+
+    const readSecretPlotEnabled = async () => {
+      const response = await request.get(`/api/chats/${chat.id}`);
+      if (!response.ok()) return null;
+      const current = (await response.json()) as { metadata?: unknown };
+      const metadata =
+        typeof current.metadata === "string"
+          ? (JSON.parse(current.metadata) as Record<string, unknown>)
+          : ((current.metadata ?? {}) as Record<string, unknown>);
+      return metadata.narrativeDirectorSecretPlotEnabled;
+    };
+
+    await page.route("**/api/capability-packages/agents", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([
+          {
+            id: "director",
+            name: "Narrative Director",
+            description: "Creates one-shot story directions.",
+            author: "Pasta Devs",
+            phase: "pre_generation",
+            execution: "host",
+            enabledByDefault: false,
+            category: "writer",
+            modeAllowlist: ["roleplay"],
+            defaultPromptTemplate: "Return the next story direction.",
+          },
+        ]),
+      });
+    });
+    await page.route("**/api/capability-packages/installed", async (route) => {
+      await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+    });
+    await page.route("**/api/agents", async (route) => {
+      await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+    });
+
+    const heldUnreadEcho = new Promise<void>((resolve) => {
+      releaseUnreadEcho = resolve;
+    });
+    const unreadEchoState = { requested: false, fetched: false, released: false, fulfilled: false, error: "" };
+    await page.route(
+      `**/api/chats/${chat.id}/autonomous-unread`,
+      async (route) => {
+        unreadEchoState.requested = true;
+        try {
+          // Forward now (the server clears the residue and snapshots the chat
+          // BEFORE the toggle below), deliver the response only when released.
+          const response = await route.fetch();
+          unreadEchoState.fetched = true;
+          await heldUnreadEcho;
+          unreadEchoState.released = true;
+          await route.fulfill({ response });
+          unreadEchoState.fulfilled = true;
+        } catch (error) {
+          unreadEchoState.error = String(error);
+        }
+      },
+      { times: 1 },
+    );
+
+    await page.addInitScript((chatId) => {
+      localStorage.setItem("marinara-active-chat-id", chatId);
+    }, chat.id);
+    await page.goto("/");
+
+    // The auto-clear must have been PROCESSED server-side before the toggle
+    // below, or the held response would snapshot post-toggle state and the
+    // pin would prove nothing — poll `fetched`, not `requested`.
+    await expect.poll(() => unreadEchoState.fetched, { timeout: 15_000 }).toBe(true);
+
+    await page.getByRole("button", { name: "Chat Settings" }).click();
+    const drawer = page.locator(".mari-chat-settings-drawer");
+    const agentsSection = drawer.locator('[role="button"][aria-expanded]').filter({ hasText: /^Agents/ });
+    if ((await agentsSection.getAttribute("aria-expanded")) !== "true") await agentsSection.click();
+
+    const directorCard = drawer.locator(`#chat-settings-agent-menu-${chat.id}-director`);
+    const secretPlotToggle = directorCard.getByRole("checkbox", { name: "Secret Plot" });
+    const intervalInput = directorCard.locator("label").filter({ hasText: "Run Interval" }).locator("input");
+
+    await expect(secretPlotToggle).not.toBeChecked();
+    // The switch input is visually hidden (sr-only), so check() never passes
+    // actionability — toggle through its visible label instead.
+    await directorCard.getByText("Secret Plot", { exact: true }).click();
+    await expect(secretPlotToggle).toBeChecked();
+    await expect(intervalInput).toBeVisible();
+    await expect.poll(readSecretPlotEnabled).toBe(true);
+
+    const echoReceivedByPage = page.waitForResponse((response) =>
+      response.url().includes(`/api/chats/${chat.id}/autonomous-unread`),
+    );
+    releaseUnreadEcho!();
+    await expect
+      .poll(() => (unreadEchoState.fulfilled ? "delivered" : unreadEchoState.error || "pending"), { timeout: 15_000 })
+      .toBe("delivered");
+    // fulfill() resolving means the command was accepted, not that the page
+    // consumed the body — wait for the browser-side response event, then give
+    // the client frames to process it before asserting.
+    await echoReceivedByPage;
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+
+    // The stale pre-toggle snapshot must not flip the toggle back or unmount
+    // the section it gates.
+    await expect(secretPlotToggle).toBeChecked();
+    await expect(intervalInput).toBeVisible();
+    await expect.poll(readSecretPlotEnabled).toBe(true);
+    // Double-check after a beat: a late-consumed echo must not flip it either.
+    await page.waitForTimeout(300);
+    await expect(secretPlotToggle).toBeChecked();
+    await expect(intervalInput).toBeVisible();
+  } finally {
+    // Never leave the route handler parked on the hold: a timed-out test
+    // with a pending route hangs the teardown and poisons the next run.
+    releaseUnreadEcho?.();
+    await page.unrouteAll({ behavior: "ignoreErrors" }).catch(() => undefined);
+    if (chatId) await request.delete(`/api/chats/${chatId}`, { timeout: 10_000 });
+  }
+});
+
 test("mobile Roleplay code formatting stays inside the message width", async ({ page, request }, testInfo) => {
   test.skip(!testInfo.project.name.includes("mobile"), "Mobile markdown containment regression.");
 

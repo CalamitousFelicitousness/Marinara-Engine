@@ -68,6 +68,7 @@ import {
 } from "../../hooks/use-game-storyboards";
 import {
   chatKeys,
+  guardServerChatSnapshot,
   useBranchChat,
   useCreateMessage,
   useDeleteChat,
@@ -7249,9 +7250,16 @@ function GameSurfaceComponent({
       const targetChatId = responseChat?.id ?? bodyChatId;
 
       if (responseChat) {
-        queryClient.setQueryData(chatKeys.detail(responseChat.id), responseChat);
+        // Version 0 = maximally conservative (#5641): this callback consumes
+        // a response whose request was issued by the shared JSON-repair flow,
+        // so there is no pre-request version snapshot to compare against.
+        // Locally-edited metadata fields keep their cached values here; the
+        // detail invalidation just below reconciles everything to server
+        // truth immediately after.
+        const guardedChat = guardServerChatSnapshot(queryClient, responseChat, 0);
+        queryClient.setQueryData(chatKeys.detail(responseChat.id), guardedChat);
         if (useChatStore.getState().activeChatId === responseChat.id) {
-          useChatStore.getState().setActiveChat(responseChat);
+          useChatStore.getState().setActiveChat(guardedChat);
         }
       }
       if (targetChatId) {

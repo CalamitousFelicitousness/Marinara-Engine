@@ -159,6 +159,55 @@ export const AUDIO_PARAMETER_SETS: readonly AudioParameterSet[] = [
     ],
   },
   {
+    // NanoGPT picks the lane by model rather than by route, so the model is the
+    // one parameter without which nothing can be generated. Ids are vendor data
+    // that changes without us: GET /api/v1/audio-models lists what a key
+    // reaches, and its per-model supported_parameters carry the real duration
+    // bounds, which differ per model and are not what the maxima below assume.
+    id: "nanogpt-music",
+    name: "NanoGPT music",
+    sources: ["nanogpt"],
+    purposes: ["music"],
+    parameters: [
+      {
+        key: "model",
+        kind: "string",
+        placeholder: "ACE-Step-v1.5-Base",
+        helpKey: "ui.connections.audioparametereditor.nanoGptMusicModelHelp",
+      },
+      {
+        key: "duration",
+        kind: "number",
+        min: 1,
+        max: 300,
+        step: 1,
+        helpKey: "ui.connections.audioparametereditor.nanoGptDurationHelp",
+      },
+    ],
+  },
+  {
+    id: "nanogpt-sfx",
+    name: "NanoGPT sound effects",
+    sources: ["nanogpt"],
+    purposes: ["sfx"],
+    parameters: [
+      {
+        key: "model",
+        kind: "string",
+        placeholder: "mirelo-ai/sfx1.6/text-to-audio",
+        helpKey: "ui.connections.audioparametereditor.nanoGptSfxModelHelp",
+      },
+      {
+        key: "duration",
+        kind: "number",
+        min: 1,
+        max: 60,
+        step: 1,
+        helpKey: "ui.connections.audioparametereditor.nanoGptDurationHelp",
+      },
+    ],
+  },
+  {
     id: "elevenlabs-sfx",
     name: "ElevenLabs sound effects",
     sources: ["elevenlabs"],

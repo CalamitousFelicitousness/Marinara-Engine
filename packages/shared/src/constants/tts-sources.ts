@@ -119,8 +119,11 @@ export const TTS_SOURCE_DEFINITIONS: Record<TTSSourceId, TTSSourceDefinition> = 
     maxInputChars: 4096,
     recommendedChunkChars: 900,
     baseUrlMode: "fixed",
-    supportsGameSoundEffects: false,
-    supportsGameMusic: false,
+    // Both lanes are model choices on the same speech endpoint rather than
+    // routes of their own, and both answer asynchronously. The connection names
+    // the model through its per-purpose audio parameters.
+    supportsGameSoundEffects: true,
+    supportsGameMusic: true,
   },
   pockettts: {
     id: "pockettts",

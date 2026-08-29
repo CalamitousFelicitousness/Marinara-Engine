@@ -21,6 +21,7 @@ import {
   TTS_TIMEOUT_MS_MAX,
   TTS_TIMEOUT_MS_MIN,
   type TTSSource,
+  ttsSourceSupportsGameAudio,
   type TTSConfig,
   type TTSEffectiveConfigResponse,
   type TTSRoleplaySpeakerExtractorResponse,
@@ -35,7 +36,8 @@ import { getChatGenerationTimeoutMs } from "../config/runtime-config.js";
 import { safeFetch } from "../utils/security.js";
 import { ttsUrlPolicy } from "../services/tts/url-policy.js";
 import { createTTSProvider } from "../services/tts/provider-registry.js";
-import { buildElevenLabsGameAudioRequest } from "../services/tts/elevenlabs.provider.js";
+import { buildGameAudioRequest, canBuildGameAudioRequest } from "../services/tts/game-audio-request.js";
+import { isJobResponse, resolveTTSJobAudio } from "../services/tts/job-resolution.js";
 import { readTTSRateLimit, TTSRateLimitError } from "../services/tts/tts-rate-limit.js";
 import { buildTTSRequestPreview, TTS_PREVIEW_GAME_PROMPT, TTS_PREVIEW_TEXT } from "../services/tts/request-preview.js";
 import type { TTSProviderRequest } from "../services/tts/tts-types.js";
@@ -249,7 +251,7 @@ function scheduleGameAssetManifestRebuild(): void {
 
 type GameAudioContext = { axis: "area" | "tier"; key: string; lengthMs?: number };
 
-async function generateElevenLabsGameAudio(
+async function generateGameAudio(
   cfg: TTSConfig,
   kind: "sfx" | "music",
   prompt: string,
@@ -303,7 +305,7 @@ async function generateElevenLabsGameAudio(
   // Longer compositions take the provider longer to render; give context
   // tracks the headroom a 2-minute piece needs.
   const timeoutMs = context ? 300_000 : 180_000;
-  const request = buildElevenLabsGameAudioRequest(cfg, {
+  const request = buildGameAudioRequest(cfg, {
     kind,
     prompt: normalizedPrompt,
     ...(context?.lengthMs !== undefined ? { lengthMs: context.lengthMs } : {}),
@@ -314,30 +316,45 @@ async function generateElevenLabsGameAudio(
     const slot = reserveOutboundSlot(connectionId);
     if (slot) await slot;
   }
-  const response = await safeFetch(request.url, {
-    method: "POST",
-    headers: request.headers,
-    body: request.body,
-    signal: AbortSignal.timeout(timeoutMs),
-    policy: {
-      allowLocal: false,
-      allowedProtocols: ["https:"],
-    },
-    maxResponseBytes: MAX_GAME_AUDIO_BYTES,
-    decodeCompressedResponse: request.decodeCompressedResponse,
-  });
+  // One deadline over the whole exchange. An async backend spends most of it
+  // queued rather than transferring, so bounding each call separately would let
+  // a slow job run unbounded.
+  const deadline = AbortSignal.timeout(timeoutMs);
+  const send = (outbound: TTSProviderRequest, method: "GET" | "POST") =>
+    safeFetch(outbound.url, {
+      method,
+      headers: outbound.headers,
+      ...(method === "POST" ? { body: outbound.body } : {}),
+      signal: deadline,
+      policy: {
+        allowLocal: false,
+        allowedProtocols: ["https:"],
+      },
+      maxResponseBytes: MAX_GAME_AUDIO_BYTES,
+      decodeCompressedResponse: outbound.decodeCompressedResponse,
+    });
+
+  let response = await send(request, "POST");
   if (!response.ok) {
     const detail = readProviderErrorDetail(await response.text().catch(() => ""));
     const limited = readTTSRateLimit(response);
     if (limited) {
-      throw new TTSRateLimitError(detail || "ElevenLabs is rate limiting this connection", limited.retryAfterMs);
+      throw new TTSRateLimitError(detail || `${cfg.source} is rate limiting this connection`, limited.retryAfterMs);
     }
-    throw new Error(detail || `ElevenLabs returned ${response.status}`);
+    throw new Error(detail || `${cfg.source} returned ${response.status}`);
+  }
+  // A job answers JSON where audio would be bytes, so the submission body is
+  // never consumed to find out which arrived.
+  if (request.job && isJobResponse(response)) {
+    response = await resolveTTSJobAudio(response, request.job, send, { signal: deadline, label: cfg.source });
+    if (!response.ok) {
+      throw new Error(`${cfg.source} could not deliver the finished ${kind}`);
+    }
   }
 
   const bytes = new Uint8Array(await response.arrayBuffer());
   if (!resolveTTSAudioResponseContentType(response.headers.get("content-type"), bytes)) {
-    throw new Error("ElevenLabs returned a non-audio response");
+    throw new Error(`${cfg.source} returned a non-audio response`);
   }
 
   await mkdir(targetDirectory, { recursive: true });
@@ -1201,10 +1218,10 @@ export async function ttsRoutes(app: FastifyInstance) {
         voice: resolveTTSRequestVoice(cfg.voice, undefined),
       });
     } else {
-      if (cfg.source !== "elevenlabs") {
+      if (!ttsSourceSupportsGameAudio(cfg.source, lane)) {
         return reply.status(400).send({ error: `No game ${lane} generator exists for source "${cfg.source}"` });
       }
-      request = buildElevenLabsGameAudioRequest(cfg, { kind: lane, prompt: TTS_PREVIEW_GAME_PROMPT });
+      request = buildGameAudioRequest(cfg, { kind: lane, prompt: TTS_PREVIEW_GAME_PROMPT });
     }
 
     return {
@@ -1415,14 +1432,14 @@ export async function ttsRoutes(app: FastifyInstance) {
         .status(400)
         .send({ error: `Game ${kind} generation is not enabled for the resolved audio connection` });
     }
-    if (cfg.source !== "elevenlabs") {
-      // TTS_SOURCE_DEFINITIONS decides which sources MAY generate; this dispatch
-      // names the only generator that exists. A source turning its table flag on
-      // needs a generator here before the flag can mean anything.
+    if (!ttsSourceSupportsGameAudio(cfg.source, kind)) {
+      // TTS_SOURCE_DEFINITIONS decides which sources MAY generate;
+      // buildGameAudioRequest decides which one actually builds. This rejects
+      // the request before the lock and the cache key are computed for nothing.
       return reply.status(400).send({ error: `No game ${kind} generator exists for source "${cfg.source}"` });
     }
-    if (!cfg.apiKey) {
-      return reply.status(400).send({ error: "ElevenLabs API key is not configured" });
+    if (!canBuildGameAudioRequest(cfg, kind)) {
+      return reply.status(400).send({ error: `The ${cfg.source} API key is not configured` });
     }
 
     const normalizedPrompt = normalizeGameAudioPrompt(prompt);
@@ -1431,11 +1448,9 @@ export async function ttsRoutes(app: FastifyInstance) {
     const lockKey = context ? `context\0${context.axis}\0${context.key}` : `${kind}\0${normalizedPrompt.toLowerCase()}`;
     let generation = gameAudioGenerationLocks.get(lockKey);
     if (!generation) {
-      generation = generateElevenLabsGameAudio(cfg, kind, normalizedPrompt, context, resolvedConnectionId).finally(
-        () => {
-          gameAudioGenerationLocks.delete(lockKey);
-        },
-      );
+      generation = generateGameAudio(cfg, kind, normalizedPrompt, context, resolvedConnectionId).finally(() => {
+        gameAudioGenerationLocks.delete(lockKey);
+      });
       gameAudioGenerationLocks.set(lockKey, generation);
     }
     try {

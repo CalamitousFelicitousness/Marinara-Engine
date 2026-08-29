@@ -18,6 +18,9 @@ inputs:
   total-shards:
     description: Total shard count
     required: true
+  server-project:
+    description: Which app-server pair the tests talk to (desktop or mobile) — the other pair is not booted (#5637)
+    required: true
 runs:
   using: composite
   steps:
@@ -61,6 +64,8 @@ runs:
       # order, so tests never run concurrently against the shard's servers —
       # the property fullyParallel:false exists to protect.
       shell: bash
+      env:
+        PLAYWRIGHT_ONLY_PROJECT: ${{ inputs.server-project }}
       run: >-
         pnpm exec playwright test -c playwright.config.ts
         --project=${{ inputs.project }}

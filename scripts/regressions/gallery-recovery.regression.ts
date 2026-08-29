@@ -116,6 +116,13 @@ writeShard("chat_images", "chat-h", [
 ]);
 writeGalleryFile("chat-h", "first.png");
 writeGalleryFile("chat-h", "second.png");
+// chat-i: a primitive (malformed) entry alongside a recorded row. The loader
+// drops the entry AND schedules the shard for repair — the peek must hand off
+// so that repair is not blocked forever, while the recorded row still
+// prevents a duplicate insert.
+writeShard("chats", "chat-i", [chatRow("chat-i")]);
+writeShard("chat_images", "chat-i", ["malformed-not-a-row", imageRow("img-i1", "chat-i", "chat-i/whole.png")]);
+writeGalleryFile("chat-i", "whole.png");
 // chat-x: gallery directory for a chat that no longer exists — skipped.
 writeGalleryFile("chat-x", "ghost.png");
 
@@ -139,6 +146,7 @@ const bShardBytes = readFileSync(shardPath("chat_images", "chat-b"), "utf8");
     assert.equal(resident.has("chat-d"), true, "the chat with an unreadable shard loads (recovery ladder handoff)");
     assert.equal(resident.has("chat-g"), true, "the dbName-form shard is handed to the loader, not misread as empty");
     assert.equal(resident.has("chat-h"), true, "the duplicate-id shard is handed to the loader, not counted twice");
+    assert.equal(resident.has("chat-i"), true, "a malformed row is handed to the loader so shard repair can run");
     assert.equal(db._fileStore.getFullyResidentLazyTables().size, 0, "the scan itself never leases a whole table");
 
     const cRows = await db.select().from(chatImages).where(eq(chatImages.chatId, "chat-c"));
@@ -170,6 +178,12 @@ const bShardBytes = readFileSync(shardPath("chat_images", "chat-b"), "utf8");
       hRows.map((row) => row.filePath).sort(),
       ["chat-h/first.png", "chat-h/second.png"],
       "the loader-dropped duplicate's file is re-registered like the old scan did",
+    );
+    const iRows = await db.select().from(chatImages).where(eq(chatImages.chatId, "chat-i"));
+    assert.deepEqual(
+      iRows.map((row) => row.filePath),
+      ["chat-i/whole.png"],
+      "the malformed entry is dropped, the recorded row survives, no duplicate insert",
     );
     const xRows = await db.select().from(chatImages).where(eq(chatImages.chatId, "chat-x"));
     assert.equal(xRows.length, 0, "no rows are created for a chat that no longer exists");
@@ -205,11 +219,12 @@ const bShardBytes = readFileSync(shardPath("chat_images", "chat-b"), "utf8");
     await recoverGalleryImages(db);
     const resident = db._fileStore.getResidentChatUnits();
     // chat-a/b were never rewritten; chat-c/d/f/h were flushed by the FIRST
-    // boot in the store's own canonical shape — none of them may load now.
-    // (chat-g is the deliberate exception: the loader accepts a dbName-form
-    // shard without rewriting it, so its conservative loader handoff repeats
-    // each boot until some write canonicalizes the file.)
-    for (const chatId of ["chat-a", "chat-b", "chat-c", "chat-d", "chat-f", "chat-h"]) {
+    // boot in the store's own canonical shape, and chat-i's malformed entry
+    // was repaired away by that flush — none of them may load now. (chat-g is
+    // the deliberate exception: the loader accepts a dbName-form shard
+    // without rewriting it, so its conservative loader handoff repeats each
+    // boot until some write canonicalizes the file.)
+    for (const chatId of ["chat-a", "chat-b", "chat-c", "chat-d", "chat-f", "chat-h", "chat-i"]) {
       assert.equal(
         resident.has(chatId),
         false,
@@ -217,13 +232,13 @@ const bShardBytes = readFileSync(shardPath("chat_images", "chat-b"), "utf8");
       );
     }
     const counts = new Map<string, number>();
-    for (const chatId of ["chat-a", "chat-b", "chat-c", "chat-d", "chat-f", "chat-g", "chat-h"]) {
+    for (const chatId of ["chat-a", "chat-b", "chat-c", "chat-d", "chat-f", "chat-g", "chat-h", "chat-i"]) {
       const rows = await db.select().from(chatImages).where(eq(chatImages.chatId, chatId));
       counts.set(chatId, rows.length);
     }
     assert.deepEqual(
       [...counts.values()],
-      [1, 1, 2, 1, 1, 1, 2],
+      [1, 1, 2, 1, 1, 1, 2, 1],
       "no chat gains or loses rows on a fully-recorded re-boot",
     );
   } finally {

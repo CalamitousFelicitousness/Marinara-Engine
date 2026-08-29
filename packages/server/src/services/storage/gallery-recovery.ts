@@ -61,8 +61,10 @@ function peekChatImageFilePaths(storageRootDir: string, chatId: string): Set<str
     const paths = new Set<string>();
     const seenIds = new Set<string>();
     for (const row of parsed) {
-      // A malformed row heals away at first touch, so the loader drops it too.
-      if (!row || typeof row !== "object") continue;
+      // A malformed row is the loader's business: it drops the row AND
+      // schedules the shard for repair. Skipping it here would return the
+      // correct set while leaving that repair blocked indefinitely.
+      if (!row || typeof row !== "object") return null;
       const candidate = row as { id?: unknown; chatId?: unknown; filePath?: unknown };
       // A clean stray — canonical shape, some OTHER chat's id — is the one
       // non-matching row the loader also would not attribute to this chat.

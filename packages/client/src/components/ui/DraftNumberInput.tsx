@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 interface DraftNumberInputProps {
   value: number;
@@ -79,7 +79,20 @@ export function DraftNumberInput({
   };
 
   const commitRef = useRef(commit);
-  commitRef.current = commit;
+  useLayoutEffect(() => {
+    // Assigned post-commit rather than during render so an abandoned
+    // concurrent render can never leave the ref pointing at a closure whose
+    // state was never current.
+    commitRef.current = commit;
+  });
+
+  useEffect(() => {
+    // The browser fires no blur when a focused input becomes disabled, which
+    // would leave the editing latch stuck and suppress prop syncs for the
+    // rest of the mount. Drop the latch without committing — disabling
+    // mid-edit means the pending draft was not confirmed.
+    if (disabled) focusedRef.current = false;
+  }, [disabled]);
 
   useEffect(() => {
     return () => {

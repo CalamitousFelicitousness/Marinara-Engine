@@ -13662,36 +13662,55 @@ test("Secret Plot run interval stays editable across repeated commits", async ({
     await expect.poll(readRunInterval).toBe(3);
     await expect(intervalInput).toHaveValue("3");
 
-    // #5636: start the next edit while the previous commit's round trip is
-    // still in flight, and only blur after it has fully landed. The commit's
-    // async echo used to clobber the in-progress draft, so blur silently
-    // re-committed the previous value. Holding the PATCH until the next edit
-    // has begun guarantees the echo lands mid-edit on every runner, instead
-    // of only on ones slow enough to lose the race.
-    let releaseMetadataPatch: (() => void) | undefined;
-    const heldMetadataPatch = new Promise<void>((resolve) => {
-      releaseMetadataPatch = resolve;
+    // #5636: an async echo of a previous commit landing while the next value
+    // is being typed must not clobber the in-progress draft. Merely delaying
+    // the PATCH echo cannot pin this — the optimistic cache update means the
+    // echo carries the number the input already shows, so the resync is
+    // invisible. Instead, forward the commit to the server immediately but
+    // hold its RESPONSE until the next edit has begun, and forge the echoed
+    // interval to a value (12) the client never displayed: the metadata
+    // version guard accepts it (same mutation version), so the unfixed
+    // component resynced the draft to "12" mid-edit and blur then committed
+    // 12 instead of the typed 0. Note this URL only ever receives PATCHes
+    // (api.patch in use-chats.ts is its sole caller), and { times: 1 } is
+    // consumed by ANY matching request regardless of method, so a method
+    // filter here would be a silent-vacuity trap, not a safeguard.
+    let releaseMetadataEcho: (() => void) | undefined;
+    const heldMetadataEcho = new Promise<void>((resolve) => {
+      releaseMetadataEcho = resolve;
     });
     await page.route(
       `**/api/chats/${chat.id}/metadata`,
       async (route) => {
-        if (route.request().method() !== "PATCH") return route.fallback();
-        await heldMetadataPatch;
-        await route.continue();
+        const response = await route.fetch();
+        const body = (await response.json()) as { metadata?: unknown };
+        const metadata =
+          typeof body.metadata === "string"
+            ? (JSON.parse(body.metadata) as Record<string, unknown>)
+            : ((body.metadata ?? {}) as Record<string, unknown>);
+        metadata.narrativeDirectorSecretPlotRunInterval = 12;
+        body.metadata = typeof body.metadata === "string" ? JSON.stringify(metadata) : metadata;
+        await heldMetadataEcho;
+        await route.fulfill({ response, json: body });
       },
       { times: 1 },
     );
-    const metadataPatched = page.waitForResponse(
+    const metadataEchoDelivered = page.waitForResponse(
       (response) =>
-        response.url().includes(`/api/chats/${chat.id}/metadata`) && response.request().method() === "PATCH",
+        response.url().includes(`/api/chats/${chat.id}/metadata`) &&
+        response.request().postDataJSON()?.narrativeDirectorSecretPlotRunInterval === 11,
     );
     await intervalInput.fill("11");
     await intervalInput.press("Enter");
-    await intervalInput.fill("0");
-    releaseMetadataPatch!();
-    await metadataPatched;
+    // route.fetch() has already forwarded the commit, so the server settles
+    // to 11 while the forged echo is still held.
     await expect.poll(readRunInterval).toBe(11);
-    // The draft must survive the echo of the 11-commit landing mid-edit.
+    await intervalInput.fill("0");
+    releaseMetadataEcho!();
+    await metadataEchoDelivered;
+    // Let the client consume the echo and paint before asserting.
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    // The draft must survive the forged echo landing mid-edit.
     await expect(intervalInput).toHaveValue("0");
     await intervalInput.blur();
     await expect.poll(readRunInterval).toBe(1);

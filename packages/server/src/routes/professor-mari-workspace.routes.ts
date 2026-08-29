@@ -217,9 +217,12 @@ export async function professorMariWorkspaceRoutes(app: FastifyInstance) {
     return { ok: true, item };
   });
 
-  app.delete<{ Params: { id: string } }>("/context/:id", async (req, reply) => {
+  app.delete<{ Params: { id: string }; Querystring: { chatId?: string } }>("/context/:id", async (req, reply) => {
     if (!privileged(req, reply)) return;
-    const removed = await createMariWorkspaceContextStorage(app.db).remove(req.params.id);
+    // Optional chatId (same convention as GET /context) keeps the lazy store from
+    // loading the whole table for a bare-id delete.
+    const chatId = (req.query.chatId ?? "").trim();
+    const removed = await createMariWorkspaceContextStorage(app.db).remove(req.params.id, chatId || undefined);
     if (!removed) return reply.status(404).send({ error: "Attached context not found" });
     return { ok: true };
   });

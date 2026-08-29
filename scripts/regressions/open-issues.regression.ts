@@ -6191,7 +6191,9 @@ assert.doesNotMatch(gameAssetsRoutesSource, /app\.get\("\/local-music-file\/:enc
 assert.match(galleryRoutesSource, /app\.delete<[\s\S]*>\("\/scene-videos\/:chatId\/:id"/u);
 assert.match(
   galleryRoutesSource,
-  /video\.chatId !== chatId[\s\S]*sceneVideos\.remove\(video\.id\)[\s\S]*removeSavedVideoFromDisk\(video\.filePath\)\.catch/u,
+  // remove() may carry the chat-scoping second argument (#5611) — the pin is the
+  // ordering (DB row first, disk file second, unlink failure tolerated), not the arity.
+  /video\.chatId !== chatId[\s\S]*sceneVideos\.remove\(video\.id[^)]*\)[\s\S]*removeSavedVideoFromDisk\(video\.filePath\)\.catch/u,
 );
 assert.match(galleryHooksSource, /api\.delete\(`\/gallery\/scene-videos\/\$\{chatId\}\/\$\{videoId\}`\)/u);
 assert.match(chatGallerySource, /handleDeleteVideo\(video\)/u);

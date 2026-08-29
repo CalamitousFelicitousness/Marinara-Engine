@@ -220,8 +220,10 @@ export async function professorMariWorkspaceRoutes(app: FastifyInstance) {
   app.delete<{ Params: { id: string }; Querystring: { chatId?: string } }>("/context/:id", async (req, reply) => {
     if (!privileged(req, reply)) return;
     // Optional chatId (same convention as GET /context) keeps the lazy store from
-    // loading the whole table for a bare-id delete.
-    const chatId = (req.query.chatId ?? "").trim();
+    // loading the whole table for a bare-id delete. The typeof guard also covers a
+    // repeated query param, which Fastify hands over as an array.
+    const chatIdRaw = req.query.chatId;
+    const chatId = typeof chatIdRaw === "string" ? chatIdRaw.trim() : "";
     const removed = await createMariWorkspaceContextStorage(app.db).remove(req.params.id, chatId || undefined);
     if (!removed) return reply.status(404).send({ error: "Attached context not found" });
     return { ok: true };

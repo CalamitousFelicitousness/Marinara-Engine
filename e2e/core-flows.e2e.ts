@@ -6368,26 +6368,38 @@ test("desktop Tracker scales into either Roleplay gutter without shifting chat",
       );
     });
 
-    const [mainBox, chatColumnAfter, chatScrollAfter, trackerBox] = await Promise.all([
-      main.boundingBox(),
-      chatColumn.boundingBox(),
-      chatScroll.boundingBox(),
-      tracker.boundingBox(),
-    ]);
-    expect(mainBox).not.toBeNull();
-    expect(chatColumnAfter).not.toBeNull();
-    expect(chatScrollAfter).not.toBeNull();
-    expect(trackerBox).not.toBeNull();
-    expect(Math.abs(chatColumnAfter!.x - chatColumnBefore!.x)).toBeLessThanOrEqual(1);
-    expect(Math.abs(chatColumnAfter!.width - chatColumnBefore!.width)).toBeLessThanOrEqual(1);
-    expect(Math.abs(chatScrollAfter!.x - chatScrollBefore!.x)).toBeLessThanOrEqual(1);
-    expect(Math.abs(chatScrollAfter!.width - chatScrollBefore!.width)).toBeLessThanOrEqual(1);
+    // The tracker opens with a width transition that can still be pending
+    // when the animation registry above is queried (a transition scheduled
+    // but not yet started reports no animations), so a one-shot measurement
+    // can catch mid-transition geometry — CI saw the width ~5px short of
+    // final (#5642). Re-measure until the layout is stable.
+    let expectedWidth = 0;
+    let mainBox: { x: number; y: number; width: number; height: number } | null = null;
+    let trackerBox: { x: number; y: number; width: number; height: number } | null = null;
+    await expect(async () => {
+      const [mainBoxNow, chatColumnAfter, chatScrollAfter, trackerBoxNow] = await Promise.all([
+        main.boundingBox(),
+        chatColumn.boundingBox(),
+        chatScroll.boundingBox(),
+        tracker.boundingBox(),
+      ]);
+      expect(mainBoxNow).not.toBeNull();
+      expect(chatColumnAfter).not.toBeNull();
+      expect(chatScrollAfter).not.toBeNull();
+      expect(trackerBoxNow).not.toBeNull();
+      expect(Math.abs(chatColumnAfter!.x - chatColumnBefore!.x)).toBeLessThanOrEqual(1);
+      expect(Math.abs(chatColumnAfter!.width - chatColumnBefore!.width)).toBeLessThanOrEqual(1);
+      expect(Math.abs(chatScrollAfter!.x - chatScrollBefore!.x)).toBeLessThanOrEqual(1);
+      expect(Math.abs(chatScrollAfter!.width - chatScrollBefore!.width)).toBeLessThanOrEqual(1);
 
-    const expectedWidth = Math.max(0, Math.min(420, Math.floor(chatColumnAfter!.x - mainBox!.x - 8)));
-    expect(Math.abs(trackerBox!.width - expectedWidth)).toBeLessThanOrEqual(1);
-    expect(trackerBox!.x).toBeGreaterThanOrEqual(mainBox!.x - 1);
-    expect(trackerBox!.x).toBeLessThanOrEqual(mainBox!.x + 1);
-    expect(trackerBox!.x + trackerBox!.width).toBeLessThanOrEqual(chatColumnAfter!.x - 7);
+      expectedWidth = Math.max(0, Math.min(420, Math.floor(chatColumnAfter!.x - mainBoxNow!.x - 8)));
+      expect(Math.abs(trackerBoxNow!.width - expectedWidth)).toBeLessThanOrEqual(1);
+      expect(trackerBoxNow!.x).toBeGreaterThanOrEqual(mainBoxNow!.x - 1);
+      expect(trackerBoxNow!.x).toBeLessThanOrEqual(mainBoxNow!.x + 1);
+      expect(trackerBoxNow!.x + trackerBoxNow!.width).toBeLessThanOrEqual(chatColumnAfter!.x - 7);
+      mainBox = mainBoxNow;
+      trackerBox = trackerBoxNow;
+    }).toPass({ timeout: 10_000 });
 
     const trackerContent = tracker.locator(".mari-tracker-panel-scroll");
     const expectedScale = expectedWidth === 0 ? 1 : Math.max(0.65, expectedWidth / 420);
@@ -6452,26 +6464,32 @@ test("desktop Tracker scales into either Roleplay gutter without shifting chat",
         element.getAnimations({ subtree: true }).map((animation) => animation.finished.catch(() => undefined)),
       );
     });
-    const [rightChatColumn, rightChatScroll, rightTrackerBox] = await Promise.all([
-      chatColumn.boundingBox(),
-      chatScroll.boundingBox(),
-      rightTracker.boundingBox(),
-    ]);
-    expect(rightChatColumn).not.toBeNull();
-    expect(rightChatScroll).not.toBeNull();
-    expect(rightTrackerBox).not.toBeNull();
-    expect(Math.abs(rightChatColumn!.x - chatColumnBefore!.x)).toBeLessThanOrEqual(1);
-    expect(Math.abs(rightChatColumn!.width - chatColumnBefore!.width)).toBeLessThanOrEqual(1);
-    expect(Math.abs(rightChatScroll!.x - chatScrollBefore!.x)).toBeLessThanOrEqual(1);
-    expect(Math.abs(rightChatScroll!.width - chatScrollBefore!.width)).toBeLessThanOrEqual(1);
+    // Same mid-transition hazard as the left side: re-measure until stable.
+    let expectedRightWidth = 0;
+    let rightTrackerBox: { x: number; y: number; width: number; height: number } | null = null;
+    await expect(async () => {
+      const [rightChatColumn, rightChatScroll, rightTrackerBoxNow] = await Promise.all([
+        chatColumn.boundingBox(),
+        chatScroll.boundingBox(),
+        rightTracker.boundingBox(),
+      ]);
+      expect(rightChatColumn).not.toBeNull();
+      expect(rightChatScroll).not.toBeNull();
+      expect(rightTrackerBoxNow).not.toBeNull();
+      expect(Math.abs(rightChatColumn!.x - chatColumnBefore!.x)).toBeLessThanOrEqual(1);
+      expect(Math.abs(rightChatColumn!.width - chatColumnBefore!.width)).toBeLessThanOrEqual(1);
+      expect(Math.abs(rightChatScroll!.x - chatScrollBefore!.x)).toBeLessThanOrEqual(1);
+      expect(Math.abs(rightChatScroll!.width - chatScrollBefore!.width)).toBeLessThanOrEqual(1);
 
-    const expectedRightWidth = Math.max(
-      0,
-      Math.min(420, Math.floor(mainBox!.x + mainBox!.width - (rightChatColumn!.x + rightChatColumn!.width) - 8)),
-    );
-    expect(Math.abs(rightTrackerBox!.width - expectedRightWidth)).toBeLessThanOrEqual(1);
-    expect(rightTrackerBox!.x).toBeGreaterThanOrEqual(rightChatColumn!.x + rightChatColumn!.width + 7);
-    expect(rightTrackerBox!.x + rightTrackerBox!.width).toBeLessThanOrEqual(mainBox!.x + mainBox!.width + 1);
+      expectedRightWidth = Math.max(
+        0,
+        Math.min(420, Math.floor(mainBox!.x + mainBox!.width - (rightChatColumn!.x + rightChatColumn!.width) - 8)),
+      );
+      expect(Math.abs(rightTrackerBoxNow!.width - expectedRightWidth)).toBeLessThanOrEqual(1);
+      expect(rightTrackerBoxNow!.x).toBeGreaterThanOrEqual(rightChatColumn!.x + rightChatColumn!.width + 7);
+      expect(rightTrackerBoxNow!.x + rightTrackerBoxNow!.width).toBeLessThanOrEqual(mainBox!.x + mainBox!.width + 1);
+      rightTrackerBox = rightTrackerBoxNow;
+    }).toPass({ timeout: 10_000 });
 
     const rightTrackerContent = rightTracker.locator(".mari-tracker-panel-scroll");
     const expectedRightScale = expectedRightWidth === 0 ? 1 : Math.max(0.65, expectedRightWidth / 420);
@@ -9542,11 +9560,20 @@ test("ElevenLabs keeps models visible and exposes scrollable account voices in e
     await expect(characterList).toBeVisible();
     await expect(characterList).toHaveCSS("overflow-y", "scroll");
     await expect(characterList.locator("xpath=../..")).toHaveCSS("position", "fixed");
+    const savesBeforeAssignment = saveCount;
+    const fetchesBeforeAssignment = voiceFetchCount;
     await characterList.getByRole("option", { name: characterName, exact: true }).click();
     await expect(characterPicker).toBeFocused();
     await characterPicker.click();
     await page.keyboard.press("Escape");
     await expect(characterPicker).toBeFocused();
+
+    // Drain the debounced autosave from the assignment edit — and the voices
+    // refetch its invalidation triggers — before opening the voice picker: a
+    // refetch landing mid-open flips the trigger disabled, which force-closes
+    // the panel out from under the measurements below (#5642).
+    await expect.poll(() => saveCount, { timeout: 5_000 }).toBeGreaterThan(savesBeforeAssignment);
+    await expect.poll(() => voiceFetchCount, { timeout: 5_000 }).toBeGreaterThan(fetchesBeforeAssignment);
 
     const characterVoicePicker = ttsCard.getByRole("button", { name: /^Voice for / });
     const characterVoiceTriggerBox = await characterVoicePicker.boundingBox();
@@ -17134,27 +17161,37 @@ test("home browser hub scales cleanly and opens FAQ as a bookmark window", async
     await page.locator('[data-tour="panel-settings"]').click();
     const feed = page.locator('[data-component="HomeBrowserHub.Feed"]');
     await expect(feed).toBeVisible();
-    const widthUsage = await feed.evaluate((element) => {
-      const contentElement = element.closest('[data-component="HomeBrowserHub.Content"]');
-      return contentElement ? element.getBoundingClientRect().width / contentElement.getBoundingClientRect().width : 0;
-    });
-    expect(widthUsage).toBeGreaterThan(0.94);
-    expect(await content.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBeTruthy();
-    const partialWidgetWidths = await Promise.all(
-      ["professor", "whats-new", "learn", "community", "clock", "achievements"].map((id) =>
-        page.locator(`[data-home-widget-id="${id}"]`).evaluate((element) => element.getBoundingClientRect().width),
-      ),
-    );
-    expect(Math.max(...partialWidgetWidths) - Math.min(...partialWidgetWidths)).toBeLessThanOrEqual(2);
-    const partialWidgetHeights = await Promise.all(
-      ["professor", "whats-new", "discovery", "character", "learn", "community", "clock", "achievements"].map((id) =>
-        page.locator(`[data-home-widget-id="${id}"]`).evaluate((element) => element.getBoundingClientRect().height),
-      ),
-    );
-    expect(Math.max(...partialWidgetHeights) - Math.min(...partialWidgetHeights)).toBeLessThanOrEqual(2);
+    // The settings panel just closed, which resizes the hub content and
+    // reflows the widget grid over a few frames — one-shot measurements can
+    // sample different frames of that transition (CI saw a ~77px spread,
+    // #5642). The retried unit below is what rides out the reflow; the
+    // column-count assertion only pins that the grid is in its 4-column
+    // regime at this viewport before geometry is compared.
     await expect(feed).toHaveAttribute("data-home-grid-columns", "4");
+    await expect(async () => {
+      const widthUsage = await feed.evaluate((element) => {
+        const contentElement = element.closest('[data-component="HomeBrowserHub.Content"]');
+        return contentElement
+          ? element.getBoundingClientRect().width / contentElement.getBoundingClientRect().width
+          : 0;
+      });
+      expect(widthUsage).toBeGreaterThan(0.94);
+      expect(await content.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBeTruthy();
+      const partialWidgetWidths = await Promise.all(
+        ["professor", "whats-new", "learn", "community", "clock", "achievements"].map((id) =>
+          page.locator(`[data-home-widget-id="${id}"]`).evaluate((element) => element.getBoundingClientRect().width),
+        ),
+      );
+      expect(Math.max(...partialWidgetWidths) - Math.min(...partialWidgetWidths)).toBeLessThanOrEqual(2);
+      const partialWidgetHeights = await Promise.all(
+        ["professor", "whats-new", "discovery", "character", "learn", "community", "clock", "achievements"].map((id) =>
+          page.locator(`[data-home-widget-id="${id}"]`).evaluate((element) => element.getBoundingClientRect().height),
+        ),
+      );
+      expect(Math.max(...partialWidgetHeights) - Math.min(...partialWidgetHeights)).toBeLessThanOrEqual(2);
+      expect(await content.evaluate((element) => element.scrollHeight <= element.clientHeight + 2)).toBeTruthy();
+    }).toPass({ timeout: 10_000 });
     await expect(feed.locator("[data-home-empty-slot]")).toHaveCount(0);
-    expect(await content.evaluate((element) => element.scrollHeight <= element.clientHeight + 2)).toBeTruthy();
 
     await page.getByRole("tab", { name: "Professor", exact: true }).click();
     await expect(page.locator('[data-component="HomeBrowserHub.Address"]')).toContainText("marinara/professor");

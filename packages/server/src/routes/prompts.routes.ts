@@ -493,7 +493,13 @@ export async function promptsRoutes(app: FastifyInstance) {
     // Get active persona
     const activePersona = await resolveChatUserIdentity(charStorage, chat);
     if (activePersona) {
-      personaId = activePersona.id;
+      // A character-backed identity must stay in character scope so lorebook
+      // and macro processing does not treat it as a persona record. [PR #5583]
+      if (activePersona.source === "character") {
+        if (!characterIds.includes(activePersona.id)) characterIds.push(activePersona.id);
+      } else {
+        personaId = activePersona.id;
+      }
       personaName = activePersona.name;
       personaDescription = cardPromptText(activePersona.description);
       personaFields = {

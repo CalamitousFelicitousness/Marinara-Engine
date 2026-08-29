@@ -1702,11 +1702,15 @@ export async function generateRoutes(app: FastifyInstance) {
       const currentUserInputContent = (): string | undefined =>
         [...currentInputMessages()].reverse().find((message) => message.role === "user")?.content;
 
-      const identity = await resolveChatUserIdentity(chars, {
-        personaId: chat.personaId,
-        personaCharacterId: chat.personaCharacterId,
-        mode: chatMode,
-      });
+      const identity = await resolveChatUserIdentity(
+        chars,
+        {
+          personaId: chat.personaId,
+          personaCharacterId: chat.personaCharacterId,
+          mode: chatMode,
+        },
+        allPersonas,
+      );
       if (identity) {
         if (identity.source === "character") {
           persona = {

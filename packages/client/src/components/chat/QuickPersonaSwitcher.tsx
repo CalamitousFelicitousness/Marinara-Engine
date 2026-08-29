@@ -11,6 +11,7 @@ import { useChatStore } from "../../stores/chat.store";
 import { useUIStore } from "../../stores/ui.store";
 import { cn, getAvatarCropStyle } from "../../lib/utils";
 import { parseCharacterDisplayData } from "../../lib/character-display";
+import type { CharacterGroup } from "@marinara-engine/shared";
 import { buildCharacterIdentityGroups, type CharacterIdentityChoice } from "../../lib/character-identity-groups";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import type { Persona } from "@marinara-engine/shared";
@@ -57,7 +58,7 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
     () =>
       buildCharacterIdentityGroups(
         characters as CharacterIdentityChoice[],
-        (rawCharacterGroups ?? []) as any[],
+        (rawCharacterGroups ?? []) as CharacterGroup[],
         localizeUi("ui.chat.personapicker.ungrouped"),
       ),
     [characters, localizeUi, rawCharacterGroups],
@@ -280,7 +281,13 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
             src={activePersona?.avatarPath ?? activeCharacter?.avatarPath ?? ""}
             alt={activePersona?.name ?? activeCharacterName ?? ""}
             className="h-full w-full object-cover rounded-full"
-            style={getAvatarCropStyle(activePersona?.avatarCrop)}
+            style={getAvatarCropStyle(
+              activePersona?.avatarPath
+                ? activePersona.avatarCrop
+                : activeCharacter
+                  ? parseCharacterDisplayData(activeCharacter).avatarCrop
+                  : undefined,
+            )}
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center rounded-full bg-foreground/10 text-[0.75rem] font-semibold text-foreground/45">
@@ -476,9 +483,14 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
                                     isActive && "bg-foreground/10 text-foreground ring-1 ring-foreground/15",
                                   )}
                                 >
-                                  <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-foreground/10 bg-foreground/10 text-xs font-semibold">
+                                  <div className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-foreground/10 bg-foreground/10 text-xs font-semibold">
                                     {character.avatarPath ? (
-                                      <img src={character.avatarPath} alt="" className="h-full w-full object-cover" />
+                                      <img
+                                        src={character.avatarPath}
+                                        alt=""
+                                        className="h-full w-full object-cover"
+                                        style={getAvatarCropStyle(parseCharacterDisplayData(character).avatarCrop)}
+                                      />
                                     ) : (
                                       name[0]
                                     )}

@@ -1365,7 +1365,7 @@ export function useGenerate() {
                   ? characterData.data.extensions.boxColor
                   : null,
             }
-          : snapshotPersona
+          : !chatPersonaCharacterId && snapshotPersona
             ? {
                 personaId: snapshotPersona.id,
                 source: "persona" as const,

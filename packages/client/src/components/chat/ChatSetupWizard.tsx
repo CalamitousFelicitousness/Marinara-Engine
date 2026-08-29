@@ -27,7 +27,6 @@ import {
   Folder,
 } from "lucide-react";
 import { cn, getAvatarCropStyle } from "../../lib/utils";
-import { normalizeAvatarCrop } from "@marinara-engine/shared";
 import { useConnections } from "../../hooks/use-connections";
 import { usePresets, usePresetFull, useDefaultPreset } from "../../hooks/use-presets";
 import { useCharacterGroups, useCharacters, usePersonas } from "../../hooks/use-characters";
@@ -679,17 +678,18 @@ function PersonaPicker({
 
       {personas.length > 0 && <div className="border-t border-[var(--border)]" />}
 
-      {searchable && personas.length > 0 && (
-        <div className="flex items-center gap-2 border-b border-[var(--border)] px-3 py-2">
-          <Search size="0.75rem" className="text-[var(--muted-foreground)]" />
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder={localizeUi("ui.chat.chatsettingsdrawer.searchPersonas")}
-            className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-[var(--muted-foreground)]"
-          />
-        </div>
-      )}
+      {searchable &&
+        (personas.length > 0 || (characters.length > 0 && (showCharacterIdentities || !!selectedCharacterId))) && (
+          <div className="flex items-center gap-2 border-b border-[var(--border)] px-3 py-2">
+            <Search size="0.75rem" className="text-[var(--muted-foreground)]" />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder={localizeUi("ui.chat.chatsettingsdrawer.searchPersonas")}
+              className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-[var(--muted-foreground)]"
+            />
+          </div>
+        )}
 
       <div className="max-h-40 overflow-y-auto">
         {filteredPersonas.map((persona) => {
@@ -763,7 +763,13 @@ function PersonaPicker({
                       aria-expanded={expanded}
                       className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-[var(--accent)]"
                     >
-                      {expanded ? <FolderOpen size="0.75rem" /> : <Folder size="0.75rem" />}
+                      {group.avatarPath ? (
+                        <img src={group.avatarPath} alt="" className="h-4 w-4 shrink-0 rounded object-cover" />
+                      ) : expanded ? (
+                        <FolderOpen size="0.75rem" />
+                      ) : (
+                        <Folder size="0.75rem" />
+                      )}
                       <span className="min-w-0 flex-1 truncate">{group.name}</span>
                       <span className="text-[0.625rem] text-[var(--muted-foreground)]">{visibleMembers.length}</span>
                       {expanded ? <ChevronDown size="0.75rem" /> : <ChevronRight size="0.75rem" />}
@@ -788,9 +794,7 @@ function PersonaPicker({
                                 src={character.avatarPath}
                                 alt=""
                                 className="h-7 w-7 shrink-0 rounded-full object-cover"
-                                style={getAvatarCropStyle(
-                                  normalizeAvatarCrop(parseCharacterDisplayData(character).avatarCrop),
-                                )}
+                                style={getAvatarCropStyle(parseCharacterDisplayData(character).avatarCrop)}
                               />
                             ) : (
                               <PersonaAvatar persona={null} />
@@ -2141,7 +2145,21 @@ function RoleplaySetupWizard({ chat, onFinish }: ChatSetupWizardProps) {
           Boolean(character),
       );
     const selectedPersona = chat.personaId ? personas.find((persona) => persona.id === chat.personaId) : null;
+    const identityCharacter =
+      chat.personaCharacterId && !chatCharIds.includes(chat.personaCharacterId)
+        ? characters.find((character) => character.id === chat.personaCharacterId)
+        : null;
     return [
+      ...(identityCharacter
+        ? [
+            {
+              id: identityCharacter.id,
+              name: charName(identityCharacter),
+              subtitle: charTitle(identityCharacter),
+              avatarPath: identityCharacter.avatarPath ?? null,
+            },
+          ]
+        : []),
       ...selectedCharacters.map((character) => ({
         id: character.id,
         name: charName(character),
@@ -2159,7 +2177,7 @@ function RoleplaySetupWizard({ chat, onFinish }: ChatSetupWizardProps) {
           ]
         : []),
     ];
-  }, [chat.personaId, chatCharIds, charName, charTitle, characters, personas]);
+  }, [chat.personaId, chat.personaCharacterId, chatCharIds, charName, charTitle, characters, personas]);
 
   // Track whether the user has manually edited the chat name.
   // The Connection step's Name input flips this to true onBlur when the

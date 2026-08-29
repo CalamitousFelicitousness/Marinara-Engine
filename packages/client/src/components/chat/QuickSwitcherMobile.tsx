@@ -194,7 +194,13 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
-  const [pos, setPos] = useState<{ left: number; top: number; width: number; maxHeight: number } | null>(null);
+  const [pos, setPos] = useState<{
+    left: number;
+    width: number;
+    maxHeight: number;
+    top?: number;
+    bottom?: number;
+  } | null>(null);
   useEffect(() => {
     if (!open || !btnRef.current) return;
     const update = () => {
@@ -210,10 +216,15 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
       const anchoredSpace = openAbove ? spaceAbove : spaceBelow;
       const useViewportFallback = anchoredSpace < 160;
       const maxHeight = Math.min(400, useViewportFallback ? window.innerHeight - 16 : anchoredSpace);
-      const top = openAbove ? anchor.top - maxHeight - 4 : anchor.bottom + 4;
       setPos({
         left,
-        top: useViewportFallback ? 8 : Math.max(8, Math.min(top, window.innerHeight - maxHeight - 8)),
+        // Anchor by `bottom` when opening upwards so short content stays
+        // attached to the input shell instead of floating at full maxHeight.
+        ...(useViewportFallback
+          ? { top: 8 }
+          : openAbove
+            ? { bottom: Math.max(8, window.innerHeight - anchor.top + 4) }
+            : { top: Math.max(8, anchor.bottom + 4) }),
         width,
         maxHeight,
       });
@@ -304,7 +315,12 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
             className="fixed z-[9999] flex min-w-0 flex-col overflow-hidden rounded-xl border border-foreground/10 bg-[var(--card)] shadow-2xl"
             style={
               pos
-                ? { left: pos.left, top: pos.top, width: pos.width, maxHeight: pos.maxHeight }
+                ? {
+                    left: pos.left,
+                    ...(pos.top !== undefined ? { top: pos.top } : { bottom: pos.bottom }),
+                    width: pos.width,
+                    maxHeight: pos.maxHeight,
+                  }
                 : { visibility: "hidden" as const }
             }
           >
@@ -568,12 +584,13 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
                                         isActive && "bg-foreground/10 text-foreground ring-1 ring-foreground/15",
                                       )}
                                     >
-                                      <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-foreground/10 bg-foreground/10 text-xs font-semibold">
+                                      <div className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-foreground/10 bg-foreground/10 text-xs font-semibold">
                                         {character.avatarPath ? (
                                           <img
                                             src={character.avatarPath}
                                             alt=""
                                             className="h-full w-full object-cover"
+                                            style={getAvatarCropStyle(parseCharacterDisplayData(character).avatarCrop)}
                                           />
                                         ) : (
                                           name[0]

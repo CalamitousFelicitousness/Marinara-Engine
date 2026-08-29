@@ -35,6 +35,9 @@ export async function resolveChatUserIdentity(
     personaCharacterId?: string | null;
     mode?: string | null;
   },
+  // Optional preloaded persona list so hot paths that already listed personas
+  // do not repeat the lookup. [PR #5583]
+  preloadedPersonas?: Awaited<ReturnType<CharactersStorage["listPersonas"]>>,
 ): Promise<ChatUserIdentity | null> {
   if (chat.personaCharacterId) {
     const row = await storage.getById(chat.personaCharacterId);
@@ -73,7 +76,7 @@ export async function resolveChatUserIdentity(
     };
   }
 
-  const personas = await storage.listPersonas();
+  const personas = preloadedPersonas ?? (await storage.listPersonas());
   const persona = resolveChatPersonaCandidate(personas, chat.personaId, chat.mode);
   if (!persona) return null;
   return {

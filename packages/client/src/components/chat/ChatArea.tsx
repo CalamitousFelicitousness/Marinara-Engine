@@ -670,19 +670,19 @@ export const ChatArea = memo(function ChatArea() {
     enabled: !!chat?.id && chat.id === activeChatId && isGameChat,
     includeBuiltIn: true,
   });
-  const { data: identityCharacters } = useCharacters({
-    enabled: !!chat?.id && chat.id === activeChatId && !isGameChat,
-    includeBuiltIn: false,
+  // Only the selected identity card is needed here, so fetch that one row
+  // instead of the whole character library. [PR #5583]
+  const identityCharacterId = isGameChat ? null : (chat?.personaCharacterId ?? null);
+  const identityCharacterQueries = useQueries({
+    queries: (identityCharacterId ? [identityCharacterId] : []).map((id) => ({
+      queryKey: characterKeys.detail(id),
+      queryFn: () => api.get<CharacterRow>(`/characters/${id}`),
+      enabled: !!chat?.id && chat.id === activeChatId,
+      retry: false,
+      staleTime: 5 * 60_000,
+    })),
   });
-  const identityCharacterRows = useMemo(
-    () =>
-      (identityCharacters ?? []) as Array<{
-        id: string;
-        data: unknown;
-        avatarPath: string | null;
-      }>,
-    [identityCharacters],
-  );
+  const identityCharacterRow = identityCharacterQueries[0]?.data ?? null;
   const deleteMessage = useDeleteMessage(activeChatId);
   const deleteMessages = useDeleteMessages(activeChatId);
   const deleteSwipe = useDeleteSwipe(activeChatId);
@@ -966,8 +966,8 @@ export const ChatArea = memo(function ChatArea() {
     // Roleplay and Game may intentionally have no Persona; only Conversation
     // falls back to the globally active account Persona.
     if (chat?.personaCharacterId) {
-      const row = identityCharacterRows.find((candidate) => candidate.id === chat.personaCharacterId);
-      if (row) {
+      const row = identityCharacterRow;
+      if (row && row.id === chat.personaCharacterId) {
         try {
           const rawData = typeof row.data === "string" ? JSON.parse(row.data) : row.data;
           const data = rawData && typeof rawData === "object" && !Array.isArray(rawData) ? rawData : {};
@@ -1014,7 +1014,7 @@ export const ChatArea = memo(function ChatArea() {
       dialogueColor: persona.dialogueColor || undefined,
       boxColor: persona.boxColor || undefined,
     };
-  }, [activePersonaFallback, chat, chatMode, chatPersona, identityCharacterRows]);
+  }, [activePersonaFallback, chat, chatMode, chatPersona, identityCharacterRow]);
 
   const { startEncounter } = useEncounter();
   const { concludeScene, abandonScene, forkScene, isForking } = useScene();

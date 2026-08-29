@@ -2361,7 +2361,7 @@ export function ChatSettingsDrawer({
     () =>
       buildCharacterIdentityGroups(
         selectableCharacters,
-        (characterGroups ?? []) as any[],
+        (characterGroups ?? []) as CharacterGroup[],
         localizeUi("ui.chat.personapicker.ungrouped"),
       ),
     [characterGroups, localizeUi, selectableCharacters],
@@ -2390,7 +2390,7 @@ export function ChatSettingsDrawer({
   const chatSpriteSubjects = useMemo(
     () => [
       ...chatCharacters.map((character) => ({ kind: "character" as const, id: character.id, character })),
-      ...(activeIdentityCharacter
+      ...(activeIdentityCharacter && !chatCharacters.some((character) => character.id === activeIdentityCharacter.id)
         ? [{ kind: "character" as const, id: activeIdentityCharacter.id, character: activeIdentityCharacter }]
         : []),
       ...(activePersona ? [{ kind: "persona" as const, id: activePersona.id, persona: activePersona }] : []),
@@ -5323,7 +5323,12 @@ export function ChatSettingsDrawer({
                           <>
                             <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--accent)] text-xs font-semibold">
                               {character.avatarPath ? (
-                                <img src={character.avatarPath} alt="" className="h-full w-full object-cover" />
+                                <img
+                                  src={character.avatarPath}
+                                  alt=""
+                                  className="h-full w-full object-cover"
+                                  style={getAvatarCropStyle(getCharacterInfo(character).avatarCrop)}
+                                />
                               ) : (
                                 charName(character)[0]
                               )}
@@ -5535,7 +5540,12 @@ export function ChatSettingsDrawer({
                               >
                                 <div className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--accent)] text-[0.625rem] font-semibold">
                                   {character.avatarPath ? (
-                                    <img src={character.avatarPath} alt="" className="h-full w-full object-cover" />
+                                    <img
+                                      src={character.avatarPath}
+                                      alt=""
+                                      className="h-full w-full object-cover"
+                                      style={getAvatarCropStyle(getCharacterInfo(character).avatarCrop)}
+                                    />
                                   ) : (
                                     charName(character)[0]
                                   )}

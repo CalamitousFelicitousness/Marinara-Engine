@@ -164,11 +164,12 @@ PID is dead is reclaimed automatically at next boot with a
 
 ## Known-failing specs — do not chase these
 
-**Regression suite re-baselined at the 2026-08-21 sync (81 commits, merge
-`59d7a1f79`): 141/147 pass, 6 fail, listed below.** The Playwright specs in this
-section are still unverified since the 2026-08-20 sync (447 commits) and have
-not been re-run since. Re-confirm before trusting them; treat an unexpected pass
-as good news, not a mystery.
+**Regression suite re-measured 2026-08-29: 180/190 pass, and only
+`launcher/update` fails on its own merits; see below for the nine that were
+blocked by the writer lease.** The Playwright specs in this section are still
+unverified since the 2026-08-20 sync (447 commits) and have not been re-run
+since. Re-confirm before trusting them; treat an unexpected pass as good news,
+not a mystery.
 
 These Playwright specs fail on a clean tree at `HEAD` with all work stashed,
 deterministically, at the same durations every run:
@@ -181,7 +182,8 @@ deterministically, at the same durations every run:
 
 All are `locator.click: Test timeout exceeded`.
 
-`scripts/regressions/prompt.regression.ts` also fails, at the Beholder system
+`scripts/regressions/prompt.regression.ts` passed on 2026-08-29. It used to
+fail at the Beholder system
 prompt: `The input did not match the regular expression /Persona: Mari
 Current
 state:/u`, actual `'Return a physical-state delta as JSON.'` — the raw
@@ -197,22 +199,34 @@ that lane exits before reaching `prompt-attachments`, `context-fit`, or
 node ./scripts/run-regressions.mjs --filter scripts/regressions/author-note-presets.regression.ts
 ```
 
-### Regression suite: the 6 failures at the 2026-08-21 sync
+### Regression suite: one expected failure, as of 2026-08-29
 
-Observed identically before and after that merge, so none are the sync's doing:
+**Re-measured 2026-08-29: 180/190 pass. Only `launcher/update.regression.mjs`
+fails on its own merits.** Every other lane in the table below now passes,
+including the four that were red at the 2026-08-21 sync:
+`open-issues.regression.ts`, `prompt.regression.ts`,
+`manual-agent-retry-resolution.regression.ts`, and
+`agent-runtime.regression.ts`. Do not budget time for them, and do not report
+them as pre-existing without re-running.
 
-| Spec                                          | Attribution                                                                      |
-| --------------------------------------------- | -------------------------------------------------------------------------------- |
-| `open-issues.regression.ts`                   | upstream, see below                                                              |
-| `prompt.regression.ts`                        | upstream, see above                                                              |
-| `manual-agent-retry-resolution.regression.ts` | pins `emitMetadataPatch:` by source shape in `retry-agents-route.ts`             |
-| `agent-runtime.regression.ts`                 | fails on "agent result vocabulary must retain its exact public values and order" |
-| `launcher/format-guard.regression.mjs`        | was the fork's own bug, fixed 2026-08-21, see below                              |
-| `launcher/update.regression.mjs`              | the fork's pnpm 11 migration, permanent, see below                               |
+| Spec                                          | Status                                                            |
+| --------------------------------------------- | ----------------------------------------------------------------- |
+| `launcher/update.regression.mjs`              | red by fork design, permanent, see below                          |
+| `launcher/format-guard.regression.mjs`        | fixed 2026-08-21, was the fork's own bug, see below               |
+| `open-issues.regression.ts`                   | green since upstream settled its LoRA assertion                   |
+| `prompt.regression.ts`                        | green since upstream finished landing Beholder                    |
+| `manual-agent-retry-resolution.regression.ts` | green                                                             |
+| `agent-runtime.regression.ts`                 | green                                                             |
 
-The middle two were observed failing but not traced to a side; do not assume
-they are upstream's without checking. The two launcher lanes have since been
-traced, and neither was upstream's.
+**The other nine failures in that run were the writer lease, not the code.**
+About 38 lanes open the real `packages/server/data/storage` rather than a temp
+dir, so a running dev server or launcher makes them fail at `getDB()` with
+`StorageWriterLeaseError: Another Marinara Engine process (PID ..., host ...)`,
+before a single assertion runs. The failing set therefore depends on what is
+running, not on the change under test. Read the stack: a lease error names the
+PID and stops inside `file-backed-store.ts`, so it is never yours. Either stop
+the app before a full run, or run the lanes your change touches and say which
+ones the lease blocked.
 
 **`launcher/format-guard.regression.mjs` was this fork's bug, now fixed.**
 `SHARDED_TABLES` in `scripts/protect-launcher-data.mjs` is a hand-maintained

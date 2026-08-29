@@ -164,6 +164,42 @@ for (const [file, path] of [
   );
 }
 
+// ── A running game can be repointed ──
+// Pins chosen once in the wizard were unreachable afterwards, as were the two
+// generation switches. A lane missing from this card is a lane a player cannot
+// change without starting a new game.
+{
+  const card = readSource("packages/client/src/components/chat/GameAudioSettingsCard.tsx");
+  const drawer = readSource("packages/client/src/components/chat/ChatSettingsDrawer.tsx");
+  for (const key of ["gameVoiceConnectionId", "gameSfxConnectionId", "gameMusicConnectionId"] as const) {
+    assert.match(card, new RegExp(String.raw`renderLane\("${key}"`, "u"), `${key} must be settable per game`);
+  }
+  assert.match(drawer, /<GameAudioSettingsCard/u, "and the card must be mounted in the drawer");
+  assert.match(
+    drawer,
+    /\[key\]: id \}\)/u,
+    "each lane writes its own metadata key rather than a shared one",
+  );
+  assert.match(
+    card,
+    /enabled=\{metadata\.gameAudioSoundEffectsEnabled !== false\}/u,
+    "the sound effect switch lives here too, showing this game's stored state",
+  );
+  assert.match(
+    card,
+    /enabled=\{metadata\.gameAudioMusicEnabled !== false\}/u,
+    "and the music switch likewise",
+  );
+  // An older game's all-purpose pin is what an unpinned lane reaches, so the
+  // empty option has to say that rather than claim the app default answers.
+  assert.match(
+    card,
+    /metadata\.gameAudioConnectionId === "string"/u,
+    "the empty option must know whether this game carries an all-purpose pin",
+  );
+  assert.match(card, /useThisGamesAudioConnection/u, "and name it when it does");
+}
+
 // ── A new game records a pin per lane ──
 // The wizard is where most games get their audio. Writing the all-purpose pin
 // here would quietly re-merge the lanes for every game created from now on,

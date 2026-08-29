@@ -123,6 +123,7 @@ import { useCharacters, usePersonas, useCharacterGroups, type SpriteInfo } from 
 import { lorebookKeys, useLorebooks, useEntriesAcrossLorebooks } from "../../hooks/use-lorebooks";
 import { useDefaultPreset, usePresetFull, usePresets } from "../../hooks/use-presets";
 import { useConnections } from "../../hooks/use-connections";
+import { GameAudioSettingsCard } from "./GameAudioSettingsCard";
 import { useKnowledgeSources, useUploadKnowledgeSource } from "../../hooks/use-knowledge-sources";
 import { useGenerate } from "../../hooks/use-generate";
 import { useCapabilityAgentRegistry, useInstalledCapabilityPackages } from "../../hooks/use-capability-packages";
@@ -151,7 +152,11 @@ import { api } from "../../lib/api-client";
 import { readCharacterGreetings, type CharacterGreeting } from "../../lib/character-greetings";
 import { trackChatMetadataSave, waitForPendingChatMetadataSaves } from "../../lib/chat-metadata-save-barrier";
 import { createSerializedMutationQueue } from "../../lib/serialized-mutation-queue";
-import { appendLocalSidecarConnectionOption, filterLanguageGenerationConnections } from "../../lib/connection-filters";
+import {
+  appendLocalSidecarConnectionOption,
+  filterAudioGenerationConnections,
+  filterLanguageGenerationConnections,
+} from "../../lib/connection-filters";
 import {
   deriveActiveLorebookViews,
   getChatActiveLorebookIds,
@@ -990,6 +995,13 @@ export function ChatSettingsDrawer({
     () =>
       ((connections as Array<{ id: string; name: string; model?: string; provider?: string }>) ?? []).filter(
         (c) => c.provider === "image_generation",
+      ),
+    [connections],
+  );
+  const audioConnectionsList = useMemo(
+    () =>
+      filterAudioGenerationConnections(
+        (connections as Array<{ id: string; name: string; model?: string; provider?: string }>) ?? [],
       ),
     [connections],
   );
@@ -7397,6 +7409,20 @@ export function ChatSettingsDrawer({
 
                       {gameMusicDjEnabled && musicPlayerSource === "custom" && renderCustomMusicLibrarySettings("game")}
                     </AgentSettingsCard>
+                  )}
+
+                  {isGame && (
+                    <GameAudioSettingsCard
+                      connections={audioConnectionsList}
+                      metadata={metadata as Record<string, unknown>}
+                      onPinChange={(key, id) => updateMeta.mutate({ id: chat.id, [key]: id })}
+                      onSoundEffectsEnabledChange={(enabled) =>
+                        updateMeta.mutate({ id: chat.id, gameAudioSoundEffectsEnabled: enabled })
+                      }
+                      onMusicEnabledChange={(enabled) =>
+                        updateMeta.mutate({ id: chat.id, gameAudioMusicEnabled: enabled })
+                      }
+                    />
                   )}
 
                   {!isGame && (

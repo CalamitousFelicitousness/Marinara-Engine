@@ -18,11 +18,13 @@ import {
   PASSTHROUGH_TTS_SYNTHESIS_POLICY,
   TTSSynthesisError,
   TTS_CLIENT_TIMEOUT_GRACE_MS,
+  TTS_RATE_LIMIT_WAIT_CAP_MS,
   TTS_RETRY_BASE_DELAY_MS,
   isRetryableTTSFailure,
   resolveTTSSynthesisPolicy,
   runWithTTSSynthesisPolicy,
   ttsFailureKindFromResponse,
+  ttsRetryDelayMs,
 } from "../../../packages/client/src/lib/tts-synthesis-policy.ts";
 import { ttsService } from "../../../packages/client/src/lib/tts-service.ts";
 import { buildTTSVoiceRequests, cleanTTSInputText } from "../../../packages/client/src/lib/tts-dialogue.ts";
@@ -475,6 +477,98 @@ try {
       assert.match(call, /maxChars:/u, `${file}: ${call} must use the configured chunk size, not the default`);
     }
   }
+}
+
+// ── A rate limit is "later", not "wrong" ──
+// /speak used to flatten every provider failure to 502, so a 429 was retried on
+// the client's own fixed curve and its Retry-After was thrown away. The route
+// now answers 429 with the delay, which the status rule below would otherwise
+// read as a permanent 4xx refusal.
+{
+  assert.equal(ttsFailureKindFromResponse("rate_limited"), "rate_limited", "the server labels a rate limit");
+
+  const limited = new TTSSynthesisError("slow down", "rate_limited", 429, 4_000);
+  assert.equal(limited.retryAfterMs, 4_000, "the provider's own pause travels with the error");
+  assert.ok(isRetryableTTSFailure(limited), "a rate limit is the one 4xx worth retrying");
+
+  // Any other 4xx still means the request or the configuration is wrong.
+  assert.ok(
+    !isRetryableTTSFailure(new TTSSynthesisError("bad voice", "provider", 400)),
+    "a plain 4xx must stay non-retryable",
+  );
+
+  const policy = { requestTimeoutMs: 0, maxRetries: 2, retryBaseDelayMs: TTS_RETRY_BASE_DELAY_MS };
+  assert.equal(
+    ttsRetryDelayMs(limited, policy, 0),
+    4_000,
+    "the provider knows its own limit better than any curve here",
+  );
+  assert.equal(
+    ttsRetryDelayMs(new TTSSynthesisError("boom", "provider", 502), policy, 1),
+    TTS_RETRY_BASE_DELAY_MS * 2,
+    "everything else keeps the linear backoff the game path has shipped",
+  );
+  assert.equal(
+    ttsRetryDelayMs(new TTSSynthesisError("slow down", "rate_limited", 429, 600_000), policy, 0),
+    TTS_RATE_LIMIT_WAIT_CAP_MS,
+    "an engine asking for ten minutes is capped: silence is worse than a reported failure",
+  );
+
+  // The retry actually happens, and it is still bounded by maxRetries.
+  let attempts = 0;
+  await assert.rejects(
+    runWithTTSSynthesisPolicy(
+      async () => {
+        attempts += 1;
+        throw new TTSSynthesisError("slow down", "rate_limited", 429, 1);
+      },
+      { requestTimeoutMs: 0, maxRetries: 1, retryBaseDelayMs: TTS_RETRY_BASE_DELAY_MS },
+    ),
+    "a rate limit that never clears still gives up",
+  );
+  assert.equal(attempts, 2, "one retry after a rate limit, then the caller is told");
+}
+
+// ── End to end: the route's delay reaches the wait ──
+// Behavioural rather than a source match, because the two ways this breaks look
+// identical in the text: the client can carry a delay it never applies, and the
+// loop can compute one it never uses. The clock catches both. The configured
+// curve is deliberately far slower than the delay the server reports, so only a
+// run that honoured the server's number finishes in time.
+{
+  const originalFetch = globalThis.fetch;
+  let attempts = 0;
+  const started = Date.now();
+  globalThis.fetch = async () =>
+    new Response(JSON.stringify({ error: "slow down", code: "rate_limited", retryAfterMs: 5 }), {
+      status: 429,
+      headers: { "Content-Type": "application/json" },
+    });
+  const counted = globalThis.fetch;
+  globalThis.fetch = async (...args: Parameters<typeof fetch>) => {
+    attempts += 1;
+    return counted(...args);
+  };
+  try {
+    await ttsService.speakSequence([{ text: "Later." }], "tts-rate-limited", {
+      progressive: true,
+      policy: { requestTimeoutMs: 0, maxRetries: 1, retryBaseDelayMs: 2_000 },
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  const elapsed = Date.now() - started;
+  assert.equal(attempts, 2, "a 429 from the route is retried once");
+  assert.ok(elapsed < 1_000, `the 5ms the server reported must beat the 2s curve, but the run took ${elapsed}ms`);
+}
+
+// ── The route reports the pause instead of hiding it in a 502 ──
+{
+  const routeRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+  const routeSource = readFileSync(join(routeRoot, "packages/server/src/routes/tts.routes.ts"), "utf8");
+  assert.match(routeSource, /readTTSRateLimit\(providerRes\)/u, "/speak must classify the provider's status");
+  assert.match(routeSource, /code: "rate_limited"/u, "the client branches on the code, never on prose");
+  assert.match(routeSource, /reserveOutboundSlot\(resolvedConnectionId/u, "/speak must pace on the resolved connection");
 }
 
 console.info("TTS synthesis policy regression passed.");

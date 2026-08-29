@@ -14,7 +14,7 @@
 // Mirrors the ConnectionAdmissionProvider decorator shape and installs alongside it.
 import type { ChatCompletionResult, ChatMessage, ChatOptions, LLMUsage } from "./base-provider.js";
 import { BaseLLMProvider, isRateLimitError } from "./base-provider.js";
-import { getConnectionRateLimit } from "./connection-rate-limit-registry.js";
+import { abortableDelay, reserveOutboundSlot } from "../connections/outbound-request-pacer.js";
 import { logger } from "../../lib/logger.js";
 
 export const MAX_RATE_LIMIT_RETRIES = 6;
@@ -23,32 +23,6 @@ const BACKOFF_CAP_MS = 60_000;
 
 type RateLimitPauseInfo = { attempt: number; delayMs: number; reason: "rate_limit" | "throttle" };
 type RetryContext = { signal?: AbortSignal; onRateLimitPause?: (info: RateLimitPauseInfo) => void };
-
-// Per-connection pacing cursor: the earliest wall-clock time the next request may start. Reserving
-// a slot pushes the cursor forward by the min interval so concurrent requests queue fairly.
-const nextAllowedAt = new Map<string, number>();
-
-function abortableDelay(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(signal.reason ?? new Error("Aborted"));
-      return;
-    }
-    const timer = setTimeout(() => {
-      cleanup();
-      resolve();
-    }, ms);
-    const onAbort = () => {
-      cleanup();
-      reject(signal?.reason ?? new Error("Aborted"));
-    };
-    const cleanup = () => {
-      clearTimeout(timer);
-      signal?.removeEventListener("abort", onAbort);
-    };
-    signal?.addEventListener("abort", onAbort, { once: true });
-  });
-}
 
 function backoffMs(attempt: number, retryAfterMs: number | undefined): number {
   if (typeof retryAfterMs === "number" && retryAfterMs >= 0) {
@@ -65,23 +39,9 @@ function backoffMs(attempt: number, retryAfterMs: number | undefined): number {
  * awaiting an already-resolved value here would yield a tick and briefly open the concurrency gate.
  */
 function reserveThrottleSlot(connectionId: string, context: RetryContext): Promise<void> | undefined {
-  const maxRpm = getConnectionRateLimit(connectionId);
-  if (!maxRpm || maxRpm <= 0) return undefined;
-  const minIntervalMs = Math.ceil(60_000 / maxRpm);
-  const now = Date.now();
-  const earliest = Math.max(now, nextAllowedAt.get(connectionId) ?? 0);
-  const reserved = earliest + minIntervalMs;
-  nextAllowedAt.set(connectionId, reserved);
-  const waitMs = earliest - now;
-  if (waitMs <= 0) return undefined;
-  context.onRateLimitPause?.({ attempt: 0, delayMs: waitMs, reason: "throttle" });
-  return abortableDelay(waitMs, context.signal).catch((error) => {
-    // Aborted mid-wait: hand our reservation back if we are still the tail so a cancelled
-    // request does not inject phantom pacing delay into the requests queued behind it.
-    if (nextAllowedAt.get(connectionId) === reserved) {
-      nextAllowedAt.set(connectionId, earliest);
-    }
-    throw error;
+  return reserveOutboundSlot(connectionId, {
+    ...(context.signal ? { signal: context.signal } : {}),
+    onWait: (delayMs) => context.onRateLimitPause?.({ attempt: 0, delayMs, reason: "throttle" }),
   });
 }
 

@@ -333,11 +333,17 @@ class TTSService {
   private async synthesisError(res: Response): Promise<TTSSynthesisError> {
     const raw = await res.text().catch(() => "");
     let code: unknown;
+    let retryAfterMs: number | undefined;
     let message = `TTS request failed (${res.status})`;
     if (raw.trim()) {
       try {
         const data = JSON.parse(raw) as Record<string, unknown>;
         code = data.code;
+        // The provider's own pause, forwarded by the route. Waiting this long
+        // beats any curve the client could invent.
+        if (typeof data.retryAfterMs === "number" && Number.isFinite(data.retryAfterMs)) {
+          retryAfterMs = data.retryAfterMs;
+        }
         const error = typeof data.error === "string" ? data.error : "";
         const detail = typeof data.detail === "string" ? data.detail : "";
         const reported = typeof data.message === "string" ? data.message : "";
@@ -346,7 +352,7 @@ class TTSService {
         message = `${message}: ${raw.slice(0, 500)}`;
       }
     }
-    return new TTSSynthesisError(message, ttsFailureKindFromResponse(code), res.status);
+    return new TTSSynthesisError(message, ttsFailureKindFromResponse(code), res.status, retryAfterMs);
   }
 
   /**

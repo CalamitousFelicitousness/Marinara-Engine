@@ -40,6 +40,16 @@ function describe(kind: TTSFailureKind, detail: string): { title: string; descri
           "Check that it is running and that the base URL is right.",
         ),
       };
+    case "rate_limited":
+      // Named separately because the fix is a setting, not a restart: the
+      // generic provider notice would send the user looking for a broken engine.
+      return {
+        title: localize("ui.tts.notice.rateLimitedTitle", "The speech engine is rate limiting this connection"),
+        description: localize(
+          "ui.tts.notice.rateLimitedBody",
+          "Retries already wait as long as it asks. Set a requests per minute cap on the connection to stop hitting the limit.",
+        ),
+      };
     default:
       return {
         title: localize("ui.tts.notice.providerTitle", "The speech engine rejected the request"),

@@ -8870,6 +8870,8 @@
   "ui.tts.notice.autoplayPausedBody": "The speech engine failed several times in a row. Press the speak button on a message to try again.",
   "ui.tts.notice.autoplayPausedTitle": "Voice autoplay paused",
   "ui.tts.notice.providerTitle": "The speech engine rejected the request",
+  "ui.tts.notice.rateLimitedBody": "Retries already wait as long as it asks. Set a requests per minute cap on the connection to stop hitting the limit.",
+  "ui.tts.notice.rateLimitedTitle": "The speech engine is rate limiting this connection",
   "ui.tts.notice.timeoutBody": "Raise the request timeout in {{path}}. Local engines on CPU often need several minutes per chunk.",
   "ui.tts.notice.timeoutTitle": "The speech engine ran out of time",
   "ui.tts.notice.unreachableBody": "Check that it is running and that the base URL is right.",

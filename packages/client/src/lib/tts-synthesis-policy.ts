@@ -17,16 +17,19 @@
 import { TTS_TIMEOUT_MS_DEFAULT } from "@marinara-engine/shared";
 
 /** Why a synthesis request failed, in a form the UI can branch on. */
-export type TTSFailureKind = "timeout" | "unreachable" | "provider" | "aborted";
+export type TTSFailureKind = "timeout" | "unreachable" | "provider" | "rate_limited" | "aborted";
 
 export class TTSSynthesisError extends Error {
   readonly kind: TTSFailureKind;
   readonly status?: number;
+  /** Rate limits only: the pause the provider asked for, when it named one. */
+  readonly retryAfterMs?: number;
 
-  constructor(message: string, kind: TTSFailureKind, status?: number) {
+  constructor(message: string, kind: TTSFailureKind, status?: number, retryAfterMs?: number) {
     super(message);
     this.kind = kind;
     this.status = status;
+    this.retryAfterMs = retryAfterMs;
     // The engine distinguishes a user stop from a failure by error name, so an
     // aborted synthesis has to keep answering to that check.
     this.name = kind === "aborted" ? "AbortError" : "TTSSynthesisError";
@@ -75,8 +78,25 @@ export function resolveTTSSynthesisPolicy(
  * status, since a timeout and an unreachable host both surface as 502.
  */
 export function ttsFailureKindFromResponse(code?: unknown): TTSFailureKind {
-  if (code === "timeout" || code === "unreachable" || code === "aborted") return code;
+  if (code === "timeout" || code === "unreachable" || code === "aborted" || code === "rate_limited") return code;
   return "provider";
+}
+
+/**
+ * How long to wait before the next attempt. A provider that named a delay knows
+ * better than any curve here, so its Retry-After wins; everything else keeps the
+ * linear backoff the game path has shipped for months.
+ *
+ * Capped, because an engine may ask for minutes and a listener waiting on a
+ * message is better told it failed than left with silence.
+ */
+export const TTS_RATE_LIMIT_WAIT_CAP_MS = 30_000;
+
+export function ttsRetryDelayMs(error: unknown, policy: TTSSynthesisPolicy, attemptIndex: number): number {
+  if (error instanceof TTSSynthesisError && typeof error.retryAfterMs === "number" && error.retryAfterMs >= 0) {
+    return Math.min(error.retryAfterMs, TTS_RATE_LIMIT_WAIT_CAP_MS);
+  }
+  return policy.retryBaseDelayMs * (attemptIndex + 1);
 }
 
 /**
@@ -87,6 +107,9 @@ export function isRetryableTTSFailure(error: unknown): boolean {
   if (error instanceof TTSSynthesisError) {
     if (error.kind === "aborted") return false;
     if (error.kind === "timeout" || error.kind === "unreachable") return true;
+    // A rate limit is a 4xx that means "later", not "wrong". It is the one
+    // status the rule below must not read as a permanent refusal.
+    if (error.kind === "rate_limited") return true;
     return typeof error.status === "number" ? error.status >= 500 : true;
   }
   if (error instanceof Error && error.name === "AbortError") return false;
@@ -168,7 +191,7 @@ export async function runWithTTSSynthesisPolicy<T>(
       return await runAttempt(attempt, policy.requestTimeoutMs, signal);
     } catch (error) {
       if (attemptIndex >= policy.maxRetries || !isRetryableTTSFailure(error)) throw error;
-      await delay(policy.retryBaseDelayMs * (attemptIndex + 1), signal);
+      await delay(ttsRetryDelayMs(error, policy, attemptIndex), signal);
     }
   }
 }

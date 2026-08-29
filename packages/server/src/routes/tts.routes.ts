@@ -36,6 +36,8 @@ import { safeFetch } from "../utils/security.js";
 import { ttsUrlPolicy } from "../services/tts/url-policy.js";
 import { createTTSProvider } from "../services/tts/provider-registry.js";
 import { buildElevenLabsGameAudioRequest } from "../services/tts/elevenlabs.provider.js";
+import { readTTSRateLimit, TTSRateLimitError } from "../services/tts/tts-rate-limit.js";
+import { reserveOutboundSlot } from "../services/connections/outbound-request-pacer.js";
 import {
   buildElevenLabsTextInput,
   buildOfficialPocketTtsForm,
@@ -250,6 +252,8 @@ async function generateElevenLabsGameAudio(
   kind: "sfx" | "music",
   prompt: string,
   context?: GameAudioContext,
+  /** Resolved audio connection, for its outbound rate limit. Absent on the legacy blob path. */
+  connectionId?: string | null,
 ): Promise<{ tag: string; path: string; cached: boolean }> {
   const normalizedPrompt = normalizeGameAudioPrompt(prompt);
   const hash = createHash("sha256").update(`${kind}\0${normalizedPrompt.toLowerCase()}`).digest("hex");
@@ -302,6 +306,12 @@ async function generateElevenLabsGameAudio(
     prompt: normalizedPrompt,
     ...(context?.lengthMs !== undefined ? { lengthMs: context.lengthMs } : {}),
   });
+  // Paced before the deadline starts, so waiting for a slot never eats the
+  // budget the composition itself needs.
+  if (connectionId) {
+    const slot = reserveOutboundSlot(connectionId);
+    if (slot) await slot;
+  }
   const response = await safeFetch(request.url, {
     method: "POST",
     headers: request.headers,
@@ -316,6 +326,10 @@ async function generateElevenLabsGameAudio(
   });
   if (!response.ok) {
     const detail = readProviderErrorDetail(await response.text().catch(() => ""));
+    const limited = readTTSRateLimit(response);
+    if (limited) {
+      throw new TTSRateLimitError(detail || "ElevenLabs is rate limiting this connection", limited.retryAfterMs);
+    }
     throw new Error(detail || `ElevenLabs returned ${response.status}`);
   }
 
@@ -1334,7 +1348,12 @@ export async function ttsRoutes(app: FastifyInstance) {
     }
     // kind names the lane, so a caller that sends no connection id still reaches
     // the engine this purpose was pointed at rather than the one that speaks.
-    const { cfg, gameAudioEnabled } = await resolveAudioConfig(storage, connections, audioConnectionId, kind);
+    const { cfg, gameAudioEnabled, resolvedConnectionId } = await resolveAudioConfig(
+      storage,
+      connections,
+      audioConnectionId,
+      kind,
+    );
     if (gameAudioEnabled !== true) {
       return reply
         .status(400)
@@ -1356,14 +1375,26 @@ export async function ttsRoutes(app: FastifyInstance) {
     const lockKey = context ? `context\0${context.axis}\0${context.key}` : `${kind}\0${normalizedPrompt.toLowerCase()}`;
     let generation = gameAudioGenerationLocks.get(lockKey);
     if (!generation) {
-      generation = generateElevenLabsGameAudio(cfg, kind, normalizedPrompt, context).finally(() => {
-        gameAudioGenerationLocks.delete(lockKey);
-      });
+      generation = generateElevenLabsGameAudio(cfg, kind, normalizedPrompt, context, resolvedConnectionId).finally(
+        () => {
+          gameAudioGenerationLocks.delete(lockKey);
+        },
+      );
       gameAudioGenerationLocks.set(lockKey, generation);
     }
     try {
       return await generation;
     } catch (error) {
+      if (error instanceof TTSRateLimitError) {
+        // Not a failure of the request, so it is answered as the pause it is.
+        logger.warn("ElevenLabs is rate limiting game %s generation", kind);
+        return reply.status(429).send({
+          error: `ElevenLabs is rate limiting game ${kind} generation`,
+          detail: error.message,
+          code: "rate_limited",
+          ...(error.retryAfterMs !== undefined ? { retryAfterMs: error.retryAfterMs } : {}),
+        });
+      }
       logger.error(error, "ElevenLabs game %s generation failed", kind);
       return reply.status(502).send({
         error: `ElevenLabs game ${kind} generation failed`,
@@ -1379,7 +1410,11 @@ export async function ttsRoutes(app: FastifyInstance) {
   app.post("/speak", async (req, reply) => {
     const { text, speaker, tone, voice, audioConnectionId } = speakSchema.parse(req.body);
 
-    const { cfg, speechEnabled } = await resolveAudioConfig(storage, connections, audioConnectionId);
+    const { cfg, speechEnabled, resolvedConnectionId } = await resolveAudioConfig(
+      storage,
+      connections,
+      audioConnectionId,
+    );
 
     if (!speechEnabled) {
       return reply.status(400).send({ error: "TTS is not enabled" });
@@ -1419,6 +1454,21 @@ export async function ttsRoutes(app: FastifyInstance) {
     const clientGone = new AbortController();
     reply.raw.once("close", () => clientGone.abort());
 
+    // Paced before the deadline starts: the connection's cap covers every caller
+    // of it at once, so chat, narration, and a preview queue against each other
+    // rather than each getting its own budget.
+    if (resolvedConnectionId) {
+      const slot = reserveOutboundSlot(resolvedConnectionId, { signal: clientGone.signal });
+      if (slot) {
+        try {
+          await slot;
+        } catch {
+          req.log.debug("TTS synthesis abandoned while waiting for a rate limit slot");
+          return reply.status(499).send({ error: "TTS request aborted", code: "aborted" });
+        }
+      }
+    }
+
     let providerRes: Response;
     try {
       providerRes = await safeFetch(speechRequest.url, {
@@ -1448,6 +1498,18 @@ export async function ttsRoutes(app: FastifyInstance) {
 
     if (!providerRes.ok) {
       const body = await providerRes.text().catch(() => "");
+      const limited = readTTSRateLimit(providerRes);
+      if (limited) {
+        // Answered as a pause rather than a gateway failure, and with the
+        // provider's own delay, so the client waits the right amount instead of
+        // its fixed backoff.
+        return reply.status(429).send({
+          error: "TTS provider is rate limiting this connection",
+          detail: readProviderErrorDetail(body),
+          code: "rate_limited",
+          ...(limited.retryAfterMs !== undefined ? { retryAfterMs: limited.retryAfterMs } : {}),
+        });
+      }
       return reply.status(502).send({
         error: `TTS provider returned ${providerRes.status}`,
         detail: readProviderErrorDetail(body),

@@ -77,6 +77,10 @@ export function applyAudioParameters(
     // there is nothing to report. Reporting it would fire on every ElevenLabs
     // request that sets a voice_settings knob.
     if (isPlainRecord(body[key]) && isPlainRecord(value)) continue;
+    // An override that changes nothing is not an override. NanoGPT reads the
+    // model out of this same bag to build the request, so the value always
+    // arrives back identical and would otherwise warn on every game request.
+    if (Object.is(body[key], value)) continue;
     logger.warn("The %s parameter %s overrides a value this request computed", options.label, key);
   }
 

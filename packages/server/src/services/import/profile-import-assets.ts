@@ -76,23 +76,20 @@ function isProfileVideoAssetPath(path: string): boolean {
   );
 }
 
-/**
- * The game-asset seeder writes an empty `.native` marker into every bundled
- * directory (db/seed-game-assets.ts), so exports carry them and an import must
- * accept them back. Under `game-assets/sprites/` the image policy would
- * otherwise refuse the marker and fail the whole import.
- *
- * Size is the whole contract: an empty file cannot be served as anything, while
- * a non-empty one is not a marker and stays refused.
- */
-async function isEmptyNativeMarker(normalized: string, stagedPath: string): Promise<boolean> {
-  if (!normalized.endsWith("/.native")) return false;
-  return (await stat(stagedPath)).size === 0;
-}
-
 async function validateProfileImportAsset(path: string, stagedPath: string, stagedRoot: string): Promise<void> {
   const normalized = path.replace(/\\/g, "/");
-  if (await isEmptyNativeMarker(normalized, stagedPath)) return;
+  // The game-asset seeder drops an empty `.native` marker into every bundled
+  // asset directory and profile exports archive those directories verbatim.
+  // Tolerate exactly that marker — empty, dot-prefixed, never served as
+  // media — so a stock profile backup restores instead of failing image
+  // validation on the seeder's own file.
+  if (normalized.startsWith("game-assets/") && (normalized.split("/").pop() ?? "") === ".native") {
+    const marker = await stat(stagedPath);
+    if (marker.size !== 0) {
+      throw new ProfileImportAssetValidationError(`Profile asset ${path} is not a supported image file.`);
+    }
+    return;
+  }
   if (isProfileVideoAssetPath(normalized)) {
     if (/\.json$/iu.test(normalized)) return;
     const video = await validateVideoAssetFile(stagedPath, normalized, { additionalRoot: stagedRoot });

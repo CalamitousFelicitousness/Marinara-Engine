@@ -22,10 +22,12 @@ import { useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { useChatStore } from "../../stores/chat.store";
 import { useAgentStore } from "../../stores/agent.store";
 import { useUIStore } from "../../stores/ui.store";
+import { useSidecarStore } from "../../stores/sidecar.store";
 import { useConversationGamesStore } from "../../stores/conversation-games.store";
 import { useGenerate } from "../../hooks/use-generate";
 import { useApplyRegex } from "../../hooks/use-apply-regex";
 import { useCreateMessage, useDeleteMessage, useUpdateMessageExtra, useChat, chatKeys } from "../../hooks/use-chats";
+import { useConnections } from "../../hooks/use-connections";
 import { characterKeys } from "../../hooks/use-characters";
 import {
   matchSlashCommand,
@@ -58,6 +60,7 @@ import { QuickReplyMenu, type QuickReplyAction } from "./QuickReplyMenu";
 import { getChatInputShellClass } from "./chat-input-styles";
 import { MariSuggestionChips } from "./MariSuggestionChips";
 import { useMultiSwipeSendMenu } from "./MultiSwipeMenu";
+import { resolveChatContextBudget } from "../../lib/professor-mari-context-budget";
 import {
   ConversationMediaPickerPanel,
   type ConversationMediaPickerTab,
@@ -376,6 +379,9 @@ export function ConversationInput({
   const clearMariChips = useAgentStore((s) => s.clearMariChips);
   const professorMariSuggestionsEnabled = useUIStore((s) => s.professorMariSuggestionsEnabled);
   const { data: activeChat } = useChat(activeChatId);
+  const { data: contextConnections = [] } = useConnections();
+  const sidecarMaxContext = useSidecarStore((state) => state.config.contextSize);
+  const showContextUsage = useUIStore((s) => s.showContextUsage);
   const { data: installedCapabilities = [] } = useInstalledCapabilityPackages();
   const availableCapabilityIds = useMemo(
     () => new Set(installedCapabilities.filter((item) => item.status === "active").map((item) => item.id)),
@@ -492,6 +498,11 @@ export function ConversationInput({
     });
   }, [activeChatId, qc]);
   const messagesData = qc.getQueryData<InfiniteData<Message[]>>(chatKeys.messages(activeChatId ?? ""));
+  const contextMessages = useMemo(() => [...(messagesData?.pages ?? [])].reverse().flat(), [messagesData]);
+  const contextBudget = useMemo(
+    () => resolveChatContextBudget(contextMessages, activeChat?.connectionId, contextConnections, sidecarMaxContext),
+    [activeChat?.connectionId, contextConnections, contextMessages, sidecarMaxContext],
+  );
   const isProfessorMariChat = activeChatCharacters?.some((character) => character.id === PROFESSOR_MARI_ID) ?? false;
   const hasMessages = (messagesData?.pages ?? []).some((page) => page.length > 0);
   const visibleMariChips =
@@ -2250,11 +2261,11 @@ export function ConversationInput({
 
         {/* Quick Switchers — desktop: inline, mobile: chevron */}
         <div className="hidden shrink-0 items-center gap-1 sm:flex">
-          <QuickConnectionSwitcher />
+          <QuickConnectionSwitcher contextBudget={showContextUsage ? contextBudget : null} />
           <QuickPersonaSwitcher />
         </div>
         <div className="flex shrink-0 sm:hidden">
-          <QuickSwitcherMobile />
+          <QuickSwitcherMobile contextBudget={showContextUsage ? contextBudget : null} />
         </div>
 
         {/* Textarea */}

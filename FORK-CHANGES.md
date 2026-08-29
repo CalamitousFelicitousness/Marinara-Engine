@@ -31,27 +31,22 @@ them, so adopting it unchanged would have dropped the menu silently. Keeping the
 
 The spread must stay above `onClick` so the explicit click handler wins.
 
-### Profile import accepts the marker files the app writes
-
-`packages/server/src/services/import/profile-import-assets.ts` lets an empty
-`.native` file through the asset validator.
-
-`db/seed-game-assets.ts` writes that marker into every bundled game-asset
-directory on boot, so every export carries them, and the validator classifies
-everything under `game-assets/sprites/` as an image. Importing any profile
-therefore failed with `Profile asset game-assets/sprites/.native is not a
-supported image file`, and there was no user-side remedy: deleting the marker
-only lasted until the next boot.
-
-The allowance is bounded by size. An empty file cannot be served as anything; a
-non-empty file under that name is not a marker and is still checked as an image,
-so the exemption cannot carry content past the check.
-
-Upstream owns both files and this fork patches neither elsewhere, so a sync that
-rewrites the validator will silently drop this. Pinned by
-`scripts/regressions/profile-import-native-marker.regression.ts`.
-
 ## Fork-only additions
+
+### Profile import marker coverage beyond upstream's lane
+
+`scripts/regressions/profile-import-native-marker.regression.ts` pins the root
+(`game-assets/.native`) and nested (`game-assets/music/combat/.native`) marker
+paths. Upstream's `profile-import-asset-security` lane covers only the flat
+`game-assets/sprites/` case.
+
+The validator fix itself is upstream's (#5587). This fork shipped an equivalent
+fix independently in `011468e1a` and dropped it at the 2026-08-29 sync for
+upstream's, which scopes the exemption to `game-assets/` rather than any
+`*/.native`. That narrower scope is complete: `db/seed-game-assets.ts:78` is the
+only writer and it recurses from `GAME_ASSETS_DIR` only, so no marker reaches
+the top-level `sprites/` root the fork's version also allowed. Do not re-add the
+broader match.
 
 ### Author's note presets
 

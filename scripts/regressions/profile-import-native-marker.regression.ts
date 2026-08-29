@@ -11,6 +11,10 @@
 // The allowance is bounded by size. An empty file cannot be served as anything;
 // a non-empty one under the same name is not a marker and stays refused, so the
 // exemption cannot be used to smuggle content past the image check.
+//
+// Implementation is upstream's (#5587). Upstream's
+// profile-import-asset-security lane pins the flat game-assets/sprites/
+// case; this one pins the root and nested-depth marker paths.
 
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -33,7 +37,6 @@ try {
     "game-assets/sprites/.native",
     "game-assets/.native",
     "game-assets/music/combat/.native",
-    "sprites/.native",
   ]) {
     const staged = await stageOne(path, Buffer.alloc(0));
     assert.equal(staged.assets.length, 1, `${path}: an empty marker must import`);

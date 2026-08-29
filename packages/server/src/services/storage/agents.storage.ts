@@ -430,23 +430,25 @@ export function createAgentsStorage(db: DB) {
       return rows.map((row) => serializeRunWithConfig(row));
     },
 
-    async getRunWithConfig(id: string) {
+    async getRunWithConfig(id: string, chatId?: string) {
+      const condition = chatId ? and(eq(agentRuns.chatId, chatId), eq(agentRuns.id, id)) : eq(agentRuns.id, id);
       const rows = await db
         .select()
         .from(agentRuns)
         .innerJoin(agentConfigs, eq(agentRuns.agentConfigId, agentConfigs.id))
-        .where(eq(agentRuns.id, id))
+        .where(condition)
         .limit(1);
       const row = rows[0];
       return row ? serializeRunWithConfig(row) : null;
     },
 
-    async updateRunResultData(id: string, resultData: unknown) {
+    async updateRunResultData(id: string, resultData: unknown, chatId?: string) {
+      const condition = chatId ? and(eq(agentRuns.chatId, chatId), eq(agentRuns.id, id)) : eq(agentRuns.id, id);
       await db
         .update(agentRuns)
         .set({ resultData: JSON.stringify(resultData) })
-        .where(eq(agentRuns.id, id));
-      return this.getRunWithConfig(id);
+        .where(condition);
+      return this.getRunWithConfig(id, chatId);
     },
 
     // ── Agent Memory (persistent KV per agent per chat) ──
@@ -486,7 +488,7 @@ export function createAgentsStorage(db: DB) {
         await db
           .update(agentMemory)
           .set({ value: stringValue, updatedAt: now() })
-          .where(eq(agentMemory.id, existing[0]!.id));
+          .where(and(eq(agentMemory.chatId, chatId), eq(agentMemory.id, existing[0]!.id)));
       } else {
         await db.insert(agentMemory).values({
           id: newId(),
@@ -524,7 +526,7 @@ export function createAgentsStorage(db: DB) {
             await tx
               .update(agentMemory)
               .set({ value: entry.value, updatedAt: timestamp })
-              .where(eq(agentMemory.id, existing.id));
+              .where(and(eq(agentMemory.chatId, chatId), eq(agentMemory.id, existing.id)));
           } else {
             inserts.push({
               id: newId(),

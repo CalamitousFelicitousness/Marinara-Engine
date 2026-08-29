@@ -6,7 +6,37 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Added
 
+- File-native storage format advances to version 6, pairing `STORAGE_VERSION` and `storage-format.json` so the launcher downgrade guard correctly rejects rollbacks to builds that do not understand the new sharded layout and writer-lease ownership model.
+- Chat connection switchers can now show the latest measured context usage in their popup and around the connection button, with Game usage available under Chat Settings > Connection. The display is enabled by default and can be controlled in Advanced settings (#5577).
+- Character card sprites can now be renamed after upload without replacing the image (#5575).
+- Character cards now support editable metadata summaries, AI-generated summary drafts, and Character Library previews that use the saved summary when available.
+- Character card Conversation profiles now provide controls to generate About Me and Conversation behavior text from the card's available information.
+- The Home Character of the Day widget now uses saved character summaries and offers direct chat-start and character-view actions.
+
+### Changed
+
+- Lorebook entry embeddings now live outside the JavaScript heap as packed vectors, the same treatment Memory Recall chunks received — vector-heavy lorebooks stop occupying heap strings while resident, with no change to the on-disk format (#5592).
+- Sending a message no longer clones the whole resident message table: storage writes now share unchanged row objects between array versions (rows are immutable once stored, all mutations replace), removing the largest remaining per-message allocation spike on big profiles and shrinking transaction snapshots from full row copies to reference arrays (#4730, #5592).
+- The server can now cap how many chats stay in memory at once: set `MARINARA_MAX_RESIDENT_CHATS` and, past the cap, the least-recently-used chat with no unsaved changes is dropped from memory (never from disk) after each save and reloads transparently when next opened. The Termux launcher defaults the cap to 8 to protect phone memory; everywhere else it is off unless set. Hot storage-layer writes are now also scoped by their owning chat so an eviction mid-request degrades to a reload instead of a whole-table load (#5592).
+- Chat-scoped storage tables (messages, swipes, Memory Recall chunks, game state, call logs, and the other per-chat tables) no longer load into memory at startup: each chat's data loads as one unit the first time that chat is touched and every query, write, and cascade is scoped to the units it can actually reach — the main memory reduction for long multi-chat profiles on Termux and other low-memory devices. Full-table operations such as backups still load everything they need automatically, and setting `MARINARA_EAGER_STORAGE=1` restores the previous load-everything startup (#5592).
+- Stale in-progress game storyboards are now recovered per chat when that chat's storyboards are next read (including everything left over from before the current server start), replacing the startup-wide sweep (#5592).
+
 ### Fixed
+
+- Full profile backup restores no longer fail on the game-asset seeder's own empty `.native` directory markers: import now tolerates exactly that marker (empty and dot-prefixed) under `game-assets/` while still rejecting any non-empty file using the marker name, so a stock export restores cleanly on a fresh install (#5619).
+- The Termux launcher's default Node.js heap now budgets roughly twice the on-disk structured profile plus headroom, bounded by one quarter of known device RAM — never below the 1 GiB baseline on low-RAM devices — or 1536 MiB when device memory cannot be read, so large profiles that ran within the pre-2.4.4 2 GiB default regain comparable headroom instead of exhausting the JavaScript heap and aborting with status 134 at the former 1536 MiB ceiling, subject to those device caps; small installs and low-RAM devices keep their bounded 1 GiB baseline, and explicit `NODE_OPTIONS` limits remain authoritative (#5585).
+- Deleting a gallery image no longer makes the whole chat-image table permanently memory-resident: the shared-file reference check ("does any chat still use this picture?") now answers from resident memory plus direct reads of the on-disk chat files, loading a chat into memory only when its file needs repair — so the chat memory cap keeps holding after image deletions, and shared files are still only removed once the last chat lets go (#5613, #5592).
+- Startup no longer loads every chat that has gallery images into memory: the orphaned-image recovery scan reads each chat's image records straight from disk and only loads the chats that actually have a file to re-register or a record needing repair, removing a hidden startup memory spike on image-heavy profiles (#5612, #5592).
+- Game-mode tracker updates, swipe deletion, checkpoint captures, and gallery lookups no longer quietly convert their storage tables to permanently memory-resident: the remaining queries that could not name their owning chat now do, so the chat memory cap keeps holding through ordinary Game-mode play. Deletion-style endpoints that identify their target only by id now accept an optional owning-chat hint the client can start sending (#5611, #5615, #5592).
+- A storage file whose content is valid JSON but not the expected shape (for example `{}` where a list of rows belongs) is now treated as corruption: it recovers from its backup when one exists and is quarantined for manual recovery otherwise, instead of silently loading as an empty chat while a healthy backup sat unused (#5601).
+- A transaction rollback no longer strands a storage self-heal mid-flight: a chat whose shard file held another chat's misfiled rows could lose those rows' only on-disk copy when a rolled-back request had loaded it, because the healing rewrite ran without the paired shard writes. Rollback now re-merges load-created healing marks so the repair stays atomic (#5606).
+- Memory Recall embeddings now live outside the JavaScript heap as packed vectors — the largest single memory block for long roleplay profiles on phones — and recall scoring reads them directly instead of re-parsing JSON per chunk, without changing the on-disk storage format (#5592).
+- Message swipe reads are now scoped to the requested chat instead of scanning every chat's swipes on each message list, made possible by resolving list-membership filters once per query rather than per row — the cost that originally motivated the unscoped scans (#3402, #5592).
+- The file store's count queries, single-table selects, boot ordering, and emptied-shard cleanup now share hardened iteration and positive-evidence semantics, groundwork pinned by regressions for the planned partial-residency work (#5592).
+- Linux and Termux now reclaim a same-host file-storage writer lease from an earlier device boot even when the operating system has reused its recorded process ID (#5580).
+
+- Avatar generation now preserves the complete user Avatar Prompt, and OpenRouter caching remains enabled for eligible unknown models (#5552, #5574).
+- Permanent Delete now preserves Marinara's stock Universal Preset and its prompt structure while removing editable presets (#5568).
 
 ## [2.4.4]
 

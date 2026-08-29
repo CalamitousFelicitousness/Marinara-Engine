@@ -250,6 +250,59 @@ export function useUpdateCharacter() {
   });
 }
 
+export interface CharacterSummaryDraft {
+  name?: string;
+  description?: string;
+  personality?: string;
+  scenario?: string;
+  backstory?: string;
+}
+
+/** Shared by the editor's single Generate action and the library's bulk run. */
+export function generateCharacterSummary(id: string, draft?: CharacterSummaryDraft) {
+  return api.post<{ summary: string }>(`/characters/${encodeURIComponent(id)}/summary/generate`, {
+    debugMode: useUIStore.getState().debugMode,
+    draft,
+  });
+}
+
+export function useGenerateCharacterSummary() {
+  return useMutation({
+    mutationFn: ({ id, draft }: { id: string; draft?: CharacterSummaryDraft }) => generateCharacterSummary(id, draft),
+  });
+}
+
+export type CharacterConvoProfileTarget = "aboutMe" | "behavior";
+
+export interface CharacterConvoProfileDraft {
+  name?: string;
+  description?: string;
+  personality?: string;
+  scenario?: string;
+  backstory?: string;
+  appearance?: string;
+}
+
+/** Generates one Conversation profile field from the current character card draft. */
+export function useGenerateCharacterConvoProfile() {
+  return useMutation({
+    mutationFn: ({
+      id,
+      target,
+      draft,
+    }: {
+      id: string;
+      target: CharacterConvoProfileTarget;
+      draft: CharacterConvoProfileDraft;
+    }) =>
+      api.post<{ text: string }>(`/characters/${encodeURIComponent(id)}/convo-profile/generate`, {
+        target,
+        draft,
+        debugMode: useUIStore.getState().debugMode,
+      }),
+  });
+}
+
 export function useCharacterVersions(id: string | null) {
   return useQuery({
     queryKey: characterKeys.versions(id ?? ""),
@@ -523,6 +576,27 @@ export function useDeleteSprite() {
   return useMutation({
     mutationFn: ({ characterId, expression }: { characterId: string; expression: string }) =>
       api.delete(`/sprites/${characterId}/${expression}`),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: spriteKeys.list(variables.characterId) });
+    },
+  });
+}
+
+export function useRenameSprite() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      characterId,
+      expression,
+      nextExpression,
+    }: {
+      characterId: string;
+      expression: string;
+      nextExpression: string;
+    }) =>
+      api.patch<SpriteInfo>(`/sprites/${characterId}/${encodeURIComponent(expression)}`, {
+        expression: nextExpression,
+      }),
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: spriteKeys.list(variables.characterId) });
     },

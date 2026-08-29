@@ -7477,6 +7477,8 @@ function AdvancedSettings() {
   const setShowModelName = useUIStore((s) => s.setShowModelName);
   const showTokenUsage = useUIStore((s) => s.showTokenUsage);
   const setShowTokenUsage = useUIStore((s) => s.setShowTokenUsage);
+  const showContextUsage = useUIStore((s) => s.showContextUsage);
+  const setShowContextUsage = useUIStore((s) => s.setShowContextUsage);
   const showMessageNumbers = useUIStore((s) => s.showMessageNumbers);
   const setShowMessageNumbers = useUIStore((s) => s.setShowMessageNumbers);
   const guideGenerations = useUIStore((s) => s.guideGenerations);
@@ -8327,6 +8329,13 @@ function AdvancedSettings() {
             checked={showTokenUsage}
             onChange={setShowTokenUsage}
             help={localizeUi("settings.controls.showTokenUsage.help")}
+          />
+          <ToggleSetting
+            anchorId={getSettingsControlAnchorId("show-context-usage")}
+            label={localizeUi("settings.controls.showContextUsage.label")}
+            checked={showContextUsage}
+            onChange={setShowContextUsage}
+            help={localizeUi("settings.controls.showContextUsage.help")}
           />
           <ToggleSetting
             anchorId={getSettingsControlAnchorId("show-message-numbers")}

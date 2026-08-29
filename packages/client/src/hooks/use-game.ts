@@ -188,7 +188,11 @@ export function patchChatMetadata(chat: Chat | null | undefined, patch: Record<s
 // without this, that gap serves stale metadata (#5641 review).
 function syncActiveChatIfCurrent(chat: Chat) {
   const chatStore = useChatStore.getState();
-  if (chatStore.activeChatId === chat.id || chatStore.activeChat?.id === chat.id) {
+  // The activeChat fallback only counts when no chat is selected: during a
+  // chat switch activeChatId is already the NEW chat while activeChat still
+  // holds the old one, and a delayed response for the old chat must not
+  // resurrect it into the store.
+  if (chatStore.activeChatId === chat.id || (!chatStore.activeChatId && chatStore.activeChat?.id === chat.id)) {
     chatStore.setActiveChat(chat);
   }
 }

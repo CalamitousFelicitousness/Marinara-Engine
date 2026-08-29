@@ -182,6 +182,17 @@ export function patchChatMetadata(chat: Chat | null | undefined, patch: Record<s
   };
 }
 
+// Mirror a guarded snapshot into the active-chat store when it targets the
+// active chat: several game surfaces read useChatStore.activeChat directly,
+// and ChatArea only re-syncs it from the detail cache in a later effect —
+// without this, that gap serves stale metadata (#5641 review).
+function syncActiveChatIfCurrent(chat: Chat) {
+  const chatStore = useChatStore.getState();
+  if (chatStore.activeChatId === chat.id || chatStore.activeChat?.id === chat.id) {
+    chatStore.setActiveChat(chat);
+  }
+}
+
 // ── Mutations ──
 
 export function useCreateGame() {
@@ -455,10 +466,9 @@ export function useUpdateCampaignProgression() {
       return { metadataVersion: captureChatMetadataVersion(variables.chatId) };
     },
     onSuccess: (res, variables, context) => {
-      qc.setQueryData(
-        chatKeys.detail(res.sessionChat.id),
-        guardServerChatSnapshot(qc, res.sessionChat, context?.metadataVersion ?? 0),
-      );
+      const guardedChat = guardServerChatSnapshot(qc, res.sessionChat, context?.metadataVersion ?? 0);
+      qc.setQueryData(chatKeys.detail(res.sessionChat.id), guardedChat);
+      syncActiveChatIfCurrent(guardedChat);
       toast.success(`Plot arcs updated from session ${variables.sessionNumber}.`, {
         id: `game-campaign-progression:${variables.chatId}:${variables.sessionNumber}`,
       });
@@ -490,10 +500,9 @@ export function useRecruitPartyMember() {
       api.post<RecruitPartyMemberResponse>("/game/party/recruit", data),
     onMutate: (variables) => ({ metadataVersion: captureChatMetadataVersion(variables.chatId) }),
     onSuccess: (res, variables, context) => {
-      qc.setQueryData(
-        chatKeys.detail(variables.chatId),
-        guardServerChatSnapshot(qc, res.sessionChat, context?.metadataVersion ?? 0),
-      );
+      const guardedChat = guardServerChatSnapshot(qc, res.sessionChat, context?.metadataVersion ?? 0);
+      qc.setQueryData(chatKeys.detail(variables.chatId), guardedChat);
+      syncActiveChatIfCurrent(guardedChat);
       qc.invalidateQueries({ queryKey: chatKeys.detail(variables.chatId) });
       qc.invalidateQueries({ queryKey: chatKeys.list() });
       if (res.added) {
@@ -538,10 +547,9 @@ export function useRemovePartyMember() {
       api.post<RemovePartyMemberResponse>("/game/party/remove", data),
     onMutate: (variables) => ({ metadataVersion: captureChatMetadataVersion(variables.chatId) }),
     onSuccess: (res, variables, context) => {
-      qc.setQueryData(
-        chatKeys.detail(variables.chatId),
-        guardServerChatSnapshot(qc, res.sessionChat, context?.metadataVersion ?? 0),
-      );
+      const guardedChat = guardServerChatSnapshot(qc, res.sessionChat, context?.metadataVersion ?? 0);
+      qc.setQueryData(chatKeys.detail(variables.chatId), guardedChat);
+      syncActiveChatIfCurrent(guardedChat);
       qc.invalidateQueries({ queryKey: chatKeys.detail(variables.chatId) });
       qc.invalidateQueries({ queryKey: chatKeys.list() });
       if (res.removed) {

@@ -201,11 +201,7 @@ try {
     assert.equal(effectiveGameAudioPin(mixed, "music"), "music-pin", "a purpose pin wins for its own lane");
     assert.equal(effectiveGameAudioPin(mixed, "sfx"), "legacy-pin", "and leaves the other lanes on the game pin");
     assert.equal(effectiveGameAudioPin({}, "speech"), undefined, "an unpinned game resolves the category chain");
-    assert.equal(
-      effectiveGameAudioPin({ gameVoiceConnectionId: "" }, "speech"),
-      undefined,
-      "a blank pin is not a pin",
-    );
+    assert.equal(effectiveGameAudioPin({ gameVoiceConnectionId: "" }, "speech"), undefined, "a blank pin is not a pin");
     assert.equal(
       effectiveGameAudioPin({ gameVoiceConnectionId: "voice-pin" }, "sfx"),
       undefined,
@@ -370,6 +366,106 @@ try {
       502,
       "music reached its own engine and failed at the request, not at the sound effect lane's gate",
     );
+  }
+
+  // ── The preview shows the request without sending it ──
+  // Free-form parameters make "did mine land, in the shape this engine wants" a
+  // question the app has to answer, and it can only answer it because providers
+  // do no I/O. The key must never ride along: this endpoint exists to be looked
+  // at, and a screenshot of it should be safe to share.
+  {
+    const parameterized = (await connections.create({
+      name: "Parameterized Engine",
+      provider: "audio",
+      apiKey: "preview-key",
+      baseUrl: "",
+      model: "",
+      audioSource: "elevenlabs",
+      audioVoice: "Rachel",
+      audioSoundEffects: true,
+      audioSettings: {
+        audioParameters: {
+          speech: { voice_settings: { style: 0.4 }, seed: 17 },
+          sfx: { prompt_influence: 0.9 },
+        },
+      },
+    } as never))!;
+
+    const speech = await app.inject({
+      method: "GET",
+      url: `/api/tts/effective-request?connectionId=${parameterized.id}`,
+    });
+    assert.equal(speech.statusCode, 200, "a speech preview answers");
+    const speechBody = speech.json();
+    assert.equal(speechBody.purpose, "speech", "the preview names the lane it is for");
+    assert.equal(speechBody.resolvedConnectionId, parameterized.id, "and the connection that answered");
+    assert.match(speechBody.url, /\/v1\/text-to-speech\//u, "the URL is the one a real request would use");
+    assert.equal(speechBody.body.seed, 17, "a parameter appears in the previewed body");
+    assert.equal(speechBody.body.voice_settings.style, 0.4, "including a nested one");
+    assert.ok(
+      typeof speechBody.body.voice_settings.stability === "number",
+      "beside the value the engine itself set, which is the merge the preview is there to show",
+    );
+
+    for (const [name, value] of Object.entries(speechBody.headers as Record<string, string>)) {
+      assert.ok(!value.includes("preview-key"), `${name}: the API key must never reach a preview`);
+    }
+    assert.equal(speechBody.headers["xi-api-key"], TTS_API_KEY_MASK, "the header is masked, not removed");
+    assert.ok(!speech.body.includes("preview-key"), "and the key appears nowhere else in the response");
+
+    const sfx = await app.inject({
+      method: "GET",
+      url: `/api/tts/effective-request?connectionId=${parameterized.id}&purpose=sfx`,
+    });
+    assert.equal(sfx.statusCode, 200, "a sound effect preview answers");
+    const sfxBody = sfx.json();
+    assert.match(sfxBody.url, /\/v1\/sound-generation$/u, "the sound effect endpoint, not the speech one");
+    assert.equal(sfxBody.body.prompt_influence, 0.9, "the sfx lane's own parameter, not the speech lane's");
+    assert.equal(sfxBody.body.seed, undefined, "a speech parameter must not appear in a sound effect preview");
+
+    // No generator means nothing honest to preview, so it says so rather than
+    // showing a request that could never be sent.
+    const openAi = (await connections.create({
+      name: "Preview Without Generator",
+      provider: "audio",
+      apiKey: "openai-preview-key",
+      baseUrl: "",
+      model: "",
+      audioSource: "openai",
+      audioSoundEffects: true,
+    } as never))!;
+    const refused = await app.inject({
+      method: "GET",
+      url: `/api/tts/effective-request?connectionId=${openAi.id}&purpose=music`,
+    });
+    assert.equal(refused.statusCode, 400, "a source with no game-audio generator has no request to show");
+
+    // No backend puts the key in its URL today, so this is the only way to hold
+    // the guard honest. A gateway that takes it as a query parameter is a
+    // configuration a user can already write into baseUrl.
+    const { buildTTSRequestPreview } = await import("../../../packages/server/src/services/tts/request-preview.js");
+    const inUrl = buildTTSRequestPreview(
+      {
+        url: "https://gateway.test/v1/speech?token=secret-in-url",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ input: "Sample line." }),
+        decodeCompressedResponse: false,
+      },
+      "secret-in-url",
+    );
+    assert.ok(!inUrl.url.includes("secret-in-url"), "a key in the URL is redacted like one in a header");
+    assert.match(inUrl.url, /token=/u, "and only the key is removed, not the parameter around it");
+
+    // A multipart backend has no JSON body to show, so its fields are listed.
+    const form = new FormData();
+    form.append("text", "Sample line.");
+    form.append("exaggeration", "0.7");
+    const multipart = buildTTSRequestPreview(
+      { url: "http://localhost:8000/tts", headers: {}, body: form, decodeCompressedResponse: false },
+      "",
+    );
+    assert.equal(multipart.multipart, true, "the reader is told why the body is flat");
+    assert.deepEqual(multipart.body, { text: "Sample line.", exaggeration: "0.7" }, "form fields are shown as sent");
   }
 
   console.info("TTS audio purpose routing regression passed.");

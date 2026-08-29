@@ -37,6 +37,8 @@ import { ttsUrlPolicy } from "../services/tts/url-policy.js";
 import { createTTSProvider } from "../services/tts/provider-registry.js";
 import { buildElevenLabsGameAudioRequest } from "../services/tts/elevenlabs.provider.js";
 import { readTTSRateLimit, TTSRateLimitError } from "../services/tts/tts-rate-limit.js";
+import { buildTTSRequestPreview, TTS_PREVIEW_GAME_PROMPT, TTS_PREVIEW_TEXT } from "../services/tts/request-preview.js";
+import type { TTSProviderRequest } from "../services/tts/tts-types.js";
 import { reserveOutboundSlot } from "../services/connections/outbound-request-pacer.js";
 import {
   buildElevenLabsTextInput,
@@ -669,6 +671,16 @@ async function detectPocketTtsApiMode(cfg: TTSConfig): Promise<PocketTtsApiMode>
   return pending;
 }
 
+/**
+ * The mode already learned for this endpoint, without probing for it. A preview
+ * must make no network call of its own, and the mode only picks the endpoint
+ * path, never the parameters the preview exists to show.
+ */
+async function cachedPocketTtsApiMode(cfg: TTSConfig): Promise<PocketTtsApiMode | undefined> {
+  if (cfg.source !== "pockettts") return undefined;
+  return pocketTtsApiModeCache.get(configuredBaseUrl(cfg))?.catch(() => undefined);
+}
+
 function clearPocketTtsApiModeCache(cfg: TTSConfig): void {
   if (cfg.source !== "pockettts") return;
   pocketTtsApiModeCache.delete(configuredBaseUrl(cfg));
@@ -1158,6 +1170,50 @@ export async function ttsRoutes(app: FastifyInstance) {
       purpose: resolution.purpose,
       gameAudioEnabled: resolution.gameAudioEnabled,
     } satisfies TTSEffectiveConfigResponse;
+  });
+
+  /**
+   * GET /api/tts/effective-request
+   * The request body this connection would send for a lane, built and not sent.
+   *
+   * Extra parameters are free-form because no backend's schema is knowable here,
+   * so this is how a user confirms one landed and landed in the right shape. It
+   * is only possible because providers do no I/O.
+   */
+  app.get("/effective-request", async (req, reply) => {
+    const { connectionId, purpose } = ttsQuerySchema.parse(req.query ?? {});
+    const lane = purpose ?? "speech";
+    const { cfg, resolvedConnectionId, resolvedConnectionName, resolvedSource } = await resolveAudioConfig(
+      storage,
+      connections,
+      connectionId,
+      lane,
+    );
+
+    let request: TTSProviderRequest;
+    if (lane === "speech") {
+      // The probe is a network call, so a preview uses whatever mode was already
+      // learned and otherwise the registry's default. It changes the endpoint
+      // path, never the parameters this screen exists to show.
+      const provider = createTTSProvider(cfg, { pocketTtsMode: await cachedPocketTtsApiMode(cfg) });
+      request = provider.buildSpeechRequest({
+        text: TTS_PREVIEW_TEXT,
+        voice: resolveTTSRequestVoice(cfg.voice, undefined),
+      });
+    } else {
+      if (cfg.source !== "elevenlabs") {
+        return reply.status(400).send({ error: `No game ${lane} generator exists for source "${cfg.source}"` });
+      }
+      request = buildElevenLabsGameAudioRequest(cfg, { kind: lane, prompt: TTS_PREVIEW_GAME_PROMPT });
+    }
+
+    return {
+      ...buildTTSRequestPreview(request, cfg.apiKey),
+      purpose: lane,
+      resolvedConnectionId,
+      resolvedConnectionName,
+      resolvedSource,
+    };
   });
 
   /**

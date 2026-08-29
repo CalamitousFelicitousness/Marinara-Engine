@@ -13662,12 +13662,37 @@ test("Secret Plot run interval stays editable across repeated commits", async ({
     await expect.poll(readRunInterval).toBe(3);
     await expect(intervalInput).toHaveValue("3");
 
+    // #5636: start the next edit while the previous commit's round trip is
+    // still in flight, and only blur after it has fully landed. The commit's
+    // async echo used to clobber the in-progress draft, so blur silently
+    // re-committed the previous value. Holding the PATCH until the next edit
+    // has begun guarantees the echo lands mid-edit on every runner, instead
+    // of only on ones slow enough to lose the race.
+    let releaseMetadataPatch: (() => void) | undefined;
+    const heldMetadataPatch = new Promise<void>((resolve) => {
+      releaseMetadataPatch = resolve;
+    });
+    await page.route(
+      `**/api/chats/${chat.id}/metadata`,
+      async (route) => {
+        if (route.request().method() !== "PATCH") return route.fallback();
+        await heldMetadataPatch;
+        await route.continue();
+      },
+      { times: 1 },
+    );
+    const metadataPatched = page.waitForResponse(
+      (response) =>
+        response.url().includes(`/api/chats/${chat.id}/metadata`) && response.request().method() === "PATCH",
+    );
     await intervalInput.fill("11");
     await intervalInput.press("Enter");
-    await expect.poll(readRunInterval).toBe(11);
-    await expect(intervalInput).toHaveValue("11");
-
     await intervalInput.fill("0");
+    releaseMetadataPatch!();
+    await metadataPatched;
+    await expect.poll(readRunInterval).toBe(11);
+    // The draft must survive the echo of the 11-commit landing mid-edit.
+    await expect(intervalInput).toHaveValue("0");
     await intervalInput.blur();
     await expect.poll(readRunInterval).toBe(1);
     await expect(intervalInput).toHaveValue("1");

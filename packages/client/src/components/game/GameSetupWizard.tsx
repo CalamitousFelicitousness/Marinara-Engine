@@ -28,7 +28,6 @@ import {
   Plug,
   Image,
   Film,
-  Music,
   BookOpen,
   Music2,
   Volume2,
@@ -98,13 +97,11 @@ import {
   resolveGameSetupImport,
 } from "../../lib/game-setup-share";
 import { downloadJsonFile, sanitizeExportFilenamePart } from "../../lib/download-json";
-import {
-  filterAudioGenerationConnections,
-  filterLanguageGenerationConnections,
-  isConnectionFlagTrue,
-} from "../../lib/connection-filters";
+import { filterAudioGenerationConnections, filterLanguageGenerationConnections } from "../../lib/connection-filters";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { CapabilityElement } from "../capabilities/CapabilityElement";
+import { GameAudioSetupSection, previewGameAudioLane } from "./GameAudioSetupSection";
+import { useEffectiveAudioConfig } from "../../hooks/use-tts";
 
 const GameAssetsBrowserView = lazy(() =>
   import("../game-assets/GameAssetsBrowserView").then((module) => ({ default: module.GameAssetsBrowserView })),
@@ -526,7 +523,9 @@ export function GameSetupWizard({
   const [enableLorebookKeeper, setEnableLorebookKeeper] = useState(false);
   const [imageConnectionId, setImageConnectionId] = useState<string | null>(null);
   const [videoConnectionId, setVideoConnectionId] = useState<string | null>(null);
-  const [audioConnectionId, setAudioConnectionId] = useState<string | null>(null);
+  const [voiceConnectionId, setVoiceConnectionId] = useState<string | null>(null);
+  const [sfxConnectionId, setSfxConnectionId] = useState<string | null>(null);
+  const [musicConnectionId, setMusicConnectionId] = useState<string | null>(null);
   const [enableGameSoundEffects, setEnableGameSoundEffects] = useState(true);
   const [enableGameMusic, setEnableGameMusic] = useState(true);
   const [sceneConnectionId, setSceneConnectionId] = useState<string | null>(null);
@@ -660,34 +659,25 @@ export function GameSetupWizard({
   // resolution, so they must not be offered or previewed here either.
   const audioConnections = useMemo(() => filterAudioGenerationConnections(connections), [connections]);
   const preferredImageConnectionId = useMemo(() => getPreferredConnectionId(imageConnections), [imageConnections]);
-  // "Use default" previews the runtime resolution (category default, else its
-  // fallback), extended by a first-connection convenience step. When the
-  // preview relied on that extra step, buildSetupConfig PINS the previewed
-  // row's id into the game so runtime resolution agrees with what this screen
-  // showed — the server and GameSurface never pick "first audio row" on
-  // their own.
-  const audioCategoryDefaultId = useMemo(
-    () =>
-      audioConnections.find((connection) => isConnectionFlagTrue(connection.defaultForAgents))?.id ??
-      audioConnections.find((connection) => isConnectionFlagTrue(connection.fallbackForAgents))?.id ??
-      null,
-    [audioConnections],
+  // "Use the default" is the server's own answer per lane. Where it answers with
+  // nothing usable and a capable connection exists, the preview names that
+  // connection and buildSetupConfig PINS it, because neither the server nor
+  // GameSurface picks "first audio row" on its own.
+  const { data: defaultVoiceAnswer } = useEffectiveAudioConfig("speech");
+  const { data: defaultSfxAnswer } = useEffectiveAudioConfig("sfx");
+  const { data: defaultMusicAnswer } = useEffectiveAudioConfig("music");
+  const voicePreview = useMemo(
+    () => previewGameAudioLane(audioConnections, "speech", voiceConnectionId, defaultVoiceAnswer),
+    [audioConnections, voiceConnectionId, defaultVoiceAnswer],
   );
-  const preferredAudioConnectionId = audioCategoryDefaultId ?? audioConnections[0]?.id ?? null;
-  const resolvedAudioConnection = useMemo(
-    () =>
-      audioConnections.find((connection) => connection.id === (audioConnectionId ?? preferredAudioConnectionId)) ??
-      null,
-    [audioConnections, audioConnectionId, preferredAudioConnectionId],
+  const sfxPreview = useMemo(
+    () => previewGameAudioLane(audioConnections, "sfx", sfxConnectionId, defaultSfxAnswer),
+    [audioConnections, sfxConnectionId, defaultSfxAnswer],
   );
-  const audioConnectionSupportsSfx =
-    resolvedAudioConnection != null &&
-    (resolvedAudioConnection.audioSource ?? "elevenlabs") === "elevenlabs" &&
-    isConnectionFlagTrue(resolvedAudioConnection.audioSoundEffects);
-  const audioConnectionSupportsMusic =
-    resolvedAudioConnection != null &&
-    (resolvedAudioConnection.audioSource ?? "elevenlabs") === "elevenlabs" &&
-    isConnectionFlagTrue(resolvedAudioConnection.audioMusic);
+  const musicPreview = useMemo(
+    () => previewGameAudioLane(audioConnections, "music", musicConnectionId, defaultMusicAnswer),
+    [audioConnections, musicConnectionId, defaultMusicAnswer],
+  );
   const promptPresets = useMemo(
     () =>
       (promptPresetsList as Array<{
@@ -1082,7 +1072,11 @@ export function GameSetupWizard({
       setGameImageDynamicPromptEnabled(config.gameImageDynamicPromptEnabled === true);
       setImageConnectionId(config.imageConnectionId ?? null);
       setVideoConnectionId(config.videoConnectionId ?? null);
-      setAudioConnectionId(config.audioConnectionId ?? null);
+      // A config from before the lanes split carries one pin covering all three,
+      // so it fills all three here and a resave records them separately.
+      setVoiceConnectionId(config.voiceConnectionId ?? config.audioConnectionId ?? null);
+      setSfxConnectionId(config.sfxConnectionId ?? config.audioConnectionId ?? null);
+      setMusicConnectionId(config.musicConnectionId ?? config.audioConnectionId ?? null);
       setEnableGameSoundEffects(config.enableGameSoundEffects !== false);
       setEnableGameMusic(config.enableGameMusic !== false);
       setActiveLorebookIds(config.activeLorebookIds ?? []);
@@ -1189,15 +1183,15 @@ export function GameSetupWizard({
       gameImageDynamicPromptEnabled: illustratorEnabled && gameImageDynamicPromptEnabled,
       imageConnectionId: illustratorEnabled && imageConnectionId ? imageConnectionId : undefined,
       videoConnectionId: illustratorEnabled && videoConnectionId ? videoConnectionId : undefined,
-      // With no category default/fallback set, "Use default" previewed the
-      // first audio row — pin it so runtime resolution matches this screen.
-      audioConnectionId:
-        audioConnectionId ||
-        (!audioCategoryDefaultId && resolvedAudioConnection ? resolvedAudioConnection.id : undefined),
+      // One pin per lane. The preview already decided whether a lane needs one,
+      // so a lane the app-level chain answers correctly stores nothing.
+      voiceConnectionId: voicePreview.pinnedId ?? undefined,
+      sfxConnectionId: sfxPreview.pinnedId ?? undefined,
+      musicConnectionId: musicPreview.pinnedId ?? undefined,
       // Persist the DISPLAYED toggle state: a toggle grayed out by a
       // non-capable connection reads OFF, so OFF is what the game records.
-      enableGameSoundEffects: enableGameSoundEffects && audioConnectionSupportsSfx ? undefined : false,
-      enableGameMusic: enableGameMusic && audioConnectionSupportsMusic ? undefined : false,
+      enableGameSoundEffects: enableGameSoundEffects && sfxPreview.canGenerate ? undefined : false,
+      enableGameMusic: enableGameMusic && musicPreview.canGenerate ? undefined : false,
       ...(importedArtStyleSettingsRef.current ?? {}),
       activeLorebookIds: activeLorebookIds.length > 0 ? activeLorebookIds : undefined,
       enableCustomWidgets,
@@ -1279,6 +1273,9 @@ export function GameSetupWizard({
           image: snapshotConnection(config.imageConnectionId, "image"),
           video: snapshotConnection(config.videoConnectionId, "video"),
           audio: snapshotConnection(config.audioConnectionId, "audio"),
+          voice: snapshotConnection(config.voiceConnectionId, "audio"),
+          sfx: snapshotConnection(config.sfxConnectionId, "audio"),
+          music: snapshotConnection(config.musicConnectionId, "audio"),
         },
       }),
       `${sanitizeExportFilenamePart(exportName, "game")}.marinara-game-setup.json`,
@@ -2662,118 +2659,22 @@ export function GameSetupWizard({
                     </div>
 
                     {/* Game Audio */}
-                    <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-3">
-                      <div className="flex items-center gap-2.5">
-                        <Music size={14} className="text-[var(--muted-foreground)]" />
-                        <div className="flex-1">
-                          <span className="block text-xs font-medium text-[var(--foreground)]">
-                            {localizeUi("ui.game.gamesetupwizard.gameAudio")}
-                          </span>
-                          <span className="block text-[0.575rem] text-[var(--muted-foreground)]">
-                            {localizeUi("ui.game.gamesetupwizard.generateSoundEffectsAndMusicForScenesUsingAn")}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="mt-2">
-                        <label className="mb-1 block text-[0.625rem] font-medium text-[var(--muted-foreground)]">
-                          {localizeUi("ui.game.gamesetupwizard.audioConnection")}
-                        </label>
-                        <select
-                          value={audioConnectionId ?? ""}
-                          onChange={(e) => setAudioConnectionId(e.target.value || null)}
-                          className="w-full rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-2.5 py-1.5 text-xs text-[var(--foreground)]"
-                        >
-                          <option value="">{localizeUi("ui.game.gamesetupwizard.useTheDefaultAudioConnection")}</option>
-                          {audioConnections.map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.name}
-                              {c.model ? localizeUi("ui.game.gamesetupwizard.value1", { value1: c.model }) : ""}
-                            </option>
-                          ))}
-                        </select>
-                        {audioConnections.length === 0 && (
-                          <p className="mt-1 text-[0.55rem] text-amber-700 dark:text-amber-400/80">
-                            {localizeUi("ui.game.gamesetupwizard.noAudioConnectionsFoundAddOneInSettings")}
-                          </p>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        aria-pressed={enableGameSoundEffects && audioConnectionSupportsSfx}
-                        disabled={!audioConnectionSupportsSfx}
-                        onClick={() => setEnableGameSoundEffects((enabled) => !enabled)}
-                        className={cn(
-                          "mt-3 flex w-full items-center justify-between gap-3 border-t border-[var(--border)] pt-3 text-left",
-                          !audioConnectionSupportsSfx && "cursor-not-allowed opacity-50",
-                        )}
-                      >
-                        <span className="min-w-0">
-                          <span className="block text-[0.625rem] font-medium text-[var(--foreground)]">
-                            {localizeUi("ui.game.gamesetupwizard.soundEffects")}
-                          </span>
-                          <span className="mt-0.5 block text-[0.55rem] leading-snug text-[var(--muted-foreground)]">
-                            {localizeUi("ui.game.gamesetupwizard.generateShortSceneSoundEffectsAfterGmTurns")}
-                          </span>
-                        </span>
-                        <span
-                          className={cn(
-                            "h-5 w-9 shrink-0 rounded-full p-0.5 transition-colors",
-                            enableGameSoundEffects && audioConnectionSupportsSfx
-                              ? "bg-[var(--primary)]"
-                              : "bg-[var(--muted-foreground)]/50",
-                          )}
-                        >
-                          <span
-                            className={cn(
-                              "block h-4 w-4 rounded-full bg-white transition-transform",
-                              enableGameSoundEffects && audioConnectionSupportsSfx && "translate-x-3.5",
-                            )}
-                          />
-                        </span>
-                      </button>
-                      <button
-                        type="button"
-                        aria-pressed={enableGameMusic && audioConnectionSupportsMusic}
-                        disabled={!audioConnectionSupportsMusic}
-                        onClick={() => setEnableGameMusic((enabled) => !enabled)}
-                        className={cn(
-                          "mt-2 flex w-full items-center justify-between gap-3 text-left",
-                          !audioConnectionSupportsMusic && "cursor-not-allowed opacity-50",
-                        )}
-                      >
-                        <span className="min-w-0">
-                          <span className="block text-[0.625rem] font-medium text-[var(--foreground)]">
-                            {localizeUi("game.toolbar.volume.music")}
-                          </span>
-                          <span className="mt-0.5 block text-[0.55rem] leading-snug text-[var(--muted-foreground)]">
-                            {localizeUi("ui.game.gamesetupwizard.generateBackgroundMusicForScenes")}
-                          </span>
-                        </span>
-                        <span
-                          className={cn(
-                            "h-5 w-9 shrink-0 rounded-full p-0.5 transition-colors",
-                            enableGameMusic && audioConnectionSupportsMusic
-                              ? "bg-[var(--primary)]"
-                              : "bg-[var(--muted-foreground)]/50",
-                          )}
-                        >
-                          <span
-                            className={cn(
-                              "block h-4 w-4 rounded-full bg-white transition-transform",
-                              enableGameMusic && audioConnectionSupportsMusic && "translate-x-3.5",
-                            )}
-                          />
-                        </span>
-                      </button>
-                      {resolvedAudioConnection != null &&
-                        (!audioConnectionSupportsSfx || !audioConnectionSupportsMusic) && (
-                          <p className="mt-2 text-[0.55rem] text-amber-700 dark:text-amber-400/80">
-                            {localizeUi(
-                              "ui.game.gamesetupwizard.soundEffectAndMusicGenerationRequiresAnElevenlabsAudio",
-                            )}
-                          </p>
-                        )}
-                    </div>
+                    <GameAudioSetupSection
+                      connections={audioConnections}
+                      voiceConnectionId={voiceConnectionId}
+                      onVoiceConnectionChange={setVoiceConnectionId}
+                      sfxConnectionId={sfxConnectionId}
+                      onSfxConnectionChange={setSfxConnectionId}
+                      musicConnectionId={musicConnectionId}
+                      onMusicConnectionChange={setMusicConnectionId}
+                      voicePreview={voicePreview}
+                      sfxPreview={sfxPreview}
+                      musicPreview={musicPreview}
+                      enableGameSoundEffects={enableGameSoundEffects}
+                      onEnableGameSoundEffectsChange={setEnableGameSoundEffects}
+                      enableGameMusic={enableGameMusic}
+                      onEnableGameMusicChange={setEnableGameMusic}
+                    />
 
                     {/* Custom Widgets Toggle */}
                     <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-3">

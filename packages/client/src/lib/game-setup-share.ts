@@ -34,6 +34,9 @@ export interface GameSetupShareSource {
     image?: GameInitialSetupConnectionSnapshot | null;
     video?: GameInitialSetupConnectionSnapshot | null;
     audio?: GameInitialSetupConnectionSnapshot | null;
+    voice?: GameInitialSetupConnectionSnapshot | null;
+    sfx?: GameInitialSetupConnectionSnapshot | null;
+    music?: GameInitialSetupConnectionSnapshot | null;
   };
   fallbackGmConnectionId?: string | null;
   labels?: GameSetupShareLabels;
@@ -147,6 +150,9 @@ function parseShareConnections(value: unknown): GameInitialSetupSnapshot["connec
     image: parseConnectionSnapshot(value.image),
     video: parseConnectionSnapshot(value.video),
     audio: parseConnectionSnapshot(value.audio),
+    voice: parseConnectionSnapshot(value.voice),
+    sfx: parseConnectionSnapshot(value.sfx),
+    music: parseConnectionSnapshot(value.music),
   };
 }
 
@@ -175,6 +181,9 @@ function parseShareConfig(value: unknown): GameSetupConfig {
     imageConnectionId: 1_000,
     videoConnectionId: 1_000,
     audioConnectionId: 1_000,
+    voiceConnectionId: 1_000,
+    sfxConnectionId: 1_000,
+    musicConnectionId: 1_000,
     gameGmPromptTemplateId: 200,
     gameStoryboardAnimationPromptTemplateId: 200,
     gameStoryboardImagePromptTemplateId: 200,
@@ -345,6 +354,9 @@ export function buildGameSetupShareFile(
             image: source.connections.image ?? null,
             video: source.connections.video ?? null,
             audio: source.connections.audio ?? null,
+            voice: source.connections.voice ?? null,
+            sfx: source.connections.sfx ?? null,
+            music: source.connections.music ?? null,
           }
         : undefined,
       labels,
@@ -518,6 +530,23 @@ export function resolveGameSetupImport(
   const imageConnectionId = resolveConnectionId(sourceConfig.imageConnectionId, snapshots?.image, context.connections);
   const videoConnectionId = resolveConnectionId(sourceConfig.videoConnectionId, snapshots?.video, context.connections);
   const audioConnectionId = resolveConnectionId(sourceConfig.audioConnectionId, snapshots?.audio, context.connections);
+  // A file written before the lanes split carries one pin and one snapshot, so
+  // every lane falls back to them and the import lands as three pins.
+  const voiceConnectionId = resolveConnectionId(
+    sourceConfig.voiceConnectionId ?? sourceConfig.audioConnectionId,
+    snapshots?.voice ?? snapshots?.audio,
+    context.connections,
+  );
+  const sfxConnectionId = resolveConnectionId(
+    sourceConfig.sfxConnectionId ?? sourceConfig.audioConnectionId,
+    snapshots?.sfx ?? snapshots?.audio,
+    context.connections,
+  );
+  const musicConnectionId = resolveConnectionId(
+    sourceConfig.musicConnectionId ?? sourceConfig.audioConnectionId,
+    snapshots?.music ?? snapshots?.audio,
+    context.connections,
+  );
   if ((sourceConfig.sceneConnectionId || snapshots?.scene) && !sceneConnectionId) {
     warnings.push(`${describeSavedResource(snapshots?.scene?.name, "The saved scene connection")} is unavailable.`);
   }
@@ -529,6 +558,15 @@ export function resolveGameSetupImport(
   }
   if ((sourceConfig.audioConnectionId || snapshots?.audio) && !audioConnectionId) {
     warnings.push(`${describeSavedResource(snapshots?.audio?.name, "The saved audio connection")} is unavailable.`);
+  }
+  for (const [savedId, snapshot, resolved, described] of [
+    [sourceConfig.voiceConnectionId, snapshots?.voice, voiceConnectionId, "The saved voice connection"],
+    [sourceConfig.sfxConnectionId, snapshots?.sfx, sfxConnectionId, "The saved sound effect connection"],
+    [sourceConfig.musicConnectionId, snapshots?.music, musicConnectionId, "The saved music connection"],
+  ] as const) {
+    if ((savedId || snapshot) && !resolved) {
+      warnings.push(`${describeSavedResource(snapshot?.name, described)} is unavailable.`);
+    }
   }
 
   return {
@@ -543,6 +581,9 @@ export function resolveGameSetupImport(
       imageConnectionId: imageConnectionId ?? undefined,
       videoConnectionId: videoConnectionId ?? undefined,
       audioConnectionId: audioConnectionId ?? undefined,
+      voiceConnectionId: voiceConnectionId ?? undefined,
+      sfxConnectionId: sfxConnectionId ?? undefined,
+      musicConnectionId: musicConnectionId ?? undefined,
       activeLorebookIds: [...new Set(activeLorebookIds)],
       spatialMapGroundingMode,
       promptPresetId,
@@ -762,8 +803,31 @@ export function buildGameSetupSummarySections(source: GameSetupShareSource): Gam
           value: formatConnection(connections?.video, config.videoConnectionId, labels?.connectionNames, "None"),
         },
         {
-          label: "Audio connection",
-          value: formatConnection(connections?.audio, config.audioConnectionId, labels?.connectionNames, "Default"),
+          label: "Voice connection",
+          value: formatConnection(
+            connections?.voice ?? connections?.audio,
+            config.voiceConnectionId ?? config.audioConnectionId,
+            labels?.connectionNames,
+            "Default",
+          ),
+        },
+        {
+          label: "Sound effect connection",
+          value: formatConnection(
+            connections?.sfx ?? connections?.audio,
+            config.sfxConnectionId ?? config.audioConnectionId,
+            labels?.connectionNames,
+            "Default",
+          ),
+        },
+        {
+          label: "Music connection",
+          value: formatConnection(
+            connections?.music ?? connections?.audio,
+            config.musicConnectionId ?? config.audioConnectionId,
+            labels?.connectionNames,
+            "Default",
+          ),
         },
         {
           label: "Storyboard director",

@@ -164,6 +164,70 @@ for (const [file, path] of [
   );
 }
 
+// ── A new game records a pin per lane ──
+// The wizard is where most games get their audio. Writing the all-purpose pin
+// here would quietly re-merge the lanes for every game created from now on,
+// while still looking correct on screen.
+{
+  const wizard = readSource("packages/client/src/components/game/GameSetupWizard.tsx");
+  const setupStart = wizard.indexOf("const buildSetupConfig = ");
+  assert.ok(setupStart > 0, "the wizard must still build a setup config");
+  const setupEnd = wizard.indexOf("\n  };", setupStart);
+  const buildSetupConfig = wizard.slice(setupStart, setupEnd);
+
+  for (const [field, preview] of [
+    ["voiceConnectionId", "voicePreview"],
+    ["sfxConnectionId", "sfxPreview"],
+    ["musicConnectionId", "musicPreview"],
+  ] as const) {
+    assert.match(
+      buildSetupConfig,
+      new RegExp(String.raw`${field}: ${preview}\.pinnedId`, "u"),
+      `a new game must record its ${field} from its own lane preview`,
+    );
+  }
+  assert.doesNotMatch(
+    buildSetupConfig,
+    /audioConnectionId:/u,
+    "and must not write the all-purpose pin, which would re-merge the lanes",
+  );
+
+  // A config saved before the split carries one pin; it has to reach all three
+  // selects or importing a shared game silently drops its audio.
+  assert.match(
+    wizard,
+    /setVoiceConnectionId\(config\.voiceConnectionId \?\? config\.audioConnectionId \?\? null\)/u,
+    "an older setup config must hydrate every lane",
+  );
+
+  // Preview and pin come from one function, so what the screen promises is what
+  // the game stores.
+  assert.match(wizard, /previewGameAudioLane\(audioConnections, "sfx"/u, "the sound effect lane is previewed");
+  assert.match(wizard, /previewGameAudioLane\(audioConnections, "music"/u, "and the music lane");
+  const section = readSource("packages/client/src/components/game/GameAudioSetupSection.tsx");
+  assert.match(
+    section,
+    /audioConnectionSupportsPurpose\(connection, purpose as GameAudioPurpose\)/u,
+    "the lane preview must ask the shared capability rule",
+  );
+  for (const [file, source] of [
+    ["GameSetupWizard.tsx", wizard],
+    ["GameAudioSetupSection.tsx", section],
+  ] as const) {
+    assert.doesNotMatch(source, /=== "elevenlabs"/u, `${file}: capability must not be a backend name`);
+  }
+
+  const share = readSource("packages/client/src/lib/game-setup-share.ts");
+  for (const field of ["voiceConnectionId", "sfxConnectionId", "musicConnectionId"] as const) {
+    assert.match(share, new RegExp(String.raw`${field}: 1_000`, "u"), `${field} must survive a share round trip`);
+  }
+  assert.match(
+    share,
+    /sourceConfig\.sfxConnectionId \?\? sourceConfig\.audioConnectionId/u,
+    "and a file written before the split must resolve its one pin into every lane",
+  );
+}
+
 // ── Every lane is pointed from the same place ──
 // Sound effects and music get their own default and fallback rows beside the
 // voice pair. The pair component is generic over the flag name, so the pins that

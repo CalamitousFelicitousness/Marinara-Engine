@@ -360,6 +360,10 @@ export interface GameInitialSetupSnapshot {
     image?: GameInitialSetupConnectionSnapshot | null;
     video?: GameInitialSetupConnectionSnapshot | null;
     audio?: GameInitialSetupConnectionSnapshot | null;
+    /** Per-purpose audio pins. A record written before the lanes split has only `audio`. */
+    voice?: GameInitialSetupConnectionSnapshot | null;
+    sfx?: GameInitialSetupConnectionSnapshot | null;
+    music?: GameInitialSetupConnectionSnapshot | null;
   };
   labels?: GameInitialSetupLabels;
   createdAt: string;

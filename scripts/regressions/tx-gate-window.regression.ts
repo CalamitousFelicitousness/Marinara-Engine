@@ -8,12 +8,17 @@
 //   targeted a lazily-loaded unit, the load's rows were erased too while the
 //   unit stayed marked loaded, making persisted rows invisible in memory.
 //
-//   Pinned here by staging the exact interleaving: transaction A occupies the
-//   queue so transaction B parks in its opening awaits; a plain insert into a
-//   NON-resident unit fires while B is parked (its unit load is the async gap
-//   between gate and apply); B mutates the same table, then throws. With the
-//   pending-count gate the insert waits out B entirely; without it, the
-//   insert and the loaded unit vanish on B's rollback.
+//   The write's post-gate body is fully synchronous (lazy unit loads read
+//   shard files synchronously), so the real-world hazard is the scheduler
+//   placing the gate-resume microtask after the transaction's snapshot — a
+//   one-tick window no natural staging hits reliably. Pinned here with the
+//   hook technique: waitForWritableTurn is wrapped so the ONE raced insert
+//   (never transaction-context calls) takes a test-held pause between
+//   gate-pass and apply. The unfixed gate passes while the transaction is
+//   still in its opening awaits, so the paused apply lands after the
+//   snapshot and vanishes on rollback; the fixed gate parks INSIDE the real
+//   wait until the transaction fully finishes, so the pause is moot and the
+//   write survives.
 //
 // Project imports are DYNAMIC, after the env assignments (see the gallery
 // suites for why).
@@ -23,8 +28,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 if (process.env.MARINARA_EAGER_STORAGE === "1" || process.env.MARINARA_EAGER_STORAGE === "true") {
-  // The staged interleaving relies on the lazy unit load as the async gap
-  // between the write gate and the row apply.
+  // The lazy-unit erasure half of the pin has no meaning under eager storage.
   console.log("Transaction gate-window regression skipped: MARINARA_EAGER_STORAGE is set.");
   process.exit(0);
 }
@@ -65,21 +69,43 @@ const db = await createFileNativeDB();
 const storage = createChatsStorage(db);
 const settle = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const fileStore = (db as any)._fileStore;
+const originalGate = fileStore.waitForWritableTurn;
+
+let releaseA!: () => void;
+const aGate = new Promise<void>((resolve) => {
+  releaseA = resolve;
+});
+let releaseB!: () => void;
+const bGate = new Promise<void>((resolve) => {
+  releaseB = resolve;
+});
+let releaseApplyPause!: () => void;
+const applyPause = new Promise<void>((resolve) => {
+  releaseApplyPause = resolve;
+});
+let applyPauseArmed = false;
+
+// The injected pause between gate-pass and apply — the scheduling freedom the
+// one-tick hazard window exposes, made deterministic. Transaction-context
+// calls (exempt from the gate by design) never take it.
+fileStore.waitForWritableTurn = async function patchedGate(this: unknown) {
+  await originalGate.call(fileStore);
+  if (applyPauseArmed && !fileStore.txContext.getStore()) {
+    applyPauseArmed = false;
+    await applyPause;
+  }
+};
+
+let insertError: unknown = null;
 try {
   // Warm c2 only: B's in-transaction mutation must be synchronous (resident
-  // unit) so its first-mutation snapshot lands before the raced insert can.
+  // unit) so its first-mutation snapshot lands before the paused apply.
   await storage.getMessage("m2");
 
-  let releaseA!: () => void;
-  const aGate = new Promise<void>((resolve) => {
-    releaseA = resolve;
-  });
-  let releaseB!: () => void;
-  const bGate = new Promise<void>((resolve) => {
-    releaseB = resolve;
-  });
-
-  // A occupies the transaction queue so B parks in its opening awaits.
+  // A occupies the transaction queue so B parks in its opening awaits — the
+  // exact reservation window under test.
   const txA = db.transaction(async () => {
     await aGate;
   });
@@ -95,33 +121,41 @@ try {
     .catch((error: unknown) => error);
   await settle(30);
 
-  // The raced plain write: insert into the non-resident c1 unit. Pre-fix its
-  // gate check passes the moment A finishes (B not yet counted), and the unit
-  // load defers the apply until after B's snapshot.
+  // The raced plain write, fired while B sits in its opening awaits. The
+  // unfixed gate sees only A (active) and returns the moment A finishes; the
+  // fixed gate also sees B's reservation and parks until B fully finishes.
+  applyPauseArmed = true;
   let insertSettled = false;
   const pInsert = (async () => {
     await db.insert(messages).values(messageRow("p-new", "c1", "raced insert"));
   })();
-  void pInsert.then(() => {
-    insertSettled = true;
-  });
+  void pInsert.then(
+    () => {
+      insertSettled = true;
+    },
+    (error: unknown) => {
+      insertError = error;
+    },
+  );
   await settle(30);
 
-  // A finishes: its finally wakes the gate waiters BEFORE releasing the
-  // queue, so the raced insert's continuation runs ahead of B's.
   releaseA();
   await txA;
+  // Let B activate and take its first-mutation snapshot.
+  await settle(60);
 
-  // Give the interleaving time to develop, then let B throw. Pre-fix the
-  // insert has applied mid-transaction (the race completes in milliseconds);
-  // post-fix it is parked at the gate, so the timer path releases B.
-  await Promise.race([pInsert, settle(300)]);
+  // Release the paused apply. Pre-fix it lands here — after B's snapshot,
+  // inside the open transaction. Post-fix the insert is still parked inside
+  // the real gate, so this release is consumed only after B finishes.
+  releaseApplyPause();
+  await settle(60);
   const insertAppliedDuringTransaction = insertSettled;
-  releaseB();
 
+  releaseB();
   const txBResult = await txB;
   assert.equal(txBResult, forced, "transaction B rejects with its forced error");
   await pInsert;
+  assert.equal(insertError, null, "the raced insert itself never errors");
 
   assert.equal(
     insertAppliedDuringTransaction,
@@ -142,6 +176,12 @@ try {
   const rolledBack = await storage.getMessage("m2");
   assert.equal(rolledBack?.content, "pre-transaction text", "the transaction's own mutation rolled back");
 } finally {
+  // Never leave a gate parked: an assertion mid-block must not wedge the
+  // store's close (which waits out the transaction queue) or the runner.
+  releaseA();
+  releaseB();
+  releaseApplyPause();
+  fileStore.waitForWritableTurn = originalGate;
   await db._fileStore.close();
   rmSync(dataDir, { recursive: true, force: true });
 }

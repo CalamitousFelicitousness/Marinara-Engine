@@ -2724,32 +2724,36 @@ class FileTableStore {
     // during the awaits below (activeTransactionCount still 0), apply after
     // this transaction's first-mutation snapshot, and vanish on rollback.
     this.pendingTransactionCount++;
+    let ctx!: FileTransactionContext;
+    let dirtySnapshot!: boolean;
+    let dirtyTablesSnapshot!: Set<string>;
+    let dirtyShardsSnapshot!: Map<string, Set<string>>;
     try {
       await previousTransaction;
       if (this.activeFlush) await this.activeFlush;
+      ctx = {
+        snapshots: new Map<string, Row[]>(),
+        dirtyTables: new Set<string>(),
+        dirtyShards: new Map<string, Set<string>>(),
+        loadHealDirtyShards: new Map<string, Set<string>>(),
+        loadHealDirtyTables: new Set<string>(),
+        flushed: false,
+      };
+      dirtySnapshot = this.dirty;
+      dirtyTablesSnapshot = new Set(this.dirtyTables);
+      // Deep copy — a shallow one would let in-transaction writes mutate the
+      // snapshot's Sets and corrupt the rollback state (#4708).
+      dirtyShardsSnapshot = new Map([...this.dirtyShards].map(([table, keys]) => [table, new Set(keys)]));
+      // Handoff is synchronous, so the combined gate count never dips to zero
+      // between reservation and activation. Nothing after the increment can
+      // throw inside this try, so the reservation can never leak.
+      this.activeTransactionCount++;
+      this.pendingTransactionCount--;
     } catch (err) {
       this.pendingTransactionCount--;
       releaseTransaction();
       throw err;
     }
-
-    const ctx: FileTransactionContext = {
-      snapshots: new Map<string, Row[]>(),
-      dirtyTables: new Set<string>(),
-      dirtyShards: new Map<string, Set<string>>(),
-      loadHealDirtyShards: new Map<string, Set<string>>(),
-      loadHealDirtyTables: new Set<string>(),
-      flushed: false,
-    };
-    const dirtySnapshot = this.dirty;
-    const dirtyTablesSnapshot = new Set(this.dirtyTables);
-    // Deep copy — a shallow one would let in-transaction writes mutate the
-    // snapshot's Sets and corrupt the rollback state (#4708).
-    const dirtyShardsSnapshot = new Map([...this.dirtyShards].map(([table, keys]) => [table, new Set(keys)]));
-    // Handoff is synchronous, so the combined gate count never dips to zero
-    // between reservation and activation.
-    this.activeTransactionCount++;
-    this.pendingTransactionCount--;
 
     try {
       const result = await this.txContext.run(ctx, () => fn(tx));

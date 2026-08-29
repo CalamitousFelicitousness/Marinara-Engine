@@ -5360,11 +5360,7 @@ for (const [name, source] of [
   ["mobile connection switcher", quickSwitcherMobileSource],
 ] as const) {
   assert.match(source, /<ContextBudgetIndicator budget=\{contextBudget\}/u, `${name} must show usage in its popup`);
-  assert.match(
-    source,
-    /relative flex h-\[1\.875rem\] w-\[1\.875rem\]/u,
-    `${name} must use the larger context gauge`,
-  );
+  assert.match(source, /relative flex h-\[1\.875rem\] w-\[1\.875rem\]/u, `${name} must use the larger context gauge`);
 }
 assert.equal(
   professorMariHomeSource.match(/<ContextBudgetIndicator budget=\{contextBudget\} professorMari \/>/gu)?.length,

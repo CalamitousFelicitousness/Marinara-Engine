@@ -13769,6 +13769,128 @@ test("Secret Plot run interval stays editable across repeated commits", async ({
   }
 });
 
+test("chat settings survive a stale autonomous-unread echo", async ({ page, request }, testInfo) => {
+  test.skip(!testInfo.project.name.includes("desktop"), "Stale-echo cache coherence is covered on desktop.");
+
+  // #5641: mutations that write their response chat straight into the cache
+  // used to bypass the per-field metadata version guard. The app clears
+  // autonomous-unread residue automatically when a chat opens; if that
+  // DELETE's response — a snapshot from before the user's next metadata edit
+  // — is consumed after the edit, it reverted the edit client-side and
+  // unmounted the settings section it gates, with nothing pending to correct
+  // it. Forward the DELETE to the server immediately but hold its RESPONSE
+  // until after the user toggles Secret Plot on, making the echo
+  // deterministically stale on every runner.
+  let chatId: string | undefined;
+  try {
+    const chatResponse = await request.post("/api/chats", {
+      data: { name: "Stale Echo Coherence Smoke", mode: "roleplay", characterIds: [] },
+    });
+    expect(chatResponse.ok()).toBeTruthy();
+    const chat = (await chatResponse.json()) as { id: string };
+    chatId = chat.id;
+    const metadataResponse = await request.patch(`/api/chats/${chat.id}/metadata`, {
+      data: {
+        enableAgents: true,
+        activeAgentIds: ["director"],
+        narrativeDirectorSecretPlotEnabled: false,
+        autonomousUnreadCount: 2,
+        autonomousUnreadAt: new Date().toISOString(),
+      },
+    });
+    expect(metadataResponse.ok()).toBeTruthy();
+
+    const readSecretPlotEnabled = async () => {
+      const response = await request.get(`/api/chats/${chat.id}`);
+      if (!response.ok()) return null;
+      const current = (await response.json()) as { metadata?: unknown };
+      const metadata =
+        typeof current.metadata === "string"
+          ? (JSON.parse(current.metadata) as Record<string, unknown>)
+          : ((current.metadata ?? {}) as Record<string, unknown>);
+      return metadata.narrativeDirectorSecretPlotEnabled;
+    };
+
+    await page.route("**/api/capability-packages/agents", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([
+          {
+            id: "director",
+            name: "Narrative Director",
+            description: "Creates one-shot story directions.",
+            author: "Pasta Devs",
+            phase: "pre_generation",
+            execution: "host",
+            enabledByDefault: false,
+            category: "writer",
+            modeAllowlist: ["roleplay"],
+            defaultPromptTemplate: "Return the next story direction.",
+          },
+        ]),
+      });
+    });
+    await page.route("**/api/capability-packages/installed", async (route) => {
+      await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+    });
+    await page.route("**/api/agents", async (route) => {
+      await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+    });
+
+    let releaseUnreadEcho: (() => void) | undefined;
+    const heldUnreadEcho = new Promise<void>((resolve) => {
+      releaseUnreadEcho = resolve;
+    });
+    await page.route(
+      `**/api/chats/${chat.id}/autonomous-unread`,
+      async (route) => {
+        // Forward now (the server clears the residue and snapshots the chat
+        // BEFORE the toggle below), deliver the response only when released.
+        const response = await route.fetch();
+        await heldUnreadEcho;
+        await route.fulfill({ response });
+      },
+      { times: 1 },
+    );
+    const unreadEchoDelivered = page.waitForResponse((response) =>
+      response.url().includes(`/api/chats/${chat.id}/autonomous-unread`),
+    );
+
+    await page.addInitScript((chatId) => {
+      localStorage.setItem("marinara-active-chat-id", chatId);
+    }, chat.id);
+    await page.goto("/");
+
+    await page.getByRole("button", { name: "Chat Settings" }).click();
+    const drawer = page.locator(".mari-chat-settings-drawer");
+    const agentsSection = drawer.locator('[role="button"][aria-expanded]').filter({ hasText: /^Agents/ });
+    if ((await agentsSection.getAttribute("aria-expanded")) !== "true") await agentsSection.click();
+
+    const directorCard = drawer.locator(`#chat-settings-agent-menu-${chat.id}-director`);
+    const secretPlotToggle = directorCard.getByRole("switch", { name: "Secret Plot" });
+    const intervalInput = directorCard.locator("label").filter({ hasText: "Run Interval" }).locator("input");
+
+    await expect(secretPlotToggle).not.toBeChecked();
+    await secretPlotToggle.click();
+    await expect(intervalInput).toBeVisible();
+    await expect.poll(readSecretPlotEnabled).toBe(true);
+
+    releaseUnreadEcho!();
+    await unreadEchoDelivered;
+    // Let the client consume the echo and paint before asserting.
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+
+    // The stale pre-toggle snapshot must not flip the toggle back or unmount
+    // the section it gates.
+    await expect(secretPlotToggle).toBeChecked();
+    await expect(intervalInput).toBeVisible();
+    await expect.poll(readSecretPlotEnabled).toBe(true);
+  } finally {
+    if (chatId) await request.delete(`/api/chats/${chatId}`, { timeout: 10_000 });
+  }
+});
+
 test("mobile Roleplay code formatting stays inside the message width", async ({ page, request }, testInfo) => {
   test.skip(!testInfo.project.name.includes("mobile"), "Mobile markdown containment regression.");
 

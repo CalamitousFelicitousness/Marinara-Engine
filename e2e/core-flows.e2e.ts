@@ -1844,12 +1844,18 @@ test("Conversation message actions follow their messages on desktop and mobile",
         else await expect(bubble).toHaveCount(0);
         await expect(content).toBeVisible();
 
-        if (testInfo.project.name.includes("mobile")) {
-          await content.click({ position: { x: 8, y: 8 } });
-        } else {
-          await messageRow.hover();
-        }
-        await expect(actions).toHaveCSS("opacity", "1");
+        // Retried as one unit: the reveal state can be stolen mid-transition
+        // by a late reflow moving the row from under the pointer (the #5633
+        // CI trace shows opacity climbing toward 1 and snapping back to 0) —
+        // re-applying the gesture after a steal is the honest recovery.
+        await expect(async () => {
+          if (testInfo.project.name.includes("mobile")) {
+            await content.click({ position: { x: 8, y: 8 } });
+          } else {
+            await messageRow.hover();
+          }
+          await expect(actions).toHaveCSS("opacity", "1", { timeout: 2_000 });
+        }).toPass({ timeout: 15_000 });
         await expect(actions.locator('[title="Copy"]')).toHaveCSS("color", expectedActionColor);
 
         const metrics = await messageRow.evaluate((element) => {
@@ -5094,9 +5100,13 @@ test("mobile transcript swipes navigate Conversation and Roleplay alternatives",
     });
 
     for (const fixture of fixtures) {
+      // One navigation per fixture instead of goto → set → reload: init
+      // scripts accumulate and run in registration order, so the latest
+      // fixture's chat id wins before the app boots. The removed reload was
+      // where mobile WebKit intermittently crashed with an engine-internal
+      // error (#5633).
+      await page.addInitScript((chatId) => localStorage.setItem("marinara-active-chat-id", chatId), fixture.chatId);
       await page.goto("/");
-      await page.evaluate((chatId) => localStorage.setItem("marinara-active-chat-id", chatId), fixture.chatId);
-      await page.reload();
 
       const messageRow = page.locator(`[data-message-id="${fixture.messageId}"]`);
       await expect(messageRow).toContainText(fixture.first);
@@ -5398,8 +5408,11 @@ test("desktop Echo Chamber commits its per-chat size and corner before reload", 
     await expect(restoredHandle).toBeVisible();
     const restoredBox = await restoredHandle.locator("..").boundingBox();
     expect(restoredBox).not.toBeNull();
-    expect(Math.abs(restoredBox!.width - Number(savedSize?.width))).toBeLessThanOrEqual(1);
-    expect(Math.abs(restoredBox!.height - Number(savedSize?.height))).toBeLessThanOrEqual(1);
+    // 2px: the saved size round-trips through CSS pixel rounding on both
+    // edges across a reload, which legitimately reaches ~1.6px (#5633) —
+    // real persistence drift would show up far larger.
+    expect(Math.abs(restoredBox!.width - Number(savedSize?.width))).toBeLessThanOrEqual(2);
+    expect(Math.abs(restoredBox!.height - Number(savedSize?.height))).toBeLessThanOrEqual(2);
   } finally {
     await page.request.delete(`/api/chats/${chat.id}`);
   }

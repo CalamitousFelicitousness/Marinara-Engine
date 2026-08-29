@@ -128,6 +128,8 @@ function peekShardFilePaths(shardFilePath: string): ReadonlySet<string> | null {
  * byte-identical to when it was peeked.
  */
 let diskScanCache: {
+  /** One process can host stores with different roots (test harnesses do). */
+  storageRootDir: string;
   tableGeneration: number;
   residentFingerprint: string;
   byShard: Map<string, ReadonlySet<string> | null>;
@@ -169,15 +171,47 @@ async function chatImagesReferenceFile(db: DB, filePath: string): Promise<boolea
     return rows.length > 0;
   }
 
+  // A sweep is only sound if no unit LEFT residency while it ran: the disk
+  // pass skips resident units' shards on the promise that the memory scan
+  // will answer for them, and a flush-tail eviction interleaving with an
+  // awaited handoff would break that promise (the unit's rows leave memory
+  // after its shard was skipped). Additions mid-sweep are safe — the memory
+  // scan runs last and sees them. Today's storage awaits resolve without
+  // yielding to timers, so the retry is a guard rail for future async steps
+  // rather than a live path; if residency will not hold still, fall back to
+  // the safe answer.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const verdict = await sweepChatImagesOnce(db, filePath);
+    if (verdict !== null) return verdict;
+  }
+  logger.warn(
+    "[image-gallery] residency kept changing during the reference sweep; treating %s as still referenced",
+    filePath,
+  );
+  return true;
+}
+
+/**
+ * One full sweep. Returns true/false when the sweep is conclusive, or null
+ * when a unit left residency mid-sweep and the result cannot be trusted.
+ */
+async function sweepChatImagesOnce(db: DB, filePath: string): Promise<boolean | null> {
+  const store = db._fileStore;
   const startResident = store.getResidentChatUnits();
   const tableGeneration = store.getTableWriteGeneration("chat_images");
   const fingerprint = residentFingerprint(startResident);
   if (
     diskScanCache === null ||
+    diskScanCache.storageRootDir !== store.rootDir ||
     diskScanCache.tableGeneration !== tableGeneration ||
     diskScanCache.residentFingerprint !== fingerprint
   ) {
-    diskScanCache = { tableGeneration, residentFingerprint: fingerprint, byShard: new Map() };
+    diskScanCache = {
+      storageRootDir: store.rootDir,
+      tableGeneration,
+      residentFingerprint: fingerprint,
+      byShard: new Map(),
+    };
   }
   const { byShard } = diskScanCache;
 
@@ -258,6 +292,15 @@ async function chatImagesReferenceFile(db: DB, filePath: string): Promise<boolea
   // UNASSIGNED unit's rows whatever their chatId shape.
   for (const row of store.getResidentLazyRows("chat_images")) {
     if (row.filePath === filePath || row.file_path === filePath) return true;
+  }
+
+  // Soundness gate: a negative answer is only conclusive if every unit whose
+  // shard the disk pass skipped is still resident, so the memory scan really
+  // did answer for it. (Handoffs only ADD residency; eviction is the only
+  // remover, and it can run at a flush tail during the awaits above.)
+  const endResident = store.getResidentChatUnits();
+  for (const unitKey of startResident) {
+    if (!endResident.has(unitKey)) return null;
   }
 
   if (unattributableShard !== null) {

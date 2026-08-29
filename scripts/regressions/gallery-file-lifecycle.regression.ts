@@ -32,9 +32,8 @@ process.env.FILE_STORAGE_DIR = storeDir;
 const { and, eq } = await import("../../packages/server/src/db/file-query.js");
 const { createFileNativeDB, encodeShardKey } = await import("../../packages/server/src/db/file-backed-store.js");
 const { chatImages } = await import("../../packages/server/src/db/schema/index.js");
-const { galleryFileHasReferences, unlinkGalleryFileIfUnreferenced } = await import(
-  "../../packages/server/src/services/image/gallery-file-lifecycle.js"
-);
+const { galleryFileHasReferences, unlinkGalleryFileIfUnreferenced } =
+  await import("../../packages/server/src/services/image/gallery-file-lifecycle.js");
 
 const chatRow = (id: string) => ({ id, name: id, mode: "conversation" });
 const imageRow = (id: string, chatId: string, filePath: string) => ({
@@ -114,7 +113,11 @@ try {
     true,
     "a reference recovered from the .bak of a corrupt shard is found",
   );
-  assert.deepEqual(residentFixtureUnits(), ["g4"], "only the untrusted shard's unit loads — the handoff short-circuits");
+  assert.deepEqual(
+    residentFixtureUnits(),
+    ["g4"],
+    "only the untrusted shard's unit loads — the handoff short-circuits",
+  );
 
   // ── Lone .bak (interrupted flush): handoff, reference honored ──
   assert.equal(

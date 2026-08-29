@@ -139,11 +139,7 @@ const bShardBytes = readFileSync(shardPath("chat_images", "chat-b"), "utf8");
     assert.equal(resident.has("chat-d"), true, "the chat with an unreadable shard loads (recovery ladder handoff)");
     assert.equal(resident.has("chat-g"), true, "the dbName-form shard is handed to the loader, not misread as empty");
     assert.equal(resident.has("chat-h"), true, "the duplicate-id shard is handed to the loader, not counted twice");
-    assert.equal(
-      db._fileStore.getFullyResidentLazyTables().size,
-      0,
-      "the scan itself never leases a whole table",
-    );
+    assert.equal(db._fileStore.getFullyResidentLazyTables().size, 0, "the scan itself never leases a whole table");
 
     const cRows = await db.select().from(chatImages).where(eq(chatImages.chatId, "chat-c"));
     assert.deepEqual(

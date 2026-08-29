@@ -33,6 +33,30 @@ The spread must stay above `onClick` so the explicit click handler wins.
 
 ## Fork-only additions
 
+### An empty sound-effects or music lane says what would fill it
+
+The Defaults card offers Sound effects and Music rows unconditionally, but only ElevenLabs declares
+`supportsGameSoundEffects` or `supportsGameMusic`. On any other engine both lanes filter to empty
+with every connection healthy, and the row read as broken rather than inapplicable. The filter
+already reasoned about the populated-then-emptied case (a stale default stays visible so it can be
+cleared) and never about the never-populated one.
+
+`ttsSourceNamesForGameAudio(purpose)` in `constants/tts-sources.ts` derives the naming from
+`TTS_SOURCE_DEFINITIONS`, so a source that gains the capability is named without touching copy.
+`ConnectionDefaultPair` takes an optional `emptyHint` rendered only when the lane has no
+connections.
+
+NanoGPT was checked and does not qualify. Sound effects have no endpoint at all. Music exists at
+`POST /api/v1/audio/speech`, the same endpoint this fork already calls, but takes `{model, input}`
+with no duration parameter, while the music path is built around scene-driven `music_length_ms` and
+an ElevenLabs `prompt` content key. Enabling it needs a generic game-audio provider path, not a
+capability flag. `tts.routes.ts:1014` already excludes NanoGPT explicitly for the related
+ElevenLabs-proxy case.
+
+Proven by `scripts/regressions/tts/tts-audio-connection-ux.regression.ts`. With one supporting
+source the values alone cannot separate a derivation from a literal, so the lane also pins the
+derivation's source shape.
+
 ### Profile import marker coverage beyond upstream's lane
 
 `scripts/regressions/profile-import-native-marker.regression.ts` pins the root

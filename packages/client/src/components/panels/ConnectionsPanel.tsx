@@ -44,7 +44,9 @@ import { GEMMA_RESTART_MESSAGE, useSidecarStore } from "../../stores/sidecar.sto
 import {
   LOCAL_SIDECAR_CONNECTION_ID,
   getDefaultAgentPrompt,
+  ttsSourceNamesForGameAudio,
   type ConnectionFolder,
+  type GameAudioPurpose,
   type SidecarSpeechModelId,
   type SidecarSpeechRuntimeDiagnostics,
 } from "@marinara-engine/shared";
@@ -822,6 +824,7 @@ function ConnectionDefaultPair({
   primaryEmptyLabel,
   fallbackModelLabel,
   includeLocalSidecar,
+  emptyHint,
 }: {
   title: string;
   icon: ReactNode;
@@ -834,6 +837,10 @@ function ConnectionDefaultPair({
    *  The sidecar has no connection row to carry the role flag, so selecting it
    *  writes the sidecar config's useAsAgentsDefault instead. */
   includeLocalSidecar?: boolean;
+  /** Shown when no connection can serve this lane, naming what would fill it.
+   *  A lane whose backends are all unsupported otherwise reads as broken
+   *  rather than inapplicable. */
+  emptyHint?: string;
 }) {
   const { t: localizeUi } = useUiTranslation();
   const openConnectionDetail = useUIStore((state) => state.openConnectionDetail);
@@ -979,6 +986,9 @@ function ConnectionDefaultPair({
             </div>
           </label>
         </div>
+        {emptyHint && !hasConnections && (
+          <p className="text-[0.625rem] leading-snug text-[var(--muted-foreground)]">{emptyHint}</p>
+        )}
       </div>
     </div>
   );
@@ -1032,6 +1042,12 @@ function ConnectionDefaultsSection({ connectionsList }: { connectionsList: Conne
       ),
     [audioConnections],
   );
+  // Only some backends generate game audio at all, so these two lanes can be
+  // empty with every connection healthy. Name the sources that would fill them.
+  const gameAudioHint = (purpose: GameAudioPurpose) =>
+    localizeUi("ui.panels.connectiondefaultssection.needsAValue1ConnectionWithThisSwitchedOn", {
+      value1: ttsSourceNamesForGameAudio(purpose).join(localizeUi("ui.panels.connectiondefaultssection.orSeparator")),
+    });
 
   return (
     <section
@@ -1126,6 +1142,7 @@ function ConnectionDefaultsSection({ connectionsList }: { connectionsList: Conne
             fallbackField="fallbackForSfx"
             primaryEmptyLabel={localizeUi("ui.panels.connectiondefaultssection.useTheFallbackThenTheVoiceDefaults")}
             fallbackModelLabel={localizeUi("ui.panels.connectiondefaultssection.audioGeneration")}
+            emptyHint={gameAudioHint("sfx")}
           />
           <ConnectionDefaultPair
             title={localizeUi("ui.panels.connectiondefaultssection.music")}
@@ -1135,6 +1152,7 @@ function ConnectionDefaultsSection({ connectionsList }: { connectionsList: Conne
             fallbackField="fallbackForMusic"
             primaryEmptyLabel={localizeUi("ui.panels.connectiondefaultssection.useTheFallbackThenTheVoiceDefaults")}
             fallbackModelLabel={localizeUi("ui.panels.connectiondefaultssection.audioGeneration")}
+            emptyHint={gameAudioHint("music")}
           />
         </div>
       </SmoothFolderContent>

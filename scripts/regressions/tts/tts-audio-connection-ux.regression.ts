@@ -12,6 +12,11 @@ import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ttsConfigSchema } from "../../../packages/shared/src/types/tts.js";
+import {
+  TTS_SOURCE_DEFINITIONS,
+  TTS_SOURCE_IDS,
+  ttsSourceNamesForGameAudio,
+} from "../../../packages/shared/src/constants/tts-sources.js";
 import { withTTSVoiceRequestCacheKeys } from "../../../packages/client/src/lib/tts-dialogue.ts";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -518,6 +523,46 @@ for (const [file, path] of [
     paramEditor,
     /if \(!trimmed\) return \{ ok: true, value: \{\} \};/u,
     "emptying the JSON box clears the lane rather than failing to parse",
+  );
+}
+
+// ── An empty game-audio lane says what would fill it ──
+{
+  // Derived from the definitions, never written down: a source that gains the
+  // capability must be named by the hint without anyone editing the copy.
+  for (const purpose of ["sfx", "music"] as const) {
+    const expected = TTS_SOURCE_IDS.filter((id) =>
+      purpose === "sfx"
+        ? TTS_SOURCE_DEFINITIONS[id].supportsGameSoundEffects
+        : TTS_SOURCE_DEFINITIONS[id].supportsGameMusic,
+    ).map((id) => TTS_SOURCE_DEFINITIONS[id].name);
+    assert.deepEqual(
+      ttsSourceNamesForGameAudio(purpose),
+      expected,
+      `${purpose}: the hint must name exactly the sources whose definition claims the capability`,
+    );
+    assert.ok(expected.length > 0, `${purpose}: some source must serve it, or the lane is unreachable`);
+  }
+
+  // With one supporting source the values alone cannot tell a derivation from
+  // a literal, so pin the derivation itself.
+  const sources = readSource("packages/shared/src/constants/tts-sources.ts");
+  assert.match(
+    sources,
+    /ttsSourceNamesForGameAudio[\s\S]{0,200}TTS_SOURCE_IDS\.filter\(\(id\) => ttsSourceSupportsGameAudio\(id, purpose\)\)/u,
+    "the hint must derive its source list from the definitions, never list names",
+  );
+  const panel = readSource("packages/client/src/components/panels/ConnectionsPanel.tsx");
+  for (const purpose of ["sfx", "music"]) {
+    assert.ok(
+      panel.includes(`emptyHint={gameAudioHint("${purpose}")}`),
+      `the ${purpose} row must explain an empty picker`,
+    );
+  }
+  assert.match(
+    panel,
+    /\{emptyHint && !hasConnections && \(/u,
+    "and only when it is empty, so a working lane stays uncluttered",
   );
 }
 

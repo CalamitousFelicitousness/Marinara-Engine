@@ -168,3 +168,14 @@ export function ttsSourceSupportsGameAudio(source: TTSSourceId, purpose: GameAud
   const definition = TTS_SOURCE_DEFINITIONS[source];
   return purpose === "sfx" ? definition.supportsGameSoundEffects : definition.supportsGameMusic;
 }
+
+/**
+ * Product names of the sources that can generate a purpose, for the empty state
+ * of a picker that has nothing to offer. Derived rather than written down, so a
+ * source that gains the capability is named without touching the copy.
+ */
+export function ttsSourceNamesForGameAudio(purpose: GameAudioPurpose): string[] {
+  return TTS_SOURCE_IDS.filter((id) => ttsSourceSupportsGameAudio(id, purpose)).map(
+    (id) => TTS_SOURCE_DEFINITIONS[id].name,
+  );
+}

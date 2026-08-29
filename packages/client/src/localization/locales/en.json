@@ -7776,6 +7776,8 @@
   "ui.panels.connectiondefaultssection.images": "Images",
   "ui.panels.connectiondefaultssection.main": "Main",
   "ui.panels.connectiondefaultssection.music": "Music",
+  "ui.panels.connectiondefaultssection.needsAValue1ConnectionWithThisSwitchedOn": "Needs a {{value1}} connection with this switched on",
+  "ui.panels.connectiondefaultssection.orSeparator": " or ",
   "ui.panels.connectiondefaultssection.soundEffects": "Sound effects",
   "ui.panels.connectiondefaultssection.useTheFallbackThenTheTextToSpeechSettings": "Use the fallback, then the Text to Speech settings",
   "ui.panels.connectiondefaultssection.useTheFallbackThenTheVoiceDefaults": "Use the fallback, then the Voice defaults",

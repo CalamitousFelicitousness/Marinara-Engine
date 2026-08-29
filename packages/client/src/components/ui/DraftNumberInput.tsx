@@ -90,9 +90,16 @@ export function DraftNumberInput({
     // The browser fires no blur when a focused input becomes disabled, which
     // would leave the editing latch stuck and suppress prop syncs for the
     // rest of the mount. Drop the latch without committing — disabling
-    // mid-edit means the pending draft was not confirmed.
-    if (disabled) focusedRef.current = false;
-  }, [disabled]);
+    // mid-edit means the pending draft was not confirmed — and resync the
+    // abandoned draft, since the value-sync effect already ran (and skipped)
+    // for a value that arrived in this same render. The resync is gated on
+    // the latch: after a blur-commit flips `disabled` via isPending, the
+    // latch is already clear and the just-committed draft must stay visible
+    // rather than flashing back to the not-yet-echoed prop.
+    if (!disabled || !focusedRef.current) return;
+    focusedRef.current = false;
+    setDraft(String(value));
+  }, [disabled, value]);
 
   useEffect(() => {
     return () => {

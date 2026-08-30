@@ -3200,6 +3200,16 @@ function GameSurfaceComponent({
   const gameAssetsPanelRef = useRef<HTMLDivElement>(null);
   const mobileGameAssetsPanelRef = useRef<HTMLDivElement>(null);
   const hudSurfaceRef = useRef<HTMLDivElement>(null);
+  // The surface is also tracked in state so the widget-layout effect below can
+  // depend on it. GameSurface renders a messages-loading branch that mounts no
+  // surface at all, and the widget state hydrates from chat metadata while that
+  // branch is up — measuring then finds no element, attaches no ResizeObserver,
+  // and nothing re-measures once the real surface arrives.
+  const [hudSurfaceEl, setHudSurfaceEl] = useState<HTMLDivElement | null>(null);
+  const attachHudSurface = useCallback((node: HTMLDivElement | null) => {
+    hudSurfaceRef.current = node;
+    setHudSurfaceEl(node);
+  }, []);
   const compactHudWidgetsRef = useRef(compactHudWidgets);
   const compactHudReleaseWidthRef = useRef<number | null>(null);
   const lastProcessedMsgRef = useRef<string | null>(null);
@@ -10607,7 +10617,13 @@ function GameSurfaceComponent({
       resizeObserver?.disconnect();
       window.removeEventListener("resize", scheduleWidgetLayoutUpdate);
     };
-  }, [combatUiActive, normalizedWidgets.length]);
+    // hudSurfaceEl is a dependency so the measurement and the ResizeObserver are
+    // re-established when the surface mounts. Without it, widgets that hydrate
+    // while the messages-loading branch is showing leave the layout unmeasured
+    // with no observer attached, so every compact decision that depends on the
+    // overlap estimate rather than the width shortcut above stays wrong until a
+    // window resize happens to run the measurement again (#5654).
+  }, [combatUiActive, hudSurfaceEl, normalizedWidgets.length]);
 
   const effectiveBackgroundTag = replayActive ? replayBackgroundTag : currentBackground;
 
@@ -10732,7 +10748,10 @@ function GameSurfaceComponent({
   if (isMessagesLoading && !needsCreation && sessionStatus !== "setup" && !isSetupActive) {
     return (
       <>
-        <div className="flex h-full items-center justify-center bg-[var(--background)] dark:bg-black/80">
+        <div
+          data-component="GameSurface.MessagesLoading"
+          className="flex h-full items-center justify-center bg-[var(--background)] dark:bg-black/80"
+        >
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--muted)]/40 border-t-[var(--foreground)]/70 dark:border-white/20 dark:border-t-white/70" />
         </div>
         {imagePromptReviewModal}
@@ -12145,7 +12164,7 @@ function GameSurfaceComponent({
 
               {/* Main content area */}
               <div
-                ref={hudSurfaceRef}
+                ref={attachHudSurface}
                 data-chat-resource-drop-surface
                 className={cn("relative flex min-h-0 flex-1 flex-col overflow-hidden", experienceSurfaceClass)}
               >

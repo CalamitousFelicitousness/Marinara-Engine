@@ -33,6 +33,53 @@ The spread must stay above `onClick` so the explicit click handler wins.
 
 ## Fork-only additions
 
+### Importing a name you already have asks what to do with it
+
+Nothing stopped a duplicate. Neither the characters nor the lorebooks table
+constrains its name, and every importer called `storage.create` unconditionally,
+so importing the same card twice produced two of it and said nothing. One of the
+three options this adds is therefore the behaviour that was already there; it
+needed a name, not new import logic.
+
+`POST /import/name-conflicts` answers which incoming names exist, per kind, for
+characters, personas, lorebooks and presets. The character inspect route carries
+its answer inline instead, because it already parses the card to report an
+embedded lorebook and so already knows the name. Names match trimmed and
+case-insensitively: a card exported with a trailing space is common, and "Mari "
+is not a second character.
+
+Overwriting updates the row rather than replacing it. The id survives, so chats,
+gallery images and linked lorebooks stay attached, which a delete and recreate
+would have broken silently. For characters and personas the storage snapshots
+what it is about to replace, so the previous card stays in version history and
+the overwrite can be undone. Card fields are replaced while `extensions` merges,
+so a local flag the library owns rather than the card, the favourite star above
+all, survives re-importing an updated version.
+
+Lorebooks and presets keep no snapshots, so replacing one is final. That
+asymmetry is carried in the contract as `recoverable` rather than left to the
+dialog to remember, and the dialog says which is which. Their content lives in
+child rows, so an overwrite empties them first through one helper both importers
+share.
+
+That helper also closed a gap in the path that already existed. `importSTLorebook`
+took an `existingLorebookId` for character re-import and cleared only the
+entries, so every re-import left the previous run's folders behind, empty.
+
+One dialog serves a whole batch, with a per-row choice and an apply-to-all,
+because a folder drop can collide a dozen times and answering the same question a
+dozen times is how people stop reading it. Every row starts on keep-both, so
+dismissing the dialog changes nothing.
+
+Upstream-hot files touched: `routes/import.routes.ts` (the lookup route, the
+conflict on the inspect response, a ninth argument on `importCharacterBuffer`,
+and the per-file targets on both character routes), `services/import/marinara.importer.ts`,
+`services/import/st-character.importer.ts`, `services/import/st-lorebook.importer.ts`
+and `ImportCharacterModal.tsx`. The lookup, the emptying helper and the dialog are
+fork-owned modules so a merge has small surfaces to reconcile. `importCharacterBuffer`
+gained a positional argument rather than an options object: upstream owns that
+signature and both its call sites, and reshaping them would conflict on every sync.
+
 ### Model pickers show what a call costs
 
 A connection could not say what it charges. `RemoteModel` carried an id, a name and two token

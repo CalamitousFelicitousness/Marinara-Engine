@@ -191,6 +191,14 @@ deterministically, at the same durations every run:
 
 All are `locator.click: Test timeout exceeded`.
 
+`legacy browser records are cleaned while extension imports stay locked` fails
+differently, and arrived with the 2026-08-29 sync merge `329b7be79`. It asserts
+the persisted UI-store version reaches 96; `packages/client/src/stores/ui.store.ts:2640`
+says 99. Upstream bumped the store and left its own spec behind, and both files
+last changed in that merge. Nothing on the fork side touches either, so the
+version number is the whole failure. Fix it by matching the spec to the store,
+or leave it until upstream does.
+
 `scripts/regressions/prompt.regression.ts` passed on 2026-08-29. It used to
 fail at the Beholder system
 prompt: `The input did not match the regular expression /Persona: Mari

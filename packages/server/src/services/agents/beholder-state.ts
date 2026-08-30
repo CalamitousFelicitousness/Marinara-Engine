@@ -554,6 +554,77 @@ export function formatBeholderRequestContext(state: unknown, personaName: string
  * into the full normalized shape used by storage and the Beholder drawer.
  */
 /**
+ * Flags the extractor may propose but the Engine never applies on its own.
+ *
+ * Both are destructive when wrong: `missing` takes over a slot outright and cascades
+ * distally, and `bare` contradicts whatever is worn there. The model is not reliable
+ * at either — measured against the held-out eval set it emitted `missing` not once,
+ * and scored `bare` 3 right against 5 wrong and 12 missed — so accepting them costs
+ * more state than it sets. The reference extractor has refused them for the same
+ * reason; this brings the agent in line with it.
+ *
+ * Stripped from the model's reply only. Anything written by hand takes a different
+ * path and is untouched, which is what makes these manual-only rather than removed.
+ */
+const MANUAL_ONLY_SLOT_FLAGS = ["missing", "bare"] as const;
+
+/**
+ * Drop the manual-only flags from every slot in a parsed model reply, in place.
+ * Returns whether anything was refused, so a reply that carried nothing else can be
+ * reported as the no-op it is rather than as a failed extraction.
+ */
+function stripManualOnlyFlags(container: unknown): boolean {
+  if (!isRecord(container)) return false;
+  const body = container.body;
+  if (!isRecord(body)) return false;
+  let refused = false;
+  for (const [slot, slotState] of Object.entries(body)) {
+    if (!isRecord(slotState)) continue;
+    for (const flag of MANUAL_ONLY_SLOT_FLAGS) {
+      if (Object.hasOwn(slotState, flag)) {
+        delete slotState[flag];
+        // Only a refusal on a REAL slot makes the reply a no-op. A delta naming a
+        // slot that does not exist is malformed whatever it carried, and must still
+        // resolve as invalid rather than be excused by the strip.
+        if (BODY_SLOT_SET.has(slot)) refused = true;
+      }
+    }
+    // A slot the flags were the whole of carries nothing now; dropping it keeps the
+    // delta honest instead of leaving an empty object to be merged.
+    if (Object.keys(slotState).length === 0) delete body[slot];
+  }
+  return refused;
+}
+
+/**
+ * Carry the operator's manual flags across a full snapshot.
+ *
+ * `missing` and `bare` are set by hand and never by extraction, so a snapshot that
+ * simply does not mention them must not be read as clearing them. Without this the
+ * next full snapshot silently undid every correction — which is the whole thing this
+ * is meant to prevent.
+ */
+function carryManualFlagsForward(prior: BeholderState, next: BeholderState): BeholderState {
+  // Matched the way delta resolution matches, via sameCharacterName. Keying on the
+  // exact string meant a snapshot that merely recased a name — "Hesperia" to
+  // "HESPERIA" — found no prior character and dropped its flags silently.
+  for (const character of next.characters) {
+    const previous = prior.characters.find((candidate) => sameCharacterName(candidate.name, character.name));
+    if (!previous) continue;
+    for (const [rawSlotName, priorSlot] of Object.entries(previous.body)) {
+      if (!BODY_SLOT_SET.has(rawSlotName) || !isRecord(priorSlot)) continue;
+      const slotName = rawSlotName as BeholderBodySlot;
+      for (const flag of MANUAL_ONLY_SLOT_FLAGS) {
+        if (!Object.hasOwn(priorSlot, flag)) continue;
+        const slot = (character.body[slotName] ??= {});
+        (slot as Record<string, unknown>)[flag] = (priorSlot as Record<string, unknown>)[flag];
+      }
+    }
+  }
+  return next;
+}
+
+/**
  * The clause of a sentence that shows a garment coming off, or null when there is
  * nothing to repair.
  *
@@ -644,16 +715,27 @@ export function resolveBeholderStateResponse(
   // Existing packages return complete snapshots. Keep accepting them while
   // delta-capable packages roll out independently.
   if (Array.isArray(parsed.characters)) {
+    for (const character of parsed.characters) stripManualOnlyFlags(character);
     const normalized = normalizeBeholderState(parsed);
     if (!normalized || (parsed.characters.length > 0 && normalized.characters.length === 0)) {
       return { state: prior, valid: false, error: "Beholder returned an unusable full state snapshot." };
     }
-    return { state: normalized, valid: true };
+    // Re-normalized after the carry: `missing` clears the slot's contents, so pinning
+    // it onto a snapshot slot that still carries `worn` would return a state that this
+    // function's own prior-normalization would change on the next turn — the contents
+    // would vanish a turn late, which reads as a bug rather than as the flag working.
+    const carried = normalizeBeholderState(carryManualFlagsForward(prior, normalized));
+    return { state: carried ?? normalized, valid: true };
   }
 
   if (parsed.changed === false) return { state: prior, valid: true };
   if (parsed.changed !== true || !isRecord(parsed.delta)) {
     return { state: prior, valid: false, error: "Beholder returned an unusable state delta." };
+  }
+
+  let refusedManualOnlyFlags = false;
+  for (const characterDelta of Object.values(parsed.delta)) {
+    if (stripManualOnlyFlags(characterDelta)) refusedManualOnlyFlags = true;
   }
 
   const resolvedPersonaName = cleanText(personaName, 160) ?? "User";
@@ -698,7 +780,13 @@ export function resolveBeholderStateResponse(
     else characters.push(next);
   }
 
-  if (!used) return { state: prior, valid: false, error: "Beholder returned an empty or unusable state delta." };
+  if (!used) {
+    // A delta whose whole content was manual-only flags is not a failed extraction —
+    // the agent refused it on purpose. Report the no-op instead of an error the
+    // operator can neither act on nor reproduce.
+    if (refusedManualOnlyFlags) return { state: prior, valid: true };
+    return { state: prior, valid: false, error: "Beholder returned an empty or unusable state delta." };
+  }
   const normalized = normalizeBeholderState({ characters });
   return normalized
     ? { state: normalized, valid: true }

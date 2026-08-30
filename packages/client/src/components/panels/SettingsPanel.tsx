@@ -5888,7 +5888,7 @@ function GenerationsSettings() {
   );
   const openDownloadAgents = useCallback(() => {
     openRightPanel("agents");
-    openAgentCatalog();
+    openAgentCatalog("illustrator");
   }, [openAgentCatalog, openRightPanel]);
 
   return (
@@ -7705,6 +7705,8 @@ function AdvancedSettings() {
       heapLimitMiB: number;
       rssMiB: number;
     };
+    wakeLock?: string | null;
+    lastFreeze?: { detectedAt: string; gapMs: number; suspendedMs: number } | null;
   }>({
     queryKey: ["health"],
     queryFn: () => api.get("/health"),
@@ -7714,7 +7716,9 @@ function AdvancedSettings() {
   const activeConnection = activeChat?.connectionId
     ? (connections.find((connection) => connection.id === activeChat.connectionId) ?? null)
     : (connections.find((connection) => connection.isDefault) ?? null);
-  const supportDiagnosticsPending = isConnectionsLoading || (!!activeChatId && isActiveChatLoading);
+  // Health is included so a copy taken before the query settles cannot label
+  // pending wake-lock/freeze telemetry as genuinely absent (#5656 review).
+  const supportDiagnosticsPending = isConnectionsLoading || (!!activeChatId && isActiveChatLoading) || health.isPending;
 
   const handleCopySupportDiagnostics = useCallback(async () => {
     const copied = await copyToClipboard(
@@ -7724,6 +7728,8 @@ function AdvancedSettings() {
         commit: health.data?.commit ?? null,
         serverOs: health.data?.serverOs ?? "Unavailable",
         serverMemory: health.data?.memory,
+        wakeLock: health.data?.wakeLock ?? null,
+        lastFreeze: health.data?.lastFreeze ?? null,
         clientOs: resolveClientOs(navigator.userAgent, navigator.platform, navigator.maxTouchPoints),
         browser: navigator.userAgent,
         gpu: detectBrowserGpu(),

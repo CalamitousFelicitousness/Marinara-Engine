@@ -4,15 +4,30 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+### Added
+
 - Added character cards to Persona selection so you can play as any saved character during chat setup or an active chat.
 - Added an opt-in setting to show character identities in Persona pickers, with collapsed folder navigation and identity transition notices.
-- Fixed character identity prompt previews, imports, gallery participant handling, and quick-menu scrolling and bounds.
+
+### Changed
+
 - Simplified the quick Persona switcher to one rounded character disclosure with folder artwork and viewport-safe scrolling.
+- Moved the character picker toggle to Advanced Message Tools.
+
+### Fixed
+
+- Fixed character identity prompt previews, imports, gallery participant handling, and quick-menu scrolling and bounds.
 - Fixed character identity profile routing, prompt macro resolution, sprite subjects, memory naming, and lorebook scan context.
-- Preserved historical user names and portraits across identity switches and moved the character picker toggle to Advanced Message Tools.
+- Preserved historical user names and portraits across identity switches.
+- Firefox on Android no longer shows the empty band above the system navigation bar on the surfaces the earlier shell fix did not cover — full-screen mobile modals, the chat settings and gallery drawers, the setup wizards, game overlays (character sheet, inventory, narration, readables), the selection action bar, the browser hub, and the floating call/launcher buttons: every remaining bottom safe-area consumer now honors the engine-specific override that zeroes Gecko's misreported inset (#5667).
+
+## [2.4.5]
 
 ### Added
 
+- The server now notices when it stopped running for a stretch — consistent with the host suspending it (the Android/Termux background freeze that shows as an endless "Opening chat…" until Termux is foregrounded, or a laptop sleeping) or with a severe internal stall — and logs the estimated length on thaw, so session logs carry positive evidence instead of nothing (#5655).
+- The Termux launcher reports its Android wake-lock outcome to the server, and both the health endpoint and Copy Support Diagnostics now include the wake-lock status and the most recent detected freeze; a failed or unavailable wake lock is announced with a prominent launcher warning that names the fix (`pkg install termux-tools`, battery set to Unrestricted) (#5656).
+- Capability API 1.15 adds `runtime.resolveEmbeddings()`, allowing packages to use the current package-specific or global embedding connection without reactivation while preserving the static embeddings host for older packages.
 - File-native storage format advances to version 6, pairing `STORAGE_VERSION` and `storage-format.json` so the launcher downgrade guard correctly rejects rollbacks to builds that do not understand the new sharded layout and writer-lease ownership model.
 - Chat connection switchers can now show the latest measured context usage in their popup and around the connection button, with Game usage available under Chat Settings > Connection. The display is enabled by default and can be controlled in Advanced settings (#5577).
 - Character card sprites can now be renamed after upload without replacing the image (#5575).
@@ -30,8 +45,14 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Mobile Roleplay now clears Trackers, Echo Chamber, and other agent windows while the composer is active; the app-owned composer chrome is shorter above the software keyboard; and Conversation and Roleplay message editors leave enough trailing scroll space to reach their final lines without first changing the text (#5672).
+- Roleplay context usage now follows the configured chat chroma text color; mobile message editing temporarily clears agent overlays while keeping message controls available; and the Characters and Personas libraries now use concise search copy, full-width sorting fields, and a consistent action layout (#5648).
+- Firefox on Android no longer shows a large empty band above the system navigation bar that obscured the bottom of the Agents, Connections, Presets, and chats panels and pushed the chat composer up: Gecko reports the navigation-bar height as a bottom safe-area inset even though its viewport already stops above the bar, so the app now zeroes its bottom safe-area padding on that engine instead of double-compensating (#5665).
+- The Roleplay composer's trigger-group-response and translate-draft buttons on mobile no longer render oversized next to the send button: they now match the attach and send buttons' size, bringing the trigger and send icons closer together and returning the freed width to the typing area (#5649).
+- Chat settings no longer silently revert when a slow background request finishes after a newer edit: responses that carry a chat snapshot (clearing the unread badge, saving summaries, applying a settings profile, game party changes, and similar) used to overwrite the whole cached chat, flipping a just-toggled setting back — and hiding the settings section it controls — until the app was reloaded. Snapshot responses now merge through the same per-field protection that guards ordinary settings edits, so the newest change always wins (#5641).
 - Numeric settings fields no longer silently lose an edit typed while a previous change in the same field was still saving: the echo of the earlier save could overwrite the value mid-typing, and a panel re-rendering at the wrong moment could discard the edit without saving anything. In-progress typing is now protected and a pending edit is committed even when its input is torn down — this covers every numeric field built on the shared draft input (agent run intervals, connection and preset editors, game sheets, and the rest) (#5636).
 - Profile preview uploads now remain available until they are imported, cancelled, or the server stops instead of expiring after 30 minutes and forcing another upload (#5624).
+- Opening a Game chat on a tablet or a narrow desktop window no longer leaves the HUD widget rails sitting over the dialogue: when the custom widget state finished hydrating while the transcript was still loading, the layout was measured before its surface existed and no resize observer was attached, so it never compacted on its own and only recovered if the window happened to be resized (#5654).
 - Profile imports now upload and scan the selected JSON or ZIP only once, reusing the reviewed server-side preview when import is confirmed; an unsupported or corrupt individual asset is skipped and reported as a warning while the rest of the valid profile continues restoring (#5624).
 - Profile ZIP import and export no longer impose archive, individual-asset, or restored-total byte ceilings, and native character, persona, PNG card, and CharX imports no longer reject otherwise valid image galleries by byte size; paths, media contents, and archive structure remain validated, while profile executable content stays quarantined (#5624).
 - Full profile backup restores no longer fail on the game-asset seeder's own empty `.native` directory markers: import now tolerates exactly that marker (empty and dot-prefixed) under `game-assets/` while still rejecting any non-empty file using the marker name, so a stock export restores cleanly on a fresh install (#5619).

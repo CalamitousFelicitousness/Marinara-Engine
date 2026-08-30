@@ -828,9 +828,10 @@ const EditTextarea = memo(function EditTextarea({
   }, [onSave, quoteFormat]);
 
   return (
-    <div className="relative isolate z-20 flex flex-col gap-2">
+    <div className="relative isolate z-20 flex flex-col gap-2 max-md:gap-0">
       <textarea
         ref={ref}
+        data-chat-message-editor="true"
         defaultValue={formatTextQuotes(initialContent, quoteFormat)}
         readOnly={saving}
         aria-busy={saving}
@@ -3537,7 +3538,7 @@ export const ChatMessage = memo(function ChatMessage({
               className={cn(
                 "mari-message-actions flex items-center gap-0.5 px-1 opacity-0 transition-all group-hover:opacity-100",
                 isUser && "flex-row-reverse",
-                showActions && "opacity-100",
+                (showActions || editing) && "opacity-100",
                 showStreamingThinkingAction &&
                   "opacity-100 [&>button:not([data-message-thinking-action])]:hidden [&>div]:hidden",
               )}
@@ -4013,7 +4014,7 @@ export const ChatMessage = memo(function ChatMessage({
             className={cn(
               "mari-message-actions flex items-center gap-0 px-1 opacity-0 transition-all group-hover:opacity-100",
               isUser && "flex-row-reverse",
-              showActions && "opacity-100",
+              (showActions || editing) && "opacity-100",
               showStreamingThinkingAction &&
                 "opacity-100 [&>button:not([data-message-thinking-action])]:hidden [&>div]:hidden",
             )}

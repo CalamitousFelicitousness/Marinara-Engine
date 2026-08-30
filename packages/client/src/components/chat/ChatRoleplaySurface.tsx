@@ -1434,6 +1434,7 @@ export function ChatRoleplaySurface({
   const compactAuthorNotesOpen = authorNotesOpenOwner === "compact";
   const keyboardOpen = useChatKeyboardOpen();
   const composerFocused = useChatComposerFocused();
+  const mobileComposerActive = isMobileToolbarViewport && composerFocused;
   const ambientVisualsPaused =
     generationVisualsPaused || (isMobileToolbarViewport && (keyboardOpen || composerFocused || hasMobileDraftInput));
   const weatherEffectsPaused = isMobileToolbarViewport && (keyboardOpen || composerFocused || hasMobileDraftInput);
@@ -1790,7 +1791,11 @@ export function ChatRoleplaySurface({
   ]);
 
   return (
-    <div data-component="ChatArea.Roleplay" className="flex flex-1 overflow-hidden">
+    <div
+      data-component="ChatArea.Roleplay"
+      data-mobile-composer-active={mobileComposerActive || undefined}
+      className="flex flex-1 overflow-hidden"
+    >
       <div
         className={cn(
           "rpg-chat-area mari-chat-area mari-card-css relative flex flex-1 flex-col overflow-hidden",
@@ -1840,7 +1845,11 @@ export function ChatRoleplaySurface({
                   }}
                 >
                   {chat && chatMeta.enableAgents && (
-                    <div data-chat-help="agents" className="pointer-events-auto flex-1 overflow-x-auto">
+                    <div
+                      data-chat-help="agents"
+                      data-roleplay-agent-window
+                      className="pointer-events-auto flex-1 overflow-x-auto"
+                    >
                       <Suspense fallback={null}>
                         <RoleplayHUD
                           chatId={chat.id}
@@ -1974,7 +1983,7 @@ export function ChatRoleplaySurface({
                       paddingRight: "calc(0.5rem + var(--tracker-panel-hud-clear-right, 0px))",
                     }}
                   >
-                    <div data-chat-help="agents" className="min-w-0 flex-1 overflow-x-auto">
+                    <div data-chat-help="agents" data-roleplay-agent-window className="min-w-0 flex-1 overflow-x-auto">
                       <Suspense fallback={null}>
                         <RoleplayHUD
                           chatId={chat.id}
@@ -2196,9 +2205,11 @@ export function ChatRoleplaySurface({
                 )}
                 style={{
                   paddingTop: "var(--mari-roleplay-content-padding-top, 16px)",
-                  paddingBottom: "var(--mari-roleplay-content-padding-bottom, 16px)",
+                  paddingBottom:
+                    "calc(var(--mari-roleplay-content-padding-bottom, 16px) + var(--mari-message-editor-scroll-space, 0px))",
                   scrollPaddingTop: "var(--mari-roleplay-scroll-padding-top, 16px)",
-                  scrollPaddingBottom: "var(--mari-roleplay-scroll-padding-bottom, 16px)",
+                  scrollPaddingBottom:
+                    "calc(var(--mari-roleplay-scroll-padding-bottom, 16px) + var(--mari-message-editor-scroll-space, 0px))",
                 }}
               >
                 {hasNextPage && (
@@ -2468,13 +2479,14 @@ export function ChatRoleplaySurface({
         onSelectAllBelowSelection={onSelectAllBelowSelection}
       />
       {conversationSurfacePackages.map((item) => (
-        <CapabilityElement
-          key={`${item.id}-conversation-surface`}
-          packageId={item.id}
-          view="surface"
-          capabilityProps={conversationCapabilityProps}
-          className="contents"
-        />
+        <div key={`${item.id}-conversation-surface`} data-roleplay-agent-window className="contents">
+          <CapabilityElement
+            packageId={item.id}
+            view="surface"
+            capabilityProps={conversationCapabilityProps}
+            className="contents"
+          />
+        </div>
       ))}
     </div>
   );

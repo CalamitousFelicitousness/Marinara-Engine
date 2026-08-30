@@ -3457,6 +3457,10 @@ export function HomeProfessorMariChat({
       const query = params.toString();
       const chat = await api.get<Chat>(`/chats/internal/professor-mari${query ? `?${query}` : ""}`);
       setActiveChatId(chat.id);
+      // The ensure/restart/activate writes in this file are deliberately
+      // unguarded (#5641): each loads or switches to a Mari chat whose id is
+      // unknown before the request, with no concurrent local metadata edits
+      // to protect.
       qc.setQueryData(chatKeys.detail(chat.id), chat);
       return chat;
     },
@@ -5206,7 +5210,7 @@ export function HomeProfessorMariChat({
               </div>
               {showContextUsage && contextBudget && (
                 <div className="border-b border-[var(--border)] px-3 pt-2">
-                  <ContextBudgetIndicator budget={contextBudget} professorMari />
+                  <ContextBudgetIndicator budget={contextBudget} />
                 </div>
               )}
               <div className="overflow-y-auto p-1">
@@ -5473,7 +5477,7 @@ export function HomeProfessorMariChat({
                 "flex min-h-0 items-stretch justify-center",
                 embeddedTab
                   ? "relative z-auto h-full w-full bg-transparent p-0"
-                  : "fixed inset-x-0 bottom-0 top-[calc(env(safe-area-inset-top)_+_3rem)] z-[80] bg-[var(--background)] pb-[env(safe-area-inset-bottom)] sm:static sm:z-auto sm:h-full sm:max-h-none sm:w-full sm:flex-1 sm:bg-transparent sm:p-0",
+                  : "fixed inset-x-0 bottom-0 top-[calc(env(safe-area-inset-top)_+_3rem)] z-[80] bg-[var(--background)] pb-[var(--mari-safe-area-inset-bottom,env(safe-area-inset-bottom))] sm:static sm:z-auto sm:h-full sm:max-h-none sm:w-full sm:flex-1 sm:bg-transparent sm:p-0",
               )}
             >
               <div className={cn("h-full min-h-0 w-full", embeddedTab ? "max-w-none" : "max-w-none sm:max-w-5xl")}>
@@ -5985,7 +5989,7 @@ export function HomeProfessorMariChat({
                                 </div>
                                 {showContextUsage && contextBudget && (
                                   <div className="border-b border-[var(--border)] px-3 pt-2">
-                                    <ContextBudgetIndicator budget={contextBudget} professorMari />
+                                    <ContextBudgetIndicator budget={contextBudget} />
                                   </div>
                                 )}
                                 <div className="overflow-y-auto p-1">

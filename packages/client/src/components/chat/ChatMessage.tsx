@@ -3259,7 +3259,7 @@ export const ChatMessage = memo(function ChatMessage({
                 </div>
               )}
               {(showActions || showMessageNumbers) && messageIndex != null && (
-                <span className="mt-1 text-[0.5625rem] font-medium text-[var(--muted-foreground)] select-none">
+                <span className="mt-1 text-[0.5625rem] font-medium text-[var(--marinara-chat-chrome-text)] select-none">
                   #{messageIndex}
                 </span>
               )}
@@ -3305,7 +3305,9 @@ export const ChatMessage = memo(function ChatMessage({
                 {(showRoleplayAvatarPanel || hideRoleplayAvatars) &&
                   (showActions || showMessageNumbers) &&
                   messageIndex != null && (
-                    <span className="text-[0.5625rem] font-medium text-white/25 select-none">#{messageIndex}</span>
+                    <span className="text-[0.5625rem] font-medium text-[var(--marinara-chat-chrome-text)] select-none">
+                      #{messageIndex}
+                    </span>
                   )}
               </div>
             )}
@@ -3808,7 +3810,7 @@ export const ChatMessage = memo(function ChatMessage({
               </div>
             )}
             {(showActions || showMessageNumbers) && messageIndex != null && (
-              <span className="mt-0.5 text-[0.5rem] font-medium text-[var(--muted-foreground)] select-none">
+              <span className="mt-0.5 text-[0.5rem] font-medium text-[var(--marinara-chat-chrome-text)] select-none">
                 #{messageIndex}
               </span>
             )}

@@ -835,6 +835,12 @@ async function buildRetryAgentContext(args: {
   }
 
   const personaContext = await resolvePersonaContext(chars, chat);
+  const lorebookCharacterIds =
+    personaContext.identitySource === "character" &&
+    personaContext.identityId &&
+    !characterIds.includes(personaContext.identityId)
+      ? [...characterIds, personaContext.identityId]
+      : characterIds;
   const initialMacroVariables = normalizeChatMacroVariables(chatMeta.macroVariables);
   const retryMacroVariables = { ...initialMacroVariables };
   const promptMacroContext = await buildPromptMacroContext({
@@ -1096,6 +1102,8 @@ async function buildRetryAgentContext(args: {
     agentContext.memory._personaId = personaContext.personaId;
   }
   if (personaContext.identityId) {
+    agentContext.memory._userIdentityId = personaContext.identityId;
+    agentContext.memory._userIdentitySource = personaContext.identitySource;
     agentContext.memory._personaAvatarPath = personaContext.personaAvatarPath ?? null;
   }
 
@@ -1105,7 +1113,7 @@ async function buildRetryAgentContext(args: {
       await resolveLorebookKeeperTarget({
         lorebooksStore,
         chatId,
-        characterIds,
+        characterIds: lorebookCharacterIds,
         personaId: personaContext.personaId,
         activeLorebookIds,
         preferredTargetLorebookId: lorebookKeeperSettings.targetLorebookId,
@@ -1213,7 +1221,11 @@ async function buildRetryAgentContext(args: {
           !restrictToSelectedSprites ||
           selectedSpriteIds.has(personaContext.identityId) ||
           chatMeta.expressionAvatarsEnabled === true);
-      if (personaContext.identityId && includePersonaSprite) {
+      if (
+        personaContext.identityId &&
+        includePersonaSprite &&
+        !perChar.some((entry) => entry.characterId === personaContext.identityId)
+      ) {
         const sprites = listCharacterSprites(personaContext.identityId);
         if (sprites) {
           const spritePersona = buildAvailableSpriteCharacter(
@@ -3399,37 +3411,62 @@ async function applyRetryResultEffects(args: {
             });
             assertRetryActive();
             let referenceImages: string[] | undefined;
-            const retryPersonaId =
-              typeof agentContext.memory._personaId === "string" ? agentContext.memory._personaId : null;
+            const retryIdentityId =
+              typeof agentContext.memory._userIdentityId === "string" ? agentContext.memory._userIdentityId : null;
+            const retryIdentitySource =
+              agentContext.memory._userIdentitySource === "persona" ||
+              agentContext.memory._userIdentitySource === "character"
+                ? agentContext.memory._userIdentitySource
+                : null;
+            const retryPersonaId = retryIdentitySource === "persona" ? retryIdentityId : null;
             const retryPersonaReference = retryPersonaId ? await chars.getPersona(retryPersonaId) : null;
             assertRetryActive();
+            const retryCharacterIdentity =
+              retryIdentitySource === "character" && retryIdentityId && agentContext.persona
+                ? {
+                    id: retryIdentityId,
+                    name: agentContext.persona.name,
+                    avatarPath:
+                      typeof agentContext.memory._personaAvatarPath === "string"
+                        ? agentContext.memory._personaAvatarPath
+                        : null,
+                    appearance: agentContext.persona.appearance,
+                  }
+                : null;
             const referenceResolution = await resolveIllustratorCharacterReferences({
               charactersStore: chars,
               characterGallery: createCharacterGalleryStorage(app.db),
               personaGallery: createPersonaGalleryStorage(app.db),
-              chatCharacters: agentContext.characters.map((character) => ({
-                id: character.id,
-                name: character.name,
-                appearance: character.appearance,
-              })),
-              persona: agentContext.persona
-                ? {
-                    id: retryPersonaId,
-                    name: agentContext.persona.name,
-                    avatarPath:
-                      typeof retryPersonaReference?.avatarPath === "string"
-                        ? retryPersonaReference.avatarPath
-                        : typeof agentContext.memory._personaAvatarPath === "string"
-                          ? agentContext.memory._personaAvatarPath
+              chatCharacters: [
+                ...agentContext.characters.map((character) => ({
+                  id: character.id,
+                  name: character.name,
+                  appearance: character.appearance,
+                })),
+                ...(retryCharacterIdentity &&
+                !agentContext.characters.some((character) => character.id === retryCharacterIdentity.id)
+                  ? [retryCharacterIdentity]
+                  : []),
+              ],
+              persona:
+                retryIdentitySource === "persona" && agentContext.persona
+                  ? {
+                      id: retryPersonaId,
+                      name: agentContext.persona.name,
+                      avatarPath:
+                        typeof retryPersonaReference?.avatarPath === "string"
+                          ? retryPersonaReference.avatarPath
+                          : typeof agentContext.memory._personaAvatarPath === "string"
+                            ? agentContext.memory._personaAvatarPath
+                            : null,
+                      appearance: agentContext.persona.appearance,
+                      characterSheetImageId:
+                        typeof retryPersonaReference?.characterSheetImageId === "string"
+                          ? retryPersonaReference.characterSheetImageId
                           : null,
-                    appearance: agentContext.persona.appearance,
-                    characterSheetImageId:
-                      typeof retryPersonaReference?.characterSheetImageId === "string"
-                        ? retryPersonaReference.characterSheetImageId
-                        : null,
-                    useCharacterSheetAsReference: retryPersonaReference?.useCharacterSheetAsReference === "true",
-                  }
-                : null,
+                      useCharacterSheetAsReference: retryPersonaReference?.useCharacterSheetAsReference === "true",
+                    }
+                  : null,
               requestedNames: illCharacters.filter((name): name is string => typeof name === "string"),
               promptText: [
                 [...agentContext.recentMessages].reverse().find((message) => message.role === "user")?.content ?? "",
@@ -3795,10 +3832,11 @@ async function applyRetryResultEffects(args: {
       const spriteData = result.data as { expressions?: Array<{ characterId: string; expression: string }> };
       const exprMap: Record<string, string> = {};
       const personaExprMap: Record<string, string> = {};
-      const personaId = typeof agentContext.memory._personaId === "string" ? agentContext.memory._personaId : null;
+      const userIdentityId =
+        typeof agentContext.memory._userIdentityId === "string" ? agentContext.memory._userIdentityId : null;
       if (Array.isArray(spriteData.expressions)) {
         for (const e of spriteData.expressions) {
-          if (personaId && e.characterId === personaId) {
+          if (userIdentityId && e.characterId === userIdentityId) {
             personaExprMap[e.characterId] = e.expression;
           } else {
             exprMap[e.characterId] = e.expression;
@@ -4735,11 +4773,11 @@ export async function registerRetryAgentsRoute(
                 [...agentContext.recentMessages]
                   .reverse()
                   .find((message) => message.role === "user" && message.content.trim())?.content ?? "";
-              const personaId =
-                typeof agentContext.memory._personaId === "string" ? agentContext.memory._personaId : "";
+              const userIdentityId =
+                typeof agentContext.memory._userIdentityId === "string" ? agentContext.memory._userIdentityId : "";
               const sourceTextByCharacterId = new Map<string, string>();
-              if (personaId && latestUserExpressionSource.trim()) {
-                sourceTextByCharacterId.set(personaId, latestUserExpressionSource);
+              if (userIdentityId && latestUserExpressionSource.trim()) {
+                sourceTextByCharacterId.set(userIdentityId, latestUserExpressionSource);
               }
               const completion = completeRequiredSpriteExpressionEntries(
                 validatedExpressions,

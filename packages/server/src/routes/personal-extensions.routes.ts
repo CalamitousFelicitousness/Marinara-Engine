@@ -302,6 +302,7 @@ export function browserWorkerSource(extension: PersonalExtension) {
     if (!id || id !== expectedId) return null;
     return Object.freeze({
       id,
+      ...(value?.source === "character" || value?.source === "persona" ? { source: value.source } : {}),
       name: boundedContextText(value.name, budget),
       description: boundedContextText(value.description, budget),
       personality: boundedContextText(value.personality, budget),

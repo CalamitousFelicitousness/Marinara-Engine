@@ -22,6 +22,8 @@ export type ChatUserIdentity = {
   tags: string[];
   aboutMe: string;
   convoDisplayName: string;
+  characterSheetImageId: string | null;
+  useCharacterSheetAsReference: boolean;
 };
 
 function stringValue(value: unknown): string {
@@ -73,6 +75,8 @@ export async function resolveChatUserIdentity(
       tags: Array.isArray(data.tags) ? data.tags.filter((tag): tag is string => typeof tag === "string") : [],
       aboutMe: stringValue(extensions.aboutMe),
       convoDisplayName: stringValue(extensions.convoDisplayName),
+      characterSheetImageId: stringValue(extensions.characterSheetImageId) || null,
+      useCharacterSheetAsReference: extensions.useCharacterSheetAsReference === true,
     };
   }
 
@@ -98,5 +102,7 @@ export async function resolveChatUserIdentity(
     tags: Array.isArray(persona.tags) ? persona.tags : [],
     aboutMe: persona.aboutMe ?? "",
     convoDisplayName: persona.convoDisplayName ?? "",
+    characterSheetImageId: persona.characterSheetImageId ?? null,
+    useCharacterSheetAsReference: persona.useCharacterSheetAsReference === "true",
   };
 }

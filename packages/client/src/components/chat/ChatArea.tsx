@@ -975,7 +975,7 @@ export const ChatArea = memo(function ChatArea() {
           return {
             id: row.id,
             source: "character" as const,
-            name: typeof data?.name === "string" ? data.name : "Unknown",
+            name: typeof data?.name === "string" && data.name.trim() ? data.name : "Unknown",
             convoDisplayName: typeof extensions.convoDisplayName === "string" ? extensions.convoDisplayName : undefined,
             phoneticName: typeof extensions.phoneticName === "string" ? extensions.phoneticName : undefined,
             description: typeof data?.description === "string" ? data.description : undefined,

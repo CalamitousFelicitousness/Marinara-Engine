@@ -282,7 +282,6 @@ import {
   readPersonaSnapshotName,
   resolveActiveCharacterIds,
   resolveCharacterActivityUpdate,
-  resolveActivePersonaCandidate,
   resolveBaseUrl,
   resolveGroupGenerationMode,
   resolveRoleplaySummaryTail,
@@ -981,6 +980,7 @@ export async function generateRoutes(app: FastifyInstance) {
     let pendingUserDiscordMsg = "";
     let currentTurnUserMessageId: string | null = null;
     let currentTurnUserMessage: Awaited<ReturnType<typeof chats.createMessage>> | null = null;
+    let resolvedUserIdentity: Awaited<ReturnType<typeof resolveChatUserIdentity>> = null;
     let committedSpatialTransition: {
       commandId: string;
       currentLocationId: string | null;
@@ -1087,28 +1087,28 @@ export async function generateRoutes(app: FastifyInstance) {
       // Snapshot Persona info for per-message tracking. Only Conversation may
       // fall back to the active Persona; Roleplay and Game can stay Persona-less.
       if (userMsg?.id) {
-        const snapshotIdentity = await resolveChatUserIdentity(chars, {
+        resolvedUserIdentity = await resolveChatUserIdentity(chars, {
           personaId: chat.personaId,
           personaCharacterId: chat.personaCharacterId,
           mode: requestChatMode,
         }).catch(releaseActiveGenerationAndRethrow);
-        if (snapshotIdentity) {
+        if (resolvedUserIdentity) {
           const updatedUserMsg = await chats
             .updateMessageExtra(userMsg.id, {
               personaSnapshot: {
-                personaId: snapshotIdentity.id,
-                source: snapshotIdentity.source,
-                name: snapshotIdentity.name,
-                description: snapshotIdentity.description,
-                personality: snapshotIdentity.personality,
-                scenario: snapshotIdentity.scenario,
-                backstory: snapshotIdentity.backstory,
-                appearance: snapshotIdentity.appearance,
-                avatarUrl: snapshotIdentity.avatarPath,
-                avatarCrop: snapshotIdentity.avatarCrop ? JSON.stringify(snapshotIdentity.avatarCrop) : null,
-                nameColor: snapshotIdentity.nameColor,
-                dialogueColor: snapshotIdentity.dialogueColor,
-                boxColor: snapshotIdentity.boxColor,
+                personaId: resolvedUserIdentity.id,
+                source: resolvedUserIdentity.source,
+                name: resolvedUserIdentity.name,
+                description: resolvedUserIdentity.description,
+                personality: resolvedUserIdentity.personality,
+                scenario: resolvedUserIdentity.scenario,
+                backstory: resolvedUserIdentity.backstory,
+                appearance: resolvedUserIdentity.appearance,
+                avatarUrl: resolvedUserIdentity.avatarPath,
+                avatarCrop: resolvedUserIdentity.avatarCrop ? JSON.stringify(resolvedUserIdentity.avatarCrop) : null,
+                nameColor: resolvedUserIdentity.nameColor,
+                dialogueColor: resolvedUserIdentity.dialogueColor,
+                boxColor: resolvedUserIdentity.boxColor,
               },
             })
             .catch(releaseActiveGenerationAndRethrow);
@@ -1683,8 +1683,7 @@ export async function generateRoutes(app: FastifyInstance) {
         backstory?: string;
         appearance?: string;
       } = {};
-      const allPersonas = await chars.listPersonas();
-      let persona = resolveActivePersonaCandidate(allPersonas, chat.personaId, chatMode);
+      let persona: Awaited<ReturnType<typeof resolveChatUserIdentity>> = null;
       // ── Game mode: apply segment edit overlays to message content ──
       // Users can edit individual narration/dialogue segments in the VN UI.
       // Edits are stored as chat-metadata overlays; apply them so the model
@@ -1702,38 +1701,16 @@ export async function generateRoutes(app: FastifyInstance) {
       const currentUserInputContent = (): string | undefined =>
         [...currentInputMessages()].reverse().find((message) => message.role === "user")?.content;
 
-      const identity = await resolveChatUserIdentity(
-        chars,
-        {
+      const identity =
+        resolvedUserIdentity ??
+        (await resolveChatUserIdentity(chars, {
           personaId: chat.personaId,
           personaCharacterId: chat.personaCharacterId,
           mode: chatMode,
-        },
-        allPersonas,
-      );
+        }));
       if (identity) {
-        if (identity.source === "character") {
-          persona = {
-            id: identity.id,
-            name: identity.name,
-            phoneticName: identity.phoneticName,
-            description: identity.description,
-            personality: identity.personality,
-            scenario: identity.scenario,
-            backstory: identity.backstory,
-            appearance: identity.appearance,
-            avatarPath: identity.avatarPath,
-            avatarCrop: identity.avatarCrop,
-            nameColor: identity.nameColor,
-            dialogueColor: identity.dialogueColor,
-            boxColor: identity.boxColor,
-            aboutMe: identity.aboutMe,
-            convoDisplayName: identity.convoDisplayName,
-            tags: identity.tags,
-            personaStats: identity.personaStats,
-          } as unknown as (typeof allPersonas)[number];
-        }
-        personaId = identity.id;
+        persona = identity;
+        personaId = identity.source === "persona" ? identity.id : null;
         personaName = identity.name;
         personaPhoneticName = identity.phoneticName;
         personaDescription = cardPromptText(identity.description);
@@ -1746,6 +1723,12 @@ export async function generateRoutes(app: FastifyInstance) {
           appearance: cardPromptText(identity.appearance),
         };
       }
+      const userIdentityId = identity?.id ?? null;
+      const lorebookIdentityCharacterId = identity?.source === "character" ? identity.id : null;
+      const withIdentityLorebookScope = (ids: string[]) =>
+        lorebookIdentityCharacterId && !ids.includes(lorebookIdentityCharacterId)
+          ? [...ids, lorebookIdentityCharacterId]
+          : ids;
 
       // Mirror user message to Discord now that personaName is resolved
       if (pendingUserDiscordMsg) {
@@ -2391,7 +2374,7 @@ export async function generateRoutes(app: FastifyInstance) {
           sendProgress("lorebooks");
           const lorebookResult = await processLorebooks(app.db, toLorebookScanMessages(), null, {
             chatId: input.chatId,
-            characterIds: targetCharacterIds,
+            characterIds: withIdentityLorebookScope(targetCharacterIds),
             personaId,
             activeLorebookIds: chatActiveLorebookIds,
             excludedLorebookIds: lorebookScopeExclusions.excludedLorebookIds,
@@ -2454,7 +2437,7 @@ export async function generateRoutes(app: FastifyInstance) {
             const allLorebooks = (await lorebooksStore.list()) as unknown as Lorebook[];
             const relevantLorebooks = filterRelevantLorebooks(allLorebooks, {
               chatId: input.chatId,
-              characterIds: promptCharacterIds,
+              characterIds: withIdentityLorebookScope(promptCharacterIds),
               personaId,
               activeLorebookIds: chatActiveLorebookIds,
               excludedLorebookIds: lorebookScopeExclusions.excludedLorebookIds,
@@ -2486,7 +2469,7 @@ export async function generateRoutes(app: FastifyInstance) {
         try {
           const lorebookScopeFilters = {
             chatId: input.chatId,
-            characterIds: promptCharacterIds,
+            characterIds: withIdentityLorebookScope(promptCharacterIds),
             personaId,
             activeLorebookIds: chatActiveLorebookIds,
             excludedLorebookIds: lorebookScopeExclusions.excludedLorebookIds,
@@ -2567,6 +2550,7 @@ export async function generateRoutes(app: FastifyInstance) {
             localVariables: chatMacroVariables,
             chatId: input.chatId,
             characterIds: promptCharacterIds,
+            lorebookCharacterIds: withIdentityLorebookScope(promptCharacterIds),
             groupCharacterIds: characterIds,
             personaId,
             personaName,
@@ -3153,7 +3137,7 @@ export async function generateRoutes(app: FastifyInstance) {
           sendProgress("lorebooks");
           const lorebookResult = await processLorebooks(app.db, toLorebookScanMessages(), null, {
             chatId: input.chatId,
-            characterIds: promptCharacterIds,
+            characterIds: withIdentityLorebookScope(promptCharacterIds),
             personaId,
             activeLorebookIds: chatActiveLorebookIds,
             forcedEntryIds:
@@ -3615,7 +3599,7 @@ export async function generateRoutes(app: FastifyInstance) {
               await selectedGameStateForPrompt(),
               {
                 chatId: input.chatId,
-                characterIds,
+                characterIds: withIdentityLorebookScope(characterIds),
                 personaId,
                 activeLorebookIds: chatActiveLorebookIds,
                 forcedEntryIds:
@@ -4179,8 +4163,11 @@ export async function generateRoutes(app: FastifyInstance) {
 
         if (personaId) {
           agentContext.memory._personaId = personaId;
-          agentContext.memory._personaAvatarPath =
-            persona && typeof persona.avatarPath === "string" ? persona.avatarPath : null;
+        }
+        if (userIdentityId) {
+          agentContext.memory._userIdentityId = userIdentityId;
+          agentContext.memory._userIdentitySource = identity?.source ?? null;
+          agentContext.memory._personaAvatarPath = persona?.avatarPath ?? null;
         }
         const getLatestUserExpressionSource = () =>
           (
@@ -4292,7 +4279,7 @@ export async function generateRoutes(app: FastifyInstance) {
             await resolveLorebookKeeperTarget({
               lorebooksStore,
               chatId: input.chatId,
-              characterIds,
+              characterIds: withIdentityLorebookScope(characterIds),
               personaId,
               activeLorebookIds: chatActiveLorebookIds,
               preferredTargetLorebookId: lorebookKeeperSettings.targetLorebookId,
@@ -4368,16 +4355,20 @@ export async function generateRoutes(app: FastifyInstance) {
               if (spriteCharacter) perChar.push(spriteCharacter);
             }
             const includePersonaSprite =
-              !!personaId &&
+              !!userIdentityId &&
               (Boolean(getLatestUserExpressionSource()) ||
                 !restrictToSelectedSprites ||
-                selectedSpriteIds.has(personaId) ||
+                selectedSpriteIds.has(userIdentityId) ||
                 chatMeta.expressionAvatarsEnabled === true);
-            if (personaId && includePersonaSprite) {
-              const sprites = listCharacterSprites(personaId);
+            if (
+              userIdentityId &&
+              includePersonaSprite &&
+              !perChar.some((entry) => entry.characterId === userIdentityId)
+            ) {
+              const sprites = listCharacterSprites(userIdentityId);
               if (sprites) {
                 const spritePersona = buildAvailableSpriteCharacter(
-                  personaId,
+                  userIdentityId,
                   personaName,
                   sprites,
                   spriteDisplayModes,
@@ -5614,8 +5605,8 @@ export async function generateRoutes(app: FastifyInstance) {
             typeof savedMsg?.role === "string" ? savedMsg.role : input.impersonate ? "user" : "assistant";
           if (savedRole === "assistant" && fallbackCharacterId) {
             generatedExpressionTargetIds.add(fallbackCharacterId);
-          } else if (savedRole === "user" && personaId) {
-            generatedExpressionTargetIds.add(personaId);
+          } else if (savedRole === "user" && userIdentityId) {
+            generatedExpressionTargetIds.add(userIdentityId);
           }
         };
 
@@ -8270,8 +8261,12 @@ export async function generateRoutes(app: FastifyInstance) {
               },
             ]);
           }
-          if (personaId && getLatestUserExpressionSource() && Array.isArray(agentContext.memory._availableSprites)) {
-            generatedExpressionTargetIds.add(personaId);
+          if (
+            userIdentityId &&
+            getLatestUserExpressionSource() &&
+            Array.isArray(agentContext.memory._availableSprites)
+          ) {
+            generatedExpressionTargetIds.add(userIdentityId);
           }
           if (generatedExpressionTargetIds.size > 0 && Array.isArray(agentContext.memory._availableSprites)) {
             agentContext.memory._availableSprites = (
@@ -8331,8 +8326,8 @@ export async function generateRoutes(app: FastifyInstance) {
             if (requiredExpressionTargetIds.length > 0) {
               const latestUserExpressionSource = getLatestUserExpressionSource();
               const sourceTextByCharacterId = new Map<string, string>();
-              if (personaId && latestUserExpressionSource) {
-                sourceTextByCharacterId.set(personaId, latestUserExpressionSource);
+              if (userIdentityId && latestUserExpressionSource) {
+                sourceTextByCharacterId.set(userIdentityId, latestUserExpressionSource);
               }
               const completion = completeRequiredSpriteExpressionEntries(
                 validatedExpressions ?? [],
@@ -8640,8 +8635,8 @@ export async function generateRoutes(app: FastifyInstance) {
                 if (requiredExpressionTargetIds.length > 0) {
                   const latestUserExpressionSource = getLatestUserExpressionSource();
                   const sourceTextByCharacterId = new Map<string, string>();
-                  if (personaId && latestUserExpressionSource) {
-                    sourceTextByCharacterId.set(personaId, latestUserExpressionSource);
+                  if (userIdentityId && latestUserExpressionSource) {
+                    sourceTextByCharacterId.set(userIdentityId, latestUserExpressionSource);
                   }
                   const completion = completeRequiredSpriteExpressionEntries(
                     validatedExpressions ?? [],
@@ -8670,7 +8665,7 @@ export async function generateRoutes(app: FastifyInstance) {
                 const exprMap: Record<string, string> = {};
                 const personaExprMap: Record<string, string> = {};
                 for (const e of persistedExpressions) {
-                  if (personaId && e.characterId === personaId) {
+                  if (userIdentityId && e.characterId === userIdentityId) {
                     personaExprMap[e.characterId] = e.expression;
                   } else {
                     exprMap[e.characterId] = e.expression;
@@ -9862,25 +9857,39 @@ export async function generateRoutes(app: FastifyInstance) {
                         charactersStore: chars,
                         characterGallery,
                         personaGallery,
-                        chatCharacters: charInfo.map((character) => ({
-                          id: character.id,
-                          name: character.name,
-                          avatarPath: character.avatarPath,
-                          appearance: character.appearance,
-                        })),
-                        persona: persona
-                          ? {
-                              id: personaId,
-                              name: personaName,
-                              avatarPath: persona.avatarPath as string | null,
-                              appearance: personaFields.appearance,
-                              characterSheetImageId:
-                                typeof persona.characterSheetImageId === "string"
-                                  ? persona.characterSheetImageId
-                                  : null,
-                              useCharacterSheetAsReference: persona.useCharacterSheetAsReference === "true",
-                            }
-                          : null,
+                        chatCharacters: [
+                          ...charInfo.map((character) => ({
+                            id: character.id,
+                            name: character.name,
+                            avatarPath: character.avatarPath,
+                            appearance: character.appearance,
+                          })),
+                          ...(identity?.source === "character" &&
+                          !charInfo.some((character) => character.id === identity.id)
+                            ? [
+                                {
+                                  id: identity.id,
+                                  name: identity.name,
+                                  avatarPath: identity.avatarPath,
+                                  appearance: identity.appearance,
+                                },
+                              ]
+                            : []),
+                        ],
+                        persona:
+                          identity?.source === "persona" && persona
+                            ? {
+                                id: personaId,
+                                name: personaName,
+                                avatarPath: persona.avatarPath as string | null,
+                                appearance: personaFields.appearance,
+                                characterSheetImageId:
+                                  typeof persona.characterSheetImageId === "string"
+                                    ? persona.characterSheetImageId
+                                    : null,
+                                useCharacterSheetAsReference: persona.useCharacterSheetAsReference,
+                              }
+                            : null,
                         requestedNames: illCharacters.filter((name): name is string => typeof name === "string"),
                         promptText: [
                           currentUserInputContent() ?? "",
@@ -10349,14 +10358,15 @@ export async function generateRoutes(app: FastifyInstance) {
                   swipeIndex,
                   chatMeta,
                   charInfo,
-                  persona: persona
-                    ? {
-                        id: personaId,
-                        name: personaName,
-                        avatarPath: persona.avatarPath as string | null,
-                        appearance: personaFields.appearance,
-                      }
-                    : null,
+                  persona:
+                    identity?.source === "persona" && persona
+                      ? {
+                          id: personaId,
+                          name: personaName,
+                          avatarPath: persona.avatarPath as string | null,
+                          appearance: personaFields.appearance,
+                        }
+                      : null,
                   promptConnection: conn,
                   promptConnectionId: conn.id,
                   generationGuide: input.generationGuide,

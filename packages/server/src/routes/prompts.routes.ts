@@ -468,6 +468,7 @@ export async function promptsRoutes(app: FastifyInstance) {
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
 
     const characterIds: string[] = JSON.parse(chat.characterIds as string);
+    let lorebookCharacterIds = characterIds;
     const chatMessages = await chats.listMessages(chatId);
     let chatMeta: Record<string, unknown> = {};
     try {
@@ -496,7 +497,9 @@ export async function promptsRoutes(app: FastifyInstance) {
       // A character-backed identity must stay in character scope so lorebook
       // and macro processing does not treat it as a persona record. [PR #5583]
       if (activePersona.source === "character") {
-        if (!characterIds.includes(activePersona.id)) characterIds.push(activePersona.id);
+        if (!lorebookCharacterIds.includes(activePersona.id)) {
+          lorebookCharacterIds = [...lorebookCharacterIds, activePersona.id];
+        }
       } else {
         personaId = activePersona.id;
       }
@@ -525,6 +528,7 @@ export async function promptsRoutes(app: FastifyInstance) {
       chatChoices: choices ?? {},
       chatId,
       characterIds,
+      lorebookCharacterIds,
       personaId,
       personaName,
       personaDescription,

@@ -344,11 +344,7 @@ export const ConversationMessage = memo(function ConversationMessage({
     }),
     [
       displayName,
-      msgPersona?.appearance,
-      msgPersona?.backstory,
-      msgPersona?.description,
-      msgPersona?.personality,
-      msgPersona?.scenario,
+      msgPersona,
       personaInfo?.appearance,
       personaInfo?.backstory,
       personaInfo?.description,

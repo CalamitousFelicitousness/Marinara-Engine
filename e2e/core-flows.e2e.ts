@@ -6920,7 +6920,7 @@ test("legacy browser records are cleaned while extension imports stay locked", a
         };
       }),
     )
-    .toEqual({ version: 96, hasExtensionRecords: false, hasCleanupFlag: false });
+    .toEqual({ version: 97, hasExtensionRecords: false, hasCleanupFlag: false });
 
   expect(
     await page.evaluate(

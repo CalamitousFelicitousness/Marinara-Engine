@@ -791,6 +791,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
     let personaDescription = "";
     let personaFields: Record<string, string> = {};
     let persona: any = null;
+    let lorebookIdentityCharacterId: string | null = null;
     try {
       const identity = await resolveChatUserIdentity(chars, {
         personaId: chat.personaId,
@@ -799,7 +800,8 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       });
       if (identity) {
         persona = identity;
-        personaId = identity.id;
+        personaId = identity.source === "persona" ? identity.id : null;
+        lorebookIdentityCharacterId = identity.source === "character" ? identity.id : null;
         personaName = identity.name;
         personaDescription = cardPromptText(identity.description);
         personaFields = {
@@ -812,6 +814,10 @@ export async function registerDryRunRoute(app: FastifyInstance) {
     } catch {
       /* non-critical */
     }
+    const withIdentityLorebookScope = (ids: string[]) =>
+      lorebookIdentityCharacterId && !ids.includes(lorebookIdentityCharacterId)
+        ? [...ids, lorebookIdentityCharacterId]
+        : ids;
 
     const promptPresetCandidates = skipPreset
       ? []
@@ -1109,7 +1115,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
             }));
             const lorebookResult = await processLorebooks(app.db, scanMessages, null, {
               chatId,
-              characterIds: promptCharacterIds,
+              characterIds: withIdentityLorebookScope(promptCharacterIds),
               personaId,
               activeLorebookIds,
               forcedEntryIds: ownerSpatialLorebookEntryIds,
@@ -1297,6 +1303,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
         localVariables: chatMacroVariables,
         chatId,
         characterIds: promptCharacterIds,
+        lorebookCharacterIds: withIdentityLorebookScope(promptCharacterIds),
         groupCharacterIds: characterIds,
         personaId,
         personaName,
@@ -1480,7 +1487,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       }));
       const lorebookResult = await processLorebooks(app.db, scanMessages, null, {
         chatId,
-        characterIds: promptCharacterIds,
+        characterIds: withIdentityLorebookScope(promptCharacterIds),
         personaId,
         forcedEntryIds: ownerSpatialLorebookEntryIds,
         activeLorebookIds,

@@ -5514,7 +5514,18 @@ export function ChatSettingsDrawer({
                             aria-expanded={expanded}
                             className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-[var(--accent)]"
                           >
-                            {expanded ? <FolderOpen size="0.75rem" /> : <Folder size="0.75rem" />}
+                            {group.avatarPath ? (
+                              <img
+                                src={group.avatarPath}
+                                alt=""
+                                loading="lazy"
+                                className="h-4 w-4 shrink-0 rounded object-cover"
+                              />
+                            ) : expanded ? (
+                              <FolderOpen size="0.75rem" />
+                            ) : (
+                              <Folder size="0.75rem" />
+                            )}
                             <span className="min-w-0 flex-1 truncate">{group.name}</span>
                             <span className="text-[0.625rem] text-[var(--muted-foreground)]">
                               {visibleMembers.length}
@@ -5568,13 +5579,24 @@ export function ChatSettingsDrawer({
                     (p) =>
                       includesTextForMatch(p.name, personaSearch) ||
                       includesTextForMatch(p.comment ?? "", personaSearch),
-                  ).length === 0 && (
-                    <p className="px-3 py-2 text-[0.6875rem] text-[var(--muted-foreground)]">
-                      {personas.length === 0
-                        ? localizeUi("ui.chat.chatsettingsdrawer.noPersonasCreatedYet")
-                        : localizeUi("ui.lorebooks.linkedresourcepicker.noMatches")}
-                    </p>
-                  )}
+                  ).length === 0 &&
+                    !(
+                      (showCharacterIdentities || !!chat.personaCharacterId) &&
+                      characterIdentityGroups.some((group) =>
+                        group.members.some(
+                          (character) =>
+                            character.id === chat.personaCharacterId ||
+                            (showCharacterIdentities &&
+                              characterMatchesSearch(getCharacterInfo(character), personaSearch)),
+                        ),
+                      )
+                    ) && (
+                      <p className="px-3 py-2 text-[0.6875rem] text-[var(--muted-foreground)]">
+                        {personas.length === 0
+                          ? localizeUi("ui.chat.chatsettingsdrawer.noPersonasCreatedYet")
+                          : localizeUi("ui.lorebooks.linkedresourcepicker.noMatches")}
+                      </p>
+                    )}
                 </PickerDropdown>
               )}
             </Section>

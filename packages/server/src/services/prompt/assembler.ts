@@ -180,6 +180,8 @@ export interface AssemblerInput {
   /** Chat context */
   chatId: string;
   characterIds: string[];
+  /** Character IDs used only for lorebook matching, including a character-backed user identity. */
+  lorebookCharacterIds?: string[];
   /** Full active roster when characterIds is narrowed to one generation target. */
   groupCharacterIds?: string[];
   personaId?: string | null;
@@ -518,7 +520,7 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
   const markerCtx: MarkerContext = {
     db: input.db,
     chatId: input.chatId,
-    characterIds: input.characterIds,
+    characterIds: input.lorebookCharacterIds ?? input.characterIds,
     personaId: input.personaId ?? null,
     personaName: input.personaName,
     personaDescription: input.personaDescription,

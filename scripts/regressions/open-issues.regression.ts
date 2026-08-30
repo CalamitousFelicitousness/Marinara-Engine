@@ -5895,8 +5895,8 @@ assert.match(
 );
 assert.match(
   conversationGenerationSource,
-  /scanConversationLorebooks[\s\S]{0,1000}characterIds: targetCharacterIds/u,
-  "Individual Conversation lorebook scans should use only the current responder's character tags",
+  /scanConversationLorebooks[\s\S]{0,1000}characterIds: withIdentityLorebookScope\(targetCharacterIds\)/u,
+  "Individual Conversation lorebook scans should use the current responder and character-backed user identity tags",
 );
 assert.match(
   conversationGenerationSource,

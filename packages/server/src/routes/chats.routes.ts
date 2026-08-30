@@ -2692,11 +2692,11 @@ export async function chatsRoutes(app: FastifyInstance) {
             : [[], [], []];
 
           const allCharacterIds = resolveChatCharacterIds(chat.characterIds);
-          const characterIds = resolveActiveCharacterIds(allCharacterIds, chatMeta, {
+          const assistantCharacterIds = resolveActiveCharacterIds(allCharacterIds, chatMeta, {
             mode: (chat.mode as string) ?? "roleplay",
             allowEmpty: true,
           });
-          const assistantCharacterIds = [...characterIds];
+          let lorebookCharacterIds = assistantCharacterIds;
 
           let personaName = "User";
           let personaId: string | null = null;
@@ -2705,7 +2705,9 @@ export async function chatsRoutes(app: FastifyInstance) {
           const identity = await resolveChatUserIdentity(charStore, chat);
           if (identity) {
             if (identity.source === "character") {
-              if (!characterIds.includes(identity.id)) characterIds.push(identity.id);
+              if (!lorebookCharacterIds.includes(identity.id)) {
+                lorebookCharacterIds = [...lorebookCharacterIds, identity.id];
+              }
             } else {
               personaId = identity.id;
             }
@@ -2854,7 +2856,7 @@ export async function chatsRoutes(app: FastifyInstance) {
                 : null,
               {
                 chatId: req.params.id,
-                characterIds,
+                characterIds: lorebookCharacterIds,
                 personaId,
                 activeLorebookIds,
                 forcedEntryIds: forcedLorebookEntryIds,
@@ -2891,7 +2893,7 @@ export async function chatsRoutes(app: FastifyInstance) {
           if (!preset && chatMode === "roleplay") {
             const lorebookResult = await processLorebooks(app.db, mappedMessages, null, {
               chatId: req.params.id,
-              characterIds,
+              characterIds: lorebookCharacterIds,
               personaId,
               activeLorebookIds,
               forcedEntryIds: forcedLorebookEntryIds,
@@ -2947,7 +2949,8 @@ export async function chatsRoutes(app: FastifyInstance) {
             choiceBlocks: choiceBlocks as any,
             chatChoices,
             chatId: req.params.id,
-            characterIds,
+            characterIds: assistantCharacterIds,
+            lorebookCharacterIds,
             groupCharacterIds: assistantCharacterIds,
             personaId,
             personaName,
@@ -3128,18 +3131,15 @@ export async function chatsRoutes(app: FastifyInstance) {
             personaStats?.rpgStats?.enabled === true;
           if (hasPersonaFallbackData) {
             const personaXmlTag = nameToXmlTag(personaName);
-            const hasPersonaInfo =
-              (!!personaDescription && allContent.includes(personaDescription.split("\n")[0]!.trim().slice(0, 80))) ||
-              allContent.includes(`<${personaXmlTag}>`) ||
-              allContent.includes(`<${personaName}>`) ||
-              new RegExp(`^#{1,6} ${personaName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "m").test(allContent);
-            if (!hasPersonaInfo) {
+            const hasCompletePersonaWrapper =
+              allContent.includes(`<${personaXmlTag}>`) && allContent.includes(`</${personaXmlTag}>`);
+            if (!hasCompletePersonaWrapper) {
               const fieldParts: string[] = [];
               // Skip any field the preset already emitted so a partially
               // covered persona is not injected twice. [PR #5583]
               const alreadyInPrompt = (text: string) =>
                 !!text.trim() && allContent.includes(text.split("\n")[0]!.trim().slice(0, 80));
-              if (personaDescription)
+              if (personaDescription && !alreadyInPrompt(personaDescription))
                 fieldParts.push(wrapContent(resolvePromptMacros(personaDescription), "description", wrapFormat, 2));
               if (personaFields.personality && !alreadyInPrompt(personaFields.personality))
                 fieldParts.push(

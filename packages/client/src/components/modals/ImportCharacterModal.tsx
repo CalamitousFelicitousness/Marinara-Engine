@@ -8,10 +8,16 @@ import { useQueryClient } from "@tanstack/react-query";
 import { characterKeys } from "../../hooks/use-characters";
 import { lorebookKeys } from "../../hooks/use-lorebooks";
 import { api } from "../../lib/api-client";
+import { inspectCharacterFiles, type EmbeddedLorebookImportPreview } from "../../lib/character-import";
 import {
-  inspectCharacterFilesForEmbeddedLorebooks,
-  type EmbeddedLorebookImportPreview,
-} from "../../lib/character-import";
+  envelopeCandidate,
+  fetchImportNameConflicts,
+  overwriteTargets,
+  skippedRefs,
+  type ImportConflictChoices,
+} from "../../lib/import-conflicts";
+import { ImportConflictPrompt } from "./ImportConflictPrompt";
+import type { ImportNameConflict } from "@marinara-engine/shared";
 import { useTranslation as useUiTranslation } from "react-i18next";
 
 interface Props {
@@ -50,6 +56,12 @@ export function ImportCharacterModal({ open, onClose }: Props) {
     files: File[];
     previews: EmbeddedLorebookImportPreview[];
   } | null>(null);
+  const [pendingConflicts, setPendingConflicts] = useState<{
+    files: File[];
+    importEmbeddedLorebook?: boolean;
+    conflicts: ImportNameConflict[];
+  } | null>(null);
+  const [conflictChoices, setConflictChoices] = useState<ImportConflictChoices>({});
   const [tagImportMode, setTagImportMode] = useState<TagImportMode>("all");
   const [regexScriptScope, setRegexScriptScope] = useState<RegexScriptScope>("character");
   const qc = useQueryClient();
@@ -60,11 +72,12 @@ export function ImportCharacterModal({ open, onClose }: Props) {
     return head[0] === 0x50 && head[1] === 0x4b;
   };
 
-  const handleFiles = async (files: File[], importEmbeddedLorebook?: boolean) => {
+  const handleFiles = async (files: File[], importEmbeddedLorebook?: boolean, choices?: ImportConflictChoices) => {
     if (files.length === 0) return;
     setStatus("loading");
     setResults([]);
     setPendingLorebookChoice(null);
+    setPendingConflicts(null);
 
     try {
       const stCharacterFiles: File[] = [];
@@ -97,8 +110,15 @@ export function ImportCharacterModal({ open, onClose }: Props) {
         }
       }
 
+      // The cards are parsed server-side once, and that one answer settles both
+      // questions an import can raise.
+      const inspections =
+        stCharacterFiles.length > 0 && (importEmbeddedLorebook === undefined || choices === undefined)
+          ? await inspectCharacterFiles(stCharacterFiles)
+          : [];
+
       if (stCharacterFiles.length > 0 && importEmbeddedLorebook === undefined) {
-        const previews = await inspectCharacterFilesForEmbeddedLorebooks(stCharacterFiles);
+        const previews = inspections.filter((item) => item.success && item.hasEmbeddedLorebook);
         if (previews.length > 0) {
           setPendingLorebookChoice({ files, previews });
           setStatus("idle");
@@ -106,23 +126,64 @@ export function ImportCharacterModal({ open, onClose }: Props) {
         }
       }
 
+      if (choices === undefined) {
+        const conflicts = [
+          ...inspections.flatMap((item) => (item.conflict ? [item.conflict] : [])),
+          ...(await fetchImportNameConflicts(
+            marinaraPayloads.flatMap((item) => {
+              const candidate = envelopeCandidate(item.payload, item.file.name);
+              return candidate ? [candidate] : [];
+            }),
+          )),
+        ];
+        if (conflicts.length > 0) {
+          setPendingConflicts({ files, importEmbeddedLorebook, conflicts });
+          // Keeping both is what an import did before this question existed, so
+          // dismissing the dialog changes nothing.
+          setConflictChoices(Object.fromEntries(conflicts.map((c) => [c.ref ?? c.name, "additional" as const])));
+          setStatus("idle");
+          return;
+        }
+      }
+
+      const resolved = choices ?? {};
+      const allConflicts = [
+        ...inspections.flatMap((item) => (item.conflict ? [item.conflict] : [])),
+        ...(pendingConflicts?.conflicts ?? []),
+      ];
+      const skipped = skippedRefs(allConflicts, resolved);
+      const targets = overwriteTargets(allConflicts, resolved);
+      const targetByFilename = new Map(targets.map((target) => [target.filename, target.existingId]));
+
       const nextResults: ImportResultRow[] = [];
       let importedLorebook = false;
 
-      if (stCharacterFiles.length > 0) {
+      const importableCharacterFiles = stCharacterFiles.filter((file) => !skipped.has(file.name));
+      for (const file of stCharacterFiles) {
+        if (skipped.has(file.name)) {
+          nextResults.push({
+            filename: file.name,
+            success: true,
+            message: localizeUi("ui.modals.importcharactermodal.skippedExisting"),
+          });
+        }
+      }
+
+      if (importableCharacterFiles.length > 0) {
         const form = new FormData();
-        for (const file of stCharacterFiles) {
+        for (const file of importableCharacterFiles) {
           form.append("files", file);
         }
         form.append(
           "fileTimestamps",
           JSON.stringify(
-            stCharacterFiles.map((file) => ({
+            importableCharacterFiles.map((file) => ({
               name: file.name,
               lastModified: file.lastModified,
             })),
           ),
         );
+        if (targets.length > 0) form.append("overwriteTargets", JSON.stringify(targets));
         form.append("importEmbeddedLorebook", String(importEmbeddedLorebook ?? true));
         form.append("tagImportMode", tagImportMode);
         form.append("regexScriptScope", regexScriptScope);
@@ -158,6 +219,14 @@ export function ImportCharacterModal({ open, onClose }: Props) {
       }
 
       for (const item of marinaraPayloads) {
+        if (skipped.has(item.file.name)) {
+          nextResults.push({
+            filename: item.file.name,
+            success: true,
+            message: localizeUi("ui.modals.importcharactermodal.skippedExisting"),
+          });
+          continue;
+        }
         try {
           const result = await api.post<{
             success: boolean;
@@ -165,6 +234,7 @@ export function ImportCharacterModal({ open, onClose }: Props) {
             error?: string;
           }>("/import/marinara", {
             ...item.payload,
+            ...(targetByFilename.has(item.file.name) ? { overwriteId: targetByFilename.get(item.file.name) } : {}),
             timestampOverrides: {
               createdAt: item.file.lastModified,
               updatedAt: item.file.lastModified,
@@ -242,6 +312,8 @@ export function ImportCharacterModal({ open, onClose }: Props) {
     setStatus("idle");
     setResults([]);
     setPendingLorebookChoice(null);
+    setPendingConflicts(null);
+    setConflictChoices({});
     setTagImportMode("all");
     setRegexScriptScope("character");
   };
@@ -302,6 +374,21 @@ export function ImportCharacterModal({ open, onClose }: Props) {
               </div>
             </div>
           </div>
+        )}
+
+        {pendingConflicts && (
+          <ImportConflictPrompt
+            conflicts={pendingConflicts.conflicts}
+            choices={conflictChoices}
+            onChange={setConflictChoices}
+            onConfirm={() =>
+              void handleFiles(pendingConflicts.files, pendingConflicts.importEmbeddedLorebook, conflictChoices)
+            }
+            onCancel={() => {
+              setPendingConflicts(null);
+              setStatus("idle");
+            }}
+          />
         )}
 
         <div className="rounded-xl border border-[var(--border)] bg-[var(--secondary)]/40 p-3">

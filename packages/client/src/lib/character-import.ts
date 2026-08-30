@@ -1,5 +1,5 @@
 import { api } from "./api-client";
-import type { CharacterData } from "@marinara-engine/shared";
+import type { CharacterData, ImportNameConflict } from "@marinara-engine/shared";
 
 export interface EmbeddedLorebookImportPreview {
   filename: string;
@@ -8,6 +8,11 @@ export interface EmbeddedLorebookImportPreview {
   hasEmbeddedLorebook: boolean;
   embeddedLorebookEntries: number;
   error?: string;
+}
+
+/** A preview plus the library row this card would collide with, when there is one. */
+export interface CharacterImportInspection extends EmbeddedLorebookImportPreview {
+  conflict?: ImportNameConflict;
 }
 
 export interface CharacterCardDetailFields {
@@ -169,9 +174,14 @@ export function readEmbeddedLorebookFromCharacterPayload(raw: Record<string, unk
   return readCharacterCardData(raw).character_book;
 }
 
-export async function inspectCharacterFilesForEmbeddedLorebooks(
-  files: File[],
-): Promise<EmbeddedLorebookImportPreview[]> {
+/**
+ * Parses the cards server-side and reports what the caller has to ask about.
+ *
+ * One call answers both questions an import can raise, the embedded lorebook and
+ * the name already in the library, because the route has to parse the card to
+ * know either.
+ */
+export async function inspectCharacterFiles(files: File[]): Promise<CharacterImportInspection[]> {
   if (files.length === 0) return [];
 
   const form = new FormData();
@@ -181,8 +191,14 @@ export async function inspectCharacterFilesForEmbeddedLorebooks(
 
   const result = await api.upload<{
     success: boolean;
-    results: EmbeddedLorebookImportPreview[];
+    results: CharacterImportInspection[];
   }>("/import/st-character/inspect", form);
 
-  return result.results.filter((item) => item.success && item.hasEmbeddedLorebook);
+  return result.results;
+}
+
+export async function inspectCharacterFilesForEmbeddedLorebooks(
+  files: File[],
+): Promise<EmbeddedLorebookImportPreview[]> {
+  return (await inspectCharacterFiles(files)).filter((item) => item.success && item.hasEmbeddedLorebook);
 }

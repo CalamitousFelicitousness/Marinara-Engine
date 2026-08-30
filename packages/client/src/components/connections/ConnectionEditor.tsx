@@ -14,6 +14,7 @@ import {
   useTestImageGeneration,
   useTestVideoGeneration,
   useDiagnoseClaudeSubscription,
+  useConnectionSubscription,
   useFetchModels,
   useSaveConnectionDefaults,
   type ClaudeSubscriptionDiagnosis,
@@ -55,6 +56,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation, useTranslation as useUiTranslation } from "react-i18next";
+import { formatQuotaRemaining, formatTokenPrice, isCoveredBySubscription } from "../../lib/model-cost";
 import { cn } from "../../lib/utils";
 import { showConfirmDialog } from "../../lib/app-dialogs";
 import { downloadJsonFile, sanitizeExportFilenamePart } from "../../lib/download-json";
@@ -680,10 +682,20 @@ export function ConnectionEditor() {
       name: m.name,
       context: m.context ?? 0,
       maxOutput: m.maxOutput ?? 0,
+      pricing: m.pricing,
+      subscriptionIncluded: m.subscriptionIncluded,
       isRemote: true as const,
     }));
     const remoteIds = new Set(remote.map((m) => m.id));
-    const known = providerModels.filter((m) => !remoteIds.has(m.id)).map((m) => ({ ...m, isRemote: false as const }));
+    // The bundled lists carry no prices, so a locally known model shows none.
+    const known = providerModels
+      .filter((m) => !remoteIds.has(m.id))
+      .map((m) => ({
+        ...m,
+        pricing: undefined,
+        subscriptionIncluded: undefined,
+        isRemote: false as const,
+      }));
     return [...remote, ...known];
   }, [providerModels, remoteModels]);
 
@@ -696,6 +708,15 @@ export function ConnectionEditor() {
   const selectedModelInfo = useMemo(() => {
     return allModels.find((m) => m.id === localModel) ?? null;
   }, [allModels, localModel]);
+
+  // Only NanoGPT publishes a plan today, and the route refuses anything else, so
+  // the query is gated on the provider rather than firing and being told no.
+  const subscriptionQuery = useConnectionSubscription(connectionDetailId, localProvider === "nanogpt");
+  const subscription = subscriptionQuery.data?.subscription ?? null;
+  const quotaRemaining = useMemo(
+    () => (subscription ? formatQuotaRemaining(subscription, localizeUi) : null),
+    [subscription, localizeUi],
+  );
 
   // Clear remote models when provider changes
   useEffect(() => {
@@ -2220,6 +2241,17 @@ export function ConnectionEditor() {
                                 {formatContext(m.maxOutput)} {localizeUi("ui.connections.connectioneditor.out")}
                               </div>
                             )}
+                            {isCoveredBySubscription(subscription, m.subscriptionIncluded) ? (
+                              <div className="text-[0.5625rem] font-medium text-emerald-400">
+                                {localizeUi("ui.connections.modelcost.included")}
+                              </div>
+                            ) : (
+                              m.pricing && (
+                                <div className="text-[0.5625rem] text-[var(--muted-foreground)]">
+                                  {formatTokenPrice(m.pricing, localizeUi)}
+                                </div>
+                              )
+                            )}
                           </div>
                         </button>
                       ))
@@ -2257,6 +2289,34 @@ export function ConnectionEditor() {
                     {localizeUi("ui.connections.connectioneditor.maxOutput")}{" "}
                     <strong className="text-sky-400">{formatContext(selectedModelInfo.maxOutput)}</strong>
                   </span>
+                  {isCoveredBySubscription(subscription, selectedModelInfo.subscriptionIncluded) ? (
+                    <span
+                      className="text-emerald-400"
+                      title={localizeUi("ui.connections.modelcost.subscriptionCovers")}
+                    >
+                      {localizeUi("ui.connections.modelcost.included")}
+                    </span>
+                  ) : (
+                    selectedModelInfo.pricing && (
+                      <span className="text-[var(--muted-foreground)]">
+                        <strong className="text-sky-400">
+                          {formatTokenPrice(selectedModelInfo.pricing, localizeUi, 3)}
+                        </strong>{" "}
+                        {localizeUi("ui.connections.modelcost.perMillionTokens")}
+                      </span>
+                    )
+                  )}
+                </div>
+              )}
+              {subscription?.active && quotaRemaining && (
+                <div
+                  className="mt-2 flex items-center gap-2 rounded-lg bg-emerald-400/5 px-3 py-2 text-[0.6875rem] text-[var(--muted-foreground)]"
+                  title={subscription.allowOverage ? undefined : localizeUi("ui.connections.modelcost.noOverage")}
+                >
+                  <span className="font-medium text-emerald-400">
+                    {localizeUi("ui.connections.modelcost.subscriptionActive")}
+                  </span>
+                  <span>{quotaRemaining}</span>
                 </div>
               )}
             </FieldGroup>

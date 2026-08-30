@@ -23,6 +23,7 @@ import {
 } from "@marinara-engine/shared";
 import type { AudioGenerationSource } from "@marinara-engine/shared";
 import { useTTSModels, useTTSVoices } from "../../../hooks/use-tts";
+import { formatAudioRate } from "../../../lib/model-cost";
 import { ttsService } from "../../../lib/tts-service";
 import { cn } from "../../../lib/utils";
 import { SettingsSwitch } from "../../panels/settings/SettingControls";
@@ -122,11 +123,24 @@ export function AudioSourceFields({
   // present another vendor's voices as its own.
   const voicesAnswered = voicesData?.fromProvider === true;
 
-  const modelOptions = useMemo(() => {
+  // One NanoGPT listing carries speech, music and sound-effect models together,
+  // so a voice picker that took it whole would offer score generators as voices.
+  // A source that publishes no lane is speech, which is every other source.
+  const speechModels = useMemo(() => {
     const provided = modelsData?.source === source ? (modelsData?.models ?? []) : [];
-    const ids = provided.length > 0 ? provided.map((entry) => entry.id) : fallbackModelIds(source);
+    const speech = provided.filter((entry) => entry.lane === undefined || entry.lane === "speech");
+    return speech.length > 0 ? speech : provided;
+  }, [modelsData, source]);
+
+  const modelOptions = useMemo(() => {
+    const ids = speechModels.length > 0 ? speechModels.map((entry) => entry.id) : fallbackModelIds(source);
     return model && !ids.includes(model) ? [model, ...ids] : ids;
-  }, [modelsData, source, model]);
+  }, [speechModels, source, model]);
+
+  const modelRate = useMemo(() => {
+    const pricing = speechModels.find((entry) => entry.id === model)?.pricing;
+    return pricing ? formatAudioRate(pricing, localizeUi) : null;
+  }, [speechModels, model, localizeUi]);
 
   const usesModelPicker = TTS_SOURCES_WITH_MODEL_LISTING.includes(source);
 
@@ -285,6 +299,11 @@ export function AudioSourceFields({
             ? localizeUi("ui.panels.ttsconfigcard.loading")
             : localizeUi("ui.connections.audioconnectionsettings.modelHelp")}
         </p>
+        {modelRate && (
+          <p className="text-[0.625rem] text-sky-400">
+            {localizeUi("ui.connections.modelcost.rateLabel")} {modelRate}
+          </p>
+        )}
       </label>
 
       <div className="space-y-1.5">

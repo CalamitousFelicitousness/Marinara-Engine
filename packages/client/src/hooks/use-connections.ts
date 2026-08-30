@@ -13,6 +13,8 @@ import type {
   Chat,
   ConnectionTestResult,
   ImageGenerationQuality,
+  ProviderSubscription,
+  TextModelPricing,
 } from "@marinara-engine/shared";
 
 export const connectionKeys = {
@@ -220,12 +222,32 @@ export type RemoteConnectionModel = {
   name: string;
   context?: number;
   maxOutput?: number;
+  pricing?: TextModelPricing;
+  /** True where the connection's plan covers this model rather than billing it. */
+  subscriptionIncluded?: boolean;
 };
 
 export function useFetchModels() {
   return useMutation({
     mutationFn: (id: string) =>
       api.get<{ models: RemoteConnectionModel[]; loras?: RemoteConnectionModel[] }>(`/connections/${id}/models`),
+  });
+}
+
+/**
+ * The plan covering a connection, where its provider publishes one.
+ *
+ * Kept out of the connection detail because it is the one field that changes
+ * without anyone editing anything: an allowance drains as the app is used.
+ */
+export function useConnectionSubscription(id: string | null, enabled: boolean) {
+  return useQuery({
+    queryKey: [...connectionKeys.detail(id ?? ""), "subscription"] as const,
+    queryFn: () => api.get<{ subscription: ProviderSubscription | null }>(`/connections/${id}/subscription`),
+    enabled: Boolean(id) && enabled,
+    staleTime: 60_000,
+    // A provider that serves no plan answers 400, which is an answer.
+    retry: false,
   });
 }
 

@@ -12,7 +12,7 @@
 // It describes the SAVED row, so it says so while there are unsaved edits rather
 // than showing a stale body as though it were current.
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ChevronDown, ChevronUp, RefreshCw, SlidersHorizontal } from "lucide-react";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import {
@@ -24,7 +24,8 @@ import {
   type AudioPurpose,
   type TTSSourceId,
 } from "@marinara-engine/shared";
-import { useEffectiveAudioRequest } from "../../../hooks/use-tts";
+import { useEffectiveAudioRequest, useTTSModels } from "../../../hooks/use-tts";
+import { formatAudioRate } from "../../../lib/model-cost";
 import { cn } from "../../../lib/utils";
 import { AudioParameterEditor } from "./AudioParameterEditor";
 
@@ -77,6 +78,17 @@ export function AudioParameterSection({
   } = useEffectiveAudioRequest(active, connectionId, previewOpen && expanded && !dirty);
 
   const record: AudioParameterRecord = value?.[active] ?? {};
+
+  // The generator lanes pick their engine by model id rather than by route, so
+  // the price of this lane is the price of whatever model its parameters name.
+  const catalogScope = useMemo(() => ({ connectionId }), [connectionId]);
+  const { data: catalog } = useTTSModels(source, catalogScope, expanded && isGameAudioPurpose(active));
+  const modelRate = useMemo(() => {
+    const named = typeof record.model === "string" ? record.model.trim() : "";
+    if (!named || catalog?.source !== source) return null;
+    const pricing = catalog.models.find((entry) => entry.id === named)?.pricing;
+    return pricing ? formatAudioRate(pricing, localizeUi) : null;
+  }, [catalog, source, record.model, localizeUi]);
   const setRecord = (next: AudioParameterRecord) => {
     const map: AudioParameterMap = { ...(value ?? {}) };
     // An emptied lane is removed rather than stored as {}, so a connection
@@ -128,6 +140,12 @@ export function AudioParameterSection({
           )}
 
           <AudioParameterEditor source={source} purpose={active} value={record} onChange={setRecord} />
+
+          {modelRate && (
+            <p className="text-[0.625rem] text-sky-400">
+              {localizeUi("ui.connections.modelcost.rateLabel")} {modelRate}
+            </p>
+          )}
 
           <div className="border-t border-[var(--border)] pt-2">
             <button

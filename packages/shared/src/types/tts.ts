@@ -4,6 +4,7 @@
 import { z } from "zod";
 import { AUDIO_PURPOSES, type AudioPurpose } from "../constants/audio-purposes.js";
 import { TTS_SOURCE_IDS, type TTSSourceId } from "../constants/tts-sources.js";
+import type { AudioModelLane, AudioModelPricing } from "./model-pricing.js";
 
 export const ttsSourceSchema = z.enum(TTS_SOURCE_IDS);
 export type TTSSource = z.infer<typeof ttsSourceSchema>;
@@ -339,6 +340,15 @@ export interface TTSModelsResponse {
   models: Array<{
     id: string;
     name: string;
+    /**
+     * Which lane the model serves, where its catalog says. One NanoGPT listing
+     * carries speech, music and sound-effect models together, so the caller
+     * picking a voice and the caller picking a score read the same response.
+     * Absent from sources that publish no lane, which are all speech.
+     */
+    lane?: AudioModelLane;
+    /** The published rate, where the source publishes one. */
+    pricing?: AudioModelPricing;
   }>;
   /** True when the list came from the provider; false = built-in fallback choices */
   fromProvider: boolean;

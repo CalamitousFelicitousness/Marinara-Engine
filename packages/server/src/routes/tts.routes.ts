@@ -1020,9 +1020,14 @@ export async function fetchProviderModels(cfg: TTSConfig): Promise<TTSModelsResp
   if (cfg.source === "nanogpt") {
     // The listing answers without a key, so the model dropdown is populated
     // before credentials are entered rather than sitting on stale fallbacks.
+    // Every lane rides one listing, so the caller choosing a voice and the
+    // caller choosing a score both read this response and filter by lane.
     const models = await fetchNanoGptModelOptions(configuredBaseUrl(cfg), cfg.apiKey);
     return {
-      models: models.length > 0 ? models.map(({ id, name }) => ({ id, name })) : nanoGptFallbackModels(),
+      models:
+        models.length > 0
+          ? models.map(({ id, name, lane, pricing }) => ({ id, name, lane, ...(pricing ? { pricing } : {}) }))
+          : nanoGptFallbackModels(),
       fromProvider: models.length > 0,
       source: cfg.source,
     };

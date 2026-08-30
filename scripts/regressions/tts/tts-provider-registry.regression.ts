@@ -322,10 +322,12 @@ for (const [source, expected] of [
   assert.deepEqual(
     parsed,
     [
-      { id: "Kokoro-82m", name: "Kokoro 82M", voices: [] },
-      { id: "tts-1", name: "tts-1", voices: [] },
+      // Claims to speak, so it is speech whatever else the row says.
+      { id: "Kokoro-82m", name: "Kokoro 82M", lane: "speech", voices: [] },
+      // Claims nothing at all, and an unclassified row is not offered as a voice.
+      { id: "tts-1", name: "tts-1", lane: "other", voices: [] },
     ],
-    "keeps TTS rows in order, names them, and drops STT/blank/duplicate/malformed rows",
+    "keeps TTS rows in order, names and classifies them, and drops STT/blank/duplicate/malformed rows",
   );
   assert.deepEqual(parseNanoGptModelOptions({}), [], "a listing with no data array yields no models, not a throw");
   assert.deepEqual(parseNanoGptModelOptions(null), [], "a null payload yields no models, not a throw");

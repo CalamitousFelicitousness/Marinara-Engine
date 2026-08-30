@@ -15,6 +15,9 @@
 //
 // Docs: https://docs.nano-gpt.com/api-reference/text-to-speech
 
+import type { AudioModelLane, AudioModelPricing } from "@marinara-engine/shared";
+import { readAudioModelPricing } from "./audio-model-pricing.js";
+
 export type NanoGptModelFamily = "openai" | "kokoro" | "elevenlabs" | "other";
 
 export function nanoGptModelFamily(model: string): NanoGptModelFamily {
@@ -85,21 +88,42 @@ export { NANOGPT_TTS_MODEL_IDS as NANOGPT_FALLBACK_TTS_MODELS } from "@marinara-
 interface NanoGptAudioModelRow {
   id?: unknown;
   name?: unknown;
+  category?: unknown;
   capabilities?: { text_to_speech?: unknown } | null;
   supported_parameters?: { voices?: unknown } | null;
+  pricing?: unknown;
 }
 
 export interface NanoGptTtsModel {
   id: string;
   name: string;
+  /** Which catalog lane the row serves, from its category. */
+  lane: AudioModelLane;
   /** Voices this model accepts, as published. Empty when the row omits them. */
   voices: string[];
+  /** The published rate, absent when the row carries none this reader understands. */
+  pricing?: AudioModelPricing;
 }
 
 /**
- * Reads GET /v1/audio-models. `type=tts` already filters server-side, but the
- * capability flag is re-checked because an unfiltered response would otherwise
- * offer transcription models as voices.
+ * Which lane a row serves.
+ *
+ * A claim to speak is taken at its word. Absence of that claim is not a denial,
+ * though: 37 of the 63 rows `type=tts` returns omit `text_to_speech` entirely,
+ * so a flag check alone keeps every music and voice-clone row in the voice
+ * picker. Category is what separates those. Sound effects and music share one
+ * category and are told apart by model id.
+ */
+function nanoGptAudioLane(row: NanoGptAudioModelRow): AudioModelLane {
+  if (row.capabilities?.text_to_speech === true) return "speech";
+  if (row.category === "audio_tts") return "speech";
+  if (row.category === "audio_music") return "music";
+  return "other";
+}
+
+/**
+ * Reads GET /v1/audio-models. `type=tts` returns every generator except
+ * transcription, so the rows are classified rather than trusted as speech.
  */
 export function parseNanoGptModelOptions(payload: unknown): NanoGptTtsModel[] {
   const rows = (payload as { data?: unknown } | null)?.data;
@@ -119,10 +143,13 @@ export function parseNanoGptModelOptions(payload: unknown): NanoGptTtsModel[] {
           .filter((voice): voice is string => typeof voice === "string" && voice.trim().length > 0)
           .map((v) => v.trim())
       : [];
+    const pricing = readAudioModelPricing(row.pricing);
     options.push({
       id,
       name: typeof row.name === "string" && row.name.trim() ? row.name.trim() : id,
+      lane: nanoGptAudioLane(row),
       voices: [...new Set(voices)],
+      ...(pricing ? { pricing } : {}),
     });
   }
   return options;

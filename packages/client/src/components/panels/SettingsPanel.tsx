@@ -7695,6 +7695,8 @@ function AdvancedSettings() {
       heapLimitMiB: number;
       rssMiB: number;
     };
+    wakeLock?: string | null;
+    lastFreeze?: { detectedAt: string; gapMs: number; suspendedMs: number } | null;
   }>({
     queryKey: ["health"],
     queryFn: () => api.get("/health"),
@@ -7714,6 +7716,8 @@ function AdvancedSettings() {
         commit: health.data?.commit ?? null,
         serverOs: health.data?.serverOs ?? "Unavailable",
         serverMemory: health.data?.memory,
+        wakeLock: health.data?.wakeLock ?? null,
+        lastFreeze: health.data?.lastFreeze ?? null,
         clientOs: resolveClientOs(navigator.userAgent, navigator.platform, navigator.maxTouchPoints),
         browser: navigator.userAgent,
         gpu: detectBrowserGpu(),

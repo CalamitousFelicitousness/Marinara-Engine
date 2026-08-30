@@ -689,6 +689,8 @@ for (const expectedLine of [
   "Commit: abcdef123456",
   "Server OS: Linux 6.8.0 (x64)",
   "Server memory: heap 768 / 1536 MiB; RSS 1024 MiB",
+  "Background wake lock: not reported",
+  "Last detected freeze: none detected",
   "Client OS: macOS 15.6",
   "Browser / app shell: Marinara test shell",
   "GPU: Test GPU",

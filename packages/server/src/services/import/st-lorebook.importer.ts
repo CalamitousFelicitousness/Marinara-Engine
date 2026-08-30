@@ -6,6 +6,7 @@ import { createLorebooksStorage } from "../storage/lorebooks.storage.js";
 import type { CreateLorebookEntryInput, LorebookCategory } from "@marinara-engine/shared";
 import type { TimestampOverrides } from "./import-timestamps.js";
 import { resolveLorebookEntryRole } from "./lorebook-role.js";
+import { emptyLorebookForOverwrite } from "./import-overwrite.js";
 
 interface STWorldInfoEntry {
   uid?: number;
@@ -398,10 +399,9 @@ export async function importSTLorebook(
     const existing = (await storage.getById(existingLorebookId)) as Record<string, unknown> | null;
     if (existing) {
       lorebook = (await storage.update(existingLorebookId, lorebookInput)) as Record<string, unknown> | null;
-      const existingEntries = (await storage.listEntries(existingLorebookId)) as unknown as Array<{ id: string }>;
-      for (const entry of existingEntries) {
-        await storage.removeEntry(entry.id);
-      }
+      // Folders go with the entries. Clearing only entries left the previous
+      // import's folders behind, empty, on every re-import.
+      await emptyLorebookForOverwrite(storage, existingLorebookId);
     }
   }
 

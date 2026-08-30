@@ -32,6 +32,7 @@ import { createLorebooksStorage } from "../storage/lorebooks.storage.js";
 import { createPromptsStorage } from "../storage/prompts.storage.js";
 import { normalizeTimestampOverrides, type TimestampOverrides } from "./import-timestamps.js";
 import { resolveLorebookEntryRole } from "./lorebook-role.js";
+import { emptyLorebookForOverwrite, emptyPresetForOverwrite } from "./import-overwrite.js";
 import { access, mkdir, writeFile } from "fs/promises";
 import { join } from "path";
 import { DATA_DIR } from "../../utils/data-dir.js";
@@ -373,6 +374,8 @@ function readFilterMode(value: unknown): LorebookFilterMode {
 export async function importMarinara(
   envelope: ExportEnvelope,
   db: DB,
+  /** Replace this row rather than adding one. Ignored when its kind does not match the envelope. */
+  overwriteId?: string | null,
 ): Promise<{ success: boolean; type: ExportType; id?: string; name?: string; error?: string }> {
   const normalizedEnvelope = unwrapFolderManifestEnvelope(envelope) ?? envelope;
   if (
@@ -386,13 +389,13 @@ export async function importMarinara(
 
   switch (normalizedEnvelope.type) {
     case "marinara_character":
-      return importCharacter(normalizedEnvelope.data, db);
+      return importCharacter(normalizedEnvelope.data, db, overwriteId);
     case "marinara_persona":
-      return importPersona(normalizedEnvelope.data, db);
+      return importPersona(normalizedEnvelope.data, db, overwriteId);
     case "marinara_lorebook":
-      return importLorebook(normalizedEnvelope.data, db);
+      return importLorebook(normalizedEnvelope.data, db, overwriteId);
     case "marinara_preset":
-      return importPreset(normalizedEnvelope.data, db);
+      return importPreset(normalizedEnvelope.data, db, overwriteId);
     default:
       return {
         success: false,
@@ -425,7 +428,7 @@ export function normalizeNativeCharacterData(data: unknown): CharacterData | nul
   return parsed.success ? parsed.data : null;
 }
 
-async function importCharacter(data: unknown, db: DB) {
+async function importCharacter(data: unknown, db: DB, overwriteId?: string | null) {
   const storage = createCharactersStorage(db);
   const galleryStorage = createCharacterGalleryStorage(db);
   const d = data as {
@@ -498,7 +501,16 @@ async function importCharacter(data: unknown, db: DB) {
     return { success: false, type: "marinara_character" as const, error: "Invalid character data" };
   }
 
-  const result = await storage.create(normalizedCharacterData, undefined, readTimestampOverrides(d), comment);
+  // Updating keeps the id, so chats, gallery and linked lorebooks stay attached
+  // and storage files the previous card as a version.
+  const replacing = overwriteId ? await storage.getById(overwriteId) : null;
+  const result = replacing
+    ? await storage.update(overwriteId!, normalizedCharacterData, undefined, {
+        versionSource: "import",
+        comment,
+        versionReason: `Replaced by an import of ${normalizedCharacterData.name}`,
+      })
+    : await storage.create(normalizedCharacterData, undefined, readTimestampOverrides(d), comment);
   if (result?.id) {
     const avatar = await saveAvatarFromDataUrl(d.avatar, "character", result.id);
     if (avatar) {
@@ -593,7 +605,7 @@ function parseNativePersonaInput(input: Record<string, unknown>) {
   return personaCreateInputSchema.parse(candidate);
 }
 
-async function importPersona(data: unknown, db: DB) {
+async function importPersona(data: unknown, db: DB, overwriteId?: string | null) {
   const storage = createCharactersStorage(db);
   const galleryStorage = createPersonaGalleryStorage(db);
   if (!isJsonRecord(data)) {
@@ -640,13 +652,20 @@ async function importPersona(data: unknown, db: DB) {
   const { name, description, extra } = encodePersonaCreate(parsed);
   const useCharacterSheetAsReference =
     d.useCharacterSheetAsReference === true || d.useCharacterSheetAsReference === "true";
-  const result = await storage.createPersona(
-    name,
-    description,
-    undefined,
-    { ...extra, characterSheetImageId: null, useCharacterSheetAsReference: "false" },
-    timestampOverrides,
-  );
+  const replacingPersona = overwriteId ? await storage.getPersona(overwriteId) : null;
+  const result = replacingPersona
+    ? await storage.updatePersona(
+        overwriteId!,
+        { name, description, ...extra, characterSheetImageId: null, useCharacterSheetAsReference: "false" },
+        { versionSource: "import", versionReason: `Replaced by an import of ${name}` },
+      )
+    : await storage.createPersona(
+        name,
+        description,
+        undefined,
+        { ...extra, characterSheetImageId: null, useCharacterSheetAsReference: "false" },
+        timestampOverrides,
+      );
   if (result?.id) {
     let avatar: SavedAvatar | null = null;
     try {
@@ -682,11 +701,11 @@ async function importPersona(data: unknown, db: DB) {
 
 // ── Lorebook ─────────────────────────────────
 
-async function importLorebook(data: unknown, db: DB) {
-  return importLorebookPayload(data, db);
+async function importLorebook(data: unknown, db: DB, overwriteId?: string | null) {
+  return importLorebookPayload(data, db, overwriteId);
 }
 
-async function importLorebookPayload(data: unknown, db: DB) {
+async function importLorebookPayload(data: unknown, db: DB, overwriteId?: string | null) {
   const storage = createLorebooksStorage(db);
   const d = data as {
     lorebook?: Record<string, unknown>;
@@ -697,42 +716,50 @@ async function importLorebookPayload(data: unknown, db: DB) {
     return { success: false, type: "marinara_lorebook" as const, error: "Invalid lorebook data" };
   }
   const lb = d.lorebook;
-  const newLb = (await storage.create(
-    {
-      name: String(lb.name ?? "Imported Lorebook"),
-      description: String(lb.description ?? ""),
-      category: (lb.category as any) ?? "uncategorized",
-      scanDepth: Number(lb.scanDepth ?? 2),
-      tokenBudget: Number(lb.tokenBudget ?? 2048),
-      entryLimit: Number(lb.entryLimit ?? 100),
-      recursiveScanning: Boolean(lb.recursiveScanning),
-      maxRecursionDepth: Number(lb.maxRecursionDepth ?? 3),
-      excludeFromVectorization: Boolean(lb.excludeFromVectorization),
-      vectorQueryDepth: Number(lb.vectorQueryDepth ?? 10),
-      vectorScoreThreshold: Number(lb.vectorScoreThreshold ?? 0.3),
-      vectorMaxResults: Number(lb.vectorMaxResults ?? 10),
-      characterId: typeof lb.characterId === "string" ? lb.characterId : null,
-      characterIds: Array.isArray(lb.characterIds)
-        ? lb.characterIds.filter((value): value is string => typeof value === "string")
-        : typeof lb.characterId === "string"
-          ? [lb.characterId]
-          : [],
-      personaId: typeof lb.personaId === "string" ? lb.personaId : null,
-      personaIds: Array.isArray(lb.personaIds)
-        ? lb.personaIds.filter((value): value is string => typeof value === "string")
-        : typeof lb.personaId === "string"
-          ? [lb.personaId]
-          : [],
-      chatId: typeof lb.chatId === "string" ? lb.chatId : null,
-      isGlobal: lb.isGlobal === true || lb.isGlobal === "true",
-      enabled: lb.enabled !== false,
-      scope: readLorebookScope(lb.scope),
-      tags: Array.isArray(lb.tags) ? lb.tags.map(String) : [],
-      generatedBy: "import",
-      sourceAgentId: typeof lb.sourceAgentId === "string" ? lb.sourceAgentId : null,
-    },
-    readTimestampOverrides(lb),
-  )) as Record<string, unknown> | null;
+  const lorebookInput = {
+    name: String(lb.name ?? "Imported Lorebook"),
+    description: String(lb.description ?? ""),
+    category: (lb.category as any) ?? "uncategorized",
+    scanDepth: Number(lb.scanDepth ?? 2),
+    tokenBudget: Number(lb.tokenBudget ?? 2048),
+    entryLimit: Number(lb.entryLimit ?? 100),
+    recursiveScanning: Boolean(lb.recursiveScanning),
+    maxRecursionDepth: Number(lb.maxRecursionDepth ?? 3),
+    excludeFromVectorization: Boolean(lb.excludeFromVectorization),
+    vectorQueryDepth: Number(lb.vectorQueryDepth ?? 10),
+    vectorScoreThreshold: Number(lb.vectorScoreThreshold ?? 0.3),
+    vectorMaxResults: Number(lb.vectorMaxResults ?? 10),
+    characterId: typeof lb.characterId === "string" ? lb.characterId : null,
+    characterIds: Array.isArray(lb.characterIds)
+      ? lb.characterIds.filter((value): value is string => typeof value === "string")
+      : typeof lb.characterId === "string"
+        ? [lb.characterId]
+        : [],
+    personaId: typeof lb.personaId === "string" ? lb.personaId : null,
+    personaIds: Array.isArray(lb.personaIds)
+      ? lb.personaIds.filter((value): value is string => typeof value === "string")
+      : typeof lb.personaId === "string"
+        ? [lb.personaId]
+        : [],
+    chatId: typeof lb.chatId === "string" ? lb.chatId : null,
+    isGlobal: lb.isGlobal === true || lb.isGlobal === "true",
+    enabled: lb.enabled !== false,
+    scope: readLorebookScope(lb.scope),
+    tags: Array.isArray(lb.tags) ? lb.tags.map(String) : [],
+    generatedBy: "import" as const,
+    sourceAgentId: typeof lb.sourceAgentId === "string" ? lb.sourceAgentId : null,
+  };
+
+  // A lorebook keeps its content in child rows, so replacing one means emptying
+  // it first. Nothing snapshots that, which is what the question warned about.
+  const replacingLb = overwriteId ? await storage.getById(overwriteId) : null;
+  let newLb: Record<string, unknown> | null;
+  if (replacingLb) {
+    newLb = (await storage.update(overwriteId!, lorebookInput)) as Record<string, unknown> | null;
+    await emptyLorebookForOverwrite(storage, overwriteId!);
+  } else {
+    newLb = (await storage.create(lorebookInput, readTimestampOverrides(lb))) as Record<string, unknown> | null;
+  }
 
   // Re-create folders in two passes so nesting survives the round-trip. A child
   // folder can be listed before its parent, so pass 1 creates every folder at
@@ -851,7 +878,7 @@ async function importLorebookPayload(data: unknown, db: DB) {
 
 // ── Preset ───────────────────────────────────
 
-async function importPreset(data: unknown, db: DB) {
+async function importPreset(data: unknown, db: DB, overwriteId?: string | null) {
   const storage = createPromptsStorage(db);
   const d = data as {
     preset?: Record<string, unknown>;
@@ -864,21 +891,28 @@ async function importPreset(data: unknown, db: DB) {
   }
   const p = d.preset;
 
-  // Create the base preset
-  const newPreset = await storage.create(
-    {
-      name: String(p.name ?? "Imported Preset"),
-      description: String(p.description ?? ""),
-      conversationPrompt: String(p.conversationPrompt ?? p.conversation_prompt ?? ""),
-      gamePrompt: String(p.gamePrompt ?? p.game_prompt ?? ""),
-      variableGroups: safeParseJson(p.variableGroups, []),
-      variableValues: safeParseJson(p.variableValues, {}),
-      parameters: {},
-      wrapFormat: (p.wrapFormat as any) ?? "xml",
-      author: String(p.author ?? ""),
-    },
-    readTimestampOverrides(p),
-  );
+  const presetInput = {
+    name: String(p.name ?? "Imported Preset"),
+    description: String(p.description ?? ""),
+    conversationPrompt: String(p.conversationPrompt ?? p.conversation_prompt ?? ""),
+    gamePrompt: String(p.gamePrompt ?? p.game_prompt ?? ""),
+    variableGroups: safeParseJson(p.variableGroups, []),
+    variableValues: safeParseJson(p.variableValues, {}),
+    parameters: {},
+    wrapFormat: (p.wrapFormat as any) ?? "xml",
+    author: String(p.author ?? ""),
+  };
+
+  // Sections, groups and choice blocks are separate rows, so an overwrite clears
+  // them before the imported ones land. None of it is snapshotted.
+  const replacingPreset = overwriteId ? await storage.getById(overwriteId) : null;
+  let newPreset;
+  if (replacingPreset) {
+    await emptyPresetForOverwrite(storage, overwriteId!);
+    newPreset = await storage.update(overwriteId!, presetInput);
+  } else {
+    newPreset = await storage.create(presetInput, readTimestampOverrides(p));
+  }
   if (!newPreset) {
     return { success: false, type: "marinara_preset" as const, error: "Failed to create preset" };
   }

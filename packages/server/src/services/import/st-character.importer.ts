@@ -110,6 +110,18 @@ export interface STCharacterImportOptions {
   existingTagKeys?: ReadonlySet<string>;
   /** Where embedded regex scripts land: scoped to the character (default) or global. */
   regexScriptScope?: "character" | "global";
+  /**
+   * Replace this character rather than adding one.
+   *
+   * The row is updated rather than swapped, so the id survives and every chat,
+   * gallery image and linked lorebook stays attached. Storage snapshots the card
+   * before applying, which is what makes the overwrite recoverable.
+   *
+   * Card fields are replaced; `extensions` deep-merges. A local flag the library
+   * owns rather than the card, the favourite star above all, therefore survives
+   * re-importing an updated version of the same card.
+   */
+  overwriteId?: string | null;
 }
 
 // SillyTavern regex placement ids → our placement strings (1 = user input, 2 = AI output).
@@ -271,7 +283,16 @@ export async function importSTCharacter(raw: Record<string, unknown>, db: DB, op
     }
   }
 
-  const character = await storage.create(data, avatarPath, normalizedTimestamps);
+  // An overwrite whose target went away between the question and the answer
+  // falls back to creating, because the user asked for this card either way.
+  const overwriteId = options?.overwriteId?.trim() || null;
+  const replacing = overwriteId ? await storage.getById(overwriteId) : null;
+  const character = replacing
+    ? await storage.update(overwriteId!, data, avatarPath, {
+        versionSource: "import",
+        versionReason: `Replaced by an import of ${data.name}`,
+      })
+    : await storage.create(data, avatarPath, normalizedTimestamps);
   const charId = (character as { id?: string } | null)?.id;
 
   // Extract character_book into a standalone lorebook linked to this character

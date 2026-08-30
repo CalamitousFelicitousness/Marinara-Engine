@@ -7706,7 +7706,9 @@ function AdvancedSettings() {
   const activeConnection = activeChat?.connectionId
     ? (connections.find((connection) => connection.id === activeChat.connectionId) ?? null)
     : (connections.find((connection) => connection.isDefault) ?? null);
-  const supportDiagnosticsPending = isConnectionsLoading || (!!activeChatId && isActiveChatLoading);
+  // Health is included so a copy taken before the query settles cannot label
+  // pending wake-lock/freeze telemetry as genuinely absent (#5656 review).
+  const supportDiagnosticsPending = isConnectionsLoading || (!!activeChatId && isActiveChatLoading) || health.isPending;
 
   const handleCopySupportDiagnostics = useCallback(async () => {
     const copied = await copyToClipboard(

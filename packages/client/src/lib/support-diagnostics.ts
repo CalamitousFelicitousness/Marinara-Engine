@@ -14,6 +14,10 @@ export interface SupportDiagnostics {
   connectionName: string | null;
   connectionProvider: string | null;
   model: string | null;
+  /** Launcher-reported Android wake-lock outcome; null when not reported. */
+  wakeLock?: string | null;
+  /** Most recent host suspension the server's freeze detector observed. */
+  lastFreeze?: { detectedAt: string; gapMs: number; suspendedMs: number } | null;
 }
 
 export function resolveClientOs(userAgent: string, platform: string, maxTouchPoints = 0): string {
@@ -54,6 +58,7 @@ function available(value: string | null | undefined): string {
 
 export function formatSupportDiagnostics(diagnostics: SupportDiagnostics): string {
   const memory = diagnostics.serverMemory;
+  const freeze = diagnostics.lastFreeze;
   return [
     "Marinara Engine diagnostics",
     `Version: ${available(diagnostics.version)}`,
@@ -61,6 +66,8 @@ export function formatSupportDiagnostics(diagnostics: SupportDiagnostics): strin
     `Commit: ${available(diagnostics.commit)}`,
     `Server OS: ${available(diagnostics.serverOs)}`,
     `Server memory: ${memory ? `heap ${memory.heapUsedMiB} / ${memory.heapLimitMiB} MiB; RSS ${memory.rssMiB} MiB` : "Unavailable"}`,
+    `Background wake lock: ${diagnostics.wakeLock ?? "not reported"}`,
+    `Last detected freeze: ${freeze ? `~${Math.round(freeze.suspendedMs / 1000)}s suspension, thawed at ${freeze.detectedAt}` : "none detected"}`,
     `Client OS: ${available(diagnostics.clientOs)}`,
     `Browser / app shell: ${available(diagnostics.browser)}`,
     `GPU: ${available(diagnostics.gpu)}`,

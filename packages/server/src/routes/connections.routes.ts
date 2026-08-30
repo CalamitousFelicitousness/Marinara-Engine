@@ -22,10 +22,13 @@ import {
   localAuthProviderBaseUrl,
   normalizeVideoGenerationProfile,
 } from "@marinara-engine/shared";
+import type { TextModelPricing } from "@marinara-engine/shared";
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
 import { fetchModelsForAudioConnection, testAudioConnection } from "../services/tts/audio-connection-catalog.js";
 import { resetMemoryRecallVectorizerCache } from "../services/memory-recall-embedding.js";
 import { createLLMProvider } from "../services/llm/provider-registry.js";
+import { readTextModelPricing } from "../services/llm/model-pricing.js";
+import { fetchNanoGptSubscription } from "../services/llm/nanogpt-subscription.js";
 import { fetchOpenAIChatGPTModels, getOpenAIChatGPTAuth } from "../services/llm/openai-chatgpt-auth.js";
 import { fetchGrokCliModels } from "../services/llm/providers/grok-subscription.provider.js";
 import {
@@ -762,6 +765,24 @@ export async function connectionsRoutes(app: FastifyInstance) {
     }
   });
 
+  // ── Plan coverage, where the provider publishes it ──
+  app.get<{ Params: { id: string } }>("/:id/subscription", async (req, reply) => {
+    const conn = await storage.getWithKey(req.params.id);
+    if (!conn) return reply.status(404).send({ error: "Connection not found" });
+    if (conn.provider !== "nanogpt") return reply.status(400).send({ error: "Provider publishes no subscription" });
+    if (!conn.apiKey) return { subscription: null };
+
+    const { PROVIDERS } = await import("@marinara-engine/shared");
+    const baseUrl = (conn.baseUrl || PROVIDERS.nanogpt.defaultBaseUrl || "").replace(/\/+$/, "");
+    try {
+      return { subscription: await fetchNanoGptSubscription(baseUrl, conn.apiKey) };
+    } catch (err) {
+      return reply.status(502).send({
+        error: `Failed to read subscription: ${err instanceof Error ? err.message : "Unknown error"}`,
+      });
+    }
+  });
+
   // ── Fetch available models from the provider API ──
   app.get<{ Params: { id: string } }>("/:id/models", async (req, reply) => {
     const conn = await storage.getWithKey(req.params.id);
@@ -1165,10 +1186,14 @@ export async function connectionsRoutes(app: FastifyInstance) {
         return { models: normalizeModelsResponse("google", { models: collected }) };
       }
 
+      // NanoGPT serves prices, context and output limits only on the detailed
+      // listing; the plain one carries an id and an owner. The flag is unknown to
+      // the other OpenAI-compatible providers, so it is asked for by name.
+      const modelsQuery = conn.provider === "nanogpt" ? "?detailed=true" : "";
       const modelsUrl =
         conn.provider === "google_vertex"
           ? buildGoogleVertexModelUrl(baseUrl, conn.model, "models")
-          : `${baseUrl}${provider?.modelsEndpoint ?? "/models"}`;
+          : `${baseUrl}${provider?.modelsEndpoint ?? "/models"}${modelsQuery}`;
 
       const res = await safeFetch(modelsUrl, {
         headers,
@@ -1584,6 +1609,9 @@ interface RemoteModel {
   name: string;
   context?: number;
   maxOutput?: number;
+  pricing?: TextModelPricing;
+  /** True where the connection's plan covers this model rather than billing it. */
+  subscriptionIncluded?: boolean;
 }
 
 function readProviderMetadataRecord(value: unknown): Record<string, unknown> | null {
@@ -1593,6 +1621,24 @@ function readProviderMetadataRecord(value: unknown): Record<string, unknown> | n
 function readPositiveInteger(value: unknown): number | undefined {
   const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : undefined;
+}
+
+/**
+ * Whether the caller's plan covers this model, where its row says so.
+ *
+ * NanoGPT publishes it per model because coverage is not all-or-nothing: on one
+ * account 292 of 296 listed models were included and four were not.
+ */
+function readSubscriptionCoverage(model: Record<string, unknown>): { subscriptionIncluded?: boolean } {
+  const row = model.subscription;
+  if (!row || typeof row !== "object" || Array.isArray(row)) return {};
+  const included = (row as Record<string, unknown>).included;
+  return typeof included === "boolean" ? { subscriptionIncluded: included } : {};
+}
+
+/** Keeps a priceless model's row byte-identical to what it was before pricing existed. */
+function spreadPricing(pricing: TextModelPricing | undefined): { pricing?: TextModelPricing } {
+  return pricing ? { pricing } : {};
 }
 
 function readOpenAICompatibleModelLimits(model: Record<string, unknown>): Pick<RemoteModel, "context" | "maxOutput"> {
@@ -1732,6 +1778,8 @@ function normalizeModelsResponse(provider: string, json: Record<string, unknown>
           id: m.id ?? "",
           name: m.name ?? m.id ?? "",
           ...readOpenAICompatibleModelLimits(m),
+          ...spreadPricing(readTextModelPricing(provider, m)),
+          ...readSubscriptionCoverage(m),
         }))
         .filter((m) => m.id);
     }

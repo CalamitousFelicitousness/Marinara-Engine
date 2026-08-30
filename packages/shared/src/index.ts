@@ -5,6 +5,7 @@
 // Types
 export * from "./types/tts.js";
 export * from "./types/model-pricing.js";
+export * from "./types/import-conflict.js";
 export * from "./types/audio-connection-settings.js";
 export * from "./types/chat.js";
 export * from "./types/spotify.js";

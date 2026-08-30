@@ -7,7 +7,14 @@ import { inflateSync } from "node:zlib";
 import { platform, homedir } from "os";
 import { readdir, stat } from "fs/promises";
 import { resolve as pathResolve } from "path";
-import { MAX_FILE_SIZES, normalizeTextForMatch, type ChatMode } from "@marinara-engine/shared";
+import {
+  IMPORT_CONFLICT_KINDS,
+  MAX_FILE_SIZES,
+  normalizeTextForMatch,
+  type ChatMode,
+  type ImportConflictCandidate,
+  type ImportConflictKind,
+} from "@marinara-engine/shared";
 import { importSTChat } from "../services/import/st-chat.importer.js";
 import {
   importSTCharacter,
@@ -21,6 +28,7 @@ import {
 import { importSTPreset } from "../services/import/st-prompt.importer.js";
 import { importSTLorebook } from "../services/import/st-lorebook.importer.js";
 import { importMarinara } from "../services/import/marinara.importer.js";
+import { findImportNameConflicts } from "../services/import/name-conflicts.js";
 import { scanSTFolder, runSTBulkImport, type STBulkImportOptions } from "../services/import/st-bulk.importer.js";
 import { characters as charactersTable } from "../db/schema/index.js";
 import { createChatsStorage } from "../services/storage/chats.storage.js";
@@ -422,6 +430,32 @@ async function readMultipartFileWithFields(req: FastifyRequest) {
   return { file, fields };
 }
 
+/**
+ * Which existing row each file was told to replace, keyed by filename.
+ *
+ * Sent as one field rather than a flag because a folder drop can collide
+ * several times and each collision is answered on its own.
+ */
+function readOverwriteTargets(raw: unknown): Map<string, string> {
+  const targets = new Map<string, string>();
+  if (typeof raw !== "string" || !raw.trim()) return targets;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return targets;
+    for (const entry of parsed) {
+      if (!entry || typeof entry !== "object") continue;
+      const { filename, existingId } = entry as Record<string, unknown>;
+      if (typeof filename === "string" && typeof existingId === "string" && existingId.trim()) {
+        targets.set(filename, existingId);
+      }
+    }
+  } catch {
+    // A malformed field imports as new rather than failing the upload, which is
+    // the same outcome as not answering the question.
+  }
+  return targets;
+}
+
 async function importCharacterBuffer(
   fileName: string,
   buffer: Buffer,
@@ -431,6 +465,7 @@ async function importCharacterBuffer(
   tagImportMode?: STCharacterTagImportMode,
   existingTagKeys?: ReadonlySet<string>,
   regexScriptScope?: "character" | "global",
+  overwriteId?: string | null,
 ) {
   if (fileName.toLowerCase().endsWith(".png")) {
     const charData = extractCharaFromPng(buffer);
@@ -450,6 +485,7 @@ async function importCharacterBuffer(
         tagImportMode,
         existingTagKeys,
         regexScriptScope,
+        overwriteId,
       });
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : String(err) };
@@ -463,6 +499,7 @@ async function importCharacterBuffer(
       tagImportMode,
       existingTagKeys,
       regexScriptScope,
+      overwriteId,
     });
   }
 
@@ -483,6 +520,7 @@ async function importCharacterBuffer(
       tagImportMode,
       existingTagKeys,
       regexScriptScope,
+      overwriteId,
     });
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : String(err) };
@@ -681,7 +719,7 @@ export async function importRoutes(app: FastifyInstance) {
             },
           }
         : body;
-    return importMarinara(payload as any, app.db);
+    return importMarinara(payload as any, app.db, typeof body.overwriteId === "string" ? body.overwriteId : null);
   });
 
   /**
@@ -778,6 +816,7 @@ export async function importRoutes(app: FastifyInstance) {
         : rawRegexScriptScopeField?.value;
       const regexScriptScope = readMultipartRegexScriptScope(file as any);
       if (rawRegexScriptScope !== undefined && regexScriptScope === undefined) return invalidRegexScriptScopeResponse();
+      const overwriteTargets = readOverwriteTargets((file as any)?.fields?.overwriteTargets?.value);
       return importCharacterBuffer(
         file.filename ?? "",
         await file.toBuffer(),
@@ -787,6 +826,7 @@ export async function importRoutes(app: FastifyInstance) {
         tagImportMode,
         undefined,
         regexScriptScope,
+        overwriteTargets.get(file.filename ?? ""),
       );
     }
 
@@ -803,15 +843,43 @@ export async function importRoutes(app: FastifyInstance) {
     delete body.tagImportMode;
     delete body.regexScriptScope;
     try {
+      const overwriteId = typeof body.overwriteId === "string" ? body.overwriteId : null;
+      delete body.overwriteId;
       return await importSTCharacter(body, app.db, {
         timestampOverrides: readTimestampOverridesFromBody(body),
         importEmbeddedLorebook,
         tagImportMode,
         regexScriptScope,
+        overwriteId,
       });
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : String(err) };
     }
+  });
+
+  /**
+   * Which incoming names already exist, so a client can offer to replace the
+   * existing row rather than silently making a second one with the same name.
+   */
+  app.post("/name-conflicts", async (req, reply) => {
+    const body = req.body as { candidates?: unknown };
+    if (!Array.isArray(body?.candidates)) {
+      return reply.status(400).send({ success: false, error: "candidates must be an array" });
+    }
+    const candidates: ImportConflictCandidate[] = [];
+    for (const raw of body.candidates) {
+      if (!raw || typeof raw !== "object") continue;
+      const entry = raw as Record<string, unknown>;
+      const kind = entry.kind;
+      if (typeof kind !== "string" || !IMPORT_CONFLICT_KINDS.includes(kind as ImportConflictKind)) continue;
+      if (typeof entry.name !== "string") continue;
+      candidates.push({
+        kind: kind as ImportConflictKind,
+        name: entry.name,
+        ...(typeof entry.ref === "string" ? { ref: entry.ref } : {}),
+      });
+    }
+    return { success: true, conflicts: await findImportNameConflicts(app.db, candidates) };
   });
 
   /** Inspect character cards before importing, so clients can ask about embedded lorebooks. */
@@ -835,9 +903,22 @@ export async function importRoutes(app: FastifyInstance) {
       }
     }
 
+    // The cards are already parsed here, so the collision comes back with the
+    // rest of the preview rather than costing the client a second round trip.
+    const conflicts = await findImportNameConflicts(
+      app.db,
+      results.flatMap((result) =>
+        result.success && result.name ? [{ kind: "character" as const, name: result.name, ref: result.filename }] : [],
+      ),
+    );
+    const conflictByRef = new Map(conflicts.map((conflict) => [conflict.ref, conflict]));
+
     return {
       success: results.length > 0,
-      results,
+      results: results.map((result) => {
+        const conflict = conflictByRef.get(result.filename);
+        return conflict ? { ...result, conflict } : result;
+      }),
     };
   });
 
@@ -850,6 +931,7 @@ export async function importRoutes(app: FastifyInstance) {
     let tagImportMode: STCharacterTagImportMode | undefined;
     let invalidTagImportMode = false;
     let regexScriptScope: "character" | "global" | undefined;
+    let overwriteTargets = new Map<string, string>();
     let invalidRegexScriptScope = false;
 
     for await (const part of parts) {
@@ -885,6 +967,7 @@ export async function importRoutes(app: FastifyInstance) {
         regexScriptScope = readRegexScriptScope(part.value);
         invalidRegexScriptScope ||= part.value !== undefined && regexScriptScope === undefined;
       }
+      if (part.fieldname === "overwriteTargets") overwriteTargets = readOverwriteTargets(part.value);
     }
 
     if (invalidTagImportMode) return { ...invalidTagImportModeResponse(), results: [] };
@@ -921,6 +1004,7 @@ export async function importRoutes(app: FastifyInstance) {
           tagImportMode,
           existingTagKeys,
           regexScriptScope,
+          overwriteTargets.get(file.filename),
         );
         results.push({ filename: file.filename, ...result });
       } catch (error) {
@@ -952,6 +1036,7 @@ export async function importRoutes(app: FastifyInstance) {
     return importSTLorebook(body, app.db, {
       ...(fallbackName ? { fallbackName } : {}),
       timestampOverrides: readTimestampOverridesFromBody(body),
+      existingLorebookId: typeof body.overwriteId === "string" ? body.overwriteId : null,
     });
   });
 

@@ -8,6 +8,7 @@ import {
 } from "../../packages/shared/src/constants/model-lists.js";
 import {
   applyGlmThinkingParameters,
+  isGlm53FlashMandatoryReasoningModel,
   isNativeGlmEndpoint,
 } from "../../packages/server/src/services/llm/providers/glm-request-compat.js";
 import {
@@ -1115,6 +1116,21 @@ try {
     false,
     "known reasoning-mandatory OpenRouter models must keep their provider default",
   );
+
+  openRouterRequestBody = null;
+  await collectProviderOutput(provider, {
+    model: "z-ai/glm-5.3-flash",
+    stream: false,
+    reasoningEffort: "none",
+    enabledParameters: { reasoningEffort: true },
+  });
+  const mandatoryGlmOpenRouterBody = openRouterRequestBody as Record<string, unknown>;
+  assert.ok(mandatoryGlmOpenRouterBody);
+  assert.equal(
+    "reasoning" in mandatoryGlmOpenRouterBody,
+    false,
+    "GLM 5.3 Flash must keep OpenRouter's mandatory reasoning default",
+  );
 } finally {
   await new Promise<void>((resolve, reject) => openRouterServer.close((error) => (error ? reject(error) : resolve())));
 }
@@ -1200,6 +1216,36 @@ applyGlmThinkingParameters(glm52DisabledBody, {
   reasoningEffort: "none",
 });
 assert.deepEqual(glm52DisabledBody, { thinking: { type: "disabled" } });
+
+assert.equal(isGlm53FlashMandatoryReasoningModel("z-ai/glm-5.3-flash"), true);
+assert.equal(isGlm53FlashMandatoryReasoningModel("z-ai/glm-5.3-flash:free"), true);
+assert.equal(isGlm53FlashMandatoryReasoningModel("z-ai/glm-5.2"), false);
+
+const nanogptMandatoryGlmBody: Record<string, unknown> = {};
+applyGlmThinkingParameters(nanogptMandatoryGlmBody, {
+  model: "glm-5.3-flash",
+  baseUrl: "https://nano-gpt.com/api/v1",
+  providerKind: "nanogpt",
+  reasoningEffort: "none",
+});
+assert.deepEqual(
+  nanogptMandatoryGlmBody,
+  { enable_thinking: true },
+  "NanoGPT mandatory-reasoning GLM models must not receive a disable request",
+);
+
+const nativeGlm53DisabledBody: Record<string, unknown> = {};
+applyGlmThinkingParameters(nativeGlm53DisabledBody, {
+  model: "glm-5.3-flash",
+  baseUrl: "https://api.z.ai/api/paas/v4/",
+  providerKind: "custom",
+  reasoningEffort: "none",
+});
+assert.deepEqual(
+  nativeGlm53DisabledBody,
+  { enable_thinking: false },
+  "Native GLM endpoints must preserve their explicit reasoning setting",
+);
 
 const legacyGlmBody: Record<string, unknown> = {};
 applyGlmThinkingParameters(legacyGlmBody, {

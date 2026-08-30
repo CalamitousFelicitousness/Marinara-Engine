@@ -33,6 +33,65 @@ The spread must stay above `onClick` so the explicit click handler wins.
 
 ## Fork-only additions
 
+### Model pickers show what a call costs
+
+A connection could not say what it charges. `RemoteModel` carried an id, a name and two token
+limits, and the listing that supplies them was fetched in the shape that omits prices.
+
+Two providers publish per-model prices and they agree on nothing but the field name. NanoGPT states
+its unit (`unit: "per_million_tokens"`) and prices cache reads per *thousand* tokens in that same
+object. OpenRouter carries no unit at all, prices per token as decimal strings, and writes `-1`
+where a router model's backend, and so its cost, is not chosen until the request runs. So
+`services/llm/model-pricing.ts` reads a price only where the unit is known: the row declares one, or
+the provider is OpenRouter. A custom endpoint serving an unrecognized pricing field is left alone
+rather than scaled by a guess, which also means a custom connection pointed at NanoGPT still prices,
+because the unit travels with the row rather than with the provider label.
+
+Over the live listings that reads 627 of 629 NanoGPT models and 391 of 396 OpenRouter ones. Every
+refusal is a model that says its price varies: the two NanoGPT rows carry `note:
+"varies_by_modality"` and no rates at all, and all five OpenRouter rows are routers using the `-1`
+sentinel. Zero is a real price and renders as free; negative never renders.
+
+A price is also the wrong thing to show where a plan already covers the call.
+`GET /connections/:id/subscription` reads NanoGPT's allowance, and a model whose row says
+`subscription.included` reads as covered instead of priced, with the remaining quota beside it.
+Coverage alone is not enough to suppress the price: with `allowOverage` false an exhausted allowance
+means the request is refused rather than billed, so the price returns once the quota is gone. That
+endpoint answers with the payment processor and the subscription id beside the counters, so the
+parser selects fields rather than forwarding them, and a regression asserts no identifier reaches a
+client.
+
+Audio needed a different shape. There is no unit field on an audio row: the vendor names the unit by
+which key it fills, and across the 80 published models it fills six of them. A flat per-generation
+fee and a per-second rate cannot be expressed as each other, so `AudioModelPricing` carries the unit
+with the amount instead of normalizing it away. Two conversions are still real. A block price
+(`per_prompt_char_block: 0.09` over `prompt_char_block_size: 300`) is the same dimension at another
+scale and becomes `$0.30 per thousand characters`.
+
+And a rate of zero is not a rate: it is how this catalog says a dimension does not bill. Six music
+models publish `per_second: 0` beside the `minimum` that is their entire price, and `vibevoice`
+publishes `per_thousand_chars: 0` beside a flat `per_generation`. Reading the first rate found
+printed "free" on seven models that bill up to fifteen cents a generation. Dropping the zeros leaves
+exactly one rate or none across all 80 models, so no precedence rule is needed; where none is left,
+the floor is the price and it bills per generation.
+
+The same listing fixed a filter that never filtered. `parseNanoGptModelOptions` rejected a row only
+when `capabilities.text_to_speech === false`, but only the 26 speech rows carry that flag at all and
+the other 37 omit it. Absent is not false, so every music, lyrics, voice-clone and analysis model
+reached the voice dropdown, which is exactly what the function's comment said it prevented. Rows now
+carry a `lane` read from their category, with a positive capability claim outranking it, and the
+voice picker keeps speech. One listing serves every lane, so the caller choosing a voice and the
+caller choosing a score read one response.
+
+Surfaces: the model dropdown row and selected-model strip in `ConnectionEditor.tsx`, the speech
+model help line in `AudioSourceFields.tsx`, and the sound-effect and music lanes in
+`AudioParameterSection.tsx`, which price whatever model their parameters name.
+
+Upstream-hot files touched: `routes/connections.routes.ts` (the reader import, `RemoteModel`, the
+detailed listing query, the subscription route), `routes/tts.routes.ts` (carrying lane and pricing
+through), `types/tts.ts` and `ConnectionEditor.tsx`. The readers themselves are fork-owned modules
+so a merge has one small surface to reconcile.
+
 ### NanoGPT generates sound effects and music, through a job
 
 Game audio was ElevenLabs only, in three `cfg.source !== "elevenlabs"` guards and one generator.

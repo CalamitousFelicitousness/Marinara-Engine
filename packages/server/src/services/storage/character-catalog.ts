@@ -23,7 +23,11 @@ const caches = new WeakMap<DB, CatalogCache>();
 
 function readData(value: string): CharacterData {
   try {
-    return JSON.parse(value) as CharacterData;
+    const parsed: unknown = JSON.parse(value);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return { name: "Unknown" } as CharacterData;
+    }
+    return parsed as CharacterData;
   } catch {
     return { name: "Unknown" } as CharacterData;
   }
@@ -123,10 +127,10 @@ function sortEntries(entries: CachedCharacterCatalogEntry[], sort: string) {
 }
 
 export function createCharacterCatalog(db: DB) {
-  async function getEntries() {
+  async function getEntries(): Promise<{ entries: CachedCharacterCatalogEntry[]; generation: number }> {
     const cached = caches.get(db);
     const generation = db._fileStore.getTableWriteGeneration("characters");
-    if (cached?.generation === generation) return cached.entries;
+    if (cached?.generation === generation) return { entries: cached.entries, generation };
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const before = db._fileStore.getTableWriteGeneration("characters");
       const rows = await db.select().from(characters);
@@ -134,16 +138,16 @@ export function createCharacterCatalog(db: DB) {
       if (before === after) {
         const entries = rows.map(entry);
         caches.set(db, { generation: after, entries });
-        return entries;
+        return { entries, generation: after };
       }
     }
-    const rows = await db.select().from(characters);
-    return rows.map(entry);
+    throw new Error("Character catalog changed repeatedly while loading.");
   }
 
   return {
     async list(options: CatalogOptions): Promise<CharacterCatalogPage> {
-      let entries = await getEntries();
+      const catalog = await getEntries();
+      let entries = catalog.entries;
       if (!options.includeBuiltIn) entries = entries.filter((item) => item.id !== PROFESSOR_MARI_ID);
       const query = options.search?.trim().toLocaleLowerCase();
       if (query) entries = entries.filter((item) => item.searchText.includes(query));
@@ -156,7 +160,7 @@ export function createCharacterCatalog(db: DB) {
         limit: options.limit,
         offset: options.offset,
         hasMore: page.length > options.limit,
-        catalogGeneration: db._fileStore.getTableWriteGeneration("characters"),
+        catalogGeneration: catalog.generation,
       };
     },
   };

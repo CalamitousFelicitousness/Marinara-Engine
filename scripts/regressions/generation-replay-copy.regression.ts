@@ -20,6 +20,10 @@ const englishLocale = JSON.parse(readSource("packages/client/src/localization/lo
   string
 >;
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[\\^$.*+?()[\]{}|]/gu, "\\$&");
+}
+
 // A block renders its copy button only when it is handed a copy action, so an
 // absent `copy` prop is the defect this lane exists to catch.
 for (const [blockLabel, propLine] of [
@@ -27,7 +31,7 @@ for (const [blockLabel, propLine] of [
   ["impersonation guidance", "copy={impersonateCopy}"],
   ["impersonation prompt template", "copy={promptTemplateCopy}"],
 ] as const) {
-  assert.match(modal, new RegExp(propLine.replace(/[{}]/gu, "\\$&"), "u"), `the ${blockLabel} block must be copyable`);
+  assert.match(modal, new RegExp(escapeRegExp(propLine), "u"), `the ${blockLabel} block must be copyable`);
 }
 
 assert.match(
@@ -50,9 +54,17 @@ assert.match(
   "the impersonation prompt template must copy verbatim, not as a slash command",
 );
 
-assert.match(modal, /import \{ copyToClipboard \} from "\.\.\/\.\.\/lib\/utils";/u, "the modal must use the shared clipboard helper");
+assert.match(
+  modal,
+  /import \{ copyToClipboard \} from "\.\.\/\.\.\/lib\/utils";/u,
+  "the modal must use the shared clipboard helper",
+);
 assert.doesNotMatch(modal, /function copyToClipboard\(/u, "the modal must not duplicate clipboard fallback logic");
-assert.match(modal, /if \(copied\) \{\s*toast\.success\(copy\.copiedMessage\);\s*\} else \{\s*toast\.error\(copy\.failedMessage\);/u, "failed clipboard results must show an error toast");
+assert.match(
+  modal,
+  /if \(copied\) \{\s*toast\.success\(copy\.copiedMessage\);\s*\} else \{\s*toast\.error\(copy\.failedMessage\);/u,
+  "failed clipboard results must show an error toast",
+);
 
 // Copy buttons must be reachable by assistive technology and localized.
 assert.match(modal, /title=\{copy\.title\}/u, "a copy button must carry a tooltip");
@@ -77,7 +89,7 @@ for (const key of [
   "ui.chat.generationreplaydetailsmodal.blocked",
 ]) {
   assert.ok(englishLocale[key], `${key} must exist in the English catalog`);
-  assert.match(modal, new RegExp(`"${key.replace(/\./gu, "\\.")}"`, "u"), `${key} must be used by the modal`);
+  assert.match(modal, new RegExp(`"${escapeRegExp(key)}"`, "u"), `${key} must be used by the modal`);
 }
 
 console.log("generation-replay-copy: ok");

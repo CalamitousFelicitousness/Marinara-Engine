@@ -80,6 +80,23 @@ export type CharacterSummary = {
   conversationStatus?: string;
 };
 
+export type CharacterCatalogEntry = {
+  id: string;
+  name: string;
+  comment: string;
+  creator: string;
+  version: string;
+  tags: string[];
+  favorite: boolean;
+  summary: string;
+  searchText: string;
+  avatarPath: string | null;
+  avatarCrop: unknown;
+  createdAt: string;
+  updatedAt: string;
+  data: Record<string, unknown>;
+};
+
 // ── Characters ──
 
 type UseCharactersOptions =
@@ -132,9 +149,30 @@ export function useCharacterPages(options: {
       if (search) params.set("search", search);
       if (sort) params.set("sort", sort);
       if (favoriteFilter) params.set("favoriteFilter", favoriteFilter);
-      return api.get<PaginatedList<Record<string, unknown>>>(`/characters?${params.toString()}`);
+      return api.get<PaginatedList<CharacterCatalogEntry>>(`/characters/catalog?${params.toString()}`);
     },
     getNextPageParam: getNextPageOffset,
+    placeholderData: (previousData) => previousData,
+    enabled,
+    staleTime: 5 * 60_000,
+  });
+}
+
+/** Compact character rows for surfaces that need search and navigation only. */
+export function useAllCharacterCatalog(enabled = true) {
+  return useQuery({
+    queryKey: [...characterKeys.list(), "catalog", "all"] as const,
+    queryFn: async () => {
+      const items: CharacterCatalogEntry[] = [];
+      let offset = 0;
+      while (true) {
+        const params = new URLSearchParams({ limit: String(LIBRARY_PAGE_SIZE), offset: String(offset) });
+        const page = await api.get<PaginatedList<CharacterCatalogEntry>>(`/characters/catalog?${params.toString()}`);
+        items.push(...page.items);
+        if (!page.hasMore) return items;
+        offset += page.limit;
+      }
+    },
     enabled,
     staleTime: 5 * 60_000,
   });

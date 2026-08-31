@@ -1,4 +1,14 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type UIEvent } from "react";
+import {
+  Fragment,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type UIEvent,
+} from "react";
 import {
   ArrowLeft,
   ArrowUpDown,
@@ -381,7 +391,8 @@ export function CharacterLibraryView() {
   const selectedId = isPersonaLibrary ? personaSelectedId : characterSelectedId;
   const sort = isPersonaLibrary ? personaSort : characterSort;
   const [search, setSearch] = useState("");
-  const serverSearch = useMemo(() => parseCardLibrarySearchQuery(search).text, [search]);
+  const deferredSearch = useDeferredValue(search);
+  const serverSearch = useMemo(() => parseCardLibrarySearchQuery(deferredSearch).text, [deferredSearch]);
   const characterPages = useCharacterPages({ enabled: !isPersonaLibrary, search: serverSearch, sort: characterSort });
   const personaPages = usePersonaPages({ enabled: isPersonaLibrary, search: serverSearch, sort: personaSort });
   const characters = useMemo(() => flattenCharacterPages(characterPages.data), [characterPages.data]);

@@ -1,7 +1,16 @@
 // ──────────────────────────────────────────────
 // Panel: Characters (overhauled — search, folders, avatars)
 // ──────────────────────────────────────────────
-import { useState, useMemo, useCallback, useEffect, useLayoutEffect, useRef, type UIEvent } from "react";
+import {
+  useState,
+  useMemo,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  type UIEvent,
+} from "react";
 import { useTranslation, useTranslation as useUiTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
@@ -171,7 +180,8 @@ export function CharactersPanel() {
   const favFilter = useUIStore((s) => s.characterPanelFavoriteFilter);
   const setFavFilter = useUIStore((s) => s.setCharacterPanelFavoriteFilter);
   const setCharacterPanelScrollTop = useUIStore((s) => s.setCharacterPanelScrollTop);
-  const serverSearch = useMemo(() => parseCardLibrarySearchQuery(search).text, [search]);
+  const deferredSearch = useDeferredValue(search);
+  const serverSearch = useMemo(() => parseCardLibrarySearchQuery(deferredSearch).text, [deferredSearch]);
   const serverFavoriteFilter = favFilter === "favorites" || favFilter === "non-favorites" ? favFilter : "";
   const characterPages = useCharacterPages({ search: serverSearch, sort, favoriteFilter: serverFavoriteFilter });
   const characters = useMemo(() => flattenCharacterPages(characterPages.data), [characterPages.data]);

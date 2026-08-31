@@ -252,11 +252,6 @@ export function AppShell() {
     const isIOSWebKit =
       /iP(?:ad|hone|od)/i.test(navigator.userAgent) ||
       (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-    // iOS doesn't track the keyboard's visualViewport.offsetTop/height
-    // reliably, so we force offsetTop to 0 and instead counter the scroll
-    // drift iOS applies with a `transform: translateY()` (a GPU compositor
-    // update, unlike window.scrollTo() it doesn't fight WebKit's own
-    // animation).
     const updateVisualViewportGeometry = () => {
       if (frame) cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
@@ -272,9 +267,6 @@ export function AppShell() {
         largestViewportHeight = Math.max(largestViewportHeight, height);
         root.style.setProperty("--mari-visual-viewport-height", `${Math.max(0, Math.round(height))}px`);
         root.style.setProperty("--mari-visual-viewport-offset-top", `${Math.round(offsetTop)}px`);
-        if (isIOSWebKit) {
-          root.style.setProperty("--mari-app-scroll-compensate", `${Math.round(window.scrollY)}px`);
-        }
         const keyboardOpen = supportsVirtualKeyboard && largestViewportHeight - height >= 80;
         root.toggleAttribute("data-mari-software-keyboard-open", keyboardOpen);
         dispatchChatVisualViewportChange({
@@ -327,7 +319,6 @@ export function AppShell() {
       document.removeEventListener("focusout", refreshAfterFocusChange);
       root.style.removeProperty("--mari-visual-viewport-height");
       root.style.removeProperty("--mari-visual-viewport-offset-top");
-      root.style.removeProperty("--mari-app-scroll-compensate");
       root.removeAttribute("data-mari-software-keyboard-open");
     };
   }, []);

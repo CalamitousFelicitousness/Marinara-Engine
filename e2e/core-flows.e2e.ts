@@ -19114,13 +19114,67 @@ test("mobile chat composer follows the visual viewport above the software keyboa
       element.style.setProperty("--mari-safe-area-inset-bottom", "34px");
     });
     await expect(page.getByText(/^Keyboard viewport history line 18\./)).toBeVisible();
-    await textarea.focus();
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const htmlStyle = getComputedStyle(document.documentElement);
+          const bodyStyle = getComputedStyle(document.body);
+          const rootStyle = getComputedStyle(document.getElementById("root")!);
+          return {
+            htmlHeight: htmlStyle.height,
+            htmlOverflow: htmlStyle.overflow,
+            bodyPosition: bodyStyle.position,
+            bodyInset: [bodyStyle.top, bodyStyle.right, bodyStyle.bottom, bodyStyle.left],
+            bodyHeight: bodyStyle.height,
+            bodyOverflow: bodyStyle.overflow,
+            rootHeight: rootStyle.height,
+            rootOverflow: rootStyle.overflow,
+          };
+        }),
+      )
+      .toEqual({
+        htmlHeight: `${await page.evaluate(() => window.innerHeight)}px`,
+        htmlOverflow: "hidden",
+        bodyPosition: "fixed",
+        bodyInset: ["0px", "0px", "0px", "0px"],
+        bodyHeight: `${await page.evaluate(() => window.innerHeight)}px`,
+        bodyOverflow: "hidden",
+        rootHeight: `${await page.evaluate(() => window.innerHeight)}px`,
+        rootOverflow: "hidden",
+      });
+    await page.evaluate(() => {
+      const probeWindow = window as typeof window & {
+        __mariOriginalScrollIntoView: typeof Element.prototype.scrollIntoView;
+        __mariScrollIntoViewCalls: number;
+      };
+      probeWindow.__mariOriginalScrollIntoView = Element.prototype.scrollIntoView;
+      probeWindow.__mariScrollIntoViewCalls = 0;
+      Element.prototype.scrollIntoView = function () {
+        probeWindow.__mariScrollIntoViewCalls += 1;
+      };
+    });
     await page.evaluate(() => {
       (
         window as typeof window & {
           __setMarinaraVisualViewport: (height: number, offsetTop: number) => void;
         }
-      ).__setMarinaraVisualViewport(360, 72);
+      ).__setMarinaraVisualViewport(360, 340);
+    });
+    await textarea.focus();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => (window as typeof window & { __mariScrollIntoViewCalls: number }).__mariScrollIntoViewCalls,
+        ),
+      )
+      .toBe(0);
+    await page.evaluate(() => {
+      const probeWindow = window as typeof window & {
+        __mariOriginalScrollIntoView: typeof Element.prototype.scrollIntoView;
+        __mariScrollIntoViewCalls?: number;
+      };
+      Element.prototype.scrollIntoView = probeWindow.__mariOriginalScrollIntoView;
+      delete probeWindow.__mariScrollIntoViewCalls;
     });
 
     await expect
@@ -19209,10 +19263,8 @@ test("mobile chat composer follows the visual viewport above the software keyboa
           getComputedStyle(document.documentElement).getPropertyValue("--mari-app-scroll-compensate").trim(),
         ),
       )
-      .toBe("64px");
-    await expect
-      .poll(() => page.evaluate(() => getComputedStyle(document.querySelector<HTMLElement>(".mari-app")!).transform))
-      .toContain("64");
+      .toBe("");
+    await expect.poll(() => shell.evaluate((element) => getComputedStyle(element).transform)).toBe("none");
 
     await page.evaluate(async () => {
       const storePath = "/src/stores/ui.store.ts";
@@ -19246,6 +19298,54 @@ test("mobile chat composer follows the visual viewport above the software keyboa
     }, chat.id);
     await expect(shell).not.toHaveAttribute("data-chat-surface-active");
     await expect.poll(() => shell.evaluate((element) => getComputedStyle(element).transform)).toBe("none");
+  } finally {
+    await page.request.delete(`/api/chats/${chat.id}`).catch(() => undefined);
+  }
+});
+
+test("mobile Roleplay releases its inactive background after a crossfade", async ({ page }, testInfo) => {
+  test.skip(!testInfo.project.name.includes("webkit"), "Decoded-background retention is covered in mobile WebKit.");
+
+  const response = await page.request.post("/api/chats", {
+    data: {
+      name: "Roleplay background retention smoke",
+      mode: "roleplay",
+      characterIds: [],
+    },
+  });
+  expect(response.ok()).toBeTruthy();
+  const chat = (await response.json()) as { id: string };
+
+  await page.addInitScript((chatId) => {
+    localStorage.setItem("marinara-active-chat-id", chatId);
+  }, chat.id);
+
+  try {
+    await page.goto("/");
+    await expect(page.locator('[data-chat-mode="roleplay"]')).toBeVisible();
+    const backgrounds = page.locator("img.mari-background[src]");
+    const makeBackground = (color: string) =>
+      `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><rect width="32" height="32" fill="${color}"/></svg>`)}`;
+
+    const setBackground = async (url: string) => {
+      await page.evaluate(async (backgroundUrl) => {
+        const storePath = "/src/stores/ui.store.ts";
+        const { useUIStore } = (await import(/* @vite-ignore */ storePath)) as {
+          useUIStore: {
+            getState: () => {
+              setChatBackground: (url: string | null) => void;
+            };
+          };
+        };
+        useUIStore.getState().setChatBackground(backgroundUrl);
+      }, url);
+    };
+
+    await setBackground(makeBackground("#512da8"));
+    await expect.poll(() => backgrounds.count()).toBeGreaterThan(0);
+    await setBackground(makeBackground("#00897b"));
+    await expect(backgrounds).toHaveCount(2);
+    await expect.poll(() => backgrounds.count(), { timeout: 2_000 }).toBe(1);
   } finally {
     await page.request.delete(`/api/chats/${chat.id}`).catch(() => undefined);
   }

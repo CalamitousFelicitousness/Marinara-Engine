@@ -2068,7 +2068,24 @@ export function HomeBrowserHub({
   const professorMariResources = useMemo<ProfessorMariNavigationResource[]>(() => {
     const characterResources = (characterCatalog.data ?? []).flatMap((row) =>
       row.name.trim()
-        ? [{ kind: "character" as const, id: row.id, name: row.name, searchText: [row.summary, ...row.tags] }]
+        ? [
+            {
+              kind: "character" as const,
+              id: row.id,
+              name: row.name,
+              searchText: [
+                row.summary,
+                row.explicitSummary,
+                row.creatorNotes,
+                row.description,
+                row.personality,
+                row.scenario,
+                row.firstMessage,
+                row.creator,
+                ...row.tags,
+              ],
+            },
+          ]
         : [],
     );
     return [

@@ -23,6 +23,7 @@ import {
   User,
 } from "lucide-react";
 import { type CharacterData, type Persona } from "@marinara-engine/shared";
+import type { CharacterCatalogEntry } from "@marinara-engine/shared";
 import { useTranslation, useTranslation as useUiTranslation } from "react-i18next";
 import {
   flattenCharacterPages,
@@ -53,28 +54,7 @@ const libraryToolbarButtonClass =
   "mari-chrome-control mari-chrome-control--primary h-10 min-h-10 min-w-0 px-3 text-[0.75rem]";
 const libraryToolbarFieldClass = "mari-chrome-field h-10 w-full text-[0.75rem] md:h-9";
 
-type CharacterRow = {
-  id: string;
-  data?: unknown;
-  name?: string;
-  explicitSummary?: string;
-  description?: string;
-  personality?: string;
-  scenario?: string;
-  firstMessage?: string;
-  creatorNotes?: string;
-  tokenEstimate?: number;
-  favorite?: boolean;
-  tags?: string[];
-  creator?: string;
-  version?: string;
-  nameColor?: string | null;
-  avatarCrop?: unknown;
-  comment?: string | null;
-  avatarPath: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
+type CharacterRow = CharacterCatalogEntry;
 
 type ParsedCharacterRow = CharacterRow & {
   parsed: Partial<CharacterData> & {
@@ -127,25 +107,20 @@ const LIBRARY_COPY: Record<CardLibraryKind, LibraryCopy> = {
 
 function parseCharacterRow(char: CharacterRow): ParsedCharacterRow {
   try {
-    const parsed =
-      char.data !== undefined
-        ? typeof char.data === "string"
-          ? JSON.parse(char.data)
-          : char.data
-        : {
-            name: char.name,
-            summary: char.explicitSummary,
-            description: char.description,
-            personality: char.personality,
-            scenario: char.scenario,
-            first_mes: char.firstMessage,
-            creator_notes: char.creatorNotes,
-            tags: char.tags,
-            creator: char.creator,
-            character_version: char.version,
-            extensions: { fav: char.favorite, avatarCrop: char.avatarCrop, nameColor: char.nameColor },
-          };
-    return { ...char, parsed: (parsed as ParsedCharacterRow["parsed"]) ?? {} };
+    const parsed = {
+      name: char.name,
+      summary: char.explicitSummary,
+      description: char.description,
+      personality: char.personality,
+      scenario: char.scenario,
+      first_mes: char.firstMessage,
+      creator_notes: char.creatorNotes,
+      tags: char.tags,
+      creator: char.creator,
+      character_version: char.version,
+      extensions: { fav: char.favorite, avatarCrop: char.avatarCrop, nameColor: char.nameColor },
+    };
+    return { ...char, parsed: (parsed as unknown as ParsedCharacterRow["parsed"]) ?? {} };
   } catch {
     return { ...char, parsed: { name: "Unknown", description: "" } };
   }

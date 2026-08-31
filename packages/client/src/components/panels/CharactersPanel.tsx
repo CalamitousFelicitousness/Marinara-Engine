@@ -60,6 +60,7 @@ import { useUIStore, type CharacterLibrarySort } from "../../stores/ui.store";
 import { handleFolderRenameKeyDown, useFolderRenameGesture } from "../../hooks/use-folder-rename-gesture";
 import { useTouchFolderDrag } from "../../hooks/use-touch-folder-drag";
 import { normalizeAvatarCrop } from "@marinara-engine/shared";
+import type { CharacterCatalogEntry } from "@marinara-engine/shared";
 import { cn, getAvatarCropStyle } from "../../lib/utils";
 import { estimateCharacterCardTokens, formatEstimatedTokens } from "../../lib/character-token-count";
 import { SelectionActionBar } from "../ui/SelectionActionBar";
@@ -69,28 +70,7 @@ import { PanelLoadMoreBar } from "./PanelLoadMoreBar";
 import { clearActiveChatResourceDrag, writeChatResourceDragPayload } from "../../lib/chat-resource-drag";
 import { ChatResourceActionButton } from "../chat/ChatResourceActionButton";
 
-type CharacterRow = {
-  id: string;
-  data?: unknown;
-  name?: string;
-  explicitSummary?: string;
-  description?: string;
-  personality?: string;
-  scenario?: string;
-  firstMessage?: string;
-  creatorNotes?: string;
-  tokenEstimate?: number;
-  favorite?: boolean;
-  tags?: string[];
-  creator?: string;
-  version?: string;
-  nameColor?: string | null;
-  avatarCrop?: unknown;
-  comment?: string | null;
-  avatarPath: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
+type CharacterRow = CharacterCatalogEntry;
 type GroupRow = { id: string; name: string; description: string; characterIds: string; avatarPath: string | null };
 type ParsedCharacterRow = CharacterRow & { parsed: Record<string, any> };
 type ParsedGroupRow = GroupRow & { memberIds: string[] };
@@ -118,25 +98,20 @@ function getCharacterTags(char: ParsedCharacterRow): string[] {
 
 function parseCharacterRow(char: CharacterRow): ParsedCharacterRow {
   try {
-    const parsed =
-      char.data !== undefined
-        ? typeof char.data === "string"
-          ? JSON.parse(char.data)
-          : char.data
-        : {
-            name: char.name,
-            summary: char.explicitSummary,
-            description: char.description,
-            personality: char.personality,
-            scenario: char.scenario,
-            first_mes: char.firstMessage,
-            creator_notes: char.creatorNotes,
-            tags: char.tags,
-            creator: char.creator,
-            character_version: char.version,
-            extensions: { fav: char.favorite, avatarCrop: char.avatarCrop, nameColor: char.nameColor },
-          };
-    return { ...char, parsed: (parsed as ParsedCharacterRow["parsed"]) ?? {} };
+    const parsed = {
+      name: char.name,
+      summary: char.explicitSummary,
+      description: char.description,
+      personality: char.personality,
+      scenario: char.scenario,
+      first_mes: char.firstMessage,
+      creator_notes: char.creatorNotes,
+      tags: char.tags,
+      creator: char.creator,
+      character_version: char.version,
+      extensions: { fav: char.favorite, avatarCrop: char.avatarCrop, nameColor: char.nameColor },
+    };
+    return { ...char, parsed: (parsed as unknown as ParsedCharacterRow["parsed"]) ?? {} };
   } catch {
     return { ...char, parsed: { name: "Unknown", description: "" } };
   }

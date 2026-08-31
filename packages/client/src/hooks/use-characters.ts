@@ -25,6 +25,7 @@ import { cleanTrackerCardColorConfig } from "../lib/tracker-card-colors";
 import { personaCacheKeys, syncCachedPersona } from "../lib/persona-cache";
 import {
   PROFESSOR_MARI_ID,
+  type CharacterCatalogEntry,
   type CharacterData,
   type CharacterCardVersion,
   type Persona,
@@ -78,29 +79,6 @@ export type CharacterSummary = {
   avatarUrl: string | null;
   avatarCrop?: unknown;
   conversationStatus?: string;
-};
-
-export type CharacterCatalogEntry = {
-  id: string;
-  name: string;
-  comment: string;
-  creator: string;
-  version: string;
-  tags: string[];
-  favorite: boolean;
-  summary: string;
-  explicitSummary: string;
-  description: string;
-  personality: string;
-  scenario: string;
-  firstMessage: string;
-  creatorNotes: string;
-  tokenEstimate: number;
-  nameColor: string | null;
-  avatarPath: string | null;
-  avatarCrop: unknown;
-  createdAt: string;
-  updatedAt: string;
 };
 
 // ── Characters ──

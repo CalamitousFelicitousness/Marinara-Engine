@@ -1,30 +1,6 @@
-import type { CharacterData } from "@marinara-engine/shared";
+import { PROFESSOR_MARI_ID, type CharacterData, type CharacterCatalogEntry } from "@marinara-engine/shared";
 import type { DB } from "../../db/connection.js";
 import { characters } from "../../db/schema/index.js";
-import { PROFESSOR_MARI_ID } from "@marinara-engine/shared";
-
-export type CharacterCatalogEntry = {
-  id: string;
-  name: string;
-  comment: string;
-  creator: string;
-  version: string;
-  tags: string[];
-  favorite: boolean;
-  summary: string;
-  explicitSummary: string;
-  description: string;
-  personality: string;
-  scenario: string;
-  firstMessage: string;
-  creatorNotes: string;
-  tokenEstimate: number;
-  nameColor: string | null;
-  avatarPath: string | null;
-  avatarCrop: unknown;
-  createdAt: string;
-  updatedAt: string;
-};
 
 type CachedCharacterCatalogEntry = CharacterCatalogEntry & { searchText: string };
 

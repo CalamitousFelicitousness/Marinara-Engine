@@ -20105,7 +20105,11 @@ test("mobile Game keeps CYOA usable above four HUD widgets", async ({ page, requ
     const composer = page.getByPlaceholder("What do you do?");
     const optionList = page.locator('[data-component="GameChoiceCards.Options"]');
     const options = page.locator('[data-component="GameChoiceCards.Options"] > button');
-    await expect(choiceStage).toBeVisible();
+    // First mount after `goto`, so this assertion absorbs app boot plus the lazy
+    // GameSurface chunk. The neighbouring game specs already allow 30s for that;
+    // the default 10s makes this spec fail on mobile-webkit under CI load. Every
+    // assertion after it stays on the default timeout.
+    await expect(choiceStage).toBeVisible({ timeout: 30_000 });
     await expect(choiceStack).toBeVisible();
     await expect(leftWidgetRail).toBeVisible();
     await expect(rightWidgetRail).toBeVisible();

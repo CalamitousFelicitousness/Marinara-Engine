@@ -2163,8 +2163,12 @@ export function useGenerate() {
               leadingSpeakerPrefixFilter.addLabels([turn.characterName]);
               // Each character in a group turn saves its own message, so the
               // previous `message_saved` must not leave the status reading
-              // "preparing" while the next character is still narrating.
-              if (isGameGeneration) useChatStore.getState().setNarrationSaved(params.chatId, false);
+              // "preparing" while the next character is still narrating. Guarded
+              // by stream ownership for the same reason the set is: a queued
+              // event from a superseded stream must not touch its replacement.
+              if (isGameGeneration && useChatStore.getState().abortControllers.get(params.chatId) === abortController) {
+                useChatStore.getState().setNarrationSaved(params.chatId, false);
+              }
 
               // If this isn't the first character, flush the previous one's content
               if (turn.index > 0) {

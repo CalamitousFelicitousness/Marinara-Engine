@@ -106,7 +106,9 @@ function entry(row: typeof characters.$inferSelect): CachedCharacterCatalogEntry
 
 function sortEntries(entries: CachedCharacterCatalogEntry[], sort: string) {
   return [...entries].sort((a, b) => {
-    if (sort === "favorites") return Number(b.favorite) - Number(a.favorite) || a.name.localeCompare(b.name);
+    if (sort === "favorites") {
+      return Number(b.favorite) - Number(a.favorite) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
+    }
     if (sort === "name-desc") return b.name.localeCompare(a.name) || a.id.localeCompare(b.id);
     if (sort === "name-asc") return a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
     if (sort === "oldest") return a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);

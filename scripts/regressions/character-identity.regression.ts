@@ -71,6 +71,10 @@ const markerExpanderSource = readFileSync(
   join(repositoryRoot, "packages/server/src/services/prompt/marker-expander.ts"),
   "utf8",
 );
+const toolResolutionSource = readFileSync(
+  join(repositoryRoot, "packages/server/src/services/generation/tool-resolution-runtime.ts"),
+  "utf8",
+);
 const extensionSource = readFileSync(
   join(repositoryRoot, "packages/server/src/routes/personal-extensions.routes.ts"),
   "utf8",
@@ -146,6 +150,26 @@ assert.equal(
   retrySource.match(/personaContext: retryPersonaContext/gu)?.length,
   2,
   "Both retry context builds must reuse the request-scoped identity",
+);
+assert.match(
+  retrySource,
+  /persona:\s*personaContext\.identityId !== null/u,
+  'Retry agent context must retain valid identities whose display name is "User"',
+);
+assert.match(
+  retrySource,
+  /_userIdentitySource === "character"[\s\S]*?lorebookCharacterIds[\s\S]*?resolveAgentGenerationTools/u,
+  "Retry tools must include character-backed identities only in lorebook scope",
+);
+assert.match(
+  generateSource,
+  /resolveGenerationTools\([\s\S]*?lorebookCharacterIds: withIdentityLorebookScope\(promptCharacterIds\)/u,
+  "Live generation tools must include character-backed identities in lorebook scope",
+);
+assert.match(
+  toolResolutionSource,
+  /characterIds: lorebookCharacterIds \?\? promptCharacterIds/u,
+  "Tool lorebook search must keep identity scope separate from assistant prompt characters",
 );
 assert.match(
   generateSource,

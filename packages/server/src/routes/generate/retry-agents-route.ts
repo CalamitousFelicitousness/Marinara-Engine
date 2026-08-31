@@ -1053,7 +1053,7 @@ async function buildRetryAgentContext(args: {
     characters: charInfo,
     characterTrackerHistory: characterTrackerHistory as unknown as AgentContext["characterTrackerHistory"],
     persona:
-      personaContext.personaName !== "User"
+      personaContext.identityId !== null
         ? {
             name: personaContext.personaName,
             description: resolvePersonaPromptText(personaContext.personaDescription) ?? "",
@@ -4471,6 +4471,14 @@ export async function registerRetryAgentsRoute(
             };
           }
         }
+        const retryIdentityCharacterId =
+          context.memory._userIdentitySource === "character" && typeof context.memory._userIdentityId === "string"
+            ? context.memory._userIdentityId
+            : null;
+        const lorebookCharacterIds =
+          retryIdentityCharacterId && !toolInputs.promptCharacterIds.includes(retryIdentityCharacterId)
+            ? [...toolInputs.promptCharacterIds, retryIdentityCharacterId]
+            : toolInputs.promptCharacterIds;
         await resolveAgentGenerationTools({
           requestBody: toolInputs.requestBody,
           chatId,
@@ -4482,6 +4490,7 @@ export async function registerRetryAgentsRoute(
           resolvedAgents: toolAgents,
           enabledConfigs,
           promptCharacterIds: toolInputs.promptCharacterIds,
+          lorebookCharacterIds,
           personaId:
             typeof context.memory._personaId === "string" && context.memory._personaId.trim()
               ? context.memory._personaId

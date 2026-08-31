@@ -4885,6 +4885,7 @@ export async function generateRoutes(app: FastifyInstance) {
           resolvedAgents,
           enabledConfigs,
           promptCharacterIds,
+          lorebookCharacterIds: withIdentityLorebookScope(promptCharacterIds),
           personaId,
           activeLorebookIds: chatActiveLorebookIds,
           excludedLorebookIds: lorebookScopeExclusions.excludedLorebookIds,

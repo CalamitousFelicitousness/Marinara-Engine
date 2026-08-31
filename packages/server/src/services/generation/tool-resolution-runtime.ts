@@ -78,6 +78,7 @@ export type ResolveGenerationToolsArgs = {
   resolvedAgents: ResolvedAgent[];
   enabledConfigs: any[];
   promptCharacterIds: string[];
+  lorebookCharacterIds?: string[];
   personaId: string | null;
   activeLorebookIds: string[];
   excludedLorebookIds: string[];
@@ -647,6 +648,7 @@ async function resolveToolRuntime(
     resolvedAgents,
     enabledConfigs,
     promptCharacterIds,
+    lorebookCharacterIds,
     personaId,
     activeLorebookIds,
     excludedLorebookIds,
@@ -743,7 +745,7 @@ async function resolveToolRuntime(
   const searchLorebookForTools = async (query: string, category?: string | null) => {
     const entries = await lorebooksStore.listActiveEntries({
       chatId,
-      characterIds: promptCharacterIds,
+      characterIds: lorebookCharacterIds ?? promptCharacterIds,
       personaId,
       activeLorebookIds,
       excludedLorebookIds,

@@ -757,6 +757,7 @@ async function buildRetryAgentContext(args: {
   resolvedAgents: ResolvedAgent[];
   lastAssistant: any;
   chars: ReturnType<typeof createCharactersStorage>;
+  personaContext: PersonaContext;
   gameStateStore: ReturnType<typeof createGameStateStorage>;
   lorebooksStore: ReturnType<typeof createLorebooksStorage>;
   streaming: boolean;
@@ -784,6 +785,7 @@ async function buildRetryAgentContext(args: {
     resolvedAgents,
     lastAssistant,
     chars,
+    personaContext,
     gameStateStore,
     lorebooksStore,
     streaming,
@@ -834,7 +836,6 @@ async function buildRetryAgentContext(args: {
     });
   }
 
-  const personaContext = await resolvePersonaContext(chars, chat);
   const lorebookCharacterIds =
     personaContext.identitySource === "character" &&
     personaContext.identityId &&
@@ -4353,6 +4354,9 @@ export async function registerRetryAgentsRoute(
         };
       }
       const cyoaAgentWillRun = resolvedAgents.some((e) => e.resolved.type === "cyoa");
+      const retryPersonaContext = await runRetrySetupPhase(abortController.signal, () =>
+        resolvePersonaContext(chars, chat),
+      );
       const agentContextResult = await runRetrySetupPhase(abortController.signal, () =>
         buildRetryAgentContext({
           cyoaAgentWillRun,
@@ -4365,6 +4369,7 @@ export async function registerRetryAgentsRoute(
           resolvedAgents: resolvedAgents.map((entry) => entry.resolved),
           lastAssistant,
           chars,
+          personaContext: retryPersonaContext,
           gameStateStore,
           lorebooksStore,
           streaming,
@@ -4392,6 +4397,7 @@ export async function registerRetryAgentsRoute(
                 resolvedAgents: resolvedAgents.map((entry) => entry.resolved),
                 lastAssistant: null,
                 chars,
+                personaContext: retryPersonaContext,
                 gameStateStore,
                 lorebooksStore,
                 streaming,

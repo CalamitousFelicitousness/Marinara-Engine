@@ -129,8 +129,23 @@ assert.match(
 );
 assert.match(
   conversationMessageSource,
-  /personaInfo\?\.source === "character" && personaInfo\.id === aboutMeIdentity\.id[\s\S]*?\? personaInfo/u,
+  /personaInfo\?\.source === "character" && personaInfo\.id === aboutMeIdentity\.id[\s\S]*?\? personaInfo[\s\S]*?characterMap\?\.get\(aboutMeIdentity\.id\)/u,
   "The About Me viewer must use the active character identity's presence outside the assistant roster",
+);
+assert.match(
+  conversationMessageSource,
+  /: message\.characterId && charInfo\s*\? charInfo\s*:\s*null/u,
+  "The About Me viewer must not attribute fallback presence metadata to a missing assistant character",
+);
+assert.equal(
+  retrySource.match(/resolvePersonaContext\(chars, chat\)/gu)?.length,
+  1,
+  "Agent retries must resolve the chat identity only once per request",
+);
+assert.equal(
+  retrySource.match(/personaContext: retryPersonaContext/gu)?.length,
+  2,
+  "Both retry context builds must reuse the request-scoped identity",
 );
 assert.match(
   generateSource,

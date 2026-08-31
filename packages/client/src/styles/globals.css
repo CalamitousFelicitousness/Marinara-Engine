@@ -5991,14 +5991,29 @@ strong {
    * the literal and WKWebView cannot resolve variables → shows black instead.
    */
   html {
-    min-height: 100dvh;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
     overflow: hidden;
+    overscroll-behavior: none;
   }
 
   body {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
     /* Safe-area insets handled by AppShell — only apply sides here */
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
+  }
+
+  #root {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
   }
 
   /* Scoped to conversation/roleplay/game (each sets data-chat-mode on its
@@ -6009,8 +6024,6 @@ strong {
     bottom: auto;
     height: var(--mari-visual-viewport-height, 100dvh);
     min-height: 0;
-    /* Counters the iOS scroll-drag bug described in AppShell.tsx. */
-    transform: translateY(var(--mari-app-scroll-compensate, 0px)) translateZ(0);
   }
 
   .app-sidebar-mobile {

@@ -16,6 +16,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- iPhone chat fields no longer let software-keyboard focus pan and transform the entire app shell; Roleplay also releases its inactive full-resolution background after each crossfade and avoids unused full-viewport compositor hints, reducing persistent WebKit visual memory (#5710, #5711).
 - Character library and omnibar searches now share a generation-aware in-memory character catalog, so list views do not repeatedly scan and transfer complete character cards.
 - Fixed character identity prompt previews, imports, gallery participant handling, and quick-menu scrolling and bounds.
 - Fixed character identity profile routing, prompt macro resolution, sprite subjects, memory naming, and lorebook scan context.

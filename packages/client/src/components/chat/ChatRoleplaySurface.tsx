@@ -153,6 +153,7 @@ const ActiveLorebookEntriesContent = lazy(async () => {
 const roleplayNotificationSeenKeys = new Set<string>();
 const MAX_ROLEPLAY_NOTIFICATION_SEEN_KEYS = 5_000;
 const MOBILE_FLOATING_PANEL_PADDING = 8;
+const BACKGROUND_CROSSFADE_MS = 700;
 
 type MobileFloatingPanelFrame = {
   top: number;
@@ -230,6 +231,7 @@ function CrossfadeBackground({
   const [bgB, setBgB] = useState<string | null>(null);
   const [aActive, setAActive] = useState(true);
   const activeSlot = useRef<"a" | "b">("a");
+  const cleanupTimerRef = useRef<number | null>(null);
   const backgroundBlurStyle = getBackgroundBlurStyle(blurPx);
 
   useEffect(() => {
@@ -259,17 +261,33 @@ function CrossfadeBackground({
     };
 
     function applyUrl(nextUrl: string | null) {
+      if (cleanupTimerRef.current !== null) window.clearTimeout(cleanupTimerRef.current);
       if (activeSlot.current === "a") {
         setBgB(nextUrl);
         setAActive(false);
         activeSlot.current = "b";
+        cleanupTimerRef.current = window.setTimeout(() => {
+          cleanupTimerRef.current = null;
+          setBgA(null);
+        }, BACKGROUND_CROSSFADE_MS);
       } else {
         setBgA(nextUrl);
         setAActive(true);
         activeSlot.current = "a";
+        cleanupTimerRef.current = window.setTimeout(() => {
+          cleanupTimerRef.current = null;
+          setBgB(null);
+        }, BACKGROUND_CROSSFADE_MS);
       }
     }
   }, [bgA, bgB, url]);
+
+  useEffect(
+    () => () => {
+      if (cleanupTimerRef.current !== null) window.clearTimeout(cleanupTimerRef.current);
+    },
+    [],
+  );
 
   return (
     <>
@@ -283,7 +301,7 @@ function CrossfadeBackground({
         )}
         style={{
           opacity: aActive && bgA ? 1 : 0,
-          transition: "opacity 700ms ease-in-out, filter 180ms ease-out, transform 180ms ease-out",
+          transition: `opacity ${BACKGROUND_CROSSFADE_MS}ms ease-in-out, filter 180ms ease-out, transform 180ms ease-out`,
           ...backgroundBlurStyle,
         }}
       />
@@ -297,7 +315,7 @@ function CrossfadeBackground({
         )}
         style={{
           opacity: !aActive && bgB ? 1 : 0,
-          transition: "opacity 700ms ease-in-out, filter 180ms ease-out, transform 180ms ease-out",
+          transition: `opacity ${BACKGROUND_CROSSFADE_MS}ms ease-in-out, filter 180ms ease-out, transform 180ms ease-out`,
           ...backgroundBlurStyle,
         }}
       />

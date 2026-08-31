@@ -248,16 +248,18 @@ export function createInputMacroResolverForChat(
   const characterPersona = chat?.personaCharacterId
     ? parseCharacterMacroData(characters?.find((character) => character.id === chat.personaCharacterId))
     : null;
-  const activePersona: MacroPersonaData | undefined = characterPersona
-    ? {
-        personaId: characterPersona.id,
-        name: characterPersona.name,
-        description: characterPersona.description,
-        personality: characterPersona.personality,
-        backstory: characterPersona.backstory,
-        appearance: characterPersona.appearance,
-        scenario: characterPersona.scenario,
-      }
+  const activePersona: MacroPersonaData | undefined = chat?.personaCharacterId
+    ? characterPersona
+      ? {
+          personaId: characterPersona.id,
+          name: characterPersona.name,
+          description: characterPersona.description,
+          personality: characterPersona.personality,
+          backstory: characterPersona.backstory,
+          appearance: characterPersona.appearance,
+          scenario: characterPersona.scenario,
+        }
+      : undefined
     : selectActivePersona(chat, personas);
   return createMessageMacroResolver({
     persona: activePersona,

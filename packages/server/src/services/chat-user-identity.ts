@@ -76,7 +76,8 @@ export async function resolveChatUserIdentity(
       aboutMe: stringValue(extensions.aboutMe),
       convoDisplayName: stringValue(extensions.convoDisplayName),
       characterSheetImageId: stringValue(extensions.characterSheetImageId) || null,
-      useCharacterSheetAsReference: extensions.useCharacterSheetAsReference === true,
+      useCharacterSheetAsReference:
+        extensions.useCharacterSheetAsReference === true || extensions.useCharacterSheetAsReference === "true",
     };
   }
 

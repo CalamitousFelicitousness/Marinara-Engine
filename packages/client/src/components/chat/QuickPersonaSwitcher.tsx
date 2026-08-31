@@ -4,7 +4,7 @@
 // ──────────────────────────────────────────────
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, ChevronRight, FolderOpen, Folder } from "lucide-react";
+import { ChevronDown, ChevronRight, FolderOpen, Folder, Search } from "lucide-react";
 import { useCharacters, usePersonas, usePersonaGroups, useCharacterGroups } from "../../hooks/use-characters";
 import { useUpdateChat, useChat } from "../../hooks/use-chats";
 import { useChatStore } from "../../stores/chat.store";
@@ -38,6 +38,7 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [showCharacterGroups, setShowCharacterGroups] = useState(false);
   const [expandedCharacterGroups, setExpandedCharacterGroups] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState("");
   const btnRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const activeChatId = useChatStore((s) => s.activeChatId);
@@ -68,6 +69,12 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
   const updateChat = useUpdateChat();
 
   const personas = (rawPersonas ?? []).slice().sort((a, b) => a.name.localeCompare(b.name));
+  const normalizedSearch = search.trim().toLocaleLowerCase();
+  const visiblePersonas = normalizedSearch
+    ? personas.filter((persona) =>
+        `${persona.name} ${persona.comment ?? ""}`.toLocaleLowerCase().includes(normalizedSearch),
+      )
+    : personas;
 
   const activePersonaId = chat?.personaId ?? null;
   const activeCharacterId = chat?.personaCharacterId ?? null;
@@ -98,7 +105,7 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
       const members: Persona[] = [];
       for (const pid of memberIds) {
         const p = personaMap.get(pid);
-        if (p) {
+        if (p && (!normalizedSearch || `${p.name} ${p.comment ?? ""}`.toLocaleLowerCase().includes(normalizedSearch))) {
           members.push(p);
           allGroupedIds.add(pid);
         }
@@ -110,7 +117,7 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
 
     parsedGroups.sort((a, b) => a.name.localeCompare(b.name));
 
-    const ungroupedList = personas.filter((p) => !allGroupedIds.has(p.id));
+    const ungroupedList = visiblePersonas.filter((p) => !allGroupedIds.has(p.id));
     if (ungroupedList.length > 0) {
       parsedGroups.push({
         id: UNGROUPED_PERSONA_GROUP_ID,
@@ -121,7 +128,22 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
     }
 
     return { groups: parsedGroups };
-  }, [rawPersonaGroups, personaMap, personas]);
+  }, [normalizedSearch, rawPersonaGroups, personaMap, visiblePersonas]);
+
+  const visibleCharacterGroups = useMemo(
+    () =>
+      characterGroups
+        .map((group) => ({
+          ...group,
+          members: group.members.filter((character) => {
+            if (!normalizedSearch) return true;
+            const data = parseCharacterDisplayData(character);
+            return `${data.name} ${character.comment ?? ""}`.toLocaleLowerCase().includes(normalizedSearch);
+          }),
+        }))
+        .filter((group) => group.members.length > 0),
+    [characterGroups, normalizedSearch],
+  );
 
   const toggleGroup = useCallback((groupId: string) => {
     setExpandedGroups((prev) => {
@@ -168,6 +190,16 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
     document.addEventListener("pointerdown", handler);
     return () => document.removeEventListener("pointerdown", handler);
   }, [open]);
+
+  useEffect(() => {
+    if (!open || (!showCharacterIdentities && !activeCharacterId && !normalizedSearch)) return;
+    setShowCharacterGroups(true);
+    setExpandedCharacterGroups((current) => {
+      const next = new Set(current);
+      for (const group of visibleCharacterGroups) next.add(group.id);
+      return next;
+    });
+  }, [activeCharacterId, normalizedSearch, open, showCharacterIdentities, visibleCharacterGroups]);
 
   useEffect(() => {
     if (!open) return;
@@ -315,13 +347,23 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
             className="fixed z-[9999] flex min-w-[280px] max-w-[calc(100vw-1rem)] flex-col overflow-hidden rounded-xl border border-foreground/10 bg-[var(--card)] shadow-2xl"
             style={
               pos
-                ? { left: pos.left, top: pos.top, width: pos.width, height: pos.maxHeight }
+                ? { left: pos.left, top: pos.top, width: pos.width, maxHeight: pos.maxHeight }
                 : { visibility: "hidden" as const }
             }
           >
             <div className="flex items-center justify-center border-b border-foreground/10 px-3 py-2 text-[0.6875rem] font-semibold">
               {localizeUi("navigation.topbar.personas")}
             </div>
+            <label className="mx-2 mt-2 flex items-center gap-2 rounded-lg border border-foreground/10 bg-foreground/[0.04] px-2.5 py-2 text-foreground/55">
+              <Search size="0.875rem" className="shrink-0" />
+              <span className="sr-only">{localizeUi("ui.chat.personapicker.search")}</span>
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder={localizeUi("ui.chat.personapicker.search")}
+                className="min-w-0 flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-foreground/40"
+              />
+            </label>
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1">
               {/* None option */}
               <button
@@ -411,9 +453,9 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
                 );
               })}
 
-              {personas.length === 0 && (
+              {visiblePersonas.length === 0 && visibleCharacterGroups.length === 0 && (
                 <div className="px-3 py-4 text-center text-[0.6875rem] italic text-foreground/45">
-                  {localizeUi("ui.chat.quickpersonaswitcher.noPersonasFound")}
+                  {localizeUi("ui.chat.personapicker.noMatchingPersonas")}
                 </div>
               )}
               {characters.length > 0 && (showCharacterIdentities || !!activeCharacterId) && (
@@ -433,7 +475,7 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
                     {showCharacterGroups ? <ChevronDown size="0.75rem" /> : <ChevronRight size="0.75rem" />}
                   </button>
                   {showCharacterGroups &&
-                    characterGroups.map((group) => {
+                    visibleCharacterGroups.map((group) => {
                       const expanded = expandedCharacterGroups.has(group.id);
                       const members = group.members.filter(
                         (character) => showCharacterIdentities || character.id === activeCharacterId,
@@ -471,7 +513,8 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
                           </button>
                           {expanded &&
                             members.map((character) => {
-                              const name = parseCharacterDisplayData(character).name;
+                              const characterData = parseCharacterDisplayData(character);
+                              const name = characterData.name;
                               const isActive = activeCharacterId === character.id;
                               return (
                                 <button
@@ -489,7 +532,7 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
                                         src={character.avatarPath}
                                         alt=""
                                         className="h-full w-full object-cover"
-                                        style={getAvatarCropStyle(parseCharacterDisplayData(character).avatarCrop)}
+                                        style={getAvatarCropStyle(characterData.avatarCrop)}
                                       />
                                     ) : (
                                       name[0]
@@ -498,7 +541,7 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
                                   <div className="min-w-0 flex-1">
                                     <span className="block truncate text-xs font-semibold">{name}</span>
                                     <span className="block text-[0.625rem] text-foreground/45">
-                                      {localizeUi("ui.chat.personapicker.characterSource")}
+                                      {character.comment || localizeUi("ui.chat.personapicker.characterSource")}
                                     </span>
                                   </div>
                                   {isActive && <span className="text-[0.6875rem]">✓</span>}

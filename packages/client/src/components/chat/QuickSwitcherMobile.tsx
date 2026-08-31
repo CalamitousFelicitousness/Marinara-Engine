@@ -4,7 +4,17 @@
 // (with persona group support)
 // ──────────────────────────────────────────────
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
-import { ChevronUp, ChevronDown, ChevronRight, Link, CircleUser, FolderOpen, Folder, Check } from "lucide-react";
+import {
+  ChevronUp,
+  ChevronDown,
+  ChevronRight,
+  Link,
+  CircleUser,
+  FolderOpen,
+  Folder,
+  Check,
+  Search,
+} from "lucide-react";
 import { createPortal } from "react-dom";
 import { useConnections, useUpdateConnection } from "../../hooks/use-connections";
 import { useCharacters, usePersonas, usePersonaGroups, useCharacterGroups } from "../../hooks/use-characters";
@@ -44,6 +54,7 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [showCharacterGroups, setShowCharacterGroups] = useState(false);
   const [expandedCharacterGroups, setExpandedCharacterGroups] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState("");
   const btnRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const activeChatId = useChatStore((s) => s.activeChatId);
@@ -83,6 +94,12 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
     .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 
   const sortedPersonas = (rawPersonas ?? []).slice().sort((a, b) => a.name.localeCompare(b.name));
+  const normalizedSearch = search.trim().toLocaleLowerCase();
+  const visiblePersonas = normalizedSearch
+    ? sortedPersonas.filter((persona) =>
+        `${persona.name} ${persona.comment ?? ""}`.toLocaleLowerCase().includes(normalizedSearch),
+      )
+    : sortedPersonas;
 
   const personaMap = useMemo(() => {
     const map = new Map<string, Persona>();
@@ -105,7 +122,7 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
       const members: Persona[] = [];
       for (const pid of memberIds) {
         const p = personaMap.get(pid);
-        if (p) {
+        if (p && (!normalizedSearch || `${p.name} ${p.comment ?? ""}`.toLocaleLowerCase().includes(normalizedSearch))) {
           members.push(p);
           allGroupedIds.add(pid);
         }
@@ -116,7 +133,7 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
     }
 
     parsedGroups.sort((a, b) => a.name.localeCompare(b.name));
-    const ungroupedList = sortedPersonas.filter((p) => !allGroupedIds.has(p.id));
+    const ungroupedList = visiblePersonas.filter((p) => !allGroupedIds.has(p.id));
     if (ungroupedList.length > 0) {
       parsedGroups.push({
         id: UNGROUPED_PERSONA_GROUP_ID,
@@ -126,7 +143,22 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
       });
     }
     return { groups: parsedGroups };
-  }, [rawPersonaGroups, personaMap, sortedPersonas]);
+  }, [normalizedSearch, rawPersonaGroups, personaMap, visiblePersonas]);
+
+  const visibleCharacterGroups = useMemo(
+    () =>
+      characterGroups
+        .map((group) => ({
+          ...group,
+          members: group.members.filter((character) => {
+            if (!normalizedSearch) return true;
+            const data = parseCharacterDisplayData(character);
+            return `${data.name} ${character.comment ?? ""}`.toLocaleLowerCase().includes(normalizedSearch);
+          }),
+        }))
+        .filter((group) => group.members.length > 0),
+    [characterGroups, normalizedSearch],
+  );
 
   const toggleGroup = useCallback((groupId: string) => {
     setExpandedGroups((prev) => {
@@ -193,6 +225,16 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
+
+  useEffect(() => {
+    if (!open || tab !== "personas" || (!showCharacterIdentities && !activeCharacterId && !normalizedSearch)) return;
+    setShowCharacterGroups(true);
+    setExpandedCharacterGroups((current) => {
+      const next = new Set(current);
+      for (const group of visibleCharacterGroups) next.add(group.id);
+      return next;
+    });
+  }, [activeCharacterId, normalizedSearch, open, showCharacterIdentities, tab, visibleCharacterGroups]);
 
   const [pos, setPos] = useState<{
     left: number;
@@ -350,6 +392,18 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
                 {localizeUi("navigation.topbar.personas")}
               </button>
             </div>
+            {tab === "personas" && (
+              <label className="mx-2 mt-2 flex items-center gap-2 rounded-lg border border-foreground/10 bg-foreground/[0.04] px-2.5 py-2 text-foreground/55">
+                <Search size="0.875rem" className="shrink-0" />
+                <span className="sr-only">{localizeUi("ui.chat.personapicker.search")}</span>
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder={localizeUi("ui.chat.personapicker.search")}
+                  className="min-w-0 flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-foreground/40"
+                />
+              </label>
+            )}
 
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1">
               {tab === "connections" && (
@@ -534,7 +588,7 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
                         {showCharacterGroups ? <ChevronDown size="0.75rem" /> : <ChevronRight size="0.75rem" />}
                       </button>
                       {showCharacterGroups &&
-                        characterGroups.map((group) => {
+                        visibleCharacterGroups.map((group) => {
                           const expanded = expandedCharacterGroups.has(group.id);
                           const members = group.members.filter(
                             (character) => showCharacterIdentities || character.id === activeCharacterId,
@@ -572,7 +626,8 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
                               </button>
                               {expanded &&
                                 members.map((character) => {
-                                  const name = parseCharacterDisplayData(character).name;
+                                  const characterData = parseCharacterDisplayData(character);
+                                  const name = characterData.name;
                                   const isActive = activeCharacterId === character.id;
                                   return (
                                     <button
@@ -590,7 +645,7 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
                                             src={character.avatarPath}
                                             alt=""
                                             className="h-full w-full object-cover"
-                                            style={getAvatarCropStyle(parseCharacterDisplayData(character).avatarCrop)}
+                                            style={getAvatarCropStyle(characterData.avatarCrop)}
                                           />
                                         ) : (
                                           name[0]
@@ -599,7 +654,7 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
                                       <div className="min-w-0 flex-1">
                                         <span className="block truncate text-xs font-semibold">{name}</span>
                                         <span className="block text-[0.625rem] text-foreground/45">
-                                          {localizeUi("ui.chat.personapicker.characterSource")}
+                                          {character.comment || localizeUi("ui.chat.personapicker.characterSource")}
                                         </span>
                                       </div>
                                       {isActive && <span className="text-[0.6875rem]">✓</span>}

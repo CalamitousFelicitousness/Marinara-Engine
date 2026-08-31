@@ -19,6 +19,9 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - Fixed character identity prompt previews, imports, gallery participant handling, and quick-menu scrolling and bounds.
 - Fixed character identity profile routing, prompt macro resolution, sprite subjects, memory naming, and lorebook scan context.
 - Preserved historical user names and portraits across identity switches.
+- Mobile Roleplay now keeps its full composer controls visible while scrolling through chat history instead of replacing them with a simplified text field (#5685).
+- Available app updates now wait for an explicit refresh instead of silently reloading active sessions, and Roleplay avatars no longer request persistent compositor layers, reducing iPhone WebKit memory pressure (#5686).
+- Character-backed chat identities now resolve consistently in macros and show searchable character names and descriptions in the quick pickers.
 - JSON agents now preserve mandatory reasoning for GLM 5.3 Flash on OpenRouter and NanoGPT instead of sending a reasoning-disable request that those providers reject (#5582).
 
 - Illustrator image downloads in the installed iPhone app now open the dismissible iOS share sheet instead of stranding the user in WebKit's full-screen file preview; choosing Save Image writes to Photos and returns to the still-open Marinara lightbox (#5681).

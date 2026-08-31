@@ -8,6 +8,7 @@ import {
   resolveIdentityCharacterScopes,
 } from "../../packages/server/src/services/generation/identity-context-runtime.js";
 import { resolveToolLorebookCharacterIds } from "../../packages/server/src/services/generation/tool-resolution-runtime.js";
+import { createInputMacroResolverForChat } from "../../packages/client/src/lib/chat-macros.js";
 
 const repositoryRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -34,7 +35,7 @@ const characterStorage = {
               backstory: "Character backstory",
               appearance: "Character appearance",
               characterSheetImageId: "sheet-1",
-              useCharacterSheetAsReference: true,
+              useCharacterSheetAsReference: "true",
             },
           }),
         }
@@ -63,6 +64,16 @@ assert.deepEqual(
     useCharacterSheetAsReference: true,
   },
   "Character-backed identities must retain their source and reference metadata without consulting Persona storage",
+);
+const missingCharacterResolver = createInputMacroResolverForChat(
+  { personaCharacterId: "missing-character", personaId: null, mode: "roleplay" },
+  [],
+  [{ id: "global-persona", name: "Global Persona", isActive: "true" } as never],
+);
+assert.equal(
+  missingCharacterResolver("{{personaName}} / {{persona}}").includes("Global Persona"),
+  false,
+  "A missing selected character identity must not fall back to the global Persona",
 );
 
 const generateSource = readFileSync(join(repositoryRoot, "packages/server/src/routes/generate.routes.ts"), "utf8");

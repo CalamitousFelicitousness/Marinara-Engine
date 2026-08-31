@@ -7277,18 +7277,12 @@ strong {
 }
 
 :root[data-professor-mari-floating="true"] .mari-conversation-call-mini {
-  bottom: calc(
-    max(var(--mari-safe-area-inset-bottom, env(safe-area-inset-bottom)), 0.75rem) + min(32rem, calc(100vh - 5rem)) +
-      0.75rem
-  );
+  bottom: calc(max(var(--mari-safe-area-inset-bottom, env(safe-area-inset-bottom)), 0.75rem) + min(32rem, calc(100vh - 5rem)) + 0.75rem);
 }
 
 @supports (height: 100dvh) {
   :root[data-professor-mari-floating="true"] .mari-conversation-call-mini {
-    bottom: calc(
-      max(var(--mari-safe-area-inset-bottom, env(safe-area-inset-bottom)), 0.75rem) + min(32rem, calc(100dvh - 5rem)) +
-        0.75rem
-    );
+    bottom: calc(max(var(--mari-safe-area-inset-bottom, env(safe-area-inset-bottom)), 0.75rem) + min(32rem, calc(100dvh - 5rem)) + 0.75rem);
   }
 }
 

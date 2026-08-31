@@ -320,39 +320,26 @@ interface GameVoiceEntryPlan {
 
 const GAME_TTS_CHUNK_ATTEMPTS = 2;
 
-/** Milliseconds without a new token before the turn counts as past the writing phase. */
-const GAME_WRITING_IDLE_MS = 1200;
-
 /**
  * Status line under the narration box.
  *
  * The game stream stays open past the last narration token while post-processing
  * agents, the message refresh, and scene analysis run, so a single "writing"
- * label claimed the Game Master was still writing during that gap. Once the
- * token stream goes quiet, report the scene-preparation phase instead.
- *
- * With streaming off no tokens ever arrive, so the buffer stays empty and the
- * writing label holds for the whole turn.
+ * label claimed the Game Master was still writing during that whole gap. The
+ * server's `message_saved` event marks the exact moment the narration text is
+ * durable; past it, report the scene-preparation phase instead.
  */
 function GameGenerationStatus() {
   const { t: localizeUi } = useUiTranslation();
-  const streamBuffer = useChatStore((s) => s.streamBuffer);
-  const [writing, setWriting] = useState(true);
-
-  useEffect(() => {
-    setWriting(true);
-    if (!streamBuffer) return;
-    const timer = setTimeout(() => setWriting(false), GAME_WRITING_IDLE_MS);
-    return () => clearTimeout(timer);
-  }, [streamBuffer]);
+  const narrationSaved = useChatStore((s) => (s.activeChatId ? s.narrationSavedChatIds.has(s.activeChatId) : false));
 
   return (
     <div className="mt-2 flex items-center gap-1 text-xs text-[var(--foreground)]/50">
       <span className="animate-pulse">●</span>
       <span>
-        {writing
-          ? localizeUi("ui.game.gamenarration.theGameMasterIsWritingTheNextSegment")
-          : localizeUi("ui.game.gamenarration.preparingScene")}
+        {narrationSaved
+          ? localizeUi("ui.game.gamenarration.preparingScene")
+          : localizeUi("ui.game.gamenarration.theGameMasterIsWritingTheNextSegment")}
       </span>
     </div>
   );

@@ -2394,6 +2394,12 @@ export function useGenerate() {
               if (savedMessage.role === "assistant") {
                 completeQueuedResponse(params.chatId, savedMessage.characterId);
                 currentGroupTurnSavedMessage = savedMessage;
+                if (isGameGeneration) {
+                  // The narration text is durable now. The request stays open for
+                  // post-processing, the refresh, and scene analysis, so this is
+                  // the point where the Game Master has stopped writing.
+                  useChatStore.getState().setNarrationSaved(params.chatId, true);
+                }
               }
               await qc.cancelQueries({ queryKey: chatKeys.messages(params.chatId), exact: true });
               persistedMessages.set(savedMessage.id, savedMessage);

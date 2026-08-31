@@ -3476,7 +3476,12 @@ function DetailView({
               )}
             </div>
             {zoomed && card.avatarUrl ? (
-              <AvatarZoomOverlay src={card.avatarUrl} alt={card.name} onClose={() => setZoomed(false)} />
+              <AvatarZoomOverlay
+                src={fullSizeAvatarUrl(card.avatarUrl)}
+                fallbackSrc={card.avatarUrl}
+                alt={card.name}
+                onClose={() => setZoomed(false)}
+              />
             ) : null}
             <div className="flex flex-col gap-2 max-md:flex-1">
               <div className="rounded-lg border border-[var(--border)] bg-[var(--secondary)]/60 p-2.5">
@@ -3668,9 +3673,29 @@ function DetailView({
 // ════════════════════════════════════════════════
 
 /** Build a SillyTavern-compatible PNG character card with embedded V2 JSON in a tEXt chunk. */
+/**
+ * The list thumbnail is a compressed `avatar.webp`. For the enlarged view, ask
+ * the proxy for the card PNG instead — the same asset the card download uses.
+ * Providers with no larger source keep serving their single image.
+ */
+function fullSizeAvatarUrl(avatarUrl: string): string {
+  return avatarUrl.startsWith("/api/bot-browser/chub/avatar/") ? `${avatarUrl}?full=1` : avatarUrl;
+}
+
 /** Full-screen, uncropped view of a browsed card's image. Escape or a backdrop click closes it. */
-function AvatarZoomOverlay({ src, alt, onClose }: { src: string; alt: string; onClose: () => void }) {
+function AvatarZoomOverlay({
+  src,
+  fallbackSrc,
+  alt,
+  onClose,
+}: {
+  src: string;
+  fallbackSrc: string;
+  alt: string;
+  onClose: () => void;
+}) {
   const { t: localizeUi } = useUiTranslation();
+  const [resolvedSrc, setResolvedSrc] = useState(src);
   useEffect(() => {
     const handle = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
@@ -3688,8 +3713,9 @@ function AvatarZoomOverlay({ src, alt, onClose }: { src: string; alt: string; on
       onClick={onClose}
     >
       <img
-        src={src}
+        src={resolvedSrc}
         alt={alt}
+        onError={() => setResolvedSrc((current) => (current === fallbackSrc ? current : fallbackSrc))}
         className="max-h-[90vh] max-w-[90vw] rounded-lg object-contain shadow-2xl supports-[height:100dvh]:max-h-[90dvh]"
       />
     </div>,

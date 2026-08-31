@@ -1812,7 +1812,7 @@ export function HomeBrowserHub({
     setDiscoveryIndex((current) => (current + direction + recommendations.length) % recommendations.length);
   };
   const characterOfDay = useMemo(() => {
-    const rows = characterCatalog.data ?? [];
+    const rows = (characterCatalog.data ?? []).filter((row) => row.name.trim().length > 0);
     if (rows.length === 0) return null;
     const day = new Date().toISOString().slice(0, 10);
     const hash = Array.from(day).reduce((total, character) => total + character.charCodeAt(0), 0);

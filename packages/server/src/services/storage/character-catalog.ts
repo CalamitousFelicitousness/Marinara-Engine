@@ -12,13 +12,21 @@ export type CharacterCatalogEntry = {
   tags: string[];
   favorite: boolean;
   summary: string;
-  searchText: string;
+  explicitSummary: string;
+  description: string;
+  personality: string;
+  scenario: string;
+  firstMessage: string;
+  creatorNotes: string;
+  tokenEstimate: number;
+  nameColor: string | null;
   avatarPath: string | null;
   avatarCrop: unknown;
   createdAt: string;
   updatedAt: string;
-  data: Partial<CharacterData>;
 };
+
+type CachedCharacterCatalogEntry = CharacterCatalogEntry & { searchText: string };
 
 type CatalogOptions = {
   includeBuiltIn?: boolean;
@@ -29,7 +37,7 @@ type CatalogOptions = {
   offset: number;
 };
 
-type CatalogCache = { generation: number; entries: CharacterCatalogEntry[] };
+type CatalogCache = { generation: number; entries: CachedCharacterCatalogEntry[] };
 const caches = new WeakMap<DB, CatalogCache>();
 
 function readData(value: string): CharacterData {
@@ -69,7 +77,7 @@ function strings(data: CharacterData, comment: string) {
   };
 }
 
-function entry(row: typeof characters.$inferSelect): CharacterCatalogEntry {
+function entry(row: typeof characters.$inferSelect): CachedCharacterCatalogEntry {
   const data = readData(row.data);
   const { tags, searchText } = strings(data, row.comment ?? "");
   const extensions =
@@ -78,6 +86,21 @@ function entry(row: typeof characters.$inferSelect): CharacterCatalogEntry {
     [data.summary, data.creator_notes, data.description, data.personality].find(
       (value): value is string => typeof value === "string" && value.trim().length > 0,
     ) ?? "";
+  const textFields = [
+    data.name,
+    row.comment,
+    data.creator,
+    data.character_version,
+    data.creator_notes,
+    data.summary,
+    data.description,
+    data.personality,
+    data.scenario,
+    data.first_mes,
+    extensions.backstory,
+    extensions.appearance,
+    ...tags,
+  ];
   return {
     id: row.id,
     name: typeof data.name === "string" && data.name.trim() ? data.name.trim() : "Unknown",
@@ -87,28 +110,25 @@ function entry(row: typeof characters.$inferSelect): CharacterCatalogEntry {
     tags,
     favorite: extensions.fav === true,
     summary,
-    searchText,
+    explicitSummary: typeof data.summary === "string" ? data.summary : "",
+    description: typeof data.description === "string" ? data.description : "",
+    personality: typeof data.personality === "string" ? data.personality : "",
+    scenario: typeof data.scenario === "string" ? data.scenario : "",
+    firstMessage: typeof data.first_mes === "string" ? data.first_mes : "",
+    creatorNotes: typeof data.creator_notes === "string" ? data.creator_notes : "",
+    tokenEstimate: Math.ceil(
+      textFields.filter((value): value is string => typeof value === "string").join("\n").length / 4,
+    ),
+    nameColor: typeof extensions.nameColor === "string" ? extensions.nameColor : null,
     avatarPath: row.avatarPath ?? null,
     avatarCrop: extensions.avatarCrop ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
-    data: {
-      name: data.name,
-      description: data.description,
-      personality: data.personality,
-      scenario: data.scenario,
-      first_mes: data.first_mes,
-      tags: data.tags,
-      creator: data.creator,
-      character_version: data.character_version,
-      creator_notes: data.creator_notes,
-      summary: data.summary,
-      extensions: data.extensions,
-    },
+    searchText,
   };
 }
 
-function sortEntries(entries: CharacterCatalogEntry[], sort: string) {
+function sortEntries(entries: CachedCharacterCatalogEntry[], sort: string) {
   return [...entries].sort((a, b) => {
     if (sort === "favorites") return Number(b.favorite) - Number(a.favorite) || a.name.localeCompare(b.name);
     if (sort === "name-desc") return b.name.localeCompare(a.name) || a.id.localeCompare(b.id);
@@ -149,7 +169,7 @@ export function createCharacterCatalog(db: DB) {
       entries = sortEntries(entries, options.sort ?? "");
       const page = entries.slice(options.offset, options.offset + options.limit + 1);
       return {
-        items: page.slice(0, options.limit),
+        items: page.slice(0, options.limit).map(({ searchText: _searchText, ...item }) => item),
         limit: options.limit,
         offset: options.offset,
         hasMore: page.length > options.limit,

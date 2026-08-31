@@ -89,12 +89,18 @@ export type CharacterCatalogEntry = {
   tags: string[];
   favorite: boolean;
   summary: string;
-  searchText: string;
+  explicitSummary: string;
+  description: string;
+  personality: string;
+  scenario: string;
+  firstMessage: string;
+  creatorNotes: string;
+  tokenEstimate: number;
+  nameColor: string | null;
   avatarPath: string | null;
   avatarCrop: unknown;
   createdAt: string;
   updatedAt: string;
-  data: Record<string, unknown>;
 };
 
 // ── Characters ──
@@ -140,7 +146,7 @@ export function useCharacterPages(options: {
   return useInfiniteQuery({
     queryKey: characterKeys.page(includeBuiltIn, search, sort, favoriteFilter),
     initialPageParam: 0,
-    queryFn: ({ pageParam }) => {
+    queryFn: ({ pageParam, signal }) => {
       const params = new URLSearchParams({
         limit: String(LIBRARY_PAGE_SIZE),
         offset: String(Number(pageParam) || 0),
@@ -149,7 +155,7 @@ export function useCharacterPages(options: {
       if (search) params.set("search", search);
       if (sort) params.set("sort", sort);
       if (favoriteFilter) params.set("favoriteFilter", favoriteFilter);
-      return api.get<PaginatedList<CharacterCatalogEntry>>(`/characters/catalog?${params.toString()}`);
+      return api.get<PaginatedList<CharacterCatalogEntry>>(`/characters/catalog?${params.toString()}`, { signal });
     },
     getNextPageParam: getNextPageOffset,
     placeholderData: (previousData) => previousData,
@@ -162,12 +168,14 @@ export function useCharacterPages(options: {
 export function useAllCharacterCatalog(enabled = true) {
   return useQuery({
     queryKey: [...characterKeys.list(), "catalog", "all"] as const,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const items: CharacterCatalogEntry[] = [];
       let offset = 0;
       while (true) {
         const params = new URLSearchParams({ limit: String(LIBRARY_PAGE_SIZE), offset: String(offset) });
-        const page = await api.get<PaginatedList<CharacterCatalogEntry>>(`/characters/catalog?${params.toString()}`);
+        const page = await api.get<PaginatedList<CharacterCatalogEntry>>(`/characters/catalog?${params.toString()}`, {
+          signal,
+        });
         items.push(...page.items);
         if (!page.hasMore) return items;
         offset += page.limit;

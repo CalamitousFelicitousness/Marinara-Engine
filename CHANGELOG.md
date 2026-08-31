@@ -16,6 +16,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Character library and omnibar searches now share a generation-aware in-memory character catalog, so list views do not repeatedly scan and transfer complete character cards.
 - Fixed character identity prompt previews, imports, gallery participant handling, and quick-menu scrolling and bounds.
 - Fixed character identity profile routing, prompt macro resolution, sprite subjects, memory naming, and lorebook scan context.
 - Preserved historical user names and portraits across identity switches.

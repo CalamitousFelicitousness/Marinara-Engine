@@ -11020,7 +11020,7 @@ test("Professor Mari opens a named character directly in its editor", async ({ p
   try {
     const characterListResponse = page.waitForResponse((response) => {
       const url = new URL(response.url());
-      return response.request().method() === "GET" && url.pathname === "/api/characters";
+      return response.request().method() === "GET" && url.pathname === "/api/characters/catalog";
     });
     await page.goto("/");
     await characterListResponse;

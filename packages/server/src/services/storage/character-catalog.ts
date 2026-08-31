@@ -1,4 +1,9 @@
-import { PROFESSOR_MARI_ID, type CharacterData, type CharacterCatalogEntry } from "@marinara-engine/shared";
+import {
+  PROFESSOR_MARI_ID,
+  type CharacterData,
+  type CharacterCatalogEntry,
+  type CharacterCatalogPage,
+} from "@marinara-engine/shared";
 import type { DB } from "../../db/connection.js";
 import { characters } from "../../db/schema/index.js";
 
@@ -137,7 +142,7 @@ export function createCharacterCatalog(db: DB) {
   }
 
   return {
-    async list(options: CatalogOptions) {
+    async list(options: CatalogOptions): Promise<CharacterCatalogPage> {
       let entries = await getEntries();
       if (!options.includeBuiltIn) entries = entries.filter((item) => item.id !== PROFESSOR_MARI_ID);
       const query = options.search?.trim().toLocaleLowerCase();
@@ -151,6 +156,7 @@ export function createCharacterCatalog(db: DB) {
         limit: options.limit,
         offset: options.offset,
         hasMore: page.length > options.limit,
+        catalogGeneration: db._fileStore.getTableWriteGeneration("characters"),
       };
     },
   };

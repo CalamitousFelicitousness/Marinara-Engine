@@ -20,3 +20,11 @@ export type CharacterCatalogEntry = {
   createdAt: string;
   updatedAt: string;
 };
+
+export type CharacterCatalogPage = {
+  items: CharacterCatalogEntry[];
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+  catalogGeneration: number;
+};

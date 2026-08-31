@@ -25,8 +25,9 @@ import { cleanTrackerCardColorConfig } from "../lib/tracker-card-colors";
 import { personaCacheKeys, syncCachedPersona } from "../lib/persona-cache";
 import {
   PROFESSOR_MARI_ID,
-  type CharacterCatalogEntry,
   type CharacterData,
+  type CharacterCatalogEntry,
+  type CharacterCatalogPage,
   type CharacterCardVersion,
   type Persona,
   type PersonaCardVersion,
@@ -133,7 +134,7 @@ export function useCharacterPages(options: {
       if (search) params.set("search", search);
       if (sort) params.set("sort", sort);
       if (favoriteFilter) params.set("favoriteFilter", favoriteFilter);
-      return api.get<PaginatedList<CharacterCatalogEntry>>(`/characters/catalog?${params.toString()}`, { signal });
+      return api.get<CharacterCatalogPage>(`/characters/catalog?${params.toString()}`, { signal });
     },
     getNextPageParam: getNextPageOffset,
     placeholderData: (previousData) => previousData,
@@ -148,16 +149,21 @@ export function useAllCharacterCatalog(enabled = true) {
     queryKey: [...characterKeys.list(), "catalog", "all"] as const,
     queryFn: async ({ signal }) => {
       const items: CharacterCatalogEntry[] = [];
-      let offset = 0;
-      while (true) {
-        const params = new URLSearchParams({ limit: String(LIBRARY_PAGE_SIZE), offset: String(offset) });
-        const page = await api.get<PaginatedList<CharacterCatalogEntry>>(`/characters/catalog?${params.toString()}`, {
-          signal,
-        });
-        items.push(...page.items);
-        if (!page.hasMore) return items;
-        offset += page.limit;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        items.length = 0;
+        let offset = 0;
+        let generation: number | undefined;
+        while (true) {
+          const params = new URLSearchParams({ limit: String(LIBRARY_PAGE_SIZE), offset: String(offset) });
+          const page = await api.get<CharacterCatalogPage>(`/characters/catalog?${params.toString()}`, { signal });
+          generation ??= page.catalogGeneration;
+          if (page.catalogGeneration !== generation) break;
+          items.push(...page.items);
+          if (!page.hasMore) return items;
+          offset += page.limit;
+        }
       }
+      throw new Error("Character catalog changed repeatedly while loading.");
     },
     enabled,
     staleTime: 5 * 60_000,

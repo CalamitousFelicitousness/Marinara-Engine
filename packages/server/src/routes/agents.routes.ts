@@ -317,6 +317,94 @@ export async function agentsRoutes(app: FastifyInstance) {
     };
   });
 
+  /**
+   * A summary of Beholder's recent runs, for the panel's diagnostic view.
+   *
+   * Only shapes and timings: how long each run took, how many slots it changed, and
+   * whether it failed. The extracted state itself is not repeated here — the panel
+   * already holds the current one — so this stays a health signal rather than a second
+   * copy of the chat's contents.
+   */
+  app.get<{ Params: { chatId: string }; Querystring: { limit?: string } }>(
+    "/beholder-runs/:chatId",
+    { config: { rateLimit: BEHOLDER_STATE_RATE_LIMIT } },
+    async (req) => {
+      const parsed = req.query.limit ? Number.parseInt(req.query.limit, 10) : undefined;
+      // Clamped once, here, and used for both the fetch and the slice. The raw value
+      // reached the slice unchecked, so limit=0 or a negative returned an empty window
+      // while storage had quietly normalised its own end to at least one row.
+      const wanted = Math.max(1, Math.min(Number.isFinite(parsed) ? (parsed as number) : 5, 50));
+      // One extra, so the oldest run in the window still has a predecessor to be
+      // compared against and is not reported as having introduced everything it holds.
+      const runs = await storage.listRunsByTypeForChat("beholder", req.params.chatId, wanted + 1);
+
+      /** Slots per character, as a comparable map. */
+      const slotMap = (data: unknown) => {
+        const state = normalizeBeholderState(data);
+        // Keyed the way the normalizer identifies a character, which is case-folded.
+        // Keying by the raw name made "Maggie" and "maggie" two people, so one run
+        // spelling a name differently read as one character leaving and another
+        // arriving — a page of invented changes from a capital letter. The display
+        // name is carried alongside so the answer still reads naturally.
+        const map = new Map<string, { name: string; slots: Map<string, string> }>();
+        for (const character of state?.characters ?? []) {
+          const slots = new Map<string, string>();
+          for (const [slot, value] of Object.entries(character.body ?? {})) {
+            slots.set(slot, JSON.stringify(value ?? null));
+          }
+          map.set(character.name.toLocaleLowerCase("en-US"), { name: character.name, slots });
+        }
+        return map;
+      };
+
+      const maps = runs.map((run) => slotMap(run.resultData));
+      return runs.slice(0, wanted).map((run, index) => {
+        // Indexed access is typed as possibly-undefined; index is bounded by slice.
+        const now = maps[index] ?? new Map<string, { name: string; slots: Map<string, string> }>();
+        // Runs come back newest first, so the NEXT entry is the previous state.
+        const before = maps[index + 1] ?? null;
+        // Over the union of both states, not just the current one. Visiting only what
+        // is here now cannot see a removal: a garment taken off deletes the slot, and a
+        // character who leaves the scene disappears entirely, so the message that did it
+        // reported no change at all — on a panel whose whole purpose is tracking things
+        // being put on and taken off.
+        const changes: { name: string; slots: string[] }[] = [];
+        for (const key of new Set([...now.keys(), ...(before?.keys() ?? [])])) {
+          const currentEntry = now.get(key);
+          const previousEntry = before?.get(key);
+          const current = currentEntry?.slots ?? new Map<string, string>();
+          const previous = previousEntry?.slots ?? new Map<string, string>();
+          const name = currentEntry?.name ?? previousEntry?.name ?? key;
+          const touched: string[] = [];
+          for (const slot of new Set([...current.keys(), ...previous.keys()])) {
+            if (current.get(slot) !== previous.get(slot)) touched.push(slot);
+          }
+          // A character who appears or disappears is a change even when they carried no
+          // tracked slots, and reporting only slot differences swallowed that entirely.
+          // The panel draws one badge per slot, so such an entry shows nothing there —
+          // which is right, because there is nothing to show — but the answer this route
+          // gives is now true rather than conveniently empty.
+          const presenceChanged = now.has(key) !== (before?.has(key) ?? false);
+          if (touched.length || presenceChanged) changes.push({ name, slots: touched.sort() });
+        }
+        return {
+          messageId: run.messageId ?? null,
+          createdAt: run.createdAt ?? null,
+          durationMs: run.durationMs ?? null,
+          success: run.success,
+          error: run.error ?? null,
+          characters: now.size,
+          slots: [...now.values()].reduce((total, entry) => total + entry.slots.size, 0),
+          // What THIS run changed, rather than everything it holds. Null when there is
+          // no earlier run to compare against: the first extraction in a chat did not
+          // "change" the whole body, it established it, and saying otherwise would put
+          // a wall of badges on one message.
+          changes: before ? changes : null,
+        };
+      });
+    },
+  );
+
   /** Get run interval status for built-in cadence-gated agents. */
   app.get<{ Params: { agentType: string; chatId: string } }>("/cadence/:agentType/:chatId", async (req, reply) => {
     const { agentType, chatId } = req.params;

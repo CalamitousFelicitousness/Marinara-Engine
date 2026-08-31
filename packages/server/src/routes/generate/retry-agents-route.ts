@@ -3836,7 +3836,11 @@ async function applyRetryResultEffects(args: {
         typeof agentContext.memory._userIdentityId === "string" ? agentContext.memory._userIdentityId : null;
       if (Array.isArray(spriteData.expressions)) {
         for (const e of spriteData.expressions) {
-          if (userIdentityId && e.characterId === userIdentityId) {
+          if (
+            userIdentityId &&
+            e.characterId === userIdentityId &&
+            !agentContext.characters.some((character) => character.id === e.characterId)
+          ) {
             personaExprMap[e.characterId] = e.expression;
           } else {
             exprMap[e.characterId] = e.expression;

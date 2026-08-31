@@ -8665,7 +8665,7 @@ export async function generateRoutes(app: FastifyInstance) {
                 const exprMap: Record<string, string> = {};
                 const personaExprMap: Record<string, string> = {};
                 for (const e of persistedExpressions) {
-                  if (userIdentityId && e.characterId === userIdentityId) {
+                  if (userIdentityId && e.characterId === userIdentityId && !characterIds.includes(e.characterId)) {
                     personaExprMap[e.characterId] = e.expression;
                   } else {
                     exprMap[e.characterId] = e.expression;

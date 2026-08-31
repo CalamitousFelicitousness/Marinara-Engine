@@ -799,7 +799,9 @@ export const ConversationMessage = memo(function ConversationMessage({
     : personaInfo;
   const aboutMeCharacterInfo = isUser
     ? aboutMeIdentity?.source === "character"
-      ? (scopedCharacterMap?.get(aboutMeIdentity.id) ?? null)
+      ? personaInfo?.source === "character" && personaInfo.id === aboutMeIdentity.id
+        ? personaInfo
+        : (scopedCharacterMap?.get(aboutMeIdentity.id) ?? null)
       : null
     : resolvedCharacterInfo;
   const aboutMeTarget: { kind: "character" | "persona"; id: string } | null = isUser

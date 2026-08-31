@@ -520,7 +520,8 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
   const markerCtx: MarkerContext = {
     db: input.db,
     chatId: input.chatId,
-    characterIds: input.lorebookCharacterIds ?? input.characterIds,
+    characterIds: input.characterIds,
+    lorebookCharacterIds: input.lorebookCharacterIds,
     personaId: input.personaId ?? null,
     personaName: input.personaName,
     personaDescription: input.personaDescription,

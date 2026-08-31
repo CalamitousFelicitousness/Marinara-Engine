@@ -42,6 +42,8 @@ export type PersonaInfo = {
   nameColor?: string;
   dialogueColor?: string;
   boxColor?: string;
+  conversationStatus?: "online" | "idle" | "dnd" | "offline";
+  conversationActivity?: string;
 };
 
 export type PeekPromptData = {

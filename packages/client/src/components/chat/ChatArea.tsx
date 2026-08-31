@@ -972,6 +972,13 @@ export const ChatArea = memo(function ChatArea() {
           const rawData = typeof row.data === "string" ? JSON.parse(row.data) : row.data;
           const data = rawData && typeof rawData === "object" && !Array.isArray(rawData) ? rawData : {};
           const extensions = data?.extensions ?? {};
+          const conversationStatus =
+            extensions.conversationStatus === "online" ||
+            extensions.conversationStatus === "idle" ||
+            extensions.conversationStatus === "dnd" ||
+            extensions.conversationStatus === "offline"
+              ? extensions.conversationStatus
+              : undefined;
           return {
             id: row.id,
             source: "character" as const,
@@ -988,6 +995,9 @@ export const ChatArea = memo(function ChatArea() {
             nameColor: typeof extensions.nameColor === "string" ? extensions.nameColor : undefined,
             dialogueColor: typeof extensions.dialogueColor === "string" ? extensions.dialogueColor : undefined,
             boxColor: typeof extensions.boxColor === "string" ? extensions.boxColor : undefined,
+            conversationStatus,
+            conversationActivity:
+              typeof extensions.conversationActivity === "string" ? extensions.conversationActivity : undefined,
           };
         } catch {
           return undefined;

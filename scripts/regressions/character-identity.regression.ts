@@ -61,24 +61,23 @@ assert.deepEqual(
 );
 
 const generateSource = readFileSync(join(repositoryRoot, "packages/server/src/routes/generate.routes.ts"), "utf8");
-const dryRunSource = readFileSync(
-  join(repositoryRoot, "packages/server/src/routes/generate/dry-run-route.ts"),
-  "utf8",
-);
+const dryRunSource = readFileSync(join(repositoryRoot, "packages/server/src/routes/generate/dry-run-route.ts"), "utf8");
 const retrySource = readFileSync(
   join(repositoryRoot, "packages/server/src/routes/generate/retry-agents-route.ts"),
   "utf8",
 );
-const assemblerSource = readFileSync(
-  join(repositoryRoot, "packages/server/src/services/prompt/assembler.ts"),
+const assemblerSource = readFileSync(join(repositoryRoot, "packages/server/src/services/prompt/assembler.ts"), "utf8");
+const markerExpanderSource = readFileSync(
+  join(repositoryRoot, "packages/server/src/services/prompt/marker-expander.ts"),
   "utf8",
 );
 const extensionSource = readFileSync(
   join(repositoryRoot, "packages/server/src/routes/personal-extensions.routes.ts"),
   "utf8",
 );
-const chatAreaSource = readFileSync(
-  join(repositoryRoot, "packages/client/src/components/chat/ChatArea.tsx"),
+const chatAreaSource = readFileSync(join(repositoryRoot, "packages/client/src/components/chat/ChatArea.tsx"), "utf8");
+const conversationMessageSource = readFileSync(
+  join(repositoryRoot, "packages/client/src/components/chat/ConversationMessage.tsx"),
   "utf8",
 );
 const chatsRouteSource = readFileSync(join(repositoryRoot, "packages/server/src/routes/chats.routes.ts"), "utf8");
@@ -95,8 +94,13 @@ assert.match(
 );
 assert.match(
   assemblerSource,
-  /characterIds: input\.lorebookCharacterIds \?\? input\.characterIds/u,
-  "Preset assembly must use the dedicated character-backed identity scope for lorebooks",
+  /characterIds: input\.characterIds,\s*lorebookCharacterIds: input\.lorebookCharacterIds/u,
+  "Preset assembly must keep character markers separate from the lorebook-only identity scope",
+);
+assert.match(
+  markerExpanderSource,
+  /characterIds: ctx\.lorebookCharacterIds \?\? ctx\.characterIds/u,
+  "Lorebook matching must use the dedicated character-backed identity scope",
 );
 assert.match(
   retrySource,
@@ -117,6 +121,26 @@ assert.match(
   chatAreaSource,
   /typeof data\?\.name === "string" && data\.name\.trim\(\) \? data\.name : "Unknown"/u,
   "Malformed or blank imported character names must not enter display, macro, or TTS identity state",
+);
+assert.match(
+  chatAreaSource,
+  /conversationStatus === "online"[\s\S]*?conversationActivity:\s*typeof extensions\.conversationActivity === "string"/u,
+  "Character-backed identities must retain validated presence metadata",
+);
+assert.match(
+  conversationMessageSource,
+  /personaInfo\?\.source === "character" && personaInfo\.id === aboutMeIdentity\.id[\s\S]*?\? personaInfo/u,
+  "The About Me viewer must use the active character identity's presence outside the assistant roster",
+);
+assert.match(
+  generateSource,
+  /e\.characterId === userIdentityId && !characterIds\.includes\(e\.characterId\)/u,
+  "Live expression persistence must prefer assistant routing when an identity overlaps the active cast",
+);
+assert.match(
+  retrySource,
+  /e\.characterId === userIdentityId &&\s*!agentContext\.characters\.some\(\(character\) => character\.id === e\.characterId\)/u,
+  "Retry expression persistence must prefer assistant routing when an identity overlaps the active cast",
 );
 assert.match(
   chatsRouteSource,

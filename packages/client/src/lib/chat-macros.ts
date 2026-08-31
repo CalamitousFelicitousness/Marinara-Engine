@@ -92,6 +92,18 @@ function toMacroPersonaData(persona: Persona): MacroPersonaData {
   };
 }
 
+function toMacroPersonaDataFromCharacter(character: MacroCharacterData): MacroPersonaData {
+  return {
+    personaId: character.id,
+    name: character.name,
+    description: character.description,
+    personality: character.personality,
+    backstory: character.backstory,
+    appearance: character.appearance,
+    scenario: character.scenario,
+  };
+}
+
 export function selectChatCharacters(
   chat: { characterIds?: unknown } | null | undefined,
   characters: Array<{ id: string; data: unknown }> | undefined,
@@ -250,15 +262,7 @@ export function createInputMacroResolverForChat(
     : null;
   const activePersona: MacroPersonaData | undefined = chat?.personaCharacterId
     ? characterPersona
-      ? {
-          personaId: characterPersona.id,
-          name: characterPersona.name,
-          description: characterPersona.description,
-          personality: characterPersona.personality,
-          backstory: characterPersona.backstory,
-          appearance: characterPersona.appearance,
-          scenario: characterPersona.scenario,
-        }
+      ? toMacroPersonaDataFromCharacter(characterPersona)
       : undefined
     : selectActivePersona(chat, personas);
   return createMessageMacroResolver({

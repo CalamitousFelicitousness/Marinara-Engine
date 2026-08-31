@@ -144,6 +144,9 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
         .filter((group) => group.members.length > 0),
     [characterGroups, normalizedSearch],
   );
+  const hasVisibleCharacterChoices = showCharacterIdentities
+    ? visibleCharacterGroups.length > 0
+    : visibleCharacterGroups.some((group) => group.members.some((character) => character.id === activeCharacterId));
 
   const toggleGroup = useCallback((groupId: string) => {
     setExpandedGroups((prev) => {
@@ -468,12 +471,11 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
                 );
               })}
 
-              {visiblePersonas.length === 0 &&
-                ((!showCharacterIdentities && !activeCharacterId) || visibleCharacterGroups.length === 0) && (
-                  <div className="px-3 py-4 text-center text-[0.6875rem] italic text-foreground/45">
-                    {localizeUi("ui.chat.personapicker.noMatchingPersonas")}
-                  </div>
-                )}
+              {visiblePersonas.length === 0 && !hasVisibleCharacterChoices && (
+                <div className="px-3 py-4 text-center text-[0.6875rem] italic text-foreground/45">
+                  {localizeUi("ui.chat.personapicker.noMatchingPersonas")}
+                </div>
+              )}
               {characters.length > 0 && (showCharacterIdentities || !!activeCharacterId) && (
                 <>
                   <button

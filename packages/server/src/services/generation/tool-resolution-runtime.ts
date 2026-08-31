@@ -101,6 +101,13 @@ export type ResolvedGenerationTools = {
   updateChatMetadataForTools: (patchOrUpdater: MetadataPatchInput) => Promise<MetadataPatch>;
 };
 
+export function resolveToolLorebookCharacterIds(
+  promptCharacterIds: string[],
+  lorebookCharacterIds?: string[],
+): string[] {
+  return lorebookCharacterIds ?? promptCharacterIds;
+}
+
 const AGENT_ONLY_TOOL_NAMES = new Set([
   "save_lorebook_entry",
   "read_chat_summary",
@@ -745,7 +752,7 @@ async function resolveToolRuntime(
   const searchLorebookForTools = async (query: string, category?: string | null) => {
     const entries = await lorebooksStore.listActiveEntries({
       chatId,
-      characterIds: lorebookCharacterIds ?? promptCharacterIds,
+      characterIds: resolveToolLorebookCharacterIds(promptCharacterIds, lorebookCharacterIds),
       personaId,
       activeLorebookIds,
       excludedLorebookIds,

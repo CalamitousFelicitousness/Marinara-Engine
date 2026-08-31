@@ -233,6 +233,10 @@ import {
 } from "../../services/generation/agent-resolution.js";
 import { resolveAgentGenerationTools } from "../../services/generation/tool-resolution-runtime.js";
 import {
+  buildRetryAgentPersona,
+  resolveIdentityCharacterScopes,
+} from "../../services/generation/identity-context-runtime.js";
+import {
   readSpotifyPlaybackTrackUri,
   readSpotifyStringField,
   readSpotifyTrackUris,
@@ -1052,19 +1056,17 @@ async function buildRetryAgentContext(args: {
     gameState: null,
     characters: charInfo,
     characterTrackerHistory: characterTrackerHistory as unknown as AgentContext["characterTrackerHistory"],
-    persona:
-      personaContext.identityId !== null
-        ? {
-            name: personaContext.personaName,
-            description: resolvePersonaPromptText(personaContext.personaDescription) ?? "",
-            personality: resolvePersonaPromptText(personaContext.personaFields.personality) || undefined,
-            backstory: resolvePersonaPromptText(personaContext.personaFields.backstory) || undefined,
-            appearance: resolvePersonaPromptText(personaContext.personaFields.appearance) || undefined,
-            scenario: resolvePersonaPromptText(personaContext.personaFields.scenario) || undefined,
-            ...(personaContext.personaStats ? { personaStats: personaContext.personaStats } : {}),
-            ...(personaContext.rpgStats ? { rpgStats: personaContext.rpgStats } : {}),
-          }
-        : null,
+    persona: buildRetryAgentPersona(
+      {
+        identityId: personaContext.identityId,
+        name: personaContext.personaName,
+        description: personaContext.personaDescription,
+        ...personaContext.personaFields,
+        personaStats: personaContext.personaStats,
+        rpgStats: personaContext.rpgStats,
+      },
+      resolvePersonaPromptText,
+    ),
     writableLorebookIds: null,
     chatSummary: activeChatSummary,
     authorNotes:
@@ -4471,14 +4473,10 @@ export async function registerRetryAgentsRoute(
             };
           }
         }
-        const retryIdentityCharacterId =
-          context.memory._userIdentitySource === "character" && typeof context.memory._userIdentityId === "string"
-            ? context.memory._userIdentityId
-            : null;
-        const lorebookCharacterIds =
-          retryIdentityCharacterId && !toolInputs.promptCharacterIds.includes(retryIdentityCharacterId)
-            ? [...toolInputs.promptCharacterIds, retryIdentityCharacterId]
-            : toolInputs.promptCharacterIds;
+        const characterScopes = resolveIdentityCharacterScopes(toolInputs.promptCharacterIds, {
+          id: typeof context.memory._userIdentityId === "string" ? context.memory._userIdentityId : null,
+          source: context.memory._userIdentitySource === "character" ? "character" : null,
+        });
         await resolveAgentGenerationTools({
           requestBody: toolInputs.requestBody,
           chatId,
@@ -4489,8 +4487,8 @@ export async function registerRetryAgentsRoute(
           lorebooksStore,
           resolvedAgents: toolAgents,
           enabledConfigs,
-          promptCharacterIds: toolInputs.promptCharacterIds,
-          lorebookCharacterIds,
+          promptCharacterIds: characterScopes.promptCharacterIds,
+          lorebookCharacterIds: characterScopes.lorebookCharacterIds,
           personaId:
             typeof context.memory._personaId === "string" && context.memory._personaId.trim()
               ? context.memory._personaId

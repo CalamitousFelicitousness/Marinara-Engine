@@ -535,6 +535,7 @@ import {
   resolveGenerationTools,
   resolveMainGenerationToolChoice,
 } from "../services/generation/tool-resolution-runtime.js";
+import { resolveIdentityCharacterScopes } from "../services/generation/identity-context-runtime.js";
 import {
   buildCharacterMacroProfilesById,
   injectIdentityFallbackMessages,
@@ -1726,9 +1727,10 @@ export async function generateRoutes(app: FastifyInstance) {
       const userIdentityId = identity?.id ?? null;
       const lorebookIdentityCharacterId = identity?.source === "character" ? identity.id : null;
       const withIdentityLorebookScope = (ids: string[]) =>
-        lorebookIdentityCharacterId && !ids.includes(lorebookIdentityCharacterId)
-          ? [...ids, lorebookIdentityCharacterId]
-          : ids;
+        resolveIdentityCharacterScopes(ids, {
+          id: lorebookIdentityCharacterId,
+          source: lorebookIdentityCharacterId ? "character" : null,
+        }).lorebookCharacterIds;
 
       // Mirror user message to Discord now that personaName is resolved
       if (pendingUserDiscordMsg) {

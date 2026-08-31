@@ -3,6 +3,11 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveChatUserIdentity } from "../../packages/server/src/services/chat-user-identity.js";
+import {
+  buildRetryAgentPersona,
+  resolveIdentityCharacterScopes,
+} from "../../packages/server/src/services/generation/identity-context-runtime.js";
+import { resolveToolLorebookCharacterIds } from "../../packages/server/src/services/generation/tool-resolution-runtime.js";
 
 const repositoryRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -69,10 +74,6 @@ const retrySource = readFileSync(
 const assemblerSource = readFileSync(join(repositoryRoot, "packages/server/src/services/prompt/assembler.ts"), "utf8");
 const markerExpanderSource = readFileSync(
   join(repositoryRoot, "packages/server/src/services/prompt/marker-expander.ts"),
-  "utf8",
-);
-const toolResolutionSource = readFileSync(
-  join(repositoryRoot, "packages/server/src/services/generation/tool-resolution-runtime.ts"),
   "utf8",
 );
 const extensionSource = readFileSync(
@@ -151,25 +152,30 @@ assert.equal(
   2,
   "Both retry context builds must reuse the request-scoped identity",
 );
-assert.match(
-  retrySource,
-  /persona:\s*personaContext\.identityId !== null/u,
+assert.equal(
+  buildRetryAgentPersona(
+    { identityId: "identity-character", name: "User", description: "Still present" },
+    (value) => value,
+  )?.name,
+  "User",
   'Retry agent context must retain valid identities whose display name is "User"',
 );
-assert.match(
-  retrySource,
-  /_userIdentitySource === "character"[\s\S]*?lorebookCharacterIds[\s\S]*?resolveAgentGenerationTools/u,
-  "Retry tools must include character-backed identities only in lorebook scope",
+const retryToolScopes = resolveIdentityCharacterScopes(["assistant-character"], {
+  id: "identity-character",
+  source: "character",
+});
+assert.deepEqual(
+  retryToolScopes,
+  {
+    promptCharacterIds: ["assistant-character"],
+    lorebookCharacterIds: ["assistant-character", "identity-character"],
+  },
+  "Character-backed identities must extend lorebook scope without entering assistant prompt scope",
 );
-assert.match(
-  generateSource,
-  /resolveGenerationTools\([\s\S]*?lorebookCharacterIds: withIdentityLorebookScope\(promptCharacterIds\)/u,
-  "Live generation tools must include character-backed identities in lorebook scope",
-);
-assert.match(
-  toolResolutionSource,
-  /characterIds: lorebookCharacterIds \?\? promptCharacterIds/u,
-  "Tool lorebook search must keep identity scope separate from assistant prompt characters",
+assert.deepEqual(
+  resolveToolLorebookCharacterIds(retryToolScopes.promptCharacterIds, retryToolScopes.lorebookCharacterIds),
+  ["assistant-character", "identity-character"],
+  "Tool lorebook search must consume the dedicated identity-aware scope",
 );
 assert.match(
   generateSource,

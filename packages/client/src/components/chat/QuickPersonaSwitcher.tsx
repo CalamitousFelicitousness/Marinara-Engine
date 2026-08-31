@@ -212,7 +212,13 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
     return () => window.cancelAnimationFrame(frame);
   }, [open]);
 
-  const [pos, setPos] = useState<{ left: number; top: number; width: number; maxHeight: number } | null>(null);
+  const [pos, setPos] = useState<{
+    left: number;
+    width: number;
+    maxHeight: number;
+    top?: number;
+    bottom?: number;
+  } | null>(null);
   useEffect(() => {
     if (!open || !btnRef.current) return;
     const update = () => {
@@ -227,11 +233,15 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
       const spaceBelow = Math.max(0, window.innerHeight - anchor.bottom - 12);
       const openAbove = spaceAbove >= Math.min(320, spaceBelow) || spaceAbove >= spaceBelow;
       const maxHeight = Math.max(160, Math.min(400, openAbove ? spaceAbove : spaceBelow));
-      const top = openAbove ? anchor.top - maxHeight - 4 : anchor.bottom + 4;
+      const useViewportFallback = Math.max(spaceAbove, spaceBelow) < 160;
       const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
       setPos({
         left,
-        top: Math.max(8, Math.min(top, window.innerHeight - maxHeight - 8)),
+        ...(useViewportFallback
+          ? { top: 8 }
+          : openAbove
+            ? { bottom: Math.max(8, window.innerHeight - anchor.top + 4) }
+            : { top: Math.max(8, anchor.bottom + 4) }),
         width,
         maxHeight,
       });
@@ -347,7 +357,12 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
             className="fixed z-[9999] flex min-w-[280px] max-w-[calc(100vw-1rem)] flex-col overflow-hidden rounded-xl border border-foreground/10 bg-[var(--card)] shadow-2xl"
             style={
               pos
-                ? { left: pos.left, top: pos.top, width: pos.width, maxHeight: pos.maxHeight }
+                ? {
+                    left: pos.left,
+                    ...(pos.top !== undefined ? { top: pos.top } : { bottom: pos.bottom }),
+                    width: pos.width,
+                    maxHeight: pos.maxHeight,
+                  }
                 : { visibility: "hidden" as const }
             }
           >

@@ -54,6 +54,7 @@ function strings(data: CharacterData, comment: string) {
       data.creator,
       data.character_version,
       data.creator_notes,
+      data.summary,
       data.description,
       data.personality,
       data.scenario,
@@ -74,7 +75,7 @@ function entry(row: typeof characters.$inferSelect): CharacterCatalogEntry {
   const extensions =
     data.extensions && typeof data.extensions === "object" ? (data.extensions as Record<string, unknown>) : {};
   const summary =
-    [data.creator_notes, data.description, data.personality].find(
+    [data.summary, data.creator_notes, data.description, data.personality].find(
       (value): value is string => typeof value === "string" && value.trim().length > 0,
     ) ?? "";
   return {
@@ -101,6 +102,7 @@ function entry(row: typeof characters.$inferSelect): CharacterCatalogEntry {
       creator: data.creator,
       character_version: data.character_version,
       creator_notes: data.creator_notes,
+      summary: data.summary,
       extensions: data.extensions,
     },
   };
@@ -122,20 +124,18 @@ export function createCharacterCatalog(db: DB) {
     const cached = caches.get(db);
     const generation = db._fileStore.getTableWriteGeneration("characters");
     if (cached?.generation === generation) return cached.entries;
-    const rows = await db.select().from(characters);
-    const entries = rows.map(entry);
-    const completedGeneration = db._fileStore.getTableWriteGeneration("characters");
-    if (completedGeneration !== generation) {
-      const freshRows = await db.select().from(characters);
-      const freshEntries = freshRows.map(entry);
-      caches.set(db, {
-        generation: db._fileStore.getTableWriteGeneration("characters"),
-        entries: freshEntries,
-      });
-      return freshEntries;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const before = db._fileStore.getTableWriteGeneration("characters");
+      const rows = await db.select().from(characters);
+      const after = db._fileStore.getTableWriteGeneration("characters");
+      if (before === after) {
+        const entries = rows.map(entry);
+        caches.set(db, { generation: after, entries });
+        return entries;
+      }
     }
-    caches.set(db, { generation, entries });
-    return entries;
+    const rows = await db.select().from(characters);
+    return rows.map(entry);
   }
 
   return {

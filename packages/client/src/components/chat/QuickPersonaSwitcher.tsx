@@ -354,7 +354,7 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
                 btnRef.current?.focus();
               }
             }}
-            className="fixed z-[9999] flex min-w-[280px] max-w-[calc(100vw-1rem)] flex-col overflow-hidden rounded-xl border border-foreground/10 bg-[var(--card)] shadow-2xl"
+            className="fixed z-[9999] flex min-w-[280px] max-w-[calc(100vw-1rem)] flex-col overflow-hidden rounded-xl border border-foreground/10 bg-[var(--background)] shadow-2xl"
             style={
               pos
                 ? {

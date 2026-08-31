@@ -19,6 +19,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - Character library and omnibar searches now share a generation-aware in-memory character catalog, so list views do not repeatedly scan and transfer complete character cards.
 - Fixed character identity prompt previews, imports, gallery participant handling, and quick-menu scrolling and bounds.
 - Fixed character identity profile routing, prompt macro resolution, sprite subjects, memory naming, and lorebook scan context.
+- Fixed NanoGPT lorebook vectorization by sending the authentication header required by its embedding endpoint (#5688).
+- Fixed NanoGPT agent requests so an explicit reasoning-off setting sends `reasoning_effort: "none"`, while preserving mandatory reasoning for GLM 5.3 Flash (#5582).
 - Preserved historical user names and portraits across identity switches.
 - Termux startup no longer prompts for GitHub credentials during public update checks; failed checks now continue with the installed version.
 - Mobile Roleplay now keeps its full composer controls visible while scrolling through chat history instead of replacing them with a simplified text field (#5685).

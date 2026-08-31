@@ -149,6 +149,75 @@ const gatewaySseBody = [
   "data: [DONE]",
 ].join("\n");
 
+const embeddingRequests: Array<{ headers: Record<string, string>; body: Record<string, unknown> }> = [];
+const embeddingServer = createServer(async (request, response) => {
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  embeddingRequests.push({
+    headers: request.headers as Record<string, string>,
+    body: JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>,
+  });
+  response.writeHead(200, { "content-type": "application/json" });
+  response.end(JSON.stringify({ data: [{ embedding: [0.1, 0.2], index: 0 }] }));
+});
+await new Promise<void>((resolve) => embeddingServer.listen(0, "127.0.0.1", resolve));
+try {
+  const address = embeddingServer.address();
+  assert.ok(address && typeof address === "object");
+  const nanoGpt = new OpenAIProvider(`http://localhost:${address.port}/v1`, "nano-key", undefined, undefined, undefined, "nanogpt");
+  await nanoGpt.embed(["test"], "text-embedding-model");
+  assert.equal(embeddingRequests[0]?.headers.authorization, "Bearer nano-key");
+  assert.equal(embeddingRequests[0]?.headers["x-api-key"], "nano-key");
+
+  const openAi = new OpenAIProvider(`http://localhost:${address.port}/v1`, "openai-key");
+  await openAi.embed(["test"], "text-embedding-model");
+  assert.equal(embeddingRequests[1]?.headers.authorization, "Bearer openai-key");
+  assert.equal(embeddingRequests[1]?.headers["x-api-key"], undefined);
+} finally {
+  await new Promise<void>((resolve, reject) => embeddingServer.close((error) => (error ? reject(error) : resolve())));
+}
+
+let nanoGptRequestBody: Record<string, unknown> | null = null;
+const nanoGptServer = createServer(async (request, response) => {
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  nanoGptRequestBody = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
+  response.writeHead(200, { "content-type": "application/json" });
+  response.end(JSON.stringify({ choices: [{ message: { content: "nano response" }, finish_reason: "stop" }] }));
+});
+await new Promise<void>((resolve) => nanoGptServer.listen(0, "127.0.0.1", resolve));
+try {
+  const address = nanoGptServer.address();
+  assert.ok(address && typeof address === "object");
+  const provider = new OpenAIProvider(
+    `http://127.0.0.1:${address.port}/v1`,
+    "nano-key",
+    undefined,
+    undefined,
+    undefined,
+    "nanogpt",
+  );
+  await collectProviderOutput(provider, {
+    model: "some-model",
+    stream: false,
+    reasoningEffort: "none",
+    enabledParameters: { reasoningEffort: true },
+  });
+  assert.equal(nanoGptRequestBody?.reasoning_effort, "none");
+
+  nanoGptRequestBody = null;
+  await collectProviderOutput(provider, {
+    model: "glm-5.3-flash",
+    stream: false,
+    reasoningEffort: "none",
+    enabledParameters: { reasoningEffort: true },
+  });
+  assert.equal("reasoning_effort" in (nanoGptRequestBody ?? {}), false);
+  assert.equal(nanoGptRequestBody?.enable_thinking, true);
+} finally {
+  await new Promise<void>((resolve, reject) => nanoGptServer.close((error) => (error ? reject(error) : resolve())));
+}
+
 assert.equal(resolveNovelAiStyleReferenceSecondaryStrength(1), 0);
 assert.equal(resolveNovelAiStyleReferenceSecondaryStrength(0.75), 0.25);
 assert.equal(resolveNovelAiStyleReferenceSecondaryStrength(0), 1);

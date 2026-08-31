@@ -558,6 +558,12 @@ export class OpenAIProvider extends BaseLLMProvider {
     return h;
   }
 
+  protected override embeddingHeaders(): Record<string, string> {
+    const headers = this.buildHeaders();
+    if (this.providerKind === "nanogpt" && this.apiKey.trim()) headers["x-api-key"] = this.apiKey.trim();
+    return headers;
+  }
+
   private isGenericCustomProvider(): boolean {
     return this.providerKind === "custom";
   }
@@ -874,6 +880,15 @@ export class OpenAIProvider extends BaseLLMProvider {
       } else if (this.shouldSendReasoningEffort(options.model, options.reasoningEffort)) {
         body.reasoning_effort = options.reasoningEffort;
       }
+      return;
+    }
+
+    if (
+      this.providerKind === "nanogpt" &&
+      this.hasExplicitReasoningDisable(options.reasoningEffort) &&
+      !isGlm53FlashMandatoryReasoningModel(options.model)
+    ) {
+      body.reasoning_effort = "none";
       return;
     }
 

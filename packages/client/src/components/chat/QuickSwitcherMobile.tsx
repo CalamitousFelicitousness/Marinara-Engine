@@ -571,6 +571,12 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
                       </div>
                     );
                   })}
+                  {visiblePersonas.length === 0 &&
+                    ((!showCharacterIdentities && !activeCharacterId) || visibleCharacterGroups.length === 0) && (
+                      <div className="px-3 py-4 text-center text-[0.6875rem] italic text-foreground/45">
+                        {localizeUi("ui.chat.personapicker.noMatchingPersonas")}
+                      </div>
+                    )}
                   {characters.length > 0 && (showCharacterIdentities || !!activeCharacterId) && (
                     <>
                       <button

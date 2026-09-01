@@ -61,11 +61,29 @@ assert.match(
   /received = await waitForWorkspaceRunToSettle\(effectiveConnectionId, controller\.signal\);/u,
   "a cleanly closed no-reply stream must confirm against the status endpoint",
 );
-assert.match(mariChat, /Promise<boolean>/u);
+assert.match(
+  mariChat,
+  /waitForWorkspaceRunToSettle\(connectionId: string \| null, signal: AbortSignal\): Promise<boolean>/u,
+);
 assert.match(mariChat, /sawActiveRun/u);
+// One early inactive reading is not proof the run never started - the prompt
+// route does storage work before flipping active. Two readings are required.
+assert.match(mariChat, /inactiveReadings \+= 1;/u);
+// A server-reported SSE error is a REAL failure, never a passive disconnect.
+assert.match(mariChat, /class MariWorkspaceRunError extends Error/u);
+assert.match(mariChat, /if \(error instanceof MariWorkspaceRunError\) throw error;/u);
+// Callers suppress the "no reply" toast when visibility history makes a
+// false negative likely; the reload is the authoritative surface.
+assert.match(mariChat, /hiddenDuringStream: pageWasHiddenDuringStream/u);
+assert.match(mariChat, /!received && !hiddenDuringStream/u);
 
 // ── Detached-run recovery on status transition ──────────────────────────────
-assert.match(mariChat, /workspaceWasActiveRemotelyRef/u);
+// Arming requires two observations of a remote-active run with no local
+// closure (one is routinely the stale value a local run leaves behind), and
+// both fire and reload are pinned to the armed run id.
+assert.match(mariChat, /detachedRunArmingRef/u);
+assert.match(mariChat, /armed\.observations >= 2/u);
+assert.match(mariChat, /workspaceRunIdRef\.current === armedRunId/u);
 assert.match(
   mariChat,
   /Failed to reload messages after a detached workspace run/u,

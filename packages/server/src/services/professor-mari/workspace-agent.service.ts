@@ -57,12 +57,16 @@ import {
   GENERATION_PARAMETER_SEND_KEYS,
   findKnownModel,
   LOCAL_SIDECAR_CONNECTION_ID,
+  DEFAULT_MARI_PERMISSIONS_MODE,
+  isMariPermissionsMode,
+  MARI_PERMISSIONS_MODE_SETTINGS_KEY,
   MODEL_LISTS,
   PROFESSOR_MARI_ID,
   sanitizeMariGuidedPlan,
   sanitizeMariSuggestionChips,
   type APIProvider,
   type GenerationParameterSendMap,
+  type MariPermissionsMode,
 } from "@marinara-engine/shared";
 import type {
   MariDbCommandResult,
@@ -77,6 +81,7 @@ import type {
   MariWorkspaceTraceItem,
 } from "@marinara-engine/shared";
 import { getMariDbService } from "../mari-db/mari-db.service.js";
+import { createAppSettingsStorage } from "../storage/app-settings.storage.js";
 import { getProfessorMariWorkspaceSkillsService } from "./workspace-skills.service.js";
 import { sidecarModelService } from "../sidecar/sidecar-model.service.js";
 import { getWorkspaceShellSandboxStatus, spawnWorkspaceSandboxedShell } from "./workspace-shell-sandbox.js";
@@ -1644,6 +1649,53 @@ export function isMutatingWorkspaceCommand(command: WorkspaceCommandCall): boole
   return typeof rawCommand === "string" && bashLooksMutating(rawCommand);
 }
 
+/**
+ * #5725 Permissions Mode: read the stored mode, tolerating junk and absence.
+ * Read fresh per use - never latch it into a service field at construction.
+ */
+export async function readStoredMariPermissionsMode(storage: {
+  get(key: string): Promise<string | null>;
+}): Promise<MariPermissionsMode> {
+  try {
+    const raw = await storage.get(MARI_PERMISSIONS_MODE_SETTINGS_KEY);
+    return isMariPermissionsMode(raw) ? raw : DEFAULT_MARI_PERMISSIONS_MODE;
+  } catch {
+    return DEFAULT_MARI_PERMISSIONS_MODE;
+  }
+}
+
+/**
+ * Mode-specific behavioral guidance spliced into the prompt AFTER the saved
+ * memories block, so the user's explicit, current mode selection outranks a
+ * stale memory. Auto returns null: the default prompt IS auto.
+ */
+export function mariPermissionsModePrompt(mode: MariPermissionsMode): string | null {
+  if (mode === "auto") return null;
+  const lines: string[] = [
+    "<permissions_mode>",
+    `The user has set your Permissions Mode to: ${mode}. These rules override the default apply semantics above, and a saved memory may further RESTRICT but never loosen them. The user can change the mode from the Mari panel or Settings.`,
+  ];
+  if (mode === "manual") {
+    lines.push(
+      "Manual - always ask before making changes. For any mutating command, describe the exact change in say and include the commands in the SAME response; Marinara will hold them and show an Accept action. After the user approves, resend the commands with an empty say. Never apply a change the user has not just approved.",
+    );
+  } else if (mode === "plan") {
+    lines.push(
+      "Plan - you must not change anything. Mutating commands are refused by the server in this mode. When the user asks for a change, lay out in chat the EXACT edits you would make - fields, before/after values, entry names - so they could apply them by hand or switch modes. Dry-run previews (apply:false) are allowed. Do not present refusal as failure; present the plan.",
+    );
+  } else if (mode === "accept-edits") {
+    lines.push(
+      "Accept edits - requested record edits (characters, personas, lorebooks, presets, memories) apply directly and Marinara does NOT show a Keep/Restore review card for them, so do not promise one. Deletions and sensitive changes (files, extensions, dependencies) still get their normal review. Do not ask for confirmation on plainly requested edits; just make them.",
+    );
+  } else {
+    lines.push(
+      "Bypass permissions - apply requested changes immediately without asking first, and Marinara does NOT show Keep/Restore review cards except for deletions, so do not promise one. Sensitive file changes and dependency installs still require the user's approval - that floor is not yours to lift. Stay precise: speed is not license to guess intent.",
+    );
+  }
+  lines.push("</permissions_mode>");
+  return lines.join("\n");
+}
+
 export type WorkspaceMutationVerification = "none" | "unverified" | "verified";
 
 function commandCallForResult(result: WorkspaceCommandResult): WorkspaceCommandCall {
@@ -1846,6 +1898,10 @@ export class ProfessorMariWorkspaceService {
   private readonly workspaceChangeReviews = new WorkspaceChangeReviewService(this.workspaceRoot);
   private lastError: string | null = null;
   private active = false;
+  // #5725: the Permissions Mode of the run currently in flight. Set at every
+  // prompt() start (never latched at construction, never cleared - each run
+  // overwrites) so command execution and deferral read the run's own mode.
+  private activeRunPermissionsMode: MariPermissionsMode = DEFAULT_MARI_PERMISSIONS_MODE;
   private abortController: AbortController | null = null;
   // Professor Mari is the only untrusted workspace writer. Serialize all of
   // her mutations so path validation and the operation cannot overlap another
@@ -1861,6 +1917,10 @@ export class ProfessorMariWorkspaceService {
       this.workspaceChangeReviews.setWorkspaceRoot(this.workspaceRoot);
     }
     if (!enabled) void this.abort();
+  }
+
+  private async readPermissionsMode(): Promise<MariPermissionsMode> {
+    return readStoredMariPermissionsMode(createAppSettingsStorage(this.app.db));
   }
 
   async status(connectionId?: string | null): Promise<MariWorkspaceStatus> {
@@ -1886,6 +1946,7 @@ export class ProfessorMariWorkspaceService {
       skills: skillsResponse.skills.map(({ content: _content, ...summary }) => summary),
       skillDiagnostics: skillsResponse.diagnostics,
       active: this.active,
+      permissionsMode: await this.readPermissionsMode(),
       pendingApprovals: [
         ...getMariDbService(this.app.db).getPendingApprovals(),
         ...this.workspaceChangeReviews.getPendingApprovals(),
@@ -2013,8 +2074,10 @@ export class ProfessorMariWorkspaceService {
 
     try {
       await this.ensureMariCliShim();
+      const permissionsMode = await this.readPermissionsMode();
+      this.activeRunPermissionsMode = permissionsMode;
       const provider = createProviderForConnection(connection);
-      const messages = await this.buildPromptMessages(args.chatId, connection);
+      const messages = await this.buildPromptMessages(args.chatId, connection, permissionsMode);
       const baseOptions: ChatOptions = {
         ...this.baseChatOptions(connection, controller.signal, (delta) => {
           thinkingText += delta;
@@ -2062,9 +2125,15 @@ export class ProfessorMariWorkspaceService {
 
         const rawContent = result.content ?? "";
         const parsedAction = parseAssistantWorkspaceAction(rawContent);
+        // #5725: Manual defers EVERY described mutation (empty-say command
+        // frames - the post-approval pattern - still execute); Bypass never
+        // defers; Auto/others keep the self-declared ask-first behavior.
         const shouldDeferMutations =
+          this.activeRunPermissionsMode !== "bypass" &&
           parsedAction.visibleText &&
-          (parsedAction.awaitingAuthorization || visibleTextRequestsUserApproval(parsedAction.visibleText)) &&
+          (this.activeRunPermissionsMode === "manual" ||
+            parsedAction.awaitingAuthorization ||
+            visibleTextRequestsUserApproval(parsedAction.visibleText)) &&
           parsedAction.commands.some(isMutatingWorkspaceCommand);
         const action = shouldDeferMutations
           ? {
@@ -2357,7 +2426,11 @@ export class ProfessorMariWorkspaceService {
     }
   }
 
-  private async buildPromptMessages(chatId: string, connection: WorkspaceConnection): Promise<ChatMessage[]> {
+  private async buildPromptMessages(
+    chatId: string,
+    connection: WorkspaceConnection,
+    permissionsMode: MariPermissionsMode,
+  ): Promise<ChatMessage[]> {
     const chatStorage = createChatsStorage(this.app.db);
     const history = (await chatStorage.listMessages(chatId)).slice(-MAX_HISTORY_MESSAGES);
     const continuityPrompt = buildRecentWorkspaceContinuityPrompt(history);
@@ -2379,6 +2452,7 @@ export class ProfessorMariWorkspaceService {
       `connection: ${connection.name || connection.id} / ${connection.provider} / ${connection.model}`,
       `currentTime: ${new Date().toISOString()}`,
       `embeddingModelConfigured: ${embeddingModelConfigured}`,
+      `permissionsMode: ${permissionsMode}`,
       `</workspace_context>`,
     ].join("\n");
     const messages: ChatMessage[] = [
@@ -2388,6 +2462,11 @@ export class ProfessorMariWorkspaceService {
     ];
     if (skillsPrompt) messages.push({ role: "system", content: skillsPrompt, contextKind: "prompt" });
     if (instructionsPrompt) messages.push({ role: "system", content: instructionsPrompt, contextKind: "prompt" });
+    // AFTER the memories block on purpose: the mode is the user's explicit,
+    // current selection, so it outranks a stale saved memory (which may
+    // further restrict, never loosen - the block says so).
+    const permissionsModePrompt = mariPermissionsModePrompt(permissionsMode);
+    if (permissionsModePrompt) messages.push({ role: "system", content: permissionsModePrompt, contextKind: "prompt" });
 
     for (const row of history) {
       const extra = parseExtra(row.extra);
@@ -2595,6 +2674,13 @@ ${sections.join("\n\n")}
     try {
       const run = async () => {
         signal.throwIfAborted();
+        // #5725 Plan mode: a hard server-side floor, not a prompt suggestion.
+        // Dry-run previews (apply:false) are read-only and stay allowed.
+        if (this.activeRunPermissionsMode === "plan" && isMutatingWorkspaceCommand(command)) {
+          throw new Error(
+            "Plan mode is active: do not stage changes. Describe the exact edits you would make in chat; the user can switch modes from the Mari panel or Settings.",
+          );
+        }
         const validationIssue = workspaceCommandValidationIssue(command);
         if (validationIssue) throw new Error(validationIssue);
         return this.runWorkspaceCommand(command, signal);
@@ -3146,10 +3232,17 @@ ${sections.join("\n\n")}
 
   private async commandAppData(args: Record<string, unknown>): Promise<string> {
     const action = typeof args.action === "string" ? args.action : "unknown";
+    // #5725 Accept edits / Bypass: apply record edits without the pending
+    // Keep/Restore card. Deletions always keep their review - under these
+    // modes the card is the last undo surface a destructive action has.
+    const autoKeep =
+      (this.activeRunPermissionsMode === "accept-edits" || this.activeRunPermissionsMode === "bypass") &&
+      !/(?:delete|forget|remove|uninstall)/iu.test(action);
     const result = await getMariDbService(this.app.db).executeAction({
       ...args,
       cwd: this.workspaceRoot,
       sessionId: SESSION_ID,
+      reviewPolicy: autoKeep ? "auto-keep" : "standard",
     });
     if (result.ok !== false && (action === "personal_extension.create" || action === "personal_extension.update")) {
       await personalServerExtensionRuntime.reloadAll();

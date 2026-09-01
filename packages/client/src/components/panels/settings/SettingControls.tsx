@@ -20,6 +20,13 @@ import {
   useUploadCustomNotificationSound,
 } from "../../../hooks/use-custom-notification-sound";
 import { cn } from "../../../lib/utils";
+import { api } from "../../../lib/api-client";
+import {
+  DEFAULT_MARI_PERMISSIONS_MODE,
+  MARI_PERMISSIONS_MODE_LABELS,
+  MARI_PERMISSIONS_MODES,
+  type MariPermissionsMode,
+} from "@marinara-engine/shared";
 import { localizeStringNode, useLocalizedUiText } from "../../../localization/use-localized-ui-text";
 import { HelpTooltip } from "../../ui/HelpTooltip";
 
@@ -100,6 +107,63 @@ export function SettingsSection({
       </div>
       <div className={cn("border-t border-[var(--border)]/60 px-3 pb-3 pt-2.5", contentClassName)}>{children}</div>
     </section>
+  );
+}
+
+// #5725: Professor Mari's server-authoritative Permissions Mode. Fetched on
+// mount and written through the dedicated validated PUT; a change applies to
+// Mari's next run (an in-flight turn is never aborted by a mode switch).
+export function MariPermissionsModeSetting({ anchorId }: { anchorId?: string }) {
+  const { t: localizeUi } = useUiTranslation();
+  const [mode, setMode] = useState<MariPermissionsMode | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get<{ mode: MariPermissionsMode }>("/professor-mari/workspace/permissions-mode")
+      .then((response) => {
+        if (!cancelled) setMode(response.mode);
+      })
+      .catch(() => {
+        if (!cancelled) setMode(DEFAULT_MARI_PERMISSIONS_MODE);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const currentMode = mode ?? DEFAULT_MARI_PERMISSIONS_MODE;
+  const handleChange = async (event: ChangeEvent<HTMLSelectElement>) => {
+    const next = event.target.value as MariPermissionsMode;
+    const previous = currentMode;
+    setMode(next);
+    try {
+      await api.put("/professor-mari/workspace/permissions-mode", { mode: next });
+    } catch {
+      setMode(previous);
+      toast.error(localizeUi("ui.chat.homeprofessormarichat.couldNotChangeThePermissionsMode"));
+    }
+  };
+  return (
+    <div id={anchorId} className="flex flex-col gap-1.5">
+      <div className="flex items-center gap-1.5">
+        <span className="text-xs font-medium">{localizeUi("ui.chat.homeprofessormarichat.permissionsMode")}</span>
+        <HelpTooltip text={localizeUi("settings.controls.mariPermissionsMode.help")} />
+      </div>
+      <select
+        value={currentMode}
+        onChange={(event) => void handleChange(event)}
+        disabled={mode === null}
+        className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--secondary)] px-2.5 text-xs"
+      >
+        {MARI_PERMISSIONS_MODES.map((value) => (
+          <option key={value} value={value}>
+            {MARI_PERMISSIONS_MODE_LABELS[value].label}
+          </option>
+        ))}
+      </select>
+      <p className="text-[0.6875rem] text-[var(--muted-foreground)]">
+        {MARI_PERMISSIONS_MODE_LABELS[currentMode].description}
+      </p>
+    </div>
   );
 }
 

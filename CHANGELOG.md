@@ -6,6 +6,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Added
 
+- Professor Mari has a Permissions Mode (#5725), modeled on the Claude app's mode picker: **Auto** (she judges from your words and saved memories - the default and previous behavior), **Manual** (always describes first and stages only after you accept), **Accept edits** (record edits apply without the Keep/Restore card), **Plan** (she never changes anything - mutating commands are refused server-side and she lays out the exact edits in chat), and **Bypass** (applies without asking or review cards). Deletions and sensitive changes - files, extensions, dependency installs - keep their review in every mode. Switch it from the shield button in Mari's panel header or Settings -> Application; a change applies to her next run without aborting one in flight.
+
 - Added Claude Fable 5.1 and Claude Mythos 5.1 support for Anthropic connections, including their 1M-token context windows, 128k output limits, adaptive-thinking behavior, and automatic fallback when a preset requests unsupported forced tool use (#5735, #5737).
 - Added Home Widgets settings to control the URL bar and desktop or mobile bookmarks on other tabs.
 - Added character cards to Persona selection so you can play as any saved character in Conversation and Roleplay setup or an active chat.

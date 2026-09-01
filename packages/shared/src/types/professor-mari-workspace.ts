@@ -1,3 +1,4 @@
+import type { MariPermissionsMode } from "../constants/mari-permissions-mode.js";
 // ──────────────────────────────────────────────
 // Professor Mari Workspace Agent Contracts
 // ──────────────────────────────────────────────
@@ -452,6 +453,8 @@ export interface MariWorkspaceStatus {
   skills: MariWorkspaceSkillSummary[];
   skillDiagnostics: string[];
   active: boolean;
+  /** The user-selected Permissions Mode governing when Mari may stage or apply changes (#5725). */
+  permissionsMode: MariPermissionsMode;
   pendingApprovals: MariWorkspacePendingApproval[];
   history: MariDbHistoryEntry[];
   error?: string | null;

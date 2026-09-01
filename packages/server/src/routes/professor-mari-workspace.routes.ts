@@ -1,10 +1,13 @@
 // ──────────────────────────────────────────────
 // Routes: Professor Mari Workspace Agent
 // ──────────────────────────────────────────────
+import { MARI_PERMISSIONS_MODES, MARI_PERMISSIONS_MODE_SETTINGS_KEY } from "@marinara-engine/shared";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { requirePrivilegedAccess } from "../middleware/privileged-gate.js";
 import { isSseReplyWritable, sendSseEvent, startSseKeepalive, startSseReply } from "./generate/sse.js";
+import { readStoredMariPermissionsMode } from "../services/professor-mari/workspace-agent.service.js";
+import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
 import { getProfessorMariWorkspaceService } from "../services/professor-mari/workspace-agent.service.js";
 import { getProfessorMariWorkspaceSkillsService } from "../services/professor-mari/workspace-skills.service.js";
 import { getMariDbService } from "../services/mari-db/mari-db.service.js";
@@ -119,6 +122,13 @@ const rejectRowsSchema = z.object({
 // #4931: synthetic Peek-Prompt render of one reviewed character/preset row (same identity tuple).
 const renderPromptSchema = rejectRowRowSchema;
 
+// #5725 Permissions Mode. A dedicated validated route owns the setting (the
+// docs-language pattern) - it is deliberately NOT in app-settings ALLOWED_KEYS,
+// so nothing can write junk the per-run reader would have to distrust.
+const permissionsModeSchema = z.object({
+  mode: z.enum(MARI_PERMISSIONS_MODES),
+});
+
 function privileged(request: FastifyRequest, reply: FastifyReply, loopbackOnly = false) {
   return requirePrivilegedAccess(request, reply, {
     loopbackOnly,
@@ -174,6 +184,21 @@ export async function professorMariWorkspaceRoutes(app: FastifyInstance) {
   });
 
   // #4851: Memories management panel. Direct, reset-free writes (see instructionCreateSchema note).
+  // #5725: Permissions Mode. Reads never reset() the agent (the memories
+  // convention) - a mode switch must not abort an in-flight turn; the next
+  // run reads the new mode.
+  app.get("/permissions-mode", async (req, reply) => {
+    if (!privileged(req, reply)) return;
+    return { mode: await readStoredMariPermissionsMode(createAppSettingsStorage(app.db)) };
+  });
+
+  app.put("/permissions-mode", async (req, reply) => {
+    if (!privileged(req, reply)) return;
+    const input = permissionsModeSchema.parse(req.body);
+    await createAppSettingsStorage(app.db).set(MARI_PERMISSIONS_MODE_SETTINGS_KEY, input.mode);
+    return { ok: true, mode: input.mode };
+  });
+
   app.get("/instructions", async (req, reply) => {
     if (!privileged(req, reply)) return;
     return { instructions: await createMariInstructionsStorage(app.db).list() };

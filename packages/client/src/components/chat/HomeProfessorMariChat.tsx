@@ -80,6 +80,12 @@ import { MariContextViewer } from "./MariContextViewer";
 import { homeFeedKeys } from "../../hooks/use-home-feed";
 import { filterLanguageGenerationConnections } from "../../lib/connection-filters";
 import { api, getPrivilegedActionErrorMessage, isPassiveStreamDisconnect } from "../../lib/api-client";
+import {
+  DEFAULT_MARI_PERMISSIONS_MODE,
+  MARI_PERMISSIONS_MODE_LABELS,
+  MARI_PERMISSIONS_MODES,
+  type MariPermissionsMode,
+} from "@marinara-engine/shared";
 import { formatGenerationParameterError } from "../../lib/generation-parameter-errors";
 import { showConfirmDialog } from "../../lib/app-dialogs";
 import { useChatStore } from "../../stores/chat.store";
@@ -3145,6 +3151,9 @@ export function HomeProfessorMariChat({
   const [loadedMessagesChatId, setLoadedMessagesChatId] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [connectionMenuOpen, setConnectionMenuOpen] = useState(false);
+  const [permissionsMenuOpen, setPermissionsMenuOpen] = useState(false);
+  const permissionsButtonRef = useRef<HTMLButtonElement | null>(null);
+  const permissionsMenuRef = useRef<HTMLDivElement | null>(null);
   const [historyPickerOpen, setHistoryPickerOpen] = useState(false);
   const [contextViewerOpen, setContextViewerOpen] = useState(false);
   const [internalChatWindowOpen, setInternalChatWindowOpen] = useState(
@@ -3815,6 +3824,38 @@ export function HomeProfessorMariChat({
     document.addEventListener("mousedown", handlePointerDown);
     return () => document.removeEventListener("mousedown", handlePointerDown);
   }, [connectionMenuOpen]);
+
+  useEffect(() => {
+    if (!permissionsMenuOpen) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (permissionsButtonRef.current?.contains(target) || permissionsMenuRef.current?.contains(target)) return;
+      setPermissionsMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [permissionsMenuOpen]);
+
+  // #5725: the server-authoritative Permissions Mode. Display rides the status
+  // payload; writes go through the dedicated validated PUT. The change applies
+  // to Mari's NEXT run - an in-flight turn is never aborted by a mode switch.
+  const permissionsMode: MariPermissionsMode = workspaceStatus?.permissionsMode ?? DEFAULT_MARI_PERMISSIONS_MODE;
+  const changePermissionsMode = useCallback(
+    async (mode: MariPermissionsMode) => {
+      setPermissionsMenuOpen(false);
+      if (mode === permissionsMode) return;
+      const previous = permissionsMode;
+      setWorkspaceStatus((current) => (current ? { ...current, permissionsMode: mode } : current));
+      try {
+        await api.put("/professor-mari/workspace/permissions-mode", { mode });
+      } catch (error) {
+        setWorkspaceStatus((current) => (current ? { ...current, permissionsMode: previous } : current));
+        console.error("[Professor Mari] Failed to change permissions mode", error);
+        toast.error(localizeUi("ui.chat.homeprofessormarichat.couldNotChangeThePermissionsMode"));
+      }
+    },
+    [localizeUi, permissionsMode],
+  );
 
   const persistLatestConnectionSelection = useCallback(() => {
     if (connectionPersistInFlightRef.current) return;
@@ -5921,6 +5962,54 @@ export function HomeProfessorMariChat({
                                 </span>
                               )}
                             </button>
+                            <div className="relative">
+                              <button
+                                ref={permissionsButtonRef}
+                                type="button"
+                                onClick={() => setPermissionsMenuOpen((current) => !current)}
+                                className={cn(
+                                  "inline-flex h-8 items-center gap-1 rounded-md px-2 text-[0.6875rem] font-semibold transition-colors hover:bg-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50",
+                                  "mari-chrome-accent-text-muted mari-accent-animated hover:text-[var(--marinara-chat-chrome-button-text-hover)]",
+                                )}
+                                title={localizeUi("ui.chat.homeprofessormarichat.permissionsMode")}
+                                aria-expanded={permissionsMenuOpen}
+                              >
+                                <ShieldAlert size="0.75rem" />
+                                <span className="max-[420px]:hidden">
+                                  {MARI_PERMISSIONS_MODE_LABELS[permissionsMode].label}
+                                </span>
+                              </button>
+                              {permissionsMenuOpen && (
+                                <div
+                                  ref={permissionsMenuRef}
+                                  className="absolute right-0 top-full z-20 mt-2 flex w-[19rem] flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] text-left shadow-2xl"
+                                >
+                                  <div className="border-b border-[var(--border)] px-3 py-2 text-[0.6875rem] font-semibold text-[var(--foreground)]">
+                                    {localizeUi("ui.chat.homeprofessormarichat.permissionsMode")}
+                                  </div>
+                                  {MARI_PERMISSIONS_MODES.map((mode) => (
+                                    <button
+                                      key={mode}
+                                      type="button"
+                                      onClick={() => void changePermissionsMode(mode)}
+                                      className="flex items-start gap-2 px-3 py-2 text-left transition-colors hover:bg-[var(--accent)]"
+                                    >
+                                      <span className="mt-0.5 w-3.5 shrink-0">
+                                        {mode === permissionsMode && <Check size="0.8rem" />}
+                                      </span>
+                                      <span className="flex flex-col">
+                                        <span className="text-[0.6875rem] font-semibold text-[var(--foreground)]">
+                                          {MARI_PERMISSIONS_MODE_LABELS[mode].label}
+                                        </span>
+                                        <span className="text-[0.625rem] text-[var(--muted-foreground)]">
+                                          {MARI_PERMISSIONS_MODE_LABELS[mode].description}
+                                        </span>
+                                      </span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                             {(workspaceActive || hasActiveGeneration) && (
                               <button
                                 type="button"

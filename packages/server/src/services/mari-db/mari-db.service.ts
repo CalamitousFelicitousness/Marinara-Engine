@@ -158,6 +158,8 @@ type MariAppDataActionEnvelope = Row & {
   action?: unknown;
   cwd?: string;
   sessionId?: string;
+  /** #5725 Permissions Mode: "auto-keep" applies without a pending Keep/Restore card. */
+  reviewPolicy?: "standard" | "auto-keep";
 };
 
 type CodeCommandContext = {
@@ -1693,7 +1695,7 @@ function stripPromptPresetChildPayload(row: Row): Row {
 function actionCommandPayload(envelope: MariAppDataActionEnvelope): Row {
   const out: Row = {};
   for (const [key, value] of Object.entries(envelope)) {
-    if (key === "cwd" || key === "sessionId") continue;
+    if (key === "cwd" || key === "sessionId" || key === "reviewPolicy") continue;
     out[key] = typeof value === "string" && value.length > 600 ? truncateStr(value, 600) : value;
   }
   return out;
@@ -2437,6 +2439,11 @@ export class MariDbService {
   // requests for the SAME review id would both read the same record and clobber each other on write.
   // Keyed by id so unrelated reviews stay concurrent; entries self-evict once the queue drains.
   private reviewLocks = new Map<string, Promise<unknown>>();
+  // #5725 Permissions Mode: review policy of the executeAction call currently in
+  // flight. Mutating workspace commands are serialized upstream (the workspace
+  // agent's serializeWorkspaceMutation), so at most one mutating executeAction
+  // is active at a time; reset to "standard" at every executeAction entry.
+  private activeReviewPolicy: "standard" | "auto-keep" = "standard";
 
   constructor(private readonly db: DB) {}
 
@@ -2497,6 +2504,10 @@ export class MariDbService {
 
   async executeAction(envelope: MariAppDataActionEnvelope): Promise<MariDbCommandResult> {
     let command = "app_data";
+    // #5725: the Permissions Mode review policy rides the envelope. Mutating
+    // workspace commands are serialized upstream, so a transient field is a
+    // safe way to reach executeMutation without threading every call site.
+    this.activeReviewPolicy = envelope.reviewPolicy === "auto-keep" ? "auto-keep" : "standard";
     try {
       const action = requiredString(envelope, ["action", "type"], "app_data action");
       command = formatAppDataActionCommand(action, envelope);
@@ -7096,6 +7107,21 @@ export class MariDbService {
         status: "approved",
         journalPath,
       });
+      // #5725 Accept edits / Bypass: apply without staging a pending
+      // Keep/Restore card. The caller only sets auto-keep for non-delete
+      // actions, so deletions always keep their review; history and the
+      // journal are recorded above either way.
+      if (this.activeReviewPolicy === "auto-keep") {
+        return {
+          ok: true,
+          mode: "apply",
+          command,
+          summary: plan.summary,
+          validation: plan.validation,
+          approval: { status: "not_required", operationHash: plan.operationHash },
+          journalPath,
+        };
+      }
       const review = await this.createAppliedReview(plan, storedCommand, sessionId, journalPath, history.id);
       return {
         ok: true,

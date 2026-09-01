@@ -1677,11 +1677,11 @@ export function mariPermissionsModePrompt(mode: MariPermissionsMode): string | n
   ];
   if (mode === "manual") {
     lines.push(
-      "Manual - always ask before making changes. For any mutating command, describe the exact change in say and include the commands in the SAME response; Marinara will hold them and show an Accept action. After the user approves, resend the commands with an empty say. Never apply a change the user has not just approved.",
+      "Manual - always ask before making changes. For any mutating command, describe the exact change in say and include the commands in the SAME response; Marinara will hold those commands and show an Accept action. After the user approves, resend the commands with an empty say - the server only executes silent command frames in the run right after an approval. Never apply a change the user has not just approved.",
     );
   } else if (mode === "plan") {
     lines.push(
-      "Plan - you must not change anything. Mutating commands are refused by the server in this mode. When the user asks for a change, lay out in chat the EXACT edits you would make - fields, before/after values, entry names - so they could apply them by hand or switch modes. Dry-run previews (apply:false) are allowed. Do not present refusal as failure; present the plan.",
+      "Plan - you must not change anything. Mutating commands are refused by the server in this mode, including mari CLI mutations (their dry-run flags too - use app_data with apply:false for validated previews instead). When the user asks for a change, lay out in chat the EXACT edits you would make - fields, before/after values, entry names - so they could apply them by hand or switch modes. Do not present refusal as failure; present the plan.",
     );
   } else if (mode === "accept-edits") {
     lines.push(
@@ -1902,6 +1902,12 @@ export class ProfessorMariWorkspaceService {
   // prompt() start (never latched at construction, never cleared - each run
   // overwrites) so command execution and deferral read the run's own mode.
   private activeRunPermissionsMode: MariPermissionsMode = DEFAULT_MARI_PERMISSIONS_MODE;
+  // #5725 Manual mode floor: true when the run began right after a deferral
+  // the user answered - i.e. Mari's LAST persisted turn asked for approval.
+  // An approved run may execute silent (empty-say) command frames across all
+  // its rounds; an unapproved run may not - see the executor floor.
+  private activeRunManualApprovalArmed = false;
+  private activeRoundManualSilentMutationBlocked = false;
   private abortController: AbortController | null = null;
   // Professor Mari is the only untrusted workspace writer. Serialize all of
   // her mutations so path validation and the operation cannot overlap another
@@ -2283,6 +2289,12 @@ export class ProfessorMariWorkspaceService {
           break;
         }
 
+        // #5725 Manual mode floor: a mutating command in a SILENT frame (no
+        // visible text, so the deferral above cannot describe anything) is
+        // only allowed in a run the user just approved. The flag is
+        // round-scoped; visible frames defer through shouldDeferMutations.
+        this.activeRoundManualSilentMutationBlocked =
+          this.activeRunPermissionsMode === "manual" && !action.visibleText && !this.activeRunManualApprovalArmed;
         const commandResults = await this.executeWorkspaceCommandBatch(
           action.commands,
           controller.signal,
@@ -2433,6 +2445,11 @@ export class ProfessorMariWorkspaceService {
   ): Promise<ChatMessage[]> {
     const chatStorage = createChatsStorage(this.app.db);
     const history = (await chatStorage.listMessages(chatId)).slice(-MAX_HISTORY_MESSAGES);
+    // #5725 Manual mode: arm silent command frames only when Mari's last
+    // persisted turn was a deferral (the user's new message answers it).
+    const lastAssistant = [...history].reverse().find((row) => row.role === "assistant");
+    this.activeRunManualApprovalArmed =
+      typeof lastAssistant?.content === "string" && lastAssistant.content.includes('"awaitingAuthorization":true');
     const continuityPrompt = buildRecentWorkspaceContinuityPrompt(history);
     const skillsPrompt = await this.buildSkillsPrompt();
     const instructionsPrompt = await this.buildInstructionsPrompt();
@@ -2678,7 +2695,14 @@ ${sections.join("\n\n")}
         // Dry-run previews (apply:false) are read-only and stay allowed.
         if (this.activeRunPermissionsMode === "plan" && isMutatingWorkspaceCommand(command)) {
           throw new Error(
-            "Plan mode is active: do not stage changes. Describe the exact edits you would make in chat; the user can switch modes from the Mari panel or Settings.",
+            "Plan mode is active: do not stage changes. Describe the exact edits you would make in chat (app_data with apply:false is available for validated previews); the user can switch modes from the Mari panel or Settings.",
+          );
+        }
+        // #5725 Manual mode floor: silent mutating frames need a preceding
+        // approved deferral - otherwise describe-and-ask first.
+        if (this.activeRoundManualSilentMutationBlocked && isMutatingWorkspaceCommand(command)) {
+          throw new Error(
+            "Manual mode is active: describe the change you intend in say WITH the commands in the same response; Marinara will hold them and show the user an Accept action. Apply only after they approve.",
           );
         }
         const validationIssue = workspaceCommandValidationIssue(command);

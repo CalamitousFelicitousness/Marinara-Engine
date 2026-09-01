@@ -75,6 +75,14 @@ assert.match(
 // Manual forces the deferral; Bypass suppresses it.
 assert.match(workspaceAgent, /this\.activeRunPermissionsMode !== "bypass" &&/u);
 assert.match(workspaceAgent, /this\.activeRunPermissionsMode === "manual" \|\|/u);
+// Manual is also a FLOOR: silent (empty-say) mutating frames execute only in
+// a run that began right after an approved deferral; otherwise the executor
+// refuses them with describe-and-ask guidance.
+assert.match(
+  workspaceAgent,
+  /activeRunManualApprovalArmed =[\s\S]{0,40}typeof lastAssistant\?\.content === "string" && lastAssistant\.content\.includes\('"awaitingAuthorization":true'\)/u,
+);
+assert.match(workspaceAgent, /activeRoundManualSilentMutationBlocked && isMutatingWorkspaceCommand\(command\)/u);
 // Accept edits / Bypass ride the envelope, with the delete carve-out.
 assert.match(workspaceAgent, /"accept-edits" \|\| this\.activeRunPermissionsMode === "bypass"/u);
 assert.match(workspaceAgent, /delete\|forget\|remove\|uninstall/u);
@@ -94,8 +102,25 @@ const historyIdx = mariDb.lastIndexOf("await this.recordHistory({", autoKeepIdx)
 assert.ok(historyIdx > 0, "history is recorded before the auto-keep branch");
 // The policy is stripped from the stored command payload.
 assert.match(mariDb, /key === "reviewPolicy"/u);
-// Reset to standard at every executeAction entry (no leakage across calls).
+// The transient policy can NEVER leak: set from the envelope at executeAction
+// entry, reset in its finally, and reset defensively at executeCli entry so a
+// stale auto-keep can't strip cards from CLI mutations (adversarial-review
+// finding: the CLI path bypassed the deletion carve-out entirely).
 assert.match(mariDb, /this\.activeReviewPolicy = envelope\.reviewPolicy === "auto-keep" \? "auto-keep" : "standard";/u);
+const cliEntryIdx = mariDb.indexOf("async executeCli(");
+const actionEntryIdx = mariDb.indexOf("async executeAction(");
+const cliBody = mariDb.slice(cliEntryIdx, cliEntryIdx + 800);
+assert.match(cliBody, /this\.activeReviewPolicy = "standard";/u, "executeCli must reset the review policy on entry");
+const actionBody = mariDb.slice(actionEntryIdx, mariDb.indexOf("private async executeCharacterAction"));
+assert.match(
+  actionBody,
+  /\} finally \{[\s\S]{0,300}this\.activeReviewPolicy = "standard";/u,
+  "executeAction must reset the review policy on exit",
+);
+// Mari can never rewrite her own mode row - a change-level planMutation floor
+// blocks every raw-db path (insert/patch/replace/delete/transform).
+assert.match(mariDb, /change\.table === "app_settings" && change\.id === MARI_PERMISSIONS_MODE_SETTINGS_KEY/u);
+assert.match(mariDb, /can only be changed by the user/u);
 
 const routes = readSource("packages/server/src/routes/professor-mari-workspace.routes.ts");
 assert.match(routes, /z\.enum\(MARI_PERMISSIONS_MODES\)/u, "the PUT must validate against the shared enum");
@@ -110,11 +135,37 @@ assert.doesNotMatch(
 const appSettingsRoutes = readSource("packages/server/src/routes/app-settings.routes.ts");
 assert.doesNotMatch(appSettingsRoutes, /mari-permissions-mode/u);
 
+// ── Localization: every mode label/description is an en.json VALUE so the
+// reverse-lookup bridge (useLocalizedUiText) can translate what the shared
+// constants carry; both render sites go through localize().
+const enJson = JSON.parse(readSource("packages/client/src/localization/locales/en.json")) as Record<string, string>;
+const enValues = new Set(Object.values(enJson));
+for (const mode of MARI_PERMISSIONS_MODES) {
+  assert.ok(enValues.has(MARI_PERMISSIONS_MODE_LABELS[mode].label), `en.json must carry the ${mode} label as a value`);
+  assert.ok(
+    enValues.has(MARI_PERMISSIONS_MODE_LABELS[mode].description),
+    `en.json must carry the ${mode} description as a value`,
+  );
+}
+
 // ── Client surfaces exist ───────────────────────────────────────────────────
 const mariChat = readSource("packages/client/src/components/chat/HomeProfessorMariChat.tsx");
 assert.match(mariChat, /changePermissionsMode/u);
 assert.match(mariChat, /workspaceStatus\?\.permissionsMode \?\? DEFAULT_MARI_PERMISSIONS_MODE/u);
+assert.match(mariChat, /localize\(MARI_PERMISSIONS_MODE_LABELS\[permissionsMode\]\.label\)/u);
+// After a successful PUT the panel refetches - an in-flight poll must not
+// clobber the optimistic patch permanently.
+assert.match(
+  mariChat,
+  /await api\.put\("\/professor-mari\/workspace\/permissions-mode", \{ mode \}\);[\s\S]{0,300}refreshWorkspaceStatus\(\)/u,
+);
 const settingControls = readSource("packages/client/src/components/panels/settings/SettingControls.tsx");
 assert.match(settingControls, /export function MariPermissionsModeSetting/u);
+assert.match(settingControls, /localize\(MARI_PERMISSIONS_MODE_LABELS\[value\]\.label\)/u);
+assert.match(
+  settingControls,
+  /addEventListener\("visibilitychange", reload\)/u,
+  "the Settings select must refetch on focus to track header changes",
+);
 
 console.log("Mari permissions-mode regression passed.");

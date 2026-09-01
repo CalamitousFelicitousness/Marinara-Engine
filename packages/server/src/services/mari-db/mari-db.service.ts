@@ -50,6 +50,7 @@ import {
   type MariDbRowChange,
   type MariDbValidationIssue,
   type MariDbValidationResult,
+  MARI_PERMISSIONS_MODE_SETTINGS_KEY,
 } from "@marinara-engine/shared";
 import { computePersonalExtensionHash } from "../extensions/personal-extension-hash.js";
 import { HomeWidgetCatalogConflictError, replaceHomeWidgetCatalog } from "../home-widget-catalog.service.js";
@@ -2451,6 +2452,9 @@ export class MariDbService {
     const argv = envelope.argv ?? [];
     const command = formatCommand(argv, envelope.command);
     const sessionId = envelope.sessionId || "mari-cli";
+    // #5725: the CLI path never carries a review policy - a stale "auto-keep"
+    // left by a prior executeAction must not strip cards from CLI mutations.
+    this.activeReviewPolicy = "standard";
     try {
       const group = argv[0];
       if (!group || group === "help" || group === "--help" || group === "-h") {
@@ -2554,6 +2558,10 @@ export class MariDbService {
     } catch (err) {
       logger.warn(err, "[mari-db] structured app_data action failed");
       return { ok: false, mode: "read", command, error: err instanceof Error ? err.message : String(err) };
+    } finally {
+      // Reset on exit: the transient policy must never outlive the call that
+      // set it (the CLI entry also resets defensively on entry).
+      this.activeReviewPolicy = "standard";
     }
   }
 
@@ -7170,6 +7178,22 @@ export class MariDbService {
     // systemKey identifies Engine-owned presets. Apply this after every planner so raw writes and
     // transforms cannot bypass the structured preset-action boundary.
     protectPromptPresetSystemKeys(changes);
+
+    // #5725: the Permissions Mode governs Mari herself, so she must never be
+    // able to rewrite it - by ANY path, including raw db mutations and
+    // transforms (change-level, so every planner is covered). Only the user's
+    // validated PUT route writes this row.
+    const permissionsModeChanges = changes.filter(
+      (change) => change.table === "app_settings" && change.id === MARI_PERMISSIONS_MODE_SETTINGS_KEY,
+    );
+    if (permissionsModeChanges.length > 0) {
+      issues.push({
+        level: "error",
+        table: "app_settings",
+        id: MARI_PERMISSIONS_MODE_SETTINGS_KEY,
+        message: "The Permissions Mode can only be changed by the user, from the Mari panel or Settings.",
+      });
+    }
 
     const personalExtensionChanges = changes.filter((change) => change.table === "installed_extensions");
     if (personalExtensionChanges.length > 0 && !request.personalExtensionDraftMutation) {

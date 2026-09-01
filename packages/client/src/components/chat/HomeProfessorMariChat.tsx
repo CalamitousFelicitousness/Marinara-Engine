@@ -80,6 +80,7 @@ import { MariContextViewer } from "./MariContextViewer";
 import { homeFeedKeys } from "../../hooks/use-home-feed";
 import { filterLanguageGenerationConnections } from "../../lib/connection-filters";
 import { api, getPrivilegedActionErrorMessage, isPassiveStreamDisconnect } from "../../lib/api-client";
+import { useLocalizedUiText } from "../../localization/use-localized-ui-text";
 import {
   DEFAULT_MARI_PERMISSIONS_MODE,
   MARI_PERMISSIONS_MODE_LABELS,
@@ -3098,6 +3099,7 @@ export function HomeProfessorMariChat({
   onFloatingDismiss,
 }: HomeProfessorMariChatProps) {
   const { t: localizeUi } = useUiTranslation();
+  const localize = useLocalizedUiText();
   const { t } = useTranslation();
   const qc = useQueryClient();
   const { data: connectionsRaw, isLoading: connectionsLoading } = useConnections();
@@ -3848,13 +3850,17 @@ export function HomeProfessorMariChat({
       setWorkspaceStatus((current) => (current ? { ...current, permissionsMode: mode } : current));
       try {
         await api.put("/professor-mari/workspace/permissions-mode", { mode });
+        // A status poll that was in flight during the PUT resolves with the
+        // OLD mode and would clobber the optimistic patch - refetch so the
+        // panel converges on the server value.
+        void refreshWorkspaceStatus().catch(() => undefined);
       } catch (error) {
         setWorkspaceStatus((current) => (current ? { ...current, permissionsMode: previous } : current));
         console.error("[Professor Mari] Failed to change permissions mode", error);
         toast.error(localizeUi("ui.chat.homeprofessormarichat.couldNotChangeThePermissionsMode"));
       }
     },
-    [localizeUi, permissionsMode],
+    [localizeUi, permissionsMode, refreshWorkspaceStatus],
   );
 
   const persistLatestConnectionSelection = useCallback(() => {
@@ -5976,7 +5982,7 @@ export function HomeProfessorMariChat({
                               >
                                 <ShieldAlert size="0.75rem" />
                                 <span className="max-[420px]:hidden">
-                                  {MARI_PERMISSIONS_MODE_LABELS[permissionsMode].label}
+                                  {localize(MARI_PERMISSIONS_MODE_LABELS[permissionsMode].label)}
                                 </span>
                               </button>
                               {permissionsMenuOpen && (
@@ -5999,10 +6005,10 @@ export function HomeProfessorMariChat({
                                       </span>
                                       <span className="flex flex-col">
                                         <span className="text-[0.6875rem] font-semibold text-[var(--foreground)]">
-                                          {MARI_PERMISSIONS_MODE_LABELS[mode].label}
+                                          {localize(MARI_PERMISSIONS_MODE_LABELS[mode].label)}
                                         </span>
                                         <span className="text-[0.625rem] text-[var(--muted-foreground)]">
-                                          {MARI_PERMISSIONS_MODE_LABELS[mode].description}
+                                          {localize(MARI_PERMISSIONS_MODE_LABELS[mode].description)}
                                         </span>
                                       </span>
                                     </button>

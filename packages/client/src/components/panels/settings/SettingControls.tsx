@@ -115,19 +115,32 @@ export function SettingsSection({
 // Mari's next run (an in-flight turn is never aborted by a mode switch).
 export function MariPermissionsModeSetting({ anchorId }: { anchorId?: string }) {
   const { t: localizeUi } = useUiTranslation();
+  const localize = useLocalizedUiText();
   const [mode, setMode] = useState<MariPermissionsMode | null>(null);
+  // Refetch on focus/visibility too: the Mari panel's header picker writes the
+  // same server setting, and a stale one-shot read would drift from it.
   useEffect(() => {
     let cancelled = false;
-    api
-      .get<{ mode: MariPermissionsMode }>("/professor-mari/workspace/permissions-mode")
-      .then((response) => {
-        if (!cancelled) setMode(response.mode);
-      })
-      .catch(() => {
-        if (!cancelled) setMode(DEFAULT_MARI_PERMISSIONS_MODE);
-      });
+    const load = () => {
+      api
+        .get<{ mode: MariPermissionsMode }>("/professor-mari/workspace/permissions-mode")
+        .then((response) => {
+          if (!cancelled) setMode(response.mode);
+        })
+        .catch(() => {
+          if (!cancelled) setMode((current) => current ?? DEFAULT_MARI_PERMISSIONS_MODE);
+        });
+    };
+    load();
+    const reload = () => {
+      if (document.visibilityState === "visible") load();
+    };
+    window.addEventListener("focus", reload);
+    document.addEventListener("visibilitychange", reload);
     return () => {
       cancelled = true;
+      window.removeEventListener("focus", reload);
+      document.removeEventListener("visibilitychange", reload);
     };
   }, []);
   const currentMode = mode ?? DEFAULT_MARI_PERMISSIONS_MODE;
@@ -156,12 +169,12 @@ export function MariPermissionsModeSetting({ anchorId }: { anchorId?: string }) 
       >
         {MARI_PERMISSIONS_MODES.map((value) => (
           <option key={value} value={value}>
-            {MARI_PERMISSIONS_MODE_LABELS[value].label}
+            {localize(MARI_PERMISSIONS_MODE_LABELS[value].label)}
           </option>
         ))}
       </select>
       <p className="text-[0.6875rem] text-[var(--muted-foreground)]">
-        {MARI_PERMISSIONS_MODE_LABELS[currentMode].description}
+        {localize(MARI_PERMISSIONS_MODE_LABELS[currentMode].description)}
       </p>
     </div>
   );

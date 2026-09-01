@@ -2164,6 +2164,16 @@ class FileTableStore {
   private readonly txContext = new AsyncLocalStorage<FileTransactionContext>();
   private transactionQueue: Promise<void> = Promise.resolve();
   private activeTransactionCount = 0;
+  /**
+   * The running transaction's context (#5651). The queue admits at most one
+   * transaction, so a single reference suffices. Lazy loads triggered by
+   * CONCURRENT requests run outside the transaction's AsyncLocalStorage
+   * context but still splice rows into live tables the transaction may have
+   * snapshotted - the snapshot mirror and load-heal marks must reach this
+   * context regardless of who performed the load, or a rollback erases the
+   * loaded rows while loadedUnits still says they are resident.
+   */
+  private activeTransactionContext: FileTransactionContext | null = null;
   // Transactions that have taken their queue slot but not yet incremented
   // activeTransactionCount (they are awaiting the previous transaction or an
   // in-flight flush). The plain-write gate honors this too (#5631): a write
@@ -2738,7 +2748,16 @@ class FileTableStore {
     let dirtyShardsSnapshot!: Map<string, Set<string>>;
     try {
       await previousTransaction;
-      if (this.activeFlush) await this.activeFlush;
+      // Loop, not check-once (#5652): two flushes can be parked on the same
+      // activeFlush with the second subscribed first. When it resolves, that
+      // flush's recursion re-enters before this continuation resumes, sees no
+      // active transaction, captures the dirty set, and installs a NEW
+      // activeFlush - a single consumed check would sail past it and run the
+      // callback concurrently with its I/O, letting saveFileSnapshots persist
+      // uncommitted rows that a rollback then leaves on disk with no dirty
+      // mark. The recursing flush assigns activeFlush synchronously before
+      // its first await, so a re-check after every wake always observes it.
+      while (this.activeFlush) await this.activeFlush;
       ctx = {
         snapshots: new Map<string, Row[]>(),
         dirtyTables: new Set<string>(),
@@ -2756,6 +2775,7 @@ class FileTableStore {
       // between reservation and activation. Nothing after the increment can
       // throw inside this try, so the reservation can never leak.
       this.activeTransactionCount++;
+      this.activeTransactionContext = ctx;
       this.pendingTransactionCount--;
     } catch (err) {
       this.pendingTransactionCount--;
@@ -2832,6 +2852,7 @@ class FileTableStore {
       throw err;
     } finally {
       this.activeTransactionCount--;
+      if (this.activeTransactionContext === ctx) this.activeTransactionContext = null;
       if (this.activeTransactionCount === 0) {
         for (const resolve of this.transactionIdleWaiters) resolve();
         this.transactionIdleWaiters.clear();
@@ -2884,8 +2905,17 @@ class FileTableStore {
    * Mirrors a LOAD-created healing mark into the active transaction so a
    * rollback can re-merge it (#5606) — see FileTransactionContext.
    */
+  /**
+   * The transaction context a LOAD-side effect must mirror into: the caller's
+   * own (in-context loads) or the active transaction's (loads performed by a
+   * concurrent request while a transaction is open, #5651).
+   */
+  private loadEffectTransactionContext(): FileTransactionContext | null {
+    return this.txContext.getStore() ?? (this.activeTransactionCount > 0 ? this.activeTransactionContext : null);
+  }
+
   private recordLoadHealMarks(table: string, keys?: Iterable<string>) {
-    const ctx = this.txContext.getStore();
+    const ctx = this.loadEffectTransactionContext();
     if (!ctx) return;
     ctx.loadHealDirtyTables.add(table);
     if (keys) {
@@ -3840,7 +3870,7 @@ class FileTableStore {
     };
     const merged = resident.map(swapReplaced).concat(added).sort(compareRows);
     this.tables.set(table, merged);
-    const ctx = this.txContext.getStore();
+    const ctx = this.loadEffectTransactionContext();
     const snapshot = ctx?.snapshots.get(table);
     if (snapshot) {
       const mirrored = snapshot.map(swapReplaced).concat(added);

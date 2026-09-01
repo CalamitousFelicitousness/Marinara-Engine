@@ -19,9 +19,26 @@
 //   reads live tables, so uncommitted rows could be persisted with no dirty
 //   mark left after rollback. The fix loops the wait.
 //
+// Part 3 - the #5651 mirror refilled the snapshot with push(...mirrored): a
+//   spread passes every row as a call argument, which overflows the call
+//   stack past ~100k rows - and the throw landed AFTER the length = 0
+//   truncation, leaving an EMPTY rollback snapshot that rollback then
+//   installed as the live messages table. The fix builds the merged array
+//   first and refills with a loop.
+//
+// Part 4 - flush()'s wait on active transactions was ALSO check-once (the
+//   mirror image of #5652). A transaction queued behind the one the flush is
+//   waiting out resumes on a one-hop microtask chain; the flush's wake from
+//   waitForTransactions is two-hop, so the queued transaction activates
+//   first. While the store is open the pendingTransactionFlush handoff
+//   rescues that ordering, but the handoff is skipped once writesClosed - so
+//   during shutdown the woken flush ran saveFileSnapshots concurrently with
+//   the freshly activated transaction's callback and persisted uncommitted
+//   rows whose dirty marks the rollback erased. The fix loops that wait too.
+//
 // Project imports are DYNAMIC, after the env assignments (see tx-gate-window).
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -39,7 +56,7 @@ process.env.FILE_STORAGE_DIR = storeDir;
 const { createFileNativeDB, encodeShardKey } = await import("../../packages/server/src/db/file-backed-store.js");
 const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
 const { eq } = await import("../../packages/server/src/db/file-query.js");
-const { messages } = await import("../../packages/server/src/db/schema/index.js");
+const { chats: chatsTable, messages } = await import("../../packages/server/src/db/schema/index.js");
 
 const chatRow = (id: string) => ({ id, name: id, mode: "conversation" });
 const messageRow = (id: string, chatId: string, content: string) => ({
@@ -62,12 +79,28 @@ writeShard("messages", "cold", [messageRow("m-cold", "cold", "persisted before t
 writeShard("chats", "warm", [chatRow("warm")]);
 writeShard("messages", "warm", [messageRow("m-warm", "warm", "pre-transaction text")]);
 
+// A six-figure unit for Part 3: big enough that a spread refill of the
+// snapshot mirror is guaranteed to overflow the call stack (Node's argument
+// limit sits near ~120k at shallow depth and falls with stack depth).
+const BIG_ROW_COUNT = 200_000;
+writeShard("chats", "big", [chatRow("big")]);
+writeShard(
+  "messages",
+  "big",
+  Array.from({ length: BIG_ROW_COUNT }, (_, i) => messageRow(`m-big-${i}`, "big", `big row ${i}`)),
+);
+
 // One-shot flush hold, armed per flush: the first table write of the armed
 // flush parks until released. Later writes of the same flush pass through.
+// The hook also watches for Part 4's forbidden overlap: a flush table write
+// landing while the close-path transaction's callback is still mid-flight.
 let pendingFlushHold: Promise<void> | null = null;
 let flushHoldsTaken = 0;
+let closeTxActive = false;
+let closeOverlapDetected = false;
 const db = await createFileNativeDB({
   beforeTableWrite: async () => {
+    if (closeTxActive) closeOverlapDetected = true;
     const hold = pendingFlushHold;
     pendingFlushHold = null;
     if (hold) {
@@ -80,6 +113,12 @@ const storage = createChatsStorage(db);
 const store = db._fileStore;
 const settle = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// Every staged gate registers its release here: the finally fires them all
+// before close(), so a mid-part assertion or thrown defect surfaces as ITS
+// OWN error instead of deadlocking close() behind a still-parked gate and
+// dying as an opaque unsettled-top-level-await exit.
+const gateReleases: Array<() => void> = [];
+
 try {
   // ══ Part 1 (#5651): a rollback must not erase concurrently loaded rows ══
   await storage.getMessage("m-warm"); // warm unit resident before the race
@@ -88,6 +127,7 @@ try {
   const txGate = new Promise<void>((resolve) => {
     releaseTx = resolve;
   });
+  gateReleases.push(releaseTx);
   const forced = new Error("forced rollback (#5651)");
   const tx = db
     .transaction(async () => {
@@ -129,10 +169,12 @@ try {
   const hold1 = new Promise<void>((resolve) => {
     releaseHold1 = resolve;
   });
+  gateReleases.push(releaseHold1);
   let releaseHold2!: () => void;
   const hold2 = new Promise<void>((resolve) => {
     releaseHold2 = resolve;
   });
+  gateReleases.push(releaseHold2);
 
   pendingFlushHold = hold1;
   const flush1 = store.flush(); // captures, then parks mid-write on hold1
@@ -147,6 +189,7 @@ try {
   const tx2Gate = new Promise<void>((resolve) => {
     releaseTx2 = resolve;
   });
+  gateReleases.push(releaseTx2);
   const tx2 = db.transaction(async () => {
     txEntered = true;
     await db.update(messages).set({ content: "tx2 edit" }).where(eq(messages.id, "m-f2"));
@@ -180,7 +223,112 @@ try {
   // Anti-vacuity: both staged holds must actually have engaged, or the pin
   // proved nothing about the flush/transaction interleaving.
   assert.equal(flushHoldsTaken, 2, "both flushes took their staged mid-write holds");
+
+  // ══ Part 3: the snapshot mirror survives six-figure concurrent loads ══
+  // Same shape as Part 1, but the concurrently loaded unit holds 200k rows:
+  // the old push(...mirrored) spread threw RangeError here - after the
+  // length = 0 truncation - so the read 500'd and the transaction's rollback
+  // snapshot was left empty, wiping the resident messages table on rollback.
+  let releaseTx3!: () => void;
+  const tx3Gate = new Promise<void>((resolve) => {
+    releaseTx3 = resolve;
+  });
+  gateReleases.push(releaseTx3);
+  const tx3Failure = new Error("forced rollback (large mirror)");
+  const tx3 = db
+    .transaction(async () => {
+      await db.update(messages).set({ content: "uncommitted large-mirror edit" }).where(eq(messages.id, "m-warm"));
+      await tx3Gate;
+      throw tx3Failure;
+    })
+    .catch((error: unknown) => error);
+  await settle(30);
+
+  const bigLoaded = await storage.getMessage("m-big-0");
+  assert.equal(bigLoaded?.content, "big row 0", "the six-figure mid-transaction lazy load completes");
+
+  releaseTx3();
+  assert.equal(await tx3, tx3Failure, "the large-mirror transaction rejects with its forced error");
+  assert.equal(
+    (await storage.getMessage(`m-big-${BIG_ROW_COUNT - 1}`))?.content,
+    `big row ${BIG_ROW_COUNT - 1}`,
+    "rollback must preserve a six-figure unit a concurrent read lazily loaded mid-transaction",
+  );
+  assert.equal(
+    (await storage.getMessage("m-warm"))?.content,
+    "pre-transaction text",
+    "the large-mirror transaction's own mutation rolled back",
+  );
+
+  // ══ Part 4: a flush parked behind a transaction re-checks after waking ══
+  // Close-path staging (the pendingTransactionFlush rescue is skipped once
+  // writesClosed): T1 active with the store dirty, a flush parked in
+  // waitForTransactions behind it, T2 queued behind T1, then close(). When
+  // T1 finishes, T2's one-hop wake beats the flush's two-hop wake - the
+  // check-once flush then ran its I/O concurrently with T2's callback and
+  // persisted T2's uncommitted brand-new-unit rows, whose dirty mark the
+  // rollback erased. This part runs LAST: it closes the store.
+  await db.insert(messages).values(messageRow("m-close-dirty", "warm", "dirties for the close-path flush"));
+
+  let releaseT1!: () => void;
+  const t1Gate = new Promise<void>((resolve) => {
+    releaseT1 = resolve;
+  });
+  gateReleases.push(releaseT1);
+  const t1 = db.transaction(async () => {
+    await db.update(messages).set({ content: "t1 close-path edit" }).where(eq(messages.id, "m-close-dirty"));
+    await t1Gate;
+  });
+  await settle(20);
+
+  let parkedFlushSettled = false;
+  const parkedFlush = store.flush().then(() => {
+    parkedFlushSettled = true;
+  });
+  await settle(20);
+
+  const t4Failure = new Error("forced rollback (close path)");
+  const t2Close = db
+    .transaction(async () => {
+      closeTxActive = true;
+      try {
+        await db.insert(chatsTable).values(chatRow("k-unit"));
+        await db.insert(messages).values(messageRow("m-k1", "k-unit", "uncommitted close-path row"));
+        // Park long enough for a rogue concurrent flush to reach its table
+        // writes - the hook records the overlap.
+        await settle(60);
+        throw t4Failure;
+      } finally {
+        closeTxActive = false;
+      }
+    })
+    .catch((error: unknown) => error);
+  await settle(10);
+
+  // Anti-vacuity: the staged flush must still be parked behind T1, or this
+  // part never exercised the wake-ordering window at all.
+  assert.equal(parkedFlushSettled, false, "the staged flush is parked behind the active transaction");
+
+  const closing = store.close();
+  await settle(10);
+  releaseT1();
+  await t1;
+  assert.equal(await t2Close, t4Failure, "the close-path transaction rejects with its forced error");
+  await parkedFlush;
+  await closing;
+
+  assert.equal(
+    closeOverlapDetected,
+    false,
+    "a flush parked behind a transaction must not run its I/O concurrently with the next transaction's callback (close path)",
+  );
+  assert.equal(
+    existsSync(join(storeDir, "tables", "messages", `${encodeShardKey("k-unit")}.json`)),
+    false,
+    "rolled-back rows for a brand-new unit must not survive on disk after close",
+  );
 } finally {
+  for (const release of gateReleases) release();
   await db._fileStore.close();
   rmSync(dataDir, { recursive: true, force: true });
 }

@@ -3148,7 +3148,18 @@ class FileTableStore {
   async flush(force = false, throwOnError = false, allowClosed = false) {
     const transactionContext = this.txContext.getStore();
     if (this.writesClosed && !transactionContext && !allowClosed) this.assertWritable();
-    if (this.activeTransactionCount > 0 && !(force && transactionContext)) {
+    // Loop, not check-once — the mirror image of transaction()'s activeFlush
+    // wait (#5652). A transaction queued behind the one this flush is waiting
+    // out resumes on a one-hop microtask chain, while this flush's wake from
+    // waitForTransactions is two-hop: the queued transaction can activate
+    // BEFORE this continuation runs. The pendingTransactionFlush handoff
+    // rescues that ordering while the store is open (the finally starts a
+    // flush that installs activeFlush synchronously), but the handoff is
+    // deliberately skipped once writesClosed — a check-once wait here then
+    // ran saveFileSnapshots concurrently with the freshly activated
+    // transaction's callback during shutdown, persisting uncommitted rows
+    // whose dirty marks the rollback erased.
+    while (this.activeTransactionCount > 0 && !(force && transactionContext)) {
       this.pendingTransactionFlush = true;
       if (transactionContext) return;
       await this.waitForTransactions();
@@ -3873,11 +3884,15 @@ class FileTableStore {
     const ctx = this.loadEffectTransactionContext();
     const snapshot = ctx?.snapshots.get(table);
     if (snapshot) {
-      const mirrored = snapshot.map(swapReplaced).concat(added);
+      // References, not clones: rows are immutable once installed. Build the
+      // merged array fully BEFORE touching the snapshot, and refill with a
+      // loop rather than push(...mirrored): a spread passes every row as a
+      // call argument, which overflows the call stack past ~100k rows — and
+      // that throw landed AFTER the length = 0 truncation, leaving an empty
+      // rollback snapshot that a later rollback installed as the live table.
+      const mirrored = snapshot.map(swapReplaced).concat(added).sort(compareRows);
       snapshot.length = 0;
-      // References, not clones: rows are immutable once installed.
-      snapshot.push(...mirrored);
-      snapshot.sort(compareRows);
+      for (const row of mirrored) snapshot.push(row);
     }
     if (table === "messages") this.reindexMovedMessages(added.concat([...replacements.values()]));
     return keys;

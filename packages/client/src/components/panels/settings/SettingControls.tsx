@@ -116,16 +116,22 @@ export function SettingsSection({
 export function MariPermissionsModeSetting({ anchorId }: { anchorId?: string }) {
   const { t: localizeUi } = useUiTranslation();
   const localize = useLocalizedUiText();
+  const selectId = useId();
   const [mode, setMode] = useState<MariPermissionsMode | null>(null);
+  // Sequence local writes so a stale GET (or a stale failure rollback) can
+  // never clobber a newer selection.
+  const writeSeqRef = useRef(0);
   // Refetch on focus/visibility too: the Mari panel's header picker writes the
   // same server setting, and a stale one-shot read would drift from it.
   useEffect(() => {
     let cancelled = false;
     const load = () => {
+      const seqAtStart = writeSeqRef.current;
       api
         .get<{ mode: MariPermissionsMode }>("/professor-mari/workspace/permissions-mode")
         .then((response) => {
-          if (!cancelled) setMode(response.mode);
+          // Drop reads that predate the latest local write.
+          if (!cancelled && writeSeqRef.current === seqAtStart) setMode(response.mode);
         })
         .catch(() => {
           if (!cancelled) setMode((current) => current ?? DEFAULT_MARI_PERMISSIONS_MODE);
@@ -147,10 +153,13 @@ export function MariPermissionsModeSetting({ anchorId }: { anchorId?: string }) 
   const handleChange = async (event: ChangeEvent<HTMLSelectElement>) => {
     const next = event.target.value as MariPermissionsMode;
     const previous = currentMode;
+    const writeSeq = ++writeSeqRef.current;
     setMode(next);
     try {
       await api.put("/professor-mari/workspace/permissions-mode", { mode: next });
     } catch {
+      // Only the latest write may roll back.
+      if (writeSeqRef.current !== writeSeq) return;
       setMode(previous);
       toast.error(localizeUi("ui.chat.homeprofessormarichat.couldNotChangeThePermissionsMode"));
     }
@@ -158,10 +167,13 @@ export function MariPermissionsModeSetting({ anchorId }: { anchorId?: string }) 
   return (
     <div id={anchorId} className="flex flex-col gap-1.5">
       <div className="flex items-center gap-1.5">
-        <span className="text-xs font-medium">{localizeUi("ui.chat.homeprofessormarichat.permissionsMode")}</span>
+        <label htmlFor={selectId} className="text-xs font-medium">
+          {localizeUi("ui.chat.homeprofessormarichat.permissionsMode")}
+        </label>
         <HelpTooltip text={localizeUi("settings.controls.mariPermissionsMode.help")} />
       </div>
       <select
+        id={selectId}
         value={currentMode}
         onChange={(event) => void handleChange(event)}
         disabled={mode === null}

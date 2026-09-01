@@ -75,19 +75,28 @@ assert.match(
   /activeRunPermissionsMode === "plan" && isMutatingWorkspaceCommand\(command\)/u,
   "plan mode must refuse mutating commands in the executor, not just in the prompt",
 );
-// Manual forces the deferral; Bypass suppresses it.
-assert.match(workspaceAgent, /this\.activeRunPermissionsMode !== "bypass" &&/u);
-assert.match(workspaceAgent, /this\.activeRunPermissionsMode === "manual" \|\|/u);
+// Manual forces the deferral; Bypass suppresses it. The run loop reads the
+// run's LOCAL mode so an overlapping prompt() cannot change decisions
+// mid-flight (the executor's instance-field reads sit behind signal checks).
+assert.match(workspaceAgent, /permissionsMode !== "bypass" &&/u);
+assert.match(workspaceAgent, /permissionsMode === "manual" \|\|/u);
 // Manual is also a FLOOR: silent (empty-say) mutating frames execute only in
 // a run that began right after an approved deferral; otherwise the executor
 // refuses them with describe-and-ask guidance.
+// The arming flag is a PERSISTED message-extra flag - the stored content is
+// only the visible say text, so a content scan can never see the deferral
+// (CodeRabbit round 1: the substring check never armed, deadlocking Manual).
 assert.match(
   workspaceAgent,
-  /activeRunManualApprovalArmed =[\s\S]{0,40}typeof lastAssistant\?\.content === "string" && lastAssistant\.content\.includes\('"awaitingAuthorization":true'\)/u,
+  /const manualApprovalArmed = parseExtra\(lastAssistant\?\.extra\)\.mariDeferredMutations === true;/u,
 );
+assert.match(workspaceAgent, /if \(runEndedWithDeferral\) extraUpdate\.mariDeferredMutations = true;/u);
+assert.match(workspaceAgent, /runEndedWithDeferral = true;/u);
 assert.match(workspaceAgent, /activeRoundManualSilentMutationBlocked && isMutatingWorkspaceCommand\(command\)/u);
-// Accept edits / Bypass ride the envelope, with the delete carve-out.
+// Accept edits / Bypass ride the envelope, with the delete carve-out AND the
+// Personal Extension carve-out (their drafts keep the promised review card).
 assert.match(workspaceAgent, /"accept-edits" \|\| this\.activeRunPermissionsMode === "bypass"/u);
+assert.match(workspaceAgent, /!action\.startsWith\("personal_extension\."\) &&/u);
 assert.match(workspaceAgent, /delete\|forget\|remove\|uninstall/u);
 assert.match(workspaceAgent, /reviewPolicy: autoKeep \? "auto-keep" : "standard"/u);
 // Per-chat override (#5725 maintainer call): the run resolves chat override
@@ -199,8 +208,22 @@ assert.match(mariChat, /localize\(MARI_PERMISSIONS_MODE_LABELS\[permissionsMode\
 // clobber the optimistic patch permanently.
 assert.match(
   mariChat,
-  /await api\.put\("\/professor-mari\/workspace\/permissions-mode", \{ mode, chatId: chatIdForMode \}\);[\s\S]{0,300}refreshWorkspaceStatus\(\)/u,
+  /await api\.put\("\/professor-mari\/workspace\/permissions-mode", \{ mode, chatId: chatIdForMode \}\);[\s\S]{0,500}refreshWorkspaceStatus\(/u,
 );
+// Mode writes are sequenced: stale failures never roll back newer selections,
+// polls that predate the latest write keep the current mode fields, and the
+// post-PUT refetch is guarded on both the chat and the write sequence.
+assert.match(mariChat, /const writeSeq = \+\+permissionsModeWriteSeqRef\.current;/u);
+assert.match(mariChat, /if \(permissionsModeWriteSeqRef\.current !== writeSeq\) return;/u);
+assert.match(mariChat, /permissionsModeWriteSeqRef\.current !== writeSeqAtStart/u);
+assert.match(
+  mariChat,
+  /activeChatIdRef\.current === chatIdForMode && permissionsModeWriteSeqRef\.current === writeSeq/u,
+);
+const settingControlsSeq = readSource("packages/client/src/components/panels/settings/SettingControls.tsx");
+assert.match(settingControlsSeq, /const writeSeq = \+\+writeSeqRef\.current;/u);
+assert.match(settingControlsSeq, /writeSeqRef\.current === seqAtStart/u);
+assert.match(settingControlsSeq, /<label htmlFor=\{selectId\}/u);
 const settingControls = readSource("packages/client/src/components/panels/settings/SettingControls.tsx");
 assert.match(settingControls, /export function MariPermissionsModeSetting/u);
 assert.match(settingControls, /localize\(MARI_PERMISSIONS_MODE_LABELS\[value\]\.label\)/u);

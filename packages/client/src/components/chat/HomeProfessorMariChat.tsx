@@ -3154,6 +3154,7 @@ export function HomeProfessorMariChat({
   const [sending, setSending] = useState(false);
   const [connectionMenuOpen, setConnectionMenuOpen] = useState(false);
   const [permissionsMenuOpen, setPermissionsMenuOpen] = useState(false);
+  const permissionsModeWriteSeqRef = useRef(0);
   const permissionsButtonRef = useRef<HTMLButtonElement | null>(null);
   const permissionsMenuRef = useRef<HTMLDivElement | null>(null);
   const [historyPickerOpen, setHistoryPickerOpen] = useState(false);
@@ -3530,9 +3531,21 @@ export function HomeProfessorMariChat({
       // default) for the chat we name here.
       if (activeChatIdRef.current) params.set("chatId", activeChatIdRef.current);
       const query = params.toString();
+      const writeSeqAtStart = permissionsModeWriteSeqRef.current;
       const status = await api.get<MariWorkspaceStatus>(`/professor-mari/workspace/status${query ? `?${query}` : ""}`);
       if (shouldApply?.() === false) return status;
-      setWorkspaceStatus(status);
+      // A mode write that landed while this poll was in flight is newer than
+      // the polled value - keep the current mode fields, apply the rest.
+      setWorkspaceStatus((current) =>
+        current && permissionsModeWriteSeqRef.current !== writeSeqAtStart
+          ? {
+              ...status,
+              permissionsMode: current.permissionsMode,
+              permissionsModeDefault: current.permissionsModeDefault,
+              permissionsModeSource: current.permissionsModeSource,
+            }
+          : status,
+      );
       workspaceStatusErrorToastShownRef.current = false;
       return status;
     },
@@ -3866,6 +3879,7 @@ export function HomeProfessorMariChat({
       setPermissionsMenuOpen(false);
       const chatIdForMode = activeChatIdRef.current;
       if (!chatIdForMode) return;
+      const writeSeq = ++permissionsModeWriteSeqRef.current;
       // No same-value short-circuits: the check state can be stale for up to
       // one poll after a chat switch, and silently dropping the user's click
       // (especially a "Use default" de-escalation) is worse than sending an
@@ -3884,9 +3898,15 @@ export function HomeProfessorMariChat({
         await api.put("/professor-mari/workspace/permissions-mode", { mode, chatId: chatIdForMode });
         // A status poll that was in flight during the PUT resolves with the
         // OLD mode and would clobber the optimistic patch - refetch so the
-        // panel converges on the server value.
-        void refreshWorkspaceStatus().catch(() => undefined);
+        // panel converges on the server value. Guarded: a chat switch or a
+        // newer mode write while the refetch is in flight drops it.
+        void refreshWorkspaceStatus(
+          () => activeChatIdRef.current === chatIdForMode && permissionsModeWriteSeqRef.current === writeSeq,
+        ).catch(() => undefined);
       } catch (error) {
+        // Only the LATEST write may roll back - a stale failure must not
+        // clobber a newer selection that already succeeded.
+        if (permissionsModeWriteSeqRef.current !== writeSeq) return;
         setWorkspaceStatus((current) => (current && previous ? previous : current));
         console.error("[Professor Mari] Failed to change permissions mode", error);
         toast.error(localizeUi("ui.chat.homeprofessormarichat.couldNotChangeThePermissionsMode"));

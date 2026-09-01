@@ -1902,11 +1902,6 @@ export class ProfessorMariWorkspaceService {
   // prompt() start (never latched at construction, never cleared - each run
   // overwrites) so command execution and deferral read the run's own mode.
   private activeRunPermissionsMode: MariPermissionsMode = DEFAULT_MARI_PERMISSIONS_MODE;
-  // #5725 Manual mode floor: true when the run began right after a deferral
-  // the user answered - i.e. Mari's LAST persisted turn asked for approval.
-  // An approved run may execute silent (empty-say) command frames across all
-  // its rounds; an unapproved run may not - see the executor floor.
-  private activeRunManualApprovalArmed = false;
   private activeRoundManualSilentMutationBlocked = false;
   private abortController: AbortController | null = null;
   // Professor Mari is the only untrusted workspace writer. Serialize all of
@@ -2072,6 +2067,11 @@ export class ProfessorMariWorkspaceService {
     let latestFinishReason: string | null = null;
     const commandResultsForContinuity: WorkspaceCommandResult[] = [];
     let assistantMessagePersisted = false;
+    // #5725 Manual mode: whether this run ended by deferring mutating commands
+    // behind the Accept action. Persisted on the assistant message's extra so
+    // the NEXT run can arm silent command frames - the persisted content is
+    // only the visible say text, so a content scan can never see the deferral.
+    let runEndedWithDeferral = false;
 
     const persistAssistantMessage = async () => {
       const persistedText = assistantText.trim();
@@ -2087,6 +2087,7 @@ export class ProfessorMariWorkspaceService {
       assistantMessagePersisted = true;
 
       const extraUpdate: Record<string, unknown> = {};
+      if (runEndedWithDeferral) extraUpdate.mariDeferredMutations = true;
       const storedTrace = sanitizeTraceForStorage(workspaceTrace);
       if (thinkingText.trim()) extraUpdate.thinking = thinkingText;
       if (storedTrace.length > 0) extraUpdate.mariWorkspaceTimeline = storedTrace;
@@ -2114,9 +2115,16 @@ export class ProfessorMariWorkspaceService {
     try {
       await this.ensureMariCliShim();
       const { mode: permissionsMode } = await this.resolvePermissionsMode(args.chatId);
+      // The instance field serves the executor (whose reads sit behind a
+      // signal check); the run loop itself uses LOCALS so an overlapping
+      // prompt() can never change this run's deferral decisions mid-flight.
       this.activeRunPermissionsMode = permissionsMode;
       const provider = createProviderForConnection(connection);
-      const messages = await this.buildPromptMessages(args.chatId, connection, permissionsMode);
+      const { messages, manualApprovalArmed } = await this.buildPromptMessages(
+        args.chatId,
+        connection,
+        permissionsMode,
+      );
       const baseOptions: ChatOptions = {
         ...this.baseChatOptions(connection, controller.signal, (delta) => {
           thinkingText += delta;
@@ -2168,9 +2176,9 @@ export class ProfessorMariWorkspaceService {
         // frames - the post-approval pattern - still execute); Bypass never
         // defers; Auto/others keep the self-declared ask-first behavior.
         const shouldDeferMutations =
-          this.activeRunPermissionsMode !== "bypass" &&
+          permissionsMode !== "bypass" &&
           parsedAction.visibleText &&
-          (this.activeRunPermissionsMode === "manual" ||
+          (permissionsMode === "manual" ||
             parsedAction.awaitingAuthorization ||
             visibleTextRequestsUserApproval(parsedAction.visibleText)) &&
           parsedAction.commands.some(isMutatingWorkspaceCommand);
@@ -2190,6 +2198,7 @@ export class ProfessorMariWorkspaceService {
             }
           : parsedAction;
         if (shouldDeferMutations) {
+          runEndedWithDeferral = true;
           action.suggestions = [
             {
               id: "authorization-accept",
@@ -2327,7 +2336,7 @@ export class ProfessorMariWorkspaceService {
         // only allowed in a run the user just approved. The flag is
         // round-scoped; visible frames defer through shouldDeferMutations.
         this.activeRoundManualSilentMutationBlocked =
-          this.activeRunPermissionsMode === "manual" && !action.visibleText && !this.activeRunManualApprovalArmed;
+          permissionsMode === "manual" && !action.visibleText && !manualApprovalArmed;
         const commandResults = await this.executeWorkspaceCommandBatch(
           action.commands,
           controller.signal,
@@ -2475,14 +2484,15 @@ export class ProfessorMariWorkspaceService {
     chatId: string,
     connection: WorkspaceConnection,
     permissionsMode: MariPermissionsMode,
-  ): Promise<ChatMessage[]> {
+  ): Promise<{ messages: ChatMessage[]; manualApprovalArmed: boolean }> {
     const chatStorage = createChatsStorage(this.app.db);
     const history = (await chatStorage.listMessages(chatId)).slice(-MAX_HISTORY_MESSAGES);
     // #5725 Manual mode: arm silent command frames only when Mari's last
-    // persisted turn was a deferral (the user's new message answers it).
+    // persisted turn was a deferral (the user's new message answers it). The
+    // deferral is a flag on the message's extra - persisted content is only
+    // the visible say text, never the JSON envelope.
     const lastAssistant = [...history].reverse().find((row) => row.role === "assistant");
-    this.activeRunManualApprovalArmed =
-      typeof lastAssistant?.content === "string" && lastAssistant.content.includes('"awaitingAuthorization":true');
+    const manualApprovalArmed = parseExtra(lastAssistant?.extra).mariDeferredMutations === true;
     const continuityPrompt = buildRecentWorkspaceContinuityPrompt(history);
     const skillsPrompt = await this.buildSkillsPrompt();
     const instructionsPrompt = await this.buildInstructionsPrompt();
@@ -2545,7 +2555,7 @@ export class ProfessorMariWorkspaceService {
       messages.push({ role: "system", content: attachedContextPrompt, contextKind: "injection" });
     }
     if (continuityPrompt) messages.push({ role: "system", content: continuityPrompt, contextKind: "injection" });
-    return messages;
+    return { messages, manualApprovalArmed };
   }
 
   private async buildSkillsPrompt(): Promise<string | null> {
@@ -3294,6 +3304,7 @@ ${sections.join("\n\n")}
     // modes the card is the last undo surface a destructive action has.
     const autoKeep =
       (this.activeRunPermissionsMode === "accept-edits" || this.activeRunPermissionsMode === "bypass") &&
+      !action.startsWith("personal_extension.") &&
       !/(?:delete|forget|remove|uninstall)/iu.test(action);
     const result = await getMariDbService(this.app.db).executeAction({
       ...args,

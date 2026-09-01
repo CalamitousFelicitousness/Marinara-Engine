@@ -37,6 +37,6 @@ export const MARI_PERMISSIONS_MODE_LABELS: Record<MariPermissionsMode, { label: 
   bypass: {
     label: "Bypass permissions",
     description:
-      "Mari applies changes without asking or review cards. Deletions and sensitive files keep their review.",
+      "Mari applies changes without asking or review cards. Deletions and sensitive changes keep their review.",
   },
 };

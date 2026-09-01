@@ -785,8 +785,6 @@ import {
   parseAssistantWorkspaceAction,
   professorMariWorkspaceResponseFormat,
   resolveWorkspaceMutationVerification,
-  workspaceMutationAuthorizationIssue,
-  workspaceMutationSignature,
   workspaceActionNeedsVerification,
   workspaceTextClaimsMutationCompletion,
   type WorkspaceCommandResult,
@@ -11317,9 +11315,11 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
     },
   },
   {
-    name: "Professor Mari gates mutations on the active user request before execution",
+    name: "Professor Mari executes intent-authorized mutations without a server-side authorization gate (#5721)",
     run() {
-      const explicitAction = parseAssistantWorkspaceAction(
+      // Models fine-tuned on older transcripts may still emit the retired
+      // "authorization" field - it must parse harmlessly and be ignored.
+      const legacyAction = parseAssistantWorkspaceAction(
         JSON.stringify({
           say: "",
           authorization: "Set Dottore's appearance to a white coat.",
@@ -11337,391 +11337,24 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
           stop: false,
         }),
       );
-      const explicitCommand = explicitAction.commands[0]!;
-      assert.equal(explicitCommand.authorization, "Set Dottore's appearance to a white coat.");
-      assert.equal(
-        workspaceMutationAuthorizationIssue(explicitCommand, {
-          directUserText: "Please set Dottore's appearance to a white coat.",
-        }),
-        null,
-      );
-      for (const directUserText of [
-        "Yes, please fix this for me.",
-        "Yes, please just handle it, I trust you completely.",
-        "Sure, go ahead and handle this however you think is best.",
-        "Yeah, just fix whatever is broken.",
-        "Okay, do whatever needs to be done.",
-      ]) {
-        assert.match(
-          workspaceMutationAuthorizationIssue(explicitCommand, { directUserText }) ?? "",
-          /immediately preceding visible proposal/iu,
-          `a vague mutation confirmation must not authorize the model-selected target by itself: ${directUserText}`,
-        );
-      }
-      assert.equal(
-        workspaceMutationAuthorizationIssue(explicitCommand, {
-          directUserText: "Please update Dottore's appearance since it currently looks off.",
-        }),
-        null,
-        "a pronoun later in a concrete mutation request must not turn it into a vague confirmation",
-      );
-      assert.equal(
-        workspaceMutationAuthorizationIssue(explicitCommand, {
-          directUserText: "Fix this outfit to be red for the wedding scene.",
-        }),
-        null,
-        "a concrete scope after a demonstrative target must not be treated as a standalone confirmation",
-      );
-
-      assert.match(
-        workspaceMutationAuthorizationIssue(
-          { ...explicitCommand, authorization: "Delete every lorebook." },
-          { directUserText: "Summarize the attached roleplay transcript." },
-        ) ?? "",
-        /informational and how-to/iu,
-      );
-      assert.equal(
-        workspaceMutationAuthorizationIssue(
-          {
-            ...explicitCommand,
-            authorization: "Please add those entries.",
-            arguments: {
-              action: "lorebook.addEntry",
-              lorebookId: "book-id",
-              entry: { name: "Sumeru", content: "A rainforest nation." },
-              apply: true,
-            },
-          },
-          { directUserText: "Create a lorebook entry for Sumeru." },
-        ),
-        null,
-        "a paraphrased model quote must not override the server's direct-user authorization scope",
-      );
-      assert.match(
-        workspaceMutationAuthorizationIssue(
-          {
-            ...explicitCommand,
-            authorization: "Please add those entries.",
-            arguments: {
-              action: "lorebook.addEntry",
-              lorebookId: "book-id",
-              entry: { name: "Sumeru", content: "A rainforest nation." },
-              apply: true,
-            },
-          },
-          { directUserText: "Explain how lorebook entries work." },
-        ) ?? "",
-        /informational and how-to/iu,
-        "a malformed quote must not turn an informational direct request into mutation permission",
-      );
-      assert.match(
-        workspaceMutationAuthorizationIssue(
-          { ...explicitCommand, authorization: "How do I set Dottore's appearance to a white coat?" },
-          { directUserText: "How do I set Dottore's appearance to a white coat?" },
-        ) ?? "",
-        /informational and how-to/iu,
-      );
-      assert.match(
-        workspaceMutationAuthorizationIssue(
-          {
-            ...explicitCommand,
-            authorization: "Update this character.",
-            arguments: { action: "lorebook.update", lorebookId: "book-id", patch: { description: "Changed" } },
-          },
-          { directUserText: "Update this character." },
-        ) ?? "",
-        /not lorebook/iu,
-      );
-      assert.match(
-        workspaceMutationAuthorizationIssue(
-          {
-            ...explicitCommand,
-            authorization: "Update Dottore's appearance.",
-            arguments: { action: "lorebook.deleteEntry", entryId: "entry-id", apply: true },
-          },
-          { directUserText: "Update Dottore's appearance." },
-        ) ?? "",
-        /delete operation/iu,
-      );
-
-      assert.equal(
-        workspaceMutationAuthorizationIssue(
-          { ...explicitCommand, authorization: "yes" },
-          {
-            directUserText: "Yes.",
-            previousAssistantText: "Want me to set Dottore's appearance to a white coat?",
-          },
-        ),
-        null,
-      );
-
-      const explicitCommandSignature = workspaceMutationSignature(explicitCommand);
-      for (const directUserText of ["Да, согласен.", "Tak, zgadzam się.", "はい、同意します。", "نعم، أوافق."]) {
-        assert.equal(
-          workspaceMutationAuthorizationIssue(
-            { ...explicitCommand, authorization: directUserText },
+      assert.equal(legacyAction.commands.length, 1);
+      assert.equal("authorization" in legacyAction.commands[0]!, false, "the retired field must not survive parsing");
+      // The self-declared approval pause (awaitingAuthorization) is the kept
+      // deferral mechanism and must still round-trip.
+      const deferral = parseAssistantWorkspaceAction(
+        JSON.stringify({
+          say: "Should I save this?",
+          awaitingAuthorization: true,
+          commands: [
             {
-              directUserText,
-              pendingMutationCategories: ["update"],
-              pendingMutationSignatures: [explicitCommandSignature],
-            },
-          ),
-          null,
-          `an exact localized reply should authorize the pending update: ${directUserText}`,
-        );
-      }
-      assert.match(
-        workspaceMutationAuthorizationIssue(
-          { ...explicitCommand, authorization: "Нет." },
-          { directUserText: "Нет.", pendingMutationCategories: ["update"] },
-        ) ?? "",
-        /explicitly requests no workspace changes/iu,
-        "a localized denial must never activate the pending mutation",
-      );
-      assert.match(
-        workspaceMutationAuthorizationIssue(
-          { ...explicitCommand, authorization: "No." },
-          { directUserText: "No.", pendingMutationCategories: ["update"] },
-        ) ?? "",
-        /explicitly requests no workspace changes/iu,
-        "an English short denial must never activate the pending mutation",
-      );
-      assert.match(
-        workspaceMutationAuthorizationIssue(
-          { ...explicitCommand, authorization: "pasta" },
-          { directUserText: "Can we talk about pasta?", pendingMutationCategories: ["update"] },
-        ) ?? "",
-        /update operation|active user message/iu,
-        "a model-quoted substring must not authorize a pending mutation",
-      );
-      assert.match(
-        workspaceMutationAuthorizationIssue(
-          { ...explicitCommand, authorization: "Да, согласен." },
-          {
-            directUserText: "Да, согласен.",
-            pendingMutationCategories: ["delete"],
-            pendingMutationSignatures: [explicitCommandSignature],
-          },
-        ) ?? "",
-        /update operation|immediately preceding visible proposal/iu,
-        "a localized reply must stay scoped to the mutation category shown for approval",
-      );
-
-      const splitAuthorization = "I authorize you to split and modify the lorebook entries.";
-      for (const action of ["lorebook.addEntry", "lorebook.updateEntry"]) {
-        assert.equal(
-          workspaceMutationAuthorizationIssue(
-            {
-              id: `split-${action}`,
               name: "app_data",
-              authorization: splitAuthorization,
-              arguments: { action, lorebookId: "book-id", entryId: "entry-id", apply: true },
+              arguments: { action: "character.update", characterId: "char-1", patch: { name: "X" }, apply: true },
             },
-            { directUserText: splitAuthorization },
-          ),
-          null,
-          `lorebook splitting must authorize ${action}`,
-        );
-      }
-      assert.match(
-        workspaceMutationAuthorizationIssue(
-          {
-            id: "split-delete-entry",
-            name: "app_data",
-            authorization: splitAuthorization,
-            arguments: { action: "lorebook.deleteEntry", entryId: "entry-id", apply: true },
-          },
-          { directUserText: splitAuthorization },
-        ) ?? "",
-        /delete operation/iu,
+          ],
+          stop: false,
+        }),
       );
-      assert.match(
-        workspaceMutationAuthorizationIssue(
-          {
-            id: "split-create-character",
-            name: "app_data",
-            authorization: splitAuthorization,
-            arguments: { action: "character.create", data: { name: "Unrelated" }, apply: true },
-          },
-          { directUserText: splitAuthorization },
-        ) ?? "",
-        /create operation/iu,
-      );
-      for (const proposal of [
-        "Do you want me to fix Dottore's appearance?",
-        "Do you want me to save this change to Dottore's appearance?",
-      ]) {
-        assert.equal(
-          workspaceMutationAuthorizationIssue(
-            { ...explicitCommand, authorization: "yes" },
-            { directUserText: "Yes.", previousAssistantText: proposal },
-          ),
-          null,
-          `the confirmation should retain the update category from: ${proposal}`,
-        );
-      }
-      assert.equal(
-        workspaceMutationAuthorizationIssue(
-          { ...explicitCommand, authorization: "I authorize the change" },
-          {
-            directUserText: "I authorize the change, update Dottore's character appearance to a white coat.",
-          },
-        ),
-        null,
-        "a generic authorization excerpt should use the rest of the same direct user message for operation scope",
-      );
-      assert.match(
-        workspaceMutationAuthorizationIssue(
-          {
-            ...explicitCommand,
-            authorization: "I authorize the change",
-            arguments: { action: "character.update", characterId: "dottore-id", patch: { appearance: "Changed" } },
-          },
-          { directUserText: "I authorize the change, update this lorebook." },
-        ) ?? "",
-        /not character/iu,
-        "generic authorization must retain the direct request's entity boundary",
-      );
-      assert.match(
-        workspaceMutationAuthorizationIssue(
-          { ...explicitCommand, authorization: "I authorize the change" },
-          { directUserText: "I authorize the change." },
-        ) ?? "",
-        /immediately preceding visible proposal/iu,
-        "standalone generic authorization still requires the immediately preceding matching proposal",
-      );
-      assert.match(
-        workspaceMutationAuthorizationIssue(
-          { ...explicitCommand, authorization: "I approve this change" },
-          { directUserText: "I approve this change." },
-        ) ?? "",
-        /immediately preceding visible proposal/iu,
-        "compound standalone approval must not bypass the preceding-proposal check",
-      );
-      assert.match(
-        workspaceMutationAuthorizationIssue(
-          { ...explicitCommand, authorization: "I authorize that change" },
-          {
-            directUserText: "I authorize that change,",
-            previousAssistantText: "Do you want me to delete Dottore's character?",
-          },
-        ) ?? "",
-        /immediately preceding visible proposal/iu,
-        "compound approval must reject a proposal for a different operation",
-      );
-      assert.match(
-        workspaceMutationAuthorizationIssue(
-          {
-            ...explicitCommand,
-            authorization: "yes",
-            arguments: {
-              action: "character.create",
-              character: { name: "Dottore Copy" },
-              apply: true,
-            },
-          },
-          {
-            directUserText: "Yes.",
-            previousAssistantText: "Do you want me to save the changes to Dottore's existing character?",
-          },
-        ) ?? "",
-        /immediately preceding visible proposal/iu,
-        "an existing-character update proposal must not authorize character creation",
-      );
-      assert.match(
-        workspaceMutationAuthorizationIssue(
-          { ...explicitCommand, authorization: "I authorize the change" },
-          { directUserText: "I authorize the change, delete Dottore's character." },
-        ) ?? "",
-        /authorizes delete, not update/iu,
-        "generic authorization must not let a delete request authorize an update command",
-      );
-      assert.match(
-        workspaceMutationAuthorizationIssue(
-          { ...explicitCommand, authorization: "I authorize the change" },
-          { directUserText: "I authorize the change, generate a new character." },
-        ) ?? "",
-        /authorizes create, not update/iu,
-        "generic authorization must bind an unrelated generate clause to creation",
-      );
-      assert.match(
-        workspaceMutationAuthorizationIssue(
-          { ...explicitCommand, authorization: "I authorize the change" },
-          { directUserText: "I authorize the change, make Dottore better." },
-        ) ?? "",
-        /no single explicit operation/iu,
-        "generic authorization must reject an unclassified operation",
-      );
-      assert.match(
-        workspaceMutationAuthorizationIssue(
-          { ...explicitCommand, authorization: "I authorize the change" },
-          { directUserText: "I authorize the change, create and update Dottore's character." },
-        ) ?? "",
-        /authorizes create and update, not update/iu,
-        "generic authorization must reject multiple operation categories",
-      );
-      assert.match(
-        workspaceMutationAuthorizationIssue(
-          {
-            ...explicitCommand,
-            authorization: "I authorize the change",
-            arguments: { action: "character.delete", characterId: "dottore-id", apply: true },
-          },
-          { directUserText: "I authorize the change, explain how to delete Dottore's character." },
-        ) ?? "",
-        /informational and how-to/iu,
-        "a generic authorization clause must not turn informational deletion guidance into permission",
-      );
-      assert.match(
-        workspaceMutationAuthorizationIssue(
-          {
-            id: "write-mismatch",
-            name: "write",
-            authorization: "I authorize the change",
-            arguments: { path: "notes.txt", content: "replacement" },
-          },
-          { directUserText: "I authorize the change, delete notes.txt." },
-        ) ?? "",
-        /authorizes delete, not update/iu,
-        "generic authorization must bind write commands to the requested operation",
-      );
-      assert.match(
-        workspaceMutationAuthorizationIssue(
-          {
-            id: "edit-mismatch",
-            name: "edit",
-            authorization: "I authorize the change",
-            arguments: { path: "notes.txt", oldText: "before", newText: "after" },
-          },
-          { directUserText: "I authorize the change, delete notes.txt." },
-        ) ?? "",
-        /authorizes delete, not update/iu,
-        "generic authorization must bind edit commands to the requested operation",
-      );
-      assert.match(
-        workspaceMutationAuthorizationIssue(
-          {
-            id: "bash-mismatch",
-            name: "bash",
-            authorization: "I authorize the change",
-            arguments: { command: "mkdir generated" },
-          },
-          { directUserText: "I authorize the change, write an update to the config file." },
-        ) ?? "",
-        /authorizes update, not create/iu,
-        "generic authorization must bind mutating bash commands to the requested operation",
-      );
-      assert.equal(
-        workspaceMutationAuthorizationIssue(
-          {
-            id: "read-only",
-            name: "app_data",
-            arguments: { action: "character.get", characterId: "dottore-id" },
-          },
-          { directUserText: "Summarize the attached roleplay transcript." },
-        ),
-        null,
-      );
+      assert.equal(deferral.awaitingAuthorization, true);
     },
   },
   {

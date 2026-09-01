@@ -79,7 +79,7 @@ import { MariChatHistoryPicker } from "./MariChatHistoryPicker";
 import { MariContextViewer } from "./MariContextViewer";
 import { homeFeedKeys } from "../../hooks/use-home-feed";
 import { filterLanguageGenerationConnections } from "../../lib/connection-filters";
-import { api, getPrivilegedActionErrorMessage, StreamResumeDisconnectError } from "../../lib/api-client";
+import { api, getPrivilegedActionErrorMessage, isPassiveStreamDisconnect } from "../../lib/api-client";
 import { formatGenerationParameterError } from "../../lib/generation-parameter-errors";
 import { showConfirmDialog } from "../../lib/app-dialogs";
 import { useChatStore } from "../../stores/chat.store";
@@ -124,9 +124,10 @@ const WORKSPACE_SETTLE_REQUEST_TIMEOUT_MS = 10_000;
 // After the SSE stream detaches on tab resume, the run keeps going server-side.
 // Poll the workspace status until it is no longer active so the caller reloads
 // the fully persisted reply and approvals rather than a half-written state.
-async function waitForWorkspaceRunToSettle(connectionId: string | null, signal: AbortSignal): Promise<void> {
+async function waitForWorkspaceRunToSettle(connectionId: string | null, signal: AbortSignal): Promise<boolean> {
   const query = connectionId ? `?connectionId=${encodeURIComponent(connectionId)}` : "";
   const startedAt = Date.now();
+  let sawActiveRun = false;
   while (!signal.aborted && Date.now() - startedAt < WORKSPACE_SETTLE_MAX_WAIT_MS) {
     const pollController = new AbortController();
     const abortPoll = () => pollController.abort();
@@ -136,14 +137,15 @@ async function waitForWorkspaceRunToSettle(connectionId: string | null, signal: 
       const status = await api.get<MariWorkspaceStatus>(`/professor-mari/workspace/status${query}`, {
         signal: pollController.signal,
       });
-      if (!status.active) return;
+      if (status.active) sawActiveRun = true;
+      else return sawActiveRun;
     } catch {
       // The resumed tab may still be restoring network access; keep polling.
     } finally {
       window.clearTimeout(pollTimeout);
       signal.removeEventListener("abort", abortPoll);
     }
-    if (signal.aborted) return;
+    if (signal.aborted) return sawActiveRun;
     await new Promise<void>((resolve) => {
       const timer = window.setTimeout(resolve, WORKSPACE_SETTLE_POLL_MS);
       signal.addEventListener(
@@ -156,6 +158,7 @@ async function waitForWorkspaceRunToSettle(connectionId: string | null, signal: 
       );
     });
   }
+  return sawActiveRun;
 }
 const PROFESSOR_MARI_NO_CONNECTION_TOAST =
   "You haven't set up a connection yet! Click the link icon beside the paperclip to select one.";
@@ -3599,6 +3602,28 @@ export function HomeProfessorMariChat({
     };
   }, [pageActive, refreshWorkspaceStatus, localizeUi]);
 
+  // Recovery for runs this client is no longer attached to (#5719): if the
+  // status poll watches a server-side run finish while no local send closure
+  // is driving it — the stream died, or Mini-Mari was closed and reopened —
+  // reload the persisted reply so it does not sit invisible until a manual
+  // chat switch.
+  const workspaceWasActiveRemotelyRef = useRef(false);
+  useEffect(() => {
+    const activeRemotely = workspaceStatus?.active === true && !workspaceActive;
+    if (workspaceWasActiveRemotelyRef.current && !workspaceStatus?.active && !workspaceActive) {
+      const chatIdToReload = activeChatIdRef.current;
+      if (chatIdToReload) {
+        void loadMessages(chatIdToReload, {
+          shouldApply: () => activeChatIdRef.current === chatIdToReload,
+        }).catch((error) => {
+          console.error("[Professor Mari] Failed to reload messages after a detached workspace run", error);
+        });
+        void invalidateWorkspaceData();
+      }
+    }
+    workspaceWasActiveRemotelyRef.current = activeRemotely;
+  }, [workspaceStatus?.active, workspaceActive, loadMessages, invalidateWorkspaceData]);
+
   useEffect(() => {
     void loadSkills().catch((error) => {
       console.error("[Professor Mari] Failed to load skills", error);
@@ -4707,6 +4732,21 @@ export function HomeProfessorMariChat({
       useChatStore.getState().clearThinkingBuffer(chat.id);
       useChatStore.getState().setMariPhase(chat.id, "thinking");
       let received = false;
+      // Mirror use-generate's backgrounding bookkeeping: Android browsers tear
+      // down a hidden tab's connection with a plain TypeError, and the shared
+      // classifier needs to know the page was hidden to call that passive.
+      let pageWasHiddenDuringStream = typeof document !== "undefined" && document.visibilityState !== "visible";
+      const markPageHidden = () => {
+        pageWasHiddenDuringStream = true;
+      };
+      const recordBackgroundedStream = () => {
+        if (document.visibilityState !== "visible") markPageHidden();
+      };
+      const canTrackVisibility = typeof document !== "undefined" && typeof window !== "undefined";
+      if (canTrackVisibility) {
+        document.addEventListener("visibilitychange", recordBackgroundedStream);
+        window.addEventListener("pagehide", markPageHidden);
+      }
       try {
         for await (const event of api.streamEvents(
           "/professor-mari/workspace/prompt",
@@ -4807,16 +4847,30 @@ export function HomeProfessorMariChat({
             throw new Error(typeof event.data === "string" ? event.data : "Workspace generation failed");
           }
         }
+        if (!received && !controller.signal.aborted) {
+          // The stream closed CLEANLY before any reply event — mobile browsers
+          // can shut a backgrounded socket down without an error while the
+          // server keeps running (#5719). If the status endpoint confirms a
+          // live run, this was a passive disconnect: wait it out and let the
+          // caller reload the persisted reply instead of toasting "no reply".
+          setWorkspaceActivity("Finishing in the background…");
+          received = await waitForWorkspaceRunToSettle(effectiveConnectionId, controller.signal);
+        }
       } catch (error) {
-        if (!(error instanceof StreamResumeDisconnectError)) throw error;
-        // Detached by backgrounding, not a failure — the run continues and
-        // persists server-side. Wait for it to actually settle before reporting
-        // success, so handleSubmit reloads the finished reply and approvals
-        // rather than a half-written state.
+        if (!isPassiveStreamDisconnect(error, pageWasHiddenDuringStream, controller.signal)) throw error;
+        // Detached by backgrounding (the resume watchdog, or the browser
+        // killing the hidden tab's socket outright), not a failure — the run
+        // continues and persists server-side. Wait for it to actually settle
+        // before reporting success, so handleSubmit reloads the finished
+        // reply and approvals rather than a half-written state.
         setWorkspaceActivity("Finishing in the background…");
         await waitForWorkspaceRunToSettle(effectiveConnectionId, controller.signal);
         received = true;
       } finally {
+        if (canTrackVisibility) {
+          document.removeEventListener("visibilitychange", recordBackgroundedStream);
+          window.removeEventListener("pagehide", markPageHidden);
+        }
         workspaceTextThrottle.flush();
         workspaceAbortRef.current = null;
         setWorkspaceActive(false);

@@ -18851,6 +18851,7 @@ test("mobile chat composer follows the visual viewport above the software keyboa
     const state = {
       height: null as number | null,
       offsetTop: 0,
+      pageTop: 0,
     };
     const viewport = new EventTarget();
     Object.defineProperties(viewport, {
@@ -18858,7 +18859,7 @@ test("mobile chat composer follows the visual viewport above the software keyboa
       offsetTop: { configurable: true, get: () => state.offsetTop },
       offsetLeft: { configurable: true, get: () => 0 },
       pageLeft: { configurable: true, get: () => 0 },
-      pageTop: { configurable: true, get: () => state.offsetTop },
+      pageTop: { configurable: true, get: () => state.pageTop },
       scale: { configurable: true, get: () => 1 },
       width: { configurable: true, get: () => window.innerWidth },
     });
@@ -18868,9 +18869,10 @@ test("mobile chat composer follows the visual viewport above the software keyboa
     });
     Object.defineProperty(window, "__setMarinaraVisualViewport", {
       configurable: true,
-      value: (height: number, offsetTop: number) => {
+      value: (height: number, offsetTop: number, pageTop = offsetTop) => {
         state.height = height;
         state.offsetTop = offsetTop;
+        state.pageTop = pageTop;
         viewport.dispatchEvent(new Event("resize"));
         viewport.dispatchEvent(new Event("scroll"));
       },
@@ -18880,6 +18882,7 @@ test("mobile chat composer follows the visual viewport above the software keyboa
       value: (height: number) => {
         state.height = height;
         state.offsetTop = 0;
+        state.pageTop = 0;
         window.dispatchEvent(new Event("orientationchange"));
         viewport.dispatchEvent(new Event("resize"));
       },
@@ -19056,14 +19059,15 @@ test("mobile chat composer follows the visual viewport above the software keyboa
         probeWindow.__mariScrollIntoViewCalls += 1;
       };
     });
-    const iosFocusOffsetTop = Math.min(160, Math.max(0, initialViewportHeight - 360));
-    await page.evaluate((offsetTop) => {
+    const iosFocusOffsetTop = Math.min(72, Math.max(0, initialViewportHeight - 360));
+    const iosFocusPageTop = Math.min(340, Math.max(0, initialViewportHeight - 360));
+    await page.evaluate(({ offsetTop, pageTop }) => {
       (
         window as typeof window & {
-          __setMarinaraVisualViewport: (height: number, offsetTop: number) => void;
+          __setMarinaraVisualViewport: (height: number, offsetTop: number, pageTop?: number) => void;
         }
-      ).__setMarinaraVisualViewport(360, offsetTop);
-    }, iosFocusOffsetTop);
+      ).__setMarinaraVisualViewport(360, offsetTop, pageTop);
+    }, { offsetTop: iosFocusOffsetTop, pageTop: iosFocusPageTop });
     await textarea.focus();
     await expect
       .poll(() =>
@@ -19088,7 +19092,7 @@ test("mobile chat composer follows the visual viewport above the software keyboa
           top: getComputedStyle(document.documentElement).getPropertyValue("--mari-visual-viewport-offset-top").trim(),
         })),
       )
-      .toEqual({ height: "360px", top: `${iosFocusOffsetTop}px` });
+      .toEqual({ height: "360px", top: `${iosFocusPageTop}px` });
     await expect(page.locator("html")).toHaveAttribute("data-mari-software-keyboard-open", "");
     const iosCompactComposerStyle = await composer.evaluate((element) => {
       const style = getComputedStyle(element);
@@ -19102,10 +19106,10 @@ test("mobile chat composer follows the visual viewport above the software keyboa
     const [iosShellBox, iosComposerBox] = await Promise.all([shell.boundingBox(), composer.boundingBox()]);
     expect(iosShellBox).not.toBeNull();
     expect(iosComposerBox).not.toBeNull();
-    expect(Math.abs(iosShellBox!.y - iosFocusOffsetTop)).toBeLessThanOrEqual(1);
+    expect(Math.abs(iosShellBox!.y - iosFocusPageTop)).toBeLessThanOrEqual(1);
     expect(Math.abs(iosShellBox!.height - 360)).toBeLessThanOrEqual(1);
-    expect(iosComposerBox!.y).toBeGreaterThanOrEqual(iosFocusOffsetTop);
-    expect(iosComposerBox!.y + iosComposerBox!.height).toBeLessThanOrEqual(iosFocusOffsetTop + 360);
+    expect(iosComposerBox!.y).toBeGreaterThanOrEqual(iosFocusPageTop);
+    expect(iosComposerBox!.y + iosComposerBox!.height).toBeLessThanOrEqual(iosFocusPageTop + 360);
 
     await page.evaluate(async () => {
       const storePath = "/src/stores/ui.store.ts";

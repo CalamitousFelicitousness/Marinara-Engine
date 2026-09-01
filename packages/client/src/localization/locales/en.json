@@ -2711,6 +2711,8 @@
   "ui.chat.chatarea.regenerateThisMessageAsANewSwipe": "Regenerate this message as a new swipe?",
   "ui.chat.chatarea.sceneVideoGenerated": "Scene video generated.",
   "ui.chat.chatarea.selfiePromptPreviewTimedOutContinuingWithTheDefault": "Selfie prompt preview timed out. Continuing with the default prompt.",
+  "ui.chat.chatarea.serverUnreachable": "Server unreachable",
+  "ui.chat.chatarea.serverUnreachableHint": "The server did not respond. If it runs in Termux, bring Termux to the foreground and try again.",
   "ui.chat.chatarea.thisWillCopyTheChatThroughThisMessageAnd": "This will copy the chat through this message and open the new branch.",
   "ui.chat.chatarea.videoPromptPreviewTimedOutContinuingWithTheDefault": "Video prompt preview timed out. Continuing with the default prompt.",
   "ui.chat.chatbranchselector.chatBranches": "Chat Branches",

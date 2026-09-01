@@ -43,6 +43,40 @@ export class StreamResumeDisconnectError extends Error {
   }
 }
 
+/**
+ * Compose an AbortSignal that fires after `timeoutMs` — with a "TimeoutError"
+ * DOMException reason so callers can tell "server never answered" from a real
+ * failure — while still honouring an upstream signal (e.g. React Query's
+ * unmount cancellation). Hand-rolled instead of AbortSignal.any/timeout
+ * composition so older WebViews keep working (#5657).
+ */
+export function requestTimeoutSignal(timeoutMs: number, upstream?: AbortSignal | null): AbortSignal {
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    controller.abort(new DOMException(`The server did not respond within ${timeoutMs}ms`, "TimeoutError"));
+  }, timeoutMs);
+  const clear = () => clearTimeout(timer);
+  controller.signal.addEventListener("abort", clear, { once: true });
+  if (upstream) {
+    if (upstream.aborted) {
+      clear();
+      controller.abort(upstream.reason);
+    } else {
+      upstream.addEventListener("abort", () => controller.abort(upstream.reason), { once: true });
+    }
+  }
+  return controller.signal;
+}
+
+/**
+ * True when a request failed because the server never answered inside the
+ * deadline — the frozen-host state (#5657/#5658) — as opposed to a refusal,
+ * network error, or deliberate cancellation.
+ */
+export function isRequestTimeoutError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "TimeoutError";
+}
+
 export const PRIVILEGED_ACCESS_HINT =
   "This action needs loopback access or admin access. Open the app through localhost, or set ADMIN_SECRET=<secret> in the server .env and paste the same value in Settings → Advanced → Admin Access. Marinara sends it as the X-Admin-Secret header.";
 

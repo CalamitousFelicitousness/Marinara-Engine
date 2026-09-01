@@ -236,9 +236,17 @@ assert.match(
 assert.match(mariChat, /const writeSeq = \+\+permissionsModeWriteSeqRef\.current;/u);
 // Pending mode writes hold the polled mode fields AND serialize the next run.
 assert.match(mariChat, /permissionsModeWritePendingChatRef\.current === chatIdAtStart/u);
-// Writes are CHAINED (click order = persist order) and runs await the chain.
-assert.match(mariChat, /permissionsModeWriteChainRef\.current\.then\(/u);
-assert.match(mariChat, /await permissionsModeWriteChainRef\.current;/u);
+// Writes are CHAINED on the ONE shared coordinator (click order = persist
+// order) covering BOTH surfaces, and runs await the whole chain - a Settings
+// default change can never race a prompt on an un-overridden chat.
+assert.match(mariChat, /const write = enqueueMariPermissionsModeWrite\(/u);
+assert.match(mariChat, /await awaitMariPermissionsModeWrites\(\);/u);
+assert.match(settingControlsSeq, /await enqueueMariPermissionsModeWrite\(\(\) =>/u);
+const writeChainLib = readSource("packages/client/src/lib/mari-permissions-write-chain.ts");
+assert.match(writeChainLib, /export function enqueueMariPermissionsModeWrite/u);
+assert.match(writeChainLib, /export function awaitMariPermissionsModeWrites/u);
+// One failed write never blocks later writes or runs.
+assert.match(writeChainLib, /chain = link\.then\(/u);
 // The latest failed write refetches authoritative status - it never restores
 // a rendered snapshot (which can be optimistic or another chat's).
 assert.doesNotMatch(mariChat, /previous \? previous : current/u);

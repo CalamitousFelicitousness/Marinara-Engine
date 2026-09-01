@@ -21,6 +21,7 @@ import {
 } from "../../../hooks/use-custom-notification-sound";
 import { cn } from "../../../lib/utils";
 import { api } from "../../../lib/api-client";
+import { enqueueMariPermissionsModeWrite } from "../../../lib/mari-permissions-write-chain";
 import {
   DEFAULT_MARI_PERMISSIONS_MODE,
   MARI_PERMISSIONS_MODE_LABELS,
@@ -156,7 +157,13 @@ export function MariPermissionsModeSetting({ anchorId }: { anchorId?: string }) 
     const writeSeq = ++writeSeqRef.current;
     setMode(next);
     try {
-      await api.put("/professor-mari/workspace/permissions-mode", { mode: next });
+      // The shared chain serializes this against the Mari panel's per-chat
+      // writes AND against runs - sendWorkspaceMessage awaits the whole chain,
+      // so a default change here can never race a prompt on an
+      // un-overridden chat.
+      await enqueueMariPermissionsModeWrite(() =>
+        api.put("/professor-mari/workspace/permissions-mode", { mode: next }),
+      );
     } catch {
       // Only the latest write may roll back.
       if (writeSeqRef.current !== writeSeq) return;

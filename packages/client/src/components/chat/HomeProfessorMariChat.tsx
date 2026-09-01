@@ -82,6 +82,10 @@ import { filterLanguageGenerationConnections } from "../../lib/connection-filter
 import { api, getPrivilegedActionErrorMessage, isPassiveStreamDisconnect } from "../../lib/api-client";
 import { useLocalizedUiText } from "../../localization/use-localized-ui-text";
 import {
+  awaitMariPermissionsModeWrites,
+  enqueueMariPermissionsModeWrite,
+} from "../../lib/mari-permissions-write-chain";
+import {
   DEFAULT_MARI_PERMISSIONS_MODE,
   MARI_PERMISSIONS_MODE_LABELS,
   MARI_PERMISSIONS_MODES,
@@ -3159,9 +3163,7 @@ export function HomeProfessorMariChat({
   // for the chat the write targets, and count tracks overlapping writes.
   const permissionsModeWritePendingChatRef = useRef<string | null>(null);
   const permissionsModeWritePendingCountRef = useRef(0);
-  // All mode PUTs append to one chain so rapid A-then-B selections persist in
-  // order (B last = B wins server-side) and runs await the WHOLE chain.
-  const permissionsModeWriteChainRef = useRef<Promise<void>>(Promise.resolve());
+
   const permissionsButtonRef = useRef<HTMLButtonElement | null>(null);
   const permissionsMenuRef = useRef<HTMLDivElement | null>(null);
   const [historyPickerOpen, setHistoryPickerOpen] = useState(false);
@@ -3907,9 +3909,10 @@ export function HomeProfessorMariChat({
       );
       permissionsModeWritePendingChatRef.current = chatIdForMode;
       permissionsModeWritePendingCountRef.current += 1;
-      // Chained, not concurrent: rapid A-then-B selections must persist in
-      // click order or the server can end on A while the UI shows B.
-      const write = permissionsModeWriteChainRef.current.then(async () => {
+      // Chained on the SHARED coordinator, not concurrent: rapid A-then-B
+      // selections must persist in click order, and the chain also covers the
+      // Settings panel's global-default writes.
+      const write = enqueueMariPermissionsModeWrite(async () => {
         try {
           await api.put("/professor-mari/workspace/permissions-mode", { mode, chatId: chatIdForMode });
           // A status poll that was in flight during the PUT resolves with the
@@ -3938,7 +3941,6 @@ export function HomeProfessorMariChat({
           }
         }
       });
-      permissionsModeWriteChainRef.current = write;
       await write;
     },
     [localizeUi, refreshWorkspaceStatus],
@@ -4884,9 +4886,10 @@ export function HomeProfessorMariChat({
       attachments: ProfessorMariAttachment[] = [],
       existingUserMessageId?: string,
     ) => {
-      // A mode click immediately before send must not race its PUTs: the run
-      // resolves the mode server-side, so the WHOLE write chain lands first.
-      await permissionsModeWriteChainRef.current;
+      // A mode change immediately before send must not race its PUTs: the run
+      // resolves the mode server-side, so the WHOLE shared write chain - the
+      // per-chat picker AND Settings' global default - lands first.
+      await awaitMariPermissionsModeWrites();
       const runId = ++workspaceRunIdRef.current;
       const controller = new AbortController();
       workspaceAbortRef.current = controller;

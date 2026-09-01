@@ -48,7 +48,7 @@ import { usePageActivity } from "../../hooks/use-page-activity";
 import { useRenderTimer, useWhyRender } from "../../lib/perf-diagnostics";
 import { usePresenceClock } from "../../hooks/use-presence-clock";
 import { useKeepLatestChatMessageVisible } from "../../hooks/use-visual-viewport-chat-bottom";
-import { api, ApiError } from "../../lib/api-client";
+import { api, ApiError, isRequestTimeoutError } from "../../lib/api-client";
 import { getChatDisplayName, getConnectedChatDisplayName, parseChatMetadata } from "../../lib/chat-display";
 import { getChatCharacterIds } from "../../lib/chat-macros";
 import { resolveSpriteExpression } from "../../lib/sprite-expression-match";
@@ -533,7 +533,12 @@ export const ChatArea = memo(function ChatArea() {
   const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(new Set());
   const [selectionAnchorIndex, setSelectionAnchorIndex] = useState<number | null>(null);
 
-  const { data: chatDetail, error: chatError, isFetched: chatDetailFetched } = useChat(activeChatId);
+  const {
+    data: chatDetail,
+    error: chatError,
+    isFetched: chatDetailFetched,
+    refetch: refetchChatDetail,
+  } = useChat(activeChatId);
   const { data: allChats } = useChats();
   const listedActiveChat = useMemo(
     () => (activeChatId ? (allChats?.find((candidate) => candidate.id === activeChatId) ?? null) : null),
@@ -2871,8 +2876,10 @@ export const ChatArea = memo(function ChatArea() {
   // Restoring persisted active chat
   // ═══════════════════════════════════════════════
   if (activeChatId && !chat) {
-    const errorMessage =
-      chatError instanceof ApiError
+    const chatOpenTimedOut = isRequestTimeoutError(chatError);
+    const errorMessage = chatOpenTimedOut
+      ? localizeUi("ui.chat.chatarea.serverUnreachableHint")
+      : chatError instanceof ApiError
         ? chatError.message
         : chatError instanceof Error
           ? chatError.message
@@ -2891,7 +2898,9 @@ export const ChatArea = memo(function ChatArea() {
           <div className="space-y-1">
             <p className="text-sm font-medium text-[var(--foreground)]">
               {hasOpenError
-                ? localizeUi("ui.chat.chatarea.couldNotOpenThisChat")
+                ? chatOpenTimedOut
+                  ? localizeUi("ui.chat.chatarea.serverUnreachable")
+                  : localizeUi("ui.chat.chatarea.couldNotOpenThisChat")
                 : localizeUi("ui.chat.chatarea.openingChat")}
             </p>
             {hasOpenError && (
@@ -2899,13 +2908,27 @@ export const ChatArea = memo(function ChatArea() {
             )}
           </div>
           {hasOpenError && (
-            <button
-              type="button"
-              onClick={() => setActiveChatId(null)}
-              className="mari-chrome-control mari-chrome-control--small text-xs"
-            >
-              {localizeUi("ui.chat.chatarea.backToChats")}
-            </button>
+            <div className="flex items-center gap-2">
+              {/* The unreachable hint tells the user to try again after
+                  foregrounding Termux; with focus-refetch globally off and
+                  timeout retries disabled, this button is the recovery path. */}
+              {chatOpenTimedOut && (
+                <button
+                  type="button"
+                  onClick={() => void refetchChatDetail()}
+                  className="mari-chrome-control mari-chrome-control--small text-xs"
+                >
+                  {localizeUi("ui.chat.chatarea.tryAgain")}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setActiveChatId(null)}
+                className="mari-chrome-control mari-chrome-control--small text-xs"
+              >
+                {localizeUi("ui.chat.chatarea.backToChats")}
+              </button>
+            </div>
           )}
         </div>
       </div>

@@ -35,7 +35,7 @@ import {
 } from "./stores/ui.store";
 import { useSidecarStore } from "./stores/sidecar.store";
 import { useDialogStore } from "./stores/dialog.store";
-import { api } from "./lib/api-client";
+import { api, requestTimeoutSignal } from "./lib/api-client";
 import { forceRefreshSpa } from "./lib/browser-runtime";
 import { showAppUpdatePrompt } from "./lib/app-update-prompt";
 import { formatRuntimeBuild, getServerRuntimeBuild, isRuntimeBuildCurrent } from "./lib/runtime-build";
@@ -57,6 +57,10 @@ import { initBackNavigation, syncBackNavigation } from "./lib/back-navigation";
 import { setCustomNotificationSoundUrl } from "./lib/notification-sound";
 
 const VERSION_CHECK_INTERVAL_MS = 5 * 60_000;
+// Against a frozen host the connection opens but is never answered; without a
+// deadline every visibility flip leaks one permanently-pending health fetch
+// until the browser's per-host connection pool is saturated (#5658).
+const VERSION_CHECK_TIMEOUT_MS = 10_000;
 const CLIENT_BUILD = formatRuntimeBuild(APP_VERSION, __MARINARA_BUILD_COMMIT__);
 const LazyModalRenderer = lazy(() =>
   import("./components/layout/ModalRenderer").then((module) => ({ default: module.ModalRenderer })),
@@ -949,14 +953,20 @@ export function App() {
 
   useEffect(() => {
     let cancelled = false;
+    // In-flight guard: visibility flips against a frozen server must reuse the
+    // one pending check instead of stacking a new leaked fetch each time.
+    let checkInFlight = false;
 
     const checkVersion = async () => {
+      if (checkInFlight) return;
+      checkInFlight = true;
       try {
         const res = await fetch("/api/health", {
           cache: "no-store",
           headers: {
             Accept: "application/json",
           },
+          signal: requestTimeoutSignal(VERSION_CHECK_TIMEOUT_MS),
         });
 
         if (!res.ok) {
@@ -975,7 +985,9 @@ export function App() {
 
         showAppUpdatePrompt(() => recoverFromVersionSkew(serverBuild));
       } catch {
-        // Ignore version checks when the network is unavailable.
+        // Ignore version checks when the network is unavailable or timed out.
+      } finally {
+        checkInFlight = false;
       }
     };
 

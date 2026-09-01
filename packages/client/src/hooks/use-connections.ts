@@ -2,7 +2,7 @@
 // React Query: Connection hooks
 // ──────────────────────────────────────────────
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "../lib/api-client";
+import { api, isRequestTimeoutError, requestTimeoutSignal } from "../lib/api-client";
 import { useUIStore } from "../stores/ui.store";
 import { useChatStore } from "../stores/chat.store";
 import { captureChatMetadataVersion, chatKeys, guardServerChatSnapshot } from "./use-chats";
@@ -17,8 +17,11 @@ export const connectionKeys = {
 export function useConnections() {
   return useQuery({
     queryKey: connectionKeys.list(),
-    queryFn: () => api.get<unknown[]>("/connections"),
+    // Deadline so a frozen host cannot leave isLoading true forever — this
+    // query gates the Support Diagnostics copy button alongside health (#5657).
+    queryFn: ({ signal }) => api.get<unknown[]>("/connections", { signal: requestTimeoutSignal(10_000, signal) }),
     staleTime: 5 * 60_000,
+    retry: (failureCount, error) => !isRequestTimeoutError(error) && failureCount < 1,
   });
 }
 

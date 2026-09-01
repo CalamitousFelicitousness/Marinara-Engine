@@ -16,6 +16,12 @@ export interface SupportDiagnostics {
   model: string | null;
   /** Launcher-reported Android wake-lock outcome; null when not reported. */
   wakeLock?: string | null;
+  /**
+   * True when the health request timed out (frozen host). Server-side lines
+   * then read as unreachable instead of affirmative "not reported"/"none
+   * detected" text that would contradict the very signal the copy carries.
+   */
+  serverUnreachable?: boolean;
   /** Most recent host suspension the server's freeze detector observed. */
   lastFreeze?: { detectedAt: string; gapMs: number; suspendedMs: number } | null;
 }
@@ -56,18 +62,25 @@ function available(value: string | null | undefined): string {
   return value?.trim() || "Unavailable";
 }
 
+export const SERVER_UNREACHABLE_DIAGNOSTIC = "Unreachable (request timed out)";
+
 export function formatSupportDiagnostics(diagnostics: SupportDiagnostics): string {
   const memory = diagnostics.serverMemory;
   const freeze = diagnostics.lastFreeze;
+  const unreachable = diagnostics.serverUnreachable === true;
   return [
     "Marinara Engine diagnostics",
     `Version: ${available(diagnostics.version)}`,
     `Build: ${available(diagnostics.build)}`,
     `Commit: ${available(diagnostics.commit)}`,
-    `Server OS: ${available(diagnostics.serverOs)}`,
-    `Server memory: ${memory ? `heap ${memory.heapUsedMiB} / ${memory.heapLimitMiB} MiB; RSS ${memory.rssMiB} MiB` : "Unavailable"}`,
-    `Background wake lock: ${diagnostics.wakeLock ?? "not reported"}`,
-    `Last detected freeze: ${freeze ? `~${Math.round(freeze.suspendedMs / 1000)}s suspension, thawed at ${freeze.detectedAt}` : "none detected"}`,
+    // Server OS is static identity: a cached value is still true while the
+    // host is frozen, so known data stays. The three telemetry lines below are
+    // time-sensitive - stale readings would present pre-freeze state as
+    // current - so unreachable overrides them unconditionally.
+    `Server OS: ${unreachable ? diagnostics.serverOs?.trim() || SERVER_UNREACHABLE_DIAGNOSTIC : available(diagnostics.serverOs)}`,
+    `Server memory: ${unreachable ? SERVER_UNREACHABLE_DIAGNOSTIC : memory ? `heap ${memory.heapUsedMiB} / ${memory.heapLimitMiB} MiB; RSS ${memory.rssMiB} MiB` : "Unavailable"}`,
+    `Background wake lock: ${unreachable ? SERVER_UNREACHABLE_DIAGNOSTIC : (diagnostics.wakeLock ?? "not reported")}`,
+    `Last detected freeze: ${unreachable ? SERVER_UNREACHABLE_DIAGNOSTIC : freeze ? `~${Math.round(freeze.suspendedMs / 1000)}s suspension, thawed at ${freeze.detectedAt}` : "none detected"}`,
     `Client OS: ${available(diagnostics.clientOs)}`,
     `Browser / app shell: ${available(diagnostics.browser)}`,
     `GPU: ${available(diagnostics.gpu)}`,

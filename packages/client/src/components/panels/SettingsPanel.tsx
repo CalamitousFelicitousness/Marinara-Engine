@@ -26,7 +26,14 @@ import { APP_LANGUAGE_OPTIONS } from "../../localization/locale-loader";
 import { useLocalizedUiText } from "../../localization/use-localized-ui-text";
 import { cn, copyToClipboard } from "../../lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ADMIN_SECRET_STORAGE_KEY, ApiError, api, getPrivilegedActionErrorMessage } from "../../lib/api-client";
+import {
+  ADMIN_SECRET_STORAGE_KEY,
+  ApiError,
+  api,
+  getPrivilegedActionErrorMessage,
+  isRequestTimeoutError,
+  requestTimeoutSignal,
+} from "../../lib/api-client";
 import { ANDROID_BRIDGE_READY_EVENT, getAndroidBridgeToken } from "../../lib/android-bridge";
 import { chatBackgroundUrlToMetadata } from "../../lib/backgrounds";
 import { normalizeThemeCss, sanitizeAppCss } from "../../lib/theme-css";
@@ -7709,8 +7716,14 @@ function AdvancedSettings() {
     lastFreeze?: { detectedAt: string; gapMs: number; suspendedMs: number } | null;
   }>({
     queryKey: ["health"],
-    queryFn: () => api.get("/health"),
+    // Against a frozen host this fetch would otherwise pend forever, leaving
+    // supportDiagnosticsPending true and the copy button disabled with no
+    // explanation (#5657). A deadline turns that into a distinguishable error.
+    queryFn: ({ signal }) => api.get("/health", { signal: requestTimeoutSignal(10_000, signal) }),
     staleTime: 60_000,
+    // failureCount < 1 preserves the app-wide default of one retry (main.tsx);
+    // only the timeout carve-out is new.
+    retry: (failureCount, error) => !isRequestTimeoutError(error) && failureCount < 1,
   });
   const connections = (rawConnections ?? []) as APIConnection[];
   const activeConnection = activeChat?.connectionId
@@ -7723,10 +7736,14 @@ function AdvancedSettings() {
   const handleCopySupportDiagnostics = useCallback(async () => {
     const copied = await copyToClipboard(
       formatSupportDiagnostics({
+        // Distinguish "the server never answered" (frozen host) from ordinary
+        // missing fields so support reports carry the signal (#5657): the
+        // formatter renders every server telemetry line as unreachable.
+        serverUnreachable: isRequestTimeoutError(health.error),
         version: health.data?.version ?? APP_VERSION,
         build: health.data?.build ?? APP_VERSION,
         commit: health.data?.commit ?? null,
-        serverOs: health.data?.serverOs ?? "Unavailable",
+        serverOs: health.data?.serverOs ?? "",
         serverMemory: health.data?.memory,
         wakeLock: health.data?.wakeLock ?? null,
         lastFreeze: health.data?.lastFreeze ?? null,
@@ -7743,7 +7760,7 @@ function AdvancedSettings() {
     } else {
       toast.error(localizeUi("ui.panels.advancedsettings.supportDiagnosticsCopyFailed"));
     }
-  }, [activeConnection, health.data, localizeUi]);
+  }, [activeConnection, health.data, health.error, localizeUi]);
 
   const deleteBackupMutation = useMutation({
     mutationFn: (name: string) => api.delete(`/backup/${name}`),

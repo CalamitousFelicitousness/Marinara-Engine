@@ -11,7 +11,7 @@ import {
   type QueryClient,
 } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { api, ApiError } from "../lib/api-client";
+import { api, ApiError, isRequestTimeoutError, requestTimeoutSignal } from "../lib/api-client";
 import { useChatStore } from "../stores/chat.store";
 import { useAgentStore } from "../stores/agent.store";
 import { useGameStateStore } from "../stores/game-state.store";
@@ -248,13 +248,22 @@ export function useChats(options: { enabled?: boolean; refetchOnMount?: boolean 
   });
 }
 
+// A frozen host accepts the TCP connection but never answers, so without a
+// deadline the chat-open fetch pends forever and the "Opening chat..." spinner
+// never resolves to an error state (#5657).
+const CHAT_OPEN_TIMEOUT_MS = 15_000;
+
 export function useChat(id: string | null) {
   return useQuery({
     queryKey: chatKeys.detail(id ?? ""),
-    queryFn: () => api.get<Chat>(`/chats/${id}`),
+    queryFn: ({ signal }) =>
+      api.get<Chat>(`/chats/${id}`, { signal: requestTimeoutSignal(CHAT_OPEN_TIMEOUT_MS, signal) }),
     enabled: !!id,
     staleTime: 60_000,
     retry: (failureCount, error) => {
+      // A timeout means the server is unreachable/frozen; retrying just multiplies
+      // the wait before the explicit unreachable state can render.
+      if (isRequestTimeoutError(error)) return false;
       const status = error instanceof ApiError ? error.status : 0;
       if (status >= 400 && status < 500 && status !== 408 && status !== 429) return false;
       return failureCount < 3;

@@ -24,7 +24,7 @@ import {
   shouldSuppressUnknownModelParameters,
 } from "@marinara-engine/shared";
 import { logger } from "../../../lib/logger.js";
-import { isLoopbackIp, isNonRoutableNetworkIp } from "../../../middleware/ip-allowlist.js";
+import { isLocalInferenceBaseUrl } from "../../../middleware/ip-allowlist.js";
 import { applyGlmThinkingParameters, isGlm53FlashMandatoryReasoningModel } from "./glm-request-compat.js";
 
 /**
@@ -738,16 +738,7 @@ export class OpenAIProvider extends BaseLLMProvider {
    * off" choice is silently discarded before it reaches the request body.
    */
   private isLocalInferenceEndpoint(): boolean {
-    try {
-      const hostname = new URL(this.baseUrl).hostname.toLowerCase().replace(/^\[|\]$|\.$/g, "");
-      if (hostname === "localhost" || isLoopbackIp(hostname)) return true;
-      if (hostname.endsWith(".local") || hostname.endsWith(".localhost")) return true;
-      if (hostname === "host.docker.internal" || hostname === "host.containers.internal") return true;
-      if (!hostname.includes(".") || hostname.endsWith(".internal")) return true;
-      return isNonRoutableNetworkIp(hostname);
-    } catch {
-      return false;
-    }
+    return isLocalInferenceBaseUrl(this.baseUrl);
   }
 
   private enforceLocalInferenceThinkingDisable(

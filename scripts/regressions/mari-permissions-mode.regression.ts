@@ -241,7 +241,6 @@ assert.match(mariChat, /permissionsModeWritePendingChatRef\.current === chatIdAt
 // default change can never race a prompt on an un-overridden chat.
 assert.match(mariChat, /const write = enqueueMariPermissionsModeWrite\(/u);
 assert.match(mariChat, /await awaitMariPermissionsModeWrites\(\);/u);
-assert.match(settingControlsSeq, /await enqueueMariPermissionsModeWrite\(\(\) =>/u);
 const writeChainLib = readSource("packages/client/src/lib/mari-permissions-write-chain.ts");
 assert.match(writeChainLib, /export function enqueueMariPermissionsModeWrite/u);
 assert.match(writeChainLib, /export function awaitMariPermissionsModeWrites/u);
@@ -257,6 +256,7 @@ assert.match(
   /activeChatIdRef\.current === chatIdForMode && permissionsModeWriteSeqRef\.current === writeSeq/u,
 );
 const settingControlsSeq = readSource("packages/client/src/components/panels/settings/SettingControls.tsx");
+assert.match(settingControlsSeq, /await enqueueMariPermissionsModeWrite\(\(\) =>/u);
 assert.match(settingControlsSeq, /const writeSeq = \+\+writeSeqRef\.current;/u);
 assert.match(settingControlsSeq, /writeSeqRef\.current === seqAtStart/u);
 assert.match(settingControlsSeq, /<label htmlFor=\{selectId\}/u);

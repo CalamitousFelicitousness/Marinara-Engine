@@ -15693,6 +15693,8 @@ test("Professor Mari shows the latest context budget when token usage is enabled
           skillDiagnostics: [],
           active: false,
           permissionsMode: "auto",
+          permissionsModeDefault: "auto",
+          permissionsModeSource: "default",
           pendingApprovals: [],
           history: [],
           error: null,
@@ -15836,6 +15838,8 @@ test("Professor Mari dependency and sensitive-file reviews stay explicit across 
         skillDiagnostics: [],
         active: false,
         permissionsMode: "auto",
+        permissionsModeDefault: "auto",
+        permissionsModeSource: "default",
         pendingApprovals: [
           {
             kind: "dependency_install",

@@ -1929,7 +1929,33 @@ export class ProfessorMariWorkspaceService {
     return readStoredMariPermissionsMode(createAppSettingsStorage(this.app.db));
   }
 
-  async status(connectionId?: string | null): Promise<MariWorkspaceStatus> {
+  /**
+   * #5725 per-chat modes (maintainer call): the effective mode for a run is
+   * the chat's own override when one is set, else the global default. The
+   * override lives in chat metadata under "mariPermissionsMode" and is
+   * written only by the validated PUT route (raw-db writes to it are blocked
+   * by the planMutation floor, like the global row).
+   */
+  private async resolvePermissionsMode(chatId: string | null): Promise<{
+    mode: MariPermissionsMode;
+    defaultMode: MariPermissionsMode;
+    source: "default" | "chat";
+  }> {
+    const defaultMode = await this.readPermissionsMode();
+    if (chatId) {
+      try {
+        const chat = await createChatsStorage(this.app.db).getById(chatId);
+        const metadata = chat?.metadata ? (JSON.parse(chat.metadata) as Record<string, unknown>) : null;
+        const override = metadata?.mariPermissionsMode;
+        if (isMariPermissionsMode(override)) return { mode: override, defaultMode, source: "chat" };
+      } catch {
+        // Unreadable metadata falls back to the default - never blocks a run.
+      }
+    }
+    return { mode: defaultMode, defaultMode, source: "default" };
+  }
+
+  async status(connectionId?: string | null, chatId?: string | null): Promise<MariWorkspaceStatus> {
     const connection = await this.resolveConnection(connectionId).catch((err) => {
       this.lastError = err instanceof Error ? err.message : String(err);
       return null;
@@ -1952,7 +1978,14 @@ export class ProfessorMariWorkspaceService {
       skills: skillsResponse.skills.map(({ content: _content, ...summary }) => summary),
       skillDiagnostics: skillsResponse.diagnostics,
       active: this.active,
-      permissionsMode: await this.readPermissionsMode(),
+      ...(await (async () => {
+        const resolved = await this.resolvePermissionsMode(chatId ?? null);
+        return {
+          permissionsMode: resolved.mode,
+          permissionsModeDefault: resolved.defaultMode,
+          permissionsModeSource: resolved.source,
+        };
+      })()),
       pendingApprovals: [
         ...getMariDbService(this.app.db).getPendingApprovals(),
         ...this.workspaceChangeReviews.getPendingApprovals(),
@@ -2080,7 +2113,7 @@ export class ProfessorMariWorkspaceService {
 
     try {
       await this.ensureMariCliShim();
-      const permissionsMode = await this.readPermissionsMode();
+      const { mode: permissionsMode } = await this.resolvePermissionsMode(args.chatId);
       this.activeRunPermissionsMode = permissionsMode;
       const provider = createProviderForConnection(connection);
       const messages = await this.buildPromptMessages(args.chatId, connection, permissionsMode);

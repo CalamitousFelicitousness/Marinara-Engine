@@ -3526,6 +3526,9 @@ export function HomeProfessorMariChat({
     async (shouldApply?: () => boolean) => {
       const params = new URLSearchParams();
       if (effectiveConnectionId) params.set("connectionId", effectiveConnectionId);
+      // #5725: the server resolves the EFFECTIVE mode (chat override ?? global
+      // default) for the chat we name here.
+      if (activeChatIdRef.current) params.set("chatId", activeChatIdRef.current);
       const query = params.toString();
       const status = await api.get<MariWorkspaceStatus>(`/professor-mari/workspace/status${query ? `?${query}` : ""}`);
       if (shouldApply?.() === false) return status;
@@ -3842,25 +3845,41 @@ export function HomeProfessorMariChat({
   // payload; writes go through the dedicated validated PUT. The change applies
   // to Mari's NEXT run - an in-flight turn is never aborted by a mode switch.
   const permissionsMode: MariPermissionsMode = workspaceStatus?.permissionsMode ?? DEFAULT_MARI_PERMISSIONS_MODE;
+  const permissionsModeDefault: MariPermissionsMode =
+    workspaceStatus?.permissionsModeDefault ?? DEFAULT_MARI_PERMISSIONS_MODE;
+  const permissionsModeOverridden = workspaceStatus?.permissionsModeSource === "chat";
+  // #5725 per-chat: the header picker writes THIS chat's override; null clears
+  // it back to the global default (which Settings -> Application sets).
   const changePermissionsMode = useCallback(
-    async (mode: MariPermissionsMode) => {
+    async (mode: MariPermissionsMode | null) => {
       setPermissionsMenuOpen(false);
-      if (mode === permissionsMode) return;
-      const previous = permissionsMode;
-      setWorkspaceStatus((current) => (current ? { ...current, permissionsMode: mode } : current));
+      const chatIdForMode = activeChatIdRef.current;
+      if (!chatIdForMode) return;
+      if (mode === permissionsMode && permissionsModeOverridden) return;
+      if (mode === null && !permissionsModeOverridden) return;
+      const previous = workspaceStatus;
+      setWorkspaceStatus((current) =>
+        current
+          ? {
+              ...current,
+              permissionsMode: mode ?? current.permissionsModeDefault,
+              permissionsModeSource: mode === null ? "default" : "chat",
+            }
+          : current,
+      );
       try {
-        await api.put("/professor-mari/workspace/permissions-mode", { mode });
+        await api.put("/professor-mari/workspace/permissions-mode", { mode, chatId: chatIdForMode });
         // A status poll that was in flight during the PUT resolves with the
         // OLD mode and would clobber the optimistic patch - refetch so the
         // panel converges on the server value.
         void refreshWorkspaceStatus().catch(() => undefined);
       } catch (error) {
-        setWorkspaceStatus((current) => (current ? { ...current, permissionsMode: previous } : current));
+        setWorkspaceStatus((current) => (current && previous ? previous : current));
         console.error("[Professor Mari] Failed to change permissions mode", error);
         toast.error(localizeUi("ui.chat.homeprofessormarichat.couldNotChangeThePermissionsMode"));
       }
     },
-    [localizeUi, permissionsMode, refreshWorkspaceStatus],
+    [localizeUi, permissionsMode, permissionsModeOverridden, refreshWorkspaceStatus, workspaceStatus],
   );
 
   const persistLatestConnectionSelection = useCallback(() => {
@@ -5991,8 +6010,29 @@ export function HomeProfessorMariChat({
                                   className="absolute right-0 top-full z-20 mt-2 flex w-[19rem] flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] text-left shadow-2xl"
                                 >
                                   <div className="border-b border-[var(--border)] px-3 py-2 text-[0.6875rem] font-semibold text-[var(--foreground)]">
-                                    {localizeUi("ui.chat.homeprofessormarichat.permissionsMode")}
+                                    {localizeUi("ui.chat.homeprofessormarichat.permissionsModeForThisChat")}
                                   </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => void changePermissionsMode(null)}
+                                    className="flex items-start gap-2 border-b border-[var(--border)] px-3 py-2 text-left transition-colors hover:bg-[var(--accent)]"
+                                  >
+                                    <span className="mt-0.5 w-3.5 shrink-0">
+                                      {!permissionsModeOverridden && <Check size="0.8rem" />}
+                                    </span>
+                                    <span className="flex flex-col">
+                                      <span className="text-[0.6875rem] font-semibold text-[var(--foreground)]">
+                                        {localizeUi("ui.chat.homeprofessormarichat.useDefaultMode", {
+                                          value1: localize(MARI_PERMISSIONS_MODE_LABELS[permissionsModeDefault].label),
+                                        })}
+                                      </span>
+                                      <span className="text-[0.625rem] text-[var(--muted-foreground)]">
+                                        {localizeUi(
+                                          "ui.chat.homeprofessormarichat.followsTheGlobalDefaultFromSettings",
+                                        )}
+                                      </span>
+                                    </span>
+                                  </button>
                                   {MARI_PERMISSIONS_MODES.map((mode) => (
                                     <button
                                       key={mode}
@@ -6001,7 +6041,9 @@ export function HomeProfessorMariChat({
                                       className="flex items-start gap-2 px-3 py-2 text-left transition-colors hover:bg-[var(--accent)]"
                                     >
                                       <span className="mt-0.5 w-3.5 shrink-0">
-                                        {mode === permissionsMode && <Check size="0.8rem" />}
+                                        {permissionsModeOverridden && mode === permissionsMode && (
+                                          <Check size="0.8rem" />
+                                        )}
                                       </span>
                                       <span className="flex flex-col">
                                         <span className="text-[0.6875rem] font-semibold text-[var(--foreground)]">

@@ -453,8 +453,12 @@ export interface MariWorkspaceStatus {
   skills: MariWorkspaceSkillSummary[];
   skillDiagnostics: string[];
   active: boolean;
-  /** The user-selected Permissions Mode governing when Mari may stage or apply changes (#5725). */
+  /** The EFFECTIVE Permissions Mode for the requested chat (#5725): the chat's override, else the global default. */
   permissionsMode: MariPermissionsMode;
+  /** The global default mode (what a chat without an override runs under). */
+  permissionsModeDefault: MariPermissionsMode;
+  /** Whether permissionsMode came from a per-chat override or the global default. */
+  permissionsModeSource: "default" | "chat";
   pendingApprovals: MariWorkspacePendingApproval[];
   history: MariDbHistoryEntry[];
   error?: string | null;

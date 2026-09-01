@@ -59,8 +59,11 @@ assert.match(
 // ── Enforcement seams (source pins) ─────────────────────────────────────────
 const workspaceAgent = readSource("packages/server/src/services/professor-mari/workspace-agent.service.ts");
 // Mode read fresh per run and per status call - never latched at construction.
-assert.match(workspaceAgent, /const permissionsMode = await this\.readPermissionsMode\(\);/u);
-assert.match(workspaceAgent, /permissionsMode: await this\.readPermissionsMode\(\),/u);
+assert.match(
+  workspaceAgent,
+  /const \{ mode: permissionsMode \} = await this\.resolvePermissionsMode\(args\.chatId\);/u,
+);
+assert.match(workspaceAgent, /permissionsMode: resolved\.mode,/u);
 assert.doesNotMatch(
   workspaceAgent,
   /activeRunPermissionsMode\s*=\s*await/u,
@@ -87,6 +90,17 @@ assert.match(workspaceAgent, /activeRoundManualSilentMutationBlocked && isMutati
 assert.match(workspaceAgent, /"accept-edits" \|\| this\.activeRunPermissionsMode === "bypass"/u);
 assert.match(workspaceAgent, /delete\|forget\|remove\|uninstall/u);
 assert.match(workspaceAgent, /reviewPolicy: autoKeep \? "auto-keep" : "standard"/u);
+// Per-chat override (#5725 maintainer call): the run resolves chat override
+// ?? global default; status is chat-aware; the override is read from chat
+// metadata with junk tolerated.
+assert.match(workspaceAgent, /resolvePermissionsMode\(args\.chatId\)/u);
+assert.match(workspaceAgent, /async status\(connectionId\?: string \| null, chatId\?: string \| null\)/u);
+assert.match(workspaceAgent, /const override = metadata\?\.mariPermissionsMode;/u);
+assert.match(
+  workspaceAgent,
+  /if \(isMariPermissionsMode\(override\)\) return \{ mode: override, defaultMode, source: "chat" \};/u,
+);
+
 // The mode block is spliced AFTER the memories block.
 const instructionsIdx = workspaceAgent.indexOf("if (instructionsPrompt) messages.push");
 const modeBlockIdx = workspaceAgent.indexOf(
@@ -121,9 +135,25 @@ assert.match(
 // blocks every raw-db path (insert/patch/replace/delete/transform).
 assert.match(mariDb, /change\.table === "app_settings" && change\.id === MARI_PERMISSIONS_MODE_SETTINGS_KEY/u);
 assert.match(mariDb, /can only be changed by the user/u);
+// ...and the same floor covers the per-chat override in chat metadata (a
+// whole-chat delete stays allowed - it removes the override legitimately).
+assert.match(mariDb, /change\.table !== "chats" \|\| !change\.afterRaw/u);
+assert.match(
+  mariDb,
+  /chatModeMetadataValue\(change\.afterRaw\.metadata\) !== chatModeMetadataValue\(change\.beforeRaw\?\.metadata\)/u,
+);
 
 const routes = readSource("packages/server/src/routes/professor-mari-workspace.routes.ts");
-assert.match(routes, /z\.enum\(MARI_PERMISSIONS_MODES\)/u, "the PUT must validate against the shared enum");
+assert.match(
+  routes,
+  /z\.enum\(MARI_PERMISSIONS_MODES\)\.nullable\(\)/u,
+  "the PUT must validate against the shared enum (nullable clears a chat override)",
+);
+// The per-chat override write goes through the queued metadata patch (#5076),
+// and clearing the GLOBAL default is refused.
+assert.match(routes, /patchMetadata\(input\.chatId, \{[\s\S]{0,40}mariPermissionsMode: input\.mode,/u);
+assert.match(routes, /The global default mode cannot be cleared/u);
+assert.match(routes, /status\(req\.query\.connectionId \?\? null, req\.query\.chatId \?\? null\)/u);
 assert.match(routes, /app\.get\("\/permissions-mode"/u);
 assert.match(routes, /app\.put\("\/permissions-mode"/u);
 assert.doesNotMatch(
@@ -152,12 +182,18 @@ for (const mode of MARI_PERMISSIONS_MODES) {
 const mariChat = readSource("packages/client/src/components/chat/HomeProfessorMariChat.tsx");
 assert.match(mariChat, /changePermissionsMode/u);
 assert.match(mariChat, /workspaceStatus\?\.permissionsMode \?\? DEFAULT_MARI_PERMISSIONS_MODE/u);
+// The picker is per-chat: status polls carry the chat id, the menu has a
+// use-default row, and writes name the chat.
+assert.match(mariChat, /params\.set\("chatId", activeChatIdRef\.current\)/u);
+assert.match(mariChat, /changePermissionsMode\(null\)/u);
+assert.match(mariChat, /\{ mode, chatId: chatIdForMode \}/u);
+assert.match(mariChat, /permissionsModeSource === "chat"/u);
 assert.match(mariChat, /localize\(MARI_PERMISSIONS_MODE_LABELS\[permissionsMode\]\.label\)/u);
 // After a successful PUT the panel refetches - an in-flight poll must not
 // clobber the optimistic patch permanently.
 assert.match(
   mariChat,
-  /await api\.put\("\/professor-mari\/workspace\/permissions-mode", \{ mode \}\);[\s\S]{0,300}refreshWorkspaceStatus\(\)/u,
+  /await api\.put\("\/professor-mari\/workspace\/permissions-mode", \{ mode, chatId: chatIdForMode \}\);[\s\S]{0,300}refreshWorkspaceStatus\(\)/u,
 );
 const settingControls = readSource("packages/client/src/components/panels/settings/SettingControls.tsx");
 assert.match(settingControls, /export function MariPermissionsModeSetting/u);

@@ -7194,6 +7194,29 @@ export class MariDbService {
         message: "The Permissions Mode can only be changed by the user, from the Mari panel or Settings.",
       });
     }
+    // Same floor for the per-chat override: a chats-row write whose metadata
+    // changes "mariPermissionsMode" is blocked (deleting a whole chat is not -
+    // that removes the override legitimately).
+    const chatModeMetadataValue = (raw: unknown): unknown => {
+      if (typeof raw !== "string" || !raw) return undefined;
+      try {
+        return (JSON.parse(raw) as Record<string, unknown>).mariPermissionsMode;
+      } catch {
+        return undefined;
+      }
+    };
+    for (const change of changes) {
+      if (change.table !== "chats" || !change.afterRaw) continue;
+      if (chatModeMetadataValue(change.afterRaw.metadata) !== chatModeMetadataValue(change.beforeRaw?.metadata)) {
+        issues.push({
+          level: "error",
+          table: "chats",
+          id: change.id,
+          message:
+            "The chat's Permissions Mode override can only be changed by the user, from the Mari panel or Settings.",
+        });
+      }
+    }
 
     const personalExtensionChanges = changes.filter((change) => change.table === "installed_extensions");
     if (personalExtensionChanges.length > 0 && !request.personalExtensionDraftMutation) {

@@ -47,8 +47,11 @@ export class StreamResumeDisconnectError extends Error {
  * Compose an AbortSignal that fires after `timeoutMs` — with a "TimeoutError"
  * DOMException reason so callers can tell "server never answered" from a real
  * failure — while still honouring an upstream signal (e.g. React Query's
- * unmount cancellation). Hand-rolled instead of AbortSignal.any/timeout
- * composition so older WebViews keep working (#5657).
+ * unmount cancellation). Hand-rolled because the native way to combine an
+ * upstream signal with a deadline is AbortSignal.any + AbortSignal.timeout,
+ * and AbortSignal.any has a meaningfully higher engine floor; one code path
+ * for both the composed and the standalone case also keeps the TimeoutError
+ * reason contract in a single place (#5657).
  */
 export function requestTimeoutSignal(timeoutMs: number, upstream?: AbortSignal | null): AbortSignal {
   const controller = new AbortController();

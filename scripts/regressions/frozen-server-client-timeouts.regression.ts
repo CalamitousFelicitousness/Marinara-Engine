@@ -68,8 +68,8 @@ assert.match(
 );
 assert.match(
   appSource,
-  /signal: AbortSignal\.timeout\(VERSION_CHECK_TIMEOUT_MS\)/u,
-  "checkVersion's health fetch must carry a deadline (#5658)",
+  /signal: requestTimeoutSignal\(VERSION_CHECK_TIMEOUT_MS\)/u,
+  "checkVersion's health fetch must carry a deadline via the shared helper (#5658)",
 );
 assert.match(
   appSource,
@@ -113,8 +113,47 @@ assert.match(
 );
 assert.match(
   settingsPanelSource,
-  /"Unreachable \(request timed out\)"/u,
-  "the diagnostics copy must distinguish a frozen host from a missing field",
+  /serverUnreachable: isRequestTimeoutError\(health\.error\)/u,
+  "the diagnostics copy must flag a frozen host to the formatter",
+);
+
+const useConnectionsSource = readFileSync(
+  join(repositoryRoot, "packages/client/src/hooks/use-connections.ts"),
+  "utf8",
+).replace(/\r\n/gu, "\n");
+assert.match(
+  useConnectionsSource,
+  /api\.get<unknown\[\]>\("\/connections", \{ signal: requestTimeoutSignal\(10_000, signal\) \}\)/u,
+  "useConnections must carry a deadline: it gates the diagnostics copy button alongside health (#5657 review)",
+);
+assert.match(
+  useConnectionsSource,
+  /!isRequestTimeoutError\(error\) && failureCount < 1/u,
+  "useConnections must keep the app-wide single-retry default with the timeout carve-out",
+);
+assert.match(
+  settingsPanelSource,
+  /!isRequestTimeoutError\(error\) && failureCount < 1/u,
+  "the health query must keep the app-wide single-retry default with the timeout carve-out",
+);
+assert.match(
+  chatAreaSource,
+  /chatOpenTimedOut && \([\s\S]{0,400}void refetchChatDetail\(\)/u,
+  "the unreachable state must offer a Try again control (focus refetch is globally off)",
+);
+const supportDiagnosticsSource = readFileSync(
+  join(repositoryRoot, "packages/client/src/lib/support-diagnostics.ts"),
+  "utf8",
+).replace(/\r\n/gu, "\n");
+assert.match(
+  supportDiagnosticsSource,
+  /SERVER_UNREACHABLE_DIAGNOSTIC = "Unreachable \(request timed out\)"/u,
+  "the formatter must own the unreachable sentinel",
+);
+assert.match(
+  supportDiagnosticsSource,
+  /Background wake lock: \$\{diagnostics\.wakeLock \?\? \(unreachable \? SERVER_UNREACHABLE_DIAGNOSTIC : "not reported"\)\}/u,
+  "wake-lock/freeze lines must not read affirmatively absent when the host is unreachable (#5657 review)",
 );
 
 const locales = JSON.parse(

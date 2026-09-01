@@ -7721,7 +7721,9 @@ function AdvancedSettings() {
     // explanation (#5657). A deadline turns that into a distinguishable error.
     queryFn: ({ signal }) => api.get("/health", { signal: requestTimeoutSignal(10_000, signal) }),
     staleTime: 60_000,
-    retry: (failureCount, error) => !isRequestTimeoutError(error) && failureCount < 3,
+    // failureCount < 1 preserves the app-wide default of one retry (main.tsx);
+    // only the timeout carve-out is new.
+    retry: (failureCount, error) => !isRequestTimeoutError(error) && failureCount < 1,
   });
   const connections = (rawConnections ?? []) as APIConnection[];
   const activeConnection = activeChat?.connectionId
@@ -7732,15 +7734,16 @@ function AdvancedSettings() {
   const supportDiagnosticsPending = isConnectionsLoading || (!!activeChatId && isActiveChatLoading) || health.isPending;
 
   const handleCopySupportDiagnostics = useCallback(async () => {
-    // Distinguish "the server never answered" (frozen host) from an ordinary
-    // missing field so support reports carry the signal (#5657).
-    const serverFieldFallback = isRequestTimeoutError(health.error) ? "Unreachable (request timed out)" : "Unavailable";
     const copied = await copyToClipboard(
       formatSupportDiagnostics({
+        // Distinguish "the server never answered" (frozen host) from ordinary
+        // missing fields so support reports carry the signal (#5657): the
+        // formatter renders every server telemetry line as unreachable.
+        serverUnreachable: isRequestTimeoutError(health.error),
         version: health.data?.version ?? APP_VERSION,
         build: health.data?.build ?? APP_VERSION,
         commit: health.data?.commit ?? null,
-        serverOs: health.data?.serverOs ?? serverFieldFallback,
+        serverOs: health.data?.serverOs ?? "",
         serverMemory: health.data?.memory,
         wakeLock: health.data?.wakeLock ?? null,
         lastFreeze: health.data?.lastFreeze ?? null,

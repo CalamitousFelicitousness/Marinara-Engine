@@ -2714,6 +2714,7 @@
   "ui.chat.chatarea.serverUnreachable": "Server unreachable",
   "ui.chat.chatarea.serverUnreachableHint": "The server did not respond. If it runs in Termux, bring Termux to the foreground and try again.",
   "ui.chat.chatarea.thisWillCopyTheChatThroughThisMessageAnd": "This will copy the chat through this message and open the new branch.",
+  "ui.chat.chatarea.tryAgain": "Try again",
   "ui.chat.chatarea.videoPromptPreviewTimedOutContinuingWithTheDefault": "Video prompt preview timed out. Continuing with the default prompt.",
   "ui.chat.chatbranchselector.chatBranches": "Chat Branches",
   "ui.chat.chatbranchselector.closeChatBranches": "Close chat branches",

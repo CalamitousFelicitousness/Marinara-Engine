@@ -35,7 +35,7 @@ import {
 } from "./stores/ui.store";
 import { useSidecarStore } from "./stores/sidecar.store";
 import { useDialogStore } from "./stores/dialog.store";
-import { api } from "./lib/api-client";
+import { api, requestTimeoutSignal } from "./lib/api-client";
 import { forceRefreshSpa } from "./lib/browser-runtime";
 import { showAppUpdatePrompt } from "./lib/app-update-prompt";
 import { formatRuntimeBuild, getServerRuntimeBuild, isRuntimeBuildCurrent } from "./lib/runtime-build";
@@ -966,7 +966,7 @@ export function App() {
           headers: {
             Accept: "application/json",
           },
-          signal: AbortSignal.timeout(VERSION_CHECK_TIMEOUT_MS),
+          signal: requestTimeoutSignal(VERSION_CHECK_TIMEOUT_MS),
         });
 
         if (!res.ok) {

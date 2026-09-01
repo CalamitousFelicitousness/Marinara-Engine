@@ -533,7 +533,12 @@ export const ChatArea = memo(function ChatArea() {
   const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(new Set());
   const [selectionAnchorIndex, setSelectionAnchorIndex] = useState<number | null>(null);
 
-  const { data: chatDetail, error: chatError, isFetched: chatDetailFetched } = useChat(activeChatId);
+  const {
+    data: chatDetail,
+    error: chatError,
+    isFetched: chatDetailFetched,
+    refetch: refetchChatDetail,
+  } = useChat(activeChatId);
   const { data: allChats } = useChats();
   const listedActiveChat = useMemo(
     () => (activeChatId ? (allChats?.find((candidate) => candidate.id === activeChatId) ?? null) : null),
@@ -2903,13 +2908,27 @@ export const ChatArea = memo(function ChatArea() {
             )}
           </div>
           {hasOpenError && (
-            <button
-              type="button"
-              onClick={() => setActiveChatId(null)}
-              className="mari-chrome-control mari-chrome-control--small text-xs"
-            >
-              {localizeUi("ui.chat.chatarea.backToChats")}
-            </button>
+            <div className="flex items-center gap-2">
+              {/* The unreachable hint tells the user to try again after
+                  foregrounding Termux; with focus-refetch globally off and
+                  timeout retries disabled, this button is the recovery path. */}
+              {chatOpenTimedOut && (
+                <button
+                  type="button"
+                  onClick={() => void refetchChatDetail()}
+                  className="mari-chrome-control mari-chrome-control--small text-xs"
+                >
+                  {localizeUi("ui.chat.chatarea.tryAgain")}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setActiveChatId(null)}
+                className="mari-chrome-control mari-chrome-control--small text-xs"
+              >
+                {localizeUi("ui.chat.chatarea.backToChats")}
+              </button>
+            </div>
           )}
         </div>
       </div>

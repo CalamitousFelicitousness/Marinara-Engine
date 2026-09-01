@@ -467,6 +467,17 @@ export function isUpdatesApplyEnabled() {
   return isEnabledFlag(process.env.UPDATES_APPLY_ENABLED);
 }
 
+/**
+ * Hard refusal for server-side update application (#5646). The dev and e2e
+ * launchers set UPDATES_APPLY_DISABLED so a loopback browser tab pointed at a
+ * server booted from a working repo can never stash/checkout/rebuild that
+ * checkout via the channel selector. Wins over UPDATES_APPLY_ENABLED and the
+ * loopback channel-switch bypass.
+ */
+export function isUpdatesApplyHardDisabled() {
+  return isEnabledFlag(process.env.UPDATES_APPLY_DISABLED);
+}
+
 export function isUpdatesRemoteApplyAllowed() {
   return isEnabledFlag(process.env.UPDATES_ALLOW_REMOTE_APPLY);
 }

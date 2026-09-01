@@ -7826,7 +7826,13 @@ function AdvancedSettings() {
     applyAvailable?: boolean;
     channelSwitch?: boolean;
     updatesApplyEnabled?: boolean;
-    applyUnavailableReason?: "disabled" | "unsupported-install" | "container-install" | null;
+    applyUnavailableReason?:
+      | "disabled"
+      | "hard-disabled"
+      | "dev-branch"
+      | "unsupported-install"
+      | "container-install"
+      | null;
     manualUpdateCommand?: string | null;
     manualUpdateHint?: string | null;
   }>({
@@ -7894,9 +7900,13 @@ function AdvancedSettings() {
   const applyUnavailableCopy =
     applyUnavailableReason === "container-install"
       ? "Container installs cannot replace themselves from inside the browser. Pull the release image tag or latest image on the host, then restart the container."
-      : applyUnavailableReason === "disabled"
-        ? "This install can check for updates, but applying them from the browser is disabled. Update manually with the command below. Advanced git installs can enable server-side apply with UPDATES_APPLY_ENABLED=true."
-        : "This install can check for updates, but it cannot apply them from the browser. Relaunch the app if you use the launcher, or update manually for your install type.";
+      : applyUnavailableReason === "hard-disabled"
+        ? "Applying updates from the browser is blocked for this server instance (UPDATES_APPLY_DISABLED). The dev and e2e launchers set this so a browser tab cannot rewrite a development checkout."
+        : applyUnavailableReason === "dev-branch"
+          ? "This checkout is on a development branch, so applying updates from the browser is blocked to protect work in progress. Update the checkout manually if you really intend to."
+          : applyUnavailableReason === "disabled"
+            ? "This install can check for updates, but applying them from the browser is disabled. Update manually with the command below. Advanced git installs can enable server-side apply with UPDATES_APPLY_ENABLED=true."
+            : "This install can check for updates, but it cannot apply them from the browser. Relaunch the app if you use the launcher, or update manually for your install type.";
   const isClearing = clearAllData.isPending || expungeData.isPending;
   const isAllScopesSelected = selectedScopes.length === EXPUNGE_SCOPE_OPTIONS.length;
 

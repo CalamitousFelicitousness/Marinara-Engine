@@ -33,6 +33,7 @@ import { FeatureAgentDetailHost } from "../agents/FeatureAgentDetailHost";
 import { getCssBackgroundStyle } from "../../lib/css-colors";
 import { resolveFeatureAgentPackage } from "../../lib/feature-agent-package";
 import { showConfirmDialog } from "../../lib/app-dialogs";
+import { isIosWebKitBrowser } from "../../lib/generation-stream-policy";
 import { cn } from "../../lib/utils";
 import { parseChatMetadata } from "../../lib/chat-display";
 import { requestChatSummaryOpen } from "../../lib/chat-floating-ui-events";
@@ -249,6 +250,8 @@ export function AppShell() {
     let orientationTimers: number[] = [];
     let largestViewportHeight = window.visualViewport?.height ?? window.innerHeight;
     const supportsVirtualKeyboard = navigator.maxTouchPoints > 0 || window.matchMedia("(any-pointer: coarse)").matches;
+    const isIosWebKit = isIosWebKitBrowser(navigator.userAgent, navigator.platform, navigator.maxTouchPoints);
+    root.toggleAttribute("data-mari-ios-webkit", isIosWebKit);
     const updateVisualViewportGeometry = () => {
       if (frame) cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
@@ -315,6 +318,7 @@ export function AppShell() {
       document.removeEventListener("focusout", refreshAfterFocusChange);
       root.style.removeProperty("--mari-visual-viewport-height");
       root.style.removeProperty("--mari-visual-viewport-offset-top");
+      root.removeAttribute("data-mari-ios-webkit");
       root.removeAttribute("data-mari-software-keyboard-open");
     };
   }, []);

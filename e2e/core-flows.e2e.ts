@@ -19048,6 +19048,8 @@ test("mobile chat composer follows the visual viewport above the software keyboa
         rootHeight: `${await page.evaluate(() => window.innerHeight)}px`,
         rootOverflow: "hidden",
       });
+    await expect(page.locator("html")).toHaveAttribute("data-mari-ios-webkit", "");
+    await expect(shell).toHaveCSS("position", "absolute");
     await page.evaluate(() => {
       const probeWindow = window as typeof window & {
         __mariOriginalScrollIntoView: typeof Element.prototype.scrollIntoView;

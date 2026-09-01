@@ -2164,6 +2164,16 @@ class FileTableStore {
   private readonly txContext = new AsyncLocalStorage<FileTransactionContext>();
   private transactionQueue: Promise<void> = Promise.resolve();
   private activeTransactionCount = 0;
+  /**
+   * The running transaction's context (#5651). The queue admits at most one
+   * transaction, so a single reference suffices. Lazy loads triggered by
+   * CONCURRENT requests run outside the transaction's AsyncLocalStorage
+   * context but still splice rows into live tables the transaction may have
+   * snapshotted - the snapshot mirror and load-heal marks must reach this
+   * context regardless of who performed the load, or a rollback erases the
+   * loaded rows while loadedUnits still says they are resident.
+   */
+  private activeTransactionContext: FileTransactionContext | null = null;
   // Transactions that have taken their queue slot but not yet incremented
   // activeTransactionCount (they are awaiting the previous transaction or an
   // in-flight flush). The plain-write gate honors this too (#5631): a write
@@ -2738,7 +2748,16 @@ class FileTableStore {
     let dirtyShardsSnapshot!: Map<string, Set<string>>;
     try {
       await previousTransaction;
-      if (this.activeFlush) await this.activeFlush;
+      // Loop, not check-once (#5652): two flushes can be parked on the same
+      // activeFlush with the second subscribed first. When it resolves, that
+      // flush's recursion re-enters before this continuation resumes, sees no
+      // active transaction, captures the dirty set, and installs a NEW
+      // activeFlush - a single consumed check would sail past it and run the
+      // callback concurrently with its I/O, letting saveFileSnapshots persist
+      // uncommitted rows that a rollback then leaves on disk with no dirty
+      // mark. The recursing flush assigns activeFlush synchronously before
+      // its first await, so a re-check after every wake always observes it.
+      while (this.activeFlush) await this.activeFlush;
       ctx = {
         snapshots: new Map<string, Row[]>(),
         dirtyTables: new Set<string>(),
@@ -2756,6 +2775,7 @@ class FileTableStore {
       // between reservation and activation. Nothing after the increment can
       // throw inside this try, so the reservation can never leak.
       this.activeTransactionCount++;
+      this.activeTransactionContext = ctx;
       this.pendingTransactionCount--;
     } catch (err) {
       this.pendingTransactionCount--;
@@ -2832,6 +2852,7 @@ class FileTableStore {
       throw err;
     } finally {
       this.activeTransactionCount--;
+      if (this.activeTransactionContext === ctx) this.activeTransactionContext = null;
       if (this.activeTransactionCount === 0) {
         for (const resolve of this.transactionIdleWaiters) resolve();
         this.transactionIdleWaiters.clear();
@@ -2884,8 +2905,17 @@ class FileTableStore {
    * Mirrors a LOAD-created healing mark into the active transaction so a
    * rollback can re-merge it (#5606) — see FileTransactionContext.
    */
+  /**
+   * The transaction context a LOAD-side effect must mirror into: the caller's
+   * own (in-context loads) or the active transaction's (loads performed by a
+   * concurrent request while a transaction is open, #5651).
+   */
+  private loadEffectTransactionContext(): FileTransactionContext | null {
+    return this.txContext.getStore() ?? (this.activeTransactionCount > 0 ? this.activeTransactionContext : null);
+  }
+
   private recordLoadHealMarks(table: string, keys?: Iterable<string>) {
-    const ctx = this.txContext.getStore();
+    const ctx = this.loadEffectTransactionContext();
     if (!ctx) return;
     ctx.loadHealDirtyTables.add(table);
     if (keys) {
@@ -3118,7 +3148,18 @@ class FileTableStore {
   async flush(force = false, throwOnError = false, allowClosed = false) {
     const transactionContext = this.txContext.getStore();
     if (this.writesClosed && !transactionContext && !allowClosed) this.assertWritable();
-    if (this.activeTransactionCount > 0 && !(force && transactionContext)) {
+    // Loop, not check-once — the mirror image of transaction()'s activeFlush
+    // wait (#5652). A transaction queued behind the one this flush is waiting
+    // out resumes on a one-hop microtask chain, while this flush's wake from
+    // waitForTransactions is two-hop: the queued transaction can activate
+    // BEFORE this continuation runs. The pendingTransactionFlush handoff
+    // rescues that ordering while the store is open (the finally starts a
+    // flush that installs activeFlush synchronously), but the handoff is
+    // deliberately skipped once writesClosed — a check-once wait here then
+    // ran saveFileSnapshots concurrently with the freshly activated
+    // transaction's callback during shutdown, persisting uncommitted rows
+    // whose dirty marks the rollback erased.
+    while (this.activeTransactionCount > 0 && !(force && transactionContext)) {
       this.pendingTransactionFlush = true;
       if (transactionContext) return;
       await this.waitForTransactions();
@@ -3840,14 +3881,18 @@ class FileTableStore {
     };
     const merged = resident.map(swapReplaced).concat(added).sort(compareRows);
     this.tables.set(table, merged);
-    const ctx = this.txContext.getStore();
+    const ctx = this.loadEffectTransactionContext();
     const snapshot = ctx?.snapshots.get(table);
     if (snapshot) {
-      const mirrored = snapshot.map(swapReplaced).concat(added);
+      // References, not clones: rows are immutable once installed. Build the
+      // merged array fully BEFORE touching the snapshot, and refill with a
+      // loop rather than push(...mirrored): a spread passes every row as a
+      // call argument, which overflows the call stack past ~100k rows — and
+      // that throw landed AFTER the length = 0 truncation, leaving an empty
+      // rollback snapshot that a later rollback installed as the live table.
+      const mirrored = snapshot.map(swapReplaced).concat(added).sort(compareRows);
       snapshot.length = 0;
-      // References, not clones: rows are immutable once installed.
-      snapshot.push(...mirrored);
-      snapshot.sort(compareRows);
+      for (const row of mirrored) snapshot.push(row);
     }
     if (table === "messages") this.reindexMovedMessages(added.concat([...replacements.values()]));
     return keys;

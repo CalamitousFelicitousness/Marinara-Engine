@@ -141,7 +141,7 @@ function formatAnthropicTools(tools: LLMToolDefinition[] | undefined): Array<Rec
 export function applyAnthropicToolChoice(
   body: Record<string, unknown>,
   options: Pick<ChatOptions, "model" | "toolChoice" | "tools">,
-): "applied" | "manual-thinking" | "mythos" | "none" {
+): "applied" | "manual-thinking" | "automatic-only" | "none" {
   if (!options.tools?.length) {
     delete body.tool_choice;
     return "none";
@@ -156,9 +156,10 @@ export function applyAnthropicToolChoice(
     return "none";
   }
 
-  if (options.model.toLowerCase().includes("mythos")) {
+  const model = options.model.toLowerCase();
+  if (model.includes("mythos") || model === "claude-fable-5-1") {
     setToolChoiceType("auto");
-    return "mythos";
+    return "automatic-only";
   }
   const thinking = isRecord(body.thinking) ? body.thinking : null;
   if (thinking?.type === "enabled") {
@@ -424,8 +425,11 @@ export class AnthropicProvider extends BaseLLMProvider {
       logger.warn(
         "Anthropic manual extended thinking does not support forced tool use; falling back to automatic tool choice",
       );
-    } else if (toolChoiceResult === "mythos") {
-      logger.warn("Claude Mythos does not support forced tool use; falling back to automatic tool choice");
+    } else if (toolChoiceResult === "automatic-only") {
+      logger.warn(
+        "Claude model %s does not support forced tool use; falling back to automatic tool choice",
+        options.model,
+      );
     }
 
     const response = await llmFetch(url, {

@@ -6,7 +6,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Added
 
-- Added Claude Mythos 5.1 support for Anthropic connections, including its 1M-token context window, 128k output limit, adaptive-thinking behavior, and automatic fallback when a preset requests unsupported forced tool use (#5735).
+- Added Claude Fable 5.1 and Claude Mythos 5.1 support for Anthropic connections, including their 1M-token context windows, 128k output limits, adaptive-thinking behavior, and automatic fallback when a preset requests unsupported forced tool use (#5735, #5737).
 - Added Home Widgets settings to control the URL bar and desktop or mobile bookmarks on other tabs.
 - Added character cards to Persona selection so you can play as any saved character in Conversation and Roleplay setup or an active chat.
 - Added an opt-in setting to show character identities in Persona pickers, with collapsed folder navigation and identity transition notices.

@@ -152,8 +152,13 @@ assert.match(
 );
 assert.match(
   supportDiagnosticsSource,
-  /Background wake lock: \$\{diagnostics\.wakeLock \?\? \(unreachable \? SERVER_UNREACHABLE_DIAGNOSTIC : "not reported"\)\}/u,
-  "wake-lock/freeze lines must not read affirmatively absent when the host is unreachable (#5657 review)",
+  /Background wake lock: \$\{unreachable \? SERVER_UNREACHABLE_DIAGNOSTIC : \(diagnostics\.wakeLock \?\? "not reported"\)\}/u,
+  "time-sensitive telemetry must read unreachable - never stale pre-freeze values - when the host is frozen",
+);
+assert.match(
+  supportDiagnosticsSource,
+  /Last detected freeze: \$\{unreachable \? SERVER_UNREACHABLE_DIAGNOSTIC : freeze/u,
+  "the freeze line must be overridden by unreachable before any cached value",
 );
 
 const locales = JSON.parse(

@@ -73,10 +73,14 @@ export function formatSupportDiagnostics(diagnostics: SupportDiagnostics): strin
     `Version: ${available(diagnostics.version)}`,
     `Build: ${available(diagnostics.build)}`,
     `Commit: ${available(diagnostics.commit)}`,
+    // Server OS is static identity: a cached value is still true while the
+    // host is frozen, so known data stays. The three telemetry lines below are
+    // time-sensitive - stale readings would present pre-freeze state as
+    // current - so unreachable overrides them unconditionally.
     `Server OS: ${unreachable ? diagnostics.serverOs?.trim() || SERVER_UNREACHABLE_DIAGNOSTIC : available(diagnostics.serverOs)}`,
-    `Server memory: ${memory ? `heap ${memory.heapUsedMiB} / ${memory.heapLimitMiB} MiB; RSS ${memory.rssMiB} MiB` : unreachable ? SERVER_UNREACHABLE_DIAGNOSTIC : "Unavailable"}`,
-    `Background wake lock: ${diagnostics.wakeLock ?? (unreachable ? SERVER_UNREACHABLE_DIAGNOSTIC : "not reported")}`,
-    `Last detected freeze: ${freeze ? `~${Math.round(freeze.suspendedMs / 1000)}s suspension, thawed at ${freeze.detectedAt}` : unreachable ? SERVER_UNREACHABLE_DIAGNOSTIC : "none detected"}`,
+    `Server memory: ${unreachable ? SERVER_UNREACHABLE_DIAGNOSTIC : memory ? `heap ${memory.heapUsedMiB} / ${memory.heapLimitMiB} MiB; RSS ${memory.rssMiB} MiB` : "Unavailable"}`,
+    `Background wake lock: ${unreachable ? SERVER_UNREACHABLE_DIAGNOSTIC : (diagnostics.wakeLock ?? "not reported")}`,
+    `Last detected freeze: ${unreachable ? SERVER_UNREACHABLE_DIAGNOSTIC : freeze ? `~${Math.round(freeze.suspendedMs / 1000)}s suspension, thawed at ${freeze.detectedAt}` : "none detected"}`,
     `Client OS: ${available(diagnostics.clientOs)}`,
     `Browser / app shell: ${available(diagnostics.browser)}`,
     `GPU: ${available(diagnostics.gpu)}`,

@@ -3155,8 +3155,13 @@ export function HomeProfessorMariChat({
   const [connectionMenuOpen, setConnectionMenuOpen] = useState(false);
   const [permissionsMenuOpen, setPermissionsMenuOpen] = useState(false);
   const permissionsModeWriteSeqRef = useRef(0);
-  const permissionsModeWritePendingRef = useRef(false);
-  const permissionsModeWritePromiseRef = useRef<Promise<void> | null>(null);
+  // Chat id of pending mode writes (null = none): polls hold mode fields only
+  // for the chat the write targets, and count tracks overlapping writes.
+  const permissionsModeWritePendingChatRef = useRef<string | null>(null);
+  const permissionsModeWritePendingCountRef = useRef(0);
+  // All mode PUTs append to one chain so rapid A-then-B selections persist in
+  // order (B last = B wins server-side) and runs await the WHOLE chain.
+  const permissionsModeWriteChainRef = useRef<Promise<void>>(Promise.resolve());
   const permissionsButtonRef = useRef<HTMLButtonElement | null>(null);
   const permissionsMenuRef = useRef<HTMLDivElement | null>(null);
   const [historyPickerOpen, setHistoryPickerOpen] = useState(false);
@@ -3541,7 +3546,10 @@ export function HomeProfessorMariChat({
       // A mode write that landed while this poll was in flight is newer than
       // the polled value - keep the current mode fields, apply the rest.
       setWorkspaceStatus((current) =>
-        current && (permissionsModeWriteSeqRef.current !== writeSeqAtStart || permissionsModeWritePendingRef.current)
+        current &&
+        (permissionsModeWriteSeqRef.current !== writeSeqAtStart ||
+          (permissionsModeWritePendingCountRef.current > 0 &&
+            permissionsModeWritePendingChatRef.current === chatIdAtStart))
           ? {
               ...status,
               permissionsMode: current.permissionsMode,
@@ -3897,11 +3905,13 @@ export function HomeProfessorMariChat({
             }
           : current,
       );
-      permissionsModeWritePendingRef.current = true;
-      const write = (async () => {
+      permissionsModeWritePendingChatRef.current = chatIdForMode;
+      permissionsModeWritePendingCountRef.current += 1;
+      // Chained, not concurrent: rapid A-then-B selections must persist in
+      // click order or the server can end on A while the UI shows B.
+      const write = permissionsModeWriteChainRef.current.then(async () => {
         try {
           await api.put("/professor-mari/workspace/permissions-mode", { mode, chatId: chatIdForMode });
-          permissionsModeWritePendingRef.current = false;
           // A status poll that was in flight during the PUT resolves with the
           // OLD mode and would clobber the optimistic patch - refetch so the
           // panel converges on the server value. Guarded: a chat switch or a
@@ -3910,7 +3920,6 @@ export function HomeProfessorMariChat({
             () => activeChatIdRef.current === chatIdForMode && permissionsModeWriteSeqRef.current === writeSeq,
           ).catch(() => undefined);
         } catch (error) {
-          permissionsModeWritePendingRef.current = false;
           // Only the LATEST write may surface - a stale failure must not
           // clobber a newer selection that already succeeded. Refetch the
           // authoritative state rather than restoring a rendered snapshot
@@ -3921,11 +3930,15 @@ export function HomeProfessorMariChat({
           void refreshWorkspaceStatus(
             () => activeChatIdRef.current === chatIdForMode && permissionsModeWriteSeqRef.current === writeSeq,
           ).catch(() => undefined);
+        } finally {
+          permissionsModeWritePendingCountRef.current -= 1;
+          if (permissionsModeWritePendingCountRef.current <= 0) {
+            permissionsModeWritePendingCountRef.current = 0;
+            permissionsModeWritePendingChatRef.current = null;
+          }
         }
-      })();
-      // A run started right after a mode click must not race the PUT - the
-      // submit paths await this before POSTing /prompt.
-      permissionsModeWritePromiseRef.current = write;
+      });
+      permissionsModeWriteChainRef.current = write;
       await write;
     },
     [localizeUi, refreshWorkspaceStatus],
@@ -4871,9 +4884,9 @@ export function HomeProfessorMariChat({
       attachments: ProfessorMariAttachment[] = [],
       existingUserMessageId?: string,
     ) => {
-      // A mode click immediately before send must not race its PUT: the run
-      // resolves the mode server-side, so the write has to land first.
-      if (permissionsModeWritePromiseRef.current) await permissionsModeWritePromiseRef.current;
+      // A mode click immediately before send must not race its PUTs: the run
+      // resolves the mode server-side, so the WHOLE write chain lands first.
+      await permissionsModeWriteChainRef.current;
       const runId = ++workspaceRunIdRef.current;
       const controller = new AbortController();
       workspaceAbortRef.current = controller;

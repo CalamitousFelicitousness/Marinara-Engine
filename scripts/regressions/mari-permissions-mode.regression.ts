@@ -235,11 +235,10 @@ assert.match(
 // post-PUT refetch is guarded on both the chat and the write sequence.
 assert.match(mariChat, /const writeSeq = \+\+permissionsModeWriteSeqRef\.current;/u);
 // Pending mode writes hold the polled mode fields AND serialize the next run.
-assert.match(mariChat, /permissionsModeWritePendingRef\.current/u);
-assert.match(
-  mariChat,
-  /if \(permissionsModeWritePromiseRef\.current\) await permissionsModeWritePromiseRef\.current;/u,
-);
+assert.match(mariChat, /permissionsModeWritePendingChatRef\.current === chatIdAtStart/u);
+// Writes are CHAINED (click order = persist order) and runs await the chain.
+assert.match(mariChat, /permissionsModeWriteChainRef\.current\.then\(/u);
+assert.match(mariChat, /await permissionsModeWriteChainRef\.current;/u);
 // The latest failed write refetches authoritative status - it never restores
 // a rendered snapshot (which can be optimistic or another chat's).
 assert.doesNotMatch(mariChat, /previous \? previous : current/u);

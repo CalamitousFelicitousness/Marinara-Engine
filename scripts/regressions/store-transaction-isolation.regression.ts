@@ -91,21 +91,24 @@ writeShard(
 );
 
 // One-shot flush hold, armed per flush: the first table write of the armed
-// flush parks until released. Later writes of the same flush pass through.
-// The hook also watches for Part 4's forbidden overlap: a flush table write
-// landing while the close-path transaction's callback is still mid-flight.
-let pendingFlushHold: Promise<void> | null = null;
+// flush parks until released (firing its taken-signal on the way in, so the
+// staging can PROVE the flush reached its mid-write hold instead of sleeping
+// and hoping). Later writes of the same flush pass through. The hook also
+// watches for Part 4's forbidden overlap: a flush table write landing while
+// the close-path transaction's callback is still mid-flight.
+let pendingFlushHold: { hold: Promise<void>; taken: () => void } | null = null;
 let flushHoldsTaken = 0;
 let closeTxActive = false;
 let closeOverlapDetected = false;
 const db = await createFileNativeDB({
   beforeTableWrite: async () => {
     if (closeTxActive) closeOverlapDetected = true;
-    const hold = pendingFlushHold;
+    const pending = pendingFlushHold;
     pendingFlushHold = null;
-    if (hold) {
+    if (pending) {
       flushHoldsTaken += 1;
-      await hold;
+      pending.taken();
+      await pending.hold;
     }
   },
 });
@@ -119,6 +122,30 @@ const settle = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 // dying as an opaque unsettled-top-level-await exit.
 const gateReleases: Array<() => void> = [];
 
+// A staged lifecycle signal: the staged code fires it at a known point, and
+// the main flow awaits it with a loud deadline - staging is proven, never
+// assumed from a sleep. An unfired signal fails as its own named error
+// instead of letting a mis-staged run pass (or hang).
+const signal = (what: string) => {
+  let fire!: () => void;
+  const fired = new Promise<void>((resolve) => {
+    fire = resolve;
+  });
+  gateReleases.push(fire);
+  const wait = async () => {
+    let timer!: NodeJS.Timeout;
+    const deadline = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`staging signal never arrived: ${what}`)), 5000);
+    });
+    try {
+      await Promise.race([fired, deadline]);
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+  return { fire, wait };
+};
+
 try {
   // ══ Part 1 (#5651): a rollback must not erase concurrently loaded rows ══
   await storage.getMessage("m-warm"); // warm unit resident before the race
@@ -129,16 +156,19 @@ try {
   });
   gateReleases.push(releaseTx);
   const forced = new Error("forced rollback (#5651)");
+  const tx1Snapshot = signal("Part 1: the transaction took its first-mutation snapshot");
   const tx = db
     .transaction(async () => {
       // First-mutation snapshot of "messages" is taken here, BEFORE the
       // concurrent load below splices the cold unit into the live table.
       await db.update(messages).set({ content: "uncommitted tx edit" }).where(eq(messages.id, "m-warm"));
+      tx1Snapshot.fire();
       await txGate;
       throw forced;
     })
     .catch((error: unknown) => error);
-  await settle(30);
+  // The snapshot provably exists before the concurrent load - no sleep.
+  await tx1Snapshot.wait();
 
   // The concurrent request: a plain read that lazy-loads the cold unit. It
   // runs OUTSIDE the transaction's ALS context - exactly the #5651 shape.
@@ -176,13 +206,15 @@ try {
   });
   gateReleases.push(releaseHold2);
 
-  pendingFlushHold = hold1;
+  const hold1Taken = signal("Part 2: flush 1 reached its mid-write hold");
+  pendingFlushHold = { hold: hold1, taken: hold1Taken.fire };
   const flush1 = store.flush(); // captures, then parks mid-write on hold1
-  await settle(30);
+  await hold1Taken.wait(); // flush 1 is provably parked mid-write
 
   await db.insert(messages).values(messageRow("m-f2", "warm", "dirties for flush 2"));
-  const flush2 = store.flush(); // parks on flush1's activeFlush, subscribed FIRST
-  await settle(10);
+  // flush() reaches its `await this.activeFlush` synchronously, so flush 2's
+  // subscription is established by the time this call returns - FIRST.
+  const flush2 = store.flush();
 
   let txEntered = false;
   let releaseTx2!: () => void;
@@ -194,16 +226,19 @@ try {
     txEntered = true;
     await db.update(messages).set({ content: "tx2 edit" }).where(eq(messages.id, "m-f2"));
     await tx2Gate;
-  }); // parks on the same activeFlush, subscribed SECOND
-  await settle(10);
+  }); // reaches the same activeFlush await one microtask later - subscribed SECOND
+  await settle(10); // yield so the transaction's continuation is enqueued behind flush 2's
+  assert.equal(flushHoldsTaken, 1, "only flush 1 has taken a hold before hold 2 is armed");
 
   // Arm the hold for flush 2's recursion BEFORE waking flush 1: when flush 1
   // settles, flush 2 re-enters first, captures the new dirty set, installs a
   // new activeFlush, and parks mid-write on hold2 - with the transaction's
   // continuation scheduled right behind it.
-  pendingFlushHold = hold2;
+  const hold2Taken = signal("Part 2: flush 2's recursion reached its mid-write hold");
+  pendingFlushHold = { hold: hold2, taken: hold2Taken.fire };
   releaseHold1();
-  await settle(60);
+  await hold2Taken.wait(); // flush 2's recursion is provably mid-I/O
+  await settle(20); // grace window for the transaction continuation to (wrongly) run
 
   assert.equal(
     txEntered,
@@ -212,8 +247,7 @@ try {
   );
 
   releaseHold2();
-  await settle(30);
-  releaseTx2();
+  releaseTx2(); // pre-resolving the gate is fine - tx2 passes it whenever it enters
   await tx2;
   await flush1;
   await flush2;
@@ -235,14 +269,16 @@ try {
   });
   gateReleases.push(releaseTx3);
   const tx3Failure = new Error("forced rollback (large mirror)");
+  const tx3Snapshot = signal("Part 3: the large-mirror transaction took its first-mutation snapshot");
   const tx3 = db
     .transaction(async () => {
       await db.update(messages).set({ content: "uncommitted large-mirror edit" }).where(eq(messages.id, "m-warm"));
+      tx3Snapshot.fire();
       await tx3Gate;
       throw tx3Failure;
     })
     .catch((error: unknown) => error);
-  await settle(30);
+  await tx3Snapshot.wait(); // the snapshot provably exists before the six-figure load
 
   const bigLoaded = await storage.getMessage("m-big-0");
   assert.equal(bigLoaded?.content, "big row 0", "the six-figure mid-transaction lazy load completes");
@@ -275,17 +311,21 @@ try {
     releaseT1 = resolve;
   });
   gateReleases.push(releaseT1);
+  const t1Active = signal("Part 4: T1 activated and took its first-mutation snapshot");
   const t1 = db.transaction(async () => {
     await db.update(messages).set({ content: "t1 close-path edit" }).where(eq(messages.id, "m-close-dirty"));
+    t1Active.fire();
     await t1Gate;
   });
-  await settle(20);
+  // T1 is provably active - and pinned active by its gate - before the flush
+  // below is started, so that flush parks in waitForTransactions by
+  // construction (activeTransactionCount is 1 at the call), not by timing.
+  await t1Active.wait();
 
   let parkedFlushSettled = false;
   const parkedFlush = store.flush().then(() => {
     parkedFlushSettled = true;
   });
-  await settle(20);
 
   const t4Failure = new Error("forced rollback (close path)");
   const t2Close = db
@@ -294,8 +334,9 @@ try {
       try {
         await db.insert(chatsTable).values(chatRow("k-unit"));
         await db.insert(messages).values(messageRow("m-k1", "k-unit", "uncommitted close-path row"));
-        // Park long enough for a rogue concurrent flush to reach its table
-        // writes - the hook records the overlap.
+        // DETECTION window, not staging: on broken code the rogue concurrent
+        // flush needs real I/O time to reach a table write while this
+        // callback is mid-flight - the hook records the overlap.
         await settle(60);
         throw t4Failure;
       } finally {
@@ -303,14 +344,14 @@ try {
       }
     })
     .catch((error: unknown) => error);
-  await settle(10);
-
-  // Anti-vacuity: the staged flush must still be parked behind T1, or this
-  // part never exercised the wake-ordering window at all.
+  // T2's queue admission is synchronous at the call above, so it is already
+  // queued behind T1. And nothing can settle the parked flush while T1's
+  // gate pins activeTransactionCount at 1 - assert the staging outright.
   assert.equal(parkedFlushSettled, false, "the staged flush is parked behind the active transaction");
 
+  // close() sets writesClosed synchronously, so T1's finally will skip the
+  // pendingTransactionFlush rescue - the exact open door under test.
   const closing = store.close();
-  await settle(10);
   releaseT1();
   await t1;
   assert.equal(await t2Close, t4Failure, "the close-path transaction rejects with its forced error");

@@ -79,6 +79,9 @@ assert.match(
 // run's LOCAL mode so an overlapping prompt() cannot change decisions
 // mid-flight (the executor's instance-field reads sit behind signal checks).
 assert.match(workspaceAgent, /permissionsMode !== "bypass" &&/u);
+// Plan never defers - accepting a deferral would be a dead end (the next Plan
+// run refuses the commands); the executor floor's refusal drives the plan.
+assert.match(workspaceAgent, /permissionsMode !== "plan" &&/u);
 assert.match(workspaceAgent, /permissionsMode === "manual" \|\|/u);
 // Manual is also a FLOOR: silent (empty-say) mutating frames execute only in
 // a run that began right after an approved deferral; otherwise the executor
@@ -91,6 +94,16 @@ assert.match(
   /const manualApprovalArmed = parseExtra\(lastAssistant\?\.extra\)\.mariDeferredMutations === true;/u,
 );
 assert.match(workspaceAgent, /if \(runEndedWithDeferral\) extraUpdate\.mariDeferredMutations = true;/u);
+// The deferral marker is retryable: the row is retained across a failed extra
+// write and the persisted flag flips only after the extras land.
+assert.match(workspaceAgent, /persistedAssistantMessage \?\?/u);
+const persistIdx = workspaceAgent.indexOf("persistedAssistantMessage ??");
+const persistedFlagIdx = workspaceAgent.indexOf("assistantMessagePersisted = true;", persistIdx);
+const extraWriteIdx = workspaceAgent.indexOf("updateMessageExtra(message.id, extraUpdate)", persistIdx);
+assert.ok(
+  extraWriteIdx > 0 && persistedFlagIdx > extraWriteIdx,
+  "assistantMessagePersisted must flip only after the extra writes land",
+);
 assert.match(workspaceAgent, /runEndedWithDeferral = true;/u);
 assert.match(workspaceAgent, /activeRoundManualSilentMutationBlocked && isMutatingWorkspaceCommand\(command\)/u);
 // Accept edits / Bypass ride the envelope, with the delete carve-out AND the
@@ -221,6 +234,15 @@ assert.match(
 // polls that predate the latest write keep the current mode fields, and the
 // post-PUT refetch is guarded on both the chat and the write sequence.
 assert.match(mariChat, /const writeSeq = \+\+permissionsModeWriteSeqRef\.current;/u);
+// Pending mode writes hold the polled mode fields AND serialize the next run.
+assert.match(mariChat, /permissionsModeWritePendingRef\.current/u);
+assert.match(
+  mariChat,
+  /if \(permissionsModeWritePromiseRef\.current\) await permissionsModeWritePromiseRef\.current;/u,
+);
+// The latest failed write refetches authoritative status - it never restores
+// a rendered snapshot (which can be optimistic or another chat's).
+assert.doesNotMatch(mariChat, /previous \? previous : current/u);
 assert.match(mariChat, /if \(permissionsModeWriteSeqRef\.current !== writeSeq\) return;/u);
 assert.match(mariChat, /permissionsModeWriteSeqRef\.current !== writeSeqAtStart/u);
 assert.match(

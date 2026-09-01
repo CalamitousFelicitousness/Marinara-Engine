@@ -3155,6 +3155,8 @@ export function HomeProfessorMariChat({
   const [connectionMenuOpen, setConnectionMenuOpen] = useState(false);
   const [permissionsMenuOpen, setPermissionsMenuOpen] = useState(false);
   const permissionsModeWriteSeqRef = useRef(0);
+  const permissionsModeWritePendingRef = useRef(false);
+  const permissionsModeWritePromiseRef = useRef<Promise<void> | null>(null);
   const permissionsButtonRef = useRef<HTMLButtonElement | null>(null);
   const permissionsMenuRef = useRef<HTMLDivElement | null>(null);
   const [historyPickerOpen, setHistoryPickerOpen] = useState(false);
@@ -3539,7 +3541,7 @@ export function HomeProfessorMariChat({
       // A mode write that landed while this poll was in flight is newer than
       // the polled value - keep the current mode fields, apply the rest.
       setWorkspaceStatus((current) =>
-        current && permissionsModeWriteSeqRef.current !== writeSeqAtStart
+        current && (permissionsModeWriteSeqRef.current !== writeSeqAtStart || permissionsModeWritePendingRef.current)
           ? {
               ...status,
               permissionsMode: current.permissionsMode,
@@ -3886,7 +3888,6 @@ export function HomeProfessorMariChat({
       // one poll after a chat switch, and silently dropping the user's click
       // (especially a "Use default" de-escalation) is worse than sending an
       // idempotent write that converges via the refetch below.
-      const previous = workspaceStatus;
       setWorkspaceStatus((current) =>
         current
           ? {
@@ -3896,25 +3897,38 @@ export function HomeProfessorMariChat({
             }
           : current,
       );
-      try {
-        await api.put("/professor-mari/workspace/permissions-mode", { mode, chatId: chatIdForMode });
-        // A status poll that was in flight during the PUT resolves with the
-        // OLD mode and would clobber the optimistic patch - refetch so the
-        // panel converges on the server value. Guarded: a chat switch or a
-        // newer mode write while the refetch is in flight drops it.
-        void refreshWorkspaceStatus(
-          () => activeChatIdRef.current === chatIdForMode && permissionsModeWriteSeqRef.current === writeSeq,
-        ).catch(() => undefined);
-      } catch (error) {
-        // Only the LATEST write may roll back - a stale failure must not
-        // clobber a newer selection that already succeeded.
-        if (permissionsModeWriteSeqRef.current !== writeSeq) return;
-        setWorkspaceStatus((current) => (current && previous ? previous : current));
-        console.error("[Professor Mari] Failed to change permissions mode", error);
-        toast.error(localizeUi("ui.chat.homeprofessormarichat.couldNotChangeThePermissionsMode"));
-      }
+      permissionsModeWritePendingRef.current = true;
+      const write = (async () => {
+        try {
+          await api.put("/professor-mari/workspace/permissions-mode", { mode, chatId: chatIdForMode });
+          permissionsModeWritePendingRef.current = false;
+          // A status poll that was in flight during the PUT resolves with the
+          // OLD mode and would clobber the optimistic patch - refetch so the
+          // panel converges on the server value. Guarded: a chat switch or a
+          // newer mode write while the refetch is in flight drops it.
+          void refreshWorkspaceStatus(
+            () => activeChatIdRef.current === chatIdForMode && permissionsModeWriteSeqRef.current === writeSeq,
+          ).catch(() => undefined);
+        } catch (error) {
+          permissionsModeWritePendingRef.current = false;
+          // Only the LATEST write may surface - a stale failure must not
+          // clobber a newer selection that already succeeded. Refetch the
+          // authoritative state rather than restoring a rendered snapshot
+          // (which can itself be an optimistic value or another chat's).
+          if (permissionsModeWriteSeqRef.current !== writeSeq) return;
+          console.error("[Professor Mari] Failed to change permissions mode", error);
+          toast.error(localizeUi("ui.chat.homeprofessormarichat.couldNotChangeThePermissionsMode"));
+          void refreshWorkspaceStatus(
+            () => activeChatIdRef.current === chatIdForMode && permissionsModeWriteSeqRef.current === writeSeq,
+          ).catch(() => undefined);
+        }
+      })();
+      // A run started right after a mode click must not race the PUT - the
+      // submit paths await this before POSTing /prompt.
+      permissionsModeWritePromiseRef.current = write;
+      await write;
     },
-    [localizeUi, refreshWorkspaceStatus, workspaceStatus],
+    [localizeUi, refreshWorkspaceStatus],
   );
 
   const persistLatestConnectionSelection = useCallback(() => {
@@ -4857,6 +4871,9 @@ export function HomeProfessorMariChat({
       attachments: ProfessorMariAttachment[] = [],
       existingUserMessageId?: string,
     ) => {
+      // A mode click immediately before send must not race its PUT: the run
+      // resolves the mode server-side, so the write has to land first.
+      if (permissionsModeWritePromiseRef.current) await permissionsModeWritePromiseRef.current;
       const runId = ++workspaceRunIdRef.current;
       const controller = new AbortController();
       workspaceAbortRef.current = controller;

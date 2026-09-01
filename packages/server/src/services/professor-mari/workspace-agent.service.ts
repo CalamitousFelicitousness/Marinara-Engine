@@ -2067,6 +2067,7 @@ export class ProfessorMariWorkspaceService {
     let latestFinishReason: string | null = null;
     const commandResultsForContinuity: WorkspaceCommandResult[] = [];
     let assistantMessagePersisted = false;
+    let persistedAssistantMessage: Awaited<ReturnType<typeof chatStorage.createMessage>> | null = null;
     // #5725 Manual mode: whether this run ended by deferring mutating commands
     // behind the Accept action. Persisted on the assistant message's extra so
     // the NEXT run can arm silent command frames - the persisted content is
@@ -2077,14 +2078,20 @@ export class ProfessorMariWorkspaceService {
       const persistedText = assistantText.trim();
       if (!persistedText || assistantMessagePersisted) return null;
 
-      const message = await chatStorage.createMessage({
-        chatId: args.chatId,
-        role: "assistant",
-        characterId: PROFESSOR_MARI_ID,
-        content: persistedText,
-      });
+      // The row may already exist from an earlier attempt whose EXTRA write
+      // failed (the Manual-mode deferral marker lives there, and losing it
+      // dis-arms the user's approval) - retain the row and retry the extras
+      // instead of early-returning past them or creating a duplicate.
+      const message =
+        persistedAssistantMessage ??
+        (await chatStorage.createMessage({
+          chatId: args.chatId,
+          role: "assistant",
+          characterId: PROFESSOR_MARI_ID,
+          content: persistedText,
+        }));
       if (!message) return null;
-      assistantMessagePersisted = true;
+      persistedAssistantMessage = message;
 
       const extraUpdate: Record<string, unknown> = {};
       if (runEndedWithDeferral) extraUpdate.mariDeferredMutations = true;
@@ -2109,6 +2116,7 @@ export class ProfessorMariWorkspaceService {
       };
       await chatStorage.updateMessageExtra(message.id, extraUpdate);
       await chatStorage.updateSwipeExtra(message.id, 0, extraUpdate);
+      assistantMessagePersisted = true;
       return message;
     };
 
@@ -2181,6 +2189,10 @@ export class ProfessorMariWorkspaceService {
         // defers; Auto/others keep the self-declared ask-first behavior.
         const shouldDeferMutations =
           permissionsMode !== "bypass" &&
+          // Plan never defers: accepting would be a dead end (the next Plan
+          // run refuses the commands anyway); the executor floor's refusal is
+          // what the model turns into the requested plan.
+          permissionsMode !== "plan" &&
           parsedAction.visibleText &&
           (permissionsMode === "manual" ||
             parsedAction.awaitingAuthorization ||

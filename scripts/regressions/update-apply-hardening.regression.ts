@@ -63,10 +63,7 @@ assert.ok(
   "the Windows recipe must lead with a drive-crossing cd into the detected install folder",
 );
 const linuxCommand = getManualGitApplyCommand(stagingChannel, "linux", "corepack pnpm", "/home/user/marinara");
-assert.ok(
-  linuxCommand.startsWith('cd "/home/user/marinara" && '),
-  "POSIX recipes must lead with a plain quoted cd",
-);
+assert.ok(linuxCommand.startsWith('cd "/home/user/marinara" && '), "POSIX recipes must lead with a plain quoted cd");
 for (const command of [windowsCommand, linuxCommand]) {
   assert.match(command, /git fetch /u, "the recipe must still fetch");
   assert.match(command, /--filter @marinara-engine\/shared build/u, "the recipe must still build");
@@ -82,6 +79,21 @@ assert.match(windowsHint, /Command Prompt/u, "the Windows hint must name a shell
 assert.match(windowsHint, /PowerShell/u, "the Windows hint must warn about the default shell");
 const linuxHint = getManualUpdateHint("git", "linux", stagingChannel);
 assert.ok(!/PowerShell/u.test(linuxHint), "POSIX platforms must not carry the Windows shell warning");
+const windowsStableHint = getManualUpdateHint("git", "windows");
+assert.match(
+  windowsStableHint,
+  /\.\/start\.bat/u,
+  "the Git Bash instruction for the stable recipe must include ./start.bat - bash does not resolve a bare batch file",
+);
+
+// A failed leading cd (or fetch) must abort the staging recipe outright: the
+// alternation is parenthesized so its || can only capture the show-ref probe,
+// never a cd/fetch failure falling through into checkout -b in the wrong cwd.
+assert.match(
+  windowsCommand,
+  / && \(git show-ref --verify --quiet [^&]+ && \(git checkout [^)]+\) \|\| git checkout -b [^)]+\) && /u,
+  "the staging alternation must be scoped in parentheses",
+);
 
 // ── source pins: the wiring stays in place ──
 const devLauncherSource = readFileSync(join(repositoryRoot, "scripts/dev.mjs"), "utf8").replace(/\r\n/gu, "\n");
@@ -109,6 +121,16 @@ assert.match(
   updatesRoutesSource,
   /"hard-disabled"[\s\S]{0,80}"dev-branch"/u,
   "the reason union must carry both refusal reasons",
+);
+assert.match(
+  updatesRoutesSource,
+  /gitInstall \? currentBranch : null/u,
+  "the check route must thread the branch into the availability preview (#5646)",
+);
+assert.match(
+  updatesRoutesSource,
+  /if \(hardDisabled \|\| !isChannelCheckoutBranch\(currentBranch\)\)/u,
+  "the preview must use the apply route's refusal precedence (hard-disabled first)",
 );
 const settingsPanelSource = readFileSync(
   join(repositoryRoot, "packages/client/src/components/panels/SettingsPanel.tsx"),

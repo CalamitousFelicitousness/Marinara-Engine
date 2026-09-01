@@ -474,8 +474,13 @@ export function isUpdatesApplyEnabled() {
  * checkout via the channel selector. Wins over UPDATES_APPLY_ENABLED and the
  * loopback channel-switch bypass.
  */
+const BOOT_UPDATES_APPLY_HARD_DISABLED = isEnabledFlag(process.env.UPDATES_APPLY_DISABLED);
+
 export function isUpdatesApplyHardDisabled() {
-  return isEnabledFlag(process.env.UPDATES_APPLY_DISABLED);
+  // Latched at boot: the launchers set this in the environment, and a later
+  // .env hot-reload writing UPDATES_APPLY_DISABLED=false must not lift a
+  // guard whose whole point is protecting the checkout this process runs from.
+  return BOOT_UPDATES_APPLY_HARD_DISABLED || isEnabledFlag(process.env.UPDATES_APPLY_DISABLED);
 }
 
 export function isUpdatesRemoteApplyAllowed() {

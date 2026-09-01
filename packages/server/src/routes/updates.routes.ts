@@ -213,9 +213,13 @@ export function getManualGitApplyCommand(
   pnpmCommand = MANUAL_PNPM_COMMAND,
   repoRoot: string | null = getMonorepoRoot(),
 ) {
+  // The alternation is parenthesized so its '||' can only capture the
+  // show-ref probe: without the outer group, a failed leading cd or fetch
+  // would fall through into `git checkout -b` (and everything after it)
+  // executed in whatever directory the user happened to be standing in.
   const checkoutCommand =
     channel.id === "staging"
-      ? `git show-ref --verify --quiet refs/heads/${channel.branch} && (git checkout ${channel.branch} && git merge --ff-only ${channel.targetRef}) || git checkout -b ${channel.branch} ${channel.targetRef}`
+      ? `(git show-ref --verify --quiet refs/heads/${channel.branch} && (git checkout ${channel.branch} && git merge --ff-only ${channel.targetRef}) || git checkout -b ${channel.branch} ${channel.targetRef})`
       : `(git merge --ff-only ${channel.targetRef} || git checkout --detach ${channel.targetRef})`;
   // Same scoped cleanup cleanStaleSourceFiles performs, so a manual apply (the
   // only path available when UPDATES_APPLY_ENABLED is false) cannot build with
@@ -253,16 +257,16 @@ export function getManualUpdateHint(
     }
     return `Set the Compose image to the stable tag shown below (or ${DOCKER_IMAGE}:latest), then pull it and restart the container.`;
   }
-  const windowsShellNote =
+  const windowsShellNote = (gitBashExtra = "") =>
     platform === "windows"
-      ? " Run it in Command Prompt (cmd) or Git Bash - the default Windows PowerShell rejects '&&' chains (Git Bash users: replace `cd /d` with `cd`)."
+      ? ` Run it in Command Prompt (cmd) or Git Bash - the default Windows PowerShell rejects '&&' chains (Git Bash users: replace \`cd /d\` with \`cd\`${gitBashExtra}).`
       : "";
   if (installType === "git" && channel.id === "staging") {
-    return `Staging is a tester branch. Make a profile backup first, then apply from the browser or paste the complete command below - it starts by changing into the install folder.${windowsShellNote}`;
+    return `Staging is a tester branch. Make a profile backup first, then apply from the browser or paste the complete command below - it starts by changing into the install folder.${windowsShellNote()}`;
   }
   if (installType === "git") {
     const launcher = getGitLauncherCommand(platform);
-    return `Relaunch Marinara with ${launcher} to let the platform launcher fetch the current checkout's update branch, install dependencies, rebuild, and start the new version. The command below changes into the install folder first.${windowsShellNote}`;
+    return `Relaunch Marinara with ${launcher} to let the platform launcher fetch the current checkout's update branch, install dependencies, rebuild, and start the new version. The command below changes into the install folder first.${windowsShellNote(" and run \`./start.bat\` - bash does not resolve a bare batch file from the current folder")}`;
   }
   return "Download the release asset or update the host install manually, then restart Marinara.";
 }
@@ -836,11 +840,13 @@ function getApplyAvailability(
     };
   }
   const hardDisabled = isUpdatesApplyHardDisabled();
-  if (!isChannelCheckoutBranch(currentBranch)) {
+  // Same precedence as the apply route (hard-disabled beats dev-branch), so
+  // the preview never explains a different refusal than an apply would return.
+  if (hardDisabled || !isChannelCheckoutBranch(currentBranch)) {
     return {
       applyAvailable: false,
       updatesApplyEnabled: enabled,
-      applyUnavailableReason: "dev-branch" as ApplyUnavailableReason,
+      applyUnavailableReason: (hardDisabled ? "hard-disabled" : "dev-branch") as ApplyUnavailableReason,
       manualUpdateCommand: getManualUpdateCommand(installType, platform, channel),
       manualUpdateHint: getManualUpdateHint(installType, platform, channel),
     };
@@ -1033,8 +1039,8 @@ export async function updatesRoutes(app: FastifyInstance) {
         return reply.status(403).send({
           error: "Update apply is blocked for this server instance",
           message: applyHardDisabled
-            ? "This server was started with UPDATES_APPLY_DISABLED (the dev and e2e launchers set it so a browser tab cannot rewrite a development checkout). Update the checkout manually if you really intend to."
-            : `This checkout is on development branch "${currentBranch}", not a release channel branch, so applying updates from the browser is blocked to protect work in progress. Update the checkout manually if you really intend to.`,
+            ? "This server was started with UPDATES_APPLY_DISABLED (the dev and e2e launchers set it so a browser tab cannot rewrite a development checkout). Update the checkout manually if you really intend to - and commit or stash local work first, because the manual recipe deletes untracked files under packages/*/src."
+            : `This checkout is on development branch "${currentBranch}", not a release channel branch, so applying updates from the browser is blocked to protect work in progress. Update the checkout manually if you really intend to - and commit or stash local work first, because the manual recipe deletes untracked files under packages/*/src.`,
           installType: "git",
           serverPlatform,
           applyUnavailableReason: reason,

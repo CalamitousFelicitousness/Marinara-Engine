@@ -5,7 +5,7 @@ import { useCallback, useRef } from "react";
 import { characterDataSchema, normalizeAvatarCrop, type AvatarCrop } from "@marinara-engine/shared";
 import { useQueryClient, type InfiniteData, type QueryClient } from "@tanstack/react-query";
 import { toast, type ExternalToast } from "sonner";
-import { api, ApiError } from "../lib/api-client";
+import { api, ApiError, isPassiveStreamDisconnect } from "../lib/api-client";
 import {
   formatAgentFailuresToast,
   illustratorRetryTargetsForFailures,
@@ -1041,11 +1041,6 @@ async function waitForServerGenerationToSettle(chatId: string, signal: AbortSign
 
 function isAbortError(error: unknown) {
   return error instanceof DOMException && error.name === "AbortError";
-}
-
-function isPassiveStreamDisconnect(error: unknown, pageWasHiddenDuringStream: boolean, signal: AbortSignal) {
-  if (!pageWasHiddenDuringStream || signal.aborted || isAbortError(error) || error instanceof ApiError) return false;
-  return error instanceof Error;
 }
 
 async function refreshVisibleGameStateAfterGeneration(chatId: string) {

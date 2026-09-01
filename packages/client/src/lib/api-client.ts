@@ -44,6 +44,28 @@ export class StreamResumeDisconnectError extends Error {
 }
 
 /**
+ * True when a stream error is best explained by the browser tearing down a
+ * backgrounded tab's connection rather than by a real failure: the resume
+ * watchdog tripped, or the page was hidden at some point during the stream and
+ * the error is a plain transport error (Firefox's "NetworkError when
+ * attempting to fetch resource", Chrome's "Failed to fetch") rather than a
+ * caller abort or an HTTP-level ApiError. The server-side run keeps going in
+ * that case, so the caller should wait for it to settle and refetch the
+ * persisted result instead of surfacing an error.
+ */
+export function isPassiveStreamDisconnect(
+  error: unknown,
+  pageWasHiddenDuringStream: boolean,
+  signal: AbortSignal,
+): boolean {
+  if (error instanceof StreamResumeDisconnectError) return true;
+  if (!pageWasHiddenDuringStream || signal.aborted) return false;
+  if (error instanceof DOMException && error.name === "AbortError") return false;
+  if (error instanceof ApiError) return false;
+  return error instanceof Error;
+}
+
+/**
  * Compose an AbortSignal that fires after `timeoutMs` — with a "TimeoutError"
  * DOMException reason so callers can tell "server never answered" from a real
  * failure — while still honouring an upstream signal (e.g. React Query's

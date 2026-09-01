@@ -259,7 +259,7 @@ export function AppShell() {
         );
         const height = heightCandidates.length > 0 ? Math.min(...heightCandidates) : window.innerHeight;
         const maxOffsetTop = Math.max(0, window.innerHeight - height);
-        const offsetTop = Math.min(maxOffsetTop, Math.max(0, viewport?.offsetTop ?? 0));
+        const offsetTop = Math.min(maxOffsetTop, Math.max(0, viewport?.offsetTop ?? 0, viewport?.pageTop ?? 0));
         largestViewportHeight = Math.max(largestViewportHeight, height);
         root.style.setProperty("--mari-visual-viewport-height", `${Math.max(0, Math.round(height))}px`);
         root.style.setProperty("--mari-visual-viewport-offset-top", `${Math.round(offsetTop)}px`);

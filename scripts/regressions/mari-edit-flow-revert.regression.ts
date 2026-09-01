@@ -64,12 +64,16 @@ assert.match(
 assert.match(workspaceAgent, /"propose changes" means describing the changes in chat/u);
 
 // ── Hidden-reasoning disable covers custom providers (#5721 Problem A) ──────
-assert.match(workspaceAgent, /const disableHiddenReasoning = enabledParameters\?\.reasoningEffort !== false;/u);
-assert.doesNotMatch(
+assert.match(
   workspaceAgent,
-  /disableHiddenReasoning[\s\S]{0,200}provider\.toLowerCase\(\) !== "custom"/u,
-  "custom providers must no longer be excluded from the reasoning disable",
+  /disableHiddenReasoning =[\s\S]{0,400}isLocalInferenceBaseUrl\(connection\.baseUrl \?\? ""\)/u,
+  "LOCAL custom providers must be included in the reasoning disable",
 );
+// Remote custom endpoints stay excluded on purpose: the provider layer sends
+// reasoning_effort:"none" ungated for generic custom providers, and strict
+// remote gateways 400 on it.
+const ipAllowlist = readSource("packages/server/src/middleware/ip-allowlist.ts");
+assert.match(ipAllowlist, /export function isLocalInferenceBaseUrl/u);
 // The provider layer's local-inference thinking disable is the mechanism that
 // makes "none" effective for llama.cpp/vLLM-style servers - keep the pairing.
 const openaiProvider = readSource("packages/server/src/services/llm/providers/openai.provider.ts");

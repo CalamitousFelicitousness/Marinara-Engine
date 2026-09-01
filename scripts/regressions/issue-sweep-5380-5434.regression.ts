@@ -36,9 +36,9 @@ assert.match(widgetEditor, /config: structuredClone\(widget\.config\)/u);
 assert.match(widgetEditor, /startingValue: Math\.min\(max,/u);
 
 const workspaceAgent = readSource("packages/server/src/services/professor-mari/workspace-agent.service.ts");
-// #5721 extended the hidden-reasoning disable to custom providers; the sweep original
-// custom-provider carve-out is deliberately gone.
-assert.match(workspaceAgent, /const disableHiddenReasoning = enabledParameters\?\.reasoningEffort !== false;/u);
-assert.doesNotMatch(workspaceAgent, /connection\.provider\.toLowerCase\(\) !== "custom"/u);
+// #5721 narrowed the sweep's blanket custom-provider carve-out: LOCAL custom
+// endpoints (llama.cpp/vLLM/Ollama/Unsloth) now get the hidden-reasoning
+// disable; remote custom endpoints keep the sweep's send-nothing behavior.
+assert.match(workspaceAgent, /isLocalInferenceBaseUrl\(connection\.baseUrl \?\? ""\)/u);
 
 process.stdout.write("Issue sweep 5380-5434 regression passed.\n");

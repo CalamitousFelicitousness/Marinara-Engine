@@ -81,6 +81,7 @@ import { getProfessorMariWorkspaceSkillsService } from "./workspace-skills.servi
 import { sidecarModelService } from "../sidecar/sidecar-model.service.js";
 import { getWorkspaceShellSandboxStatus, spawnWorkspaceSandboxedShell } from "./workspace-shell-sandbox.js";
 import { personalServerExtensionRuntime } from "../extensions/personal-server-extension-runtime.js";
+import { isLocalInferenceBaseUrl } from "../../middleware/ip-allowlist.js";
 import {
   isPackageManagerMutationCommand,
   WorkspaceChangeReviewService,
@@ -2474,16 +2475,24 @@ ${sections.join("\n\n")}
     const defaultParameters = parseJsonObject(connection.defaultParameters);
     const customParameters = isRecord(defaultParameters?.customParameters) ? defaultParameters.customParameters : {};
     const enabledParameters = normalizeGenerationParameterSendMap(defaultParameters?.enabledParameters);
-    // Custom providers are included (#5721): a reasoning-capable model on a
-    // local OpenAI-compatible server otherwise does its substantive work -
-    // plans, questions for the user - inside hidden reasoning, and the visible
-    // JSON frame only alludes to it. The provider layer turns "none" into
-    // chat_template_kwargs.enable_thinking=false for local inference
-    // endpoints and drops it harmlessly where the model catalog can't confirm
-    // support, so this is best-effort by construction. Escape hatch for
-    // endpoints that reject reasoning parameters outright: disable the
+    // LOCAL custom providers are included (#5721): a reasoning-capable model
+    // on a local OpenAI-compatible server otherwise does its substantive work
+    // - plans, questions for the user - inside hidden reasoning, and the
+    // visible JSON frame only alludes to it. Scoped to local inference
+    // endpoints deliberately: for generic custom providers the provider layer
+    // sends reasoning_effort:"none" UNGATED (no model catalog to consult), and
+    // a strict remote gateway (OpenAI/Azure/validating proxies) rejects the
+    // unknown parameter with a 400 - so remote custom connections keep the
+    // pre-#5721 behavior of sending nothing. Local servers (llama.cpp, vLLM,
+    // Ollama, LM Studio - the reported Unsloth case) also get
+    // chat_template_kwargs.enable_thinking=false from the provider layer.
+    // Escape hatch for a local endpoint that still chokes: disable the
     // reasoning-effort parameter on the connection (enabledParameters).
-    const disableHiddenReasoning = enabledParameters?.reasoningEffort !== false;
+    const disableHiddenReasoning =
+      enabledParameters?.reasoningEffort !== false &&
+      (isLocalSidecarConnection(connection) ||
+        connection.provider.toLowerCase() !== "custom" ||
+        isLocalInferenceBaseUrl(connection.baseUrl ?? ""));
     const verbosity = normalizeMariVerbosity(defaultParameters?.verbosity);
     return {
       model: connection.model,

@@ -1057,6 +1057,17 @@ assert.equal(
     assert.equal("temperature" in disabledBody, false);
     assert.equal("top_k" in disabledBody, false);
     assert.equal("top_p" in disabledBody, false);
+
+    await collectProviderOutput(provider, {
+      model: "claude-fable-5-1",
+      stream: false,
+      maxTokens: 128_000,
+      captureReasoning: true,
+      reasoningEffort: "max",
+    });
+    const fableMaxOutputBody = anthropicRequestBodies[2];
+    assert.ok(fableMaxOutputBody);
+    assert.equal(fableMaxOutputBody.max_tokens, 128_000);
   } finally {
     await new Promise<void>((resolve, reject) => anthropicServer.close((error) => (error ? reject(error) : resolve())));
   }

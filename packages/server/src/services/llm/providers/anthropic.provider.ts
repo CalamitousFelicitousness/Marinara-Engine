@@ -13,7 +13,11 @@ import {
   type LLMToolDefinition,
   type LLMUsage,
 } from "../base-provider.js";
-import { isClaudeAdaptiveOnlyNoSamplingModel, shouldSuppressUnknownModelParameters } from "@marinara-engine/shared";
+import {
+  findKnownModel,
+  isClaudeAdaptiveOnlyNoSamplingModel,
+  shouldSuppressUnknownModelParameters,
+} from "@marinara-engine/shared";
 import { logger } from "../../../lib/logger.js";
 
 const DEFAULT_CACHING_AT_DEPTH = 5;
@@ -72,7 +76,10 @@ function applyAdaptiveThinkingConfig(
   body.thinking = { type: "adaptive", display: "summarized" };
   body.output_config = { effort: options.reasoningEffort ?? "high" };
   if (typeof visibleMaxTokens === "number" && Number.isFinite(visibleMaxTokens) && visibleMaxTokens > 0) {
-    body.max_tokens = Math.floor(visibleMaxTokens) + resolveAdaptiveThinkingHeadroom(options, visibleMaxTokens);
+    const requestedMaxTokens =
+      Math.floor(visibleMaxTokens) + resolveAdaptiveThinkingHeadroom(options, visibleMaxTokens);
+    const modelMaxOutput = findKnownModel("anthropic", options.model)?.maxOutput;
+    body.max_tokens = modelMaxOutput ? Math.min(requestedMaxTokens, modelMaxOutput) : requestedMaxTokens;
   }
 }
 

@@ -930,7 +930,7 @@
   "settings.controls.mariPermissionsMode.accept-edits.label": "Accept edits",
   "settings.controls.mariPermissionsMode.auto.description": "Mari decides from your words and saved memories when to describe, stage, or ask first.",
   "settings.controls.mariPermissionsMode.auto.label": "Auto",
-  "settings.controls.mariPermissionsMode.bypass.description": "Mari applies changes without asking or review cards. Deletions and sensitive changes keep their review.",
+  "settings.controls.mariPermissionsMode.bypass.description": "Mari applies changes without asking or showing review cards. Deletions and sensitive changes keep their review.",
   "settings.controls.mariPermissionsMode.bypass.label": "Bypass permissions",
   "settings.controls.mariPermissionsMode.help": "The DEFAULT for when Professor Mari may stage or apply workspace changes; each Mari chat can override it from the shield button in her panel header. Auto lets her judge from your words and memories; Manual always asks first; Accept edits skips the review card for record edits; Plan describes changes without making them; Bypass applies without asking. Deletions and sensitive changes always keep their review. Applies to her next run.",
   "settings.controls.mariPermissionsMode.manual.description": "Always ask before making changes: Mari describes first and stages only after you say go.",

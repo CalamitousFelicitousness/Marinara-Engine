@@ -3525,15 +3525,17 @@ export function HomeProfessorMariChat({
 
   const refreshWorkspaceStatus = useCallback(
     async (shouldApply?: () => boolean) => {
+      // #5725: the server resolves the EFFECTIVE mode (chat override ?? global
+      // default) for the chat we name here - so a response is only valid for
+      // the chat that was active when the request STARTED.
+      const chatIdAtStart = activeChatIdRef.current;
       const params = new URLSearchParams();
       if (effectiveConnectionId) params.set("connectionId", effectiveConnectionId);
-      // #5725: the server resolves the EFFECTIVE mode (chat override ?? global
-      // default) for the chat we name here.
-      if (activeChatIdRef.current) params.set("chatId", activeChatIdRef.current);
+      if (chatIdAtStart) params.set("chatId", chatIdAtStart);
       const query = params.toString();
       const writeSeqAtStart = permissionsModeWriteSeqRef.current;
       const status = await api.get<MariWorkspaceStatus>(`/professor-mari/workspace/status${query ? `?${query}` : ""}`);
-      if (shouldApply?.() === false) return status;
+      if (shouldApply?.() === false || activeChatIdRef.current !== chatIdAtStart) return status;
       // A mode write that landed while this poll was in flight is newer than
       // the polled value - keep the current mode fields, apply the rest.
       setWorkspaceStatus((current) =>

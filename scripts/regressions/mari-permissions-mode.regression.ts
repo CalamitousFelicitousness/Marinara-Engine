@@ -97,7 +97,14 @@ assert.match(workspaceAgent, /activeRoundManualSilentMutationBlocked && isMutati
 // Personal Extension carve-out (their drafts keep the promised review card).
 assert.match(workspaceAgent, /"accept-edits" \|\| this\.activeRunPermissionsMode === "bypass"/u);
 assert.match(workspaceAgent, /!action\.startsWith\("personal_extension\."\) &&/u);
-assert.match(workspaceAgent, /delete\|forget\|remove\|uninstall/u);
+// Byte-exact: an editing-tooling incident once replaced the boundary escape
+// with a literal U+0008 (valid JS, silently broken carve-out); pin the two
+// characters explicitly and ban control characters from these sources.
+assert.ok(
+  workspaceAgent.includes(String.raw`!/\b(?:delete|forget|remove|uninstall)/iu.test(action)`),
+  "the deletion carve-out must use a real " + String.raw`\b` + " word boundary",
+);
+
 assert.match(workspaceAgent, /reviewPolicy: autoKeep \? "auto-keep" : "standard"/u);
 // Per-chat override (#5725 maintainer call): the run resolves chat override
 // ?? global default; status is chat-aware; the override is read from chat
@@ -193,7 +200,7 @@ assert.match(mariChat, /changePermissionsMode/u);
 assert.match(mariChat, /workspaceStatus\?\.permissionsMode \?\? DEFAULT_MARI_PERMISSIONS_MODE/u);
 // The picker is per-chat: status polls carry the chat id, the menu has a
 // use-default row, and writes name the chat.
-assert.match(mariChat, /params\.set\("chatId", activeChatIdRef\.current\)/u);
+assert.match(mariChat, /params\.set\("chatId", chatIdAtStart\)/u);
 // A chat switch refetches the chat-scoped status immediately (the 15s poll
 // alone left the shield on the previous chat's mode), and mode clicks are
 // never short-circuited on possibly-stale check state.
@@ -232,5 +239,18 @@ assert.match(
   /addEventListener\("visibilitychange", reload\)/u,
   "the Settings select must refetch on focus to track header changes",
 );
+
+// An editing-tooling incident once wrote a literal U+0008 into a regex in
+// these sources (valid JS, silently broken behavior) - ban the class.
+for (const [name, source] of [
+  ["workspace-agent", workspaceAgent],
+  ["mari-db", mariDb],
+  ["routes", routes],
+  ["mariChat", mariChat],
+  ["settingControls", settingControlsSeq],
+] as const) {
+  const control = [...source].find((ch) => ch.charCodeAt(0) < 32 && ch !== "\n" && ch !== "\r" && ch !== "\t");
+  assert.equal(control, undefined, `${name} must not contain raw control characters`);
+}
 
 console.log("Mari permissions-mode regression passed.");

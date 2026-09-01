@@ -2118,6 +2118,10 @@ export class ProfessorMariWorkspaceService {
       // The instance field serves the executor (whose reads sit behind a
       // signal check); the run loop itself uses LOCALS so an overlapping
       // prompt() can never change this run's deferral decisions mid-flight.
+      // Die BEFORE the shared write: a superseded run resuming from the await
+      // above must never overwrite the newer run's mode (an older Bypass
+      // clobbering a newer Plan would lift the Plan floor for live commands).
+      controller.signal.throwIfAborted();
       this.activeRunPermissionsMode = permissionsMode;
       const provider = createProviderForConnection(connection);
       const { messages, manualApprovalArmed } = await this.buildPromptMessages(
@@ -2335,6 +2339,8 @@ export class ProfessorMariWorkspaceService {
         // visible text, so the deferral above cannot describe anything) is
         // only allowed in a run the user just approved. The flag is
         // round-scoped; visible frames defer through shouldDeferMutations.
+        // Same superseded-run guard for the round-scoped shared write.
+        controller.signal.throwIfAborted();
         this.activeRoundManualSilentMutationBlocked =
           permissionsMode === "manual" && !action.visibleText && !manualApprovalArmed;
         const commandResults = await this.executeWorkspaceCommandBatch(
@@ -3305,7 +3311,7 @@ ${sections.join("\n\n")}
     const autoKeep =
       (this.activeRunPermissionsMode === "accept-edits" || this.activeRunPermissionsMode === "bypass") &&
       !action.startsWith("personal_extension.") &&
-      !/(?:delete|forget|remove|uninstall)/iu.test(action);
+      !/\b(?:delete|forget|remove|uninstall)/iu.test(action);
     const result = await getMariDbService(this.app.db).executeAction({
       ...args,
       cwd: this.workspaceRoot,

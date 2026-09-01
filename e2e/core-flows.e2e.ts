@@ -18954,17 +18954,7 @@ test("mobile chat composer follows the visual viewport above the software keyboa
 
     await textarea.focus();
 
-    // The app intentionally pins the visual-viewport offset to 0 on iOS WebKit
-    // (see the isIOSWebKit branch in AppShell) and counters iOS scroll drift
-    // with a transform instead. The mobile-webkit project runs an iPhone
-    // profile, so it exercises that branch even before the explicit iOS UA
-    // reload below; mirror the app's own predicate for the expected offset.
-    const isIOSWebKitProfile = await page.evaluate(
-      () =>
-        /iP(?:ad|hone|od)/i.test(navigator.userAgent) ||
-        (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1),
-    );
-    const expectedOffsetTop = isIOSWebKitProfile ? 0 : 72;
+    const expectedOffsetTop = 72;
 
     await page.evaluate(() => {
       (
@@ -19066,13 +19056,14 @@ test("mobile chat composer follows the visual viewport above the software keyboa
         probeWindow.__mariScrollIntoViewCalls += 1;
       };
     });
-    await page.evaluate(() => {
+    const iosFocusOffsetTop = Math.min(160, Math.max(0, initialViewportHeight - 360));
+    await page.evaluate((offsetTop) => {
       (
         window as typeof window & {
           __setMarinaraVisualViewport: (height: number, offsetTop: number) => void;
         }
-      ).__setMarinaraVisualViewport(360, 340);
-    });
+      ).__setMarinaraVisualViewport(360, offsetTop);
+    }, iosFocusOffsetTop);
     await textarea.focus();
     await expect
       .poll(() =>
@@ -19097,7 +19088,7 @@ test("mobile chat composer follows the visual viewport above the software keyboa
           top: getComputedStyle(document.documentElement).getPropertyValue("--mari-visual-viewport-offset-top").trim(),
         })),
       )
-      .toEqual({ height: "360px", top: "0px" });
+      .toEqual({ height: "360px", top: `${iosFocusOffsetTop}px` });
     await expect(page.locator("html")).toHaveAttribute("data-mari-software-keyboard-open", "");
     const iosCompactComposerStyle = await composer.evaluate((element) => {
       const style = getComputedStyle(element);
@@ -19111,10 +19102,10 @@ test("mobile chat composer follows the visual viewport above the software keyboa
     const [iosShellBox, iosComposerBox] = await Promise.all([shell.boundingBox(), composer.boundingBox()]);
     expect(iosShellBox).not.toBeNull();
     expect(iosComposerBox).not.toBeNull();
-    expect(Math.abs(iosShellBox!.y)).toBeLessThanOrEqual(1);
+    expect(Math.abs(iosShellBox!.y - iosFocusOffsetTop)).toBeLessThanOrEqual(1);
     expect(Math.abs(iosShellBox!.height - 360)).toBeLessThanOrEqual(1);
-    expect(iosComposerBox!.y).toBeGreaterThanOrEqual(0);
-    expect(iosComposerBox!.y + iosComposerBox!.height).toBeLessThanOrEqual(360);
+    expect(iosComposerBox!.y).toBeGreaterThanOrEqual(iosFocusOffsetTop);
+    expect(iosComposerBox!.y + iosComposerBox!.height).toBeLessThanOrEqual(iosFocusOffsetTop + 360);
 
     await page.evaluate(async () => {
       const storePath = "/src/stores/ui.store.ts";

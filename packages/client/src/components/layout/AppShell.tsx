@@ -249,9 +249,6 @@ export function AppShell() {
     let orientationTimers: number[] = [];
     let largestViewportHeight = window.visualViewport?.height ?? window.innerHeight;
     const supportsVirtualKeyboard = navigator.maxTouchPoints > 0 || window.matchMedia("(any-pointer: coarse)").matches;
-    const isIOSWebKit =
-      /iP(?:ad|hone|od)/i.test(navigator.userAgent) ||
-      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
     const updateVisualViewportGeometry = () => {
       if (frame) cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
@@ -262,8 +259,7 @@ export function AppShell() {
         );
         const height = heightCandidates.length > 0 ? Math.min(...heightCandidates) : window.innerHeight;
         const maxOffsetTop = Math.max(0, window.innerHeight - height);
-        const visualViewportOffsetTop = Math.min(maxOffsetTop, Math.max(0, viewport?.offsetTop ?? 0));
-        const offsetTop = isIOSWebKit ? 0 : visualViewportOffsetTop;
+        const offsetTop = Math.min(maxOffsetTop, Math.max(0, viewport?.offsetTop ?? 0));
         largestViewportHeight = Math.max(largestViewportHeight, height);
         root.style.setProperty("--mari-visual-viewport-height", `${Math.max(0, Math.round(height))}px`);
         root.style.setProperty("--mari-visual-viewport-offset-top", `${Math.round(offsetTop)}px`);

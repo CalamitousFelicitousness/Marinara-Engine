@@ -3892,7 +3892,7 @@ export function HomeProfessorMariChat({
         toast.error(localizeUi("ui.chat.homeprofessormarichat.couldNotChangeThePermissionsMode"));
       }
     },
-    [localizeUi, permissionsMode, permissionsModeOverridden, refreshWorkspaceStatus, workspaceStatus],
+    [localizeUi, refreshWorkspaceStatus, workspaceStatus],
   );
 
   const persistLatestConnectionSelection = useCallback(() => {

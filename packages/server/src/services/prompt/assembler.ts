@@ -33,87 +33,12 @@ import {
   resolveMacrosWithVariableSnapshot,
   setLorebookEntryCounts,
 } from "./macro-context.js";
+import { buildPresetVariables } from "./preset-variables.js";
 
 interface RuntimeAgentData {
   text: string;
   startToken?: string;
   endToken?: string;
-}
-
-export interface ChoiceOptionValue {
-  value: string;
-}
-
-function parseChoiceOptions(options: string): ChoiceOptionValue[] {
-  try {
-    const parsed = JSON.parse(options) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.flatMap((option) =>
-      option && typeof option === "object" && typeof (option as { value?: unknown }).value === "string"
-        ? [{ value: (option as { value: string }).value }]
-        : [],
-    );
-  } catch {
-    return [];
-  }
-}
-
-function sanitizeChoiceSelection(
-  selected: string | string[] | undefined,
-  options: ChoiceOptionValue[],
-  isMulti: boolean,
-): string | string[] | undefined {
-  if (selected === undefined) return undefined;
-  const validValues = new Set(options.map((option) => option.value));
-  const candidates = Array.isArray(selected) ? selected : [selected];
-
-  if (isMulti) {
-    return candidates.filter((value, index) => validValues.has(value) && candidates.indexOf(value) === index);
-  }
-
-  return candidates.find((value) => validValues.has(value));
-}
-
-function readChoiceFlag(value: unknown): boolean {
-  return value === true || value === "true" || value === 1 || value === "1";
-}
-
-export function resolveChoiceVariableValue(input: {
-  selected: string | string[] | undefined;
-  options: ChoiceOptionValue[];
-  multiSelect: unknown;
-  randomPick: unknown;
-  separator?: string | null;
-  random?: () => number;
-}): string {
-  const isRandom = readChoiceFlag(input.randomPick);
-  // Imported or legacy presets can carry Boolean/number flags, and a Random
-  // Pick selection is necessarily multi-valued even if its companion flag was
-  // normalized incorrectly during an older migration.
-  const isMulti = readChoiceFlag(input.multiSelect) || (isRandom && Array.isArray(input.selected));
-
-  // An explicit empty selection is the user's OFF value. Only a missing value
-  // should fall back to the first option for legacy presets.
-  if (input.selected === "" || (Array.isArray(input.selected) && input.selected.length === 0)) return "";
-
-  const selected = sanitizeChoiceSelection(input.selected, input.options, isMulti);
-
-  if (isMulti && Array.isArray(selected)) {
-    if (selected.length === 0) return "";
-    if (isRandom) {
-      const random = input.random ?? Math.random;
-      const roll = random();
-      const unit = Number.isFinite(roll) ? Math.min(1, Math.max(0, roll)) : 0;
-      const index = Math.min(selected.length - 1, Math.floor(unit * selected.length));
-      return selected[index] ?? "";
-    }
-    return selected.join(input.separator || ", ");
-  }
-
-  if (selected !== undefined) {
-    return Array.isArray(selected) ? (selected[0] ?? "") : selected;
-  }
-  return input.options[0]?.value ?? "";
 }
 
 // ═══════════════════════════════════════════════
@@ -175,8 +100,15 @@ export interface AssemblerInput {
   }>;
   /** Per-chat variable selections: { [variableName]: value | value[] } */
   chatChoices: Record<string, string | string[]>;
-  /** SillyTavern-compatible local variables persisted in this chat. */
-  localVariables?: Record<string, string>;
+  /** Preset variables already resolved by the caller. A Random Pick block otherwise rolls again here. */
+  presetVariables?: Record<string, string>;
+  /**
+   * SillyTavern-compatible local variables persisted in this chat. Required:
+   * macro-engine aliases the local store onto `variables` when none is given,
+   * so a {{setvar}} would write over a preset variable of the same name.
+   * Pass an empty record for a preview with no chat behind it.
+   */
+  localVariables: Record<string, string>;
   /** Chat context */
   chatId: string;
   characterIds: string[];
@@ -313,7 +245,13 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
   const wrapFormat = (input.preset.wrapFormat || "xml") as WrapFormat;
   const parameters = parsePresetParameters(input.preset.parameters);
   const sectionOrder = JSON.parse(input.preset.sectionOrder) as string[];
-  const variableValues = JSON.parse(input.preset.variableValues) as Record<string, string>;
+  const variableValues = input.presetVariables
+    ? { ...input.presetVariables }
+    : buildPresetVariables({
+        variableValues: input.preset.variableValues,
+        choiceBlocks: input.choiceBlocks,
+        chatChoices: input.chatChoices,
+      });
   // Preset text can safely delay all character macros until the responder is known.
   // Lorebook content only delays names so field macros keep the same budgeting behavior.
   const deferAllMacroOptions: ResolveMacroOptions | undefined = input.deferCharacterMacros
@@ -336,18 +274,6 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
     }
   });
 
-  // Inject choice variable values into variableValues
-  // chatChoices is { variableName: value | value[] } — resolve and merge into variables so {{varName}} resolves
-  for (const cb of input.choiceBlocks) {
-    const opts = parseChoiceOptions(cb.options);
-    variableValues[cb.variableName] = resolveChoiceVariableValue({
-      selected: input.chatChoices[cb.variableName],
-      options: opts,
-      multiSelect: cb.multiSelect,
-      randomPick: cb.randomPick,
-      separator: cb.separator,
-    });
-  }
   const enabledSectionContents = sectionOrder.flatMap((sectionId) => {
     const section = sectionMap.get(sectionId);
     if (!section || section.enabled !== "true") return [];

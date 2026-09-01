@@ -6,7 +6,6 @@ import {
   resolveMacros,
   DEFAULT_CONVERSATION_PROMPT,
   DEFAULT_GAME_SYSTEM_PROMPT,
-  normalizeGameStoryboardKeyframeCount,
   type GenerationParameterSendMap,
   type LorebookEntryTimingState,
 } from "@marinara-engine/shared";
@@ -14,6 +13,7 @@ import { randomUUID } from "crypto";
 import { createChatsStorage } from "../../services/storage/chats.storage.js";
 import { createConnectionsStorage } from "../../services/storage/connections.storage.js";
 import { createPromptsStorage } from "../../services/storage/prompts.storage.js";
+import { normalizePromptTimeZone } from "../../services/conversation/timezone.js";
 import { createCharactersStorage } from "../../services/storage/characters.storage.js";
 import { createAgentsStorage } from "../../services/storage/agents.storage.js";
 import { createRegexScriptsStorage } from "../../services/storage/regex-scripts.storage.js";
@@ -37,7 +37,8 @@ import { withConnectionAdmissionProvider } from "../../services/generation/conne
 import { getLocalSidecarProvider } from "../../services/llm/local-sidecar.js";
 import {
   assemblePrompt,
-  buildPromptMacroContext,
+  buildChatMacroContext,
+  loadPresetVariables,
   normalizeChatMacroVariables,
   collectCharacterAdvancedPromptEntries,
   resolveCharacterAdvancedPromptIds,
@@ -865,23 +866,25 @@ export async function registerDryRunRoute(app: FastifyInstance) {
     const chatChoices: Record<string, string | string[]> =
       requestChoices ?? (isDifferentPresetOverride ? (presetDefaultChoices ?? {}) : chatChoicesFromMeta);
     const chatMacroVariables = normalizeChatMacroVariables(chatMeta.macroVariables);
-    const promptMacroContext = await buildPromptMacroContext({
+    const presetVariables = await loadPresetVariables({
+      presets,
+      presetId: effectivePresetId,
+      variableValues: (effectivePreset as { variableValues?: unknown } | null)?.variableValues,
+      chatChoices,
+    });
+    const promptMacroContext = await buildChatMacroContext({
       db: app.db,
+      chat,
+      chatMeta,
+      presetVariables,
+      localVariables: chatMacroVariables,
+      requestTimeZone: normalizePromptTimeZone((body as { userTimeZone?: unknown }).userTimeZone),
       characterIds: promptCharacterIds,
       groupCharacterIds: promptTargetCharacterId ? characterIds : undefined,
       personaName,
       personaDescription,
       personaFields,
-      variables: {
-        gameStoryboardKeyframeCount: String(normalizeGameStoryboardKeyframeCount(chatMeta.gameStoryboardKeyframeCount)),
-      },
-      localVariables: chatMacroVariables,
-      groupScenarioOverrideText:
-        typeof chatMeta.groupScenarioText === "string" && (chatMeta.groupScenarioText as string).trim()
-          ? (chatMeta.groupScenarioText as string).trim()
-          : null,
       lastInput: [...mappedMessages].reverse().find((message) => message.role === "user")?.content,
-      chatId,
       model: conn.model,
       lastGenerationType: promptLastGenerationType,
       idleDuration: promptIdleDuration,
@@ -1293,6 +1296,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
         groups: groups as any,
         choiceBlocks: choiceBlocks as any,
         chatChoices,
+        presetVariables,
         localVariables: chatMacroVariables,
         chatId,
         characterIds: promptCharacterIds,

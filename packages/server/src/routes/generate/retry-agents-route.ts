@@ -53,7 +53,7 @@ import { sidecarModelService } from "../../services/sidecar/sidecar-model.servic
 import { buildSpotifyDjConstraints } from "../../services/spotify/spotify-dj-constraints.js";
 import { fingerprintChatSummary } from "../../services/prompt/chat-summary-fingerprint.js";
 import {
-  buildPromptMacroContext,
+  buildChatMacroContext,
   normalizeChatMacroVariables,
   resolveCharacterMacroData,
   resolvePromptIdleDuration,
@@ -171,7 +171,11 @@ import {
   prepareCapabilityAgentContexts,
 } from "../../services/capability-packages/capability-agent-runtime.service.js";
 import { isSseReplyWritable, sendSseEvent, startSseKeepalive, startSseReply } from "./sse.js";
-import { buildGenerationPromptPresetCandidates } from "./prompt-preset-selection.js";
+import {
+  buildGenerationPromptPresetCandidates,
+  resolveChatPresetVariables,
+  type PromptPresetChoices,
+} from "./prompt-preset-selection.js";
 import {
   buildAgentConnectionUnavailableWarning,
   buildDefaultAgentConnectionWarning,
@@ -718,7 +722,8 @@ export function resolveRetryAgentPhaseToolInputs(args: {
 async function buildRetryAgentContext(args: {
   cyoaAgentWillRun: boolean;
   chatId: string;
-  db: Parameters<typeof buildPromptMacroContext>[0]["db"];
+  presetVariables: Record<string, string>;
+  db: Parameters<typeof buildChatMacroContext>[0]["db"];
   chat: any;
   chatMeta: Record<string, unknown>;
   currentBackground: string | null;
@@ -806,20 +811,17 @@ async function buildRetryAgentContext(args: {
   const personaContext = await resolvePersonaContext(chars, chat);
   const initialMacroVariables = normalizeChatMacroVariables(chatMeta.macroVariables);
   const retryMacroVariables = { ...initialMacroVariables };
-  const promptMacroContext = await buildPromptMacroContext({
+  const promptMacroContext = await buildChatMacroContext({
     db,
+    chat: { id: chatId, mode: chat.mode },
+    chatMeta,
+    presetVariables: args.presetVariables,
+    localVariables: retryMacroVariables,
     characterIds,
     personaName: personaContext.personaName,
     personaDescription: personaContext.personaDescription,
     personaFields: personaContext.personaFields,
-    variables: {},
-    localVariables: retryMacroVariables,
-    groupScenarioOverrideText:
-      typeof chatMeta.groupScenarioText === "string" && (chatMeta.groupScenarioText as string).trim()
-        ? (chatMeta.groupScenarioText as string).trim()
-        : null,
     lastInput: [...recentMessages].reverse().find((message: any) => message.role === "user")?.content,
-    chatId,
     lastGenerationType: "retry_agents",
     idleDuration: resolvePromptIdleDuration(recentMessages),
     macroSources: [
@@ -983,6 +985,7 @@ async function buildRetryAgentContext(args: {
     chatId,
     chatMode,
     wrapFormat,
+    presetVariables: args.presetVariables,
     recentMessages: agentSlice.map((message: any, index: number) => {
       const resolved = resolvedAgentSlice[index];
       const nextMessage: AgentContext["recentMessages"][number] = {
@@ -4212,11 +4215,21 @@ export async function registerRetryAgentsRoute(
           },
         };
       }
+      const retryPresetVariables = await runRetrySetupPhase(abortController.signal, () =>
+        resolveChatPresetVariables({
+          presets,
+          chatMode,
+          chatPromptPresetId: chat.promptPresetId,
+          connectionPromptPresetId: conn?.promptPresetId,
+          chatPresetChoices: (chatMeta.presetChoices ?? {}) as PromptPresetChoices,
+        }),
+      );
       const cyoaAgentWillRun = resolvedAgents.some((e) => e.resolved.type === "cyoa");
       const agentContextResult = await runRetrySetupPhase(abortController.signal, () =>
         buildRetryAgentContext({
           cyoaAgentWillRun,
           chatId,
+          presetVariables: retryPresetVariables,
           db: app.db,
           chat,
           chatMeta,
@@ -4244,6 +4257,7 @@ export async function registerRetryAgentsRoute(
               buildRetryAgentContext({
                 cyoaAgentWillRun: false,
                 chatId,
+                presetVariables: retryPresetVariables,
                 db: app.db,
                 chat,
                 chatMeta,

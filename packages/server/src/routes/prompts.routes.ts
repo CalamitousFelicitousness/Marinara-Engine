@@ -518,6 +518,8 @@ export async function promptsRoutes(app: FastifyInstance) {
       groups: groups as any,
       choiceBlocks: choiceBlocks as any,
       chatChoices: choices ?? {},
+      // Preset preview: no chat behind it, so no local variable store.
+      localVariables: {},
       chatId,
       characterIds,
       personaId,

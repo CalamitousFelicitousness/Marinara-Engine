@@ -36,11 +36,13 @@ import {
 import { resolveOwnerSpatialProjection } from "../services/spatial-context/projection.js";
 import { resolveLorebookScopeExclusions } from "../services/lorebook/game-lorebook-scope.js";
 import {
-  buildPromptMacroContext,
+  buildChatMacroContext,
   resolveMacrosWithVariableSnapshot,
   resolvePromptIdleDuration,
   setLorebookEntryCounts,
 } from "../services/prompt/index.js";
+import { createPromptsStorage } from "../services/storage/prompts.storage.js";
+import { resolveChatPresetVariables } from "./generate/prompt-preset-selection.js";
 import { parseGameStateRow, resolveVisibleGameStateAnchor } from "./generate/generate-route-utils.js";
 import { cardPromptText } from "../services/prompt/card-text.js";
 import {
@@ -1005,17 +1007,26 @@ export async function lorebooksRoutes(app: FastifyInstance) {
             };
           }
         }
-        const macroContext = await buildPromptMacroContext({
+        const macroContext = await buildChatMacroContext({
           db: app.db,
+          chat: { id: chatId, mode: chat?.mode },
+          chatMeta,
+          presetVariables: await resolveChatPresetVariables({
+            presets: createPromptsStorage(app.db),
+            chatMode: chat?.mode,
+            chatPromptPresetId: chat?.promptPresetId,
+            chatPresetChoices: (chatMeta.presetChoices ?? {}) as Record<string, string | string[]>,
+          }),
           characterIds,
           personaName,
           personaDescription,
           personaFields,
-          variables: {},
           lastInput,
-          chatId,
           lastGenerationType: "lorebook_scan",
           idleDuration: resolvePromptIdleDuration(scanSourceMessages),
+          // Entry text is resolved through the callback below, so no source is
+          // available to scan for {{lorebooksize::ID}} before the counts load.
+          alwaysLoadLorebookEntryCounts: true,
         });
         return {
           resolveContent: (value: string, lorebookEntryCounts?: Readonly<Record<string, number>>) => {

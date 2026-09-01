@@ -417,6 +417,8 @@ export interface AgentContext {
     id: string;
     content: string;
   }>;
+  /** Resolved preset variables, so an agent prompt honours the chat's choice-block selections. */
+  presetVariables?: Record<string, string>;
   /** Per-lorebook total entry counts (for {{lorebooksize::ID}} macro in agent prompts). */
   lorebookEntryCounts?: Record<string, number>;
   /**

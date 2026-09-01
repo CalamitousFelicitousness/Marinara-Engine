@@ -54,7 +54,6 @@ import {
   speakerTaggedSpanRegex,
   stripSpeakerTags,
   parseManagedGenerationParameterDefinitions,
-  normalizeGameStoryboardKeyframeCount,
   type APIProvider,
   type MacroContext,
 } from "@marinara-engine/shared";
@@ -151,7 +150,8 @@ import { buildSpotifyDjConstraints } from "../services/spotify/spotify-dj-constr
 import {
   assemblePrompt,
   appendFallbackChatSummaryToSystemPrompt,
-  buildPromptMacroContext,
+  buildChatMacroContext,
+  loadPresetVariables,
   normalizeChatMacroVariables,
   collectCharacterAdvancedPromptEntries,
   resolveCharacterAdvancedPromptIds,
@@ -1768,6 +1768,15 @@ export async function generateRoutes(app: FastifyInstance) {
         presetDefaultChoices: resolvedPresetDefaultChoices,
         chatPresetChoices: (chatMeta.presetChoices ?? {}) as Record<string, string | string[]>,
       });
+      // Resolved once per request so a Random Pick block gives agents the same
+      // value the main prompt used. The roleplay branch refreshes it from the
+      // assembler, whose pass also resolves macros nested inside a choice value.
+      const presetVariables = await loadPresetVariables({
+        presets,
+        presetId,
+        variableValues: (resolvedPreset as { variableValues?: unknown } | null)?.variableValues,
+        chatChoices,
+      });
 
       const eligibleCharacterActivityConfigs: typeof characterActivityAgentConfigs = [];
       if (
@@ -1877,6 +1886,7 @@ export async function generateRoutes(app: FastifyInstance) {
             ...characterActivityAgents.map((agent) => normalizeAgentContextSize(agent.settings.contextSize)),
           );
           const routingContext: AgentContext = {
+            presetVariables,
             chatId: input.chatId,
             chatMode,
             wrapFormat: normalizePromptWrapFormat(resolvedPreset?.wrapFormat),
@@ -2212,30 +2222,23 @@ export async function generateRoutes(app: FastifyInstance) {
           chatMode !== "game" &&
           promptGroupChatMode === "individual" &&
           (chatMode === "conversation" || chatMeta.groupSpeakerNamesInHistory === true);
-        const promptMacroContext = await buildPromptMacroContext({
+        const promptMacroContext = await buildChatMacroContext({
           db: app.db,
+          chat,
+          chatMeta,
+          presetVariables,
+          localVariables: chatMacroVariables,
+          requestTimeZone: promptTimeZone,
           characterIds: promptCharacterIds,
           groupCharacterIds: promptTargetCharacterId ? characterIds : undefined,
           personaName,
           personaPhoneticName,
           personaDescription,
           personaFields,
-          variables: {
-            gameStoryboardKeyframeCount: String(
-              normalizeGameStoryboardKeyframeCount(chatMeta.gameStoryboardKeyframeCount),
-            ),
-          },
-          localVariables: chatMacroVariables,
-          groupScenarioOverrideText:
-            typeof chatMeta.groupScenarioText === "string" && (chatMeta.groupScenarioText as string).trim()
-              ? (chatMeta.groupScenarioText as string).trim()
-              : null,
           lastInput: currentUserInputContent(),
-          chatId: input.chatId,
           model: conn.model,
           lastGenerationType: promptLastGenerationType,
           idleDuration: promptIdleDuration,
-          timeZone: promptTimeZone,
           macroSources: [
             activeChatSummary ?? "",
             ...currentInputMessages().map((message) => message.content),
@@ -2542,6 +2545,7 @@ export async function generateRoutes(app: FastifyInstance) {
             groups: groups as any,
             choiceBlocks: choiceBlocks as any,
             chatChoices,
+            presetVariables,
             localVariables: chatMacroVariables,
             chatId: input.chatId,
             characterIds: promptCharacterIds,
@@ -2595,6 +2599,7 @@ export async function generateRoutes(app: FastifyInstance) {
 
           const assembled = await assemblePrompt(assemblerInput);
           Object.assign(promptMacroContext.variables, assembled.macroVariables);
+          Object.assign(presetVariables, assembled.macroVariables);
           promptMacroContext.agentData = {
             ...promptMacroContext.agentData,
             ...assembled.macroAgentData,
@@ -4063,6 +4068,7 @@ export async function generateRoutes(app: FastifyInstance) {
         };
 
         const agentContext: AgentContext = {
+          presetVariables,
           chatId: input.chatId,
           chatMode,
           wrapFormat,

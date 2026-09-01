@@ -111,7 +111,8 @@ async function defaultPresetId(db: DB): Promise<string | null> {
 }
 
 // The smallest valid AssemblerInput: default preset structure, no real persona or history, previewOnly
-// so lorebook timing/ephemeral state is never consumed. `chatChoices` is a Record (use {}, not []).
+// so lorebook timing/ephemeral state is never consumed. `chatChoices` and `localVariables` are
+// Records (use {}, not []); there is no chat behind this render, so both are empty.
 // When `withPlaceholders` is set (the preset preview), the persona + chat-history markers are fed
 // visible placeholder text so a reviewer sees WHERE those inject; the character preview leaves them
 // blank because it filters those markers out of the section order entirely.
@@ -123,6 +124,7 @@ function baseInput(db: DB, loaded: LoadedPreset, characterIds: string[], withPla
     groups: loaded.groups as never,
     choiceBlocks: loaded.choiceBlocks as never,
     chatChoices: {},
+    localVariables: {},
     chatId: "mari-preview",
     characterIds,
     personaName: "User",

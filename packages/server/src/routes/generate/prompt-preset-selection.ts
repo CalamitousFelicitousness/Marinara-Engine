@@ -1,3 +1,6 @@
+import { loadPresetVariables, type PresetChoiceBlockReader } from "../../services/prompt/index.js";
+import { parsePromptPresetChoices } from "../../services/generation/conversation-context-utils.js";
+
 export type PromptPresetCandidateSource = "impersonate" | "request" | "connection" | "chat";
 
 export interface PromptPresetCandidate {
@@ -72,4 +75,41 @@ export function resolveGenerationPromptPresetChoices(args: {
     return args.presetDefaultChoices;
   }
   return { ...args.presetDefaultChoices, ...args.chatPresetChoices };
+}
+
+export interface ChatPresetVariableSource extends PresetChoiceBlockReader {
+  getById: (presetId: string) => Promise<unknown>;
+}
+
+/** Resolve the preset variables that apply to a chat, following the same candidate order generation uses. */
+export async function resolveChatPresetVariables(args: {
+  presets: ChatPresetVariableSource;
+  chatMode: unknown;
+  chatPromptPresetId?: unknown;
+  connectionPromptPresetId?: unknown;
+  impersonate?: boolean;
+  impersonatePromptPresetId?: unknown;
+  requestPromptPresetId?: unknown;
+  chatPresetChoices: PromptPresetChoices;
+}): Promise<Record<string, string>> {
+  const candidates = buildGenerationPromptPresetCandidates(args);
+  for (const candidate of candidates) {
+    const preset = (await args.presets.getById(candidate.id)) as {
+      variableValues?: unknown;
+      defaultChoices?: unknown;
+    } | null;
+    if (!preset) continue;
+    return loadPresetVariables({
+      presets: args.presets,
+      presetId: candidate.id,
+      variableValues: preset.variableValues,
+      chatChoices: resolveGenerationPromptPresetChoices({
+        presetSource: candidate.source,
+        selectedPresetDiffersFromChat: candidate.id !== asNonEmptyString(args.chatPromptPresetId),
+        presetDefaultChoices: parsePromptPresetChoices(preset.defaultChoices) ?? {},
+        chatPresetChoices: args.chatPresetChoices,
+      }),
+    });
+  }
+  return {};
 }

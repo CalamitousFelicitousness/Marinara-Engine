@@ -251,7 +251,9 @@ export function buildAgentPromptMacroContext(
     user: value(context.persona?.name?.trim() || "User"),
     char: value(characters.join(", ") || "Assistant"),
     characters: characters.map(value),
-    variables: {},
+    variables: Object.fromEntries(
+      Object.entries(context.presetVariables ?? {}).map(([name, entry]) => [name, value(entry)]),
+    ),
     lastInput: latestUserMessage ? value(latestUserMessage.content) : "",
     chatId: value(context.chatId),
     characterProfiles: context.characters.map((character) => ({

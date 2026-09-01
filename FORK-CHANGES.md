@@ -33,6 +33,86 @@ The spread must stay above `onClick` so the explicit click handler wins.
 
 ## Fork-only additions
 
+### Preset variables resolve in every mode, not only Roleplay
+
+`{{narration}}` and the rest of a preset's choice-block variables reached the
+Roleplay prompt and nothing else. Two separate gaps produced that.
+
+`buildAgentPromptMacroContext` in
+`packages/server/src/services/agents/agent-executor.ts` built its macro context
+with `variables: {}`, so an agent prompt asking for choices "in {{language}}
+language" sent the model those braces.
+
+The values themselves were also a side effect of assembly. `generate.routes.ts`
+runs the assembler only for Roleplay, gating it on `chatMode !== "conversation"
+&& chatMode !== "game"`, and copied the resolved variables back out of
+`assembled.macroVariables` afterwards. Game and Conversation never resolved a
+choice block at all, in their prompts or anywhere else.
+
+`packages/server/src/services/prompt/preset-variables.ts` now owns the choice
+resolution the assembler used to hold inline, and resolves a preset's variable
+namespace without assembling a prompt. Generation, the prompt peek, the dry run,
+and the retry-agents route each seed their macro context from it, so card
+fields, lorebook entries, regex scripts, depth prompts, and agent prompts read
+the same values in all three modes.
+
+Resolution happens once per request and the Roleplay branch then refreshes it
+from `assembled.macroVariables`. A Random Pick block rolls a fresh option on
+every call, so a second independent resolution would have handed the agent, or
+the peek, a different value than the one the prompt used. `AssemblerInput`
+accepts the resolved record for the same reason; callers that omit it resolve as
+before.
+
+Seeding the variable map is safe for every consumer because the catch-all pass
+in `macro-engine.ts` runs after every built-in macro: a choice block named
+`user` or `description` never reaches it, so resolution can only change text
+that used to stay literal. The engine-owned `gameStoryboardKeyframeCount` is
+written after the spread for the same reason.
+
+One conditional changes meaning outside Roleplay. `{{#if narration}}` used to
+test the unresolved token, which is always truthy, and emit `{{narration}}` into
+its own body. It now tests the selected value and reads a choice the user turned
+off as absent.
+
+An agent setting of the same name still wins, because `renderAgentSettingsMacros`
+runs ahead of the shared resolver. Preset variables are escaped with the same
+`escapeValues` pass as every other agent macro value.
+
+### A route builds its macro context from the chat, not from memory
+
+There was never a second `buildPromptMacroContext`; there were eight call sites
+and fifteen optional inputs, and each site dropped a different subset. Every
+omission silently disabled one macro on that path. Generation passed all of
+them, the chat export passed neither `variables` nor `localVariables`, the
+lorebook preview and the Game setup scan passed neither those nor
+`macroSources`, and only generation passed `timeZone`. `{{lorebooksize::ID}}`
+resolved to 0 wherever `macroSources` was missing, because that pre-scan is what
+triggers the count query.
+
+`buildChatMacroContext` takes the chat row and its metadata and derives the
+fields a chat always owns: the id, the local variable store, the timezone
+(Conversation schedule, then request, then the chat's remembered zone), the
+group scenario override, and the storyboard keyframe count. `presetVariables` is
+required rather than optional, so a caller with no preset has to say so. The
+eight sites are now six routes on the new builder plus the assembler and the
+builder itself on the old primitive, which keeps taking explicit inputs because
+it has no chat row to read.
+
+`resolveChatPresetVariables` in `prompt-preset-selection.ts` answers which
+preset applies to a chat and resolves its variables in one call, so the lorebook
+preview, the Game setup scan, the chat export, and the retry route no longer
+each need the candidate-order rules.
+
+Two paths that resolve text no pre-scan can see, the lorebook preview and the
+Game setup scan, ask for entry counts explicitly with
+`alwaysLoadLorebookEntryCounts`.
+
+`AssemblerInput.localVariables` is required for the same reason. `macro-engine`
+aliases the local store onto `variables` when none is given, so a `{{setvar}}`
+would write over a preset variable of the same name. The two callers with no
+chat behind them, the preset preview and the Professor Mari workspace render,
+pass an empty record deliberately.
+
 ### Importing a name you already have asks what to do with it
 
 Nothing stopped a duplicate. Neither the characters nor the lorebooks table

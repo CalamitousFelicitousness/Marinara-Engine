@@ -2598,8 +2598,14 @@ export async function chatsRoutes(app: FastifyInstance) {
       try {
         const { createPromptsStorage } = await import("../services/storage/prompts.storage.js");
         const { createCharactersStorage } = await import("../services/storage/characters.storage.js");
-        const { assemblePrompt, buildPromptMacroContext, resolvePromptIdleDuration, setLorebookEntryCounts } =
-          await import("../services/prompt/index.js");
+        const {
+          assemblePrompt,
+          buildChatMacroContext,
+          buildPresetVariables,
+          normalizeChatMacroVariables,
+          resolvePromptIdleDuration,
+          setLorebookEntryCounts,
+        } = await import("../services/prompt/index.js");
         const presetStore = createPromptsStorage(app.db);
         const charStore = createCharactersStorage(app.db);
 
@@ -2685,19 +2691,23 @@ export async function chatsRoutes(app: FastifyInstance) {
           })();
 
           const chatChoices = (chatMeta.presetChoices ?? {}) as Record<string, string | string[]>;
-          const promptMacroContext = await buildPromptMacroContext({
+          // Preview and assembly share one resolution so a Random Pick block shows
+          // the value this peek actually sends.
+          const presetVariables = buildPresetVariables({
+            variableValues: (preset as { variableValues?: unknown } | null)?.variableValues,
+            choiceBlocks,
+            chatChoices,
+          });
+          const promptMacroContext = await buildChatMacroContext({
             db: app.db,
+            chat,
+            chatMeta,
+            presetVariables,
             characterIds,
             personaName,
             personaDescription,
             personaFields,
-            variables: {},
-            groupScenarioOverrideText:
-              typeof chatMeta.groupScenarioText === "string" && (chatMeta.groupScenarioText as string).trim()
-                ? (chatMeta.groupScenarioText as string).trim()
-                : null,
             lastInput: [...mappedMessages].reverse().find((message) => message.role === "user")?.content,
-            chatId: req.params.id,
             lastGenerationType: "preview",
             idleDuration: promptIdleDuration,
             macroSources: [
@@ -2899,6 +2909,8 @@ export async function chatsRoutes(app: FastifyInstance) {
             groups: groups as any,
             choiceBlocks: choiceBlocks as any,
             chatChoices,
+            presetVariables,
+            localVariables: normalizeChatMacroVariables(chatMeta.macroVariables),
             chatId: req.params.id,
             characterIds,
             personaId,
@@ -3536,13 +3548,23 @@ export async function chatsRoutes(app: FastifyInstance) {
       collectExportJournalNpcNames(metadata, charNameMap),
     );
     const persona = await buildPersonaSnapshotForChat(app, chat);
-    const { buildPromptMacroContext, resolvePromptMessageMacros } = await import("../services/prompt/index.js");
+    const { buildChatMacroContext, resolvePromptMessageMacros } = await import("../services/prompt/index.js");
+    const { createPromptsStorage } = await import("../services/storage/prompts.storage.js");
+    const { resolveChatPresetVariables } = await import("./generate/prompt-preset-selection.js");
     const exportCharacterIds = resolveActiveCharacterIds(charIds, metadata, {
       mode: (chat.mode as string | undefined) ?? "roleplay",
       allowEmpty: true,
     });
-    const promptMacroContext = await buildPromptMacroContext({
+    const promptMacroContext = await buildChatMacroContext({
       db: app.db,
+      chat,
+      chatMeta: metadata,
+      presetVariables: await resolveChatPresetVariables({
+        presets: createPromptsStorage(app.db),
+        chatMode: chat.mode,
+        chatPromptPresetId: chat.promptPresetId,
+        chatPresetChoices: (metadata.presetChoices ?? {}) as Record<string, string | string[]>,
+      }),
       characterIds: exportCharacterIds,
       personaName: persona?.name ?? "User",
       personaDescription: cardPromptText(persona?.description),
@@ -3552,12 +3574,7 @@ export async function chatsRoutes(app: FastifyInstance) {
         backstory: cardPromptText(persona?.backstory),
         appearance: cardPromptText(persona?.appearance),
       },
-      groupScenarioOverrideText:
-        typeof metadata.groupScenarioText === "string" && metadata.groupScenarioText.trim()
-          ? metadata.groupScenarioText.trim()
-          : null,
       lastInput: [...msgs].reverse().find((msg) => msg.role === "user")?.content,
-      chatId: chat.id,
       lastGenerationType: "export",
       macroSources: msgs.map((message) => message.content),
     });

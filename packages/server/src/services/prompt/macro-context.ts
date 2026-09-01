@@ -9,6 +9,7 @@ import {
   CHARACTER_REFERENCE_ID_PATTERN,
   PERSONA_REFERENCE_ID_PATTERN,
   formatRpgStatsForPrompt,
+  normalizeGameStoryboardKeyframeCount,
   resolveMacros,
   stripMacroComments,
   type CharacterMacroProfile,
@@ -25,6 +26,8 @@ import { createLorebooksStorage } from "../storage/lorebooks.storage.js";
 import { wrapContent } from "./format-engine.js";
 import { sanitizePromptLeaf } from "./prompt-escaping.js";
 import { logger } from "../../lib/logger.js";
+import { normalizePromptTimeZone } from "../conversation/timezone.js";
+import { loadPresetVariables } from "./preset-variables.js";
 
 type PersonaFields = NonNullable<MacroContext["personaFields"]>;
 
@@ -48,6 +51,8 @@ export interface BuildPromptMacroContextInput {
   timeZone?: string;
   /** Extra prompt templates that may contain macros outside card/persona fields. */
   macroSources?: readonly string[];
+  /** Load lorebook entry counts unconditionally, for paths that resolve text macroSources cannot see. */
+  alwaysLoadLorebookEntryCounts?: boolean;
 }
 
 export interface CharacterMacroData {
@@ -680,6 +685,78 @@ export async function resolveCharacterMacroData(db: DB, characterIds: string[]):
   return { names, phoneticNames, profiles, profilesById, primaryFields };
 }
 
+export interface ChatMacroContextSource {
+  id: string;
+  /** Selects whether a Conversation schedule overrides the remembered browser zone. */
+  mode?: unknown;
+}
+
+export interface BuildChatMacroContextInput extends Omit<
+  BuildPromptMacroContextInput,
+  "chatId" | "variables" | "localVariables" | "groupScenarioOverrideText" | "timeZone"
+> {
+  chat: ChatMacroContextSource;
+  chatMeta: Record<string, unknown>;
+  /** Pass an empty record only when the chat genuinely has no preset. */
+  presetVariables: Record<string, string>;
+  /** Supply the caller's own map when variable writes have to be persisted after resolution. */
+  localVariables?: Record<string, string>;
+  /** Wins over the chat's remembered zone, for a request that carries the user's own. */
+  requestTimeZone?: string;
+}
+
+/**
+ * Build a macro context for a chat, deriving the inputs a chat always owns.
+ *
+ * Prefer this over buildPromptMacroContext in a route. Every chat-scoped field
+ * a call site used to be free to omit, and several silently did, is derived
+ * here instead: the id, the local variable store, the timezone, the group
+ * scenario override, and the storyboard keyframe count. Only per-request inputs
+ * stay optional.
+ */
+export async function buildChatMacroContext(input: BuildChatMacroContextInput): Promise<MacroContext> {
+  const { chat, chatMeta, presetVariables, requestTimeZone, localVariables, ...rest } = input;
+  const conversationTimeZone =
+    chat.mode === "conversation" ? normalizePromptTimeZone(chatMeta.conversationTimeZone) : undefined;
+  const groupScenarioText = chatMeta.groupScenarioText;
+  return buildPromptMacroContext({
+    ...rest,
+    chatId: chat.id,
+    variables: {
+      ...presetVariables,
+      // Engine-owned key last, so a choice block cannot claim its name.
+      gameStoryboardKeyframeCount: String(normalizeGameStoryboardKeyframeCount(chatMeta.gameStoryboardKeyframeCount)),
+    },
+    localVariables: localVariables ?? normalizeChatMacroVariables(chatMeta.macroVariables),
+    groupScenarioOverrideText:
+      typeof groupScenarioText === "string" && groupScenarioText.trim() ? groupScenarioText.trim() : null,
+    timeZone:
+      conversationTimeZone ??
+      normalizePromptTimeZone(requestTimeZone) ??
+      normalizePromptTimeZone(chatMeta.promptTimeZone),
+  });
+}
+
+/** Resolve a chat's preset variables and build its macro context in one step. */
+export async function buildChatMacroContextForPreset(
+  input: Omit<BuildChatMacroContextInput, "presetVariables"> & {
+    presets: Parameters<typeof loadPresetVariables>[0]["presets"];
+    presetId: string | null;
+    presetVariableValues?: unknown;
+  },
+): Promise<MacroContext> {
+  const { presets, presetId, presetVariableValues, ...rest } = input;
+  return buildChatMacroContext({
+    ...rest,
+    presetVariables: await loadPresetVariables({
+      presets,
+      presetId,
+      variableValues: presetVariableValues,
+      chatChoices: (rest.chatMeta.presetChoices ?? {}) as Record<string, string | string[]>,
+    }),
+  });
+}
+
 export async function buildPromptMacroContext(input: BuildPromptMacroContextInput): Promise<MacroContext> {
   const characterMacroData = await resolveCharacterMacroData(input.db, input.characterIds);
   const groupCharacterMacroData = input.groupCharacterIds
@@ -698,7 +775,7 @@ export async function buildPromptMacroContext(input: BuildPromptMacroContextInpu
     input.groupScenarioOverrideText ?? "",
     input.lastInput ?? "",
   ];
-  if (macroSources.some((source) => /\{\{\s*lorebooksize::/iu.test(source))) {
+  if (input.alwaysLoadLorebookEntryCounts || macroSources.some((source) => /\{\{\s*lorebooksize::/iu.test(source))) {
     try {
       lorebookEntryCounts = await createLorebooksStorage(input.db).countAllEntriesByLorebook();
     } catch (err) {

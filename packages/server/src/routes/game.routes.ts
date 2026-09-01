@@ -63,7 +63,7 @@ import { buildPartySystemPrompt } from "../services/game/party-prompts.js";
 import { normalizeNextSessionCampaignPlan, normalizeNextSessionNpcs } from "../services/game/next-session-plan.js";
 import { normalizeCharacterLookupName } from "../services/game/name-normalization.js";
 import {
-  buildPromptMacroContext,
+  buildChatMacroContext,
   resolveMacrosWithVariableSnapshot,
   setLorebookEntryCounts,
 } from "../services/prompt/index.js";
@@ -125,6 +125,8 @@ import {
 } from "../services/game/skill-check.service.js";
 import { applyAllSegmentEdits, stripGmCommandTags } from "../services/game/segment-edits.js";
 import { processLorebooks } from "../services/lorebook/index.js";
+import { createPromptsStorage } from "../services/storage/prompts.storage.js";
+import { resolveChatPresetVariables } from "./generate/prompt-preset-selection.js";
 import {
   GAME_LOREBOOK_KEEPER_SOURCE_ID,
   resolveLorebookScopeExclusions,
@@ -6701,16 +6703,27 @@ export async function gameRoutes(app: FastifyInstance) {
 
     let setupLorebookContext: string | undefined;
     if ((setupConfig.activeLorebookIds?.length ?? 0) > 0) {
-      const setupPromptMacroContext = await buildPromptMacroContext({
+      const setupPromptMacroContext = await buildChatMacroContext({
         db: app.db,
+        chat: { id: chatId, mode: "game" },
+        chatMeta: meta,
+        presetVariables: await resolveChatPresetVariables({
+          presets: createPromptsStorage(app.db),
+          chatMode: "game",
+          // setupConfig is authoritative; chat.promptPresetId was read before
+          // the selection above could write it.
+          chatPromptPresetId: setupConfig.promptPresetId,
+          chatPresetChoices: (meta.presetChoices ?? {}) as Record<string, string | string[]>,
+        }),
         characterIds: setupConfig.partyCharacterIds,
         personaName: personaName ?? "User",
         personaDescription: setupPersonaFields.description,
         personaFields: setupPersonaFields,
-        variables: {},
-        chatId,
         lastGenerationType: "game_setup",
         idleDuration: "0 seconds",
+        // Entry text is resolved through the callback below, so no source is
+        // available to scan for {{lorebooksize::ID}} before the counts load.
+        alwaysLoadLorebookEntryCounts: true,
       });
       const resolveSetupLorebookMacrosForFinal = (
         value: string,

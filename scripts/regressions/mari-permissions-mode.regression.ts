@@ -15,6 +15,10 @@ import {
   mariPermissionsModePrompt,
   readStoredMariPermissionsMode,
 } from "../../packages/server/src/services/professor-mari/workspace-agent.service.js";
+import {
+  awaitMariPermissionsModeWrites,
+  enqueueMariPermissionsModeWrite,
+} from "../../packages/client/src/lib/mari-permissions-write-chain.js";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const readSource = (path: string) => readFileSync(join(repositoryRoot, path), "utf8");
@@ -244,8 +248,56 @@ assert.match(mariChat, /await awaitMariPermissionsModeWrites\(\);/u);
 const writeChainLib = readSource("packages/client/src/lib/mari-permissions-write-chain.ts");
 assert.match(writeChainLib, /export function enqueueMariPermissionsModeWrite/u);
 assert.match(writeChainLib, /export function awaitMariPermissionsModeWrites/u);
-// One failed write never blocks later writes or runs.
-assert.match(writeChainLib, /chain = link\.then\(/u);
+// Anchored: the chain advances through BOTH handlers, so a rejection can
+// never poison it for later writes.
+assert.match(writeChainLib, /chain = link\.then\(\s*\(\) => undefined,\s*\(\) => undefined,\s*\);/u);
+
+// ── Runtime contract of the shared write coordinator ────────────────────────
+// Ordering, rejection isolation, caller-visible rejection, and run-waiting.
+{
+  const deferred = () => {
+    let resolve!: () => void;
+    const promise = new Promise<void>((r) => {
+      resolve = r;
+    });
+    return { promise, resolve };
+  };
+  const order: string[] = [];
+  const gateA = deferred();
+  const writeA = enqueueMariPermissionsModeWrite(async () => {
+    await gateA.promise;
+    order.push("a");
+  });
+  const writeB = enqueueMariPermissionsModeWrite(async () => {
+    order.push("b");
+    throw new Error("write b failed");
+  });
+  const writeC = enqueueMariPermissionsModeWrite(async () => {
+    order.push("c");
+  });
+  await new Promise((r) => setTimeout(r, 10));
+  assert.deepEqual(order, [], "later writes must not start before an earlier write settles");
+  gateA.resolve();
+  await writeA;
+  await assert.rejects(writeB, /write b failed/u, "a caller sees its own write's rejection");
+  await writeC;
+  assert.deepEqual(order, ["a", "b", "c"], "writes run strictly in enqueue order");
+  await awaitMariPermissionsModeWrites(); // must settle despite b's rejection
+
+  // Run-waiting: an awaiter enqueued while a write is pending resolves only
+  // after that write settles.
+  const gateD = deferred();
+  void enqueueMariPermissionsModeWrite(() => gateD.promise).catch(() => undefined);
+  let chainSettled = false;
+  const waiter = awaitMariPermissionsModeWrites().then(() => {
+    chainSettled = true;
+  });
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(chainSettled, false, "a run must wait while a mode write is pending");
+  gateD.resolve();
+  await waiter;
+  assert.equal(chainSettled, true);
+}
 // The latest failed write refetches authoritative status - it never restores
 // a rendered snapshot (which can be optimistic or another chat's).
 assert.doesNotMatch(mariChat, /previous \? previous : current/u);

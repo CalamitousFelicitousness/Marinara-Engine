@@ -185,6 +185,12 @@ assert.match(mariChat, /workspaceStatus\?\.permissionsMode \?\? DEFAULT_MARI_PER
 // The picker is per-chat: status polls carry the chat id, the menu has a
 // use-default row, and writes name the chat.
 assert.match(mariChat, /params\.set\("chatId", activeChatIdRef\.current\)/u);
+// A chat switch refetches the chat-scoped status immediately (the 15s poll
+// alone left the shield on the previous chat's mode), and mode clicks are
+// never short-circuited on possibly-stale check state.
+assert.match(mariChat, /\}, \[chatId, refreshWorkspaceStatus\]\);/u);
+assert.match(mariChat, /No same-value short-circuits/u);
+assert.doesNotMatch(mariChat, /mode === null && !permissionsModeOverridden\) return;/u);
 assert.match(mariChat, /changePermissionsMode\(null\)/u);
 assert.match(mariChat, /\{ mode, chatId: chatIdForMode \}/u);
 assert.match(mariChat, /permissionsModeSource === "chat"/u);

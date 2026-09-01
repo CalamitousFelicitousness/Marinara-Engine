@@ -3539,6 +3539,17 @@ export function HomeProfessorMariChat({
     [effectiveConnectionId],
   );
 
+  // #5725: the status payload is CHAT-SCOPED (effective mode for the active
+  // chat), so a chat switch must refetch it immediately - the 15s interval
+  // alone leaves the shield showing the PREVIOUS chat's mode in exactly the
+  // window where the user reads it and decides to send. The guard drops the
+  // response if the user switched again while it was in flight.
+  useEffect(() => {
+    if (!chatId) return;
+    const id = chatId;
+    void refreshWorkspaceStatus(() => activeChatIdRef.current === id).catch(() => undefined);
+  }, [chatId, refreshWorkspaceStatus]);
+
   const invalidateWorkspaceData = useCallback(async () => {
     // Invalidation marks every query stale either way; the default 'active'
     // refetch pulls only what is mounted now, and everything else refreshes on
@@ -3855,8 +3866,10 @@ export function HomeProfessorMariChat({
       setPermissionsMenuOpen(false);
       const chatIdForMode = activeChatIdRef.current;
       if (!chatIdForMode) return;
-      if (mode === permissionsMode && permissionsModeOverridden) return;
-      if (mode === null && !permissionsModeOverridden) return;
+      // No same-value short-circuits: the check state can be stale for up to
+      // one poll after a chat switch, and silently dropping the user's click
+      // (especially a "Use default" de-escalation) is worse than sending an
+      // idempotent write that converges via the refetch below.
       const previous = workspaceStatus;
       setWorkspaceStatus((current) =>
         current

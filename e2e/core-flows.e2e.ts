@@ -19048,6 +19048,8 @@ test("mobile chat composer follows the visual viewport above the software keyboa
         rootHeight: `${await page.evaluate(() => window.innerHeight)}px`,
         rootOverflow: "hidden",
       });
+    await expect(page.locator("html")).toHaveAttribute("data-mari-ios-webkit", "");
+    await expect(shell).toHaveCSS("position", "absolute");
     await page.evaluate(() => {
       const probeWindow = window as typeof window & {
         __mariOriginalScrollIntoView: typeof Element.prototype.scrollIntoView;
@@ -19061,13 +19063,16 @@ test("mobile chat composer follows the visual viewport above the software keyboa
     });
     const iosFocusOffsetTop = Math.min(72, Math.max(0, initialViewportHeight - 360));
     const iosFocusPageTop = Math.min(340, Math.max(0, initialViewportHeight - 360));
-    await page.evaluate(({ offsetTop, pageTop }) => {
-      (
-        window as typeof window & {
-          __setMarinaraVisualViewport: (height: number, offsetTop: number, pageTop?: number) => void;
-        }
-      ).__setMarinaraVisualViewport(360, offsetTop, pageTop);
-    }, { offsetTop: iosFocusOffsetTop, pageTop: iosFocusPageTop });
+    await page.evaluate(
+      ({ offsetTop, pageTop }) => {
+        (
+          window as typeof window & {
+            __setMarinaraVisualViewport: (height: number, offsetTop: number, pageTop?: number) => void;
+          }
+        ).__setMarinaraVisualViewport(360, offsetTop, pageTop);
+      },
+      { offsetTop: iosFocusOffsetTop, pageTop: iosFocusPageTop },
+    );
     await textarea.focus();
     await expect
       .poll(() =>
@@ -19110,6 +19115,54 @@ test("mobile chat composer follows the visual viewport above the software keyboa
     expect(Math.abs(iosShellBox!.height - 360)).toBeLessThanOrEqual(1);
     expect(iosComposerBox!.y).toBeGreaterThanOrEqual(iosFocusPageTop);
     expect(iosComposerBox!.y + iosComposerBox!.height).toBeLessThanOrEqual(iosFocusPageTop + 360);
+
+    // Model WebKit's native keyboard pan: the body moves visually while the
+    // document scroll offsets stay at zero. The shell's document-coordinate
+    // top must cancel that displacement and keep the composer on-screen.
+    await page.locator("body").evaluate((element, pageTop) => {
+      element.style.transform = `translateY(-${pageTop}px)`;
+    }, iosFocusPageTop);
+    await expect
+      .poll(() =>
+        page.evaluate(() => ({
+          bodyTop: Math.round(document.body.getBoundingClientRect().top),
+          bodyScrollTop: document.body.scrollTop,
+          documentScrollTop: document.documentElement.scrollTop,
+        })),
+      )
+      .toEqual({ bodyTop: -iosFocusPageTop, bodyScrollTop: 0, documentScrollTop: 0 });
+    const [pannedShellBox, pannedComposerBox] = await Promise.all([shell.boundingBox(), composer.boundingBox()]);
+    expect(pannedShellBox).not.toBeNull();
+    expect(pannedComposerBox).not.toBeNull();
+    expect(Math.abs(pannedShellBox!.y)).toBeLessThanOrEqual(1);
+    expect(pannedComposerBox!.y).toBeGreaterThanOrEqual(0);
+    expect(pannedComposerBox!.y + pannedComposerBox!.height).toBeLessThanOrEqual(360);
+
+    await transcript.evaluate((element) => {
+      element.scrollTop = Math.min(240, element.scrollHeight - element.clientHeight);
+    });
+    await expect.poll(() => transcript.evaluate((element) => element.scrollTop)).toBeGreaterThan(100);
+
+    await textarea.blur();
+    await page.evaluate((height) => {
+      (
+        window as typeof window & {
+          __setMarinaraVisualViewport: (height: number, offsetTop: number, pageTop?: number) => void;
+        }
+      ).__setMarinaraVisualViewport(height, 0, 0);
+      document.body.style.removeProperty("transform");
+    }, initialViewportHeight);
+    await expect(page.locator("html")).not.toHaveAttribute("data-mari-software-keyboard-open", "");
+    const dismissedShellBox = await shell.boundingBox();
+    expect(dismissedShellBox).not.toBeNull();
+    expect(Math.abs(dismissedShellBox!.y)).toBeLessThanOrEqual(1);
+    expect(Math.abs(dismissedShellBox!.height - initialViewportHeight)).toBeLessThanOrEqual(1);
+    await transcript.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    await expect
+      .poll(() => transcript.evaluate((element) => element.scrollHeight - element.scrollTop - element.clientHeight))
+      .toBeLessThanOrEqual(2);
 
     await page.evaluate(async () => {
       const storePath = "/src/stores/ui.store.ts";

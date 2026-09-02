@@ -6065,6 +6065,13 @@ strong {
     padding-right: env(safe-area-inset-right);
   }
 
+  /* A fixed ancestor lets iOS WebKit pan the whole app when any descendant
+     input opens the keyboard. Keep iOS surfaces in document coordinates so
+     they can follow the visual viewport directly. */
+  html[data-mari-ios-webkit] body {
+    position: static;
+  }
+
   #root {
     width: 100%;
     height: 100%;
@@ -6081,11 +6088,15 @@ strong {
     min-height: 0;
   }
 
-  /* iOS can visually pan a locked document during keyboard focus without
-     changing its scroll offsets. Use document coordinates there so the
-     visual-viewport top cancels that pan instead of shifting a fixed shell. */
-  html[data-mari-ios-webkit] .mari-app[data-chat-surface-active="true"]:has([data-chat-mode]) {
+  /* Cover both the app and body-portal dialogs. Character/persona fields use
+     the same viewport contract as chat instead of falling back to fixed UI. */
+  html[data-mari-ios-webkit] .mari-app,
+  html[data-mari-ios-webkit] .mari-modal {
     position: absolute;
+    top: var(--mari-visual-viewport-offset-top, 0px);
+    bottom: auto;
+    height: var(--mari-visual-viewport-height, 100dvh);
+    min-height: 0;
   }
 
   .app-sidebar-mobile {

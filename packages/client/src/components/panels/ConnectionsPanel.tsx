@@ -796,6 +796,7 @@ function isEnabledConnectionRole(value: boolean | string | undefined): boolean {
   return value === true || value === "true";
 }
 
+/** Renders one connection default and fallback pair with optional agent controls. */
 function ConnectionDefaultPair({
   title,
   icon,
@@ -979,6 +980,7 @@ function ConnectionDefaultPair({
   );
 }
 
+/** Renders the expandable connection defaults section. */
 function ConnectionDefaultsSection({ connectionsList }: { connectionsList: ConnectionRowData[] }) {
   const { t: localizeUi } = useUiTranslation();
   const [open, setOpen] = useState(false);

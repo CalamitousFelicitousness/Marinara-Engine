@@ -2212,6 +2212,27 @@ export function HomeBrowserHub({
                 </span>
               </div>
             </div>
+            {/* #5743: a SIBLING of the tab list, never a child - a tablist may
+                only contain tabs, and two independent reviews flagged the
+                nesting. On phone widths the wordmark above is hidden, so this
+                renders as the strip's leading control beside the Home tab. */}
+            <button
+              ref={mobileBookmarksTriggerRef}
+              type="button"
+              className={cn(
+                "flex h-9 w-9 shrink-0 items-center justify-center self-end rounded-t-lg border border-b-0 border-transparent text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--marinara-app-accent-solid)] sm:hidden",
+                mobileBookmarksOpen && "bg-[var(--accent)] text-[var(--foreground)]",
+                activeTab !== "home" && !showHomeBrowserMobileBookmarksOnOtherTabs && "hidden",
+              )}
+              aria-label={t("home.browser.bookmarksCompact")}
+              title={t("home.browser.bookmarksCompact")}
+              aria-expanded={mobileBookmarksOpen}
+              aria-controls="marinara-mobile-bookmarks"
+              onClick={() => setMobileBookmarksOpen((open) => !open)}
+              data-component="HomeBrowserHub.MobileBookmarksTrigger"
+            >
+              <Bookmark size="1rem" aria-hidden="true" />
+            </button>
             <div
               className="flex min-w-0 flex-1 items-end gap-0.5 overflow-hidden sm:gap-1 sm:overflow-x-auto"
               role="tablist"
@@ -2238,23 +2259,6 @@ export function HomeBrowserHub({
                 <span className={cn("min-w-0 truncate", activeTab === "home" ? "block" : "hidden sm:block")}>
                   {t("home.browser.homeTab")}
                 </span>
-              </button>
-              <button
-                ref={mobileBookmarksTriggerRef}
-                type="button"
-                className={cn(
-                  "flex h-9 w-9 shrink-0 items-center justify-center rounded-t-lg border border-b-0 border-transparent text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--marinara-app-accent-solid)] sm:hidden",
-                  mobileBookmarksOpen && "bg-[var(--accent)] text-[var(--foreground)]",
-                  activeTab !== "home" && !showHomeBrowserMobileBookmarksOnOtherTabs && "hidden",
-                )}
-                aria-label={t("home.browser.bookmarksCompact")}
-                title={t("home.browser.bookmarksCompact")}
-                aria-expanded={mobileBookmarksOpen}
-                aria-controls="marinara-mobile-bookmarks"
-                onClick={() => setMobileBookmarksOpen((open) => !open)}
-                data-component="HomeBrowserHub.MobileBookmarksTrigger"
-              >
-                <Bookmark size="1rem" aria-hidden="true" />
               </button>
               <button
                 id={homeBrowserTabId("professor")}

@@ -4019,6 +4019,7 @@ export function HomeProfessorMariChat({
       rememberProfessorMariFloatingEnabled(false);
     }
     setConnectionMenuOpen(false);
+    setLibraryMenuOpen(false);
     setSkillsMenuOpen(false);
     setMemoriesMenuOpen(false);
     setChatHistoryOpen(false);
@@ -4032,6 +4033,7 @@ export function HomeProfessorMariChat({
       floatingFollowupEligibleRef.current = true;
       rememberProfessorMariFloatingEnabled(true);
     }
+    setLibraryMenuOpen(false);
     setSkillsMenuOpen(false);
     setMemoriesMenuOpen(false);
     setChatHistoryOpen(false);

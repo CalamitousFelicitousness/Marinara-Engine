@@ -413,7 +413,7 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
                 <>
                   {contextBudget && (
                     <div className="px-2 pt-1">
-                      <ContextBudgetIndicator budget={contextBudget} />
+                      <ContextBudgetIndicator budget={contextBudget} useAccentColor />
                     </div>
                   )}
                   <button

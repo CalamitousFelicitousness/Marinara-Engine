@@ -98,11 +98,13 @@ export function MariSuggestionChips({ chips, onSelect, disabled = false, compact
   // rather than useEffect: the fade state has to land in the same frame the row paints.
   useLayoutEffect(() => {
     if (!scroller) return;
+    const isRtl = getComputedStyle(scroller).direction === "rtl";
     const syncFade = () => {
-      // scrollLeft counts up from 0 in LTR and down from 0 in RTL, so normalize to how much
-      // content is hidden past each physical edge before deciding which fade to show.
+      // scrollLeft counts up from 0 in LTR; in RTL it RESTS at 0 (right edge, all overflow
+      // hidden to the left) and goes negative - so a sign check alone misreads the RTL rest
+      // position, and the writing direction has to pick the normalization.
       const maxScroll = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
-      const hiddenLeft = scroller.scrollLeft < 0 ? maxScroll + scroller.scrollLeft : scroller.scrollLeft;
+      const hiddenLeft = isRtl ? maxScroll + scroller.scrollLeft : scroller.scrollLeft;
       const next: ChipFadeState = { left: hiddenLeft > 1, right: maxScroll - hiddenLeft > 1 };
       setFade((current) => (current.left === next.left && current.right === next.right ? current : next));
     };
@@ -138,6 +140,13 @@ export function MariSuggestionChips({ chips, onSelect, disabled = false, compact
     const dragState = dragStateRef.current;
     if (!dragState || dragState.pointerId !== event.pointerId) return;
     const el = event.currentTarget;
+    // Before capture is taken, a release outside the row never reaches endDrag - the armed
+    // state would otherwise survive with a stale start position and turn a later re-entry
+    // into a phantom jump-scroll. buttons === 0 means the press already ended elsewhere.
+    if (!dragState.dragging && event.buttons === 0) {
+      dragStateRef.current = null;
+      return;
+    }
     const delta = event.clientX - dragState.startClientX;
     if (!dragState.dragging) {
       if (Math.abs(delta) < CHIP_DRAG_THRESHOLD_PX) return;
@@ -167,6 +176,14 @@ export function MariSuggestionChips({ chips, onSelect, disabled = false, compact
     endDrag(event);
   };
 
+  const handlePointerLeave = () => {
+    // Pre-threshold there is no capture, so the cursor leaving the row is the last event
+    // this element sees for the press - disarm rather than keep stale drag state. During a
+    // real (captured) drag, moves keep flowing to the capture target, so this only clears
+    // the un-promoted case.
+    if (dragStateRef.current && !dragStateRef.current.dragging) dragStateRef.current = null;
+  };
+
   const handleClickCapture = (event: ReactMouseEvent<HTMLDivElement>) => {
     if (!wasDraggedRef.current) return;
     // Swallow exactly the one click that closes a real drag, so releasing the mouse over a
@@ -193,6 +210,7 @@ export function MariSuggestionChips({ chips, onSelect, disabled = false, compact
           onPointerMove={handlePointerMove}
           onPointerUp={endDrag}
           onPointerCancel={cancelDrag}
+          onPointerLeave={handlePointerLeave}
           onClickCapture={handleClickCapture}
           initial={reducedMotion ? false : { opacity: 0, y: 12, scale: 0.97 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}

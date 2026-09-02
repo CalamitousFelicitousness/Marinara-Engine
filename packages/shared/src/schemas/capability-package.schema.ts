@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { agentResultTypeSchema } from "./agent.schema.js";
 
+/** Caps mirrored by the Marinara-Agents catalog build. Kept here so a hostile or
+ *  broken notes document cannot push an unbounded string into a modal. */
+export const MAX_RELEASE_NOTE_CHARACTERS = 1000;
+export const MAX_RELEASE_NOTE_VERSIONS = 20;
+
 export const capabilityPackageKindSchema = z.enum(["agent", "maps", "conversation-calls", "turn-game"]);
 export const capabilityPermissionSchema = z.enum([
   "agent-runtime",
@@ -467,7 +472,48 @@ export interface CapabilityPackageUpdate {
   version: string;
   artifactSha256: string;
   restartRequired: boolean;
+  /** Release notes published for `version`, when the catalog ships a notes sidecar. */
+  releaseNotes?: string;
+  /** Whether the publisher marked `version` as a change the user will notice. */
+  releaseHighlight?: boolean;
 }
+
+/** Release notes live in a sidecar document next to catalog.json, never inside a
+ *  catalog entry or a package manifest.
+ *
+ *  `capabilityCatalogPackageSchema` is strict and `parseCapabilityCatalogWithCompat`
+ *  DROPS entries carrying keys it does not know. A new key on a catalog entry would
+ *  therefore empty the Agents browser on every already-shipped Engine that predates
+ *  it, not just hide the notes. A sibling document those Engines never fetch has no
+ *  such blast radius: an Engine without this feature simply never asks for it, and an
+ *  Engine with it treats a missing document as "no notes". */
+const capabilityPackageVersionNoteSchema = z
+  .object({
+    version: z.string().regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    /** Plain text. Rendered verbatim and never as markdown or HTML: the catalog URL
+     *  is operator-configurable, so this is untrusted remote content. */
+    notes: z.string().min(1).max(MAX_RELEASE_NOTE_CHARACTERS),
+    /** Published by the catalog build, never recomputed here. */
+    highlight: z.boolean().default(false),
+  })
+  .strict();
+
+export const capabilityReleaseNotesSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    packages: z.record(
+      z
+        .string()
+        .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+        .max(80),
+      z.object({ versions: z.array(capabilityPackageVersionNoteSchema).max(MAX_RELEASE_NOTE_VERSIONS) }).strict(),
+    ),
+  })
+  .strict();
+
+export type CapabilityPackageVersionNote = z.infer<typeof capabilityPackageVersionNoteSchema>;
+export type CapabilityReleaseNotes = z.infer<typeof capabilityReleaseNotesSchema>;
 
 export interface CustomAgentRepository {
   id: string;

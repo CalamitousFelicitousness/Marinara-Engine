@@ -6,6 +6,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Added
 
+- Agent packages can now publish release notes. The update prompt lists each waiting Agent with its version change, whether it needs a restart, and a collapsible "What changed"; Download Agents gains a Version history section on the Agent detail page. A dot marks a version the publisher flagged as a change you will notice, so routine bugfix releases do not compete for attention with real ones. Notes come from a `notes.json` published beside the Agent catalog, are English only, and render as plain text; an Agent catalog that publishes none behaves exactly as before.
+
 - Added a Connections -> Defaults -> Agents toggle to hide the recurring warning for agents that use the configured default connection (#5767).
 
 - Professor Mari now shows what she acted on (#5740): when a reply stages or applies changes, an "Acting on" line under it quotes the exact words she treated as the request or permission - your message, or the memory/instruction that directed her - truncated to one row and expandable on click; expanding also lists the commands it covered, marked when they were held for your approval. The same record (latest round only, kept in memory, never validated) rides Support Diagnostics as a "Mari last acted on" line, so behavior reports carry the signal needed to tell user error from a real Mari issue - and Mari herself sees the record for the chat, so asking her why she treated something as permission gets an answer grounded in it.

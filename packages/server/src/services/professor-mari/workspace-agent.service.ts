@@ -1345,8 +1345,12 @@ export function parseAssistantWorkspaceAction(content: string): AssistantWorkspa
   const plan = matches.flatMap((match) => sanitizePlanSteps(match.payload.plan));
   const awaitingAuthorization = matches.some((match) => match.payload.awaitingAuthorization === true);
   // #5740: diagnostic only - stored and displayed, never validated or gated.
+  // Only frames that themselves carry a mutating command may supply the
+  // phrase: in a tolerated multi-frame response, a read-only frame's phrase
+  // must not be attributed to another frame's mutations.
   const understoodRequest =
     matches
+      .filter((match) => parseJsonCommandCallsFromPayload(match.payload).some(isMutatingWorkspaceCommand))
       .map((match) =>
         typeof match.payload.understoodRequest === "string" ? match.payload.understoodRequest.trim() : "",
       )

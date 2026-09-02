@@ -37,10 +37,41 @@ const nonString = parseAssistantWorkspaceAction(
 );
 assert.equal(nonString.understoodRequest, null);
 
+const mutatingCommand = {
+  name: "app_data",
+  arguments: { action: "character.update", characterId: "c1", patch: { personality: "x" }, apply: true },
+};
 const capped = parseAssistantWorkspaceAction(
-  JSON.stringify({ say: "", understoodRequest: "x".repeat(5000), commands: [], stop: true }),
+  JSON.stringify({ say: "", understoodRequest: "x".repeat(5000), commands: [mutatingCommand], stop: false }),
 );
 assert.equal(capped.understoodRequest?.length, 2000, "the quoted phrase is capped, never unbounded");
+
+// Multi-frame responses: only a frame that itself carries a mutating command
+// may supply the phrase - a read-only frame's phrase must never be attributed
+// to another frame's mutations.
+const readOnlyFrame = JSON.stringify({
+  say: "",
+  understoodRequest: "wrong phrase from a read-only frame",
+  commands: [{ name: "app_data", arguments: { action: "character.get", characterId: "c1" } }],
+  stop: false,
+});
+const mutatingFrameWithPhrase = JSON.stringify({
+  say: "",
+  understoodRequest: "right phrase from the mutating frame",
+  commands: [mutatingCommand],
+  stop: false,
+});
+const mutatingFrameNoPhrase = JSON.stringify({ say: "", commands: [mutatingCommand], stop: false });
+assert.equal(
+  parseAssistantWorkspaceAction(`${readOnlyFrame}\n${mutatingFrameWithPhrase}`).understoodRequest,
+  "right phrase from the mutating frame",
+  "the phrase comes from the frame that carries the mutating command",
+);
+assert.equal(
+  parseAssistantWorkspaceAction(`${readOnlyFrame}\n${mutatingFrameNoPhrase}`).understoodRequest,
+  null,
+  "a read-only frame's phrase is never misattributed to another frame's mutations",
+);
 
 // ── Server: capture, retention, and the never-enforce constraint ────────────
 const workspaceAgent = readSource("packages/server/src/services/professor-mari/workspace-agent.service.ts");

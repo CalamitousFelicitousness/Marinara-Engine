@@ -6,6 +6,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Added
 
+- Agent packages can now publish release notes. The update prompt lists each waiting Agent with its version change, whether it needs a restart, and a collapsible "What changed"; Download Agents gains a Version history section on the Agent detail page. A dot marks a version the publisher flagged as a change you will notice, so routine bugfix releases do not compete for attention with real ones. Notes come from a `notes.json` published beside the Agent catalog, are English only, and render as plain text; an Agent catalog that publishes none behaves exactly as before.
+
 - Added a Connections -> Defaults -> Agents toggle to hide the recurring warning for agents that use the configured default connection (#5767).
 
 - Professor Mari's suggestion chips are now reachable with a mouse (#5742): drag the row to scroll it (a plain click still picks a chip), and edge fades appear only while more chips actually sit off-screen - so a cut-off chip reads as "scrollable", not broken. Touch swiping is untouched, and the fade is a mask, so it works over chat background images and both themes.

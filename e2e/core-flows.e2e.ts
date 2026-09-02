@@ -1869,7 +1869,7 @@ test("mobile Roleplay context and edit controls keep their chrome and space", as
     await expect(budget.getByText(/tokens$/u)).toHaveCSS("color", chromeText);
     await expect(budget.getByRole("progressbar").locator(":scope > div")).toHaveCSS(
       "background-color",
-      configuredChromeText,
+      appAccent,
     );
     await testInfo.attach(`mobile-roleplay-context-${testInfo.project.name}.png`, {
       body: await page.screenshot({ fullPage: true }),
@@ -3160,6 +3160,72 @@ test("Connection Discard uses the configured editor accent", async ({ page }, te
     await expect(editor).toHaveCount(0);
   } finally {
     await page.request.delete(`/api/connections/${connection.id}`).catch(() => undefined);
+  }
+});
+
+test("mobile connection drag previews preserve configured Chroma text", async ({ page, request }, testInfo) => {
+  test.skip(!testInfo.project.name.includes("mobile"), "Touch drag preview colors are covered on mobile.");
+
+  const suffix = Date.now().toString(36);
+  const connectionName = `Drag Preview Chroma ${suffix}`;
+  const model = `drag-preview-${suffix}`;
+  const connectionResponse = await request.post("/api/connections", {
+    data: { name: connectionName, provider: "openrouter", model },
+  });
+  expect(connectionResponse.ok(), await connectionResponse.text()).toBeTruthy();
+  const connection = (await connectionResponse.json()) as { id: string };
+
+  try {
+    await page.goto("/");
+    await page.evaluate(async () => {
+      const { useUIStore } = (await import("/src/stores/ui.store.ts" as string)) as {
+        useUIStore: {
+          getState: () => {
+            setAppAccentColor: (value: string) => void;
+            setChatChromeTextColor: (value: string) => void;
+          };
+        };
+      };
+      const ui = useUIStore.getState();
+      ui.setAppAccentColor("#ff1493");
+      ui.setChatChromeTextColor("#14b8a6");
+    });
+    await page.locator('[data-tour="panel-connections"]').click();
+
+    const panel = page.locator('[data-component="RightPanelMobile"]');
+    const source = panel.locator(`[data-touch-drag-card="connection"][data-connection-id="${connection.id}"]`);
+    const metadataText = `openrouter • ${model}`;
+    const sourceMetadata = source.getByText(metadataText, { exact: true });
+    const expectedColor = await readScopedCssVariableColor(source, "--muted-foreground");
+    await expect(sourceMetadata).toHaveCSS("color", expectedColor);
+
+    const dragHandle = source.getByTitle("Drag connection", { exact: true });
+    const handleBounds = await dragHandle.boundingBox();
+    expect(handleBounds).not.toBeNull();
+    const point = {
+      x: handleBounds!.x + handleBounds!.width / 2,
+      y: handleBounds!.y + handleBounds!.height / 2,
+    };
+    await dragHandle.evaluate((handle, startPoint) => {
+      const touch = { identifier: 1, target: handle, clientX: startPoint.x, clientY: startPoint.y };
+      const event = new Event("touchstart", { bubbles: true, cancelable: true });
+      Object.defineProperties(event, {
+        touches: { value: [touch] },
+        changedTouches: { value: [touch] },
+      });
+      handle.dispatchEvent(event);
+    }, point);
+    await page.waitForTimeout(350);
+
+    const preview = page.locator(
+      `body > [data-touch-drag-card="connection"][data-connection-id="${connection.id}"][aria-hidden="true"]`,
+    );
+    await expect(preview).toBeVisible();
+    await expect(preview.getByText(metadataText, { exact: true })).toHaveCSS("color", expectedColor);
+    await page.evaluate(() => window.dispatchEvent(new Event("touchcancel")));
+    await expect(preview).toHaveCount(0);
+  } finally {
+    await request.delete(`/api/connections/${connection.id}`).catch(() => undefined);
   }
 });
 
@@ -15692,6 +15758,10 @@ test("Professor Mari shows the latest context budget when token usage is enabled
           skills: [],
           skillDiagnostics: [],
           active: false,
+          permissionsMode: "auto",
+          permissionsModeDefault: "auto",
+          permissionsModeSource: "default",
+          latestUnderstoodRequest: null,
           pendingApprovals: [],
           history: [],
           error: null,
@@ -15834,6 +15904,10 @@ test("Professor Mari dependency and sensitive-file reviews stay explicit across 
         skills: [],
         skillDiagnostics: [],
         active: false,
+        permissionsMode: "auto",
+        permissionsModeDefault: "auto",
+        permissionsModeSource: "default",
+        latestUnderstoodRequest: null,
         pendingApprovals: [
           {
             kind: "dependency_install",
@@ -19048,6 +19122,8 @@ test("mobile chat composer follows the visual viewport above the software keyboa
         rootHeight: `${await page.evaluate(() => window.innerHeight)}px`,
         rootOverflow: "hidden",
       });
+    await expect(page.locator("html")).toHaveAttribute("data-mari-ios-webkit", "");
+    await expect(shell).toHaveCSS("position", "absolute");
     await page.evaluate(() => {
       const probeWindow = window as typeof window & {
         __mariOriginalScrollIntoView: typeof Element.prototype.scrollIntoView;
@@ -19061,13 +19137,16 @@ test("mobile chat composer follows the visual viewport above the software keyboa
     });
     const iosFocusOffsetTop = Math.min(72, Math.max(0, initialViewportHeight - 360));
     const iosFocusPageTop = Math.min(340, Math.max(0, initialViewportHeight - 360));
-    await page.evaluate(({ offsetTop, pageTop }) => {
-      (
-        window as typeof window & {
-          __setMarinaraVisualViewport: (height: number, offsetTop: number, pageTop?: number) => void;
-        }
-      ).__setMarinaraVisualViewport(360, offsetTop, pageTop);
-    }, { offsetTop: iosFocusOffsetTop, pageTop: iosFocusPageTop });
+    await page.evaluate(
+      ({ offsetTop, pageTop }) => {
+        (
+          window as typeof window & {
+            __setMarinaraVisualViewport: (height: number, offsetTop: number, pageTop?: number) => void;
+          }
+        ).__setMarinaraVisualViewport(360, offsetTop, pageTop);
+      },
+      { offsetTop: iosFocusOffsetTop, pageTop: iosFocusPageTop },
+    );
     await textarea.focus();
     await expect
       .poll(() =>
@@ -19110,6 +19189,54 @@ test("mobile chat composer follows the visual viewport above the software keyboa
     expect(Math.abs(iosShellBox!.height - 360)).toBeLessThanOrEqual(1);
     expect(iosComposerBox!.y).toBeGreaterThanOrEqual(iosFocusPageTop);
     expect(iosComposerBox!.y + iosComposerBox!.height).toBeLessThanOrEqual(iosFocusPageTop + 360);
+
+    // Model WebKit's native keyboard pan: the body moves visually while the
+    // document scroll offsets stay at zero. The shell's document-coordinate
+    // top must cancel that displacement and keep the composer on-screen.
+    await page.locator("body").evaluate((element, pageTop) => {
+      element.style.transform = `translateY(-${pageTop}px)`;
+    }, iosFocusPageTop);
+    await expect
+      .poll(() =>
+        page.evaluate(() => ({
+          bodyTop: Math.round(document.body.getBoundingClientRect().top),
+          bodyScrollTop: document.body.scrollTop,
+          documentScrollTop: document.documentElement.scrollTop,
+        })),
+      )
+      .toEqual({ bodyTop: -iosFocusPageTop, bodyScrollTop: 0, documentScrollTop: 0 });
+    const [pannedShellBox, pannedComposerBox] = await Promise.all([shell.boundingBox(), composer.boundingBox()]);
+    expect(pannedShellBox).not.toBeNull();
+    expect(pannedComposerBox).not.toBeNull();
+    expect(Math.abs(pannedShellBox!.y)).toBeLessThanOrEqual(1);
+    expect(pannedComposerBox!.y).toBeGreaterThanOrEqual(0);
+    expect(pannedComposerBox!.y + pannedComposerBox!.height).toBeLessThanOrEqual(360);
+
+    await transcript.evaluate((element) => {
+      element.scrollTop = Math.min(240, element.scrollHeight - element.clientHeight);
+    });
+    await expect.poll(() => transcript.evaluate((element) => element.scrollTop)).toBeGreaterThan(100);
+
+    await textarea.blur();
+    await page.evaluate((height) => {
+      (
+        window as typeof window & {
+          __setMarinaraVisualViewport: (height: number, offsetTop: number, pageTop?: number) => void;
+        }
+      ).__setMarinaraVisualViewport(height, 0, 0);
+      document.body.style.removeProperty("transform");
+    }, initialViewportHeight);
+    await expect(page.locator("html")).not.toHaveAttribute("data-mari-software-keyboard-open", "");
+    const dismissedShellBox = await shell.boundingBox();
+    expect(dismissedShellBox).not.toBeNull();
+    expect(Math.abs(dismissedShellBox!.y)).toBeLessThanOrEqual(1);
+    expect(Math.abs(dismissedShellBox!.height - initialViewportHeight)).toBeLessThanOrEqual(1);
+    await transcript.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    await expect
+      .poll(() => transcript.evaluate((element) => element.scrollHeight - element.scrollTop - element.clientHeight))
+      .toBeLessThanOrEqual(2);
 
     await page.evaluate(async () => {
       const storePath = "/src/stores/ui.store.ts";

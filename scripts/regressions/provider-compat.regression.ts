@@ -861,9 +861,39 @@ assert.equal(
     toolChoice: "required",
     tools: [testToolDefinition],
   }),
-  "mythos",
+  "automatic-only",
 );
 assert.deepEqual(anthropicMythosBody.tool_choice, { type: "auto" });
+const anthropicMythos51Body: Record<string, unknown> = { thinking: { type: "adaptive" } };
+assert.equal(
+  applyAnthropicToolChoice(anthropicMythos51Body, {
+    model: "claude-mythos-5-1",
+    toolChoice: "required",
+    tools: [testToolDefinition],
+  }),
+  "automatic-only",
+);
+assert.deepEqual(anthropicMythos51Body.tool_choice, { type: "auto" });
+const anthropicFableBody: Record<string, unknown> = { thinking: { type: "adaptive" } };
+assert.equal(
+  applyAnthropicToolChoice(anthropicFableBody, {
+    model: "claude-fable-5",
+    toolChoice: "required",
+    tools: [testToolDefinition],
+  }),
+  "applied",
+);
+assert.deepEqual(anthropicFableBody.tool_choice, { type: "any" });
+const anthropicFable51Body: Record<string, unknown> = { thinking: { type: "adaptive" } };
+assert.equal(
+  applyAnthropicToolChoice(anthropicFable51Body, {
+    model: "claude-fable-5-1",
+    toolChoice: "required",
+    tools: [testToolDefinition],
+  }),
+  "automatic-only",
+);
+assert.deepEqual(anthropicFable51Body.tool_choice, { type: "auto" });
 const anthropicAutomaticBody: Record<string, unknown> = {
   tool_choice: { type: "any", disable_parallel_tool_use: true },
 };
@@ -880,6 +910,18 @@ assert.equal(supportsAnthropicThinkingDisable("claude-sonnet-5"), true);
 assert.equal(supportsAnthropicThinkingDisable("claude-opus-5"), true);
 assert.equal(supportsAnthropicThinkingDisable("claude-fable-5"), false);
 assert.equal(isClaudeAdaptiveOnlyNoSamplingModel("claude-opus-5"), true);
+assert.equal(isClaudeAdaptiveOnlyNoSamplingModel("claude-fable-5-1"), true);
+assert.equal(supportsAnthropicThinkingDisable("claude-fable-5-1"), false);
+assert.equal(shouldSuppressUnknownModelParameters("anthropic", "claude-fable-5-1"), false);
+const fable51 = findKnownModel("anthropic", "claude-fable-5-1");
+assert.equal(fable51?.context, 1_000_000);
+assert.equal(fable51?.maxOutput, 128_000);
+assert.equal(isClaudeAdaptiveOnlyNoSamplingModel("claude-mythos-5-1"), true);
+assert.equal(supportsAnthropicThinkingDisable("claude-mythos-5-1"), false);
+assert.equal(shouldSuppressUnknownModelParameters("anthropic", "claude-mythos-5-1"), false);
+const mythos51 = findKnownModel("anthropic", "claude-mythos-5-1");
+assert.equal(mythos51?.context, 1_000_000);
+assert.equal(mythos51?.maxOutput, 128_000);
 const opus5 = findKnownModel("anthropic", "claude-opus-5");
 assert.equal(opus5?.context, 1_000_000);
 assert.equal(opus5?.maxOutput, 128_000);
@@ -1081,6 +1123,17 @@ assert.equal(
     assert.equal("temperature" in disabledBody, false);
     assert.equal("top_k" in disabledBody, false);
     assert.equal("top_p" in disabledBody, false);
+
+    await collectProviderOutput(provider, {
+      model: "claude-fable-5-1",
+      stream: false,
+      maxTokens: 128_000,
+      captureReasoning: true,
+      reasoningEffort: "max",
+    });
+    const fableMaxOutputBody = anthropicRequestBodies[2];
+    assert.ok(fableMaxOutputBody);
+    assert.equal(fableMaxOutputBody.max_tokens, 128_000);
   } finally {
     await new Promise<void>((resolve, reject) => anthropicServer.close((error) => (error ? reject(error) : resolve())));
   }

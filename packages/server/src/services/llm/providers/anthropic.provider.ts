@@ -13,7 +13,11 @@ import {
   type LLMToolDefinition,
   type LLMUsage,
 } from "../base-provider.js";
-import { isClaudeAdaptiveOnlyNoSamplingModel, shouldSuppressUnknownModelParameters } from "@marinara-engine/shared";
+import {
+  findKnownModel,
+  isClaudeAdaptiveOnlyNoSamplingModel,
+  shouldSuppressUnknownModelParameters,
+} from "@marinara-engine/shared";
 import { logger } from "../../../lib/logger.js";
 
 const DEFAULT_CACHING_AT_DEPTH = 5;
@@ -72,7 +76,10 @@ function applyAdaptiveThinkingConfig(
   body.thinking = { type: "adaptive", display: "summarized" };
   body.output_config = { effort: options.reasoningEffort ?? "high" };
   if (typeof visibleMaxTokens === "number" && Number.isFinite(visibleMaxTokens) && visibleMaxTokens > 0) {
-    body.max_tokens = Math.floor(visibleMaxTokens) + resolveAdaptiveThinkingHeadroom(options, visibleMaxTokens);
+    const requestedMaxTokens =
+      Math.floor(visibleMaxTokens) + resolveAdaptiveThinkingHeadroom(options, visibleMaxTokens);
+    const modelMaxOutput = findKnownModel("anthropic", options.model)?.maxOutput;
+    body.max_tokens = modelMaxOutput ? Math.min(requestedMaxTokens, modelMaxOutput) : requestedMaxTokens;
   }
 }
 
@@ -147,7 +154,7 @@ function formatAnthropicTools(tools: LLMToolDefinition[] | undefined): Array<Rec
 export function applyAnthropicToolChoice(
   body: Record<string, unknown>,
   options: Pick<ChatOptions, "model" | "toolChoice" | "tools">,
-): "applied" | "manual-thinking" | "mythos" | "none" {
+): "applied" | "manual-thinking" | "automatic-only" | "none" {
   if (!options.tools?.length) {
     delete body.tool_choice;
     return "none";
@@ -162,9 +169,10 @@ export function applyAnthropicToolChoice(
     return "none";
   }
 
-  if (options.model.toLowerCase().includes("mythos")) {
+  const model = options.model.toLowerCase();
+  if (model.includes("mythos") || model === "claude-fable-5-1") {
     setToolChoiceType("auto");
-    return "mythos";
+    return "automatic-only";
   }
   const thinking = isRecord(body.thinking) ? body.thinking : null;
   if (thinking?.type === "enabled") {
@@ -430,8 +438,11 @@ export class AnthropicProvider extends BaseLLMProvider {
       logger.warn(
         "Anthropic manual extended thinking does not support forced tool use; falling back to automatic tool choice",
       );
-    } else if (toolChoiceResult === "mythos") {
-      logger.warn("Claude Mythos does not support forced tool use; falling back to automatic tool choice");
+    } else if (toolChoiceResult === "automatic-only") {
+      logger.warn(
+        "Claude model %s does not support forced tool use; falling back to automatic tool choice",
+        options.model,
+      );
     }
 
     const response = await llmFetch(url, {

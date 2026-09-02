@@ -50,6 +50,7 @@ import {
   type MariDbRowChange,
   type MariDbValidationIssue,
   type MariDbValidationResult,
+  MARI_PERMISSIONS_MODE_SETTINGS_KEY,
 } from "@marinara-engine/shared";
 import { computePersonalExtensionHash } from "../extensions/personal-extension-hash.js";
 import { HomeWidgetCatalogConflictError, replaceHomeWidgetCatalog } from "../home-widget-catalog.service.js";
@@ -158,6 +159,8 @@ type MariAppDataActionEnvelope = Row & {
   action?: unknown;
   cwd?: string;
   sessionId?: string;
+  /** #5725 Permissions Mode: "auto-keep" applies without a pending Keep/Restore card. */
+  reviewPolicy?: "standard" | "auto-keep";
 };
 
 type CodeCommandContext = {
@@ -1693,7 +1696,7 @@ function stripPromptPresetChildPayload(row: Row): Row {
 function actionCommandPayload(envelope: MariAppDataActionEnvelope): Row {
   const out: Row = {};
   for (const [key, value] of Object.entries(envelope)) {
-    if (key === "cwd" || key === "sessionId") continue;
+    if (key === "cwd" || key === "sessionId" || key === "reviewPolicy") continue;
     out[key] = typeof value === "string" && value.length > 600 ? truncateStr(value, 600) : value;
   }
   return out;
@@ -2437,6 +2440,11 @@ export class MariDbService {
   // requests for the SAME review id would both read the same record and clobber each other on write.
   // Keyed by id so unrelated reviews stay concurrent; entries self-evict once the queue drains.
   private reviewLocks = new Map<string, Promise<unknown>>();
+  // #5725 Permissions Mode: review policy of the executeAction call currently in
+  // flight. Mutating workspace commands are serialized upstream (the workspace
+  // agent's serializeWorkspaceMutation), so at most one mutating executeAction
+  // is active at a time; reset to "standard" at every executeAction entry.
+  private activeReviewPolicy: "standard" | "auto-keep" = "standard";
 
   constructor(private readonly db: DB) {}
 
@@ -2444,6 +2452,9 @@ export class MariDbService {
     const argv = envelope.argv ?? [];
     const command = formatCommand(argv, envelope.command);
     const sessionId = envelope.sessionId || "mari-cli";
+    // #5725: the CLI path never carries a review policy - a stale "auto-keep"
+    // left by a prior executeAction must not strip cards from CLI mutations.
+    this.activeReviewPolicy = "standard";
     try {
       const group = argv[0];
       if (!group || group === "help" || group === "--help" || group === "-h") {
@@ -2497,6 +2508,10 @@ export class MariDbService {
 
   async executeAction(envelope: MariAppDataActionEnvelope): Promise<MariDbCommandResult> {
     let command = "app_data";
+    // #5725: the Permissions Mode review policy rides the envelope. Mutating
+    // workspace commands are serialized upstream, so a transient field is a
+    // safe way to reach executeMutation without threading every call site.
+    this.activeReviewPolicy = envelope.reviewPolicy === "auto-keep" ? "auto-keep" : "standard";
     try {
       const action = requiredString(envelope, ["action", "type"], "app_data action");
       command = formatAppDataActionCommand(action, envelope);
@@ -2543,6 +2558,10 @@ export class MariDbService {
     } catch (err) {
       logger.warn(err, "[mari-db] structured app_data action failed");
       return { ok: false, mode: "read", command, error: err instanceof Error ? err.message : String(err) };
+    } finally {
+      // Reset on exit: the transient policy must never outlive the call that
+      // set it (the CLI entry also resets defensively on entry).
+      this.activeReviewPolicy = "standard";
     }
   }
 
@@ -7096,6 +7115,21 @@ export class MariDbService {
         status: "approved",
         journalPath,
       });
+      // #5725 Accept edits / Bypass: apply without staging a pending
+      // Keep/Restore card. The caller only sets auto-keep for non-delete
+      // actions, so deletions always keep their review; history and the
+      // journal are recorded above either way.
+      if (this.activeReviewPolicy === "auto-keep") {
+        return {
+          ok: true,
+          mode: "apply",
+          command,
+          summary: plan.summary,
+          validation: plan.validation,
+          approval: { status: "not_required", operationHash: plan.operationHash },
+          journalPath,
+        };
+      }
       const review = await this.createAppliedReview(plan, storedCommand, sessionId, journalPath, history.id);
       return {
         ok: true,
@@ -7144,6 +7178,45 @@ export class MariDbService {
     // systemKey identifies Engine-owned presets. Apply this after every planner so raw writes and
     // transforms cannot bypass the structured preset-action boundary.
     protectPromptPresetSystemKeys(changes);
+
+    // #5725: the Permissions Mode governs Mari herself, so she must never be
+    // able to rewrite it - by ANY path, including raw db mutations and
+    // transforms (change-level, so every planner is covered). Only the user's
+    // validated PUT route writes this row.
+    const permissionsModeChanges = changes.filter(
+      (change) => change.table === "app_settings" && change.id === MARI_PERMISSIONS_MODE_SETTINGS_KEY,
+    );
+    if (permissionsModeChanges.length > 0) {
+      issues.push({
+        level: "error",
+        table: "app_settings",
+        id: MARI_PERMISSIONS_MODE_SETTINGS_KEY,
+        message: "The Permissions Mode can only be changed by the user, from the Mari panel or Settings.",
+      });
+    }
+    // Same floor for the per-chat override: a chats-row write whose metadata
+    // changes "mariPermissionsMode" is blocked (deleting a whole chat is not -
+    // that removes the override legitimately).
+    const chatModeMetadataValue = (raw: unknown): unknown => {
+      if (typeof raw !== "string" || !raw) return undefined;
+      try {
+        return (JSON.parse(raw) as Record<string, unknown>).mariPermissionsMode;
+      } catch {
+        return undefined;
+      }
+    };
+    for (const change of changes) {
+      if (change.table !== "chats" || !change.afterRaw) continue;
+      if (chatModeMetadataValue(change.afterRaw.metadata) !== chatModeMetadataValue(change.beforeRaw?.metadata)) {
+        issues.push({
+          level: "error",
+          table: "chats",
+          id: change.id,
+          message:
+            "The chat's Permissions Mode override can only be changed by the user, from the Mari panel or Settings.",
+        });
+      }
+    }
 
     const personalExtensionChanges = changes.filter((change) => change.table === "installed_extensions");
     if (personalExtensionChanges.length > 0 && !request.personalExtensionDraftMutation) {

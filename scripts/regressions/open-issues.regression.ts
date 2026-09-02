@@ -5526,7 +5526,9 @@ assert.match(
 );
 assert.match(
   professorMariHomeSource,
-  /const refreshWorkspaceStatus = useCallback\(\s*async \(shouldApply\?: \(\) => boolean\)[\s\S]{0,500}if \(shouldApply\?\.\(\) === false\) return status;[\s\S]{0,80}setWorkspaceStatus\(status\)/u,
+  // #5725 strengthened this guard: it also rejects responses requested for a
+  // previous chat and holds mode fields across pending mode writes.
+  /const refreshWorkspaceStatus = useCallback\(\s*async \(shouldApply\?: \(\) => boolean\)[\s\S]{0,700}if \(shouldApply\?\.\(\) === false \|\| activeChatIdRef\.current !== chatIdAtStart\) return status;[\s\S]{0,900}setWorkspaceStatus\(/u,
   "Professor Mari workspace status loads must recheck an operation guard before applying a response",
 );
 assert.match(
@@ -7330,10 +7332,28 @@ assert.match(
 );
 const projectionState = {
   ...useUIStore.getState(),
+  showHomeBrowserAddressBar: false,
+  showHomeBrowserDesktopBookmarksOnOtherTabs: false,
+  showHomeBrowserMobileBookmarksOnOtherTabs: false,
   enterToSendGame: false,
   enterToSendProfessorMari: false,
   chatHelpSeenModes: ["game"] as ChatMode[],
 };
+assert.equal(
+  pickSyncedSettings(projectionState).showHomeBrowserAddressBar,
+  false,
+  "Home URL bar visibility must be saved per installation",
+);
+assert.equal(
+  pickSyncedSettings(projectionState).showHomeBrowserDesktopBookmarksOnOtherTabs,
+  false,
+  "Home desktop bookmark visibility must be saved per installation",
+);
+assert.equal(
+  pickSyncedSettings(projectionState).showHomeBrowserMobileBookmarksOnOtherTabs,
+  false,
+  "Home mobile bookmark visibility must be saved per installation",
+);
 assert.equal(
   pickSyncedSettings(projectionState).enterToSendGame,
   false,

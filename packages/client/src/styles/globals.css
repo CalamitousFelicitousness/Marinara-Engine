@@ -6026,6 +6026,13 @@ strong {
     min-height: 0;
   }
 
+  /* iOS can visually pan a locked document during keyboard focus without
+     changing its scroll offsets. Use document coordinates there so the
+     visual-viewport top cancels that pan instead of shifting a fixed shell. */
+  html[data-mari-ios-webkit] .mari-app[data-chat-surface-active="true"]:has([data-chat-mode]) {
+    position: absolute;
+  }
+
   .app-sidebar-mobile {
     position: fixed !important;
     inset: 0 !important;

@@ -34,6 +34,7 @@ const PICK_FOLDER_TIMEOUT_MS = 60_000; // 60s — prevents infinite hang on head
 const FOLDER_TOKEN_TTL_MS = 15 * 60_000;
 const IMPORT_BODY_LIMIT_BYTES = 256 * 1024 * 1024;
 const NATIVE_PACKAGE_UPLOAD_LIMIT_BYTES = 1024 * 1024 * 1024;
+const MAX_BATCH_IMPORT_FILES = 128;
 
 const folderTokens = new Map<string, { path: string; expiresAt: number }>();
 
@@ -408,7 +409,7 @@ async function readMultipartFileWithFields(req: FastifyRequest) {
   let file: MultipartImportFile | null = null;
   const fields: Record<string, unknown> = {};
 
-  for await (const part of req.parts()) {
+  for await (const part of req.parts({ limits: { files: 1, parts: 8, fileSize: IMPORT_BODY_LIMIT_BYTES } })) {
     if (part.type === "file") {
       file = {
         filename: part.filename,
@@ -754,7 +755,7 @@ export async function importRoutes(app: FastifyInstance) {
 
     // Handle multipart file upload (PNG character cards)
     if (contentType.includes("multipart/form-data")) {
-      const file = await req.file({ limits: { fileSize: IMPORT_BODY_LIMIT_BYTES } });
+      const file = await req.file({ limits: { fields: 8, parts: 9, files: 1, fileSize: IMPORT_BODY_LIMIT_BYTES } });
       if (!file) return { success: false, error: "No file uploaded" };
       const timestampOverrides = readTimestampOverridesFromMultipart(file as any);
       const importEmbeddedLorebook = readMultipartBooleanField(file as any, "importEmbeddedLorebook");
@@ -808,13 +809,21 @@ export async function importRoutes(app: FastifyInstance) {
 
   /** Inspect character cards before importing, so clients can ask about embedded lorebooks. */
   app.post("/st-character/inspect", { bodyLimit: IMPORT_BODY_LIMIT_BYTES }, async (req) => {
-    const parts = req.parts({ limits: { fileSize: IMPORT_BODY_LIMIT_BYTES } });
+    const parts = req.parts({
+      limits: { files: MAX_BATCH_IMPORT_FILES, parts: MAX_BATCH_IMPORT_FILES + 8, fileSize: IMPORT_BODY_LIMIT_BYTES },
+    });
+    let totalBytes = 0;
     const results: Array<{ filename: string } & STCharacterImportPreview> = [];
 
     for await (const part of parts) {
       if (part.type !== "file") continue;
+      const buffer = await part.toBuffer();
+      totalBytes += buffer.length;
+      if (totalBytes > IMPORT_BODY_LIMIT_BYTES) {
+        throw new Error("Import exceeds the total upload limit");
+      }
       try {
-        const result = await inspectCharacterBuffer(part.filename ?? "character", await part.toBuffer());
+        const result = await inspectCharacterBuffer(part.filename ?? "character", buffer);
         results.push({ filename: part.filename ?? "character", ...result });
       } catch (error) {
         results.push({
@@ -835,8 +844,11 @@ export async function importRoutes(app: FastifyInstance) {
 
   /** Import multiple character cards in one multipart request. */
   app.post("/st-character/batch", { bodyLimit: IMPORT_BODY_LIMIT_BYTES }, async (req) => {
-    const parts = req.parts({ limits: { fileSize: IMPORT_BODY_LIMIT_BYTES } });
+    const parts = req.parts({
+      limits: { files: MAX_BATCH_IMPORT_FILES, parts: MAX_BATCH_IMPORT_FILES + 8, fileSize: IMPORT_BODY_LIMIT_BYTES },
+    });
     const files: Array<{ filename: string; buffer: Buffer }> = [];
+    let totalBytes = 0;
     const timestampEntries: Array<{ name?: string; lastModified?: number | string }> = [];
     let importEmbeddedLorebook: boolean | undefined;
     let tagImportMode: STCharacterTagImportMode | undefined;
@@ -846,9 +858,12 @@ export async function importRoutes(app: FastifyInstance) {
 
     for await (const part of parts) {
       if (part.type === "file") {
+        const buffer = await part.toBuffer();
+        totalBytes += buffer.length;
+        if (totalBytes > IMPORT_BODY_LIMIT_BYTES) throw new Error("Import exceeds the total upload limit");
         files.push({
           filename: part.filename ?? "character",
-          buffer: await part.toBuffer(),
+          buffer,
         });
         continue;
       }

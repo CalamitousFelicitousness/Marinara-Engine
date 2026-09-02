@@ -2941,7 +2941,9 @@ async function readProfileImportRequest(req: FastifyRequest): Promise<ProfileImp
   const archivePath = join(uploadDir, "profile.zip");
   try {
     // Stream uploads to disk so large profile archives do not need to fit in server memory.
-    const file = await req.file({ limits: { fileSize: PROFILE_IMPORT_BODY_LIMIT_BYTES } });
+    const file = await req.file({
+      limits: { fields: 0, parts: 1, files: 1, fileSize: PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES },
+    });
     if (!file) throw new ProfileImportRequestError("No profile archive uploaded.");
     const fileStream = file.file as typeof file.file & { truncated?: boolean };
     await pipeline(fileStream, createWriteStream(archivePath));
@@ -4190,7 +4192,7 @@ export async function backupRoutes(app: FastifyInstance) {
   };
   app.post(
     "/import-profile",
-    { bodyLimit: PROFILE_IMPORT_BODY_LIMIT_BYTES, config: { rateLimit: BACKUP_RATE_LIMIT } },
+    { bodyLimit: PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES, config: { rateLimit: BACKUP_RATE_LIMIT } },
     importProfile,
   );
 }

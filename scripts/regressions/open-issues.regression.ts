@@ -603,13 +603,18 @@ assert.doesNotMatch(
 );
 assert.match(
   importRoutesSource,
-  /app\.post\("\/marinara-package", \{ bodyLimit: NATIVE_PACKAGE_UPLOAD_LIMIT_BYTES \}[\s\S]*?req\.file\(\{ limits: \{ fileSize: NATIVE_PACKAGE_UPLOAD_LIMIT_BYTES \} \}\)/u,
+  /app\.post\("\/marinara-package", \{ bodyLimit: NATIVE_PACKAGE_UPLOAD_LIMIT_BYTES \}[\s\S]*?req\.file\(\{[\s\S]*?fileSize: NATIVE_PACKAGE_UPLOAD_LIMIT_BYTES[\s\S]*?\}\)/u,
   "native character and persona packages must enforce the native package upload ceiling",
 );
 assert.match(
   importRoutesSource,
-  /app\.post\("\/st-character", \{ bodyLimit: IMPORT_BODY_LIMIT_BYTES \}[\s\S]*?req\.file\(\{ limits: \{ fileSize: IMPORT_BODY_LIMIT_BYTES \} \}\)/u,
+  /app\.post\("\/st-character", \{ bodyLimit: IMPORT_BODY_LIMIT_BYTES \}[\s\S]*?req\.file\(\{[\s\S]*?fields: 8,[\s\S]*?parts: 9,[\s\S]*?files: 1,[\s\S]*?fileSize: IMPORT_BODY_LIMIT_BYTES[\s\S]*?\}\)/u,
   "character-card uploads must enforce the upload-size ceiling",
+);
+assert.match(
+  importRoutesSource,
+  /req\.parts\(\{[\s\S]*?files: MAX_BATCH_IMPORT_FILES,[\s\S]*?parts: MAX_BATCH_IMPORT_FILES \+ 8,[\s\S]*?fileSize: IMPORT_BODY_LIMIT_BYTES[\s\S]*?\}\)[\s\S]*?totalBytes > IMPORT_BODY_LIMIT_BYTES[\s\S]*?throw new Error\("Import exceeds the total upload limit"\)/u,
+  "multi-file character imports must stop when their aggregate buffer exceeds the upload limit",
 );
 assert.doesNotMatch(
   importRoutesSource,
@@ -6566,6 +6571,16 @@ assert.match(backupRoutesSource, /tolerateSourceChanges: true/u);
 assert.match(backupRoutesSource, /record\.usesDataDescriptor \? 0x0808 : 0x0800/u);
 assert.match(backupRoutesSource, /PROFILE_IMPORT_MEMORY_WARNING_BYTES/u);
 assert.match(backupRoutesSource, /PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES = 2 \* 1024 \* 1024 \* 1024/u);
+assert.match(
+  backupRoutesSource,
+  /limits: \{ fields: 0, parts: 1, files: 1, fileSize: PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES \}/u,
+  "profile archive imports must accept only one bounded file part",
+);
+assert.match(
+  importRoutesSource,
+  /req\.parts\(\{[\s\S]*?files: MAX_BATCH_IMPORT_FILES,[\s\S]*?parts: MAX_BATCH_IMPORT_FILES \+ 8,[\s\S]*?fileSize: IMPORT_BODY_LIMIT_BYTES[\s\S]*?\}\)[\s\S]*?totalBytes > IMPORT_BODY_LIMIT_BYTES[\s\S]*?throw new Error\("Import exceeds the total upload limit"\)/u,
+  "multi-file character imports must stop when their aggregate buffer exceeds the upload limit",
+);
 assert.match(backupRoutesSource, /PROFILE_ARCHIVE_TOTAL_UNCOMPRESSED_LIMIT_BYTES = 2 \* 1024 \* 1024 \* 1024/u);
 assert.match(backupRoutesSource, /PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES = 8 \* 1024 \* 1024/u);
 assert.doesNotMatch(backupRoutesSource, /PROFILE_ARCHIVE_ENTRY_COUNT_LIMIT/u);
@@ -7135,6 +7150,8 @@ assert.equal(usesOpenRouterImagesApi(" krea/krea-2-medium "), true);
 assert.equal(usesOpenRouterImagesApi("bytedance-seed/seedream-4.5"), true);
 assert.equal(usesOpenRouterImagesApi("BYTEDANCE-SEED/SEEDREAM-4.5-20251203"), true);
 assert.equal(usesOpenRouterImagesApi("google/gemini-3.1-flash-image-preview"), false);
+assert.equal(usesOpenRouterImagesApi("gpt-image-2"), true);
+assert.equal(usesOpenRouterImagesApi("openai/gpt-image-2"), true);
 assert.equal(
   openRouterImagesUrl("https://openrouter.ai/api/v1/chat/completions"),
   "https://openrouter.ai/api/v1/images",
@@ -7152,6 +7169,19 @@ assert.deepEqual(
     prompt: "plate of spaghetti\n\nAvoid in the image: burnt pasta",
     resolution: "1K",
     aspect_ratio: "1:1",
+  },
+);
+assert.deepEqual(
+  buildOpenRouterImagesRequest({
+    prompt: "portrait of a red fox",
+    model: "gpt-image-2",
+    width: 1024,
+    height: 1536,
+  }),
+  {
+    model: "openai/gpt-image-2",
+    prompt: "portrait of a red fox",
+    aspect_ratio: "2:3",
   },
 );
 assert.deepEqual(

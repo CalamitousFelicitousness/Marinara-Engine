@@ -1385,13 +1385,15 @@ async function generateAtlasCloudImage(
 
 async function generateNanoGPT(baseUrl: string, apiKey: string, request: ImageGenRequest): Promise<ImageGenResult> {
   const url = nanoGPTImagesUrl(baseUrl);
+  const width = request.width ?? 1024;
+  const height = request.height ?? 1024;
   const model = request.model?.trim().toLowerCase() ?? "";
   const isNanoBanana = model.includes("nano-banana");
   const size = isOpenAIGptImageModel(request.model)
     ? openAIImageSize(request)
-    : isNanoBanana && request.height && request.width && request.height > request.width
+    : isNanoBanana && height > width
       ? "768x1344"
-      : `${request.width ?? 1024}x${request.height ?? 1024}`;
+      : `${width}x${height}`;
   const body: Record<string, unknown> = {
     prompt: request.prompt,
     n: 1,
@@ -2633,8 +2635,10 @@ export function openRouterModalities(model?: string): string[] {
 }
 
 export function usesOpenRouterImagesApi(model?: string): boolean {
-  const lower = model?.trim().toLowerCase() ?? "";
-  return lower.startsWith("krea/") || lower.startsWith("bytedance-seed/seedream-");
+  const lower = normalizeOpenRouterImagesApiModel(model)?.toLowerCase() ?? "";
+  return (
+    lower.startsWith("krea/") || lower.startsWith("bytedance-seed/seedream-") || lower.startsWith("openai/gpt-image-")
+  );
 }
 
 export function openRouterImagesUrl(baseUrl: string): string {
@@ -2656,16 +2660,23 @@ export function openRouterImagesUrl(baseUrl: string): string {
   }
 }
 
+function normalizeOpenRouterImagesApiModel(model?: string): string | undefined {
+  const trimmed = model?.trim();
+  if (!trimmed) return undefined;
+  return /^gpt-image-/i.test(trimmed) ? `openai/${trimmed.toLowerCase()}` : trimmed;
+}
+
 export function buildOpenRouterImagesRequest(request: ImageGenRequest): Record<string, unknown> {
   const prompt = request.negativePrompt
     ? `${request.prompt}\n\nAvoid in the image: ${request.negativePrompt}`
     : request.prompt;
+  const model = normalizeOpenRouterImagesApiModel(request.model) ?? "krea/krea-2-medium";
   const body: Record<string, unknown> = {
-    model: request.model || "krea/krea-2-medium",
+    model,
     prompt,
-    resolution: "1K",
+    ...(model.toLowerCase().startsWith("openai/gpt-image-") ? {} : { resolution: "1K" }),
   };
-  const aspectRatio = openRouterImageAspectRatio(request.model, request.width, request.height);
+  const aspectRatio = openRouterImageAspectRatio(model, request.width, request.height);
   if (aspectRatio) body.aspect_ratio = aspectRatio;
 
   const references = request.referenceImages ?? (request.referenceImage ? [request.referenceImage] : []);
@@ -2735,13 +2746,14 @@ async function generateOpenRouter(baseUrl: string, apiKey: string, request: Imag
     return generateOpenRouterImageApi(baseUrl, apiKey, request);
   }
 
+  const model = request.model?.trim() || "google/gemini-2.5-flash-image";
   const body: Record<string, unknown> = {
-    model: request.model || "google/gemini-2.5-flash-image",
+    model,
     messages: [{ role: "user", content: buildChatImageMessageContent(request) }],
-    modalities: openRouterModalities(request.model),
+    modalities: openRouterModalities(model),
     stream: false,
   };
-  const aspectRatio = openRouterImageAspectRatio(request.model, request.width, request.height);
+  const aspectRatio = openRouterImageAspectRatio(model, request.width, request.height);
   if (aspectRatio) body.image_config = { aspect_ratio: aspectRatio };
 
   const resp = await imageFetch(

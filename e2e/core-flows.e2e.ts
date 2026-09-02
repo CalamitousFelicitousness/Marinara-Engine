@@ -1875,10 +1875,7 @@ test("mobile Roleplay context and edit controls keep their chrome and space", as
     await expect(quickSwitcher.locator("circle").nth(1)).toHaveCSS("stroke", configuredChromeText);
     await expect(budget.getByText("Context", { exact: true })).toHaveCSS("color", chromeMuted);
     await expect(budget.getByText(/tokens$/u)).toHaveCSS("color", chromeText);
-    await expect(budget.getByRole("progressbar").locator(":scope > div")).toHaveCSS(
-      "background-color",
-      appAccent,
-    );
+    await expect(budget.getByRole("progressbar").locator(":scope > div")).toHaveCSS("background-color", appAccent);
     await testInfo.attach(`mobile-roleplay-context-${testInfo.project.name}.png`, {
       body: await page.screenshot({ fullPage: true }),
       contentType: "image/png",
@@ -12657,20 +12654,29 @@ test("Agent updates share one dismissible prompt and remain available after Not 
 
   const updateDialog = page.getByRole("dialog", { name: "Agent updates available" });
   await expect(updateDialog).toBeVisible();
-  await expect(updateDialog).toContainText("Prose Guardian");
-  await expect(updateDialog).toContainText("1.0.0 → 1.1.0");
-  await expect(updateDialog).toContainText("World Builder");
-  await expect(updateDialog).toContainText("2.0.0 → 2.1.0");
+  // Scoped per row, not dialog-wide: a dialog-wide toContainText passes even when
+  // a version, a restart tag, or a notable marker is rendered against the wrong
+  // agent, which is exactly the regression worth catching here.
+  const proseGuardianRow = updateDialog.locator("li").filter({ hasText: "Prose Guardian" });
+  const worldBuilderRow = updateDialog.locator("li").filter({ hasText: "World Builder" });
+  await expect(proseGuardianRow).toContainText("1.0.0 → 1.1.0");
+  await expect(worldBuilderRow).toContainText("2.0.0 → 2.1.0");
   // Only the update that needs one carries the restart tag.
-  await expect(updateDialog.getByText("Restart required", { exact: true })).toHaveCount(1);
+  await expect(worldBuilderRow.getByText("Restart required", { exact: true })).toHaveCount(1);
+  await expect(proseGuardianRow.getByText("Restart required", { exact: true })).toHaveCount(0);
+  // The notable-change marker belongs to the update the catalog flagged, and its
+  // accessible name is what a screen reader announces in place of the dot.
+  await expect(proseGuardianRow.getByText("Notable change", { exact: true })).toHaveCount(1);
+  await expect(worldBuilderRow.getByText("Notable change", { exact: true })).toHaveCount(0);
   // Release notes stay collapsed: the prompt must not grow into a wall of text
   // that trains people to dismiss it unread.
-  const notes = updateDialog.getByText("- Keeps dialogue tags out of narration.");
+  const notes = proseGuardianRow.getByText("- Keeps dialogue tags out of narration.");
   await expect(notes).toBeHidden();
   // Exactly one: the update without notes offers nothing to expand.
   const disclosures = updateDialog.getByRole("button", { name: "What changed", exact: true });
   await expect(disclosures).toHaveCount(1);
-  await disclosures.click();
+  await expect(worldBuilderRow.getByRole("button", { name: "What changed", exact: true })).toHaveCount(0);
+  await proseGuardianRow.getByRole("button", { name: "What changed", exact: true }).click();
   await expect(notes).toBeVisible();
   await expect(updateDialog.getByRole("button", { name: "Update all", exact: true })).toBeVisible();
   await expect(updateDialog.getByRole("button", { name: "Not now", exact: true })).toBeVisible();

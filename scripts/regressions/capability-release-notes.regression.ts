@@ -254,6 +254,31 @@ try {
   );
 
   resetCapabilityReleaseNotesCache();
+  assert.deepEqual(
+    await capabilityPackageManager.releaseNotes(
+      "background",
+      served(() =>
+        ok({
+          schemaVersion: 1,
+          packages: {
+            // Beyond Number.MAX_SAFE_INTEGER these two components compare equal
+            // through the shared numeric comparator, so newest-first ordering
+            // would silently stop holding. The schema refuses them instead.
+            background: {
+              versions: [
+                { version: "9007199254740993.0.0", date: "2026-09-02", notes: "Newer." },
+                { version: "9007199254740992.0.0", date: "2026-09-01", notes: "Older." },
+              ],
+            },
+          },
+        }),
+      ).fetchNotes,
+    ),
+    [],
+    "Version components too large to order exactly fail the document",
+  );
+
+  resetCapabilityReleaseNotesCache();
   const good = served(() =>
     ok({
       schemaVersion: 1,

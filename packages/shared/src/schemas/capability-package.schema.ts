@@ -489,7 +489,12 @@ export interface CapabilityPackageUpdate {
  *  Engine with it treats a missing document as "no notes". */
 const capabilityPackageVersionNoteSchema = z
   .object({
-    version: z.string().regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/),
+    // Digit-bounded, unlike the manifest's version field. Ordering here goes
+    // through compareCapabilityPackageVersions, which parses components as
+    // numbers: past Number.MAX_SAFE_INTEGER two different versions compare equal
+    // and newest-first ordering silently stops holding. Nine digits is far beyond
+    // any real version and keeps every component an exact integer.
+    version: z.string().regex(/^\d{1,9}\.\d{1,9}\.\d{1,9}(?:-[0-9A-Za-z.-]+)?$/),
     // Round-tripped, not just shape-matched: a plain regex accepts 2026-02-30,
     // which would reach the UI as a date that does not exist.
     date: z

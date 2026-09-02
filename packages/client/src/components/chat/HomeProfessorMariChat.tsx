@@ -6281,7 +6281,7 @@ export function HomeProfessorMariChat({
                               onClick={() => void runRestart()}
                               disabled={isBusy}
                               className="mari-chrome-accent-text-muted mari-accent-animated inline-flex items-center gap-1 rounded-md px-2 py-1 text-[0.6875rem] transition-colors hover:bg-[var(--marinara-chat-chrome-highlight-bg)] hover:text-[var(--marinara-chat-chrome-button-text-hover)] disabled:cursor-not-allowed disabled:opacity-50"
-                              aria-label={t("home.professorMari.newChat")}
+                              aria-label={localizeUi("ui.chat.homeprofessormarichat.newChat")}
                               title={t("home.professorMari.newChat")}
                             >
                               <Plus size="0.75rem" />

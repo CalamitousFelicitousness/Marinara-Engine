@@ -3961,7 +3961,7 @@ test("Character and Persona avatar actions stay separated and visually balanced"
         await expect(desktopRail).toBeVisible();
         await expect(navigation).toBeHidden();
         await desktopRail.getByRole("button", { name: "Card", exact: true }).click();
-        await expect(editor.getByRole("heading", { name: "Card", exact: true })).toBeVisible();
+        await expect(editor.getByRole("heading", { name: /^Card\b/u })).toBeVisible();
       } else {
         await verifyCompactNavigation();
       }

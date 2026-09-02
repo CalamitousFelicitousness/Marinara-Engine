@@ -1869,7 +1869,7 @@ test("mobile Roleplay context and edit controls keep their chrome and space", as
     await expect(budget.getByText(/tokens$/u)).toHaveCSS("color", chromeText);
     await expect(budget.getByRole("progressbar").locator(":scope > div")).toHaveCSS(
       "background-color",
-      configuredChromeText,
+      appAccent,
     );
     await testInfo.attach(`mobile-roleplay-context-${testInfo.project.name}.png`, {
       body: await page.screenshot({ fullPage: true }),
@@ -3160,6 +3160,72 @@ test("Connection Discard uses the configured editor accent", async ({ page }, te
     await expect(editor).toHaveCount(0);
   } finally {
     await page.request.delete(`/api/connections/${connection.id}`).catch(() => undefined);
+  }
+});
+
+test("mobile connection drag previews preserve configured Chroma text", async ({ page, request }, testInfo) => {
+  test.skip(!testInfo.project.name.includes("mobile"), "Touch drag preview colors are covered on mobile.");
+
+  const suffix = Date.now().toString(36);
+  const connectionName = `Drag Preview Chroma ${suffix}`;
+  const model = `drag-preview-${suffix}`;
+  const connectionResponse = await request.post("/api/connections", {
+    data: { name: connectionName, provider: "openrouter", model },
+  });
+  expect(connectionResponse.ok(), await connectionResponse.text()).toBeTruthy();
+  const connection = (await connectionResponse.json()) as { id: string };
+
+  try {
+    await page.goto("/");
+    await page.evaluate(async () => {
+      const { useUIStore } = (await import("/src/stores/ui.store.ts" as string)) as {
+        useUIStore: {
+          getState: () => {
+            setAppAccentColor: (value: string) => void;
+            setChatChromeTextColor: (value: string) => void;
+          };
+        };
+      };
+      const ui = useUIStore.getState();
+      ui.setAppAccentColor("#ff1493");
+      ui.setChatChromeTextColor("#14b8a6");
+    });
+    await page.locator('[data-tour="panel-connections"]').click();
+
+    const panel = page.locator('[data-component="RightPanelMobile"]');
+    const source = panel.locator(`[data-touch-drag-card="connection"][data-connection-id="${connection.id}"]`);
+    const metadataText = `openrouter • ${model}`;
+    const sourceMetadata = source.getByText(metadataText, { exact: true });
+    const expectedColor = await readScopedCssVariableColor(source, "--muted-foreground");
+    await expect(sourceMetadata).toHaveCSS("color", expectedColor);
+
+    const dragHandle = source.getByTitle("Drag connection", { exact: true });
+    const handleBounds = await dragHandle.boundingBox();
+    expect(handleBounds).not.toBeNull();
+    const point = {
+      x: handleBounds!.x + handleBounds!.width / 2,
+      y: handleBounds!.y + handleBounds!.height / 2,
+    };
+    await dragHandle.evaluate((handle, startPoint) => {
+      const touch = { identifier: 1, target: handle, clientX: startPoint.x, clientY: startPoint.y };
+      const event = new Event("touchstart", { bubbles: true, cancelable: true });
+      Object.defineProperties(event, {
+        touches: { value: [touch] },
+        changedTouches: { value: [touch] },
+      });
+      handle.dispatchEvent(event);
+    }, point);
+    await page.waitForTimeout(350);
+
+    const preview = page.locator(
+      `body > [data-touch-drag-card="connection"][data-connection-id="${connection.id}"][aria-hidden="true"]`,
+    );
+    await expect(preview).toBeVisible();
+    await expect(preview.getByText(metadataText, { exact: true })).toHaveCSS("color", expectedColor);
+    await page.evaluate(() => window.dispatchEvent(new Event("touchcancel")));
+    await expect(preview).toHaveCount(0);
+  } finally {
+    await request.delete(`/api/connections/${connection.id}`).catch(() => undefined);
   }
 });
 

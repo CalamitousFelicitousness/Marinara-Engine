@@ -7752,8 +7752,12 @@ function AdvancedSettings() {
     // #5740: include what Mari last reported acting on - the load-bearing
     // triage line for "she edited something I never asked for" reports.
     // Best-effort: a failed fetch reads as unavailable, never blocks the copy.
+    // The deadline matters most on the frozen host this button exists for
+    // (#5657) - without it the fetch pends forever and no report is copied.
     const mariActingOn = await api
-      .get<{ latestUnderstoodRequest: SupportDiagnostics["mariActingOn"] }>("/professor-mari/workspace/status")
+      .get<{
+        latestUnderstoodRequest: SupportDiagnostics["mariActingOn"];
+      }>("/professor-mari/workspace/status", { signal: requestTimeoutSignal(5_000) })
       .then((status) => status.latestUnderstoodRequest ?? null)
       .catch(() => undefined);
     const copied = await copyToClipboard(

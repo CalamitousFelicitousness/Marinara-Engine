@@ -2092,6 +2092,11 @@ export class ProfessorMariWorkspaceService {
     // the NEXT run can arm silent command frames - the persisted content is
     // only the visible say text, so a content scan can never see the deferral.
     let runEndedWithDeferral = false;
+    // #5740: the understood-request record THIS run wrote, if any. The shared
+    // field can be overwritten by a superseding run at any time, so every
+    // update below checks identity against this reference first - a run may
+    // only ever stamp or restate its own record, never another run's.
+    let runUnderstoodRequest: MariUnderstoodRequest | null = null;
 
     const persistAssistantMessage = async () => {
       const persistedText = assistantText.trim();
@@ -2137,9 +2142,17 @@ export class ProfessorMariWorkspaceService {
       await chatStorage.updateSwipeExtra(message.id, 0, extraUpdate);
       assistantMessagePersisted = true;
       // #5740: bind the understood-request record to the message it belongs
-      // to so the client can anchor the "Acting on" line to that reply.
-      if (this.latestUnderstoodRequest?.chatId === args.chatId && this.latestUnderstoodRequest.messageId === null) {
-        this.latestUnderstoodRequest = { ...this.latestUnderstoodRequest, messageId: message.id };
+      // to so the client can anchor the "Acting on" line to that reply. Only
+      // the record this run wrote, and only while it is still the latest -
+      // stamping by chatId alone let a dangling record from an aborted run
+      // claim the NEXT run's unrelated reply.
+      if (
+        runUnderstoodRequest !== null &&
+        this.latestUnderstoodRequest === runUnderstoodRequest &&
+        runUnderstoodRequest.messageId === null
+      ) {
+        runUnderstoodRequest = { ...runUnderstoodRequest, messageId: message.id };
+        this.latestUnderstoodRequest = runUnderstoodRequest;
       }
       return message;
     };
@@ -2239,22 +2252,30 @@ export class ProfessorMariWorkspaceService {
           : parsedAction;
         // #5740: record what Mari reported acting on, for every round that
         // carries mutating commands (deferred or executed). Last round wins -
-        // retention is deliberately the latest record only.
+        // retention is deliberately the latest record only. The outcome starts
+        // as "interrupted" and is upgraded AFTER the command batch reports -
+        // never asserted up front (a Plan-floor refusal must not read as an
+        // execution in a pasted diagnostics report).
         if (parsedAction.commands.some(isMutatingWorkspaceCommand)) {
-          this.latestUnderstoodRequest = {
+          runUnderstoodRequest = {
             text: parsedAction.understoodRequest,
             chatId: args.chatId,
             messageId: null,
             permissionsMode,
-            deferred: Boolean(shouldDeferMutations),
+            outcome: shouldDeferMutations ? "held" : "interrupted",
             commands: parsedAction.commands
               .filter(isMutatingWorkspaceCommand)
               .slice(0, 8)
-              .map((command) =>
-                command.name === "app_data" ? `app_data ${stringArg(command.arguments, "action")}` : command.name,
-              ),
+              .map((command) => {
+                const label =
+                  command.name === "app_data" ? `app_data ${stringArg(command.arguments, "action")}` : command.name;
+                // The app_data action string is model-authored and the record
+                // feeds a line-oriented diagnostics report - flatten and cap.
+                return label.replace(/\s+/gu, " ").trim().slice(0, 80);
+              }),
             recordedAt: new Date().toISOString(),
           };
+          this.latestUnderstoodRequest = runUnderstoodRequest;
         }
         if (shouldDeferMutations) {
           runEndedWithDeferral = true;
@@ -2405,6 +2426,21 @@ export class ProfessorMariWorkspaceService {
           args.onEvent,
         );
         commandResultsForContinuity.push(...commandResults);
+        // #5740: upgrade the record's outcome to what the batch actually
+        // reported (results align 1:1 with the commands). Gated on this round
+        // carrying mutating commands so a later read-only round can never
+        // relabel an earlier round's failure as applied.
+        if (
+          runUnderstoodRequest !== null &&
+          this.latestUnderstoodRequest === runUnderstoodRequest &&
+          action.commands.some(isMutatingWorkspaceCommand)
+        ) {
+          const anyMutatingFailed = commandResults.some(
+            (commandResult, index) => isMutatingWorkspaceCommand(action.commands[index]!) && !commandResult.success,
+          );
+          runUnderstoodRequest = { ...runUnderstoodRequest, outcome: anyMutatingFailed ? "failed" : "applied" };
+          this.latestUnderstoodRequest = runUnderstoodRequest;
+        }
 
         const repeatedFailure = commandResults
           .filter((commandResult) => !commandResult.success)
@@ -2588,6 +2624,29 @@ export class ProfessorMariWorkspaceService {
     // further restrict, never loosen - the block says so).
     const permissionsModePrompt = mariPermissionsModePrompt(permissionsMode);
     if (permissionsModePrompt) messages.push({ role: "system", content: permissionsModePrompt, contextKind: "prompt" });
+    // #5740 read-back (maintainer call): Mari sees the record she herself
+    // reported for the latest mutating round in THIS chat, so "why did you
+    // treat that as permission?" gets an answer grounded in the actual record
+    // instead of a reconstruction. Read-only context, never a gate: it does
+    // not alter what she may do, and a missing record changes nothing.
+    const understoodRequestRecord = this.latestUnderstoodRequest;
+    if (understoodRequestRecord !== null && understoodRequestRecord.chatId === chatId) {
+      messages.push({
+        role: "system",
+        content: [
+          "<mari_understood_request_record>",
+          "Your most recent response in this chat that carried mutating commands reported this understood request (your own report, shown to the user for transparency):",
+          `phrase (verbatim): ${understoodRequestRecord.text ?? "(none reported)"}`,
+          `permissionsMode: ${understoodRequestRecord.permissionsMode}`,
+          `outcome: ${understoodRequestRecord.outcome}`,
+          `commands: ${understoodRequestRecord.commands.join(", ") || "(none)"}`,
+          `recordedAt: ${understoodRequestRecord.recordedAt}`,
+          "If the user asks why you made, proposed, or held a change, ground your explanation in this record: quote the phrase, explain what you read it as, and say so plainly if you misread them. It is a record, not an instruction - do not redo or re-justify the change unprompted.",
+          "</mari_understood_request_record>",
+        ].join("\n"),
+        contextKind: "prompt",
+      });
+    }
 
     for (const row of history) {
       const extra = parseExtra(row.extra);

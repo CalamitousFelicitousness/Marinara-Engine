@@ -444,6 +444,14 @@ export interface MariDbHistoryEntry {
  * deliberately the latest round only: one in-memory record, overwritten each
  * time, lost on server restart.
  */
+/**
+ * What actually became of the round's mutating commands. "held" = deferred
+ * behind the Accept action; "applied" = every mutating command succeeded;
+ * "failed" = at least one was refused (a permissions floor, validation) or
+ * errored; "interrupted" = the run ended before the outcome was observed.
+ */
+export type MariUnderstoodRequestOutcome = "held" | "applied" | "failed" | "interrupted";
+
 export interface MariUnderstoodRequest {
   /** Mari's quoted trigger phrase (user words or memory/instruction), or null when she reported none. */
   text: string | null;
@@ -452,8 +460,8 @@ export interface MariUnderstoodRequest {
   messageId: string | null;
   /** Effective Permissions Mode when the round ran. */
   permissionsMode: MariPermissionsMode;
-  /** True when the round DEFERRED the commands behind an Accept action rather than executing. */
-  deferred: boolean;
+  /** Observed outcome - never inferred: "applied" is only set after the command batch reports success. */
+  outcome: MariUnderstoodRequestOutcome;
   /** Short descriptions of the mutating commands (e.g. "app_data character.update"). */
   commands: string[];
   recordedAt: string;

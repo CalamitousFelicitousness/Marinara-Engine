@@ -5299,7 +5299,9 @@ export function HomeProfessorMariChat({
     // #5740: under the reply the latest mutating round produced, show the
     // phrase Mari reported acting on - user-visible by default so people can
     // self-correct ("that wasn't a request!") before filing reports. One
-    // record only (latest round), display-only, never sent in prompts.
+    // record only (latest round). The server also reads the record back to
+    // Mari as context, so asking her "why did you treat that as permission?"
+    // gets an answer grounded in this same record - never a gate either way.
     const understoodRequest =
       message.role === "assistant" &&
       workspaceStatus?.latestUnderstoodRequest &&
@@ -5321,18 +5323,28 @@ export function HomeProfessorMariChat({
           <button
             type="button"
             onClick={() => setUnderstoodRequestExpanded((current) => !current)}
-            title={localizeUi("ui.chat.homeprofessormarichat.actingOnExpand")}
+            aria-expanded={understoodRequestExpanded}
+            title={localizeUi(
+              understoodRequestExpanded
+                ? "ui.chat.homeprofessormarichat.actingOnCollapse"
+                : "ui.chat.homeprofessormarichat.actingOnExpand",
+            )}
             className="mt-1 flex w-full items-start gap-1.5 rounded-md px-2 py-1 text-left text-[0.6875rem] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)]"
           >
             <Quote size="0.6875rem" className="mt-0.5 shrink-0 opacity-70" />
-            <span className={understoodRequestExpanded ? "min-w-0 whitespace-pre-wrap" : "min-w-0 truncate"}>
+            {/* break-words: the phrase is model-authored and routinely carries
+                unbreakable tokens (paths, URLs) that would otherwise force a
+                horizontal scrollbar onto the whole transcript. */}
+            <span
+              className={understoodRequestExpanded ? "min-w-0 whitespace-pre-wrap break-words" : "min-w-0 truncate"}
+            >
               {understoodRequest.text
                 ? localizeUi("ui.chat.homeprofessormarichat.actingOnValue1", { value1: understoodRequest.text })
                 : localizeUi("ui.chat.homeprofessormarichat.actingOnNothingReported")}
               {understoodRequestExpanded && (
                 <span className="mt-0.5 block text-[0.625rem] opacity-80">
                   {understoodRequest.commands.join(", ")}
-                  {understoodRequest.deferred
+                  {understoodRequest.outcome === "held"
                     ? ` - ${localizeUi("ui.chat.homeprofessormarichat.heldForYourApproval")}`
                     : ""}
                 </span>

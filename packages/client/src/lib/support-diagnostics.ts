@@ -32,7 +32,8 @@ export interface SupportDiagnostics {
   mariActingOn?: {
     text: string | null;
     permissionsMode: string;
-    deferred: boolean;
+    /** Observed outcome of the round's mutating commands (held/applied/failed/interrupted). */
+    outcome: string;
     commands: string[];
     recordedAt: string;
   } | null;
@@ -76,6 +77,30 @@ function available(value: string | null | undefined): string {
 
 export const SERVER_UNREACHABLE_DIAGNOSTIC = "Unreachable (request timed out)";
 
+/**
+ * #5740: the acting-on phrase is model-authored free text - the only such
+ * field in this line-oriented report. Flatten it (a multi-line quote would
+ * forge extra report lines and orphan the [mode: ...] metadata) and cap it to
+ * a report-appropriate length; the full text stays in the Mari transcript.
+ */
+function reportPhrase(text: string): string {
+  const flattened = text.replace(/\s+/gu, " ").trim();
+  return flattened.length > 200 ? `${flattened.slice(0, 200)}…` : flattened;
+}
+
+/**
+ * #5740: honest outcome wording. The record's outcome is observed, never
+ * asserted - a Plan-floor refusal must read as refused, never as an execution
+ * the server did not observe, or a pasted report manufactures a Plan-escape
+ * P0 that never happened.
+ */
+const MARI_OUTCOME_LABELS: Record<string, string> = {
+  held: "held for approval",
+  applied: "applied",
+  failed: "refused or failed",
+  interrupted: "interrupted before completion",
+};
+
 export function formatSupportDiagnostics(diagnostics: SupportDiagnostics): string {
   const memory = diagnostics.serverMemory;
   const freeze = diagnostics.lastFreeze;
@@ -106,7 +131,7 @@ export function formatSupportDiagnostics(diagnostics: SupportDiagnostics): strin
         ? "Unavailable (workspace status not reachable)"
         : diagnostics.mariActingOn === null
           ? "none recorded this session"
-          : `${diagnostics.mariActingOn.text ? `"${diagnostics.mariActingOn.text}"` : "(no phrase reported)"} [mode: ${diagnostics.mariActingOn.permissionsMode}; ${diagnostics.mariActingOn.deferred ? "held for approval" : "executed"}; ${diagnostics.mariActingOn.commands.join(", ") || "no commands"}; at ${diagnostics.mariActingOn.recordedAt}]`
+          : `${diagnostics.mariActingOn.text ? `"${reportPhrase(diagnostics.mariActingOn.text)}"` : "(no phrase reported)"} [mode: ${diagnostics.mariActingOn.permissionsMode}; ${MARI_OUTCOME_LABELS[diagnostics.mariActingOn.outcome] ?? diagnostics.mariActingOn.outcome}; ${diagnostics.mariActingOn.commands.join(", ") || "no commands"}; at ${diagnostics.mariActingOn.recordedAt}]`
     }`,
   ].join("\n");
 }

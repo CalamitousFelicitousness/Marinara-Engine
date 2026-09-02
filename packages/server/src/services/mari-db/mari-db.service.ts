@@ -20,6 +20,7 @@ import {
   embedLorebookIntoCharacter,
   resolveEmbeddedCharacterId,
   syncCharacterBookFromLorebook,
+  type CharacterBookSyncOutcome,
 } from "../lorebook/character-book-sync.js";
 import {
   createMariInstructionsStorage,
@@ -7059,8 +7060,9 @@ export class MariDbService {
   // add/update/delete of an embedded lorebook's entries left the derived copy stale. Safe for
   // standalone lorebooks: syncCharacterBookFromLorebook no-ops when the lorebook isn't embedded, and
   // swallows its own errors, so a sync failure never breaks the mutation.
-  private async syncAffectedCharacterBooks(changes: PlanChange[]): Promise<void> {
+  private async syncAffectedCharacterBooks(changes: PlanChange[]): Promise<CharacterBookSyncOutcome[]> {
     const lorebookIds = new Set<string>();
+    const outcomes: CharacterBookSyncOutcome[] = [];
     const collect = (value: unknown) => {
       if (typeof value === "string" && value) lorebookIds.add(value);
     };
@@ -7080,6 +7082,13 @@ export class MariDbService {
               await embedLorebookIntoCharacter(this.db, change.embeddedCharacterId, change.id);
             } catch (err) {
               logger.error(err, "[mari-db] failed to restore embedded lorebook %s", change.id);
+              // #5793: the derived write could not be confirmed - the
+              // read-back must not report "verified" over it.
+              outcomes.push({
+                status: "failed",
+                lorebookId: change.id,
+                error: err instanceof Error ? err.message : String(err),
+              });
             }
           } else {
             await clearCharacterEmbeddedLorebook(this.db, change.embeddedCharacterId, change.id);
@@ -7090,8 +7099,9 @@ export class MariDbService {
       }
     }
     for (const lorebookId of lorebookIds) {
-      await syncCharacterBookFromLorebook(this.db, lorebookId);
+      outcomes.push(await syncCharacterBookFromLorebook(this.db, lorebookId));
     }
+    return outcomes;
   }
 
   private async executeMutation(
@@ -7129,8 +7139,8 @@ export class MariDbService {
     try {
       await this.captureDeletedLorebookEmbeddings(plan.changes);
       const journalPath = await this.applyPlan(plan);
-      await this.syncAffectedCharacterBooks(plan.changes);
-      const readBack = await this.buildReadBack(plan);
+      const syncOutcomes = await this.syncAffectedCharacterBooks(plan.changes);
+      const readBack = await this.buildReadBack(plan, syncOutcomes);
       const history = await this.recordHistory({
         plan,
         command: storedCommand,
@@ -8595,7 +8605,10 @@ export class MariDbService {
    * never weaken it. Never throws: an applied mutation must not be reported
    * as failed because its verification could not run.
    */
-  private async buildReadBack(plan: Plan): Promise<MariDbMutationReadBack> {
+  private async buildReadBack(
+    plan: Plan,
+    syncOutcomes: CharacterBookSyncOutcome[] = [],
+  ): Promise<MariDbMutationReadBack> {
     try {
       const mismatches: MariDbReadBackMismatch[] = [];
       let mismatchCount = 0;
@@ -8655,17 +8668,55 @@ export class MariDbService {
           }
         }
       }
+      // #5793 review: derived character-book writes are asserted outcomes
+      // too - a "verified" read-back over a silently failed sync would
+      // overstate. Synced books are re-read and compared like planned rows;
+      // a sync that could not confirm its write degrades the whole result to
+      // "unavailable" so the manual-read requirement stays in force.
+      let syncFailure: string | null = null;
+      for (const outcome of syncOutcomes) {
+        if (outcome.status === "failed") {
+          syncFailure = `character-book sync for lorebook ${outcome.lorebookId} could not be confirmed: ${outcome.error}`;
+          continue;
+        }
+        if (outcome.status !== "synced") continue;
+        checkedRows += 1;
+        const meta = getMeta("characters");
+        const persisted = await this.getRawById(meta, outcome.characterId);
+        const persistedBook = (() => {
+          if (persisted === null) return undefined;
+          try {
+            const data = typeof persisted.data === "string" ? JSON.parse(persisted.data) : persisted.data;
+            return isRecord(data) ? data.character_book : undefined;
+          } catch {
+            return undefined;
+          }
+        })();
+        if (persisted === null || !readBackValuesMatch(persistedBook, outcome.expectedBook)) {
+          noteMismatch({
+            table: "characters",
+            id: outcome.characterId,
+            column: "data.character_book",
+            intended: outcome.expectedBook,
+            persisted: persisted === null ? null : persistedBook,
+          });
+        }
+      }
       // status stays the FIRST key so it leads the serialized readBack object
       // Mari reads; the workspace GUARD trusts only the engine-written
       // sentinel at position zero of the command output, never this JSON.
       // A plan that applied zero rows has nothing observed - report it as
       // unavailable rather than claiming a verification that never ran.
-      if (checkedRows === 0) {
+      if (checkedRows === 0 && syncFailure === null) {
         return { status: "unavailable", checkedRows: 0, error: "no applied changes to read back" };
       }
-      return mismatchCount === 0
-        ? { status: "verified", checkedRows }
-        : { status: "mismatch", checkedRows, mismatchCount, mismatches };
+      if (mismatchCount > 0) {
+        return { status: "mismatch", checkedRows, mismatchCount, mismatches };
+      }
+      if (syncFailure !== null) {
+        return { status: "unavailable", checkedRows, error: syncFailure };
+      }
+      return { status: "verified", checkedRows };
     } catch (err) {
       logger.warn(err, "[mari-db] post-apply read-back unavailable");
       return { status: "unavailable", checkedRows: 0, error: err instanceof Error ? err.message : String(err) };

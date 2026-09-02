@@ -67,6 +67,46 @@ try {
   assert.equal(dryRun.ok, true);
   assert.equal(dryRun.readBack, undefined, "a dry-run must never carry a read-back - there is nothing observed");
 
+  // #5793 review: derived character-book writes are asserted outcomes too.
+  // Embed a lorebook into the character, then mutate an entry - the read-back
+  // must check the synced character row alongside the planned entry row.
+  const book = await mariDb.executeAction({
+    action: "lorebook.create",
+    data: { name: "Readback Sync Book" },
+    apply: true,
+  });
+  assert.equal(book.ok, true);
+  const lorebookId = String((book.summary?.preview?.[0] as { id?: unknown } | undefined)?.id ?? "");
+  assert.ok(lorebookId, "the lorebook create must carry the new row id");
+  // The sync resolves the embedded character through the lorebook's
+  // characterId link, so link it before embedding (a CLI-only verb).
+  const linked = await mariDb.executeCli({
+    argv: ["lorebooks", "link-character", lorebookId, "--character", characterId, "--apply"],
+    command: `mari lorebooks link-character ${lorebookId} --character ${characterId} --apply`,
+    cwd: repositoryRoot,
+    sessionId: "readback-lane",
+  });
+  assert.equal((linked as { ok?: unknown }).ok, true, "linking the lorebook to the character must succeed");
+  const { embedLorebookIntoCharacter } =
+    await import("../../packages/server/src/services/lorebook/character-book-sync.js");
+  await embedLorebookIntoCharacter(db, characterId, lorebookId);
+  const entryAdded = await mariDb.executeAction({
+    action: "lorebook.entry.add",
+    lorebookId,
+    data: { name: "Synced entry", content: "First content.", keys: ["sync"] },
+    apply: true,
+  });
+  assert.equal(entryAdded.ok, true);
+  assert.equal(
+    entryAdded.readBack?.status,
+    "verified",
+    "an entry add on an embedded book must verify the synced character row too",
+  );
+  assert.ok(
+    (entryAdded.readBack?.checkedRows ?? 0) >= 2,
+    "the read-back must check the planned entry row AND the synced character book",
+  );
+
   // End-to-end chain: the compacted result still carries the readBack JSON
   // for Mari to read, and the guard's ENGINE-WRITTEN sentinel - anchored at
   // position zero of the output, where model-authored text can never sit -
@@ -157,7 +197,19 @@ try {
   assert.equal(
     resolveWorkspaceMutationVerification([mismatchResult, appliedResult, debtClearRead]),
     "verified",
-    "a store-verified retry plus a read is the honest recovery path",
+    "a store-verified retry of the SAME target plus a read is the honest recovery path",
+  );
+  // #5793 review: the clearing apply must match the failed mutation's target -
+  // a verified create of an unrelated record is not a retry.
+  const unrelatedVerified = {
+    ...appliedResult,
+    id: "m3",
+    input: { action: "character.create", characterId: "someone-else", apply: true },
+  };
+  assert.equal(
+    resolveWorkspaceMutationVerification([mismatchResult, unrelatedVerified, debtClearRead]),
+    "mismatch",
+    "an unrelated store-verified apply must never clear another target's persistence failure",
   );
 
   // Composition with the #5756 staged state and the #5776 dry-run sentinel:
@@ -218,10 +270,20 @@ const mariDbFlat = flatten(mariDbSource);
 // Built AFTER applyPlan's flush and after character-book sync - it observes
 // the final persisted state, never the plan.
 const applyIndex = mariDbFlat.indexOf("const journalPath = await this.applyPlan(plan);");
-const syncIndex = mariDbFlat.indexOf("await this.syncAffectedCharacterBooks(plan.changes);");
-const readBackIndex = mariDbFlat.indexOf("const readBack = await this.buildReadBack(plan);");
+const syncIndex = mariDbFlat.indexOf("const syncOutcomes = await this.syncAffectedCharacterBooks(plan.changes);");
+const readBackIndex = mariDbFlat.indexOf("const readBack = await this.buildReadBack(plan, syncOutcomes);");
 assert.ok(applyIndex !== -1 && syncIndex !== -1 && readBackIndex !== -1);
 assert.ok(applyIndex < syncIndex && syncIndex < readBackIndex, "the read-back must observe the FINAL persisted state");
+// #5793 review: derived character-book writes are verified alongside planned
+// rows, and a sync that could not confirm its write degrades to unavailable.
+assert.ok(mariDbFlat.includes('if (outcome.status !== "synced") continue;'));
+assert.ok(mariDbFlat.includes("const persisted = await this.getRawById(meta, outcome.characterId);"));
+assert.match(mariDbSource, /character-book sync for lorebook \$\{outcome\.lorebookId\} could not be confirmed/u);
+assert.ok(
+  mariDbFlat.includes(
+    'if (syncFailure !== null) { return { status: "unavailable", checkedRows, error: syncFailure }; }',
+  ),
+);
 // It reads through the same store layer every read command uses.
 assert.ok(mariDbFlat.includes("const persisted = await this.getRawById(meta, change.id);"));
 // The read-back never fails an applied mutation.

@@ -1841,6 +1841,33 @@ export function appliedMutationReadBackMismatched(result: WorkspaceCommandResult
   return result.output.startsWith(READ_BACK_MISMATCH_SENTINEL);
 }
 
+// #5793 review: a store-observed persistence failure is cleared only by a
+// store-verified retry of the SAME mutation target - an unrelated verified
+// apply (a create of B after a failed update of A) must never launder it.
+// The key derives from the ENGINE-RECORDED command input: the action or CLI
+// subcommand plus its id-bearing arguments, never the payload - an honest
+// retry fixes the payload but keeps the target. Id parts are sorted so a
+// retry frame with reordered JSON keys still matches.
+function mutationMismatchKey(result: WorkspaceCommandResult): string {
+  const input = isRecord(result.input) ? result.input : {};
+  const parts: string[] = [result.name];
+  if (typeof input.action === "string") parts.push(input.action);
+  if (typeof input.command === "string") {
+    const tokens = input.command.replace(/\s+/gu, " ").trim().split(" ");
+    parts.push(tokens.slice(0, 3).join(" "));
+    const idFlagIndex = tokens.findIndex((token) => token === "--id");
+    if (idFlagIndex >= 0 && tokens[idFlagIndex + 1]) parts.push(`--id=${tokens[idFlagIndex + 1]}`);
+  }
+  const idParts: string[] = [];
+  for (const [key, value] of Object.entries(input)) {
+    if (typeof value === "string" && value && (key === "table" || key === "id" || key.endsWith("Id"))) {
+      idParts.push(`${key}=${value}`);
+    }
+  }
+  idParts.sort();
+  return [...parts, ...idParts].join("|");
+}
+
 export function resolveWorkspaceMutationVerification(
   results: readonly WorkspaceCommandResult[],
 ): WorkspaceMutationVerification {
@@ -1854,7 +1881,7 @@ export function resolveWorkspaceMutationVerification(
   let mutationSeen = false;
   let stagedSeen = false;
   let unverifiedMutationSeen = false;
-  let mismatchSeen = false;
+  const mismatchKeys = new Set<string>();
   for (const result of results) {
     if (isStagedSensitiveMutation(result)) {
       // #5756: a staged change is not applied, so it creates no verification
@@ -1869,11 +1896,12 @@ export function resolveWorkspaceMutationVerification(
       mutationSeen = true;
       // A store-observed persistence failure is POSITIVE knowledge and must
       // not be forgettable: unlike ordinary debt, no read clears it. Only a
-      // later store-VERIFIED apply - an engine-observed persisted change -
-      // clears the alarm, so an honest retry can recover but a distracting
-      // ls/get never launders the failure into a claimable round.
-      if (appliedMutationReadBackMismatched(result)) mismatchSeen = true;
-      else if (appliedMutationReadBackVerified(result)) mismatchSeen = false;
+      // later store-VERIFIED apply of the SAME mutation target - an
+      // engine-observed persisted retry - clears the alarm, so an honest
+      // retry can recover but neither a distracting ls/get nor an unrelated
+      // successful mutation ever launders the failure into a claimable round.
+      if (appliedMutationReadBackMismatched(result)) mismatchKeys.add(mutationMismatchKey(result));
+      else if (appliedMutationReadBackVerified(result)) mismatchKeys.delete(mutationMismatchKey(result));
       if (!appliedMutationReadBackVerified(result)) unverifiedMutationSeen = true;
       continue;
     }
@@ -1881,7 +1909,7 @@ export function resolveWorkspaceMutationVerification(
       unverifiedMutationSeen = false;
     }
   }
-  if (mismatchSeen) return "mismatch";
+  if (mismatchKeys.size > 0) return "mismatch";
   if (unverifiedMutationSeen) return "unverified";
   if (stagedSeen) return "staged";
   return mutationSeen ? "verified" : "none";

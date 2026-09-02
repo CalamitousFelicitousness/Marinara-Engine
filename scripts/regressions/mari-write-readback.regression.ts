@@ -213,12 +213,17 @@ assert.ok(
 );
 // Both runtimes emit the sentinel FIRST, gated on the literal verified status
 // (a mismatch emits its own sentinel; anything else emits none) - the pin
-// binds the gate AND the ordering so neither can silently drift.
+// binds the gate AND the ordering so neither can silently drift. In the
+// mari-CLI runtime the #5776 dry-run sentinel spread sits between the
+// read-back gate and the Command header; the two spreads are mutually
+// exclusive (a read-back only rides applied mutations, a dry-run never
+// applies), so position zero stays deterministic.
 const emitterGate =
   '...(isRecord(result.readBack) && result.readBack.status === "verified" ? [READ_BACK_VERIFIED_SENTINEL] : isRecord(result.readBack) && result.readBack.status === "mismatch" ? [READ_BACK_MISMATCH_SENTINEL] : []),';
+const dryRunGate = '...(isRecord(result) && result.mode === "dry-run" ? [MARI_DRY_RUN_SENTINEL] : []),';
 assert.ok(
-  workspaceAgentFlat.includes(`${emitterGate} \`Command: \${command}\``),
-  "the mari-CLI runtime must emit the sentinel gate immediately before its Command header",
+  workspaceAgentFlat.includes(`${emitterGate} ${dryRunGate} \`Command: \${command}\``),
+  "the mari-CLI runtime must emit the read-back gate, then the dry-run gate, immediately before its Command header",
 );
 assert.ok(
   workspaceAgentFlat.includes(`${emitterGate} \`Command: app_data \${action}\``),

@@ -132,8 +132,21 @@ assert.ok(
   !flat.includes("visibleTextRequestsUserApproval(action.visibleText)) { runAskedForApproval"),
   "the latch must use the strict detector, never the loose same-frame one",
 );
-// The same-frame deferral keeps the loose detector (staging behavior).
+// The same-frame deferral keeps the loose detector (staging behavior) AND
+// consults the strict one, which covers interrogatives the loose regexes miss
+// ("Shall I save it now?") - a frame that asks and stages the mutation must
+// defer rather than execute past its own question.
 assert.ok(flat.includes("visibleTextRequestsUserApproval(parsedAction.visibleText) ||"));
+assert.ok(
+  flat.includes("visibleTextAsksApplyPermission(parsedAction.visibleText) ||"),
+  "the same-frame deferral must recognize every phrasing the latch would arm on",
+);
+assert.equal(
+  visibleTextRequestsUserApproval("Shall I save it now?"),
+  false,
+  "documents the loose-detector gap the strict disjunct closes",
+);
+assert.equal(visibleTextAsksApplyPermission("Shall I save it now?"), true);
 // The latch joins the deferral disjunction, so later described mutations in
 // the same run are held behind Accept.
 assert.ok(

@@ -2283,6 +2283,11 @@ export class ProfessorMariWorkspaceService {
           (permissionsMode === "manual" ||
             parsedAction.awaitingAuthorization ||
             visibleTextRequestsUserApproval(parsedAction.visibleText) ||
+            // #5748: the strict ask detector covers interrogatives the loose
+            // one misses ("Shall I save it now?") - a frame that asks AND
+            // stages the mutation must defer, not execute past its own
+            // question (the latch arms too late to catch the same round).
+            visibleTextAsksApplyPermission(parsedAction.visibleText) ||
             // #5748: an earlier round of THIS run asked - only the user can
             // answer, so any later described mutation is held for Accept.
             runAskedForApproval) &&

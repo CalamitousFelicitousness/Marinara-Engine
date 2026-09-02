@@ -139,6 +139,11 @@ for (const allowed of [
   "mv new-start.sh backup.sh",
   "touch mycargo.toml",
   "echo x > not-a-dockerfile",
+  // Launcher names are root-scoped, matching workspacePathAccessPolicy - a
+  // nested copy is a normal file
+  "echo x > docs/start.sh",
+  "rm docs/examples/docker-compose.yml",
+  "touch examples/Dockerfile",
 ]) {
   assert.equal(bashCommandTargetsSensitivePath(allowed), false, `should allow: ${allowed}`);
 }

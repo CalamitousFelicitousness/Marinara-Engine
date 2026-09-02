@@ -413,6 +413,21 @@ export class WorkspaceChangeReviewService {
     }
     const beforeContent = await readOptionalText(absolutePath);
     const path = normalizeRelativePath(relative(this.workspaceRoot, absolutePath));
+    const beforeHash = beforeContent === null ? null : sha256(beforeContent);
+    const afterHash = sha256(input.afterContent);
+    // #5756: re-staging the identical change is idempotent - hand back the
+    // live approval instead of stacking duplicate cards for one decision.
+    for (const existing of this.pending.values()) {
+      if (
+        existing.kind === "sensitive_file" &&
+        existing.absolutePath === absolutePath &&
+        existing.beforeHash === beforeHash &&
+        existing.afterHash === afterHash &&
+        !existing.processing
+      ) {
+        return publicApproval(existing) as MariSensitiveFileApproval;
+      }
+    }
     const id = `mari-file-${nanoid()}`;
     const requestedAt = new Date().toISOString();
     const expiresAt = new Date(Date.now() + APPROVAL_TIMEOUT_MS).toISOString();
@@ -425,8 +440,8 @@ export class WorkspaceChangeReviewService {
       sessionId: input.sessionId,
       path,
       changeType: beforeContent === null ? "create" : "update",
-      beforeHash: beforeContent === null ? null : sha256(beforeContent),
-      afterHash: sha256(input.afterContent),
+      beforeHash,
+      afterHash,
       ...preview,
       reason: input.reason?.trim() || null,
       requestedAt,

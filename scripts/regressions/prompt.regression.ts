@@ -11270,8 +11270,14 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
           "Staged sensitive file change for user approval: package.json\nApproval: approval-2\nThe file was not changed. Continue with unrelated source work, but do not claim this change is applied.",
         success: true,
       };
-      assert.equal(resolveWorkspaceMutationVerification([stagedSensitiveWrite, verificationResult]), "none");
-      assert.equal(resolveWorkspaceMutationVerification([stagedSensitiveEdit, verificationResult]), "none");
+      // A staged change resolves "staged" - never "verified": no read of the
+      // (unchanged) file can pay off a change that was not applied, and the
+      // dedicated state keeps the repair coaching honest ("awaiting approval",
+      // not "perform the mutation").
+      assert.equal(resolveWorkspaceMutationVerification([stagedSensitiveWrite]), "staged");
+      assert.equal(resolveWorkspaceMutationVerification([stagedSensitiveWrite, verificationResult]), "staged");
+      assert.equal(resolveWorkspaceMutationVerification([stagedSensitiveEdit, verificationResult]), "staged");
+      assert.equal(workspaceActionNeedsVerification(unsupportedCompletion, [stagedSensitiveWrite]), "staged");
 
       const appliedWrite: WorkspaceCommandResult = {
         ...stagedSensitiveWrite,
@@ -11295,6 +11301,20 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       // nor pays off an applied mutation's debt, in either order.
       assert.equal(resolveWorkspaceMutationVerification([stagedSensitiveWrite, appliedWrite]), "unverified");
       assert.equal(resolveWorkspaceMutationVerification([appliedWrite, stagedSensitiveEdit]), "unverified");
+
+      // The [applied, read, staged] ordering must stay intercepted: a staged
+      // change arriving after a verified mutation re-opens the round (it
+      // resets the read flag without counting as a mutation), and even once a
+      // later read re-verifies the applied change, the round stays "staged"
+      // so a completion claim covering the staged file is still challenged.
+      assert.equal(
+        resolveWorkspaceMutationVerification([appliedWrite, verificationResult, stagedSensitiveWrite]),
+        "unverified",
+      );
+      assert.equal(
+        resolveWorkspaceMutationVerification([appliedWrite, verificationResult, stagedSensitiveWrite, verificationResult]),
+        "staged",
+      );
       const honestBlocker = parseAssistantWorkspaceAction(
         '{"say":"I could not create it because the name is missing.","commands":[],"stop":true}',
       );

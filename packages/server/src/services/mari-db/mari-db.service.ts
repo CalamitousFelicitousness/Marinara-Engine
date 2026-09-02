@@ -662,8 +662,15 @@ export function readBackValuesMatch(persisted: unknown, intended: unknown): bool
 }
 
 // A capped sample keeps the echoed mismatches token-lean; mismatchCount still
-// reports the true total.
+// reports the true total, and each echoed value is size-capped too - a
+// mismatched lorebook entry body must not flood the command output.
 const READ_BACK_MISMATCH_LIMIT = 5;
+const READ_BACK_VALUE_LIMIT = 300;
+
+function compactReadBackValue(value: unknown): unknown {
+  const text = typeof value === "string" ? value : stableJson(value ?? null);
+  return text.length > READ_BACK_VALUE_LIMIT ? `${text.slice(0, READ_BACK_VALUE_LIMIT)}… (truncated)` : value;
+}
 
 // Thrown by restorePlan (#4852 F2) when a row a Restore would revert was changed by a newer
 // write after this review applied. Caught in restoreAppliedReview so the newer data is left
@@ -8595,10 +8602,21 @@ export class MariDbService {
       let checkedRows = 0;
       const noteMismatch = (mismatch: MariDbReadBackMismatch) => {
         mismatchCount += 1;
-        if (mismatches.length < READ_BACK_MISMATCH_LIMIT) mismatches.push(mismatch);
+        if (mismatches.length < READ_BACK_MISMATCH_LIMIT) {
+          mismatches.push({
+            ...mismatch,
+            intended: compactReadBackValue(mismatch.intended),
+            persisted: compactReadBackValue(mismatch.persisted),
+          });
+        }
       };
       for (const change of plan.changes) {
-        if (!change.apply) continue;
+        // Cascade child deletions ride the plan with apply:false - the store's
+        // own cascade machinery removes them at apply time - but they are
+        // still asserted outcomes, so the read-back must confirm they are
+        // gone. Any other apply:false row is deliberately unapplied.
+        const cascadeDelete = !change.apply && change.action === "delete" && typeof change.cascadeOf === "string";
+        if (!change.apply && !cascadeDelete) continue;
         checkedRows += 1;
         const meta = getMeta(change.table);
         const persisted = await this.getRawById(meta, change.id);
@@ -8626,13 +8644,25 @@ export class MariDbService {
         }
         const asserted = knownColumnPatch(meta, change.afterRaw ?? {});
         for (const [column, value] of Object.entries(asserted)) {
+          // The home-widget catalog apply path stamps its own updatedAt at
+          // apply time (replaceHomeWidgetCatalog), so the plan-time value can
+          // never match; every other column of that row is still asserted.
+          if (column === "updatedAt" && change.table === "app_settings" && singleHomeWidgetCatalogChange(plan)) {
+            continue;
+          }
           if (!readBackValuesMatch(persisted[column], value)) {
             noteMismatch({ table: change.table, id: change.id, column, intended: value, persisted: persisted[column] });
           }
         }
       }
-      // status stays the FIRST key: the workspace guard detects the leading
-      // '"readBack": { "status": "verified"' prefix in serialized output.
+      // status stays the FIRST key so it leads the serialized readBack object
+      // Mari reads; the workspace GUARD trusts only the engine-written
+      // sentinel at position zero of the command output, never this JSON.
+      // A plan that applied zero rows has nothing observed - report it as
+      // unavailable rather than claiming a verification that never ran.
+      if (checkedRows === 0) {
+        return { status: "unavailable", checkedRows: 0, error: "no applied changes to read back" };
+      }
       return mismatchCount === 0
         ? { status: "verified", checkedRows }
         : { status: "mismatch", checkedRows, mismatchCount, mismatches };

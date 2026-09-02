@@ -28,8 +28,10 @@ try {
   const { MariDbService, readBackValuesMatch } =
     await import("../../packages/server/src/services/mari-db/mari-db.service.js");
   const {
+    appliedMutationReadBackMismatched,
     appliedMutationReadBackVerified,
     compactMutationResult,
+    READ_BACK_MISMATCH_SENTINEL,
     READ_BACK_VERIFIED_SENTINEL,
     resolveWorkspaceMutationVerification,
   } = await import("../../packages/server/src/services/professor-mari/workspace-agent.service.js");
@@ -114,6 +116,41 @@ try {
     "row content containing the sentinel text must never count - only position zero is engine-controlled",
   );
   assert.equal(resolveWorkspaceMutationVerification([forged]), "unverified");
+
+  // DEBT SEMANTICS (adversarial-review HIGH): a self-verified mutation is
+  // debt-free for ITSELF and must never retroactively pay off an earlier
+  // file/bash/mismatched mutation's verification debt.
+  const fileWriteResult = { id: "f1", name: "write", input: { path: "notes/a.md" }, output: "ok", success: true };
+  const mismatchResult = {
+    ...appliedResult,
+    id: "m2",
+    output: `${READ_BACK_MISMATCH_SENTINEL}\nCommand: app_data character.update\nExit code: 0\n\nstdout:\n{ "saved": true }`,
+  };
+  assert.equal(appliedMutationReadBackMismatched(mismatchResult), true);
+  assert.equal(
+    resolveWorkspaceMutationVerification([fileWriteResult, appliedResult]),
+    "unverified",
+    "a later store-verified app_data write must NOT verify an earlier file write",
+  );
+  assert.equal(
+    resolveWorkspaceMutationVerification([mismatchResult, appliedResult]),
+    "unverified",
+    "a later store-verified write must NOT verify an earlier mismatched one",
+  );
+  const debtClearRead = { id: "r2", name: "read", input: { path: "notes/a.md" }, output: "x", success: true };
+  assert.equal(
+    resolveWorkspaceMutationVerification([fileWriteResult, appliedResult, debtClearRead]),
+    "verified",
+    "a read after the unverified file write still clears its debt",
+  );
+  assert.equal(resolveWorkspaceMutationVerification([appliedResult, fileWriteResult]), "unverified");
+
+  // A mismatch read-back drives the compact coaching to the loud alarm.
+  const mismatchCompact = compactMutationResult({
+    ...updated,
+    readBack: { status: "mismatch", checkedRows: 1, mismatchCount: 1, mismatches: [] },
+  }) as { message?: string };
+  assert.match(mismatchCompact.message ?? "", /does NOT match the intended change/u);
   // A read after an unverified apply still verifies, exactly as before.
   const readResult = { id: "r1", name: "read", input: { path: "x" }, output: "y", success: true };
   assert.equal(
@@ -148,26 +185,56 @@ assert.ok(applyIndex < syncIndex && syncIndex < readBackIndex, "the read-back mu
 assert.ok(mariDbFlat.includes("const persisted = await this.getRawById(meta, change.id);"));
 // The read-back never fails an applied mutation.
 assert.match(mariDbSource, /return \{ status: "unavailable", checkedRows: 0, error:/u);
+// Cascade child deletions (apply:false rows the store removes itself) are
+// still asserted absent - a silently failed cascade must surface.
+assert.ok(
+  mariDbFlat.includes(
+    'const cascadeDelete = !change.apply && change.action === "delete" && typeof change.cascadeOf === "string";',
+  ),
+);
+// A plan that applied zero rows reports unavailable, never a hollow verified.
+assert.ok(
+  mariDbFlat.includes('return { status: "unavailable", checkedRows: 0, error: "no applied changes to read back" };'),
+);
+// The home-widget catalog's apply-time updatedAt stamp is the ONE exempted
+// column; everything else on that row is still compared.
+assert.ok(mariDbFlat.includes('column === "updatedAt" && change.table === "app_settings"'));
+// Echoed mismatch values are size-capped.
+assert.match(mariDbSource, /READ_BACK_VALUE_LIMIT = 300/u);
 
 const workspaceAgent = readSource("packages/server/src/services/professor-mari/workspace-agent.service.ts");
-// The sentinel is engine-written at position zero and only startsWith counts.
+const workspaceAgentFlat = flatten(workspaceAgent);
+// The sentinels are engine-written at position zero and only startsWith counts.
 assert.match(workspaceAgent, /export const READ_BACK_VERIFIED_SENTINEL = "Readback: store-verified";/u);
+assert.match(workspaceAgent, /export const READ_BACK_MISMATCH_SENTINEL = "Readback: store-mismatch";/u);
 assert.ok(
-  flatten(workspaceAgent).includes("return result.output.startsWith(READ_BACK_VERIFIED_SENTINEL);"),
+  workspaceAgentFlat.includes("return result.output.startsWith(READ_BACK_VERIFIED_SENTINEL);"),
   "detection must be anchored at position zero - substring matches are forgeable by echoed row content",
 );
-assert.equal(
-  (flatten(workspaceAgent).match(/\? \[READ_BACK_VERIFIED_SENTINEL\] : \[\]/gu) ?? []).length,
-  2,
-  "both the app_data and mari-CLI runtimes emit the sentinel as the first output line",
+// Both runtimes emit the sentinel FIRST, gated on the literal verified status
+// (a mismatch emits its own sentinel; anything else emits none) - the pin
+// binds the gate AND the ordering so neither can silently drift.
+const emitterGate =
+  '...(isRecord(result.readBack) && result.readBack.status === "verified" ? [READ_BACK_VERIFIED_SENTINEL] : isRecord(result.readBack) && result.readBack.status === "mismatch" ? [READ_BACK_MISMATCH_SENTINEL] : []),';
+assert.ok(
+  workspaceAgentFlat.includes(`${emitterGate} \`Command: \${command}\``),
+  "the mari-CLI runtime must emit the sentinel gate immediately before its Command header",
 );
 assert.ok(
-  flatten(workspaceAgent).includes("verifiedAfterMutation = appliedMutationReadBackVerified(result);"),
-  "an applied mutation is verified exactly when its own read-back says so",
+  workspaceAgentFlat.includes(`${emitterGate} \`Command: app_data \${action}\``),
+  "the app_data runtime must emit the sentinel gate immediately before its Command header",
 );
-// The prompt tells Mari app_data/CLI writes self-verify and file/bash writes
-// still need the same-frame read.
-assert.match(workspaceAgent, /Applied \\`app_data\\` and \\`mari\\` CLI mutations verify themselves/u);
+// Debt semantics: a self-verified mutation never pays off an earlier one.
+assert.ok(
+  workspaceAgentFlat.includes("if (!appliedMutationReadBackVerified(result)) unverifiedMutationSeen = true;"),
+  "each applied mutation carries its OWN verification debt",
+);
+// The #5740 record treats a read-back mismatch as a failure, matching the
+// do-not-claim-success coaching on the same result.
+assert.ok(workspaceAgentFlat.includes("(!commandResult.success || appliedMutationReadBackMismatched(commandResult))"));
+// The prompt keys self-verification on the readBack FIELD, not a tool family,
+// and file/bash writes still stage the same-frame read.
+assert.match(workspaceAgent, /A mutation whose result carries \\`readBack\\` has verified itself/u);
 assert.match(workspaceAgent, /include the confirmatory read in the SAME response whenever you can/u);
 // The mismatch alarm is loud and unsmoothing.
 assert.match(workspaceAgent, /does NOT match the intended change \(see readBack\.mismatches\)/u);

@@ -372,7 +372,13 @@ export interface MariDbReadBackMismatch {
 }
 
 export interface MariDbMutationReadBack {
-  /** Keep this the FIRST key when constructing: the workspace guard detects the '"readBack": { "status": "verified"' prefix in serialized output. */
+  /**
+   * The guard does NOT parse this JSON: the command runtimes translate a
+   * "verified"/"mismatch" status into an engine-written sentinel at position
+   * zero of the command output, which is the only thing verification trusts
+   * (later output bytes can contain model-authored text). This object is what
+   * Mari herself reads for the detail.
+   */
   status: "verified" | "mismatch" | "unavailable";
   /** Applied plan changes the read-back checked (all of them, not a preview cap). */
   checkedRows: number;

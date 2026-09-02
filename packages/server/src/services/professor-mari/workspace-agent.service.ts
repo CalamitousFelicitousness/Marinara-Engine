@@ -1755,14 +1755,17 @@ function commandCallForResult(result: WorkspaceCommandResult): WorkspaceCommandC
   return { id: result.id, name: result.name, arguments: result.input };
 }
 
+// #5756: staging marker for sensitive write/edit. The emitters put this at
+// position zero of the command output and compactOutput() only cuts tails, so
+// startsWith cannot be forged by model-authored text (paths, file content)
+// appearing at a later line start of an applied result's output.
+const STAGED_SENSITIVE_CHANGE_PREFIX = "Staged sensitive file change for user approval:";
+
 function isAppliedWorkspaceMutation(result: WorkspaceCommandResult): boolean {
   if (!result.success || result.name === "dependency") return false;
   const command = commandCallForResult(result);
   if (!isMutatingWorkspaceCommand(command)) return false;
-  if (
-    (result.name === "write" || result.name === "edit") &&
-    /^Staged sensitive file change for user approval:/mu.test(result.output)
-  ) {
+  if ((result.name === "write" || result.name === "edit") && result.output.startsWith(STAGED_SENSITIVE_CHANGE_PREFIX)) {
     return false;
   }
   if (result.name !== "app_data") return true;
@@ -3254,7 +3257,7 @@ ${sections.join("\n\n")}
         sessionId: SESSION_ID,
       });
       return [
-        `Staged sensitive file change for user approval: ${approval.path}`,
+        `${STAGED_SENSITIVE_CHANGE_PREFIX} ${approval.path}`,
         `Approval: ${approval.id}`,
         "The file was not changed. Continue with unrelated source work, but do not claim this change is applied.",
       ].join("\n");
@@ -3365,7 +3368,7 @@ ${sections.join("\n\n")}
         sessionId: SESSION_ID,
       });
       return [
-        `Staged sensitive file change for user approval: ${approval.path}`,
+        `${STAGED_SENSITIVE_CHANGE_PREFIX} ${approval.path}`,
         `Approval: ${approval.id}`,
         "The file was not changed. Continue with unrelated source work, but do not claim this change is applied.",
       ].join("\n");

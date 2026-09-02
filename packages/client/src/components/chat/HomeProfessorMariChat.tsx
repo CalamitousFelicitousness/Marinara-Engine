@@ -5344,9 +5344,9 @@ export function HomeProfessorMariChat({
               {understoodRequestExpanded && (
                 <span className="mt-0.5 block text-[0.625rem] opacity-80">
                   {understoodRequest.commands.join(", ")}
-                  {understoodRequest.outcome === "held"
-                    ? ` - ${localizeUi("ui.chat.homeprofessormarichat.heldForYourApproval")}`
-                    : ""}
+                  {understoodRequest.outcome === "held" && (
+                    <span className="block">{localizeUi("ui.chat.homeprofessormarichat.heldForYourApproval")}</span>
+                  )}
                 </span>
               )}
             </span>

@@ -130,13 +130,22 @@ async function readScopedCssVariableColor(scope: Locator, variableName: string) 
 async function openEditorSection(editor: Locator, label: string) {
   const compactMenuButton = editor.getByRole("button", { name: "Editor sections" });
   const navigation = editor.getByRole("navigation", { name: "Editor sections" });
-  await expect.poll(async () => (await compactMenuButton.isVisible()) || (await navigation.isVisible())).toBe(true);
+  const desktopRail = editor.locator(".mari-editor-tab-rail");
+  await expect
+    .poll(async () =>
+      (await compactMenuButton.isVisible()) || (await navigation.isVisible()) || (await desktopRail.isVisible()),
+    )
+    .toBe(true);
   if (await compactMenuButton.isVisible()) {
     await compactMenuButton.click();
     await editor
       .getByRole("menu", { name: "Editor sections" })
       .getByRole("menuitemradio", { name: label, exact: true })
       .click();
+    return;
+  }
+  if (await desktopRail.isVisible()) {
+    await desktopRail.getByRole("button", { name: label, exact: true }).click();
     return;
   }
   await navigation.getByRole("button", { name: label, exact: true }).click();

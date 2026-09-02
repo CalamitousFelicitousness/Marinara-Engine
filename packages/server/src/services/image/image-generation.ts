@@ -1385,9 +1385,13 @@ async function generateAtlasCloudImage(
 
 async function generateNanoGPT(baseUrl: string, apiKey: string, request: ImageGenRequest): Promise<ImageGenResult> {
   const url = nanoGPTImagesUrl(baseUrl);
+  const model = request.model?.trim().toLowerCase() ?? "";
+  const isNanoBanana = model.includes("nano-banana");
   const size = isOpenAIGptImageModel(request.model)
     ? openAIImageSize(request)
-    : `${request.width ?? 1024}x${request.height ?? 1024}`;
+    : isNanoBanana && request.height && request.width && request.height > request.width
+      ? "768x1344"
+      : `${request.width ?? 1024}x${request.height ?? 1024}`;
   const body: Record<string, unknown> = {
     prompt: request.prompt,
     n: 1,
@@ -2608,6 +2612,12 @@ function openRouterAspectRatio(width?: number, height?: number): string | null {
   )[0];
 }
 
+function openRouterImageAspectRatio(model: string | undefined, width?: number, height?: number): string | null {
+  const lower = model?.trim().toLowerCase() ?? "";
+  if (lower.includes("nano-banana") && width && height && height > width) return "9:16";
+  return openRouterAspectRatio(width, height);
+}
+
 export function openRouterModalities(model?: string): string[] {
   const lower = model?.trim().toLowerCase() ?? "";
   if (
@@ -2655,7 +2665,7 @@ export function buildOpenRouterImagesRequest(request: ImageGenRequest): Record<s
     prompt,
     resolution: "1K",
   };
-  const aspectRatio = openRouterAspectRatio(request.width, request.height);
+  const aspectRatio = openRouterImageAspectRatio(request.model, request.width, request.height);
   if (aspectRatio) body.aspect_ratio = aspectRatio;
 
   const references = request.referenceImages ?? (request.referenceImage ? [request.referenceImage] : []);
@@ -2731,7 +2741,7 @@ async function generateOpenRouter(baseUrl: string, apiKey: string, request: Imag
     modalities: openRouterModalities(request.model),
     stream: false,
   };
-  const aspectRatio = openRouterAspectRatio(request.width, request.height);
+  const aspectRatio = openRouterImageAspectRatio(request.model, request.width, request.height);
   if (aspectRatio) body.image_config = { aspect_ratio: aspectRatio };
 
   const resp = await imageFetch(

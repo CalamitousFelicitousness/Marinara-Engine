@@ -4,6 +4,10 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Fixed PNG metadata decompression, Nano Banana full-body image requests, capability swipe timestamps, and bounded import uploads.
+- Prevented profile preview tokens from being sent over non-local HTTP connections.
+- Moved the desktop right-panel resize hit area away from the main chat scrollbar.
+
 ### Added
 
 - Added a Connections -> Defaults -> Agents toggle to hide the recurring warning for agents that use the configured default connection (#5767).

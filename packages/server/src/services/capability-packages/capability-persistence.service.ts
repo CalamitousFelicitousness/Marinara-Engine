@@ -487,6 +487,10 @@ function createPersistenceSession(db: DB): CapabilityPersistenceSession {
           extra: JSON.stringify({}),
           createdAt,
         });
+        await tx
+          .update(chats)
+          .set({ lastMessageAt: createdAt, updatedAt: createdAt })
+          .where(eq(chats.id, input.chatId));
         return mapMessage(message as typeof messages.$inferSelect);
       });
     },

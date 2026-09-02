@@ -603,22 +603,22 @@ assert.doesNotMatch(
 );
 assert.match(
   importRoutesSource,
-  /app\.post\("\/marinara-package", \{ bodyLimit: UNBOUNDED_IMPORT_BYTES \}[\s\S]*?req\.file\(\{ limits: \{ fileSize: UNBOUNDED_IMPORT_BYTES \} \}\)/u,
-  "native character and persona packages must opt out of the general upload-size ceiling",
+  /app\.post\("\/marinara-package", \{ bodyLimit: NATIVE_PACKAGE_UPLOAD_LIMIT_BYTES \}[\s\S]*?req\.file\(\{ limits: \{ fileSize: NATIVE_PACKAGE_UPLOAD_LIMIT_BYTES \} \}\)/u,
+  "native character and persona packages must enforce the native package upload ceiling",
 );
 assert.match(
   importRoutesSource,
-  /app\.post\("\/st-character", \{ bodyLimit: UNBOUNDED_IMPORT_BYTES \}[\s\S]*?req\.file\(\{ limits: \{ fileSize: UNBOUNDED_IMPORT_BYTES \} \}\)/u,
-  "character-card uploads must opt out of the general upload-size ceiling",
+  /app\.post\("\/st-character", \{ bodyLimit: IMPORT_BODY_LIMIT_BYTES \}[\s\S]*?req\.file\(\{ limits: \{ fileSize: IMPORT_BODY_LIMIT_BYTES \} \}\)/u,
+  "character-card uploads must enforce the upload-size ceiling",
 );
 assert.doesNotMatch(
   importRoutesSource,
   /MAX_DATA_JSON_BYTES|MAX_AVATAR_BYTES|MAX_CHARACTER_CARD_CHUNK_SIZE/u,
-  "native packages and compressed PNG metadata must not have fixed byte ceilings",
+  "native packages must not use obsolete metadata ceilings",
 );
 assert.doesNotMatch(
   stBulkImporterSource,
-  /MAX_CHARACTER_CARD_CHUNK_SIZE|maxOutputLength/u,
+  /MAX_CHARACTER_CARD_CHUNK_SIZE/u,
   "folder-scanned PNG character cards must not retain the former metadata byte ceiling",
 );
 assert.equal(embeddedSpriteSizesAreWithinLimits([MAX_FILE_SIZES.SPRITE]), true);
@@ -9807,7 +9807,7 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
     data: {
       ...card.data,
       name: "Large Gallery Import",
-      description: "x".repeat(MAX_FILE_SIZES.CHARACTER_JSON + 1),
+      description: "x".repeat(100 * 1024),
     },
   };
   const largeCardText = Buffer.from(JSON.stringify(largeCard), "utf8").toString("base64");
@@ -9825,16 +9825,16 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
   ]);
   assert.equal(
     (extractCharaFromPng(largeZtxtPng) as { data?: { description?: string } } | null)?.data?.description?.length,
-    MAX_FILE_SIZES.CHARACTER_JSON + 1,
-    "Server import must accept valid zTXt card metadata beyond the former byte limit",
+    100 * 1024,
+    "Server import must accept valid zTXt card metadata below the decompression limit",
   );
   const largeClientParsed = await parsePngCharacterCard(
     new File([new Uint8Array(largeZtxtPng)], "large-card.png", { type: "image/png" }),
   );
   assert.equal(
     (largeClientParsed.json as { data?: { description?: string } }).data?.description?.length,
-    MAX_FILE_SIZES.CHARACTER_JSON + 1,
-    "Client import must accept valid zTXt card metadata beyond the former byte limit",
+    100 * 1024,
+    "Client import must accept valid zTXt card metadata below the decompression limit",
   );
 
   const { injectTextChunk } = await import("../../packages/server/src/routes/characters.routes.js");

@@ -11302,17 +11302,24 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       assert.equal(resolveWorkspaceMutationVerification([stagedSensitiveWrite, appliedWrite]), "unverified");
       assert.equal(resolveWorkspaceMutationVerification([appliedWrite, stagedSensitiveEdit]), "unverified");
 
-      // The [applied, read, staged] ordering must stay intercepted: a staged
-      // change arriving after a verified mutation re-opens the round (it
-      // resets the read flag without counting as a mutation), and even once a
-      // later read re-verifies the applied change, the round stays "staged"
-      // so a completion claim covering the staged file is still challenged.
+      // The [applied, read, staged] ordering must stay intercepted: the
+      // applied change's verification stands, but the staged change keeps the
+      // round at "staged" so a completion claim covering the staged file is
+      // still challenged - with the pending-approval coaching, not a demand
+      // to re-read the already-verified applied change.
       assert.equal(
         resolveWorkspaceMutationVerification([appliedWrite, verificationResult, stagedSensitiveWrite]),
-        "unverified",
+        "staged",
       );
       assert.equal(
         resolveWorkspaceMutationVerification([appliedWrite, verificationResult, stagedSensitiveWrite, verificationResult]),
+        "staged",
+      );
+      // A read after the staged result still pays the applied mutation's
+      // debt (the staged result does not block it), and the round stays
+      // "staged" for the pending change.
+      assert.equal(
+        resolveWorkspaceMutationVerification([appliedWrite, stagedSensitiveWrite, verificationResult]),
         "staged",
       );
       const honestBlocker = parseAssistantWorkspaceAction(

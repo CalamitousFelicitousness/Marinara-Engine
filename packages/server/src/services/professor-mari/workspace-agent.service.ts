@@ -1787,11 +1787,11 @@ export function resolveWorkspaceMutationVerification(
   for (const result of results) {
     if (isStagedSensitiveMutation(result)) {
       // #5756: a staged change is not applied, so it creates no verification
-      // debt and no read can pay one off for it - but it must not launder an
-      // earlier applied mutation's debt either, so it resets the read flag
-      // without counting as a mutation.
+      // debt and no read can pay one off for it. It leaves an earlier applied
+      // mutation's verification standing - the round still resolves "staged",
+      // so a completion claim is intercepted with the pending-approval
+      // coaching instead of a pointless re-read demand.
       stagedSeen = true;
-      verifiedAfterMutation = false;
       continue;
     }
     if (isAppliedWorkspaceMutation(result)) {

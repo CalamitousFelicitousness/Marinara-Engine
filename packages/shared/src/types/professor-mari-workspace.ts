@@ -40,6 +40,18 @@ export interface MariSuggestionChip {
   tone?: MariChipTone;
 }
 
+/**
+ * #5748: the Accept action for a deferred (held) mutation. Shared so the
+ * server's deferral event and the client's persisted-deferral re-derivation
+ * (from the mariDeferredMutations message extra) can never drift.
+ */
+export const MARI_AUTHORIZATION_ACCEPT_CHIP: MariSuggestionChip = {
+  id: "authorization-accept",
+  label: "Accept",
+  prompt: "I accept the proposed change.",
+  tone: "success",
+};
+
 export const MARI_STARTER_CHIPS: MariSuggestionChip[] = [
   {
     id: "starter-character",

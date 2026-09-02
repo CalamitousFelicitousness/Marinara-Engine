@@ -59,6 +59,7 @@ import {
   LOCAL_SIDECAR_CONNECTION_ID,
   DEFAULT_MARI_PERMISSIONS_MODE,
   isMariPermissionsMode,
+  MARI_AUTHORIZATION_ACCEPT_CHIP,
   MARI_PERMISSIONS_MODE_SETTINGS_KEY,
   MODEL_LISTS,
   PROFESSOR_MARI_ID,
@@ -1622,11 +1623,20 @@ export function visibleTextAsksApplyPermission(text: string): boolean {
   const normalized = text.toLowerCase().replace(/\s+/g, " ");
   return (
     /\b(say|reply|tell me)\b.{0,40}\b(apply it|apply|approve|approved|go ahead|yes|save it)\b/.test(normalized) ||
-    /\b(do you want me to|should i|shall i|let me know if you want)\b.{0,80}\b(apply|save|edit|update|patch|change|fix|write|set|create|delete|remove|move|install)\b/.test(
+    // Interrogative-by-construction anchors may sit anywhere in a sentence.
+    /\b(do you want me to|should i|shall i|let me know if you want)\b.{0,80}\b(apply|save|make|edits?|update|patch|changes?|fix|write|set|create|delete|remove|move|install)\b/.test(
+      normalized,
+    ) ||
+    // Bare "want me to" is an ask only at the START of a sentence ("Want me
+    // to apply this?") - mid-sentence it is Mari RESTATING the request ("Got
+    // it - you want me to update ..."), which must never bind the run.
+    /(?:^|[.!?] ?|[-—:] ?)want me to\b.{0,80}\b(apply|save|make|edits?|update|patch|changes?|fix|write|set|create|delete|remove|move|install)\b/.test(
       normalized,
     ) ||
     /\b(need|waiting for|wait for)\b.{0,40}\b(approval|confirmation|permission)\b/.test(normalized) ||
-    /\bready to\b.{0,30}\b(apply|save|patch|update)\b/.test(normalized)
+    // "ready to apply" arms only as a QUESTION - "I'm ready to update the
+    // greeting now." is progress narration, not an ask.
+    /\bready to\b.{0,30}\b(apply|save|patch|update)\b[^.!?]{0,40}\?/.test(normalized)
   );
 }
 
@@ -2321,14 +2331,12 @@ export class ProfessorMariWorkspaceService {
         }
         if (shouldDeferMutations) {
           runEndedWithDeferral = true;
+          // #5748: the chip is the shared constant so the client's persisted-
+          // deferral re-derivation (from mariDeferredMutations) can never
+          // drift from what this event sends.
           action.suggestions = [
-            {
-              id: "authorization-accept",
-              label: "Accept",
-              prompt: "I accept the proposed change.",
-              tone: "success",
-            },
-            ...action.suggestions.filter((chip) => chip.id !== "authorization-accept"),
+            MARI_AUTHORIZATION_ACCEPT_CHIP,
+            ...action.suggestions.filter((chip) => chip.id !== MARI_AUTHORIZATION_ACCEPT_CHIP.id),
           ];
           const content =
             "Deferred hidden mutating workspace commands because the assistant asked the user for approval in the same turn.";

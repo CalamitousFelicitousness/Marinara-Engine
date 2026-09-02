@@ -31,6 +31,17 @@ assert.equal(
   "the reported ask-phrasing must arm the latch",
 );
 assert.equal(visibleTextAsksApplyPermission("Do you want me to apply this change now?"), true);
+// Sentence-initial colloquial ask and interrogative ready-to (CodeRabbit
+// round 1): both are genuine permission questions.
+assert.equal(visibleTextAsksApplyPermission("Want me to make these changes?"), true);
+assert.equal(visibleTextAsksApplyPermission("I've drafted the new card. Want me to apply it?"), true);
+assert.equal(visibleTextAsksApplyPermission("Ready to apply - just say the word. Shall I save it now?"), true);
+// Declarative progress narration must NOT arm, even when it names the verbs.
+assert.equal(
+  visibleTextAsksApplyPermission("I'm ready to update the greeting now."),
+  false,
+  "a progress statement is not an ask - the ready-to branch requires a question",
+);
 // A genuine scope question is an ask - holding until the user answers is the
 // intended residual.
 assert.equal(
@@ -187,5 +198,30 @@ assert.ok(
   "the home-widget template must not model the preview-then-reapply double-step",
 );
 assert.match(workspaceAgent, /home_widget\.create\\` command with \\`apply:true\\` in the SAME response/u);
+
+// ── Client: the Accept affordance survives what the chips slot does not ─────
+// The chips store is a single app-wide ephemeral slot (a regular chat
+// starting a generation clears it, so do the suggestions-disabled mount
+// sweeps, and a reload never restores it) - but the deferral itself is
+// persisted on the assistant message's extra. The client re-derives the
+// Accept chip from that persisted truth, so a held proposal can never be
+// orphaned by navigation.
+const mariChat = readSource("packages/client/src/components/chat/HomeProfessorMariChat.tsx");
+const mariChatFlat = mariChat.replace(/\s+/gu, " ");
+assert.ok(
+  mariChatFlat.includes("lastLoadedMessageExtra?.mariDeferredMutations === true"),
+  "the derivation must read the same persisted flag the server arms the next run from",
+);
+assert.ok(
+  mariChatFlat.includes(
+    "pendingDeferredMutations && !storeChipsForChat.some((chip) => chip.id === MARI_AUTHORIZATION_ACCEPT_CHIP.id)",
+  ),
+  "the derived Accept chip renders while the persisted deferral is the chat's last word",
+);
+// Server and client both use the SHARED chip constant, so the event chip and
+// the re-derived chip can never drift.
+assert.ok(flat.includes("action.suggestions = [ MARI_AUTHORIZATION_ACCEPT_CHIP,"));
+const sharedTypes = readSource("packages/shared/src/types/professor-mari-workspace.ts");
+assert.match(sharedTypes, /export const MARI_AUTHORIZATION_ACCEPT_CHIP: MariSuggestionChip = \{/u);
 
 console.log("Mari ask-latch regression passed.");

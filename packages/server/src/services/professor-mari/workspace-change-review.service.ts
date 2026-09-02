@@ -179,6 +179,39 @@ export function workspacePathAccessPolicy(
   return "normal";
 }
 
+const SENSITIVE_PATH_NAME_PATTERN = [...PACKAGE_CONTROL_FILES, ...ROOT_LAUNCHER_FILES]
+  .map((name) => name.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"))
+  .join("|");
+const SENSITIVE_PATH_TARGET_PATTERN =
+  `(?:[\\w./~-]*/)?(?:${SENSITIVE_PATH_NAME_PATTERN})(?![\\w.-])` +
+  `|\\.github/workflows/|win/installer/|android/gradle/wrapper/` +
+  `|android/(?:app/)?build\\.gradle(?![\\w.-])|android/settings\\.gradle(?![\\w.-])`;
+
+const SENSITIVE_PATH_WRITER_PATTERNS = [
+  // cp/mv/rm/touch/truncate/tee with a sensitive path in the same segment
+  new RegExp(
+    `(?:^|[;&|]\\s*|\\s)(?:cp|mv|rm|touch|truncate|tee)\\b[^;&|\\n]*(?:${SENSITIVE_PATH_TARGET_PATTERN})`,
+    "u",
+  ),
+  // in-place sed/perl on a sensitive path
+  new RegExp(`(?:^|[;&|]\\s*|\\s)(?:sed|perl)\\b[^;&|\\n]*\\s-i\\b[^;&|\\n]*(?:${SENSITIVE_PATH_TARGET_PATTERN})`, "u"),
+  // shell redirection into a sensitive path
+  new RegExp(`>>?\\s*(?:${SENSITIVE_PATH_TARGET_PATTERN})`, "u"),
+];
+
+/**
+ * #5777: the shell sandbox denies writes to supply-chain-sensitive paths, but
+ * the denial is silent - an error-tolerant compound command (`x; echo done`)
+ * exits 0 and the verification guard would count a write that never happened.
+ * This is a best-effort pre-execution heuristic (like bashLooksMutating): it
+ * catches the common shapes so the failure is loud and redirects to the
+ * write/edit staging flow; the sandbox itself remains the hard floor.
+ */
+export function bashCommandTargetsSensitivePath(command: string): boolean {
+  const normalized = command.replace(/\\/gu, "/").toLowerCase();
+  return SENSITIVE_PATH_WRITER_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
 export function isPackageManagerMutationCommand(command: string) {
   const normalized = command.toLowerCase();
   const patterns = [

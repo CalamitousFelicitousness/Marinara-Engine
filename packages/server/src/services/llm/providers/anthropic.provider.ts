@@ -96,7 +96,12 @@ interface AnthropicMessagePayload {
 interface AnthropicMessageResponse {
   content?: AnthropicContentBlock[];
   stop_reason?: string;
-  usage?: { input_tokens?: number; output_tokens?: number };
+  usage?: {
+    input_tokens?: number;
+    output_tokens?: number;
+    cache_read_input_tokens?: number;
+    cache_creation_input_tokens?: number;
+  };
 }
 
 function normalizeAnthropicFinishReason(reason: string | null | undefined): string {
@@ -472,6 +477,10 @@ export class AnthropicProvider extends BaseLLMProvider {
               promptTokens: json.usage.input_tokens,
               completionTokens: json.usage.output_tokens,
               totalTokens: json.usage.input_tokens + json.usage.output_tokens,
+              ...(json.usage.cache_read_input_tokens ? { cachedPromptTokens: json.usage.cache_read_input_tokens } : {}),
+              ...(json.usage.cache_creation_input_tokens
+                ? { cacheWritePromptTokens: json.usage.cache_creation_input_tokens }
+                : {}),
             }
           : undefined,
     };
@@ -638,7 +647,12 @@ export class AnthropicProvider extends BaseLLMProvider {
       const json = (await response.json()) as {
         content: Array<{ type: string; text?: string; thinking?: string }>;
         stop_reason?: string | null;
-        usage?: { input_tokens: number; output_tokens: number };
+        usage?: {
+          input_tokens?: number;
+          output_tokens?: number;
+          cache_read_input_tokens?: number;
+          cache_creation_input_tokens?: number;
+        };
       };
       // Extract thinking content if present
       for (const block of json.content) {
@@ -652,9 +666,13 @@ export class AnthropicProvider extends BaseLLMProvider {
         .join("");
       if (json.usage) {
         return {
-          promptTokens: json.usage.input_tokens,
-          completionTokens: json.usage.output_tokens,
-          totalTokens: json.usage.input_tokens + json.usage.output_tokens,
+          promptTokens: json.usage.input_tokens ?? 0,
+          completionTokens: json.usage.output_tokens ?? 0,
+          totalTokens: (json.usage.input_tokens ?? 0) + (json.usage.output_tokens ?? 0),
+          ...(json.usage.cache_read_input_tokens ? { cachedPromptTokens: json.usage.cache_read_input_tokens } : {}),
+          ...(json.usage.cache_creation_input_tokens
+            ? { cacheWritePromptTokens: json.usage.cache_creation_input_tokens }
+            : {}),
           finishReason: normalizeAnthropicFinishReason(json.stop_reason),
         };
       }
@@ -679,6 +697,8 @@ export class AnthropicProvider extends BaseLLMProvider {
     let currentBlockType = "text"; // track whether we're in a thinking or text block
     let inputTokens = 0;
     let outputTokens = 0;
+    let cachedTokens = 0;
+    let cacheWriteTokens = 0;
     let finishReason = "stop";
     let sawStopReason = false;
     let emittedText = false;
@@ -698,7 +718,14 @@ export class AnthropicProvider extends BaseLLMProvider {
           let event: {
             type: string;
             error?: unknown;
-            message?: { usage?: { input_tokens: number; output_tokens: number } };
+            message?: {
+              usage?: {
+                input_tokens?: number;
+                output_tokens?: number;
+                cache_read_input_tokens?: number;
+                cache_creation_input_tokens?: number;
+              };
+            };
             content_block?: { type: string };
             delta?: { type: string; text?: string; thinking?: string; stop_reason?: string | null };
             usage?: { output_tokens: number };
@@ -715,8 +742,10 @@ export class AnthropicProvider extends BaseLLMProvider {
           }
           // Capture input token count from message_start
           if (event.type === "message_start" && event.message?.usage) {
-            inputTokens = event.message.usage.input_tokens;
-            outputTokens = event.message.usage.output_tokens;
+            inputTokens = event.message.usage.input_tokens ?? 0;
+            outputTokens = event.message.usage.output_tokens ?? 0;
+            cachedTokens = event.message.usage.cache_read_input_tokens ?? 0;
+            cacheWriteTokens = event.message.usage.cache_creation_input_tokens ?? 0;
           }
           // Capture final output token count from message_delta
           if (event.type === "message_delta" && event.usage) {
@@ -747,6 +776,8 @@ export class AnthropicProvider extends BaseLLMProvider {
                 promptTokens: inputTokens,
                 completionTokens: outputTokens,
                 totalTokens: inputTokens + outputTokens,
+                ...(cachedTokens ? { cachedPromptTokens: cachedTokens } : {}),
+                ...(cacheWriteTokens ? { cacheWritePromptTokens: cacheWriteTokens } : {}),
                 finishReason,
               };
             }
@@ -766,6 +797,8 @@ export class AnthropicProvider extends BaseLLMProvider {
         promptTokens: inputTokens,
         completionTokens: outputTokens,
         totalTokens: inputTokens + outputTokens,
+        ...(cachedTokens ? { cachedPromptTokens: cachedTokens } : {}),
+        ...(cacheWriteTokens ? { cacheWritePromptTokens: cacheWriteTokens } : {}),
         finishReason,
       };
     }

@@ -1817,15 +1817,18 @@ function isAppliedWorkspaceMutation(result: WorkspaceCommandResult): boolean {
 // #5754 follow-up: an applied app_data/mari-CLI mutation whose result carries
 // a store-observed read-back with status "verified" is verification in itself
 // - the engine re-read the affected rows through the store after applying.
-// ONLY that literal status counts: the plan-derived summary never does, and
-// "mismatch"/"unavailable" still require a manual read, so this detection can
-// only strengthen the silent-persistence-failure guard. The output is the
-// pretty-printed result JSON (stringifyOutput), hence the whitespace-tolerant
-// pattern; a result truncated before the marker safely reads as unverified.
-const READ_BACK_VERIFIED_PATTERN = /"readBack":\s*\{\s*"status":\s*"verified"/u;
+// ONLY that counts: the plan-derived summary never does, and "mismatch"/
+// "unavailable" still require a manual read, so this detection can only
+// strengthen the silent-persistence-failure guard. Detection is an
+// engine-written sentinel ANCHORED AT POSITION ZERO of the output: every
+// later byte can contain model-authored text (command strings, echoed row
+// content), so a substring match anywhere else would be forgeable by a row
+// that merely CONTAINS the marker. Truncation cuts tails, never position
+// zero, so a truncated result still reads correctly.
+export const READ_BACK_VERIFIED_SENTINEL = "Readback: store-verified";
 
 export function appliedMutationReadBackVerified(result: WorkspaceCommandResult): boolean {
-  return READ_BACK_VERIFIED_PATTERN.test(result.output);
+  return result.output.startsWith(READ_BACK_VERIFIED_SENTINEL);
 }
 
 export function resolveWorkspaceMutationVerification(
@@ -3667,8 +3670,13 @@ ${sections.join("\n\n")}
       isRecord(result) && "output" in result && !("summary" in result) ? result.output : compactMutationResult(result);
     const output = compactOutput(
       [
-        // #5776: position-zero sentinel; the verification guard trusts only
-        // this placement (see MARI_DRY_RUN_SENTINEL).
+        // A sentinel MUST be the output's first line: everything after it can
+        // contain model-authored text (the command string, echoed rows), so
+        // the verification guard only trusts position zero. The read-back and
+        // dry-run (#5776) sentinels are mutually exclusive - a read-back only
+        // rides applied mutations, and a dry-run never applies - so position
+        // zero stays deterministic.
+        ...(isRecord(result.readBack) && result.readBack.status === "verified" ? [READ_BACK_VERIFIED_SENTINEL] : []),
         ...(isRecord(result) && result.mode === "dry-run" ? [MARI_DRY_RUN_SENTINEL] : []),
         `Command: ${command}`,
         `Exit code: ${result.ok === false ? 1 : 0} (direct mari runtime)`,
@@ -3704,6 +3712,10 @@ ${sections.join("\n\n")}
     const truncationNote = formatMariReadTruncation(result.truncation);
     const output = compactOutput(
       [
+        // The sentinel MUST be the output's first line: everything after it
+        // can contain model-authored text (the action string, echoed rows),
+        // so the verification guard only trusts position zero.
+        ...(isRecord(result.readBack) && result.readBack.status === "verified" ? [READ_BACK_VERIFIED_SENTINEL] : []),
         `Command: app_data ${action}`,
         `Exit code: ${result.ok === false ? 1 : 0} (structured app-data runtime)`,
         "",

@@ -3943,6 +3943,11 @@ test("Character and Persona avatar actions stay separated and visually balanced"
           await page.setViewportSize({ width, height: 900 });
           if (width === 767) {
             await expect(desktopRail).toBeHidden();
+            const mobilePanel = page.locator('[data-component="RightPanelMobile"]');
+            if (await mobilePanel.isVisible()) {
+              await mobilePanel.getByRole("button", { name: "Close panel", exact: true }).click();
+              await expect(mobilePanel).toHaveCount(0);
+            }
             await verifyCompactNavigation();
           } else {
             await expect(desktopRail).toBeVisible();

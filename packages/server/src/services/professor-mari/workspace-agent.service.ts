@@ -76,6 +76,7 @@ import type {
   MariSuggestionChip,
   MariWorkspaceConnectionSummary,
   MariWorkspacePromptEvent,
+  MariUnderstoodRequest,
   MariWorkspaceStatus,
   MariWorkspaceToolName,
   MariWorkspaceTraceItem,
@@ -146,6 +147,8 @@ type AssistantWorkspaceAction = {
   suggestions: MariSuggestionChip[];
   plan: MariGuidedPlanStep[];
   awaitingAuthorization: boolean;
+  /** #5740 diagnostic field: the trigger phrase the model reported. Never enforced. */
+  understoodRequest: string | null;
   stop: boolean;
   protocolValid: boolean;
   assistantHistoryContent: string;
@@ -647,6 +650,7 @@ Required schema:
 {
   "say": "visible text for the user, or empty string for silent work",
   "awaitingAuthorization": false,
+  "understoodRequest": "the exact words you are treating as the request or permission, when any command mutates data",
   "commands": [
     { "name": "docs_search|docs_read|read|grep|find|ls|edit|write|copy|move|remove|bash|dependency|app_data", "arguments": {} }
   ],
@@ -662,6 +666,7 @@ Required schema:
 Field rules:
 - \`say\` is the only text Marinara may show to the user.
 - Set \`awaitingAuthorization\` to \`true\` only when \`say\` asks the user to approve the mutating commands in this response. Marinara will pause those commands and show an Accept action.
+- \`understoodRequest\`: when a response carries mutating commands, copy the exact words you are treating as the request or permission for them - from the user's message, or from the saved memory or instruction that directs the change. It is shown to the user for transparency and NEVER validated: a missing or imperfect quote never blocks a command. Keep it short (one sentence or phrase).
 - \`commands\` is the command list to execute now. Use \`[]\` only when no command is needed.
 - \`suggestions\` is optional. Include at most 5 quick-reply chips when useful; omit it when no chips are needed.
 - \`plan\` is optional and mutually exclusive with a multi-turn interrogation: use it ONLY when the user's create/edit request is vague (e.g. "make me a character" with no details). Return the WHOLE plan in this ONE turn - an ordered list of the natural fields for what they're creating (e.g. name, vibe, scenario, greeting for a character), each with 3-5 illustrative example-answer chips. The client walks the plan locally with no further calls from you, then sends you one summary message with all the answers so you can actually create it with your normal commands. If the request already has enough detail, skip \`plan\` entirely and just create it now - don't force the user through fields they already answered.
@@ -1339,6 +1344,14 @@ export function parseAssistantWorkspaceAction(content: string): AssistantWorkspa
   const suggestions = matches.flatMap((match) => sanitizeSuggestionChips(match.payload.suggestions));
   const plan = matches.flatMap((match) => sanitizePlanSteps(match.payload.plan));
   const awaitingAuthorization = matches.some((match) => match.payload.awaitingAuthorization === true);
+  // #5740: diagnostic only - stored and displayed, never validated or gated.
+  const understoodRequest =
+    matches
+      .map((match) =>
+        typeof match.payload.understoodRequest === "string" ? match.payload.understoodRequest.trim() : "",
+      )
+      .find((value) => value.length > 0)
+      ?.slice(0, 2000) ?? null;
   const commands = dedupeWorkspaceCommandCalls([
     ...parseXmlCommandCalls(contentWithoutJson),
     ...jsonCommands,
@@ -1355,6 +1368,7 @@ export function parseAssistantWorkspaceAction(content: string): AssistantWorkspa
     suggestions,
     plan,
     awaitingAuthorization,
+    understoodRequest,
     stop,
     protocolValid,
     assistantHistoryContent: assistantHistoryContentForAction({
@@ -1903,6 +1917,10 @@ export class ProfessorMariWorkspaceService {
   // overwrites) so command execution and deferral read the run's own mode.
   private activeRunPermissionsMode: MariPermissionsMode = DEFAULT_MARI_PERMISSIONS_MODE;
   private activeRoundManualSilentMutationBlocked = false;
+  // #5740: latest-round understood-request record. Diagnostic only; retention
+  // is deliberately ONE record, overwritten per qualifying round (maintainer
+  // call: no growing history), lost on restart.
+  private latestUnderstoodRequest: MariUnderstoodRequest | null = null;
   private abortController: AbortController | null = null;
   // Professor Mari is the only untrusted workspace writer. Serialize all of
   // her mutations so path validation and the operation cannot overlap another
@@ -1979,6 +1997,7 @@ export class ProfessorMariWorkspaceService {
           permissionsMode: resolved.mode,
           permissionsModeDefault: resolved.defaultMode,
           permissionsModeSource: resolved.source,
+          latestUnderstoodRequest: this.latestUnderstoodRequest,
         };
       })()),
       pendingApprovals: [
@@ -2117,6 +2136,11 @@ export class ProfessorMariWorkspaceService {
       await chatStorage.updateMessageExtra(message.id, extraUpdate);
       await chatStorage.updateSwipeExtra(message.id, 0, extraUpdate);
       assistantMessagePersisted = true;
+      // #5740: bind the understood-request record to the message it belongs
+      // to so the client can anchor the "Acting on" line to that reply.
+      if (this.latestUnderstoodRequest?.chatId === args.chatId && this.latestUnderstoodRequest.messageId === null) {
+        this.latestUnderstoodRequest = { ...this.latestUnderstoodRequest, messageId: message.id };
+      }
       return message;
     };
 
@@ -2213,6 +2237,25 @@ export class ProfessorMariWorkspaceService {
               }),
             }
           : parsedAction;
+        // #5740: record what Mari reported acting on, for every round that
+        // carries mutating commands (deferred or executed). Last round wins -
+        // retention is deliberately the latest record only.
+        if (parsedAction.commands.some(isMutatingWorkspaceCommand)) {
+          this.latestUnderstoodRequest = {
+            text: parsedAction.understoodRequest,
+            chatId: args.chatId,
+            messageId: null,
+            permissionsMode,
+            deferred: Boolean(shouldDeferMutations),
+            commands: parsedAction.commands
+              .filter(isMutatingWorkspaceCommand)
+              .slice(0, 8)
+              .map((command) =>
+                command.name === "app_data" ? `app_data ${stringArg(command.arguments, "action")}` : command.name,
+              ),
+            recordedAt: new Date().toISOString(),
+          };
+        }
         if (shouldDeferMutations) {
           runEndedWithDeferral = true;
           action.suggestions = [

@@ -437,6 +437,28 @@ export interface MariDbHistoryEntry {
   completedAt?: string | null;
 }
 
+/**
+ * #5740: the request/permission phrase Professor Mari reported acting on in
+ * her most recent round that carried mutating commands. DIAGNOSTIC ONLY -
+ * never validated, never gates anything (#5721's lesson stands). Retention is
+ * deliberately the latest round only: one in-memory record, overwritten each
+ * time, lost on server restart.
+ */
+export interface MariUnderstoodRequest {
+  /** Mari's quoted trigger phrase (user words or memory/instruction), or null when she reported none. */
+  text: string | null;
+  chatId: string;
+  /** The persisted assistant message the round produced, once known. */
+  messageId: string | null;
+  /** Effective Permissions Mode when the round ran. */
+  permissionsMode: MariPermissionsMode;
+  /** True when the round DEFERRED the commands behind an Accept action rather than executing. */
+  deferred: boolean;
+  /** Short descriptions of the mutating commands (e.g. "app_data character.update"). */
+  commands: string[];
+  recordedAt: string;
+}
+
 export interface MariWorkspaceStatus {
   enabled: boolean;
   piAvailable: boolean;
@@ -459,6 +481,8 @@ export interface MariWorkspaceStatus {
   permissionsModeDefault: MariPermissionsMode;
   /** Whether permissionsMode came from a per-chat override or the global default. */
   permissionsModeSource: "default" | "chat";
+  /** #5740: latest-round understood-request record (diagnostic only). */
+  latestUnderstoodRequest: MariUnderstoodRequest | null;
   pendingApprovals: MariWorkspacePendingApproval[];
   history: MariDbHistoryEntry[];
   error?: string | null;

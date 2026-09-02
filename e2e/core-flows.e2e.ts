@@ -15695,6 +15695,7 @@ test("Professor Mari shows the latest context budget when token usage is enabled
           permissionsMode: "auto",
           permissionsModeDefault: "auto",
           permissionsModeSource: "default",
+          latestUnderstoodRequest: null,
           pendingApprovals: [],
           history: [],
           error: null,
@@ -15840,6 +15841,7 @@ test("Professor Mari dependency and sensitive-file reviews stay explicit across 
         permissionsMode: "auto",
         permissionsModeDefault: "auto",
         permissionsModeSource: "default",
+        latestUnderstoodRequest: null,
         pendingApprovals: [
           {
             kind: "dependency_install",

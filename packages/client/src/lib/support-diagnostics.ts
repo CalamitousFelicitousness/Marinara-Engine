@@ -24,6 +24,18 @@ export interface SupportDiagnostics {
   serverUnreachable?: boolean;
   /** Most recent host suspension the server's freeze detector observed. */
   lastFreeze?: { detectedAt: string; gapMs: number; suspendedMs: number } | null;
+  /**
+   * #5740: the phrase Professor Mari reported acting on in her most recent
+   * mutating round, for triaging "she edited something I never asked for"
+   * reports. Latest round only; undefined when the status fetch failed.
+   */
+  mariActingOn?: {
+    text: string | null;
+    permissionsMode: string;
+    deferred: boolean;
+    commands: string[];
+    recordedAt: string;
+  } | null;
 }
 
 export function resolveClientOs(userAgent: string, platform: string, maxTouchPoints = 0): string {
@@ -87,5 +99,14 @@ export function formatSupportDiagnostics(diagnostics: SupportDiagnostics): strin
     `Active connection: ${available(diagnostics.connectionName)}`,
     `Connection provider: ${available(diagnostics.connectionProvider)}`,
     `LLM model: ${available(diagnostics.model)}`,
+    // #5740 triage line: what Mari last reported acting on. undefined = the
+    // status fetch failed (say so); null = no mutating round recorded yet.
+    `Mari last acted on: ${
+      diagnostics.mariActingOn === undefined
+        ? "Unavailable (workspace status not reachable)"
+        : diagnostics.mariActingOn === null
+          ? "none recorded this session"
+          : `${diagnostics.mariActingOn.text ? `"${diagnostics.mariActingOn.text}"` : "(no phrase reported)"} [mode: ${diagnostics.mariActingOn.permissionsMode}; ${diagnostics.mariActingOn.deferred ? "held for approval" : "executed"}; ${diagnostics.mariActingOn.commands.join(", ") || "no commands"}; at ${diagnostics.mariActingOn.recordedAt}]`
+    }`,
   ].join("\n");
 }

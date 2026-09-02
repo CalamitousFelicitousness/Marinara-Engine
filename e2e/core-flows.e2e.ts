@@ -12564,7 +12564,11 @@ test("Agent updates share one dismissible prompt and remain available after Not 
       installedVersion: "1.0.0",
       version: "1.1.0",
       restartRequired: false,
+      releaseNotes: "- Keeps dialogue tags out of narration.",
+      releaseHighlight: true,
     },
+    // Deliberately publishes no notes: the catalog may ship none, and the row
+    // must stay complete and disclosure-free rather than offering an empty panel.
     {
       id: "world-builder",
       name: "World Builder",
@@ -12645,9 +12649,20 @@ test("Agent updates share one dismissible prompt and remain available after Not 
 
   const updateDialog = page.getByRole("dialog", { name: "Agent updates available" });
   await expect(updateDialog).toBeVisible();
-  await expect(updateDialog.getByText(/update Agents later in Download Agents/u)).toBeVisible();
-  await expect(updateDialog).toContainText("• Prose Guardian (1.0.0 → 1.1.0)");
-  await expect(updateDialog).toContainText("• World Builder (2.0.0 → 2.1.0)");
+  await expect(updateDialog).toContainText("Prose Guardian");
+  await expect(updateDialog).toContainText("1.0.0 → 1.1.0");
+  await expect(updateDialog).toContainText("World Builder");
+  await expect(updateDialog).toContainText("2.0.0 → 2.1.0");
+  // Only the update that needs one carries the restart tag.
+  await expect(updateDialog.getByText("Restart required", { exact: true })).toHaveCount(1);
+  // Release notes stay collapsed: the prompt must not grow into a wall of text
+  // that trains people to dismiss it unread.
+  const notes = updateDialog.getByText("- Keeps dialogue tags out of narration.");
+  await expect(notes).toBeHidden();
+  const disclosures = updateDialog.getByRole("button", { name: "What changed", exact: true });
+  await expect(disclosures).toHaveCount(1, "An update without notes offers nothing to expand");
+  await disclosures.click();
+  await expect(notes).toBeVisible();
   await expect(updateDialog.getByRole("button", { name: "Update all", exact: true })).toBeVisible();
   await expect(updateDialog.getByRole("button", { name: "Not now", exact: true })).toBeVisible();
   await expect

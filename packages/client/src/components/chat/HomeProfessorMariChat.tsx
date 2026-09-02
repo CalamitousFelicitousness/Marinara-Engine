@@ -3159,7 +3159,9 @@ export function HomeProfessorMariChat({
   const [sending, setSending] = useState(false);
   const [connectionMenuOpen, setConnectionMenuOpen] = useState(false);
   const [permissionsMenuOpen, setPermissionsMenuOpen] = useState(false);
-  const [understoodRequestExpanded, setUnderstoodRequestExpanded] = useState(false);
+  // #5740: keyed by messageId so expansion never carries over when a new
+  // round's record replaces the old one under a different reply.
+  const [expandedUnderstoodRequestMessageId, setExpandedUnderstoodRequestMessageId] = useState<string | null>(null);
   const permissionsModeWriteSeqRef = useRef(0);
   // Chat id of pending mode writes (null = none): polls hold mode fields only
   // for the chat the write targets, and count tracks overlapping writes.
@@ -5308,6 +5310,18 @@ export function HomeProfessorMariChat({
       workspaceStatus.latestUnderstoodRequest.messageId === message.id
         ? workspaceStatus.latestUnderstoodRequest
         : null;
+    const understoodRequestExpanded = understoodRequest !== null && expandedUnderstoodRequestMessageId === message.id;
+    const understoodRequestOutcomeLabel = understoodRequest
+      ? localizeUi(
+          understoodRequest.outcome === "held"
+            ? "ui.chat.homeprofessormarichat.heldForYourApproval"
+            : understoodRequest.outcome === "applied"
+              ? "ui.chat.homeprofessormarichat.actingOnOutcomeApplied"
+              : understoodRequest.outcome === "failed"
+                ? "ui.chat.homeprofessormarichat.actingOnOutcomeFailed"
+                : "ui.chat.homeprofessormarichat.actingOnOutcomeInterrupted",
+        )
+      : null;
     return (
       <div key={message.id}>
         <CompactMariMessage
@@ -5322,7 +5336,9 @@ export function HomeProfessorMariChat({
         {understoodRequest && (
           <button
             type="button"
-            onClick={() => setUnderstoodRequestExpanded((current) => !current)}
+            onClick={() =>
+              setExpandedUnderstoodRequestMessageId((current) => (current === message.id ? null : message.id))
+            }
             aria-expanded={understoodRequestExpanded}
             title={localizeUi(
               understoodRequestExpanded
@@ -5344,9 +5360,12 @@ export function HomeProfessorMariChat({
               {understoodRequestExpanded && (
                 <span className="mt-0.5 block text-[0.625rem] opacity-80">
                   {understoodRequest.commands.join(", ")}
-                  {understoodRequest.outcome === "held" && (
-                    <span className="block">{localizeUi("ui.chat.homeprofessormarichat.heldForYourApproval")}</span>
-                  )}
+                  <span className="block">
+                    {localizeUi("ui.chat.homeprofessormarichat.actingOnModeOutcomeValue1Value2", {
+                      value1: localize(MARI_PERMISSIONS_MODE_LABELS[understoodRequest.permissionsMode].label),
+                      value2: understoodRequestOutcomeLabel ?? "",
+                    })}
+                  </span>
                 </span>
               )}
             </span>

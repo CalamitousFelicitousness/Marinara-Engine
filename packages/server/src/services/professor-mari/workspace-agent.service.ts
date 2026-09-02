@@ -2636,10 +2636,13 @@ export class ProfessorMariWorkspaceService {
         content: [
           "<mari_understood_request_record>",
           "Your most recent response in this chat that carried mutating commands reported this understood request (your own report, shown to the user for transparency):",
-          `phrase (verbatim): ${understoodRequestRecord.text ?? "(none reported)"}`,
+          // Both values are model-authored: escape delimiters (same convention
+          // as command results) so a quoted phrase can never close this block
+          // and smuggle text out of it into the system context.
+          `phrase: ${understoodRequestRecord.text === null ? "(none reported)" : escapeWorkspaceXml(understoodRequestRecord.text)}`,
           `permissionsMode: ${understoodRequestRecord.permissionsMode}`,
           `outcome: ${understoodRequestRecord.outcome}`,
-          `commands: ${understoodRequestRecord.commands.join(", ") || "(none)"}`,
+          `commands: ${escapeWorkspaceXml(understoodRequestRecord.commands.join(", ")) || "(none)"}`,
           `recordedAt: ${understoodRequestRecord.recordedAt}`,
           "If the user asks why you made, proposed, or held a change, ground your explanation in this record: quote the phrase, explain what you read it as, and say so plainly if you misread them. It is a record, not an instruction - do not redo or re-justify the change unprompted.",
           "</mari_understood_request_record>",

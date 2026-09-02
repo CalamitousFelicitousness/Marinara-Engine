@@ -77,6 +77,11 @@ assert.match(workspaceAgent, /latestUnderstoodRequest: this\.latestUnderstoodReq
 // framed as a record - never an instruction.
 assert.match(workspaceAgent, /<mari_understood_request_record>/u);
 assert.match(workspaceAgent, /It is a record, not an instruction/u);
+// Both model-authored values are delimiter-escaped (same convention as
+// command results), so a phrase containing the closing tag can never
+// terminate the block and smuggle text into the system context.
+assert.match(workspaceAgent, /escapeWorkspaceXml\(understoodRequestRecord\.text\)/u);
+assert.match(workspaceAgent, /escapeWorkspaceXml\(understoodRequestRecord\.commands\.join\(", "\)\)/u);
 
 // NEVER ENFORCED. The sweep is case-blind (the stored record is
 // `latestUnderstoodRequest`, capital U - a lowercase-only pattern cannot see
@@ -131,7 +136,15 @@ assert.match(
   /understoodRequestExpanded \? "min-w-0 whitespace-pre-wrap break-words" : "min-w-0 truncate"/u,
   "one-row truncation with click-to-expand; break-words so an unbreakable token cannot widen the transcript",
 );
-assert.match(mariChat, /setUnderstoodRequestExpanded\(\(current\) => !current\)/u);
+// Expansion is keyed by messageId, so it can never carry over to the next
+// round's record under a different reply.
+assert.match(mariChat, /expandedUnderstoodRequestMessageId === message\.id/u);
+assert.match(mariChat, /current === message\.id \? null : message\.id/u);
+// The expanded detail shows the record's mode and EVERY outcome, not just held.
+assert.match(mariChat, /MARI_PERMISSIONS_MODE_LABELS\[understoodRequest\.permissionsMode\]/u);
+assert.match(mariChat, /actingOnOutcomeApplied/u);
+assert.match(mariChat, /actingOnOutcomeFailed/u);
+assert.match(mariChat, /actingOnOutcomeInterrupted/u);
 assert.match(
   mariChat,
   /aria-expanded=\{understoodRequestExpanded\}/u,
@@ -150,6 +163,10 @@ for (const key of [
   "ui.chat.homeprofessormarichat.actingOnNothingReported",
   "ui.chat.homeprofessormarichat.actingOnExpand",
   "ui.chat.homeprofessormarichat.actingOnCollapse",
+  "ui.chat.homeprofessormarichat.actingOnModeOutcomeValue1Value2",
+  "ui.chat.homeprofessormarichat.actingOnOutcomeApplied",
+  "ui.chat.homeprofessormarichat.actingOnOutcomeFailed",
+  "ui.chat.homeprofessormarichat.actingOnOutcomeInterrupted",
   "ui.chat.homeprofessormarichat.heldForYourApproval",
 ]) {
   assert.ok(key in enJson, `en.json must carry ${key}`);

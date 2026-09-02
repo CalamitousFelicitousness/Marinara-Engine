@@ -19057,7 +19057,7 @@ test("mobile chat composer follows the visual viewport above the software keyboa
 
     await textarea.focus();
 
-    const expectedOffsetTop = (await page.locator("html").getAttribute("data-mari-ios-webkit")) === null ? 72 : 0;
+    const expectedOffsetTop = 72;
 
     await page.evaluate(() => {
       (
@@ -19130,7 +19130,6 @@ test("mobile chat composer follows the visual viewport above the software keyboa
             htmlHeight: htmlStyle.height,
             htmlOverflow: htmlStyle.overflow,
             bodyPosition: bodyStyle.position,
-            bodyInset: [bodyStyle.top, bodyStyle.right, bodyStyle.bottom, bodyStyle.left],
             bodyHeight: bodyStyle.height,
             bodyOverflow: bodyStyle.overflow,
             rootHeight: rootStyle.height,
@@ -19141,8 +19140,7 @@ test("mobile chat composer follows the visual viewport above the software keyboa
       .toEqual({
         htmlHeight: `${await page.evaluate(() => window.innerHeight)}px`,
         htmlOverflow: "hidden",
-        bodyPosition: "fixed",
-        bodyInset: ["0px", "0px", "0px", "0px"],
+        bodyPosition: "static",
         bodyHeight: `${await page.evaluate(() => window.innerHeight)}px`,
         bodyOverflow: "hidden",
         rootHeight: `${await page.evaluate(() => window.innerHeight)}px`,
@@ -19163,8 +19161,6 @@ test("mobile chat composer follows the visual viewport above the software keyboa
     });
     const iosFocusOffsetTop = Math.min(72, Math.max(0, initialViewportHeight - 360));
     const iosFocusPageTop = Math.min(340, Math.max(0, initialViewportHeight - 360));
-    // Some iPhones update pageTop while leaving the fixed body at its visual
-    // origin. Applying that reported top would push the shell below the view.
     await page.evaluate(
       ({ offsetTop, pageTop }) => {
         (
@@ -19199,7 +19195,7 @@ test("mobile chat composer follows the visual viewport above the software keyboa
           top: getComputedStyle(document.documentElement).getPropertyValue("--mari-visual-viewport-offset-top").trim(),
         })),
       )
-      .toEqual({ height: "360px", top: "0px" });
+      .toEqual({ height: "360px", top: `${iosFocusPageTop}px` });
     await expect(page.locator("html")).toHaveAttribute("data-mari-software-keyboard-open", "");
     const iosCompactComposerStyle = await composer.evaluate((element) => {
       const style = getComputedStyle(element);
@@ -19213,40 +19209,50 @@ test("mobile chat composer follows the visual viewport above the software keyboa
     const [iosShellBox, iosComposerBox] = await Promise.all([shell.boundingBox(), composer.boundingBox()]);
     expect(iosShellBox).not.toBeNull();
     expect(iosComposerBox).not.toBeNull();
-    expect(Math.abs(iosShellBox!.y)).toBeLessThanOrEqual(1);
+    expect(Math.abs(iosShellBox!.y - iosFocusPageTop)).toBeLessThanOrEqual(1);
     expect(Math.abs(iosShellBox!.height - 360)).toBeLessThanOrEqual(1);
-    expect(iosComposerBox!.y).toBeGreaterThanOrEqual(0);
-    expect(iosComposerBox!.y + iosComposerBox!.height).toBeLessThanOrEqual(360);
+    expect(iosComposerBox!.y).toBeGreaterThanOrEqual(iosFocusPageTop);
+    expect(iosComposerBox!.y + iosComposerBox!.height).toBeLessThanOrEqual(iosFocusPageTop + 360);
 
-    // Model WebKit's native keyboard pan: the body moves visually while the
-    // document scroll offsets stay at zero. The shell's document-coordinate
-    // top must cancel that displacement and keep the composer on-screen.
-    await page.locator("body").evaluate((element, pageTop) => {
-      element.style.transform = `translateY(-${pageTop}px)`;
-    }, iosFocusPageTop);
-    await expect
-      .poll(() =>
-        page.evaluate(() => ({
-          bodyTop: Math.round(document.body.getBoundingClientRect().top),
-          bodyScrollTop: document.body.scrollTop,
-          documentScrollTop: document.documentElement.scrollTop,
-        })),
-      )
-      .toEqual({ bodyTop: -iosFocusPageTop, bodyScrollTop: 0, documentScrollTop: 0 });
-    await page.evaluate(() => window.visualViewport?.dispatchEvent(new Event("scroll")));
-    await expect
-      .poll(() =>
-        page.evaluate(() =>
-          getComputedStyle(document.documentElement).getPropertyValue("--mari-visual-viewport-offset-top").trim(),
-        ),
-      )
-      .toBe(`${iosFocusPageTop}px`);
-    const [pannedShellBox, pannedComposerBox] = await Promise.all([shell.boundingBox(), composer.boundingBox()]);
-    expect(pannedShellBox).not.toBeNull();
-    expect(pannedComposerBox).not.toBeNull();
-    expect(Math.abs(pannedShellBox!.y)).toBeLessThanOrEqual(1);
-    expect(pannedComposerBox!.y).toBeGreaterThanOrEqual(0);
-    expect(pannedComposerBox!.y + pannedComposerBox!.height).toBeLessThanOrEqual(360);
+    await page.evaluate(async () => {
+      const storePath = "/src/stores/ui.store.ts";
+      const { useUIStore } = (await import(/* @vite-ignore */ storePath)) as {
+        useUIStore: {
+          getState: () => {
+            openModal: (type: "create-persona") => void;
+          };
+        };
+      };
+      useUIStore.getState().openModal("create-persona");
+    });
+    const personaModal = page.locator('[data-component="Modal"]');
+    const personaModalPanel = personaModal.locator(".mari-modal-panel");
+    const personaNameInput = personaModal.locator("input").first();
+    await expect(personaModal).toBeVisible();
+    await expect(personaNameInput).toBeFocused();
+    await expect(personaModal).toHaveCSS("position", "absolute");
+    const [personaModalBox, personaModalPanelBox] = await Promise.all([
+      personaModal.boundingBox(),
+      personaModalPanel.boundingBox(),
+    ]);
+    expect(personaModalBox).not.toBeNull();
+    expect(personaModalPanelBox).not.toBeNull();
+    expect(Math.abs(personaModalBox!.y - iosFocusPageTop)).toBeLessThanOrEqual(1);
+    expect(Math.abs(personaModalBox!.height - 360)).toBeLessThanOrEqual(1);
+    expect(personaModalPanelBox!.y).toBeGreaterThanOrEqual(iosFocusPageTop);
+    expect(personaModalPanelBox!.y + personaModalPanelBox!.height).toBeLessThanOrEqual(iosFocusPageTop + 360);
+    await page.evaluate(async () => {
+      const storePath = "/src/stores/ui.store.ts";
+      const { useUIStore } = (await import(/* @vite-ignore */ storePath)) as {
+        useUIStore: {
+          getState: () => {
+            closeModal: () => void;
+          };
+        };
+      };
+      useUIStore.getState().closeModal();
+    });
+    await expect(personaModal).toBeHidden();
 
     await transcript.evaluate((element) => {
       element.scrollTop = Math.min(240, element.scrollHeight - element.clientHeight);
@@ -19260,7 +19266,6 @@ test("mobile chat composer follows the visual viewport above the software keyboa
           __setMarinaraVisualViewport: (height: number, offsetTop: number, pageTop?: number) => void;
         }
       ).__setMarinaraVisualViewport(height, 0, 0);
-      document.body.style.removeProperty("transform");
     }, initialViewportHeight);
     await expect(page.locator("html")).not.toHaveAttribute("data-mari-software-keyboard-open", "");
     const dismissedShellBox = await shell.boundingBox();

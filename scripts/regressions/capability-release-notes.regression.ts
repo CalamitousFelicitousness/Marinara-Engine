@@ -281,7 +281,21 @@ try {
   // Same precondition, one level down: the comparator turns numeric prerelease
   // identifiers into Numbers too, so a non-canonical or oversized identifier
   // breaks ordering just as quietly.
-  for (const version of ["1.0.0-01", "1.0.0-1.007", "1.0.0-9007199254740993", "1.0.0-1.9007199254740993"]) {
+  for (const version of [
+    "1.0.0-01",
+    "1.0.0-1.007",
+    "1.0.0-9007199254740993",
+    "1.0.0-1.9007199254740993",
+    // Ten digits, still under Number.MAX_SAFE_INTEGER: pins the nine-digit bound
+    // itself rather than only the safe-integer limit behind it.
+    "1.0.0-1000000000",
+    // Leading zeros in a core component: equal to 1.2.3 numerically, different as
+    // a string, so ordering and lookup would disagree.
+    "01.2.3",
+    "1.02.3",
+    "1.2.03",
+    "0100000000.0.0",
+  ]) {
     resetCapabilityReleaseNotesCache();
     assert.deepEqual(
       await capabilityPackageManager.releaseNotes(
@@ -299,7 +313,16 @@ try {
   }
 
   // Canonical prereleases still work: the bound must not cost real releases.
-  for (const version of ["1.0.0-rc.1", "1.0.0-0", "1.0.0-alpha.10", "1.0.0-1"]) {
+  for (const version of [
+    "1.0.0-rc.1",
+    "1.0.0-0",
+    "1.0.0-alpha.10",
+    "1.0.0-1",
+    // The largest values the bound allows, so tightening it further fails here.
+    "1.0.0-999999999",
+    "999999999.999999999.999999999",
+    "0.0.0",
+  ]) {
     resetCapabilityReleaseNotesCache();
     const accepted = await capabilityPackageManager.releaseNotes(
       "background",

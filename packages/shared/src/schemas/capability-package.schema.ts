@@ -497,13 +497,18 @@ const capabilityPackageVersionNoteSchema = z
     //     different versions compare equal and newest-first quietly stops holding;
     //   * numeric prerelease identifiers must be canonical, or "01" and "1"
     //     compare as different versions while meaning the same one.
+    // Leading zeros matter for the same reason: 01.2.3 and 1.2.3 compare equal
+    // numerically but differ as strings, so the duplicate check and the lookup in
+    // attachCapabilityReleaseNotes would disagree with the ordering — two notes
+    // for one version, or a note that never attaches because the catalog spells
+    // the version differently.
     // Nine digits is far beyond any real version, and this is canonical SemVer
-    // otherwise: no leading zeros on a numeric identifier.
+    // otherwise.
     version: z
       .string()
       .max(64)
       .regex(
-        /^\d{1,9}\.\d{1,9}\.\d{1,9}(?:-(?:0|[1-9]\d{0,8}|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d{0,8}|\d*[A-Za-z-][0-9A-Za-z-]*))*)?$/,
+        /^(?:0|[1-9]\d{0,8})\.(?:0|[1-9]\d{0,8})\.(?:0|[1-9]\d{0,8})(?:-(?:0|[1-9]\d{0,8}|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d{0,8}|\d*[A-Za-z-][0-9A-Za-z-]*))*)?$/,
       ),
     // Round-tripped, not just shape-matched: a plain regex accepts 2026-02-30,
     // which would reach the UI as a date that does not exist.

@@ -43,6 +43,8 @@ import {
   normalizeLorebookCategory,
   normalizePersonalExtensionCapabilities,
   type MariDbCommandResult,
+  type MariDbMutationReadBack,
+  type MariDbReadBackMismatch,
   type MariDbReadTruncation,
   type MariDbDiffSummary,
   type MariDbHistoryEntry,
@@ -649,6 +651,19 @@ function knownColumnPatch(meta: TableMeta, row: Row): Row {
   }
   return out;
 }
+
+// #5754 follow-up: the post-apply read-back compares persisted values against
+// what the plan asserted. Key order must not matter for JSON-ish columns, so
+// compare via the file's existing stable serialization (stableJson above)
+// instead of reference or strict equality.
+export function readBackValuesMatch(persisted: unknown, intended: unknown): boolean {
+  if (persisted === intended) return true;
+  return stableJson(persisted ?? null) === stableJson(intended ?? null);
+}
+
+// A capped sample keeps the echoed mismatches token-lean; mismatchCount still
+// reports the true total.
+const READ_BACK_MISMATCH_LIMIT = 5;
 
 // Thrown by restorePlan (#4852 F2) when a row a Restore would revert was changed by a newer
 // write after this review applied. Caught in restoreAppliedReview so the newer data is left
@@ -7108,6 +7123,7 @@ export class MariDbService {
       await this.captureDeletedLorebookEmbeddings(plan.changes);
       const journalPath = await this.applyPlan(plan);
       await this.syncAffectedCharacterBooks(plan.changes);
+      const readBack = await this.buildReadBack(plan);
       const history = await this.recordHistory({
         plan,
         command: storedCommand,
@@ -7125,6 +7141,7 @@ export class MariDbService {
           mode: "apply",
           command,
           summary: plan.summary,
+          readBack,
           validation: plan.validation,
           approval: { status: "not_required", operationHash: plan.operationHash },
           journalPath,
@@ -7136,6 +7153,7 @@ export class MariDbService {
         mode: "apply",
         command,
         summary: plan.summary,
+        readBack,
         validation: plan.validation,
         approval: { status: "pending", id: review.id, operationHash: plan.operationHash },
         journalPath,
@@ -8556,6 +8574,72 @@ export class MariDbService {
       });
     await this.writeQueue.catch((err) => logger.warn(err, "[mari-db] failed to write history"));
     return entry;
+  }
+
+  /**
+   * #5754 follow-up: deterministic post-apply verification. Re-read every
+   * applied row THROUGH THE STORE (the same getRawById layer every read
+   * command uses) and compare the persisted values against the columns the
+   * plan asserted. Runs AFTER applyPlan's flush and after character-book
+   * sync, so it observes the final persisted state. Only a clean "verified"
+   * result may satisfy the workspace verification guard; "mismatch" and
+   * "unavailable" both fall back to demanding a manual confirmatory read -
+   * this can only ever strengthen the silent-persistence-failure protection,
+   * never weaken it. Never throws: an applied mutation must not be reported
+   * as failed because its verification could not run.
+   */
+  private async buildReadBack(plan: Plan): Promise<MariDbMutationReadBack> {
+    try {
+      const mismatches: MariDbReadBackMismatch[] = [];
+      let mismatchCount = 0;
+      let checkedRows = 0;
+      const noteMismatch = (mismatch: MariDbReadBackMismatch) => {
+        mismatchCount += 1;
+        if (mismatches.length < READ_BACK_MISMATCH_LIMIT) mismatches.push(mismatch);
+      };
+      for (const change of plan.changes) {
+        if (!change.apply) continue;
+        checkedRows += 1;
+        const meta = getMeta(change.table);
+        const persisted = await this.getRawById(meta, change.id);
+        if (change.action === "delete") {
+          if (persisted !== null) {
+            noteMismatch({
+              table: change.table,
+              id: change.id,
+              column: getPrimary(meta),
+              intended: null,
+              persisted: "row still present",
+            });
+          }
+          continue;
+        }
+        if (persisted === null) {
+          noteMismatch({
+            table: change.table,
+            id: change.id,
+            column: getPrimary(meta),
+            intended: "row present",
+            persisted: null,
+          });
+          continue;
+        }
+        const asserted = knownColumnPatch(meta, change.afterRaw ?? {});
+        for (const [column, value] of Object.entries(asserted)) {
+          if (!readBackValuesMatch(persisted[column], value)) {
+            noteMismatch({ table: change.table, id: change.id, column, intended: value, persisted: persisted[column] });
+          }
+        }
+      }
+      // status stays the FIRST key: the workspace guard detects the leading
+      // '"readBack": { "status": "verified"' prefix in serialized output.
+      return mismatchCount === 0
+        ? { status: "verified", checkedRows }
+        : { status: "mismatch", checkedRows, mismatchCount, mismatches };
+    } catch (err) {
+      logger.warn(err, "[mari-db] post-apply read-back unavailable");
+      return { status: "unavailable", checkedRows: 0, error: err instanceof Error ? err.message : String(err) };
+    }
   }
 
   private async rawRows(table: string): Promise<Row[]> {

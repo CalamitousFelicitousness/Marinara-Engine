@@ -353,6 +353,35 @@ export interface MariDbReadTruncation {
   unresolvedField?: string;
 }
 
+/**
+ * #5754 follow-up: deterministic post-apply verification. After an applied
+ * mutation the engine re-reads every affected row FROM THE STORE and compares
+ * the persisted values against what the plan asserted. Only "verified" - a
+ * store-observed match - may satisfy the workspace verification guard: the
+ * diff summary's preview is plan-derived (the same function serves dry-runs)
+ * and must never count as proof of persistence. "mismatch" and "unavailable"
+ * both fall back to requiring a manual confirmatory read, so a silent
+ * persistence failure can only surface louder, never quieter.
+ */
+export interface MariDbReadBackMismatch {
+  table: string;
+  id: string;
+  column: string;
+  intended: unknown;
+  persisted: unknown;
+}
+
+export interface MariDbMutationReadBack {
+  /** Keep this the FIRST key when constructing: the workspace guard detects the '"readBack": { "status": "verified"' prefix in serialized output. */
+  status: "verified" | "mismatch" | "unavailable";
+  /** Applied plan changes the read-back checked (all of them, not a preview cap). */
+  checkedRows: number;
+  /** Total mismatching columns/rows found; `mismatches` echoes a capped sample. */
+  mismatchCount?: number;
+  mismatches?: MariDbReadBackMismatch[];
+  error?: string;
+}
+
 export interface MariDbCommandResult {
   ok: boolean;
   mode: "read" | "dry-run" | "apply";
@@ -360,6 +389,7 @@ export interface MariDbCommandResult {
   output?: unknown;
   truncation?: MariDbReadTruncation;
   summary?: MariDbDiffSummary;
+  readBack?: MariDbMutationReadBack;
   validation?: MariDbValidationResult;
   approval?: {
     status: "not_required" | "pending" | "approved" | "rejected" | "cancelled" | "timed_out" | "state_changed";

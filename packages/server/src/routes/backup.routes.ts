@@ -2933,6 +2933,10 @@ async function readProfileArchiveAsset(
 async function readProfileImportRequest(req: FastifyRequest): Promise<ProfileImportInput> {
   const contentType = String(req.headers["content-type"] ?? "").toLowerCase();
   if (!contentType.includes("multipart/form-data")) {
+    const contentLength = Number(req.headers["content-length"] ?? 0);
+    if (Number.isFinite(contentLength) && contentLength > PROFILE_IMPORT_BODY_LIMIT_BYTES) {
+      throw new ProfileImportRequestError("Profile import JSON exceeds the upload limit.");
+    }
     const envelope = req.body as ExportEnvelope;
     return { envelope };
   }

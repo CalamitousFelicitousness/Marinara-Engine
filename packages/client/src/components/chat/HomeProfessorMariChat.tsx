@@ -6099,7 +6099,9 @@ export function HomeProfessorMariChat({
                             <span className="mari-chrome-accent-soft-tile mari-accent-animated h-8 w-8 shrink-0 overflow-hidden rounded-md border">
                               <img src={MARI_AVATAR_URL} alt="" className="h-full w-full object-cover" />
                             </span>
-                            <span className="min-w-0">
+                            {/* At phone widths the header buttons crush this into "P. / R…" -
+                                the avatar carries the identity there, so hide the text. */}
+                            <span className="hidden min-w-0 sm:block">
                               <span className="block truncate text-xs font-bold text-[var(--foreground)]">
                                 {localizeUi("ui.chat.homefaq.professorMari")}
                               </span>

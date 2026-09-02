@@ -4183,7 +4183,6 @@ export function HomeProfessorMariChat({
     setMessages([]);
     setLoadedMessagesChatId(chat.id);
     setDraft("");
-    setLibraryMenuOpen(false);
     clearMariChips();
     setWorkspaceActive(false);
     setWorkspaceActivity(null);
@@ -4243,6 +4242,8 @@ export function HomeProfessorMariChat({
 
   const runRestart = useCallback(async () => {
     if (isBusy) return;
+    // Before the awaits: a failed restart must not strand the dropdown open.
+    setLibraryMenuOpen(false);
     setSending(true);
     try {
       await handleRestart();
@@ -5524,7 +5525,10 @@ export function HomeProfessorMariChat({
           <button
             ref={connectionButtonRef}
             type="button"
-            onClick={() => setConnectionMenuOpen((current) => !current)}
+            onClick={() => {
+              setLibraryMenuOpen(false);
+              setConnectionMenuOpen((current) => !current);
+            }}
             className={cn(
               "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition-all",
               connectionMenuOpen
@@ -6143,6 +6147,7 @@ export function HomeProfessorMariChat({
                                 ref={libraryButtonRef}
                                 type="button"
                                 onClick={() => {
+                                  setConnectionMenuOpen(false);
                                   setPermissionsMenuOpen(false);
                                   setLibraryMenuOpen((current) => !current);
                                 }}
@@ -6427,7 +6432,10 @@ export function HomeProfessorMariChat({
                             <button
                               ref={connectionButtonRef}
                               type="button"
-                              onClick={() => setConnectionMenuOpen((current) => !current)}
+                              onClick={() => {
+                                setLibraryMenuOpen(false);
+                                setConnectionMenuOpen((current) => !current);
+                              }}
                               className={cn(
                                 "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition-all",
                                 connectionMenuOpen

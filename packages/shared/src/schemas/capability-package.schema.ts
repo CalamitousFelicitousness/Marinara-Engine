@@ -489,12 +489,22 @@ export interface CapabilityPackageUpdate {
  *  Engine with it treats a missing document as "no notes". */
 const capabilityPackageVersionNoteSchema = z
   .object({
-    // Digit-bounded, unlike the manifest's version field. Ordering here goes
-    // through compareCapabilityPackageVersions, which parses components as
-    // numbers: past Number.MAX_SAFE_INTEGER two different versions compare equal
-    // and newest-first ordering silently stops holding. Nine digits is far beyond
-    // any real version and keeps every component an exact integer.
-    version: z.string().regex(/^\d{1,9}\.\d{1,9}\.\d{1,9}(?:-[0-9A-Za-z.-]+)?$/),
+    // Stricter than the manifest's version field, and deliberately so. Ordering
+    // here runs through compareCapabilityPackageVersions, which turns each
+    // component and each numeric prerelease identifier into a Number. That makes
+    // two preconditions load-bearing, and neither is checked there:
+    //   * every numeric part must stay inside the safe integer range, or two
+    //     different versions compare equal and newest-first quietly stops holding;
+    //   * numeric prerelease identifiers must be canonical, or "01" and "1"
+    //     compare as different versions while meaning the same one.
+    // Nine digits is far beyond any real version, and this is canonical SemVer
+    // otherwise: no leading zeros on a numeric identifier.
+    version: z
+      .string()
+      .max(64)
+      .regex(
+        /^\d{1,9}\.\d{1,9}\.\d{1,9}(?:-(?:0|[1-9]\d{0,8}|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d{0,8}|\d*[A-Za-z-][0-9A-Za-z-]*))*)?$/,
+      ),
     // Round-tripped, not just shape-matched: a plain regex accepts 2026-02-30,
     // which would reach the UI as a date that does not exist.
     date: z

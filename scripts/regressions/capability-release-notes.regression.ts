@@ -278,6 +278,41 @@ try {
     "Version components too large to order exactly fail the document",
   );
 
+  // Same precondition, one level down: the comparator turns numeric prerelease
+  // identifiers into Numbers too, so a non-canonical or oversized identifier
+  // breaks ordering just as quietly.
+  for (const version of ["1.0.0-01", "1.0.0-1.007", "1.0.0-9007199254740993", "1.0.0-1.9007199254740993"]) {
+    resetCapabilityReleaseNotesCache();
+    assert.deepEqual(
+      await capabilityPackageManager.releaseNotes(
+        "background",
+        served(() =>
+          ok({
+            schemaVersion: 1,
+            packages: { background: { versions: [{ version, date: "2026-09-01", notes: "Prerelease." }] } },
+          }),
+        ).fetchNotes,
+      ),
+      [],
+      `A non-canonical or oversized prerelease identifier fails the document: ${version}`,
+    );
+  }
+
+  // Canonical prereleases still work: the bound must not cost real releases.
+  for (const version of ["1.0.0-rc.1", "1.0.0-0", "1.0.0-alpha.10", "1.0.0-1"]) {
+    resetCapabilityReleaseNotesCache();
+    const accepted = await capabilityPackageManager.releaseNotes(
+      "background",
+      served(() =>
+        ok({
+          schemaVersion: 1,
+          packages: { background: { versions: [{ version, date: "2026-09-01", notes: "Prerelease." }] } },
+        }),
+      ).fetchNotes,
+    );
+    assert.equal(accepted.length, 1, `A canonical prerelease is accepted: ${version}`);
+  }
+
   resetCapabilityReleaseNotesCache();
   const good = served(() =>
     ok({

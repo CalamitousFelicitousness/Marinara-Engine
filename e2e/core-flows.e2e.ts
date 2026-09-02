@@ -3878,8 +3878,9 @@ test("Character and Persona avatar actions stay separated and visually balanced"
     await expect(byline).toHaveText(`by ${creator}·v${version}`);
     await expect(editor.locator(".mari-editor-secondary-line .mari-editor-meta")).toHaveCount(0);
 
-    const header = editor.locator(".mari-editor-header--with-nav");
+    const header = editor.locator(".mari-editor-header");
     const navigation = header.locator(".mari-editor-navigation");
+    const desktopRail = editor.locator(".mari-editor-tab-rail");
     const actions = header.locator(".mari-editor-actions");
     const compactMenuButton = navigation.getByRole("button", { name: "Editor sections" });
     const desktopTabs = navigation.getByRole("navigation", { name: "Editor sections" });
@@ -3928,59 +3929,88 @@ test("Character and Persona avatar actions stay separated and visually balanced"
     if (mobileProject) {
       await verifyCompactNavigation();
     } else {
-      await page.setViewportSize({ width: 1800, height: 900 });
-      await verifyCompactNavigation();
-
-      let compactTabsWidth: number | null = null;
-      for (const width of [1900, 2000, 2100, 2200, 2300, 2400]) {
-        await page.setViewportSize({ width, height: 900 });
-        if ((await desktopTabs.isVisible()) && (await desktopTabs.locator(".mari-editor-tab svg").first().isHidden())) {
-          compactTabsWidth = width;
-          break;
+      if (panel === "characters") {
+        for (const width of [767, 768, 1024, 1800, 2560]) {
+          await page.setViewportSize({ width, height: 900 });
+          if (width === 767) {
+            await expect(desktopRail).toBeHidden();
+            await verifyCompactNavigation();
+          } else {
+            await expect(desktopRail).toBeVisible();
+            await expect(navigation).toBeHidden();
+          }
         }
       }
-      expect(compactTabsWidth).not.toBeNull();
-      await expect(desktopTabs).toBeVisible();
-      await expect(compactMenuButton).toBeHidden();
-      const compactTabBoxes = await desktopTabs.locator(".mari-editor-tab").evaluateAll((tabs) =>
-        tabs.map((tab) => {
-          const box = tab.getBoundingClientRect();
-          return { left: box.left, right: box.right };
-        }),
-      );
-      for (let index = 1; index < compactTabBoxes.length; index += 1) {
-        expect(compactTabBoxes[index]!.left - compactTabBoxes[index - 1]!.right).toBeGreaterThanOrEqual(-0.5);
+      await page.setViewportSize({ width: 1800, height: 900 });
+      if (panel === "characters") {
+        await expect(desktopRail).toBeVisible();
+        await expect(navigation).toBeHidden();
+        await desktopRail.getByRole("button", { name: "Card", exact: true }).click();
+        await expect(editor.getByRole("heading", { name: "Card", exact: true })).toBeVisible();
+      } else {
+        await verifyCompactNavigation();
       }
-      await expect(header.evaluate((element) => element.scrollWidth <= element.clientWidth)).resolves.toBe(true);
 
-      await page.setViewportSize({ width: 2560, height: 900 });
-      await expect(desktopTabs).toBeVisible();
-      await expect(compactMenuButton).toBeHidden();
-      await expect(desktopTabs.locator(".mari-editor-tab svg").first()).toBeVisible();
-      const [headerBox, navigationBox, firstActionBox, tabBoxes] = await Promise.all([
-        header.boundingBox(),
-        navigation.boundingBox(),
-        actions.locator(".mari-editor-action").first().boundingBox(),
-        desktopTabs.locator(".mari-editor-tab").evaluateAll((tabs) =>
+      if (panel !== "characters") {
+        let compactTabsWidth: number | null = null;
+        for (const width of [1900, 2000, 2100, 2200, 2300, 2400]) {
+          await page.setViewportSize({ width, height: 900 });
+          if (
+            (await desktopTabs.isVisible()) &&
+            (await desktopTabs.locator(".mari-editor-tab svg").first().isHidden())
+          ) {
+            compactTabsWidth = width;
+            break;
+          }
+        }
+        expect(compactTabsWidth).not.toBeNull();
+        await expect(desktopTabs).toBeVisible();
+        await expect(compactMenuButton).toBeHidden();
+        const compactTabBoxes = await desktopTabs.locator(".mari-editor-tab").evaluateAll((tabs) =>
           tabs.map((tab) => {
             const box = tab.getBoundingClientRect();
-            return { left: box.left, right: box.right, height: box.height };
+            return { left: box.left, right: box.right };
           }),
-        ),
-      ]);
-      expect(headerBox).not.toBeNull();
-      expect(navigationBox).not.toBeNull();
-      if (headerBox && navigationBox) {
-        expect(navigationBox.width).toBeLessThan(headerBox.width * 0.65);
+        );
+        for (let index = 1; index < compactTabBoxes.length; index += 1) {
+          expect(compactTabBoxes[index]!.left - compactTabBoxes[index - 1]!.right).toBeGreaterThanOrEqual(-0.5);
+        }
+        await expect(header.evaluate((element) => element.scrollWidth <= element.clientWidth)).resolves.toBe(true);
       }
-      for (let index = 1; index < tabBoxes.length; index += 1) {
-        expect(tabBoxes[index]!.left - tabBoxes[index - 1]!.right).toBeGreaterThanOrEqual(-0.5);
-        expect(tabBoxes[index]!.left - tabBoxes[index - 1]!.right).toBeLessThanOrEqual(5);
+
+      await page.setViewportSize({ width: 2560, height: 900 });
+      if (panel === "characters") {
+        await expect(desktopRail).toBeVisible();
+        await expect(navigation).toBeHidden();
+      } else {
+        await expect(desktopTabs).toBeVisible();
+        await expect(compactMenuButton).toBeHidden();
+        await expect(desktopTabs.locator(".mari-editor-tab svg").first()).toBeVisible();
+        const [headerBox, navigationBox, firstActionBox, tabBoxes] = await Promise.all([
+          header.boundingBox(),
+          navigation.boundingBox(),
+          actions.locator(".mari-editor-action").first().boundingBox(),
+          desktopTabs.locator(".mari-editor-tab").evaluateAll((tabs) =>
+            tabs.map((tab) => {
+              const box = tab.getBoundingClientRect();
+              return { left: box.left, right: box.right, height: box.height };
+            }),
+          ),
+        ]);
+        expect(headerBox).not.toBeNull();
+        expect(navigationBox).not.toBeNull();
+        if (headerBox && navigationBox) {
+          expect(navigationBox.width).toBeLessThan(headerBox.width * 0.65);
+        }
+        for (let index = 1; index < tabBoxes.length; index += 1) {
+          expect(tabBoxes[index]!.left - tabBoxes[index - 1]!.right).toBeGreaterThanOrEqual(-0.5);
+          expect(tabBoxes[index]!.left - tabBoxes[index - 1]!.right).toBeLessThanOrEqual(5);
+        }
+        if (firstActionBox) {
+          for (const tabBox of tabBoxes) expect(Math.abs(tabBox.height - firstActionBox.height)).toBeLessThanOrEqual(1);
+        }
+        await expect(header.evaluate((element) => element.scrollWidth <= element.clientWidth)).resolves.toBe(true);
       }
-      if (firstActionBox) {
-        for (const tabBox of tabBoxes) expect(Math.abs(tabBox.height - firstActionBox.height)).toBeLessThanOrEqual(1);
-      }
-      await expect(header.evaluate((element) => element.scrollWidth <= element.clientWidth)).resolves.toBe(true);
     }
 
     const [titleLineBox, titleInputBox, bylineBox] = await Promise.all([
@@ -4000,9 +4030,11 @@ test("Character and Persona avatar actions stay separated and visually balanced"
       );
       if ((page.viewportSize()?.width ?? 768) >= 768) {
         expect(bylineBox.x - (titleInputBox.x + titleInputBox.width)).toBeLessThanOrEqual(10);
-        const navigationBox = await navigation.boundingBox();
-        expect(navigationBox).not.toBeNull();
-        if (navigationBox) expect(navigationBox.x - (bylineBox.x + bylineBox.width)).toBeLessThanOrEqual(24);
+        if (panel !== "characters") {
+          const navigationBox = await navigation.boundingBox();
+          expect(navigationBox).not.toBeNull();
+          if (navigationBox) expect(navigationBox.x - (bylineBox.x + bylineBox.width)).toBeLessThanOrEqual(24);
+        }
         const creatorFits = await byline
           .locator(".mari-editor-byline-creator")
           .evaluate((element) => element.scrollWidth <= element.clientWidth);

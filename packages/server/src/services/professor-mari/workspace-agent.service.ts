@@ -1656,6 +1656,21 @@ export function visibleTextRequestsUserApproval(text: string): boolean {
   );
 }
 
+// #5776: shared between bashLooksMutating and the sandbox refusal in
+// commandBash - a mari CLI mutation can only work through the direct runtime
+// (the sandbox denies the network the CLI needs), so embedding one in a
+// sandbox-bound compound is always a silent no-op.
+function commandEmbedsMariCliMutation(normalizedCommand: string): boolean {
+  return (
+    /\bmari\s+db\s+(insert|patch|replace|delete|transform)\b/.test(normalizedCommand) ||
+    /\bmari\s+(characters?|personas?|lorebooks?)\s+(create|update|delete|add-entry|link-character|unlink-character)\b/.test(
+      normalizedCommand,
+    ) ||
+    /\bmari\s+themes\s+(create|update|set-active)\b/.test(normalizedCommand) ||
+    /\bmari\s+images\s+(generate|edit|assign|delete)\b/.test(normalizedCommand)
+  );
+}
+
 function bashLooksMutating(command: string): boolean {
   const normalized = command.toLowerCase();
   return (
@@ -1670,12 +1685,7 @@ function bashLooksMutating(command: string): boolean {
     /\b(?:node|python(?:3)?)\b[^\n;&|]*(?:writefile|appendfile|unlink|rmsync|mkdir|rename|copyfile|shutil\.|os\.remove|open\([^)]*,\s*["'][wa])/u.test(
       normalized,
     ) ||
-    /\bmari\s+db\s+(insert|patch|replace|delete|transform)\b/.test(normalized) ||
-    /\bmari\s+(characters?|personas?|lorebooks?)\s+(create|update|delete|add-entry|link-character|unlink-character)\b/.test(
-      normalized,
-    ) ||
-    /\bmari\s+themes\s+(create|update|set-active)\b/.test(normalized) ||
-    /\bmari\s+images\s+(generate|edit|assign|delete)\b/.test(normalized)
+    commandEmbedsMariCliMutation(normalized)
   );
 }
 
@@ -2018,18 +2028,33 @@ export function workspaceMutationTargetForPath(
   // #5778: a DANGLING symlink leaf survives the realpath above (existsSync
   // follows links, so the walk skips to the parent), yet writeFile would
   // follow it and create its target. Chase the link chain by hand so the
-  // real destination is what gets escape- and policy-checked.
+  // real destination is what gets escape- and policy-checked. Each hop is
+  // re-canonicalized through its existing ancestors, so a readlink target
+  // routed through a symlinked DIRECTORY is judged by where the kernel would
+  // really write, not by its innocent spelling - and if the chain is still
+  // unresolved when the hop budget runs out, the path is refused (fail
+  // closed) rather than judged by the unresolved link's own name.
+  const canonicalizeThroughAncestors = (target: string): string => {
+    let ancestor = target;
+    while (!existsSync(ancestor) && ancestor !== dirname(ancestor)) {
+      ancestor = dirname(ancestor);
+    }
+    const realAncestor = existsSync(ancestor) ? realpathSync(ancestor) : ancestor;
+    return ancestor === target ? realAncestor : join(realAncestor, relative(ancestor, target));
+  };
   let effectiveTarget = canonicalTarget;
+  let chainResolved = false;
   for (let hop = 0; hop < 8; hop += 1) {
-    let linkTarget: string | null = null;
-    try {
-      const stats = lstatSync(effectiveTarget, { throwIfNoEntry: false });
-      if (!stats?.isSymbolicLink()) break;
-      linkTarget = readlinkSync(effectiveTarget);
-    } catch {
+    const stats = lstatSync(effectiveTarget, { throwIfNoEntry: false });
+    if (!stats?.isSymbolicLink()) {
+      chainResolved = true;
       break;
     }
-    effectiveTarget = resolve(dirname(effectiveTarget), linkTarget);
+    const linkTarget = readlinkSync(effectiveTarget);
+    effectiveTarget = canonicalizeThroughAncestors(resolve(dirname(effectiveTarget), linkTarget));
+  }
+  if (!chainResolved) {
+    throw new Error(`The symbolic link chain is too deep to resolve safely: ${inputPath}`);
   }
   if (!isWithin(canonicalRoot, effectiveTarget)) {
     throw new Error(`Path escapes the workspace through a symbolic link: ${inputPath}`);
@@ -3509,12 +3534,20 @@ ${sections.join("\n\n")}
     const timeoutSeconds = numberArg(args, "timeout", DEFAULT_BASH_TIMEOUT_SECONDS, 1, MAX_BASH_TIMEOUT_SECONDS);
     const directMariArgv = parseDirectMariArgv(command, this.workspaceRoot);
     if (directMariArgv) return this.commandMariDirect(command, directMariArgv);
+    // #5776: past this point the command runs in the sandbox, where the mari
+    // CLI can never reach the server (network denied) - a mutation embedded
+    // in a compound would fail silently and still count as applied.
+    if (commandEmbedsMariCliMutation(command.toLowerCase())) {
+      throw new Error(
+        "mari CLI mutations cannot run inside the shell sandbox (its network access is denied, so the CLI cannot reach the server). Run the mari command by itself - no ; | && or redirection around it - so it uses the direct runtime, and pass --apply when you want the change saved.",
+      );
+    }
     // #5777: the sandbox denies these writes SILENTLY - in a compound command
     // the denial is swallowed and exit 0 would count as an applied mutation.
     // Refuse loudly before running instead, pointing at the reviewed path.
     if (bashCommandTargetsSensitivePath(command)) {
       throw new Error(
-        "This command writes to a supply-chain-sensitive file (package manifests, launcher, installer, or workflow files). The shell sandbox blocks those writes silently, so the command cannot work as intended. Use the write or edit command instead - it stages the change for the user's approval.",
+        "This command touches a supply-chain-sensitive file (package manifests, launcher, installer, or workflow files). The shell sandbox blocks writes to those silently, so the command cannot work as intended. To change one, use the write or edit command - it stages the change for the user's approval. To copy content OUT of one, read it and write the copy to the destination instead.",
       );
     }
     const sandboxed = await spawnWorkspaceSandboxedShell({

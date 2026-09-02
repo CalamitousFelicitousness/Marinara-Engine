@@ -103,6 +103,18 @@ for (const blocked of [
   "touch android/app/build.gradle",
   "true && tee package.json < input.txt",
   String.raw`echo x > win\installer\install.bat`,
+  // Quoted targets and heredocs - the shapes LLMs actually write
+  'echo x > "package.json"',
+  "cat > 'start.sh' <<'EOF'",
+  'cat <<EOF > "packages/server/package.json"',
+  'printf y >> "tools/package.json"',
+  // Interpreter one-liners, dd, and git restore
+  "node -e \"require('fs').writeFileSync('package.json','{}')\"",
+  "python3 -c \"open('package.json','w').write('x')\"",
+  "dd if=/dev/zero of=package.json",
+  'dd of="pnpm-lock.yaml" if=input',
+  "git checkout -- package-lock.json",
+  "git restore pnpm-lock.yaml",
 ]) {
   assert.equal(bashCommandTargetsSensitivePath(blocked), true, `should refuse: ${blocked}`);
 }
@@ -113,25 +125,57 @@ for (const allowed of [
   "git add package.json",
   "git diff package.json",
   "echo done > notes.md",
+  'echo done > "notes.md"',
   "sed -i 's/a/b/' src/index.ts",
   "rm build/output.txt",
   "cp src/a.ts src/b.ts",
   "ls .github/workflows",
   "sed -n '1,10p' .github/workflows/ci.yml",
+  "node -e \"console.log(require('./package.json').version)\"",
+  "git checkout -b feature/next",
+  "git restore src/index.ts",
 ]) {
   assert.equal(bashCommandTargetsSensitivePath(allowed), false, `should allow: ${allowed}`);
 }
 
-// Source pin: commandBash refuses AFTER direct-mari routing (so mari CLI
-// content mentioning these names is unaffected) and BEFORE the sandbox spawn.
+// Placement pins with a tempered bridge: both refusals must sit between the
+// direct-mari routing return and the sandbox spawn - the bridge cannot cross
+// a spawnWorkspaceSandboxedShell call, so moving either refusal after the
+// spawn (or out of commandBash) breaks the pin.
+const NO_SPAWN_BRIDGE = /(?:(?!spawnWorkspaceSandboxedShell)[^])*?/u.source;
 assert.match(
   flatAgentSource,
-  /if \(directMariArgv\) return this\.commandMariDirect\(command, directMariArgv\);[^]*?if \(bashCommandTargetsSensitivePath\(command\)\) \{ throw new Error\([^]*?The shell sandbox blocks those writes silently/u,
+  new RegExp(
+    `if \\(directMariArgv\\) return this\\.commandMariDirect\\(command, directMariArgv\\);${NO_SPAWN_BRIDGE}if \\(commandEmbedsMariCliMutation\\(command\\.toLowerCase\\(\\)\\)\\) \\{ throw new Error\\(${NO_SPAWN_BRIDGE}cannot run inside the shell sandbox`,
+    "u",
+  ),
+);
+assert.match(
+  flatAgentSource,
+  new RegExp(
+    `if \\(directMariArgv\\) return this\\.commandMariDirect\\(command, directMariArgv\\);${NO_SPAWN_BRIDGE}if \\(bashCommandTargetsSensitivePath\\(command\\)\\) \\{ throw new Error\\(${NO_SPAWN_BRIDGE}The shell sandbox blocks writes to those silently${NO_SPAWN_BRIDGE}spawnWorkspaceSandboxedShell`,
+    "u",
+  ),
+);
+
+// The load-bearing invariant behind the position-zero sentinel: sandbox
+// output is assembled with the engine's "Command:" header FIRST, and
+// compactOutput only cuts tails. If either changes, the forgery-safety
+// argument for MARI_DRY_RUN_SENTINEL collapses - these pins make that loud.
+assert.match(
+  flatAgentSource,
+  /const output = compactOutput\( \[ `Command: \$\{command\}`, `Sandbox: \$\{sandboxed\.backend\}/u,
+);
+assert.match(
+  flatAgentSource,
+  /return value\.length > limit \? `\$\{value\.slice\(0, limit\)\}\\n… output truncated at \$\{limit\} characters …` : value;/u,
 );
 
 // --- #5778: staging follows symlinks to the real target --------------------
 
-const workspace = mkdtempSync(join(tmpdir(), "mari-guard-lane-"));
+// realpathSync: macOS tmpdir() is /var/folders/... - a symlink to
+// /private/var - and the escape checks compare against the canonical root.
+const workspace = realpathSync(mkdtempSync(join(tmpdir(), "mari-guard-lane-")));
 try {
   mkdirSync(join(workspace, "src"), { recursive: true });
   mkdirSync(join(workspace, ".github", "workflows"), { recursive: true });
@@ -187,6 +231,29 @@ try {
     assert.throws(
       () => workspaceMutationTargetForPath(workspace, "link.json", { requireOrdinaryMutationPath: true }),
       /requires a dedicated reviewed tool/u,
+    );
+
+    // Directory-symlink evasion: a dangling leaf routed through a symlinked
+    // directory must be judged by where the kernel would really write.
+    symlinkSync(join(workspace, ".github", "workflows"), join(workspace, "dirlink"), "dir");
+    symlinkSync(join(workspace, "dirlink", "evil.yml"), join(workspace, "leaf.yml"), "file");
+    const viaDirLink = workspaceMutationTargetForPath(workspace, "leaf.yml", {
+      allowMissing: true,
+      forbidStorageMutation: true,
+    });
+    assert.notEqual(viaDirLink.sensitiveTarget, null);
+    assert.match(viaDirLink.sensitiveTarget!, /workflows[\\/]evil\.yml$/u);
+
+    // A chain deeper than the hop budget fails CLOSED, not open.
+    let previous = join(workspace, "chain-end.txt");
+    for (let index = 0; index < 10; index += 1) {
+      const link = join(workspace, `chain-${index}`);
+      symlinkSync(previous, link, "file");
+      previous = link;
+    }
+    assert.throws(
+      () => workspaceMutationTargetForPath(workspace, `chain-9`, { allowMissing: true }),
+      /too deep to resolve safely/u,
     );
   }
 } finally {

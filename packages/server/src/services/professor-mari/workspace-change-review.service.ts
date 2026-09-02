@@ -195,17 +195,29 @@ const SENSITIVE_PATH_WRITER_PATTERNS = [
   ),
   // in-place sed/perl on a sensitive path
   new RegExp(`(?:^|[;&|]\\s*|\\s)(?:sed|perl)\\b[^;&|\\n]*\\s-i\\b[^;&|\\n]*(?:${SENSITIVE_PATH_TARGET_PATTERN})`, "u"),
-  // shell redirection into a sensitive path
-  new RegExp(`>>?\\s*(?:${SENSITIVE_PATH_TARGET_PATTERN})`, "u"),
+  // shell redirection into a sensitive path - quoted targets included, since
+  // LLM-written redirects quote paths more often than not
+  new RegExp(`>>?\\s*["']?(?:${SENSITIVE_PATH_TARGET_PATTERN})`, "u"),
+  // interpreter one-liners writing a sensitive path (node -e writeFileSync,
+  // python open(...,'w')) and dd's of= target
+  new RegExp(
+    `(?:^|[;&|]\\s*|\\s)(?:node|python(?:3)?)\\b[^;&|\\n]*(?:writefile|appendfile|\\bopen\\()[^;&|\\n]*(?:${SENSITIVE_PATH_TARGET_PATTERN})`,
+    "u",
+  ),
+  new RegExp(`(?:^|[;&|]\\s*|\\s)dd\\b[^;&|\\n]*of=["']?(?:${SENSITIVE_PATH_TARGET_PATTERN})`, "u"),
+  // git checkout/restore of a sensitive file rewrites it in place
+  new RegExp(`\\bgit\\s+(?:checkout|restore)\\b[^;&|\\n]*(?:${SENSITIVE_PATH_TARGET_PATTERN})`, "u"),
 ];
 
 /**
- * #5777: the shell sandbox denies writes to supply-chain-sensitive paths, but
- * the denial is silent - an error-tolerant compound command (`x; echo done`)
- * exits 0 and the verification guard would count a write that never happened.
- * This is a best-effort pre-execution heuristic (like bashLooksMutating): it
- * catches the common shapes so the failure is loud and redirects to the
- * write/edit staging flow; the sandbox itself remains the hard floor.
+ * #5777: the shell sandbox denies writes to EXISTING supply-chain-sensitive
+ * paths, but the denial is silent - an error-tolerant compound command
+ * (`x; echo done`) exits 0 and the verification guard would count a write
+ * that never happened. For sensitive files that do not exist yet (a new
+ * package.json in a fresh directory) the sandbox has no deny rule at all, so
+ * this check is the primary guard there, not just a nicety. It is still a
+ * best-effort heuristic (like bashLooksMutating): it catches the common
+ * shapes so the failure is loud and redirects to the write/edit staging flow.
  */
 export function bashCommandTargetsSensitivePath(command: string): boolean {
   const normalized = command.replace(/\\/gu, "/").toLowerCase();

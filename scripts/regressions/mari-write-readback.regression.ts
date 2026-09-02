@@ -145,6 +145,47 @@ try {
   );
   assert.equal(resolveWorkspaceMutationVerification([appliedResult, fileWriteResult]), "unverified");
 
+  // STICKY MISMATCH (reconciliation-review MEDIUM): a store-observed
+  // persistence failure is positive knowledge - no read can launder it into
+  // a claimable round. Only a later store-VERIFIED apply clears the alarm,
+  // and the leftover debt still wants its read.
+  assert.equal(
+    resolveWorkspaceMutationVerification([mismatchResult, debtClearRead]),
+    "mismatch",
+    "an unrelated read must never clear a store-observed persistence failure",
+  );
+  assert.equal(
+    resolveWorkspaceMutationVerification([mismatchResult, appliedResult, debtClearRead]),
+    "verified",
+    "a store-verified retry plus a read is the honest recovery path",
+  );
+
+  // Composition with the #5756 staged state and the #5776 dry-run sentinel:
+  // a self-verified apply never lets a staged change ride out unreported,
+  // and the mismatch alarm outranks the staged coaching.
+  const stagedResult = {
+    id: "s1",
+    name: "write",
+    input: { path: "package.json" },
+    output:
+      "Staged sensitive file change for user approval: package.json\nApproval: approval-1\nThe file was not changed. Continue with unrelated source work, but do not claim this change is applied.",
+    success: true,
+  };
+  assert.equal(resolveWorkspaceMutationVerification([appliedResult, stagedResult]), "staged");
+  assert.equal(resolveWorkspaceMutationVerification([stagedResult, appliedResult]), "staged");
+  assert.equal(resolveWorkspaceMutationVerification([appliedResult, stagedResult, debtClearRead]), "staged");
+  assert.equal(resolveWorkspaceMutationVerification([mismatchResult, stagedResult]), "mismatch");
+  const dryRunBashResult = {
+    id: "d1",
+    name: "bash",
+    input: { command: "mari db insert characters --json '{}'" },
+    output:
+      'Dry-run: the mari CLI ran without --apply, so no changes were saved.\nCommand: mari db insert characters --json \'{}\'\nExit code: 0 (direct mari runtime)\n\nstdout:\n{\n  "ok": true,\n  "mode": "dry-run"\n}',
+    success: true,
+  };
+  assert.equal(resolveWorkspaceMutationVerification([dryRunBashResult, stagedResult]), "staged");
+  assert.equal(resolveWorkspaceMutationVerification([stagedResult, dryRunBashResult]), "staged");
+
   // A mismatch read-back drives the compact coaching to the loud alarm.
   const mismatchCompact = compactMutationResult({
     ...updated,

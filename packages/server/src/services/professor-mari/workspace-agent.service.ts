@@ -1777,7 +1777,7 @@ export function mariPermissionsModePrompt(mode: MariPermissionsMode): string | n
   return lines.join("\n");
 }
 
-export type WorkspaceMutationVerification = "none" | "unverified" | "staged" | "verified";
+export type WorkspaceMutationVerification = "none" | "unverified" | "staged" | "mismatch" | "verified";
 
 function commandCallForResult(result: WorkspaceCommandResult): WorkspaceCommandCall {
   return { id: result.id, name: result.name, arguments: result.input };
@@ -1854,6 +1854,7 @@ export function resolveWorkspaceMutationVerification(
   let mutationSeen = false;
   let stagedSeen = false;
   let unverifiedMutationSeen = false;
+  let mismatchSeen = false;
   for (const result of results) {
     if (isStagedSensitiveMutation(result)) {
       // #5756: a staged change is not applied, so it creates no verification
@@ -1866,6 +1867,13 @@ export function resolveWorkspaceMutationVerification(
     }
     if (isAppliedWorkspaceMutation(result)) {
       mutationSeen = true;
+      // A store-observed persistence failure is POSITIVE knowledge and must
+      // not be forgettable: unlike ordinary debt, no read clears it. Only a
+      // later store-VERIFIED apply - an engine-observed persisted change -
+      // clears the alarm, so an honest retry can recover but a distracting
+      // ls/get never launders the failure into a claimable round.
+      if (appliedMutationReadBackMismatched(result)) mismatchSeen = true;
+      else if (appliedMutationReadBackVerified(result)) mismatchSeen = false;
       if (!appliedMutationReadBackVerified(result)) unverifiedMutationSeen = true;
       continue;
     }
@@ -1873,6 +1881,7 @@ export function resolveWorkspaceMutationVerification(
       unverifiedMutationSeen = false;
     }
   }
+  if (mismatchSeen) return "mismatch";
   if (unverifiedMutationSeen) return "unverified";
   if (stagedSeen) return "staged";
   return mutationSeen ? "verified" : "none";
@@ -2580,9 +2589,11 @@ export class ProfessorMariWorkspaceService {
               content:
                 verificationIssue === "none"
                   ? "Your previous reply claimed the requested workspace change was complete, but no mutating command succeeded in this run. Do not repeat the completion claim. Use a read command to inspect the requested state; if it is missing, perform the mutation, then verify it with another read before setting stop to true."
-                  : verificationIssue === "staged"
-                    ? "Your previous reply claimed a change was complete, but at least one change in this run was only staged for the user's approval and has NOT been applied. Do not claim it is done, and do not re-run the mutation - the change is already staged and re-running it cannot apply it. Restate plainly which changes are applied and which are awaiting the user's approval, then stop."
-                    : "A mutating workspace command succeeded, but no successful read verified the resulting state. Run a confirmatory read now. Only claim completion after that read confirms the change. Do it matter-of-factly - never apologize or present the check as fixing a mistake; report the confirmed state plainly.",
+                  : verificationIssue === "mismatch"
+                    ? "Your previous reply claimed a change was complete, but the store read-back observed that a change in this run did NOT persist as intended (see readBack.mismatches on that result). Do not claim success. Tell the user plainly which change failed to persist and what the store observed; you may retry the mutation once if a retry is sensible - a retry whose result confirms the persisted state clears this."
+                    : verificationIssue === "staged"
+                      ? "Your previous reply claimed a change was complete, but at least one change in this run was only staged for the user's approval and has NOT been applied. Do not claim it is done, and do not re-run the mutation - the change is already staged and re-running it cannot apply it. Restate plainly which changes are applied and which are awaiting the user's approval, then stop."
+                      : "A mutating workspace command succeeded, but no successful read verified the resulting state. Run a confirmatory read now. Only claim completion after that read confirms the change. Do it matter-of-factly - never apologize or present the check as fixing a mistake; report the confirmed state plainly.",
               contextKind: "history",
             });
             continue;

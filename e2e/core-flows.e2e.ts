@@ -19197,7 +19197,7 @@ test("mobile chat composer follows the visual viewport above the software keyboa
           top: getComputedStyle(document.documentElement).getPropertyValue("--mari-visual-viewport-offset-top").trim(),
         })),
       )
-      .toEqual({ height: "360px", top: `${iosFocusPageTop}px` });
+      .toEqual({ height: "360px", top: "0px" });
     await expect(page.locator("html")).toHaveAttribute("data-mari-software-keyboard-open", "");
     const iosCompactComposerStyle = await composer.evaluate((element) => {
       const style = getComputedStyle(element);
@@ -19211,10 +19211,10 @@ test("mobile chat composer follows the visual viewport above the software keyboa
     const [iosShellBox, iosComposerBox] = await Promise.all([shell.boundingBox(), composer.boundingBox()]);
     expect(iosShellBox).not.toBeNull();
     expect(iosComposerBox).not.toBeNull();
-    expect(Math.abs(iosShellBox!.y - iosFocusPageTop)).toBeLessThanOrEqual(1);
+    expect(Math.abs(iosShellBox!.y)).toBeLessThanOrEqual(1);
     expect(Math.abs(iosShellBox!.height - 360)).toBeLessThanOrEqual(1);
-    expect(iosComposerBox!.y).toBeGreaterThanOrEqual(iosFocusPageTop);
-    expect(iosComposerBox!.y + iosComposerBox!.height).toBeLessThanOrEqual(iosFocusPageTop + 360);
+    expect(iosComposerBox!.y).toBeGreaterThanOrEqual(0);
+    expect(iosComposerBox!.y + iosComposerBox!.height).toBeLessThanOrEqual(360);
 
     // Model WebKit's native keyboard pan: the body moves visually while the
     // document scroll offsets stay at zero. The shell's document-coordinate
@@ -19231,6 +19231,14 @@ test("mobile chat composer follows the visual viewport above the software keyboa
         })),
       )
       .toEqual({ bodyTop: -iosFocusPageTop, bodyScrollTop: 0, documentScrollTop: 0 });
+    await page.evaluate(() => window.visualViewport?.dispatchEvent(new Event("scroll")));
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          getComputedStyle(document.documentElement).getPropertyValue("--mari-visual-viewport-offset-top").trim(),
+        ),
+      )
+      .toBe(`${iosFocusPageTop}px`);
     const [pannedShellBox, pannedComposerBox] = await Promise.all([shell.boundingBox(), composer.boundingBox()]);
     expect(pannedShellBox).not.toBeNull();
     expect(pannedComposerBox).not.toBeNull();

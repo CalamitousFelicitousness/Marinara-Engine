@@ -6100,7 +6100,9 @@ export function HomeProfessorMariChat({
                               <img src={MARI_AVATAR_URL} alt="" className="h-full w-full object-cover" />
                             </span>
                             {/* At phone widths the header buttons crush this into "P. / R…" -
-                                the avatar carries the identity there, so hide the text. */}
+                                the avatar carries the identity VISUALLY there, so hide the
+                                text but keep a screen-reader label (the avatar's alt is empty). */}
+                            <span className="sr-only sm:hidden">{localizeUi("ui.chat.homefaq.professorMari")}</span>
                             <span className="hidden min-w-0 sm:block">
                               <span className="block truncate text-xs font-bold text-[var(--foreground)]">
                                 {localizeUi("ui.chat.homefaq.professorMari")}

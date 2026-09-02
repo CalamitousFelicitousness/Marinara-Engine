@@ -4051,6 +4051,7 @@ export function HomeProfessorMariChat({
     if (next) {
       setConnectionMenuOpen(false);
       setChatHistoryOpen(false);
+      setLibraryMenuOpen(false);
       setMemoriesMenuOpen(false);
       if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     }
@@ -4062,6 +4063,7 @@ export function HomeProfessorMariChat({
     if (next) {
       setConnectionMenuOpen(false);
       setChatHistoryOpen(false);
+      setLibraryMenuOpen(false);
       setSkillsMenuOpen(false);
       if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     }
@@ -4076,6 +4078,9 @@ export function HomeProfessorMariChat({
     const next = !chatHistoryOpen;
     if (next) {
       setConnectionMenuOpen(false);
+      // Keyboard activation never fires the outside-click mousedown handler,
+      // so competing surfaces must close the Library dropdown themselves.
+      setLibraryMenuOpen(false);
       setSkillsMenuOpen(false);
       setMemoriesMenuOpen(false);
       if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
@@ -4178,6 +4183,7 @@ export function HomeProfessorMariChat({
     setMessages([]);
     setLoadedMessagesChatId(chat.id);
     setDraft("");
+    setLibraryMenuOpen(false);
     clearMariChips();
     setWorkspaceActive(false);
     setWorkspaceActivity(null);
@@ -4676,6 +4682,7 @@ export function HomeProfessorMariChat({
         const chat = await api.post<Chat>(`/chats/internal/professor-mari/chats/${id}/activate`);
         setActiveChatId(chat.id);
         qc.setQueryData(chatKeys.detail(chat.id), chat);
+        setLibraryMenuOpen(false);
         setSkillsMenuOpen(false);
         setMemoriesMenuOpen(false);
         setChatHistoryOpen(false);
@@ -6135,7 +6142,10 @@ export function HomeProfessorMariChat({
                               <button
                                 ref={libraryButtonRef}
                                 type="button"
-                                onClick={() => setLibraryMenuOpen((current) => !current)}
+                                onClick={() => {
+                                  setPermissionsMenuOpen(false);
+                                  setLibraryMenuOpen((current) => !current);
+                                }}
                                 className={cn(
                                   "inline-flex h-8 items-center gap-1 rounded-md px-2 text-[0.6875rem] font-semibold transition-colors hover:bg-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50",
                                   "mari-chrome-accent-text-muted mari-accent-animated hover:text-[var(--marinara-chat-chrome-button-text-hover)]",
@@ -6206,7 +6216,10 @@ export function HomeProfessorMariChat({
                               <button
                                 ref={permissionsButtonRef}
                                 type="button"
-                                onClick={() => setPermissionsMenuOpen((current) => !current)}
+                                onClick={() => {
+                                  setLibraryMenuOpen(false);
+                                  setPermissionsMenuOpen((current) => !current);
+                                }}
                                 className={cn(
                                   "inline-flex h-8 items-center gap-1 rounded-md px-2 text-[0.6875rem] font-semibold transition-colors hover:bg-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50",
                                   "mari-chrome-accent-text-muted mari-accent-animated hover:text-[var(--marinara-chat-chrome-button-text-hover)]",

@@ -1020,6 +1020,44 @@ assert.equal(
       },
       "Anthropic non-stream usage must preserve prompt-cache counters",
     );
+
+    const streamingAnthropicServer = createServer((_request, response) => {
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      response.end(
+        [
+          'data: {"type":"message_start","message":{"usage":{"input_tokens":0,"output_tokens":0,"cache_read_input_tokens":700,"cache_creation_input_tokens":50}}}',
+          'data: {"type":"content_block_start","content_block":{"type":"text"}}',
+          'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Cached stream"}}',
+          'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":0}}',
+          'data: {"type":"message_stop"}',
+          "",
+        ].join("\n"),
+      );
+    });
+    await new Promise<void>((resolve) => streamingAnthropicServer.listen(0, "127.0.0.1", resolve));
+    try {
+      const streamingAddress = streamingAnthropicServer.address();
+      assert.ok(streamingAddress && typeof streamingAddress === "object");
+      assert.deepEqual(
+        await collectProviderUsage(new AnthropicProvider(`http://127.0.0.1:${streamingAddress.port}`, "test"), {
+          model: "claude-opus-5",
+          stream: true,
+        }),
+        {
+          promptTokens: 0,
+          completionTokens: 0,
+          totalTokens: 0,
+          cachedPromptTokens: 700,
+          cacheWritePromptTokens: 50,
+          finishReason: "end_turn",
+        },
+        "Anthropic streamed usage must preserve cache-only prompt counters",
+      );
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        streamingAnthropicServer.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
     const maxEffortBody = anthropicRequestBodies[0];
     assert.ok(maxEffortBody);
     assert.deepEqual(maxEffortBody.thinking, { type: "adaptive", display: "summarized" });

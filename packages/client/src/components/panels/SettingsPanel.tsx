@@ -153,6 +153,7 @@ import { TrackerPanelIcon } from "../ui/TrackerPanelIcon";
 import { TrackerSizeTierIcon } from "../ui/TrackerSizeTierIcon";
 import {
   ConversationSoundSetting,
+  MariPermissionsModeSetting,
   SettingsIntro,
   SettingsSection,
   SettingsSwitch,
@@ -647,6 +648,14 @@ const SETTINGS_SEARCHABLE_CONTROLS: readonly SettingsSearchableControlMeta[] = [
     description: "Show Professor Mari's deterministic navigator on Home.",
     aliases: ["home", "helper", "navigation", "navigator", "where is", "find"],
     kind: "Toggle",
+  },
+  {
+    id: "mari-permissions-mode",
+    sectionId: "application",
+    label: "Professor Mari Permissions Mode",
+    description: "When Mari may stage or apply workspace changes: Auto, Manual, Accept edits, Plan, or Bypass.",
+    aliases: ["mari", "permissions", "mode", "plan", "bypass", "accept", "manual", "approve"],
+    kind: "Select",
   },
   {
     id: "notification-conversation-sound",
@@ -3538,6 +3547,7 @@ function GeneralSettings() {
             onChange={setProfessorMariNavigationEnabled}
             help={localizeUi("settings.controls.professorMariNavigation.help")}
           />
+          <MariPermissionsModeSetting anchorId={getSettingsControlAnchorId("mari-permissions-mode")} />
         </div>
       </SettingsSection>
 

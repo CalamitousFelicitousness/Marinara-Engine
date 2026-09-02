@@ -80,6 +80,17 @@ import { MariContextViewer } from "./MariContextViewer";
 import { homeFeedKeys } from "../../hooks/use-home-feed";
 import { filterLanguageGenerationConnections } from "../../lib/connection-filters";
 import { api, getPrivilegedActionErrorMessage, isPassiveStreamDisconnect } from "../../lib/api-client";
+import { useLocalizedUiText } from "../../localization/use-localized-ui-text";
+import {
+  awaitMariPermissionsModeWrites,
+  enqueueMariPermissionsModeWrite,
+} from "../../lib/mari-permissions-write-chain";
+import {
+  DEFAULT_MARI_PERMISSIONS_MODE,
+  MARI_PERMISSIONS_MODE_LABELS,
+  MARI_PERMISSIONS_MODES,
+  type MariPermissionsMode,
+} from "@marinara-engine/shared";
 import { formatGenerationParameterError } from "../../lib/generation-parameter-errors";
 import { showConfirmDialog } from "../../lib/app-dialogs";
 import { useChatStore } from "../../stores/chat.store";
@@ -3092,6 +3103,7 @@ export function HomeProfessorMariChat({
   onFloatingDismiss,
 }: HomeProfessorMariChatProps) {
   const { t: localizeUi } = useUiTranslation();
+  const localize = useLocalizedUiText();
   const { t } = useTranslation();
   const qc = useQueryClient();
   const { data: connectionsRaw, isLoading: connectionsLoading } = useConnections();
@@ -3145,6 +3157,15 @@ export function HomeProfessorMariChat({
   const [loadedMessagesChatId, setLoadedMessagesChatId] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [connectionMenuOpen, setConnectionMenuOpen] = useState(false);
+  const [permissionsMenuOpen, setPermissionsMenuOpen] = useState(false);
+  const permissionsModeWriteSeqRef = useRef(0);
+  // Chat id of pending mode writes (null = none): polls hold mode fields only
+  // for the chat the write targets, and count tracks overlapping writes.
+  const permissionsModeWritePendingChatRef = useRef<string | null>(null);
+  const permissionsModeWritePendingCountRef = useRef(0);
+
+  const permissionsButtonRef = useRef<HTMLButtonElement | null>(null);
+  const permissionsMenuRef = useRef<HTMLDivElement | null>(null);
   const [historyPickerOpen, setHistoryPickerOpen] = useState(false);
   const [contextViewerOpen, setContextViewerOpen] = useState(false);
   const [internalChatWindowOpen, setInternalChatWindowOpen] = useState(
@@ -3513,17 +3534,48 @@ export function HomeProfessorMariChat({
 
   const refreshWorkspaceStatus = useCallback(
     async (shouldApply?: () => boolean) => {
+      // #5725: the server resolves the EFFECTIVE mode (chat override ?? global
+      // default) for the chat we name here - so a response is only valid for
+      // the chat that was active when the request STARTED.
+      const chatIdAtStart = activeChatIdRef.current;
       const params = new URLSearchParams();
       if (effectiveConnectionId) params.set("connectionId", effectiveConnectionId);
+      if (chatIdAtStart) params.set("chatId", chatIdAtStart);
       const query = params.toString();
+      const writeSeqAtStart = permissionsModeWriteSeqRef.current;
       const status = await api.get<MariWorkspaceStatus>(`/professor-mari/workspace/status${query ? `?${query}` : ""}`);
-      if (shouldApply?.() === false) return status;
-      setWorkspaceStatus(status);
+      if (shouldApply?.() === false || activeChatIdRef.current !== chatIdAtStart) return status;
+      // A mode write that landed while this poll was in flight is newer than
+      // the polled value - keep the current mode fields, apply the rest.
+      setWorkspaceStatus((current) =>
+        current &&
+        (permissionsModeWriteSeqRef.current !== writeSeqAtStart ||
+          (permissionsModeWritePendingCountRef.current > 0 &&
+            permissionsModeWritePendingChatRef.current === chatIdAtStart))
+          ? {
+              ...status,
+              permissionsMode: current.permissionsMode,
+              permissionsModeDefault: current.permissionsModeDefault,
+              permissionsModeSource: current.permissionsModeSource,
+            }
+          : status,
+      );
       workspaceStatusErrorToastShownRef.current = false;
       return status;
     },
     [effectiveConnectionId],
   );
+
+  // #5725: the status payload is CHAT-SCOPED (effective mode for the active
+  // chat), so a chat switch must refetch it immediately - the 15s interval
+  // alone leaves the shield showing the PREVIOUS chat's mode in exactly the
+  // window where the user reads it and decides to send. The guard drops the
+  // response if the user switched again while it was in flight.
+  useEffect(() => {
+    if (!chatId) return;
+    const id = chatId;
+    void refreshWorkspaceStatus(() => activeChatIdRef.current === id).catch(() => undefined);
+  }, [chatId, refreshWorkspaceStatus]);
 
   const invalidateWorkspaceData = useCallback(async () => {
     // Invalidation marks every query stale either way; the default 'active'
@@ -3815,6 +3867,84 @@ export function HomeProfessorMariChat({
     document.addEventListener("mousedown", handlePointerDown);
     return () => document.removeEventListener("mousedown", handlePointerDown);
   }, [connectionMenuOpen]);
+
+  useEffect(() => {
+    if (!permissionsMenuOpen) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (permissionsButtonRef.current?.contains(target) || permissionsMenuRef.current?.contains(target)) return;
+      setPermissionsMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [permissionsMenuOpen]);
+
+  // #5725: the server-authoritative Permissions Mode. Display rides the status
+  // payload; writes go through the dedicated validated PUT. The change applies
+  // to Mari's NEXT run - an in-flight turn is never aborted by a mode switch.
+  const permissionsMode: MariPermissionsMode = workspaceStatus?.permissionsMode ?? DEFAULT_MARI_PERMISSIONS_MODE;
+  const permissionsModeDefault: MariPermissionsMode =
+    workspaceStatus?.permissionsModeDefault ?? DEFAULT_MARI_PERMISSIONS_MODE;
+  const permissionsModeOverridden = workspaceStatus?.permissionsModeSource === "chat";
+  // #5725 per-chat: the header picker writes THIS chat's override; null clears
+  // it back to the global default (which Settings -> Application sets).
+  const changePermissionsMode = useCallback(
+    async (mode: MariPermissionsMode | null) => {
+      setPermissionsMenuOpen(false);
+      const chatIdForMode = activeChatIdRef.current;
+      if (!chatIdForMode) return;
+      const writeSeq = ++permissionsModeWriteSeqRef.current;
+      // No same-value short-circuits: the check state can be stale for up to
+      // one poll after a chat switch, and silently dropping the user's click
+      // (especially a "Use default" de-escalation) is worse than sending an
+      // idempotent write that converges via the refetch below.
+      setWorkspaceStatus((current) =>
+        current
+          ? {
+              ...current,
+              permissionsMode: mode ?? current.permissionsModeDefault,
+              permissionsModeSource: mode === null ? "default" : "chat",
+            }
+          : current,
+      );
+      permissionsModeWritePendingChatRef.current = chatIdForMode;
+      permissionsModeWritePendingCountRef.current += 1;
+      // Chained on the SHARED coordinator, not concurrent: rapid A-then-B
+      // selections must persist in click order, and the chain also covers the
+      // Settings panel's global-default writes.
+      const write = enqueueMariPermissionsModeWrite(async () => {
+        try {
+          await api.put("/professor-mari/workspace/permissions-mode", { mode, chatId: chatIdForMode });
+          // A status poll that was in flight during the PUT resolves with the
+          // OLD mode and would clobber the optimistic patch - refetch so the
+          // panel converges on the server value. Guarded: a chat switch or a
+          // newer mode write while the refetch is in flight drops it.
+          void refreshWorkspaceStatus(
+            () => activeChatIdRef.current === chatIdForMode && permissionsModeWriteSeqRef.current === writeSeq,
+          ).catch(() => undefined);
+        } catch (error) {
+          // Only the LATEST write may surface - a stale failure must not
+          // clobber a newer selection that already succeeded. Refetch the
+          // authoritative state rather than restoring a rendered snapshot
+          // (which can itself be an optimistic value or another chat's).
+          if (permissionsModeWriteSeqRef.current !== writeSeq) return;
+          console.error("[Professor Mari] Failed to change permissions mode", error);
+          toast.error(localizeUi("ui.chat.homeprofessormarichat.couldNotChangeThePermissionsMode"));
+          void refreshWorkspaceStatus(
+            () => activeChatIdRef.current === chatIdForMode && permissionsModeWriteSeqRef.current === writeSeq,
+          ).catch(() => undefined);
+        } finally {
+          permissionsModeWritePendingCountRef.current -= 1;
+          if (permissionsModeWritePendingCountRef.current <= 0) {
+            permissionsModeWritePendingCountRef.current = 0;
+            permissionsModeWritePendingChatRef.current = null;
+          }
+        }
+      });
+      await write;
+    },
+    [localizeUi, refreshWorkspaceStatus],
+  );
 
   const persistLatestConnectionSelection = useCallback(() => {
     if (connectionPersistInFlightRef.current) return;
@@ -4756,6 +4886,10 @@ export function HomeProfessorMariChat({
       attachments: ProfessorMariAttachment[] = [],
       existingUserMessageId?: string,
     ) => {
+      // A mode change immediately before send must not race its PUTs: the run
+      // resolves the mode server-side, so the WHOLE shared write chain - the
+      // per-chat picker AND Settings' global default - lands first.
+      await awaitMariPermissionsModeWrites();
       const runId = ++workspaceRunIdRef.current;
       const controller = new AbortController();
       workspaceAbortRef.current = controller;
@@ -5921,6 +6055,77 @@ export function HomeProfessorMariChat({
                                 </span>
                               )}
                             </button>
+                            <div className="relative">
+                              <button
+                                ref={permissionsButtonRef}
+                                type="button"
+                                onClick={() => setPermissionsMenuOpen((current) => !current)}
+                                className={cn(
+                                  "inline-flex h-8 items-center gap-1 rounded-md px-2 text-[0.6875rem] font-semibold transition-colors hover:bg-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50",
+                                  "mari-chrome-accent-text-muted mari-accent-animated hover:text-[var(--marinara-chat-chrome-button-text-hover)]",
+                                )}
+                                title={localizeUi("ui.chat.homeprofessormarichat.permissionsMode")}
+                                aria-expanded={permissionsMenuOpen}
+                              >
+                                <ShieldAlert size="0.75rem" />
+                                <span className="max-[420px]:hidden">
+                                  {localize(MARI_PERMISSIONS_MODE_LABELS[permissionsMode].label)}
+                                </span>
+                              </button>
+                              {permissionsMenuOpen && (
+                                <div
+                                  ref={permissionsMenuRef}
+                                  className="absolute right-0 top-full z-20 mt-2 flex w-[19rem] flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] text-left shadow-2xl"
+                                >
+                                  <div className="border-b border-[var(--border)] px-3 py-2 text-[0.6875rem] font-semibold text-[var(--foreground)]">
+                                    {localizeUi("ui.chat.homeprofessormarichat.permissionsModeForThisChat")}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => void changePermissionsMode(null)}
+                                    className="flex items-start gap-2 border-b border-[var(--border)] px-3 py-2 text-left transition-colors hover:bg-[var(--accent)]"
+                                  >
+                                    <span className="mt-0.5 w-3.5 shrink-0">
+                                      {!permissionsModeOverridden && <Check size="0.8rem" />}
+                                    </span>
+                                    <span className="flex flex-col">
+                                      <span className="text-[0.6875rem] font-semibold text-[var(--foreground)]">
+                                        {localizeUi("ui.chat.homeprofessormarichat.useDefaultMode", {
+                                          value1: localize(MARI_PERMISSIONS_MODE_LABELS[permissionsModeDefault].label),
+                                        })}
+                                      </span>
+                                      <span className="text-[0.625rem] text-[var(--muted-foreground)]">
+                                        {localizeUi(
+                                          "ui.chat.homeprofessormarichat.followsTheGlobalDefaultFromSettings",
+                                        )}
+                                      </span>
+                                    </span>
+                                  </button>
+                                  {MARI_PERMISSIONS_MODES.map((mode) => (
+                                    <button
+                                      key={mode}
+                                      type="button"
+                                      onClick={() => void changePermissionsMode(mode)}
+                                      className="flex items-start gap-2 px-3 py-2 text-left transition-colors hover:bg-[var(--accent)]"
+                                    >
+                                      <span className="mt-0.5 w-3.5 shrink-0">
+                                        {permissionsModeOverridden && mode === permissionsMode && (
+                                          <Check size="0.8rem" />
+                                        )}
+                                      </span>
+                                      <span className="flex flex-col">
+                                        <span className="text-[0.6875rem] font-semibold text-[var(--foreground)]">
+                                          {localize(MARI_PERMISSIONS_MODE_LABELS[mode].label)}
+                                        </span>
+                                        <span className="text-[0.625rem] text-[var(--muted-foreground)]">
+                                          {localize(MARI_PERMISSIONS_MODE_LABELS[mode].description)}
+                                        </span>
+                                      </span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                             {(workspaceActive || hasActiveGeneration) && (
                               <button
                                 type="button"

@@ -1,3 +1,4 @@
+import type { MariPermissionsMode } from "../constants/mari-permissions-mode.js";
 // ──────────────────────────────────────────────
 // Professor Mari Workspace Agent Contracts
 // ──────────────────────────────────────────────
@@ -452,6 +453,12 @@ export interface MariWorkspaceStatus {
   skills: MariWorkspaceSkillSummary[];
   skillDiagnostics: string[];
   active: boolean;
+  /** The EFFECTIVE Permissions Mode for the requested chat (#5725): the chat's override, else the global default. */
+  permissionsMode: MariPermissionsMode;
+  /** The global default mode (what a chat without an override runs under). */
+  permissionsModeDefault: MariPermissionsMode;
+  /** Whether permissionsMode came from a per-chat override or the global default. */
+  permissionsModeSource: "default" | "chat";
   pendingApprovals: MariWorkspacePendingApproval[];
   history: MariDbHistoryEntry[];
   error?: string | null;

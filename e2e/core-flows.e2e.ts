@@ -19057,7 +19057,7 @@ test("mobile chat composer follows the visual viewport above the software keyboa
 
     await textarea.focus();
 
-    const expectedOffsetTop = 72;
+    const expectedOffsetTop = (await page.locator("html").getAttribute("data-mari-ios-webkit")) === null ? 72 : 0;
 
     await page.evaluate(() => {
       (
@@ -19163,6 +19163,8 @@ test("mobile chat composer follows the visual viewport above the software keyboa
     });
     const iosFocusOffsetTop = Math.min(72, Math.max(0, initialViewportHeight - 360));
     const iosFocusPageTop = Math.min(340, Math.max(0, initialViewportHeight - 360));
+    // Some iPhones update pageTop while leaving the fixed body at its visual
+    // origin. Applying that reported top would push the shell below the view.
     await page.evaluate(
       ({ offsetTop, pageTop }) => {
         (

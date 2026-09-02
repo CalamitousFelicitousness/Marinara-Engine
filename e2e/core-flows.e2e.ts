@@ -3938,6 +3938,7 @@ test("Character and Persona avatar actions stay separated and visually balanced"
           } else {
             await expect(desktopRail).toBeVisible();
             await expect(navigation).toBeHidden();
+            await expect(header.evaluate((element) => element.scrollWidth <= element.clientWidth)).resolves.toBe(true);
           }
         }
       }

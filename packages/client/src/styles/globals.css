@@ -2181,6 +2181,9 @@
 }
 
 .mari-editor-shell--character > .mari-editor-header--with-nav {
+  height: auto;
+  min-height: 3.8125rem;
+  flex-basis: auto;
   flex-wrap: wrap;
 }
 

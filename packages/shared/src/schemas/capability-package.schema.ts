@@ -490,7 +490,14 @@ export interface CapabilityPackageUpdate {
 const capabilityPackageVersionNoteSchema = z
   .object({
     version: z.string().regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/),
-    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    // Round-tripped, not just shape-matched: a plain regex accepts 2026-02-30,
+    // which would reach the UI as a date that does not exist.
+    date: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .refine((value) => new Date(`${value}T00:00:00.000Z`).toISOString().startsWith(value), {
+        message: "must be a real calendar date",
+      }),
     /** Plain text. Rendered verbatim and never as markdown or HTML: the catalog URL
      *  is operator-configurable, so this is untrusted remote content. */
     notes: z.string().min(1).max(MAX_RELEASE_NOTE_CHARACTERS),
@@ -507,7 +514,18 @@ export const capabilityReleaseNotesSchema = z
         .string()
         .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
         .max(80),
-      z.object({ versions: z.array(capabilityPackageVersionNoteSchema).max(MAX_RELEASE_NOTE_VERSIONS) }).strict(),
+      z
+        .object({
+          versions: z
+            .array(capabilityPackageVersionNoteSchema)
+            .max(MAX_RELEASE_NOTE_VERSIONS)
+            // A repeated version would make the two readers disagree: the update
+            // prompt takes the first match, the history sheet shows every one.
+            .refine((versions) => new Set(versions.map((note) => note.version)).size === versions.length, {
+              message: "must not list the same version twice",
+            }),
+        })
+        .strict(),
     ),
   })
   .strict();

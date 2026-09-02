@@ -12659,8 +12659,9 @@ test("Agent updates share one dismissible prompt and remain available after Not 
   // that trains people to dismiss it unread.
   const notes = updateDialog.getByText("- Keeps dialogue tags out of narration.");
   await expect(notes).toBeHidden();
+  // Exactly one: the update without notes offers nothing to expand.
   const disclosures = updateDialog.getByRole("button", { name: "What changed", exact: true });
-  await expect(disclosures).toHaveCount(1, "An update without notes offers nothing to expand");
+  await expect(disclosures).toHaveCount(1);
   await disclosures.click();
   await expect(notes).toBeVisible();
   await expect(updateDialog.getByRole("button", { name: "Update all", exact: true })).toBeVisible();

@@ -1263,13 +1263,19 @@ export const capabilityPackageManager = {
     return attachCapabilityReleaseNotes(updates, await readReleaseNotes());
   },
 
-  /** Published notes for one package, newest first, or [] when none exist. */
+  /** Published notes for one package, newest first, or [] when none exist.
+   *
+   *  Sorted here rather than trusted: the official build emits newest-first, but a
+   *  custom catalog is under no such obligation and the history sheet renders this
+   *  order as-is. */
   async releaseNotes(
     packageId: string,
     fetchNotes: typeof safeFetch = safeFetch,
   ): Promise<CapabilityPackageVersionNote[]> {
     const notes = await readReleaseNotes(fetchNotes);
-    return notes?.packages[packageId]?.versions ?? [];
+    return [...(notes?.packages[packageId]?.versions ?? [])].sort((left, right) =>
+      compareCapabilityPackageVersions(right.version, left.version),
+    );
   },
 
   async declineUpdate(packageId: string, version: string) {

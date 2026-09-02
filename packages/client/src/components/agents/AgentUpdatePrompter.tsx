@@ -40,7 +40,10 @@ export function AgentUpdatePrompter({ presentationAllowed }: { presentationAllow
   );
 
   const handleUpdateAll = useCallback(async () => {
-    if (!prompted) return;
+    // Same guard as handleNotNow: a second click landing before the disabled
+    // state commits would run the install loop again and post a duplicate
+    // install for every prompted package.
+    if (!prompted || busy) return;
     setBusy(true);
     const failures: unknown[] = [];
     let restartRequired = false;
@@ -74,7 +77,7 @@ export function AgentUpdatePrompter({ presentationAllowed }: { presentationAllow
       );
     }
     await finish(prompted);
-  }, [finish, install, localizeUi, prompted]);
+  }, [busy, finish, install, localizeUi, prompted]);
 
   const handleNotNow = useCallback(async () => {
     if (!prompted || busy) return;

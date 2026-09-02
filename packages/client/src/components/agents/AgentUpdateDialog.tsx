@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import type { CapabilityPackageUpdate } from "@marinara-engine/shared";
 import { Modal } from "../ui/Modal";
+import { NotableChangeMarker } from "./NotableChangeMarker";
 
 /** Prompt shown when installed Agent packages have compatible updates waiting.
  *
@@ -57,17 +58,8 @@ export function AgentUpdateDialog({
             return (
               <li key={update.id} className="rounded-lg ring-1 ring-[var(--border)]">
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2">
-                  {update.releaseHighlight && (
-                    <span
-                      aria-hidden="true"
-                      className="h-2 w-2 shrink-0 rounded-full bg-[var(--primary)]"
-                      title={localizeUi("ui.agents.agentupdatedialog.notableChange")}
-                    />
-                  )}
+                  {update.releaseHighlight && <NotableChangeMarker />}
                   <span className="text-sm font-medium text-[var(--foreground)]">{update.name}</span>
-                  {update.releaseHighlight && (
-                    <span className="sr-only">{localizeUi("ui.agents.agentupdatedialog.notableChange")}</span>
-                  )}
                   <span className="text-xs text-[var(--muted-foreground)]">
                     {update.installedVersion} → {update.version}
                   </span>

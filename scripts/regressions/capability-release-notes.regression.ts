@@ -161,6 +161,73 @@ try {
   );
 
   resetCapabilityReleaseNotesCache();
+  assert.deepEqual(
+    await capabilityPackageManager.releaseNotes(
+      "background",
+      served(() =>
+        ok({
+          schemaVersion: 1,
+          packages: {
+            // Shape-valid but not a real day. A plain regex would let this reach
+            // the history sheet as a date that does not exist.
+            background: { versions: [{ version: "1.1.0", date: "2026-02-30", notes: "Impossible." }] },
+          },
+        }),
+      ).fetchNotes,
+    ),
+    [],
+    "A calendar date that does not exist fails the document",
+  );
+
+  resetCapabilityReleaseNotesCache();
+  assert.deepEqual(
+    await capabilityPackageManager.releaseNotes(
+      "background",
+      served(() =>
+        ok({
+          schemaVersion: 1,
+          packages: {
+            // The update prompt takes the first match and the history sheet shows
+            // every one, so a repeat would make the two surfaces disagree.
+            background: {
+              versions: [
+                { version: "1.1.0", date: "2026-09-01", notes: "One." },
+                { version: "1.1.0", date: "2026-09-02", notes: "Two." },
+              ],
+            },
+          },
+        }),
+      ).fetchNotes,
+    ),
+    [],
+    "A version listed twice fails the document",
+  );
+
+  resetCapabilityReleaseNotesCache();
+  const unordered = await capabilityPackageManager.releaseNotes(
+    "background",
+    served(() =>
+      ok({
+        schemaVersion: 1,
+        packages: {
+          background: {
+            versions: [
+              { version: "1.0.0", date: "2026-08-01", notes: "First release." },
+              { version: "1.10.0", date: "2026-09-01", notes: "Tenth minor." },
+              { version: "1.2.0", date: "2026-08-15", notes: "Second minor." },
+            ],
+          },
+        },
+      }),
+    ).fetchNotes,
+  );
+  assert.deepEqual(
+    unordered.map((note) => note.version),
+    ["1.10.0", "1.2.0", "1.0.0"],
+    "Order is imposed by version, not trusted from the document and not sorted as text",
+  );
+
+  resetCapabilityReleaseNotesCache();
   const good = served(() =>
     ok({
       schemaVersion: 1,

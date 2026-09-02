@@ -2134,6 +2134,11 @@
   max-width: 48rem;
 }
 
+.mari-editor-tab-rail {
+  border-color: var(--marinara-editor-divider);
+  background: color-mix(in srgb, var(--marinara-editor-surface-bg) 58%, transparent);
+}
+
 .mari-editor-tab {
   height: 2.25rem;
   min-height: 2.25rem;
@@ -2169,6 +2174,21 @@
 
 .mari-editor-navigation-compact {
   display: none;
+}
+
+.mari-editor-shell--character > .mari-editor-header > .mari-editor-navigation {
+  display: none;
+}
+
+.mari-editor-shell--character > .mari-editor-header--with-nav {
+  height: auto;
+  min-height: 3.8125rem;
+  flex-basis: auto;
+  flex-wrap: wrap;
+}
+
+.mari-editor-shell--character > .mari-editor-header--with-nav > .mari-editor-header-main {
+  flex: 1 1 18rem;
 }
 
 .mari-editor-navigation-select:hover {
@@ -2553,6 +2573,19 @@
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-y: contain;
     touch-action: pan-y;
+  }
+
+  .mari-editor-shell--character > .mari-editor-header > .mari-editor-navigation {
+    display: block;
+    width: 100%;
+  }
+
+  .mari-editor-shell--character > .mari-editor-body > .mari-editor-tab-rail {
+    display: none;
+  }
+
+  .mari-editor-tab-rail {
+    display: none;
   }
 }
 

@@ -25,7 +25,11 @@ import {
 } from "@marinara-engine/shared";
 import { logger } from "../../../lib/logger.js";
 import { isLocalInferenceBaseUrl } from "../../../middleware/ip-allowlist.js";
-import { applyGlmThinkingParameters, isGlm53FlashMandatoryReasoningModel } from "./glm-request-compat.js";
+import {
+  applyGlmThinkingParameters,
+  glm53CustomGatewayReasoningEffort,
+  isGlm53MandatoryReasoningModel,
+} from "./glm-request-compat.js";
 
 /**
  * Models that ONLY support the Responses API (`/responses`) and not Chat Completions.
@@ -783,7 +787,7 @@ export class OpenAIProvider extends BaseLLMProvider {
     return (
       this.supportsOpenAIReasoningDisable(normalized) ||
       this.supportsXAIReasoningDisable(normalized) ||
-      (normalized.startsWith("z-ai/glm-") && !isGlm53FlashMandatoryReasoningModel(normalized)) ||
+      (normalized.startsWith("z-ai/glm-") && !isGlm53MandatoryReasoningModel(normalized)) ||
       normalized.startsWith("thudm/glm-") ||
       /^google\/gemini-2\.5-flash(?:-lite)?(?:$|-preview|-latest|:)/u.test(normalized) ||
       /^anthropic\/claude-(?:opus|sonnet)-5(?:$|[-.])/u.test(normalized)
@@ -866,7 +870,16 @@ export class OpenAIProvider extends BaseLLMProvider {
     }
 
     if (this.isGenericCustomProvider()) {
-      if (this.hasExplicitReasoningDisable(options.reasoningEffort)) {
+      // GLM 5.3 served through a remote non-native gateway only accepts
+      // low/high/max and cannot disable reasoning: forward the configured
+      // effort mapped onto those levels, and send the lightest level instead
+      // of a rejected "none" (mirrors the native Z.AI and NanoGPT handling
+      // above). Local inference servers keep the generic behavior so their
+      // template kwarg wins.
+      const customGlmEffort = glm53CustomGatewayReasoningEffort(options.model, this.baseUrl, options.reasoningEffort);
+      if (customGlmEffort) {
+        body.reasoning_effort = customGlmEffort;
+      } else if (this.hasExplicitReasoningDisable(options.reasoningEffort)) {
         body.reasoning_effort = "none";
       } else if (this.shouldSendReasoningEffort(options.model, options.reasoningEffort)) {
         body.reasoning_effort = options.reasoningEffort;
@@ -877,7 +890,7 @@ export class OpenAIProvider extends BaseLLMProvider {
     if (
       this.providerKind === "nanogpt" &&
       this.hasExplicitReasoningDisable(options.reasoningEffort) &&
-      !isGlm53FlashMandatoryReasoningModel(options.model)
+      !isGlm53MandatoryReasoningModel(options.model)
     ) {
       body.reasoning_effort = "none";
       return;

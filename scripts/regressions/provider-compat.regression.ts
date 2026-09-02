@@ -8,7 +8,9 @@ import {
 } from "../../packages/shared/src/constants/model-lists.js";
 import {
   applyGlmThinkingParameters,
-  isGlm53FlashMandatoryReasoningModel,
+  glm53CustomGatewayReasoningEffort,
+  glm53ReasoningEffort,
+  isGlm53MandatoryReasoningModel,
   isNativeGlmEndpoint,
 } from "../../packages/server/src/services/llm/providers/glm-request-compat.js";
 import {
@@ -228,8 +230,64 @@ try {
     reasoningEffort: "none",
     enabledParameters: { reasoningEffort: true },
   });
-  assert.equal("reasoning_effort" in (nanoGptRequestBody ?? {}), false);
+  assert.equal(nanoGptRequestBody?.reasoning_effort, "low");
   assert.equal(nanoGptRequestBody?.enable_thinking, true);
+
+  nanoGptRequestBody = null;
+  await collectProviderOutput(provider, {
+    model: "z-ai/glm-5.3",
+    stream: false,
+    reasoningEffort: "none",
+    enabledParameters: { reasoningEffort: true },
+  });
+  assert.equal(
+    nanoGptRequestBody?.reasoning_effort,
+    "low",
+    "NanoGPT GLM 5.3 agents get low effort, never a disable (#5765)",
+  );
+  assert.equal(nanoGptRequestBody?.enable_thinking, true);
+
+  // A generic custom connection on a LOCAL inference host keeps the
+  // pre-existing "none" for GLM 5.3 (its chat template can really disable
+  // thinking); the remote-gateway substitution is pinned on the pure helper
+  // below (#5765). Other models keep "none" everywhere.
+  const customGateway = new OpenAIProvider(
+    `http://127.0.0.1:${address.port}/v1`,
+    "custom-key",
+    undefined,
+    undefined,
+    undefined,
+    "custom",
+  );
+  nanoGptRequestBody = null;
+  await collectProviderOutput(customGateway, {
+    model: "z-ai/glm-5.3",
+    stream: false,
+    reasoningEffort: "none",
+    enabledParameters: { reasoningEffort: true },
+  });
+  assert.equal(nanoGptRequestBody?.reasoning_effort, "none");
+  assert.deepEqual(nanoGptRequestBody?.chat_template_kwargs, { enable_thinking: false });
+  nanoGptRequestBody = null;
+  await collectProviderOutput(customGateway, {
+    model: "z-ai/glm-5.3",
+    stream: false,
+    reasoningEffort: "medium",
+    enabledParameters: { reasoningEffort: true },
+  });
+  assert.equal(
+    "reasoning_effort" in (nanoGptRequestBody ?? {}),
+    false,
+    "local custom GLM 5.3 keeps the generic no-effort body for an active effort",
+  );
+  nanoGptRequestBody = null;
+  await collectProviderOutput(customGateway, {
+    model: "some-model",
+    stream: false,
+    reasoningEffort: "none",
+    enabledParameters: { reasoningEffort: true },
+  });
+  assert.equal(nanoGptRequestBody?.reasoning_effort, "none");
 } finally {
   await new Promise<void>((resolve, reject) => nanoGptServer.close((error) => (error ? reject(error) : resolve())));
 }
@@ -1322,6 +1380,21 @@ try {
     false,
     "GLM 5.3 Flash must keep OpenRouter's mandatory reasoning default",
   );
+
+  openRouterRequestBody = null;
+  await collectProviderOutput(provider, {
+    model: "z-ai/glm-5.3",
+    stream: false,
+    reasoningEffort: "none",
+    enabledParameters: { reasoningEffort: true },
+  });
+  const mandatoryGlm53OpenRouterBody = openRouterRequestBody as Record<string, unknown>;
+  assert.ok(mandatoryGlm53OpenRouterBody);
+  assert.equal(
+    "reasoning" in mandatoryGlm53OpenRouterBody,
+    false,
+    "GLM 5.3 (non-Flash) must keep OpenRouter's mandatory reasoning default (#5765)",
+  );
 } finally {
   await new Promise<void>((resolve, reject) => openRouterServer.close((error) => (error ? reject(error) : resolve())));
 }
@@ -1408,9 +1481,39 @@ applyGlmThinkingParameters(glm52DisabledBody, {
 });
 assert.deepEqual(glm52DisabledBody, { thinking: { type: "disabled" } });
 
-assert.equal(isGlm53FlashMandatoryReasoningModel("z-ai/glm-5.3-flash"), true);
-assert.equal(isGlm53FlashMandatoryReasoningModel("z-ai/glm-5.3-flash:free"), true);
-assert.equal(isGlm53FlashMandatoryReasoningModel("z-ai/glm-5.2"), false);
+assert.equal(isGlm53MandatoryReasoningModel("z-ai/glm-5.3-flash"), true);
+assert.equal(isGlm53MandatoryReasoningModel("z-ai/glm-5.3-flash:free"), true);
+assert.equal(isGlm53MandatoryReasoningModel("z-ai/glm-5.3"), true);
+assert.equal(isGlm53MandatoryReasoningModel("glm-5.3:free"), true);
+assert.equal(isGlm53MandatoryReasoningModel("GLM-5.3"), true);
+assert.equal(isGlm53MandatoryReasoningModel("z-ai/glm-5.2"), false);
+assert.equal(isGlm53MandatoryReasoningModel("glm-5.30"), false);
+assert.equal(glm53ReasoningEffort(undefined), null);
+assert.equal(glm53ReasoningEffort("none"), "low");
+assert.equal(glm53ReasoningEffort("minimal"), "low");
+assert.equal(glm53ReasoningEffort("low"), "low");
+assert.equal(glm53ReasoningEffort("medium"), "high");
+assert.equal(glm53ReasoningEffort("high"), "high");
+assert.equal(glm53ReasoningEffort("xhigh"), "max");
+assert.equal(glm53ReasoningEffort("max"), "max");
+assert.equal(glm53CustomGatewayReasoningEffort("z-ai/glm-5.3", "https://gateway.example.com/v1", "none"), "low");
+assert.equal(glm53CustomGatewayReasoningEffort("glm-5.3", "https://gateway.example.com/v1", "low"), "low");
+assert.equal(glm53CustomGatewayReasoningEffort("glm-5.3", "https://gateway.example.com/v1", "medium"), "high");
+assert.equal(glm53CustomGatewayReasoningEffort("glm-5.3", "https://gateway.example.com/v1", "high"), "high");
+assert.equal(glm53CustomGatewayReasoningEffort("glm-5.3", "https://gateway.example.com/v1", "max"), "max");
+assert.equal(
+  glm53CustomGatewayReasoningEffort("glm-5.3", "https://gateway.example.com/v1", undefined),
+  null,
+  "no configured effort stays omitted on remote custom gateways",
+);
+assert.equal(
+  glm53CustomGatewayReasoningEffort("z-ai/glm-5.3", "http://127.0.0.1:8080/v1", "none"),
+  null,
+  "local inference hosts keep the explicit disable for GLM 5.3",
+);
+assert.equal(glm53CustomGatewayReasoningEffort("z-ai/glm-5.3", "http://192.168.1.20:11434/v1", "none"), null);
+assert.equal(glm53CustomGatewayReasoningEffort("some-model", "https://gateway.example.com/v1", "none"), null);
+assert.equal(glm53CustomGatewayReasoningEffort("z-ai/glm-5.2", "https://gateway.example.com/v1", "none"), null);
 
 const nanogptMandatoryGlmBody: Record<string, unknown> = {};
 applyGlmThinkingParameters(nanogptMandatoryGlmBody, {
@@ -1421,7 +1524,7 @@ applyGlmThinkingParameters(nanogptMandatoryGlmBody, {
 });
 assert.deepEqual(
   nanogptMandatoryGlmBody,
-  { enable_thinking: true },
+  { enable_thinking: true, reasoning_effort: "low" },
   "NanoGPT mandatory-reasoning GLM models must not receive a disable request",
 );
 
@@ -1434,8 +1537,46 @@ applyGlmThinkingParameters(nativeGlm53DisabledBody, {
 });
 assert.deepEqual(
   nativeGlm53DisabledBody,
-  { enable_thinking: false },
-  "Native GLM endpoints must preserve their explicit reasoning setting",
+  { thinking: { type: "enabled" }, reasoning_effort: "low" },
+  "Native Z.AI GLM 5.3 cannot disable thinking; reasoning off becomes the lightest accepted level (#5765)",
+);
+
+const nativeGlm53DefaultBody: Record<string, unknown> = {};
+applyGlmThinkingParameters(nativeGlm53DefaultBody, {
+  model: "glm-5.3",
+  baseUrl: "https://api.z.ai/api/paas/v4/",
+  providerKind: "custom",
+});
+assert.deepEqual(
+  nativeGlm53DefaultBody,
+  { thinking: { type: "enabled" } },
+  "Native Z.AI GLM 5.3 with no effort configured leaves the provider default in place",
+);
+
+const nativeGlm53MediumBody: Record<string, unknown> = {};
+applyGlmThinkingParameters(nativeGlm53MediumBody, {
+  model: "glm-5.3",
+  baseUrl: "https://api.z.ai/api/paas/v4/",
+  providerKind: "custom",
+  reasoningEffort: "medium",
+});
+assert.deepEqual(
+  nativeGlm53MediumBody,
+  { thinking: { type: "enabled" }, reasoning_effort: "high" },
+  "Native Z.AI GLM 5.3 only accepts low/high/max",
+);
+
+const nanogptGlm53Body: Record<string, unknown> = {};
+applyGlmThinkingParameters(nanogptGlm53Body, {
+  model: "z-ai/glm-5.3",
+  baseUrl: "https://nano-gpt.com/api/v1",
+  providerKind: "nanogpt",
+  reasoningEffort: "none",
+});
+assert.deepEqual(
+  nanogptGlm53Body,
+  { enable_thinking: true, reasoning_effort: "low" },
+  "NanoGPT GLM 5.3 (non-Flash) must not receive a disable request either (#5765)",
 );
 
 const legacyGlmBody: Record<string, unknown> = {};

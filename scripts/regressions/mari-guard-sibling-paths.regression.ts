@@ -134,6 +134,11 @@ for (const allowed of [
   "node -e \"console.log(require('./package.json').version)\"",
   "git checkout -b feature/next",
   "git restore src/index.ts",
+  // Ordinary names that merely END with a sensitive name are not refused
+  "rm mypackage.json",
+  "mv new-start.sh backup.sh",
+  "touch mycargo.toml",
+  "echo x > not-a-dockerfile",
 ]) {
   assert.equal(bashCommandTargetsSensitivePath(allowed), false, `should allow: ${allowed}`);
 }

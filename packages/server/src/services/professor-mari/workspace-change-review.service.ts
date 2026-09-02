@@ -182,10 +182,15 @@ export function workspacePathAccessPolicy(
 const SENSITIVE_PATH_NAME_PATTERN = [...PACKAGE_CONTROL_FILES, ...ROOT_LAUNCHER_FILES]
   .map((name) => name.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"))
   .join("|");
+// The left lookbehind keeps ordinary names that merely END with a sensitive
+// name (mypackage.json, new-start.sh) from matching; a real path prefix ends
+// with "/", which the lookbehind class deliberately excludes.
 const SENSITIVE_PATH_TARGET_PATTERN =
+  `(?<![\\w.-])(?:` +
   `(?:[\\w./~-]*/)?(?:${SENSITIVE_PATH_NAME_PATTERN})(?![\\w.-])` +
   `|\\.github/workflows/|win/installer/|android/gradle/wrapper/` +
-  `|android/(?:app/)?build\\.gradle(?![\\w.-])|android/settings\\.gradle(?![\\w.-])`;
+  `|android/(?:app/)?build\\.gradle(?![\\w.-])|android/settings\\.gradle(?![\\w.-])` +
+  `)`;
 
 const SENSITIVE_PATH_WRITER_PATTERNS = [
   // cp/mv/rm/touch/truncate/tee with a sensitive path in the same segment

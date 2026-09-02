@@ -51,6 +51,7 @@ import {
 import { toast } from "sonner";
 import {
   LOCAL_SIDECAR_CONNECTION_ID,
+  MARI_AUTHORIZATION_ACCEPT_CHIP,
   MARI_STARTER_CHIPS,
   PROFESSOR_MARI_ID,
   type APIConnection,
@@ -3340,14 +3341,34 @@ export function HomeProfessorMariChat({
     messageMutationBusyRef.current = isBusy;
   }, [isBusy]);
   const canSubmitMessage = (draft.trim().length > 0 || attachments.length > 0) && !isReadingAttachments;
+  // #5748: the Accept affordance must be as durable as the deferral it
+  // answers. The chips slot is app-wide, ephemeral state that unrelated paths
+  // clear (a regular chat starting a generation, the suggestions-disabled
+  // mount sweeps) and a reload never restores - but the deferral itself is
+  // persisted on the assistant message's extra (mariDeferredMutations, the
+  // same flag the server arms the next run from). Re-derive the chip from
+  // that persisted truth: it shows while the deferral is still the chat's
+  // last word, and disappears the moment the user answers or a run starts.
+  const lastLoadedMessage = messages.length > 0 ? messages[messages.length - 1] : undefined;
+  const lastLoadedMessageExtra =
+    lastLoadedMessage && typeof lastLoadedMessage.extra === "object" ? lastLoadedMessage.extra : null;
+  const pendingDeferredMutations =
+    chatId !== null &&
+    loadedMessagesChatId === chatId &&
+    !isBusy &&
+    lastLoadedMessage?.role === "assistant" &&
+    lastLoadedMessageExtra?.mariDeferredMutations === true;
+  const storeChipsForChat = mariChipsChatId === chatId ? mariChips : [];
   const visibleSuggestionChips =
-    mariChipsChatId === chatId && mariChips.some((chip) => chip.id === "authorization-accept")
-      ? mariChips.filter((chip) => professorMariSuggestionsEnabled || chip.id === "authorization-accept")
-      : professorMariSuggestionsEnabled && mariChipsChatId === chatId && mariChips.length > 0
-        ? mariChips
-        : professorMariSuggestionsEnabled && chatId !== null && loadedMessagesChatId === chatId && !isBusy
-          ? MARI_STARTER_CHIPS
-          : [];
+    pendingDeferredMutations && !storeChipsForChat.some((chip) => chip.id === MARI_AUTHORIZATION_ACCEPT_CHIP.id)
+      ? [MARI_AUTHORIZATION_ACCEPT_CHIP, ...(professorMariSuggestionsEnabled ? storeChipsForChat : [])]
+      : storeChipsForChat.some((chip) => chip.id === "authorization-accept")
+        ? storeChipsForChat.filter((chip) => professorMariSuggestionsEnabled || chip.id === "authorization-accept")
+        : professorMariSuggestionsEnabled && storeChipsForChat.length > 0
+          ? storeChipsForChat
+          : professorMariSuggestionsEnabled && chatId !== null && loadedMessagesChatId === chatId && !isBusy
+            ? MARI_STARTER_CHIPS
+            : [];
   const selectedSkill = useMemo(
     () => skills.find((skill) => skill.id === selectedSkillId) ?? null,
     [selectedSkillId, skills],

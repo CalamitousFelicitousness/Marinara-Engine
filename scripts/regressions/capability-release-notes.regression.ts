@@ -132,6 +132,32 @@ try {
   assert.deepEqual(
     await capabilityPackageManager.releaseNotes(
       "background",
+      served(() => {
+        // The fetch itself rejecting — DNS failure, refused connection, timeout —
+        // is a different path from any HTTP status and must not surface as a
+        // failed update prompt.
+        throw new Error("network unavailable");
+      }).fetchNotes,
+    ),
+    [],
+    "An unreachable sidecar degrades to no notes",
+  );
+
+  resetCapabilityReleaseNotesCache();
+  assert.deepEqual(
+    await capabilityPackageManager.releaseNotes(
+      "background",
+      served(() => new Response("upstream is down", { status: 500, headers: { "content-type": "text/plain" } }))
+        .fetchNotes,
+    ),
+    [],
+    "A server error is not a 404 and still degrades to no notes",
+  );
+
+  resetCapabilityReleaseNotesCache();
+  assert.deepEqual(
+    await capabilityPackageManager.releaseNotes(
+      "background",
       served(() => new Response("{not json", { status: 200, headers: { "content-type": "application/json" } }))
         .fetchNotes,
     ),

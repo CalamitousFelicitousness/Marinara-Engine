@@ -1,7 +1,7 @@
 // ──────────────────────────────────────────────
 // Professor Mari native command workspace runtime
 // ──────────────────────────────────────────────
-import { constants, existsSync, realpathSync } from "node:fs";
+import { constants, existsSync, lstatSync, readlinkSync, realpathSync } from "node:fs";
 import { copyFile, link, mkdir, readdir, readFile, rmdir, stat, unlink, writeFile } from "node:fs/promises";
 import { delimiter, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -90,6 +90,7 @@ import { getWorkspaceShellSandboxStatus, spawnWorkspaceSandboxedShell } from "./
 import { personalServerExtensionRuntime } from "../extensions/personal-server-extension-runtime.js";
 import { isLocalInferenceBaseUrl } from "../../middleware/ip-allowlist.js";
 import {
+  bashCommandTargetsSensitivePath,
   isPackageManagerMutationCommand,
   WorkspaceChangeReviewService,
   workspacePathAccessPolicy,
@@ -1655,6 +1656,21 @@ export function visibleTextRequestsUserApproval(text: string): boolean {
   );
 }
 
+// #5776: shared between bashLooksMutating and the sandbox refusal in
+// commandBash - a mari CLI mutation can only work through the direct runtime
+// (the sandbox denies the network the CLI needs), so embedding one in a
+// sandbox-bound compound is always a silent no-op.
+function commandEmbedsMariCliMutation(normalizedCommand: string): boolean {
+  return (
+    /\bmari\s+db\s+(insert|patch|replace|delete|transform)\b/.test(normalizedCommand) ||
+    /\bmari\s+(characters?|personas?|lorebooks?)\s+(create|update|delete|add-entry|link-character|unlink-character)\b/.test(
+      normalizedCommand,
+    ) ||
+    /\bmari\s+themes\s+(create|update|set-active)\b/.test(normalizedCommand) ||
+    /\bmari\s+images\s+(generate|edit|assign|delete)\b/.test(normalizedCommand)
+  );
+}
+
 function bashLooksMutating(command: string): boolean {
   const normalized = command.toLowerCase();
   return (
@@ -1669,12 +1685,7 @@ function bashLooksMutating(command: string): boolean {
     /\b(?:node|python(?:3)?)\b[^\n;&|]*(?:writefile|appendfile|unlink|rmsync|mkdir|rename|copyfile|shutil\.|os\.remove|open\([^)]*,\s*["'][wa])/u.test(
       normalized,
     ) ||
-    /\bmari\s+db\s+(insert|patch|replace|delete|transform)\b/.test(normalized) ||
-    /\bmari\s+(characters?|personas?|lorebooks?)\s+(create|update|delete|add-entry|link-character|unlink-character)\b/.test(
-      normalized,
-    ) ||
-    /\bmari\s+themes\s+(create|update|set-active)\b/.test(normalized) ||
-    /\bmari\s+images\s+(generate|edit|assign|delete)\b/.test(normalized)
+    commandEmbedsMariCliMutation(normalized)
   );
 }
 
@@ -1761,6 +1772,13 @@ function commandCallForResult(result: WorkspaceCommandResult): WorkspaceCommandC
 // appearing at a later line start of an applied result's output.
 const STAGED_SENSITIVE_CHANGE_PREFIX = "Staged sensitive file change for user approval:";
 
+// #5776: dry-run marker for direct mari CLI runs through bash. Only
+// commandMariDirect can put text at position zero of a bash result - a
+// sandboxed script's output always begins with the engine-written
+// "Command:" header - so startsWith here cannot be forged by script stdout
+// or by marker-shaped text embedded in the command string or row content.
+const MARI_DRY_RUN_SENTINEL = "Dry-run: the mari CLI ran without --apply, so no changes were saved.";
+
 function isStagedSensitiveMutation(result: WorkspaceCommandResult): boolean {
   return (
     result.success &&
@@ -1774,6 +1792,9 @@ function isAppliedWorkspaceMutation(result: WorkspaceCommandResult): boolean {
   const command = commandCallForResult(result);
   if (!isMutatingWorkspaceCommand(command)) return false;
   if (isStagedSensitiveMutation(result)) return false;
+  // #5776: a mari CLI dry-run through bash persisted nothing - without this
+  // gate a follow-up read would "verify" a change that never happened.
+  if (result.name === "bash" && result.output.startsWith(MARI_DRY_RUN_SENTINEL)) return false;
   if (result.name !== "app_data") return true;
   return /"saved"\s*:\s*true/u.test(result.output);
 }
@@ -1970,6 +1991,104 @@ function parseDirectMariArgv(command: string, cwd: string): string[] | null {
   const tokens = shellLikeSplit(trimmed);
   if (!tokens || tokens[0] !== "mari") return null;
   return normalizeMariPathFlagArgs(tokens.slice(1), cwd);
+}
+
+/**
+ * #5778: resolves a workspace path AND reports where a mutation would really
+ * land. `sensitiveTarget` is non-null when either the requested path or the
+ * file the OS would actually write (through any symlink, dangling ones
+ * included) is supply-chain sensitive - callers must stage that target for
+ * approval instead of writing directly. Exported for the regression lane.
+ */
+export function workspaceMutationTargetForPath(
+  workspaceRootInput: string,
+  inputPath: string,
+  options: { allowMissing?: boolean; forbidStorageMutation?: boolean; requireOrdinaryMutationPath?: boolean } = {},
+): { absolute: string; sensitiveTarget: string | null } {
+  const rawPath = inputPath.trim() || ".";
+  const workspaceRoot = resolve(workspaceRootInput);
+  const absolute = resolve(workspaceRoot, rawPath);
+  if (!isWithin(workspaceRoot, absolute)) {
+    throw new Error(`Path escapes the workspace: ${inputPath}`);
+  }
+  const canonicalRoot = existsSync(workspaceRoot) ? realpathSync(workspaceRoot) : workspaceRoot;
+  let existingAncestor = absolute;
+  while (!existsSync(existingAncestor) && existingAncestor !== dirname(existingAncestor)) {
+    existingAncestor = dirname(existingAncestor);
+  }
+  const canonicalAncestor = existsSync(existingAncestor) ? realpathSync(existingAncestor) : existingAncestor;
+  if (!isWithin(canonicalRoot, canonicalAncestor)) {
+    throw new Error(`Path escapes the workspace through a symbolic link: ${inputPath}`);
+  }
+  // Classify both the requested path and its canonical target: a symlink that
+  // stays inside the workspace can still point at an environment-secret file
+  // or Git internals, and reads would follow it.
+  const canonicalTarget =
+    existingAncestor === absolute ? canonicalAncestor : join(canonicalAncestor, relative(existingAncestor, absolute));
+  // #5778: a DANGLING symlink leaf survives the realpath above (existsSync
+  // follows links, so the walk skips to the parent), yet writeFile would
+  // follow it and create its target. Chase the link chain by hand so the
+  // real destination is what gets escape- and policy-checked. Each hop is
+  // re-canonicalized through its existing ancestors, so a readlink target
+  // routed through a symlinked DIRECTORY is judged by where the kernel would
+  // really write, not by its innocent spelling - and if the chain is still
+  // unresolved when the hop budget runs out, the path is refused (fail
+  // closed) rather than judged by the unresolved link's own name.
+  const canonicalizeThroughAncestors = (target: string): string => {
+    let ancestor = target;
+    while (!existsSync(ancestor) && ancestor !== dirname(ancestor)) {
+      ancestor = dirname(ancestor);
+    }
+    const realAncestor = existsSync(ancestor) ? realpathSync(ancestor) : ancestor;
+    return ancestor === target ? realAncestor : join(realAncestor, relative(ancestor, target));
+  };
+  let effectiveTarget = canonicalTarget;
+  let chainResolved = false;
+  for (let hop = 0; hop < 8; hop += 1) {
+    const stats = lstatSync(effectiveTarget, { throwIfNoEntry: false });
+    if (!stats?.isSymbolicLink()) {
+      chainResolved = true;
+      break;
+    }
+    const linkTarget = readlinkSync(effectiveTarget);
+    effectiveTarget = canonicalizeThroughAncestors(resolve(dirname(effectiveTarget), linkTarget));
+  }
+  if (!chainResolved) {
+    throw new Error(`The symbolic link chain is too deep to resolve safely: ${inputPath}`);
+  }
+  if (!isWithin(canonicalRoot, effectiveTarget)) {
+    throw new Error(`Path escapes the workspace through a symbolic link: ${inputPath}`);
+  }
+  const requestedPolicy = workspacePathAccessPolicy(workspaceRoot, absolute);
+  const canonicalPolicy = workspacePathAccessPolicy(canonicalRoot, canonicalTarget);
+  const effectivePolicy = workspacePathAccessPolicy(canonicalRoot, effectiveTarget);
+  if (requestedPolicy === "forbidden" || canonicalPolicy === "forbidden" || effectivePolicy === "forbidden") {
+    throw new Error("Professor Mari cannot access environment-secret files or Git internals.");
+  }
+  if (
+    options.requireOrdinaryMutationPath &&
+    (requestedPolicy !== "normal" || canonicalPolicy !== "normal" || effectivePolicy !== "normal")
+  ) {
+    throw new Error("This path requires a dedicated reviewed tool and cannot be changed directly.");
+  }
+  if (options.forbidStorageMutation) {
+    const storageRoot = resolve(getFileStorageDir());
+    if (
+      isWithin(storageRoot, absolute) ||
+      isWithin(storageRoot, canonicalTarget) ||
+      isWithin(storageRoot, effectiveTarget)
+    ) {
+      throw new Error("DATA_DIR/storage is managed by Marinara. Use mari db for table edits instead of file writes.");
+    }
+  }
+  if (!options.allowMissing && !existsSync(absolute)) throw new Error(`Path not found: ${inputPath}`);
+  const sensitiveTarget =
+    requestedPolicy === "sensitive"
+      ? absolute
+      : canonicalPolicy === "sensitive" || effectivePolicy === "sensitive"
+        ? effectiveTarget
+        : null;
+  return { absolute, sensitiveTarget };
 }
 
 export class ProfessorMariWorkspaceService {
@@ -3074,42 +3193,14 @@ ${sections.join("\n\n")}
     inputPath: string,
     options: { allowMissing?: boolean; forbidStorageMutation?: boolean; requireOrdinaryMutationPath?: boolean } = {},
   ) {
-    const rawPath = inputPath.trim() || ".";
-    const absolute = resolve(this.workspaceRoot, rawPath);
-    const workspaceRoot = resolve(this.workspaceRoot);
-    if (!isWithin(workspaceRoot, absolute)) {
-      throw new Error(`Path escapes the workspace: ${inputPath}`);
-    }
-    const canonicalRoot = existsSync(workspaceRoot) ? realpathSync(workspaceRoot) : workspaceRoot;
-    let existingAncestor = absolute;
-    while (!existsSync(existingAncestor) && existingAncestor !== dirname(existingAncestor)) {
-      existingAncestor = dirname(existingAncestor);
-    }
-    const canonicalAncestor = existsSync(existingAncestor) ? realpathSync(existingAncestor) : existingAncestor;
-    if (!isWithin(canonicalRoot, canonicalAncestor)) {
-      throw new Error(`Path escapes the workspace through a symbolic link: ${inputPath}`);
-    }
-    // Classify both the requested path and its canonical target: a symlink that
-    // stays inside the workspace can still point at an environment-secret file
-    // or Git internals, and reads would follow it.
-    const canonicalTarget =
-      existingAncestor === absolute ? canonicalAncestor : join(canonicalAncestor, relative(existingAncestor, absolute));
-    const requestedPolicy = workspacePathAccessPolicy(workspaceRoot, absolute);
-    const canonicalPolicy = workspacePathAccessPolicy(canonicalRoot, canonicalTarget);
-    if (requestedPolicy === "forbidden" || canonicalPolicy === "forbidden") {
-      throw new Error("Professor Mari cannot access environment-secret files or Git internals.");
-    }
-    if (options.requireOrdinaryMutationPath && (requestedPolicy !== "normal" || canonicalPolicy !== "normal")) {
-      throw new Error("This path requires a dedicated reviewed tool and cannot be changed directly.");
-    }
-    if (options.forbidStorageMutation) {
-      const storageRoot = resolve(getFileStorageDir());
-      if (isWithin(storageRoot, absolute) || isWithin(storageRoot, canonicalTarget)) {
-        throw new Error("DATA_DIR/storage is managed by Marinara. Use mari db for table edits instead of file writes.");
-      }
-    }
-    if (!options.allowMissing && !existsSync(absolute)) throw new Error(`Path not found: ${inputPath}`);
-    return absolute;
+    return this.resolveWorkspaceMutationTarget(inputPath, options).absolute;
+  }
+
+  private resolveWorkspaceMutationTarget(
+    inputPath: string,
+    options: { allowMissing?: boolean; forbidStorageMutation?: boolean; requireOrdinaryMutationPath?: boolean } = {},
+  ): { absolute: string; sensitiveTarget: string | null } {
+    return workspaceMutationTargetForPath(this.workspaceRoot, inputPath, options);
   }
 
   private displayPath(absolute: string) {
@@ -3271,14 +3362,16 @@ ${sections.join("\n\n")}
   }
 
   private async commandWrite(args: Record<string, unknown>): Promise<string> {
-    const filePath = this.resolveWorkspacePath(stringArg(args, "path"), {
+    // #5778: stage on where the write would really land - a symlink to a
+    // sensitive file must not slip past review under a "normal" name.
+    const { absolute: filePath, sensitiveTarget } = this.resolveWorkspaceMutationTarget(stringArg(args, "path"), {
       allowMissing: true,
       forbidStorageMutation: true,
     });
     const content = stringArg(args, "content");
-    if (workspacePathAccessPolicy(this.workspaceRoot, filePath) === "sensitive") {
+    if (sensitiveTarget !== null) {
       const approval = await this.workspaceChangeReviews.stageSensitiveFileChange({
-        absolutePath: filePath,
+        absolutePath: sensitiveTarget,
         afterContent: content,
         reason: stringArg(args, "reason") || "Professor Mari proposed a supply-chain-sensitive file change",
         sessionId: SESSION_ID,
@@ -3360,7 +3453,10 @@ ${sections.join("\n\n")}
   }
 
   private async commandEdit(args: Record<string, unknown>): Promise<string> {
-    const filePath = this.resolveWorkspacePath(stringArg(args, "path"), { forbidStorageMutation: true });
+    // #5778: stage on where the edit would really land (see commandWrite).
+    const { absolute: filePath, sensitiveTarget } = this.resolveWorkspaceMutationTarget(stringArg(args, "path"), {
+      forbidStorageMutation: true,
+    });
     const edits = Array.isArray(args.edits) ? args.edits : [];
     if (edits.length === 0) throw new Error("edit requires non-empty edits array");
     const text = await readFile(filePath, "utf8");
@@ -3387,9 +3483,9 @@ ${sections.join("\n\n")}
       cursor = range.end;
     }
     next += text.slice(cursor);
-    if (workspacePathAccessPolicy(this.workspaceRoot, filePath) === "sensitive") {
+    if (sensitiveTarget !== null) {
       const approval = await this.workspaceChangeReviews.stageSensitiveFileChange({
-        absolutePath: filePath,
+        absolutePath: sensitiveTarget,
         afterContent: next,
         reason: stringArg(args, "reason") || "Professor Mari proposed a supply-chain-sensitive file change",
         sessionId: SESSION_ID,
@@ -3438,6 +3534,22 @@ ${sections.join("\n\n")}
     const timeoutSeconds = numberArg(args, "timeout", DEFAULT_BASH_TIMEOUT_SECONDS, 1, MAX_BASH_TIMEOUT_SECONDS);
     const directMariArgv = parseDirectMariArgv(command, this.workspaceRoot);
     if (directMariArgv) return this.commandMariDirect(command, directMariArgv);
+    // #5776: past this point the command runs in the sandbox, where the mari
+    // CLI can never reach the server (network denied) - a mutation embedded
+    // in a compound would fail silently and still count as applied.
+    if (commandEmbedsMariCliMutation(command.toLowerCase())) {
+      throw new Error(
+        "mari CLI mutations cannot run inside the shell sandbox (its network access is denied, so the CLI cannot reach the server). Run the mari command by itself - no ; | && or redirection around it - so it uses the direct runtime, and pass --apply when you want the change saved.",
+      );
+    }
+    // #5777: the sandbox denies these writes SILENTLY - in a compound command
+    // the denial is swallowed and exit 0 would count as an applied mutation.
+    // Refuse loudly before running instead, pointing at the reviewed path.
+    if (bashCommandTargetsSensitivePath(command)) {
+      throw new Error(
+        "This command touches a supply-chain-sensitive file (package manifests, launcher, installer, or workflow files). The shell sandbox blocks writes to those silently, so the command cannot work as intended. To change one, use the write or edit command - it stages the change for the user's approval. To copy content OUT of one, read it and write the copy to the destination instead.",
+      );
+    }
     const sandboxed = await spawnWorkspaceSandboxedShell({
       command,
       workspaceRoot: this.workspaceRoot,
@@ -3526,6 +3638,9 @@ ${sections.join("\n\n")}
       isRecord(result) && "output" in result && !("summary" in result) ? result.output : compactMutationResult(result);
     const output = compactOutput(
       [
+        // #5776: position-zero sentinel; the verification guard trusts only
+        // this placement (see MARI_DRY_RUN_SENTINEL).
+        ...(isRecord(result) && result.mode === "dry-run" ? [MARI_DRY_RUN_SENTINEL] : []),
         `Command: ${command}`,
         `Exit code: ${result.ok === false ? 1 : 0} (direct mari runtime)`,
         "",

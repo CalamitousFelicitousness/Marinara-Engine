@@ -6141,6 +6141,7 @@ export function HomeProfessorMariChat({
                                   "mari-chrome-accent-text-muted mari-accent-animated hover:text-[var(--marinara-chat-chrome-button-text-hover)]",
                                 )}
                                 title={localizeUi("ui.chat.homeprofessormarichat.openSkillsAndMemories")}
+                                aria-label={localizeUi("ui.chat.homeprofessormarichat.skillsAndMemories")}
                                 aria-expanded={libraryMenuOpen}
                               >
                                 <Brain size="0.75rem" />

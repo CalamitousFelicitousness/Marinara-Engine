@@ -169,7 +169,12 @@ import { useAgentImportPolicy, useSetAgentImportsEnabled } from "../../hooks/use
 import { DraftNumberInput } from "../ui/DraftNumberInput";
 import { ExportFormatDialog, type ExportFormatChoice } from "../ui/ExportFormatDialog";
 import { inspectCharacterFilesForEmbeddedLorebooks } from "../../lib/character-import";
-import { detectBrowserGpu, formatSupportDiagnostics, resolveClientOs } from "../../lib/support-diagnostics";
+import {
+  detectBrowserGpu,
+  formatSupportDiagnostics,
+  resolveClientOs,
+  type SupportDiagnostics,
+} from "../../lib/support-diagnostics";
 import { showConfirmDialog } from "../../lib/app-dialogs";
 import { downloadJsonFile, sanitizeExportFilenamePart } from "../../lib/download-json";
 import {
@@ -7744,8 +7749,20 @@ function AdvancedSettings() {
   const supportDiagnosticsPending = isConnectionsLoading || (!!activeChatId && isActiveChatLoading) || health.isPending;
 
   const handleCopySupportDiagnostics = useCallback(async () => {
+    // #5740: include what Mari last reported acting on - the load-bearing
+    // triage line for "she edited something I never asked for" reports.
+    // Best-effort: a failed fetch reads as unavailable, never blocks the copy.
+    // The deadline matters most on the frozen host this button exists for
+    // (#5657) - without it the fetch pends forever and no report is copied.
+    const mariActingOn = await api
+      .get<{
+        latestUnderstoodRequest: SupportDiagnostics["mariActingOn"];
+      }>("/professor-mari/workspace/status", { signal: requestTimeoutSignal(5_000) })
+      .then((status) => status.latestUnderstoodRequest ?? null)
+      .catch(() => undefined);
     const copied = await copyToClipboard(
       formatSupportDiagnostics({
+        mariActingOn,
         // Distinguish "the server never answered" (frozen host) from ordinary
         // missing fields so support reports carry the signal (#5657): the
         // formatter renders every server telemetry line as unreachable.

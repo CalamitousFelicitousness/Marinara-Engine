@@ -76,6 +76,7 @@ import type {
   MariSuggestionChip,
   MariWorkspaceConnectionSummary,
   MariWorkspacePromptEvent,
+  MariUnderstoodRequest,
   MariWorkspaceStatus,
   MariWorkspaceToolName,
   MariWorkspaceTraceItem,
@@ -146,6 +147,8 @@ type AssistantWorkspaceAction = {
   suggestions: MariSuggestionChip[];
   plan: MariGuidedPlanStep[];
   awaitingAuthorization: boolean;
+  /** #5740 diagnostic field: the trigger phrase the model reported. Never enforced. */
+  understoodRequest: string | null;
   stop: boolean;
   protocolValid: boolean;
   assistantHistoryContent: string;
@@ -647,6 +650,7 @@ Required schema:
 {
   "say": "visible text for the user, or empty string for silent work",
   "awaitingAuthorization": false,
+  "understoodRequest": "the exact words you are treating as the request or permission, when any command mutates data",
   "commands": [
     { "name": "docs_search|docs_read|read|grep|find|ls|edit|write|copy|move|remove|bash|dependency|app_data", "arguments": {} }
   ],
@@ -662,6 +666,7 @@ Required schema:
 Field rules:
 - \`say\` is the only text Marinara may show to the user.
 - Set \`awaitingAuthorization\` to \`true\` only when \`say\` asks the user to approve the mutating commands in this response. Marinara will pause those commands and show an Accept action.
+- \`understoodRequest\`: when a response carries mutating commands, copy the exact words you are treating as the request or permission for them - from the user's message, or from the saved memory or instruction that directs the change. It is shown to the user for transparency and NEVER validated: a missing or imperfect quote never blocks a command. Keep it short (one sentence or phrase).
 - \`commands\` is the command list to execute now. Use \`[]\` only when no command is needed.
 - \`suggestions\` is optional. Include at most 5 quick-reply chips when useful; omit it when no chips are needed.
 - \`plan\` is optional and mutually exclusive with a multi-turn interrogation: use it ONLY when the user's create/edit request is vague (e.g. "make me a character" with no details). Return the WHOLE plan in this ONE turn - an ordered list of the natural fields for what they're creating (e.g. name, vibe, scenario, greeting for a character), each with 3-5 illustrative example-answer chips. The client walks the plan locally with no further calls from you, then sends you one summary message with all the answers so you can actually create it with your normal commands. If the request already has enough detail, skip \`plan\` entirely and just create it now - don't force the user through fields they already answered.
@@ -1339,6 +1344,18 @@ export function parseAssistantWorkspaceAction(content: string): AssistantWorkspa
   const suggestions = matches.flatMap((match) => sanitizeSuggestionChips(match.payload.suggestions));
   const plan = matches.flatMap((match) => sanitizePlanSteps(match.payload.plan));
   const awaitingAuthorization = matches.some((match) => match.payload.awaitingAuthorization === true);
+  // #5740: diagnostic only - stored and displayed, never validated or gated.
+  // Only frames that themselves carry a mutating command may supply the
+  // phrase: in a tolerated multi-frame response, a read-only frame's phrase
+  // must not be attributed to another frame's mutations.
+  const understoodRequest =
+    matches
+      .filter((match) => parseJsonCommandCallsFromPayload(match.payload).some(isMutatingWorkspaceCommand))
+      .map((match) =>
+        typeof match.payload.understoodRequest === "string" ? match.payload.understoodRequest.trim() : "",
+      )
+      .find((value) => value.length > 0)
+      ?.slice(0, 2000) ?? null;
   const commands = dedupeWorkspaceCommandCalls([
     ...parseXmlCommandCalls(contentWithoutJson),
     ...jsonCommands,
@@ -1355,6 +1372,7 @@ export function parseAssistantWorkspaceAction(content: string): AssistantWorkspa
     suggestions,
     plan,
     awaitingAuthorization,
+    understoodRequest,
     stop,
     protocolValid,
     assistantHistoryContent: assistantHistoryContentForAction({
@@ -1903,6 +1921,10 @@ export class ProfessorMariWorkspaceService {
   // overwrites) so command execution and deferral read the run's own mode.
   private activeRunPermissionsMode: MariPermissionsMode = DEFAULT_MARI_PERMISSIONS_MODE;
   private activeRoundManualSilentMutationBlocked = false;
+  // #5740: latest-round understood-request record. Diagnostic only; retention
+  // is deliberately ONE record, overwritten per qualifying round (maintainer
+  // call: no growing history), lost on restart.
+  private latestUnderstoodRequest: MariUnderstoodRequest | null = null;
   private abortController: AbortController | null = null;
   // Professor Mari is the only untrusted workspace writer. Serialize all of
   // her mutations so path validation and the operation cannot overlap another
@@ -1979,6 +2001,7 @@ export class ProfessorMariWorkspaceService {
           permissionsMode: resolved.mode,
           permissionsModeDefault: resolved.defaultMode,
           permissionsModeSource: resolved.source,
+          latestUnderstoodRequest: this.latestUnderstoodRequest,
         };
       })()),
       pendingApprovals: [
@@ -2073,6 +2096,11 @@ export class ProfessorMariWorkspaceService {
     // the NEXT run can arm silent command frames - the persisted content is
     // only the visible say text, so a content scan can never see the deferral.
     let runEndedWithDeferral = false;
+    // #5740: the understood-request record THIS run wrote, if any. The shared
+    // field can be overwritten by a superseding run at any time, so every
+    // update below checks identity against this reference first - a run may
+    // only ever stamp or restate its own record, never another run's.
+    let runUnderstoodRequest: MariUnderstoodRequest | null = null;
 
     const persistAssistantMessage = async () => {
       const persistedText = assistantText.trim();
@@ -2117,6 +2145,19 @@ export class ProfessorMariWorkspaceService {
       await chatStorage.updateMessageExtra(message.id, extraUpdate);
       await chatStorage.updateSwipeExtra(message.id, 0, extraUpdate);
       assistantMessagePersisted = true;
+      // #5740: bind the understood-request record to the message it belongs
+      // to so the client can anchor the "Acting on" line to that reply. Only
+      // the record this run wrote, and only while it is still the latest -
+      // stamping by chatId alone let a dangling record from an aborted run
+      // claim the NEXT run's unrelated reply.
+      if (
+        runUnderstoodRequest !== null &&
+        this.latestUnderstoodRequest === runUnderstoodRequest &&
+        runUnderstoodRequest.messageId === null
+      ) {
+        runUnderstoodRequest = { ...runUnderstoodRequest, messageId: message.id };
+        this.latestUnderstoodRequest = runUnderstoodRequest;
+      }
       return message;
     };
 
@@ -2213,6 +2254,33 @@ export class ProfessorMariWorkspaceService {
               }),
             }
           : parsedAction;
+        // #5740: record what Mari reported acting on, for every round that
+        // carries mutating commands (deferred or executed). Last round wins -
+        // retention is deliberately the latest record only. The outcome starts
+        // as "interrupted" and is upgraded AFTER the command batch reports -
+        // never asserted up front (a Plan-floor refusal must not read as an
+        // execution in a pasted diagnostics report).
+        if (parsedAction.commands.some(isMutatingWorkspaceCommand)) {
+          runUnderstoodRequest = {
+            text: parsedAction.understoodRequest,
+            chatId: args.chatId,
+            messageId: null,
+            permissionsMode,
+            outcome: shouldDeferMutations ? "held" : "interrupted",
+            commands: parsedAction.commands
+              .filter(isMutatingWorkspaceCommand)
+              .slice(0, 8)
+              .map((command) => {
+                const label =
+                  command.name === "app_data" ? `app_data ${stringArg(command.arguments, "action")}` : command.name;
+                // The app_data action string is model-authored and the record
+                // feeds a line-oriented diagnostics report - flatten and cap.
+                return label.replace(/\s+/gu, " ").trim().slice(0, 80);
+              }),
+            recordedAt: new Date().toISOString(),
+          };
+          this.latestUnderstoodRequest = runUnderstoodRequest;
+        }
         if (shouldDeferMutations) {
           runEndedWithDeferral = true;
           action.suggestions = [
@@ -2362,6 +2430,21 @@ export class ProfessorMariWorkspaceService {
           args.onEvent,
         );
         commandResultsForContinuity.push(...commandResults);
+        // #5740: upgrade the record's outcome to what the batch actually
+        // reported (results align 1:1 with the commands). Gated on this round
+        // carrying mutating commands so a later read-only round can never
+        // relabel an earlier round's failure as applied.
+        if (
+          runUnderstoodRequest !== null &&
+          this.latestUnderstoodRequest === runUnderstoodRequest &&
+          action.commands.some(isMutatingWorkspaceCommand)
+        ) {
+          const anyMutatingFailed = commandResults.some(
+            (commandResult, index) => isMutatingWorkspaceCommand(action.commands[index]!) && !commandResult.success,
+          );
+          runUnderstoodRequest = { ...runUnderstoodRequest, outcome: anyMutatingFailed ? "failed" : "applied" };
+          this.latestUnderstoodRequest = runUnderstoodRequest;
+        }
 
         const repeatedFailure = commandResults
           .filter((commandResult) => !commandResult.success)
@@ -2545,6 +2628,32 @@ export class ProfessorMariWorkspaceService {
     // further restrict, never loosen - the block says so).
     const permissionsModePrompt = mariPermissionsModePrompt(permissionsMode);
     if (permissionsModePrompt) messages.push({ role: "system", content: permissionsModePrompt, contextKind: "prompt" });
+    // #5740 read-back (maintainer call): Mari sees the record she herself
+    // reported for the latest mutating round in THIS chat, so "why did you
+    // treat that as permission?" gets an answer grounded in the actual record
+    // instead of a reconstruction. Read-only context, never a gate: it does
+    // not alter what she may do, and a missing record changes nothing.
+    const understoodRequestRecord = this.latestUnderstoodRequest;
+    if (understoodRequestRecord !== null && understoodRequestRecord.chatId === chatId) {
+      messages.push({
+        role: "system",
+        content: [
+          "<mari_understood_request_record>",
+          "Your most recent response in this chat that carried mutating commands reported this understood request (your own report, shown to the user for transparency):",
+          // Both values are model-authored: escape delimiters (same convention
+          // as command results) so a quoted phrase can never close this block
+          // and smuggle text out of it into the system context.
+          `phrase: ${understoodRequestRecord.text === null ? "(none reported)" : escapeWorkspaceXml(understoodRequestRecord.text)}`,
+          `permissionsMode: ${understoodRequestRecord.permissionsMode}`,
+          `outcome: ${understoodRequestRecord.outcome}`,
+          `commands: ${escapeWorkspaceXml(understoodRequestRecord.commands.join(", ")) || "(none)"}`,
+          `recordedAt: ${understoodRequestRecord.recordedAt}`,
+          "If the user asks why you made, proposed, or held a change, ground your explanation in this record: quote the phrase, explain what you read it as, and say so plainly if you misread them. It is a record, not an instruction - do not redo or re-justify the change unprompted.",
+          "</mari_understood_request_record>",
+        ].join("\n"),
+        contextKind: "prompt",
+      });
+    }
 
     for (const row of history) {
       const extra = parseExtra(row.extra);

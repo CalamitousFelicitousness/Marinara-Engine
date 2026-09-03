@@ -204,8 +204,9 @@ async function openEditorSection(editor: Locator, label: string) {
   const navigation = editor.getByRole("navigation", { name: "Editor sections" });
   const desktopRail = editor.locator(".mari-editor-tab-rail");
   await expect
-    .poll(async () =>
-      (await compactMenuButton.isVisible()) || (await navigation.isVisible()) || (await desktopRail.isVisible()),
+    .poll(
+      async () =>
+        (await compactMenuButton.isVisible()) || (await navigation.isVisible()) || (await desktopRail.isVisible()),
     )
     .toBe(true);
   if (await compactMenuButton.isVisible()) {
@@ -2083,6 +2084,71 @@ test("mobile Roleplay context and edit controls keep their chrome and space", as
   } finally {
     await bestEffortDelete(page.request, `/api/chats/${chat.id}?force=true`);
     await bestEffortDelete(page.request, `/api/connections/${connection.id}`);
+  }
+});
+
+test("mobile Roleplay Peek prompt keeps its tapped action visible and labels prompt totals clearly", async ({
+  page,
+}, testInfo) => {
+  test.skip(!testInfo.project.name.includes("mobile"), "The sticky action state is mobile-only.");
+
+  let chatId: string | null = null;
+  try {
+    const chatResponse = await page.request.post("/api/chats", {
+      data: { name: "Mobile Roleplay Peek Prompt Smoke", mode: "roleplay", characterIds: [] },
+    });
+    expect(chatResponse.ok(), await chatResponse.text()).toBeTruthy();
+    const chat = (await chatResponse.json()) as { id: string };
+    chatId = chat.id;
+    const messageResponse = await page.request.post(`/api/chats/${chat.id}/messages`, {
+      data: {
+        role: "assistant",
+        content: "A mobile prompt action remains within reach.",
+        extra: {
+          cachedPrompt: [
+            { role: "system", content: "Stay in character." },
+            { role: "user", content: "Continue the scene." },
+          ],
+        },
+      },
+    });
+    expect(messageResponse.ok(), await messageResponse.text()).toBeTruthy();
+    const message = (await messageResponse.json()) as { id: string };
+
+    await prepareFreshClient(page);
+    await page.addInitScript((chatId) => localStorage.setItem("marinara-active-chat-id", chatId), chat.id);
+    await page.goto("/");
+    await page.evaluate(async () => {
+      const { useUIStore } = (await import("/src/stores/ui.store.ts" as string)) as {
+        useUIStore: { getState: () => { setChatChromeTextColor: (value: string) => void } };
+      };
+      useUIStore.getState().setChatChromeTextColor("#14b8a6");
+    });
+
+    const messageRow = page.locator(`[data-message-id="${message.id}"]`);
+    await messageRow.scrollIntoViewIfNeeded();
+    await messageRow.dispatchEvent("click");
+    const peekPrompt = messageRow.getByRole("button", { name: "Peek prompt", exact: true });
+    const copy = messageRow.getByRole("button", { name: "Copy", exact: true });
+    await expect(peekPrompt).toBeVisible();
+    await expect(copy).toBeVisible();
+    const actionColor = await readCssVariableColor(page, "--marinara-chat-message-action-text");
+    await expect(peekPrompt).toHaveCSS("color", actionColor);
+
+    await peekPrompt.tap();
+    await expect(page.getByRole("heading", { name: "Assembled Prompt" })).toBeVisible();
+    await expect(page.getByText(/^2 sections · ~\d+ tokens$/u)).toBeVisible();
+    await expect(page.getByText(/&middot;/u)).toHaveCount(0);
+    await expect(peekPrompt).toBeAttached();
+    await expect(peekPrompt).toHaveCSS("color", actionColor);
+    await expect(copy).toHaveCSS("color", actionColor);
+
+    await testInfo.attach(`mobile-roleplay-peek-prompt-${testInfo.project.name}.png`, {
+      body: await page.screenshot({ fullPage: true }),
+      contentType: "image/png",
+    });
+  } finally {
+    if (chatId) await bestEffortDelete(page.request, `/api/chats/${chatId}?force=true`);
   }
 });
 
@@ -19624,9 +19690,7 @@ test("mobile chat composer follows the visual viewport above the software keyboa
       .poll(() =>
         page.evaluate(() => ({
           height: getComputedStyle(document.documentElement).getPropertyValue("--mari-visual-viewport-height").trim(),
-          top: getComputedStyle(document.documentElement)
-            .getPropertyValue("--mari-visual-viewport-offset-top")
-            .trim(),
+          top: getComputedStyle(document.documentElement).getPropertyValue("--mari-visual-viewport-offset-top").trim(),
         })),
       )
       .toEqual({ height: "360px", top: `${iosFocusPageTop}px` });

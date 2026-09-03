@@ -346,6 +346,7 @@ export function QuickPersonaSwitcher({ className }: { className?: string }) {
         createPortal(
           <div
             ref={menuRef}
+            data-chat-floating-panel
             role="menu"
             aria-label={localizeUi("navigation.topbar.personas")}
             tabIndex={-1}

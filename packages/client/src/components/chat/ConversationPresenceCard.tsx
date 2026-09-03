@@ -629,6 +629,7 @@ export function ConversationPresenceCard({
         createPortal(
           <div
             ref={popoverRef}
+            data-chat-floating-panel
             className={cn(NEUTRAL_PANEL_SHELL, "fixed z-[9999] overflow-hidden")}
             style={{
               top: position.top,

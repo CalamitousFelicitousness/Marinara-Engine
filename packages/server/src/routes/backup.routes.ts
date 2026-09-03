@@ -4232,7 +4232,10 @@ export async function backupRoutes(app: FastifyInstance) {
         return Number.isFinite(currentLength) ? currentLength : receivedEncodedLength;
       },
     });
-    payload.pipe(limiter);
+    void pipeline(payload, limiter).catch(() => {
+      (payload as NodeJS.ReadableStream & { destroy: () => void }).destroy();
+      limiter.destroy();
+    });
     return limiter;
   };
   app.post(

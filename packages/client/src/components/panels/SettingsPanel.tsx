@@ -7729,6 +7729,17 @@ function AdvancedSettings() {
     };
     wakeLock?: string | null;
     lastFreeze?: { detectedAt: string; gapMs: number; suspendedMs: number } | null;
+    lastUncleanExit?: {
+      startedAt: string;
+      lastSeenAt: string;
+      uptimeMs: number;
+      rssMiB: number;
+      heapUsedMiB: number;
+      pid: number;
+      rebootedSince: boolean | null;
+      detectedAt: string;
+    } | null;
+    uncleanExitCount?: number;
   }>({
     queryKey: ["health"],
     // Against a frozen host this fetch would otherwise pend forever, leaving
@@ -7774,6 +7785,10 @@ function AdvancedSettings() {
         serverMemory: health.data?.memory,
         wakeLock: health.data?.wakeLock ?? null,
         lastFreeze: health.data?.lastFreeze ?? null,
+        // undefined (fetch failed) stays undefined so the report says
+        // Unavailable instead of asserting a clean shutdown it never saw.
+        lastUncleanExit: health.data ? (health.data.lastUncleanExit ?? null) : undefined,
+        uncleanExitCount: health.data?.uncleanExitCount,
         clientOs: resolveClientOs(navigator.userAgent, navigator.platform, navigator.maxTouchPoints),
         browser: navigator.userAgent,
         gpu: detectBrowserGpu(),

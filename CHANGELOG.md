@@ -6,6 +6,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Added
 
+- The server now notices when its previous session was killed by the phone instead of shut down (#5506): a tiny status file is refreshed silently every half minute while running (nothing is printed to the console), a normal shutdown marks it clean, and the next start reports how the previous session actually ended - when it was last alive, how long it ran, its memory use at the time, and whether the device rebooted in between. The finding appears as one line at startup and as a "Previous session" line in Support Diagnostics, so crash reports from Android/Termux phones carry the evidence automatically.
+
 - Agent packages can now publish release notes. The update prompt lists each waiting Agent with its version change, whether it needs a restart, and a collapsible "What changed"; Download Agents gains a Version history section on the Agent detail page. A dot marks a version the publisher flagged as a change you will notice, so routine bugfix releases do not compete for attention with real ones. Notes come from a `notes.json` published beside the Agent catalog, are English only, and render as plain text; an Agent catalog that publishes none behaves exactly as before.
 
 - Added a Connections -> Defaults -> Agents toggle to hide the recurring warning for agents that use the configured default connection (#5767).

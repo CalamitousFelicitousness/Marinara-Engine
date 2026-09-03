@@ -55,6 +55,7 @@ import { arch, platform, release } from "node:os";
 import { execFileSync } from "node:child_process";
 import { getRuntimeMemorySnapshot } from "./utils/runtime-memory.js";
 import { getLastFreeze } from "./lib/freeze-detector.js";
+import { getLastUncleanExit, getUncleanExitHistory } from "./lib/session-postmortem.js";
 
 const isLite = process.env.MARINARA_LITE === "true" || process.env.MARINARA_LITE === "1";
 const MAX_UPLOAD_BYTES = 256 * 1024 * 1024;
@@ -326,6 +327,11 @@ export async function buildApp(https?: { cert: Buffer; key: Buffer }) {
       // most recent host-suspension it observed. Null on non-Termux hosts.
       wakeLock: process.env.MARINARA_WAKE_LOCK_STATUS || null,
       lastFreeze: getLastFreeze(),
+      // #5506 diagnostics: how the PREVIOUS session ended. An external kill
+      // (phantom process killer, battery manager, reboot) leaves no in-process
+      // trace, so the next startup's heartbeat postmortem is the witness.
+      lastUncleanExit: getLastUncleanExit(),
+      uncleanExitCount: getUncleanExitHistory().length,
       timestamp: new Date().toISOString(),
       capabilityPackages: {
         status: capabilityPackages

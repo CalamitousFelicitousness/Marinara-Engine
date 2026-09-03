@@ -25,6 +25,25 @@ export interface SupportDiagnostics {
   /** Most recent host suspension the server's freeze detector observed. */
   lastFreeze?: { detectedAt: string; gapMs: number; suspendedMs: number } | null;
   /**
+   * #5506 diagnostics: how the PREVIOUS server session ended, from the
+   * heartbeat postmortem. An external kill (Android phantom process killer,
+   * battery manager, reboot) leaves no in-process trace, so this is the only
+   * witness - null means the previous session shut down cleanly (or this is
+   * the first run).
+   */
+  lastUncleanExit?: {
+    startedAt: string;
+    lastSeenAt: string;
+    uptimeMs: number;
+    rssMiB: number;
+    heapUsedMiB: number;
+    pid: number;
+    rebootedSince: boolean | null;
+    detectedAt: string;
+  } | null;
+  /** How many unclean exits the server has recorded (rolling window). */
+  uncleanExitCount?: number;
+  /**
    * #5740: the phrase Professor Mari reported acting on in her most recent
    * mutating round, for triaging "she edited something I never asked for"
    * reports. Latest round only; undefined when the status fetch failed.
@@ -101,9 +120,16 @@ const MARI_OUTCOME_LABELS: Record<string, string> = {
   interrupted: "interrupted before completion",
 };
 
+function formatUptime(uptimeMs: number): string {
+  const minutes = Math.round(uptimeMs / 60_000);
+  if (minutes < 60) return `${minutes}m`;
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
+
 export function formatSupportDiagnostics(diagnostics: SupportDiagnostics): string {
   const memory = diagnostics.serverMemory;
   const freeze = diagnostics.lastFreeze;
+  const uncleanExit = diagnostics.lastUncleanExit;
   const unreachable = diagnostics.serverUnreachable === true;
   return [
     "Marinara Engine diagnostics",
@@ -118,6 +144,17 @@ export function formatSupportDiagnostics(diagnostics: SupportDiagnostics): strin
     `Server memory: ${unreachable ? SERVER_UNREACHABLE_DIAGNOSTIC : memory ? `heap ${memory.heapUsedMiB} / ${memory.heapLimitMiB} MiB; RSS ${memory.rssMiB} MiB` : "Unavailable"}`,
     `Background wake lock: ${unreachable ? SERVER_UNREACHABLE_DIAGNOSTIC : (diagnostics.wakeLock ?? "not reported")}`,
     `Last detected freeze: ${unreachable ? SERVER_UNREACHABLE_DIAGNOSTIC : freeze ? `~${Math.round(freeze.suspendedMs / 1000)}s suspension, thawed at ${freeze.detectedAt}` : "none detected"}`,
+    // #5506: the previous session's fate. "killed externally" is honest - the
+    // process left no in-process trace, which is itself the evidence.
+    `Previous session: ${
+      unreachable
+        ? SERVER_UNREACHABLE_DIAGNOSTIC
+        : diagnostics.lastUncleanExit === undefined
+          ? "Unavailable"
+          : uncleanExit
+            ? `killed externally or lost power - last alive ${uncleanExit.lastSeenAt} (up ${formatUptime(uncleanExit.uptimeMs)}, RSS ${uncleanExit.rssMiB} MiB); device rebooted before next launch: ${uncleanExit.rebootedSince === null ? "unknown" : uncleanExit.rebootedSince ? "yes" : "no"}${typeof diagnostics.uncleanExitCount === "number" && diagnostics.uncleanExitCount > 1 ? ` [${diagnostics.uncleanExitCount} unclean exits recorded]` : ""}`
+            : "shut down cleanly"
+    }`,
     `Client OS: ${available(diagnostics.clientOs)}`,
     `Browser / app shell: ${available(diagnostics.browser)}`,
     `GPU: ${available(diagnostics.gpu)}`,

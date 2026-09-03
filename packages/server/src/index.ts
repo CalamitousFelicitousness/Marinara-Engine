@@ -7,6 +7,7 @@ import { buildApp } from "./app.js";
 import { StorageWriterLeaseError } from "./db/file-backed-store.js";
 import { logger } from "./lib/logger.js";
 import { startFreezeDetector, stopFreezeDetector } from "./lib/freeze-detector.js";
+import { markCleanSessionExit, startSessionPostmortem } from "./lib/session-postmortem.js";
 import { getHost, getPort, getServerProtocol, loadTlsOptions, logStorageDiagnostics } from "./config/runtime-config.js";
 import { logCsrfTrustSummary } from "./middleware/csrf-protection.js";
 import { startEnvWatcher } from "./config/env-watcher.js";
@@ -89,6 +90,10 @@ async function main() {
       envWatcher.stop();
       stopRuntimeMemoryMonitor();
       stopFreezeDetector();
+      // #5506 diagnostics: stamp the heartbeat clean BEFORE the async close -
+      // an external kill during close still reads as the unclean exit it is,
+      // while a signal-driven shutdown never false-alarms the next startup.
+      markCleanSessionExit();
       await app.close();
       logger.info("Shutdown complete");
       process.exit(0);
@@ -109,6 +114,7 @@ async function main() {
     await app.listen({ port, host });
     logger.info(`Marinara Engine server listening on ${protocol}://${host}:${port}`);
     startFreezeDetector();
+    startSessionPostmortem();
     stopRuntimeMemoryMonitor = startRuntimeMemoryMonitor();
     logCsrfTrustSummary();
     scheduleTaskbarShortcutMigration();

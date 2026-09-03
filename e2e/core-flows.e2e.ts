@@ -19104,6 +19104,9 @@ test("mobile Load More clears the collapsed Echo Chamber", async ({ page }, test
 
     await expect
       .poll(async () => {
+        await transcript.evaluate((element) => {
+          element.scrollTop = 0;
+        });
         const [echoBox, loadMoreBox] = await Promise.all([echo.boundingBox(), loadMore.boundingBox()]);
         if (!echoBox || !loadMoreBox) return Number.NEGATIVE_INFINITY;
         return loadMoreBox.y - (echoBox.y + echoBox.height);

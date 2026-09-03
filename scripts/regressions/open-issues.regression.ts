@@ -623,6 +623,11 @@ assert.match(
 );
 assert.match(
   importRoutesSource,
+  /for \(const entry of entries\)[\s\S]*?NATIVE_PACKAGE_ENTRY_LIMIT_BYTES[\s\S]*?totalUncompressedBytes > NATIVE_PACKAGE_UPLOAD_LIMIT_BYTES[\s\S]*?package contents are too large/u,
+  "native package imports must validate ZIP entry sizes before extraction",
+);
+assert.match(
+  importRoutesSource,
   /req\.parts\(\{[\s\S]*?files: MAX_BATCH_IMPORT_FILES,[\s\S]*?parts: MAX_BATCH_IMPORT_FILES \+ 8,[\s\S]*?fileSize: IMPORT_BODY_LIMIT_BYTES[\s\S]*?\}\)[\s\S]*?totalBytes > IMPORT_BODY_LIMIT_BYTES[\s\S]*?status\(413\)\.send\(\{[\s\S]*?Import exceeds the total upload limit/u,
   "multi-file character imports must stop when their aggregate buffer exceeds the upload limit",
 );

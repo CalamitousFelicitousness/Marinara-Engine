@@ -35,6 +35,7 @@ const FOLDER_TOKEN_TTL_MS = 15 * 60_000;
 const IMPORT_BODY_LIMIT_BYTES = 256 * 1024 * 1024;
 const NATIVE_PACKAGE_UPLOAD_LIMIT_BYTES = 1024 * 1024 * 1024;
 const MAX_BATCH_IMPORT_FILES = 128;
+const NATIVE_PACKAGE_ENTRY_LIMIT_BYTES = 256 * 1024 * 1024;
 
 const folderTokens = new Map<string, { path: string; expiresAt: number }>();
 
@@ -714,6 +715,18 @@ export async function importRoutes(app: FastifyInstance) {
     const entries = zip.getEntries();
     if (entries.length > MAX_PACKAGE_ENTRIES) {
       return reply.status(400).send({ success: false, error: ".marinara package has too many entries" });
+    }
+    let totalUncompressedBytes = 0;
+    for (const entry of entries) {
+      if (entry.isDirectory) continue;
+      const size = entry.header.size;
+      if (!Number.isSafeInteger(size) || size < 0 || size > NATIVE_PACKAGE_ENTRY_LIMIT_BYTES) {
+        return reply.status(413).send({ success: false, error: ".marinara package entry is too large" });
+      }
+      totalUncompressedBytes += size;
+      if (totalUncompressedBytes > NATIVE_PACKAGE_UPLOAD_LIMIT_BYTES) {
+        return reply.status(413).send({ success: false, error: ".marinara package contents are too large" });
+      }
     }
     const dataEntry = zip.getEntry("data.json");
     if (!dataEntry) {

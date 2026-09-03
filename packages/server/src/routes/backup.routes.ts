@@ -2,6 +2,7 @@
 // Routes: Backup
 // ──────────────────────────────────────────────
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { Transform } from "node:stream";
 import { extname, join, relative } from "path";
 import { createReadStream, createWriteStream, existsSync, readdirSync, statSync } from "fs";
 import type { Dirent, WriteStream } from "fs";
@@ -4194,9 +4195,38 @@ export async function backupRoutes(app: FastifyInstance) {
       if (!retainInputForPreview) await importInput.cleanup?.();
     }
   };
+  const profileImportJsonBodyLimit = async (
+    req: FastifyRequest,
+    _reply: FastifyReply,
+    payload: NodeJS.ReadableStream,
+  ) => {
+    const contentType = String(req.headers["content-type"] ?? "").toLowerCase();
+    if (contentType.includes("multipart/form-data")) return payload;
+    let received = 0;
+    const limiter = new Transform({
+      transform(chunk, _encoding, callback) {
+        received += Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(String(chunk));
+        if (received > PROFILE_IMPORT_BODY_LIMIT_BYTES) {
+          const error = new Error("Profile import JSON exceeds the upload limit.") as Error & { statusCode: number };
+          error.statusCode = 413;
+          callback(error);
+          return;
+        }
+        callback(null, chunk);
+      },
+    });
+    (limiter as Transform & { receivedEncodedLength?: number }).receivedEncodedLength =
+      Number(payload.receivedEncodedLength) || 0;
+    payload.pipe(limiter);
+    return limiter;
+  };
   app.post(
     "/import-profile",
-    { bodyLimit: PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES, config: { rateLimit: BACKUP_RATE_LIMIT } },
+    {
+      bodyLimit: PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES,
+      config: { rateLimit: BACKUP_RATE_LIMIT },
+      preParsing: profileImportJsonBodyLimit,
+    },
     importProfile,
   );
 }

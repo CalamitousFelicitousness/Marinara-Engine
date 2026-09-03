@@ -211,6 +211,38 @@ try {
     "mismatch",
     "an unrelated store-verified apply must never clear another target's persistence failure",
   );
+  // Same property on the CLI transport, where targets are POSITIONAL: two
+  // different rows share the subcommand, so the key must carry the
+  // positional target - and an honest retry with a different --json payload
+  // must still match.
+  const cliMismatch = {
+    id: "c1",
+    name: "bash",
+    input: { command: "mari db patch characters row-a --json '{\"x\":1}' --apply" },
+    output: `${READ_BACK_MISMATCH_SENTINEL}\nCommand: mari db patch characters row-a\nExit code: 0 (direct mari runtime)\n\nstdout:\n{ "saved": true }`,
+    success: true,
+  };
+  const cliUnrelatedVerified = {
+    ...cliMismatch,
+    id: "c2",
+    input: { command: "mari db patch presets row-b --json '{\"y\":2}' --apply" },
+    output: `${READ_BACK_VERIFIED_SENTINEL}\nCommand: mari db patch presets row-b\nExit code: 0 (direct mari runtime)\n\nstdout:\n{ "saved": true }`,
+  };
+  const cliSameTargetRetry = {
+    ...cliUnrelatedVerified,
+    id: "c3",
+    input: { command: 'mari db patch characters row-a --json \'{"x":"fixed"}\' --apply' },
+  };
+  assert.equal(
+    resolveWorkspaceMutationVerification([cliMismatch, cliUnrelatedVerified, debtClearRead]),
+    "mismatch",
+    "a verified CLI apply of a DIFFERENT row must never clear another row's persistence failure",
+  );
+  assert.equal(
+    resolveWorkspaceMutationVerification([cliMismatch, cliSameTargetRetry, debtClearRead]),
+    "verified",
+    "a verified CLI retry of the SAME positional target (with a corrected payload) clears the alarm",
+  );
 
   // Composition with the #5756 staged state and the #5776 dry-run sentinel:
   // a self-verified apply never lets a staged change ride out unreported,

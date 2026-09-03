@@ -1854,7 +1854,14 @@ function mutationMismatchKey(result: WorkspaceCommandResult): string {
   if (typeof input.action === "string") parts.push(input.action);
   if (typeof input.command === "string") {
     const tokens = input.command.replace(/\s+/gu, " ").trim().split(" ");
-    parts.push(tokens.slice(0, 3).join(" "));
+    // The CLI's targets are POSITIONAL (mari db patch <table> <id>, mari
+    // characters update <id>, ...), so fold every token up to the first
+    // "--" flag into the key - two different rows must never collide, while
+    // an honest retry's differing --json/--patch payload never changes it.
+    const firstFlagIndex = tokens.findIndex((token) => token.startsWith("--"));
+    const positional = firstFlagIndex >= 0 ? tokens.slice(0, firstFlagIndex) : tokens;
+    parts.push(positional.slice(0, 8).join(" "));
+    // --id only appears as an optional override on create forms.
     const idFlagIndex = tokens.findIndex((token) => token === "--id");
     if (idFlagIndex >= 0 && tokens[idFlagIndex + 1]) parts.push(`--id=${tokens[idFlagIndex + 1]}`);
   }

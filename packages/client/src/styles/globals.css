@@ -6151,6 +6151,20 @@ strong {
     max-height: inherit !important;
   }
 
+  html[data-mari-software-keyboard-open]
+    body
+    > [data-chat-floating-panel]:focus-within:has(> [data-chat-floating-scroll]) {
+    display: flex !important;
+    min-height: 0 !important;
+    flex-direction: column !important;
+  }
+
+  html[data-mari-software-keyboard-open] body > [data-chat-floating-panel]:focus-within > [data-chat-floating-scroll] {
+    min-height: 0 !important;
+    max-height: none !important;
+    flex: 1 1 auto !important;
+  }
+
   html[data-mari-ios-webkit] body > [data-component="ExpandedTextarea"] {
     position: absolute;
     top: var(--mari-visual-viewport-offset-top, 0px);

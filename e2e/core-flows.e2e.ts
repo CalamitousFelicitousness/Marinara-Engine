@@ -19201,6 +19201,90 @@ test("iPhone chat menus stay in the visual viewport while editing", async ({ pag
   }
 });
 
+test("iPhone Conversation Presence keeps its last activity field reachable", async ({ page }, testInfo) => {
+  test.skip(!testInfo.project.name.includes("mobile-webkit"), "The visual-viewport pan regression is iPhone-only.");
+
+  const characterIds: string[] = [];
+  let chatId: string | null = null;
+  try {
+    for (let index = 0; index < 6; index += 1) {
+      const characterResponse = await page.request.post("/api/characters", {
+        data: { data: { name: `Viewport Presence ${index + 1}` } },
+      });
+      expect(characterResponse.ok()).toBeTruthy();
+      characterIds.push(((await characterResponse.json()) as { id: string }).id);
+    }
+    const chatResponse = await page.request.post("/api/chats", {
+      data: {
+        name: "Mobile Presence Keyboard Viewport Smoke",
+        mode: "conversation",
+        characterIds,
+      },
+    });
+    expect(chatResponse.ok()).toBeTruthy();
+    chatId = ((await chatResponse.json()) as { id: string }).id;
+
+    await installMockVisualViewport(page);
+    await prepareFreshClient(page);
+    await page.addInitScript((activeChatId) => {
+      localStorage.setItem("marinara-active-chat-id", activeChatId);
+    }, chatId);
+    await page.goto("/");
+
+    await page.locator('[data-chat-mode="conversation"] [data-chat-help="identity"]').click();
+    const presencePanel = page
+      .locator("body > [data-chat-floating-panel]")
+      .filter({ hasText: "Conversation Presence" });
+    const activityFields = presencePanel.getByPlaceholder("Manual activity");
+    const lastActivityField = activityFields.last();
+    const scrollShell = presencePanel.locator("[data-chat-floating-scroll]");
+    await expect(activityFields).toHaveCount(characterIds.length);
+    await lastActivityField.focus();
+
+    const initialViewportHeight = await page.evaluate(() => window.innerHeight);
+    const keyboardViewportHeight = 360;
+    const keyboardViewportTop = Math.min(340, Math.max(0, initialViewportHeight - keyboardViewportHeight));
+    await page.evaluate(
+      ({ height, top }) => {
+        (
+          window as typeof window & {
+            __setMarinaraVisualViewport: (
+              height: number,
+              offsetTop: number,
+              pageTop?: number,
+              layoutHeight?: number,
+            ) => void;
+          }
+        ).__setMarinaraVisualViewport(height, Math.min(72, top), top, height);
+      },
+      { height: keyboardViewportHeight, top: keyboardViewportTop },
+    );
+
+    await expect(page.locator("html")).toHaveAttribute("data-mari-software-keyboard-open", "");
+    await expect
+      .poll(async () => {
+        await scrollShell.evaluate((element) => {
+          element.scrollTop = element.scrollHeight;
+        });
+        const [panelBox, fieldBox] = await Promise.all([presencePanel.boundingBox(), lastActivityField.boundingBox()]);
+        if (!panelBox || !fieldBox) return false;
+        const viewportBottom = keyboardViewportTop + keyboardViewportHeight;
+        return (
+          panelBox.y >= keyboardViewportTop + 8 &&
+          panelBox.y + panelBox.height <= viewportBottom - 8 &&
+          fieldBox.y >= panelBox.y &&
+          fieldBox.y + fieldBox.height <= panelBox.y + panelBox.height
+        );
+      })
+      .toBe(true);
+  } finally {
+    if (chatId) await page.request.delete(`/api/chats/${chatId}?force=true`).catch(() => undefined);
+    for (const characterId of characterIds) {
+      await page.request.delete(`/api/characters/${characterId}`).catch(() => undefined);
+    }
+  }
+});
+
 test("mobile chat composer follows the visual viewport above the software keyboard", async ({ page }, testInfo) => {
   test.skip(!testInfo.project.name.includes("mobile"), "Software-keyboard viewport behavior is mobile-only.");
 

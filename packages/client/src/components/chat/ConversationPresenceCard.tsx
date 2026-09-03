@@ -676,6 +676,7 @@ export function ConversationPresenceCard({
             </div>
 
             <div
+              data-chat-floating-scroll
               className={cn(
                 NEUTRAL_PANEL_SCROLL_AREA,
                 "max-h-[min(28rem,calc(100vh-12rem))] space-y-2 overflow-y-auto p-2",

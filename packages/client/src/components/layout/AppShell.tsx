@@ -261,10 +261,11 @@ export function AppShell() {
           (value): value is number => typeof value === "number" && Number.isFinite(value) && value > 0,
         );
         const height = heightCandidates.length > 0 ? Math.min(...heightCandidates) : window.innerHeight;
-        const maxOffsetTop = Math.max(0, window.innerHeight - height);
+        largestViewportHeight = Math.max(largestViewportHeight, height);
+        const layoutViewportHeight = isIosWebKit ? largestViewportHeight : window.innerHeight;
+        const maxOffsetTop = Math.max(0, layoutViewportHeight - height);
         const visualViewportTop = Math.max(0, viewport?.offsetTop ?? 0, viewport?.pageTop ?? 0);
         const offsetTop = Math.min(maxOffsetTop, visualViewportTop);
-        largestViewportHeight = Math.max(largestViewportHeight, height);
         root.style.setProperty("--mari-visual-viewport-height", `${Math.max(0, Math.round(height))}px`);
         root.style.setProperty("--mari-visual-viewport-offset-top", `${Math.round(offsetTop)}px`);
         const keyboardOpen = supportsVirtualKeyboard && largestViewportHeight - height >= 80;

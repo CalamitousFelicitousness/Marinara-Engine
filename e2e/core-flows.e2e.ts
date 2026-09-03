@@ -19016,10 +19016,16 @@ test("mobile chat composer follows the visual viewport above the software keyboa
     });
     Object.defineProperty(window, "__setMarinaraVisualViewport", {
       configurable: true,
-      value: (height: number, offsetTop: number, pageTop = offsetTop) => {
+      value: (height: number, offsetTop: number, pageTop = offsetTop, layoutHeight?: number) => {
         state.height = height;
         state.offsetTop = offsetTop;
         state.pageTop = pageTop;
+        if (layoutHeight !== undefined) {
+          Object.defineProperty(window, "innerHeight", {
+            configurable: true,
+            value: layoutHeight,
+          });
+        }
         viewport.dispatchEvent(new Event("resize"));
         viewport.dispatchEvent(new Event("scroll"));
       },
@@ -19310,9 +19316,14 @@ test("mobile chat composer follows the visual viewport above the software keyboa
     await page.evaluate((height) => {
       (
         window as typeof window & {
-          __setMarinaraVisualViewport: (height: number, offsetTop: number, pageTop?: number) => void;
+          __setMarinaraVisualViewport: (
+            height: number,
+            offsetTop: number,
+            pageTop?: number,
+            layoutHeight?: number,
+          ) => void;
         }
-      ).__setMarinaraVisualViewport(height, 0, 0);
+      ).__setMarinaraVisualViewport(height, 0, 0, height);
     }, initialViewportHeight);
     await expect(page.locator("html")).not.toHaveAttribute("data-mari-software-keyboard-open", "");
     const dismissedShellBox = await shell.boundingBox();
@@ -19325,6 +19336,55 @@ test("mobile chat composer follows the visual viewport above the software keyboa
     await expect
       .poll(() => transcript.evaluate((element) => element.scrollHeight - element.scrollTop - element.clientHeight))
       .toBeLessThanOrEqual(2);
+
+    await textarea.focus();
+    await page.evaluate(
+      ({ offsetTop, pageTop }) => {
+        (
+          window as typeof window & {
+            __setMarinaraVisualViewport: (
+              height: number,
+              offsetTop: number,
+              pageTop?: number,
+              layoutHeight?: number,
+            ) => void;
+          }
+        ).__setMarinaraVisualViewport(360, offsetTop, pageTop, 360);
+      },
+      { offsetTop: iosFocusOffsetTop, pageTop: iosFocusPageTop },
+    );
+    await expect
+      .poll(() =>
+        page.evaluate(() => ({
+          height: getComputedStyle(document.documentElement).getPropertyValue("--mari-visual-viewport-height").trim(),
+          top: getComputedStyle(document.documentElement)
+            .getPropertyValue("--mari-visual-viewport-offset-top")
+            .trim(),
+        })),
+      )
+      .toEqual({ height: "360px", top: `${iosFocusPageTop}px` });
+    const [reopenedShellBox, reopenedComposerBox] = await Promise.all([shell.boundingBox(), composer.boundingBox()]);
+    expect(reopenedShellBox).not.toBeNull();
+    expect(reopenedComposerBox).not.toBeNull();
+    expect(Math.abs(reopenedShellBox!.y - iosFocusPageTop)).toBeLessThanOrEqual(1);
+    expect(Math.abs(reopenedShellBox!.height - 360)).toBeLessThanOrEqual(1);
+    expect(reopenedComposerBox!.y).toBeGreaterThanOrEqual(iosFocusPageTop);
+    expect(reopenedComposerBox!.y + reopenedComposerBox!.height).toBeLessThanOrEqual(iosFocusPageTop + 360);
+
+    await textarea.blur();
+    await page.evaluate((height) => {
+      (
+        window as typeof window & {
+          __setMarinaraVisualViewport: (
+            height: number,
+            offsetTop: number,
+            pageTop?: number,
+            layoutHeight?: number,
+          ) => void;
+        }
+      ).__setMarinaraVisualViewport(height, 0, 0, height);
+    }, initialViewportHeight);
+    await expect(page.locator("html")).not.toHaveAttribute("data-mari-software-keyboard-open", "");
 
     await page.evaluate(async () => {
       const storePath = "/src/stores/ui.store.ts";

@@ -4215,8 +4215,14 @@ export async function backupRoutes(app: FastifyInstance) {
         callback(null, chunk);
       },
     });
-    (limiter as Transform & { receivedEncodedLength?: number }).receivedEncodedLength =
-      Number(payload.receivedEncodedLength) || 0;
+    const receivedEncodedLength = Number(
+      (payload as NodeJS.ReadableStream & { receivedEncodedLength?: number }).receivedEncodedLength,
+    );
+    (limiter as Transform & { receivedEncodedLength?: number }).receivedEncodedLength = Number.isFinite(
+      receivedEncodedLength,
+    )
+      ? receivedEncodedLength
+      : 0;
     payload.pipe(limiter);
     return limiter;
   };

@@ -8,6 +8,7 @@
 //   3. an ending the server logged itself (crash, update/settings restart) is
 //      never reported as an external kill.
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -28,8 +29,18 @@ try {
     getPreviousSessionStatus,
     getUncleanExitHistory,
     noteSessionExitKind,
+    processIsAlive,
+    readUncleanExitHistory,
     startSessionPostmortem,
   } = await import("../../packages/server/src/lib/session-postmortem.js");
+
+  // The history file is parsed from disk: anything that is not an array of
+  // plausible records reads as empty rather than throwing on spread.
+  assert.deepEqual(readUncleanExitHistory({ not: "an array" }), []);
+  assert.deepEqual(readUncleanExitHistory(null), []);
+  assert.deepEqual(readUncleanExitHistory("[]"), []);
+  assert.deepEqual(readUncleanExitHistory([{ junk: true }, 7]), []);
+  assert.equal(readUncleanExitHistory([{ lastSeenAt: "2026-09-01T00:00:00.000Z", pid: 5 }]).length, 1);
 
   const deadPid = () => false;
   const livePid = () => true;
@@ -93,10 +104,22 @@ try {
     assert.equal(ended.status === "ended" && ended.exitKind, exitKind);
   }
 
-  // Round trip through the real filesystem: a killed predecessor is reported
-  // and recorded in the rolling history.
+  // Round trip through the real filesystem, which uses the REAL liveness
+  // probe: a literal pid could belong to an unrelated live process and
+  // classify as "unknown", so spawn a child, wait for it to exit, and use its
+  // (now dead) pid. The liveness assertion doubles as a probe test.
+  const deadChild = spawnSync(process.execPath, ["-e", ""]);
+  const deadChildPid = deadChild.pid;
+  assert.ok(deadChildPid, "the probe child must report a pid");
+  assert.equal(processIsAlive(deadChildPid), false, "the probe child must have exited before this check");
   mkdirSync(join(dataDir, "diagnostics"), { recursive: true });
-  writeFileSync(join(dataDir, "diagnostics", "session-heartbeat.json"), JSON.stringify(previousBeat));
+  writeFileSync(
+    join(dataDir, "diagnostics", "session-heartbeat.json"),
+    JSON.stringify({ ...previousBeat, pid: deadChildPid }),
+  );
+  // A history file that is valid JSON but the wrong shape must not disable
+  // tracking: spreading a non-array would throw and skip the heartbeat setup.
+  writeFileSync(join(dataDir, "diagnostics", "unclean-exits.json"), JSON.stringify({ not: "an array" }));
   const status = startSessionPostmortem();
   assert.equal(status.status, "unclean");
   assert.equal(getPreviousSessionStatus().status, "unclean");

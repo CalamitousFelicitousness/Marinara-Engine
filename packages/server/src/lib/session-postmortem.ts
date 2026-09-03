@@ -209,6 +209,24 @@ function readJson<T>(path: string): T | null {
   }
 }
 
+/**
+ * The history file is parsed from disk like the heartbeat, so its shape is a
+ * claim too. Valid-but-wrong JSON (an object where an array belongs) would
+ * throw when spread, and the outer catch would then skip starting the
+ * heartbeat entirely - silently disabling the tracking until someone deleted
+ * the file. Anything unexpected reads as an empty history instead.
+ */
+export function readUncleanExitHistory(value: unknown): UncleanExitRecord[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (entry): entry is UncleanExitRecord =>
+      typeof entry === "object" &&
+      entry !== null &&
+      typeof (entry as UncleanExitRecord).lastSeenAt === "string" &&
+      typeof (entry as UncleanExitRecord).pid === "number",
+  );
+}
+
 let previousSession: PreviousSessionStatus = { status: "unknown", reason: "postmortem not started" };
 let uncleanExitHistory: UncleanExitRecord[] = [];
 let heartbeatTimer: NodeJS.Timeout | null = null;
@@ -284,7 +302,7 @@ export function startSessionPostmortem(): PreviousSessionStatus {
     finalized = false;
     sessionExitKind = null;
 
-    uncleanExitHistory = readJson<UncleanExitRecord[]>(historyPath()) ?? [];
+    uncleanExitHistory = readUncleanExitHistory(readJson<unknown>(historyPath()));
     previousSession = classifyPreviousSession(
       readJson<SessionHeartbeat>(heartbeatPath()),
       sessionBootId,

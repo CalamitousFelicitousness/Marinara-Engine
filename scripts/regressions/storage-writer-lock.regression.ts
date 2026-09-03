@@ -12,6 +12,7 @@ import {
   STORAGE_WRITER_LEASE_FILENAME,
   STORAGE_WRITER_OWNER_FILENAME,
   StorageWriterLeaseError,
+  writerLeaseStorageIsMachineLocal,
 } from "../../packages/server/src/db/file-backed-store.js";
 import { appSettings, lorebookEntries, lorebooks } from "../../packages/server/src/db/schema/index.js";
 import { getMariDbService } from "../../packages/server/src/services/mari-db/mari-db.service.js";
@@ -23,6 +24,7 @@ type LeaseRecord = {
   hostId: string | null;
   scopeId?: string;
   bootId?: string;
+  pidNamespace?: string;
   hostname: string;
   token: string;
   acquiredAt: string;
@@ -314,6 +316,157 @@ try {
       await afterPidReuse._fileStore.close();
     }
 
+    // A writer that could not read a stable machine ID leaves `hostId: null`
+    // (every Docker/Podman container, Linux hosts without /etc/machine-id).
+    // Such a lease never matched any host and could only be removed by hand
+    // (#5744). On storage that only this machine can mount the writer
+    // necessarily ran here, so the boot and liveness proofs apply, and the
+    // PID proofs apply once the lease records our own PID namespace (sibling
+    // containers cannot see each other's PIDs). On storage a second machine
+    // could share, the lease stays locked exactly as before, and a lease
+    // naming a different machine never uses the storage proof.
+    {
+      const pidNamespace = "writer-lock-pid-ns";
+      const localStorage = { writerLeaseStorageIsMachineLocal: true, writerLeasePidNamespace: pidNamespace };
+      const sharedStorage = { ...localStorage, writerLeaseStorageIsMachineLocal: false };
+      const writeUnidentifiedLease = (overrides: Partial<LeaseRecord>) => {
+        mkdirSync(leasePath(dir));
+        writeFileSync(
+          ownerPath(dir),
+          JSON.stringify(
+            {
+              ...leaseTemplate,
+              version: 2,
+              hostId: null,
+              scopeId: undefined,
+              bootId: undefined,
+              pidNamespace: undefined,
+              ...overrides,
+            },
+            null,
+            2,
+          ),
+        );
+      };
+
+      const linuxLikePlatform = process.platform === "linux" || process.platform === "android";
+      if (linuxLikePlatform) {
+        assert.match(
+          leaseTemplate.pidNamespace ?? "",
+          /^pid:\[\d+\]$/u,
+          "new leases record the writer's PID namespace on Linux",
+        );
+      } else {
+        assert.equal(leaseTemplate.pidNamespace, undefined, "PID namespaces are recorded on Linux and Android only");
+      }
+
+      writeUnidentifiedLease({
+        pid: await exitedPid(),
+        pidNamespace,
+        token: "unidentified-exited-pid-token",
+        acquiredAt: "2026-08-20T00:00:00.000Z",
+      });
+      const afterUnidentifiedCrash = await createFileNativeDB(localStorage);
+      assert.notEqual(
+        readJson<LeaseRecord>(ownerPath(dir)).token,
+        "unidentified-exited-pid-token",
+        "an exited unidentified writer on machine-local storage is reclaimed",
+      );
+      await afterUnidentifiedCrash._fileStore.close();
+
+      writeUnidentifiedLease({
+        version: 4,
+        pid: process.pid,
+        bootId: "writer-lock-previous-boot",
+        token: "unidentified-previous-boot-token",
+      });
+      const afterUnidentifiedReboot = await createFileNativeDB({
+        ...localStorage,
+        writerLeaseBootId: "writer-lock-current-boot",
+      });
+      assert.notEqual(
+        readJson<LeaseRecord>(ownerPath(dir)).token,
+        "unidentified-previous-boot-token",
+        "an unidentified writer from an earlier boot is reclaimed on machine-local storage",
+      );
+      await afterUnidentifiedReboot._fileStore.close();
+
+      writeUnidentifiedLease({ pid: process.pid, pidNamespace, token: "unidentified-live-pid-token" });
+      await assert.rejects(
+        createFileNativeDB(localStorage),
+        StorageWriterLeaseError,
+        "a live unidentified writer on machine-local storage keeps its lease",
+      );
+      rmSync(leasePath(dir), { recursive: true });
+
+      writeUnidentifiedLease({
+        pid: await exitedPid(),
+        pidNamespace: "another-container-pid-ns",
+        token: "unidentified-foreign-pid-namespace-token",
+      });
+      await assert.rejects(
+        createFileNativeDB(localStorage),
+        StorageWriterLeaseError,
+        "a PID that exited in our namespace proves nothing about a writer from another PID namespace",
+      );
+      rmSync(leasePath(dir), { recursive: true });
+
+      writeUnidentifiedLease({ pid: await exitedPid(), token: "unidentified-no-pid-namespace-token" });
+      await assert.rejects(
+        createFileNativeDB(localStorage),
+        StorageWriterLeaseError,
+        "a lease that never recorded a PID namespace is not judged by PID checks",
+      );
+      rmSync(leasePath(dir), { recursive: true });
+
+      writeUnidentifiedLease({
+        pid: await exitedPid(),
+        pidNamespace,
+        token: "unidentified-shared-storage-token",
+      });
+      await assert.rejects(
+        createFileNativeDB(sharedStorage),
+        StorageWriterLeaseError,
+        "storage another machine could mount still requires manual lease removal",
+      );
+      rmSync(leasePath(dir), { recursive: true });
+
+      writeUnidentifiedLease({
+        pid: await exitedPid(),
+        pidNamespace,
+        hostId: "stable-id-from-another-machine",
+        token: "foreign-host-local-storage-token",
+      });
+      await assert.rejects(
+        createFileNativeDB(localStorage),
+        StorageWriterLeaseError,
+        "a lease naming a different machine is never reclaimed through the storage proof",
+      );
+      rmSync(leasePath(dir), { recursive: true });
+
+      if (linuxLikePlatform) {
+        assert.equal(
+          writerLeaseStorageIsMachineLocal(dir),
+          true,
+          "a temporary directory on the local disk is recognised as machine-local storage",
+        );
+        const linkedStorage = join(dir, "linked-storage");
+        symlinkSync(dir, linkedStorage, "dir");
+        assert.equal(
+          writerLeaseStorageIsMachineLocal(linkedStorage),
+          true,
+          "the storage check follows a symlinked data directory to its target filesystem",
+        );
+        rmSync(linkedStorage);
+      } else {
+        assert.equal(
+          writerLeaseStorageIsMachineLocal(dir),
+          false,
+          "the storage proof is limited to Linux and Android hosts",
+        );
+      }
+    }
+
     if (process.platform !== "win32") {
       // Legacy macOS leases fingerprinted every visible network interface.
       // A changed VPN/virtual-interface set must not strand a dead same-host
@@ -373,7 +526,9 @@ try {
     if (process.platform !== "win32") {
       // Termux has no stable machine ID on some Android devices. Its HOME is
       // app-private, so an exited lease there is safe to reclaim after reboot;
-      // the same fallback must not apply to storage outside that HOME.
+      // the same fallback must not apply to storage outside that HOME (which
+      // then depends on the machine-local storage proof alone - held to
+      // "shareable" here so the HOME rule is what this proves).
       const platformDescriptor = Object.getOwnPropertyDescriptor(process, "platform")!;
       const previousHome = process.env.HOME;
       const termuxHome = mkdtempSync(join(tmpdir(), "marinara-termux-home-"));
@@ -415,7 +570,7 @@ try {
         const linkedOutsideHome = join(termuxHome, "shared-storage");
         symlinkSync(outsideHome, linkedOutsideHome, "dir");
         process.env.FILE_STORAGE_DIR = linkedOutsideHome;
-        await assert.rejects(createFileNativeDB(), StorageWriterLeaseError);
+        await assert.rejects(createFileNativeDB({ writerLeaseStorageIsMachineLocal: false }), StorageWriterLeaseError);
       } finally {
         if (termuxDb) await termuxDb._fileStore.close();
         Object.defineProperty(process, "platform", platformDescriptor);

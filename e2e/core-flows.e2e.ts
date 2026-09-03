@@ -130,13 +130,22 @@ async function readScopedCssVariableColor(scope: Locator, variableName: string) 
 async function openEditorSection(editor: Locator, label: string) {
   const compactMenuButton = editor.getByRole("button", { name: "Editor sections" });
   const navigation = editor.getByRole("navigation", { name: "Editor sections" });
-  await expect.poll(async () => (await compactMenuButton.isVisible()) || (await navigation.isVisible())).toBe(true);
+  const desktopRail = editor.locator(".mari-editor-tab-rail");
+  await expect
+    .poll(async () =>
+      (await compactMenuButton.isVisible()) || (await navigation.isVisible()) || (await desktopRail.isVisible()),
+    )
+    .toBe(true);
   if (await compactMenuButton.isVisible()) {
     await compactMenuButton.click();
     await editor
       .getByRole("menu", { name: "Editor sections" })
       .getByRole("menuitemradio", { name: label, exact: true })
       .click();
+    return;
+  }
+  if (await desktopRail.isVisible()) {
+    await desktopRail.getByRole("button", { name: label, exact: true }).click();
     return;
   }
   await navigation.getByRole("button", { name: label, exact: true }).click();
@@ -3878,8 +3887,9 @@ test("Character and Persona avatar actions stay separated and visually balanced"
     await expect(byline).toHaveText(`by ${creator}·v${version}`);
     await expect(editor.locator(".mari-editor-secondary-line .mari-editor-meta")).toHaveCount(0);
 
-    const header = editor.locator(".mari-editor-header--with-nav");
+    const header = editor.locator(".mari-editor-header");
     const navigation = header.locator(".mari-editor-navigation");
+    const desktopRail = editor.locator(".mari-editor-tab-rail");
     const actions = header.locator(".mari-editor-actions");
     const compactMenuButton = navigation.getByRole("button", { name: "Editor sections" });
     const desktopTabs = navigation.getByRole("navigation", { name: "Editor sections" });
@@ -3928,59 +3938,94 @@ test("Character and Persona avatar actions stay separated and visually balanced"
     if (mobileProject) {
       await verifyCompactNavigation();
     } else {
-      await page.setViewportSize({ width: 1800, height: 900 });
-      await verifyCompactNavigation();
-
-      let compactTabsWidth: number | null = null;
-      for (const width of [1900, 2000, 2100, 2200, 2300, 2400]) {
-        await page.setViewportSize({ width, height: 900 });
-        if ((await desktopTabs.isVisible()) && (await desktopTabs.locator(".mari-editor-tab svg").first().isHidden())) {
-          compactTabsWidth = width;
-          break;
+      if (panel === "characters") {
+        for (const width of [767, 768, 1024, 1800, 2560]) {
+          await page.setViewportSize({ width, height: 900 });
+          if (width === 767) {
+            await expect(desktopRail).toBeHidden();
+            const mobilePanel = page.locator('[data-component="RightPanelMobile"]');
+            if (await mobilePanel.isVisible()) {
+              await mobilePanel.getByRole("button", { name: "Close panel", exact: true }).click();
+              await expect(mobilePanel).toHaveCount(0);
+            }
+            await verifyCompactNavigation();
+          } else {
+            await expect(desktopRail).toBeVisible();
+            await expect(navigation).toBeHidden();
+            await expect(header.evaluate((element) => element.scrollWidth <= element.clientWidth)).resolves.toBe(true);
+          }
         }
       }
-      expect(compactTabsWidth).not.toBeNull();
-      await expect(desktopTabs).toBeVisible();
-      await expect(compactMenuButton).toBeHidden();
-      const compactTabBoxes = await desktopTabs.locator(".mari-editor-tab").evaluateAll((tabs) =>
-        tabs.map((tab) => {
-          const box = tab.getBoundingClientRect();
-          return { left: box.left, right: box.right };
-        }),
-      );
-      for (let index = 1; index < compactTabBoxes.length; index += 1) {
-        expect(compactTabBoxes[index]!.left - compactTabBoxes[index - 1]!.right).toBeGreaterThanOrEqual(-0.5);
+      await page.setViewportSize({ width: 1800, height: 900 });
+      if (panel === "characters") {
+        await expect(desktopRail).toBeVisible();
+        await expect(navigation).toBeHidden();
+        await desktopRail.getByRole("button", { name: "Card", exact: true }).click();
+        await expect(editor.getByRole("heading", { name: /^Card\b/u })).toBeVisible();
+      } else {
+        await verifyCompactNavigation();
       }
-      await expect(header.evaluate((element) => element.scrollWidth <= element.clientWidth)).resolves.toBe(true);
 
-      await page.setViewportSize({ width: 2560, height: 900 });
-      await expect(desktopTabs).toBeVisible();
-      await expect(compactMenuButton).toBeHidden();
-      await expect(desktopTabs.locator(".mari-editor-tab svg").first()).toBeVisible();
-      const [headerBox, navigationBox, firstActionBox, tabBoxes] = await Promise.all([
-        header.boundingBox(),
-        navigation.boundingBox(),
-        actions.locator(".mari-editor-action").first().boundingBox(),
-        desktopTabs.locator(".mari-editor-tab").evaluateAll((tabs) =>
+      if (panel !== "characters") {
+        let compactTabsWidth: number | null = null;
+        for (const width of [1900, 2000, 2100, 2200, 2300, 2400]) {
+          await page.setViewportSize({ width, height: 900 });
+          if (
+            (await desktopTabs.isVisible()) &&
+            (await desktopTabs.locator(".mari-editor-tab svg").first().isHidden())
+          ) {
+            compactTabsWidth = width;
+            break;
+          }
+        }
+        expect(compactTabsWidth).not.toBeNull();
+        await expect(desktopTabs).toBeVisible();
+        await expect(compactMenuButton).toBeHidden();
+        const compactTabBoxes = await desktopTabs.locator(".mari-editor-tab").evaluateAll((tabs) =>
           tabs.map((tab) => {
             const box = tab.getBoundingClientRect();
-            return { left: box.left, right: box.right, height: box.height };
+            return { left: box.left, right: box.right };
           }),
-        ),
-      ]);
-      expect(headerBox).not.toBeNull();
-      expect(navigationBox).not.toBeNull();
-      if (headerBox && navigationBox) {
-        expect(navigationBox.width).toBeLessThan(headerBox.width * 0.65);
+        );
+        for (let index = 1; index < compactTabBoxes.length; index += 1) {
+          expect(compactTabBoxes[index]!.left - compactTabBoxes[index - 1]!.right).toBeGreaterThanOrEqual(-0.5);
+        }
+        await expect(header.evaluate((element) => element.scrollWidth <= element.clientWidth)).resolves.toBe(true);
       }
-      for (let index = 1; index < tabBoxes.length; index += 1) {
-        expect(tabBoxes[index]!.left - tabBoxes[index - 1]!.right).toBeGreaterThanOrEqual(-0.5);
-        expect(tabBoxes[index]!.left - tabBoxes[index - 1]!.right).toBeLessThanOrEqual(5);
+
+      await page.setViewportSize({ width: 2560, height: 900 });
+      if (panel === "characters") {
+        await expect(desktopRail).toBeVisible();
+        await expect(navigation).toBeHidden();
+      } else {
+        await expect(desktopTabs).toBeVisible();
+        await expect(compactMenuButton).toBeHidden();
+        await expect(desktopTabs.locator(".mari-editor-tab svg").first()).toBeVisible();
+        const [headerBox, navigationBox, firstActionBox, tabBoxes] = await Promise.all([
+          header.boundingBox(),
+          navigation.boundingBox(),
+          actions.locator(".mari-editor-action").first().boundingBox(),
+          desktopTabs.locator(".mari-editor-tab").evaluateAll((tabs) =>
+            tabs.map((tab) => {
+              const box = tab.getBoundingClientRect();
+              return { left: box.left, right: box.right, height: box.height };
+            }),
+          ),
+        ]);
+        expect(headerBox).not.toBeNull();
+        expect(navigationBox).not.toBeNull();
+        if (headerBox && navigationBox) {
+          expect(navigationBox.width).toBeLessThan(headerBox.width * 0.65);
+        }
+        for (let index = 1; index < tabBoxes.length; index += 1) {
+          expect(tabBoxes[index]!.left - tabBoxes[index - 1]!.right).toBeGreaterThanOrEqual(-0.5);
+          expect(tabBoxes[index]!.left - tabBoxes[index - 1]!.right).toBeLessThanOrEqual(5);
+        }
+        if (firstActionBox) {
+          for (const tabBox of tabBoxes) expect(Math.abs(tabBox.height - firstActionBox.height)).toBeLessThanOrEqual(1);
+        }
+        await expect(header.evaluate((element) => element.scrollWidth <= element.clientWidth)).resolves.toBe(true);
       }
-      if (firstActionBox) {
-        for (const tabBox of tabBoxes) expect(Math.abs(tabBox.height - firstActionBox.height)).toBeLessThanOrEqual(1);
-      }
-      await expect(header.evaluate((element) => element.scrollWidth <= element.clientWidth)).resolves.toBe(true);
     }
 
     const [titleLineBox, titleInputBox, bylineBox] = await Promise.all([
@@ -4000,9 +4045,11 @@ test("Character and Persona avatar actions stay separated and visually balanced"
       );
       if ((page.viewportSize()?.width ?? 768) >= 768) {
         expect(bylineBox.x - (titleInputBox.x + titleInputBox.width)).toBeLessThanOrEqual(10);
-        const navigationBox = await navigation.boundingBox();
-        expect(navigationBox).not.toBeNull();
-        if (navigationBox) expect(navigationBox.x - (bylineBox.x + bylineBox.width)).toBeLessThanOrEqual(24);
+        if (panel !== "characters") {
+          const navigationBox = await navigation.boundingBox();
+          expect(navigationBox).not.toBeNull();
+          if (navigationBox) expect(navigationBox.x - (bylineBox.x + bylineBox.width)).toBeLessThanOrEqual(24);
+        }
         const creatorFits = await byline
           .locator(".mari-editor-byline-creator")
           .evaluate((element) => element.scrollWidth <= element.clientWidth);
@@ -19057,7 +19104,7 @@ test("mobile chat composer follows the visual viewport above the software keyboa
 
     await textarea.focus();
 
-    const expectedOffsetTop = (await page.locator("html").getAttribute("data-mari-ios-webkit")) === null ? 72 : 0;
+    const expectedOffsetTop = 72;
 
     await page.evaluate(() => {
       (
@@ -19130,7 +19177,6 @@ test("mobile chat composer follows the visual viewport above the software keyboa
             htmlHeight: htmlStyle.height,
             htmlOverflow: htmlStyle.overflow,
             bodyPosition: bodyStyle.position,
-            bodyInset: [bodyStyle.top, bodyStyle.right, bodyStyle.bottom, bodyStyle.left],
             bodyHeight: bodyStyle.height,
             bodyOverflow: bodyStyle.overflow,
             rootHeight: rootStyle.height,
@@ -19141,8 +19187,7 @@ test("mobile chat composer follows the visual viewport above the software keyboa
       .toEqual({
         htmlHeight: `${await page.evaluate(() => window.innerHeight)}px`,
         htmlOverflow: "hidden",
-        bodyPosition: "fixed",
-        bodyInset: ["0px", "0px", "0px", "0px"],
+        bodyPosition: "static",
         bodyHeight: `${await page.evaluate(() => window.innerHeight)}px`,
         bodyOverflow: "hidden",
         rootHeight: `${await page.evaluate(() => window.innerHeight)}px`,
@@ -19163,8 +19208,6 @@ test("mobile chat composer follows the visual viewport above the software keyboa
     });
     const iosFocusOffsetTop = Math.min(72, Math.max(0, initialViewportHeight - 360));
     const iosFocusPageTop = Math.min(340, Math.max(0, initialViewportHeight - 360));
-    // Some iPhones update pageTop while leaving the fixed body at its visual
-    // origin. Applying that reported top would push the shell below the view.
     await page.evaluate(
       ({ offsetTop, pageTop }) => {
         (
@@ -19199,7 +19242,7 @@ test("mobile chat composer follows the visual viewport above the software keyboa
           top: getComputedStyle(document.documentElement).getPropertyValue("--mari-visual-viewport-offset-top").trim(),
         })),
       )
-      .toEqual({ height: "360px", top: "0px" });
+      .toEqual({ height: "360px", top: `${iosFocusPageTop}px` });
     await expect(page.locator("html")).toHaveAttribute("data-mari-software-keyboard-open", "");
     const iosCompactComposerStyle = await composer.evaluate((element) => {
       const style = getComputedStyle(element);
@@ -19213,40 +19256,50 @@ test("mobile chat composer follows the visual viewport above the software keyboa
     const [iosShellBox, iosComposerBox] = await Promise.all([shell.boundingBox(), composer.boundingBox()]);
     expect(iosShellBox).not.toBeNull();
     expect(iosComposerBox).not.toBeNull();
-    expect(Math.abs(iosShellBox!.y)).toBeLessThanOrEqual(1);
+    expect(Math.abs(iosShellBox!.y - iosFocusPageTop)).toBeLessThanOrEqual(1);
     expect(Math.abs(iosShellBox!.height - 360)).toBeLessThanOrEqual(1);
-    expect(iosComposerBox!.y).toBeGreaterThanOrEqual(0);
-    expect(iosComposerBox!.y + iosComposerBox!.height).toBeLessThanOrEqual(360);
+    expect(iosComposerBox!.y).toBeGreaterThanOrEqual(iosFocusPageTop);
+    expect(iosComposerBox!.y + iosComposerBox!.height).toBeLessThanOrEqual(iosFocusPageTop + 360);
 
-    // Model WebKit's native keyboard pan: the body moves visually while the
-    // document scroll offsets stay at zero. The shell's document-coordinate
-    // top must cancel that displacement and keep the composer on-screen.
-    await page.locator("body").evaluate((element, pageTop) => {
-      element.style.transform = `translateY(-${pageTop}px)`;
-    }, iosFocusPageTop);
-    await expect
-      .poll(() =>
-        page.evaluate(() => ({
-          bodyTop: Math.round(document.body.getBoundingClientRect().top),
-          bodyScrollTop: document.body.scrollTop,
-          documentScrollTop: document.documentElement.scrollTop,
-        })),
-      )
-      .toEqual({ bodyTop: -iosFocusPageTop, bodyScrollTop: 0, documentScrollTop: 0 });
-    await page.evaluate(() => window.visualViewport?.dispatchEvent(new Event("scroll")));
-    await expect
-      .poll(() =>
-        page.evaluate(() =>
-          getComputedStyle(document.documentElement).getPropertyValue("--mari-visual-viewport-offset-top").trim(),
-        ),
-      )
-      .toBe(`${iosFocusPageTop}px`);
-    const [pannedShellBox, pannedComposerBox] = await Promise.all([shell.boundingBox(), composer.boundingBox()]);
-    expect(pannedShellBox).not.toBeNull();
-    expect(pannedComposerBox).not.toBeNull();
-    expect(Math.abs(pannedShellBox!.y)).toBeLessThanOrEqual(1);
-    expect(pannedComposerBox!.y).toBeGreaterThanOrEqual(0);
-    expect(pannedComposerBox!.y + pannedComposerBox!.height).toBeLessThanOrEqual(360);
+    await page.evaluate(async () => {
+      const storePath = "/src/stores/ui.store.ts";
+      const { useUIStore } = (await import(/* @vite-ignore */ storePath)) as {
+        useUIStore: {
+          getState: () => {
+            openModal: (type: "create-persona") => void;
+          };
+        };
+      };
+      useUIStore.getState().openModal("create-persona");
+    });
+    const personaModal = page.locator('[data-component="Modal"]');
+    const personaModalPanel = personaModal.locator(".mari-modal-panel");
+    const personaNameInput = personaModal.locator("input").first();
+    await expect(personaModal).toBeVisible();
+    await expect(personaNameInput).toBeFocused();
+    await expect(personaModal).toHaveCSS("position", "absolute");
+    const [personaModalBox, personaModalPanelBox] = await Promise.all([
+      personaModal.boundingBox(),
+      personaModalPanel.boundingBox(),
+    ]);
+    expect(personaModalBox).not.toBeNull();
+    expect(personaModalPanelBox).not.toBeNull();
+    expect(Math.abs(personaModalBox!.y - iosFocusPageTop)).toBeLessThanOrEqual(1);
+    expect(Math.abs(personaModalBox!.height - 360)).toBeLessThanOrEqual(1);
+    expect(personaModalPanelBox!.y).toBeGreaterThanOrEqual(iosFocusPageTop);
+    expect(personaModalPanelBox!.y + personaModalPanelBox!.height).toBeLessThanOrEqual(iosFocusPageTop + 360);
+    await page.evaluate(async () => {
+      const storePath = "/src/stores/ui.store.ts";
+      const { useUIStore } = (await import(/* @vite-ignore */ storePath)) as {
+        useUIStore: {
+          getState: () => {
+            closeModal: () => void;
+          };
+        };
+      };
+      useUIStore.getState().closeModal();
+    });
+    await expect(personaModal).toBeHidden();
 
     await transcript.evaluate((element) => {
       element.scrollTop = Math.min(240, element.scrollHeight - element.clientHeight);
@@ -19260,7 +19313,6 @@ test("mobile chat composer follows the visual viewport above the software keyboa
           __setMarinaraVisualViewport: (height: number, offsetTop: number, pageTop?: number) => void;
         }
       ).__setMarinaraVisualViewport(height, 0, 0);
-      document.body.style.removeProperty("transform");
     }, initialViewportHeight);
     await expect(page.locator("html")).not.toHaveAttribute("data-mari-software-keyboard-open", "");
     const dismissedShellBox = await shell.boundingBox();

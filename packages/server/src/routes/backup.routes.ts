@@ -2946,13 +2946,18 @@ async function readProfileImportRequest(req: FastifyRequest): Promise<ProfileImp
   const archivePath = join(uploadDir, "profile.zip");
   try {
     // Stream uploads to disk so large profile archives do not need to fit in server memory.
-    const file = await req.file({
+    let receivedFile = false;
+    for await (const part of req.parts({
       limits: { fields: 0, parts: 1, files: 1, fileSize: PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES },
-    });
-    if (!file) throw new ProfileImportRequestError("No profile archive uploaded.");
-    const fileStream = file.file as typeof file.file & { truncated?: boolean };
-    await pipeline(fileStream, createWriteStream(archivePath));
-    if (fileStream.truncated) throw new ProfileImportRequestError("Profile archive upload was truncated.");
+    })) {
+      if (part.type !== "file") throw new ProfileImportRequestError("No profile archive uploaded.");
+      if (receivedFile) throw new ProfileImportRequestError("Only one profile archive is allowed.");
+      receivedFile = true;
+      const fileStream = part.file as typeof part.file & { truncated?: boolean };
+      await pipeline(fileStream, createWriteStream(archivePath));
+      if (fileStream.truncated) throw new ProfileImportRequestError("Profile archive upload was truncated.");
+    }
+    if (!receivedFile) throw new ProfileImportRequestError("No profile archive uploaded.");
     const zip = await readProfileZipArchive(archivePath);
     const { envelope, basePath } = await readProfileEnvelopeFromArchive(zip);
     const warnings: ProfileImportWarning[] = [];
@@ -4218,11 +4223,15 @@ export async function backupRoutes(app: FastifyInstance) {
     const receivedEncodedLength = Number(
       (payload as NodeJS.ReadableStream & { receivedEncodedLength?: number }).receivedEncodedLength,
     );
-    (limiter as Transform & { receivedEncodedLength?: number }).receivedEncodedLength = Number.isFinite(
-      receivedEncodedLength,
-    )
-      ? receivedEncodedLength
-      : 0;
+    Object.defineProperty(limiter, "receivedEncodedLength", {
+      configurable: true,
+      get: () => {
+        const currentLength = Number(
+          (payload as NodeJS.ReadableStream & { receivedEncodedLength?: number }).receivedEncodedLength,
+        );
+        return Number.isFinite(currentLength) ? currentLength : receivedEncodedLength;
+      },
+    });
     payload.pipe(limiter);
     return limiter;
   };

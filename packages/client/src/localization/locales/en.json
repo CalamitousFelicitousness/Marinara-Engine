@@ -3729,6 +3729,7 @@
   "ui.chat.homeprofessormarichat.attachMenuFiles": "Attach files or photos",
   "ui.chat.homeprofessormarichat.attachMenuLabel": "Attach",
   "ui.chat.homeprofessormarichat.attachMenuViewContext": "View attached context",
+  "ui.chat.homeprofessormarichat.awaitingApprovalHint": "Mari is waiting for your approval - nothing has been changed yet. Accept to apply, or reply with what to change.",
   "ui.chat.homeprofessormarichat.cancelSelection": "Cancel",
   "ui.chat.homeprofessormarichat.connectionValue1": "Connection: {{value1}}",
   "ui.chat.homeprofessormarichat.contextBudget": "Context",

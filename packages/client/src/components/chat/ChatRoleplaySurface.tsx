@@ -1095,6 +1095,7 @@ function AuthorNotesButton({
             createPortal(
               <div
                 ref={panelRef}
+                data-chat-floating-panel
                 className={cn(NEUTRAL_PANEL_SHELL, NEUTRAL_PANEL_SCROLL_AREA, "fixed z-[9999] overflow-y-auto p-3")}
                 style={{
                   top: mobileFrame.top,
@@ -2213,7 +2214,7 @@ export function ChatRoleplaySurface({
                 }}
               >
                 {hasNextPage && (
-                  <div className="mb-3 flex justify-center">
+                  <div className="mari-chat-load-more mb-3 flex justify-center">
                     <button
                       onClick={handleLoadMoreClick}
                       disabled={isFetchingNextPage}

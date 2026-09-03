@@ -1265,7 +1265,7 @@ export function ConversationView({
 
         {/* Load More */}
         {hasNextPage && (
-          <div className="flex justify-center py-3">
+          <div className="mari-chat-load-more flex justify-center py-3">
             <button
               onClick={handleLoadMore}
               disabled={isFetchingNextPage}

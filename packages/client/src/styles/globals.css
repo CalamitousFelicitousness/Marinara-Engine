@@ -6132,6 +6132,47 @@ strong {
     min-height: 0;
   }
 
+  /* Body-portalled chat menus otherwise stay in layout-viewport coordinates
+     while iPhone pans the visual viewport for its keyboard. Keep the focused
+     menu and its scroll shell inside the screen the user can actually see. */
+  html[data-mari-software-keyboard-open]
+    body
+    > [data-chat-floating-panel]:not(.mari-modal):not([data-component="ExpandedTextarea"]):focus-within {
+    position: absolute !important;
+    top: calc(var(--mari-visual-viewport-offset-top, 0px) + 0.5rem) !important;
+    bottom: auto !important;
+    max-height: calc(var(--mari-visual-viewport-height, 100dvh) - 1rem) !important;
+  }
+
+  html[data-mari-software-keyboard-open]
+    body
+    > [data-chat-floating-panel]:not(.mari-modal):not([data-component="ExpandedTextarea"]):focus-within
+    > :only-child {
+    max-height: inherit !important;
+  }
+
+  html[data-mari-software-keyboard-open]
+    body
+    > [data-chat-floating-panel]:focus-within:has(> [data-chat-floating-scroll]) {
+    display: flex !important;
+    min-height: 0 !important;
+    flex-direction: column !important;
+  }
+
+  html[data-mari-software-keyboard-open] body > [data-chat-floating-panel]:focus-within > [data-chat-floating-scroll] {
+    min-height: 0 !important;
+    max-height: none !important;
+    flex: 1 1 auto !important;
+  }
+
+  html[data-mari-ios-webkit] body > [data-component="ExpandedTextarea"] {
+    position: absolute;
+    top: var(--mari-visual-viewport-offset-top, 0px);
+    bottom: auto;
+    height: var(--mari-visual-viewport-height, 100dvh);
+    min-height: 0;
+  }
+
   .app-sidebar-mobile {
     position: fixed !important;
     inset: 0 !important;
@@ -6277,6 +6318,10 @@ strong {
   .rpg-chat-messages-mobile {
     padding-left: max(0.5rem, env(safe-area-inset-left)) !important;
     padding-right: max(0.5rem, env(safe-area-inset-right)) !important;
+  }
+
+  [data-chat-mode]:has([data-roleplay-agent-window="echo"]) .mari-chat-load-more {
+    padding-top: 2.25rem;
   }
 
   [data-chat-mode="roleplay"] .rpg-narrator-msg {

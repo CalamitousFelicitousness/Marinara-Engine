@@ -357,6 +357,7 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
         createPortal(
           <div
             ref={menuRef}
+            data-chat-floating-panel
             className="fixed z-[9999] flex min-w-0 flex-col overflow-hidden rounded-xl border border-foreground/10 bg-[var(--background)] shadow-2xl"
             style={
               pos

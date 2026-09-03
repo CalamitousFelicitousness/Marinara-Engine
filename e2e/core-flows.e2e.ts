@@ -65,6 +65,56 @@ async function prepareFreshClient(page: Page) {
   }, APP_VERSION);
 }
 
+async function installMockVisualViewport(page: Page) {
+  await page.addInitScript(() => {
+    const state = {
+      height: null as number | null,
+      offsetTop: 0,
+      pageTop: 0,
+    };
+    const viewport = new EventTarget();
+    Object.defineProperties(viewport, {
+      height: { configurable: true, get: () => state.height ?? window.innerHeight },
+      offsetTop: { configurable: true, get: () => state.offsetTop },
+      offsetLeft: { configurable: true, get: () => 0 },
+      pageLeft: { configurable: true, get: () => 0 },
+      pageTop: { configurable: true, get: () => state.pageTop },
+      scale: { configurable: true, get: () => 1 },
+      width: { configurable: true, get: () => window.innerWidth },
+    });
+    Object.defineProperty(window, "visualViewport", {
+      configurable: true,
+      value: viewport,
+    });
+    Object.defineProperty(window, "__setMarinaraVisualViewport", {
+      configurable: true,
+      value: (height: number, offsetTop: number, pageTop = offsetTop, layoutHeight?: number) => {
+        state.height = height;
+        state.offsetTop = offsetTop;
+        state.pageTop = pageTop;
+        if (layoutHeight !== undefined) {
+          Object.defineProperty(window, "innerHeight", {
+            configurable: true,
+            value: layoutHeight,
+          });
+        }
+        viewport.dispatchEvent(new Event("resize"));
+        viewport.dispatchEvent(new Event("scroll"));
+      },
+    });
+    Object.defineProperty(window, "__rotateMarinaraVisualViewport", {
+      configurable: true,
+      value: (height: number) => {
+        state.height = height;
+        state.offsetTop = 0;
+        state.pageTop = 0;
+        window.dispatchEvent(new Event("orientationchange"));
+        viewport.dispatchEvent(new Event("resize"));
+      },
+    });
+  });
+}
+
 async function prepareOnboardingReplay(page: Page) {
   await page.addInitScript(() => {
     const storageKey = "marinara-engine-ui";
@@ -18998,6 +19048,243 @@ test("memory recall modal accepts clicks from chat settings", async ({ page }, t
   await expect(drawer.getByRole("heading", { name: "Chat Settings" })).toBeVisible();
 });
 
+test("mobile Load More clears the collapsed Echo Chamber", async ({ page }, testInfo) => {
+  test.skip(!testInfo.project.name.includes("mobile"), "Echo Chamber touch clearance is mobile-only.");
+
+  const response = await page.request.post("/api/chats", {
+    data: {
+      name: "Mobile Echo Load More Smoke",
+      mode: "roleplay",
+      characterIds: [],
+    },
+  });
+  expect(response.ok()).toBeTruthy();
+  const chat = (await response.json()) as { id: string };
+
+  try {
+    const metadataResponse = await page.request.patch(`/api/chats/${chat.id}/metadata`, {
+      data: { enableAgents: true, activeAgentIds: ["echo-chamber"] },
+    });
+    expect(metadataResponse.ok()).toBeTruthy();
+    for (let index = 0; index < 24; index += 1) {
+      const messageResponse = await page.request.post(`/api/chats/${chat.id}/messages`, {
+        data: {
+          role: index % 2 === 0 ? "user" : "assistant",
+          content: `Echo pagination history line ${index + 1}.`,
+        },
+      });
+      expect(messageResponse.ok()).toBeTruthy();
+    }
+
+    await prepareFreshClient(page);
+    await page.addInitScript((chatId) => {
+      const persisted = JSON.parse(localStorage.getItem("marinara-engine-ui") ?? '{"state":{}}') as {
+        state?: Record<string, unknown>;
+        version?: number;
+      };
+      persisted.state = {
+        ...(persisted.state ?? {}),
+        echoChamberOpen: false,
+        messagesPerPage: 10,
+      };
+      persisted.version = 98;
+      localStorage.setItem("marinara-engine-ui", JSON.stringify(persisted));
+      localStorage.setItem("marinara-active-chat-id", chatId);
+    }, chat.id);
+    await page.goto("/");
+
+    const transcript = page.locator('[data-chat-mode="roleplay"] [data-chat-scroll]');
+    const echo = page.locator('[data-roleplay-agent-window="echo"]');
+    const loadMore = page.getByRole("button", { name: "Load More", exact: true });
+    await expect(echo).toBeVisible();
+    await expect(loadMore).toBeVisible();
+    await transcript.evaluate((element) => {
+      element.scrollTop = 0;
+    });
+
+    await expect
+      .poll(async () => {
+        await transcript.evaluate((element) => {
+          element.scrollTop = 0;
+        });
+        const [echoBox, loadMoreBox] = await Promise.all([echo.boundingBox(), loadMore.boundingBox()]);
+        if (!echoBox || !loadMoreBox) return Number.NEGATIVE_INFINITY;
+        return loadMoreBox.y - (echoBox.y + echoBox.height);
+      })
+      .toBeGreaterThanOrEqual(8);
+  } finally {
+    await page.request.delete(`/api/chats/${chat.id}?force=true`).catch(() => undefined);
+  }
+});
+
+test("iPhone chat menus stay in the visual viewport while editing", async ({ page }, testInfo) => {
+  test.skip(!testInfo.project.name.includes("mobile-webkit"), "The visual-viewport pan regression is iPhone-only.");
+
+  const response = await page.request.post("/api/chats", {
+    data: {
+      name: "Mobile Menu Keyboard Viewport Smoke",
+      mode: "roleplay",
+      characterIds: [],
+    },
+  });
+  expect(response.ok()).toBeTruthy();
+  const chat = (await response.json()) as { id: string };
+
+  try {
+    await installMockVisualViewport(page);
+    await prepareFreshClient(page);
+    await page.addInitScript((chatId) => {
+      localStorage.setItem("marinara-active-chat-id", chatId);
+    }, chat.id);
+    await page.goto("/");
+
+    await page.getByRole("button", { name: "More options", exact: true }).click();
+    await page.getByRole("button", { name: "Chat Summary", exact: true }).filter({ visible: true }).click();
+    const summaryPanel = page.locator("[data-chat-floating-panel]").filter({ hasText: "Chat Summary" });
+    const messagesInput = summaryPanel.getByRole("spinbutton", { name: "Messages", exact: true });
+    await expect(summaryPanel).toBeVisible();
+    await messagesInput.focus();
+
+    const initialViewportHeight = await page.evaluate(() => window.innerHeight);
+    const keyboardViewportHeight = 360;
+    const keyboardViewportTop = Math.min(340, Math.max(0, initialViewportHeight - keyboardViewportHeight));
+    await page.evaluate(
+      ({ height, top }) => {
+        (
+          window as typeof window & {
+            __setMarinaraVisualViewport: (
+              height: number,
+              offsetTop: number,
+              pageTop?: number,
+              layoutHeight?: number,
+            ) => void;
+          }
+        ).__setMarinaraVisualViewport(height, Math.min(72, top), top, height);
+      },
+      { height: keyboardViewportHeight, top: keyboardViewportTop },
+    );
+
+    await expect(page.locator("html")).toHaveAttribute("data-mari-software-keyboard-open", "");
+    await expect
+      .poll(async () => {
+        const [panelBox, inputBox] = await Promise.all([summaryPanel.boundingBox(), messagesInput.boundingBox()]);
+        if (!panelBox || !inputBox) return false;
+        const viewportBottom = keyboardViewportTop + keyboardViewportHeight;
+        return (
+          panelBox.y >= keyboardViewportTop + 8 &&
+          panelBox.y + panelBox.height <= viewportBottom - 8 &&
+          inputBox.y >= keyboardViewportTop &&
+          inputBox.y + inputBox.height <= viewportBottom
+        );
+      })
+      .toBe(true);
+    await messagesInput.fill("37");
+    await expect(messagesInput).toHaveValue("37");
+
+    await messagesInput.blur();
+    await page.evaluate((height) => {
+      (
+        window as typeof window & {
+          __setMarinaraVisualViewport: (
+            height: number,
+            offsetTop: number,
+            pageTop?: number,
+            layoutHeight?: number,
+          ) => void;
+        }
+      ).__setMarinaraVisualViewport(height, 0, 0, height);
+    }, initialViewportHeight);
+    await expect(page.locator("html")).not.toHaveAttribute("data-mari-software-keyboard-open", "");
+    await expect(summaryPanel).toBeVisible();
+  } finally {
+    await page.request.delete(`/api/chats/${chat.id}?force=true`).catch(() => undefined);
+  }
+});
+
+test("iPhone Conversation Presence keeps its last activity field reachable", async ({ page }, testInfo) => {
+  test.skip(!testInfo.project.name.includes("mobile-webkit"), "The visual-viewport pan regression is iPhone-only.");
+
+  const characterIds: string[] = [];
+  let chatId: string | null = null;
+  try {
+    for (let index = 0; index < 6; index += 1) {
+      const characterResponse = await page.request.post("/api/characters", {
+        data: { data: { name: `Viewport Presence ${index + 1}` } },
+      });
+      expect(characterResponse.ok()).toBeTruthy();
+      characterIds.push(((await characterResponse.json()) as { id: string }).id);
+    }
+    const chatResponse = await page.request.post("/api/chats", {
+      data: {
+        name: "Mobile Presence Keyboard Viewport Smoke",
+        mode: "conversation",
+        characterIds,
+      },
+    });
+    expect(chatResponse.ok()).toBeTruthy();
+    chatId = ((await chatResponse.json()) as { id: string }).id;
+
+    await installMockVisualViewport(page);
+    await prepareFreshClient(page);
+    await page.addInitScript((activeChatId) => {
+      localStorage.setItem("marinara-active-chat-id", activeChatId);
+    }, chatId);
+    await page.goto("/");
+
+    await page.locator('[data-chat-mode="conversation"] [data-chat-help="identity"]').click();
+    const presencePanel = page
+      .locator("body > [data-chat-floating-panel]")
+      .filter({ hasText: "Conversation Presence" });
+    const activityFields = presencePanel.getByPlaceholder("Manual activity");
+    const lastActivityField = activityFields.last();
+    const scrollShell = presencePanel.locator("[data-chat-floating-scroll]");
+    await expect(activityFields).toHaveCount(characterIds.length);
+    await lastActivityField.focus();
+
+    const initialViewportHeight = await page.evaluate(() => window.innerHeight);
+    const keyboardViewportHeight = 360;
+    const keyboardViewportTop = Math.min(340, Math.max(0, initialViewportHeight - keyboardViewportHeight));
+    await page.evaluate(
+      ({ height, top }) => {
+        (
+          window as typeof window & {
+            __setMarinaraVisualViewport: (
+              height: number,
+              offsetTop: number,
+              pageTop?: number,
+              layoutHeight?: number,
+            ) => void;
+          }
+        ).__setMarinaraVisualViewport(height, Math.min(72, top), top, height);
+      },
+      { height: keyboardViewportHeight, top: keyboardViewportTop },
+    );
+
+    await expect(page.locator("html")).toHaveAttribute("data-mari-software-keyboard-open", "");
+    await expect
+      .poll(async () => {
+        await scrollShell.evaluate((element) => {
+          element.scrollTop = element.scrollHeight;
+        });
+        const [panelBox, fieldBox] = await Promise.all([presencePanel.boundingBox(), lastActivityField.boundingBox()]);
+        if (!panelBox || !fieldBox) return false;
+        const viewportBottom = keyboardViewportTop + keyboardViewportHeight;
+        return (
+          panelBox.y >= keyboardViewportTop + 8 &&
+          panelBox.y + panelBox.height <= viewportBottom - 8 &&
+          fieldBox.y >= panelBox.y &&
+          fieldBox.y + fieldBox.height <= panelBox.y + panelBox.height
+        );
+      })
+      .toBe(true);
+  } finally {
+    if (chatId) await page.request.delete(`/api/chats/${chatId}?force=true`).catch(() => undefined);
+    for (const characterId of characterIds) {
+      await page.request.delete(`/api/characters/${characterId}`).catch(() => undefined);
+    }
+  }
+});
+
 test("mobile chat composer follows the visual viewport above the software keyboard", async ({ page }, testInfo) => {
   test.skip(!testInfo.project.name.includes("mobile"), "Software-keyboard viewport behavior is mobile-only.");
 
@@ -19020,53 +19307,7 @@ test("mobile chat composer follows the visual viewport above the software keyboa
     expect(messageResponse.ok()).toBeTruthy();
   }
 
-  await page.addInitScript(() => {
-    const state = {
-      height: null as number | null,
-      offsetTop: 0,
-      pageTop: 0,
-    };
-    const viewport = new EventTarget();
-    Object.defineProperties(viewport, {
-      height: { configurable: true, get: () => state.height ?? window.innerHeight },
-      offsetTop: { configurable: true, get: () => state.offsetTop },
-      offsetLeft: { configurable: true, get: () => 0 },
-      pageLeft: { configurable: true, get: () => 0 },
-      pageTop: { configurable: true, get: () => state.pageTop },
-      scale: { configurable: true, get: () => 1 },
-      width: { configurable: true, get: () => window.innerWidth },
-    });
-    Object.defineProperty(window, "visualViewport", {
-      configurable: true,
-      value: viewport,
-    });
-    Object.defineProperty(window, "__setMarinaraVisualViewport", {
-      configurable: true,
-      value: (height: number, offsetTop: number, pageTop = offsetTop, layoutHeight?: number) => {
-        state.height = height;
-        state.offsetTop = offsetTop;
-        state.pageTop = pageTop;
-        if (layoutHeight !== undefined) {
-          Object.defineProperty(window, "innerHeight", {
-            configurable: true,
-            value: layoutHeight,
-          });
-        }
-        viewport.dispatchEvent(new Event("resize"));
-        viewport.dispatchEvent(new Event("scroll"));
-      },
-    });
-    Object.defineProperty(window, "__rotateMarinaraVisualViewport", {
-      configurable: true,
-      value: (height: number) => {
-        state.height = height;
-        state.offsetTop = 0;
-        state.pageTop = 0;
-        window.dispatchEvent(new Event("orientationchange"));
-        viewport.dispatchEvent(new Event("resize"));
-      },
-    });
-  });
+  await installMockVisualViewport(page);
   await page.addInitScript((chatId) => {
     localStorage.setItem("marinara-active-chat-id", chatId);
   }, chat.id);

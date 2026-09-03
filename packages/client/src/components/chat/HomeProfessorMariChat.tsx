@@ -53,6 +53,8 @@ import {
   LOCAL_SIDECAR_CONNECTION_ID,
   MARI_AUTHORIZATION_ACCEPT_CHIP,
   MARI_AUTHORIZATION_DECLINE_CHIP,
+  isMariHeldChangeApprovalChip,
+  withHeldChangeDeclineChip,
   MARI_STARTER_CHIPS,
   PROFESSOR_MARI_ID,
   type APIConnection,
@@ -3367,13 +3369,14 @@ export function HomeProfessorMariChat({
   const storeChipsForChat = mariChipsChatId === chatId ? mariChips : [];
   const visibleSuggestionChips =
     pendingDeferredMutations && !storeChipsForChat.some((chip) => chip.id === MARI_AUTHORIZATION_ACCEPT_CHIP.id)
-      ? [
+      ? withHeldChangeDeclineChip([
           MARI_AUTHORIZATION_ACCEPT_CHIP,
-          MARI_AUTHORIZATION_DECLINE_CHIP,
           ...(professorMariSuggestionsEnabled ? storeChipsForChat : []),
-        ]
+        ])
       : storeChipsForChat.some((chip) => chip.id === "authorization-accept")
-        ? storeChipsForChat.filter((chip) => professorMariSuggestionsEnabled || chip.id === "authorization-accept")
+        ? withHeldChangeDeclineChip(
+            storeChipsForChat.filter((chip) => professorMariSuggestionsEnabled || chip.id === "authorization-accept"),
+          )
         : professorMariSuggestionsEnabled && storeChipsForChat.length > 0
           ? storeChipsForChat
           : professorMariSuggestionsEnabled && chatId !== null && loadedMessagesChatId === chatId && !isBusy
@@ -4218,7 +4221,7 @@ export function HomeProfessorMariChat({
   // pending changes was optional flavour text, so they concluded she had
   // silently done nothing - the visible half of the defer-and-approve
   // mechanism read as a failure of it.
-  const chipRowAwaitsApproval = chipRowChips.some((chip) => chip.id === MARI_AUTHORIZATION_ACCEPT_CHIP.id);
+  const chipRowAwaitsApproval = chipRowChips.some(isMariHeldChangeApprovalChip);
   const chipRowHint = guidedPlanStep
     ? `${guidedPlanStep.question} Suggestions only; you can type your own answer.`
     : chipRowAwaitsApproval
@@ -4232,7 +4235,7 @@ export function HomeProfessorMariChat({
     workspaceActivity?.toLocaleLowerCase().includes("suggestion") === true;
 
   function handleSuggestionSelect(chip: MariSuggestionChip) {
-    if (chip.id === "authorization-accept" || chip.id === "authorization-decline") {
+    if (chip.id === MARI_AUTHORIZATION_ACCEPT_CHIP.id || chip.id === MARI_AUTHORIZATION_DECLINE_CHIP.id) {
       void handleSubmit(chip.prompt);
       return;
     }

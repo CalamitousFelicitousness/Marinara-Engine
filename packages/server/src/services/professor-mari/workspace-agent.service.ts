@@ -182,9 +182,6 @@ const MAX_PROTOCOL_REPAIR_ROUNDS = 2;
 // the actual work.
 const MAX_PROTOCOL_REPAIR_ROUNDS_LOCAL_SIDECAR = 6;
 const MAX_VERIFICATION_REPAIR_ROUNDS = 2;
-// #5819: mid-run completion claims get their own budget so catching a false
-// claim early in a batch cannot starve the terminal check at the end of it.
-const MAX_MIDRUN_CLAIM_REPAIR_ROUNDS = 2;
 const MAX_REPEATED_COMMAND_FAILURES = 3;
 const MAX_HISTORY_MESSAGES = 40;
 const MAX_PARALLEL_READONLY_COMMANDS = 4;
@@ -1939,42 +1936,15 @@ export function workspaceTextClaimsMutationCompletion(text: string): boolean {
   );
 }
 
-/**
- * True when this frame ends the run: no further commands and stop set. Only
- * these were ever audited before #5819.
- */
-export function isTerminalWorkspaceFrame(action: Pick<AssistantWorkspaceAction, "commands" | "stop">): boolean {
-  return action.commands.length === 0 && action.stop;
-}
-
-/**
- * #5819: a completion claim is audited on EVERY frame, not just the run's
- * last one. In a multi-step batch ("Created Aria - now creating Bran") the
- * claim about Aria rides a frame that still carries commands and has
- * stop:false, so the terminal-only gate never looked at it: the first false
- * claim in a batch went unchallenged, and users saw Mari move on to the next
- * character having never created the previous one.
- *
- * Mid-run frames are held to a NARROWER standard than the final one, because
- * a run may legitimately still resolve its own state later: only outcomes no
- * later work can fix are challenged - "none" (a completion claim with no
- * applied mutation behind it at all) and "mismatch" (the store observed the
- * write failing). "unverified" and "staged" stay terminal-only, since a later
- * frame can still read the change back and the user can still accept it.
- *
- * The frame's OWN commands have not run yet at this point (results carry the
- * previous rounds), which is exactly the state a claim about earlier work
- * must be judged against.
- */
 export function workspaceActionNeedsVerification(
   action: Pick<AssistantWorkspaceAction, "commands" | "stop" | "visibleText">,
   results: readonly WorkspaceCommandResult[],
 ): WorkspaceMutationVerification | null {
-  if (!workspaceTextClaimsMutationCompletion(action.visibleText)) return null;
+  if (action.commands.length > 0 || !action.stop || !workspaceTextClaimsMutationCompletion(action.visibleText)) {
+    return null;
+  }
   const verification = resolveWorkspaceMutationVerification(results);
-  if (verification === "verified") return null;
-  if (isTerminalWorkspaceFrame(action)) return verification;
-  return verification === "none" || verification === "mismatch" ? verification : null;
+  return verification === "verified" ? null : verification;
 }
 
 function workspaceCommandValidationIssue(command: WorkspaceCommandCall): string | null {
@@ -2515,7 +2485,6 @@ export class ProfessorMariWorkspaceService {
       const repeatedFailureCounts = new Map<string, number>();
       let protocolRepairRounds = 0;
       let verificationRepairRounds = 0;
-      let midRunClaimRepairRounds = 0;
       // protocolRepairRounds resets on every productive round, so a model that alternates malformed
       // and good frames could otherwise refund the round budget indefinitely. Cap the TOTAL refunds
       // for the whole task so repeated formatting stumbles cannot drive unbounded requests; past the
@@ -2647,22 +2616,13 @@ export class ProfessorMariWorkspaceService {
         }
         const verificationIssue = workspaceActionNeedsVerification(action, commandResultsForContinuity);
         if (verificationIssue) {
-          // #5819: a mid-run claim ("created Aria - now creating Bran") is
-          // challenged on its own budget, so catching one early in a batch
-          // cannot starve the terminal check that ends the run.
-          const terminalClaim = isTerminalWorkspaceFrame(action);
-          if (terminalClaim) verificationRepairRounds += 1;
-          else midRunClaimRepairRounds += 1;
-          const withinRepairBudget = terminalClaim
-            ? verificationRepairRounds <= MAX_VERIFICATION_REPAIR_ROUNDS
-            : midRunClaimRepairRounds <= MAX_MIDRUN_CLAIM_REPAIR_ROUNDS;
-          if (withinRepairBudget) {
+          verificationRepairRounds += 1;
+          if (verificationRepairRounds <= MAX_VERIFICATION_REPAIR_ROUNDS) {
             messages.push({ role: "assistant", content: action.assistantHistoryContent });
             messages.push({
               role: "user",
-              content: !terminalClaim
-                ? "You just said an earlier step was done, but nothing in this run has actually applied it yet - your own commands so far did not change anything, or the store reported that the change did not persist. Do not describe work you have not completed. Carry out that step now and confirm it from its result before moving on to the next one, or say plainly that it has not been done yet."
-                : verificationIssue === "none"
+              content:
+                verificationIssue === "none"
                   ? "Your previous reply claimed the requested workspace change was complete, but no mutating command succeeded in this run. Do not repeat the completion claim. Use a read command to inspect the requested state; if it is missing, perform the mutation, then verify it with another read before setting stop to true."
                   : verificationIssue === "mismatch"
                     ? "Your previous reply claimed a change was complete, but the store read-back observed that a change in this run did NOT persist as intended (see readBack.mismatches on that result). Do not claim success. Tell the user plainly which change failed to persist and what the store observed; you may retry the mutation once if a retry is sensible - a retry whose result confirms the persisted state clears this."

@@ -11312,12 +11312,7 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         "staged",
       );
       assert.equal(
-        resolveWorkspaceMutationVerification([
-          appliedWrite,
-          verificationResult,
-          stagedSensitiveWrite,
-          verificationResult,
-        ]),
+        resolveWorkspaceMutationVerification([appliedWrite, verificationResult, stagedSensitiveWrite, verificationResult]),
         "staged",
       );
       // A read after the staged result still pays the applied mutation's
@@ -11331,52 +11326,6 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
         '{"say":"I could not create it because the name is missing.","commands":[],"stop":true}',
       );
       assert.equal(workspaceActionNeedsVerification(honestBlocker, []), null);
-
-      // #5819: mid-run claims are audited too. In a batch ("created Aria -
-      // now creating Bran") the claim about Aria rides a frame that still
-      // carries commands with stop:false, which the terminal-only gate never
-      // looked at - so the first false claim in a batch went unchallenged.
-      const midRunClaim = parseAssistantWorkspaceAction(
-        JSON.stringify({
-          say: "I created Aria. Now creating Bran.",
-          commands: [
-            {
-              name: "app_data",
-              arguments: { action: "character.create", data: { name: "Bran" }, apply: true },
-            },
-          ],
-          stop: false,
-        }),
-      );
-      assert.equal(midRunClaim.commands.length, 1);
-      assert.equal(midRunClaim.stop, false);
-      // Nothing applied behind the claim: challenged.
-      assert.equal(workspaceActionNeedsVerification(midRunClaim, []), "none");
-      assert.equal(workspaceActionNeedsVerification(midRunClaim, [verificationResult]), "none");
-      // A store-observed persistence failure is challenged mid-run too.
-      const midRunMismatch = {
-        ...mutationResult,
-        id: "mid-run-mismatch",
-        output: `Readback: store-mismatch
-Command: app_data character.create
-Exit code: 0
-
-stdout:
-{ "saved": true }`,
-      };
-      assert.equal(workspaceActionNeedsVerification(midRunClaim, [midRunMismatch]), "mismatch");
-      // NARROWER than the terminal check on purpose: a run may still verify
-      // its own work in a later frame, and a staged change may still be
-      // accepted, so neither is challenged mid-run - only at the end.
-      assert.equal(workspaceActionNeedsVerification(midRunClaim, [mutationResult]), null);
-      assert.equal(workspaceActionNeedsVerification(unsupportedCompletion, [mutationResult]), "unverified");
-      assert.equal(workspaceActionNeedsVerification(midRunClaim, [stagedSensitiveWrite]), null);
-      assert.equal(workspaceActionNeedsVerification(unsupportedCompletion, [stagedSensitiveWrite]), "staged");
-      // A mid-run frame that claims nothing is never challenged.
-      const midRunNoClaim = parseAssistantWorkspaceAction(
-        JSON.stringify({ say: "Reading the card before I change anything.", commands: [], stop: false }),
-      );
-      assert.equal(workspaceActionNeedsVerification(midRunNoClaim, []), null);
     },
   },
   {

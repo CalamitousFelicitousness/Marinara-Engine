@@ -64,11 +64,25 @@ try {
   // record whose owner is still running (a restart's detached child racing
   // its parent, or two servers sharing one DATA_DIR), are "unknown".
   assert.equal(classifyPreviousSession(null, "boot-a", "now", deadPid).status, "unknown");
-  assert.equal(
-    classifyPreviousSession({ pid: 1 } as unknown as typeof previousBeat, "boot-a", "now", deadPid).status,
-    "unknown",
-  );
   assert.equal(classifyPreviousSession(previousBeat, "boot-a", "now", livePid).status, "unknown");
+  // The record is parsed from disk, so its shape is a claim: truncated,
+  // hand-edited, or type-confused records degrade to "unknown" rather than
+  // fabricating an ending or a death.
+  for (const malformed of [
+    { pid: 1 },
+    { ...previousBeat, pid: "4242" },
+    { ...previousBeat, pid: 0 },
+    { ...previousBeat, startedAt: "not-a-date" },
+    { ...previousBeat, lastBeatAt: undefined },
+    { ...previousBeat, rssMiB: "119" },
+    { ...previousBeat, bootId: 7 },
+    { ...previousBeat, exitKind: "banana" },
+    "a string",
+    42,
+  ]) {
+    const status = classifyPreviousSession(malformed, "boot-a", "now", deadPid);
+    assert.equal(status.status, "unknown", `malformed record must be unknown: ${JSON.stringify(malformed)}`);
+  }
 
   // OBSERVED ENDINGS ARE NAMED, NEVER CALLED KILLS: clean shutdown, an
   // app-level crash (the server logged it), and the update / settings restart
@@ -94,11 +108,25 @@ try {
   assert.equal(liveBeat.pid, process.pid);
   assert.equal(liveBeat.exitKind, undefined);
 
-  // The exit stamp names the ending; an unflagged non-zero exit is treated as
-  // a crash rather than being called clean.
+  // OWNERSHIP HANDOFF: a restart's detached child claims the heartbeat while
+  // the parent is still exiting. The parent must NOT stamp its ending over
+  // the successor's live beat - doing so would make the next startup read the
+  // successor's session as an ended restart and miss a later kill of it.
+  const successorBeat = { ...previousBeat, pid: process.pid + 1, exitKind: undefined };
+  writeFileSync(join(dataDir, "diagnostics", "session-heartbeat.json"), JSON.stringify(successorBeat));
+  finalizeSessionExit(0);
+  const afterHandoff = JSON.parse(readFileSync(join(dataDir, "diagnostics", "session-heartbeat.json"), "utf8"));
+  assert.equal(afterHandoff.pid, successorBeat.pid, "the exiting parent must not clobber the successor's beat");
+  assert.equal(afterHandoff.exitKind, undefined, "the successor's session must still read as live");
+
+  // The exit stamp names the ending when we DO still own the record; an
+  // unflagged non-zero exit is treated as a crash rather than called clean.
+  const stampRun = startSessionPostmortem();
+  assert.ok(stampRun);
   noteSessionExitKind("restart");
   finalizeSessionExit(0);
   const stamped = JSON.parse(readFileSync(join(dataDir, "diagnostics", "session-heartbeat.json"), "utf8"));
+  assert.equal(stamped.pid, process.pid);
   assert.equal(stamped.exitKind, "restart");
   assert.equal(classifyPreviousSession(stamped, "boot-x", "now", deadPid).status, "ended");
 } finally {
@@ -118,10 +146,13 @@ assert.ok(intervalBody, "the heartbeat interval must exist");
 for (const forbidden of [/logger\./u, /console\./u, /process\.stdout/u]) {
   assert.doesNotMatch(intervalBody![1]!, forbidden, "the heartbeat must stay silent at runtime");
 }
-const finalizeBody = postmortemFlat.match(/export function finalizeSessionExit\(exitCode: number\) \{(.*?)\n\}/su);
-if (finalizeBody) {
-  assert.doesNotMatch(finalizeBody[1]!, /logger\.|console\./u, "the exit stamp must stay silent");
-}
+// Matched against the UNFLATTENED source: flatten() strips the newlines this
+// body pattern needs, which silently made this assertion dead code.
+const finalizeBody = postmortemSource.match(
+  /export function finalizeSessionExit\(exitCode: number\) \{([\s\S]*?)^\}/mu,
+);
+assert.ok(finalizeBody, "finalizeSessionExit must exist");
+assert.doesNotMatch(finalizeBody[1]!, /logger\.|console\.|process\.stdout/u, "the exit stamp must stay silent");
 assert.equal(
   (postmortemSource.match(/\blogger\.(?:trace|debug|info|warn|error|fatal)\(/gu) ?? []).length,
   2,

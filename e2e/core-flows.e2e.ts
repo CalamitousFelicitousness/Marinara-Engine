@@ -116,6 +116,28 @@ async function readCssVariableColor(page: Page, variableName: string) {
   }, variableName);
 }
 
+/**
+ * Detail editors mirror their unsaved-changes flag into the UI store, and the
+ * header's back button branches on it: while the flag is still false the
+ * click CLOSES the editor instead of raising the unsaved warning, unmounting
+ * the very shell the following assertions look inside (#5788). Waiting for
+ * the app's own signal turns "typed, so it must be dirty by now" into a
+ * deterministic wait. A timeout here is a real defect - the edit never
+ * registered - not a flake.
+ */
+async function waitForEditorDirty(page: Page) {
+  await expect
+    .poll(() =>
+      page.evaluate(async () => {
+        const { useUIStore } = (await import("/src/stores/ui.store.ts" as string)) as {
+          useUIStore: { getState: () => { editorDirty: boolean } };
+        };
+        return useUIStore.getState().editorDirty;
+      }),
+    )
+    .toBe(true);
+}
+
 async function readScopedCssVariableColor(scope: Locator, variableName: string) {
   return scope.evaluate((element, name) => {
     const probe = document.createElement("span");
@@ -8409,9 +8431,12 @@ test("preset import and save-export feedback follow the active accent", async ({
     await editor.getByTitle("Save current edits before exporting", { exact: true }).click();
     const exportDialog = page.getByRole("dialog", { name: /Save before exporting/u });
     await expect(exportDialog).toBeVisible();
+    // The "Changes saved" toast auto-dismisses after 1500ms, so the accent is
+    // read BEFORE the save is triggered: a round trip spent here would come
+    // straight out of the window the visibility assertion has to catch it in.
+    const expectedEditorAccent = await readScopedCssVariableColor(editor, "--marinara-editor-accent");
     await exportDialog.getByRole("button", { name: "Save and export", exact: true }).click();
 
-    const expectedEditorAccent = await readScopedCssVariableColor(editor, "--marinara-editor-accent");
     const savedFeedback = editor.getByText("Changes saved", { exact: true });
     await expect(savedFeedback).toBeVisible();
     await expect(savedFeedback).toHaveCSS("color", expectedEditorAccent);
@@ -8421,6 +8446,7 @@ test("preset import and save-export feedback follow the active accent", async ({
     });
 
     await titleInput.fill(`Unsaved Theme Feedback ${suffix}`);
+    await waitForEditorDirty(page);
     await editor.locator(".mari-editor-header-main > button").first().click();
     const unsavedFeedback = editor.getByText("You have unsaved changes.", { exact: true }).locator("..");
     await expect(unsavedFeedback).toBeVisible();

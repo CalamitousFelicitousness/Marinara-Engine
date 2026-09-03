@@ -1,9 +1,12 @@
 // #5506 diagnostics: the session heartbeat/postmortem. An externally killed
 // Termux server leaves no in-process trace, so the NEXT startup is the
-// witness: a silent file-only heartbeat plus a clean-exit stamp lets startup
+// witness: a silent file-only heartbeat plus an exit stamp lets startup
 // classify the previous session's fate and surface it in Support
-// Diagnostics. HARD CONSTRAINT (maintainer call): the heartbeat must be
-// console-silent at runtime - users read the console for other things.
+// Diagnostics. HARD CONSTRAINTS (maintainer calls + adversarial review):
+//   1. console-silent at runtime - users read the console for other things;
+//   2. never claim a shutdown nobody observed ("unknown" is a real answer);
+//   3. an ending the server logged itself (crash, update/settings restart) is
+//      never reported as an external kill.
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -20,15 +23,16 @@ const previousDataDir = process.env.DATA_DIR;
 process.env.DATA_DIR = dataDir;
 try {
   const {
-    buildUncleanExitRecord,
-    getLastUncleanExit,
+    classifyPreviousSession,
+    finalizeSessionExit,
+    getPreviousSessionStatus,
     getUncleanExitHistory,
-    markCleanSessionExit,
+    noteSessionExitKind,
     startSessionPostmortem,
   } = await import("../../packages/server/src/lib/session-postmortem.js");
 
-  // Pure semantics: clean stamps report nothing; reboot detection needs both
-  // boot ids; uptime is beat minus start.
+  const deadPid = () => false;
+  const livePid = () => true;
   const previousBeat = {
     pid: 4242,
     bootId: "boot-a",
@@ -37,37 +41,66 @@ try {
     rssMiB: 119.3,
     heapUsedMiB: 83.4,
   };
-  assert.equal(buildUncleanExitRecord({ ...previousBeat, cleanExit: true }, "boot-b", "now"), null);
-  const rebooted = buildUncleanExitRecord(previousBeat, "boot-b", "2026-09-02T08:00:00.000Z");
-  assert.ok(rebooted);
-  assert.equal(rebooted.rebootedSince, true);
-  assert.equal(rebooted.uptimeMs, 3.5 * 60 * 60 * 1000);
-  assert.equal(rebooted.rssMiB, 119.3);
-  assert.equal(buildUncleanExitRecord(previousBeat, "boot-a", "now")?.rebootedSince, false);
-  assert.equal(buildUncleanExitRecord({ ...previousBeat, bootId: null }, "boot-a", "now")?.rebootedSince, null);
 
-  // Round trip: a pre-existing heartbeat WITHOUT the clean stamp is reported
-  // at startup and lands in the rolling history file.
+  // An unstamped beat whose owner is gone is the kill signal: uptime math,
+  // memory at death, and boot-id reboot detection all ride the record.
+  const killed = classifyPreviousSession(previousBeat, "boot-b", "2026-09-02T08:00:00.000Z", deadPid);
+  assert.equal(killed.status, "unclean");
+  assert.equal(killed.status === "unclean" && killed.record.rebootedSince, true);
+  assert.equal(killed.status === "unclean" && killed.record.uptimeMs, 3.5 * 60 * 60 * 1000);
+  assert.equal(killed.status === "unclean" && killed.record.rssMiB, 119.3);
+  assert.equal(
+    classifyPreviousSession(previousBeat, "boot-a", "now", deadPid).status === "unclean" &&
+      classifyPreviousSession(previousBeat, "boot-a", "now", deadPid).record.rebootedSince,
+    false,
+  );
+  assert.equal(
+    classifyPreviousSession({ ...previousBeat, bootId: null }, "boot-a", "now", deadPid).status === "unclean" &&
+      classifyPreviousSession({ ...previousBeat, bootId: null }, "boot-a", "now", deadPid).record.rebootedSince,
+    null,
+  );
+
+  // NEVER CLAIM AN UNOBSERVED SHUTDOWN: a missing or unreadable record, and a
+  // record whose owner is still running (a restart's detached child racing
+  // its parent, or two servers sharing one DATA_DIR), are "unknown".
+  assert.equal(classifyPreviousSession(null, "boot-a", "now", deadPid).status, "unknown");
+  assert.equal(
+    classifyPreviousSession({ pid: 1 } as unknown as typeof previousBeat, "boot-a", "now", deadPid).status,
+    "unknown",
+  );
+  assert.equal(classifyPreviousSession(previousBeat, "boot-a", "now", livePid).status, "unknown");
+
+  // OBSERVED ENDINGS ARE NAMED, NEVER CALLED KILLS: clean shutdown, an
+  // app-level crash (the server logged it), and the update / settings restart
+  // paths each report themselves.
+  for (const exitKind of ["clean", "crash", "restart"] as const) {
+    const ended = classifyPreviousSession({ ...previousBeat, exitKind }, "boot-b", "now", deadPid);
+    assert.equal(ended.status, "ended");
+    assert.equal(ended.status === "ended" && ended.exitKind, exitKind);
+  }
+
+  // Round trip through the real filesystem: a killed predecessor is reported
+  // and recorded in the rolling history.
   mkdirSync(join(dataDir, "diagnostics"), { recursive: true });
   writeFileSync(join(dataDir, "diagnostics", "session-heartbeat.json"), JSON.stringify(previousBeat));
-  const record = startSessionPostmortem();
-  assert.ok(record, "an uncleanly ended previous session must be reported");
-  assert.equal(record.pid, 4242);
-  assert.equal(getLastUncleanExit()?.pid, 4242);
+  const status = startSessionPostmortem();
+  assert.equal(status.status, "unclean");
+  assert.equal(getPreviousSessionStatus().status, "unclean");
   assert.equal(getUncleanExitHistory().length, 1);
-  const historyOnDisk = JSON.parse(readFileSync(join(dataDir, "diagnostics", "unclean-exits.json"), "utf8"));
-  assert.equal(historyOnDisk.length, 1);
+  assert.equal(JSON.parse(readFileSync(join(dataDir, "diagnostics", "unclean-exits.json"), "utf8")).length, 1);
 
-  // The live heartbeat replaced the old file and is NOT clean-stamped.
+  // The live beat replaced the old file and carries no ending yet.
   const liveBeat = JSON.parse(readFileSync(join(dataDir, "diagnostics", "session-heartbeat.json"), "utf8"));
   assert.equal(liveBeat.pid, process.pid);
-  assert.equal(liveBeat.cleanExit, undefined);
+  assert.equal(liveBeat.exitKind, undefined);
 
-  // A graceful shutdown stamps clean - the next startup reports nothing.
-  markCleanSessionExit();
+  // The exit stamp names the ending; an unflagged non-zero exit is treated as
+  // a crash rather than being called clean.
+  noteSessionExitKind("restart");
+  finalizeSessionExit(0);
   const stamped = JSON.parse(readFileSync(join(dataDir, "diagnostics", "session-heartbeat.json"), "utf8"));
-  assert.equal(stamped.cleanExit, true);
-  assert.equal(buildUncleanExitRecord(stamped, "boot-x", "now"), null);
+  assert.equal(stamped.exitKind, "restart");
+  assert.equal(classifyPreviousSession(stamped, "boot-x", "now", deadPid).status, "ended");
 } finally {
   if (previousDataDir === undefined) delete process.env.DATA_DIR;
   else process.env.DATA_DIR = previousDataDir;
@@ -77,32 +110,60 @@ try {
 // ── Source pins ─────────────────────────────────────────────────────────────
 const postmortemSource = readSource("packages/server/src/lib/session-postmortem.ts");
 const postmortemFlat = flatten(postmortemSource);
-// Console-silent at runtime: the interval body must never log - its only
-// console surface is the single startup warn.
+// Console-silent at runtime: the ONLY console call in the whole module is the
+// single startup warn plus the unavailable-warn, both inside
+// startSessionPostmortem - the heartbeat and the exit stamp print nothing.
 const intervalBody = postmortemFlat.match(/heartbeatTimer = setInterval\(\(\) => \{(.*?)\}, HEARTBEAT_INTERVAL_MS\);/u);
 assert.ok(intervalBody, "the heartbeat interval must exist");
-assert.doesNotMatch(intervalBody![1]!, /logger\./u, "the heartbeat must stay console-silent at runtime");
+for (const forbidden of [/logger\./u, /console\./u, /process\.stdout/u]) {
+  assert.doesNotMatch(intervalBody![1]!, forbidden, "the heartbeat must stay silent at runtime");
+}
+const finalizeBody = postmortemFlat.match(/export function finalizeSessionExit\(exitCode: number\) \{(.*?)\n\}/su);
+if (finalizeBody) {
+  assert.doesNotMatch(finalizeBody[1]!, /logger\.|console\./u, "the exit stamp must stay silent");
+}
+assert.equal(
+  (postmortemSource.match(/\blogger\.(?:trace|debug|info|warn|error|fatal)\(/gu) ?? []).length,
+  2,
+  "exactly two console surfaces: the startup postmortem line and the unavailable warning",
+);
 // The heartbeat never keeps the process alive, and beats are written
 // atomically so a mid-write kill cannot corrupt the previous beat.
 assert.match(postmortemFlat, /heartbeatTimer\.unref\(\);/u);
 assert.match(postmortemFlat, /writeFileSync\(tmp, JSON\.stringify\(value\)\); renameSync\(tmp, path\);/u);
+// "unknown" is never collapsed into a clean shutdown.
+assert.match(postmortemFlat, /return \{ status: "unknown", reason: "no readable record of a previous session" \};/u);
+assert.match(postmortemFlat, /return \{ status: "unknown", reason: "another server instance is using this data/u);
 
+// The stamp rides process exit, so every deliberate ending is covered without
+// each exit path remembering; the crash handlers name themselves.
 const indexSource = flatten(readSource("packages/server/src/index.ts"));
-// Clean stamp BEFORE the async close: a kill during close still reads unclean.
-assert.match(indexSource, /markCleanSessionExit\(\); await app\.close\(\);/u);
+assert.match(indexSource, /process\.once\("exit", \(code\) => \{ finalizeSessionExit\(code\); \}\);/u);
+assert.equal(
+  (indexSource.match(/noteSessionExitKind\("crash"\)/gu) ?? []).length,
+  2,
+  "both fatal handlers (uncaughtException, unhandledRejection) must name the crash",
+);
 assert.match(indexSource, /startFreezeDetector\(\); startSessionPostmortem\(\);/u);
+
+// The two deliberate restart paths name themselves, so an in-app update or a
+// settings restart is never reported as an Android kill.
+for (const route of ["packages/server/src/routes/updates.routes.ts", "packages/server/src/routes/admin.routes.ts"]) {
+  assert.match(flatten(readSource(route)), /noteSessionExitKind\("restart"\); await app\.close\(\);/u, route);
+}
 
 const appSource = flatten(readSource("packages/server/src/app.ts"));
 assert.match(
   appSource,
-  /lastUncleanExit: getLastUncleanExit\(\), uncleanExitCount: getUncleanExitHistory\(\)\.length,/u,
+  /previousSession: getPreviousSessionStatus\(\), uncleanExitCount: getUncleanExitHistory\(\)\.length,/u,
 );
 
 const clientFormat = flatten(readSource("packages/client/src/lib/support-diagnostics.ts"));
-// The pasted report carries the previous session's fate, and a failed health
-// fetch reads Unavailable - never a clean shutdown nobody observed.
-assert.match(clientFormat, /Previous session: /u);
-assert.match(clientFormat, /killed externally or lost power - last alive /u);
-assert.match(clientFormat, /diagnostics\.lastUncleanExit === undefined \? "Unavailable"/u);
+// The report never renders an unknown fate as a clean shutdown, and the
+// unclean-exit COUNT is reported even when the last session ended normally.
+assert.match(clientFormat, /if \(previous === undefined\) return "Unavailable";/u);
+assert.match(clientFormat, /if \(previous\.status === "unknown"\) return `unknown - \$\{previous\.reason\}`;/u);
+assert.match(clientFormat, /Sessions ended without shutdown: /u);
+assert.doesNotMatch(clientFormat, /: "shut down cleanly" \}/u);
 
 console.log("Termux postmortem regression passed.");

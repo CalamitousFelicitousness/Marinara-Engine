@@ -156,4 +156,34 @@ assert.ok(
 );
 assert.ok("home.browser.bookmarksCompact" in enJson);
 
+// #5820: the Accept action for held edits must never be captioned as a mere
+// suggestion. Users read "Suggestions only. Pick one, or type your own." and
+// concluded Mari had silently done nothing, so the safety mechanism's only
+// visible surface read as a failure of it.
+assert.ok(
+  mariChatFlat.includes(
+    "const chipRowAwaitsApproval = chipRowChips.some((chip) => chip.id === MARI_AUTHORIZATION_ACCEPT_CHIP.id);",
+  ),
+  "the caption must branch on the Accept action being present",
+);
+assert.ok(
+  mariChatFlat.includes(
+    '? localizeUi("ui.chat.homeprofessormarichat.awaitingApprovalHint") : chipRowChips.length > 0 ? "Suggestions only. Pick one, or type your own."',
+  ),
+  "an awaiting-approval row gets its own caption, ahead of the suggestions wording",
+);
+assert.ok("ui.chat.homeprofessormarichat.awaitingApprovalHint" in enJson);
+assert.match(
+  String(enJson["ui.chat.homeprofessormarichat.awaitingApprovalHint"]),
+  /nothing has been changed yet/iu,
+  "the caption states plainly that nothing is applied yet",
+);
+// Declining is a click, not a composed sentence (the reporter asked for
+// "apply or revert" and only apply existed).
+assert.ok(mariChatFlat.includes("MARI_AUTHORIZATION_ACCEPT_CHIP, MARI_AUTHORIZATION_DECLINE_CHIP,"));
+assert.ok(
+  mariChatFlat.includes('if (chip.id === "authorization-accept" || chip.id === "authorization-decline")'),
+  "both authorization chips send immediately instead of filling the composer",
+);
+
 console.log("Mari polish regression passed.");

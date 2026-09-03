@@ -52,6 +52,19 @@ export const MARI_AUTHORIZATION_ACCEPT_CHIP: MariSuggestionChip = {
   tone: "success",
 };
 
+/**
+ * #5820: the matching refusal. Held commands are never executed unless the
+ * user accepts, so declining is just a reply - but without a control for it
+ * the only way to say no was to compose a sentence, which is why users
+ * reported seeing "nowhere to apply or revert".
+ */
+export const MARI_AUTHORIZATION_DECLINE_CHIP: MariSuggestionChip = {
+  id: "authorization-decline",
+  label: "Don't apply",
+  prompt: "Do not apply those changes.",
+  tone: "caution",
+};
+
 export const MARI_STARTER_CHIPS: MariSuggestionChip[] = [
   {
     id: "starter-character",

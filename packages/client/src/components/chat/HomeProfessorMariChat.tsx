@@ -52,6 +52,7 @@ import { toast } from "sonner";
 import {
   LOCAL_SIDECAR_CONNECTION_ID,
   MARI_AUTHORIZATION_ACCEPT_CHIP,
+  MARI_AUTHORIZATION_DECLINE_CHIP,
   MARI_STARTER_CHIPS,
   PROFESSOR_MARI_ID,
   type APIConnection,
@@ -3366,7 +3367,11 @@ export function HomeProfessorMariChat({
   const storeChipsForChat = mariChipsChatId === chatId ? mariChips : [];
   const visibleSuggestionChips =
     pendingDeferredMutations && !storeChipsForChat.some((chip) => chip.id === MARI_AUTHORIZATION_ACCEPT_CHIP.id)
-      ? [MARI_AUTHORIZATION_ACCEPT_CHIP, ...(professorMariSuggestionsEnabled ? storeChipsForChat : [])]
+      ? [
+          MARI_AUTHORIZATION_ACCEPT_CHIP,
+          MARI_AUTHORIZATION_DECLINE_CHIP,
+          ...(professorMariSuggestionsEnabled ? storeChipsForChat : []),
+        ]
       : storeChipsForChat.some((chip) => chip.id === "authorization-accept")
         ? storeChipsForChat.filter((chip) => professorMariSuggestionsEnabled || chip.id === "authorization-accept")
         : professorMariSuggestionsEnabled && storeChipsForChat.length > 0
@@ -4208,18 +4213,26 @@ export function HomeProfessorMariChat({
   const guidedPlan = professorMariSuggestionsEnabled && mariPlanChatId === chatId ? mariPlan : null;
   const guidedPlanStep = guidedPlan ? (guidedPlan[mariPlanCursor] ?? null) : null;
   const chipRowChips = guidedPlanStep ? guidedPlanStep.chips : visibleSuggestionChips;
+  // #5820: the Accept action for held edits is NOT a suggestion. Captioning
+  // the row "Suggestions only" told users the one control that applies Mari's
+  // pending changes was optional flavour text, so they concluded she had
+  // silently done nothing - the visible half of the defer-and-approve
+  // mechanism read as a failure of it.
+  const chipRowAwaitsApproval = chipRowChips.some((chip) => chip.id === MARI_AUTHORIZATION_ACCEPT_CHIP.id);
   const chipRowHint = guidedPlanStep
     ? `${guidedPlanStep.question} Suggestions only; you can type your own answer.`
-    : chipRowChips.length > 0
-      ? "Suggestions only. Pick one, or type your own."
-      : null;
+    : chipRowAwaitsApproval
+      ? localizeUi("ui.chat.homeprofessormarichat.awaitingApprovalHint")
+      : chipRowChips.length > 0
+        ? "Suggestions only. Pick one, or type your own."
+        : null;
   const showSuggestionLoading =
     professorMariSuggestionsEnabled &&
     chipRowChips.length === 0 &&
     workspaceActivity?.toLocaleLowerCase().includes("suggestion") === true;
 
   function handleSuggestionSelect(chip: MariSuggestionChip) {
-    if (chip.id === "authorization-accept") {
+    if (chip.id === "authorization-accept" || chip.id === "authorization-decline") {
       void handleSubmit(chip.prompt);
       return;
     }

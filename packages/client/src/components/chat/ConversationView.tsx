@@ -40,7 +40,11 @@ import { playConfiguredNotificationPing } from "../../lib/notification-sound";
 import { rememberBoundedSetValue } from "../../lib/bounded-set";
 import { useRenderTimer } from "../../lib/perf-diagnostics";
 import { messageHasPendingPostProcessing } from "../../lib/chat-message-extra";
-import { getTranscriptRenderWindow, TRANSCRIPT_RENDER_WINDOW_STEP } from "../../lib/transcript-render-window";
+import {
+  getTranscriptRenderWindow,
+  resolveTranscriptRenderWindowSize,
+  TRANSCRIPT_RENDER_WINDOW_STEP,
+} from "../../lib/transcript-render-window";
 import { useThrottledStreamBuffer } from "../../hooks/use-throttled-stream-buffer";
 import { useConversationCustomEmojis } from "../../hooks/use-conversation-custom-emojis";
 import { useConversationCustomStickers } from "../../hooks/use-conversation-custom-stickers";
@@ -708,9 +712,17 @@ export function ConversationView({
     setTranscriptWindowStart(null);
   }, [chatId]);
 
+  const messagesPerPage = useUIStore((s) => s.messagesPerPage);
+  const maxMountedMessages = resolveTranscriptRenderWindowSize(messagesPerPage);
+  // The window size follows the "Messages per page" setting, which can change while
+  // this chat stays mounted. A pinned start index is relative to the old size, so
+  // re-anchor to the latest messages the same way a chat switch does.
+  useLayoutEffect(() => {
+    setTranscriptWindowStart(null);
+  }, [maxMountedMessages]);
   const transcriptWindow = useMemo(
-    () => getTranscriptRenderWindow(messages, { startIndex: transcriptWindowStart }),
-    [messages, transcriptWindowStart],
+    () => getTranscriptRenderWindow(messages, { maxMountedMessages, startIndex: transcriptWindowStart }),
+    [maxMountedMessages, messages, transcriptWindowStart],
   );
   const gotoRequest = useChatStore((state) => state.gotoRequest);
   // ChatArea clears the request after scrolling; only reveal its transcript window once.
@@ -760,6 +772,21 @@ export function ConversationView({
     if (openedAtBottomChatIdRef.current === chatId) return;
     if (isLoading && (messages?.length ?? 0) === 0) return;
     if (transcriptWindow.hiddenAfterCount > 0) return;
+    // A pending jump-to-message owns the initial scroll position. With an
+    // unbounded render window nothing is ever hidden after the target, so the
+    // hidden-after guard alone no longer defers to the jump. Only treat the chat
+    // as opened once the target is loaded (ChatArea scrolls to it in that same
+    // commit); a target that is still being paged in, out of range, or
+    // unreachable leaves this effect retryable so the chat still opens at the
+    // bottom once the request clears.
+    if (gotoRequest && gotoRequest.chatId === chatId) {
+      const loadedMessageOffset = totalMessageCount - (messages?.length ?? 0);
+      const localIndex = gotoRequest.messageNumber - 1 - loadedMessageOffset;
+      if (messages && localIndex >= 0 && localIndex < messages.length) {
+        openedAtBottomChatIdRef.current = chatId;
+      }
+      return;
+    }
 
     openedAtBottomChatIdRef.current = chatId;
     userScrolledAwayRef.current = false;
@@ -767,10 +794,12 @@ export function ConversationView({
     scheduleScrollToMessagesBottom("auto");
   }, [
     chatId,
+    gotoRequest,
     isFetchingNextPage,
     isLoading,
-    messages?.length,
+    messages,
     scheduleScrollToMessagesBottom,
+    totalMessageCount,
     transcriptWindow.hiddenAfterCount,
   ]);
 

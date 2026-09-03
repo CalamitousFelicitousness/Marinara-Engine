@@ -603,22 +603,42 @@ assert.doesNotMatch(
 );
 assert.match(
   importRoutesSource,
-  /app\.post\("\/marinara-package", \{ bodyLimit: UNBOUNDED_IMPORT_BYTES \}[\s\S]*?req\.file\(\{ limits: \{ fileSize: UNBOUNDED_IMPORT_BYTES \} \}\)/u,
-  "native character and persona packages must opt out of the general upload-size ceiling",
+  /app\.post\("\/marinara-package", \{ bodyLimit: NATIVE_PACKAGE_UPLOAD_LIMIT_BYTES \}[\s\S]*?req\.file\(\{[\s\S]*?fields: 1,[\s\S]*?parts: 2,[\s\S]*?files: 1,[\s\S]*?fileSize: NATIVE_PACKAGE_UPLOAD_LIMIT_BYTES[\s\S]*?\}\)/u,
+  "native character and persona packages must enforce the native package upload ceiling",
 );
 assert.match(
   importRoutesSource,
-  /app\.post\("\/st-character", \{ bodyLimit: UNBOUNDED_IMPORT_BYTES \}[\s\S]*?req\.file\(\{ limits: \{ fileSize: UNBOUNDED_IMPORT_BYTES \} \}\)/u,
-  "character-card uploads must opt out of the general upload-size ceiling",
+  /app\.post\("\/st-character", \{ bodyLimit: IMPORT_BODY_LIMIT_BYTES \}[\s\S]*?req\.file\(\{[\s\S]*?fields: 8,[\s\S]*?parts: 9,[\s\S]*?files: 1,[\s\S]*?fileSize: IMPORT_BODY_LIMIT_BYTES[\s\S]*?\}\)/u,
+  "character-card uploads must enforce the upload-size ceiling",
+);
+assert.match(
+  importRoutesSource,
+  /req\.file\(\{[\s\S]*?fields: 8,[\s\S]*?parts: 9,[\s\S]*?files: 1,[\s\S]*?fieldSize: 64 \* 1024,[\s\S]*?fileSize: IMPORT_BODY_LIMIT_BYTES[\s\S]*?\}\)/u,
+  "single character imports must bound the complete multipart request",
+);
+assert.match(
+  importRoutesSource,
+  /app\.post\("\/st-character\/inspect"[\s\S]*?req\.parts\(\{[\s\S]*?files: MAX_BATCH_IMPORT_FILES,[\s\S]*?parts: MAX_BATCH_IMPORT_FILES \+ 8,[\s\S]*?fileSize: IMPORT_BODY_LIMIT_BYTES[\s\S]*?\}\)[\s\S]*?totalBytes > IMPORT_BODY_LIMIT_BYTES[\s\S]*?status\(413\)\.send\(\{[\s\S]*?Import exceeds the total upload limit/u,
+  "multi-file character imports must stop when their aggregate buffer exceeds the upload limit",
+);
+assert.match(
+  importRoutesSource,
+  /app\.post\("\/marinara-package"[\s\S]*?for \(const entry of entries\)[\s\S]*?NATIVE_PACKAGE_ENTRY_LIMIT_BYTES[\s\S]*?totalUncompressedBytes > NATIVE_PACKAGE_UPLOAD_LIMIT_BYTES[\s\S]*?package contents are too large[\s\S]*?dataEntry\.getData\(\)/u,
+  "native package imports must validate ZIP entry sizes before extraction",
+);
+assert.match(
+  importRoutesSource,
+  /app\.post\("\/st-character\/batch"[\s\S]*?req\.parts\(\{[\s\S]*?files: MAX_BATCH_IMPORT_FILES,[\s\S]*?parts: MAX_BATCH_IMPORT_FILES \+ 8,[\s\S]*?fileSize: IMPORT_BODY_LIMIT_BYTES[\s\S]*?\}\)[\s\S]*?totalBytes > IMPORT_BODY_LIMIT_BYTES[\s\S]*?status\(413\)\.send\(\{[\s\S]*?Import exceeds the total upload limit/u,
+  "multi-file character imports must stop when their aggregate buffer exceeds the upload limit",
 );
 assert.doesNotMatch(
   importRoutesSource,
   /MAX_DATA_JSON_BYTES|MAX_AVATAR_BYTES|MAX_CHARACTER_CARD_CHUNK_SIZE/u,
-  "native packages and compressed PNG metadata must not have fixed byte ceilings",
+  "native packages must not use obsolete metadata ceilings",
 );
 assert.doesNotMatch(
   stBulkImporterSource,
-  /MAX_CHARACTER_CARD_CHUNK_SIZE|maxOutputLength/u,
+  /MAX_CHARACTER_CARD_CHUNK_SIZE/u,
   "folder-scanned PNG character cards must not retain the former metadata byte ceiling",
 );
 assert.equal(embeddedSpriteSizesAreWithinLimits([MAX_FILE_SIZES.SPRITE]), true);
@@ -6566,6 +6586,16 @@ assert.match(backupRoutesSource, /tolerateSourceChanges: true/u);
 assert.match(backupRoutesSource, /record\.usesDataDescriptor \? 0x0808 : 0x0800/u);
 assert.match(backupRoutesSource, /PROFILE_IMPORT_MEMORY_WARNING_BYTES/u);
 assert.match(backupRoutesSource, /PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES = 2 \* 1024 \* 1024 \* 1024/u);
+assert.match(
+  backupRoutesSource,
+  /limits: \{ fields: 0, parts: 1, files: 1, fileSize: PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES \}/u,
+  "profile archive imports must accept only one bounded file part",
+);
+assert.match(
+  backupRoutesSource,
+  /contentLength > PROFILE_IMPORT_BODY_LIMIT_BYTES[\s\S]*Profile import JSON exceeds the upload limit/u,
+  "JSON profile imports must keep the smaller body limit",
+);
 assert.match(backupRoutesSource, /PROFILE_ARCHIVE_TOTAL_UNCOMPRESSED_LIMIT_BYTES = 2 \* 1024 \* 1024 \* 1024/u);
 assert.match(backupRoutesSource, /PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES = 8 \* 1024 \* 1024/u);
 assert.doesNotMatch(backupRoutesSource, /PROFILE_ARCHIVE_ENTRY_COUNT_LIMIT/u);
@@ -7135,6 +7165,10 @@ assert.equal(usesOpenRouterImagesApi(" krea/krea-2-medium "), true);
 assert.equal(usesOpenRouterImagesApi("bytedance-seed/seedream-4.5"), true);
 assert.equal(usesOpenRouterImagesApi("BYTEDANCE-SEED/SEEDREAM-4.5-20251203"), true);
 assert.equal(usesOpenRouterImagesApi("google/gemini-3.1-flash-image-preview"), false);
+assert.equal(usesOpenRouterImagesApi("gpt-image-2"), true);
+assert.equal(usesOpenRouterImagesApi("openai/gpt-image-2"), true);
+assert.equal(usesOpenRouterImagesApi("google/gemini-2.5-flash-image"), false);
+assert.equal(usesOpenRouterImagesApi("google/gemini-3.1-flash-image-preview"), false);
 assert.equal(
   openRouterImagesUrl("https://openrouter.ai/api/v1/chat/completions"),
   "https://openrouter.ai/api/v1/images",
@@ -7152,6 +7186,52 @@ assert.deepEqual(
     prompt: "plate of spaghetti\n\nAvoid in the image: burnt pasta",
     resolution: "1K",
     aspect_ratio: "1:1",
+  },
+);
+assert.deepEqual(
+  buildOpenRouterImagesRequest({
+    prompt: "portrait of a red fox",
+    model: "gpt-image-2",
+    width: 1024,
+    height: 1536,
+  }),
+  {
+    model: "openai/gpt-image-2",
+    prompt: "portrait of a red fox",
+    aspect_ratio: "2:3",
+  },
+);
+assert.deepEqual(
+  buildOpenRouterImagesRequest({ prompt: "landscape", model: "openai/gpt-image-1", width: 1024, height: 576 }),
+  { model: "openai/gpt-image-1", prompt: "landscape", aspect_ratio: "3:2" },
+);
+assert.deepEqual(
+  buildOpenRouterImagesRequest({
+    prompt: "portrait",
+    model: "google/gemini-2.5-flash-image",
+    width: 1024,
+    height: 1536,
+  }),
+  { model: "google/gemini-2.5-flash-image", prompt: "portrait", resolution: "1K", aspect_ratio: "9:16" },
+);
+assert.deepEqual(
+  buildOpenRouterImagesRequest({
+    prompt: "two subjects",
+    model: "openai/gpt-image-1",
+    quality: "high",
+    transparentBackground: true,
+    referenceImages: ["data:image/png;base64,AAAA", "data:image/png;base64,BBBB"],
+  }),
+  {
+    model: "openai/gpt-image-1",
+    prompt: "two subjects",
+    quality: "high",
+    background: "transparent",
+    aspect_ratio: "1:1",
+    input_references: [
+      { type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } },
+      { type: "image_url", image_url: { url: "data:image/png;base64,BBBB" } },
+    ],
   },
 );
 assert.deepEqual(
@@ -9807,7 +9887,7 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
     data: {
       ...card.data,
       name: "Large Gallery Import",
-      description: "x".repeat(MAX_FILE_SIZES.CHARACTER_JSON + 1),
+      description: "x".repeat(100 * 1024),
     },
   };
   const largeCardText = Buffer.from(JSON.stringify(largeCard), "utf8").toString("base64");
@@ -9825,16 +9905,16 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
   ]);
   assert.equal(
     (extractCharaFromPng(largeZtxtPng) as { data?: { description?: string } } | null)?.data?.description?.length,
-    MAX_FILE_SIZES.CHARACTER_JSON + 1,
-    "Server import must accept valid zTXt card metadata beyond the former byte limit",
+    100 * 1024,
+    "Server import must accept valid zTXt card metadata below the decompression limit",
   );
   const largeClientParsed = await parsePngCharacterCard(
     new File([new Uint8Array(largeZtxtPng)], "large-card.png", { type: "image/png" }),
   );
   assert.equal(
     (largeClientParsed.json as { data?: { description?: string } }).data?.description?.length,
-    MAX_FILE_SIZES.CHARACTER_JSON + 1,
-    "Client import must accept valid zTXt card metadata beyond the former byte limit",
+    100 * 1024,
+    "Client import must accept valid zTXt card metadata below the decompression limit",
   );
 
   const { injectTextChunk } = await import("../../packages/server/src/routes/characters.routes.js");

@@ -1510,7 +1510,7 @@ export function AppShell() {
           onMouseDown={startRightPanelResize}
           onKeyDown={adjustRightPanelWidth}
           className="absolute inset-y-0 z-40 hidden w-1 cursor-col-resize bg-transparent transition-colors hover:bg-[var(--primary)]/30 focus-visible:bg-[var(--primary)]/40 focus-visible:outline-none md:block"
-          style={{ right: rightPanelOpen ? liveRightPanelWidth : 0 }}
+          style={{ right: rightPanelOpen ? Math.max(0, liveRightPanelWidth - 4) : 0 }}
         />
       )}
 

@@ -1385,9 +1385,15 @@ async function generateAtlasCloudImage(
 
 async function generateNanoGPT(baseUrl: string, apiKey: string, request: ImageGenRequest): Promise<ImageGenResult> {
   const url = nanoGPTImagesUrl(baseUrl);
+  const width = request.width ?? 1024;
+  const height = request.height ?? 1024;
+  const model = request.model?.trim().toLowerCase() ?? "";
+  const isNanoBanana = model.includes("nano-banana");
   const size = isOpenAIGptImageModel(request.model)
     ? openAIImageSize(request)
-    : `${request.width ?? 1024}x${request.height ?? 1024}`;
+    : isNanoBanana && height > width
+      ? "768x1344"
+      : `${width}x${height}`;
   const body: Record<string, unknown> = {
     prompt: request.prompt,
     n: 1,
@@ -2608,6 +2614,27 @@ function openRouterAspectRatio(width?: number, height?: number): string | null {
   )[0];
 }
 
+function isOpenRouterNanoBananaModel(model: string): boolean {
+  const lower = model.trim().toLowerCase();
+  return lower.includes("nano-banana") || /^google\/gemini-(?:2\.5-flash-image|3(?:\.1)?-.*-image)/u.test(lower);
+}
+
+function isOpenRouterGptImageModel(model: string): boolean {
+  return model.trim().toLowerCase().startsWith("openai/gpt-image-");
+}
+
+function openRouterImageAspectRatio(model: string | undefined, width?: number, height?: number): string | null {
+  const normalizedModel = model?.trim() ?? "";
+  if (isOpenRouterNanoBananaModel(normalizedModel) && (width ?? 1024) < (height ?? 1024)) return "9:16";
+  if (isOpenRouterGptImageModel(normalizedModel)) {
+    const resolvedWidth = width ?? 1024;
+    const resolvedHeight = height ?? 1024;
+    const ratio = resolvedWidth / Math.max(1, resolvedHeight);
+    return ratio >= 1.2 ? "3:2" : ratio <= 0.8 ? "2:3" : "1:1";
+  }
+  return openRouterAspectRatio(width, height);
+}
+
 export function openRouterModalities(model?: string): string[] {
   const lower = model?.trim().toLowerCase() ?? "";
   if (
@@ -2623,8 +2650,10 @@ export function openRouterModalities(model?: string): string[] {
 }
 
 export function usesOpenRouterImagesApi(model?: string): boolean {
-  const lower = model?.trim().toLowerCase() ?? "";
-  return lower.startsWith("krea/") || lower.startsWith("bytedance-seed/seedream-");
+  const lower = normalizeOpenRouterImagesApiModel(model)?.toLowerCase() ?? "";
+  return (
+    lower.startsWith("krea/") || lower.startsWith("bytedance-seed/seedream-") || lower.startsWith("openai/gpt-image-")
+  );
 }
 
 export function openRouterImagesUrl(baseUrl: string): string {
@@ -2646,24 +2675,43 @@ export function openRouterImagesUrl(baseUrl: string): string {
   }
 }
 
+function normalizeOpenRouterImagesApiModel(model?: string): string | undefined {
+  const trimmed = model?.trim();
+  if (!trimmed) return undefined;
+  return /^gpt-image-/i.test(trimmed) ? `openai/${trimmed.toLowerCase()}` : trimmed;
+}
+
 export function buildOpenRouterImagesRequest(request: ImageGenRequest): Record<string, unknown> {
   const prompt = request.negativePrompt
     ? `${request.prompt}\n\nAvoid in the image: ${request.negativePrompt}`
     : request.prompt;
+  const model = normalizeOpenRouterImagesApiModel(request.model) ?? "krea/krea-2-medium";
+  const isGptImage = isOpenRouterGptImageModel(model);
   const body: Record<string, unknown> = {
-    model: request.model || "krea/krea-2-medium",
+    model,
     prompt,
-    resolution: "1K",
+    ...(isGptImage ? {} : { resolution: "1K" }),
   };
-  const aspectRatio = openRouterAspectRatio(request.width, request.height);
+  if (isGptImage) {
+    if (request.quality) body.quality = request.quality;
+    if (request.transparentBackground) body.background = "transparent";
+  }
+  const aspectRatio = openRouterImageAspectRatio(model, request.width, request.height);
   if (aspectRatio) body.aspect_ratio = aspectRatio;
 
   const references = request.referenceImages ?? (request.referenceImage ? [request.referenceImage] : []);
   if (references.length > 0) {
-    body.input_references = references.slice(0, 1).map((reference) => ({
-      type: "image_url",
-      image_url: { url: imageDataUrlFromReference(reference) },
-    }));
+    const maxReferences = isGptImage ? 16 : 1;
+    const maxReferenceBytes = 64 * 1024 * 1024;
+    let referenceBytes = 0;
+    body.input_references = references.slice(0, maxReferences).flatMap((reference) => {
+      const trimmed = reference.trim();
+      const base64 = trimmed.startsWith("data:") ? trimmed.slice(trimmed.indexOf(",") + 1) : trimmed;
+      const decodedBytes = Buffer.byteLength(base64.replace(/\s+/g, ""), "base64");
+      if (referenceBytes + decodedBytes > maxReferenceBytes) return [];
+      referenceBytes += decodedBytes;
+      return [{ type: "image_url", image_url: { url: imageDataUrlFromReference(reference) } }];
+    });
   }
   return body;
 }
@@ -2725,13 +2773,14 @@ async function generateOpenRouter(baseUrl: string, apiKey: string, request: Imag
     return generateOpenRouterImageApi(baseUrl, apiKey, request);
   }
 
+  const model = request.model?.trim() || "google/gemini-2.5-flash-image";
   const body: Record<string, unknown> = {
-    model: request.model || "google/gemini-2.5-flash-image",
+    model,
     messages: [{ role: "user", content: buildChatImageMessageContent(request) }],
-    modalities: openRouterModalities(request.model),
+    modalities: openRouterModalities(model),
     stream: false,
   };
-  const aspectRatio = openRouterAspectRatio(request.width, request.height);
+  const aspectRatio = openRouterImageAspectRatio(model, request.width, request.height);
   if (aspectRatio) body.image_config = { aspect_ratio: aspectRatio };
 
   const resp = await imageFetch(

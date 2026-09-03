@@ -4,6 +4,10 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Fixed PNG metadata decompression, Nano Banana full-body image requests, GPT Image 2 OpenRouter routing, capability swipe timestamps, and bounded import uploads.
+- Prevented profile preview tokens from being sent over non-local HTTP connections.
+- Moved the desktop right-panel resize hit area away from the main chat scrollbar.
+
 ### Added
 
 - The server now notices when its previous session ended without a recorded shutdown (#5506): a tiny status file is refreshed silently every half minute while running (nothing is printed to the console), every deliberate ending stamps itself, and the next start reports which of those happened - a normal shutdown, a crash, an update or settings restart, or a session that simply stopped with no shutdown recorded, along with when it was last alive, how long it ran, its memory use at the time, and whether the device rebooted in between. The cause of a session that just stops is *not* something the server can know - it is ended from outside with no chance to log anything - so the report says exactly that and leaves the diagnosis to the surrounding evidence. It never guesses elsewhere either: a first run, an unreadable record, or a second server sharing the same data folder all report "unknown" rather than claiming a shutdown nobody saw. The finding appears as one line at startup and as "Previous session" and "Sessions ended without shutdown" lines in Support Diagnostics, so reports from Android/Termux phones carry the evidence automatically.

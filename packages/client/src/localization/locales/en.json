@@ -7912,6 +7912,7 @@
   "ui.panels.importsettings.profileImportMissingAssets_one": "{{count}} asset file missing from the ZIP. Imported the rest.",
   "ui.panels.importsettings.profileImportMissingAssets_other": "{{count}} asset files missing from the ZIP. Imported the rest.",
   "ui.panels.importsettings.profileImportMissingLabel": "Missing",
+  "ui.panels.importsettings.profileImportRequiresHttps": "Profile import requires HTTPS outside local development.",
   "ui.panels.importsettings.profileImportSecurityWarnings_one": "{{count}} import security warning.",
   "ui.panels.importsettings.profileImportSecurityWarnings_other": "{{count}} import security warnings.",
   "ui.panels.importsettings.profileImportSkippedAssets_one": "{{count}} asset file could not be imported and was skipped.",

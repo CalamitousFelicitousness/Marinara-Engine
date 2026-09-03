@@ -2,6 +2,7 @@
 // Routes: Backup
 // ──────────────────────────────────────────────
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { Transform } from "node:stream";
 import { extname, join, relative } from "path";
 import { createReadStream, createWriteStream, existsSync, readdirSync, statSync } from "fs";
 import type { Dirent, WriteStream } from "fs";
@@ -2933,6 +2934,10 @@ async function readProfileArchiveAsset(
 async function readProfileImportRequest(req: FastifyRequest): Promise<ProfileImportInput> {
   const contentType = String(req.headers["content-type"] ?? "").toLowerCase();
   if (!contentType.includes("multipart/form-data")) {
+    const contentLength = Number(req.headers["content-length"] ?? 0);
+    if (Number.isFinite(contentLength) && contentLength > PROFILE_IMPORT_BODY_LIMIT_BYTES) {
+      throw new ProfileImportRequestError("Profile import JSON exceeds the upload limit.");
+    }
     const envelope = req.body as ExportEnvelope;
     return { envelope };
   }
@@ -2941,11 +2946,18 @@ async function readProfileImportRequest(req: FastifyRequest): Promise<ProfileImp
   const archivePath = join(uploadDir, "profile.zip");
   try {
     // Stream uploads to disk so large profile archives do not need to fit in server memory.
-    const file = await req.file({ limits: { fileSize: Number.MAX_SAFE_INTEGER } });
-    if (!file) throw new ProfileImportRequestError("No profile archive uploaded.");
-    const fileStream = file.file as typeof file.file & { truncated?: boolean };
-    await pipeline(fileStream, createWriteStream(archivePath));
-    if (fileStream.truncated) throw new ProfileImportRequestError("Profile archive upload was truncated.");
+    let receivedFile = false;
+    for await (const part of req.parts({
+      limits: { fields: 0, parts: 1, files: 1, fileSize: PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES },
+    })) {
+      if (part.type !== "file") throw new ProfileImportRequestError("No profile archive uploaded.");
+      if (receivedFile) throw new ProfileImportRequestError("Only one profile archive is allowed.");
+      receivedFile = true;
+      const fileStream = part.file as typeof part.file & { truncated?: boolean };
+      await pipeline(fileStream, createWriteStream(archivePath));
+      if (fileStream.truncated) throw new ProfileImportRequestError("Profile archive upload was truncated.");
+    }
+    if (!receivedFile) throw new ProfileImportRequestError("No profile archive uploaded.");
     const zip = await readProfileZipArchive(archivePath);
     const { envelope, basePath } = await readProfileEnvelopeFromArchive(zip);
     const warnings: ProfileImportWarning[] = [];
@@ -4188,9 +4200,51 @@ export async function backupRoutes(app: FastifyInstance) {
       if (!retainInputForPreview) await importInput.cleanup?.();
     }
   };
+  const profileImportJsonBodyLimit = async (
+    req: FastifyRequest,
+    _reply: FastifyReply,
+    payload: NodeJS.ReadableStream,
+  ) => {
+    const contentType = String(req.headers["content-type"] ?? "").toLowerCase();
+    if (contentType.includes("multipart/form-data")) return payload;
+    let received = 0;
+    const limiter = new Transform({
+      transform(chunk, _encoding, callback) {
+        received += Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(String(chunk));
+        if (received > PROFILE_IMPORT_BODY_LIMIT_BYTES) {
+          const error = new Error("Profile import JSON exceeds the upload limit.") as Error & { statusCode: number };
+          error.statusCode = 413;
+          callback(error);
+          return;
+        }
+        callback(null, chunk);
+      },
+    });
+    const receivedEncodedLength = Number(
+      (payload as NodeJS.ReadableStream & { receivedEncodedLength?: number }).receivedEncodedLength,
+    );
+    Object.defineProperty(limiter, "receivedEncodedLength", {
+      configurable: true,
+      get: () => {
+        const currentLength = Number(
+          (payload as NodeJS.ReadableStream & { receivedEncodedLength?: number }).receivedEncodedLength,
+        );
+        return Number.isFinite(currentLength) ? currentLength : receivedEncodedLength;
+      },
+    });
+    void pipeline(payload, limiter).catch(() => {
+      (payload as NodeJS.ReadableStream & { destroy: () => void }).destroy();
+      limiter.destroy();
+    });
+    return limiter;
+  };
   app.post(
     "/import-profile",
-    { bodyLimit: Number.MAX_SAFE_INTEGER, config: { rateLimit: BACKUP_RATE_LIMIT } },
+    {
+      bodyLimit: PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES,
+      config: { rateLimit: BACKUP_RATE_LIMIT },
+      preParsing: profileImportJsonBodyLimit,
+    },
     importProfile,
   );
 }

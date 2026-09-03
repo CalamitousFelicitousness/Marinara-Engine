@@ -6892,6 +6892,10 @@ function ImportSettings() {
       elapsedSeconds: 0,
     });
     try {
+      const isLoopbackHost = /^(?:localhost|127\.0\.0\.1|\[::1\])$/i.test(window.location.hostname);
+      if (window.location.protocol !== "https:" && !isLoopbackHost) {
+        throw new Error(localizeUi("ui.panels.importsettings.profileImportRequiresHttps"));
+      }
       const isZip = await isZipFile(file);
       let profileText = "";
       if (!isZip) {

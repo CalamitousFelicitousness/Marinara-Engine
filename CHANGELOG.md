@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Removed the unfinished Slurp creator-feed material from the Noodle guides.
+
 - Moved Noodle and Slurp image canvas settings out of Engine Settings and into their respective package settings.
 
 - Fixed PNG metadata decompression, Nano Banana full-body image requests, GPT Image 2 OpenRouter routing, capability swipe timestamps, and bounded import uploads.

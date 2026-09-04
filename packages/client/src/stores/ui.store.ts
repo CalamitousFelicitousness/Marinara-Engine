@@ -2609,7 +2609,7 @@ export const useUIStore = create<UIState>()(
     }),
     {
       name: "marinara-engine-ui",
-      // v97 -> v98: add Home browser chrome visibility settings.
+      // v98 -> v99: move legacy Noodle image dimensions to package settings.
       version: 99,
       // Debounce localStorage writes to avoid sync I/O on every state change
       storage: createJSONStorage(() => {

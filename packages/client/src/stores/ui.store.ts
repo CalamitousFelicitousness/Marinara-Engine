@@ -2610,7 +2610,7 @@ export const useUIStore = create<UIState>()(
     {
       name: "marinara-engine-ui",
       // v97 -> v98: add Home browser chrome visibility settings.
-      version: 98,
+      version: 99,
       // Debounce localStorage writes to avoid sync I/O on every state change
       storage: createJSONStorage(() => {
         let timer: ReturnType<typeof setTimeout> | null = null;

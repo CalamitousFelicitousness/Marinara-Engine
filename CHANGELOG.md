@@ -39,6 +39,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Marinara Engine no longer gets silently force-killed on Steam Deck during active use (#5838). Games claim most of the Deck's shared memory, and the server used to keep every opened chat in memory until the system killed it without a trace. On SteamOS the server now keeps at most 8 chats in memory by default - the same protection Termux already had. Set `MARINARA_MAX_RESIDENT_CHATS` to raise the cap, or to `0` to turn the cap off. Termux gets the same default built into the server as well, so a typo in the setting can no longer switch that protection off silently.
+
 - Mobile message-action icons no longer keep an iPhone-only hover color after being tapped, and Peek Prompt now shows a readable middle dot between its section and estimated-token totals (#5825).
 - Mobile chat overlays stay usable around the software keyboard: focused toolbar menus remain inside the visible viewport while editing, and chats with Echo Chamber leave enough top scroll clearance to keep Load More tappable below its collapsed window (#5817, #5822).
 - The button that applies changes Mari is holding for your approval is no longer labelled as a suggestion (#5820). It sat under the caption "Suggestions only. Pick one, or type your own.", which told you the one control that applies her pending edits was optional - so it looked like she had quietly done nothing. The row now says she is waiting for approval and that nothing has been changed yet, and a "Don't apply" button sits next to Accept so declining is a click rather than a typed sentence.

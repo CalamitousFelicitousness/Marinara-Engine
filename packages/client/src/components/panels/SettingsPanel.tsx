@@ -899,14 +899,6 @@ const SETTINGS_SEARCHABLE_CONTROLS: readonly SettingsSearchableControlMeta[] = [
     kind: "Input",
   },
   {
-    id: "image-noodle-size",
-    sectionId: "image-generation",
-    label: "Noodle image size",
-    description: "Set default Noodle timeline image dimensions.",
-    aliases: ["image", "resolution", "canvas", "noodle", "timeline"],
-    kind: "Input",
-  },
-  {
     id: "image-game-size",
     sectionId: "image-generation",
     label: "Game scene image size",
@@ -3967,9 +3959,6 @@ function ImageGenerationSettings() {
   const imageIllustrationWidth = useUIStore((s) => s.imageIllustrationWidth);
   const imageIllustrationHeight = useUIStore((s) => s.imageIllustrationHeight);
   const setImageIllustrationDimensions = useUIStore((s) => s.setImageIllustrationDimensions);
-  const imageNoodleWidth = useUIStore((s) => s.imageNoodleWidth);
-  const imageNoodleHeight = useUIStore((s) => s.imageNoodleHeight);
-  const setImageNoodleDimensions = useUIStore((s) => s.setImageNoodleDimensions);
   const imageGameWidth = useUIStore((s) => s.imageGameWidth);
   const imageGameHeight = useUIStore((s) => s.imageGameHeight);
   const setImageGameDimensions = useUIStore((s) => s.setImageGameDimensions);
@@ -4005,14 +3994,6 @@ function ImageGenerationSettings() {
           width={imageIllustrationWidth}
           height={imageIllustrationHeight}
           onCommit={setImageIllustrationDimensions}
-        />
-        <ImageDimensionRow
-          controlId="image-noodle-size"
-          label={localizeUi("settings.controls.noodleGeneration.label")}
-          help={localizeUi("settings.controls.noodleGeneration.help")}
-          width={imageNoodleWidth}
-          height={imageNoodleHeight}
-          onCommit={setImageNoodleDimensions}
         />
         <ImageDimensionRow
           controlId="image-game-size"

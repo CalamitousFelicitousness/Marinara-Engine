@@ -5,6 +5,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 ## [Unreleased]
 
 - Removed the unfinished Slurp creator-feed material from the Noodle guides.
+- Updated the timeout reference in `.env.example` to use Slurp consistently.
 
 - Moved Noodle and Slurp image canvas settings out of Engine Settings and into their respective package settings.
 

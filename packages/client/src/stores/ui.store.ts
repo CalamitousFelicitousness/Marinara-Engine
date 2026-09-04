@@ -742,8 +742,6 @@ interface UIState {
   imageBackgroundHeight: number;
   imageIllustrationWidth: number;
   imageIllustrationHeight: number;
-  imageNoodleWidth: number;
-  imageNoodleHeight: number;
   imageGameWidth: number;
   imageGameHeight: number;
   imagePortraitWidth: number;
@@ -1088,7 +1086,6 @@ interface UIState {
   setReviewImagePromptsBeforeSend: (v: boolean) => void;
   setImageBackgroundDimensions: (width: number, height: number) => void;
   setImageIllustrationDimensions: (width: number, height: number) => void;
-  setImageNoodleDimensions: (width: number, height: number) => void;
   setImageGameDimensions: (width: number, height: number) => void;
   setImagePortraitDimensions: (width: number, height: number) => void;
   setImageSelfieDimensions: (width: number, height: number) => void;
@@ -1310,8 +1307,6 @@ export function pickSyncedSettings(state: UIState) {
     imageBackgroundHeight: state.imageBackgroundHeight,
     imageIllustrationWidth: state.imageIllustrationWidth,
     imageIllustrationHeight: state.imageIllustrationHeight,
-    imageNoodleWidth: state.imageNoodleWidth,
-    imageNoodleHeight: state.imageNoodleHeight,
     imageGameWidth: state.imageGameWidth,
     imageGameHeight: state.imageGameHeight,
     imagePortraitWidth: state.imagePortraitWidth,
@@ -1528,8 +1523,6 @@ export const useUIStore = create<UIState>()(
       imageBackgroundHeight: 720,
       imageIllustrationWidth: 896,
       imageIllustrationHeight: 1280,
-      imageNoodleWidth: 1024,
-      imageNoodleHeight: 1536,
       imageGameWidth: 1280,
       imageGameHeight: 720,
       imagePortraitWidth: 1024,
@@ -2288,11 +2281,6 @@ export const useUIStore = create<UIState>()(
           imageIllustrationWidth: clampImageDimension(width),
           imageIllustrationHeight: clampImageDimension(height),
         }),
-      setImageNoodleDimensions: (width, height) =>
-        set({
-          imageNoodleWidth: clampImageDimension(width),
-          imageNoodleHeight: clampImageDimension(height),
-        }),
       setImageGameDimensions: (width, height) =>
         set({
           imageGameWidth: clampImageDimension(width),
@@ -2667,6 +2655,19 @@ export const useUIStore = create<UIState>()(
         };
       }),
       migrate: (persisted: any, version: number) => {
+        if (version <= 98 && (persisted.imageNoodleWidth !== undefined || persisted.imageNoodleHeight !== undefined)) {
+          try {
+            localStorage.setItem(
+              "marinara:noodle:legacy-image-size",
+              JSON.stringify({
+                width: persisted.imageNoodleWidth,
+                height: persisted.imageNoodleHeight,
+              }),
+            );
+          } catch {
+            // Package settings use their defaults if browser storage is unavailable.
+          }
+        }
         if (version <= 97) {
           if (persisted.showHomeBrowserAddressBar === undefined) persisted.showHomeBrowserAddressBar = true;
           if (persisted.showHomeBrowserDesktopBookmarksOnOtherTabs === undefined) {
@@ -3194,11 +3195,6 @@ export const useUIStore = create<UIState>()(
         if (version <= 88 && persisted.reduceAmbientEffects === undefined) {
           persisted.reduceAmbientEffects = false;
         }
-        // v89 -> v90: give Noodle timeline images their own provider-compatible canvas.
-        if (version <= 89) {
-          if (persisted.imageNoodleWidth === undefined) persisted.imageNoodleWidth = 1024;
-          if (persisted.imageNoodleHeight === undefined) persisted.imageNoodleHeight = 1536;
-        }
         // v90 -> v91: make the Home navigation assistant an explicit, default-on preference.
         if (version <= 90 && persisted.professorMariNavigationEnabled === undefined) {
           persisted.professorMariNavigationEnabled = true;
@@ -3328,8 +3324,6 @@ export const useUIStore = create<UIState>()(
         imageBackgroundHeight: state.imageBackgroundHeight,
         imageIllustrationWidth: state.imageIllustrationWidth,
         imageIllustrationHeight: state.imageIllustrationHeight,
-        imageNoodleWidth: state.imageNoodleWidth,
-        imageNoodleHeight: state.imageNoodleHeight,
         imageGameWidth: state.imageGameWidth,
         imageGameHeight: state.imageGameHeight,
         imagePortraitWidth: state.imagePortraitWidth,

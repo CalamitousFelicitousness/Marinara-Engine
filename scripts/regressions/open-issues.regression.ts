@@ -524,6 +524,15 @@ const stCharacterImporterSource = readFileSync(
   join(REPOSITORY_ROOT, "packages/server/src/services/import/st-character.importer.ts"),
   "utf8",
 );
+const marinaraImporterSource = readFileSync(
+  join(REPOSITORY_ROOT, "packages/server/src/services/import/marinara.importer.ts"),
+  "utf8",
+);
+const importRoutesSource = readFileSync(join(REPOSITORY_ROOT, "packages/server/src/routes/import.routes.ts"), "utf8");
+const stBulkImporterSource = readFileSync(
+  join(REPOSITORY_ROOT, "packages/server/src/services/import/st-bulk.importer.ts"),
+  "utf8",
+);
 const portableSprites = [
   { filename: "happy.png", data: "data:image/png;base64,iVBORw0KGgo=" },
   { filename: "full_idle.webp", data: "data:image/webp;base64,UklGRg==" },
@@ -577,6 +586,60 @@ assert.match(
   stCharacterImporterSource,
   /await restoreSprites\(embeddedMarinaraSprites, charId\)/u,
   "PNG import must restore embedded sprites under the newly imported character ID",
+);
+const nativeGalleryRestoreMatch = marinaraImporterSource.match(
+  /export async function restoreSprites[\s\S]*?export async function importMarinara/u,
+);
+assert.ok(nativeGalleryRestoreMatch, "native gallery restore implementation must remain discoverable");
+assert.doesNotMatch(
+  nativeGalleryRestoreMatch[0],
+  /MAX_FILE_SIZES|embeddedSpriteSizesAreWithinLimits|MAX_EMBEDDED_SPRITE_DATA_CHARS/u,
+  "native character and persona imports must not reject galleries by byte size",
+);
+assert.doesNotMatch(
+  stCharacterImporterSource,
+  /MAX_CHARX_ENTRIES|MAX_CHARX_ENTRY_BYTES|MAX_CHARX_TOTAL_BYTES/u,
+  "CharX imports must not reject galleries by entry count or byte size",
+);
+assert.match(
+  importRoutesSource,
+  /app\.post\("\/marinara-package", \{ bodyLimit: NATIVE_PACKAGE_UPLOAD_LIMIT_BYTES \}[\s\S]*?req\.file\(\{[\s\S]*?fields: 1,[\s\S]*?parts: 2,[\s\S]*?files: 1,[\s\S]*?fileSize: NATIVE_PACKAGE_UPLOAD_LIMIT_BYTES[\s\S]*?\}\)/u,
+  "native character and persona packages must enforce the native package upload ceiling",
+);
+assert.match(
+  importRoutesSource,
+  /app\.post\("\/st-character", \{ bodyLimit: IMPORT_BODY_LIMIT_BYTES \}[\s\S]*?req\.file\(\{[\s\S]*?fields: 8,[\s\S]*?parts: 9,[\s\S]*?files: 1,[\s\S]*?fileSize: IMPORT_BODY_LIMIT_BYTES[\s\S]*?\}\)/u,
+  "character-card uploads must enforce the upload-size ceiling",
+);
+assert.match(
+  importRoutesSource,
+  /req\.file\(\{[\s\S]*?fields: 8,[\s\S]*?parts: 9,[\s\S]*?files: 1,[\s\S]*?fieldSize: 64 \* 1024,[\s\S]*?fileSize: IMPORT_BODY_LIMIT_BYTES[\s\S]*?\}\)/u,
+  "single character imports must bound the complete multipart request",
+);
+assert.match(
+  importRoutesSource,
+  /app\.post\("\/st-character\/inspect"[\s\S]*?req\.parts\(\{[\s\S]*?files: MAX_BATCH_IMPORT_FILES,[\s\S]*?parts: MAX_BATCH_IMPORT_FILES \+ 8,[\s\S]*?fileSize: IMPORT_BODY_LIMIT_BYTES[\s\S]*?\}\)[\s\S]*?totalBytes > IMPORT_BODY_LIMIT_BYTES[\s\S]*?status\(413\)\.send\(\{[\s\S]*?Import exceeds the total upload limit/u,
+  "multi-file character imports must stop when their aggregate buffer exceeds the upload limit",
+);
+assert.match(
+  importRoutesSource,
+  /app\.post\("\/marinara-package"[\s\S]*?for \(const entry of entries\)[\s\S]*?NATIVE_PACKAGE_ENTRY_LIMIT_BYTES[\s\S]*?totalUncompressedBytes > NATIVE_PACKAGE_UPLOAD_LIMIT_BYTES[\s\S]*?package contents are too large[\s\S]*?dataEntry\.getData\(\)/u,
+  "native package imports must validate ZIP entry sizes before extraction",
+);
+assert.match(
+  importRoutesSource,
+  /app\.post\("\/st-character\/batch"[\s\S]*?req\.parts\(\{[\s\S]*?files: MAX_BATCH_IMPORT_FILES,[\s\S]*?parts: MAX_BATCH_IMPORT_FILES \+ 8,[\s\S]*?fileSize: IMPORT_BODY_LIMIT_BYTES[\s\S]*?\}\)[\s\S]*?totalBytes > IMPORT_BODY_LIMIT_BYTES[\s\S]*?status\(413\)\.send\(\{[\s\S]*?Import exceeds the total upload limit/u,
+  "multi-file character imports must stop when their aggregate buffer exceeds the upload limit",
+);
+assert.doesNotMatch(
+  importRoutesSource,
+  /MAX_DATA_JSON_BYTES|MAX_AVATAR_BYTES|MAX_CHARACTER_CARD_CHUNK_SIZE/u,
+  "native packages must not use obsolete metadata ceilings",
+);
+assert.doesNotMatch(
+  stBulkImporterSource,
+  /MAX_CHARACTER_CARD_CHUNK_SIZE/u,
+  "folder-scanned PNG character cards must not retain the former metadata byte ceiling",
 );
 assert.equal(embeddedSpriteSizesAreWithinLimits([MAX_FILE_SIZES.SPRITE]), true);
 assert.equal(embeddedSpriteSizesAreWithinLimits([MAX_FILE_SIZES.SPRITE + 1]), false);
@@ -646,6 +709,8 @@ for (const expectedLine of [
   "Commit: abcdef123456",
   "Server OS: Linux 6.8.0 (x64)",
   "Server memory: heap 768 / 1536 MiB; RSS 1024 MiB",
+  "Background wake lock: not reported",
+  "Last detected freeze: none detected",
   "Client OS: macOS 15.6",
   "Browser / app shell: Marinara test shell",
   "GPU: Test GPU",
@@ -1257,11 +1322,6 @@ assert.deepEqual(resolveIllustratorImageSize({ width: 960, height: 540 }, "portr
   width: 540,
   height: 960,
 });
-assert.deepEqual(parseImageGenerationUserSettings(null).noodle, { width: 1024, height: 1536 });
-assert.deepEqual(parseImageGenerationUserSettings('{"imageNoodleWidth":1536,"imageNoodleHeight":1024}').noodle, {
-  width: 1536,
-  height: 1024,
-});
 
 const minimalProfessorMariPersona = buildPersonaCreateRow(
   { name: "Minimal helper persona" },
@@ -1314,6 +1374,7 @@ assert.deepEqual(
     id: "fresh-chat",
     characterIds: ["character-a", "character-b"],
     metadata: { tags: ["saved-tag"], gameNpcs: [] },
+    personaCharacterId: null,
   },
   "Fresh chat responses must expose parsed tags and character IDs",
 );
@@ -5250,6 +5311,10 @@ const quickSwitcherMobileSource = readFileSync(
   new URL("../../packages/client/src/components/chat/QuickSwitcherMobile.tsx", import.meta.url),
   "utf8",
 );
+const contextBudgetIndicatorSource = readFileSync(
+  new URL("../../packages/client/src/components/chat/ContextBudgetIndicator.tsx", import.meta.url),
+  "utf8",
+);
 const lorebookHooksSource = readFileSync(
   new URL("../../packages/client/src/hooks/use-lorebooks.ts", import.meta.url),
   "utf8",
@@ -5269,6 +5334,26 @@ assert.deepEqual(professorMariContextBudget, {
   percentage: (12_345 / 128_000) * 100,
 });
 assert.equal(formatCompactTokenCount(professorMariContextBudget!.usedTokens), "12.3k");
+assert.equal(
+  resolveProfessorMariContextBudget(
+    [
+      {
+        role: "assistant",
+        extra: {
+          generationInfo: {
+            tokensPrompt: 3_500,
+            tokensCachedPrompt: 75_000,
+            tokensCacheWritePrompt: 5_000,
+            tokensCompletion: 2_000,
+          },
+        },
+      },
+    ] as Message[],
+    128_000,
+  )?.usedTokens,
+  85_500,
+  "context usage must include all Anthropic input tokens and the current response",
+);
 assert.equal(
   resolveProfessorMariContextBudget(
     [
@@ -5322,6 +5407,19 @@ assert.equal(
   "chat context usage must use the newest assistant measurement",
 );
 assert.equal(
+  contextBudgetIndicatorSource.match(/var\(--marinara-chat-chrome-text\)/gu)?.length,
+  1,
+  "non-accent context usage bars must use the configured chat chrome text color",
+);
+assert.match(
+  contextBudgetIndicatorSource,
+  /stroke="var\(--marinara-chat-chrome-accent\)"/u,
+  "Context usage gauge rings must use the configured chat chrome accent color",
+);
+assert.match(contextBudgetIndicatorSource, /text-\[var\(--marinara-chat-chrome-panel-muted\)\]/u);
+assert.match(contextBudgetIndicatorSource, /text-\[var\(--marinara-chat-chrome-panel-text\)\]/u);
+assert.doesNotMatch(contextBudgetIndicatorSource, /professorMari/u);
+assert.equal(
   resolveChatContextBudget(
     [{ role: "assistant", extra: { generationInfo: { tokensPrompt: 4_000, tokensCompletion: 100 } } }] as Message[],
     "random",
@@ -5363,7 +5461,7 @@ for (const [name, source] of [
   assert.match(source, /relative flex h-\[1\.875rem\] w-\[1\.875rem\]/u, `${name} must use the larger context gauge`);
 }
 assert.equal(
-  professorMariHomeSource.match(/<ContextBudgetIndicator budget=\{contextBudget\} professorMari \/>/gu)?.length,
+  professorMariHomeSource.match(/<ContextBudgetIndicator budget=\{contextBudget\} \/>/gu)?.length,
   2,
   "Both Professor Mari connection popups must show context usage",
 );
@@ -5448,7 +5546,9 @@ assert.match(
 );
 assert.match(
   professorMariHomeSource,
-  /const refreshWorkspaceStatus = useCallback\(\s*async \(shouldApply\?: \(\) => boolean\)[\s\S]{0,500}if \(shouldApply\?\.\(\) === false\) return status;[\s\S]{0,80}setWorkspaceStatus\(status\)/u,
+  // #5725 strengthened this guard: it also rejects responses requested for a
+  // previous chat and holds mode fields across pending mode writes.
+  /const refreshWorkspaceStatus = useCallback\(\s*async \(shouldApply\?: \(\) => boolean\)[\s\S]{0,700}if \(shouldApply\?\.\(\) === false \|\| activeChatIdRef\.current !== chatIdAtStart\) return status;[\s\S]{0,900}setWorkspaceStatus\(/u,
   "Professor Mari workspace status loads must recheck an operation guard before applying a response",
 );
 assert.match(
@@ -5468,6 +5568,10 @@ assert.match(
 );
 const roleplaySurfaceSource = readFileSync(
   new URL("../../packages/client/src/components/chat/ChatRoleplaySurface.tsx", import.meta.url),
+  "utf8",
+);
+const echoChamberPanelSource = readFileSync(
+  new URL("../../packages/client/src/components/chat/EchoChamberPanel.tsx", import.meta.url),
   "utf8",
 );
 const chatToolbarControlsSource = readFileSync(
@@ -5516,6 +5620,21 @@ assert.match(
   "Roleplay New Start dividers must span user and assistant message bodies",
 );
 assert.match(chatMessageSource, /pointer-events-auto relative z-30 flex h-11 w-11/u);
+assert.equal(
+  chatMessageSource.match(/\(showActions \|\| editing\) && "opacity-100"/gu)?.length,
+  2,
+  "Editing must keep every Roleplay and Game message action visible",
+);
+assert.equal(
+  roleplaySurfaceSource.match(/data-roleplay-agent-window/gu)?.length,
+  3,
+  "Roleplay must identify both HUD layouts and package-provided agent surfaces",
+);
+assert.equal(
+  echoChamberPanelSource.match(/data-roleplay-agent-window="echo"/gu)?.length,
+  2,
+  "Collapsed and expanded Echo Chamber windows must share the mobile edit marker",
+);
 assert.match(chatRowPeekSource, /mari-chrome-accent-text-muted mari-accent-animated text-\[0\.6875rem\]/u);
 assert.match(assignedSweepChatAreaSource, /mari-chrome-accent-text-muted mari-accent-animated max-w-sm text-xs/u);
 assert.match(
@@ -5818,8 +5937,8 @@ assert.match(
 );
 assert.match(
   conversationGenerationSource,
-  /scanConversationLorebooks[\s\S]{0,1000}characterIds: targetCharacterIds/u,
-  "Individual Conversation lorebook scans should use only the current responder's character tags",
+  /scanConversationLorebooks[\s\S]{0,1000}characterIds: withIdentityLorebookScope\(targetCharacterIds\)/u,
+  "Individual Conversation lorebook scans should use the current responder and character-backed user identity tags",
 );
 assert.match(
   conversationGenerationSource,
@@ -5917,6 +6036,11 @@ assert.match(
 const globalStylesSource = readFileSync(
   new URL("../../packages/client/src/styles/globals.css", import.meta.url),
   "utf8",
+);
+assert.match(
+  globalStylesSource,
+  /@media \(max-width: 767px\)[\s\S]*\[data-component="ChatArea\.Roleplay"\]:has\(\.mari-roleplay-message-body--editing\) \[data-roleplay-agent-window\] \{\s*display: none;/u,
+  "Mobile Roleplay editing must temporarily remove agent windows from the constrained viewport",
 );
 assert.equal(
   appSource.match(/document\.addEventListener\("visibilitychange", syncEffectsPausedState\)/gu)?.length,
@@ -6462,6 +6586,16 @@ assert.match(backupRoutesSource, /tolerateSourceChanges: true/u);
 assert.match(backupRoutesSource, /record\.usesDataDescriptor \? 0x0808 : 0x0800/u);
 assert.match(backupRoutesSource, /PROFILE_IMPORT_MEMORY_WARNING_BYTES/u);
 assert.match(backupRoutesSource, /PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES = 2 \* 1024 \* 1024 \* 1024/u);
+assert.match(
+  backupRoutesSource,
+  /limits: \{ fields: 0, parts: 1, files: 1, fileSize: PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES \}/u,
+  "profile archive imports must accept only one bounded file part",
+);
+assert.match(
+  backupRoutesSource,
+  /contentLength > PROFILE_IMPORT_BODY_LIMIT_BYTES[\s\S]*Profile import JSON exceeds the upload limit/u,
+  "JSON profile imports must keep the smaller body limit",
+);
 assert.match(backupRoutesSource, /PROFILE_ARCHIVE_TOTAL_UNCOMPRESSED_LIMIT_BYTES = 2 \* 1024 \* 1024 \* 1024/u);
 assert.match(backupRoutesSource, /PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES = 8 \* 1024 \* 1024/u);
 assert.doesNotMatch(backupRoutesSource, /PROFILE_ARCHIVE_ENTRY_COUNT_LIMIT/u);
@@ -7031,6 +7165,10 @@ assert.equal(usesOpenRouterImagesApi(" krea/krea-2-medium "), true);
 assert.equal(usesOpenRouterImagesApi("bytedance-seed/seedream-4.5"), true);
 assert.equal(usesOpenRouterImagesApi("BYTEDANCE-SEED/SEEDREAM-4.5-20251203"), true);
 assert.equal(usesOpenRouterImagesApi("google/gemini-3.1-flash-image-preview"), false);
+assert.equal(usesOpenRouterImagesApi("gpt-image-2"), true);
+assert.equal(usesOpenRouterImagesApi("openai/gpt-image-2"), true);
+assert.equal(usesOpenRouterImagesApi("google/gemini-2.5-flash-image"), false);
+assert.equal(usesOpenRouterImagesApi("google/gemini-3.1-flash-image-preview"), false);
 assert.equal(
   openRouterImagesUrl("https://openrouter.ai/api/v1/chat/completions"),
   "https://openrouter.ai/api/v1/images",
@@ -7048,6 +7186,52 @@ assert.deepEqual(
     prompt: "plate of spaghetti\n\nAvoid in the image: burnt pasta",
     resolution: "1K",
     aspect_ratio: "1:1",
+  },
+);
+assert.deepEqual(
+  buildOpenRouterImagesRequest({
+    prompt: "portrait of a red fox",
+    model: "gpt-image-2",
+    width: 1024,
+    height: 1536,
+  }),
+  {
+    model: "openai/gpt-image-2",
+    prompt: "portrait of a red fox",
+    aspect_ratio: "2:3",
+  },
+);
+assert.deepEqual(
+  buildOpenRouterImagesRequest({ prompt: "landscape", model: "openai/gpt-image-1", width: 1024, height: 576 }),
+  { model: "openai/gpt-image-1", prompt: "landscape", aspect_ratio: "3:2" },
+);
+assert.deepEqual(
+  buildOpenRouterImagesRequest({
+    prompt: "portrait",
+    model: "google/gemini-2.5-flash-image",
+    width: 1024,
+    height: 1536,
+  }),
+  { model: "google/gemini-2.5-flash-image", prompt: "portrait", resolution: "1K", aspect_ratio: "9:16" },
+);
+assert.deepEqual(
+  buildOpenRouterImagesRequest({
+    prompt: "two subjects",
+    model: "openai/gpt-image-1",
+    quality: "high",
+    transparentBackground: true,
+    referenceImages: ["data:image/png;base64,AAAA", "data:image/png;base64,BBBB"],
+  }),
+  {
+    model: "openai/gpt-image-1",
+    prompt: "two subjects",
+    quality: "high",
+    background: "transparent",
+    aspect_ratio: "1:1",
+    input_references: [
+      { type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } },
+      { type: "image_url", image_url: { url: "data:image/png;base64,BBBB" } },
+    ],
   },
 );
 assert.deepEqual(
@@ -7238,10 +7422,28 @@ assert.match(
 );
 const projectionState = {
   ...useUIStore.getState(),
+  showHomeBrowserAddressBar: false,
+  showHomeBrowserDesktopBookmarksOnOtherTabs: false,
+  showHomeBrowserMobileBookmarksOnOtherTabs: false,
   enterToSendGame: false,
   enterToSendProfessorMari: false,
   chatHelpSeenModes: ["game"] as ChatMode[],
 };
+assert.equal(
+  pickSyncedSettings(projectionState).showHomeBrowserAddressBar,
+  false,
+  "Home URL bar visibility must be saved per installation",
+);
+assert.equal(
+  pickSyncedSettings(projectionState).showHomeBrowserDesktopBookmarksOnOtherTabs,
+  false,
+  "Home desktop bookmark visibility must be saved per installation",
+);
+assert.equal(
+  pickSyncedSettings(projectionState).showHomeBrowserMobileBookmarksOnOtherTabs,
+  false,
+  "Home mobile bookmark visibility must be saved per installation",
+);
 assert.equal(
   pickSyncedSettings(projectionState).enterToSendGame,
   false,
@@ -9690,28 +9892,39 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
     "Client Card Browser import must extract character JSON from zTXt chunks",
   );
 
-  const maxCharacterCardChunkSize = Math.ceil(MAX_FILE_SIZES.CHARACTER_JSON / 3) * 4;
-  const oversizedZtxtData = Buffer.concat([
+  const largeCard = {
+    ...card,
+    data: {
+      ...card.data,
+      name: "Large Gallery Import",
+      description: "x".repeat(100 * 1024),
+    },
+  };
+  const largeCardText = Buffer.from(JSON.stringify(largeCard), "utf8").toString("base64");
+  const largeZtxtData = Buffer.concat([
     Buffer.from("chara", "ascii"),
     Buffer.from([0, 0]),
-    deflateSync(Buffer.alloc(maxCharacterCardChunkSize + 1, 0x41)),
+    deflateSync(Buffer.from(largeCardText, "ascii")),
   ]);
-  const oversizedZtxtPng = Buffer.concat([
+  const largeZtxtPng = Buffer.concat([
     Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
     pngChunk("IHDR", ihdr),
-    pngChunk("zTXt", oversizedZtxtData),
+    pngChunk("zTXt", largeZtxtData),
     pngChunk("IDAT", idat),
     pngChunk("IEND", Buffer.alloc(0)),
   ]);
   assert.equal(
-    extractCharaFromPng(oversizedZtxtPng),
-    null,
-    "Server import must reject zTXt metadata that expands beyond the character-card limit",
+    (extractCharaFromPng(largeZtxtPng) as { data?: { description?: string } } | null)?.data?.description?.length,
+    100 * 1024,
+    "Server import must accept valid zTXt card metadata below the decompression limit",
   );
-  await assert.rejects(
-    parsePngCharacterCard(new File([new Uint8Array(oversizedZtxtPng)], "oversized-card.png", { type: "image/png" })),
-    /No character data found/,
-    "Client import must reject zTXt metadata that expands beyond the character-card limit",
+  const largeClientParsed = await parsePngCharacterCard(
+    new File([new Uint8Array(largeZtxtPng)], "large-card.png", { type: "image/png" }),
+  );
+  assert.equal(
+    (largeClientParsed.json as { data?: { description?: string } }).data?.description?.length,
+    100 * 1024,
+    "Client import must accept valid zTXt card metadata below the decompression limit",
   );
 
   const { injectTextChunk } = await import("../../packages/server/src/routes/characters.routes.js");

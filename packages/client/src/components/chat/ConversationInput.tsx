@@ -46,7 +46,7 @@ import { translateDraftText } from "../../lib/draft-translation";
 import { prepareImageAttachment } from "../../lib/chat-attachment-images";
 import { isFileDrag } from "../../lib/chat-resource-drag";
 import { CARD_ASSET_INSERT_EVENT, type CardAssetInsertDetail } from "../../lib/card-asset-links";
-import { isGenerationSendBlocked } from "../../lib/generation-stream-policy";
+import { isGenerationSendBlocked, isIosWebKitBrowser } from "../../lib/generation-stream-policy";
 import { requestChatScrollToBottom } from "../../lib/chat-scroll-events";
 import { searchStandardEmojiShortcodes, type StandardEmojiShortcode } from "../../lib/emoji-shortcodes";
 import { QuickConnectionSwitcher } from "./QuickConnectionSwitcher";
@@ -376,7 +376,6 @@ export function ConversationInput({
   const activeChatId = useChatStore((s) => s.activeChatId);
   const mariChips = useAgentStore((s) => s.mariChips);
   const mariChipsChatId = useAgentStore((s) => s.mariChipsChatId);
-  const clearMariChips = useAgentStore((s) => s.clearMariChips);
   const professorMariSuggestionsEnabled = useUIStore((s) => s.professorMariSuggestionsEnabled);
   const { data: activeChat } = useChat(activeChatId);
   const { data: contextConnections = [] } = useConnections();
@@ -641,12 +640,6 @@ export function ConversationInput({
     },
     [activeChatId, setInputDraft, syncInputState, guidedPlanStep, recordMariPlanAnswer, clearMariPlan],
   );
-  useEffect(() => {
-    if (professorMariSuggestionsEnabled) return;
-    clearMariChips();
-    clearMariPlan();
-  }, [clearMariChips, clearMariPlan, professorMariSuggestionsEnabled]);
-
   useEffect(() => {
     const handleCardAssetInsert = (event: Event) => {
       const detail = (event as CustomEvent<CardAssetInsertDetail>).detail;
@@ -1925,6 +1918,7 @@ export function ConversationInput({
 
   const ensureInputVisible = useCallback(() => {
     if (typeof window === "undefined" || !window.matchMedia("(max-width: 767px)").matches) return;
+    if (isIosWebKitBrowser(navigator.userAgent, navigator.platform, navigator.maxTouchPoints)) return;
     const scroll = () => {
       const inputBar = inputBarRef.current;
       const viewport = window.visualViewport;

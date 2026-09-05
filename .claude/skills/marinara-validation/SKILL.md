@@ -191,13 +191,13 @@ deterministically, at the same durations every run:
 
 All are `locator.click: Test timeout exceeded`.
 
-`legacy browser records are cleaned while extension imports stay locked` fails
-differently, and arrived with the 2026-08-29 sync merge `329b7be79`. It asserts
-the persisted UI-store version reaches 96; `packages/client/src/stores/ui.store.ts:2640`
-says 99. Upstream bumped the store and left its own spec behind, and both files
-last changed in that merge. Nothing on the fork side touches either, so the
-version number is the whole failure. Fix it by matching the spec to the store,
-or leave it until upstream does.
+`legacy browser records are cleaned while extension imports stay locked` asserts
+the persisted UI-store version at `e2e/core-flows.e2e.ts:7404`, and drifts from
+the store on any sync that bumps it. Upstream left it at 96 against a store of 99
+after the 2026-08-29 sync; the 2026-09-05 sync moved the store to 100 and the
+spec with it. When it fails, compare it against `version:` in
+`packages/client/src/stores/ui.store.ts` before looking anywhere else, and note
+that `roleplay-streaming.regression.ts` pins the same number.
 
 `scripts/regressions/prompt.regression.ts` passed on 2026-08-29. It used to
 fail at the Beholder system
@@ -216,9 +216,24 @@ that lane exits before reaching `prompt-attachments`, `context-fit`, or
 node ./scripts/run-regressions.mjs --filter scripts/regressions/author-note-presets.regression.ts
 ```
 
-### Regression suite: one expected failure, as of 2026-08-29
+### Regression suite: one expected failure, as of 2026-09-05
 
-**Re-measured 2026-08-29 after the upstream sync through `ff3415792`, app
+**Re-measured 2026-09-05 after the sync through `00e4acbbd`: 230/231 pass, and
+`launcher/update.regression.mjs` is again the only failure on its own merits.**
+The lane count rose from 197 to 231 with that sync. The first pass of that run
+happened with a built server up on 7870 and read 220/231; the nine extra
+failures were all the writer lease, and all nine passed on a re-run once the
+server stopped, which is the cheapest confirmation that a lease failure is what
+it looks like. The one lane the sync genuinely broke was
+`profile-import-native-marker.regression.ts`, now fixed. It asserted a rejected
+promise, and
+upstream's `fix: make profile and card imports resilient (#5625)` changed
+`stageProfileImportAssets` to remove the offending file, record it in a new
+`skipped` array, and let the rest of the profile restore. Refusal is now
+asserted as absence from `assets` plus a reason in `skipped`. Anything else
+reading that function's failures needs the same treatment.
+
+**Measured 2026-08-29 after the upstream sync through `ff3415792`, app
 stopped: 196/197 pass. Only `launcher/update.regression.mjs` fails on its own
 merits.** The lane count rose from 190 to 197 with that sync. Every other lane
 in the table below now passes,

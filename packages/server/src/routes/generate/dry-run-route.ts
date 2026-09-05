@@ -51,6 +51,7 @@ import {
   type AssemblerInput,
 } from "../../services/prompt/index.js";
 import { cardPromptText } from "../../services/prompt/card-text.js";
+import { resolveChatUserIdentity } from "../../services/chat-user-identity.js";
 import { mergeAdjacentMessages } from "../../services/prompt/merger.js";
 import { wrapContent } from "../../services/prompt/format-engine.js";
 import {
@@ -90,7 +91,6 @@ import {
   prefixGroupIndividualHistorySpeakers,
   readPersonaSnapshotName,
   resolveActiveCharacterIds,
-  resolveActivePersonaCandidate,
   resolvePromptCharacterIdsForTarget,
   resolveCharacterNameMap,
   resolveGroupGenerationMode,
@@ -795,23 +795,33 @@ export async function registerDryRunRoute(app: FastifyInstance) {
     let personaDescription = "";
     let personaFields: Record<string, string> = {};
     let persona: any = null;
+    let lorebookIdentityCharacterId: string | null = null;
     try {
-      const allPersonas = await chars.listPersonas();
-      persona = resolveActivePersonaCandidate(allPersonas, (chat as any).personaId, chatMode);
-      if (persona) {
-        personaId = persona.id as string;
-        personaName = persona.name;
-        personaDescription = cardPromptText(persona.description);
+      const identity = await resolveChatUserIdentity(chars, {
+        personaId: chat.personaId,
+        personaCharacterId: chat.personaCharacterId,
+        mode: chatMode,
+      });
+      if (identity) {
+        persona = identity;
+        personaId = identity.source === "persona" ? identity.id : null;
+        lorebookIdentityCharacterId = identity.source === "character" ? identity.id : null;
+        personaName = identity.name;
+        personaDescription = cardPromptText(identity.description);
         personaFields = {
-          personality: cardPromptText(persona.personality),
-          scenario: cardPromptText(persona.scenario),
-          backstory: cardPromptText(persona.backstory),
-          appearance: cardPromptText(persona.appearance),
+          personality: cardPromptText(identity.personality),
+          scenario: cardPromptText(identity.scenario),
+          backstory: cardPromptText(identity.backstory),
+          appearance: cardPromptText(identity.appearance),
         };
       }
     } catch {
       /* non-critical */
     }
+    const withIdentityLorebookScope = (ids: string[]) =>
+      lorebookIdentityCharacterId && !ids.includes(lorebookIdentityCharacterId)
+        ? [...ids, lorebookIdentityCharacterId]
+        : ids;
 
     const promptPresetCandidates = skipPreset
       ? []
@@ -1111,7 +1121,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
             }));
             const lorebookResult = await processLorebooks(app.db, scanMessages, null, {
               chatId,
-              characterIds: promptCharacterIds,
+              characterIds: withIdentityLorebookScope(promptCharacterIds),
               personaId,
               activeLorebookIds,
               forcedEntryIds: ownerSpatialLorebookEntryIds,
@@ -1300,6 +1310,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
         localVariables: chatMacroVariables,
         chatId,
         characterIds: promptCharacterIds,
+        lorebookCharacterIds: withIdentityLorebookScope(promptCharacterIds),
         groupCharacterIds: characterIds,
         personaId,
         personaName,
@@ -1483,7 +1494,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       }));
       const lorebookResult = await processLorebooks(app.db, scanMessages, null, {
         chatId,
-        characterIds: promptCharacterIds,
+        characterIds: withIdentityLorebookScope(promptCharacterIds),
         personaId,
         forcedEntryIds: ownerSpatialLorebookEntryIds,
         activeLorebookIds,

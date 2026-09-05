@@ -8,6 +8,9 @@ import {
 } from "../../packages/shared/src/constants/model-lists.js";
 import {
   applyGlmThinkingParameters,
+  glm53CustomGatewayReasoningEffort,
+  glm53ReasoningEffort,
+  isGlm53MandatoryReasoningModel,
   isNativeGlmEndpoint,
 } from "../../packages/server/src/services/llm/providers/glm-request-compat.js";
 import {
@@ -141,12 +144,153 @@ async function collectProviderOutputForMessages(
   return output;
 }
 
+async function collectProviderUsage(provider: BaseLLMProvider, options: ChatOptions): Promise<LLMUsage | void> {
+  const stream = provider.chat([{ role: "user", content: "test" }], options);
+  while (true) {
+    const result = await stream.next();
+    if (result.done) return result.value;
+    // Consume the provider stream before reading its returned usage.
+  }
+}
+
 const gatewaySseBody = [
   ": x-omniroute-cache-hit=false",
   'data: {"choices":[{"delta":{},"finish_reason":null}]}',
   'data: {"choices":[{"message":{"content":"recovered final message"},"finish_reason":"stop"}]}',
   "data: [DONE]",
 ].join("\n");
+
+const embeddingRequests: Array<{ headers: Record<string, string>; body: Record<string, unknown> }> = [];
+const embeddingServer = createServer(async (request, response) => {
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  embeddingRequests.push({
+    headers: request.headers as Record<string, string>,
+    body: JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>,
+  });
+  response.writeHead(200, { "content-type": "application/json" });
+  response.end(JSON.stringify({ data: [{ embedding: [0.1, 0.2], index: 0 }] }));
+});
+await new Promise<void>((resolve) => embeddingServer.listen(0, "127.0.0.1", resolve));
+try {
+  const address = embeddingServer.address();
+  assert.ok(address && typeof address === "object");
+  const nanoGpt = new OpenAIProvider(
+    `http://localhost:${address.port}/v1`,
+    "nano-key",
+    undefined,
+    undefined,
+    undefined,
+    "nanogpt",
+  );
+  await nanoGpt.embed(["test"], "text-embedding-model");
+  assert.equal(embeddingRequests[0]?.headers.authorization, "Bearer nano-key");
+  assert.equal(embeddingRequests[0]?.headers["x-api-key"], "nano-key");
+
+  const openAi = new OpenAIProvider(`http://localhost:${address.port}/v1`, "openai-key");
+  await openAi.embed(["test"], "text-embedding-model");
+  assert.equal(embeddingRequests[1]?.headers.authorization, "Bearer openai-key");
+  assert.equal(embeddingRequests[1]?.headers["x-api-key"], undefined);
+} finally {
+  await new Promise<void>((resolve, reject) => embeddingServer.close((error) => (error ? reject(error) : resolve())));
+}
+
+let nanoGptRequestBody: Record<string, unknown> | null = null;
+const nanoGptServer = createServer(async (request, response) => {
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  nanoGptRequestBody = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
+  response.writeHead(200, { "content-type": "application/json" });
+  response.end(JSON.stringify({ choices: [{ message: { content: "nano response" }, finish_reason: "stop" }] }));
+});
+await new Promise<void>((resolve) => nanoGptServer.listen(0, "127.0.0.1", resolve));
+try {
+  const address = nanoGptServer.address();
+  assert.ok(address && typeof address === "object");
+  const provider = new OpenAIProvider(
+    `http://127.0.0.1:${address.port}/v1`,
+    "nano-key",
+    undefined,
+    undefined,
+    undefined,
+    "nanogpt",
+  );
+  await collectProviderOutput(provider, {
+    model: "some-model",
+    stream: false,
+    reasoningEffort: "none",
+    enabledParameters: { reasoningEffort: true },
+  });
+  assert.equal(nanoGptRequestBody?.reasoning_effort, "none");
+
+  nanoGptRequestBody = null;
+  await collectProviderOutput(provider, {
+    model: "glm-5.3-flash",
+    stream: false,
+    reasoningEffort: "none",
+    enabledParameters: { reasoningEffort: true },
+  });
+  assert.equal(nanoGptRequestBody?.reasoning_effort, "low");
+  assert.equal(nanoGptRequestBody?.enable_thinking, true);
+
+  nanoGptRequestBody = null;
+  await collectProviderOutput(provider, {
+    model: "z-ai/glm-5.3",
+    stream: false,
+    reasoningEffort: "none",
+    enabledParameters: { reasoningEffort: true },
+  });
+  assert.equal(
+    nanoGptRequestBody?.reasoning_effort,
+    "low",
+    "NanoGPT GLM 5.3 agents get low effort, never a disable (#5765)",
+  );
+  assert.equal(nanoGptRequestBody?.enable_thinking, true);
+
+  // A generic custom connection on a LOCAL inference host keeps the
+  // pre-existing "none" for GLM 5.3 (its chat template can really disable
+  // thinking); the remote-gateway substitution is pinned on the pure helper
+  // below (#5765). Other models keep "none" everywhere.
+  const customGateway = new OpenAIProvider(
+    `http://127.0.0.1:${address.port}/v1`,
+    "custom-key",
+    undefined,
+    undefined,
+    undefined,
+    "custom",
+  );
+  nanoGptRequestBody = null;
+  await collectProviderOutput(customGateway, {
+    model: "z-ai/glm-5.3",
+    stream: false,
+    reasoningEffort: "none",
+    enabledParameters: { reasoningEffort: true },
+  });
+  assert.equal(nanoGptRequestBody?.reasoning_effort, "none");
+  assert.deepEqual(nanoGptRequestBody?.chat_template_kwargs, { enable_thinking: false });
+  nanoGptRequestBody = null;
+  await collectProviderOutput(customGateway, {
+    model: "z-ai/glm-5.3",
+    stream: false,
+    reasoningEffort: "medium",
+    enabledParameters: { reasoningEffort: true },
+  });
+  assert.equal(
+    "reasoning_effort" in (nanoGptRequestBody ?? {}),
+    false,
+    "local custom GLM 5.3 keeps the generic no-effort body for an active effort",
+  );
+  nanoGptRequestBody = null;
+  await collectProviderOutput(customGateway, {
+    model: "some-model",
+    stream: false,
+    reasoningEffort: "none",
+    enabledParameters: { reasoningEffort: true },
+  });
+  assert.equal(nanoGptRequestBody?.reasoning_effort, "none");
+} finally {
+  await new Promise<void>((resolve, reject) => nanoGptServer.close((error) => (error ? reject(error) : resolve())));
+}
 
 assert.equal(resolveNovelAiStyleReferenceSecondaryStrength(1), 0);
 assert.equal(resolveNovelAiStyleReferenceSecondaryStrength(0.75), 0.25);
@@ -775,9 +919,39 @@ assert.equal(
     toolChoice: "required",
     tools: [testToolDefinition],
   }),
-  "mythos",
+  "automatic-only",
 );
 assert.deepEqual(anthropicMythosBody.tool_choice, { type: "auto" });
+const anthropicMythos51Body: Record<string, unknown> = { thinking: { type: "adaptive" } };
+assert.equal(
+  applyAnthropicToolChoice(anthropicMythos51Body, {
+    model: "claude-mythos-5-1",
+    toolChoice: "required",
+    tools: [testToolDefinition],
+  }),
+  "automatic-only",
+);
+assert.deepEqual(anthropicMythos51Body.tool_choice, { type: "auto" });
+const anthropicFableBody: Record<string, unknown> = { thinking: { type: "adaptive" } };
+assert.equal(
+  applyAnthropicToolChoice(anthropicFableBody, {
+    model: "claude-fable-5",
+    toolChoice: "required",
+    tools: [testToolDefinition],
+  }),
+  "applied",
+);
+assert.deepEqual(anthropicFableBody.tool_choice, { type: "any" });
+const anthropicFable51Body: Record<string, unknown> = { thinking: { type: "adaptive" } };
+assert.equal(
+  applyAnthropicToolChoice(anthropicFable51Body, {
+    model: "claude-fable-5-1",
+    toolChoice: "required",
+    tools: [testToolDefinition],
+  }),
+  "automatic-only",
+);
+assert.deepEqual(anthropicFable51Body.tool_choice, { type: "auto" });
 const anthropicAutomaticBody: Record<string, unknown> = {
   tool_choice: { type: "any", disable_parallel_tool_use: true },
 };
@@ -794,6 +968,18 @@ assert.equal(supportsAnthropicThinkingDisable("claude-sonnet-5"), true);
 assert.equal(supportsAnthropicThinkingDisable("claude-opus-5"), true);
 assert.equal(supportsAnthropicThinkingDisable("claude-fable-5"), false);
 assert.equal(isClaudeAdaptiveOnlyNoSamplingModel("claude-opus-5"), true);
+assert.equal(isClaudeAdaptiveOnlyNoSamplingModel("claude-fable-5-1"), true);
+assert.equal(supportsAnthropicThinkingDisable("claude-fable-5-1"), false);
+assert.equal(shouldSuppressUnknownModelParameters("anthropic", "claude-fable-5-1"), false);
+const fable51 = findKnownModel("anthropic", "claude-fable-5-1");
+assert.equal(fable51?.context, 1_000_000);
+assert.equal(fable51?.maxOutput, 128_000);
+assert.equal(isClaudeAdaptiveOnlyNoSamplingModel("claude-mythos-5-1"), true);
+assert.equal(supportsAnthropicThinkingDisable("claude-mythos-5-1"), false);
+assert.equal(shouldSuppressUnknownModelParameters("anthropic", "claude-mythos-5-1"), false);
+const mythos51 = findKnownModel("anthropic", "claude-mythos-5-1");
+assert.equal(mythos51?.context, 1_000_000);
+assert.equal(mythos51?.maxOutput, 128_000);
 const opus5 = findKnownModel("anthropic", "claude-opus-5");
 assert.equal(opus5?.context, 1_000_000);
 assert.equal(opus5?.maxOutput, 128_000);
@@ -897,7 +1083,7 @@ assert.equal(
           { type: "text", text: "Claude reply" },
         ],
         stop_reason: "end_turn",
-        usage: { input_tokens: 10, output_tokens: 6 },
+        usage: { input_tokens: 10, output_tokens: 6, cache_read_input_tokens: 500, cache_creation_input_tokens: 100 },
       }),
     );
   });
@@ -922,6 +1108,56 @@ assert.equal(
       "Claude reply",
     );
     assert.equal(thinking, "Summarized Claude reasoning.");
+    assert.deepEqual(
+      await collectProviderUsage(provider, { model: "claude-opus-5", stream: false }),
+      {
+        promptTokens: 10,
+        completionTokens: 6,
+        totalTokens: 16,
+        cachedPromptTokens: 500,
+        cacheWritePromptTokens: 100,
+        finishReason: "end_turn",
+      },
+      "Anthropic non-stream usage must preserve prompt-cache counters",
+    );
+
+    const streamingAnthropicServer = createServer((_request, response) => {
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      response.end(
+        [
+          'data: {"type":"message_start","message":{"usage":{"input_tokens":0,"output_tokens":0,"cache_read_input_tokens":700,"cache_creation_input_tokens":50}}}',
+          'data: {"type":"content_block_start","content_block":{"type":"text"}}',
+          'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Cached stream"}}',
+          'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":0}}',
+          'data: {"type":"message_stop"}',
+          "",
+        ].join("\n"),
+      );
+    });
+    await new Promise<void>((resolve) => streamingAnthropicServer.listen(0, "127.0.0.1", resolve));
+    try {
+      const streamingAddress = streamingAnthropicServer.address();
+      assert.ok(streamingAddress && typeof streamingAddress === "object");
+      assert.deepEqual(
+        await collectProviderUsage(new AnthropicProvider(`http://127.0.0.1:${streamingAddress.port}`, "test"), {
+          model: "claude-opus-5",
+          stream: true,
+        }),
+        {
+          promptTokens: 0,
+          completionTokens: 0,
+          totalTokens: 0,
+          cachedPromptTokens: 700,
+          cacheWritePromptTokens: 50,
+          finishReason: "end_turn",
+        },
+        "Anthropic streamed usage must preserve cache-only prompt counters",
+      );
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        streamingAnthropicServer.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
     const maxEffortBody = anthropicRequestBodies[0];
     assert.ok(maxEffortBody);
     assert.deepEqual(maxEffortBody.thinking, { type: "adaptive", display: "summarized" });
@@ -938,13 +1174,27 @@ assert.equal(
       temperature: 0.7,
       topK: 32,
     });
-    const disabledBody = anthropicRequestBodies[1];
+    const disabledBody = anthropicRequestBodies[2];
     assert.ok(disabledBody);
     assert.deepEqual(disabledBody.thinking, { type: "disabled" });
     assert.equal("output_config" in disabledBody, false);
     assert.equal("temperature" in disabledBody, false);
     assert.equal("top_k" in disabledBody, false);
     assert.equal("top_p" in disabledBody, false);
+
+    await collectProviderOutput(provider, {
+      model: "claude-fable-5-1",
+      stream: false,
+      maxTokens: 128_000,
+      captureReasoning: true,
+      reasoningEffort: "max",
+    });
+    // .at(-1), not a hardcoded index: two branches each appended a request
+    // block here with fixed indices and collided on merge - this request is
+    // whatever the block above just sent, i.e. always the newest body.
+    const fableMaxOutputBody = anthropicRequestBodies.at(-1);
+    assert.ok(fableMaxOutputBody);
+    assert.equal(fableMaxOutputBody.max_tokens, 128_000);
   } finally {
     await new Promise<void>((resolve, reject) => anthropicServer.close((error) => (error ? reject(error) : resolve())));
   }
@@ -1115,6 +1365,36 @@ try {
     false,
     "known reasoning-mandatory OpenRouter models must keep their provider default",
   );
+
+  openRouterRequestBody = null;
+  await collectProviderOutput(provider, {
+    model: "z-ai/glm-5.3-flash",
+    stream: false,
+    reasoningEffort: "none",
+    enabledParameters: { reasoningEffort: true },
+  });
+  const mandatoryGlmOpenRouterBody = openRouterRequestBody as Record<string, unknown>;
+  assert.ok(mandatoryGlmOpenRouterBody);
+  assert.equal(
+    "reasoning" in mandatoryGlmOpenRouterBody,
+    false,
+    "GLM 5.3 Flash must keep OpenRouter's mandatory reasoning default",
+  );
+
+  openRouterRequestBody = null;
+  await collectProviderOutput(provider, {
+    model: "z-ai/glm-5.3",
+    stream: false,
+    reasoningEffort: "none",
+    enabledParameters: { reasoningEffort: true },
+  });
+  const mandatoryGlm53OpenRouterBody = openRouterRequestBody as Record<string, unknown>;
+  assert.ok(mandatoryGlm53OpenRouterBody);
+  assert.equal(
+    "reasoning" in mandatoryGlm53OpenRouterBody,
+    false,
+    "GLM 5.3 (non-Flash) must keep OpenRouter's mandatory reasoning default (#5765)",
+  );
 } finally {
   await new Promise<void>((resolve, reject) => openRouterServer.close((error) => (error ? reject(error) : resolve())));
 }
@@ -1200,6 +1480,104 @@ applyGlmThinkingParameters(glm52DisabledBody, {
   reasoningEffort: "none",
 });
 assert.deepEqual(glm52DisabledBody, { thinking: { type: "disabled" } });
+
+assert.equal(isGlm53MandatoryReasoningModel("z-ai/glm-5.3-flash"), true);
+assert.equal(isGlm53MandatoryReasoningModel("z-ai/glm-5.3-flash:free"), true);
+assert.equal(isGlm53MandatoryReasoningModel("z-ai/glm-5.3"), true);
+assert.equal(isGlm53MandatoryReasoningModel("glm-5.3:free"), true);
+assert.equal(isGlm53MandatoryReasoningModel("GLM-5.3"), true);
+assert.equal(isGlm53MandatoryReasoningModel("z-ai/glm-5.2"), false);
+assert.equal(isGlm53MandatoryReasoningModel("glm-5.30"), false);
+assert.equal(glm53ReasoningEffort(undefined), null);
+assert.equal(glm53ReasoningEffort("none"), "low");
+assert.equal(glm53ReasoningEffort("minimal"), "low");
+assert.equal(glm53ReasoningEffort("low"), "low");
+assert.equal(glm53ReasoningEffort("medium"), "high");
+assert.equal(glm53ReasoningEffort("high"), "high");
+assert.equal(glm53ReasoningEffort("xhigh"), "max");
+assert.equal(glm53ReasoningEffort("max"), "max");
+assert.equal(glm53CustomGatewayReasoningEffort("z-ai/glm-5.3", "https://gateway.example.com/v1", "none"), "low");
+assert.equal(glm53CustomGatewayReasoningEffort("glm-5.3", "https://gateway.example.com/v1", "low"), "low");
+assert.equal(glm53CustomGatewayReasoningEffort("glm-5.3", "https://gateway.example.com/v1", "medium"), "high");
+assert.equal(glm53CustomGatewayReasoningEffort("glm-5.3", "https://gateway.example.com/v1", "high"), "high");
+assert.equal(glm53CustomGatewayReasoningEffort("glm-5.3", "https://gateway.example.com/v1", "max"), "max");
+assert.equal(
+  glm53CustomGatewayReasoningEffort("glm-5.3", "https://gateway.example.com/v1", undefined),
+  null,
+  "no configured effort stays omitted on remote custom gateways",
+);
+assert.equal(
+  glm53CustomGatewayReasoningEffort("z-ai/glm-5.3", "http://127.0.0.1:8080/v1", "none"),
+  null,
+  "local inference hosts keep the explicit disable for GLM 5.3",
+);
+assert.equal(glm53CustomGatewayReasoningEffort("z-ai/glm-5.3", "http://192.168.1.20:11434/v1", "none"), null);
+assert.equal(glm53CustomGatewayReasoningEffort("some-model", "https://gateway.example.com/v1", "none"), null);
+assert.equal(glm53CustomGatewayReasoningEffort("z-ai/glm-5.2", "https://gateway.example.com/v1", "none"), null);
+
+const nanogptMandatoryGlmBody: Record<string, unknown> = {};
+applyGlmThinkingParameters(nanogptMandatoryGlmBody, {
+  model: "glm-5.3-flash",
+  baseUrl: "https://nano-gpt.com/api/v1",
+  providerKind: "nanogpt",
+  reasoningEffort: "none",
+});
+assert.deepEqual(
+  nanogptMandatoryGlmBody,
+  { enable_thinking: true, reasoning_effort: "low" },
+  "NanoGPT mandatory-reasoning GLM models must not receive a disable request",
+);
+
+const nativeGlm53DisabledBody: Record<string, unknown> = {};
+applyGlmThinkingParameters(nativeGlm53DisabledBody, {
+  model: "glm-5.3-flash",
+  baseUrl: "https://api.z.ai/api/paas/v4/",
+  providerKind: "custom",
+  reasoningEffort: "none",
+});
+assert.deepEqual(
+  nativeGlm53DisabledBody,
+  { thinking: { type: "enabled" }, reasoning_effort: "low" },
+  "Native Z.AI GLM 5.3 cannot disable thinking; reasoning off becomes the lightest accepted level (#5765)",
+);
+
+const nativeGlm53DefaultBody: Record<string, unknown> = {};
+applyGlmThinkingParameters(nativeGlm53DefaultBody, {
+  model: "glm-5.3",
+  baseUrl: "https://api.z.ai/api/paas/v4/",
+  providerKind: "custom",
+});
+assert.deepEqual(
+  nativeGlm53DefaultBody,
+  { thinking: { type: "enabled" } },
+  "Native Z.AI GLM 5.3 with no effort configured leaves the provider default in place",
+);
+
+const nativeGlm53MediumBody: Record<string, unknown> = {};
+applyGlmThinkingParameters(nativeGlm53MediumBody, {
+  model: "glm-5.3",
+  baseUrl: "https://api.z.ai/api/paas/v4/",
+  providerKind: "custom",
+  reasoningEffort: "medium",
+});
+assert.deepEqual(
+  nativeGlm53MediumBody,
+  { thinking: { type: "enabled" }, reasoning_effort: "high" },
+  "Native Z.AI GLM 5.3 only accepts low/high/max",
+);
+
+const nanogptGlm53Body: Record<string, unknown> = {};
+applyGlmThinkingParameters(nanogptGlm53Body, {
+  model: "z-ai/glm-5.3",
+  baseUrl: "https://nano-gpt.com/api/v1",
+  providerKind: "nanogpt",
+  reasoningEffort: "none",
+});
+assert.deepEqual(
+  nanogptGlm53Body,
+  { enable_thinking: true, reasoning_effort: "low" },
+  "NanoGPT GLM 5.3 (non-Flash) must not receive a disable request either (#5765)",
+);
 
 const legacyGlmBody: Record<string, unknown> = {};
 applyGlmThinkingParameters(legacyGlmBody, {

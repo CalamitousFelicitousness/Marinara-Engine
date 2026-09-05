@@ -133,6 +133,7 @@ import { SpriteFrameEditor } from "../ui/SpriteFrameEditor";
 import { SpriteWandCleanupEditor } from "../ui/SpriteWandCleanupEditor";
 import { ExportFormatDialog, type ExportFormatChoice } from "../ui/ExportFormatDialog";
 import { EditorTabNavigation } from "../ui/EditorTabNavigation";
+import { EditorTabRail } from "../ui/EditorTabRail";
 import { EditorSectionAnchor, EditorSectionJumps } from "../ui/EditorSectionJumps";
 import { SettingsSwitch } from "../panels/settings/SettingControls";
 import {
@@ -999,7 +1000,7 @@ export function CharacterEditor() {
   );
 
   return (
-    <div className="mari-editor-shell mari-editor-legacy-bridge flex flex-1 flex-col overflow-hidden">
+    <div className="mari-editor-shell mari-editor-shell--character mari-editor-legacy-bridge flex flex-1 flex-col overflow-hidden">
       <ExportFormatDialog
         open={exportDialogOpen}
         title={localizeUi("ui.characters.charactereditor.exportCharacter_cdcda78")}
@@ -1182,6 +1183,7 @@ export function CharacterEditor() {
 
       {/* ── Body ── */}
       <div className="mari-editor-body">
+        <EditorTabRail tabs={TABS} activeId={activeTab} onChange={setActiveTab} />
         {/* Tab Content */}
         <div className="mari-editor-content @max-5xl:p-4">
           <div className="mari-editor-content-inner">
@@ -1438,13 +1440,16 @@ function CharacterSummaryField({
             : localizeUi("ui.characters.summary.generate")}
         </button>
       </div>
-      <textarea
+      <MacroTextarea
         value={formData.summary ?? ""}
-        onChange={(event) => updateField("summary", event.target.value.slice(0, 500))}
+        onChange={(value) => updateField("summary", value.slice(0, 500))}
         maxLength={500}
         rows={4}
-        aria-label={localizeUi("ui.characters.summary.label")}
+        title={localizeUi("ui.characters.summary.label")}
+        ariaLabel={localizeUi("ui.characters.summary.label")}
         placeholder={localizeUi("ui.characters.summary.placeholder")}
+        showMarkdownPreview
+        selfCharacterId={characterId}
         className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-3 text-sm leading-relaxed outline-none placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
       />
       <p className="text-right text-[0.625rem] text-[var(--muted-foreground)]">

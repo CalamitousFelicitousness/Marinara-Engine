@@ -566,6 +566,9 @@ export type MariPanelSortMode = "az" | "za" | "newest" | "oldest";
 export type MariEditViewMode = "easy" | "raw";
 
 interface UIState {
+  showHomeBrowserAddressBar: boolean;
+  showHomeBrowserDesktopBookmarksOnOtherTabs: boolean;
+  showHomeBrowserMobileBookmarksOnOtherTabs: boolean;
   sidebarOpen: boolean;
   sidebarWidth: number;
   rightPanelOpen: boolean;
@@ -713,6 +716,8 @@ interface UIState {
   fontFamily: string;
   enableStreaming: boolean;
   debugMode: boolean;
+  /** When true, warn when an agent uses the configured default connection. */
+  showPaidAgentConnectionWarning: boolean;
   /** Typewriter speed: 1 (very slow) to 100 (instant). Controls how fast streaming tokens appear. */
   streamingSpeed: number;
   /** When true, Game mode narration segments are revealed in full as soon as they become active. */
@@ -750,8 +755,6 @@ interface UIState {
   imageBackgroundHeight: number;
   imageIllustrationWidth: number;
   imageIllustrationHeight: number;
-  imageNoodleWidth: number;
-  imageNoodleHeight: number;
   imageGameWidth: number;
   imageGameHeight: number;
   imagePortraitWidth: number;
@@ -767,6 +770,8 @@ interface UIState {
   showTokenUsage: boolean;
   showContextUsage: boolean;
   showMessageNumbers: boolean;
+  /** When true, character cards are available in Persona pickers. */
+  showCharactersInPersonaPickers: boolean;
   guideGenerations: boolean;
   showQuickRepliesMenu: boolean;
   showQuickReplyPostOnly: boolean;
@@ -974,6 +979,9 @@ interface UIState {
   chatModeShortcutRequest: { mode: ChatModeShortcut; token: number } | null;
 
   // Actions
+  setShowHomeBrowserAddressBar: (visible: boolean) => void;
+  setShowHomeBrowserDesktopBookmarksOnOtherTabs: (visible: boolean) => void;
+  setShowHomeBrowserMobileBookmarksOnOtherTabs: (visible: boolean) => void;
   toggleSidebar: () => void;
   setSidebarOpen: (open: boolean) => void;
   setSidebarWidth: (width: number) => void;
@@ -1089,6 +1097,7 @@ interface UIState {
   setFontFamily: (family: string) => void;
   setEnableStreaming: (v: boolean) => void;
   setDebugMode: (v: boolean) => void;
+  setShowPaidAgentConnectionWarning: (v: boolean) => void;
   setStreamingSpeed: (v: number) => void;
   setGameInstantTextReveal: (v: boolean) => void;
   setGameMiddleMouseNav: (v: boolean) => void;
@@ -1101,7 +1110,6 @@ interface UIState {
   setReviewImagePromptsBeforeSend: (v: boolean) => void;
   setImageBackgroundDimensions: (width: number, height: number) => void;
   setImageIllustrationDimensions: (width: number, height: number) => void;
-  setImageNoodleDimensions: (width: number, height: number) => void;
   setImageGameDimensions: (width: number, height: number) => void;
   setImagePortraitDimensions: (width: number, height: number) => void;
   setImageSelfieDimensions: (width: number, height: number) => void;
@@ -1114,6 +1122,7 @@ interface UIState {
   setShowTokenUsage: (v: boolean) => void;
   setShowContextUsage: (v: boolean) => void;
   setShowMessageNumbers: (v: boolean) => void;
+  setShowCharactersInPersonaPickers: (v: boolean) => void;
   setGuideGenerations: (v: boolean) => void;
   setShowQuickRepliesMenu: (v: boolean) => void;
   setShowQuickReplyPostOnly: (v: boolean) => void;
@@ -1281,6 +1290,9 @@ function normalizePersistedMainSurface(persisted: Record<string, unknown>) {
  */
 export function pickSyncedSettings(state: UIState) {
   return {
+    showHomeBrowserAddressBar: state.showHomeBrowserAddressBar,
+    showHomeBrowserDesktopBookmarksOnOtherTabs: state.showHomeBrowserDesktopBookmarksOnOtherTabs,
+    showHomeBrowserMobileBookmarksOnOtherTabs: state.showHomeBrowserMobileBookmarksOnOtherTabs,
     sidebarOpen: state.sidebarOpen,
     sidebarWidth: state.sidebarWidth,
     trackerPanelEnabled: state.trackerPanelEnabled,
@@ -1309,6 +1321,7 @@ export function pickSyncedSettings(state: UIState) {
     fontFamily: state.fontFamily,
     enableStreaming: state.enableStreaming,
     streamingSpeed: state.streamingSpeed,
+    showPaidAgentConnectionWarning: state.showPaidAgentConnectionWarning,
     gameInstantTextReveal: state.gameInstantTextReveal,
     gameMiddleMouseNav: state.gameMiddleMouseNav,
     gameDialogueDisplayMode: state.gameDialogueDisplayMode,
@@ -1322,8 +1335,6 @@ export function pickSyncedSettings(state: UIState) {
     imageBackgroundHeight: state.imageBackgroundHeight,
     imageIllustrationWidth: state.imageIllustrationWidth,
     imageIllustrationHeight: state.imageIllustrationHeight,
-    imageNoodleWidth: state.imageNoodleWidth,
-    imageNoodleHeight: state.imageNoodleHeight,
     imageGameWidth: state.imageGameWidth,
     imageGameHeight: state.imageGameHeight,
     imagePortraitWidth: state.imagePortraitWidth,
@@ -1339,6 +1350,7 @@ export function pickSyncedSettings(state: UIState) {
     showTokenUsage: state.showTokenUsage,
     showContextUsage: state.showContextUsage,
     showMessageNumbers: state.showMessageNumbers,
+    showCharactersInPersonaPickers: state.showCharactersInPersonaPickers,
     guideGenerations: state.guideGenerations,
     showQuickRepliesMenu: state.showQuickRepliesMenu,
     showQuickReplyPostOnly: state.showQuickReplyPostOnly,
@@ -1432,6 +1444,9 @@ export function pickSyncedSettings(state: UIState) {
 export const useUIStore = create<UIState>()(
   persist(
     (set, get) => ({
+      showHomeBrowserAddressBar: true,
+      showHomeBrowserDesktopBookmarksOnOtherTabs: true,
+      showHomeBrowserMobileBookmarksOnOtherTabs: true,
       sidebarOpen: true,
       sidebarWidth: 320,
       rightPanelOpen: false,
@@ -1525,6 +1540,7 @@ export const useUIStore = create<UIState>()(
       fontFamily: "",
       enableStreaming: true,
       debugMode: false,
+      showPaidAgentConnectionWarning: true,
       streamingSpeed: 50,
       gameInstantTextReveal: false,
       gameMiddleMouseNav: false,
@@ -1539,8 +1555,6 @@ export const useUIStore = create<UIState>()(
       imageBackgroundHeight: 720,
       imageIllustrationWidth: 896,
       imageIllustrationHeight: 1280,
-      imageNoodleWidth: 1024,
-      imageNoodleHeight: 1536,
       imageGameWidth: 1280,
       imageGameHeight: 720,
       imagePortraitWidth: 1024,
@@ -1556,6 +1570,7 @@ export const useUIStore = create<UIState>()(
       showTokenUsage: false,
       showContextUsage: true,
       showMessageNumbers: false,
+      showCharactersInPersonaPickers: false,
       guideGenerations: false,
       showQuickRepliesMenu: false,
       showQuickReplyPostOnly: true,
@@ -2283,6 +2298,7 @@ export const useUIStore = create<UIState>()(
       setFontFamily: (family) => set({ fontFamily: family }),
       setEnableStreaming: (v) => set({ enableStreaming: v }),
       setDebugMode: (v) => set({ debugMode: v }),
+      setShowPaidAgentConnectionWarning: (v) => set({ showPaidAgentConnectionWarning: v }),
       setStreamingSpeed: (v) => set({ streamingSpeed: Math.max(1, Math.min(100, v)) }),
       setGameInstantTextReveal: (v) => set({ gameInstantTextReveal: v }),
       setGameMiddleMouseNav: (v) => set({ gameMiddleMouseNav: v }),
@@ -2302,11 +2318,6 @@ export const useUIStore = create<UIState>()(
         set({
           imageIllustrationWidth: clampImageDimension(width),
           imageIllustrationHeight: clampImageDimension(height),
-        }),
-      setImageNoodleDimensions: (width, height) =>
-        set({
-          imageNoodleWidth: clampImageDimension(width),
-          imageNoodleHeight: clampImageDimension(height),
         }),
       setImageGameDimensions: (width, height) =>
         set({
@@ -2332,6 +2343,7 @@ export const useUIStore = create<UIState>()(
       setShowTokenUsage: (v) => set({ showTokenUsage: v }),
       setShowContextUsage: (v) => set({ showContextUsage: v }),
       setShowMessageNumbers: (v) => set({ showMessageNumbers: v }),
+      setShowCharactersInPersonaPickers: (v) => set({ showCharactersInPersonaPickers: v }),
       setGuideGenerations: (v) => set({ guideGenerations: v }),
       setShowQuickRepliesMenu: (v) => set({ showQuickRepliesMenu: v }),
       setShowQuickReplyPostOnly: (v) => set({ showQuickReplyPostOnly: v }),
@@ -2372,6 +2384,11 @@ export const useUIStore = create<UIState>()(
       setQuoteFormat: (v) => set({ quoteFormat: normalizeQuoteFormat(v) }),
       setConvertLatexSymbols: (v) => set({ convertLatexSymbols: v }),
       setTrimIncompleteModelOutput: (v) => set({ trimIncompleteModelOutput: v }),
+      setShowHomeBrowserAddressBar: (visible) => set({ showHomeBrowserAddressBar: visible }),
+      setShowHomeBrowserDesktopBookmarksOnOtherTabs: (visible) =>
+        set({ showHomeBrowserDesktopBookmarksOnOtherTabs: visible }),
+      setShowHomeBrowserMobileBookmarksOnOtherTabs: (visible) =>
+        set({ showHomeBrowserMobileBookmarksOnOtherTabs: visible }),
       setContinueAddsNewline: (v) => set({ continueAddsNewline: v }),
       setSpeechToTextEnabled: (v) => set({ speechToTextEnabled: v }),
       setTTSLineVolume: (v) => set({ ttsLineVolume: Math.max(0, Math.min(100, Math.round(v))) }),
@@ -2633,11 +2650,11 @@ export const useUIStore = create<UIState>()(
     }),
     {
       name: "marinara-engine-ui",
-      // Fork numbering diverged from upstream's: both sides independently used 96.
-      // Upstream 95 -> 96 added inline Roleplay reasoning prefs and per-mode chat
-      // help history; the fork's 96/97/98 were the tracker width/density split,
-      // reflow placement, and always-float. 99 clears both so every store migrates.
-      version: 99,
+      // Both lineages independently numbered up to 99 from a shared 96: upstream's
+      // were reasoning prefs, persona pickers, home browser chrome and the Noodle
+      // image move; the fork's were the tracker width/density split, reflow
+      // placement and always-float. 100 clears every store from either side.
+      version: 100,
       // Debounce localStorage writes to avoid sync I/O on every state change
       storage: createJSONStorage(() => {
         let timer: ReturnType<typeof setTimeout> | null = null;
@@ -2682,10 +2699,38 @@ export const useUIStore = create<UIState>()(
         };
       }),
       migrate: (persisted: any, version: number) => {
-        // Widened from upstream's `<= 95`: the fork's own 96/97/98 stores never
-        // saw this step, and the `delete` below is unconditional, so they would
-        // lose gameTutorialDisabled without seeding chatHelpSeenModes.
-        if (version <= 98 && !Array.isArray(persisted.chatHelpSeenModes)) {
+        // Every guard below reads `<= 99` because the two lineages both reached 99
+        // with different steps: a fork 99 store never saw upstream's 96-99, and an
+        // upstream 99 store never saw the fork's. Each step is guarded on its own
+        // data, so re-running one on a store that already has the field is a no-op.
+        if (version <= 99 && (persisted.imageNoodleWidth !== undefined || persisted.imageNoodleHeight !== undefined)) {
+          try {
+            localStorage.setItem(
+              "marinara:noodle:legacy-image-size",
+              JSON.stringify({
+                width: persisted.imageNoodleWidth,
+                height: persisted.imageNoodleHeight,
+              }),
+            );
+          } catch {
+            // Package settings use their defaults if browser storage is unavailable.
+          }
+        }
+        if (version <= 99) {
+          if (persisted.showHomeBrowserAddressBar === undefined) persisted.showHomeBrowserAddressBar = true;
+          if (persisted.showHomeBrowserDesktopBookmarksOnOtherTabs === undefined) {
+            persisted.showHomeBrowserDesktopBookmarksOnOtherTabs = true;
+          }
+          if (persisted.showHomeBrowserMobileBookmarksOnOtherTabs === undefined) {
+            persisted.showHomeBrowserMobileBookmarksOnOtherTabs = true;
+          }
+        }
+        if (version <= 99 && persisted.showCharactersInPersonaPickers === undefined) {
+          persisted.showCharactersInPersonaPickers = false;
+        }
+        // The `delete` below is unconditional, so a store that skips this step
+        // loses gameTutorialDisabled without seeding chatHelpSeenModes.
+        if (version <= 99 && !Array.isArray(persisted.chatHelpSeenModes)) {
           persisted.chatHelpSeenModes = persisted.gameTutorialDisabled === true ? ["game"] : [];
         }
         delete persisted.gameTutorialDisabled;
@@ -3206,11 +3251,6 @@ export const useUIStore = create<UIState>()(
         if (version <= 88 && persisted.reduceAmbientEffects === undefined) {
           persisted.reduceAmbientEffects = false;
         }
-        // v89 -> v90: give Noodle timeline images their own provider-compatible canvas.
-        if (version <= 89) {
-          if (persisted.imageNoodleWidth === undefined) persisted.imageNoodleWidth = 1024;
-          if (persisted.imageNoodleHeight === undefined) persisted.imageNoodleHeight = 1536;
-        }
         // v90 -> v91: make the Home navigation assistant an explicit, default-on preference.
         if (version <= 90 && persisted.professorMariNavigationEnabled === undefined) {
           persisted.professorMariNavigationEnabled = true;
@@ -3251,6 +3291,9 @@ export const useUIStore = create<UIState>()(
         return persisted;
       },
       partialize: (state) => ({
+        showHomeBrowserAddressBar: state.showHomeBrowserAddressBar,
+        showHomeBrowserDesktopBookmarksOnOtherTabs: state.showHomeBrowserDesktopBookmarksOnOtherTabs,
+        showHomeBrowserMobileBookmarksOnOtherTabs: state.showHomeBrowserMobileBookmarksOnOtherTabs,
         sidebarOpen: state.sidebarOpen,
         sidebarWidth: state.sidebarWidth,
         rightPanelOpen: state.rightPanelOpen,
@@ -3324,6 +3367,7 @@ export const useUIStore = create<UIState>()(
         fontFamily: state.fontFamily,
         enableStreaming: state.enableStreaming,
         debugMode: state.debugMode,
+        showPaidAgentConnectionWarning: state.showPaidAgentConnectionWarning,
         streamingSpeed: state.streamingSpeed,
         gameInstantTextReveal: state.gameInstantTextReveal,
         gameMiddleMouseNav: state.gameMiddleMouseNav,
@@ -3338,8 +3382,6 @@ export const useUIStore = create<UIState>()(
         imageBackgroundHeight: state.imageBackgroundHeight,
         imageIllustrationWidth: state.imageIllustrationWidth,
         imageIllustrationHeight: state.imageIllustrationHeight,
-        imageNoodleWidth: state.imageNoodleWidth,
-        imageNoodleHeight: state.imageNoodleHeight,
         imageGameWidth: state.imageGameWidth,
         imageGameHeight: state.imageGameHeight,
         imagePortraitWidth: state.imagePortraitWidth,
@@ -3355,6 +3397,7 @@ export const useUIStore = create<UIState>()(
         showTokenUsage: state.showTokenUsage,
         showContextUsage: state.showContextUsage,
         showMessageNumbers: state.showMessageNumbers,
+        showCharactersInPersonaPickers: state.showCharactersInPersonaPickers,
         guideGenerations: state.guideGenerations,
         showQuickRepliesMenu: state.showQuickRepliesMenu,
         showQuickReplyPostOnly: state.showQuickReplyPostOnly,

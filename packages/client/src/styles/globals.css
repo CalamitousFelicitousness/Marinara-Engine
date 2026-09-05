@@ -980,7 +980,23 @@
   --mari-panel-gradient-text: #eef2ff;
 }
 
+/*
+ * The chip row wraps on desktop, but below 768px it flips to a single nowrap line with the
+ * scrollbar hidden (see the max-width: 767px block further down) so it does not eat vertical
+ * space next to the on-screen keyboard. Touch users swipe that line; a mouse user used to get
+ * a chip sliced in half with no hint that more existed. MariSuggestionChips now translates a
+ * mouse drag into scrollLeft and sets data-fade-left / data-fade-right from the live scroll
+ * position, and the fade is applied as a mask rather than a solid gradient overlay: the row
+ * renders over the chat background image, the floating Mari panel, and the conversation input
+ * alike, so there is no single base color an overlay could blend into. Both stops stay 0 and
+ * the mask rule below does not match at all while nothing is clipped, which leaves the
+ * wrapping desktop layout untouched.
+ */
 .mari-suggestion-chips {
+  --mari-suggestion-chips-fade: 1.5rem;
+  --mari-suggestion-chips-fade-left: 0px;
+  --mari-suggestion-chips-fade-right: 0px;
+
   display: flex;
   flex-wrap: wrap;
   gap: 0.375rem;
@@ -988,6 +1004,44 @@
   overflow-x: auto;
   margin-bottom: 0.375rem;
   padding-bottom: 0.1875rem;
+  /* Keeps a chip reached by Tab from landing underneath its own edge fade. */
+  scroll-padding-inline: var(--mari-suggestion-chips-fade);
+}
+
+.mari-suggestion-chips[data-fade-left="true"],
+.mari-suggestion-chips[data-fade-right="true"] {
+  cursor: grab;
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black var(--mari-suggestion-chips-fade-left),
+    black calc(100% - var(--mari-suggestion-chips-fade-right)),
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black var(--mari-suggestion-chips-fade-left),
+    black calc(100% - var(--mari-suggestion-chips-fade-right)),
+    transparent 100%
+  );
+}
+
+.mari-suggestion-chips[data-fade-left="true"] {
+  --mari-suggestion-chips-fade-left: var(--mari-suggestion-chips-fade);
+}
+
+.mari-suggestion-chips[data-fade-right="true"] {
+  --mari-suggestion-chips-fade-right: var(--mari-suggestion-chips-fade);
+}
+
+.mari-suggestion-chips[data-dragging="true"] {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.mari-suggestion-chips[data-dragging="true"] .mari-suggestion-chip {
+  cursor: grabbing;
 }
 
 /*
@@ -1043,6 +1097,7 @@
 }
 
 .mari-suggestion-chips--compact {
+  --mari-suggestion-chips-fade: 1.125rem;
   gap: 0.25rem;
 }
 
@@ -2079,6 +2134,11 @@
   max-width: 48rem;
 }
 
+.mari-editor-tab-rail {
+  border-color: var(--marinara-editor-divider);
+  background: color-mix(in srgb, var(--marinara-editor-surface-bg) 58%, transparent);
+}
+
 .mari-editor-tab {
   height: 2.25rem;
   min-height: 2.25rem;
@@ -2114,6 +2174,21 @@
 
 .mari-editor-navigation-compact {
   display: none;
+}
+
+.mari-editor-shell--character > .mari-editor-header > .mari-editor-navigation {
+  display: none;
+}
+
+.mari-editor-shell--character > .mari-editor-header--with-nav {
+  height: auto;
+  min-height: 3.8125rem;
+  flex-basis: auto;
+  flex-wrap: wrap;
+}
+
+.mari-editor-shell--character > .mari-editor-header--with-nav > .mari-editor-header-main {
+  flex: 1 1 18rem;
 }
 
 .mari-editor-navigation-select:hover {
@@ -2498,6 +2573,19 @@
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-y: contain;
     touch-action: pan-y;
+  }
+
+  .mari-editor-shell--character > .mari-editor-header > .mari-editor-navigation {
+    display: block;
+    width: 100%;
+  }
+
+  .mari-editor-shell--character > .mari-editor-body > .mari-editor-tab-rail {
+    display: none;
+  }
+
+  .mari-editor-tab-rail {
+    display: none;
   }
 }
 
@@ -4331,6 +4419,15 @@ strong {
 
   :root {
     --marinara-topbar-surface: var(--card);
+    /* Gecko on Android reports env(safe-area-inset-bottom) as the system
+       navigation-bar height even though its layout viewport already stops
+       above the bar, so honoring the raw env() value double-compensates into
+       a dead band above the navigation bar (#5665). Publish a zero override
+       through the --mari-safe-area-inset-bottom hook that bottom safe-area
+       consumers prefer over env(). Desktop Firefox also matches this
+       @supports probe, but it reports env() as 0px there, so the override is
+       a no-op outside Android. */
+    --mari-safe-area-inset-bottom: 0px;
   }
 
   .mari-topbar,
@@ -5976,6 +6073,37 @@ strong {
 }
 
 @media (max-width: 767px) {
+  [data-chat-mode="roleplay"] .mari-chat-input-textarea {
+    overscroll-behavior-y: contain;
+  }
+
+  .mari-gallery-generation-actions > button,
+  .mari-gallery-generation-actions > div > button {
+    @apply relative min-h-11 flex-col gap-1 px-1 py-2 text-[0.625rem];
+  }
+
+  .mari-gallery-generation-actions > button > svg,
+  .mari-gallery-generation-actions > div > button > svg {
+    @apply size-3;
+  }
+
+  .mari-gallery-generation-actions > button > span,
+  .mari-gallery-generation-actions > div > button > span {
+    @apply max-w-full whitespace-normal break-words;
+  }
+
+  .mari-gallery-image-actions {
+    @apply grid grid-cols-[repeat(auto-fit,minmax(24px,1fr))] gap-0.5 p-1;
+  }
+
+  .mari-gallery-image-actions button {
+    @apply flex min-h-8 min-w-0 items-center justify-center px-0;
+  }
+
+  .mari-gallery-image-actions .mari-chrome-accent-surface {
+    @apply border-transparent bg-white/20 text-white hover:bg-white/30;
+  }
+
   /*
    * WKWebView native backing color is set by the literal background-color in
    * index.html <style> (inline critical CSS — not cached by SW, always fresh).
@@ -5983,14 +6111,36 @@ strong {
    * the literal and WKWebView cannot resolve variables → shows black instead.
    */
   html {
-    min-height: 100dvh;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
     overflow: hidden;
+    overscroll-behavior: none;
   }
 
   body {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
     /* Safe-area insets handled by AppShell — only apply sides here */
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
+  }
+
+  /* A fixed ancestor lets iOS WebKit pan the whole app when any descendant
+     input opens the keyboard. Keep iOS surfaces in document coordinates so
+     they can follow the visual viewport directly. */
+  html[data-mari-ios-webkit] body {
+    position: static;
+  }
+
+  #root {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
   }
 
   /* Scoped to conversation/roleplay/game (each sets data-chat-mode on its
@@ -6001,8 +6151,58 @@ strong {
     bottom: auto;
     height: var(--mari-visual-viewport-height, 100dvh);
     min-height: 0;
-    /* Counters the iOS scroll-drag bug described in AppShell.tsx. */
-    transform: translateY(var(--mari-app-scroll-compensate, 0px)) translateZ(0);
+  }
+
+  /* Cover both the app and body-portal dialogs. Character/persona fields use
+     the same viewport contract as chat instead of falling back to fixed UI. */
+  html[data-mari-ios-webkit] .mari-app,
+  html[data-mari-ios-webkit] .mari-modal {
+    position: absolute;
+    top: var(--mari-visual-viewport-offset-top, 0px);
+    bottom: auto;
+    height: var(--mari-visual-viewport-height, 100dvh);
+    min-height: 0;
+  }
+
+  /* Body-portalled chat menus otherwise stay in layout-viewport coordinates
+     while iPhone pans the visual viewport for its keyboard. Keep the focused
+     menu and its scroll shell inside the screen the user can actually see. */
+  html[data-mari-software-keyboard-open]
+    body
+    > [data-chat-floating-panel]:not(.mari-modal):not([data-component="ExpandedTextarea"]):focus-within {
+    position: absolute !important;
+    top: calc(var(--mari-visual-viewport-offset-top, 0px) + 0.5rem) !important;
+    bottom: auto !important;
+    max-height: calc(var(--mari-visual-viewport-height, 100dvh) - 1rem) !important;
+  }
+
+  html[data-mari-software-keyboard-open]
+    body
+    > [data-chat-floating-panel]:not(.mari-modal):not([data-component="ExpandedTextarea"]):focus-within
+    > :only-child {
+    max-height: inherit !important;
+  }
+
+  html[data-mari-software-keyboard-open]
+    body
+    > [data-chat-floating-panel]:focus-within:has(> [data-chat-floating-scroll]) {
+    display: flex !important;
+    min-height: 0 !important;
+    flex-direction: column !important;
+  }
+
+  html[data-mari-software-keyboard-open] body > [data-chat-floating-panel]:focus-within > [data-chat-floating-scroll] {
+    min-height: 0 !important;
+    max-height: none !important;
+    flex: 1 1 auto !important;
+  }
+
+  html[data-mari-ios-webkit] body > [data-component="ExpandedTextarea"] {
+    position: absolute;
+    top: var(--mari-visual-viewport-offset-top, 0px);
+    bottom: auto;
+    height: var(--mari-visual-viewport-height, 100dvh);
+    min-height: 0;
   }
 
   .app-sidebar-mobile {
@@ -6152,6 +6352,10 @@ strong {
     padding-right: max(0.5rem, env(safe-area-inset-right)) !important;
   }
 
+  [data-chat-mode]:has([data-roleplay-agent-window="echo"]) .mari-chat-load-more {
+    padding-top: 2.25rem;
+  }
+
   [data-chat-mode="roleplay"] .rpg-narrator-msg {
     padding-left: 0;
     padding-right: 0;
@@ -6181,6 +6385,20 @@ strong {
     width: calc(100% - var(--mari-roleplay-mobile-avatar-space, 3rem));
   }
 
+  [data-component="ChatArea.Roleplay"][data-mobile-composer-active="true"] [data-roleplay-agent-window],
+  [data-component="ChatArea.Roleplay"]:has(.mari-roleplay-message-body--editing) [data-roleplay-agent-window] {
+    display: none;
+  }
+
+  [data-chat-mode="conversation"] [data-chat-scroll]:has([data-chat-message-editor]) {
+    padding-bottom: 8rem;
+    scroll-padding-bottom: 8rem;
+  }
+
+  [data-chat-mode="roleplay"] [data-chat-scroll]:has([data-chat-message-editor]) {
+    --mari-message-editor-scroll-space: 8rem;
+  }
+
   .rpg-hud {
     font-size: 0.625rem;
   }
@@ -6195,8 +6413,13 @@ strong {
     scroll-margin-bottom: max(4.5rem, var(--mari-safe-area-inset-bottom, env(safe-area-inset-bottom)));
   }
   html[data-mari-software-keyboard-open] .chat-input-container {
-    padding-bottom: 0.5em !important;
+    padding-top: 0 !important;
+    padding-bottom: 0.25em !important;
     scroll-margin-bottom: 4.5rem;
+  }
+  html[data-mari-software-keyboard-open] .chat-input-container .marinara-chat-input-shell {
+    padding-top: 0.25rem !important;
+    padding-bottom: 0.25rem !important;
   }
   .chat-input-container .marinara-chat-input-shell {
     gap: 0.25rem !important;
@@ -6301,14 +6524,6 @@ strong {
   ),
 .mari-generation-render-paused .rpg-streaming::after {
   animation-play-state: paused !important;
-}
-
-.rpg-sprite-container img,
-.rpg-avatar-glow img,
-.rpg-avatar-panel img,
-.rpg-avatar-panel-media img,
-.rpg-avatar-panel-tail-image {
-  will-change: opacity, filter;
 }
 
 .game-stats-bar-fill {
@@ -7239,24 +7454,30 @@ strong {
 }
 
 .mari-conversation-call-mini {
-  bottom: max(env(safe-area-inset-bottom), 0.75rem);
+  bottom: max(var(--mari-safe-area-inset-bottom, env(safe-area-inset-bottom)), 0.75rem);
   left: max(env(safe-area-inset-left), 0.75rem);
   transition: bottom 220ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 :root[data-professor-mari-floating="true"] .mari-conversation-call-mini {
-  bottom: calc(max(env(safe-area-inset-bottom), 0.75rem) + min(32rem, calc(100vh - 5rem)) + 0.75rem);
+  bottom: calc(
+    max(var(--mari-safe-area-inset-bottom, env(safe-area-inset-bottom)), 0.75rem) + min(32rem, calc(100vh - 5rem)) +
+      0.75rem
+  );
 }
 
 @supports (height: 100dvh) {
   :root[data-professor-mari-floating="true"] .mari-conversation-call-mini {
-    bottom: calc(max(env(safe-area-inset-bottom), 0.75rem) + min(32rem, calc(100dvh - 5rem)) + 0.75rem);
+    bottom: calc(
+      max(var(--mari-safe-area-inset-bottom, env(safe-area-inset-bottom)), 0.75rem) + min(32rem, calc(100dvh - 5rem)) +
+        0.75rem
+    );
   }
 }
 
 @media (max-width: 639px) {
   :root[data-professor-mari-floating="true"] .mari-conversation-call-mini {
-    bottom: calc(max(env(safe-area-inset-bottom), 0.75rem) + 4rem);
+    bottom: calc(max(var(--mari-safe-area-inset-bottom, env(safe-area-inset-bottom)), 0.75rem) + 4rem);
   }
 }
 

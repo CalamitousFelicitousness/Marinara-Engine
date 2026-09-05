@@ -809,10 +809,7 @@ export abstract class BaseLLMProvider {
   async embed(texts: string[], model: string, signal?: AbortSignal): Promise<number[][]> {
     const timeoutMs = getEmbeddingRequestTimeoutMs();
     const timeoutSignal = AbortSignal.timeout(timeoutMs);
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${this.apiKey}`,
-    };
+    const headers = this.embeddingHeaders();
     const res = await llmFetch(resolveEmbeddingEndpointUrl(this.baseUrl), {
       method: "POST",
       headers,
@@ -827,6 +824,13 @@ export abstract class BaseLLMProvider {
     }
     const json = await res.json();
     return parseEmbeddingResponse(json);
+  }
+
+  protected embeddingHeaders(): Record<string, string> {
+    return {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${this.apiKey}`,
+    };
   }
 }
 

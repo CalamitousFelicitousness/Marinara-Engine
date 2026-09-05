@@ -15,13 +15,17 @@
 // Implementation is upstream's (#5587). Upstream's
 // profile-import-asset-security lane pins the flat game-assets/sprites/
 // case; this one pins the root and nested-depth marker paths.
+//
+// Since #5625 a per-asset validation failure is reported rather than thrown:
+// the staged file is removed, the path lands in `skipped`, and the rest of the
+// profile still restores. Refusal is therefore asserted as absence from
+// `assets` plus a reason in `skipped`, not as a rejected promise.
 
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  ProfileImportAssetValidationError,
   stageProfileImportAssets,
   cleanupStagedProfileAssets,
 } from "../../packages/server/src/services/import/profile-import-assets.ts";
@@ -44,19 +48,23 @@ try {
   }
 
   // ── A non-empty file under that name is not a marker ──
-  await assert.rejects(
-    () => stageOne("game-assets/sprites/.native", Buffer.from("GIF89a totally an image")),
-    (error: unknown) =>
-      error instanceof ProfileImportAssetValidationError && /not a supported image file/u.test(error.message),
-    "content hiding under the marker name is still checked as an image",
-  );
+  {
+    const staged = await stageOne("game-assets/sprites/.native", Buffer.from("GIF89a totally an image"));
+    assert.equal(staged.assets.length, 0, "content hiding under the marker name must not import");
+    assert.match(
+      staged.skipped[0]?.message ?? "",
+      /not a supported image file/u,
+      "content hiding under the marker name is still checked as an image",
+    );
+    await cleanupStagedProfileAssets(staged);
+  }
 
   // ── Real images still have to be real ──
-  await assert.rejects(
-    () => stageOne("game-assets/sprites/pretend.png", Buffer.from("not actually a png")),
-    (error: unknown) => error instanceof ProfileImportAssetValidationError,
-    "the image check is untouched for everything else",
-  );
+  {
+    const staged = await stageOne("game-assets/sprites/pretend.png", Buffer.from("not actually a png"));
+    assert.equal(staged.assets.length, 0, "the image check is untouched for everything else");
+    await cleanupStagedProfileAssets(staged);
+  }
 
   console.info("Profile import native marker regression passed.");
 } finally {

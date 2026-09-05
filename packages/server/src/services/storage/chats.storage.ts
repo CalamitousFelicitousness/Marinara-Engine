@@ -48,9 +48,9 @@ import {
   normalizeTimestampOverrides,
   type TimestampOverrides,
 } from "../import/import-timestamps.js";
-import { scheduleNeedsRefresh, type CharacterSchedules, type WeekSchedule } from "../conversation/schedule.service.js";
+import { type CharacterSchedules, type WeekSchedule } from "../conversation/schedule.service.js";
 import type { ConversationStatusOverride } from "@marinara-engine/shared";
-import { resolveConversationTimeZone, toZonedWallClockDate } from "../conversation/timezone.js";
+import { resolveConversationTimeZone } from "../conversation/timezone.js";
 import { logger } from "../../lib/logger.js";
 import { galleryFileHasReferences, unlinkGalleryFileIfUnreferenced } from "../image/gallery-file-lifecycle.js";
 
@@ -68,6 +68,17 @@ const metadataPatchQueues = new Map<string, Promise<void>>();
 const messageExtraPatchQueues = new Map<string, Promise<void>>();
 const swipeExtraPatchQueues = new Map<string, Promise<void>>();
 
+/**
+ * LOCK ORDER (#5599/#5600): the message patch queue is always acquired
+ * BEFORE the store's transaction slot — updateMessageContent takes the queue
+ * and then opens db.transaction, and the delete paths hold the queue across
+ * plain writes that wait out active transactions. A db.transaction callback
+ * must therefore NEVER call a queue-taking message API (updateMessageContent,
+ * updateMessageExtra, add/remove/setActiveSwipe, removeMessage(s), ...) —
+ * that is the reverse order and deadlocks the whole store with no timeout.
+ * Same discipline as the experience-lock → metadata-queue order documented
+ * further down. The queues are not reentrant either.
+ */
 async function withPatchQueue<T>(
   queues: Map<string, Promise<void>>,
   key: string,
@@ -86,6 +97,37 @@ async function withPatchQueue<T>(
   } finally {
     if (queues.get(key) === queuedVoid) {
       queues.delete(key);
+    }
+  }
+}
+
+/**
+ * Serialize one operation against MANY keys' queues at once (#5599: a bulk
+ * delete must be ordered against every affected message's in-flight edits).
+ * The shared gate is installed on every key synchronously before any await,
+ * so two concurrent multi-acquires order themselves strictly — the second
+ * finds the first's gate among its predecessors — and a cycle cannot form.
+ */
+async function withPatchQueues<T>(
+  queues: Map<string, Promise<void>>,
+  keys: string[],
+  operation: () => Promise<T>,
+): Promise<T> {
+  const uniqueKeys = [...new Set(keys)];
+  const previous = uniqueKeys.map((key) => queues.get(key) ?? Promise.resolve());
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  for (const key of uniqueKeys) queues.set(key, gate);
+
+  try {
+    await Promise.all(previous.map((tail) => tail.catch(() => undefined)));
+    return await operation();
+  } finally {
+    release();
+    for (const key of uniqueKeys) {
+      if (queues.get(key) === gate) queues.delete(key);
     }
   }
 }
@@ -775,26 +817,27 @@ export function createChatsStorage(db: DB) {
   }
 
   /**
-   * Read the character-owned schedules for `characterIds`, skipping any that are
-   * stale for `scheduleNow`. The character card is the single source of truth;
-   * chats only cache a resolved copy in `metadata.characterSchedules`.
+   * Read the character-owned schedules for `characterIds`. The character card is
+   * the single source of truth; chats only cache a resolved copy in
+   * `metadata.characterSchedules`.
+   *
+   * Last week's schedule is returned as-is. Days are keyed by weekday, so it
+   * still yields a usable routine, and dropping it here would both blank the
+   * panel and hide the staleness from the `needsRefresh` signal that drives
+   * regeneration — the schedule would then stay empty forever.
    */
-  async function collectFreshConversationSchedules(
-    characterIds: string[],
-    scheduleNow: Date,
-  ): Promise<CharacterSchedules> {
+  async function collectConversationSchedules(characterIds: string[]): Promise<CharacterSchedules> {
     const wanted = Array.from(new Set(characterIds));
-    const freshSchedules: CharacterSchedules = {};
-    if (wanted.length === 0) return freshSchedules;
+    const collected: CharacterSchedules = {};
+    if (wanted.length === 0) return collected;
 
     const rows = await db.select().from(characters).where(inArray(characters.id, wanted));
     for (const row of rows) {
       const schedule = readCharacterSchedule(row.data);
-      if (!schedule || scheduleNeedsRefresh(schedule, scheduleNow)) continue;
-      freshSchedules[row.id] = schedule;
+      if (schedule) collected[row.id] = schedule;
     }
 
-    return freshSchedules;
+    return collected;
   }
 
   /**
@@ -858,7 +901,6 @@ export function createChatsStorage(db: DB) {
 
   async function collectConversationPresence(
     characterIds: string[],
-    scheduleNow: Date,
   ): Promise<{ schedules: CharacterSchedules; overrides: Record<string, ConversationStatusOverride | null> }> {
     const wanted = Array.from(new Set(characterIds));
     const schedules: CharacterSchedules = {};
@@ -867,7 +909,7 @@ export function createChatsStorage(db: DB) {
     const rows = await db.select().from(characters).where(inArray(characters.id, wanted));
     for (const row of rows) {
       const schedule = readCharacterSchedule(row.data);
-      if (schedule && !scheduleNeedsRefresh(schedule, scheduleNow)) schedules[row.id] = schedule;
+      if (schedule) schedules[row.id] = schedule;
       overrides[row.id] = readCharacterStatusOverride(row.data);
     }
     return { schedules, overrides };
@@ -983,7 +1025,10 @@ export function createChatsStorage(db: DB) {
       return rows[0] ?? null;
     },
 
-    async create(input: CreateChatInput, timestampOverrides?: TimestampOverrides | null) {
+    async create(
+      input: Omit<CreateChatInput, "personaCharacterId"> & { personaCharacterId?: string | null },
+      timestampOverrides?: TimestampOverrides | null,
+    ) {
       const id = newId();
       const timestamp = resolveTimestamps(timestampOverrides);
       const recentConversation =
@@ -1001,12 +1046,7 @@ export function createChatsStorage(db: DB) {
         ? resolveConversationTimeZone(parseMetadata(recentConversation.metadata))
         : undefined;
       const inheritedSchedules =
-        input.mode === "conversation"
-          ? await collectFreshConversationSchedules(
-              input.characterIds,
-              toZonedWallClockDate(new Date(), conversationTimeZone),
-            )
-          : {};
+        input.mode === "conversation" ? await collectConversationSchedules(input.characterIds) : {};
       const metadata: MetadataPatch = {
         summary: null,
         tags: [],
@@ -1028,7 +1068,8 @@ export function createChatsStorage(db: DB) {
         mode: input.mode,
         characterIds: JSON.stringify(input.characterIds),
         groupId: input.groupId ?? null,
-        personaId: input.personaId,
+        personaId: input.personaCharacterId ? null : (input.personaId ?? null),
+        personaCharacterId: input.personaCharacterId ?? null,
         promptPresetId: input.promptPresetId,
         connectionId: input.connectionId,
         metadata: JSON.stringify(metadata),
@@ -1061,10 +1102,7 @@ export function createChatsStorage(db: DB) {
         await hoistLegacyChatOverrides(meta.conversationStatusOverrides, characterIds);
       }
 
-      const presence = await collectConversationPresence(
-        characterIds,
-        toZonedWallClockDate(new Date(), resolveConversationTimeZone(meta)),
-      );
+      const presence = await collectConversationPresence(characterIds);
       const cardOverrides = presence.overrides;
       const statusOverrides: Record<string, ConversationStatusOverride> = {};
       for (const [characterId, override] of Object.entries(cardOverrides)) {
@@ -1103,11 +1141,10 @@ export function createChatsStorage(db: DB) {
 
       const characterIds = parseCharacterIds(chat.characterIds);
       const currentSchedules = hasConversationSchedules(meta.characterSchedules) ? meta.characterSchedules : {};
-      const scheduleNow = toZonedWallClockDate(new Date(), resolveConversationTimeZone(meta));
 
       // The character card is the source of truth; the chat map is a cache that
       // can be stale or hold a schedule the character has since replaced.
-      const freshSchedules = await collectFreshConversationSchedules(characterIds, scheduleNow);
+      const freshSchedules = await collectConversationSchedules(characterIds);
       const nextSchedules: CharacterSchedules = {};
       for (const characterId of characterIds) {
         const schedule = freshSchedules[characterId];
@@ -1137,6 +1174,12 @@ export function createChatsStorage(db: DB) {
       opts?: { tx?: Pick<DB, "select" | "update"> },
     ) {
       const conn = opts?.tx ?? db;
+      const identityUpdate =
+        data.personaId === undefined && data.personaCharacterId === undefined
+          ? {}
+          : data.personaCharacterId
+            ? { personaId: null, personaCharacterId: data.personaCharacterId }
+            : { personaId: data.personaId ?? null, personaCharacterId: null };
       await conn
         .update(chats)
         .set({
@@ -1144,7 +1187,7 @@ export function createChatsStorage(db: DB) {
           ...(data.mode !== undefined && { mode: data.mode }),
           ...(data.characterIds !== undefined && { characterIds: JSON.stringify(data.characterIds) }),
           ...(data.groupId !== undefined && { groupId: data.groupId }),
-          ...(data.personaId !== undefined && { personaId: data.personaId }),
+          ...identityUpdate,
           ...(data.promptPresetId !== undefined && { promptPresetId: data.promptPresetId }),
           ...(data.connectionId !== undefined && { connectionId: data.connectionId }),
           ...(data.folderId !== undefined && { folderId: data.folderId }),
@@ -1779,36 +1822,43 @@ export function createChatsStorage(db: DB) {
         if (clearCommandContent) {
           messagePatch.extra = JSON.stringify({ ...existingExtra, conversationCommandContent: null });
         }
-        await db.update(messages).set(messagePatch).where(eq(messages.id, id));
-        if (existing) {
-          await invalidateMemoryChunksFrom(db, existing.chatId, existing.createdAt);
-        }
-        // Also sync the edit to the active swipe row so it persists across swipe switches.
-        const msg = await this.getMessage(id);
-        if (msg) {
-          const swipes = await this.getSwipes(id);
-          const activeSwipe = swipes.find((s: any) => s.index === msg.activeSwipeIndex);
-          if (activeSwipe) {
-            const swipePatch: Record<string, unknown> = { content };
-            if (clearCommandContent) {
-              const swipeExtra = parseExtraRecord(activeSwipe.extra);
-              // Clear only a raw copy this swipe itself carries, and never a
-              // command-only carrier's.
-              if (
-                typeof swipeExtra.conversationCommandContent === "string" &&
-                swipeExtra.conversationCommandContent.trim() !== "" &&
-                swipeExtra.commandOnly !== true
-              ) {
-                swipePatch.extra = JSON.stringify({ ...swipeExtra, conversationCommandContent: null });
-              }
-            }
-            await db
-              .update(messageSwipes)
-              .set(swipePatch)
-              .where(and(eq(messageSwipes.messageId, id), eq(messageSwipes.id, activeSwipe.id)));
+        // One transaction around the messages row and its swipe mirror
+        // (#5600): the store defers flushes while a transaction is active, so
+        // a crash or badly timed flush can no longer persist the edit on the
+        // message while the active swipe still holds the pre-edit text — the
+        // tear that used to surface only in exports and branched chats.
+        return db.transaction(async () => {
+          await db.update(messages).set(messagePatch).where(eq(messages.id, id));
+          if (existing) {
+            await invalidateMemoryChunksFrom(db, existing.chatId, existing.createdAt);
           }
-        }
-        return msg;
+          // Also sync the edit to the active swipe row so it persists across swipe switches.
+          const msg = await this.getMessage(id);
+          if (msg) {
+            const swipes = await this.getSwipes(id);
+            const activeSwipe = swipes.find((s: any) => s.index === msg.activeSwipeIndex);
+            if (activeSwipe) {
+              const swipePatch: Record<string, unknown> = { content };
+              if (clearCommandContent) {
+                const swipeExtra = parseExtraRecord(activeSwipe.extra);
+                // Clear only a raw copy this swipe itself carries, and never a
+                // command-only carrier's.
+                if (
+                  typeof swipeExtra.conversationCommandContent === "string" &&
+                  swipeExtra.conversationCommandContent.trim() !== "" &&
+                  swipeExtra.commandOnly !== true
+                ) {
+                  swipePatch.extra = JSON.stringify({ ...swipeExtra, conversationCommandContent: null });
+                }
+              }
+              await db
+                .update(messageSwipes)
+                .set(swipePatch)
+                .where(and(eq(messageSwipes.messageId, id), eq(messageSwipes.id, activeSwipe.id)));
+            }
+          }
+          return msg;
+        });
       });
     },
 
@@ -2011,13 +2061,19 @@ export function createChatsStorage(db: DB) {
     },
 
     async removeMessage(id: string) {
-      const existing = await this.getMessage(id);
-      if (existing) await deleteGameStateForMessages([id], [existing.chatId]);
-      await db.delete(messages).where(eq(messages.id, id));
-      if (existing) {
-        await invalidateMemoryChunksFrom(db, existing.chatId, existing.createdAt);
-        await refreshChatLastMessageAt(existing.chatId);
-      }
+      // Serialized on the same per-message queue as every other message
+      // mutation (#5599): an in-flight edit either completes before the
+      // delete or starts after it and sees a consistent world, instead of
+      // having its writes silently vanish mid-flight into a 404.
+      return withPatchQueue(messageExtraPatchQueues, id, async () => {
+        const existing = await this.getMessage(id);
+        if (existing) await deleteGameStateForMessages([id], [existing.chatId]);
+        await db.delete(messages).where(eq(messages.id, id));
+        if (existing) {
+          await invalidateMemoryChunksFrom(db, existing.chatId, existing.createdAt);
+          await refreshChatLastMessageAt(existing.chatId);
+        }
+      });
     },
 
     async removeMessages(ids: string[], chatId?: string) {
@@ -2026,22 +2082,27 @@ export function createChatsStorage(db: DB) {
       const CHUNK = 500;
       for (let i = 0; i < ids.length; i += CHUNK) {
         const chunk = ids.slice(i, i + CHUNK);
-        const condition = chatId
-          ? and(inArray(messages.id, chunk), eq(messages.chatId, chatId))
-          : inArray(messages.id, chunk);
-        const existingRows = await db
-          .select({ id: messages.id, chatId: messages.chatId, createdAt: messages.createdAt })
-          .from(messages)
-          .where(condition);
-        for (const row of existingRows) {
-          const current = earliestByChat.get(row.chatId);
-          if (!current || row.createdAt < current) earliestByChat.set(row.chatId, row.createdAt);
-        }
-        await deleteGameStateForMessages(
-          existingRows.map((row) => row.id),
-          existingRows.map((row) => row.chatId),
-        );
-        await db.delete(messages).where(condition);
+        // Per-chunk queue acquisition (#5599): each message's delete is
+        // ordered against its in-flight edits; cross-chunk atomicity was
+        // never promised by this bulk path.
+        await withPatchQueues(messageExtraPatchQueues, chunk, async () => {
+          const condition = chatId
+            ? and(inArray(messages.id, chunk), eq(messages.chatId, chatId))
+            : inArray(messages.id, chunk);
+          const existingRows = await db
+            .select({ id: messages.id, chatId: messages.chatId, createdAt: messages.createdAt })
+            .from(messages)
+            .where(condition);
+          for (const row of existingRows) {
+            const current = earliestByChat.get(row.chatId);
+            if (!current || row.createdAt < current) earliestByChat.set(row.chatId, row.createdAt);
+          }
+          await deleteGameStateForMessages(
+            existingRows.map((row) => row.id),
+            existingRows.map((row) => row.chatId),
+          );
+          await db.delete(messages).where(condition);
+        });
       }
       for (const [affectedChatId, createdAt] of earliestByChat) {
         await invalidateMemoryChunksFrom(db, affectedChatId, createdAt);

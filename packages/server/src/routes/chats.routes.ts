@@ -36,6 +36,7 @@ import {
   formatRpgStatsForPrompt,
   normalizeRpgStatPools,
   SPEAKER_CLOSE_TAG,
+  characterDataSchema,
   formatSpeakerTag,
 } from "@marinara-engine/shared";
 import type {
@@ -61,6 +62,7 @@ import {
 } from "../services/storage/chats.storage.js";
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
 import { createCharactersStorage } from "../services/storage/characters.storage.js";
+import { resolveChatUserIdentity } from "../services/chat-user-identity.js";
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
 import { createAgentsStorage } from "../services/storage/agents.storage.js";
 import { createLorebooksStorage } from "../services/storage/lorebooks.storage.js";
@@ -108,7 +110,6 @@ import {
   isMessageHiddenFromAI,
   resolveBaseUrl,
   resolveActiveCharacterIds,
-  resolveActivePersonaCandidate,
   resolveVisibleGameStateAnchor,
   shouldEnableAgentsForGeneration,
   formatConversationInstructionsForWrap,
@@ -189,6 +190,19 @@ function toSafeExportName(name: string, fallback: string) {
     .replace(/\s+/g, "-")
     .slice(0, 80);
   return safe || fallback;
+}
+
+// Shared by chat create and update: a stored character identity must exist and
+// parse as a valid character card. [PR #5583]
+async function isValidCharacterIdentity(db: Parameters<typeof createCharactersStorage>[0], characterId: string) {
+  const character = await createCharactersStorage(db).getById(characterId);
+  if (!character) return false;
+  try {
+    const rawData = typeof character.data === "string" ? JSON.parse(character.data) : character.data;
+    return characterDataSchema.safeParse(rawData).success;
+  } catch {
+    return false;
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -343,6 +357,7 @@ export function normalizeChatForResponse<T extends { metadata?: unknown; charact
   return sanitizeChatGameNpcAvatars({
     ...chat,
     characterIds: resolveChatCharacterIds(chat.characterIds),
+    personaCharacterId: (chat as T & { personaCharacterId?: string | null }).personaCharacterId ?? null,
     metadata: parseChatMetadata(chat.metadata),
   });
 }
@@ -409,30 +424,27 @@ function toPeekPromptMessages(
 
 async function buildPersonaSnapshotForChat(
   app: FastifyInstance,
-  chat: { personaId?: string | null; mode?: string | null } | null,
+  chat: { personaId?: string | null; personaCharacterId?: string | null; mode?: string | null } | null,
 ) {
   const charactersStore = createCharactersStorage(app.db);
-  const personas = await charactersStore.listPersonas();
-  const chatPersonaId = chat?.personaId ?? null;
-  // Only Conversation falls back to the active Persona. Roleplay and Game may
-  // intentionally remain Persona-less (mirrors generate.routes.ts resolution).
-  const persona = resolveActivePersonaCandidate(personas, chatPersonaId, chat?.mode);
-
-  if (!persona) return null;
+  if (!chat) return null;
+  const identity = await resolveChatUserIdentity(charactersStore, chat);
+  if (!identity) return null;
 
   return {
-    personaId: persona.id,
-    name: persona.name,
-    description: persona.description ?? "",
-    personality: persona.personality ?? "",
-    scenario: persona.scenario ?? "",
-    backstory: persona.backstory ?? "",
-    appearance: persona.appearance ?? "",
-    avatarUrl: persona.avatarPath || null,
-    avatarCrop: persona.avatarCrop || null,
-    nameColor: persona.nameColor || null,
-    dialogueColor: persona.dialogueColor || null,
-    boxColor: persona.boxColor || null,
+    personaId: identity.id,
+    source: identity.source,
+    name: identity.name,
+    description: identity.description,
+    personality: identity.personality,
+    scenario: identity.scenario,
+    backstory: identity.backstory,
+    appearance: identity.appearance,
+    avatarUrl: identity.avatarPath,
+    avatarCrop: identity.avatarCrop ? JSON.stringify(identity.avatarCrop) : null,
+    nameColor: identity.nameColor,
+    dialogueColor: identity.dialogueColor,
+    boxColor: identity.boxColor,
   };
 }
 
@@ -999,6 +1011,12 @@ export async function chatsRoutes(app: FastifyInstance) {
     if (input.characterIds.includes(PROFESSOR_MARI_ID)) {
       return reply.status(400).send({ error: "Professor Mari is only available from the Home screen." });
     }
+    if (input.mode === "game" && input.personaCharacterId) {
+      return reply.status(400).send({ error: "Character identities are not available in Game chats." });
+    }
+    if (input.personaCharacterId && !(await isValidCharacterIdentity(app.db, input.personaCharacterId))) {
+      return reply.status(400).send({ error: "Selected character identity is invalid or unavailable." });
+    }
     const body = req.body as Record<string, unknown>;
     // No connection picked (no starred preset): seed the user's default so the
     // setup wizard shows what generation would fall back to anyway.
@@ -1033,6 +1051,44 @@ export async function chatsRoutes(app: FastifyInstance) {
     }
     if (data.characterIds?.includes(PROFESSOR_MARI_ID) && !hasProfessorMariCharacter(existing)) {
       return reply.status(400).send({ error: "Professor Mari is only available from the Home screen." });
+    }
+    const nextPersonaCharacterId =
+      data.personaCharacterId === undefined ? existing.personaCharacterId : data.personaCharacterId;
+    if ((data.mode ?? existing.mode) === "game" && nextPersonaCharacterId) {
+      return reply.status(400).send({ error: "Character identities are not available in Game chats." });
+    }
+    if (data.personaCharacterId) {
+      if (!(await isValidCharacterIdentity(app.db, data.personaCharacterId))) {
+        return reply.status(400).send({ error: "Selected character identity is invalid or unavailable." });
+      }
+    }
+    const identityBefore =
+      data.personaId !== undefined || data.personaCharacterId !== undefined
+        ? await resolveChatUserIdentity(createCharactersStorage(app.db), existing)
+        : null;
+    const nextIdentity =
+      data.personaId !== undefined || data.personaCharacterId !== undefined
+        ? {
+            personaId: data.personaCharacterId ? null : (data.personaId ?? null),
+            personaCharacterId: data.personaCharacterId || null,
+          }
+        : null;
+    const identityAfter = nextIdentity
+      ? await resolveChatUserIdentity(createCharactersStorage(app.db), { ...existing, ...nextIdentity })
+      : null;
+    const identityChanged =
+      identityBefore?.id !== identityAfter?.id || identityBefore?.source !== identityAfter?.source;
+    if (identityChanged) {
+      const previousSnapshot =
+        (await buildPersonaSnapshotForChat(app, existing)) ??
+        ({ personaId: "default-user", source: "persona", name: "You" } as const);
+      const messages = await storage.listMessages(req.params.id);
+      for (const message of messages) {
+        if (message.role !== "user") continue;
+        const extra = parseExtra(message.extra);
+        if (extra.personaSnapshot) continue;
+        await storage.updateMessageExtra(message.id, { personaSnapshot: previousSnapshot });
+      }
     }
     let roleplayTrackerCharacterIdsToSeed: string[] = [];
     if (data.characterIds !== undefined) {
@@ -1099,6 +1155,27 @@ export async function chatsRoutes(app: FastifyInstance) {
         await seedNewRoleplayChatTrackerDefaults(app, updated, roleplayTrackerCharacterIdsToSeed);
       } catch (err) {
         logger.warn(err, "Failed to seed Character Tracker defaults while setting up Roleplay chat");
+      }
+    }
+    if (updated && identityChanged) {
+      const existingMessages = await storage.listMessages(req.params.id);
+      const hasStartedChat = existingMessages.some(
+        (message) => message.role === "user" || message.role === "assistant",
+      );
+      if (hasStartedChat && identityAfter) {
+        await storage.createMessage({
+          chatId: req.params.id,
+          role: "system",
+          characterId: null,
+          content: `You are now playing as ${identityAfter.name}.`,
+          extra: {
+            identityTransitionEvent: {
+              from: identityBefore?.name ?? null,
+              to: identityAfter.name,
+              source: identityAfter.source,
+            },
+          },
+        });
       }
     }
     return updated ? normalizeChatForResponse(updated) : updated;
@@ -1577,11 +1654,8 @@ export async function chatsRoutes(app: FastifyInstance) {
       }
     }
 
-    const personas = await charactersStore.listPersonas();
-    const persona =
-      (chat.personaId ? personas.find((candidate) => candidate.id === chat.personaId) : null) ??
-      personas.find((candidate) => candidate.isActive === "true");
-    const personaName = persona?.name ?? "User";
+    const identity = await resolveChatUserIdentity(charactersStore, chat);
+    const personaName = identity?.name ?? "User";
 
     const allMessages = await storage.listMessages(req.params.id);
     let startIdx = 0;
@@ -1978,9 +2052,8 @@ export async function chatsRoutes(app: FastifyInstance) {
       }
     }
 
-    const personas = await charactersStore.listPersonas();
-    const persona = resolveActivePersonaCandidate(personas, chat.personaId, chat.mode);
-    const userName = persona?.name ?? "User";
+    const identity = await resolveChatUserIdentity(charactersStore, chat);
+    const userName = identity?.name ?? "User";
 
     const embeddingSource = await resolveMemoryRecallEmbeddingSource(app.db, {
       chatMetadata: chat.metadata,
@@ -2656,35 +2729,41 @@ export async function chatsRoutes(app: FastifyInstance) {
             : [[], [], []];
 
           const allCharacterIds = resolveChatCharacterIds(chat.characterIds);
-          const characterIds = resolveActiveCharacterIds(allCharacterIds, chatMeta, {
+          const assistantCharacterIds = resolveActiveCharacterIds(allCharacterIds, chatMeta, {
             mode: (chat.mode as string) ?? "roleplay",
             allowEmpty: true,
           });
+          let lorebookCharacterIds = assistantCharacterIds;
 
           let personaName = "User";
           let personaId: string | null = null;
           let personaDescription = "";
           let personaFields: Record<string, string> = {};
-          const allPersonas = await charStore.listPersonas();
-          const persona = resolveActivePersonaCandidate(allPersonas, chat.personaId, chat.mode as string);
-          if (persona) {
-            personaId = persona.id as string;
-            personaName = persona.name;
-            personaDescription = cardPromptText(persona.description);
+          const identity = await resolveChatUserIdentity(charStore, chat);
+          if (identity) {
+            if (identity.source === "character") {
+              if (!lorebookCharacterIds.includes(identity.id)) {
+                lorebookCharacterIds = [...lorebookCharacterIds, identity.id];
+              }
+            } else {
+              personaId = identity.id;
+            }
+            personaName = identity.name;
+            personaDescription = cardPromptText(identity.description);
 
             personaFields = {
-              personality: cardPromptText(persona.personality),
-              scenario: cardPromptText(persona.scenario),
-              backstory: cardPromptText(persona.backstory),
-              appearance: cardPromptText(persona.appearance),
+              personality: cardPromptText(identity.personality),
+              scenario: cardPromptText(identity.scenario),
+              backstory: cardPromptText(identity.backstory),
+              appearance: cardPromptText(identity.appearance),
             };
           }
 
           const personaStats = (() => {
-            if (!persona?.personaStats) return undefined;
-            if (typeof persona.personaStats !== "string") return persona.personaStats;
+            if (!identity?.personaStats) return undefined;
+            if (typeof identity.personaStats !== "string") return identity.personaStats;
             try {
-              return JSON.parse(persona.personaStats as string);
+              return JSON.parse(identity.personaStats as string);
             } catch {
               return undefined;
             }
@@ -2703,7 +2782,8 @@ export async function chatsRoutes(app: FastifyInstance) {
             chat,
             chatMeta,
             presetVariables,
-            characterIds,
+            characterIds: assistantCharacterIds,
+            groupCharacterIds: assistantCharacterIds,
             personaName,
             personaDescription,
             personaFields,
@@ -2817,7 +2897,7 @@ export async function chatsRoutes(app: FastifyInstance) {
                 : null,
               {
                 chatId: req.params.id,
-                characterIds,
+                characterIds: lorebookCharacterIds,
                 personaId,
                 activeLorebookIds,
                 forcedEntryIds: forcedLorebookEntryIds,
@@ -2854,7 +2934,7 @@ export async function chatsRoutes(app: FastifyInstance) {
           if (!preset && chatMode === "roleplay") {
             const lorebookResult = await processLorebooks(app.db, mappedMessages, null, {
               chatId: req.params.id,
-              characterIds,
+              characterIds: lorebookCharacterIds,
               personaId,
               activeLorebookIds,
               forcedEntryIds: forcedLorebookEntryIds,
@@ -2912,7 +2992,9 @@ export async function chatsRoutes(app: FastifyInstance) {
             presetVariables,
             localVariables: normalizeChatMacroVariables(chatMeta.macroVariables),
             chatId: req.params.id,
-            characterIds,
+            characterIds: assistantCharacterIds,
+            lorebookCharacterIds,
+            groupCharacterIds: assistantCharacterIds,
             personaId,
             personaName,
             personaDescription,
@@ -2956,7 +3038,7 @@ export async function chatsRoutes(app: FastifyInstance) {
           });
 
           // ── Strip <speaker> tags from chat history to save tokens (game already returned above, so this is Roleplay) ──
-          const isGroupChat = characterIds.length > 1;
+          const isGroupChat = assistantCharacterIds.length > 1;
           if (isGroupChat && chatMode !== "conversation") {
             stripSpeakerTagsExceptLastAssistant(assembled.messages);
           }
@@ -2970,7 +3052,7 @@ export async function chatsRoutes(app: FastifyInstance) {
           if (isGroupChat && groupChatMode === "merged" && groupSpeakerColors && chatMode !== "conversation") {
             // Fetch character names for the example
             const charNames: string[] = [];
-            for (const cid of characterIds) {
+            for (const cid of assistantCharacterIds) {
               const charRow = await charStore.getById(cid);
               if (charRow) {
                 const charData = JSON.parse(charRow.data as string);
@@ -2991,7 +3073,7 @@ export async function chatsRoutes(app: FastifyInstance) {
           const allContent = assembled.messages.map((m) => m.content).join("\n");
 
           // Character info fallback
-          for (const cid of characterIds) {
+          for (const cid of assistantCharacterIds) {
             const charRow = await charStore.getById(cid);
             if (!charRow) continue;
             const charData = JSON.parse(charRow.data as string);
@@ -3086,28 +3168,33 @@ export async function chatsRoutes(app: FastifyInstance) {
           }
 
           // Persona info fallback
-          if (personaDescription) {
+          const hasPersonaFallbackData =
+            !!personaDescription ||
+            Object.values(personaFields).some(Boolean) ||
+            personaStats?.rpgStats?.enabled === true;
+          if (hasPersonaFallbackData) {
             const personaXmlTag = nameToXmlTag(personaName);
-            const hasPersonaInfo =
-              allContent.includes(personaDescription.split("\n")[0]!.trim().slice(0, 80)) ||
-              allContent.includes(`<${personaXmlTag}>`) ||
-              allContent.includes(`<${personaName}>`) ||
-              new RegExp(`^#{1,6} ${personaName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "m").test(allContent);
-            if (!hasPersonaInfo) {
+            const hasCompletePersonaWrapper =
+              allContent.includes(`<${personaXmlTag}>`) && allContent.includes(`</${personaXmlTag}>`);
+            if (!hasCompletePersonaWrapper) {
               const fieldParts: string[] = [];
-              if (personaDescription)
+              // Skip any field the preset already emitted so a partially
+              // covered persona is not injected twice. [PR #5583]
+              const alreadyInPrompt = (text: string) =>
+                !!text.trim() && allContent.includes(text.split("\n")[0]!.trim().slice(0, 80));
+              if (personaDescription && !alreadyInPrompt(personaDescription))
                 fieldParts.push(wrapContent(resolvePromptMacros(personaDescription), "description", wrapFormat, 2));
-              if (personaFields.personality)
+              if (personaFields.personality && !alreadyInPrompt(personaFields.personality))
                 fieldParts.push(
                   wrapContent(resolvePromptMacros(personaFields.personality), "personality", wrapFormat, 2),
                 );
-              if (personaFields.backstory)
+              if (personaFields.backstory && !alreadyInPrompt(personaFields.backstory))
                 fieldParts.push(wrapContent(resolvePromptMacros(personaFields.backstory), "backstory", wrapFormat, 2));
-              if (personaFields.appearance)
+              if (personaFields.appearance && !alreadyInPrompt(personaFields.appearance))
                 fieldParts.push(
                   wrapContent(resolvePromptMacros(personaFields.appearance), "appearance", wrapFormat, 2),
                 );
-              if (personaFields.scenario)
+              if (personaFields.scenario && !alreadyInPrompt(personaFields.scenario))
                 fieldParts.push(wrapContent(resolvePromptMacros(personaFields.scenario), "scenario", wrapFormat, 2));
               // Include enabled RPG attributes
               if (personaStats?.rpgStats?.enabled) {
@@ -3857,6 +3944,7 @@ export async function chatsRoutes(app: FastifyInstance) {
       })(),
       groupId,
       personaId: sourceChat.personaId,
+      personaCharacterId: sourceChat.personaCharacterId ?? null,
       promptPresetId: sourceChat.promptPresetId,
       connectionId: sourceChat.connectionId,
     });

@@ -1,6 +1,6 @@
 ---
 name: marinara-upstream-sync
-description: How to sync this fork with upstream Pasta-Devs/Marinara-Engine — why the merge is a merge and not a rebase, how to see every conflict before touching the working tree, the specific fork patches that collide on each sync and how each one is resolved, and the two reverts that no conflict marker will warn you about. Use this skill whenever the user wants to sync, rebase, update, merge, or pull in upstream changes; asks whether upstream has new commits or how far behind the fork is; mentions upstream/staging, a version bump, or a large batch of incoming commits; or hits a merge conflict anywhere in this repo. Consult it before resolving any conflict here, and before concluding that a post-merge test failure is yours.
+description: How to sync this fork with upstream Pasta-Devs/Marinara-Engine — why the merge is a merge and not a rebase, how to see every conflict before touching the working tree, the specific fork patches that collide on each sync and how each one is resolved, and the three silent losses that no conflict marker will warn you about. Use this skill whenever the user wants to sync, rebase, update, merge, or pull in upstream changes; asks whether upstream has new commits or how far behind the fork is; mentions upstream/staging, a version bump, or a large batch of incoming commits; or hits a merge conflict anywhere in this repo. Consult it before resolving any conflict here, and before concluding that a post-merge test failure is yours.
 ---
 
 # Syncing this fork with upstream
@@ -148,7 +148,8 @@ end mid-`finally`, so the first test needs its closing braces added back.
 
 ## Checks that no conflict marker will warn you about
 
-Two reverts happen without a conflict, because only one side edits the file.
+Three losses happen without a conflict. The first two are reverts, because only
+one side edits the file; the third is an inbound fix that lands nowhere.
 
 **`package.json#pnpm`.** This fork moved dependency overrides into
 `pnpm-workspace.yaml` for pnpm 11; upstream stays on pnpm 10.x and keeps them
@@ -181,6 +182,33 @@ Upstream maintains its own `CLAUDE.md` too — 15 commits of history as of
 2026-08, though none landed in that sync's window. When a sync does bring a
 `CLAUDE.md` change, merge it into the fork's `CLAUDE.md` (the generation
 source) and regenerate the same way.
+
+**An upstream fix aimed at code this fork relocated.** Where the fork has gutted
+a file and moved its parts elsewhere, an upstream fix to the moved part arrives
+as a conflict in the file the fork emptied. Resolving that in the fork's favour
+is correct and still drops the fix, because its destination is a file upstream
+has never heard of and no marker points at. Nothing fails: the fork keeps
+compiling, and keeps the bug upstream just closed.
+
+The 2026-09-05 case: the fork had cut `TTSConfigCard.tsx` from 1747 lines to a
+playback-settings card, moving the voice picker to
+`components/connections/audio/voice-controls.tsx`. Upstream then spent two
+commits adding keyboard-focus restoration to that picker (#5633, #5642) inside
+the region the fork had deleted. The relocated copy had the same
+`disabled={fetchingVoices}` trigger and the same synchronous
+`triggerRef.current?.focus()`, so it carried both bugs verbatim.
+
+Find these by listing the overlap for files the fork gutted, then reading what
+upstream added to each:
+
+```bash
+BASE=$(git merge-base staging upstream/staging)
+git diff --numstat "$BASE" staging | awk '$2 > 100 {print $3}' | sort > /tmp/gutted.txt
+git diff --name-only "$BASE" upstream/staging | sort | comm -12 /tmp/gutted.txt -
+```
+
+For each hit, decide where the fix belongs now rather than whether to keep it.
+Grep the fork's destination file for the symptom the fix names, not for the fix.
 
 ## Proving a failure is upstream's, not yours
 

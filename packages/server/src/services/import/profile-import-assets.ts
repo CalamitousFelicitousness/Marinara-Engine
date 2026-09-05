@@ -32,6 +32,7 @@ type StagedProfileImportAsset = {
 export type StagedProfileImportAssets = {
   rootDir: string;
   assets: StagedProfileImportAsset[];
+  skipped: Array<{ path: string; message: string }>;
   totalBytes: number;
 };
 
@@ -122,7 +123,7 @@ async function stageStreamedAsset(
   source: ProfileImportAssetStream,
   stagedPath: string,
   expectedSize: number,
-  remainingBytes: number,
+  remainingBytes = Number.MAX_SAFE_INTEGER,
 ) {
   if (!Number.isSafeInteger(source.expectedCrc32) || source.expectedCrc32 < 0 || source.expectedCrc32 > 0xffffffff) {
     throw new ProfileImportAssetValidationError("Profile asset has an invalid CRC manifest.");
@@ -142,7 +143,12 @@ async function stageStreamedAsset(
       callback(null, buffer);
     },
   });
-  await pipeline(source.stream, inspect, createWriteStream(stagedPath, { mode: 0o600 }));
+  try {
+    await pipeline(source.stream, inspect, createWriteStream(stagedPath, { mode: 0o600 }));
+  } catch (error) {
+    if (error instanceof ProfileImportAssetValidationError) throw error;
+    throw new ProfileImportAssetValidationError("Profile asset could not be read from its archive.");
+  }
 
   if (bytesRead !== expectedSize) {
     throw new ProfileImportAssetValidationError("Profile asset does not match its manifest size.");
@@ -157,15 +163,17 @@ async function stageStreamedAsset(
 export async function stageProfileImportAssets(
   dataDir: string,
   inputs: Array<ProfileImportAssetInput>,
-  totalByteLimit: number,
+  totalByteLimit = Number.MAX_SAFE_INTEGER,
 ): Promise<StagedProfileImportAssets> {
   await mkdir(dataDir, { recursive: true });
   const rootDir = await mkdtemp(join(dataDir, ".profile-import-"));
   const stagedDataDir = join(rootDir, "staged");
   const rollbackDataDir = join(rootDir, "rollback");
   const assets: StagedProfileImportAsset[] = [];
+  const skipped: StagedProfileImportAssets["skipped"] = [];
   const seenPaths = new Set<string>();
   let totalBytes = 0;
+  let declaredBytes = 0;
 
   try {
     for (const input of inputs) {
@@ -174,37 +182,48 @@ export async function stageProfileImportAssets(
         throw new ProfileImportAssetValidationError(`Profile contains duplicate asset path ${input.path}.`);
       }
       seenPaths.add(input.path);
-      const contents = await input.read();
-      if (!contents) continue;
       if (!Number.isSafeInteger(input.expectedSize) || input.expectedSize < 0) {
-        throw new ProfileImportAssetValidationError(`Profile asset ${input.path} has an invalid manifest size.`);
+        skipped.push({ path: input.path, message: `Profile asset ${input.path} has an invalid manifest size.` });
+        continue;
       }
-      if (totalBytes + input.expectedSize > totalByteLimit) {
+      if (declaredBytes + input.expectedSize > totalByteLimit) {
         throw new ProfileImportAssetValidationError(
-          `Profile archive restored assets are too large (${totalBytes + input.expectedSize} bytes, limit ${totalByteLimit} bytes).`,
+          `Profile archive restored assets are too large (${declaredBytes + input.expectedSize} bytes, limit ${totalByteLimit} bytes).`,
         );
       }
+      declaredBytes += input.expectedSize;
 
       const stagedPath = assertInsideDir(stagedDataDir, join(stagedDataDir, ...parts));
       const outputPath = assertInsideDir(dataDir, join(dataDir, ...parts));
       const backupPath = assertInsideDir(rollbackDataDir, join(rollbackDataDir, ...parts));
-      await mkdir(dirname(stagedPath), { recursive: true });
-      if (Buffer.isBuffer(contents)) {
-        if (contents.byteLength !== input.expectedSize) {
-          throw new ProfileImportAssetValidationError(`Profile asset ${input.path} does not match its manifest size.`);
-        }
-        await writeFile(stagedPath, contents, { mode: 0o600 });
-      } else {
-        try {
-          await stageStreamedAsset(contents, stagedPath, input.expectedSize, totalByteLimit - totalBytes);
-        } catch (error) {
-          if (error instanceof ProfileImportAssetValidationError && !error.message.includes(input.path)) {
-            error.message = `Profile asset ${input.path}: ${error.message}`;
+      try {
+        const contents = await input.read();
+        if (!contents) continue;
+        await mkdir(dirname(stagedPath), { recursive: true });
+        if (Buffer.isBuffer(contents)) {
+          if (contents.byteLength !== input.expectedSize) {
+            throw new ProfileImportAssetValidationError(
+              `Profile asset ${input.path} does not match its manifest size.`,
+            );
           }
-          throw error;
+          await writeFile(stagedPath, contents, { mode: 0o600 });
+        } else {
+          try {
+            await stageStreamedAsset(contents, stagedPath, input.expectedSize, totalByteLimit - totalBytes);
+          } catch (error) {
+            if (error instanceof ProfileImportAssetValidationError && !error.message.includes(input.path)) {
+              error.message = `Profile asset ${input.path}: ${error.message}`;
+            }
+            throw error;
+          }
         }
+        await validateProfileImportAsset(input.path, stagedPath, stagedDataDir);
+      } catch (error) {
+        if (!(error instanceof ProfileImportAssetValidationError)) throw error;
+        await rm(stagedPath, { force: true }).catch(() => undefined);
+        skipped.push({ path: input.path, message: error.message });
+        continue;
       }
-      await validateProfileImportAsset(input.path, stagedPath, stagedDataDir);
       totalBytes += input.expectedSize;
       assets.push({
         path: input.path,
@@ -216,7 +235,7 @@ export async function stageProfileImportAssets(
       });
     }
 
-    return { rootDir, assets, totalBytes };
+    return { rootDir, assets, skipped, totalBytes };
   } catch (error) {
     await rm(rootDir, { recursive: true, force: true }).catch(() => undefined);
     throw error;

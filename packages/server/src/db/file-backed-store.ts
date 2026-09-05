@@ -13,10 +13,12 @@ import {
   closeSync,
   readdirSync,
   readFileSync,
+  readlinkSync,
   realpathSync,
   readSync,
   renameSync,
   rmSync,
+  statfsSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -100,6 +102,7 @@ type StorageWriterLeaseRecord = {
   hostId: string | null;
   scopeId?: string;
   bootId?: string;
+  pidNamespace?: string;
   hostname: string;
   token: string;
   acquiredAt: string;
@@ -231,6 +234,18 @@ export type FileNativeStoreTestHooks = {
   beforeTableWrite?: (table: string, serializedRows: string) => Promise<void> | void;
   writerLeaseScopeId?: string;
   writerLeaseBootId?: string;
+  /** Overrides the filesystem check behind writerLeaseStorageIsMachineLocal (#5744). */
+  writerLeaseStorageIsMachineLocal?: boolean;
+  /** Overrides the PID namespace recorded in and compared against the lease (#5744). */
+  writerLeasePidNamespace?: string;
+  /**
+   * Regression seam (#5631): runs after a plain (non-transaction) write has
+   * cleared the write gate, before its mutation applies. Lets a regression
+   * place the apply at a chosen point relative to a transaction's lifecycle
+   * — the one-tick scheduling freedom the gate race exposed, made
+   * deterministic. Never invoked for transaction-context writes.
+   */
+  afterWritableTurn?: () => Promise<void> | void;
 };
 
 type SelectFromBuilder<TProjection extends Projection | undefined> = {
@@ -1407,6 +1422,21 @@ const CURRENT_HOST_ID = (() => {
     .digest("hex");
 })();
 const CURRENT_BOOT_ID = readBootId();
+// PID liveness and start-time checks only mean something inside one PID
+// namespace: sibling containers on the same host cannot see each other's
+// processes. The lease records the writer's namespace so a later reader can
+// tell whether those checks apply to it (#5744). The kernel can hand a freed
+// namespace inode number to a new namespace, but only after the old one and
+// every process in it are gone, so a matching value never describes a writer
+// that is still alive somewhere else.
+const CURRENT_PID_NAMESPACE = (() => {
+  if (process.platform !== "linux" && process.platform !== "android") return null;
+  try {
+    return readlinkSync("/proc/self/ns/pid") || null;
+  } catch {
+    return null;
+  }
+})();
 const CURRENT_CLOCK_TICKS_PER_SECOND = (() => {
   if (process.platform !== "linux" && process.platform !== "android") return null;
   try {
@@ -1561,6 +1591,7 @@ function parseWriterLease(path: string): { raw: string; record: StorageWriterLea
       (record.hostId !== null && typeof record.hostId !== "string") ||
       (record.version === 3 && (typeof record.scopeId !== "string" || record.scopeId.length === 0)) ||
       (record.version === 4 && (typeof record.bootId !== "string" || record.bootId.length === 0)) ||
+      (record.pidNamespace !== undefined && typeof record.pidNamespace !== "string") ||
       typeof record.hostname !== "string" ||
       typeof record.token !== "string" ||
       typeof record.acquiredAt !== "string"
@@ -1642,6 +1673,55 @@ function isTermuxPrivateHomeStorage(rootDir: string) {
     const home = realpathSync(resolve(process.env.HOME));
     const storage = realpathSync(resolve(rootDir));
     return storage === home || storage.startsWith(`${home}${sep}`);
+  } catch {
+    return false;
+  }
+}
+
+// Filesystem magic numbers (linux/magic.h) of single-host filesystems: ones
+// that are only ever mounted by the one kernel holding their block device or
+// memory. A lease directory on one of these cannot be reached by a second
+// machine at the same time, so a writer that left a lease there necessarily
+// ran on this host. Network and cluster filesystems, FUSE mounts, and anything
+// unrecognised are deliberately absent: an unknown type keeps the
+// manual-recovery behavior. The one shape this cannot see is a non-cluster
+// filesystem on a multi-attached block device (shared SAN LUN, multi-attach
+// cloud volume) mounted read-write by two hosts at once; that setup corrupts
+// the filesystem itself and is outside what any of these proofs cover.
+const MACHINE_LOCAL_FILESYSTEM_MAGICS = new Set<number>([
+  0xef53, // ext2 / ext3 / ext4
+  0x58465342, // xfs
+  0x9123683e, // btrfs
+  0xf2f52010, // f2fs
+  0x2fc12fc1, // zfs
+  0xca451a4e, // bcachefs
+  0x794c7630, // overlayfs
+  0x01021994, // tmpfs
+  0x858458f6, // ramfs
+  0xe0f5e1e2, // erofs
+  0x73717368, // squashfs
+  0x5346544e, // ntfs / ntfs3
+  0x2011bab0, // exfat
+  0x4d44, // msdos / vfat
+  0x3153464a, // jfs
+]);
+
+/**
+ * Whether the storage directory sits on a filesystem that no other machine can
+ * mount concurrently. A writer lease whose record carries `hostId: null` was
+ * written by a process that could not read a stable machine ID — every Docker
+ * and Podman container, and Linux hosts without /etc/machine-id — so the host
+ * comparison can never match it. When the storage is machine-local, that
+ * writer provably ran here and the same staleness proofs as a same-host lease
+ * apply (#5744). Only Linux and Android expose the statfs magic reliably; other
+ * platforms always have a stable machine ID and keep the strict path.
+ */
+export function writerLeaseStorageIsMachineLocal(rootDir: string) {
+  if (process.platform !== "linux" && process.platform !== "android") return false;
+  try {
+    // `>>> 0` recovers the unsigned magic from a possibly sign-extended statfs
+    // `type`; magics at or above 0x80000000 (btrfs, f2fs, erofs, ...) need it.
+    return MACHINE_LOCAL_FILESYSTEM_MAGICS.has(Number(statfsSync(rootDir).type) >>> 0);
   } catch {
     return false;
   }
@@ -2158,6 +2238,22 @@ class FileTableStore {
   private readonly txContext = new AsyncLocalStorage<FileTransactionContext>();
   private transactionQueue: Promise<void> = Promise.resolve();
   private activeTransactionCount = 0;
+  /**
+   * The running transaction's context (#5651). The queue admits at most one
+   * transaction, so a single reference suffices. Lazy loads triggered by
+   * CONCURRENT requests run outside the transaction's AsyncLocalStorage
+   * context but still splice rows into live tables the transaction may have
+   * snapshotted - the snapshot mirror and load-heal marks must reach this
+   * context regardless of who performed the load, or a rollback erases the
+   * loaded rows while loadedUnits still says they are resident.
+   */
+  private activeTransactionContext: FileTransactionContext | null = null;
+  // Transactions that have taken their queue slot but not yet incremented
+  // activeTransactionCount (they are awaiting the previous transaction or an
+  // in-flight flush). The plain-write gate honors this too (#5631): a write
+  // passing the gate in that window could apply after the transaction's
+  // first-mutation snapshot and be silently erased by a rollback.
+  private pendingTransactionCount = 0;
   private transactionIdleWaiters = new Set<() => void>();
   private pendingTransactionFlush = false;
   private quarantinedTables: QuarantinedStorageTable[] = [];
@@ -2178,6 +2274,7 @@ class FileTableStore {
     const path = writerLeasePath(this.rootDir);
     const writerScopeId = this.testHooks?.writerLeaseScopeId ?? CURRENT_CONTAINER_WRITER_SCOPE_ID;
     const writerBootId = this.testHooks?.writerLeaseBootId ?? CURRENT_BOOT_ID;
+    const writerPidNamespace = this.testHooks?.writerLeasePidNamespace ?? CURRENT_PID_NAMESPACE;
     for (let attempt = 0; attempt < 10; attempt++) {
       const token = randomUUID();
       let created = false;
@@ -2201,6 +2298,7 @@ class FileTableStore {
             hostId: CURRENT_HOST_ID,
             ...(liveness ? { scopeId: liveness.scopeId } : {}),
             ...(writerBootId ? { bootId: writerBootId } : {}),
+            ...(writerPidNamespace ? { pidNamespace: writerPidNamespace } : {}),
             hostname: CURRENT_HOSTNAME,
             token,
             acquiredAt: new Date().toISOString(),
@@ -2239,7 +2337,30 @@ class FileTableStore {
       }
 
       let staleReason: "boot" | "liveness" | "pid" | "pid-reused" | null = null;
-      const sameHost = writerLeaseBelongsToCurrentHost(existing.record) || isTermuxPrivateHomeStorage(this.rootDir);
+      // Same-host proof, in order of strength: the recorded machine ID matches
+      // ours; the storage is Termux's app-private HOME; or the writer could not
+      // identify its machine at all (hostId null) but left the lease on storage
+      // only this machine can mount (#5744). A lease that names a different
+      // machine never qualifies for the storage-based proof.
+      let hostProof: "host-id" | "termux-home" | "local-storage" | null = null;
+      if (writerLeaseBelongsToCurrentHost(existing.record)) hostProof = "host-id";
+      else if (isTermuxPrivateHomeStorage(this.rootDir)) hostProof = "termux-home";
+      else if (
+        existing.record.hostId === null &&
+        (this.testHooks?.writerLeaseStorageIsMachineLocal ?? writerLeaseStorageIsMachineLocal(this.rootDir))
+      ) {
+        hostProof = "local-storage";
+      }
+      const sameHost = hostProof !== null;
+      // A machine-ID or Termux proof comes from a native process, so it shares
+      // our PID namespace. The storage-based proof also covers sibling
+      // containers on this host, whose PIDs are invisible to each other, so
+      // the PID checks below additionally require the lease to record our own
+      // namespace; older or foreign-namespace records rely on the boot and
+      // liveness proofs alone (#5744).
+      const pidProofUsable =
+        hostProof !== "local-storage" ||
+        (writerPidNamespace !== null && existing.record.pidNamespace === writerPidNamespace);
       if (existing.record.version === 4 && sameHost && writerBootId && existing.record.bootId !== writerBootId) {
         staleReason = "boot";
       } else if (existing.record.version === 3 || (existing.record.version === 4 && existing.record.scopeId)) {
@@ -2252,11 +2373,9 @@ class FileTableStore {
         ) {
           staleReason = "liveness";
         }
-      } else {
-        if (sameHost) {
-          if (pidDefinitelyExited(existing.record.pid)) staleReason = "pid";
-          else if (pidWasReused(existing.record)) staleReason = "pid-reused";
-        }
+      } else if (sameHost && pidProofUsable) {
+        if (pidDefinitelyExited(existing.record.pid)) staleReason = "pid";
+        else if (pidWasReused(existing.record)) staleReason = "pid-reused";
       }
       if (!staleReason) {
         throw new StorageWriterLeaseError(
@@ -2287,7 +2406,7 @@ class FileTableStore {
       }
       rmSync(stalePath, { recursive: true });
       logger.warn(
-        { previousPid: existing.record.pid, path, staleReason },
+        { previousPid: existing.record.pid, path, staleReason, hostProof },
         staleReason === "boot"
           ? "[file-storage] Reclaimed the writer lease after detecting that the previous owner belonged to an earlier boot."
           : staleReason === "liveness"
@@ -2715,23 +2834,51 @@ class FileTableStore {
     this.transactionQueue = new Promise<void>((resolve) => {
       releaseTransaction = resolve;
     });
-    await previousTransaction;
-    if (this.activeFlush) await this.activeFlush;
-
-    const ctx: FileTransactionContext = {
-      snapshots: new Map<string, Row[]>(),
-      dirtyTables: new Set<string>(),
-      dirtyShards: new Map<string, Set<string>>(),
-      loadHealDirtyShards: new Map<string, Set<string>>(),
-      loadHealDirtyTables: new Set<string>(),
-      flushed: false,
-    };
-    const dirtySnapshot = this.dirty;
-    const dirtyTablesSnapshot = new Set(this.dirtyTables);
-    // Deep copy — a shallow one would let in-transaction writes mutate the
-    // snapshot's Sets and corrupt the rollback state (#4708).
-    const dirtyShardsSnapshot = new Map([...this.dirtyShards].map(([table, keys]) => [table, new Set(keys)]));
-    this.activeTransactionCount++;
+    // Close the plain-write gate atomically with queue admission (#5631):
+    // without the pending count, a write could pass waitForWritableTurn
+    // during the awaits below (activeTransactionCount still 0), apply after
+    // this transaction's first-mutation snapshot, and vanish on rollback.
+    this.pendingTransactionCount++;
+    let ctx!: FileTransactionContext;
+    let dirtySnapshot!: boolean;
+    let dirtyTablesSnapshot!: Set<string>;
+    let dirtyShardsSnapshot!: Map<string, Set<string>>;
+    try {
+      await previousTransaction;
+      // Loop, not check-once (#5652): two flushes can be parked on the same
+      // activeFlush with the second subscribed first. When it resolves, that
+      // flush's recursion re-enters before this continuation resumes, sees no
+      // active transaction, captures the dirty set, and installs a NEW
+      // activeFlush - a single consumed check would sail past it and run the
+      // callback concurrently with its I/O, letting saveFileSnapshots persist
+      // uncommitted rows that a rollback then leaves on disk with no dirty
+      // mark. The recursing flush assigns activeFlush synchronously before
+      // its first await, so a re-check after every wake always observes it.
+      while (this.activeFlush) await this.activeFlush;
+      ctx = {
+        snapshots: new Map<string, Row[]>(),
+        dirtyTables: new Set<string>(),
+        dirtyShards: new Map<string, Set<string>>(),
+        loadHealDirtyShards: new Map<string, Set<string>>(),
+        loadHealDirtyTables: new Set<string>(),
+        flushed: false,
+      };
+      dirtySnapshot = this.dirty;
+      dirtyTablesSnapshot = new Set(this.dirtyTables);
+      // Deep copy — a shallow one would let in-transaction writes mutate the
+      // snapshot's Sets and corrupt the rollback state (#4708).
+      dirtyShardsSnapshot = new Map([...this.dirtyShards].map(([table, keys]) => [table, new Set(keys)]));
+      // Handoff is synchronous, so the combined gate count never dips to zero
+      // between reservation and activation. Nothing after the increment can
+      // throw inside this try, so the reservation can never leak.
+      this.activeTransactionCount++;
+      this.activeTransactionContext = ctx;
+      this.pendingTransactionCount--;
+    } catch (err) {
+      this.pendingTransactionCount--;
+      releaseTransaction();
+      throw err;
+    }
 
     try {
       const result = await this.txContext.run(ctx, () => fn(tx));
@@ -2802,6 +2949,7 @@ class FileTableStore {
       throw err;
     } finally {
       this.activeTransactionCount--;
+      if (this.activeTransactionContext === ctx) this.activeTransactionContext = null;
       if (this.activeTransactionCount === 0) {
         for (const resolve of this.transactionIdleWaiters) resolve();
         this.transactionIdleWaiters.clear();
@@ -2821,9 +2969,20 @@ class FileTableStore {
 
   private async waitForWritableTurn(): Promise<void> {
     this.assertWritable();
-    if (this.activeTransactionCount > 0 && !this.txContext.getStore()) {
-      await this.waitForTransactions();
+    if (this.txContext.getStore()) return;
+    // Loop: a wake at activeTransactionCount === 0 can still land inside
+    // another transaction's reservation window (#5631), so re-check both
+    // counters after every wait. The idle waiters only fire on active-count
+    // transitions, so the pending-only case waits on the transaction queue
+    // instead (resolved when the queued transaction fully finishes).
+    while (this.activeTransactionCount > 0 || this.pendingTransactionCount > 0) {
+      if (this.activeTransactionCount > 0) {
+        await this.waitForTransactions();
+      } else {
+        await this.transactionQueue;
+      }
     }
+    await this.testHooks?.afterWritableTurn?.();
   }
 
   private assertWritable() {
@@ -2843,8 +3002,17 @@ class FileTableStore {
    * Mirrors a LOAD-created healing mark into the active transaction so a
    * rollback can re-merge it (#5606) — see FileTransactionContext.
    */
+  /**
+   * The transaction context a LOAD-side effect must mirror into: the caller's
+   * own (in-context loads) or the active transaction's (loads performed by a
+   * concurrent request while a transaction is open, #5651).
+   */
+  private loadEffectTransactionContext(): FileTransactionContext | null {
+    return this.txContext.getStore() ?? (this.activeTransactionCount > 0 ? this.activeTransactionContext : null);
+  }
+
   private recordLoadHealMarks(table: string, keys?: Iterable<string>) {
-    const ctx = this.txContext.getStore();
+    const ctx = this.loadEffectTransactionContext();
     if (!ctx) return;
     ctx.loadHealDirtyTables.add(table);
     if (keys) {
@@ -3077,7 +3245,18 @@ class FileTableStore {
   async flush(force = false, throwOnError = false, allowClosed = false) {
     const transactionContext = this.txContext.getStore();
     if (this.writesClosed && !transactionContext && !allowClosed) this.assertWritable();
-    if (this.activeTransactionCount > 0 && !(force && transactionContext)) {
+    // Loop, not check-once — the mirror image of transaction()'s activeFlush
+    // wait (#5652). A transaction queued behind the one this flush is waiting
+    // out resumes on a one-hop microtask chain, while this flush's wake from
+    // waitForTransactions is two-hop: the queued transaction can activate
+    // BEFORE this continuation runs. The pendingTransactionFlush handoff
+    // rescues that ordering while the store is open (the finally starts a
+    // flush that installs activeFlush synchronously), but the handoff is
+    // deliberately skipped once writesClosed — a check-once wait here then
+    // ran saveFileSnapshots concurrently with the freshly activated
+    // transaction's callback during shutdown, persisting uncommitted rows
+    // whose dirty marks the rollback erased.
+    while (this.activeTransactionCount > 0 && !(force && transactionContext)) {
       this.pendingTransactionFlush = true;
       if (transactionContext) return;
       await this.waitForTransactions();
@@ -3799,14 +3978,18 @@ class FileTableStore {
     };
     const merged = resident.map(swapReplaced).concat(added).sort(compareRows);
     this.tables.set(table, merged);
-    const ctx = this.txContext.getStore();
+    const ctx = this.loadEffectTransactionContext();
     const snapshot = ctx?.snapshots.get(table);
     if (snapshot) {
-      const mirrored = snapshot.map(swapReplaced).concat(added);
+      // References, not clones: rows are immutable once installed. Build the
+      // merged array fully BEFORE touching the snapshot, and refill with a
+      // loop rather than push(...mirrored): a spread passes every row as a
+      // call argument, which overflows the call stack past ~100k rows — and
+      // that throw landed AFTER the length = 0 truncation, leaving an empty
+      // rollback snapshot that a later rollback installed as the live table.
+      const mirrored = snapshot.map(swapReplaced).concat(added).sort(compareRows);
       snapshot.length = 0;
-      // References, not clones: rows are immutable once installed.
-      snapshot.push(...mirrored);
-      snapshot.sort(compareRows);
+      for (const row of mirrored) snapshot.push(row);
     }
     if (table === "messages") this.reindexMovedMessages(added.concat([...replacements.values()]));
     return keys;

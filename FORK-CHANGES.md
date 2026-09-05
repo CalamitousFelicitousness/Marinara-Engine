@@ -1117,6 +1117,64 @@ Persist migration v96 -> v97 folds the short-lived density setting into the text
 (compact/standard/comfortable -> S/M/L). Width presets set width only now; pairing them with a text
 size would re-conflate the axes this work separated.
 
+### Sync with upstream, 2026-09-05
+
+344 upstream commits and 98 PR merges, merge base `ff3415792`, v2.4.4 to v2.4.5. 266 upstream-changed
+files, 59 overlapping fork changes, 16 conflicts. Storage format stayed at 6, and upstream touched
+neither `AGENTS.md` nor `CLAUDE.md`, so two of the three silent losses did not arise. The third did:
+`package.json#pnpm` gained five bumps that needed mirroring.
+
+Resolutions worth remembering:
+
+- **`package.json#pnpm` carried security patches.** `chore(deps): consolidate compatible updates and
+  security patches (#5848)` bumped `browserslist` (new), `postcss` to 8.5.26, `qs` to 6.16.0, `sharp`
+  to 0.35.4, and replaced the `fast-uri@3.1.0` pin with the range pair `>=3 <3.1.6` and `>=4 <4.1.3`.
+  This fork reads `pnpm-workspace.yaml` instead, so all five merged cleanly and applied nothing.
+  Mirrored by hand and confirmed in the regenerated lockfile rather than assumed.
+- **`ui.store.ts` persist version, again.** Both sides reached 99 from a shared 96, with different
+  steps: upstream's were reasoning prefs, persona pickers, home browser chrome and the Noodle image
+  move, the fork's were the tracker width/density split, reflow placement and always-float. The sync
+  lands on 100 and widens every migrate guard to `<= 99`, because a fork store sitting at 99 would
+  otherwise be treated as already migrated and skip upstream's four steps forever. Every one of those
+  steps is guarded on its own data, so re-running them on an upstream-lineage store is a no-op. The
+  assertion in `roleplay-streaming.regression.ts` and the one in `core-flows.e2e.ts:7404` both follow
+  the store, and upstream had just moved the latter from 96 to 99.
+- **`TTSConfigCard.tsx` was delete-vs-modify.** The fork had cut the card from 1747 lines to playback
+  settings; upstream added 56 lines of keyboard-focus restoration inside the region the fork deleted.
+  Taking the fork's side is correct and drops the fix, so the fix was re-homed instead. See below.
+- **`package.json#check` became a genuine three-way.** Upstream added `check:e2e-types` and a root
+  `typescript` devDependency. The merged script keeps the fork's `agent-docs:check` and
+  `dev-ports:check` alongside it.
+- **`chats.routes.ts` macro context.** The fork adds `chat`, `chatMeta` and `presetVariables`;
+  upstream narrows `characterIds` to `assistantCharacterIds` and adds `groupCharacterIds`, from
+  `fix: exclude user identity from roleplay speakers`. Both sides are kept, since taking either alone
+  loses something.
+- **`import.routes.ts`** dropped `MAX_FILE_SIZES` deliberately: upstream removed the import and its
+  only use in `fix: make profile and card imports resilient (#5625)`. The fork's conflict-kind
+  imports stay.
+- **`retry-agents-route.ts`** conflicted on three additive hunks and auto-merged the part that
+  matters. Upstream's `chatSummary: activeChatSummary` and the fork's `authorNotes` both survive, and
+  no `buildPromptMacroContext` reference outlived the fork's migration to `buildChatMacroContext`.
+
+### An upstream focus fix, re-homed after the fork moved its target
+
+Upstream fixed keyboard focus in the TTS voice picker across two commits (#5633, #5642): focusing
+synchronously races the panel unmount, and `focus()` on a disabled button is a silent no-op, so a
+restore landing while a voices refetch holds the trigger disabled stranded focus on `<body>`
+permanently.
+
+Both fixes were written against `TTSConfigCard.tsx`, which this fork had already emptied when it
+moved the voice controls to `components/connections/audio/voice-controls.tsx`. The relocated copy had
+the same synchronous `triggerRef.current?.focus()` and the same effect closing the panel on
+`disabled` without restoring focus at all, so it carried both bugs while the conflict pointed only at
+the file the fork no longer uses.
+
+`voice-controls.tsx` now carries upstream's bounded `requestAnimationFrame` retry and the
+focus-was-inside guard on the disable path. Nothing in the suite covers this, and no conflict marker
+would have raised it: the fix and its destination are in different files, so only reading what
+upstream added to a gutted file finds it. `.claude/skills/marinara-upstream-sync/SKILL.md` records
+the pattern.
+
 ### Sync with upstream, 2026-08-26
 
 146 upstream commits, merge base `c276876dd`. 274 upstream-changed files, 44 overlapping fork

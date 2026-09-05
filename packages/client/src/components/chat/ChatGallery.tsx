@@ -40,7 +40,7 @@ import { ImageUploadDropzone } from "../ui/ImageUploadDropzone";
 import { buildCardAssetMarkdown, dispatchCardAssetInsert } from "../../lib/card-asset-links";
 import { showConfirmDialog } from "../../lib/app-dialogs";
 import { cn, copyToClipboard } from "../../lib/utils";
-import { downloadUrlToDevice } from "../../lib/file-download";
+import { downloadUrlToDevice, shouldUseIosImageShare } from "../../lib/file-download";
 import {
   ChatImageLightbox,
   ChatVideoLightbox,
@@ -273,6 +273,21 @@ export function ChatGallery({
       },
     );
   };
+
+  const handleDownloadImage = useCallback(
+    async (image: ChatImage) => {
+      if (shouldUseIosImageShare()) {
+        setLightbox(image);
+        return;
+      }
+      try {
+        await downloadUrlToDevice(image.url, getChatImageDownloadName(image));
+      } catch {
+        toast.error(localizeUi("ui.chat.chatgallery.downloadFailed"));
+      }
+    },
+    [localizeUi],
+  );
 
   const handleBatchDownload = useCallback(async () => {
     if (selectedImages.length === 0 || batchOperationPendingRef.current) return;
@@ -575,13 +590,13 @@ export function ChatGallery({
 
   return (
     <>
-      <div className="flex flex-col gap-3 p-4">
+      <div className="flex flex-col gap-3 p-4 max-md:p-3">
         {(canIllustrate ||
           onGenerateSelfie ||
           onGenerateStoryboard ||
           (sceneVideosEnabled && onGenerateVideo) ||
           onGenerateBackground) && (
-          <div className={actionGridClass}>
+          <div className={cn("mari-gallery-generation-actions", actionGridClass)}>
             {canIllustrate && (
               <div ref={illustrateMenuRef} className="relative min-w-0">
                 <button
@@ -607,7 +622,7 @@ export function ChatGallery({
                       : localizeUi("ui.chat.chatgallery.illustrate")}
                   </span>
                   {illustrateAgents.length > 0 && !isIllustrating ? (
-                    <ChevronDown size="0.875rem" className="shrink-0" />
+                    <ChevronDown size="0.875rem" className="shrink-0 max-md:absolute max-md:right-1 max-md:top-1" />
                   ) : null}
                 </button>
                 {illustrateMenuOpen && (
@@ -1079,8 +1094,8 @@ export function ChatGallery({
                     {/* Overlay */}
                     {!selectingImages && (
                       <div className="pointer-events-none absolute inset-0 flex items-end bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 max-md:opacity-100">
-                        <div className="flex w-full items-center justify-between p-2">
-                          <div className="flex gap-1">
+                        <div className="mari-gallery-image-actions flex w-full items-center justify-between p-2">
+                          <div className="flex gap-1 max-md:contents">
                             <button
                               type="button"
                               onClick={() => handlePinImage(img)}
@@ -1090,15 +1105,15 @@ export function ChatGallery({
                             >
                               <Pin size="0.75rem" />
                             </button>
-                            <a
-                              href={img.url}
-                              download={getChatImageDownloadName(img)}
+                            <button
+                              type="button"
+                              onClick={() => void handleDownloadImage(img)}
                               aria-label={localizeUi("ui.chat.chatgallery.downloadGalleryImage")}
                               className="pointer-events-auto rounded-md bg-white/20 p-1.5 text-white transition-colors hover:bg-white/30"
                               title={localizeUi("ui.chat.chatgallery.downloadImage")}
                             >
                               <Download size="0.75rem" />
-                            </a>
+                            </button>
                             {sceneVideosEnabled && onAnimateImage && (
                               <button
                                 type="button"

@@ -466,9 +466,10 @@ assert.match(
   "active Roleplay tracker agents should expose their saved prompt templates",
 );
 assert.match(reducedAmbientEffectsHookSource, /manualPreference \|\| systemPreference/u);
-// Fork numbering diverged: both sides independently used 96, so the sync landed
-// on 99. Bump deliberately when adding a migration, on either side.
-assert.match(uiStoreSource, /version: 99/u);
+// Both sides independently numbered to 99 from a shared 96, so the sync landed on
+// 100 and widened every migrate guard to `<= 99`. Bump deliberately when adding a
+// migration, on either side.
+assert.match(uiStoreSource, /version: 100/u);
 assert.match(globalStylesSource, /data-marinara-reduced-effects/u);
 const accentTransitionStyles =
   globalStylesSource.match(
@@ -1147,8 +1148,8 @@ assert.match(
 );
 assert.match(
   chatRoleplaySurfaceSource,
-  /paddingBottom: "var\(--mari-roleplay-content-padding-bottom, 16px\)"/u,
-  "Roleplay transcript padding should consume the imperatively measured composer inset",
+  /paddingBottom:\s*"calc\(var\(--mari-roleplay-content-padding-bottom, 16px\) \+ var\(--mari-message-editor-scroll-space, 0px\)\)"/u,
+  "Roleplay transcript padding should combine the measured composer inset with editor scroll space",
 );
 assert.match(
   chatMessageSource,

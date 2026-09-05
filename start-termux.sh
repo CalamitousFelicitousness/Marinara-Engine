@@ -37,6 +37,9 @@ echo ""
 # Navigate to script directory
 cd "$(dirname "$0")"
 
+# Public update checks must never pause for GitHub credentials.
+export GIT_TERMINAL_PROMPT=0
+
 # APK-managed installs provision a per-install secret in Termux-private
 # storage. The server uses it to keep unrelated Android apps from inheriting
 # loopback trust; manual Termux installs simply continue without this setting.
@@ -669,12 +672,35 @@ trap release_termux_wake_lock EXIT
 if command -v termux-wake-lock &> /dev/null && command -v termux-wake-unlock &> /dev/null; then
     if termux-wake-lock >/dev/null 2>&1; then
         TERMUX_WAKE_LOCK_ACQUIRED=1
+        export MARINARA_WAKE_LOCK_STATUS=acquired
         echo "  [OK] Android wake lock acquired for background reliability"
     else
+        export MARINARA_WAKE_LOCK_STATUS=failed
         echo "  [WARN] Could not acquire an Android wake lock; background execution may pause."
     fi
 else
+    export MARINARA_WAKE_LOCK_STATUS=unavailable
     echo "  [WARN] Termux wake-lock commands are unavailable; background execution may pause."
+fi
+
+# A missing wake lock is the #1 background-reliability signal (#5656): repeat
+# it prominently right before the server starts so it cannot scroll away
+# unnoticed, and tell the user what to do about it.
+if [ "$MARINARA_WAKE_LOCK_STATUS" != "acquired" ]; then
+    echo ""
+    echo "  ============================================================"
+    echo "  [WARN] NO ANDROID WAKE LOCK ($MARINARA_WAKE_LOCK_STATUS)."
+    echo "         Android may FREEZE the server whenever Termux is in"
+    echo "         the background: the app will hang until you bring"
+    echo "         Termux back to the foreground."
+    if [ "$MARINARA_WAKE_LOCK_STATUS" = "unavailable" ]; then
+        echo "         termux-wake-lock ships with the core termux-tools"
+        echo "         package: run 'pkg install termux-tools' and restart."
+    fi
+    echo "         Also set Termux's battery usage to Unrestricted in"
+    echo "         Android settings."
+    echo "  ============================================================"
+    echo ""
 fi
 
 # Start server

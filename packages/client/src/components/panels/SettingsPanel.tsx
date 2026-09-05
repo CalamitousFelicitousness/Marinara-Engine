@@ -1361,6 +1361,14 @@ const SETTINGS_SEARCHABLE_CONTROLS: readonly SettingsSearchableControlMeta[] = [
     kind: "Toggle",
   },
   {
+    id: "message-controls-above",
+    sectionId: "message-tools",
+    label: "Show message controls above messages",
+    description: "Move the swipe selector and message buttons above the message instead of below it.",
+    aliases: ["swipes", "buttons", "actions", "position", "layout"],
+    kind: "Toggle",
+  },
+  {
     id: "guide-generations",
     sectionId: "message-tools",
     label: "Guide swipes/regens with chat input",
@@ -7515,6 +7523,8 @@ function AdvancedSettings() {
   const setShowContextUsage = useUIStore((s) => s.setShowContextUsage);
   const showMessageNumbers = useUIStore((s) => s.showMessageNumbers);
   const setShowMessageNumbers = useUIStore((s) => s.setShowMessageNumbers);
+  const messageControlsAbove = useUIStore((s) => s.messageControlsAbove);
+  const setMessageControlsAbove = useUIStore((s) => s.setMessageControlsAbove);
   const showCharactersInPersonaPickers = useUIStore((s) => s.showCharactersInPersonaPickers);
   const setShowCharactersInPersonaPickers = useUIStore((s) => s.setShowCharactersInPersonaPickers);
   const guideGenerations = useUIStore((s) => s.guideGenerations);
@@ -8445,6 +8455,13 @@ function AdvancedSettings() {
             checked={showMessageNumbers}
             onChange={setShowMessageNumbers}
             help={localizeUi("settings.controls.showMessageNumbers.help")}
+          />
+          <ToggleSetting
+            anchorId={getSettingsControlAnchorId("message-controls-above")}
+            label={localizeUi("settings.controls.messageControlsAbove.label")}
+            checked={messageControlsAbove}
+            onChange={setMessageControlsAbove}
+            help={localizeUi("settings.controls.messageControlsAbove.help")}
           />
           <ToggleSetting
             anchorId={getSettingsControlAnchorId("guide-generations")}

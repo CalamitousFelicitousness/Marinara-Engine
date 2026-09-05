@@ -128,6 +128,8 @@ export interface MessageRenderContext {
   hideTimestamp?: boolean;
   hideUserAvatar?: boolean;
   showMessageNumbers: boolean;
+  /** Swipe selector and action row sit above the message body rather than below it. */
+  messageControlsAbove: boolean;
   messageIndex?: number;
   // actions state
   copied: boolean;

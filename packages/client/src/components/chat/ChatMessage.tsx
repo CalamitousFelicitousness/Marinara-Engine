@@ -1828,6 +1828,7 @@ export const ChatMessage = memo(function ChatMessage({
     showModelName,
     showTokenUsage,
     showMessageNumbers,
+    messageControlsAbove,
     boldDialogue,
     colorInlineNames,
     disableInlineNameGradients,
@@ -1853,6 +1854,7 @@ export const ChatMessage = memo(function ChatMessage({
       showModelName: s.showModelName,
       showTokenUsage: s.showTokenUsage,
       showMessageNumbers: s.showMessageNumbers,
+      messageControlsAbove: s.messageControlsAbove,
       boldDialogue: s.boldDialogue ?? true,
       colorInlineNames: s.colorInlineNames,
       disableInlineNameGradients: s.disableInlineNameGradients,
@@ -3206,6 +3208,210 @@ export const ChatMessage = memo(function ChatMessage({
       );
     }
 
+    const roleplayMessageControls = (
+      <>
+        {/* Swipes */}
+        {(hasSwipes || canCreateNextSwipe) && (
+          <SwipeJumpControl
+            messageId={message.id}
+            activeSwipeIndex={message.activeSwipeIndex}
+            swipeCount={swipeCount}
+            onSetActiveSwipe={handleSetActiveSwipe}
+            onCreateNextSwipe={canCreateNextSwipe ? () => onRegenerate?.(message.id) : undefined}
+            nextButtonTriggerProps={multiSwipeMenu.triggerProps}
+            className="px-1 text-[0.75rem] text-white/40"
+            buttonClassName="rounded-md p-[0.25em] transition-colors hover:bg-white/10 disabled:opacity-30"
+            inputClassName="border-white/10 bg-white/5 text-white/70 [color-scheme:dark]"
+            iconSize={MESSAGE_SWIPE_ICON_SIZE}
+          />
+        )}
+
+        {/* Hover actions (tap to toggle on mobile) */}
+        <div
+          className={cn(
+            // flex-wrap + max-w-full: the buttons are shrink-0, so a full row
+            // (reasoning, guidance, rewrite, branch, delete) overflows the
+            // message body below ~375px and pushes Delete off the viewport.
+            "mari-message-actions flex max-w-full flex-wrap items-center gap-0.5 px-1 opacity-0 transition-all group-hover:opacity-100",
+            isUser && "flex-row-reverse",
+            (showActions || editing) && "opacity-100",
+            isSpeakingThis && "opacity-100",
+            showStreamingThinkingAction &&
+              "opacity-100 [&>button:not([data-message-thinking-action])]:hidden [&>div]:hidden",
+          )}
+        >
+          <ActionBtn
+            icon={copied ? <Check size={MESSAGE_ACTION_ICON_SIZE} /> : <Copy size={MESSAGE_ACTION_ICON_SIZE} />}
+            onClick={handleCopy}
+            title={localizeUi("lorebook.editor.batch.copy")}
+          />
+          <ActionBtn
+            icon={<Languages size={MESSAGE_ACTION_ICON_SIZE} />}
+            onClick={() => translate(message.id, message.content, message.chatId)}
+            title={
+              translatedText
+                ? localizeUi("ui.chat.chatmessage.hideTranslation")
+                : localizeUi("ui.chat.chatmessage.translate")
+            }
+          />
+          <ActionBtn
+            icon={<Pencil size={MESSAGE_ACTION_ICON_SIZE} />}
+            onClick={startEditing}
+            title={localizeUi("ui.noodle.noodlepostcard.edit")}
+          />
+          {hasRewriteVersions && (
+            <ActionBtn
+              icon={
+                switchingRewriteVersion ? (
+                  <Loader2 size={MESSAGE_ACTION_ICON_SIZE} className="animate-spin" />
+                ) : (
+                  <Shield size={MESSAGE_ACTION_ICON_SIZE} />
+                )
+              }
+              onClick={handleToggleProseGuardianVersion}
+              title={
+                showingProseGuardianOriginal
+                  ? localizeUi("ui.chat.chatmessage.showRewrittenVersion")
+                  : localizeUi("ui.chat.chatmessage.showOriginalBeforeRewrite")
+              }
+              className={showingProseGuardianOriginal ? MESSAGE_CHROME_ACTIVE_ICON_CLASS : undefined}
+              disabled={switchingRewriteVersion}
+            />
+          )}
+          <GuidedRegenerateActionBtn
+            onClick={multiSwipeMenu.handlePlainClick}
+            triggerProps={multiSwipeMenu.triggerProps}
+          />
+          {onToggleConversationStart && (
+            <ConversationStartAction
+              messageId={message.id}
+              sharedStart={isConversationStart}
+              characterIds={conversationStartForCharacterIds}
+              characters={aiVisibilityCharacters}
+              onToggle={onToggleConversationStart}
+              align={isUser ? "right" : "left"}
+            />
+          )}
+          {onToggleHiddenFromAI && (
+            <HideFromAIAction
+              messageId={message.id}
+              hiddenFromAll={isHiddenFromAllAI}
+              hiddenCharacterIds={hiddenFromAICharacterIds}
+              characters={isRoleplay ? aiVisibilityCharacters : []}
+              onToggle={onToggleHiddenFromAI}
+              align={isUser ? "right" : "left"}
+            />
+          )}
+          {isLastAssistantMessage && !isUser && (
+            <ActionBtn
+              icon={<Search size={MESSAGE_ACTION_ICON_SIZE} />}
+              onClick={() => onPeekPrompt?.()}
+              title={localizeUi("ui.chat.chatmessage.peekPrompt")}
+            />
+          )}
+          {generationReplay && (
+            <ActionBtn
+              icon={<ScrollText size={MESSAGE_ACTION_ICON_SIZE} />}
+              onClick={() => setShowGenerationReplay(true)}
+              title={localizeUi("ui.chat.chatmessage.storedGuidance")}
+            />
+          )}
+          {showThinkingAction && (
+            <ActionBtn
+              icon={<Brain size={MESSAGE_ACTION_ICON_SIZE} />}
+              onClick={() => setShowThinking(true)}
+              title={t(
+                reasoningSummaryUnavailable ? "chat.message.thoughts.unavailable.view" : "chat.message.thoughts.view",
+              )}
+              thinkingAction
+              buttonRef={thinkingButtonRef}
+            />
+          )}
+          {onBranch && (
+            <ActionBtn
+              icon={<GitBranch size={MESSAGE_ACTION_ICON_SIZE} />}
+              onClick={() => onBranch(message.id)}
+              title={localizeUi("ui.chat.chatmessage.branchFromHere")}
+            />
+          )}
+          {onCloneSceneFromHere && (
+            <ActionBtn
+              icon={<GitBranch size={MESSAGE_ACTION_ICON_SIZE} />}
+              onClick={() => onCloneSceneFromHere(message.id)}
+              title={localizeUi("ui.chat.chatmessage.cloneFromHere")}
+              disabled={isCloneSceneFromHereDisabled}
+            />
+          )}
+          <ActionBtn
+            icon={<Trash2 size={MESSAGE_ACTION_ICON_SIZE} />}
+            onClick={() => onDelete?.(message.id)}
+            title={localizeUi("lorebook.editor.batch.delete")}
+          />
+          {ttsEnabled && (
+            <>
+              {isSpeakingThis && !isLoadingThis && (
+                <>
+                  <ActionBtn
+                    icon={
+                      isPausedThis ? (
+                        <Play size={MESSAGE_ACTION_ICON_SIZE} />
+                      ) : (
+                        <Pause size={MESSAGE_ACTION_ICON_SIZE} />
+                      )
+                    }
+                    onClick={handlePauseResumeTTS}
+                    title={
+                      isPausedThis
+                        ? localizeUi("ui.chat.chatmessage.resumeSpeaking")
+                        : localizeUi("ui.chat.chatmessage.pauseSpeaking")
+                    }
+                  />
+                  <ActionBtn
+                    icon={<RefreshCw size={MESSAGE_ACTION_ICON_SIZE} />}
+                    onClick={handleRestartTTS}
+                    title={localizeUi("ui.chat.chatmessage.restartSpeaking")}
+                  />
+                </>
+              )}
+              {ttsChunkProgress && (
+                <span
+                  className="shrink-0 px-0.5 text-center text-[0.625rem] tabular-nums text-[var(--muted-foreground)]"
+                  style={{ minWidth: "2.25rem" }}
+                  title={ttsProgressLabel}
+                  aria-label={ttsProgressLabel}
+                >
+                  {ttsChunkProgress.index}/{ttsChunkProgress.total}
+                </span>
+              )}
+              <ActionBtn
+                icon={
+                  isLoadingThis ? (
+                    <Loader2 size={MESSAGE_ACTION_ICON_SIZE} className="animate-spin" />
+                  ) : isSpeakingThis ? (
+                    <MicOff size={MESSAGE_ACTION_ICON_SIZE} />
+                  ) : (
+                    <Mic size={MESSAGE_ACTION_ICON_SIZE} />
+                  )
+                }
+                onClick={handleSpeak}
+                title={
+                  !hasTTSContent
+                    ? localizeUi("ui.chat.chatmessage.noDialogueToSpeak")
+                    : isLoadingThis
+                      ? localizeUi("ui.panels.ttsconfigcard.loading")
+                      : isSpeakingThis
+                        ? localizeUi("ui.chat.chatmessage.stopSpeaking")
+                        : localizeUi("ui.chat.chatmessage.speak")
+                }
+                disabled={!hasTTSContent || (ttsBusy && !isSpeakingThis)}
+              />
+              <TTSLineVolumeControl volume={ttsLineVolume} onVolumeChange={handleTTSLineVolumeChange} dark />
+            </>
+          )}
+        </div>
+      </>
+    );
+
     return (
       <>
         <div
@@ -3387,6 +3593,8 @@ export const ChatMessage = memo(function ChatMessage({
               characters={aiVisibilityCharacters}
               panel
             />
+
+            {messageControlsAbove && roleplayMessageControls}
 
             {/* Message bubble */}
             <div
@@ -3599,207 +3807,7 @@ export const ChatMessage = memo(function ChatMessage({
               />
             )}
 
-            {/* Swipes */}
-            {(hasSwipes || canCreateNextSwipe) && (
-              <SwipeJumpControl
-                messageId={message.id}
-                activeSwipeIndex={message.activeSwipeIndex}
-                swipeCount={swipeCount}
-                onSetActiveSwipe={handleSetActiveSwipe}
-                onCreateNextSwipe={canCreateNextSwipe ? () => onRegenerate?.(message.id) : undefined}
-                nextButtonTriggerProps={multiSwipeMenu.triggerProps}
-                className="px-1 text-[0.75rem] text-white/40"
-                buttonClassName="rounded-md p-[0.25em] transition-colors hover:bg-white/10 disabled:opacity-30"
-                inputClassName="border-white/10 bg-white/5 text-white/70 [color-scheme:dark]"
-                iconSize={MESSAGE_SWIPE_ICON_SIZE}
-              />
-            )}
-
-            {/* Hover actions (tap to toggle on mobile) */}
-            <div
-              className={cn(
-                // flex-wrap + max-w-full: the buttons are shrink-0, so a full row
-                // (reasoning, guidance, rewrite, branch, delete) overflows the
-                // message body below ~375px and pushes Delete off the viewport.
-                "mari-message-actions flex max-w-full flex-wrap items-center gap-0.5 px-1 opacity-0 transition-all group-hover:opacity-100",
-                isUser && "flex-row-reverse",
-                (showActions || editing) && "opacity-100",
-                isSpeakingThis && "opacity-100",
-                showStreamingThinkingAction &&
-                  "opacity-100 [&>button:not([data-message-thinking-action])]:hidden [&>div]:hidden",
-              )}
-            >
-              <ActionBtn
-                icon={copied ? <Check size={MESSAGE_ACTION_ICON_SIZE} /> : <Copy size={MESSAGE_ACTION_ICON_SIZE} />}
-                onClick={handleCopy}
-                title={localizeUi("lorebook.editor.batch.copy")}
-              />
-              <ActionBtn
-                icon={<Languages size={MESSAGE_ACTION_ICON_SIZE} />}
-                onClick={() => translate(message.id, message.content, message.chatId)}
-                title={
-                  translatedText
-                    ? localizeUi("ui.chat.chatmessage.hideTranslation")
-                    : localizeUi("ui.chat.chatmessage.translate")
-                }
-              />
-              <ActionBtn
-                icon={<Pencil size={MESSAGE_ACTION_ICON_SIZE} />}
-                onClick={startEditing}
-                title={localizeUi("ui.noodle.noodlepostcard.edit")}
-              />
-              {hasRewriteVersions && (
-                <ActionBtn
-                  icon={
-                    switchingRewriteVersion ? (
-                      <Loader2 size={MESSAGE_ACTION_ICON_SIZE} className="animate-spin" />
-                    ) : (
-                      <Shield size={MESSAGE_ACTION_ICON_SIZE} />
-                    )
-                  }
-                  onClick={handleToggleProseGuardianVersion}
-                  title={
-                    showingProseGuardianOriginal
-                      ? localizeUi("ui.chat.chatmessage.showRewrittenVersion")
-                      : localizeUi("ui.chat.chatmessage.showOriginalBeforeRewrite")
-                  }
-                  className={showingProseGuardianOriginal ? MESSAGE_CHROME_ACTIVE_ICON_CLASS : undefined}
-                  disabled={switchingRewriteVersion}
-                />
-              )}
-              <GuidedRegenerateActionBtn
-                onClick={multiSwipeMenu.handlePlainClick}
-                triggerProps={multiSwipeMenu.triggerProps}
-              />
-              {onToggleConversationStart && (
-                <ConversationStartAction
-                  messageId={message.id}
-                  sharedStart={isConversationStart}
-                  characterIds={conversationStartForCharacterIds}
-                  characters={aiVisibilityCharacters}
-                  onToggle={onToggleConversationStart}
-                  align={isUser ? "right" : "left"}
-                />
-              )}
-              {onToggleHiddenFromAI && (
-                <HideFromAIAction
-                  messageId={message.id}
-                  hiddenFromAll={isHiddenFromAllAI}
-                  hiddenCharacterIds={hiddenFromAICharacterIds}
-                  characters={isRoleplay ? aiVisibilityCharacters : []}
-                  onToggle={onToggleHiddenFromAI}
-                  align={isUser ? "right" : "left"}
-                />
-              )}
-              {isLastAssistantMessage && !isUser && (
-                <ActionBtn
-                  icon={<Search size={MESSAGE_ACTION_ICON_SIZE} />}
-                  onClick={() => onPeekPrompt?.()}
-                  title={localizeUi("ui.chat.chatmessage.peekPrompt")}
-                />
-              )}
-              {generationReplay && (
-                <ActionBtn
-                  icon={<ScrollText size={MESSAGE_ACTION_ICON_SIZE} />}
-                  onClick={() => setShowGenerationReplay(true)}
-                  title={localizeUi("ui.chat.chatmessage.storedGuidance")}
-                />
-              )}
-              {showThinkingAction && (
-                <ActionBtn
-                  icon={<Brain size={MESSAGE_ACTION_ICON_SIZE} />}
-                  onClick={() => setShowThinking(true)}
-                  title={t(
-                    reasoningSummaryUnavailable
-                      ? "chat.message.thoughts.unavailable.view"
-                      : "chat.message.thoughts.view",
-                  )}
-                  thinkingAction
-                  buttonRef={thinkingButtonRef}
-                />
-              )}
-              {onBranch && (
-                <ActionBtn
-                  icon={<GitBranch size={MESSAGE_ACTION_ICON_SIZE} />}
-                  onClick={() => onBranch(message.id)}
-                  title={localizeUi("ui.chat.chatmessage.branchFromHere")}
-                />
-              )}
-              {onCloneSceneFromHere && (
-                <ActionBtn
-                  icon={<GitBranch size={MESSAGE_ACTION_ICON_SIZE} />}
-                  onClick={() => onCloneSceneFromHere(message.id)}
-                  title={localizeUi("ui.chat.chatmessage.cloneFromHere")}
-                  disabled={isCloneSceneFromHereDisabled}
-                />
-              )}
-              <ActionBtn
-                icon={<Trash2 size={MESSAGE_ACTION_ICON_SIZE} />}
-                onClick={() => onDelete?.(message.id)}
-                title={localizeUi("lorebook.editor.batch.delete")}
-              />
-              {ttsEnabled && (
-                <>
-                  {isSpeakingThis && !isLoadingThis && (
-                    <>
-                      <ActionBtn
-                        icon={
-                          isPausedThis ? (
-                            <Play size={MESSAGE_ACTION_ICON_SIZE} />
-                          ) : (
-                            <Pause size={MESSAGE_ACTION_ICON_SIZE} />
-                          )
-                        }
-                        onClick={handlePauseResumeTTS}
-                        title={
-                          isPausedThis
-                            ? localizeUi("ui.chat.chatmessage.resumeSpeaking")
-                            : localizeUi("ui.chat.chatmessage.pauseSpeaking")
-                        }
-                      />
-                      <ActionBtn
-                        icon={<RefreshCw size={MESSAGE_ACTION_ICON_SIZE} />}
-                        onClick={handleRestartTTS}
-                        title={localizeUi("ui.chat.chatmessage.restartSpeaking")}
-                      />
-                    </>
-                  )}
-                  {ttsChunkProgress && (
-                    <span
-                      className="shrink-0 px-0.5 text-center text-[0.625rem] tabular-nums text-[var(--muted-foreground)]"
-                      style={{ minWidth: "2.25rem" }}
-                      title={ttsProgressLabel}
-                      aria-label={ttsProgressLabel}
-                    >
-                      {ttsChunkProgress.index}/{ttsChunkProgress.total}
-                    </span>
-                  )}
-                  <ActionBtn
-                    icon={
-                      isLoadingThis ? (
-                        <Loader2 size={MESSAGE_ACTION_ICON_SIZE} className="animate-spin" />
-                      ) : isSpeakingThis ? (
-                        <MicOff size={MESSAGE_ACTION_ICON_SIZE} />
-                      ) : (
-                        <Mic size={MESSAGE_ACTION_ICON_SIZE} />
-                      )
-                    }
-                    onClick={handleSpeak}
-                    title={
-                      !hasTTSContent
-                        ? localizeUi("ui.chat.chatmessage.noDialogueToSpeak")
-                        : isLoadingThis
-                          ? localizeUi("ui.panels.ttsconfigcard.loading")
-                          : isSpeakingThis
-                            ? localizeUi("ui.chat.chatmessage.stopSpeaking")
-                            : localizeUi("ui.chat.chatmessage.speak")
-                    }
-                    disabled={!hasTTSContent || (ttsBusy && !isSpeakingThis)}
-                  />
-                  <TTSLineVolumeControl volume={ttsLineVolume} onVolumeChange={handleTTSLineVolumeChange} dark />
-                </>
-              )}
-            </div>
+            {!messageControlsAbove && roleplayMessageControls}
           </div>
         </div>
 
@@ -3836,6 +3844,203 @@ export const ChatMessage = memo(function ChatMessage({
   // ═══════════════════════════════════════════════
   // Conversation Mode — iMessage / texting style
   // ═══════════════════════════════════════════════
+  const messageControls = (
+    <>
+      {/* Swipes */}
+      {(hasSwipes || canCreateNextSwipe) && (
+        <SwipeJumpControl
+          messageId={message.id}
+          activeSwipeIndex={message.activeSwipeIndex}
+          swipeCount={swipeCount}
+          onSetActiveSwipe={handleSetActiveSwipe}
+          onCreateNextSwipe={canCreateNextSwipe ? () => onRegenerate?.(message.id) : undefined}
+          className="px-2 text-[0.75rem] text-[var(--muted-foreground)]"
+          buttonClassName="rounded p-[0.25em] transition-colors hover:bg-[var(--accent)] disabled:opacity-30"
+          iconSize={MESSAGE_SWIPE_ICON_SIZE}
+        />
+      )}
+
+      {/* Hover actions (tap to toggle on mobile) */}
+      <div
+        className={cn(
+          // See the roleplay row above: same shrink-0 overflow, tighter box
+          // here since the body is capped at max-w-[72%].
+          "mari-message-actions flex max-w-full flex-wrap items-center gap-0 px-1 opacity-0 transition-all group-hover:opacity-100",
+          isUser && "flex-row-reverse",
+          (showActions || editing) && "opacity-100",
+          isSpeakingThis && "opacity-100",
+          showStreamingThinkingAction &&
+            "opacity-100 [&>button:not([data-message-thinking-action])]:hidden [&>div]:hidden",
+        )}
+      >
+        <ActionBtn
+          icon={copied ? <Check size={MESSAGE_ACTION_ICON_SIZE} /> : <Copy size={MESSAGE_ACTION_ICON_SIZE} />}
+          onClick={handleCopy}
+          title={localizeUi("lorebook.editor.batch.copy")}
+        />
+        <ActionBtn
+          icon={<Languages size={MESSAGE_ACTION_ICON_SIZE} />}
+          onClick={() => translate(message.id, message.content, message.chatId)}
+          title={
+            translatedText
+              ? localizeUi("ui.chat.chatmessage.hideTranslation")
+              : localizeUi("ui.chat.chatmessage.translate")
+          }
+        />
+        <ActionBtn
+          icon={<Pencil size={MESSAGE_ACTION_ICON_SIZE} />}
+          onClick={startEditing}
+          title={localizeUi("ui.noodle.noodlepostcard.edit")}
+        />
+        {hasRewriteVersions && (
+          <ActionBtn
+            icon={
+              switchingRewriteVersion ? (
+                <Loader2 size={MESSAGE_ACTION_ICON_SIZE} className="animate-spin" />
+              ) : (
+                <Shield size={MESSAGE_ACTION_ICON_SIZE} />
+              )
+            }
+            onClick={handleToggleProseGuardianVersion}
+            title={
+              showingProseGuardianOriginal
+                ? localizeUi("ui.chat.chatmessage.showRewrittenVersion")
+                : localizeUi("ui.chat.chatmessage.showOriginalBeforeRewrite")
+            }
+            className={showingProseGuardianOriginal ? MESSAGE_CHROME_ACTIVE_ICON_CLASS : undefined}
+            disabled={switchingRewriteVersion}
+          />
+        )}
+        <GuidedRegenerateActionBtn
+          onClick={multiSwipeMenu.handlePlainClick}
+          triggerProps={multiSwipeMenu.triggerProps}
+        />
+        {onToggleConversationStart && (
+          <ConversationStartAction
+            messageId={message.id}
+            sharedStart={isConversationStart}
+            characterIds={conversationStartForCharacterIds}
+            characters={aiVisibilityCharacters}
+            onToggle={onToggleConversationStart}
+            align={isUser ? "right" : "left"}
+          />
+        )}
+        {isLastAssistantMessage && !isUser && (
+          <ActionBtn
+            icon={<Search size={MESSAGE_ACTION_ICON_SIZE} />}
+            onClick={() => onPeekPrompt?.()}
+            title={localizeUi("ui.chat.chatmessage.peekPrompt")}
+          />
+        )}
+        {generationReplay && (
+          <ActionBtn
+            icon={<ScrollText size={MESSAGE_ACTION_ICON_SIZE} />}
+            onClick={() => setShowGenerationReplay(true)}
+            title={localizeUi("ui.chat.chatmessage.storedGuidance")}
+          />
+        )}
+        {showThinkingAction && (
+          <ActionBtn
+            icon={<Brain size={MESSAGE_ACTION_ICON_SIZE} />}
+            onClick={() => setShowThinking(true)}
+            title={t(
+              reasoningSummaryUnavailable ? "chat.message.thoughts.unavailable.view" : "chat.message.thoughts.view",
+            )}
+            thinkingAction
+            buttonRef={thinkingButtonRef}
+          />
+        )}
+        {onBranch && (
+          <ActionBtn
+            icon={<GitBranch size={MESSAGE_ACTION_ICON_SIZE} />}
+            onClick={() => onBranch(message.id)}
+            title={localizeUi("ui.chat.chatmessage.branchFromHere")}
+          />
+        )}
+        {onCloneSceneFromHere && (
+          <ActionBtn
+            icon={<GitBranch size={MESSAGE_ACTION_ICON_SIZE} />}
+            onClick={() => onCloneSceneFromHere(message.id)}
+            title={localizeUi("ui.chat.chatmessage.cloneFromHere")}
+            disabled={isCloneSceneFromHereDisabled}
+          />
+        )}
+        {onToggleHiddenFromAI && (
+          <HideFromAIAction
+            messageId={message.id}
+            hiddenFromAll={isHiddenFromAllAI}
+            hiddenCharacterIds={hiddenFromAICharacterIds}
+            characters={isRoleplay ? aiVisibilityCharacters : []}
+            onToggle={onToggleHiddenFromAI}
+            align={isUser ? "right" : "left"}
+          />
+        )}
+        <ActionBtn
+          icon={<Trash2 size={MESSAGE_ACTION_ICON_SIZE} />}
+          onClick={() => onDelete?.(message.id)}
+          title={localizeUi("lorebook.editor.batch.delete")}
+        />
+        {ttsEnabled && (
+          <>
+            {isSpeakingThis && !isLoadingThis && (
+              <>
+                <ActionBtn
+                  icon={
+                    isPausedThis ? <Play size={MESSAGE_ACTION_ICON_SIZE} /> : <Pause size={MESSAGE_ACTION_ICON_SIZE} />
+                  }
+                  onClick={handlePauseResumeTTS}
+                  title={
+                    isPausedThis
+                      ? localizeUi("ui.chat.chatmessage.resumeSpeaking")
+                      : localizeUi("ui.chat.chatmessage.pauseSpeaking")
+                  }
+                />
+                <ActionBtn
+                  icon={<RefreshCw size={MESSAGE_ACTION_ICON_SIZE} />}
+                  onClick={handleRestartTTS}
+                  title={localizeUi("ui.chat.chatmessage.restartSpeaking")}
+                />
+              </>
+            )}
+            {ttsChunkProgress && (
+              <span
+                className="shrink-0 px-0.5 text-center text-[0.625rem] tabular-nums text-[var(--muted-foreground)]"
+                style={{ minWidth: "2.25rem" }}
+                title={ttsProgressLabel}
+                aria-label={ttsProgressLabel}
+              >
+                {ttsChunkProgress.index}/{ttsChunkProgress.total}
+              </span>
+            )}
+            <ActionBtn
+              icon={
+                isLoadingThis ? (
+                  <Loader2 size={MESSAGE_ACTION_ICON_SIZE} className="animate-spin" />
+                ) : isSpeakingThis ? (
+                  <VolumeX size={MESSAGE_ACTION_ICON_SIZE} />
+                ) : (
+                  <Volume2 size={MESSAGE_ACTION_ICON_SIZE} />
+                )
+              }
+              onClick={handleSpeak}
+              title={
+                !hasTTSContent
+                  ? localizeUi("ui.chat.chatmessage.noDialogueToSpeak")
+                  : isLoadingThis
+                    ? localizeUi("ui.panels.ttsconfigcard.loading")
+                    : isSpeakingThis
+                      ? localizeUi("ui.chat.chatmessage.stopSpeaking")
+                      : localizeUi("ui.chat.chatmessage.speak")
+              }
+              disabled={!hasTTSContent || (ttsBusy && !isSpeakingThis)}
+            />
+            <TTSLineVolumeControl volume={ttsLineVolume} onVolumeChange={handleTTSLineVolumeChange} />
+          </>
+        )}
+      </div>
+    </>
+  );
+
   return (
     <div
       ref={msgRef}
@@ -3942,6 +4147,8 @@ export const ChatMessage = memo(function ChatMessage({
             characterIds={conversationStartForCharacterIds}
             characters={aiVisibilityCharacters}
           />
+
+          {messageControlsAbove && messageControls}
 
           {/* Bubble */}
           <div
@@ -4100,202 +4307,7 @@ export const ChatMessage = memo(function ChatMessage({
             <MultiSwipePendingBadge chatId={message.chatId} messageId={message.id} onFinalize={onFinalizeMultiSwipe} />
           )}
 
-          {/* Swipes */}
-          {(hasSwipes || canCreateNextSwipe) && (
-            <SwipeJumpControl
-              messageId={message.id}
-              activeSwipeIndex={message.activeSwipeIndex}
-              swipeCount={swipeCount}
-              onSetActiveSwipe={handleSetActiveSwipe}
-              onCreateNextSwipe={canCreateNextSwipe ? () => onRegenerate?.(message.id) : undefined}
-              className="px-2 text-[0.75rem] text-[var(--muted-foreground)]"
-              buttonClassName="rounded p-[0.25em] transition-colors hover:bg-[var(--accent)] disabled:opacity-30"
-              iconSize={MESSAGE_SWIPE_ICON_SIZE}
-            />
-          )}
-
-          {/* Hover actions (tap to toggle on mobile) */}
-          <div
-            className={cn(
-              // See the roleplay row above: same shrink-0 overflow, tighter box
-              // here since the body is capped at max-w-[72%].
-              "mari-message-actions flex max-w-full flex-wrap items-center gap-0 px-1 opacity-0 transition-all group-hover:opacity-100",
-              isUser && "flex-row-reverse",
-              (showActions || editing) && "opacity-100",
-              isSpeakingThis && "opacity-100",
-              showStreamingThinkingAction &&
-                "opacity-100 [&>button:not([data-message-thinking-action])]:hidden [&>div]:hidden",
-            )}
-          >
-            <ActionBtn
-              icon={copied ? <Check size={MESSAGE_ACTION_ICON_SIZE} /> : <Copy size={MESSAGE_ACTION_ICON_SIZE} />}
-              onClick={handleCopy}
-              title={localizeUi("lorebook.editor.batch.copy")}
-            />
-            <ActionBtn
-              icon={<Languages size={MESSAGE_ACTION_ICON_SIZE} />}
-              onClick={() => translate(message.id, message.content, message.chatId)}
-              title={
-                translatedText
-                  ? localizeUi("ui.chat.chatmessage.hideTranslation")
-                  : localizeUi("ui.chat.chatmessage.translate")
-              }
-            />
-            <ActionBtn
-              icon={<Pencil size={MESSAGE_ACTION_ICON_SIZE} />}
-              onClick={startEditing}
-              title={localizeUi("ui.noodle.noodlepostcard.edit")}
-            />
-            {hasRewriteVersions && (
-              <ActionBtn
-                icon={
-                  switchingRewriteVersion ? (
-                    <Loader2 size={MESSAGE_ACTION_ICON_SIZE} className="animate-spin" />
-                  ) : (
-                    <Shield size={MESSAGE_ACTION_ICON_SIZE} />
-                  )
-                }
-                onClick={handleToggleProseGuardianVersion}
-                title={
-                  showingProseGuardianOriginal
-                    ? localizeUi("ui.chat.chatmessage.showRewrittenVersion")
-                    : localizeUi("ui.chat.chatmessage.showOriginalBeforeRewrite")
-                }
-                className={showingProseGuardianOriginal ? MESSAGE_CHROME_ACTIVE_ICON_CLASS : undefined}
-                disabled={switchingRewriteVersion}
-              />
-            )}
-            <GuidedRegenerateActionBtn
-              onClick={multiSwipeMenu.handlePlainClick}
-              triggerProps={multiSwipeMenu.triggerProps}
-            />
-            {onToggleConversationStart && (
-              <ConversationStartAction
-                messageId={message.id}
-                sharedStart={isConversationStart}
-                characterIds={conversationStartForCharacterIds}
-                characters={aiVisibilityCharacters}
-                onToggle={onToggleConversationStart}
-                align={isUser ? "right" : "left"}
-              />
-            )}
-            {isLastAssistantMessage && !isUser && (
-              <ActionBtn
-                icon={<Search size={MESSAGE_ACTION_ICON_SIZE} />}
-                onClick={() => onPeekPrompt?.()}
-                title={localizeUi("ui.chat.chatmessage.peekPrompt")}
-              />
-            )}
-            {generationReplay && (
-              <ActionBtn
-                icon={<ScrollText size={MESSAGE_ACTION_ICON_SIZE} />}
-                onClick={() => setShowGenerationReplay(true)}
-                title={localizeUi("ui.chat.chatmessage.storedGuidance")}
-              />
-            )}
-            {showThinkingAction && (
-              <ActionBtn
-                icon={<Brain size={MESSAGE_ACTION_ICON_SIZE} />}
-                onClick={() => setShowThinking(true)}
-                title={t(
-                  reasoningSummaryUnavailable ? "chat.message.thoughts.unavailable.view" : "chat.message.thoughts.view",
-                )}
-                thinkingAction
-                buttonRef={thinkingButtonRef}
-              />
-            )}
-            {onBranch && (
-              <ActionBtn
-                icon={<GitBranch size={MESSAGE_ACTION_ICON_SIZE} />}
-                onClick={() => onBranch(message.id)}
-                title={localizeUi("ui.chat.chatmessage.branchFromHere")}
-              />
-            )}
-            {onCloneSceneFromHere && (
-              <ActionBtn
-                icon={<GitBranch size={MESSAGE_ACTION_ICON_SIZE} />}
-                onClick={() => onCloneSceneFromHere(message.id)}
-                title={localizeUi("ui.chat.chatmessage.cloneFromHere")}
-                disabled={isCloneSceneFromHereDisabled}
-              />
-            )}
-            {onToggleHiddenFromAI && (
-              <HideFromAIAction
-                messageId={message.id}
-                hiddenFromAll={isHiddenFromAllAI}
-                hiddenCharacterIds={hiddenFromAICharacterIds}
-                characters={isRoleplay ? aiVisibilityCharacters : []}
-                onToggle={onToggleHiddenFromAI}
-                align={isUser ? "right" : "left"}
-              />
-            )}
-            <ActionBtn
-              icon={<Trash2 size={MESSAGE_ACTION_ICON_SIZE} />}
-              onClick={() => onDelete?.(message.id)}
-              title={localizeUi("lorebook.editor.batch.delete")}
-            />
-            {ttsEnabled && (
-              <>
-                {isSpeakingThis && !isLoadingThis && (
-                  <>
-                    <ActionBtn
-                      icon={
-                        isPausedThis ? (
-                          <Play size={MESSAGE_ACTION_ICON_SIZE} />
-                        ) : (
-                          <Pause size={MESSAGE_ACTION_ICON_SIZE} />
-                        )
-                      }
-                      onClick={handlePauseResumeTTS}
-                      title={
-                        isPausedThis
-                          ? localizeUi("ui.chat.chatmessage.resumeSpeaking")
-                          : localizeUi("ui.chat.chatmessage.pauseSpeaking")
-                      }
-                    />
-                    <ActionBtn
-                      icon={<RefreshCw size={MESSAGE_ACTION_ICON_SIZE} />}
-                      onClick={handleRestartTTS}
-                      title={localizeUi("ui.chat.chatmessage.restartSpeaking")}
-                    />
-                  </>
-                )}
-                {ttsChunkProgress && (
-                  <span
-                    className="shrink-0 px-0.5 text-center text-[0.625rem] tabular-nums text-[var(--muted-foreground)]"
-                    style={{ minWidth: "2.25rem" }}
-                    title={ttsProgressLabel}
-                    aria-label={ttsProgressLabel}
-                  >
-                    {ttsChunkProgress.index}/{ttsChunkProgress.total}
-                  </span>
-                )}
-                <ActionBtn
-                  icon={
-                    isLoadingThis ? (
-                      <Loader2 size={MESSAGE_ACTION_ICON_SIZE} className="animate-spin" />
-                    ) : isSpeakingThis ? (
-                      <VolumeX size={MESSAGE_ACTION_ICON_SIZE} />
-                    ) : (
-                      <Volume2 size={MESSAGE_ACTION_ICON_SIZE} />
-                    )
-                  }
-                  onClick={handleSpeak}
-                  title={
-                    !hasTTSContent
-                      ? localizeUi("ui.chat.chatmessage.noDialogueToSpeak")
-                      : isLoadingThis
-                        ? localizeUi("ui.panels.ttsconfigcard.loading")
-                        : isSpeakingThis
-                          ? localizeUi("ui.chat.chatmessage.stopSpeaking")
-                          : localizeUi("ui.chat.chatmessage.speak")
-                  }
-                  disabled={!hasTTSContent || (ttsBusy && !isSpeakingThis)}
-                />
-                <TTSLineVolumeControl volume={ttsLineVolume} onVolumeChange={handleTTSLineVolumeChange} />
-              </>
-            )}
-          </div>
+          {!messageControlsAbove && messageControls}
         </div>
       </div>
 

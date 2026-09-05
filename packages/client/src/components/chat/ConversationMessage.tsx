@@ -180,6 +180,7 @@ export const ConversationMessage = memo(function ConversationMessage({
   const chatFontSize = useUIStore((s) => s.chatFontSize);
   const chatFontColor = useUIStore((s) => s.chatFontColor);
   const showMessageNumbers = useUIStore((s) => s.showMessageNumbers);
+  const messageControlsAbove = useUIStore((s) => s.messageControlsAbove);
   const quoteFormat = useUIStore((s) => s.quoteFormat);
   const conversationAvatarShape = useUIStore((s) => s.conversationAvatarShape);
   const activeChatMetadata = useChatStore((s) => s.activeChat?.metadata);
@@ -883,6 +884,7 @@ export const ConversationMessage = memo(function ConversationMessage({
     hideTimestamp,
     hideUserAvatar,
     showMessageNumbers,
+    messageControlsAbove,
     messageIndex,
     copied,
     isGuided,
@@ -990,6 +992,39 @@ export const ConversationMessage = memo(function ConversationMessage({
         )}
     </>
   );
+
+  const actionsRow =
+    !hideActions || (hasReasoning && !isUser) ? (
+      <ConversationMessageActions
+        isUser={isUser}
+        showActions={showActions}
+        forceShowActions={hideActions && hasReasoning ? true : forceShowActions}
+        thinkingOnly={hideActions && hasReasoning}
+        copied={copied}
+        translatedText={translatedText}
+        isHiddenFromAI={isHiddenFromAI}
+        canRegenerate={canRegenerate}
+        isLastAssistantMessage={isLastAssistantMessage}
+        hasReasoning={hasReasoning}
+        reasoningSummaryUnavailable={reasoningSummaryUnavailable}
+        thinkingButtonRef={thinkingButtonRef}
+        generationReplay={generationReplay}
+        isGuided={isGuided}
+        regenerateButtonTitle={regenerateButtonTitle}
+        regenerateGuidedClass={regenerateGuidedClass}
+        onCopy={handleCopy}
+        onTranslate={handleTranslate}
+        onEdit={handleStartEdit}
+        onRegenerate={onRegenerate ? () => onRegenerate(message.id) : undefined}
+        onBranch={onBranch ? () => onBranch(message.id) : undefined}
+        onToggleHiddenFromAI={onToggleHiddenFromAI ? () => onToggleHiddenFromAI(message.id, isHiddenFromAI) : undefined}
+        onPeekPrompt={onPeekPrompt}
+        onDelete={onDelete ? () => onDelete(message.id) : undefined}
+        onShowGenerationReplay={() => setShowGenerationReplay(true)}
+        onShowThinking={() => setShowThinking(true)}
+        onPickReaction={handleToggleReaction}
+      />
+    ) : null;
 
   // ── System message ──
   if (isSystem) {
@@ -1133,42 +1168,14 @@ export const ConversationMessage = memo(function ConversationMessage({
           className={cn("min-w-0 max-w-full", !isBubbleStyle && "flex gap-4")}
           data-component="ConversationMessage.Content"
         >
-          {isBubbleStyle ? <ConversationMessageBubble ctx={ctx} /> : <ConversationMessageLine ctx={ctx} />}
+          {isBubbleStyle ? (
+            <ConversationMessageBubble ctx={ctx} controlsSlot={messageControlsAbove ? actionsRow : null} />
+          ) : (
+            <ConversationMessageLine ctx={ctx} controlsSlot={messageControlsAbove ? actionsRow : null} />
+          )}
         </div>
 
-        {(!hideActions || (hasReasoning && !isUser)) && (
-          <ConversationMessageActions
-            isUser={isUser}
-            showActions={showActions}
-            forceShowActions={hideActions && hasReasoning ? true : forceShowActions}
-            thinkingOnly={hideActions && hasReasoning}
-            copied={copied}
-            translatedText={translatedText}
-            isHiddenFromAI={isHiddenFromAI}
-            canRegenerate={canRegenerate}
-            isLastAssistantMessage={isLastAssistantMessage}
-            hasReasoning={hasReasoning}
-            reasoningSummaryUnavailable={reasoningSummaryUnavailable}
-            thinkingButtonRef={thinkingButtonRef}
-            generationReplay={generationReplay}
-            isGuided={isGuided}
-            regenerateButtonTitle={regenerateButtonTitle}
-            regenerateGuidedClass={regenerateGuidedClass}
-            onCopy={handleCopy}
-            onTranslate={handleTranslate}
-            onEdit={handleStartEdit}
-            onRegenerate={onRegenerate ? () => onRegenerate(message.id) : undefined}
-            onBranch={onBranch ? () => onBranch(message.id) : undefined}
-            onToggleHiddenFromAI={
-              onToggleHiddenFromAI ? () => onToggleHiddenFromAI(message.id, isHiddenFromAI) : undefined
-            }
-            onPeekPrompt={onPeekPrompt}
-            onDelete={onDelete ? () => onDelete(message.id) : undefined}
-            onShowGenerationReplay={() => setShowGenerationReplay(true)}
-            onShowThinking={() => setShowThinking(true)}
-            onPickReaction={handleToggleReaction}
-          />
-        )}
+        {!messageControlsAbove && actionsRow}
       </div>
       {reactionRow}
       {modals}

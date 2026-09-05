@@ -1,6 +1,7 @@
 // ──────────────────────────────────────────────
 // Bubble message layout (Messenger-style)
 // ──────────────────────────────────────────────
+import type { ReactNode } from "react";
 import { User } from "lucide-react";
 import { normalizeTextForMatch, splitGroupedSegmentDisplayLines } from "@marinara-engine/shared";
 import { cn } from "../../lib/utils";
@@ -24,7 +25,14 @@ import {
 } from "./ConversationMessageShared";
 import { useTranslation as useUiTranslation } from "react-i18next";
 
-export function ConversationMessageBubble({ ctx }: { ctx: MessageRenderContext }) {
+export function ConversationMessageBubble({
+  ctx,
+  controlsSlot,
+}: {
+  ctx: MessageRenderContext;
+  /** Action row, supplied by the shell only when it belongs above the bubble. */
+  controlsSlot?: ReactNode;
+}) {
   const { t: localizeUi } = useUiTranslation();
   const {
     message,
@@ -63,6 +71,7 @@ export function ConversationMessageBubble({ ctx }: { ctx: MessageRenderContext }
     showActions,
     forceShowActions,
     showMessageNumbers,
+    messageControlsAbove,
     messageIndex,
     hasSwipes,
     swipeCount,
@@ -81,6 +90,20 @@ export function ConversationMessageBubble({ ctx }: { ctx: MessageRenderContext }
     bubbleCornerClass,
     shouldHideUserAvatar,
   } = ctx;
+
+  const swipeControls =
+    !hideActions && (hasSwipes || (canRegenerate && onRegenerate)) ? (
+      <ConversationMessageSwipes
+        chatId={message.chatId}
+        messageId={message.id}
+        activeSwipeIndex={message.activeSwipeIndex}
+        swipeCount={swipeCount}
+        onSetActiveSwipe={(idx) => onSetActiveSwipe?.(message.id, idx)}
+        onCreateNextSwipe={canRegenerate && onRegenerate ? () => onRegenerate(message.id) : undefined}
+        onRegenerate={canRegenerate ? onRegenerate : undefined}
+        onFinalizeMultiSwipe={onFinalizeMultiSwipe}
+      />
+    ) : null;
 
   return (
     <>
@@ -205,6 +228,13 @@ export function ConversationMessageBubble({ ctx }: { ctx: MessageRenderContext }
                   {formatTimestamp(message.createdAt)}
                 </span>
               )}
+            </div>
+          )}
+
+          {messageControlsAbove && (swipeControls || controlsSlot) && (
+            <div className={cn("mb-1 flex flex-col gap-0.5", isUser ? "items-end pr-2" : "items-start pl-2")}>
+              {swipeControls}
+              {controlsSlot}
             </div>
           )}
 
@@ -341,19 +371,8 @@ export function ConversationMessageBubble({ ctx }: { ctx: MessageRenderContext }
       </div>
 
       {/* Swipe controls — separate row so avatar never drifts */}
-      {!hideActions && (hasSwipes || (canRegenerate && onRegenerate)) && (
-        <div className={cn("mt-1", isUser ? "flex justify-end" : "pl-12")}>
-          <ConversationMessageSwipes
-            chatId={message.chatId}
-            messageId={message.id}
-            activeSwipeIndex={message.activeSwipeIndex}
-            swipeCount={swipeCount}
-            onSetActiveSwipe={(idx) => onSetActiveSwipe?.(message.id, idx)}
-            onCreateNextSwipe={canRegenerate && onRegenerate ? () => onRegenerate(message.id) : undefined}
-            onRegenerate={canRegenerate ? onRegenerate : undefined}
-            onFinalizeMultiSwipe={onFinalizeMultiSwipe}
-          />
-        </div>
+      {!messageControlsAbove && swipeControls && (
+        <div className={cn("mt-1", isUser ? "flex justify-end" : "pl-12")}>{swipeControls}</div>
       )}
     </>
   );

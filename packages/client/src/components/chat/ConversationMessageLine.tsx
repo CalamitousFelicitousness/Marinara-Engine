@@ -1,6 +1,7 @@
 // ──────────────────────────────────────────────
 // Linear message layout (chat-style rows)
 // ──────────────────────────────────────────────
+import type { ReactNode } from "react";
 import { User } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { PendingTypingDots } from "./PendingTypingDots";
@@ -22,7 +23,14 @@ import {
 } from "./ConversationMessageShared";
 import { useTranslation as useUiTranslation } from "react-i18next";
 
-export function ConversationMessageLine({ ctx }: { ctx: MessageRenderContext }) {
+export function ConversationMessageLine({
+  ctx,
+  controlsSlot,
+}: {
+  ctx: MessageRenderContext;
+  /** Action row, supplied by the shell only when it belongs above the message body. */
+  controlsSlot?: ReactNode;
+}) {
   const { t: localizeUi } = useUiTranslation();
   const {
     message,
@@ -57,6 +65,7 @@ export function ConversationMessageLine({ ctx }: { ctx: MessageRenderContext }) 
     showActions,
     forceShowActions,
     showMessageNumbers,
+    messageControlsAbove,
     messageIndex,
     hasSwipes,
     swipeCount,
@@ -74,6 +83,20 @@ export function ConversationMessageLine({ ctx }: { ctx: MessageRenderContext }) 
     messageTextStyle,
     shouldHideUserAvatar,
   } = ctx;
+
+  const swipeControls =
+    !hideActions && (hasSwipes || (canRegenerate && onRegenerate)) ? (
+      <ConversationMessageSwipes
+        chatId={message.chatId}
+        messageId={message.id}
+        activeSwipeIndex={message.activeSwipeIndex}
+        swipeCount={swipeCount}
+        onSetActiveSwipe={(idx) => onSetActiveSwipe?.(message.id, idx)}
+        onCreateNextSwipe={canRegenerate && onRegenerate ? () => onRegenerate(message.id) : undefined}
+        onRegenerate={canRegenerate ? onRegenerate : undefined}
+        onFinalizeMultiSwipe={onFinalizeMultiSwipe}
+      />
+    ) : null;
 
   return (
     <>
@@ -181,6 +204,13 @@ export function ConversationMessageLine({ ctx }: { ctx: MessageRenderContext }) 
           </div>
         )}
 
+        {messageControlsAbove && (swipeControls || controlsSlot) && (
+          <div className="mb-1 flex flex-col items-start gap-0.5">
+            {swipeControls}
+            {controlsSlot}
+          </div>
+        )}
+
         {/* Body */}
         {isHiddenCollapsed ? (
           <HiddenFromAIConversationSummary onExpand={onExpandHidden} />
@@ -256,20 +286,7 @@ export function ConversationMessageLine({ ctx }: { ctx: MessageRenderContext }) 
               onRemove={onRemoveAttachment}
             />
 
-            {!hideActions && (hasSwipes || (canRegenerate && onRegenerate)) && (
-              <div className="mt-1.5">
-                <ConversationMessageSwipes
-                  chatId={message.chatId}
-                  messageId={message.id}
-                  activeSwipeIndex={message.activeSwipeIndex}
-                  swipeCount={swipeCount}
-                  onSetActiveSwipe={(idx) => onSetActiveSwipe?.(message.id, idx)}
-                  onCreateNextSwipe={canRegenerate && onRegenerate ? () => onRegenerate(message.id) : undefined}
-                  onRegenerate={canRegenerate ? onRegenerate : undefined}
-                  onFinalizeMultiSwipe={onFinalizeMultiSwipe}
-                />
-              </div>
-            )}
+            {!messageControlsAbove && swipeControls && <div className="mt-1.5">{swipeControls}</div>}
           </>
         )}
       </div>

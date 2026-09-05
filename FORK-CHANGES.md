@@ -2234,6 +2234,30 @@ Patches to upstream files: `packages/client/src/components/chat/ChatMessage.tsx`
 viewport on a narrow phone`, which fails without the patch with
 `clipped=true offscreen=[Delete]`.
 
+### Message controls can sit above the message
+
+The swipe selector and the per-message action row (copy, edit, regenerate, delete, and the
+conditional actions) render below the message body on every surface. On a long reply that puts
+the swipe arrows a scroll away from the text they belong to.
+
+`messageControlsAbove` in `ui.store.ts` moves both rows above the message body instead, keeping
+the speaker name and timestamp on top. It defaults to off, is synced and persisted like the other
+appearance settings, and is exposed as "Show message controls above messages" in Settings ->
+Message Tools. All five layouts honor it: the roleplay and texting rows in `ChatMessage.tsx`, and
+the bubble, line, and grouped layouts in Conversation mode.
+
+Placement is DOM order rather than CSS `order`, so keyboard focus follows what the eye sees.
+`ConversationMessage.tsx` builds its action row once and hands it to the bubble and line layouts
+through a `controlsSlot` prop, since only the layout knows where the name header ends. The
+grouped layout keeps its swipe row inside the `[data-card-css]` trailing wrapper when below;
+`hasSwipeContent` carries the same flag so that wrapper collapses instead of painting an empty
+themed box once the swipes move up.
+
+Patches to upstream files: `ui.store.ts`, `ChatMessage.tsx`, `ConversationMessage.tsx`,
+`ConversationMessageShared.tsx`, `ConversationMessageBubble.tsx`, `ConversationMessageLine.tsx`,
+`ConversationMessageGrouped.tsx`, `SettingsPanel.tsx`, and `en.json`. Covered by
+`scripts/regressions/message-controls-position.regression.mjs`.
+
 ### Validation skill
 
 `.claude/skills/marinara-validation/SKILL.md` records how to validate a change here: which lane

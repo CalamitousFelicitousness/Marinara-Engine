@@ -937,6 +937,8 @@
   "settings.controls.mariPermissionsMode.manual.label": "Manual",
   "settings.controls.mariPermissionsMode.plan.description": "Mari never changes anything: she lays out the exact changes she would make, in chat.",
   "settings.controls.mariPermissionsMode.plan.label": "Plan",
+  "settings.controls.messageControlsAbove.help": "Places the swipe selector and the message buttons above the message text instead of below it. Applies to Roleplay, Texting, and Conversation chats.",
+  "settings.controls.messageControlsAbove.label": "Show message controls above messages",
   "settings.controls.messagesPerPage.help": "How many messages to load at a time. Click 'Load More' in the chat to see older messages. Set to 0 to load all messages at once.",
   "settings.controls.messagesPerPage.label": "Messages per page",
   "settings.controls.miniMari.help": "Allows the rare Chibi Professor Mari message to appear while scrolling. Turn this off if it gets in the way of settings or other workflows.",

@@ -59,6 +59,7 @@ export function ConversationMessageGrouped({
     hideActions,
     hideTimestamp,
     showMessageNumbers,
+    messageControlsAbove,
     messageIndex,
     hasSwipes,
     swipeCount,
@@ -120,9 +121,59 @@ export function ConversationMessageGrouped({
   };
   const hasTranslationContent = Boolean(translatedText || isTranslating);
   const hasAttachmentContent = (extra.attachments?.length ?? 0) > 0 && !IMAGE_URL_RE.test(renderedContent.trim());
-  const hasSwipeContent = !hideActions && (hasSwipes || Boolean(canRegenerate && onRegenerate));
+  const hasSwipeContent =
+    !messageControlsAbove && !hideActions && (hasSwipes || Boolean(canRegenerate && onRegenerate));
   const hasTrailingContent =
     isStreaming || (!isHiddenCollapsed && (hasTranslationContent || hasAttachmentContent || hasSwipeContent));
+
+  const swipeControls =
+    !hideActions && (hasSwipes || (canRegenerate && onRegenerate)) ? (
+      <ConversationMessageSwipes
+        chatId={message.chatId}
+        messageId={message.id}
+        activeSwipeIndex={message.activeSwipeIndex}
+        swipeCount={swipeCount}
+        onSetActiveSwipe={(idx) => onSetActiveSwipe?.(message.id, idx)}
+        onCreateNextSwipe={canRegenerate && onRegenerate ? () => onRegenerate(message.id) : undefined}
+        onRegenerate={canRegenerate ? onRegenerate : undefined}
+        onFinalizeMultiSwipe={onFinalizeMultiSwipe}
+      />
+    ) : null;
+
+  const actionsRow =
+    !hideActions || hasReasoning ? (
+      <ConversationMessageActions
+        isUser={false}
+        showActions={showActions}
+        forceShowActions={hideActions && hasReasoning ? true : forceShowActions}
+        thinkingOnly={hideActions && hasReasoning}
+        copied={copied}
+        translatedText={translatedText}
+        isHiddenFromAI={isHiddenFromAI}
+        canRegenerate={canRegenerate}
+        isLastAssistantMessage={isLastAssistantMessage}
+        hasReasoning={hasReasoning}
+        reasoningSummaryUnavailable={reasoningSummaryUnavailable}
+        thinkingButtonRef={thinkingButtonRef}
+        generationReplay={generationReplay}
+        isGuided={isGuided}
+        regenerateButtonTitle={regenerateButtonTitle}
+        regenerateGuidedClass={regenerateGuidedClass}
+        onCopy={onCopy}
+        onTranslate={onTranslate}
+        onEdit={onStartEdit}
+        onRegenerate={onRegenerate ? () => onRegenerate(message.id) : undefined}
+        onToggleHiddenFromAI={onToggleHiddenFromAI ? () => onToggleHiddenFromAI(message.id, isHiddenFromAI) : undefined}
+        onPeekPrompt={onPeekPrompt}
+        onDelete={onDelete ? () => onDelete(message.id) : undefined}
+        onShowGenerationReplay={onShowGenerationReplay}
+        onShowThinking={onShowThinking}
+        // A grouped block has one precise reaction affordance per speaker.
+        // Omitting the ambiguous whole-block picker prevents mobile taps from
+        // reacting to the final segment instead of the intended speaker.
+        onPickReaction={undefined}
+      />
+    ) : null;
 
   return (
     <div
@@ -171,6 +222,13 @@ export function ConversationMessageGrouped({
         <div className="mb-1 flex items-center gap-1 pl-14 text-[0.6875rem] text-amber-500/80">
           {hiddenFromAIHeader}
           <span>{localizeUi("ui.chat.conversationmessagegrouped.hiddenFromAi")}</span>
+        </div>
+      )}
+
+      {messageControlsAbove && (swipeControls || actionsRow) && (
+        <div className="mb-1 flex flex-col items-start gap-0.5 pl-14">
+          {swipeControls}
+          {actionsRow}
         </div>
       )}
 
@@ -431,61 +489,13 @@ export function ConversationMessageGrouped({
                 />
               </div>
 
-              {!hideActions && (hasSwipes || (canRegenerate && onRegenerate)) && (
-                <div className="ml-14 mt-1.5">
-                  <ConversationMessageSwipes
-                    chatId={message.chatId}
-                    messageId={message.id}
-                    activeSwipeIndex={message.activeSwipeIndex}
-                    swipeCount={swipeCount}
-                    onSetActiveSwipe={(idx) => onSetActiveSwipe?.(message.id, idx)}
-                    onCreateNextSwipe={canRegenerate && onRegenerate ? () => onRegenerate(message.id) : undefined}
-                    onRegenerate={canRegenerate ? onRegenerate : undefined}
-                    onFinalizeMultiSwipe={onFinalizeMultiSwipe}
-                  />
-                </div>
-              )}
+              {hasSwipeContent && <div className="ml-14 mt-1.5">{swipeControls}</div>}
             </>
           )}
         </div>
       )}
 
-      {/* Action bar */}
-      {(!hideActions || hasReasoning) && (
-        <ConversationMessageActions
-          isUser={false}
-          showActions={showActions}
-          forceShowActions={hideActions && hasReasoning ? true : forceShowActions}
-          thinkingOnly={hideActions && hasReasoning}
-          copied={copied}
-          translatedText={translatedText}
-          isHiddenFromAI={isHiddenFromAI}
-          canRegenerate={canRegenerate}
-          isLastAssistantMessage={isLastAssistantMessage}
-          hasReasoning={hasReasoning}
-          reasoningSummaryUnavailable={reasoningSummaryUnavailable}
-          thinkingButtonRef={thinkingButtonRef}
-          generationReplay={generationReplay}
-          isGuided={isGuided}
-          regenerateButtonTitle={regenerateButtonTitle}
-          regenerateGuidedClass={regenerateGuidedClass}
-          onCopy={onCopy}
-          onTranslate={onTranslate}
-          onEdit={onStartEdit}
-          onRegenerate={onRegenerate ? () => onRegenerate(message.id) : undefined}
-          onToggleHiddenFromAI={
-            onToggleHiddenFromAI ? () => onToggleHiddenFromAI(message.id, isHiddenFromAI) : undefined
-          }
-          onPeekPrompt={onPeekPrompt}
-          onDelete={onDelete ? () => onDelete(message.id) : undefined}
-          onShowGenerationReplay={onShowGenerationReplay}
-          onShowThinking={onShowThinking}
-          // A grouped block has one precise reaction affordance per speaker.
-          // Omitting the ambiguous whole-block picker prevents mobile taps from
-          // reacting to the final segment instead of the intended speaker.
-          onPickReaction={undefined}
-        />
-      )}
+      {!messageControlsAbove && actionsRow}
     </div>
   );
 }

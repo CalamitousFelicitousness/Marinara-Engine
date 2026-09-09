@@ -31,6 +31,16 @@ them, so adopting it unchanged would have dropped the menu silently. Keeping the
 
 The spread must stay above `onClick` so the explicit click handler wins.
 
+### Log output writes through process.stdout
+
+`packages/server/src/lib/logger.ts` exports `createLogDestination()`, and both that singleton and the Fastify logger in `packages/server/src/app.ts` build pino on the returned stream instead of pino's default destination.
+
+Upstream gives both loggers `transport: { target: "pino-pretty" }` outside production and nothing inside it. Both resolve to a bare file descriptor: a transport formats in a worker that writes fd 1, and `normalize()` in `pino/lib/tools.js` falls back to `buildSafeSonicBoom({ fd: 1 })` when no stream is passed. Sonic-boom writes with `fs.write`, which reaches a Windows console through `WriteFile`, and `WriteFile` decodes the bytes with the console's OEM code page. UTF-8 is then read as CP850 or CP437, so a Polish prompt logs as `Uczy┼ä opcje znacz─àco zr├│┼╝nicowanymi`. `process.stdout` is a TTY stream writing through `WriteConsoleW`, which carries Unicode whatever the code page is, and still emits plain UTF-8 once redirected to a file or a pipe.
+
+Both modes needed it, so the built server behind `start.bat` was affected as well as `pnpm dev`. Formatting now runs in-process rather than on a transport worker; log volume is low at the default `LOG_LEVEL=warn`, and the two loggers keep separate streams, matching the two workers they replace.
+
+Guarded by `scripts/regressions/log-encoding.regression.ts`.
+
 ## Fork-only additions
 
 ### Preset variables resolve in every mode, not only Roleplay

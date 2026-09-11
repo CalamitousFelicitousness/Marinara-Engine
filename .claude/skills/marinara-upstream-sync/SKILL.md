@@ -1,6 +1,6 @@
 ---
 name: marinara-upstream-sync
-description: How to sync this fork with upstream Pasta-Devs/Marinara-Engine — why the merge is a merge and not a rebase, how to see every conflict before touching the working tree, the specific fork patches that collide on each sync and how each one is resolved, and the three silent losses that no conflict marker will warn you about. Use this skill whenever the user wants to sync, rebase, update, merge, or pull in upstream changes; asks whether upstream has new commits or how far behind the fork is; mentions upstream/staging, a version bump, or a large batch of incoming commits; or hits a merge conflict anywhere in this repo. Consult it before resolving any conflict here, and before concluding that a post-merge test failure is yours.
+description: How to sync this fork with upstream Pasta-Devs/Marinara-Engine — why the merge is a merge and not a rebase, how to see every conflict before touching the working tree, the specific fork patches that collide on each sync and how each one is resolved, and the five silent losses that no conflict marker will warn you about. Use this skill whenever the user wants to sync, rebase, update, merge, or pull in upstream changes; asks whether upstream has new commits or how far behind the fork is; mentions upstream/staging, a version bump, or a large batch of incoming commits; or hits a merge conflict anywhere in this repo. Consult it before resolving any conflict here, and before concluding that a post-merge test failure is yours.
 ---
 
 # Syncing this fork with upstream
@@ -26,6 +26,12 @@ resolution in `retry-agents-route.ts` landed correctly on its own (upstream's
 `package.json#pnpm` was unchanged, and upstream touched neither `AGENTS.md` nor
 `CLAUDE.md`. A conflict-free merge is therefore not evidence you can skip these:
 it is the case that makes them worth running.
+
+Stress-tested on the 2026-09-11 sync: 240 upstream commits, 69 overlapping
+files, 29 conflicts, v2.4.5 on both sides with no storage bump. Commit count
+does not predict the work. The 2026-08-20 sync pulled 447 commits for 7
+conflicts; this one pulled 240 for 29, because the overlap set grew from 18
+files to 69. Measure the overlap, not the log.
 
 ## Merge, never rebase
 
@@ -70,6 +76,33 @@ On 2026-08-20 that was 764 upstream-changed files, 18 overlapping with fork
 changes, 7 real conflicts. Read the overlap list before starting: those 18 are
 where a patch can be reverted, whether or not git flags them.
 
+### Sort the conflicts by how much of each is formatting
+
+Run the simulation twice, once whitespace-sensitive and once not, and compare
+the conflicted line count per file. A file that shrinks is carrying upstream
+re-indentation; a file that does not is a genuine two-sided rewrite. Doing this
+before resolving anything tells you where the judgment is actually needed.
+
+```bash
+git merge-tree --write-tree --name-only staging upstream/staging > /tmp/mt.txt
+git merge-tree --write-tree -Xignore-space-change --name-only staging upstream/staging > /tmp/mt_ws.txt
+T1=$(head -1 /tmp/mt.txt); T2=$(head -1 /tmp/mt_ws.txt)
+COUNT='/^<<<<<<</{f=1} f{n++} /^>>>>>>>/{f=0} END{print n+0}'
+for f in $(sed -n '2,/^$/p' /tmp/mt.txt | grep -v '^$'); do
+  printf "%6s %6s   %s\n" \
+    "$(git show "$T1:$f" 2>/dev/null | awk "$COUNT")" \
+    "$(git show "$T2:$f" 2>/dev/null | awk "$COUNT")" "$f"
+done | sort -rn
+```
+
+On 2026-09-11 that moved about 470 conflicted lines out of the pile.
+`ConversationInput.tsx` and `marinara.importer.ts` went to zero, so they needed
+no decision at all. `SettingsPanel.tsx` dropped 197 to 80 and `ChatMessage.tsx`,
+the largest conflict in the merge, 383 to 204. The other fourteen files did not
+move, which is the useful half of the signal: they are unchanged because they
+are real disagreements. See **Re-merge a re-indented file with whitespace
+ignored** below for taking a single file from the second tree.
+
 Branch a backup first. It costs nothing and makes the merge trivially
 abandonable:
 
@@ -106,13 +139,69 @@ The 2026-08-20 case: upstream renamed `ROLEPLAY_POPOVER_*` to
 conflict hunks; a third, in fork-only code, did not. After resolving a rename,
 grep the file for the old identifier before moving on.
 
+### When upstream hoists a literal, diff the two field lists
+
+Upstream refactors by lifting a long inline object literal into a module-level
+function. The conflict then reads as two hundred lines against one, and the
+tempting conclusion is that upstream refactored and the fork should take
+theirs. Taking theirs compiles, lints and passes every regression while
+dropping every field the fork had added to that literal. TypeScript does not
+complain that a picker omits fields.
+
+The 2026-09-11 case: upstream moved `partialize: (state) => ({ ... })` out of
+the `ui.store.ts` persist config into `pickPersistedUIState`. Six fork fields
+lived only in the inline version, `messageControlsAbove` among them, three
+commits old at the time. The hoisted function also carried upstream's
+`trackerPanelSizeProfile`, which the fork had replaced with free-width sizing,
+so that half did fail `tsc`. The six missing fields would not have.
+
+Compare the two sets rather than reading them:
+
+```bash
+BASE=$(git merge-base staging upstream/staging)
+git show "$BASE:<file>"          | sed -n '/<literal start>/,/^  }/p' | grep -o '^ *[a-zA-Z]*:' | tr -d ' :' | sort > /tmp/fork_fields.txt
+git show upstream/staging:<file> | sed -n '/<function start>/,/^}/p'  | grep -o '^ *[a-zA-Z]*:' | tr -d ' :' | sort > /tmp/up_fields.txt
+comm -23 /tmp/fork_fields.txt /tmp/up_fields.txt   # fork-only: add to the hoisted function
+comm -13 /tmp/fork_fields.txt /tmp/up_fields.txt   # upstream-only: new fields the fork gains
+```
+
+The same shape also arrives with no marker at all. Upstream added
+`pickSyncedSettings` in the same window, wholly new, listing the same tracker
+fields. It merged cleanly and carried upstream's list, so four fork fields were
+missing from a function nothing pointed at. After resolving a hoist, grep the
+file for sibling functions of the same shape and check each one.
+
+### Re-merge a re-indented file with whitespace ignored
+
+A conflict running to hundreds of lines on both sides usually means upstream
+re-indented, not that both sides rewrote the same code. On 2026-09-11
+`ui.store.ts` showed 8 hunks and 1540 conflicted lines because upstream
+rewrapped the store creator from `(set, get) => ({ ... })` into
+`(setState, get) => { const set = ...; return { ... } }` to route writes
+through `deferEditorLeave`, moving about 900 lines two spaces right.
+
+`git merge-file` has no whitespace option. `git merge-tree` does, so simulate
+the merge with it and take the single file:
+
+```bash
+git merge-tree --write-tree -Xignore-space-change --name-only staging upstream/staging > /tmp/mt_ws.txt
+git show "$(head -1 /tmp/mt_ws.txt):packages/client/src/stores/ui.store.ts" > /tmp/ui.ws.ts
+```
+
+That dropped the file to 5 hunks and roughly 260 lines. Prettier restores the
+indentation in `pnpm format`, so the mixed result does not survive `pnpm
+check`. Before adopting the extracted file, grep it for a symbol each side
+added and confirm both are present.
+
 ### The recurring conflicts, by file
 
 | File                                       | Shape                           | Resolution                                    |
 | ------------------------------------------ | ------------------------------- | --------------------------------------------- |
 | `routes/generate/retry-agents-route.ts`    | semantic                        | see below, the dangerous one                  |
+| `stores/ui.store.ts`                       | re-indent plus hoisted literal  | re-merge ignoring whitespace, then diff keys  |
 | `package.json`                             | fork guards vs upstream scripts | keep both, see below                          |
 | `localization/locales/en.json`             | adjacency                       | keep both blocks, `localeCompare` order       |
+| `localization/locales/<lang>.json`         | upstream deleted the packs      | take the delete, see below                    |
 | `e2e/core-flows.e2e.ts`                    | adjacency                       | keep both tests, close the first              |
 | `pnpm-lock.yaml`                           | regenerable                     | take upstream's, then `pnpm install`          |
 | `scripts/dev.mjs`, `client/vite.config.ts` | the `.env` PORT patch           | keep the fork's, guarded by `dev-ports:check` |
@@ -146,10 +235,28 @@ appended at the same point. Keep both. In `en.json` the surviving order must
 satisfy `localeCompare`, not byte order. In the e2e spec both sides typically
 end mid-`finally`, so the first test needs its closing braces added back.
 
+**The community locale packs are gone upstream.** #5865 replaced the eleven
+bundled files with on-demand download: `locale-loader.ts` globs only `en.json`
+and fetches the rest from `/api/ui-languages/<locale>` as an explicit settings
+action. Every pack the fork had edited arrives as modify/delete. Take the
+delete. The fork's edits to those files were stale-key pruning, and the whole
+mechanism comes across, so nothing is lost by dropping eleven stale
+translations.
+
+**The store persistence version no longer has to collide.** Both lineages used
+to number `version:` independently from a shared ancestor, which is why the
+fork's migrate guards were widened by hand. Upstream now reads the name and
+number from `lib/ui-persistence.ts`, so the next collision is a one-line file
+rather than a hand-audited guard sweep. Adopt it. Where an upstream step is
+guarded below the fork's current number, widen that guard so a fork store still
+runs it: on 2026-09-11 upstream's character-sheet step read `version <= 99`
+against fork stores sitting at 100.
+
 ## Checks that no conflict marker will warn you about
 
-Three losses happen without a conflict. The first two are reverts, because only
-one side edits the file; the third is an inbound fix that lands nowhere.
+Five losses happen without a conflict. The first two are reverts, because only
+one side edits the file; the third is an inbound fix that lands nowhere; the
+fourth is a fork field missing from code upstream added whole.
 
 **`package.json#pnpm`.** This fork moved dependency overrides into
 `pnpm-workspace.yaml` for pnpm 11; upstream stays on pnpm 10.x and keeps them
@@ -166,7 +273,10 @@ diff /tmp/pnpm_base.txt /tmp/pnpm_up.txt
 ```
 
 Anything new on the upstream side has to be mirrored into
-`pnpm-workspace.yaml` by hand.
+`pnpm-workspace.yaml` by hand. On 2026-09-11 that was `hono` and `js-yaml`,
+both security bumps. Note that upstream has started writing
+`patchedDependencies` and `auditConfig` into `pnpm-workspace.yaml` directly;
+those merge cleanly and need no mirroring. Only `overrides` is split.
 
 **`AGENTS.md`.** Upstream hand-edits it directly, while this fork generates it
 from `CLAUDE.md` plus `.github/agents/codex-overlay.md`. An upstream
@@ -209,6 +319,44 @@ git diff --name-only "$BASE" upstream/staging | sort | comm -12 /tmp/gutted.txt 
 
 For each hit, decide where the fix belongs now rather than whether to keep it.
 Grep the fork's destination file for the symptom the fix names, not for the fix.
+
+The destination is not always the relocated file, and assuming it is wastes the
+check. `TTSConfigCard.tsx` conflicted again on 2026-09-11, this time over
+upstream's new `blocked` playback state (#5889). The obvious guess, that the
+fix belonged in `voice-controls.tsx` the way the focus fix had, was wrong:
+that file has no `ttsState` reference at all. The state lives in the playback
+card the fork kept, where four of the five call sites merged cleanly on their
+own and only one needed porting by hand. A gutted file is 665 lines against
+upstream's 2380 and still owns some of what upstream changed. Grep for the
+symptom in every candidate before deciding which one is the destination.
+
+**A fork field missing from a function upstream added whole.** When upstream
+introduces a new function that enumerates state the fork has extended, the file
+has nothing to conflict against, so the new function lands carrying upstream's
+field list alone. `pickSyncedSettings` in `ui.store.ts` did this on 2026-09-11.
+The failure is invisible in both directions: the function compiles, and no test
+asserts that a given field is persisted or synced. Find these by listing the
+functions that enumerate store fields and diffing each against the fork's
+equivalent, as under **When upstream hoists a literal** above.
+
+**An upstream addition that calls the helper the fork replaced.** Where the fork
+has swapped a helper for a stricter wrapper, upstream keeps writing new call
+sites against the original. The import line conflicts, so the loss looks like a
+missing import and the obvious repair is to add it back. Doing that compiles and
+reinstates exactly the defect the wrapper exists to prevent.
+
+The 2026-09-11 case: the fork replaced `buildPromptMacroContext` in routes with
+`buildChatMacroContext`, whose docstring says every chat-scoped field "a call
+site used to be free to omit, and several silently did" is derived rather than
+passed. Upstream then added a second `buildPromptMacroContext` call in
+`game.routes.ts` for lorebook resolution, passing `variables: {}` and a bare
+`chatId` and omitting the local variable store, the timezone, the group scenario
+override and the storyboard keyframe count. `pnpm check` named only the missing
+import.
+
+When a conflict resolves to "an identifier is not defined", check whether the
+fork deliberately retired it before restoring the import. `git log -S` on the
+old name finds the commit that replaced it, and its message says why.
 
 ## Proving a failure is upstream's, not yours
 

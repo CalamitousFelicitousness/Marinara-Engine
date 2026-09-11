@@ -18,6 +18,7 @@ import {
   type RefObject,
 } from "react";
 import { isMessageShadowedByLiveStream } from "../../lib/generation-stream-policy";
+import { latestRoleplayParagraph } from "../../lib/roleplay-vn-paragraphs";
 import {
   normalizeChatSummaryEntries,
   isLongTermMemoryChatSummaryPromptAllowed,
@@ -40,6 +41,7 @@ import {
   ScrollText,
   Settings2,
   ChevronUp,
+  ChevronDown,
   ArrowRightLeft,
   User,
   X,
@@ -54,7 +56,8 @@ import {
 import { getConnectedChatDisplayName } from "../../lib/chat-display";
 import { playConfiguredNotificationPing } from "../../lib/notification-sound";
 import { rememberBoundedSetValue } from "../../lib/bounded-set";
-import { messageHasPendingPostProcessing } from "../../lib/chat-message-extra";
+import { messageHasPendingPostProcessing, parseMessageExtraRecord } from "../../lib/chat-message-extra";
+import { normalizeSpriteExpressionMap } from "../../lib/sprite-expression-state";
 import { isMessageHiddenFromUser } from "../../lib/chat-message-visibility";
 import {
   getTranscriptRenderWindow,
@@ -333,10 +336,12 @@ function RoleplayLiveStreamText({
   chatId,
   emptyLabel,
   renderText,
+  completedParagraphOnly = false,
 }: {
   chatId: string;
   emptyLabel: string;
   renderText: (text: string) => ReactNode;
+  completedParagraphOnly?: boolean;
 }) {
   const [text, setText] = useState("");
   const textRef = useRef("");
@@ -349,7 +354,8 @@ function RoleplayLiveStreamText({
     };
     const apply = () => {
       frame = null;
-      const next = readBuffer();
+      const buffer = readBuffer();
+      const next = completedParagraphOnly ? latestRoleplayParagraph(buffer, true) : buffer;
       if (textRef.current !== next) {
         textRef.current = next;
         setText(next);
@@ -368,7 +374,7 @@ function RoleplayLiveStreamText({
       if (frame !== null) cancelAnimationFrame(frame);
       unsubscribe();
     };
-  }, [chatId]);
+  }, [chatId, completedParagraphOnly]);
 
   return <>{hasVisibleStreamText(text) ? renderText(text) : emptyLabel}</>;
 }
@@ -382,6 +388,7 @@ function StreamingIndicator({
   chatMode,
   groupChatMode,
   expressionAvatarResolver,
+  visualNovel = false,
 }: {
   activeChatId: string;
   chatCharIds: string[];
@@ -391,6 +398,7 @@ function StreamingIndicator({
   chatMode: string;
   groupChatMode?: string;
   expressionAvatarResolver?: ExpressionAvatarResolver;
+  visualNovel?: boolean;
 }) {
   const { t } = useTranslation();
   const thinkingBuffer = useChatStore((s) => s.thinkingBuffer);
@@ -402,6 +410,7 @@ function StreamingIndicator({
   return (
     <div className="animate-message-in">
       <ChatMessage
+        visualNovel={visualNovel}
         message={{
           id: "__streaming__",
           chatId: activeChatId,
@@ -425,6 +434,7 @@ function StreamingIndicator({
             chatId={activeChatId}
             emptyLabel={t("chat.message.thinking")}
             renderText={renderText}
+            completedParagraphOnly={visualNovel}
           />
         )}
         characterMap={characterMap}
@@ -455,14 +465,27 @@ function RegeneratingMessageContent({
   // reasoning: expose the action only after this swipe receives its first
   // reasoning chunk.
   const parsedExtra = typeof msg.extra === "string" ? JSON.parse(msg.extra) : (msg.extra ?? {});
-  const cleanExtra = { ...parsedExtra, attachments: null, thinking: thinkingBuffer || null };
+  const cleanExtra = {
+    ...parsedExtra,
+    attachments: null,
+    roleplayDocuments: null,
+    roleplayCommandActivity: null,
+    roleplayPrivateCommands: null,
+    diceRollResult: null,
+    thinking: thinkingBuffer || null,
+  };
   return (
     <ChatMessage
       message={{ ...msg, extra: cleanExtra, content: "" }}
       isStreaming
       streamingOutputStarted={streamingOutputStarted}
       streamingContent={(renderText) => (
-        <RoleplayLiveStreamText chatId={msg.chatId} emptyLabel={t("chat.message.thinking")} renderText={renderText} />
+        <RoleplayLiveStreamText
+          chatId={msg.chatId}
+          emptyLabel={t("chat.message.thinking")}
+          renderText={renderText}
+          completedParagraphOnly={rest.visualNovel}
+        />
       )}
       {...rest}
       storyboard={null}
@@ -1257,7 +1280,7 @@ type RoleplaySurfaceProps = {
   onOpenScheduleEditor?: ComponentProps<typeof ChatCommonOverlays>["onOpenScheduleEditor"];
   onCloseSettings: () => void;
   onCloseGallery: () => void;
-  onIllustrate?: () => void;
+  onIllustrate?: (prompt?: string) => void;
   onIllustrateWithAgent?: (agentType: string) => void | Promise<void>;
   onGenerateBackground?: () => void | Promise<void>;
   onGenerateVideo?: () => void | Promise<void>;
@@ -1442,6 +1465,31 @@ export function ChatRoleplaySurface({
   const rightPanelOpen = useUIStore((s) => s.rightPanelOpen);
   const chatBackgroundBlur = useUIStore((s) => s.chatBackgroundBlur);
   const roleplayReducedPaintEffects = useUIStore((s) => s.roleplayReducedPaintEffects);
+  const defaultDisplayStyle = useUIStore((s) => s.roleplayDisplayStyle);
+  const vnSpriteScale = useUIStore((s) => s.roleplayVnSpriteScale);
+  const visualNovel = isRoleplay && (chatMeta.roleplayDisplayStyle ?? defaultDisplayStyle) === "visual-novel";
+  const [vnHistoryOpen, setVnHistoryOpen] = useState(false);
+  const [vnHistoryHasDraft, setVnHistoryHasDraft] = useState(false);
+  const [vnMediaTarget, setVnMediaTarget] = useState<HTMLDivElement | null>(null);
+  const pendingVnHistoryScroll = useRef(false);
+  const activeVnSpriteIds = useMemo(
+    () =>
+      Object.keys(
+        normalizeSpriteExpressionMap(
+          parseMessageExtraRecord(messages?.find((message) => message.id === lastAssistantMessageId)?.extra)
+            .spriteExpressions,
+        ),
+      ),
+    [messages, lastAssistantMessageId],
+  );
+  const pendingVnEdit = useRef<{ messageId?: string } | null>(null);
+  const latestVnMessage = useMemo(() => {
+    for (let index = (messages?.length ?? 0) - 1; index >= 0; index--) {
+      const message = messages![index]!;
+      if (message.role !== "system" && !isMessageHiddenFromUser(message)) return message;
+    }
+    return undefined;
+  }, [messages]);
   const queryClient = useQueryClient();
   const automaticStoryboardMessageRef = useRef<string | undefined>(undefined);
   const initialLoadSettledRef = useRef(false);
@@ -1476,10 +1524,23 @@ export function ChatRoleplaySurface({
 
   useLayoutEffect(() => {
     const measure = () => {
-      const top = Math.ceil(topChromeRef.current?.getBoundingClientRect().height ?? 0);
-      const bottom = Math.ceil(inputChromeRef.current?.getBoundingClientRect().height ?? 0);
+      let top = Math.ceil(topChromeRef.current?.getBoundingClientRect().height ?? 0);
+      let bottom = Math.ceil(inputChromeRef.current?.getBoundingClientRect().height ?? 0);
+      if (vnMediaTarget) {
+        vnMediaTarget.style.top = `${top + 8}px`;
+        vnMediaTarget.style.bottom = `${bottom}px`;
+      }
       const scrollElement = scrollRef.current;
       if (!scrollElement) return;
+      const historyBox = scrollElement.parentElement;
+      if (historyBox) {
+        historyBox.style.top = visualNovel && vnHistoryOpen ? `${top + 8}px` : "";
+        historyBox.style.bottom = visualNovel && vnHistoryOpen ? `${bottom}px` : "";
+      }
+      if (visualNovel && vnHistoryOpen) {
+        top = 0;
+        bottom = 0;
+      }
       const current = chromeInsetsRef.current;
       if (current.target === scrollElement && current.top === top && current.bottom === bottom) return;
       chromeInsetsRef.current = { target: scrollElement, top, bottom };
@@ -1495,13 +1556,27 @@ export function ChatRoleplaySurface({
     if (topChromeRef.current) observer.observe(topChromeRef.current);
     if (inputChromeRef.current) observer.observe(inputChromeRef.current);
     return () => observer.disconnect();
-  }, [activeChatId, centerCompact, chatMeta.enableAgents, chatMeta.sceneStatus, combatAgentEnabled, scrollRef]);
+  }, [
+    activeChatId,
+    centerCompact,
+    chatMeta.enableAgents,
+    chatMeta.sceneStatus,
+    combatAgentEnabled,
+    scrollRef,
+    visualNovel,
+    vnHistoryOpen,
+    vnMediaTarget,
+  ]);
 
   useEffect(() => {
     initialLoadSettledRef.current = false;
     prevMessageKeysRef.current = new Set();
     pendingPostProcessingKeysRef.current = new Set();
     setAuthorNotesOpenOwner(null);
+    setVnHistoryOpen(false);
+    setVnHistoryHasDraft(false);
+    pendingVnEdit.current = null;
+    pendingVnHistoryScroll.current = false;
   }, [activeChatId]);
 
   const [transcriptWindowStart, setTranscriptWindowStart] = useState<number | null>(null);
@@ -1531,6 +1606,49 @@ export function ChatRoleplaySurface({
     [maxMountedMessages, messages, transcriptWindowStart],
   );
   const gotoRequest = useChatStore((state) => state.gotoRequest);
+  useLayoutEffect(() => {
+    if (!vnHistoryOpen || !pendingVnHistoryScroll.current) return;
+    pendingVnHistoryScroll.current = false;
+    const element = scrollRef.current;
+    if (!element) return;
+    let followOpening = true;
+    const scrollToLatest = () => {
+      if (followOpening) element.scrollTop = element.scrollHeight;
+    };
+    const stopFollowing = () => {
+      followOpening = false;
+    };
+    const frame = requestAnimationFrame(scrollToLatest);
+    // Images mount with the transcript. Keep the opening anchor while they load,
+    // but let the reader take over as soon as they interact with history.
+    element.addEventListener("load", scrollToLatest, true);
+    for (const event of ["wheel", "touchmove", "pointerdown", "keydown"])
+      element.addEventListener(event, stopFollowing, { passive: true });
+    return () => {
+      cancelAnimationFrame(frame);
+      element.removeEventListener("load", scrollToLatest, true);
+      for (const event of ["wheel", "touchmove", "pointerdown", "keydown"])
+        element.removeEventListener(event, stopFollowing);
+    };
+  }, [vnHistoryOpen, scrollRef]);
+  useEffect(() => {
+    if (!visualNovel || vnHistoryOpen) return;
+    const revealEditor = (event: Event) => {
+      pendingVnEdit.current = (event as CustomEvent<{ messageId?: string }>).detail;
+      setVnHistoryOpen(true);
+    };
+    window.addEventListener("marinara:start-edit-message", revealEditor);
+    return () => window.removeEventListener("marinara:start-edit-message", revealEditor);
+  }, [visualNovel, vnHistoryOpen]);
+  useEffect(() => {
+    if (!vnHistoryOpen || !pendingVnEdit.current) return;
+    const detail = pendingVnEdit.current;
+    pendingVnEdit.current = null;
+    window.dispatchEvent(new CustomEvent("marinara:start-edit-message", { detail }));
+  }, [vnHistoryOpen]);
+  useLayoutEffect(() => {
+    if (multiSelectMode || gotoRequest?.chatId === activeChatId) setVnHistoryOpen(true);
+  }, [activeChatId, gotoRequest, multiSelectMode]);
   // ChatArea clears the request after scrolling; only reveal its transcript window once.
   const handledTranscriptGotoRef = useRef<typeof gotoRequest>(null);
 
@@ -1660,7 +1778,10 @@ export function ChatRoleplaySurface({
     }
   }, [activeChatId, messages]);
 
-  const visibleMessages = transcriptWindow.messages;
+  // Keep an unsaved editor alive if its history is temporarily collapsed.
+  const showHistory = !visualNovel || vnHistoryOpen;
+  const showTranscript = showHistory || vnHistoryHasDraft;
+  const visibleMessages = showTranscript ? transcriptWindow.messages : [];
   const activeChatCharacterIds = useMemo(() => {
     const inactiveIds = new Set(readStringArray(chatMeta.inactiveCharacterIds));
     const activeIds = chatCharIds.filter((id) => !inactiveIds.has(id));
@@ -1810,18 +1931,26 @@ export function ChatRoleplaySurface({
           ambientVisualsPaused && "mari-generation-render-paused",
         )}
         data-chat-mode="roleplay"
+        data-roleplay-presentation={visualNovel ? "visual-novel" : "classic"}
         style={{ isolation: "isolate" }}
       >
         <CrossfadeBackground url={chatBackground} blurPx={chatBackgroundBlur} />
         <div className="rpg-overlay absolute inset-0" />
         <div className="rpg-vignette pointer-events-none absolute inset-0" />
         {weatherEffects && <WeatherEffectsConnected paused={weatherEffectsPaused} />}
+        {visualNovel && !vnHistoryOpen && (
+          <div
+            ref={setVnMediaTarget}
+            data-roleplay-vn-media
+            className="pointer-events-none absolute inset-x-3 top-0 bottom-0 z-[4] flex items-end justify-center gap-2 overflow-hidden pb-2"
+          />
+        )}
         {showSpriteOverlay && (
           <Suspense fallback={null}>
             <SpriteOverlay
               characterIds={spriteCharacterIds}
               messages={msgPayload}
-              side={spritePosition}
+              side={visualNovel ? "center" : spritePosition}
               spriteDisplayModes={spriteDisplayModes}
               spriteExpressions={spriteExpressions}
               spritePlacements={spritePlacements}
@@ -1830,6 +1959,8 @@ export function ChatRoleplaySurface({
               spriteScale={spriteScale}
               expressionSpriteScale={expressionSpriteScale}
               fullBodySpriteScale={fullBodySpriteScale}
+              spriteScaleMultiplier={visualNovel ? vnSpriteScale : 1}
+              activeCharacterIds={visualNovel ? activeVnSpriteIds : undefined}
               spriteOpacity={spriteOpacity}
               expressionSpriteOpacity={expressionSpriteOpacity}
               fullBodySpriteOpacity={fullBodySpriteOpacity}
@@ -2202,13 +2333,27 @@ export function ChatRoleplaySurface({
               </Suspense>
             )}
 
-            <div data-chat-resource-drop-surface className="absolute inset-0 z-10 overflow-hidden">
+            <div
+              data-chat-resource-drop-surface
+              className={cn(
+                "absolute z-10 overflow-hidden",
+                visualNovel && vnHistoryOpen ? "mari-roleplay-input-column inset-x-0 mx-auto px-3 md:px-0" : "inset-0",
+                visualNovel && !vnHistoryOpen && "pointer-events-none",
+              )}
+            >
               <div
                 ref={scrollRef}
                 data-chat-scroll
+                id="roleplay-chat-history"
+                aria-hidden={visualNovel && !vnHistoryOpen ? true : undefined}
+                inert={visualNovel && !vnHistoryOpen ? true : undefined}
                 className={cn(
                   "rpg-chat-messages-mobile mari-messages-scroll relative h-full overflow-y-auto overflow-x-hidden",
                   centerCompact ? "px-3" : "px-3 md:px-8 lg:px-10 xl:px-12",
+                  visualNovel && !vnHistoryOpen && "invisible pointer-events-none",
+                  visualNovel &&
+                    vnHistoryOpen &&
+                    "rounded-xl border border-[var(--border)] bg-[var(--marinara-chat-chrome-panel-bg)]",
                 )}
                 style={{
                   paddingTop: "var(--mari-roleplay-content-padding-top, 16px)",
@@ -2361,9 +2506,9 @@ export function ChatRoleplaySurface({
                   buttonClassName="border-[var(--marinara-chat-chrome-button-border-active)] bg-[var(--marinara-chat-chrome-button-bg-active)] text-[var(--marinara-chat-chrome-button-text-active)] hover:border-[var(--marinara-chat-chrome-button-border-hover)] hover:bg-[var(--marinara-chat-chrome-button-bg-hover)] hover:text-[var(--marinara-chat-chrome-button-text-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--marinara-chat-chrome-focus-ring)]"
                 />
 
-                {!isStreaming && <CyoaChoices messages={messages} />}
+                {showHistory && !isStreaming && <CyoaChoices messages={messages} />}
 
-                {hasLiveStream && !regenerateMessageId && (
+                {showHistory && hasLiveStream && !regenerateMessageId && (
                   <StreamingIndicator
                     activeChatId={activeChatId}
                     chatCharIds={chatCharIds}
@@ -2386,6 +2531,91 @@ export function ChatRoleplaySurface({
                 data-roleplay-chat-column="true"
                 className="mari-roleplay-input-column pointer-events-auto relative mx-auto px-3 md:px-0"
               >
+                {visualNovel && (
+                  <div className="relative mb-2" data-roleplay-vn>
+                    <div className="flex justify-center">
+                      <button
+                        type="button"
+                        className={cn(
+                          "relative flex h-6 w-10 items-center justify-center border border-[var(--border)] bg-[var(--marinara-chat-chrome-panel-bg)] text-[var(--marinara-chat-chrome-button-text)] before:absolute before:-inset-x-1 before:-inset-y-2.5 hover:text-[var(--marinara-chat-chrome-highlight-text)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]",
+                          vnHistoryOpen ? "-mt-px rounded-b-lg border-t-0" : "rounded-t-lg border-b-0",
+                        )}
+                        aria-expanded={vnHistoryOpen}
+                        aria-controls="roleplay-chat-history"
+                        aria-label={localizeUi(
+                          vnHistoryOpen ? "chat.roleplayVn.hideHistory" : "chat.roleplayVn.showHistory",
+                        )}
+                        title={localizeUi(
+                          vnHistoryOpen ? "chat.roleplayVn.hideHistory" : "chat.roleplayVn.showHistory",
+                        )}
+                        onClick={() => {
+                          if (!vnHistoryOpen) {
+                            setTranscriptWindowStart(null);
+                            pendingVnHistoryScroll.current = true;
+                          }
+                          setVnHistoryHasDraft(
+                            vnHistoryOpen && !!scrollRef.current?.querySelector("[data-chat-message-editor]"),
+                          );
+                          setVnHistoryOpen((open) => !open);
+                        }}
+                      >
+                        {vnHistoryOpen ? <ChevronDown size="0.875rem" /> : <ChevronUp size="0.875rem" />}
+                      </button>
+                    </div>
+                    {!vnHistoryOpen && (
+                      <div className="rounded-xl border border-[var(--border)] bg-[var(--marinara-chat-chrome-panel-bg)] shadow-lg">
+                        {hasLiveStream ? (
+                          regenerateMessageId && messages?.find((message) => message.id === regenerateMessageId) ? (
+                            <RegeneratingMessageContent
+                              msg={messages.find((message) => message.id === regenerateMessageId)!}
+                              visualNovel
+                              visualNovelMediaTarget={vnMediaTarget}
+                              chatMode="roleplay"
+                              characterMap={characterMap}
+                              personaInfo={personaInfo}
+                              groupChatMode={groupChatMode}
+                              chatCharacterIds={chatCharIds}
+                              mergedGroupCharacterIds={activeChatCharacterIds}
+                              expressionAvatarResolver={expressionAvatarResolver}
+                            />
+                          ) : (
+                            <StreamingIndicator
+                              activeChatId={activeChatId}
+                              visualNovel
+                              chatCharIds={chatCharIds}
+                              mergedGroupCharacterIds={activeChatCharacterIds}
+                              characterMap={characterMap}
+                              personaInfo={personaInfo}
+                              chatMode="roleplay"
+                              groupChatMode={groupChatMode}
+                              expressionAvatarResolver={expressionAvatarResolver}
+                            />
+                          )
+                        ) : latestVnMessage ? (
+                          <ChatMessage
+                            key={`${activeChatId}:${latestVnMessage.id}:${latestVnMessage.activeSwipeIndex}`}
+                            message={latestVnMessage}
+                            visualNovel
+                            visualNovelMediaTarget={vnMediaTarget}
+                            chatMode="roleplay"
+                            characterMap={characterMap}
+                            personaInfo={personaInfo}
+                            groupChatMode={groupChatMode}
+                            chatCharacterIds={chatCharIds}
+                            mergedGroupCharacterIds={activeChatCharacterIds}
+                            expressionAvatarResolver={expressionAvatarResolver}
+                            messageDepth={(messages?.length ?? 1) - 1 - (messages?.indexOf(latestVnMessage) ?? 0)}
+                          />
+                        ) : (
+                          <p className="p-4 text-sm text-[var(--marinara-chat-chrome-text)]">
+                            {localizeUi("chat.roleplayVn.empty")}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    {!vnHistoryOpen && !isStreaming && <CyoaChoices messages={messages} />}
+                  </div>
+                )}
                 {chatMeta.sceneStatus === "active" && (
                   <EndSceneBar
                     sceneChatId={activeChatId}

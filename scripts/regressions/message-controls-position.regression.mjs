@@ -26,14 +26,10 @@ assert.equal(
 );
 
 // Each surface renders one placement or the other, never both and never neither.
-// The grouped layout gates its below-body row on hasSwipeContent, which carries
-// the same flag so the [data-card-css] trailing wrapper collapses with it.
-for (const [surface, source, name, belowGuard] of [
-  ["roleplay", chatMessage, "roleplayMessageControls", "!messageControlsAbove"],
-  ["texting", chatMessage, "messageControls", "!messageControlsAbove"],
-  ["conversation bubble", conversationBubble, "swipeControls", "!messageControlsAbove"],
-  ["conversation line", conversationLine, "swipeControls", "!messageControlsAbove"],
-  ["conversation grouped", conversationGrouped, "swipeControls", "hasSwipeContent"],
+for (const [surface, source, name] of [
+  ["roleplay", chatMessage, "roleplayMessageControls"],
+  ["texting", chatMessage, "messageControls"],
+  ["conversation grouped", conversationGrouped, "messageControls"],
 ]) {
   assert.match(
     source,
@@ -42,28 +38,58 @@ for (const [surface, source, name, belowGuard] of [
   );
   assert.match(
     source,
-    new RegExp(`${belowGuard} && [\\s\\S]{0,120}${name}`, "u"),
+    new RegExp(`!messageControlsAbove && [\\s\\S]{0,120}${name}`, "u"),
     `${surface} messages must keep the below-body placement`,
+  );
+}
+
+// Bubble and line receive the node through a slot, so they only position it.
+for (const [surface, source] of [
+  ["conversation bubble", conversationBubble],
+  ["conversation line", conversationLine],
+]) {
+  assert.match(
+    source,
+    /messageControlsAbove && controlsSlot &&/u,
+    `${surface} messages must render the slot only above the body`,
   );
 }
 
 assert.match(
   conversationMessage,
-  /controlsSlot=\{messageControlsAbove \? actionsRow : null\}/u,
-  "the Conversation shell must hand its action row to the layout only when it belongs above the body",
+  /controlsSlot=\{messageControlsAbove \? messageControls : null\}/u,
+  "the Conversation shell must hand its controls to the layout only when they belong above the body",
 );
 assert.equal(
-  countOccurrences(conversationMessage, /controlsSlot=\{messageControlsAbove \? actionsRow : null\}/gu),
+  countOccurrences(conversationMessage, /controlsSlot=\{messageControlsAbove \? messageControls : null\}/gu),
   2,
-  "both the bubble and line layouts must receive the action row slot",
+  "both the bubble and line layouts must receive the controls slot",
+);
+assert.match(
+  conversationMessage,
+  /\{!messageControlsAbove && messageControls\}/u,
+  "the Conversation shell must keep the below-body placement",
 );
 
-// The grouped layout wraps trailing content in [data-card-css]; leaving swipes in
-// that tally would paint an empty themed box once they render above instead.
-assert.match(
+// Swipes and the action row travel as one node. Splitting them would strand the
+// swipe row below the body while the actions moved above it.
+for (const [surface, source] of [
+  ["conversation", conversationMessage],
+  ["conversation grouped", conversationGrouped],
+]) {
+  assert.match(
+    source,
+    /const messageControls = \(\s*<>\s*<ConversationMessageSwipes ctx=\{ctx\} \/>\s*\{actionsRow\}\s*<\/>\s*\);/u,
+    `${surface} controls must carry the swipe row with the action row`,
+  );
+}
+
+// The grouped layout wraps trailing content in [data-card-css]; counting the
+// swipe row there would paint an empty themed box once controls move above.
+assert.doesNotMatch(
   conversationGrouped,
-  /const hasSwipeContent =\s*\n?\s*!messageControlsAbove &&/u,
-  "grouped trailing content must stop counting swipes once they move above the segments",
+  /const hasTrailingContent =[^;]*[Ss]wipe/u,
+  "grouped trailing content must not count the swipe row",
 );
 
 assert.match(

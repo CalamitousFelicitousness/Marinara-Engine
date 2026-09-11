@@ -30,9 +30,11 @@ import { GenerationReplayDetailsModal, hasGenerationReplayDetails } from "./Gene
 import {
   HiddenFromAIConversationButton,
   ConversationMessageLightbox,
+  ConversationMessageSwipes,
   type MessageData,
   type MessageRenderContext,
 } from "./ConversationMessageShared";
+import { MessageReplyPreview } from "./MessageReplyPreview";
 import { ConversationMessageActions } from "./ConversationMessageActions";
 import { ConversationMessageGrouped } from "./ConversationMessageGrouped";
 import { ConversationMessageBubble } from "./ConversationMessageBubble";
@@ -40,6 +42,7 @@ import { ConversationMessageLine } from "./ConversationMessageLine";
 import { MessageReactions } from "./MessageReactions";
 import { MessageThinkingModal } from "./MessageThinkingModal";
 import { useChatStore } from "../../stores/chat.store";
+import { hasActiveTextSelection } from "../../lib/text-selection";
 import { parseChatMetadata } from "../../lib/chat-display";
 import { resolveMessageReasoningDisplay } from "../../lib/message-reasoning";
 import {
@@ -742,6 +745,7 @@ export const ConversationMessage = memo(function ConversationMessage({
     (e: React.MouseEvent) => {
       const target = e.target as HTMLElement;
       if (target.closest("button, a, textarea")) return;
+      if (matchMedia("(pointer: coarse)").matches && hasActiveTextSelection()) return;
       if (multiSelectMode) {
         onToggleSelect?.({
           messageId: message.id,
@@ -770,6 +774,11 @@ export const ConversationMessage = memo(function ConversationMessage({
   useEffect(() => {
     if (!showActions) return;
     const handleTouch = (e: TouchEvent) => {
+      if (
+        e.target instanceof Element &&
+        e.target.closest('[role="dialog"], [role="alertdialog"], [role="menu"], [data-chat-floating-panel]')
+      )
+        return;
       if (msgRef.current && !msgRef.current.contains(e.target as Node)) setShowActions(false);
     };
     document.addEventListener("touchstart", handleTouch);
@@ -996,6 +1005,8 @@ export const ConversationMessage = memo(function ConversationMessage({
   const actionsRow =
     !hideActions || (hasReasoning && !isUser) ? (
       <ConversationMessageActions
+        message={message}
+        name={displayName}
         isUser={isUser}
         showActions={showActions}
         forceShowActions={hideActions && hasReasoning ? true : forceShowActions}
@@ -1025,6 +1036,13 @@ export const ConversationMessage = memo(function ConversationMessage({
         onPickReaction={handleToggleReaction}
       />
     ) : null;
+
+  const messageControls = (
+    <>
+      <ConversationMessageSwipes ctx={ctx} />
+      {actionsRow}
+    </>
+  );
 
   // ── System message ──
   if (isSystem) {
@@ -1158,24 +1176,26 @@ export const ConversationMessage = memo(function ConversationMessage({
           isHiddenFromAI && cn("rounded-lg ring-1 saturate-75", CONVERSATION_MESSAGE_CHROME_RING_CLASS),
           multiSelectMode && isSelected && MESSAGE_SELECTION_SURFACE_CLASS,
         )}
+        tabIndex={0}
         data-message-id={message.id}
         data-message-role={message.role}
         data-card-css={message.characterId ?? undefined}
         data-grouped={isGrouped || undefined}
         onClick={handleMobileTap}
       >
+        {isUser && !isHiddenCollapsed && <MessageReplyPreview reply={extra.replyTo} />}
         <div
           className={cn("min-w-0 max-w-full", !isBubbleStyle && "flex gap-4")}
           data-component="ConversationMessage.Content"
         >
           {isBubbleStyle ? (
-            <ConversationMessageBubble ctx={ctx} controlsSlot={messageControlsAbove ? actionsRow : null} />
+            <ConversationMessageBubble ctx={ctx} controlsSlot={messageControlsAbove ? messageControls : null} />
           ) : (
-            <ConversationMessageLine ctx={ctx} controlsSlot={messageControlsAbove ? actionsRow : null} />
+            <ConversationMessageLine ctx={ctx} controlsSlot={messageControlsAbove ? messageControls : null} />
           )}
         </div>
 
-        {!messageControlsAbove && actionsRow}
+        {!messageControlsAbove && messageControls}
       </div>
       {reactionRow}
       {modals}

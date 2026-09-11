@@ -12,7 +12,7 @@ import {
   type TTSSynthesisPolicy,
 } from "./tts-synthesis-policy";
 
-export type TTSState = "idle" | "loading" | "playing" | "paused" | "error";
+export type TTSState = "idle" | "loading" | "playing" | "paused" | "blocked" | "error";
 
 /**
  * How far through a spoken message the engine is. A message is many chunks, and
@@ -128,10 +128,54 @@ function waitForPlaybackDelay(delayMs: number | undefined, signal: AbortSignal):
   });
 }
 
-function shouldWaitForPlaybackReturn(error: unknown): boolean {
-  if (typeof document !== "undefined" && document.visibilityState === "hidden") return true;
-  if (!(error instanceof Error)) return false;
-  return error.name === "NotAllowedError";
+// #5889: Safari rejects play() with NotAllowedError when there is no live
+// user activation - autoplay firing after generation, and even manual play
+// once the awaited synthesis fetch has left the click's synchronous window.
+// The old loop treated that as "wait until the tab is visible and focused",
+// which it already was, so it retried with zero backoff forever: a promise
+// and DOMException per iteration until the tab froze and WebKit killed it.
+// No retry can succeed without a NEW gesture, so a blocked visible tab now
+// waits for one - the retried play() then lands inside that gesture's
+// transient activation and is allowed.
+const MAX_PLAY_ATTEMPTS = 20;
+const PLAY_RETRY_FLOOR_MS = 250;
+
+function sleepWithAbort(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.reject(playbackAbortError());
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(playbackAbortError());
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+const USER_GESTURE_EVENTS = ["pointerdown", "keydown", "touchend"] as const;
+
+function waitForUserGesture(signal?: AbortSignal): Promise<void> {
+  if (typeof window === "undefined") return Promise.resolve();
+  if (signal?.aborted) return Promise.reject(playbackAbortError());
+  return new Promise((resolve, reject) => {
+    const cleanup = () => {
+      for (const name of USER_GESTURE_EVENTS) window.removeEventListener(name, onGesture, true);
+      signal?.removeEventListener("abort", onAbort);
+    };
+    const onGesture = () => {
+      cleanup();
+      resolve();
+    };
+    const onAbort = () => {
+      cleanup();
+      reject(playbackAbortError());
+    };
+    for (const name of USER_GESTURE_EVENTS) window.addEventListener(name, onGesture, true);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 function waitForPlaybackReturn(signal?: AbortSignal): Promise<void> {
@@ -165,7 +209,13 @@ function waitForPlaybackReturn(signal?: AbortSignal): Promise<void> {
   });
 }
 
-async function playWhenAvailable(audio: HTMLAudioElement, signal?: AbortSignal): Promise<void> {
+/** Exported for the regression lane, which drives it with stubbed globals. */
+export async function playWhenAvailable(
+  audio: Pick<HTMLAudioElement, "play"> & Partial<Pick<HTMLAudioElement, "paused" | "ended">>,
+  signal?: AbortSignal,
+  onBlocked?: () => void,
+): Promise<void> {
+  let attempts = 0;
   let waitBeforeRetry = typeof document !== "undefined" && document.visibilityState === "hidden";
 
   while (true) {
@@ -173,6 +223,10 @@ async function playWhenAvailable(audio: HTMLAudioElement, signal?: AbortSignal):
     if (waitBeforeRetry) {
       await waitForPlaybackReturn(signal);
       waitBeforeRetry = false;
+      // The return gate resolves instantly for a visible, focused tab, so a
+      // floor between attempts keeps any residual misclassification from
+      // ever spinning hot again.
+      await sleepWithAbort(PLAY_RETRY_FLOOR_MS, signal);
     }
 
     try {
@@ -181,10 +235,27 @@ async function playWhenAvailable(audio: HTMLAudioElement, signal?: AbortSignal):
     } catch (err) {
       // play() rejects with AbortError when a pause interrupts the start, but
       // the element can still be running. Treating that as a failure would drop
-      // it from tracking and leave a clip nothing can stop (#2647).
-      if (!audio.paused && !audio.ended) return;
-      if (!shouldWaitForPlaybackReturn(err)) throw err;
+      // it from tracking and leave a clip nothing can stop (#2647). An element
+      // that does not report these is not running, so the retry path decides.
+      if (audio.paused === false && audio.ended === false) return;
+      attempts += 1;
+      if (attempts >= MAX_PLAY_ATTEMPTS) {
+        throw err instanceof Error ? err : new Error("Browser blocked audio playback");
+      }
+      // Only the autoplay-policy rejection is retryable - a decode or
+      // not-supported failure does not heal by waiting or foregrounding.
+      if (!(err instanceof Error) || err.name !== "NotAllowedError") throw err;
+      const hiddenNow = typeof document !== "undefined" && document.visibilityState === "hidden";
+      if (!hiddenNow) {
+        // Autoplay policy, not visibility: only a fresh user gesture can
+        // unblock playback, and retrying inside its transient activation is
+        // exactly what makes the retry succeed.
+        onBlocked?.();
+        await waitForUserGesture(signal);
+        continue;
+      }
       waitBeforeRetry = true;
+      continue;
     }
   }
 }
@@ -444,12 +515,25 @@ class TTSService {
       if (this.abortController === abortController) {
         this.abortController = null;
       }
+      // Record the REAL failure and detach the element first: the abort below
+      // rejects a parked playWhenAvailable with AbortError, and the outer
+      // catch must find this.audio already cleared so it cannot overwrite the
+      // decode error with the abort message.
+      this.audio = null;
       this.cleanup();
+      this.lastError = "Audio playback failed";
       this.setState("error");
+      // A decode error can land while playWhenAvailable is parked waiting for
+      // a user gesture; aborting (not merely dropping) the controller is what
+      // releases those window listeners, so no future keystroke retries a
+      // dead element on a revoked URL.
+      abortController.abort();
     };
 
     try {
-      await playWhenAvailable(audio, abortController.signal);
+      await playWhenAvailable(audio, abortController.signal, () => {
+        if (this.isCurrentSequence(sequence) && this.audio === audio) this.setState("blocked", id ?? null);
+      });
       if (!this.isCurrentSequence(sequence) || this.audio !== audio) return;
       this.consecutiveFailures = 0;
       this.setState("playing", id ?? null);
@@ -587,11 +671,21 @@ class TTSService {
           try {
             runChunkEnd();
           } finally {
+            // Settle the chunk with the REAL failure before aborting: the
+            // abort synchronously rejects the parked playWhenAvailable, and a
+            // fail() after that would hit an already-settled promise, letting
+            // the sequence continue as if the decode error never happened.
             fail(new Error("Audio playback failed"));
+            // Then release the parked gesture listeners.
+            abortController.abort();
           }
         };
 
-        void playWhenAvailable(audio, abortController.signal)
+        void playWhenAvailable(audio, abortController.signal, () => {
+          if (this.isCurrentSequence(sequence) && this.audio === audio) {
+            this.setState("blocked", request.activeId ?? id ?? null);
+          }
+        })
           .then(() => {
             if (!this.isCurrentSequence(sequence) || this.audio !== audio) return;
             this.consecutiveFailures = 0;
@@ -777,7 +871,9 @@ class TTSService {
   resume(): void {
     if (this.state !== "paused" || !this.audio) return;
     const audio = this.audio;
-    void playWhenAvailable(audio, this.abortController?.signal)
+    void playWhenAvailable(audio, this.abortController?.signal, () => {
+      if (this.audio === audio) this.setState("blocked");
+    })
       .then(() => {
         if (this.audio !== audio) return;
         this.setState("playing");
@@ -796,7 +892,9 @@ class TTSService {
     if (!this.audio || (this.state !== "playing" && this.state !== "paused")) return;
     const audio = this.audio;
     audio.currentTime = 0;
-    void playWhenAvailable(audio, this.abortController?.signal)
+    void playWhenAvailable(audio, this.abortController?.signal, () => {
+      if (this.audio === audio) this.setState("blocked");
+    })
       .then(() => {
         if (this.audio !== audio) return;
         this.setState("playing");

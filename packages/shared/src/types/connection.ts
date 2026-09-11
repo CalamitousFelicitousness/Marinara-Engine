@@ -27,7 +27,7 @@ export type APIProvider =
 export const AUDIO_GENERATION_SOURCES = TTS_SOURCE_IDS;
 export type AudioGenerationSource = (typeof AUDIO_GENERATION_SOURCES)[number];
 
-export const IMAGE_GENERATION_QUALITIES = ["auto", "low", "medium", "high"] as const;
+export const IMAGE_GENERATION_QUALITIES = ["auto", "low", "medium", "high", "xhigh", "max"] as const;
 export type ImageGenerationQuality = (typeof IMAGE_GENERATION_QUALITIES)[number];
 
 /** An API connection configuration. */

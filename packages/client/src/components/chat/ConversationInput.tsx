@@ -20,6 +20,7 @@ import {
 import { toast } from "sonner";
 import { useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { useChatStore } from "../../stores/chat.store";
+import { hasActiveTextSelection } from "../../lib/text-selection";
 import { useAgentStore } from "../../stores/agent.store";
 import { useUIStore } from "../../stores/ui.store";
 import { useSidecarStore } from "../../stores/sidecar.store";
@@ -56,6 +57,7 @@ import { showChoiceDialog } from "../../lib/app-dialogs";
 import { useConversationCustomEmojis, type ConversationCustomEmoji } from "../../hooks/use-conversation-custom-emojis";
 import { SpeechToTextButton } from "../ui/SpeechToTextButton";
 import { SlashCommandFeedback } from "./SlashCommandFeedback";
+import { MessageReplyPreview } from "./MessageReplyPreview";
 import { QuickReplyMenu, type QuickReplyAction } from "./QuickReplyMenu";
 import { getChatInputShellClass } from "./chat-input-styles";
 import { MariSuggestionChips } from "./MariSuggestionChips";
@@ -119,6 +121,7 @@ type ConversationSlashCompletion = {
 };
 
 type SubmittedConversationInput = {
+  replyTo?: import("@marinara-engine/shared").MessageReply;
   chatId: string;
   draft: string;
   height: string;
@@ -328,7 +331,7 @@ interface ConversationInputProps {
     conversationActivity?: string;
   }>;
   onPeekPrompt?: () => void;
-  onIllustrate?: () => void | Promise<void>;
+  onIllustrate?: (prompt?: string) => void | Promise<void>;
   onGenerateSelfie?: (characterId?: string) => void | Promise<void>;
 }
 
@@ -427,6 +430,8 @@ export function ConversationInput({
   });
   // Show stop button only during actual generation, not during busy delay
   const isActuallyGenerating = isStreaming && !delayedCharacterInfo;
+  const replyDraft = useChatStore((s) => (activeChatId ? s.replyDrafts.get(activeChatId) : undefined));
+  const setReplyDraft = useChatStore((s) => s.setReplyDraft);
   const setInputDraft = useChatStore((s) => s.setInputDraft);
   const clearInputDraft = useChatStore((s) => s.clearInputDraft);
   const setCurrentInput = useChatStore((s) => s.setCurrentInput);
@@ -662,6 +667,8 @@ export function ConversationInput({
 
   const restoreSubmittedInput = useCallback(
     (submitted: SubmittedConversationInput) => {
+      if (submitted.replyTo && !useChatStore.getState().replyDrafts.has(submitted.chatId))
+        useChatStore.getState().setReplyDraft(submitted.chatId, submitted.replyTo);
       const activeChatIdAfterFailure = useChatStore.getState().activeChatId;
       const currentValue = textareaRef.current?.value ?? "";
       const canRestoreVisibleDraft = activeChatIdAfterFailure === submitted.chatId && currentValue.length === 0;
@@ -705,6 +712,7 @@ export function ConversationInput({
           role: "user",
           content,
           characterId: null,
+          ...(submitted.replyTo ? { extra: { replyTo: submitted.replyTo } } : {}),
         });
         createdMessageId = created.id;
         if (persistedAttachments.length > 0) {
@@ -1142,6 +1150,7 @@ export function ConversationInput({
 
     const submittedInput: SubmittedConversationInput = {
       chatId: activeChatId,
+      replyTo: replyDraft,
       draft: textareaRef.current?.value ?? raw,
       height: textareaRef.current?.style.height ?? "auto",
       attachments,
@@ -1167,6 +1176,8 @@ export function ConversationInput({
     setMentionQuery(null);
     setMentionCompletions([]);
 
+    setReplyDraft(activeChatId, null);
+
     // Extract @mentions from the raw message (before regex transforms)
     const mentioned = extractMentions(raw);
 
@@ -1183,16 +1194,25 @@ export function ConversationInput({
       return;
     }
 
-    await generate({
-      chatId: activeChatId,
-      connectionId: null,
-      userMessage: message,
-      ...(pendingAttachments.length ? { attachments: pendingAttachments } : {}),
-      ...(mentioned.length ? { mentionedCharacterNames: mentioned } : {}),
-      ...fanOut,
-    });
+    try {
+      const succeeded = await generate({
+        chatId: activeChatId,
+        connectionId: null,
+        userMessage: message,
+        ...(replyDraft ? { replyTo: replyDraft } : {}),
+        ...(pendingAttachments.length ? { attachments: pendingAttachments } : {}),
+        ...(mentioned.length ? { mentionedCharacterNames: mentioned } : {}),
+        ...fanOut,
+      });
+      if (succeeded === false) restoreSubmittedInput(submittedInput);
+    } catch (error) {
+      restoreSubmittedInput(submittedInput);
+      toast.error(error instanceof Error ? error.message : localizeUi("chat.reply.sendFailed"));
+    }
   }, [
     activeChatId,
+    replyDraft,
+    setReplyDraft,
     availableConversationGames,
     activeChatCharacters,
     lastMessageRole,
@@ -1390,6 +1410,7 @@ export function ConversationInput({
     message = resolveInputMacros(message);
     const submittedInput: SubmittedConversationInput = {
       chatId: submittingChatId,
+      replyTo: replyDraft,
       draft: raw,
       height: textareaRef.current?.style.height ?? "auto",
       attachments,
@@ -1415,6 +1436,7 @@ export function ConversationInput({
     setMentionQuery(null);
     setMentionCompletions([]);
 
+    setReplyDraft(submittingChatId, null);
     await createDurableMessageWithRollback({
       content: message,
       attachments: pendingAttachments,
@@ -1422,6 +1444,8 @@ export function ConversationInput({
     });
   }, [
     activeChatId,
+    replyDraft,
+    setReplyDraft,
     isSendBlocked,
     isReadingAttachments,
     attachments,
@@ -2205,6 +2229,10 @@ export function ConversationInput({
       )}
       <MariSuggestionChips chips={chipRowChips} onSelect={handleMariChipSelect} disabled={isSendBlocked} />
 
+      {replyDraft && (
+        <MessageReplyPreview reply={replyDraft} onCancel={() => activeChatId && setReplyDraft(activeChatId, null)} />
+      )}
+
       {/* Input bar */}
       <div
         ref={inputBarRef}
@@ -2213,6 +2241,7 @@ export function ConversationInput({
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         onPointerDown={(event) => {
+          if (hasActiveTextSelection()) return;
           const target = event.target as HTMLElement;
           if (target.closest("button, input, textarea, select, a, [role='button']")) return;
           event.preventDefault();

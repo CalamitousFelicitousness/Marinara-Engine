@@ -14,6 +14,7 @@ import {
   normalizePersonaStats,
   normalizePersonaStringArray,
   normalizeTrackerCardColorConfig,
+  resolveScopedRegexMode,
   personaCreateInputSchema,
   lorebookFilterModeSchema,
   MAX_FILE_SIZES,
@@ -889,6 +890,7 @@ async function importPreset(data: unknown, db: DB, overwriteId?: string | null) 
     variableValues: safeParseJson(p.variableValues, {}),
     parameters: {},
     wrapFormat: (p.wrapFormat as any) ?? "xml",
+    scopedRegexMode: resolveScopedRegexMode(p.scopedRegexMode),
     author: String(p.author ?? ""),
   };
 

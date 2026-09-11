@@ -216,6 +216,47 @@ that lane exits before reaching `prompt-attachments`, `context-fit`, or
 node ./scripts/run-regressions.mjs --filter scripts/regressions/author-note-presets.regression.ts
 ```
 
+### Regression suite: three platform failures, as of 2026-09-11
+
+**Measured after the 2026-09-11 sync (240 upstream commits), app stopped:
+284/288 pass.** The lane count rose from 231 to 288. The first pass read
+282/288; three of those six were the merge's to fix and are fixed, which is the
+useful lesson: a lane that pins source shape fails on a restructure even when
+the behavior it guards survives. `message-controls-position.regression.mjs` and
+`roleplay-commands.regression.ts` both pinned pre-merge shapes, and
+`restart-supervisor.regression.ts` could not boot at all.
+
+What remains, none of it worth re-investigating:
+
+- `launcher/update.regression.mjs`, still red by fork design.
+- `server-signal-shutdown.regression.ts`, Windows only, and not fixable here.
+  It calls `child.kill("SIGINT")` and waits for the server to log
+  `Received SIGINT; shutting down`. Windows cannot deliver that: a probe where
+  the child registers a SIGINT handler and the parent calls
+  `child.kill("SIGINT")` ends with `signal=SIGINT`, `code=null`, and the
+  handler never running. The wait times out because the line can never appear.
+- `gallery-previews.regression.ts`, Windows only. Every assertion passes and the
+  lane prints its success line; the `finally` block's `rmSync` on the temp
+  fixture directory then throws `EPERM`, so some handle under
+  `%TEMP%/marinara-gallery-previews-*` outlives both `app.close()` and
+  `closeDB()`. The failure is the exit code, not a behavior.
+- `capability-agent-runtime.regression.ts` is flaky, roughly one pass in three
+  on identical runs. `withDeadline` in
+  `services/capability-packages/capability-prompt-context.service.ts` calls
+  `timer.unref()` on its deadline timer, and the lane's closing
+  `assert.rejects(withDeadline(new Promise(() => undefined), ..., 5))` is the
+  only work left pending. With no ref'd handle remaining, Node drains the loop
+  and exits 13 on the unsettled top-level await before the 5ms timer fires.
+  The lane and the helper are both identical to upstream and untouched by the
+  sync. Re-run before looking at it.
+
+Both Windows lanes arrived new with this sync, so neither is a regression
+against anything that used to pass here. `restart-supervisor.regression.ts` and
+`server-signal-shutdown.regression.ts` now wrap
+`serverRequire.resolve("tsx/esm")` in `pathToFileURL`, because Node's `--import`
+reads a bare `E:\...` path as the URL scheme `e:`; that patch is the fork's and
+is recorded in `FORK-CHANGES.md`.
+
 ### Regression suite: one expected failure, as of 2026-09-05
 
 **Re-measured 2026-09-05 after the sync through `00e4acbbd`: 230/231 pass, and

@@ -17,8 +17,8 @@ import {
   ConversationMessageEditForm,
   ConversationMessageAttachments,
   ConversationMessageTranslation,
-  ConversationMessageSwipes,
   ConversationMessageName,
+  diceRollReplacesMessageContent,
   nameColorStyle,
   formatTimestamp,
   type MessageRenderContext,
@@ -66,19 +66,12 @@ export function ConversationMessageBubble({
     isHiddenCollapsed,
     hiddenFromAIHeader,
     onExpandHidden,
-    hideActions,
     hideTimestamp,
     showActions,
     forceShowActions,
     showMessageNumbers,
     messageControlsAbove,
     messageIndex,
-    hasSwipes,
-    swipeCount,
-    onSetActiveSwipe,
-    canRegenerate,
-    onRegenerate,
-    onFinalizeMultiSwipe,
     onImageOpen,
     onRemoveAttachment,
     translatedText,
@@ -90,20 +83,6 @@ export function ConversationMessageBubble({
     bubbleCornerClass,
     shouldHideUserAvatar,
   } = ctx;
-
-  const swipeControls =
-    !hideActions && (hasSwipes || (canRegenerate && onRegenerate)) ? (
-      <ConversationMessageSwipes
-        chatId={message.chatId}
-        messageId={message.id}
-        activeSwipeIndex={message.activeSwipeIndex}
-        swipeCount={swipeCount}
-        onSetActiveSwipe={(idx) => onSetActiveSwipe?.(message.id, idx)}
-        onCreateNextSwipe={canRegenerate && onRegenerate ? () => onRegenerate(message.id) : undefined}
-        onRegenerate={canRegenerate ? onRegenerate : undefined}
-        onFinalizeMultiSwipe={onFinalizeMultiSwipe}
-      />
-    ) : null;
 
   return (
     <>
@@ -231,9 +210,8 @@ export function ConversationMessageBubble({
             </div>
           )}
 
-          {messageControlsAbove && (swipeControls || controlsSlot) && (
+          {messageControlsAbove && controlsSlot && (
             <div className={cn("mb-1 flex flex-col gap-0.5", isUser ? "items-end pr-2" : "items-start pl-2")}>
-              {swipeControls}
               {controlsSlot}
             </div>
           )}
@@ -337,18 +315,23 @@ export function ConversationMessageBubble({
                     dotClassName="bg-[var(--muted-foreground)]/60"
                   />
                 </div>
-              ) : extra.diceRollResult ? (
+              ) : diceRollReplacesMessageContent(message.role, extra.diceRollResult) ? (
                 <DiceMessageContent diceRollResult={extra.diceRollResult} createdAt={message.createdAt} />
               ) : (
-                <MessageContent
-                  content={renderedContent}
-                  mentionNames={mentionNames}
-                  emojiMap={emojiMap}
-                  stickerMap={stickerMap}
-                  onImageOpen={(url) => onImageOpen(url)}
-                  selfCharacterId={selfCharacterId}
-                  galleryIndex={galleryIndex}
-                />
+                <>
+                  {extra.diceRollResult ? (
+                    <DiceMessageContent diceRollResult={extra.diceRollResult} createdAt={message.createdAt} />
+                  ) : null}
+                  <MessageContent
+                    content={renderedContent}
+                    mentionNames={mentionNames}
+                    emojiMap={emojiMap}
+                    stickerMap={stickerMap}
+                    onImageOpen={(url) => onImageOpen(url)}
+                    selfCharacterId={selfCharacterId}
+                    galleryIndex={galleryIndex}
+                  />
+                </>
               )}
             </div>
           )}
@@ -369,11 +352,6 @@ export function ConversationMessageBubble({
           )}
         </div>
       </div>
-
-      {/* Swipe controls — separate row so avatar never drifts */}
-      {!messageControlsAbove && swipeControls && (
-        <div className={cn("mt-1", isUser ? "flex justify-end" : "pl-12")}>{swipeControls}</div>
-      )}
     </>
   );
 }

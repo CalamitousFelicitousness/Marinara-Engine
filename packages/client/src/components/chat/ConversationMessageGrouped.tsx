@@ -61,9 +61,6 @@ export function ConversationMessageGrouped({
     showMessageNumbers,
     messageControlsAbove,
     messageIndex,
-    hasSwipes,
-    swipeCount,
-    onSetActiveSwipe,
     renderedContent,
     onImageOpen,
     onRemoveAttachment,
@@ -85,7 +82,6 @@ export function ConversationMessageGrouped({
     onTranslate,
     onStartEdit,
     onRegenerate,
-    onFinalizeMultiSwipe,
     onToggleHiddenFromAI,
     onPeekPrompt,
     onDelete,
@@ -121,28 +117,13 @@ export function ConversationMessageGrouped({
   };
   const hasTranslationContent = Boolean(translatedText || isTranslating);
   const hasAttachmentContent = (extra.attachments?.length ?? 0) > 0 && !IMAGE_URL_RE.test(renderedContent.trim());
-  const hasSwipeContent =
-    !messageControlsAbove && !hideActions && (hasSwipes || Boolean(canRegenerate && onRegenerate));
-  const hasTrailingContent =
-    isStreaming || (!isHiddenCollapsed && (hasTranslationContent || hasAttachmentContent || hasSwipeContent));
-
-  const swipeControls =
-    !hideActions && (hasSwipes || (canRegenerate && onRegenerate)) ? (
-      <ConversationMessageSwipes
-        chatId={message.chatId}
-        messageId={message.id}
-        activeSwipeIndex={message.activeSwipeIndex}
-        swipeCount={swipeCount}
-        onSetActiveSwipe={(idx) => onSetActiveSwipe?.(message.id, idx)}
-        onCreateNextSwipe={canRegenerate && onRegenerate ? () => onRegenerate(message.id) : undefined}
-        onRegenerate={canRegenerate ? onRegenerate : undefined}
-        onFinalizeMultiSwipe={onFinalizeMultiSwipe}
-      />
-    ) : null;
+  const hasTrailingContent = isStreaming || (!isHiddenCollapsed && (hasTranslationContent || hasAttachmentContent));
 
   const actionsRow =
     !hideActions || hasReasoning ? (
       <ConversationMessageActions
+        message={message}
+        name={ctx.displayName}
         isUser={false}
         showActions={showActions}
         forceShowActions={hideActions && hasReasoning ? true : forceShowActions}
@@ -175,10 +156,18 @@ export function ConversationMessageGrouped({
       />
     ) : null;
 
+  const messageControls = (
+    <>
+      <ConversationMessageSwipes ctx={ctx} />
+      {actionsRow}
+    </>
+  );
+
   return (
     <div
       ref={msgRef}
       data-component="ConversationMessage.Grouped"
+      tabIndex={0}
       data-message-id={message.id}
       data-message-role={message.role}
       className={cn(
@@ -225,12 +214,7 @@ export function ConversationMessageGrouped({
         </div>
       )}
 
-      {messageControlsAbove && (swipeControls || actionsRow) && (
-        <div className="mb-1 flex flex-col items-start gap-0.5 pl-14">
-          {swipeControls}
-          {actionsRow}
-        </div>
-      )}
+      {messageControlsAbove && <div className="mb-1 flex flex-col items-start gap-0.5 pl-14">{messageControls}</div>}
 
       {isHiddenCollapsed ? (
         <div className="pl-14 py-1">
@@ -455,11 +439,11 @@ export function ConversationMessageGrouped({
         })
       )}
 
-      {/* Trailing content (cursor, translation, attachments, swipes): kept in a
+      {/* Trailing content (cursor, translation, attachments): kept in a
           [data-card-css] wrapper so themes retain the reach they had when the
           attribute lived on the block root — but only rendered when it has
           content, so container-styling themes can't paint an empty box. The
-          action row stays OUTSIDE the wrapper because it is app chrome, like
+          control rows stay OUTSIDE the wrapper because they are app chrome, like
           the reaction chip rows. */}
       {hasTrailingContent && (
         <div {...cardCssProps}>
@@ -488,14 +472,12 @@ export function ConversationMessageGrouped({
                   onRemove={onRemoveAttachment}
                 />
               </div>
-
-              {hasSwipeContent && <div className="ml-14 mt-1.5">{swipeControls}</div>}
             </>
           )}
         </div>
       )}
 
-      {!messageControlsAbove && actionsRow}
+      {!messageControlsAbove && messageControls}
     </div>
   );
 }

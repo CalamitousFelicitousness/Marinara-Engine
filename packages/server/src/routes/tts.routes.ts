@@ -2,8 +2,10 @@
 // Routes: Text-to-Speech
 // ──────────────────────────────────────────────
 import type { FastifyInstance } from "fastify";
+import type { DB } from "../db/connection.js";
 import { z } from "zod";
 import { createHash, randomUUID } from "crypto";
+import { addAbortListener } from "node:events";
 import { access, mkdir, readdir, rename, unlink, writeFile } from "fs/promises";
 import { join } from "path";
 import {
@@ -368,6 +370,52 @@ async function generateGameAudio(
   }
   scheduleGameAssetManifestRebuild();
   return { tag, path: relativePath, cached: false };
+}
+
+/** Host command entry point using the same connection, cache, and file validation as Game audio. */
+export async function generateRoleplaySoundEffect(
+  db: DB,
+  prompt: string,
+  connectionId: string | null,
+  debugMode: boolean,
+  signal?: AbortSignal,
+) {
+  signal?.throwIfAborted();
+  const { cfg, gameAudioEnabled, resolvedConnectionId } = await resolveAudioConfig(
+    createAppSettingsStorage(db),
+    createConnectionsStorage(db),
+    connectionId,
+    "sfx",
+  );
+  signal?.throwIfAborted();
+  if (gameAudioEnabled !== true || !canBuildGameAudioRequest(cfg, "sfx"))
+    throw new Error("Choose an audio connection with sound effect generation enabled.");
+  const normalized = normalizeGameAudioPrompt(prompt);
+  logDebugOverride(debugMode, "[debug/roleplay/sound] Prompt sent to audio provider:\n%s", normalized);
+  const key = `sfx\0${normalized.toLowerCase()}`;
+  let generation = gameAudioGenerationLocks.get(key);
+  if (!generation) {
+    // Shared Game/Roleplay work finishes for other waiters and the audio cache.
+    generation = generateGameAudio(cfg, "sfx", normalized, undefined, resolvedConnectionId).finally(() =>
+      gameAudioGenerationLocks.delete(key),
+    );
+    gameAudioGenerationLocks.set(key, generation);
+  }
+  let abortListener: ReturnType<typeof addAbortListener> | undefined;
+  try {
+    const result = signal
+      ? await Promise.race([
+          generation,
+          new Promise<never>((_, reject) => {
+            abortListener = addAbortListener(signal, () => reject(signal.reason));
+          }),
+        ])
+      : await generation;
+    signal?.throwIfAborted();
+    return result;
+  } finally {
+    abortListener?.[Symbol.dispose]();
+  }
 }
 
 // ── Helpers ─────────────────────────────────────

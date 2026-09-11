@@ -41,6 +41,59 @@ Both modes needed it, so the built server behind `start.bat` was affected as wel
 
 Guarded by `scripts/regressions/log-encoding.regression.ts`.
 
+### Regression lanes that assume a POSIX path layout
+
+`scripts/regressions/restart-supervisor.regression.ts` and
+`scripts/regressions/server-signal-shutdown.regression.ts` wrap
+`serverRequire.resolve("tsx/esm")` in `pathToFileURL(...).href` before handing it to Node's
+`--import`.
+
+Both lanes arrived with the 2026-09-11 sync. `require.resolve` returns an absolute path, and on
+Windows that is `E:\AI-Text\...`, which the ESM loader parses as a URL with the scheme `e:` and
+rejects: `Only URLs with a scheme in: file, data, and node are supported`. Neither lane could start
+its server. A `file://` URL is correct on every platform, so this is portable rather than a Windows
+branch.
+
+`restart-supervisor` passes with it. `server-signal-shutdown` gets as far as booting and then fails
+on a separate Windows limit recorded in `.claude/skills/marinara-validation/SKILL.md`: the lane needs
+a child process to observe `SIGINT`, and Windows terminates the target instead of delivering a signal
+it can handle.
+
+### Client regression lane needs Vite's ambient types
+
+`scripts/regressions/tsconfig.client-lanes.json` adds `../../packages/client/node_modules` to
+`typeRoots` and `vite/client` to `types`.
+
+Upstream added `tsc -p ../../scripts/regressions/tsconfig.client-lanes.json` to the client `lint`
+script in this sync. The lane type-checks `tts-safari-play-guard.regression.ts`, which reaches
+`lib/tts-service.ts`, whose `void import("./tts-error-notice")` is type-checked like any other edge
+and pulls in `localization/i18n.ts` and `locale-loader.ts`. That file reads `import.meta.env` and
+`import.meta.glob`, which the lane's `"types": ["node"]` does not describe, so it failed with
+`Property 'env' does not exist on type 'ImportMeta'`.
+
+Upstream never hits it: `tts-error-notice.ts` is a fork-only file, so upstream's `tts-service.ts`
+has no edge into the localization subtree. The typeRoot is needed because `types` resolves through
+`typeRoots` when they are set, and pnpm links `vite` only into `packages/client/node_modules`.
+
+### Roleplay sound effects resolve audio the fork's way
+
+`packages/server/src/routes/tts.routes.ts` exports upstream's `generateRoleplaySoundEffect`, rewritten
+onto this fork's audio resolution, and `scripts/regressions/roleplay-commands.regression.ts` stubs it
+to match.
+
+Upstream added the entry point in this sync against its own local `resolveAudioConfig`, which returns
+a flat `TTSConfig`, and its own `generateElevenLabsGameAudio`. This fork extracted the resolver into
+`services/tts/audio-config-resolution.ts`, where it returns `AudioConfigResolution` with the config
+nested under `cfg`, and renamed the generator to `generateGameAudio` with a trailing `connectionId`
+for the outbound rate limit. Upstream's gate
+(`source !== "elevenlabs" || elevenLabsGameSoundEffects !== true || !apiKey`) is exactly what
+`gameAudioEnabled` plus `canBuildGameAudioRequest` already express here, so the translation keeps the
+meaning and drops the hardcoded source.
+
+The lane asserted the shared generation call had exactly three arguments, standing in for "no caller's
+signal reaches the shared work". The fork's call passes five, so that invariant is now asserted
+directly: no argument is an `AbortSignal`.
+
 ## Fork-only additions
 
 ### Preset variables resolve in every mode, not only Roleplay
@@ -1126,6 +1179,57 @@ Verified in a browser: at 1500px, where the gutter is 89px, the panel now render
 Persist migration v96 -> v97 folds the short-lived density setting into the text scale
 (compact/standard/comfortable -> S/M/L). Width presets set width only now; pairing them with a text
 size would re-conflate the axes this work separated.
+
+### Sync with upstream, 2026-09-11
+
+240 upstream commits and 72 PR merges, merge base `00e4acbbd`, v2.4.5 on both sides. 405
+upstream-changed files, 69 overlapping fork changes, 29 conflicts. Storage format stayed at 6, and
+upstream touched neither `AGENTS.md` nor `CLAUDE.md`.
+
+Half the commits of the 2026-08-20 sync produced four times the conflicts: 240 commits and 29
+conflicts against 447 and 7. Commit count predicts nothing. The overlap list does.
+
+Resolutions worth remembering:
+
+- **Roughly 470 conflicted lines were re-indentation.** Re-running `git merge-tree` with
+  `-Xignore-space-change` and comparing conflict-line counts per file sorted the real work from the
+  churn: `ConversationInput.tsx` and `marinara.importer.ts` dropped to zero conflicts, and
+  `ui.store.ts` went from 8 hunks over 1540 lines to 5 over about 260.
+- **`ui.store.ts` hoisted `partialize` into a new file.** Upstream moved the persisted-field list to
+  `lib/ui-persistence.ts` as `pickPersistedUIState`. Taking that hunk wholesale drops every fork
+  field it does not know about, silently and with no marker: `trackerBlankValues`,
+  `trackerPanelWidth`, `trackerPanelTextSize`, `trackerPanelPlacement`, `messageControlsAbove` and
+  `multiSwipeMax`. Diff the two field lists with `comm` rather than reading them.
+- **The fork numbered its own way to 100.** Upstream's store is at 101 with a character-sheet step
+  guarded on `version <= 99`, which a fork store sitting at 100 would skip forever. The guard is
+  widened to `<= 100`.
+- **Multiswipe replayed the wrong messages.** Outside any conflict, upstream now rebuilds
+  `narratorMessages` after a game tool plan, while the fork's multiswipe call site still passed
+  `initialProviderMessages`. Candidates 2 and up would have been generated from a different prompt
+  than candidate 1.
+- **`game.routes.ts` gained an upstream call to a pre-refactor helper.** Upstream added a second
+  `buildPromptMacroContext` call for lorebook resolution. The fork replaced that helper in routes
+  with `buildChatMacroContext`, which derives the chat-scoped fields a call site is otherwise free
+  to omit. Adding upstream's import would have compiled and reinstated exactly the omission the
+  wrapper exists to prevent, so the call site was converted instead.
+- **`SwipeJumpControl` now themes itself.** Upstream removed `buttonClassName`, `inputClassName` and
+  `iconSize` and added `alwaysShow`. Only one of the two call sites in `ChatMessage.tsx` conflicted;
+  the other kept passing the removed props and lost `alwaysShow`, which is what drives
+  `alwaysDisplayRoleplaySwipeMenu`.
+- **`tts-service.ts` guard versus upstream's stub.** The fork's #2647 false-failure guard reads
+  `paused` and `ended`, which upstream's narrowed parameter and its regression stub both omit. The
+  parameter now takes those two as optional and the guard tests `=== false`, so an element that does
+  not report them falls through to upstream's retry path.
+- **`package.json#pnpm` again.** `hono` 4.13.5 and `js-yaml` 4.3.2 arrived in a field pnpm 11 does
+  not read. Mirrored into `pnpm-workspace.yaml`.
+- **Bundled locale packs are gone.** Upstream #5865 replaced them with on-demand download through
+  `/api/ui-languages/<locale>`, so `ko.json` and `zh-Hans.json` are deleted rather than merged.
+
+Two fork regression lanes pinned pre-merge source shape and needed re-pinning, not repair:
+`message-controls-position.regression.mjs` asserted a local `swipeControls` node in each Conversation
+layout, which the merge replaced with a `controlsSlot` the parent fills, and
+`roleplay-commands.regression.ts` stubbed upstream's audio helpers. Both were updated only after
+confirming the behavior underneath still held.
 
 ### Sync with upstream, 2026-09-05
 
@@ -2257,11 +2361,12 @@ Message Tools. All five layouts honor it: the roleplay and texting rows in `Chat
 the bubble, line, and grouped layouts in Conversation mode.
 
 Placement is DOM order rather than CSS `order`, so keyboard focus follows what the eye sees.
-`ConversationMessage.tsx` builds its action row once and hands it to the bubble and line layouts
-through a `controlsSlot` prop, since only the layout knows where the name header ends. The
-grouped layout keeps its swipe row inside the `[data-card-css]` trailing wrapper when below;
-`hasSwipeContent` carries the same flag so that wrapper collapses instead of painting an empty
-themed box once the swipes move up.
+`ConversationMessage.tsx` builds one `messageControls` node carrying the swipe row and the action
+row together, and hands it to the bubble and line layouts through a `controlsSlot` prop, since only
+the layout knows where the name header ends. The grouped layout builds the same node and gates both
+placements itself. Swipes and actions have to travel together: splitting them strands the swipe row
+below the body while the actions move above it, and the trailing `[data-card-css]` wrapper in the
+grouped layout counts neither, so it collapses rather than painting an empty themed box.
 
 Patches to upstream files: `ui.store.ts`, `ChatMessage.tsx`, `ConversationMessage.tsx`,
 `ConversationMessageShared.tsx`, `ConversationMessageBubble.tsx`, `ConversationMessageLine.tsx`,

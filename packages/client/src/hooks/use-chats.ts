@@ -38,6 +38,8 @@ import type {
   DaySummaryEntry,
   WeekSummaryEntry,
   HomeFeedSnapshot,
+  AgentParameterTrace,
+  ParameterTrace,
 } from "@marinara-engine/shared";
 
 import { useRollingBackfillStore } from "../stores/backfill.store";
@@ -1516,7 +1518,9 @@ export function usePeekPrompt() {
           tokensCacheWritePrompt?: number | null;
           durationMs?: number | null;
           finishReason?: string | null;
+          parameterTrace?: ParameterTrace | null;
         } | null;
+        agentTraces?: AgentParameterTrace[] | null;
         agentNote?: string;
       }>(`/chats/${chatId}/peek-prompt`, messageId ? { messageId } : {});
     },

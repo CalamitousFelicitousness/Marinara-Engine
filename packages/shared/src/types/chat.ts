@@ -922,6 +922,51 @@ export interface MessageExtra {
   } | null;
 }
 
+/** Settings layer that last assigned a sampling parameter or its send switch. */
+export type ParameterTraceLayer =
+  | "default"
+  | "preset"
+  | "connection"
+  | "chat"
+  | "scene"
+  | "game mode"
+  | "model rule"
+  | "agent rule"
+  | "agent settings";
+
+export type ParameterTraceKey =
+  | "temperature"
+  | "maxTokens"
+  | "topP"
+  | "topK"
+  | "minP"
+  | "frequencyPenalty"
+  | "presencePenalty"
+  | "reasoningEffort"
+  | "verbosity";
+
+export interface ParameterTraceEntry {
+  key: ParameterTraceKey;
+  /** Value handed to the provider, before provider-internal rules. */
+  value: unknown;
+  setBy: ParameterTraceLayer;
+  /** Null for parameters without a send switch. */
+  sendSwitch: { enabled: boolean; setBy: ParameterTraceLayer | null } | null;
+  /** Request-body path and raw value actually sent; null when the request omitted it. */
+  sent: { path: string; value: unknown } | null;
+}
+
+/** Resolved sampling parameters for one provider request, with their provenance. */
+export interface ParameterTrace {
+  entries: ParameterTraceEntry[];
+  /** False when the request body could not be captured (subscription providers). */
+  observable: boolean;
+  /** Set when a fallback connection answered; its stored parameters replaced the resolved ones. */
+  fallback: { provider: string; model: string } | null;
+  /** Dotted request-body paths of the leaf values written by Custom Parameters. */
+  customParameterPaths: string[];
+}
+
 /** Metadata about how a message was generated. */
 export interface GenerationInfo {
   model: string;
@@ -937,6 +982,7 @@ export interface GenerationInfo {
   /** Time from generation start until reasoning yielded to visible output. */
   reasoningDurationMs?: number | null;
   finishReason: string | null;
+  parameterTrace?: ParameterTrace | null;
 }
 
 /** A swipe (alternate response) for a message. */

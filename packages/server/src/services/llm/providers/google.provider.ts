@@ -653,6 +653,7 @@ export class GoogleProvider extends BaseLLMProvider {
 
     this.applyCustomParameters(body, options);
     applyGoogleFunctionCallingMode(body, options.toolChoice);
+    options.onRequestBody?.(body);
     logDebugOverride(
       options.debugMode === true || isDebugAgentsEnabled(),
       "[debug/gemini] final tool request:\n%j",
@@ -955,6 +956,7 @@ export class GoogleProvider extends BaseLLMProvider {
     }
 
     this.applyCustomParameters(body, options);
+    options.onRequestBody?.(body);
 
     const authHeaders =
       this.providerKind === "google_vertex"

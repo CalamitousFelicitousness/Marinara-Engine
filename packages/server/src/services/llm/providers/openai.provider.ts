@@ -1296,6 +1296,7 @@ export class OpenAIProvider extends BaseLLMProvider {
     // parameters so an explicit Reasoning Effort: Off choice remains authoritative.
     this.enforceLocalInferenceThinkingDisable(body, options, suppressModelParameters);
     this.stripUnsupportedSamplerParameters(body, options);
+    options.onRequestBody?.(body);
 
     logger.debug(
       "[OpenAI chat()] stream=%s model=%s reasoning=%s enableThinking=%s verbosity=%s max_completion_tokens=%s max_tokens=%s temperature=%s top_p=%s tools=%s",
@@ -1581,6 +1582,7 @@ export class OpenAIProvider extends BaseLLMProvider {
     this.applyCustomParameters(body, options);
     this.enforceLocalInferenceThinkingDisable(body, options, suppressModelParameters);
     this.stripUnsupportedSamplerParameters(body, options);
+    options.onRequestBody?.(body);
 
     logger.debug(
       "[OpenAI chatComplete()] stream=%s model=%s reasoning=%s enableThinking=%s verbosity=%s onToken=%s",
@@ -2164,6 +2166,7 @@ export class OpenAIProvider extends BaseLLMProvider {
   ): AsyncGenerator<string, LLMUsage | void, unknown> {
     const url = `${this.baseUrl}/responses`;
     const body = this.buildResponsesBody(messages, options);
+    options.onRequestBody?.(body);
     const parseAsStream = body.stream === true;
     logger.debug(
       "[OpenAI chatResponses] model=%s stream=%s reasoning=%j enableThinking=%s verbosity=%s max_output_tokens=%s tools=%s",
@@ -2436,6 +2439,7 @@ export class OpenAIProvider extends BaseLLMProvider {
       !this.isResponsesStreamingUnsupportedModel(options.model) &&
       (this.isOpenAIChatGPTProvider() || callerWantsStream);
     const body = this.buildResponsesBody(messages, { ...options, stream: useStream });
+    options.onRequestBody?.(body);
     logger.debug(
       "[OpenAI chatCompleteResponses] reasoning=%s onThinking=%s",
       JSON.stringify(body.reasoning ?? null),

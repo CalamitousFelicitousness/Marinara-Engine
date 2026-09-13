@@ -26,6 +26,7 @@ import {
   shouldSuppressUnknownModelParameters,
   type AgentCallDebugEvent,
   type AgentContext,
+  type AgentParameterTrace,
   type AgentResult,
   type APIProvider,
   type ChatMode,
@@ -45,6 +46,7 @@ import {
   type ResolvedAgent,
 } from "../../services/agents/agent-pipeline.js";
 import { executeAgent, executeAgentBatch, normalizeAgentContextSize } from "../../services/agents/agent-executor.js";
+import { mergeRetriedAgentTraces } from "../../services/agents/agent-progress.js";
 import type { BaseLLMProvider } from "../../services/llm/base-provider.js";
 import { getLocalSidecarProvider, LOCAL_SIDECAR_MODEL } from "../../services/llm/local-sidecar.js";
 import { createLLMProvider } from "../../services/llm/provider-registry.js";
@@ -4627,6 +4629,11 @@ export async function registerRetryAgentsRoute(
         if (!abortController.signal.aborted) sendSseEvent(reply, { type: "agent_progress", data: event });
       };
       if (preGenerationAgentContext) preGenerationAgentContext.agentProgress = agentContext.agentProgress;
+      const retryAgentTraces: AgentParameterTrace[] = [];
+      agentContext.agentTrace = (trace) => {
+        retryAgentTraces.push(trace);
+      };
+      if (preGenerationAgentContext) preGenerationAgentContext.agentTrace = agentContext.agentTrace;
       if (debugMode) {
         const emitRetryAgentDebug = (event: AgentCallDebugEvent) => {
           if (abortController.signal.aborted) return;
@@ -4966,6 +4973,16 @@ export async function registerRetryAgentsRoute(
         new Map([...customLorebookReadBehindTargets].map(([agentId, target]) => [agentId, target.messageId])),
         abortController.signal,
       );
+      if (retryMessageId && retryAgentTraces.length > 0) {
+        try {
+          const swipe = (await chats.getSwipes(retryMessageId)).find((entry) => entry.index === retrySwipeIndex);
+          await chats.updateMessageExtraForSwipe(retryMessageId, retrySwipeIndex, {
+            agentTraces: mergeRetriedAgentTraces(parseExtra(swipe?.extra).agentTraces, retryAgentTraces),
+          });
+        } catch (traceErr) {
+          logger.warn(traceErr, "[retry-agents] Failed to save agent parameter traces");
+        }
+      }
       for (const entry of lorebookKeeperRunEntries) {
         if (abortController.signal.aborted) return;
         try {

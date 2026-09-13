@@ -11,6 +11,15 @@ import {
   NEUTRAL_PANEL_TITLE,
 } from "../ui/neutral-surface-styles";
 import { useTranslation as useUiTranslation } from "react-i18next";
+import type {
+  AgentParameterTrace,
+  ParameterTrace,
+  ParameterTraceEntry,
+  ParameterTraceKey,
+  ParameterTraceLayer,
+} from "@marinara-engine/shared";
+import { useConnections } from "../../hooks/use-connections";
+import { useUIStore, type ParameterTraceView } from "../../stores/ui.store";
 
 const PROMPT_TAG_CLASS =
   "border border-[var(--marinara-chat-chrome-button-border)] bg-[var(--marinara-chat-chrome-highlight-bg)] text-[var(--marinara-chat-chrome-highlight-text)]";
@@ -41,6 +50,7 @@ interface GenerationInfo {
   tokensCacheWritePrompt?: number | null;
   durationMs?: number | null;
   finishReason?: string | null;
+  parameterTrace?: ParameterTrace | null;
 }
 
 interface PeekPromptModalProps {
@@ -51,6 +61,7 @@ interface PeekPromptModalProps {
     source?: "cached" | "live_preview" | "raw_messages";
     exact?: boolean;
     generationInfo?: GenerationInfo | null;
+    agentTraces?: AgentParameterTrace[] | null;
     agentNote?: string;
   };
   onClose: () => void;
@@ -496,6 +507,231 @@ function ChatHistoryMessage({ entry, roleColor }: { entry: ChatHistoryEntry; rol
 }
 
 // ═══════════════════════════════════════════════
+//  Parameter trace
+// ═══════════════════════════════════════════════
+
+const TRACE_KEY_LABELS = {
+  temperature: "ui.chat.peekpromptmodal.traceKeyTemperature",
+  maxTokens: "ui.chat.peekpromptmodal.traceKeyMaxTokens",
+  topP: "ui.chat.peekpromptmodal.traceKeyTopP",
+  topK: "ui.chat.peekpromptmodal.traceKeyTopK",
+  minP: "ui.chat.peekpromptmodal.traceKeyMinP",
+  frequencyPenalty: "ui.chat.peekpromptmodal.traceKeyFrequencyPenalty",
+  presencePenalty: "ui.chat.peekpromptmodal.traceKeyPresencePenalty",
+  reasoningEffort: "ui.chat.peekpromptmodal.traceKeyReasoningEffort",
+  verbosity: "ui.chat.peekpromptmodal.traceKeyVerbosity",
+} as const satisfies Record<ParameterTraceKey, string>;
+
+const TRACE_LAYER_LABELS = {
+  default: "ui.chat.peekpromptmodal.traceLayerDefault",
+  preset: "ui.chat.peekpromptmodal.traceLayerPreset",
+  connection: "ui.chat.peekpromptmodal.traceLayerConnection",
+  chat: "ui.chat.peekpromptmodal.traceLayerChat",
+  scene: "ui.chat.peekpromptmodal.traceLayerScene",
+  "game mode": "ui.chat.peekpromptmodal.traceLayerGameMode",
+  "model rule": "ui.chat.peekpromptmodal.traceLayerModelRule",
+  "agent rule": "ui.chat.peekpromptmodal.traceLayerAgentRule",
+  "agent settings": "ui.chat.peekpromptmodal.traceLayerAgentSettings",
+} as const satisfies Record<ParameterTraceLayer, string>;
+
+const TRACE_VIEW_OPTIONS = [
+  { view: "main", label: "ui.chat.peekpromptmodal.traceViewMain" },
+  { view: "agents", label: "ui.chat.peekpromptmodal.traceViewAgents" },
+  { view: "both", label: "ui.chat.peekpromptmodal.traceViewBoth" },
+] as const satisfies ReadonlyArray<{ view: ParameterTraceView; label: string }>;
+
+type SentStatus =
+  | { kind: "sent"; path: string; value: unknown }
+  | { kind: "custom"; path: string; value: unknown }
+  | { kind: "switch-off"; layer: ParameterTraceLayer | null }
+  | { kind: "omitted" }
+  | { kind: "unobservable" };
+
+/** True when Custom Parameters wrote the sent value or a field inside it. */
+function sentByCustomParameters(entry: ParameterTraceEntry, trace: ParameterTrace): boolean {
+  const path = entry.sent?.path;
+  return (
+    path !== undefined && trace.customParameterPaths.some((custom) => custom === path || custom.startsWith(`${path}.`))
+  );
+}
+
+/** What the Sent column reports for one parameter; the request body outranks the send switch. */
+function deriveSentStatus(entry: ParameterTraceEntry, trace: ParameterTrace): SentStatus {
+  if (!trace.observable) return { kind: "unobservable" };
+  if (entry.sent) {
+    const { path, value } = entry.sent;
+    return sentByCustomParameters(entry, trace) ? { kind: "custom", path, value } : { kind: "sent", path, value };
+  }
+  if (entry.sendSwitch?.enabled === false) return { kind: "switch-off", layer: entry.sendSwitch.setBy };
+  return { kind: "omitted" };
+}
+
+function formatTraceValue(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  return typeof value === "object" ? JSON.stringify(value) : String(value);
+}
+
+function SentStatusLabel({ status }: { status: SentStatus }) {
+  const { t: localizeUi } = useUiTranslation();
+  switch (status.kind) {
+    case "sent":
+      return (
+        <>
+          {localizeUi("ui.chat.peekpromptmodal.traceStatusSent", {
+            path: status.path,
+            value: formatTraceValue(status.value),
+          })}
+        </>
+      );
+    case "custom":
+      return (
+        <>
+          {localizeUi("ui.chat.peekpromptmodal.traceStatusCustom", {
+            path: status.path,
+            value: formatTraceValue(status.value),
+          })}
+        </>
+      );
+    case "switch-off":
+      return (
+        <>
+          {localizeUi("ui.chat.peekpromptmodal.traceStatusSwitchOff", {
+            layer: status.layer
+              ? localizeUi(TRACE_LAYER_LABELS[status.layer])
+              : localizeUi("ui.chat.peekpromptmodal.traceUnset"),
+          })}
+        </>
+      );
+    case "omitted":
+      return <>{localizeUi("ui.chat.peekpromptmodal.traceStatusOmitted")}</>;
+    case "unobservable":
+      return <>{localizeUi("ui.chat.peekpromptmodal.traceStatusUnobservable")}</>;
+  }
+}
+
+function ParameterTraceTable({ trace }: { trace: ParameterTrace }) {
+  const { t: localizeUi } = useUiTranslation();
+  return (
+    <div className="space-y-1.5">
+      {trace.fallback && (
+        <p className="text-[0.625rem] text-[var(--marinara-chat-chrome-panel-text)]">
+          {localizeUi("ui.chat.peekpromptmodal.traceFallback", {
+            provider: trace.fallback.provider,
+            model: trace.fallback.model,
+          })}
+        </p>
+      )}
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[28rem] text-left text-[0.625rem]">
+          <thead>
+            <tr className="text-[var(--muted-foreground)]">
+              <th scope="col" className="py-1 pr-3 font-medium">
+                {localizeUi("ui.chat.peekpromptmodal.traceParameter")}
+              </th>
+              <th scope="col" className="py-1 pr-3 font-medium">
+                {localizeUi("ui.chat.peekpromptmodal.traceValue")}
+              </th>
+              <th scope="col" className="py-1 pr-3 font-medium">
+                {localizeUi("ui.chat.peekpromptmodal.traceSetBy")}
+              </th>
+              <th scope="col" className="py-1 font-medium">
+                {localizeUi("ui.chat.peekpromptmodal.traceSent")}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {trace.entries.map((entry) => (
+              <tr key={entry.key} className="border-t border-[var(--border)]/40 align-top">
+                <td className="py-1 pr-3 text-[var(--muted-foreground)]">{localizeUi(TRACE_KEY_LABELS[entry.key])}</td>
+                <td className="py-1 pr-3 font-medium text-[var(--foreground)]">
+                  {formatTraceValue(entry.value) ?? localizeUi("ui.chat.peekpromptmodal.traceUnset")}
+                </td>
+                <td className="py-1 pr-3 text-[var(--foreground)]">{localizeUi(TRACE_LAYER_LABELS[entry.setBy])}</td>
+                <td className="break-all py-1 font-mono text-[var(--foreground)]/80">
+                  <SentStatusLabel status={deriveSentStatus(entry, trace)} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function ParameterTracePanel({
+  mainTrace,
+  agentTraces,
+}: {
+  mainTrace: ParameterTrace | null;
+  agentTraces: AgentParameterTrace[];
+}) {
+  const { t: localizeUi } = useUiTranslation();
+  const view = useUIStore((s) => s.parameterTraceView);
+  const setView = useUIStore((s) => s.setParameterTraceView);
+  const { data: connections } = useConnections();
+  const connectionNames = useMemo(() => {
+    const names = new Map<string, string>();
+    for (const connection of (connections ?? []) as Array<{ id?: unknown; name?: unknown }>) {
+      if (typeof connection.id === "string" && typeof connection.name === "string") {
+        names.set(connection.id, connection.name);
+      }
+    }
+    return names;
+  }, [connections]);
+
+  return (
+    <div className="space-y-2">
+      <div
+        role="group"
+        aria-label={localizeUi("ui.chat.peekpromptmodal.traceViewLabel")}
+        className="flex flex-wrap gap-1"
+      >
+        {TRACE_VIEW_OPTIONS.map((option) => (
+          <button
+            key={option.view}
+            type="button"
+            aria-pressed={view === option.view}
+            onClick={() => setView(option.view)}
+            className={cn(
+              "rounded-md px-2 py-0.5 text-[0.5625rem] font-bold uppercase tracking-wider",
+              view === option.view ? PROMPT_TAG_ACTIVE_CLASS : PROMPT_TAG_CLASS,
+            )}
+          >
+            {localizeUi(option.label)}
+          </button>
+        ))}
+      </div>
+      {view !== "agents" && mainTrace && <ParameterTraceTable trace={mainTrace} />}
+      {view !== "main" &&
+        (agentTraces.length === 0 ? (
+          <p className="text-[0.625rem] text-[var(--muted-foreground)]">
+            {localizeUi("ui.chat.peekpromptmodal.traceNoAgents")}
+          </p>
+        ) : (
+          agentTraces.map((agentTrace, index) => (
+            <div key={index} className="space-y-1 border-t border-[var(--border)]/50 pt-2">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[0.6875rem]">
+                <span className="font-medium text-[var(--foreground)]">
+                  {agentTrace.agents.map((agent) => agent.name).join(", ")}
+                </span>
+                <span className="text-[var(--muted-foreground)]">
+                  {agentTrace.connectionId
+                    ? (connectionNames.get(agentTrace.connectionId) ?? agentTrace.connectionId)
+                    : localizeUi("ui.chat.peekpromptmodal.traceChatConnection")}
+                  {" · "}
+                  {agentTrace.model}
+                </span>
+              </div>
+              <ParameterTraceTable trace={agentTrace.trace} />
+            </div>
+          ))
+        ))}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════
 //  Main Modal
 // ═══════════════════════════════════════════════
 
@@ -619,18 +855,22 @@ export function PeekPromptModal({ data, onClose }: PeekPromptModalProps) {
                   )}
                 </span>
               </div>
-              {paramPills.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {paramPills.map((p) => (
-                    <span
-                      key={p.label}
-                      className="inline-flex items-center gap-1 rounded-md bg-[var(--accent)]/50 px-2 py-0.5 text-[0.625rem]"
-                    >
-                      <span className="text-[var(--muted-foreground)]">{p.label}</span>
-                      <span className="font-medium text-[var(--foreground)]">{p.value}</span>
-                    </span>
-                  ))}
-                </div>
+              {gen?.parameterTrace || data.agentTraces?.length ? (
+                <ParameterTracePanel mainTrace={gen?.parameterTrace ?? null} agentTraces={data.agentTraces ?? []} />
+              ) : (
+                paramPills.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {paramPills.map((p) => (
+                      <span
+                        key={p.label}
+                        className="inline-flex items-center gap-1 rounded-md bg-[var(--accent)]/50 px-2 py-0.5 text-[0.625rem]"
+                      >
+                        <span className="text-[var(--muted-foreground)]">{p.label}</span>
+                        <span className="font-medium text-[var(--foreground)]">{p.value}</span>
+                      </span>
+                    ))}
+                  </div>
+                )
               )}
             </div>
           )}

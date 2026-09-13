@@ -457,6 +457,7 @@ export class AnthropicProvider extends BaseLLMProvider {
       "[debug/anthropic] final tool request:\n%j",
       body,
     );
+    options.onRequestBody?.(body);
     const response = await llmFetch(url, {
       method: "POST",
       headers: {
@@ -805,6 +806,7 @@ export class AnthropicProvider extends BaseLLMProvider {
       }
     }
 
+    options.onRequestBody?.(body);
     const response = await llmFetch(url, {
       method: "POST",
       headers: {

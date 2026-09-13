@@ -5,6 +5,8 @@ import {
   resolveProviderReasoningEffort,
   type GenerationParameterSendMap,
   type ManagedGenerationParameterDefinition,
+  type ParameterTraceKey,
+  type ParameterTraceLayer,
   type ThinkingTagPair,
 } from "@marinara-engine/shared";
 
@@ -19,7 +21,15 @@ import {
   resolveProviderTopK,
 } from "../../routes/generate/generate-route-utils.js";
 import { mergeModelContextLimit, resolveStoredModelContextLimit } from "./model-access-policy.js";
-import { normalizeChatTopP, supportsAssistantReasoningPrefill } from "./generation-parameters.js";
+import {
+  normalizeChatTopP,
+  PARAMETER_TRACE_KEYS,
+  storedParameterSources,
+  supportsAssistantReasoningPrefill,
+  type ParameterTraceSources,
+  type SendSwitchSources,
+  type StoredParameterSources,
+} from "./generation-parameters.js";
 import { clampGenerationMaxOutputTokens } from "./output-token-limits.js";
 import {
   isFallbackConnectionUsable,
@@ -74,6 +84,8 @@ type GenerationProviderRuntimeArgs = {
     stopSequences: string[];
     effectiveMaxContext: number | undefined;
   };
+  /** Layers that assigned the `initial` values; unlisted keys are defaults. */
+  initialSources?: StoredParameterSources;
 };
 
 export type GenerationProviderRuntime = GenerationProviderRuntimeArgs["initial"] & {
@@ -87,12 +99,24 @@ export type GenerationProviderRuntime = GenerationProviderRuntimeArgs["initial"]
   supportsAssistantReasoningPrefill: boolean;
   primaryProvider: BaseLLMProvider;
   provider: BaseLLMProvider;
+  parameterSources: ParameterTraceSources;
+  sendSwitchSources: SendSwitchSources;
 };
 
 export function resolveGenerationProviderRuntime(args: GenerationProviderRuntimeArgs): GenerationProviderRuntime {
   const connectionParams = parseStoredGenerationParameters(args.connection.defaultParameters);
   const chatParams = parseStoredGenerationParameters(args.chatParameters);
   const runtime = { ...args.initial };
+  const parameterSources: ParameterTraceSources = { ...args.initialSources?.parameters };
+  const sendSwitchSources: SendSwitchSources = { ...args.initialSources?.sendSwitches };
+  const labelLayer = (layer: ParameterTraceLayer, keys: readonly ParameterTraceKey[]) => {
+    for (const key of keys) parameterSources[key] = layer;
+  };
+  const labelStoredLayer = (params: ReturnType<typeof parseStoredGenerationParameters>, layer: ParameterTraceLayer) => {
+    const labels = storedParameterSources(params, layer);
+    Object.assign(parameterSources, labels.parameters);
+    Object.assign(sendSwitchSources, labels.sendSwitches);
+  };
 
   const applyParameterOverrides = (params: ReturnType<typeof parseStoredGenerationParameters>) => {
     if (!params) return;
@@ -131,7 +155,9 @@ export function resolveGenerationProviderRuntime(args: GenerationProviderRuntime
 
   const isLocalGemma = (args.connection.model ?? "").toLowerCase().includes("gemma");
   applyParameterOverrides(connectionParams);
+  labelStoredLayer(connectionParams, "connection");
   applyParameterOverrides(chatParams);
+  labelStoredLayer(chatParams, "chat");
   runtime.customParameters = mergeCustomParameters(
     runtime.customParameters,
     resolveManagedGenerationParameters(
@@ -145,8 +171,10 @@ export function resolveGenerationProviderRuntime(args: GenerationProviderRuntime
     runtime.maxTokens = 8192;
     runtime.reasoningEffort = "maximum";
     runtime.verbosity = "high";
+    labelLayer("scene", ["maxTokens", "reasoningEffort", "verbosity"]);
   }
 
+  const maxTokensBeforeGameMode = runtime.maxTokens;
   if (args.chatMode === "game" && !isLocalGemma) {
     runtime.temperature = 1;
     runtime.maxTokens = 16_384;
@@ -157,6 +185,7 @@ export function resolveGenerationProviderRuntime(args: GenerationProviderRuntime
     runtime.presencePenalty = 0;
     runtime.reasoningEffort = "maximum";
     runtime.verbosity = null;
+    labelLayer("game mode", PARAMETER_TRACE_KEYS);
   } else if (args.chatMode === "game" && typeof chatParams?.maxTokens !== "number") {
     runtime.maxTokens = Math.max(runtime.maxTokens, 16_384);
   }
@@ -168,6 +197,7 @@ export function resolveGenerationProviderRuntime(args: GenerationProviderRuntime
       maxTokens: Math.max(runtime.maxTokens, 16_384),
       maxTokensOverride: args.connection.maxTokensOverride,
     });
+    if (runtime.maxTokens !== maxTokensBeforeGameMode) labelLayer("game mode", ["maxTokens"]);
   }
 
   const modelLower = (args.connection.model ?? "").toLowerCase();
@@ -196,6 +226,7 @@ export function resolveGenerationProviderRuntime(args: GenerationProviderRuntime
     runtime.topK = 0;
     runtime.frequencyPenalty = 0;
     runtime.presencePenalty = 0;
+    labelLayer("model rule", ["temperature", "topP", "topK", "frequencyPenalty", "presencePenalty"]);
   }
 
   const isClaudeTemperatureOnly =
@@ -206,6 +237,7 @@ export function resolveGenerationProviderRuntime(args: GenerationProviderRuntime
     runtime.topK = 0;
     runtime.frequencyPenalty = 0;
     runtime.presencePenalty = 0;
+    labelLayer("model rule", ["topP", "topK", "frequencyPenalty", "presencePenalty"]);
   }
 
   const providerTopK = resolveProviderTopK(runtime.topK);
@@ -257,5 +289,7 @@ export function resolveGenerationProviderRuntime(args: GenerationProviderRuntime
       primarySupportsAssistantReasoningPrefill || fallbackSupportsAssistantReasoningPrefill,
     primaryProvider,
     provider,
+    parameterSources,
+    sendSwitchSources,
   };
 }

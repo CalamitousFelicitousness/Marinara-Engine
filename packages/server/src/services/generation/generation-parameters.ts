@@ -1,10 +1,18 @@
 import {
   DEFAULT_AGENT_MAX_TOKENS,
+  GENERATION_PARAMETER_SEND_KEYS,
   MIN_AGENT_MAX_TOKENS,
   generationParametersSchema,
   resolveProviderReasoningEffort,
+  type GenerationParameterSendKey,
+  type GenerationParameterSendMap,
+  type ParameterTrace,
+  type ParameterTraceEntry,
+  type ParameterTraceKey,
+  type ParameterTraceLayer,
 } from "@marinara-engine/shared";
 import type { BaseLLMProvider, ChatOptions } from "../llm/base-provider.js";
+import { isPlainRecord, isUnsafeRequestBodyKey } from "../../lib/request-body-merge.js";
 import { parseExtra } from "./prompt-attachments.js";
 
 export function normalizeMaxContext(value: unknown): number | undefined {
@@ -98,6 +106,160 @@ export function normalizeChatTopP(value: unknown): number | undefined {
   if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
   if (value < 0) return undefined;
   return Math.min(value, 1);
+}
+
+export const PARAMETER_TRACE_KEYS = [
+  "temperature",
+  "maxTokens",
+  "topP",
+  "topK",
+  "minP",
+  "frequencyPenalty",
+  "presencePenalty",
+  "reasoningEffort",
+  "verbosity",
+] as const satisfies readonly ParameterTraceKey[];
+
+export type ParameterTraceSources = Partial<Record<ParameterTraceKey, ParameterTraceLayer>>;
+export type SendSwitchSources = Partial<Record<GenerationParameterSendKey, ParameterTraceLayer>>;
+
+export interface SentRequestParameters {
+  parameters: Partial<Record<ParameterTraceKey, { path: string; value: unknown }>>;
+  fallback: { provider: string; model: string } | null;
+}
+
+// First match wins: Anthropic adaptive requests carry both output_config.effort and thinking.
+const SENT_PARAMETER_PATHS: Record<ParameterTraceKey, readonly string[]> = {
+  temperature: ["temperature", "generationConfig.temperature"],
+  maxTokens: ["max_tokens", "max_completion_tokens", "max_output_tokens", "generationConfig.maxOutputTokens"],
+  topP: ["top_p", "generationConfig.topP"],
+  topK: ["top_k", "generationConfig.topK"],
+  minP: ["min_p"],
+  frequencyPenalty: ["frequency_penalty", "generationConfig.frequencyPenalty"],
+  presencePenalty: ["presence_penalty", "generationConfig.presencePenalty"],
+  reasoningEffort: [
+    "reasoning_effort",
+    "reasoning.effort",
+    "output_config.effort",
+    "thinking",
+    "generationConfig.thinkingConfig",
+    "chat_template_kwargs.enable_thinking",
+  ],
+  verbosity: ["verbosity", "text.verbosity"],
+};
+
+function readBodyPath(body: Readonly<Record<string, unknown>>, path: string): unknown {
+  let value: unknown = body;
+  for (const segment of path.split(".")) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+    value = (value as Record<string, unknown>)[segment];
+  }
+  return value;
+}
+
+/** Keeps only the sampler fields of a request body, so large prompts are not retained. */
+export function extractSentParameters(
+  body: Readonly<Record<string, unknown>>,
+  meta?: { fallback: { provider: string; model: string } },
+): SentRequestParameters {
+  const parameters: SentRequestParameters["parameters"] = {};
+  for (const key of PARAMETER_TRACE_KEYS) {
+    for (const path of SENT_PARAMETER_PATHS[key]) {
+      const value = readBodyPath(body, path);
+      if (value === undefined) continue;
+      parameters[key] = { path, value };
+      break;
+    }
+  }
+  return { parameters, fallback: meta?.fallback ?? null };
+}
+
+export interface StoredParameterSources {
+  parameters: ParameterTraceSources;
+  sendSwitches: SendSwitchSources;
+}
+
+/** Labels what a stored parameter object assigns, using the presence tests of the runtime overrides. */
+export function storedParameterSources(
+  params:
+    | (Partial<Record<ParameterTraceKey, unknown>> & { enabledParameters?: GenerationParameterSendMap | null })
+    | null
+    | undefined,
+  layer: ParameterTraceLayer,
+): StoredParameterSources {
+  const sources: StoredParameterSources = { parameters: {}, sendSwitches: {} };
+  if (!params) return sources;
+  for (const key of PARAMETER_TRACE_KEYS) {
+    const assigned =
+      key === "topP"
+        ? normalizeChatTopP(params.topP) !== undefined
+        : key === "reasoningEffort" || key === "verbosity"
+          ? params[key] !== undefined
+          : typeof params[key] === "number";
+    if (assigned) sources.parameters[key] = layer;
+  }
+  for (const key of Object.keys(params.enabledParameters ?? {}) as GenerationParameterSendKey[]) {
+    sources.sendSwitches[key] = layer;
+  }
+  return sources;
+}
+
+/** Sampling values from provider options; `includeUnset` keeps undefined keys so the trace still lists them. */
+export function traceValuesFromOptions(
+  options: Partial<ChatOptions>,
+  includeUnset: boolean,
+): Partial<Record<ParameterTraceKey, unknown>> {
+  const values: Partial<Record<ParameterTraceKey, unknown>> = {};
+  for (const key of PARAMETER_TRACE_KEYS) {
+    if (includeUnset || options[key] !== undefined) values[key] = options[key];
+  }
+  return values;
+}
+
+function isSendSwitchKey(key: ParameterTraceKey): key is GenerationParameterSendKey {
+  return (GENERATION_PARAMETER_SEND_KEYS as readonly string[]).includes(key);
+}
+
+export interface ParameterTraceInput {
+  /** Resolved values handed to the provider; a key present here always gets an entry. */
+  values: Partial<Record<ParameterTraceKey, unknown>>;
+  sources: ParameterTraceSources;
+  enabledParameters: GenerationParameterSendMap | undefined;
+  sendSwitchSources: SendSwitchSources;
+  customParameters: Record<string, unknown> | undefined;
+  sent: SentRequestParameters | null;
+}
+
+/** Leaf paths deepMergeRequestBody writes; plain objects merge, so only their fields count. */
+function customParameterPaths(params: Record<string, unknown> | undefined, prefix = ""): string[] {
+  return Object.entries(params ?? {}).flatMap(([key, value]) => {
+    if (value === undefined || isUnsafeRequestBodyKey(key)) return [];
+    return isPlainRecord(value) ? customParameterPaths(value, `${prefix}${key}.`) : [`${prefix}${key}`];
+  });
+}
+
+export function buildParameterTrace(input: ParameterTraceInput): ParameterTrace {
+  const entries: ParameterTraceEntry[] = [];
+  for (const key of PARAMETER_TRACE_KEYS) {
+    const sent = input.sent?.parameters[key] ?? null;
+    if (!(key in input.values) && !sent) continue;
+    entries.push({
+      key,
+      value: input.values[key] ?? null,
+      setBy: input.sources[key] ?? "default",
+      // Providers skip a parameter only when its switch is explicitly false.
+      sendSwitch: isSendSwitchKey(key)
+        ? { enabled: input.enabledParameters?.[key] !== false, setBy: input.sendSwitchSources[key] ?? null }
+        : null,
+      sent,
+    });
+  }
+  return {
+    entries,
+    observable: input.sent !== null,
+    fallback: input.sent?.fallback ?? null,
+    customParameterPaths: customParameterPaths(input.customParameters),
+  };
 }
 
 export function readChatCompletionsReasoningMetadata(value: unknown): Record<string, unknown> | undefined {

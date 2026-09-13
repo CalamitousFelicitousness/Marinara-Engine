@@ -578,6 +578,7 @@ export interface CustomQuickReply {
 
 export type MariPanelSortMode = "az" | "za" | "newest" | "oldest";
 export type MariEditViewMode = "easy" | "raw";
+export type ParameterTraceView = "main" | "agents" | "both";
 
 interface UIState {
   /** Transient: the initial cross-device settings fetch has settled. */
@@ -621,6 +622,8 @@ interface UIState {
   reduceAmbientEffects: boolean;
   mariPanelSortMode: MariPanelSortMode;
   mariEditViewMode: MariEditViewMode;
+  /** Which provider requests Peek Prompt's parameter trace lists. */
+  parameterTraceView: ParameterTraceView;
   chatBackground: string | null;
   /** Default background applied when a Roleplay chat has no saved background yet. */
   defaultRoleplayBackground: string;
@@ -1054,6 +1057,7 @@ interface UIState {
   setReduceAmbientEffects: (enabled: boolean) => void;
   setMariPanelSortMode: (mode: MariPanelSortMode) => void;
   setMariEditViewMode: (mode: MariEditViewMode) => void;
+  setParameterTraceView: (view: ParameterTraceView) => void;
   setChatBackground: (url: string | null) => void;
   setDefaultRoleplayBackground: (url: string) => void;
   setChatBackgroundBlur: (v: number) => void;
@@ -1566,6 +1570,7 @@ export function pickPersistedUIState(state: UIState) {
     reduceAmbientEffects: state.reduceAmbientEffects,
     mariPanelSortMode: state.mariPanelSortMode,
     mariEditViewMode: state.mariEditViewMode,
+    parameterTraceView: state.parameterTraceView,
     chatBackground: state.chatBackground,
     defaultRoleplayBackground: state.defaultRoleplayBackground,
     chatBackgroundBlur: state.chatBackgroundBlur,
@@ -1763,6 +1768,7 @@ export const useUIStore = create<UIState>()(
         reduceAmbientEffects: false,
         mariPanelSortMode: "az",
         mariEditViewMode: "easy",
+        parameterTraceView: "main",
         chatBackground: null,
         defaultRoleplayBackground: DEFAULT_ROLEPLAY_BACKGROUND_URL,
         chatBackgroundBlur: 0,
@@ -2094,6 +2100,7 @@ export const useUIStore = create<UIState>()(
         setReduceAmbientEffects: (enabled) => set({ reduceAmbientEffects: enabled }),
         setMariPanelSortMode: (mode) => set({ mariPanelSortMode: mode }),
         setMariEditViewMode: (mode) => set({ mariEditViewMode: mode }),
+        setParameterTraceView: (view) => set({ parameterTraceView: view }),
         setChatBackground: (url) => set({ chatBackground: url }),
         setDefaultRoleplayBackground: (url) =>
           set({ defaultRoleplayBackground: normalizeDefaultRoleplayBackground(url) }),

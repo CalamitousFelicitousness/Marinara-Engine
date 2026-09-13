@@ -1,4 +1,4 @@
-import type { Message, AvatarCrop } from "@marinara-engine/shared";
+import type { Message, AvatarCrop, AgentParameterTrace, ParameterTrace } from "@marinara-engine/shared";
 
 export type CharacterMap = Map<
   string,
@@ -68,7 +68,9 @@ export type PeekPromptData = {
     tokensCacheWritePrompt?: number | null;
     durationMs?: number | null;
     finishReason?: string | null;
+    parameterTrace?: ParameterTrace | null;
   } | null;
+  agentTraces?: AgentParameterTrace[] | null;
   agentNote?: string;
 };
 

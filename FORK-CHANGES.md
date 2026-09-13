@@ -444,6 +444,50 @@ Those three generation routes each re-derived the note and re-hardcoded the defa
 the default lives in `packages/shared` as `DEFAULT_AUTHOR_NOTE_DEPTH`. Covered by
 `scripts/regressions/author-note-presets.regression.ts`, which runs in `pnpm regression:prompt`.
 
+### Peek Prompt shows where each sampling parameter came from
+
+A sampling parameter passes through the preset (roleplay-style chats only), connection defaults,
+chat Advanced Parameters, scene and game-mode forcing, Claude model rules, per-parameter send
+switches, Custom Parameters, provider rules, and a fallback connection. Nothing showed the
+outcome, so a top_p set to 0.95 could reach the model as 1 with no way to tell which layer did it.
+
+Every saved reply now carries `generationInfo.parameterTrace`. For temperature, max tokens, top_p,
+top_k, min_p, both penalties, reasoning effort, and verbosity it records the value handed to the
+provider, the layer that set it, the send switch and the layer that set that, and the path and raw
+value found in the request body actually sent. Agent requests made through `completeAgentCall`
+record the same shape in `agentTraces` on the reply's swipe, one entry per request, with every
+member of a batch listed. Peek Prompt replaces the sampler pills with a table and a Main, Agents,
+Both filter, remembered per browser as `parameterTraceView`. Replies saved earlier keep the pills.
+
+`ChatOptions.onRequestBody` fires just before the first `llmFetch` of each OpenAI, Anthropic, and
+Google request, after Custom Parameters and sampler stripping. Consumers keep only the sampler
+fields (`extractSentParameters`), never the prompt. `fallbackOptions` wraps the callback to name
+the fallback connection, and a rate-limit retry fires it again, so the last request wins. The
+Claude and Grok subscription providers never call it and show as not observable. Direct
+`chatComplete` calls outside the agent executor are not traced: game tool planning, automatic
+summaries, illustrator prompts, captioning, selfies, turn-game bots, and group responder selection.
+
+Layer labels are added beside the overrides in `resolveGenerationProviderRuntime`, leaving the
+override lines as upstream wrote them; `storedParameterSources` repeats their presence tests. Agent
+labels come from `agentParameterSources`, which mirrors `resolveAgentTemperature` and the max-token
+caps. An agent retry replaces saved traces that include a re-run agent and keeps the rest.
+
+Patches to upstream files: `packages/shared/src/types/chat.ts`, `packages/shared/src/types/agent.ts`,
+`packages/server/src/services/llm/base-provider.ts`,
+`packages/server/src/services/llm/connection-fallback-provider.ts`, the OpenAI, Anthropic, and
+Google providers, `packages/server/src/services/generation/generation-parameters.ts`,
+`packages/server/src/services/generation/provider-generation-runtime.ts`,
+`packages/server/src/services/agents/agent-progress.ts` (the original body is now
+`observeAgentCall`), `packages/server/src/routes/generate.routes.ts`,
+`packages/server/src/routes/generate/multi-swipe-candidates.ts`,
+`packages/server/src/routes/generate/retry-agents-route.ts`,
+`packages/server/src/routes/chats.routes.ts`,
+`packages/client/src/components/chat/PeekPromptModal.tsx`,
+`packages/client/src/components/chat/chat-area.types.ts`, `packages/client/src/hooks/use-chats.ts`,
+`packages/client/src/stores/ui.store.ts`, and `packages/client/src/localization/locales/en.json`.
+
+Covered by `scripts/regressions/parameter-trace.regression.ts`.
+
 ### Multiswipe: several alternatives per turn, agents deferred until you pick
 
 One turn can now produce up to 4 alternatives in a single request, whether it is a regenerate or

@@ -61,6 +61,7 @@ import {
 } from "@marinara-engine/shared";
 import type {
   AgentContext,
+  AgentParameterTrace,
   AgentCallDebugEvent,
   AgentResult,
   HapticDeviceCommand,
@@ -567,6 +568,12 @@ import {
   readChatCompletionsReasoningMetadata,
   resolveStoredChatOptions,
   resolveStoredMaxTokens,
+  buildParameterTrace,
+  extractSentParameters,
+  storedParameterSources,
+  traceValuesFromOptions,
+  type SentRequestParameters,
+  type StoredParameterSources,
 } from "../services/generation/generation-parameters.js";
 import { clampGenerationMaxOutputTokens } from "../services/generation/output-token-limits.js";
 import { createLLMProvider } from "../services/llm/provider-registry.js";
@@ -1911,6 +1918,9 @@ export async function generateRoutes(app: FastifyInstance) {
         }
       }
 
+      // Agent request traces for the current pass, saved on the reply the pass produced.
+      const pendingAgentTraces: AgentParameterTrace[] = [];
+
       if (eligibleCharacterActivityConfigs.length > 0) {
         sendProgress("agents");
         const storedParameters = parseStoredGenerationParameters(conn.defaultParameters);
@@ -2020,6 +2030,9 @@ export async function generateRoutes(app: FastifyInstance) {
             authorNotes: typeof chatMeta.authorNotes === "string" ? chatMeta.authorNotes : null,
             streaming: input.streaming,
             agentProgress: (event) => sendSseEvent(reply, { type: "agent_progress", data: event }),
+            agentTrace: (trace) => {
+              pendingAgentTraces.push(trace);
+            },
             ...(requestDebug
               ? {
                   agentDebug: (event: AgentCallDebugEvent) => {
@@ -2257,6 +2270,7 @@ export async function generateRoutes(app: FastifyInstance) {
         let customParameters: Record<string, unknown> = {};
         let enabledParameters: GenerationParameterSendMap | undefined;
         let stopSequences: string[] = [];
+        let presetParameterSources: StoredParameterSources | undefined;
         let wrapFormat: "xml" | "markdown" | "none" = "xml";
         if (chatMode === "conversation" && resolvedPreset) {
           wrapFormat = normalizePromptWrapFormat(resolvedPreset.wrapFormat);
@@ -2760,6 +2774,7 @@ export async function generateRoutes(app: FastifyInstance) {
           finalMessages = assembled.messages;
           presetOwnsAgentPlacement = true;
           characterAdvancedPromptsInjected = true;
+          presetParameterSources = storedParameterSources(parseStoredGenerationParameters(preset.parameters), "preset");
           temperature = assembled.parameters.temperature;
           maxTokens = assembled.parameters.maxTokens;
           topP = assembled.parameters.topP ?? 1;
@@ -3393,6 +3408,7 @@ export async function generateRoutes(app: FastifyInstance) {
           chatParameters: chatMeta.chatParameters,
           managedParameterDefinitions,
           modelAccessPolicy,
+          initialSources: presetParameterSources,
           initial: {
             temperature,
             maxTokens,
@@ -3424,6 +3440,8 @@ export async function generateRoutes(app: FastifyInstance) {
           supportsAssistantReasoningPrefill: providerSupportsAssistantReasoningPrefill,
           primaryProvider: agentChatProvider,
           provider,
+          parameterSources,
+          sendSwitchSources,
         } = providerRuntime;
         ({
           temperature,
@@ -4272,6 +4290,9 @@ export async function generateRoutes(app: FastifyInstance) {
           ...(Object.keys(triggeredLorebookEntriesByAgentId).length > 0 ? { triggeredLorebookEntriesByAgentId } : {}),
           streaming: input.streaming,
           agentProgress: (event) => sendSseEvent(reply, { type: "agent_progress", data: event }),
+          agentTrace: (trace) => {
+            pendingAgentTraces.push(trace);
+          },
           ...(requestDebug
             ? {
                 agentDebug: (event: AgentCallDebugEvent) => {
@@ -6705,6 +6726,12 @@ export async function generateRoutes(app: FastifyInstance) {
           // one-shot candidate cannot reproduce a multi-round tool conversation.
           let mainChatOptions: ChatOptions | null = null;
 
+          // The last provider request of this reply wins, so a fallback or tool round reports what answered.
+          let sentParameters: SentRequestParameters | null = null;
+          const onRequestBody: ChatOptions["onRequestBody"] = (body, meta) => {
+            sentParameters = extractSentParameters(body, meta);
+          };
+
           const textChatOptions: ChatOptions = {
             model: conn.model,
             temperature,
@@ -6742,6 +6769,14 @@ export async function generateRoutes(app: FastifyInstance) {
                   encryptedReasoningItems = items;
                 },
             onChatCompletionsReasoning: rememberChatCompletionsReasoning,
+            onRequestBody,
+          };
+          const parameterTraceStatic = {
+            values: traceValuesFromOptions(textChatOptions, true),
+            sources: parameterSources,
+            enabledParameters,
+            sendSwitchSources,
+            customParameters,
           };
 
           let narratorMessages = initialProviderMessages;
@@ -6847,6 +6882,7 @@ export async function generateRoutes(app: FastifyInstance) {
                             encryptedReasoningItems = items;
                           },
                       onChatCompletionsReasoning: rememberChatCompletionsReasoning,
+                      onRequestBody,
                     }),
                   );
                   await recordAcceptedLongTermMemoryPrompt(loopMessages);
@@ -7173,6 +7209,7 @@ export async function generateRoutes(app: FastifyInstance) {
                           encryptedReasoningItems = items;
                         },
                     onChatCompletionsReasoning: rememberChatCompletionsReasoning,
+                    onRequestBody,
                   }),
                 );
                 const pendingRoll = roleplayRollEnabled
@@ -8206,6 +8243,7 @@ export async function generateRoutes(app: FastifyInstance) {
                 durationMs,
                 reasoningDurationMs,
                 finishReason: finishReason ?? null,
+                parameterTrace: buildParameterTrace({ ...parameterTraceStatic, sent: sentParameters }),
               },
             };
             if (fullThinking) extraUpdate.thinking = fullThinking;
@@ -8461,6 +8499,7 @@ export async function generateRoutes(app: FastifyInstance) {
                   assistantReasoningPrefill: assistantReasoningPrefill || null,
                   customParameters: Object.keys(customParameters).length > 0 ? customParameters : null,
                 },
+                parameterTraceStatic,
                 sharedSwipeExtra: {
                   contextInjections: contextInjections.length > 0 ? contextInjections : null,
                   generationReplay: buildGenerationReplay(input),
@@ -11302,6 +11341,20 @@ export async function generateRoutes(app: FastifyInstance) {
               currentIterationSavedMsg!.id,
               lastSavedSwipeIndex ?? currentIterationSavedMsg!.activeSwipeIndex ?? 0,
             );
+          }
+        }
+
+        // Without a saved reply this pass, the traces carry into the next pass.
+        if (pendingAgentTraces.length > 0 && currentIterationSavedMsg && !abortController.signal.aborted) {
+          const agentTraces = pendingAgentTraces.splice(0);
+          try {
+            await chats.updateMessageExtraForSwipe(
+              currentIterationSavedMsg.id,
+              lastSavedSwipeIndex ?? currentIterationSavedMsg.activeSwipeIndex ?? 0,
+              { agentTraces },
+            );
+          } catch (traceErr) {
+            logger.warn(traceErr, "[parameter-trace] Failed to save agent parameter traces");
           }
         }
 

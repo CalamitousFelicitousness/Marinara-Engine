@@ -95,6 +95,7 @@ export function isFallbackConnectionUsable(
 
 function fallbackOptions(options: ChatOptions, connection: FallbackConnection): ChatOptions {
   const stored = parseStoredGenerationParameters(connection.defaultParameters);
+  const onRequestBody = options.onRequestBody;
   const maxTokensOverride =
     typeof connection.maxTokensOverride === "number" && connection.maxTokensOverride > 0
       ? Math.floor(connection.maxTokensOverride)
@@ -147,6 +148,9 @@ function fallbackOptions(options: ChatOptions, connection: FallbackConnection): 
       typeof connection.cachingAtDepth === "number" && connection.cachingAtDepth >= 0 ? connection.cachingAtDepth : 5,
     openrouterProvider: connection.openrouterProvider ?? undefined,
     encryptedReasoningItems: undefined,
+    onRequestBody: onRequestBody
+      ? (body) => onRequestBody(body, { fallback: { provider: connection.provider, model: connection.model } })
+      : undefined,
   };
 }
 

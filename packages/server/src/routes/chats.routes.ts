@@ -2638,7 +2638,11 @@ export async function chatsRoutes(app: FastifyInstance) {
     const readCachedPrompt = (
       extra: Record<string, unknown>,
       allowHistoricalCache = false,
-    ): { messages: Array<{ role: string; content: string }>; generationInfo?: Record<string, unknown> } | null => {
+    ): {
+      messages: Array<{ role: string; content: string }>;
+      generationInfo?: Record<string, unknown>;
+      agentTraces?: unknown[];
+    } | null => {
       const cachedPrompt = Array.isArray(extra.cachedPrompt)
         ? extra.cachedPrompt
             .map((entry) => {
@@ -2665,6 +2669,7 @@ export async function chatsRoutes(app: FastifyInstance) {
       return {
         messages: cachedPrompt,
         generationInfo: isRecord(extra.generationInfo) ? extra.generationInfo : undefined,
+        agentTraces: Array.isArray(extra.agentTraces) ? extra.agentTraces : undefined,
       };
     };
 
@@ -2711,6 +2716,7 @@ export async function chatsRoutes(app: FastifyInstance) {
           source: "cached",
           exact: true,
           generationInfo: cached.generationInfo ?? null,
+          agentTraces: cached.agentTraces ?? null,
           agentNote: requestedMessage
             ? "This is the exact cached text prompt sent for the selected turn."
             : "This is the cached text prompt saved after provider preparation for the active assistant swipe.",

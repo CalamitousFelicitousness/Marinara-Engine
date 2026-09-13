@@ -30,6 +30,12 @@ import {
   trimIncompleteModelEnding,
 } from "../../services/generation/generation-text-utils.js";
 import {
+  buildParameterTrace,
+  extractSentParameters,
+  type ParameterTraceInput,
+  type SentRequestParameters,
+} from "../../services/generation/generation-parameters.js";
+import {
   withLlmRequestTimeout,
   type ChatMessage,
   type ChatOptions,
@@ -264,6 +270,8 @@ export interface RunMultiSwipeCandidatesArgs {
   sanitize: MultiSwipeSanitizeContext;
   /** Request-invariant half of generationInfo. Model, provider, tokens, and timing are per candidate. */
   generationInfoStatic: Record<string, unknown>;
+  /** Resolved sampling parameters shared by every candidate; the sent request is captured per candidate. */
+  parameterTraceStatic?: Omit<ParameterTraceInput, "sent">;
   /** Swipe extra shared by every candidate of this run (prompt cache, injections, lorebook scan). */
   sharedSwipeExtra: Record<string, unknown>;
   pendingMarker: MultiSwipePendingMarker;
@@ -300,6 +308,7 @@ export async function runMultiSwipeCandidates(
     debugMode,
     sanitize,
     generationInfoStatic,
+    parameterTraceStatic,
     sharedSwipeExtra,
     pendingMarker,
     getProviderOrigin,
@@ -351,6 +360,7 @@ export async function runMultiSwipeCandidates(
     let geminiParts: unknown[] | null = null;
     let chatCompletionsReasoning: Record<string, unknown> | null = null;
     let encryptedReasoning: unknown[] | null = null;
+    let sentParameters: SentRequestParameters | null = null;
 
     try {
       const gen = provider.chat(providerMessages, {
@@ -370,6 +380,9 @@ export async function runMultiSwipeCandidates(
         // picks this candidate (generate.routes.ts reseeds the cache from extra).
         onEncryptedReasoning: (items) => {
           encryptedReasoning = items;
+        },
+        onRequestBody: (body, meta) => {
+          sentParameters = extractSentParameters(body, meta);
         },
       });
 
@@ -491,6 +504,9 @@ export async function runMultiSwipeCandidates(
           tokensCacheWritePrompt: usage?.cacheWritePromptTokens ?? null,
           durationMs,
           finishReason,
+          ...(parameterTraceStatic
+            ? { parameterTrace: buildParameterTrace({ ...parameterTraceStatic, sent: sentParameters }) }
+            : {}),
         },
         thinking: thinking || null,
         geminiParts: geminiParts ?? null,

@@ -5,7 +5,7 @@
 import { BUILT_IN_AGENT_MANIFESTS, replaceBuiltInAgentManifestRegistry } from "../features/agents/agent-registry.js";
 import type { BuiltInAgentManifest } from "../features/agents/agent-manifest.types.js";
 import type { AgentToolConfig, ToolDefinition } from "../features/function-calls/tool-definitions.js";
-import type { ChatMode } from "./chat.js";
+import type { ChatMode, ParameterTrace } from "./chat.js";
 import type { WrapFormat } from "./prompt.js";
 
 /** When in the generation pipeline an agent runs. */
@@ -483,9 +483,21 @@ export interface AgentContext {
   agentDebug?: (event: AgentCallDebugEvent) => void;
   /** Lightweight provider progress; never includes prompts, reasoning, or response content. */
   agentProgress?: (event: AgentTaskProgress) => void;
+  /** Receives the parameter trace of every agent provider request, including failed ones. */
+  agentTrace?: (trace: AgentParameterTrace) => void;
   /** Abort signal — when triggered, agent execution should stop. Typed as `any` to avoid DOM/Node lib dependency. */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   signal?: any;
+}
+
+/** Parameter trace of one agent provider request; batched requests list every member agent. */
+export interface AgentParameterTrace {
+  agents: Array<{ id: string; type: string; name: string }>;
+  phase: string;
+  /** Null when the agents use the chat's connection. */
+  connectionId: string | null;
+  model: string;
+  trace: ParameterTrace;
 }
 
 /** Built-in agent type identifiers. */

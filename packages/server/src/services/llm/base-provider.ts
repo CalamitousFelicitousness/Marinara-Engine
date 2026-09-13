@@ -237,6 +237,11 @@ export interface ChatOptions {
   onEncryptedReasoning?: (items: unknown[]) => void;
   /** Callback to receive Chat Completions reasoning fields that must be replayed for some providers */
   onChatCompletionsReasoning?: (metadata: Record<string, unknown>) => void;
+  /** Receives the final request body before it is sent; the fallback wrapper adds the answering connection. */
+  onRequestBody?: (
+    body: Readonly<Record<string, unknown>>,
+    meta?: { fallback: { provider: string; model: string } },
+  ) => void;
   /** Force a specific response format (e.g. { type: "json_object" } or a JSON schema config) */
   responseFormat?: { type: string; [key: string]: unknown };
   /** Raw provider request parameters merged into the outgoing request body. */

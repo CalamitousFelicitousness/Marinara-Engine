@@ -22,6 +22,7 @@ import { seedDefaultRegexScripts } from "./db/seed-regex.js";
 import { buildAssetManifest, ensureAssetDirs } from "./services/game/asset-manifest.service.js";
 import { recoverGalleryImages } from "./services/storage/gallery-recovery.js";
 import { migrateCharacterExtendedDescriptionsToLorebooks } from "./services/lorebook/extended-descriptions-migration.js";
+import { migrateLegacyChatParameters } from "./services/generation/legacy-chat-parameter-migration.js";
 import { migrateTtsSettingsToAudioConnection } from "./services/connections/tts-audio-connection-migration.js";
 import { migrateTtsSourceProfilesToAudioConnections } from "./services/connections/tts-audio-connection-migration-v2.js";
 import { migrateLegacyDefaultAgentPrompts } from "./services/agents/default-prompt-migration.js";
@@ -174,6 +175,11 @@ export async function buildApp(https?: { cert: Buffer; key: Buffer }) {
   await seedDefaultRegexScripts(db);
   await migrateLegacyDefaultAgentPrompts(db);
   await migrateCharacterExtendedDescriptionsToLorebooks(db);
+  try {
+    await migrateLegacyChatParameters(db);
+  } catch (error) {
+    app.log.warn(error, "Chat parameter conversion did not complete; it will retry next startup");
+  }
   try {
     await migrateTtsSettingsToAudioConnection(db);
   } catch (error) {

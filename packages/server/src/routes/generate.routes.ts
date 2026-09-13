@@ -31,7 +31,6 @@ import {
   normalizeAgentPhaseValue,
   normalizeAgentPromptTemplateSelectionMap,
   normalizeManualTrackerAgentTypes,
-  normalizeThinkingTagPairs,
   applyTrackerFieldLocksToGameStatePatch,
   normalizeWorldCustomFields,
   normalizeTrackerFieldLocksForState,
@@ -41,7 +40,6 @@ import {
   CUSTOM_GENERATION_PARAMETERS_SETTINGS_KEY,
   DEFAULT_AGENT_MAX_TOKENS,
   DEFAULT_CONVERSATION_PROMPT,
-  DEFAULT_GENERATION_PARAMS,
   extractLeadingThinkingBlocks,
   formatSkillCheckResultSummary,
   unwrapConversationInstructions,
@@ -71,7 +69,6 @@ import type {
   ChatMode,
   DiceRollResult,
   ResolvedSpatialTravel,
-  ThinkingTagPair,
 } from "@marinara-engine/shared";
 import { createChatsStorage, withChatMetadataPatchQueue } from "../services/storage/chats.storage.js";
 import {
@@ -253,7 +250,7 @@ import { executeKnowledgeRouter } from "../services/agents/knowledge-router.js";
 import { extractFileText, getSourceFilePath } from "./knowledge-sources.routes.js";
 import { gameStateSnapshots as gameStateSnapshotsTable } from "../db/schema/index.js";
 import { and, eq } from "../db/file-query.js";
-import { PROFESSOR_MARI_ID, type GenerationParameterSendMap } from "@marinara-engine/shared";
+import { PROFESSOR_MARI_ID } from "@marinara-engine/shared";
 import { chunkAndEmbedMessages } from "../services/memory-recall.js";
 import {
   isMemoryRecallVectorizerAvailable,
@@ -299,7 +296,6 @@ import {
   getMessageHiddenFromAICharacterIds,
   isManualTrackerCharacterId,
   isMessageHiddenFromAI,
-  mergeCustomParameters,
   normalizePromptWrapFormat,
   parseExtra,
   parseJsonField,
@@ -406,6 +402,7 @@ import {
   tryClaimCustomLorebookReadBehindRun,
 } from "./generate/lorebook-keeper-utils.js";
 import { registerDryRunRoute } from "./generate/dry-run-route.js";
+import { registerParameterBaselineRoute } from "./generate/parameter-baseline-route.js";
 import { registerRawRoute } from "./generate/raw-route.js";
 import { registerRetryAgentsRoute, type ActiveAgentRun } from "./generate/retry-agents-route.js";
 import { resolveMultiSwipeCount, runMultiSwipeCandidates } from "./generate/multi-swipe-candidates.js";
@@ -458,7 +455,12 @@ import {
   shouldRunDirectorSecretPlotMaintenance,
 } from "../services/generation/director-secret-plot-runtime.js";
 import { applyPromptPatchOperations } from "../services/generation/prompt-patch-runtime.js";
-import { resolveGenerationProviderRuntime } from "../services/generation/provider-generation-runtime.js";
+import {
+  defaultGenerationParameterValues,
+  presetGenerationParameterValues,
+  resolveGenerationProviderRuntime,
+  usesPresetAssembly,
+} from "../services/generation/provider-generation-runtime.js";
 import { supportsNativeToolCalls } from "@marinara-engine/shared";
 import { planGameToolCalls } from "../services/generation/game-tool-planning.js";
 import {
@@ -2252,24 +2254,25 @@ export async function generateRoutes(app: FastifyInstance) {
         });
         const identityFallbackPromptTemplateSources: string[] = [];
         const conversationCommandsEnabled = chatMode === "conversation" && chatMeta.characterCommands !== false;
-        let temperature: number | undefined = 1;
-        let maxTokens = 4096;
-        let topP: number | undefined = 1;
-        let topK = 0;
-        let minP = 0;
-        let frequencyPenalty = 0;
-        let presencePenalty = 0;
-        let showThoughts = true;
-        let reasoningEffort: "low" | "medium" | "high" | "xhigh" | "maximum" | null =
-          DEFAULT_GENERATION_PARAMS.reasoningEffort;
-        let verbosity: "low" | "medium" | "high" | null = null;
-        let serviceTier: "flex" | "priority" | null = null;
-        let assistantPrefill = "";
-        let assistantReasoningPrefill = "";
-        let customThinkingTags: ThinkingTagPair[] = [];
-        let customParameters: Record<string, unknown> = {};
-        let enabledParameters: GenerationParameterSendMap | undefined;
-        let stopSequences: string[] = [];
+        let {
+          temperature,
+          maxTokens,
+          topP,
+          topK,
+          minP,
+          frequencyPenalty,
+          presencePenalty,
+          showThoughts,
+          reasoningEffort,
+          verbosity,
+          serviceTier,
+          assistantPrefill,
+          assistantReasoningPrefill,
+          customThinkingTags,
+          customParameters,
+          enabledParameters,
+          stopSequences,
+        } = defaultGenerationParameterValues();
         let presetParameterSources: StoredParameterSources | undefined;
         let wrapFormat: "xml" | "markdown" | "none" = "xml";
         if (chatMode === "conversation" && resolvedPreset) {
@@ -2634,7 +2637,7 @@ export async function generateRoutes(app: FastifyInstance) {
 
         sendProgress("assembling");
         const _tAssemble = Date.now();
-        if (presetId && resolvedPreset && chatMode !== "conversation" && chatMode !== "game") {
+        if (presetId && resolvedPreset && usesPresetAssembly(chatMode)) {
           const preset = resolvedPreset;
           wrapFormat = (preset.wrapFormat as "xml" | "markdown" | "none") || "xml";
           const [sections, groups, choiceBlocks] = await Promise.all([
@@ -2775,27 +2778,25 @@ export async function generateRoutes(app: FastifyInstance) {
           presetOwnsAgentPlacement = true;
           characterAdvancedPromptsInjected = true;
           presetParameterSources = storedParameterSources(parseStoredGenerationParameters(preset.parameters), "preset");
-          temperature = assembled.parameters.temperature;
-          maxTokens = assembled.parameters.maxTokens;
-          topP = assembled.parameters.topP ?? 1;
-          topK = assembled.parameters.topK ?? 0;
-          minP = assembled.parameters.minP ?? 0;
-          frequencyPenalty = assembled.parameters.frequencyPenalty ?? 0;
-          presencePenalty = assembled.parameters.presencePenalty ?? 0;
-          showThoughts = assembled.parameters.showThoughts ?? true;
-          reasoningEffort = assembled.parameters.reasoningEffort ?? null;
-          verbosity = assembled.parameters.verbosity ?? null;
-          serviceTier = assembled.parameters.serviceTier ?? null;
-          assistantPrefill = assembled.parameters.assistantPrefill ?? "";
-          assistantReasoningPrefill = assembled.parameters.assistantReasoningPrefill ?? "";
-          customThinkingTags = normalizeThinkingTagPairs(assembled.parameters.customThinkingTags);
-          customParameters = mergeCustomParameters(customParameters, assembled.parameters.customParameters);
-          if (assembled.parameters.enabledParameters) {
-            enabledParameters = { ...(enabledParameters ?? {}), ...assembled.parameters.enabledParameters };
-          }
-          stopSequences = (assembled.parameters.stopSequences ?? [])
-            .map((value) => value.trim())
-            .filter((value) => value.length > 0);
+          ({
+            temperature,
+            maxTokens,
+            topP,
+            topK,
+            minP,
+            frequencyPenalty,
+            presencePenalty,
+            showThoughts,
+            reasoningEffort,
+            verbosity,
+            serviceTier,
+            assistantPrefill,
+            assistantReasoningPrefill,
+            customThinkingTags,
+            customParameters,
+            enabledParameters,
+            stopSequences,
+          } = presetGenerationParameterValues(assembled.parameters));
 
           effectiveMaxContext = mergeModelContextLimit(
             modelAccessPolicy,
@@ -3406,6 +3407,8 @@ export async function generateRoutes(app: FastifyInstance) {
           chatMode,
           isSceneChat,
           chatParameters: chatMeta.chatParameters,
+          chatParameterOverrides: chatMeta.chatParameterOverrides,
+          gameSetupParameters: (chatMeta.gameSetupConfig as Record<string, unknown> | undefined)?.generationParameters,
           managedParameterDefinitions,
           modelAccessPolicy,
           initialSources: presetParameterSources,
@@ -6583,7 +6586,9 @@ export async function generateRoutes(app: FastifyInstance) {
             return postProcessMessages(messages, {
               ...parseStoredGenerationParameters(resolvedPreset?.parameters),
               ...providerRuntime.connectionParams,
+              ...providerRuntime.gameSetupParams,
               ...providerRuntime.chatParams,
+              ...providerRuntime.chatOverrideParams,
             });
           };
 
@@ -11839,6 +11844,7 @@ export async function generateRoutes(app: FastifyInstance) {
   });
 
   await registerDryRunRoute(app);
+  await registerParameterBaselineRoute(app);
   await registerRawRoute(app);
   await registerRetryAgentsRoute(app, activeCustomLorebookReadBehindRuns, activeAgentRuns);
 }

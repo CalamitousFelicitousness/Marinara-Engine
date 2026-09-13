@@ -67,6 +67,7 @@ for (const mode of ["conversation", "roleplay"] as const) {
       const exclusion = section.getByRole("checkbox", { name: "Exclude Past Reasoning" });
       const limit = section.getByRole("textbox", { name: "Past reasoning blocks", exact: true });
       const prefill = section.getByPlaceholder("Understood. I will now proceed with the output.", { exact: true });
+      const prefillSource = section.getByRole("radiogroup", { name: "Assistant Reasoning Prefill source" });
       const readMeta = async () => {
         const saved = await (await request.get(`/api/chats/${chat.id}`)).json();
         return typeof saved.metadata === "string" ? JSON.parse(saved.metadata) : saved.metadata;
@@ -81,7 +82,10 @@ for (const mode of ["conversation", "roleplay"] as const) {
       };
       await page.goto("/");
       await openSettings();
-      await expect(prefill).toHaveValue("");
+      await expect(prefillSource.getByRole("radio", { name: "Connection", exact: true })).toHaveAttribute(
+        "aria-checked",
+        "true",
+      );
       await expect(exclusion).toBeChecked();
       await expect(limit).toHaveCount(0);
       expect(await previewReasoning()).toEqual([]);
@@ -106,10 +110,12 @@ for (const mode of ["conversation", "roleplay"] as const) {
       await openSettings();
       await expect(limit).toHaveValue("0");
       await expect(exclusion).not.toBeChecked();
+      await prefillSource.getByRole("radio", { name: "Override", exact: true }).click();
+      await expect(prefill).toHaveValue("");
       await prefill.fill("My saved prefill.");
       await prefill.blur();
       await expect
-        .poll(async () => (await readMeta()).chatParameters?.assistantReasoningPrefill)
+        .poll(async () => (await readMeta()).chatParameterOverrides?.assistantReasoningPrefill?.value)
         .toBe("My saved prefill.");
       await page.reload();
       await openSettings();

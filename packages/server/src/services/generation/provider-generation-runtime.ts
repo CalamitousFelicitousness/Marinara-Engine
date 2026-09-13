@@ -1,9 +1,15 @@
 import {
+  DEFAULT_GENERATION_PARAMS,
+  chatOverridesAsStoredParameters,
+  effectiveChatParameterOverrides,
   isClaudeAdaptiveOnlyNoSamplingModel,
   normalizeThinkingTagPairs,
   resolveManagedGenerationParameters,
   resolveProviderReasoningEffort,
+  stripLegacyChatParameters,
+  type ChatParameterOverrides,
   type GenerationParameterSendMap,
+  type GenerationParameters,
   type ManagedGenerationParameterDefinition,
   type ParameterTraceKey,
   type ParameterTraceLayer,
@@ -51,7 +57,47 @@ type GenerationConnection = {
   treatAsLocalEndpoint?: unknown;
 };
 
-type GenerationProviderRuntimeArgs = {
+export type GenerationParameterInitial = {
+  temperature: number | undefined;
+  maxTokens: number;
+  topP: number | undefined;
+  topK: number;
+  minP: number;
+  frequencyPenalty: number;
+  presencePenalty: number;
+  showThoughts: boolean;
+  reasoningEffort: "low" | "medium" | "high" | "xhigh" | "maximum" | null;
+  verbosity: "low" | "medium" | "high" | null;
+  serviceTier: "flex" | "priority" | null;
+  assistantPrefill: string;
+  assistantReasoningPrefill: string;
+  customThinkingTags: ThinkingTagPair[];
+  customParameters: Record<string, unknown>;
+  enabledParameters: GenerationParameterSendMap | undefined;
+  stopSequences: string[];
+  effectiveMaxContext: number | undefined;
+};
+
+export type GenerationParameterValues = Omit<GenerationParameterInitial, "effectiveMaxContext">;
+
+export type GenerationParameterRuntimeArgs = {
+  connection: Pick<GenerationConnection, "provider" | "model" | "maxTokensOverride" | "defaultParameters">;
+  chatMode: string;
+  isSceneChat: boolean;
+  /** Stored `chatParameters`; sampling values and send switches in it are ignored. */
+  chatParameters: unknown;
+  /** Stored Connection / Override / Off states. */
+  chatParameterOverrides?: unknown;
+  /** Game setup's stored parameters, a layer between the connection and game mode in game chats. */
+  gameSetupParameters?: unknown;
+  managedParameterDefinitions: ManagedGenerationParameterDefinition[];
+  modelAccessPolicy: Parameters<typeof mergeModelContextLimit>[0];
+  initial: GenerationParameterInitial;
+  /** Layers that assigned the `initial` values; unlisted keys are defaults. */
+  initialSources?: StoredParameterSources;
+};
+
+type GenerationProviderRuntimeArgs = GenerationParameterRuntimeArgs & {
   connectionId: string;
   connection: GenerationConnection;
   baseUrl: string;
@@ -59,66 +105,103 @@ type GenerationProviderRuntimeArgs = {
   fallbackBaseUrl?: string;
   onFallback?: GenerationFallbackNotifier;
   onProviderUsed?: (origin: GenerationProviderOrigin) => void;
-  chatMode: string;
-  isSceneChat: boolean;
-  chatParameters: unknown;
-  managedParameterDefinitions: ManagedGenerationParameterDefinition[];
-  modelAccessPolicy: Parameters<typeof mergeModelContextLimit>[0];
-  initial: {
-    temperature: number | undefined;
-    maxTokens: number;
-    topP: number | undefined;
-    topK: number;
-    minP: number;
-    frequencyPenalty: number;
-    presencePenalty: number;
-    showThoughts: boolean;
-    reasoningEffort: "low" | "medium" | "high" | "xhigh" | "maximum" | null;
-    verbosity: "low" | "medium" | "high" | null;
-    serviceTier: "flex" | "priority" | null;
-    assistantPrefill: string;
-    assistantReasoningPrefill: string;
-    customThinkingTags: ThinkingTagPair[];
-    customParameters: Record<string, unknown>;
-    enabledParameters: GenerationParameterSendMap | undefined;
-    stopSequences: string[];
-    effectiveMaxContext: number | undefined;
-  };
-  /** Layers that assigned the `initial` values; unlisted keys are defaults. */
-  initialSources?: StoredParameterSources;
 };
 
-export type GenerationProviderRuntime = GenerationProviderRuntimeArgs["initial"] & {
-  connectionParams: ReturnType<typeof parseStoredGenerationParameters>;
-  chatParams: ReturnType<typeof parseStoredGenerationParameters>;
+type StoredParameters = ReturnType<typeof parseStoredGenerationParameters>;
+
+export type GenerationParameterRuntime = GenerationParameterInitial & {
+  connectionParams: StoredParameters;
+  gameSetupParams: StoredParameters;
+  chatParams: StoredParameters;
+  chatOverrideParams: StoredParameters;
+  chatOverrides: ChatParameterOverrides;
   resolvedEffort: "low" | "medium" | "high" | "xhigh" | "max" | null;
   providerReasoningEffort: "none" | "low" | "medium" | "high" | "xhigh" | "max" | undefined;
   enableThinking: boolean;
   isClaudeNoSampling: boolean;
   providerTopK: number | undefined;
-  supportsAssistantReasoningPrefill: boolean;
-  primaryProvider: BaseLLMProvider;
-  provider: BaseLLMProvider;
   parameterSources: ParameterTraceSources;
   sendSwitchSources: SendSwitchSources;
 };
 
-export function resolveGenerationProviderRuntime(args: GenerationProviderRuntimeArgs): GenerationProviderRuntime {
+export type GenerationProviderRuntime = GenerationParameterRuntime & {
+  supportsAssistantReasoningPrefill: boolean;
+  primaryProvider: BaseLLMProvider;
+  provider: BaseLLMProvider;
+};
+
+/** Start values before any preset, connection or chat layer applies. */
+export function defaultGenerationParameterValues(): GenerationParameterValues {
+  return {
+    temperature: 1,
+    maxTokens: 4096,
+    topP: 1,
+    topK: 0,
+    minP: 0,
+    frequencyPenalty: 0,
+    presencePenalty: 0,
+    showThoughts: true,
+    reasoningEffort: DEFAULT_GENERATION_PARAMS.reasoningEffort,
+    verbosity: null,
+    serviceTier: null,
+    assistantPrefill: "",
+    assistantReasoningPrefill: "",
+    customThinkingTags: [],
+    customParameters: {},
+    enabledParameters: undefined,
+    stopSequences: [],
+  };
+}
+
+/** Values a prompt preset supplies in chat modes that assemble their prompt from the preset. */
+export function presetGenerationParameterValues(parameters: GenerationParameters): GenerationParameterValues {
+  return {
+    temperature: parameters.temperature,
+    maxTokens: parameters.maxTokens,
+    topP: parameters.topP ?? 1,
+    topK: parameters.topK ?? 0,
+    minP: parameters.minP ?? 0,
+    frequencyPenalty: parameters.frequencyPenalty ?? 0,
+    presencePenalty: parameters.presencePenalty ?? 0,
+    showThoughts: parameters.showThoughts ?? true,
+    reasoningEffort: parameters.reasoningEffort ?? null,
+    verbosity: parameters.verbosity ?? null,
+    serviceTier: parameters.serviceTier ?? null,
+    assistantPrefill: parameters.assistantPrefill ?? "",
+    assistantReasoningPrefill: parameters.assistantReasoningPrefill ?? "",
+    customThinkingTags: normalizeThinkingTagPairs(parameters.customThinkingTags),
+    customParameters: mergeCustomParameters({}, parameters.customParameters),
+    enabledParameters: parameters.enabledParameters ? { ...parameters.enabledParameters } : undefined,
+    stopSequences: (parameters.stopSequences ?? []).map((value) => value.trim()).filter((value) => value.length > 0),
+  };
+}
+
+/** Conversation and game chats use their preset for prompt text only, never for parameters. */
+export function usesPresetAssembly(chatMode: string): boolean {
+  return chatMode !== "conversation" && chatMode !== "game";
+}
+
+/** Resolves every parameter layer for a generation without building its provider. */
+export function resolveGenerationParameterRuntime(args: GenerationParameterRuntimeArgs): GenerationParameterRuntime {
+  const isGame = args.chatMode === "game";
   const connectionParams = parseStoredGenerationParameters(args.connection.defaultParameters);
-  const chatParams = parseStoredGenerationParameters(args.chatParameters);
+  const gameSetupParams = isGame ? parseStoredGenerationParameters(args.gameSetupParameters) : null;
+  const chatParams = parseStoredGenerationParameters(stripLegacyChatParameters(args.chatParameters));
+  const chatOverrides = effectiveChatParameterOverrides(args.chatParameters, args.chatParameterOverrides);
+  const chatOverrideParams = parseStoredGenerationParameters(chatOverridesAsStoredParameters(chatOverrides));
   const runtime = { ...args.initial };
   const parameterSources: ParameterTraceSources = { ...args.initialSources?.parameters };
   const sendSwitchSources: SendSwitchSources = { ...args.initialSources?.sendSwitches };
   const labelLayer = (layer: ParameterTraceLayer, keys: readonly ParameterTraceKey[]) => {
     for (const key of keys) parameterSources[key] = layer;
   };
-  const labelStoredLayer = (params: ReturnType<typeof parseStoredGenerationParameters>, layer: ParameterTraceLayer) => {
+  const labelStoredLayer = (params: StoredParameters, layer: ParameterTraceLayer) => {
     const labels = storedParameterSources(params, layer);
     Object.assign(parameterSources, labels.parameters);
     Object.assign(sendSwitchSources, labels.sendSwitches);
   };
 
-  const applyParameterOverrides = (params: ReturnType<typeof parseStoredGenerationParameters>) => {
+  const applyParameterOverrides = (params: StoredParameters) => {
     if (!params) return;
     if (typeof params.temperature === "number") runtime.temperature = params.temperature;
     if (typeof params.maxTokens === "number") runtime.maxTokens = params.maxTokens;
@@ -156,16 +239,10 @@ export function resolveGenerationProviderRuntime(args: GenerationProviderRuntime
   const isLocalGemma = (args.connection.model ?? "").toLowerCase().includes("gemma");
   applyParameterOverrides(connectionParams);
   labelStoredLayer(connectionParams, "connection");
+  applyParameterOverrides(gameSetupParams);
+  labelStoredLayer(gameSetupParams, "game mode");
   applyParameterOverrides(chatParams);
   labelStoredLayer(chatParams, "chat");
-  runtime.customParameters = mergeCustomParameters(
-    runtime.customParameters,
-    resolveManagedGenerationParameters(
-      args.managedParameterDefinitions,
-      connectionParams?.managedCustomParameters,
-      chatParams?.managedCustomParameters,
-    ),
-  );
 
   if (args.isSceneChat) {
     runtime.maxTokens = 8192;
@@ -174,8 +251,7 @@ export function resolveGenerationProviderRuntime(args: GenerationProviderRuntime
     labelLayer("scene", ["maxTokens", "reasoningEffort", "verbosity"]);
   }
 
-  const maxTokensBeforeGameMode = runtime.maxTokens;
-  if (args.chatMode === "game" && !isLocalGemma) {
+  if (isGame && !isLocalGemma) {
     runtime.temperature = 1;
     runtime.maxTokens = 16_384;
     runtime.topP = 1;
@@ -186,23 +262,38 @@ export function resolveGenerationProviderRuntime(args: GenerationProviderRuntime
     runtime.reasoningEffort = "maximum";
     runtime.verbosity = null;
     labelLayer("game mode", PARAMETER_TRACE_KEYS);
-  } else if (args.chatMode === "game" && typeof chatParams?.maxTokens !== "number") {
-    runtime.maxTokens = Math.max(runtime.maxTokens, 16_384);
   }
 
-  if (args.chatMode === "game") {
+  // Scene and game values keep leftover connection values away from structured output; a chat's Override or Off wins.
+  applyParameterOverrides(chatOverrideParams);
+  labelStoredLayer(chatOverrideParams, "chat");
+  runtime.customParameters = mergeCustomParameters(
+    runtime.customParameters,
+    resolveManagedGenerationParameters(
+      args.managedParameterDefinitions,
+      connectionParams?.managedCustomParameters,
+      gameSetupParams?.managedCustomParameters,
+      chatOverrideParams?.managedCustomParameters,
+    ),
+  );
+
+  if (isGame) {
+    const maxTokensOverridden = chatOverrides.maxTokens?.mode === "override";
+    const maxTokensBeforeFloor = runtime.maxTokens;
     runtime.maxTokens = clampGenerationMaxOutputTokens({
       provider: args.connection.provider,
       model: args.connection.model,
-      maxTokens: Math.max(runtime.maxTokens, 16_384),
+      maxTokens: maxTokensOverridden ? runtime.maxTokens : Math.max(runtime.maxTokens, 16_384),
       maxTokensOverride: args.connection.maxTokensOverride,
     });
-    if (runtime.maxTokens !== maxTokensBeforeGameMode) labelLayer("game mode", ["maxTokens"]);
+    if (runtime.maxTokens !== maxTokensBeforeFloor) {
+      labelLayer(maxTokensOverridden ? "model rule" : "game mode", ["maxTokens"]);
+    }
   }
 
   const modelLower = (args.connection.model ?? "").toLowerCase();
   const providerLower = (args.connection.provider ?? "").toLowerCase();
-  let resolvedEffort = resolveProviderReasoningEffort({
+  const resolvedEffort = resolveProviderReasoningEffort({
     provider: providerLower,
     model: modelLower,
     reasoningEffort: runtime.reasoningEffort,
@@ -240,7 +331,25 @@ export function resolveGenerationProviderRuntime(args: GenerationProviderRuntime
     labelLayer("model rule", ["topP", "topK", "frequencyPenalty", "presencePenalty"]);
   }
 
-  const providerTopK = resolveProviderTopK(runtime.topK);
+  return {
+    ...runtime,
+    connectionParams,
+    gameSetupParams,
+    chatParams,
+    chatOverrideParams,
+    chatOverrides,
+    resolvedEffort,
+    providerReasoningEffort,
+    enableThinking,
+    isClaudeNoSampling,
+    providerTopK: resolveProviderTopK(runtime.topK),
+    parameterSources,
+    sendSwitchSources,
+  };
+}
+
+export function resolveGenerationProviderRuntime(args: GenerationProviderRuntimeArgs): GenerationProviderRuntime {
+  const parameters = resolveGenerationParameterRuntime(args);
   const primaryProvider =
     args.connectionId === LOCAL_SIDECAR_CONNECTION_ID
       ? getLocalSidecarProvider()
@@ -277,19 +386,10 @@ export function resolveGenerationProviderRuntime(args: GenerationProviderRuntime
   });
 
   return {
-    ...runtime,
-    connectionParams,
-    chatParams,
-    resolvedEffort,
-    providerReasoningEffort,
-    enableThinking,
-    isClaudeNoSampling,
-    providerTopK,
+    ...parameters,
     supportsAssistantReasoningPrefill:
       primarySupportsAssistantReasoningPrefill || fallbackSupportsAssistantReasoningPrefill,
     primaryProvider,
     provider,
-    parameterSources,
-    sendSwitchSources,
   };
 }

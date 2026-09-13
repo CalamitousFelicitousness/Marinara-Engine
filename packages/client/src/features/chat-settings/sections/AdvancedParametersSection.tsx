@@ -4,52 +4,58 @@ import { HelpTooltip } from "../../../components/ui/HelpTooltip";
 import { AgentSettingsActionButton } from "../../../components/chat/AgentSettingsControls";
 import {
   CHAT_PARAMETER_DEFAULTS,
-  GenerationParametersFields,
+  ChatGenerationParametersFields,
   getEditableGenerationParameters,
-  type EditableGenerationParameters,
   ROLEPLAY_PARAMETER_DEFAULTS,
-  STRICT_CONNECTION_PARAMETER_SEND_DEFAULTS,
 } from "../../../components/ui/GenerationParametersEditor";
 import { DraftNumberInput } from "../../../components/ui/DraftNumberInput";
 import { SettingsSwitch } from "../../../components/panels/settings/SettingControls";
 import { useSaveConnectionDefaults } from "../../../hooks/use-connections";
+import { useGenerationParameterBaseline } from "../../../hooks/use-parameter-baseline";
 import { isLanguageGenerationConnection, type ConnectionProviderLike } from "../../../lib/connection-filters";
 import { cn } from "../../../lib/utils";
 import { useTranslation as useUiTranslation } from "react-i18next";
-import { parseConnectionImageCaptioningDefaults } from "@marinara-engine/shared";
-
-const EDITABLE_PARAMETER_KEYS: Array<keyof EditableGenerationParameters> = [
-  "temperature",
-  "maxTokens",
-  "topP",
-  "topK",
-  "frequencyPenalty",
-  "presencePenalty",
-  "reasoningEffort",
-  "verbosity",
-  "serviceTier",
-  "strictRoleFormatting",
-  "singleUserMessage",
-  "assistantPrefill",
-  "assistantReasoningPrefill",
-  "customThinkingTags",
-  "customParameters",
-  "managedCustomParameters",
-  "enabledParameters",
-];
+import {
+  chatOverridesAsStoredParameters,
+  effectiveChatParameterOverrides,
+  parseConnectionImageCaptioningDefaults,
+  stripLegacyChatParameters,
+  type ChatParameterOverrides,
+} from "@marinara-engine/shared";
 
 type AdvancedConnection = ConnectionProviderLike & Record<string, unknown>;
 
+export interface ChatParametersPatch {
+  chatParameters: Record<string, unknown> | null;
+  chatParameterOverrides: ChatParameterOverrides | null;
+}
+
+function readRecord(value: unknown): Record<string, unknown> {
+  let parsed = value;
+  if (typeof parsed === "string") {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      return {};
+    }
+  }
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+    ? { ...(parsed as Record<string, unknown>) }
+    : {};
+}
+
 interface AdvancedParametersSectionProps {
+  chatId: string;
   metadata: Record<string, unknown>;
   isConversation: boolean;
   connectionId: string | null;
+  promptPresetId: string | null;
   connections: AdvancedConnection[];
   contextMessageLimit: number | null | undefined;
   excludePastReasoning: boolean | undefined;
   imageCaptioningEnabled: boolean | undefined;
   imageCaptioningConnectionId: string | null | undefined;
-  onChatParametersChange: (chatParameters: Record<string, unknown>) => void;
+  onParametersChange: (patch: ChatParametersPatch) => void;
   onContextMessageLimitChange: (value: number | null) => void;
   onExcludePastReasoningChange: (value: boolean) => void;
   onPastReasoningLimitChange: (value: number) => void;
@@ -60,15 +66,17 @@ interface AdvancedParametersSectionProps {
 }
 
 export function AdvancedParametersSection({
+  chatId,
   metadata,
   isConversation,
   connectionId,
+  promptPresetId,
   connections,
   contextMessageLimit,
   excludePastReasoning,
   imageCaptioningEnabled,
   imageCaptioningConnectionId,
-  onChatParametersChange,
+  onParametersChange,
   onContextMessageLimitChange,
   onExcludePastReasoningChange,
   onPastReasoningLimitChange,
@@ -76,18 +84,27 @@ export function AdvancedParametersSection({
 }: AdvancedParametersSectionProps) {
   const { t: localizeUi } = useUiTranslation();
   const modeDefaults = isConversation ? CHAT_PARAMETER_DEFAULTS : ROLEPLAY_PARAMETER_DEFAULTS;
-  const strictModeDefaults: EditableGenerationParameters = {
-    ...modeDefaults,
-    enabledParameters: STRICT_CONNECTION_PARAMETER_SEND_DEFAULTS,
-  };
   const conn = connectionId ? connections.find((connection) => connection.id === connectionId) : null;
   const canSaveConnectionDefaults = !!connectionId && connectionId !== "random" && conn?.isLocalSidecar !== true;
-  const defaults = getEditableGenerationParameters(strictModeDefaults, conn?.defaultParameters);
+  const defaults = getEditableGenerationParameters(modeDefaults, conn?.defaultParameters);
   const imageCaptioningDefaults = parseConnectionImageCaptioningDefaults(conn?.defaultParameters);
   const saveDefaults = useSaveConnectionDefaults();
   const [expanded, setExpanded] = useState(false);
-  const params = (metadata.chatParameters as Record<string, unknown>) ?? {};
-  const effectiveParams = getEditableGenerationParameters(defaults, params);
+  const overrides = useMemo(
+    () => effectiveChatParameterOverrides(metadata.chatParameters, metadata.chatParameterOverrides),
+    [metadata.chatParameters, metadata.chatParameterOverrides],
+  );
+  const chatCustomParameters = readRecord(readRecord(metadata.chatParameters).customParameters);
+  const effectiveParams = getEditableGenerationParameters(defaults, metadata.chatParameters);
+  const baseline = useGenerationParameterBaseline(
+    {
+      chatId,
+      connectionId,
+      promptPresetId,
+      sceneStatus: typeof metadata.sceneStatus === "string" ? metadata.sceneStatus : null,
+    },
+    expanded,
+  );
   const excludeReasoningEnabled = excludePastReasoning !== false;
   const captioningEnabled =
     typeof imageCaptioningEnabled === "boolean"
@@ -137,32 +154,39 @@ export function AdvancedParametersSection({
     onImageCaptioningChange,
   ]);
 
-  const setParameters = (next: EditableGenerationParameters) => {
-    const editableKeys = new Set<string>(EDITABLE_PARAMETER_KEYS);
-    const sparse: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(params)) {
-      if (!editableKeys.has(key)) sparse[key] = value;
-    }
-    for (const key of EDITABLE_PARAMETER_KEYS) {
-      if (key === "enabledParameters") continue;
-      if (JSON.stringify(next[key]) !== JSON.stringify(defaults[key])) {
-        sparse[key] = next[key];
-      }
-    }
-    // Send toggles are behavior, not merely editable values. Keep the explicit
-    // map even when it matches the editor fallback so an inherited preset value
-    // cannot make a disabled parameter reappear in the provider request.
-    sparse.enabledParameters = next.enabledParameters ?? STRICT_CONNECTION_PARAMETER_SEND_DEFAULTS;
-    if (
-      next.strictRoleFormatting !== effectiveParams.strictRoleFormatting ||
-      next.singleUserMessage !== effectiveParams.singleUserMessage ||
-      params.strictRoleFormatting !== undefined ||
-      params.singleUserMessage !== undefined
-    ) {
-      sparse.strictRoleFormatting = next.strictRoleFormatting;
-      sparse.singleUserMessage = next.singleUserMessage;
-    }
-    onChatParametersChange(sparse);
+  // Every write stores the whole state, so values an older build saved in chatParameters move into overrides.
+  const writeParameters = (nextOverrides: ChatParameterOverrides, customParameters: Record<string, unknown>) => {
+    const kept = { ...stripLegacyChatParameters(metadata.chatParameters) };
+    if (Object.keys(customParameters).length > 0) kept.customParameters = customParameters;
+    else delete kept.customParameters;
+    onParametersChange({
+      chatParameters: Object.keys(kept).length > 0 ? kept : null,
+      chatParameterOverrides: Object.keys(nextOverrides).length > 0 ? nextOverrides : null,
+    });
+  };
+  const saveAsConnectionDefault = () => {
+    if (!connectionId) return;
+    const stored = readRecord(conn?.defaultParameters);
+    const fromChat = chatOverridesAsStoredParameters(overrides);
+    saveDefaults.mutate(
+      {
+        id: connectionId,
+        params: {
+          ...stored,
+          ...fromChat,
+          enabledParameters: { ...readRecord(stored.enabledParameters), ...fromChat.enabledParameters },
+          managedCustomParameters: {
+            ...readRecord(stored.managedCustomParameters),
+            ...fromChat.managedCustomParameters,
+          },
+          customParameters: { ...readRecord(stored.customParameters), ...chatCustomParameters },
+          imageCaptioningEnabled: captioningEnabled,
+          imageCaptioningConnectionId: selectedCaptioningConnectionId,
+        },
+      },
+      // The connection now holds these values, so the chat follows it again.
+      { onSuccess: () => writeParameters({}, {}) },
+    );
   };
   const toggleExpanded = () => setExpanded((open) => !open);
   const handleHeaderKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -206,11 +230,16 @@ export function AdvancedParametersSection({
           <p className="text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]">
             {localizeUi("settings.customGenerationParameters.availabilityHint")}
           </p>
-          <GenerationParametersFields
-            value={effectiveParams}
+          <ChatGenerationParametersFields
+            value={{ ...effectiveParams, customParameters: chatCustomParameters }}
             showServiceTier={conn?.provider === "openrouter" || conn?.provider === "nanogpt"}
-            enabledParametersFallback={STRICT_CONNECTION_PARAMETER_SEND_DEFAULTS}
-            onChange={setParameters}
+            sources={{
+              overrides,
+              baseline: baseline.data,
+              baselineLoading: baseline.isLoading,
+              onOverridesChange: (nextOverrides) => writeParameters(nextOverrides, chatCustomParameters),
+            }}
+            onChange={(next) => writeParameters(overrides, next.customParameters)}
           />
           <div className="space-y-2 pt-3">
             <SettingsSwitch
@@ -343,16 +372,7 @@ export function AdvancedParametersSection({
             <AgentSettingsActionButton
               type="button"
               variant="primary"
-              onClick={() => {
-                saveDefaults.mutate({
-                  id: connectionId,
-                  params: {
-                    ...(effectiveParams as unknown as Record<string, unknown>),
-                    imageCaptioningEnabled: captioningEnabled,
-                    imageCaptioningConnectionId: selectedCaptioningConnectionId,
-                  },
-                });
-              }}
+              onClick={saveAsConnectionDefault}
               className="w-full"
             >
               <Save size="0.625rem" className="inline mr-1 -mt-px" />
@@ -361,7 +381,11 @@ export function AdvancedParametersSection({
                 : localizeUi("ui.chatSettings.advancedparameterssection.saveAsConnectionDefault")}
             </AgentSettingsActionButton>
           )}
-          <AgentSettingsActionButton type="button" onClick={() => onChatParametersChange({})} className="w-full">
+          <AgentSettingsActionButton
+            type="button"
+            onClick={() => onParametersChange({ chatParameters: {}, chatParameterOverrides: null })}
+            className="w-full"
+          >
             {localizeUi("ui.chatSettings.advancedparameterssection.resetToDefaults")}
           </AgentSettingsActionButton>
         </div>

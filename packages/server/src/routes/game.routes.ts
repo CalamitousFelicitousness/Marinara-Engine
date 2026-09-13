@@ -189,6 +189,10 @@ import {
   extractLeadingThinkingBlocks,
   type RPGStatsConfig,
   speakerOpenTagRegex,
+  chatOverridesAsStoredParameters,
+  effectiveChatParameterOverrides,
+  stripChatSamplerParameters,
+  stripLegacyChatParameters,
 } from "@marinara-engine/shared";
 import {
   mergeCustomParameters,
@@ -3082,12 +3086,26 @@ function mergeEnabledParameters(
   return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
+/** A chat's own parameter layers: the stored fields overrides leave alone, then its Connection / Override / Off states. */
+function chatParameterLayers(meta: Record<string, unknown> | null | undefined): unknown[] {
+  return [
+    stripLegacyChatParameters(meta?.chatParameters),
+    chatOverridesAsStoredParameters(
+      effectiveChatParameterOverrides(meta?.chatParameters, meta?.chatParameterOverrides),
+    ),
+  ];
+}
+
 function resolveStoredGameGenerationParameters(
   meta: Record<string, unknown> | null | undefined,
   connectionDefaults: StoredGenerationParameters | null | undefined,
 ) {
   const setupConfig = (meta?.gameSetupConfig as Record<string, unknown> | null | undefined) ?? null;
-  return mergeStoredGenerationParameters(connectionDefaults, setupConfig?.generationParameters, meta?.chatParameters);
+  return mergeStoredGenerationParameters(
+    connectionDefaults,
+    setupConfig?.generationParameters,
+    ...chatParameterLayers(meta),
+  );
 }
 
 function resolveGameModelAccessPolicy(args: {
@@ -6599,7 +6617,10 @@ export async function gameRoutes(app: FastifyInstance) {
           ? setupConfig.spotifyArtist || null
           : null,
       gameLorebookKeeperEnabled: setupConfig.enableLorebookKeeper === true,
-      ...(gameChatParameters ? { chatParameters: gameChatParameters } : {}),
+      // Setup values stay in gameSetupConfig as their own layer; the chat keeps only what it stored itself.
+      ...(sessionMeta.chatParameters !== undefined
+        ? { chatParameters: stripChatSamplerParameters(sessionMeta.chatParameters) }
+        : {}),
     });
 
     const updatedSession = await chats.getById(sessionChat.id);
@@ -12324,7 +12345,7 @@ export async function gameRoutes(app: FastifyInstance) {
       const parameters =
         ownerMode === "game"
           ? resolveStoredGameGenerationParameters(meta, defaultGenerationParameters)
-          : mergeStoredGenerationParameters(defaultGenerationParameters, meta.chatParameters);
+          : mergeStoredGenerationParameters(defaultGenerationParameters, ...chatParameterLayers(meta));
       const provider = await createGameMainProvider(connections, conn, baseUrl);
 
       const setupCfg = ownerMode === "game" ? ((meta.gameSetupConfig as Record<string, unknown> | null) ?? null) : null;

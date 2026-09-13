@@ -218,10 +218,11 @@ test("prompt controls persist and preview preserves the selected history shape",
         .click();
     };
     const selector = page.getByRole("combobox", { name: "Post-Processing Messages" });
-    const savedParameters = async () => {
+    const postProcessingSource = page.getByRole("radiogroup", { name: "Post-Processing Messages source" });
+    const savedPostProcessing = async () => {
       const row = await (await request.get(`/api/chats/${chat.id}`)).json();
       const meta = typeof row.metadata === "string" ? JSON.parse(row.metadata) : row.metadata;
-      return meta.chatParameters ?? {};
+      return meta.chatParameterOverrides?.postProcessing?.value ?? {};
     };
     const preview = async () => {
       const response = await request.post("/api/generate/dryRun", { data: { chatId: chat.id, returnPrompt: true } });
@@ -229,10 +230,16 @@ test("prompt controls persist and preview preserves the selected history shape",
       return (await response.json()).prompt.messages as Array<{ role: string; content: string }>;
     };
     await openSettings();
-    await expect(selector).toHaveValue("apply");
+    await expect(postProcessingSource.getByRole("radio", { name: "Connection", exact: true })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    await expect(selector).toBeDisabled();
     await expect(page.getByText("Service Tier", { exact: true })).toBeVisible();
+    await postProcessingSource.getByRole("radio", { name: "Override", exact: true }).click();
+    await expect(selector).toHaveValue("apply");
     await selector.selectOption("none");
-    await expect.poll(async () => (await savedParameters()).strictRoleFormatting).toBe(false);
+    await expect.poll(async () => (await savedPostProcessing()).strictRoleFormatting).toBe(false);
     await page.reload();
     await openSettings();
     await expect(selector).toHaveValue("none");
@@ -242,12 +249,12 @@ test("prompt controls persist and preview preserves the selected history shape",
     expect(prompt[0]?.content).toContain("SYSTEM_RULES");
     expect(prompt[0]?.content).toContain("SYSTEM_WORLD");
     await selector.selectOption("single");
-    await expect.poll(async () => (await savedParameters()).singleUserMessage).toBe(true);
+    await expect.poll(async () => (await savedPostProcessing()).singleUserMessage).toBe(true);
     prompt = await preview();
     expect(prompt.map((m) => m.role)).toEqual(["system", "user"]);
     expect(prompt[1]?.content).toContain("HISTORY_FOUR");
     await selector.selectOption("apply");
-    await expect.poll(async () => (await savedParameters()).strictRoleFormatting).toBe(true);
+    await expect.poll(async () => (await savedPostProcessing()).strictRoleFormatting).toBe(true);
     prompt = await preview();
     expect(prompt.some((m) => m.content.includes("HISTORY_ONE") && m.content.includes("HISTORY_TWO"))).toBe(true);
     await testInfo.attach("post-processing-controls", { body: await page.screenshot(), contentType: "image/png" });

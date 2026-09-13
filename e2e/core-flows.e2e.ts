@@ -1452,15 +1452,15 @@ test("Message actions stay inside the viewport on a narrow phone", async ({ page
           })
           .map((button) => button.getAttribute("aria-label") ?? "?");
         const clipped = row.scrollWidth > row.clientWidth;
-        return offscreen.length || clipped
-          ? [`${role}: clipped=${clipped} offscreen=[${offscreen.join(", ")}]`]
-          : [];
+        return offscreen.length || clipped ? [`${role}: clipped=${clipped} offscreen=[${offscreen.join(", ")}]`] : [];
       }),
     );
     expect(overflowing, "action buttons must wrap rather than leave the viewport").toEqual([]);
 
     // The reported symptom: Delete is last in the row, so it goes first.
-    const deleteButton = page.locator("[data-message-role='assistant'] .mari-message-actions button[aria-label='Delete']");
+    const deleteButton = page.locator(
+      "[data-message-role='assistant'] .mari-message-actions button[aria-label='Delete']",
+    );
     await expect(deleteButton.first()).toBeInViewport();
   } finally {
     await page.request.delete(`/api/chats/${chat.id}?force=true`).catch(() => undefined);
@@ -12590,6 +12590,10 @@ test("custom generation parameters become reusable chat controls", async ({ page
     await page.getByRole("button", { name: "Chat Settings", exact: true }).filter({ visible: true }).click();
     const drawer = page.locator(".mari-chat-settings-drawer");
     await drawer.getByText("Advanced Parameters", { exact: true }).click();
+    await drawer
+      .getByRole("radiogroup", { name: "Assistant Prefill source" })
+      .getByRole("radio", { name: "Override", exact: true })
+      .click();
     await expect(drawer.locator('textarea[placeholder="<thinking>"]')).toHaveAttribute("placeholder", "<thinking>");
     await expect(drawer.getByText("Min P", { exact: true })).toBeVisible();
     const minPInput = drawer.getByRole("textbox", { name: "Min P", exact: true });
@@ -12604,13 +12608,14 @@ test("custom generation parameters become reusable chat controls", async ({ page
     expect(minPInputBox!.y).toBeGreaterThan(frequencyInputBox!.y + frequencyInputBox!.height);
     expect(minPInputBox!.y).toBeGreaterThan(presenceInputBox!.y + presenceInputBox!.height);
 
+    const minPOverride = drawer
+      .getByRole("radiogroup", { name: "Min P source" })
+      .getByRole("radio", { name: "Override", exact: true });
+    await minPOverride.click();
+    await expect(minPOverride).toHaveAttribute("aria-checked", "true");
     await minPInput.fill("0,35");
     await minPInput.blur();
-    const minPSendToggle = drawer.getByRole("checkbox", { name: "Send Min P parameter" });
-    const minPSendToggleId = await minPSendToggle.getAttribute("id");
-    expect(minPSendToggleId).toBeTruthy();
-    await drawer.locator(`label[for="${minPSendToggleId}"]`).click();
-    await expect(minPSendToggle).toBeChecked();
+    await expect(minPInput).toHaveValue("0.35");
   } finally {
     await page.request.delete(`/api/chats/${chat.id}`).catch(() => undefined);
   }

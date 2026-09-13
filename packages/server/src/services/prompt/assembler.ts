@@ -219,7 +219,7 @@ export interface AssemblerOutput {
   runtimeAgentTypesUsed?: string[];
 }
 
-function parsePresetParameters(raw: string): GenerationParameters {
+export function parsePresetParameters(raw: string): GenerationParameters {
   let parsed: unknown = null;
   try {
     parsed = JSON.parse(raw) as unknown;

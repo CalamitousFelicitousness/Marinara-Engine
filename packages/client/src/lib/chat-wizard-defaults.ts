@@ -1,4 +1,4 @@
-import { CHAT_PRESET_EXCLUDED_METADATA_KEYS, type Chat } from "@marinara-engine/shared";
+import { CHAT_PRESET_EXCLUDED_METADATA_KEYS, stripChatSamplerParameters, type Chat } from "@marinara-engine/shared";
 import { getChatCharacterIds } from "./chat-macros";
 
 export type ChatWizardMode = "conversation" | "roleplay";
@@ -23,7 +23,7 @@ const excluded = new Set([
 
 export function captureChatWizardDefaults(chat: Chat, overrides: Record<string, unknown> = {}): ChatWizardDefaults {
   const metadata = readChatMetadata(chat);
-  return {
+  return sanitizeChatWizardDefaults({
     name: chat.name,
     connectionId: chat.connectionId ?? null,
     promptPresetId: chat.promptPresetId ?? null,
@@ -31,6 +31,15 @@ export function captureChatWizardDefaults(chat: Chat, overrides: Record<string, 
     personaCharacterId: chat.personaCharacterId ?? null,
     characterIds: getChatCharacterIds(chat),
     metadata: Object.fromEntries(Object.entries({ ...metadata, ...overrides }).filter(([key]) => !excluded.has(key))),
+  });
+}
+
+/** Sampling values and switches live in chatParameterOverrides, so a snapshot's chatParameters must not carry them. */
+export function sanitizeChatWizardDefaults(defaults: ChatWizardDefaults): ChatWizardDefaults {
+  if (!Object.prototype.hasOwnProperty.call(defaults.metadata, "chatParameters")) return defaults;
+  return {
+    ...defaults,
+    metadata: { ...defaults.metadata, chatParameters: stripChatSamplerParameters(defaults.metadata.chatParameters) },
   };
 }
 

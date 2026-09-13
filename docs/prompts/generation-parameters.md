@@ -42,25 +42,35 @@ Together, **Frequency** and **Presence** are the repetition penalties.
 
 **Reasoning Effort** tells a thinking-capable model how much to reason before it answers. A thinking-capable model is one that works through a problem in hidden steps first. The choices are **None**, **Low**, **Medium**, **High**, **Xhigh**, and **Maximum**. If the model does not support the tier you pick, Marinara lowers it to the strongest tier that model allows.
 
-When the parameter switch is on, **None** asks the provider to disable thinking explicitly instead of merely leaving out the effort setting. Marinara sends the provider-specific off control only to models known to support it. Some reasoning-mandatory models cannot turn thinking off and may still return reasoning; choose a non-reasoning model when thinking must be absent. Turning the parameter switch itself off is different: it sends no reasoning preference and leaves the provider's default behavior unchanged.
+When Reasoning Effort is sent, **None** asks the provider to disable thinking explicitly instead of merely leaving out the effort setting. Marinara sends the provider-specific off control only to models known to support it. Some reasoning-mandatory models cannot turn thinking off and may still return reasoning; choose a non-reasoning model when thinking must be absent. Not sending the parameter is different: it sends no reasoning preference and leaves the provider's default behavior unchanged.
 
 **Verbosity** controls how long and detailed replies should be. The choices are **None**, **Low**, **Medium**, and **High**. **Low** keeps replies short. **High** encourages longer, more descriptive replies. Only some models use this setting.
 
-## The Send switch
+## The Send switch on a connection
 
-Every numeric parameter, plus **Reasoning Effort** and **Verbosity**, has a small on and off switch next to its name. The switch has no text label in the app; this guide calls it the Send switch. Hover it to see "This parameter is sent to the model" or "This parameter is not sent to the model."
+In a connection's custom defaults, every numeric parameter, plus **Reasoning Effort** and **Verbosity**, has a small on and off switch next to its name. This guide calls it the Send switch. Hover it to see "This parameter is sent to the model" or "This parameter is not sent to the model."
 
 When a parameter's Send switch is on, Marinara includes that parameter in the request to the provider. When it is off, Marinara leaves that parameter out completely. The provider then uses its own default for that setting.
 
-Turning the Send switch off is different from setting a value like 1 or 0. A value of 1 still tells the provider what to use. Turning the switch off tells the provider nothing, so the model decides.
+Not sending a parameter is different from setting a value like 1 or 0. A value of 1 still tells the provider what to use. Leaving the parameter out tells the provider nothing, so the model decides.
 
-Use the Send switch when a provider says two settings cannot be used together. Turn one of them off and try again. You will also use it when an error says a parameter is not accepted or is required. Turn that parameter's switch off if it is not accepted, or on if it is required.
+## Connection, Override, and Off in a chat
 
-In a chat's **Advanced Parameters**, only **Max Output Tokens** and **Reasoning Effort** have their Send switch on by default. The others start off.
+A chat follows its connection unless you say otherwise. In a chat's **Advanced Parameters**, each parameter has three choices under its name:
+
+- **Connection** uses what the connection side sends. The locked field shows the value and where it comes from, such as "0.95 · from connection", "1 · from preset", "1 · app default", or "Not sent by connection".
+- **Override** sets a value for this chat only.
+- **Off** leaves the parameter out in this chat. When a value would otherwise be sent, the locked field shows it struck through. When nothing would be sent, it reads "Not sent in this chat".
+
+**Post-Processing** and **Service Tier** always have a value, so they offer only **Connection** and **Override**. A chat's **Custom Parameters** are combined with the connection's, which are shown above the chat's box.
+
+Use **Off** when a provider says two settings cannot be used together, or when an error says a parameter is not accepted. Use **Override** when an error says a parameter is required.
+
+**Save as Connection Default** copies the chat's overrides to its connection and sets those parameters back to **Connection**. **Reset to Defaults** sets every parameter back to **Connection**.
 
 ## Default values
 
-New chats start from a built-in baseline. The table below shows those starting values and whether each one is sent by default.
+A connection's custom defaults start from a built-in baseline. The table below shows those starting values and whether each one is sent by default.
 
 | Parameter | Starting value | Sent by default |
 |---|---|---|

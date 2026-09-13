@@ -126,8 +126,8 @@ No restart is needed. The banner has a Copy button that fills in the exact line 
 Generation errors appear as a toast at the bottom of the screen. If a connection failed, the toast names the reason. The toast stays up long enough to read and copy.
 
 - **No API connection configured for this chat**: the chat has no connection selected. Open the **Connections** panel, create one, then pick it for the chat. See [Connecting to an AI Provider](connections/connecting-to-a-provider.md). An API key is a secret code from a provider that lets Marinara use their models.
-- The model does not accept a parameter: the toast tells you which one. Open **Chat Settings** > **Advanced Parameters** and find that parameter. Turn off the switch next to its name (the tooltip reads "This parameter is sent to the model").
-- The model says a parameter is required: do the same, but turn the switch next to that parameter on.
+- The model does not accept a parameter: the toast tells you which one. Open **Chat Settings** > **Advanced Parameters**, find that parameter, and set it to **Off**. To stop sending it in every chat on the connection, turn off its Send switch in the connection's custom defaults instead.
+- The model says a parameter is required: find that parameter the same way and set it to **Override**, or turn its Send switch on in the connection's custom defaults.
 - **The AI returned an empty response. Try sending your message again.**: send your message again. If it keeps happening, try a different model or connection.
 - **A generation is already in progress for this chat**: one reply is still streaming. Wait for it to finish or click the Stop button, then try again.
 - **No connections are marked for the random pool**: you turned on random connection routing but marked no connections for the pool. Add at least one connection to the pool, or turn random routing off.

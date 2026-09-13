@@ -117,8 +117,8 @@ If a reply fails, Marinara shows a toast notification at the bottom of the scree
 
 For some common problems, Marinara rewrites the raw error into a clear next step:
 
-- If the model rejects a parameter it does not support, the toast tells you how to fix it. Go to **Chat Settings**, open **Advanced Parameters**, and turn off **Send** for that parameter.
-- If the model requires a parameter that is off, the toast tells you to turn it back on. Go to the same place and turn on **Send** for that parameter.
+- If the model rejects a parameter it does not support, the toast tells you how to fix it. Go to **Chat Settings**, open **Advanced Parameters**, and set that parameter to **Off**.
+- If the model requires a parameter that is not being sent, the toast tells you to send it. Go to the same place and set that parameter to **Override**.
 - If the reply comes back completely empty, the toast tells you to try sending your message again.
 
 Other clear messages you may see:

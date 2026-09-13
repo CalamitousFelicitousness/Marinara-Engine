@@ -1,15 +1,21 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   GENERATION_PARAMETER_SEND_KEYS,
   customRequestHeadersSchema,
   normalizeThinkingTagPairs,
+  type ChatParameterOverride,
+  type ChatParameterOverrides,
+  type ChatPostProcessing,
+  type GenerationParameterBaseline,
   type GenerationParameterSendKey,
   type GenerationParameterSendMap,
   type GenerationParameters,
   type ManagedGenerationParameterDefinition,
+  type ParameterTraceLayer,
   type ThinkingTagPair,
 } from "@marinara-engine/shared";
 import { cn } from "../../lib/utils";
+import { ParameterSourceControl, type ParameterSource } from "./ParameterSourceControl";
 import { SettingsSwitch } from "../panels/settings/SettingControls";
 import { MacroTextarea, type MacroTextareaProps } from "./MacroTextarea";
 import { HelpTooltip } from "./HelpTooltip";
@@ -520,6 +526,590 @@ export function GenerationParametersFields({
   );
 }
 
+export interface ChatParameterSources {
+  overrides: ChatParameterOverrides;
+  baseline: GenerationParameterBaseline | undefined;
+  baselineLoading: boolean;
+  onOverridesChange: (next: ChatParameterOverrides) => void;
+}
+
+const BASELINE_SOURCE_KEYS: Record<ParameterTraceLayer, string> = {
+  default: "ui.ui.generationparametersfields.baselineAppDefault",
+  preset: "ui.ui.generationparametersfields.baselineFromPreset",
+  connection: "ui.ui.generationparametersfields.baselineFromConnection",
+  chat: "ui.ui.generationparametersfields.baselineFromConnection",
+  scene: "ui.ui.generationparametersfields.baselineScene",
+  "game mode": "ui.ui.generationparametersfields.baselineGameMode",
+  "model rule": "ui.ui.generationparametersfields.baselineModelRule",
+  "agent rule": "ui.ui.generationparametersfields.baselineFromConnection",
+  "agent settings": "ui.ui.generationparametersfields.baselineFromConnection",
+};
+
+type ChatNumberKey = "temperature" | "maxTokens" | "topP" | "topK" | "frequencyPenalty" | "presencePenalty";
+
+/** What a locked field shows; a note is placeholder text, never a value. */
+type LockedDisplay = { text: string; struck: boolean; note: boolean };
+
+/** Where a layer below the chat would send `text`, `null` when nothing would be sent, `undefined` when unknown. */
+type BelowChat = { text: string; source: ParameterTraceLayer } | null | undefined;
+
+function sourceOf(override: { mode: "override" | "off" } | undefined): ParameterSource {
+  return override?.mode ?? "connection";
+}
+
+function LockedParameterField({
+  label,
+  display,
+  multiline = false,
+}: {
+  label: string;
+  display: LockedDisplay;
+  multiline?: boolean;
+}) {
+  const className = cn(
+    multiline
+      ? PARAM_TEXTAREA_CLASS
+      : "mari-chrome-field mari-chrome-field--compact mt-0.5 w-full !rounded-md px-2.5 py-1.5 text-xs",
+    display.note && "italic",
+    display.struck && "line-through",
+  );
+  const text = display.note ? { value: "", placeholder: display.text } : { value: display.text };
+  return multiline ? (
+    <textarea disabled aria-label={label} title={display.text} rows={3} className={className} {...text} />
+  ) : (
+    <input type="text" disabled aria-label={label} title={display.text} className={className} {...text} />
+  );
+}
+
+function FieldLabel({ label, help }: { label: string; help?: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 text-[0.625rem] font-medium text-[var(--muted-foreground)]">
+      {label}
+      {help && <HelpTooltip text={help} size="0.625rem" />}
+    </span>
+  );
+}
+
+/**
+ * A chat's Advanced Parameters: each field follows the layers below the chat (Connection), sets its own value
+ * (Override), or sends nothing (Off). Locked fields show the value those layers would send and where it comes from.
+ */
+export function ChatGenerationParametersFields({
+  value,
+  onChange,
+  sources,
+  showServiceTier = false,
+}: {
+  /** Start values for fields switched to Override, and the chat's own Custom Parameters. */
+  value: EditableGenerationParameters;
+  onChange: (next: EditableGenerationParameters) => void;
+  sources: ChatParameterSources;
+  showServiceTier?: boolean;
+}) {
+  const { t: localizeUi } = useUiTranslation();
+  const { data: managedDefinitions = [] } = useCustomGenerationParameters();
+  const { overrides, baseline, baselineLoading, onOverridesChange } = sources;
+
+  const setOverride = (key: keyof ChatParameterOverrides, next: unknown) => {
+    const updated = { ...overrides } as Record<string, unknown>;
+    if (next === undefined) delete updated[key];
+    else updated[key] = next;
+    onOverridesChange(updated as ChatParameterOverrides);
+  };
+  const setManaged = (id: string, next: ChatParameterOverride<number> | undefined) => {
+    const managed = { ...overrides.managed };
+    if (next === undefined) delete managed[id];
+    else managed[id] = next;
+    setOverride("managed", Object.keys(managed).length > 0 ? managed : undefined);
+  };
+
+  const unavailableNote = () =>
+    localizeUi(
+      baselineLoading
+        ? "ui.ui.generationparametersfields.baselineLoading"
+        : baseline?.connection.kind === "random"
+          ? "ui.ui.generationparametersfields.baselineRandomPool"
+          : "ui.ui.generationparametersfields.baselineNoConnection",
+    );
+  const note = (text: string): LockedDisplay => ({ text, struck: false, note: true });
+  const notSentByConnection = localizeUi("ui.ui.generationparametersfields.baselineNotSentByConnection");
+  // Off strikes through only a value that would really be sent; with nothing to withhold it says so instead.
+  const lockedDisplay = (source: ParameterSource, below: BelowChat, notSentText: string): LockedDisplay => {
+    if (below === undefined) return note(unavailableNote());
+    if (source === "off") {
+      return below
+        ? { text: below.text, struck: true, note: false }
+        : note(localizeUi("ui.ui.generationparametersfields.baselineNotSentInChat"));
+    }
+    return below
+      ? { text: localizeUi(BASELINE_SOURCE_KEYS[below.source], { value: below.text }), struck: false, note: false }
+      : note(notSentText);
+  };
+  const sendKeyBelow = (key: GenerationParameterSendKey): BelowChat => {
+    const entry = baseline?.parameters?.[key];
+    if (!entry) return undefined;
+    return entry.sent && entry.value !== null ? { text: String(entry.value), source: entry.source } : null;
+  };
+  const sendKeyNotSent = (key: GenerationParameterSendKey) => {
+    const notSentBy = baseline?.parameters?.[key]?.notSentBy;
+    return notSentBy === "suppressed" || notSentBy === "model rule"
+      ? localizeUi("ui.ui.generationparametersfields.baselineNotSentForModel")
+      : notSentByConnection;
+  };
+
+  const numberRows: Array<{
+    key: ChatNumberKey;
+    label: string;
+    help: string;
+    min: number;
+    max?: number;
+    step: number;
+  }> = [
+    {
+      key: "temperature",
+      label: localizeUi("ui.ui.generationparametersfields.temperature"),
+      help: localizeUi("ui.ui.generationparametersfields.controlsRandomnessLowerValuesMakeOutputMoreFocusedAnd"),
+      min: 0,
+      max: 2,
+      step: 0.05,
+    },
+    {
+      key: "maxTokens",
+      label: localizeUi("ui.agents.agenteditor.maxOutputTokens"),
+      help: localizeUi("ui.ui.generationparametersfields.theMaximumNumberOfTokensTheModelCanGenerate"),
+      min: 1,
+      step: 256,
+    },
+    {
+      key: "topP",
+      label: localizeUi("ui.ui.generationparametersfields.topP"),
+      help: localizeUi(
+        "ui.ui.generationparametersfields.nucleusSamplingOnlyConsidersTokensWhoseCumulativeProbabilityReaches",
+      ),
+      min: 0,
+      max: 1,
+      step: 0.05,
+    },
+    {
+      key: "topK",
+      label: localizeUi("ui.ui.generationparametersfields.topK"),
+      help: localizeUi("ui.ui.generationparametersfields.limitsTheModelToOnlyConsiderTheTopK"),
+      min: 0,
+      max: 500,
+      step: 1,
+    },
+    {
+      key: "frequencyPenalty",
+      label: localizeUi("ui.ui.generationparametersfields.frequency"),
+      help: localizeUi("ui.ui.generationparametersfields.penalizesTokensBasedOnHowOftenTheyVeAlready"),
+      min: -2,
+      max: 2,
+      step: 0.05,
+    },
+    {
+      key: "presencePenalty",
+      label: localizeUi("ui.ui.generationparametersfields.presence"),
+      help: localizeUi("ui.ui.generationparametersfields.penalizesTokensThatHaveAppearedAtAllRegardlessOf"),
+      min: -2,
+      max: 2,
+      step: 0.05,
+    },
+  ];
+
+  const renderChoiceRow = <K extends "reasoningEffort" | "verbosity">(
+    key: K,
+    label: string,
+    help: string,
+    levels: ReadonlyArray<EditableGenerationParameters[K]>,
+    levelLabel: (level: EditableGenerationParameters[K]) => string,
+  ) => {
+    const override = overrides[key] as ChatParameterOverride<EditableGenerationParameters[K]> | undefined;
+    const source = sourceOf(override);
+    const entry = baseline?.parameters?.[key];
+    const selected = override?.mode === "override" ? override.value : entry?.sent ? entry.value : undefined;
+    const locked = override?.mode !== "override";
+    return (
+      <div>
+        <ParameterHeader label={label} help={help} />
+        <ParameterSourceControl
+          label={label}
+          value={source}
+          onChange={(next) =>
+            setOverride(
+              key,
+              next === "connection"
+                ? undefined
+                : next === "off"
+                  ? { mode: "off" }
+                  : { mode: "override", value: entry ? entry.value : value[key] },
+            )
+          }
+        />
+        <div className={cn("mt-1 flex flex-wrap gap-1.5", locked && "opacity-50")}>
+          {levels.map((level) => {
+            const pressed = selected !== undefined && selected === level;
+            return (
+              <button
+                key={level ?? "none"}
+                type="button"
+                disabled={locked}
+                onClick={() => setOverride(key, { mode: "override", value: level })}
+                aria-pressed={pressed}
+                className={cn(
+                  "rounded-md px-2 py-1 text-[0.625rem] font-medium transition-all disabled:cursor-not-allowed",
+                  pressed ? PARAM_CHOICE_ACTIVE_CLASS : PARAM_CHOICE_IDLE_CLASS,
+                  pressed && source === "off" && "line-through",
+                )}
+              >
+                {levelLabel(level)}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  const renderPrefillRow = (
+    key: "assistantPrefill" | "assistantReasoningPrefill",
+    label: string,
+    help: string,
+    placeholder: string,
+  ) => {
+    const override = overrides[key];
+    const source = sourceOf(override);
+    const field = baseline?.fields?.[key];
+    const below: BelowChat = baseline?.fields
+      ? field?.value
+        ? { text: field.value, source: field.source }
+        : null
+      : undefined;
+    return (
+      <div>
+        <FieldLabel label={label} help={help} />
+        <ParameterSourceControl
+          label={label}
+          value={source}
+          onChange={(next) =>
+            setOverride(
+              key,
+              next === "connection"
+                ? undefined
+                : next === "off"
+                  ? { mode: "off" }
+                  : { mode: "override", value: field?.value ?? value[key] ?? "" },
+            )
+          }
+        />
+        {override?.mode === "override" ? (
+          <DraftMacroTextarea
+            value={override.value}
+            onCommit={(nextValue) => setOverride(key, { mode: "override", value: nextValue })}
+            rows={3}
+            title={label}
+            className={PARAM_TEXTAREA_CLASS}
+            placeholder={placeholder}
+          />
+        ) : (
+          <LockedParameterField multiline label={label} display={lockedDisplay(source, below, notSentByConnection)} />
+        )}
+      </div>
+    );
+  };
+
+  const postProcessingLabel = localizeUi("settings.generation.postProcessing.label");
+  const postProcessingOverride = overrides.postProcessing;
+  const postProcessingBelow = baseline?.fields?.postProcessing;
+  const postProcessingOption = (settings: ChatPostProcessing) =>
+    settings.singleUserMessage ? "single" : settings.strictRoleFormatting ? "apply" : "none";
+
+  const tagsLabel = localizeUi("ui.ui.thinkingtagsinput.thinkingTags");
+  const tagsOverride = overrides.customThinkingTags;
+  const tagsSource = sourceOf(tagsOverride);
+  const tagsField = baseline?.fields?.customThinkingTags;
+  const tagsBelow: BelowChat = baseline?.fields
+    ? tagsField && tagsField.value.length > 0
+      ? { text: stringifyThinkingTags(tagsField.value), source: tagsField.source }
+      : null
+    : undefined;
+  const tagsControl = (
+    <ParameterSourceControl
+      label={tagsLabel}
+      value={tagsSource}
+      onChange={(next) =>
+        setOverride(
+          "customThinkingTags",
+          next === "connection"
+            ? undefined
+            : next === "off"
+              ? { mode: "off" }
+              : { mode: "override", value: tagsField?.value ?? value.customThinkingTags },
+        )
+      }
+    />
+  );
+
+  const tierOverride = overrides.serviceTier;
+  const tierField = baseline?.fields?.serviceTier;
+  const selectedTier = tierOverride ? tierOverride.value : tierField ? tierField.value : undefined;
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-2">
+        {numberRows.map((row) => {
+          const override = overrides[row.key] as ChatParameterOverride<number> | undefined;
+          const source = sourceOf(override);
+          const baselineValue = baseline?.parameters?.[row.key]?.value;
+          return (
+            <div key={row.key}>
+              <ParameterHeader label={row.label} help={row.help} />
+              <ParameterSourceControl
+                label={row.label}
+                value={source}
+                onChange={(next) =>
+                  setOverride(
+                    row.key,
+                    next === "connection"
+                      ? undefined
+                      : next === "off"
+                        ? { mode: "off" }
+                        : {
+                            mode: "override",
+                            value: typeof baselineValue === "number" ? baselineValue : value[row.key],
+                          },
+                  )
+                }
+              />
+              {override?.mode === "override" ? (
+                <ParamNumberField
+                  label={row.label}
+                  value={override.value}
+                  onChange={(nextValue) => setOverride(row.key, { mode: "override", value: nextValue })}
+                  min={row.min}
+                  max={row.max}
+                  step={row.step}
+                />
+              ) : (
+                <LockedParameterField
+                  label={row.label}
+                  display={lockedDisplay(source, sendKeyBelow(row.key), sendKeyNotSent(row.key))}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {managedDefinitions.length > 0 && (
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {managedDefinitions.map((definition) => {
+            const override = overrides.managed?.[definition.id];
+            const source = sourceOf(override);
+            const entry = baseline?.managed?.[definition.id];
+            const below: BelowChat = baseline?.managed
+              ? entry?.enabled
+                ? { text: String(entry.value), source: entry.source }
+                : null
+              : undefined;
+            return (
+              <div key={definition.id}>
+                <ParameterHeader label={definition.name} help={definition.tooltip} />
+                <ParameterSourceControl
+                  label={definition.name}
+                  value={source}
+                  onChange={(next) =>
+                    setManaged(
+                      definition.id,
+                      next === "connection"
+                        ? undefined
+                        : next === "off"
+                          ? { mode: "off" }
+                          : { mode: "override", value: entry?.value ?? definition.min },
+                    )
+                  }
+                />
+                {override?.mode === "override" ? (
+                  <ParamNumberField
+                    label={definition.name}
+                    value={override.value}
+                    onChange={(nextValue) => setManaged(definition.id, { mode: "override", value: nextValue })}
+                    min={definition.min}
+                    max={definition.max}
+                    step={Math.max(0.001, Math.min(1, (definition.max - definition.min) / 100))}
+                  />
+                ) : (
+                  <LockedParameterField
+                    label={definition.name}
+                    display={lockedDisplay(source, below, notSentByConnection)}
+                  />
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <div className="space-y-2">
+        <div>
+          <FieldLabel label={postProcessingLabel} help={localizeUi("settings.generation.postProcessing.help")} />
+          <ParameterSourceControl
+            label={postProcessingLabel}
+            value={sourceOf(postProcessingOverride)}
+            allowOff={false}
+            onChange={(next) =>
+              setOverride(
+                "postProcessing",
+                next === "override"
+                  ? {
+                      mode: "override",
+                      value: postProcessingBelow?.value ?? {
+                        strictRoleFormatting: value.strictRoleFormatting,
+                        singleUserMessage: value.singleUserMessage,
+                      },
+                    }
+                  : undefined,
+              )
+            }
+          />
+          {postProcessingOverride ? (
+            <select
+              aria-label={postProcessingLabel}
+              className="mari-chrome-field mt-1 w-full rounded-md px-3 py-2 text-xs"
+              value={postProcessingOption(postProcessingOverride.value)}
+              onChange={(event) =>
+                setOverride("postProcessing", {
+                  mode: "override",
+                  value: {
+                    strictRoleFormatting: event.target.value === "apply",
+                    singleUserMessage: event.target.value === "single",
+                  },
+                })
+              }
+            >
+              <option value="apply">{localizeUi("settings.generation.postProcessing.apply")}</option>
+              <option value="none">{localizeUi("settings.generation.postProcessing.none")}</option>
+              <option value="single">{localizeUi("settings.generation.postProcessing.single")}</option>
+            </select>
+          ) : (
+            <select
+              aria-label={postProcessingLabel}
+              disabled
+              className="mari-chrome-field mt-1 w-full rounded-md px-3 py-2 text-xs"
+              value="locked"
+            >
+              <option value="locked">
+                {postProcessingBelow
+                  ? localizeUi(BASELINE_SOURCE_KEYS[postProcessingBelow.source], {
+                      value: localizeUi(
+                        `settings.generation.postProcessing.${postProcessingOption(postProcessingBelow.value)}`,
+                      ),
+                    })
+                  : unavailableNote()}
+              </option>
+            </select>
+          )}
+        </div>
+        {renderPrefillRow(
+          "assistantPrefill",
+          localizeUi("ui.ui.generationparametersfields.assistantPrefill"),
+          localizeUi("ui.ui.generationparametersfields.optionalAssistantRoleTextAppendedAfterTheFinalUser"),
+          localizeUi("ui.ui.generationparametersfields.thinking", { value1: "<", value2: ">" }).trimStart(),
+        )}
+        {renderPrefillRow(
+          "assistantReasoningPrefill",
+          localizeUi("ui.ui.generationparametersfields.assistantReasoningPrefill"),
+          localizeUi("ui.ui.generationparametersfields.optionalReasoningContentOnTheFinalAssistantMessage"),
+          localizeUi("generationParameters.assistantReasoningPrefill.placeholder"),
+        )}
+        {tagsOverride?.mode === "override" ? (
+          <ThinkingTagsInput
+            value={tagsOverride.value}
+            onChange={(nextValue) => setOverride("customThinkingTags", { mode: "override", value: nextValue })}
+            sourceControl={tagsControl}
+          />
+        ) : (
+          <div>
+            <FieldLabel
+              label={tagsLabel}
+              help={localizeUi("ui.ui.thinkingtagsinput.thinkingMarksTheHiddenReasoningSlotAndWillBe")}
+            />
+            {tagsControl}
+            <LockedParameterField
+              multiline
+              label={tagsLabel}
+              display={lockedDisplay(tagsSource, tagsBelow, notSentByConnection)}
+            />
+          </div>
+        )}
+        {baseline?.customParameters && Object.keys(baseline.customParameters).length > 0 && (
+          <div>
+            <FieldLabel label={localizeUi("ui.ui.generationparametersfields.connectionCustomParameters")} />
+            <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-md bg-[var(--secondary)] px-2.5 py-1.5 text-[0.625rem] text-[var(--muted-foreground)]">
+              {stringifyCustomParameters(baseline.customParameters)}
+            </pre>
+          </div>
+        )}
+        <CustomParametersInput
+          value={value.customParameters}
+          onChange={(nextValue) => onChange({ ...value, customParameters: nextValue })}
+        />
+        {showServiceTier && (
+          <div>
+            <FieldLabel
+              label={localizeUi("settings.generation.serviceTier.label")}
+              help={localizeUi("settings.generation.serviceTier.help")}
+            />
+            <ParameterSourceControl
+              label={localizeUi("settings.generation.serviceTier.label")}
+              value={sourceOf(tierOverride)}
+              allowOff={false}
+              onChange={(next) =>
+                setOverride(
+                  "serviceTier",
+                  next === "override" ? { mode: "override", value: tierField?.value ?? value.serviceTier } : undefined,
+                )
+              }
+            />
+            <div className={cn("mt-1 flex flex-wrap gap-1.5", !tierOverride && "opacity-50")}>
+              {SERVICE_TIERS.map((tier) => (
+                <button
+                  key={tier ?? "default"}
+                  type="button"
+                  disabled={!tierOverride}
+                  onClick={() => setOverride("serviceTier", { mode: "override", value: tier })}
+                  aria-pressed={selectedTier === tier}
+                  className={cn(
+                    "rounded-md px-2 py-1 text-[0.625rem] font-medium transition-all disabled:cursor-not-allowed",
+                    selectedTier === tier ? PARAM_CHOICE_ACTIVE_CLASS : PARAM_CHOICE_IDLE_CLASS,
+                  )}
+                >
+                  {tier ? tier.charAt(0).toUpperCase() + tier.slice(1) : localizeUi("ui.noodle.noodlehome.default")}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {renderChoiceRow(
+          "reasoningEffort",
+          localizeUi("ui.ui.generationparametersfields.reasoningEffort"),
+          localizeUi("ui.ui.generationparametersfields.howMuchReasoningWorkTheProviderShouldSpendBefore"),
+          REASONING_LEVELS,
+          (level) =>
+            level
+              ? level.charAt(0).toUpperCase() + level.slice(1)
+              : localizeUi("ui.ui.generationparametersfields.reasoningOff"),
+        )}
+        {renderChoiceRow(
+          "verbosity",
+          localizeUi("ui.ui.generationparametersfields.verbosity"),
+          localizeUi("ui.ui.generationparametersfields.controlsHowLongAndDetailedResponsesShouldBeLow"),
+          VERBOSITY_LEVELS,
+          (level) =>
+            level ? level.charAt(0).toUpperCase() + level.slice(1) : localizeUi("ui.game.gamesurfacecomponent.none"),
+        )}
+      </div>
+    </div>
+  );
+}
+
 function DraftMacroTextarea({
   value,
   onCommit,
@@ -580,9 +1170,12 @@ function DraftMacroTextarea({
 function ThinkingTagsInput({
   value,
   onChange,
+  sourceControl,
 }: {
   value: ThinkingTagPair[];
   onChange: (next: ThinkingTagPair[]) => void;
+  /** Rendered between the label and the field in a chat's Advanced Parameters. */
+  sourceControl?: ReactNode;
 }) {
   const { t: localizeUi } = useUiTranslation();
   const serialized = stringifyThinkingTags(value);
@@ -617,6 +1210,7 @@ function ThinkingTagsInput({
           size="0.625rem"
         />
       </span>
+      {sourceControl}
       <MacroTextarea
         value={draft}
         onFocus={() => setFocused(true)}
@@ -818,6 +1412,29 @@ function ParamInput({
   step: number;
   help?: string;
 }) {
+  return (
+    <div>
+      <ParameterHeader label={label} help={help} sendEnabled={sendEnabled} onSendChange={onSendChange} />
+      <ParamNumberField label={label} value={value} onChange={onChange} min={min} max={max} step={step} />
+    </div>
+  );
+}
+
+function ParamNumberField({
+  label,
+  value,
+  onChange,
+  min,
+  max,
+  step,
+}: {
+  label: string;
+  value: number;
+  onChange: (next: number) => void;
+  min: number;
+  max?: number;
+  step: number;
+}) {
   const [draft, setDraft] = useState(String(value));
   const [error, setError] = useState<string | null>(null);
 
@@ -843,8 +1460,7 @@ function ParamInput({
   };
 
   return (
-    <div>
-      <ParameterHeader label={label} help={help} sendEnabled={sendEnabled} onSendChange={onSendChange} />
+    <>
       <input
         type="text"
         inputMode="decimal"
@@ -866,7 +1482,7 @@ function ParamInput({
         className="mari-chrome-field mari-chrome-field--compact mt-0.5 w-full !rounded-md px-2.5 py-1.5 text-xs"
       />
       {error && <p className="mt-1 text-[0.5625rem] text-amber-500">{error}</p>}
-    </div>
+    </>
   );
 }
 
@@ -878,8 +1494,9 @@ function ParameterHeader({
 }: {
   label: string;
   help?: string;
-  sendEnabled: boolean;
-  onSendChange: (enabled: boolean) => void;
+  /** Omitted where a ParameterSourceControl decides whether the parameter is sent. */
+  sendEnabled?: boolean;
+  onSendChange?: (enabled: boolean) => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
   return (
@@ -888,18 +1505,20 @@ function ParameterHeader({
         <span className="truncate">{label}</span>
         {help && <HelpTooltip text={help} size="0.625rem" />}
       </span>
-      <SettingsSwitch
-        ariaLabel={`Send ${label} parameter`}
-        checked={sendEnabled}
-        onChange={onSendChange}
-        labelPosition="start"
-        className="!gap-0 !rounded-md !p-0 hover:!bg-transparent"
-        title={
-          sendEnabled
-            ? localizeUi("ui.ui.parameterheader.thisParameterIsSentToTheModel")
-            : localizeUi("ui.ui.parameterheader.thisParameterIsNotSentToTheModel")
-        }
-      />
+      {onSendChange && (
+        <SettingsSwitch
+          ariaLabel={`Send ${label} parameter`}
+          checked={sendEnabled === true}
+          onChange={onSendChange}
+          labelPosition="start"
+          className="!gap-0 !rounded-md !p-0 hover:!bg-transparent"
+          title={
+            sendEnabled
+              ? localizeUi("ui.ui.parameterheader.thisParameterIsSentToTheModel")
+              : localizeUi("ui.ui.parameterheader.thisParameterIsNotSentToTheModel")
+          }
+        />
+      )}
     </div>
   );
 }

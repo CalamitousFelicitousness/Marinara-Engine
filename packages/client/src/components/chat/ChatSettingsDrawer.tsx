@@ -9424,9 +9424,11 @@ export function ChatSettingsDrawer({
           {/* Advanced Parameters */}
           <div style={{ order: CHAT_SETTINGS_ORDER.advancedParameters }}>
             <AdvancedParametersSection
+              chatId={chat.id}
               metadata={metadata}
               isConversation={isConversation}
               connectionId={chat.connectionId ?? null}
+              promptPresetId={chat.promptPresetId ?? null}
               connections={chatGenerationConnectionsList}
               contextMessageLimit={metadata.contextMessageLimit as number | null | undefined}
               excludePastReasoning={metadata.excludePastReasoning as boolean | undefined}
@@ -9438,7 +9440,7 @@ export function ChatSettingsDrawer({
                     : null
                   : undefined
               }
-              onChatParametersChange={(chatParameters) => updateMeta.mutate({ id: chat.id, chatParameters })}
+              onParametersChange={(patch) => updateMeta.mutate({ id: chat.id, ...patch })}
               onContextMessageLimitChange={(contextMessageLimit) =>
                 updateMeta.mutate({ id: chat.id, contextMessageLimit })
               }

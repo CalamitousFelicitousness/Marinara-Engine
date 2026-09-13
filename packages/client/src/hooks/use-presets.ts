@@ -4,6 +4,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api } from "../lib/api-client";
+import { parameterBaselineKeys } from "./use-parameter-baseline";
 import type { PromptPreset, PromptGroup, PromptSection, ChoiceBlock } from "@marinara-engine/shared";
 
 // ── Query Keys ──
@@ -85,6 +86,7 @@ export function useUpdatePreset() {
       qc.invalidateQueries({ queryKey: presetKeys.list() });
       qc.invalidateQueries({ queryKey: presetKeys.detail(variables.id) });
       qc.invalidateQueries({ queryKey: presetKeys.full(variables.id) });
+      qc.invalidateQueries({ queryKey: parameterBaselineKeys.all });
     },
     onError: (error) => {
       toast.error(mutationErrorMessage(error, "Failed to update preset."));
@@ -112,6 +114,7 @@ export function useDeletePreset() {
     mutationFn: (id: string) => api.delete(`/prompts/${id}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: presetKeys.all });
+      qc.invalidateQueries({ queryKey: parameterBaselineKeys.all });
     },
   });
 }

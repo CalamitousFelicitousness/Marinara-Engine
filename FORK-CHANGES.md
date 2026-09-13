@@ -488,6 +488,67 @@ Google providers, `packages/server/src/services/generation/generation-parameters
 
 Covered by `scripts/regressions/parameter-trace.regression.ts`.
 
+### Chat parameters follow the connection unless the chat says otherwise
+
+A chat's Advanced Parameters saved the whole send-switch map and every edited value on first edit,
+and New Chat setup, saved wizard defaults, chat profiles, and game creation saved full snapshots.
+Chats stopped following their connection without saying so: a top_p of 0.95 on the connection
+could reach the model as the provider default because a copied chat switch was off.
+
+Each chat parameter now has a state, stored as top-level chat metadata `chatParameterOverrides`:
+Connection (follow the layers below the chat), Override (use the chat's value), or Off (send
+nothing). Sampling parameters, both prefills, thinking tags, and managed numeric parameters have all
+three; Post-Processing and Service Tier have Connection and Override. The chat's Custom Parameters
+JSON still merges with the connection's and stays in `chatParameters`. The connection editor keeps
+its two-state Send switches.
+
+`resolveGenerationParameterRuntime` resolves start values, the roleplay preset, the connection, game
+setup (game chats), the chat's remaining `chatParameters`, scene and game-mode values, then the
+chat's overrides, managed parameters, the game max-token floor (skipped when the chat overrides max
+tokens), and Claude model rules. Scene and game-mode values therefore sit below a chat's Override
+and Off. Main generation, Peek Prompt's dry run, and game side calls read the same overrides; the
+dry run now uses the live route's start values and resolver.
+
+`GET /api/generate/parameter-baseline` resolves the layers below a chat, for a saved chat or for
+choices New Chat setup has not saved yet. The panel shows each value and its source in a locked
+field ("0.95 · from connection", "1 · from preset", "1 · app default", "game mode", "scene"). Off
+strikes through a value only when one would really be sent, otherwise it reads "Not sent in this
+chat".
+
+Existing chats: `migrateLegacyChatParameters` runs at startup. Saved sampling values and switches are
+dropped; other saved fields equal to what the connection side would send become Connection, and the
+rest become overrides. Until it runs, `effectiveChatParameterOverrides` reads those fields as
+overrides. Chat profiles and saved wizard defaults strip sampling values when read, and game creation
+no longer copies connection and setup values into the chat. Save as Connection Default writes the
+chat's overrides to the connection and clears them; Reset to Defaults clears both chat keys.
+
+New files: `packages/shared/src/utils/chat-parameter-overrides.ts`,
+`packages/server/src/services/generation/parameter-baseline.ts`,
+`packages/server/src/services/generation/legacy-chat-parameter-migration.ts`,
+`packages/server/src/routes/generate/parameter-baseline-route.ts`,
+`packages/client/src/components/ui/ParameterSourceControl.tsx`, and
+`packages/client/src/hooks/use-parameter-baseline.ts`.
+
+Patches to upstream files: `packages/shared/src/index.ts`, `packages/server/src/app.ts`,
+`packages/server/src/services/generation/provider-generation-runtime.ts` (the parameter layers are
+now a pure `resolveGenerationParameterRuntime`), `packages/server/src/routes/generate.routes.ts`,
+`packages/server/src/routes/generate/dry-run-route.ts`, `packages/server/src/routes/game.routes.ts`,
+`packages/server/src/services/prompt/assembler.ts` (exports `parsePresetParameters`),
+`packages/server/src/services/storage/chat-presets.storage.ts`,
+`packages/client/src/components/ui/GenerationParametersEditor.tsx`,
+`packages/client/src/features/chat-settings/sections/AdvancedParametersSection.tsx`,
+`packages/client/src/components/chat/ChatSettingsDrawer.tsx`,
+`packages/client/src/components/chat/ChatSetupWizard.tsx`,
+`packages/client/src/lib/chat-wizard-defaults.ts`, `packages/client/src/lib/generation-parameter-errors.ts`,
+`packages/client/src/hooks/use-connections.ts`, `packages/client/src/hooks/use-presets.ts`,
+`packages/client/src/hooks/use-custom-generation-parameters.ts`,
+`packages/client/src/localization/locales/en.json`, `docs/prompts/generation-parameters.md`,
+`docs/TROUBLESHOOTING.md`, `docs/chats/sending-and-streaming.md`, `e2e/core-flows.e2e.ts`,
+`e2e/prompt-controls.e2e.ts`, and `e2e/issue-sweep-settings.e2e.ts`.
+
+Covered by `scripts/regressions/chat-parameter-overrides.regression.ts` and
+`scripts/regressions/parameter-trace.regression.ts`.
+
 ### Multiswipe: several alternatives per turn, agents deferred until you pick
 
 One turn can now produce up to 4 alternatives in a single request, whether it is a regenerate or

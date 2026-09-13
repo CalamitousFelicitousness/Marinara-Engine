@@ -36,6 +36,7 @@ function resolveRuntime(args: {
   presetParameters?: { topP?: number; temperature?: number };
   connectionParameters?: unknown;
   chatParameters?: unknown;
+  chatParameterOverrides?: unknown;
 }) {
   const provider = args.provider ?? "openai";
   const model = args.model ?? "gpt-4o";
@@ -46,6 +47,7 @@ function resolveRuntime(args: {
     chatMode: args.chatMode ?? "roleplay",
     isSceneChat: false,
     chatParameters: args.chatParameters,
+    chatParameterOverrides: args.chatParameterOverrides,
     managedParameterDefinitions: [],
     modelAccessPolicy: resolveModelAccessPolicy({ provider, model }),
     initialSources: args.presetParameters ? storedParameterSources(args.presetParameters, "preset") : undefined,
@@ -86,33 +88,53 @@ function resolveRuntime(args: {
   const chatWins = resolveRuntime({
     presetParameters: { topP: 0.95 },
     connectionParameters: JSON.stringify({ topP: 1 }),
-    chatParameters: { topP: 0.9 },
+    chatParameterOverrides: { topP: { mode: "override", value: 0.9 } },
   });
   assert.equal(chatWins.topP, 0.9);
   assert.equal(chatWins.parameterSources.topP, "chat");
+
+  const legacyChatValues = resolveRuntime({
+    connectionParameters: { topP: 1 },
+    chatParameters: { topP: 0.9, enabledParameters: { topP: false } },
+  });
+  assert.equal(legacyChatValues.topP, 1, "sampling values saved in chatParameters are ignored");
+  assert.equal(legacyChatValues.parameterSources.topP, "connection");
+  assert.equal(legacyChatValues.enabledParameters?.topP, undefined, "saved chatParameters switches are ignored");
 
   const game = resolveRuntime({ chatMode: "game", chatParameters: { topP: 0.9 } });
   assert.equal(game.topP, 1);
   assert.equal(game.parameterSources.topP, "game mode");
   assert.equal(game.parameterSources.temperature, "game mode");
 
+  const gameOverride = resolveRuntime({
+    chatMode: "game",
+    chatParameterOverrides: { temperature: { mode: "override", value: 0.7 } },
+  });
+  assert.equal(gameOverride.temperature, 0.7, "a chat override wins over game mode");
+  assert.equal(gameOverride.parameterSources.temperature, "chat");
+  assert.equal(gameOverride.topP, 1);
+
   const gemma = resolveRuntime({
     provider: "custom",
     model: "gemma-3-27b",
     chatMode: "game",
-    chatParameters: { topP: 0.9 },
+    chatParameterOverrides: { topP: { mode: "override", value: 0.9 } },
   });
   assert.equal(gemma.topP, 0.9);
   assert.equal(gemma.parameterSources.topP, "chat");
   assert.equal(gemma.parameterSources.maxTokens, "game mode");
 
-  const claude = resolveRuntime({ provider: "anthropic", model: "claude-opus-4-6", chatParameters: { topP: 0.9 } });
+  const claude = resolveRuntime({
+    provider: "anthropic",
+    model: "claude-opus-4-6",
+    chatParameterOverrides: { topP: { mode: "override", value: 0.9 } },
+  });
   assert.equal(claude.topP, undefined);
   assert.equal(claude.parameterSources.topP, "model rule");
 
   const switchOff = resolveRuntime({
     connectionParameters: { enabledParameters: { topP: true, temperature: true } },
-    chatParameters: { enabledParameters: { topP: false } },
+    chatParameterOverrides: { topP: { mode: "off" } },
   });
   assert.equal(switchOff.sendSwitchSources.topP, "chat");
   assert.equal(switchOff.sendSwitchSources.temperature, "connection");

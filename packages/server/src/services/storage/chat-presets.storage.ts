@@ -11,6 +11,7 @@ import { withChatMetadataPatchQueue } from "./chats.storage.js";
 import {
   CHAT_PRESET_EXCLUDED_METADATA_KEYS,
   isRetiredBuiltInAgentId,
+  stripChatSamplerParameters,
   type ChatMode,
   type ChatPresetSettings,
   type CreateChatPresetInput,
@@ -61,6 +62,7 @@ function sanitizePresetAgentMap(value: unknown) {
 
 function sanitizePresetMetadataValue(key: string, value: unknown) {
   if (key === "activeAgentIds") return sanitizePresetAgentIds(value);
+  if (key === "chatParameters") return stripChatSamplerParameters(value) ?? {};
   if (key === "agentOverrides" || key === "agentPromptTemplateIds" || key === "customAgentImageSettings") {
     return sanitizePresetAgentMap(value);
   }

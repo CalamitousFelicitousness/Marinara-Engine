@@ -6,6 +6,7 @@ import {
   type ManagedGenerationParameterDefinition,
 } from "@marinara-engine/shared";
 import { api } from "../lib/api-client";
+import { parameterBaselineKeys } from "./use-parameter-baseline";
 
 export const customGenerationParameterKeys = {
   all: ["app-settings", CUSTOM_GENERATION_PARAMETERS_SETTINGS_KEY] as const,
@@ -34,6 +35,7 @@ export function useSaveCustomGenerationParameters() {
     },
     onSuccess: (definitions) => {
       queryClient.setQueryData(customGenerationParameterKeys.all, definitions);
+      queryClient.invalidateQueries({ queryKey: parameterBaselineKeys.all });
     },
   });
 }

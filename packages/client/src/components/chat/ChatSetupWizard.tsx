@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { cn, getAvatarCropStyle } from "../../lib/utils";
 import { useConnections } from "../../hooks/use-connections";
+import { useGenerationParameterBaseline } from "../../hooks/use-parameter-baseline";
 import { usePresets, usePresetFull, useDefaultPreset } from "../../hooks/use-presets";
 import { useCharacterGroups, useCharacters, usePersonas } from "../../hooks/use-characters";
 import { useLorebooks } from "../../hooks/use-lorebooks";
@@ -44,6 +45,7 @@ import { resolveConversationSelfieSetup } from "../../lib/conversation-selfie-se
 import {
   captureChatWizardDefaults,
   readChatMetadata,
+  sanitizeChatWizardDefaults,
   wizardDefaultsMetadataPatch,
   type ChatWizardDefaults,
 } from "../../lib/chat-wizard-defaults";
@@ -80,14 +82,17 @@ import {
   type Lorebook,
   type Message,
   type Persona,
+  effectiveChatParameterOverrides,
+  stripLegacyChatParameters,
+  type ChatParameterOverrides,
 } from "@marinara-engine/shared";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   CHAT_PARAMETER_DEFAULTS,
-  GenerationParametersFields,
+  ChatGenerationParametersFields,
   getEditableGenerationParameters,
-  parseEditableGenerationParameters,
   ROLEPLAY_PARAMETER_DEFAULTS,
+  type ChatParameterSources,
   type EditableGenerationParameters,
 } from "../ui/GenerationParametersEditor";
 import { DraftNumberInput } from "../ui/DraftNumberInput";
@@ -823,12 +828,14 @@ function SetupGenerationParametersPanel({
   enabled,
   value,
   showServiceTier,
+  sources,
   onEnabledChange,
   onChange,
 }: {
   enabled: boolean;
   value: EditableGenerationParameters;
   showServiceTier: boolean;
+  sources: ChatParameterSources;
   onEnabledChange: (enabled: boolean) => void;
   onChange: (next: EditableGenerationParameters) => void;
 }) {
@@ -859,11 +866,53 @@ function SetupGenerationParametersPanel({
       </button>
       {enabled && (
         <div className="mt-3 border-t border-[var(--border)] pt-3">
-          <GenerationParametersFields value={value} showServiceTier={showServiceTier} onChange={onChange} />
+          <ChatGenerationParametersFields
+            value={value}
+            showServiceTier={showServiceTier}
+            sources={sources}
+            onChange={onChange}
+          />
         </div>
       )}
     </div>
   );
+}
+
+function readParameterRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+/** The wizard's starting values: mode and connection defaults, with only the chat's own Custom Parameters. */
+function wizardEditableParameters(
+  defaults: EditableGenerationParameters,
+  chatParameters: unknown,
+): EditableGenerationParameters {
+  return {
+    ...getEditableGenerationParameters(defaults, chatParameters),
+    customParameters: readParameterRecord(readParameterRecord(chatParameters).customParameters),
+  };
+}
+
+function hasChatParameterChoices(chatParameters: unknown, chatParameterOverrides: unknown): boolean {
+  return (
+    Object.keys(effectiveChatParameterOverrides(chatParameters, chatParameterOverrides)).length > 0 ||
+    Object.keys(readParameterRecord(readParameterRecord(chatParameters).customParameters)).length > 0
+  );
+}
+
+/** What the wizard saves in chatParameters: the chat's Custom Parameters and the fields overrides leave alone. */
+function wizardChatParameters(
+  stored: unknown,
+  customParameters: Record<string, unknown>,
+): Record<string, unknown> | null {
+  const kept = { ...stripLegacyChatParameters(stored) };
+  if (Object.keys(customParameters).length > 0) kept.customParameters = customParameters;
+  else delete kept.customParameters;
+  return Object.keys(kept).length > 0 ? kept : null;
+}
+
+function nonEmptyOverrides(overrides: ChatParameterOverrides): ChatParameterOverrides | null {
+  return Object.keys(overrides).length > 0 ? overrides : null;
 }
 
 export function ChatSetupWizard({ chat, onFinish }: ChatSetupWizardProps) {
@@ -908,7 +957,7 @@ function SavedChatSetupWizard({ chat, onFinish }: ChatSetupWizardProps) {
       return;
     }
     let active = true;
-    pendingApply.current ??= apply(saved);
+    pendingApply.current ??= apply(sanitizeChatWizardDefaults(saved));
     void pendingApply.current
       .then(() => {
         if (!active) return;
@@ -1140,20 +1189,33 @@ function ConversationQuickSetup({ chat, onFinish, defaultsApplied, defaultsActio
     () => getEditableGenerationParameters(CHAT_PARAMETER_DEFAULTS, selectedConnection?.defaultParameters),
     [selectedConnection?.defaultParameters],
   );
-  const [customizeParameters, setCustomizeParameters] = useState(
-    () => !!parseEditableGenerationParameters(metadata.chatParameters),
+  const [customizeParameters, setCustomizeParameters] = useState(() =>
+    hasChatParameterChoices(metadata.chatParameters, metadata.chatParameterOverrides),
   );
   const [generationParameters, setGenerationParameters] = useState<EditableGenerationParameters>(() =>
-    getEditableGenerationParameters(parameterDefaults, metadata.chatParameters),
+    wizardEditableParameters(parameterDefaults, metadata.chatParameters),
+  );
+  const [parameterOverrides, setParameterOverrides] = useState<ChatParameterOverrides>(() =>
+    effectiveChatParameterOverrides(metadata.chatParameters, metadata.chatParameterOverrides),
+  );
+  const parameterBaseline = useGenerationParameterBaseline(
+    {
+      chatId: chat.id,
+      connectionId: selectedConnectionId || null,
+      promptPresetId: selectedPromptPresetId,
+      mode: "conversation",
+    },
+    customizeParameters,
   );
 
   useEffect(() => {
-    setGenerationParameters(getEditableGenerationParameters(parameterDefaults, metadata.chatParameters));
+    setGenerationParameters(wizardEditableParameters(parameterDefaults, metadata.chatParameters));
   }, [parameterDefaults, metadata.chatParameters]);
 
   useEffect(() => {
-    setCustomizeParameters(!!parseEditableGenerationParameters(metadata.chatParameters));
-  }, [metadata.chatParameters]);
+    setCustomizeParameters(hasChatParameterChoices(metadata.chatParameters, metadata.chatParameterOverrides));
+    setParameterOverrides(effectiveChatParameterOverrides(metadata.chatParameters, metadata.chatParameterOverrides));
+  }, [metadata.chatParameters, metadata.chatParameterOverrides]);
 
   const persistedChatCharIds: string[] = useMemo(() => {
     return typeof chat.characterIds === "string" ? JSON.parse(chat.characterIds) : (chat.characterIds ?? []);
@@ -1402,7 +1464,10 @@ function ConversationQuickSetup({ chat, onFinish, defaultsApplied, defaultsActio
       characterCommands: hasConversationCommands && commandsEnabled,
       conversationCommandToggles: selfieSetup.conversationCommandToggles,
       conversationSetupComplete: true,
-      chatParameters: customizeParameters ? generationParameters : null,
+      chatParameters: customizeParameters
+        ? wizardChatParameters(metadata.chatParameters, generationParameters.customParameters)
+        : null,
+      chatParameterOverrides: customizeParameters ? nonEmptyOverrides(parameterOverrides) : null,
       customSystemPrompt,
       ...(selfieSetup.imageGenConnectionId ? { imageGenConnectionId: selfieSetup.imageGenConnectionId } : {}),
     });
@@ -1438,6 +1503,8 @@ function ConversationQuickSetup({ chat, onFinish, defaultsApplied, defaultsActio
     updateMeta,
     customizeParameters,
     generationParameters,
+    metadata.chatParameters,
+    parameterOverrides,
     hasConversationCommands,
     commandsEnabled,
     conversationCommandToggles,
@@ -1498,6 +1565,12 @@ function ConversationQuickSetup({ chat, onFinish, defaultsApplied, defaultsActio
           enabled={customizeParameters}
           value={generationParameters}
           showServiceTier={selectedConnection?.provider === "openrouter" || selectedConnection?.provider === "nanogpt"}
+          sources={{
+            overrides: parameterOverrides,
+            baseline: parameterBaseline.data,
+            baselineLoading: parameterBaseline.isLoading,
+            onOverridesChange: setParameterOverrides,
+          }}
           onEnabledChange={setCustomizeParameters}
           onChange={setGenerationParameters}
         />
@@ -2013,7 +2086,10 @@ function ConversationQuickSetup({ chat, onFinish, defaultsApplied, defaultsActio
                 conversationSchedulesEnabled: generateSchedule,
                 characterCommands: commandsEnabled,
                 conversationCommandToggles,
-                chatParameters: customizeParameters ? generationParameters : null,
+                chatParameters: customizeParameters
+                  ? wizardChatParameters(metadata.chatParameters, generationParameters.customParameters)
+                  : null,
+                chatParameterOverrides: customizeParameters ? nonEmptyOverrides(parameterOverrides) : null,
                 customSystemPrompt: customConversationPromptEnabled ? conversationSystemPromptDraft : null,
               })
             : undefined
@@ -2118,20 +2194,33 @@ function RoleplaySetupWizard({ chat, onFinish, defaultsApplied, defaultsAction }
   const metadata = useMemo(() => {
     return readChatMetadata(chat);
   }, [chat]);
-  const [customizeParameters, setCustomizeParameters] = useState(
-    () => !!parseEditableGenerationParameters(metadata.chatParameters),
+  const [customizeParameters, setCustomizeParameters] = useState(() =>
+    hasChatParameterChoices(metadata.chatParameters, metadata.chatParameterOverrides),
   );
   const [generationParameters, setGenerationParameters] = useState<EditableGenerationParameters>(() =>
-    getEditableGenerationParameters(parameterDefaults, metadata.chatParameters),
+    wizardEditableParameters(parameterDefaults, metadata.chatParameters),
+  );
+  const [parameterOverrides, setParameterOverrides] = useState<ChatParameterOverrides>(() =>
+    effectiveChatParameterOverrides(metadata.chatParameters, metadata.chatParameterOverrides),
+  );
+  const parameterBaseline = useGenerationParameterBaseline(
+    {
+      chatId: chat.id,
+      connectionId: chat.connectionId ?? null,
+      promptPresetId: chat.promptPresetId ?? null,
+      mode: "roleplay",
+    },
+    customizeParameters,
   );
 
   useEffect(() => {
-    setGenerationParameters(getEditableGenerationParameters(parameterDefaults, metadata.chatParameters));
+    setGenerationParameters(wizardEditableParameters(parameterDefaults, metadata.chatParameters));
   }, [parameterDefaults, metadata.chatParameters]);
 
   useEffect(() => {
-    setCustomizeParameters(!!parseEditableGenerationParameters(metadata.chatParameters));
-  }, [metadata.chatParameters]);
+    setCustomizeParameters(hasChatParameterChoices(metadata.chatParameters, metadata.chatParameterOverrides));
+    setParameterOverrides(effectiveChatParameterOverrides(metadata.chatParameters, metadata.chatParameterOverrides));
+  }, [metadata.chatParameters, metadata.chatParameterOverrides]);
 
   const persistedChatCharIds: string[] = useMemo(() => {
     return typeof chat.characterIds === "string" ? JSON.parse(chat.characterIds) : (chat.characterIds ?? []);
@@ -2464,7 +2553,10 @@ function RoleplaySetupWizard({ chat, onFinish, defaultsApplied, defaultsAction }
   const finishWizard = useCallback(async () => {
     await updateMeta.mutateAsync({
       id: chat.id,
-      chatParameters: customizeParameters ? generationParameters : null,
+      chatParameters: customizeParameters
+        ? wizardChatParameters(metadata.chatParameters, generationParameters.customParameters)
+        : null,
+      chatParameterOverrides: customizeParameters ? nonEmptyOverrides(parameterOverrides) : null,
     });
     for (const charId of chatCharIds) {
       await createInitialGreetingForCharacter(charId);
@@ -2476,7 +2568,9 @@ function RoleplaySetupWizard({ chat, onFinish, defaultsApplied, defaultsAction }
     createInitialGreetingForCharacter,
     customizeParameters,
     generationParameters,
+    metadata.chatParameters,
     onFinish,
+    parameterOverrides,
     updateMeta,
   ]);
 
@@ -2758,6 +2852,12 @@ function RoleplaySetupWizard({ chat, onFinish, defaultsApplied, defaultsAction }
           enabled={customizeParameters}
           value={generationParameters}
           showServiceTier={selectedConnection?.provider === "openrouter" || selectedConnection?.provider === "nanogpt"}
+          sources={{
+            overrides: parameterOverrides,
+            baseline: parameterBaseline.data,
+            baselineLoading: parameterBaseline.isLoading,
+            onOverridesChange: setParameterOverrides,
+          }}
           onEnabledChange={setCustomizeParameters}
           onChange={setGenerationParameters}
         />
@@ -3528,7 +3628,13 @@ function RoleplaySetupWizard({ chat, onFinish, defaultsApplied, defaultsAction }
             primaryDisabled={nextDisabled}
             secondaryAction={
               <>
-                {isLast && defaultsAction({ chatParameters: customizeParameters ? generationParameters : null })}
+                {isLast &&
+                  defaultsAction({
+                    chatParameters: customizeParameters
+                      ? wizardChatParameters(metadata.chatParameters, generationParameters.customParameters)
+                      : null,
+                    chatParameterOverrides: customizeParameters ? nonEmptyOverrides(parameterOverrides) : null,
+                  })}
                 <button
                   type="button"
                   onClick={() => setShortcutMode(true)}

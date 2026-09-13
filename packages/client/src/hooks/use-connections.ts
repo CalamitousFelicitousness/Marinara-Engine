@@ -8,6 +8,7 @@ import { useUIStore } from "../stores/ui.store";
 import { useChatStore } from "../stores/chat.store";
 import { captureChatMetadataVersion, chatKeys, guardServerChatSnapshot } from "./use-chats";
 import { ttsKeys } from "./use-tts";
+import { parameterBaselineKeys } from "./use-parameter-baseline";
 import type {
   APIProvider,
   AudioConnectionSettings,
@@ -124,6 +125,7 @@ export function useUpdateConnection() {
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: connectionKeys.list() });
       qc.invalidateQueries({ queryKey: connectionKeys.detail(variables.id) });
+      qc.invalidateQueries({ queryKey: parameterBaselineKeys.all });
       // An audio connection carries the voice catalog and the settings speech
       // resolves through, so both go stale with it.
       qc.invalidateQueries({ queryKey: ttsKeys.all });
@@ -160,6 +162,7 @@ export function useDeleteConnection() {
     mutationFn: (id: string) => api.delete(`/connections/${id}`),
     onSuccess: async (_data, id) => {
       qc.invalidateQueries({ queryKey: connectionKeys.list() });
+      qc.invalidateQueries({ queryKey: parameterBaselineKeys.all });
       qc.invalidateQueries({ queryKey: ttsKeys.all });
       const activeChatId = useChatStore.getState().activeChatId;
       if (!activeChatId) return;
@@ -285,6 +288,7 @@ export function useSaveConnectionDefaults() {
       Promise.all([
         qc.invalidateQueries({ queryKey: connectionKeys.list() }),
         qc.invalidateQueries({ queryKey: connectionKeys.detail(variables.id) }),
+        qc.invalidateQueries({ queryKey: parameterBaselineKeys.all }),
       ]),
   });
 }

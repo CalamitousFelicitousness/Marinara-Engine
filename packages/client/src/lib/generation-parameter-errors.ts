@@ -67,14 +67,14 @@ export function formatGenerationParameterError(message: string): string {
     /\b(?:does not|doesn't) (?:accept|support)\b.{0,40}\b(?:argument|parameter|field)\b[:\s]+([A-Za-z0-9_.-]+)/i,
   ]);
   if (unsupported) {
-    return `The model does not accept the ${unsupported} parameter. Go to Chat Settings > Advanced Parameters and turn off Send for ${unsupported}.`;
+    return `The model does not accept the ${unsupported} parameter. Go to Chat Settings > Advanced Parameters and set ${unsupported} to Off, or turn off its Send switch on the connection.`;
   }
   if (
     /\bunsupported parameters?\b|\bunknown parameters?\b|\bunrecognized (?:request )?(?:argument|parameter)/i.test(
       message,
     )
   ) {
-    return "The model does not accept one of the enabled advanced parameters. Go to Chat Settings > Advanced Parameters and turn off Send for unsupported fields, then try again.";
+    return "The model does not accept one of the advanced parameters being sent. Go to Chat Settings > Advanced Parameters and set unsupported fields to Off, or turn off their Send switches on the connection, then try again.";
   }
 
   const missing = extractParameter(message, [
@@ -86,10 +86,10 @@ export function formatGenerationParameterError(message: string): string {
     if (missing.toLowerCase() === "model") {
       return "The provider says the model field is missing. Marinara now sends the configured connection model automatically; if this keeps happening, remove any custom request parameter named model or re-save the connection's model.";
     }
-    return `The model says the ${missing} parameter is required. Go to Chat Settings > Advanced Parameters and turn on Send for ${missing}.`;
+    return `The model says the ${missing} parameter is required. Go to Chat Settings > Advanced Parameters and set ${missing} to Override, or turn on its Send switch on the connection.`;
   }
   if (/\bmissing (?:required )?parameters?\b|\brequired parameters?\b/i.test(message)) {
-    return "The model says a required advanced parameter is missing. Go to Chat Settings > Advanced Parameters and turn on Send for the required field, then try again.";
+    return "The model says a required advanced parameter is missing. Go to Chat Settings > Advanced Parameters and set the required field to Override, or turn on its Send switch on the connection, then try again.";
   }
 
   return message;

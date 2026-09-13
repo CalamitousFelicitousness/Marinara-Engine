@@ -1,13 +1,12 @@
 import { withLatestMessageReply } from "../../services/generation/message-reply.js";
 import type { FastifyInstance } from "fastify";
 import {
+  CUSTOM_GENERATION_PARAMETERS_SETTINGS_KEY,
   LOCAL_SIDECAR_CONNECTION_ID,
-  isClaudeAdaptiveOnlyNoSamplingModel,
-  resolveProviderReasoningEffort,
+  parseManagedGenerationParameterDefinitions,
   resolveMacros,
   DEFAULT_CONVERSATION_PROMPT,
   DEFAULT_GAME_SYSTEM_PROMPT,
-  type GenerationParameterSendMap,
   type LorebookEntryTimingState,
   BUILT_IN_AGENTS,
   isAgentConfigDeleted,
@@ -62,12 +61,7 @@ import {
 import { cardPromptText } from "../../services/prompt/card-text.js";
 import { resolveChatUserIdentity } from "../../services/chat-user-identity.js";
 import { wrapContent } from "../../services/prompt/format-engine.js";
-import {
-  yieldToEventLoop,
-  type BaseLLMProvider,
-  type ChatMessage,
-  type ChatOptions,
-} from "../../services/llm/base-provider.js";
+import { yieldToEventLoop, type BaseLLMProvider, type ChatMessage } from "../../services/llm/base-provider.js";
 import {
   fitMessagesForModelAccess,
   mergeModelContextLimit,
@@ -75,9 +69,15 @@ import {
   resolveStoredModelContextLimit,
 } from "../../services/generation/model-access-policy.js";
 import {
+  defaultGenerationParameterValues,
+  presetGenerationParameterValues,
+  resolveGenerationParameterRuntime,
+  usesPresetAssembly,
+} from "../../services/generation/provider-generation-runtime.js";
+import { createAppSettingsStorage } from "../../services/storage/app-settings.storage.js";
+import {
   collectPastReasoningMetadata,
   limitPastReasoningMetadata,
-  normalizeChatTopP,
 } from "../../services/generation/generation-parameters.js";
 import { filterPromptMessagesForCharacterAudience } from "../../services/generation/prompt-message-scope.js";
 import { applyAllSegmentEdits } from "../../services/game/segment-edits.js";
@@ -96,7 +96,6 @@ import {
   getMessageConversationStartCharacterIds,
   getMessageHiddenFromAICharacterIds,
   isMessageHiddenFromAI,
-  mergeCustomParameters,
   normalizePromptWrapFormat,
   parseExtra,
   parseStoredGenerationParameters,
@@ -107,9 +106,7 @@ import {
   resolveCharacterNameMap,
   resolveGroupGenerationMode,
   resolveRegenerationGameStateAnchor,
-  resolveProviderTopK,
   resolveRoleplayChatSummaryForPrompt,
-  normalizeServiceTier,
   resolveVisibleGameStateAnchor,
   resolveBaseUrl,
   shouldEnableAgentsForGeneration,
@@ -447,6 +444,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
   const chars = createCharactersStorage(app.db);
   const regexScriptsStore = createRegexScriptsStorage(app.db);
   const authorNotePresetsStore = createAuthorNotePresetsStorage(app.db);
+  const appSettings = createAppSettingsStorage(app.db);
 
   // Track active dry-runs so extensions can abort in-flight requests.
   // Keyed by runId to avoid colliding with normal /generate's chatId-keyed map.
@@ -561,48 +559,9 @@ export async function registerDryRunRoute(app: FastifyInstance) {
     });
     const { suppressModelParameters, connectionMaxContext } = modelAccessPolicy;
 
-    // Minimal, safe parameter defaults (still allow chat-level overrides)
-    let temperature: number | undefined = 1;
-    let maxTokens = 2048;
-    let topP: number | undefined = 1;
-    let topK = 0;
-    let minP = 0;
-    let frequencyPenalty = 0;
-    let presencePenalty = 0;
-    let showThoughts = true;
-    let reasoningEffort: "low" | "medium" | "high" | "xhigh" | "maximum" | null = null;
-    let verbosity: "low" | "medium" | "high" | null = null;
-    let serviceTier: "flex" | "priority" | null = null;
-    let assistantPrefill = "";
-    let customParameters: Record<string, unknown> = {};
-    let enabledParameters: GenerationParameterSendMap | undefined;
-    let effectiveMaxContext = modelAccessPolicy.effectiveMaxContext;
-
-    const connectionParams = parseStoredGenerationParameters(conn.defaultParameters);
-    const chatParams = parseStoredGenerationParameters(chatMeta.chatParameters);
-    const applyParameterOverrides = (params: typeof connectionParams) => {
-      if (!params) return;
-      if (typeof params.temperature === "number") temperature = params.temperature;
-      if (typeof params.maxTokens === "number") maxTokens = params.maxTokens;
-      topP = normalizeChatTopP(params.topP) ?? topP;
-      if (typeof params.topK === "number") topK = params.topK;
-      if (typeof params.minP === "number") minP = params.minP;
-      if (typeof params.frequencyPenalty === "number") frequencyPenalty = params.frequencyPenalty;
-      if (typeof params.presencePenalty === "number") presencePenalty = params.presencePenalty;
-      if (typeof params.showThoughts === "boolean") showThoughts = params.showThoughts;
-      if (params.reasoningEffort !== undefined) reasoningEffort = params.reasoningEffort;
-      if (params.verbosity !== undefined) verbosity = params.verbosity;
-      if (params.serviceTier !== undefined) serviceTier = normalizeServiceTier(params.serviceTier);
-      if (typeof params.assistantPrefill === "string") assistantPrefill = params.assistantPrefill;
-      customParameters = mergeCustomParameters(customParameters, params.customParameters);
-      if (params.enabledParameters) enabledParameters = { ...(enabledParameters ?? {}), ...params.enabledParameters };
-
-      effectiveMaxContext = mergeModelContextLimit(
-        modelAccessPolicy,
-        effectiveMaxContext,
-        resolveStoredModelContextLimit(modelAccessPolicy, params),
-      );
-    };
+    // Resolved with the live route's layers once the preset has been assembled.
+    let parameterValues = defaultGenerationParameterValues();
+    let initialMaxContext = modelAccessPolicy.effectiveMaxContext;
 
     // Pull existing messages, apply the same conversation-start + context limit filtering
     const allChatMessages = await chats.listMessages(chatId);
@@ -1316,7 +1275,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
           continue;
         }
       }
-    } else if (effectivePresetId && effectivePreset && chatMode !== "conversation" && chatMode !== "game") {
+    } else if (effectivePresetId && effectivePreset && usesPresetAssembly(chatMode)) {
       const preset = effectivePreset;
       wrapFormat = normalizePromptWrapFormat(preset.wrapFormat);
       const [sections, groups, choiceBlocks] = await Promise.all([
@@ -1403,37 +1362,48 @@ export async function registerDryRunRoute(app: FastifyInstance) {
         ...assembled.macroAgentData,
       };
       finalMessages = assembled.messages;
-      temperature = assembled.parameters.temperature;
-      maxTokens = assembled.parameters.maxTokens;
-      topP = assembled.parameters.topP ?? 1;
-      topK = assembled.parameters.topK ?? 0;
-      minP = assembled.parameters.minP ?? 0;
-      frequencyPenalty = assembled.parameters.frequencyPenalty ?? 0;
-      presencePenalty = assembled.parameters.presencePenalty ?? 0;
-      showThoughts = assembled.parameters.showThoughts ?? true;
-      reasoningEffort = assembled.parameters.reasoningEffort ?? null;
-      verbosity = assembled.parameters.verbosity ?? null;
-      serviceTier = assembled.parameters.serviceTier ?? null;
-      assistantPrefill = assembled.parameters.assistantPrefill ?? "";
-      customParameters = mergeCustomParameters(customParameters, assembled.parameters.customParameters);
-      if (assembled.parameters.enabledParameters) {
-        enabledParameters = { ...(enabledParameters ?? {}), ...assembled.parameters.enabledParameters };
-      }
-
-      effectiveMaxContext = mergeModelContextLimit(
+      parameterValues = presetGenerationParameterValues(assembled.parameters);
+      initialMaxContext = mergeModelContextLimit(
         modelAccessPolicy,
-        effectiveMaxContext,
+        initialMaxContext,
         resolveStoredModelContextLimit(modelAccessPolicy, assembled.parameters),
       );
     }
 
-    const modePresetParameters =
-      effectivePresetId && effectivePreset && (chatMode === "conversation" || chatMode === "game")
-        ? parseStoredGenerationParameters(effectivePreset.parameters)
-        : null;
-    if (modePresetParameters) applyParameterOverrides(modePresetParameters);
-    applyParameterOverrides(connectionParams);
-    applyParameterOverrides(chatParams);
+    const {
+      connectionParams,
+      gameSetupParams,
+      chatParams,
+      chatOverrideParams,
+      temperature,
+      maxTokens,
+      topP,
+      minP,
+      frequencyPenalty,
+      presencePenalty,
+      showThoughts,
+      verbosity,
+      serviceTier,
+      assistantPrefill,
+      customParameters,
+      enabledParameters,
+      effectiveMaxContext,
+      enableThinking,
+      providerReasoningEffort,
+      providerTopK,
+    } = resolveGenerationParameterRuntime({
+      connection: conn,
+      chatMode,
+      isSceneChat: chatMeta.sceneStatus === "active",
+      chatParameters: chatMeta.chatParameters,
+      chatParameterOverrides: chatMeta.chatParameterOverrides,
+      gameSetupParameters: (chatMeta.gameSetupConfig as Record<string, unknown> | undefined)?.generationParameters,
+      managedParameterDefinitions: parseManagedGenerationParameterDefinitions(
+        await appSettings.get(CUSTOM_GENERATION_PARAMETERS_SETTINGS_KEY),
+      ),
+      modelAccessPolicy,
+      initial: { ...parameterValues, effectiveMaxContext: initialMaxContext },
+    });
 
     if (!finalMessages.length) {
       // No (or skipped) preset: fall back to raw mapped messages without any agent/tool behavior.
@@ -1634,7 +1604,6 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       });
     }
 
-    if (typeof chatParams?.assistantPrefill === "string") assistantPrefill = chatParams.assistantPrefill;
     if (!impersonate && assistantPrefill.trim()) {
       // Mirror the real send path: the trailing edge is stripped because Anthropic
       // rejects a final assistant message ending in whitespace.
@@ -1685,55 +1654,6 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       );
     }
 
-    // ── Parameter normalization (mirror /api/generate) ──
-    const modelLower = (conn.model ?? "").toLowerCase();
-    const providerLower = (conn.provider ?? "").toLowerCase();
-
-    const resolvedEffort = resolveProviderReasoningEffort({
-      provider: providerLower,
-      model: modelLower,
-      reasoningEffort,
-    });
-
-    // When reasoning effort is set, force showThoughts on (matches /generate's display behavior).
-    if (resolvedEffort && !showThoughts) {
-      showThoughts = true;
-    }
-
-    // enableThinking activates provider reasoning mode (separate from showing thoughts).
-    const enableThinking = !!resolvedEffort;
-    const providerReasoningEffort: ChatOptions["reasoningEffort"] =
-      enabledParameters?.reasoningEffort === false
-        ? undefined
-        : reasoningEffort === null
-          ? "none"
-          : (resolvedEffort ?? undefined);
-
-    // ── Claude 4.5+ sampling parameter restrictions ──
-    const modelLc = (conn.model ?? "").toLowerCase();
-
-    // Claude adaptive-only models: ALL sampling params removed except max_tokens (provider returns 400 otherwise).
-    const isClaudeNoSampling = isClaudeAdaptiveOnlyNoSamplingModel(modelLc);
-    if (isClaudeNoSampling) {
-      temperature = undefined;
-      topP = undefined;
-      topK = 0;
-      frequencyPenalty = 0;
-      presencePenalty = 0;
-    }
-
-    // Claude 4.5/4.6: only temperature supported — strip other sampling params.
-    const isClaudeTemperatureOnly =
-      !isClaudeNoSampling &&
-      (/claude-(opus|sonnet)-4-[56]/.test(modelLc) || /claude-(opus|sonnet)-4\.[56]/.test(modelLc));
-    if (isClaudeTemperatureOnly) {
-      topP = undefined;
-      topK = 0;
-      frequencyPenalty = 0;
-      presencePenalty = 0;
-    }
-    const providerTopK = resolveProviderTopK(topK);
-
     const provider: BaseLLMProvider =
       connId === LOCAL_SIDECAR_CONNECTION_ID
         ? withConnectionAdmissionProvider(getLocalSidecarProvider() as any, LOCAL_SIDECAR_CONNECTION_ID)
@@ -1780,7 +1700,9 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       return postProcessMessages(messages, {
         ...parseStoredGenerationParameters(effectivePreset?.parameters),
         ...connectionParams,
+        ...gameSetupParams,
         ...chatParams,
+        ...chatOverrideParams,
       });
     };
 

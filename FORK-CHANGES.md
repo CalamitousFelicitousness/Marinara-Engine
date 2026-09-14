@@ -125,6 +125,25 @@ Unsupervised starts (`node dist/index.js`, `start-local.bat`, the dev watcher) k
 as does a holder on another port, host binding, or self-signed TLS. `docs/TROUBLESHOOTING.md`
 describes the takeover. Covered by `scripts/regressions/running-copy-takeover.regression.ts`.
 
+### Apply to all accepts the chat connection default
+
+Connections -> Defaults -> Agents offers "Use the active chat connection", and `handleApplyToAllAgents`
+in `packages/client/src/components/panels/ConnectionsPanel.tsx` refused to apply it: the button needed
+a non-null default id. Once Apply to all had pinned every agent to a real connection, the only way
+back was each agent's own editor.
+
+Upstream's bulk control (#5539) had an "Agent default connection" option writing `connectionId: null`.
+Moving it into the Defaults card (#5828) bound it to the selected default and lost that option. The
+button now applies whichever default is selected, and the chat-connection choice writes `null`, the
+same value the Agent editor saves for "Use chat connection".
+
+`null` follows the agents default rather than pinning the chat connection. Agents reset this way move
+with a real default picked later; agents given a connection by Apply to all keep it.
+
+The picker's empty label is now `ui.panels.connectiondefaultssection.useTheActiveChatConnection`
+instead of a hardcoded string, and `bulkConnectionAgentDefault` became `bulkConnectionChatConnection`
+for the confirm dialog and toast. `en.json` is upstream-hot as well.
+
 ## Fork-only additions
 
 ### Preset variables resolve in every mode, not only Roleplay

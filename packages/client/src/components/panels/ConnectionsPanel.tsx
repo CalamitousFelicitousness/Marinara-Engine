@@ -1082,17 +1082,15 @@ function ConnectionDefaultsSection({ connectionsList }: { connectionsList: Conne
   const agentConfigsReady = !agentConfigsLoading && !agentConfigsError && agentConfigs !== undefined;
   const agentConnection =
     languageConnections.find((connection) => isEnabledConnectionRole(connection.defaultForAgents)) ?? null;
+  // null is the "Use the active chat connection" choice; applying it clears every agent's override.
   const effectiveAgentConnectionId = sidecarAsAgentsDefault
     ? LOCAL_SIDECAR_CONNECTION_ID
     : (agentConnection?.id ?? null);
   const agentAssignmentReady =
-    capabilityAgentRegistryReady &&
-    agentConfigsReady &&
-    effectiveAgentConnectionId !== null &&
-    (!sidecarAsAgentsDefault || sidecarModelDownloaded);
+    capabilityAgentRegistryReady && agentConfigsReady && (!sidecarAsAgentsDefault || sidecarModelDownloaded);
   const agentConnectionName = sidecarAsAgentsDefault
     ? createLocalSidecarConnectionOption(sidecarModelDisplayName).name
-    : (agentConnection?.name ?? localizeUi("ui.panels.agentspanel.bulkConnectionAgentDefault"));
+    : (agentConnection?.name ?? localizeUi("ui.panels.agentspanel.bulkConnectionChatConnection"));
   const builtInAgentIds = useMemo(() => new Set((capabilityAgents ?? []).map((agent) => agent.id)), [capabilityAgents]);
   const visibleBuiltInAgents = useMemo(
     () =>
@@ -1113,8 +1111,7 @@ function ConnectionDefaultsSection({ connectionsList }: { connectionsList: Conne
   );
   const handleApplyToAllAgents = async () => {
     const targetCount = visibleBuiltInAgents.length + customAgentConfigs.length;
-    if (applyingToAllAgents || !agentAssignmentReady || effectiveAgentConnectionId === null || targetCount === 0)
-      return;
+    if (applyingToAllAgents || !agentAssignmentReady || targetCount === 0) return;
     const confirmed = await showConfirmDialog({
       title: localizeUi("ui.panels.agentspanel.bulkConnectionApply"),
       message: localizeUi("ui.panels.agentspanel.bulkConnectionConfirm", {
@@ -1229,7 +1226,7 @@ function ConnectionDefaultsSection({ connectionsList }: { connectionsList: Conne
             connections={languageConnections}
             primaryField="defaultForAgents"
             fallbackField="fallbackForAgents"
-            primaryEmptyLabel="Use the active chat connection"
+            primaryEmptyLabel={localizeUi("ui.panels.connectiondefaultssection.useTheActiveChatConnection")}
             fallbackModelLabel="No model set"
             includeLocalSidecar
             showPaidConnectionWarningToggle

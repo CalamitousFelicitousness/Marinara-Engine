@@ -111,6 +111,40 @@ export async function adminRoutes(app: FastifyInstance) {
     },
   );
 
+  // A second launcher on this machine stops the running copy to take over its data directory.
+  app.post<{ Body: { confirm?: boolean; pid?: number } }>(
+    "/shutdown",
+    { config: { rateLimit: ADMIN_RESTART_RATE_LIMIT } },
+    async (req, reply) => {
+      if (!requirePrivilegedAccess(req, reply, { feature: "Server shutdown", loopbackOnly: true })) return;
+      if (req.body?.confirm !== true || req.body.pid !== process.pid) {
+        return reply
+          .status(400)
+          .send({ error: `Must send { confirm: true, pid: ${process.pid} } to shut down this server` });
+      }
+      if (restartScheduled) {
+        return reply.status(409).send({ error: "Server restart is already scheduled" });
+      }
+
+      restartScheduled = true;
+      setTimeout(() => {
+        void (async () => {
+          armShutdownDeadline(app, "shutdown", { exitCode: 0 });
+          try {
+            await app.close();
+            logger.warn("Server shut down so another launcher can take over");
+            process.exit(0);
+          } catch (error) {
+            logger.error(error, "Graceful server shutdown failed");
+            process.exit(1);
+          }
+        })();
+      }, 750);
+
+      return reply.status(202).send({ status: "shutting-down" });
+    },
+  );
+
   app.get("/avatar-storage/abandoned", { config: { rateLimit: AVATAR_STORAGE_RATE_LIMIT } }, async (req, reply) => {
     if (!requirePrivilegedAccess(req, reply, { feature: "Avatar storage scan" })) return;
     const result = await scanAbandonedAvatarFiles({ db: app.db });

@@ -94,6 +94,37 @@ The lane asserted the shared generation call had exactly three arguments, standi
 signal reaches the shared work". The fork's call passes five, so that invariant is now asserted
 directly: no argument is an `AbortSignal`.
 
+### Launchers stop a running copy cleanly and take its place
+
+On Windows, Ctrl+C in a `pnpm start` or `start.bat` terminal cut the server off before it saved. The
+console event reaches both `scripts/run-server.mjs` and the server, and the supervisor then called
+`child.kill(signal)`, which Windows implements as `TerminateProcess`: the server's SIGINT handler
+never ran, the writer lease stayed behind, and up to `SAVE_DEBOUNCE_MS` (750 ms) of writes could be
+lost. The supervisor now forwards signals only off Windows. Closing a WezTerm pane still terminates
+the process tree without a console event, so that path stays abrupt.
+
+A second start against the same data directory failed with `StorageWriterLeaseError`. A supervised
+start now asks the lease holder to shut down:
+
+- `StorageWriterLeaseError.holderPid` names the holder when it is a live process on this host
+  (`packages/server/src/db/file-backed-store.ts`, which also exports `pidDefinitelyExited`).
+- `POST /api/admin/shutdown` in `packages/server/src/routes/admin.routes.ts` is loopback-only,
+  requires `{ confirm: true, pid }` naming the server's own PID, and exits 0 through the same
+  graceful close and deadline as Restart.
+- `main().catch` in `packages/server/src/index.ts` calls `takeOverRunningCopy`
+  (`packages/server/src/lib/running-copy-takeover.ts`), which posts to `127.0.0.1` on the configured
+  `PORT`, waits for the PID to exit, and exits 75 so the supervisor starts the server again.
+
+The holder's PID is trusted only when the lease records this machine's ID, which
+`readStableMachineId` reads on Windows by running `reg.exe` once at module load. A cold first
+`reg.exe` start can outlast the 1 s `execFileSync` timeout upstream gives it, leaving `hostId` null;
+the lease then can neither name the holder nor reclaim a crashed writer's lease by PID. The Windows
+lookup now allows 5 s.
+
+Unsupervised starts (`node dist/index.js`, `start-local.bat`, the dev watcher) keep the lease error,
+as does a holder on another port, host binding, or self-signed TLS. `docs/TROUBLESHOOTING.md`
+describes the takeover. Covered by `scripts/regressions/running-copy-takeover.regression.ts`.
+
 ## Fork-only additions
 
 ### Preset variables resolve in every mode, not only Roleplay

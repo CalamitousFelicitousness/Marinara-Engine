@@ -9,6 +9,7 @@ import { logger } from "./lib/logger.js";
 import { startFreezeDetector, stopFreezeDetector } from "./lib/freeze-detector.js";
 import { finalizeSessionExit, noteSessionExitKind, startSessionPostmortem } from "./lib/session-postmortem.js";
 import { armShutdownDeadline } from "./lib/shutdown-deadline.js";
+import { takeOverRunningCopy } from "./lib/running-copy-takeover.js";
 import { getHost, getPort, getServerProtocol, loadTlsOptions, logStorageDiagnostics } from "./config/runtime-config.js";
 import { logCsrfTrustSummary } from "./middleware/csrf-protection.js";
 import { startEnvWatcher } from "./config/env-watcher.js";
@@ -147,7 +148,9 @@ async function main() {
   }
 }
 
-main().catch((err) => {
+main().catch(async (err) => {
+  // Exit code 75 asks the launcher to start this server again.
+  if (await takeOverRunningCopy(err)) process.exit(75);
   logger.error(err, "[startup] Unhandled error during server bootstrap");
   stopDevelopmentWatcherAfterLeaseConflict(err);
   process.exit(1);

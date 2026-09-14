@@ -1337,6 +1337,9 @@ export class StorageFormatTooNewError extends Error {
 }
 
 export class StorageWriterLeaseError extends Error {
+  /** PID of the live writer holding the lease, when it is a process on this host. */
+  holderPid?: number;
+
   constructor(message: string, options?: ErrorOptions) {
     super(message, options);
     this.name = "StorageWriterLeaseError";
@@ -1435,7 +1438,8 @@ function readStableMachineId() {
         {
           encoding: "utf8",
           stdio: ["ignore", "pipe", "ignore"],
-          timeout: 1_000,
+          // A cold first reg.exe start can take longer than a second.
+          timeout: 5_000,
           maxBuffer: 64 * 1024,
         },
       );
@@ -1666,7 +1670,7 @@ function parseWriterLease(path: string): { raw: string; record: StorageWriterLea
   }
 }
 
-function pidDefinitelyExited(pid: number) {
+export function pidDefinitelyExited(pid: number) {
   try {
     process.kill(pid, 0);
     return false;
@@ -2450,10 +2454,12 @@ class FileTableStore {
         else if (pidWasReused(existing.record)) staleReason = "pid-reused";
       }
       if (!staleReason) {
-        throw new StorageWriterLeaseError(
+        const error = new StorageWriterLeaseError(
           `Another Marinara Engine process (PID ${existing.record.pid}, host ${existing.record.hostname}) may be using ${this.rootDir}. ` +
             `Close it before retrying. If it no longer exists, verify every process is stopped and remove only ${path}.`,
         );
+        if (sameHost && pidProofUsable) error.holderPid = existing.record.pid;
+        throw error;
       }
 
       const stalePath = `${path}.stale-${token}`;

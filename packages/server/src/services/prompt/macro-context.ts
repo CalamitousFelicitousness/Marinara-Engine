@@ -7,6 +7,8 @@
 
 import {
   CHARACTER_REFERENCE_ID_PATTERN,
+  CHAT_VARIABLE_STORED_NAME_RE,
+  MAX_CHAT_VARIABLES,
   PERSONA_REFERENCE_ID_PATTERN,
   formatRpgStatsForPrompt,
   resolveMacros,
@@ -86,9 +88,9 @@ export function normalizeChatMacroVariables(value: unknown): Record<string, stri
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   const entries: Array<[string, string]> = [];
   for (const [name, entry] of Object.entries(value as Record<string, unknown>)) {
-    if (!/^[\w.-]+$/u.test(name) || typeof entry !== "string") continue;
+    if (!CHAT_VARIABLE_STORED_NAME_RE.test(name) || typeof entry !== "string") continue;
     entries.push([name, entry]);
-    if (entries.length >= 500) break;
+    if (entries.length >= MAX_CHAT_VARIABLES) break;
   }
   return Object.fromEntries(entries);
 }

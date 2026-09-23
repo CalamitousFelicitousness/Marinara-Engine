@@ -270,6 +270,19 @@ function nestedMacroOptions(options: ResolveMacroOptions): ResolveMacroOptions {
   };
 }
 
+/**
+ * Read a named value from a macro variable map.
+ *
+ * Own properties only: a bare `{{constructor}}` or `{{toString}}` must never
+ * reach `Object.prototype` and render native-code source text into a prompt.
+ * The string check keeps a malformed stored map from injecting a non-string.
+ */
+function readMacroVariable(map: Record<string, string> | undefined, name: string): string | undefined {
+  if (!map || !Object.prototype.hasOwnProperty.call(map, name)) return undefined;
+  const value = map[name];
+  return typeof value === "string" ? value : undefined;
+}
+
 function clampMacroOutput(value: string, options: ResolveMacroOptions): string {
   const maxLength = macroLimit(options, "maxMacroOutputLength");
   if (value.length <= maxLength) return value;
@@ -992,7 +1005,7 @@ function resolveConditionalOperand(raw: string, ctx: MacroContext, options: Reso
     default:
       if (/^var[:.]/i.test(token)) {
         const name = token.replace(/^var[:.]/i, "").trim();
-        return ctx.variables[name] ?? "";
+        return readMacroVariable(ctx.variables, name) ?? readMacroVariable(ctx.localVariables, name) ?? "";
       }
       // Resolve any other bare operand through the same flat pass used for
       // {{token}}, so every read macro valid in {{...}} is also testable bare in
@@ -1013,7 +1026,7 @@ function resolveConditionalOperand(raw: string, ctx: MacroContext, options: Reso
         });
         if (resolved !== braced) return resolved;
       }
-      return ctx.variables[token] ?? token;
+      return readMacroVariable(ctx.variables, token) ?? readMacroVariable(ctx.localVariables, token) ?? token;
   }
 }
 
@@ -2349,11 +2362,16 @@ export function resolveMacros(template: string, ctx: MacroContext, options: Reso
   }
 
   // ── Catch-all: resolve any remaining {{name}} from variables ──
-  // This allows preset variables like {{POV}} to resolve directly
+  // Preset variables like {{POV}} resolve directly, then the chat's own
+  // variables, so a name defined in Chat Settings works anywhere macros do —
+  // including a message the user typed. Preset values win on a name clash,
+  // matching the post-assembly merge in generate.routes.ts.
   result = result.replace(/\{\{(\w+)\}\}/g, (match, name) => {
     if (unresolvedCharacterReferences.has(name)) return match;
-    const val = ctx.variables[name];
-    return val !== undefined ? val : match; // leave unknown macros as-is
+    const presetValue = readMacroVariable(ctx.variables, name);
+    if (presetValue !== undefined) return presetValue;
+    const chatValue = readMacroVariable(ctx.localVariables, name);
+    return chatValue !== undefined ? chatValue : match; // leave unknown macros as-is
   });
 
   // ── Agent data ──

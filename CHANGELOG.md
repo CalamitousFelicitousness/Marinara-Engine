@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Chats can name their own variables in a **Chat Variables** section of **Chat Settings**. Define `char1` as `Mary`, type `{{char1}}` in a message, and the AI reads Mary while your message keeps showing the tag, so changing the value also changes earlier turns. Values are per chat, survive restarts, and share storage with `{{setvar}}`, which lists prompt-set variables there too and still overwrites a name it also uses. Any remaining `{{name}}` resolves from preset variables first, then chat variables; an unknown name is still left as typed, and a name that is a built-in macro cannot be created.
+
 - Roleplay dice outcomes follow the selected accent. Message usage and Peek Prompt distinguish tool-turn totals from the last request's input size, so repeated tool requests are not mistaken for an oversized context (#6550).
 - Advanced Memory also checks actual provider-reported input after the main reply, resetting to the latest known scene and reusing its recap in Chat Summaries when the input limit is exceeded. Cached input counts; output tokens and cumulative tool-turn usage do not (#6550).
 - Advanced Memory summary prompts request character-name conditions for separate POV knowledge. Recall resolves those conditions for the responding character; raw excerpts are omitted when they could expose a hidden section, while the narrator retains the full recap (#6550).

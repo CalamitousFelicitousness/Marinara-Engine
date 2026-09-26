@@ -32,11 +32,17 @@ does not predict the work. The 2026-08-20 sync pulled 447 commits for 7
 conflicts; this one pulled 240 for 29, because the overlap set grew from 18
 files to 69. Measure the overlap, not the log.
 
+Largest so far on 2026-09-27: 1141 upstream commits in sixteen days, 130
+overlapping files, 64 simulated conflicts, v2.4.6 and storage format 7. It ran
+as two merges split at the release point (see **Split a large sync** below), 36
+conflicts then 47, with `pnpm check` and the regression suite between them.
+Three of the collisions were features both lineages had built separately.
+
 ## Merge, never rebase
 
-The remote layout assumes a merge. `staging` tracks `upstream/staging` for fetch while `remote.pushDefault`
-sends pushes to `origin`, so a bare push is correct and `-u` would retarget
-tracking and break the split.
+The remote layout assumes a merge. `staging` tracks `upstream/staging` for
+fetch while `remote.pushDefault` sends pushes to `origin`, so a bare push is
+correct and `-u` would retarget tracking and break the split.
 
 A rebase replays the fork's commits over hundreds of upstream ones. The fork's
 commits touch the same few files repeatedly, so the same conflict arrives once
@@ -106,6 +112,29 @@ abandonable:
 
 ```bash
 git branch -f pre-sync-backup staging
+```
+
+### Split a large sync at a release point
+
+When the simulation shows more conflicts than one session can check, merge to
+the upstream commit a release tag was cut from first, then to the tip. Each half
+gets its own `pnpm check` and regression run, and the first lands on a released
+version. Hot files conflict in both halves, so the total is larger (36 and 47
+against 64 on 2026-09-27); the gain is that a failure has half the suspects.
+
+```bash
+MID=$(git merge-base v2.4.6 upstream/staging)
+git merge-tree --write-tree --name-only staging "$MID"
+```
+
+The second half can be previewed before the first is committed, and while its
+regressions still run, from a throwaway commit object. Nothing moves the branch
+or touches the tree:
+
+```bash
+git add -A   # merge in progress, markers resolved
+C=$(git commit-tree "$(git write-tree)" -p HEAD -p MERGE_HEAD -m tmp)
+git merge-tree --write-tree --name-only "$C" upstream/staging
 ```
 
 ## Resolving
@@ -251,6 +280,29 @@ rather than a hand-audited guard sweep. Adopt it. Where an upstream step is
 guarded below the fork's current number, widen that guard so a fork store still
 runs it: on 2026-09-11 upstream's character-sheet step read `version <= 99`
 against fork stores sitting at 100.
+
+### When both lineages built the same feature, pick one
+
+A conflict between two implementations of one idea is not resolved by keeping
+both. On 2026-09-27 there were three: parameter source tracking (upstream's
+string `parameterSources` against the fork's typed trace), NanoGPT plan
+coverage (upstream #6686 against the fork's `/connections/:id/subscription`),
+and the 404 for stale asset chunks (`createClientNotFoundHandler` against
+`isNonSpaRequest`). Decide which one survives, port the other's consumers onto
+it, and delete the loser with its lane. Ask the user when the choice changes
+what they see.
+
+Then look for the two stacking. Upstream moved NanoGPT's `detailed=true` into
+`modelsEndpoint`; the fork's own query suffix would have requested it twice,
+and nothing would have failed.
+
+### Upstream lanes seed upstream's data model
+
+A new upstream regression that fails on an assertion about a value, not a
+crash, may be seeding data the fork reads differently. Several seed
+`chatParameters: { temperature: ... }`, which the fork ignores at runtime in
+favour of `chatParameterOverrides`. Re-seed the fixture in the fork's shape and
+keep the assertions; the behavior under test is the same.
 
 ## Checks that no conflict marker will warn you about
 

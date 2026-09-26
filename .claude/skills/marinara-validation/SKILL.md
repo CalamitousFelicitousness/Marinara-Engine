@@ -214,6 +214,25 @@ that lane exits before reaching `prompt-attachments`, `context-fit`, or
 node ./scripts/run-regressions.mjs --filter scripts/regressions/author-note-presets.regression.ts
 ```
 
+### Regression suite: 445/450, as of 2026-09-27
+
+**Measured after the 2026-09-27 sync, app stopped: 445/450.** The lane count
+rose from 288 to 450. The five failures, none worth re-investigating:
+
+- `launcher/update.regression.mjs`, red by fork design.
+- `gallery-previews.regression.ts` and `server-signal-shutdown.regression.ts`,
+  Windows only, as below.
+- `decision-sidecar-runtime.regression.ts`, Windows only and new with that
+  sync. Its fake installed runtime is a `#!/bin/sh` script made executable with
+  `chmod`, so on Windows the preflight reads the platform as `unsupported`
+  before the disk check it asserts (`not_enough_disk`). The fork is
+  byte-identical to upstream on `services/decision/` and the lane.
+- `capability-agent-runtime.regression.ts`, the flake described below.
+
+`advanced-memory-core.regression.ts` passes alone in about 24 s, close to the
+30 s budget, and timed out once inside a full run under load. Re-run it alone
+before suspecting it.
+
 ### Regression suite: three platform failures, as of 2026-09-11
 
 **Measured after the 2026-09-11 sync (240 upstream commits), app stopped:
@@ -423,6 +442,25 @@ the keys you added — not a reshuffle of the whole file.
 Every new user-facing string needs a semantic key in `en.json` rendered through
 `useTranslation`. Do not copy English into other locale files; missing keys fall
 back deliberately.
+
+### `.agents/skills` is a symlink, and Windows may check it out as a file
+
+Upstream made `.agents/skills` a link to `../.claude/skills`. With
+`core.symlinks=false`, Git for Windows writes it as a 17-byte text file
+holding the target path, and the Impeccable guard at the start of `pnpm check`
+fails with `Missing .agents/skills/impeccable/SKILL.md`. The link is fine in
+git; the checkout is not. This checkout now sets `core.symlinks=true`; on a new
+clone, set it and re-check out the path (`rm .agents/skills` then
+`git checkout -- .agents/skills`). Do not follow the guard's suggestion to run
+`npx -y skills add`.
+
+### A stale `.git/index.lock` from outside the suite
+
+A `git add` can fail with `index.lock: File exists` while the suite runs, even
+though the lanes only call `git ls-files`, which takes no lock. When no
+`git.exe` is running and the lock is empty and not changing, it is stale:
+remove it and continue. Windows scanners also briefly lock freshly written
+files, so a scripted write can fail once with `EUNKNOWN` and succeed on retry.
 
 ### `start-servers.mjs` needs `npm_execpath`
 

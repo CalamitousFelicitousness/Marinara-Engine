@@ -1486,9 +1486,11 @@ const traveller = (live: unknown = {}): RulesetCombatantInput => ({
       );
     }
     for (const catalog of doc.catalogs ?? []) {
-      // A creature written as a sheet is later again (1.34), and its gate is pinned in its own lane.
+      // A creature written as a sheet is later again (1.34), and its gate is pinned in its own lane,
+      // as is an entry that names the moment it waits for (1.33).
       catalog.entries = (catalog.entries ?? []).filter(
-        (entry: Record<string, any>) => entry.mechanics?.kind !== "rider" && !entry.creature?.sheet,
+        (entry: Record<string, any>) =>
+          entry.mechanics?.kind !== "rider" && !entry.creature?.sheet && typeof entry.mechanics?.reaction !== "object",
       );
       for (const entry of catalog.entries) {
         for (const key of ["plus", "free", "gives", "standard", "rider"]) delete entry.mechanics?.[key];

@@ -431,7 +431,12 @@ const capabilityPackageManifestBaseSchema = z
 //        seam, for the same reason as 1.20 through 1.42: an Engine that cannot read these keys
 //        refuses the whole ruleset or catalog file, so a package that ships any of them declares
 //        1.43. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 43 } as const);
+// 1.44: a catalog entry's reaction may wait for `on: "used"` (somebody on the other side is about to
+//        use something, anywhere it reaches, and it may be called off) and may name `against` (only
+//        entries of these catalogs open its moment). Not a soft seam, for the same reason as 1.20
+//        through 1.43: an Engine that cannot read these refuses the whole catalog, so a package that
+//        ships any of them declares 1.44. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 44 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

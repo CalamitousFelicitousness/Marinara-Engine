@@ -840,7 +840,7 @@ export function rulesetWindowTargetOf(
   const trigger = encounter.window?.trigger;
   if (!trigger || option.targets.count > 0 || option.id === RULESET_PASS_OPTION) return undefined;
   if (trigger.kind === "leaves-reach") return trigger.moverId;
-  if (trigger.kind !== "aimed" && trigger.kind !== "harmed") return undefined;
+  if (trigger.kind !== "aimed" && trigger.kind !== "harmed" && trigger.kind !== "used") return undefined;
   const action = actor.actions.find((entry) => entry.id === option.id);
   return action && rulesetReactionPointsAtSource(action) ? trigger.sourceId : undefined;
 }

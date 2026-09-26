@@ -315,7 +315,7 @@ function firstOf<T extends RulesetCombatEvent["type"]>(events: RulesetCombatEven
       const catalog = (doc.catalogs as Array<Record<string, any>>).find((entry) => entry.entries?.length)!;
       catalog.entries[0].mechanics = { ...catalog.entries[0].mechanics, reaction: { on: "harmed", cancels: true } };
     });
-    assert.match(refusal(badMoment), /Only an "aimed" reaction cancels/);
+    assert.match(refusal(badMoment), /Only an "aimed" or "used" reaction cancels/);
   }
   assert.match(issues({ budget: "swing" }), /Unknown budget "swing"/);
   assert.match(
@@ -1714,8 +1714,10 @@ const labels = (definition: RulesetDefinition, state: RulesetEncounterState, id:
       );
     }
     for (const catalog of doc.catalogs ?? []) {
+      // An entry that names the moment it waits for is later again (1.33).
       catalog.entries = (catalog.entries ?? []).filter(
-        (entry: Record<string, any>) => entry.mechanics?.kind !== "rider",
+        (entry: Record<string, any>) =>
+          entry.mechanics?.kind !== "rider" && typeof entry.mechanics?.reaction !== "object",
       );
       for (const entry of catalog.entries) {
         for (const key of ["plus", "free", "gives", "standard", "rider"]) delete entry.mechanics?.[key];
@@ -3014,6 +3016,10 @@ const labels = (definition: RulesetDefinition, state: RulesetEncounterState, id:
     // And the entries, inline or in the catalog file the install already holds.
     const inline = variant(emberText, (doc) => {
       doc.catalogs = (doc.catalogs ?? []).filter((catalog: Record<string, any>) => catalog.holds !== "creatures");
+      // An entry that names the moment it waits for is later again (1.33).
+      doc.catalogs[0].entries = doc.catalogs[0].entries.filter(
+        (entry: Record<string, any>) => typeof entry.mechanics?.reaction !== "object",
+      );
       doc.catalogs[0].entries[0].mechanics = { kind: "utility", free: true, gives: [{ budget: "act", count: 1 }] };
     });
     assert.match(getCapabilityPackageInstallIssue(manifest(28), inline) ?? "", economyIssue);

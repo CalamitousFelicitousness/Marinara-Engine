@@ -244,7 +244,16 @@ export interface RulesetCombatAction {
   signature?: { cost: number };
   /** Taken at a MOMENT rather than on a turn: which moment, whom it may be aimed at, and whether
    *  taking it stops what opened the window. On no turn's menu, ever. */
-  reaction?: { on: RulesetReactionMoment; at: "source" | "chosen"; cancels?: true };
+  reaction?: {
+    on: RulesetReactionMoment;
+    at: "source" | "chosen";
+    cancels?: true;
+    /** Only an action from an entry of one of these catalogs opens its moment for this reaction. */
+    against?: { catalogs: string[] };
+  };
+  /** The catalog of the entry this action was built from, when it was built from one. A weapon row,
+   *  a stat block's own action, a contest and a standard action have none. */
+  catalog?: string;
   /** IN CELLS, resolved once when the fight began, and read only by a positioned fight. An action
    *  with neither reaches one cell, which is the smallest step a board has. */
   reach?: number;
@@ -427,15 +436,20 @@ export type RulesetWindowTrigger =
   /** One turn has ended and the next has not begun. */
   | { kind: "between-turns"; nextActorId: string }
   /** Something is ABOUT to land on the ones being asked. It is already paid for and is held here
-   *  until they have answered, and an answer that cancels stops it from happening at all. */
-  | { kind: "aimed"; sourceId: string; optionId: string; label: string }
+   *  until they have answered, and an answer that cancels stops it from happening at all.
+   *  `catalog` is where the entry behind it came from, when there is one. */
+  | { kind: "aimed"; sourceId: string; optionId: string; label: string; catalog?: string }
+  /** Somebody on the other side is ABOUT to use something, whoever it is aimed at: held the same
+   *  way, for everybody holding an answer that reaches them. */
+  | { kind: "used"; sourceId: string; optionId: string; label: string; catalog?: string }
   /** Something has just hurt the ones being asked. It has already happened: nothing answered here
    *  unmakes it, and `sourceId` is whoever dealt it, for a reaction aimed back at them. */
-  | { kind: "harmed"; sourceId: string; label: string };
+  | { kind: "harmed"; sourceId: string; label: string; catalog?: string };
 
 /** The moments the Engine notices, and opens a window for. `aimed` is before something lands on
- *  the holder, `harmed` is after something has hurt them. */
-export type RulesetReactionMoment = "aimed" | "harmed";
+ *  the holder, `used` is before somebody on the other side uses something, and `harmed` is after
+ *  something has hurt the holder. */
+export type RulesetReactionMoment = "aimed" | "harmed" | "used";
 
 /** What the fight goes back to once the window closes. A window opened after something has already
  *  happened carries none: there is nothing to pick up. */

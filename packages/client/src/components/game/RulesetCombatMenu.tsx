@@ -59,6 +59,7 @@ const buttonClass =
 const WINDOW_PROMPTS = {
   aimed: "Aimed",
   harmed: "Harmed",
+  used: "Used",
   signature: "Between",
   reaction: "Leaving",
 } as const;

@@ -586,6 +586,23 @@ function entriesCarryCreatureChecks(entries: unknown): boolean {
   });
 }
 
+/** A reaction that waits for somebody USING something, or answers only some catalogs' entries,
+ *  which is 1.44: a new value and a new key in the same strict reaction object. */
+function entriesCarryUsedMoments(entries: unknown): boolean {
+  if (!Array.isArray(entries)) return false;
+  return entries.some((entry) => {
+    const mechanics = entry && typeof entry === "object" ? (entry as { mechanics?: unknown }).mechanics : undefined;
+    const reaction =
+      mechanics && typeof mechanics === "object" ? (mechanics as Record<string, unknown>).reaction : undefined;
+    if (!reaction || typeof reaction !== "object") return false;
+    const moment = reaction as Record<string, unknown>;
+    return moment.on === "used" || moment.against !== undefined;
+  });
+}
+
+const USED_MOMENTS_ISSUE =
+  "A ruleset whose reactions answer something being used, or only some catalogs' entries, requires schemaVersion 2 and capabilityApi 1.44 or newer";
+
 /** An entry that says WHICH moment it waits for. `reaction: true` has been legal since the key
  *  existed and says only that much; an OBJECT there is 1.33, and an Engine that knows only the
  *  boolean refuses the whole strict catalog file. */
@@ -910,6 +927,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryCreatureSheets(header.entries) && !declaresApi(34)) return sheetIssue;
       if (entriesCarryCheckFaces(header.entries) && !declaresApi(37)) return facesIssue;
       if (entriesCarryCreatureChecks(header.entries) && !declaresApi(43)) return CONTESTS_ISSUE;
+      if (entriesCarryUsedMoments(header.entries) && !declaresApi(44)) return USED_MOMENTS_ISSUE;
       const asset = header.asset;
       if (typeof asset !== "string") continue;
       // A path that does not normalize is never a declared one, whatever else failed to normalize.
@@ -930,6 +948,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryCreatureSheets(fileEntries) && !declaresApi(34)) return sheetIssue;
       if (entriesCarryCheckFaces(fileEntries) && !declaresApi(37)) return facesIssue;
       if (entriesCarryCreatureChecks(fileEntries) && !declaresApi(43)) return CONTESTS_ISSUE;
+      if (entriesCarryUsedMoments(fileEntries) && !declaresApi(44)) return USED_MOMENTS_ISSUE;
     }
   }
   // The battle block lives inside the ruleset file too, so it is read the same way and for the same

@@ -151,6 +151,7 @@ const WINDOW_LINES = {
   leaving: "windowLeaving",
   aimed: "windowAimed",
   harmed: "windowHarmed",
+  used: "windowUsed",
 } as const;
 
 /**

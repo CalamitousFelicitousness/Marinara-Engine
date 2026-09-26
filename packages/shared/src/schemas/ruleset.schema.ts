@@ -1207,11 +1207,17 @@ const catalogMechanicsSchema = z
      *  `on` is a closed list because the Engine has to be the one that notices the moment:
      *  - `aimed`: somebody is about to do something to the holder. The window opens BEFORE it
      *    resolves, and what is taken there may `cancel` it.
+     *  - `used`: somebody on the other side is about to use something, anywhere this reaches,
+     *    whoever it is aimed at or none. Before it resolves too, and it may be cancelled.
      *  - `harmed`: something has just hurt the holder. The window opens AFTER it resolves, because
      *    the amount is what the moment is about, and nothing taken there unmakes it.
      *
      *  `at` says whom what is taken may be aimed at. `source` is whoever caused the moment, which
-     *  is the only target most of these have, and is filled in rather than picked. */
+     *  is the only target most of these have, and is filled in rather than picked.
+     *
+     *  `against` narrows what opens the moment for this reaction: only an action that comes from an
+     *  entry of one of these catalogs. A weapon row, a stat block's own action, a contest and a
+     *  standard action have no entry behind them, so they never do. */
     reaction: z
       .union([
         // `false` has been legal since the key existed and says the entry is not a reaction at all,
@@ -1220,18 +1226,22 @@ const catalogMechanicsSchema = z
         z.literal(true),
         z
           .object({
-            on: z.enum(["aimed", "harmed"]),
+            on: z.enum(["aimed", "harmed", "used"]),
             at: z.enum(["source", "chosen"]).default("source"),
-            /** Stops what opened the window from happening at all. Only an `aimed` reaction may:
-             *  a moment that has already happened cannot be called off. */
+            /** Stops what opened the window from happening at all. Only a moment BEFORE something
+             *  resolves may be answered that way: what has already happened cannot be called off. */
             cancels: z.literal(true).optional(),
+            against: z
+              .object({ catalogs: z.array(sheetId).min(1).max(12) })
+              .strict()
+              .optional(),
           })
           .strict()
           .superRefine((reaction, ctx) => {
-            if (reaction.cancels && reaction.on !== "aimed") {
+            if (reaction.cancels && reaction.on === "harmed") {
               ctx.addIssue({
                 code: z.ZodIssueCode.custom,
-                message: 'Only an "aimed" reaction cancels: what has already happened cannot be called off',
+                message: 'Only an "aimed" or "used" reaction cancels: what has already happened cannot be called off',
               });
             }
           }),
@@ -4300,6 +4310,14 @@ export function rulesetCatalogEntryIssues(
     });
 
     const mechanics = entry.mechanics;
+    // What a reaction answers is named by catalog, so it has to be one this ruleset has.
+    if (mechanics?.reaction && typeof mechanics.reaction === "object") {
+      const known = new Set((definition.catalogs ?? []).map((one) => one.id));
+      mechanics.reaction.against?.catalogs.forEach((id, againstIndex) => {
+        if (!known.has(id))
+          add([index, "mechanics", "reaction", "against", "catalogs", againstIndex], `Unknown catalog "${id}"`);
+      });
+    }
     if (mechanics?.save && !saves.has(mechanics.save.save)) {
       add([index, "mechanics", "save", "save"], `Unknown save "${mechanics.save.save}"`);
     }

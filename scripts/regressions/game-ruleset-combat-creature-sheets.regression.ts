@@ -1519,24 +1519,35 @@ try {
       restartRequired: false,
       contributions: { assets: { paths: ["ruleset.json", "catalogs/road_trouble.json"] } },
     }) as any;
+  /** The example without an entry that names the moment it waits for, which gates on 1.33 (and on
+   *  1.44 for somebody using something), so these cases are answered by the sheet gate. */
+  const older = (edit: (doc: Record<string, any>) => void = () => {}) =>
+    variant(emberText, (doc) => {
+      for (const catalog of doc.catalogs) {
+        catalog.entries = catalog.entries?.filter(
+          (entry: Record<string, any>) => typeof entry.mechanics?.reaction !== "object",
+        );
+      }
+      edit(doc);
+    });
   const sheetIssue = /creatures carry a sheet of their own requires schemaVersion 2 and capabilityApi 1\.34 or newer/;
   // An Engine before 1.34 refuses the whole strict catalog over the one key, so the file says so.
-  assert.match(getCapabilityPackageInstallIssue(manifest(33), variant(emberText)) ?? "", sheetIssue);
-  assert.equal(getCapabilityPackageInstallIssue(manifest(34), variant(emberText)), null);
+  assert.match(getCapabilityPackageInstallIssue(manifest(33), older()) ?? "", sheetIssue);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(34), older()), null);
   // Without its sheet-written creature it installs on what it needed before.
-  const plain = variant(emberText, (doc) => {
+  const plain = older((doc) => {
     for (const catalog of doc.catalogs) {
       catalog.entries = catalog.entries?.filter((entry: Record<string, any>) => !entry.creature?.sheet);
     }
   });
   assert.equal(getCapabilityPackageInstallIssue(manifest(33), plain), null);
   // And the entries may sit in the catalog file instead, which the gate reads too.
-  const asAsset = variant(emberText, (doc) => {
+  const asAsset = older((doc) => {
     const bestiary = doc.catalogs.find((catalog: Record<string, any>) => catalog.id === "road_trouble");
     bestiary.asset = "catalogs/road_trouble.json";
     delete bestiary.entries;
   });
-  const entries = variant(emberText).catalogs.find((catalog: Record<string, any>) => catalog.id === "road_trouble")
+  const entries = older().catalogs.find((catalog: Record<string, any>) => catalog.id === "road_trouble")
     .entries as unknown[];
   const assets = new Map<string, unknown>([
     ["catalogs/road_trouble.json", { schemaVersion: 1, catalog: "road_trouble", entries }],

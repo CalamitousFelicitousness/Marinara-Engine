@@ -718,6 +718,34 @@
               }
             ]
           }
+        },
+        {
+          "$comment": "A COUNTER: it answers somebody on the other side using a knack, anywhere within eight paces and whoever it is aimed at, and calls it off. It answers only this catalog's entries, so the swing of an axe opens nothing for it. A turn here holds one action and it is long spent by anybody else's turn, so this costs a point of Luck instead.",
+          "id": "smother",
+          "label": "Smother",
+          "summary": "Snuff out a knack as it starts.",
+          "filters": {
+            "grit": 0,
+            "road": "Glasslands",
+            "callings": ["Ember-tender"]
+          },
+          "rows": [
+            {
+              "list": "knacks",
+              "values": {
+                "name": "Smother",
+                "notes": "When somebody within eight paces starts a knack, spend a point of Luck to stop it."
+              }
+            }
+          ],
+          "mechanics": {
+            "kind": "utility",
+            "free": true,
+            "range": 8,
+            "targets": "enemy",
+            "cost": [{ "pool": "luck", "amount": 1 }],
+            "reaction": { "on": "used", "at": "source", "cancels": true, "against": { "catalogs": ["knacks"] } }
+          }
         }
       ]
     },

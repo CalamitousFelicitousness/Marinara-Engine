@@ -469,6 +469,42 @@ try {
     );
   }
 
+  // ── A creature out of a bestiary keeps its reaction ──
+  // Named the way a Game Master names one, so it is read out of the catalog rather than written as a
+  // block: the reference's Toll Sergeant still parries on the moment, on itself, and never on its turn.
+  {
+    const bestiary = Object.fromEntries((fiveE.catalogs ?? []).map((catalog) => [catalog.id, catalog.entries ?? []]));
+    const state = createRulesetEncounter({
+      definition: fiveE,
+      seed: 5,
+      combatants: [
+        fighter("brenna"),
+        {
+          id: "sergeant",
+          name: "Toll Sergeant",
+          side: "enemy",
+          creature: { catalogId: "creatures", entryId: "toll-sergeant" },
+        },
+      ],
+      bestiary,
+      roller: dice(20, 1),
+    });
+    const parryAction = rulesetCombatant(state, "sergeant")!.actions.find((action) => action.label === "Parry")!;
+    assert.deepEqual(parryAction.reaction, { on: "hit", at: "source" });
+    assert.deepEqual(parryAction.targets, { side: "self", count: 0 });
+    const sword = rulesetCombatOptions(fiveE, state, "brenna").find((option) => option.label === "Longsword")!;
+    // 11 and +7 is 18 against its 17: a hit it may parry.
+    const held = act(state, { actorId: "brenna", optionId: sword.id, targetIds: ["sergeant"] }, 11);
+    assert.deepEqual(held.state.window?.waiting, ["sergeant"]);
+    const parried = answer(held.state, "sergeant", "Parry");
+    assert.equal(firstOf(parried.events, "recheck").outcome, "miss", "18 against 19");
+    const sergeantsTurn = endTurn(state, "brenna");
+    assert.ok(
+      !rulesetCombatOptions(fiveE, sergeantsTurn, "sergeant").some((option) => option.label === "Parry"),
+      "a reaction is not on its own turn's menu",
+    );
+  }
+
   // ── An action made of others: held at each part, and nothing done twice ──
   {
     const state = snagsTurn([fighter("brenna", ["shield"]), snag()]);

@@ -145,6 +145,15 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     ...(action.recharge ? { recharge: { dice: { ...action.recharge.dice }, from: action.recharge.from } } : {}),
     ...(action.sequence ? { sequence: action.sequence.map((step) => ({ ...step })) } : {}),
     ...(action.signature ? { signature: { ...action.signature } } : {}),
+    ...(action.reaction
+      ? {
+          reaction: {
+            ...action.reaction,
+            ...(action.reaction.against ? { against: { catalogs: [...action.reaction.against.catalogs] } } : {}),
+          },
+        }
+      : {}),
+    ...(action.self ? { self: true as const } : {}),
   };
 }
 

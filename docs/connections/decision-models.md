@@ -98,7 +98,7 @@ The Decision default is separate from your chat, agent, image, video, and audio 
 
 Hosted decisions send the selected recent messages and statements to the chosen provider and can incur charges. Smart response order also includes the [character roster](#what-the-model-sees). The **Recent-message token budget** defaults to 30,000 estimated tokens for hosted sources and 3,500 for custom servers. Reduce it if your server has a smaller context limit. Marinara drops older messages first, then trims the oldest portion of the newest message. Token estimates can differ from a server's tokenizer; a rejected or over-budget request gives no answer.
 
-**Time limit (seconds)** is how long each Decision connection waits for each statement's answer during chats, from 0.5 to 30 seconds (1.5 by default). A turn that asks several statements in one request gets this much for each of them. A later answer counts as no answer. Some hosted providers are sometimes slower than 1.5 seconds, which makes decisions look randomly broken, so click **Test** a few times and set the limit above the slowest answer. The trade-off: statements asked before the reply, such as decisions in a preset or an activation question for an agent that runs before the reply, can hold up the reply for up to this long each.
+**Time limit (seconds)** is how long each Decision connection waits for each statement's answer during chats, from 0.5 to 30 seconds (1.5 by default, or 4 for an **OpenAI-compatible chat model** connection). A turn that asks several statements in one request gets this much for each of them. A later answer counts as no answer. Some hosted providers are sometimes slower than 1.5 seconds, which makes decisions look randomly broken, so click **Test** a few times and set the limit above the slowest answer. The trade-off: statements asked before the reply, such as decisions in a preset or an activation question for an agent that runs before the reply, can hold up the reply for up to this long each.
 
 Deleting a connection used for a linked key warns you and leaves the Decision connection needing relinking. Imported standalone connection files also need keys or links restored; they never contain API keys or borrowed connection IDs.
 
@@ -148,7 +148,7 @@ A decision that does not arrive in time gives no answer. Generation continues us
 
 Every time limit is per statement. A request that asks several statements at once gets the limit for each of them, and each Choice answer counts as a statement. A local model works on only a few requests at a time, so statements wait their turn, and a statement's time starts only when the model starts on it.
 
-- **1.5 seconds** per statement for a Decision connection, unless you change its **Time limit**. See [Set up a Decision connection](#set-up-a-decision-connection).
+- **1.5 seconds** per statement for a TypeSafe, OpenRouter or Custom System One Decision connection, unless you change its **Time limit**. See [Set up a Decision connection](#set-up-a-decision-connection).
 - **4 seconds** per statement for an OpenAI-compatible chat model connection, unless you change its **Time limit**. A model that has to think first gets at least 20 seconds.
 - **4 seconds** per statement for a local model.
 - **4 seconds** for the decision sidecar's first statement. Each further statement gets the model's measured time: 0.35 seconds for Open-Jev 2B and 0.8 seconds for Open-Jev 9B. A model you installed by pasting its repository gets 4 seconds for each.

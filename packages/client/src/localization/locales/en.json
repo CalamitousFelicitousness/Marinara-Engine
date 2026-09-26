@@ -698,7 +698,7 @@
   "connections.decision.thinkingHelp": "Most models answer in a single word, which is fastest. A model that has to think first is switched over automatically in Auto.",
   "connections.decision.thinkingLabel": "Thinking",
   "connections.decision.timeLimit": "Time limit (seconds)",
-  "connections.decision.timeLimitHelp": "How long to wait for an answer during chats, from {{min}} to {{max}} seconds (default {{default}}). A later answer counts as no. Raise it for a slow provider, but a statement asked before the reply can hold up the reply for this long.",
+  "connections.decision.timeLimitHelp": "How long to wait for each statement's answer during chats, from {{min}} to {{max}} seconds (default {{default}}). A turn that asks several statements at once gets this much for each. A later answer counts as no. Raise it for a slow provider, but statements asked before the reply can hold up the reply for this long each.",
   "connections.decision.unavailable.needs_relinking": "Needs relinking",
   "connections.decision.unavailable.no_model": "No model downloaded — set up in Local Model",
   "connections.decision.unavailable.not_enabled": "Not enabled — set up in Local Model",

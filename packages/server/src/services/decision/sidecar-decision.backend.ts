@@ -26,6 +26,7 @@ import {
   recordOneTokenFailure,
   recordThinkingAnswer,
 } from "./decision-thinking-cache.js";
+import { whenDecisionServerFree } from "./decision-server-queue.js";
 import { type ResolvedDecisionSlot } from "./decision-slots.js";
 import { isDirectAnswer, readLogprobAnswer, readWordAnswer, type TopLogprob } from "./logprob-answer.js";
 import type { NoulQuestion } from "./system-one.client.js";
@@ -216,8 +217,8 @@ async function askQuestion(
  * Answer a group of questions against one slot.
  *
  * There is no single parallel pass as with System One, so the group's questions go out
- * concurrently and llama-server's own slots serve them. Every question shares the same
- * state prefix, which is what makes that cheap.
+ * as many at a time as llama-server has slots, and the rest wait for one. Every
+ * question shares the same state prefix, which is what makes that cheap.
  */
 export async function askSidecarNoulQuestions(
   args: {
@@ -230,7 +231,11 @@ export async function askSidecarNoulQuestions(
   const answers = new Map<string, number>();
   await Promise.all(
     args.questions.map(async (question) => {
-      const probability = await askQuestion(args.slot, args.state, question, args.signal, args);
+      // Each statement's time limit starts once the server can work on it, not while it
+      // waits behind the others for one of llama-server's slots.
+      const probability = await whenDecisionServerFree(args.slot.baseUrl, args.slot.serverSlots, args.signal, () =>
+        askQuestion(args.slot, args.state, question, args.signal, args),
+      );
       if (probability !== null) answers.set(question.id, probability);
     }),
   );
@@ -247,6 +252,12 @@ export async function probeDecisionSlot(
   answersDirectly: boolean;
   latencyMs: number;
 }> {
+  // Timed from when the server can take it, so a Test clicked during a busy turn
+  // reports how long the model takes to answer, not how long it queued.
+  return whenDecisionServerFree(slot.baseUrl, slot.serverSlots, signal, () => probeOnce(slot, signal));
+}
+
+async function probeOnce(slot: ResolvedDecisionSlot, signal: AbortSignal | undefined) {
   const start = Date.now();
   const state = { recent_messages: [{ role: "user", name: "User", content: "The door is open." }] };
   const question = { id: "probe", instructions: "The door is open." };

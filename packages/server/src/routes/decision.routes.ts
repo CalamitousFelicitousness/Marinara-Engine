@@ -44,6 +44,7 @@ import { DECISION_SIDECAR_RATE_LIMIT } from "../middleware/rate-limit.js";
 import { decisionProcessService } from "../services/sidecar/decision-process.service.js";
 import { DECISION_TIMEOUT_MS } from "@marinara-engine/shared";
 import { askNoulQuestions } from "../services/decision/system-one.client.js";
+import { whenDecisionServerFree } from "../services/decision/decision-server-queue.js";
 import { inspectDecisionRepo } from "../services/sidecar/decision-byo.js";
 import { configuredCudaIndex, preflightDecisionModel } from "../services/sidecar/decision-preflight.js";
 import { awaitGpuProbe } from "../services/sidecar/sidecar-footprint.js";
@@ -538,18 +539,23 @@ export async function decisionRoutes(app: FastifyInstance) {
     // A System One slot answers a fixed Noul question, not a chat prompt. Testing it
     // the chat way is what made this return "no answer" against a healthy server.
     if (resolution.resolved.protocol === "system_one") {
-      const result = await askNoulQuestions({
-        connection: {
-          endpoint: `${resolution.resolved.baseUrl}/v1/systemone`,
-          apiKey: "",
-          model: resolution.resolved.model,
-          maxStateTokens: 3500,
-        },
-        state: { recent_messages: [{ role: "user", name: "User", content: "The door is open." }] },
-        questions: [{ id: "test", instructions: "The door is open." }],
-        timeoutMs: DECISION_TIMEOUT_MS.sidecar,
-        questionShape: resolution.resolved.calibration?.questionShape ?? "text",
-      });
+      const { baseUrl, serverSlots } = resolution.resolved;
+      // Timed from when the model takes it: a Test clicked during a busy turn reports the
+      // model's answer time, not the time it spent behind the turn's request.
+      const result = await whenDecisionServerFree(baseUrl, serverSlots, undefined, () =>
+        askNoulQuestions({
+          connection: {
+            endpoint: `${resolution.resolved.baseUrl}/v1/systemone`,
+            apiKey: "",
+            model: resolution.resolved.model,
+            maxStateTokens: 3500,
+          },
+          state: { recent_messages: [{ role: "user", name: "User", content: "The door is open." }] },
+          questions: [{ id: "test", instructions: "The door is open." }],
+          timeoutMs: DECISION_TIMEOUT_MS.sidecar,
+          questionShape: resolution.resolved.calibration?.questionShape ?? "text",
+        }),
+      );
       const probability = result.answers.get("test");
       return {
         success: probability !== undefined,

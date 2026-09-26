@@ -27,18 +27,21 @@
 // still to ask and the same cells still to walk.
 //
 // A catalog entry may say WHICH moment it waits for, and then it is offered in the window that
-// moment opens: `aimed` before something lands on its holder, where taking it may `cancel` what was
-// held, and `harmed` after something has hurt them, where nothing unmakes it. What it costs is paid
-// before anybody is asked, so a cancelled action is stopped from happening rather than from having
-// been bought.
+// moment opens: `used` before somebody on the other side uses something it reaches, and `aimed`
+// before something lands on its holder, where taking it may `cancel` what was held; and `harmed`
+// after something has hurt them, where nothing unmakes it. What it costs is paid before anybody is
+// asked, so a cancelled action is stopped from happening rather than from having been bought.
+//
+// A condition may change NUMBERS as well as switch effects on: its holder's defense, attack rolls,
+// saves, contest checks and speed, each read where the number is used rather than written into the
+// combatant. A level of a live track reads exactly like a condition while the track is high enough.
 //
 // What these slices deliberately leave for the ones after them, with the seams already in place:
 //   - a chain of them. The fight keeps ONE window rather than a stack, so nothing opened inside a
 //     window opens another: a counter cannot itself be countered, and a reaction that hurts
 //     somebody opens no second moment.
-//   - a reaction that changes a NUMBER on what it answers rather than stopping it. The condition
-//     vocabulary is a closed list of names, not modifiers, so "harder to hit until your next turn"
-//     is not something a ruleset can say yet, whether a reaction or anything else says it.
+//   - a moment after an attack has hit and before its damage, which is where some answers change
+//     the number that decided it.
 //   - three-quarter and total cover, elevation, flying over obstacles, squeezing, hiding and
 //     surprise, and movement forced on somebody by an attack.
 //   - who an opponent chooses to attack. Everything an enemy could do is on the same menu a player
@@ -78,6 +81,7 @@ export {
   currentRulesetActor,
   refreshRulesetMovement,
   rulesetActiveConditions,
+  rulesetCheckMode,
   rulesetCombatant,
   rulesetCombatConditions,
   rulesetCombatEffects,
@@ -85,8 +89,11 @@ export {
   rulesetCombatFailsSave,
   rulesetCombatHealth,
   rulesetCombatStanding,
+  rulesetConditionModifiers,
   rulesetMovementAllowance,
   rulesetSaveMode,
+  type RulesetActiveCondition,
+  type RulesetConditionModifier,
   type RulesetEncounterInput,
 } from "./encounter.js";
 export {
@@ -109,6 +116,7 @@ export {
   rulesetAimLegal,
   rulesetAreaTargets,
   rulesetAttackMode,
+  rulesetBonusDice,
   rulesetCombatOptions,
   rulesetContestChance,
   rulesetContestCheck,
@@ -136,6 +144,7 @@ export {
   RULESET_MOVE_OPTION,
   RULESET_PASS_OPTION,
   RULESET_STAND_OPTION,
+  type RulesetBonusDice,
   type RulesetCombatCost,
   type RulesetOptionReach,
 } from "./options.js";

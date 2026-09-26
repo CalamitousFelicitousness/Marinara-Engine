@@ -9,7 +9,7 @@ import {
   type RulesetLiveState,
   type RulesetSheetOp,
 } from "../rulesets/live-state.js";
-import { rulesetAverageDamage } from "./dice.js";
+import { parseRulesetCombatDice, rulesetAverageDamage } from "./dice.js";
 import {
   currentRulesetActor,
   rulesetActiveConditions,
@@ -17,6 +17,9 @@ import {
   rulesetCombatConditions,
   rulesetCombatEffects,
   rulesetCombatStanding,
+  rulesetCheckMode,
+  rulesetConditionModifiers,
+  type RulesetConditionModifier,
 } from "./encounter.js";
 import {
   rulesetAreaCells,
@@ -28,6 +31,7 @@ import {
   rulesetReachableCells,
 } from "./grid.js";
 import type {
+  RulesetConditionBonus,
   RulesetCombatAction,
   RulesetCombatCell,
   RulesetCombatOption,
@@ -360,15 +364,66 @@ export function rulesetAreaTargets(
  * One answer, so a forecast and the roll that follows it can never disagree about the number.
  */
 export function rulesetDefenseAgainst(
+  definition: RulesetDefinition,
   combat: RulesetCombat,
   state: RulesetEncounterState,
   target: RulesetCombatant,
-): { defense: number; cover: number } {
+): { defense: number; cover: number; guards: RulesetConditionBonus[] } {
+  // What the target's own conditions add. Defense is never rolled, so each is its flat number.
+  const guards = rulesetConditionModifiers(definition, combat, target, "defense", state).map(
+    ({ condition, level, modifier }) => ({
+      condition,
+      ...(level !== undefined ? { level } : {}),
+      value: modifier.flat ?? 0,
+    }),
+  );
+  const defense = target.defense + guards.reduce((total, guard) => total + guard.value, 0);
   const grid = state.board?.grid;
   const at = rulesetPositionOf(target);
   const bonus = combat.cover?.bonus ?? 0;
-  if (!grid || !at || bonus <= 0 || rulesetCellCover(grid, at) <= 0) return { defense: target.defense, cover: 0 };
-  return { defense: target.defense + bonus, cover: bonus };
+  if (!grid || !at || bonus <= 0 || rulesetCellCover(grid, at) <= 0) return { defense, cover: 0, guards };
+  return { defense: defense + bonus, cover: bonus, guards };
+}
+
+/** What conditions add to one roll, as a forecast reads it: the flat part, and every die with the
+ *  sign it is added with. */
+export interface RulesetBonusDice {
+  flat: number;
+  dice: Array<{ count: number; sides: number; sign: 1 | -1 }>;
+}
+
+export function rulesetBonusDice(modifiers: readonly RulesetConditionModifier[]): RulesetBonusDice {
+  const bonus: RulesetBonusDice = { flat: 0, dice: [] };
+  for (const { modifier } of modifiers) {
+    bonus.flat += modifier.flat ?? 0;
+    const dice = modifier.dice ? parseRulesetCombatDice(modifier.dice) : null;
+    if (!dice) continue;
+    const sign = modifier.minus ? -1 : 1;
+    if (dice.count > 0) bonus.dice.push({ count: dice.count, sides: dice.sides, sign });
+    bonus.flat += sign * dice.flat;
+  }
+  return bonus;
+}
+
+/** How likely each amount the bonus comes to is, as [amount, share] pairs. Null past the size a
+ *  forecast works out exactly. */
+function bonusDistribution(bonus: RulesetBonusDice | undefined): Array<[number, number]> | null {
+  let shares = new Map<number, number>([[bonus?.flat ?? 0, 1]]);
+  for (const die of bonus?.dice ?? []) {
+    const faces = diceDistribution(die.count, die.sides);
+    if (!faces) return null;
+    const next = new Map<number, number>();
+    for (const [amount, share] of shares) {
+      for (let total = 0; total < faces.length; total++) {
+        const chance = faces[total]!;
+        if (chance === 0) continue;
+        const key = amount + die.sign * total;
+        next.set(key, (next.get(key) ?? 0) + share * chance);
+      }
+    }
+    shares = next;
+  }
+  return [...shares];
 }
 
 export interface RulesetCombatCost {
@@ -476,30 +531,69 @@ export function rulesetContestCheck(
 }
 
 /** The share of contests the actor would win against this target: both sides throw the fight's own
- *  attack dice and add their check, the higher total wins, and a tie goes where the contest says. */
+ *  attack dice, twice with one kept where a condition says so, and add their check and whatever their
+ *  conditions add; the higher total wins, and a tie goes where the contest says. */
 export function rulesetContestChance(
+  definition: RulesetDefinition,
   combat: RulesetCombat,
   actor: RulesetCombatant,
   target: RulesetCombatant,
   contest: RulesetCombatContest,
+  state?: RulesetEncounterState,
 ): number | null {
-  const { count, sides } = combat.attackRoll.dice;
-  const distribution = diceDistribution(count, sides);
-  if (!distribution) return null;
-  const attacker = rulesetContestCheck(actor, contest, "attacker").modifier;
-  const defender = rulesetContestCheck(target, contest, "defender").modifier;
+  const mine = contestTotals(definition, combat, actor, rulesetContestCheck(actor, contest, "attacker"), state);
+  const theirs = contestTotals(definition, combat, target, rulesetContestCheck(target, contest, "defender"), state);
+  if (!mine || !theirs) return null;
   let win = 0;
-  for (let mine = 0; mine < distribution.length; mine++) {
-    const pMine = distribution[mine]!;
-    if (pMine === 0) continue;
-    for (let theirs = 0; theirs < distribution.length; theirs++) {
-      const pTheirs = distribution[theirs]!;
-      if (pTheirs === 0) continue;
-      const margin = mine + attacker - (theirs + defender);
+  for (const [attacker, pMine] of mine) {
+    for (const [defender, pTheirs] of theirs) {
+      const margin = attacker - defender;
       if (margin > 0 || (margin === 0 && contest.ties === "attacker")) win += pMine * pTheirs;
     }
   }
   return win;
+}
+
+/** How likely each total one side of a contest reaches is. */
+function contestTotals(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  combatant: RulesetCombatant,
+  check: { modifier: number },
+  state: RulesetEncounterState | undefined,
+): Array<[number, number]> | null {
+  const { count, sides } = combat.attackRoll.dice;
+  const thrown = keptDistribution(count, sides, rulesetCheckMode(definition, combat, combatant, state));
+  const bonus = bonusDistribution(
+    rulesetBonusDice(rulesetConditionModifiers(definition, combat, combatant, "checks", state)),
+  );
+  if (!thrown || !bonus) return null;
+  const totals = new Map<number, number>();
+  for (let sum = 0; sum < thrown.length; sum++) {
+    const share = thrown[sum]!;
+    if (share === 0) continue;
+    for (const [amount, chance] of bonus) {
+      const key = sum + check.modifier + amount;
+      totals.set(key, (totals.get(key) ?? 0) + share * chance);
+    }
+  }
+  return [...totals];
+}
+
+/** The dice's own distribution, or that of the better or worse of two throws of them. */
+function keptDistribution(count: number, sides: number, mode: RulesetCombatRollMode): number[] | null {
+  const single = diceDistribution(count, sides);
+  if (!single || mode === "normal") return single;
+  const kept = new Array<number>(single.length).fill(0);
+  let below = 0;
+  for (let sum = 0; sum < single.length; sum++) {
+    const atMost = below + single[sum]!;
+    // The better of two is at most `sum` exactly when both are; the worse is at least `sum` exactly
+    // when both are.
+    kept[sum] = mode === "advantage" ? atMost ** 2 - below ** 2 : (1 - below) ** 2 - (1 - atMost) ** 2;
+    below = atMost;
+  }
+  return kept;
 }
 
 /** Whoever holds this actor by the condition a breaking-free contest names, when they are still in
@@ -522,7 +616,20 @@ export function rulesetHitChance(
   toHit: number,
   defense: number,
   mode: RulesetCombatRollMode = "normal",
+  /** What the attacker's conditions add on top of the dice, rolled once whichever throw is kept. */
+  bonus?: RulesetBonusDice,
 ): number | null {
+  if (bonus && (bonus.flat !== 0 || bonus.dice.length > 0)) {
+    const shares = bonusDistribution(bonus);
+    if (!shares) return null;
+    let chance = 0;
+    for (const [amount, share] of shares) {
+      const one = rulesetHitChance(combat, toHit + amount, defense, mode);
+      if (one === null) return null;
+      chance += share * one;
+    }
+    return chance;
+  }
   const { dice, naturals } = combat.attackRoll;
   let single: number | null = null;
   if (dice.count === 1) {
@@ -704,7 +811,7 @@ function forecastFor(
   const target = firstTarget(definition, state, actor, action) ?? firstAreaTarget(state, actor, action);
   // A contest's chance is the share it would WIN against the first one it may be taken against.
   if (action.contest) {
-    const chance = target ? rulesetContestChance(combat, actor, target, action.contest) : null;
+    const chance = target ? rulesetContestChance(definition, combat, actor, target, action.contest, state) : null;
     return chance === null ? undefined : { hitChance: Math.round(chance * 1000) / 1000 };
   }
   if (action.toHit !== undefined && target) {
@@ -713,8 +820,9 @@ function forecastFor(
     const chance = rulesetHitChance(
       combat,
       action.toHit,
-      rulesetDefenseAgainst(combat, state, target).defense,
+      rulesetDefenseAgainst(definition, combat, state, target).defense,
       rulesetAttackMode(definition, combat, actor, target, { state, optionId: action.id }),
+      rulesetBonusDice(rulesetConditionModifiers(definition, combat, actor, "attacks", state)),
     );
     if (chance !== null) forecast.hitChance = Math.round(chance * 1000) / 1000;
   }

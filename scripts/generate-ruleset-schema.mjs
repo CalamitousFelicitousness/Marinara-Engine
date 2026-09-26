@@ -8,8 +8,12 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import {
+  RULESET_COMBAT_CONDITION_EFFECTS,
   RULESET_CREATURE_PLAIN_NEEDS,
   RULESET_CREATURE_SHEET_REPLACES,
+  RULESET_LEVEL_REFUSED_EFFECTS,
+  RULESET_ROLLED_MODIFIER_TARGETS,
+  RULESET_SAVE_SCOPED_EFFECTS,
   RULESET_SCALED_MAX_COLUMNS,
   rulesetDefinitionSchema,
 } from "../packages/shared/dist/index.js";
@@ -200,6 +204,65 @@ function cancelOnlyWhenAimed(node) {
     node.if = { required: ["cancels"] };
     node.then = { properties: { on: { enum: ["aimed", "used"] } }, required: ["on"] };
   }
+}
+
+// A condition's modifier changes its number by something: a flat amount that is not 0, dice (only on
+// a number that is rolled, and `minus` only with dice), or `times` (only on speed). Refinements, so
+// the editor is told here. The node is found by its shape: `to` beside `flat`, `dice` and `times`.
+function modifierSaysSomething(node) {
+  if (Array.isArray(node)) return node.forEach(modifierSaysSomething);
+  if (!node || typeof node !== "object") return;
+  Object.values(node).forEach(modifierSaysSomething);
+  const properties = node.properties;
+  if (node.type !== "object" || !properties?.to || !properties.flat || !properties.dice || !properties.times) return;
+  requireAnyOf(node, ["flat", "dice", "times"]);
+  properties.flat = { ...properties.flat, not: { const: 0 } };
+  node.allOf = [
+    ...(node.allOf ?? []),
+    { if: { required: ["dice"] }, then: { properties: { to: { enum: [...RULESET_ROLLED_MODIFIER_TARGETS] } } } },
+    { if: { required: ["times"] }, then: { properties: { to: { const: "speed" } } } },
+    { if: { required: ["minus"] }, then: { required: ["dice"] } },
+  ];
+}
+
+// `saves` on a condition or a level narrows the save effects and the modifiers to saves, so it needs
+// one of them beside it; and a level does something and never has an effect that needs a source or
+// ends by itself. Refinements, so the editor is told here. Found by shape: `saves` beside `effects`
+// and `modifiers`, with `track` beside them for a level.
+function conditionSavesAndLevels(node) {
+  if (Array.isArray(node)) return node.forEach(conditionSavesAndLevels);
+  if (!node || typeof node !== "object") return;
+  Object.values(node).forEach(conditionSavesAndLevels);
+  const properties = node.properties;
+  if (node.type !== "object" || !properties?.saves || !properties.effects || !properties.modifiers) return;
+  node.allOf = [
+    ...(node.allOf ?? []),
+    {
+      if: { required: ["saves"] },
+      then: {
+        anyOf: [
+          { required: ["effects"], properties: { effects: { contains: { enum: [...RULESET_SAVE_SCOPED_EFFECTS] } } } },
+          {
+            required: ["modifiers"],
+            properties: { modifiers: { contains: { properties: { to: { const: "saves" } } } } },
+          },
+        ],
+      },
+    },
+  ];
+  if (!properties.track) return;
+  const refused = new Set(RULESET_LEVEL_REFUSED_EFFECTS);
+  properties.effects = {
+    ...properties.effects,
+    items: { type: "string", enum: RULESET_COMBAT_CONDITION_EFFECTS.filter((effect) => !refused.has(effect)) },
+  };
+  node.allOf.push({
+    anyOf: [
+      { required: ["effects"], properties: { effects: { minItems: 1 } } },
+      { required: ["modifiers"] },
+      { required: ["failsSaves"] },
+    ],
+  });
 }
 
 // A creature either carries a sheet in the ruleset's own terms, and then takes its health, defense,
@@ -396,6 +459,8 @@ requireOneEntryContent(schema);
 requireCatalogFeeds(schema);
 requireSaveEndsUntilSave(schema);
 cancelOnlyWhenAimed(schema);
+modifierSaysSomething(schema);
+conditionSavesAndLevels(schema);
 oneSourceForCreature(schema);
 requireDamageAmount(schema);
 requireDistanceForMeasured(schema);

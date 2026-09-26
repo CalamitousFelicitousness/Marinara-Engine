@@ -8,7 +8,7 @@
 
 import type { RulesetCombat, RulesetDefinition } from "../../schemas/ruleset.schema.js";
 import { readRulesetLive, type RulesetSheetOp } from "../rulesets/live-state.js";
-import { rollRulesetDice, sumOf } from "./dice.js";
+import { parseRulesetCombatDice, rollRulesetDice, sumOf } from "./dice.js";
 import {
   currentRulesetActor,
   refreshRulesetBudgets,
@@ -20,9 +20,12 @@ import {
   rulesetCombatDamageKind,
   rulesetCombatHealth,
   rulesetCombatStanding,
+  rulesetCheckMode,
+  rulesetConditionModifiers,
   rulesetMovementAllowance,
   rulesetSaveMode,
   writeRulesetSheet,
+  type RulesetConditionModifier,
 } from "./encounter.js";
 import {
   rulesetAreaCells,
@@ -80,9 +83,12 @@ import type {
   RulesetCombatStep,
   RulesetCombatWindow,
   RulesetCombatant,
+  RulesetConditionBonus,
+  RulesetConditionEnding,
   RulesetEncounterOutcome,
   RulesetEncounterState,
   RulesetEncounterSummary,
+  RulesetTrackedCondition,
   RulesetWalkResume,
   RulesetWindowResume,
   RulesetWindowTrigger,
@@ -582,6 +588,7 @@ function rollSave(
       success: false,
       automatic: true,
     });
+    spendConditions(ctx, combatant, "own-save");
     return false;
   }
   // Rolled twice and one kept when a condition says so, exactly as an attack is. A roll that leans
@@ -596,7 +603,12 @@ function rollSave(
       ? Math.max(sumOf(first), sumOf(second))
       : Math.min(sumOf(first), sumOf(second))
     : sumOf(first);
-  const total = kept + modifier;
+  // What the saver's conditions add, rolled after the save's own dice.
+  const bonuses = rollBonuses(
+    ctx,
+    rulesetConditionModifiers(ctx.definition, ctx.combat, combatant, "saves", ctx.state, save),
+  );
+  const total = kept + modifier + bonusTotal(bonuses);
   const success = total >= difficulty;
   ctx.events.push({
     type: "save",
@@ -607,11 +619,46 @@ function rollSave(
     rolls: second ? [...first, ...second] : first,
     kept,
     modifier,
+    ...(bonuses.length > 0 ? { bonuses } : {}),
     total,
     difficulty,
     success,
   });
+  spendConditions(ctx, combatant, "own-save");
   return success;
+}
+
+/** What conditions add to one roll, each rolled now: a flat number as it is, dice thrown (and taken
+ *  away where the modifier says `minus`). */
+function rollBonuses(ctx: RulesetCombatContext, modifiers: RulesetConditionModifier[]): RulesetConditionBonus[] {
+  return modifiers.map(({ condition, level, modifier }) => {
+    let value = modifier.flat ?? 0;
+    const dice = modifier.dice ? parseRulesetCombatDice(modifier.dice) : null;
+    const rolls = dice ? rollRulesetDice(ctx.roll, dice.count, dice.sides) : undefined;
+    if (dice && rolls) value += (modifier.minus ? -1 : 1) * (sumOf(rolls) + dice.flat);
+    return { condition, ...(level !== undefined ? { level } : {}), value, ...(rolls ? { rolls } : {}) };
+  });
+}
+
+function bonusTotal(bonuses: readonly RulesetConditionBonus[]): number {
+  return bonuses.reduce((total, bonus) => total + bonus.value, 0);
+}
+
+/** Conditions that last one use, taken off once it has happened to their holder. */
+function spendConditions(ctx: RulesetCombatContext, combatant: RulesetCombatant, ending: RulesetConditionEnding): void {
+  spendOneUse(ctx, combatant, oneUseConditions(combatant, ending));
+}
+
+function oneUseConditions(combatant: RulesetCombatant, ending: RulesetConditionEnding): RulesetTrackedCondition[] {
+  return combatant.tracked.filter((entry) => entry.endsAfter === ending);
+}
+
+/** Takes off exactly these, if they are still on. One the same blow put on afresh is a new one, not
+ *  the one that was used, so it stays. */
+function spendOneUse(ctx: RulesetCombatContext, combatant: RulesetCombatant, used: RulesetTrackedCondition[]): void {
+  for (const entry of used) {
+    if (combatant.tracked.includes(entry)) removeCondition(ctx, combatant, entry.condition, "spent");
+  }
 }
 
 // ── Conditions ──
@@ -629,10 +676,13 @@ function applyConditionId(
   }
   if (target.sheet) writeRulesetSheet(ctx.definition, target, { op: "condition", condition, active: true });
   const rounds = typeof applies.duration === "object" ? applies.duration.rounds : null;
+  const clock = typeof applies.duration === "object" ? applies.duration.at : undefined;
   target.tracked = target.tracked.filter((entry) => entry.condition !== condition);
   target.tracked.push({
     condition,
     rounds,
+    ...(clock ? { clock } : {}),
+    ...(applies.endsAfter ? { endsAfter: applies.endsAfter } : {}),
     ...(applies.saveEnds ? { saveEnds: applies.saveEnds } : {}),
     ...(extra.difficulty !== undefined ? { difficulty: extra.difficulty } : {}),
     ...(extra.sourceId ? { source: extra.sourceId } : {}),
@@ -645,7 +695,7 @@ function removeCondition(
   ctx: RulesetCombatContext,
   target: RulesetCombatant,
   condition: string,
-  reason: "save" | "expired" | "damage" | "concentration" | "revived" | "contest",
+  reason: "save" | "expired" | "damage" | "concentration" | "revived" | "contest" | "spent",
 ): void {
   target.tracked = target.tracked.filter((entry) => entry.condition !== condition);
   if (target.sheet) writeRulesetSheet(ctx.definition, target, { op: "condition", condition, active: false });
@@ -677,7 +727,8 @@ function tickConditions(ctx: RulesetCombatContext, actor: RulesetCombatant, at: 
         continue;
       }
     }
-    if (at !== "turn-end" || entry.rounds === null) continue;
+    // A clock counts the holder's turns down as each one ends, or, where it says so, as each begins.
+    if (entry.rounds === null || at !== (entry.clock ?? "turn-end")) continue;
     entry.rounds -= 1;
     if (entry.rounds <= 0) removeCondition(ctx, actor, entry.condition, "expired");
   }
@@ -1019,14 +1070,31 @@ function resolveContest(
   target: RulesetCombatant,
 ): void {
   const { count, sides } = ctx.combat.attackRoll.dice;
-  const thrown = (check: string, modifier: number) => {
-    const rolls = rollRulesetDice(ctx.roll, count, sides);
-    return { check, rolls, modifier, total: sumOf(rolls) + modifier };
+  // Each side thrown as its own conditions say: twice with one kept, and whatever they add rolled
+  // after the dice. A side nothing leans or adds to is written exactly as it always was.
+  const thrown = (who: RulesetCombatant, check: string, modifier: number) => {
+    const mode = rulesetCheckMode(ctx.definition, ctx.combat, who, ctx.state);
+    const first = rollRulesetDice(ctx.roll, count, sides);
+    const second = mode === "normal" ? null : rollRulesetDice(ctx.roll, count, sides);
+    const kept = second
+      ? mode === "advantage"
+        ? Math.max(sumOf(first), sumOf(second))
+        : Math.min(sumOf(first), sumOf(second))
+      : sumOf(first);
+    const bonuses = rollBonuses(ctx, rulesetConditionModifiers(ctx.definition, ctx.combat, who, "checks", ctx.state));
+    return {
+      check,
+      rolls: second ? [...first, ...second] : first,
+      modifier,
+      total: kept + modifier + bonusTotal(bonuses),
+      ...(mode === "normal" ? {} : { mode }),
+      ...(bonuses.length > 0 ? { bonuses } : {}),
+    };
   };
   const mine = rulesetContestCheck(actor, contest, "attacker");
   const theirs = rulesetContestCheck(target, contest, "defender");
-  const attacker = thrown(mine.check, mine.modifier);
-  const defender = thrown(theirs.check, theirs.modifier);
+  const attacker = thrown(actor, mine.check, mine.modifier);
+  const defender = thrown(target, theirs.check, theirs.modifier);
   const margin = attacker.total - defender.total;
   const winner = margin > 0 || (margin === 0 && contest.ties === "attacker") ? "actor" : "target";
   ctx.events.push({
@@ -1792,6 +1860,14 @@ function resolveAction(
   for (const target of targets) {
     let landed = true;
     let critical = false;
+    // What lasted one attack, on either side of it: noted when the roll is made and spent once this
+    // blow is over, landed or not, so it counts for the blow's damage as well as its roll.
+    let used: { mine: RulesetTrackedCondition[]; theirs: RulesetTrackedCondition[] } | null = null;
+    const spendUsed = () => {
+      if (!used) return;
+      spendOneUse(ctx, actor, used.mine);
+      spendOneUse(ctx, target, used.theirs);
+    };
     // How the roll finally leaned, which is one of the things a rider may ask about. An action
     // nobody rolls for leaned no way at all.
     let mode: RulesetCombatRollMode = "normal";
@@ -1801,7 +1877,7 @@ function resolveAction(
         optionId: action.id,
       });
       // What the ground the target stands on is worth, said out loud before the roll it changed.
-      const guarded = rulesetDefenseAgainst(ctx.combat, ctx.state, target);
+      const guarded = rulesetDefenseAgainst(ctx.definition, ctx.combat, ctx.state, target);
       if (guarded.cover > 0) {
         ctx.events.push({ type: "cover", targetId: target.id, bonus: guarded.cover, defense: guarded.defense });
       }
@@ -1815,7 +1891,12 @@ function resolveAction(
         : sumOf(first);
       const naturals = ctx.combat.attackRoll.naturals;
       const single = dice.count === 1;
-      const total = kept + action.toHit;
+      // What the attacker's conditions add, rolled after the attack's own dice.
+      const bonuses = rollBonuses(
+        ctx,
+        rulesetConditionModifiers(ctx.definition, ctx.combat, actor, "attacks", ctx.state),
+      );
+      const total = kept + action.toHit + bonusTotal(bonuses);
       let outcome: "hit" | "miss" | "critical" = total >= guarded.defense ? "hit" : "miss";
       if (single && kept === dice.sides && naturals.max !== "none") {
         outcome = naturals.max === "critical" ? "critical" : "hit";
@@ -1835,21 +1916,30 @@ function resolveAction(
         rolls: second ? [...first, ...second] : first,
         kept,
         modifier: action.toHit,
+        ...(bonuses.length > 0 ? { bonuses } : {}),
         total,
         defense: guarded.defense,
+        ...(guarded.guards.length > 0 ? { guards: guarded.guards } : {}),
         outcome,
       });
       // Help is spent by the attack it was given for, landed or not.
       actor.flags.helped = false;
+      used = { mine: oneUseConditions(actor, "own-attack"), theirs: oneUseConditions(target, "attacked") };
       landed = outcome !== "miss";
       critical = outcome === "critical";
     }
-    if (!landed) continue;
+    if (!landed) {
+      spendUsed();
+      continue;
+    }
 
     let saved = false;
     if (action.save) {
       saved = rollSave(ctx, target, action.save.save, action.save.difficulty, actor.id);
-      if (saved && action.save.onSuccess === "negates") continue;
+      if (saved && action.save.onSuccess === "negates") {
+        spendUsed();
+        continue;
+      }
     }
     const halved = saved && action.save?.onSuccess === "half";
 
@@ -1982,6 +2072,7 @@ function resolveAction(
         });
       }
     }
+    spendUsed();
   }
 }
 
@@ -2131,6 +2222,9 @@ function beginNextTurn(definition: RulesetDefinition, combat: RulesetCombat, ctx
     refreshRulesetSignature(actor);
     rollRulesetRecharges(ctx, actor);
     tickConditions(ctx, actor, "turn-start");
+    // A condition that ended as the turn began no longer holds this turn's walk: nothing has been
+    // spent yet, so the allowance is simply read again.
+    refreshRulesetMovement(definition, combat, actor, ctx.state);
     if (actor.dying && !actor.stable && !actor.defeated) deathSave(ctx, actor);
   }
   const after = rulesetEncounterOutcome(ctx.state);

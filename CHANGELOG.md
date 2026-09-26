@@ -5,6 +5,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 ## [Unreleased]
 
 - The installed decision sidecar no longer shows a Thinking setting it does not have, which snapped back to Auto when changed. It is warmed up while it starts, so Test and the first turn show its normal speed instead of a one-time two-second delay, and Open-Jev 2B gets more time for a turn with many decision statements, which on a long chat used to run out and read every statement as no (#6716, #6717, #6718).
+- Decision time limits now apply to each statement, never to a whole group. A local model answers every statement of a turn instead of dropping the ones that waited for a free slot, a Decision connection's Time limit is given to each statement a request asks, and the decision sidecar no longer cuts a large turn off at 20 seconds (#6721).
 
 - Game Mode rulesets that resolve their own fights can write a counter: an ability that answers an opponent using something, whoever it was aimed at, and may call it off before it happens. An answer can be limited to abilities from certain catalogs, such as spells, and on a battlefield it reaches only as far as its own range. Capability API 1.44 (#6712).
 

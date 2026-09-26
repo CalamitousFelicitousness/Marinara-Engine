@@ -22,6 +22,7 @@ import { getAnswerStyle } from "./decision-thinking-cache.js";
 import { decisionSlotContextSize, resolveDecisionSlot } from "./decision-slots.js";
 import { askSidecarNoulQuestions } from "./sidecar-decision.backend.js";
 import { resolveDecisionConnection, type DecisionConnectionRow } from "./decision-connection.js";
+import { whenDecisionServerFree } from "./decision-server-queue.js";
 import { askNoulQuestions, DECISION_CHOICE_NONE, type NoulQuestion } from "./system-one.client.js";
 
 /**
@@ -111,6 +112,24 @@ export interface DecisionDefaultDeps {
   inspection?: DecisionDebugReport;
 }
 
+/**
+ * How many answers a request asks the model for: one per statement, and one per
+ * Choice option plus the added "none of these", each of which costs about as much as
+ * a statement (measured on Open-Jev 2B and 9B).
+ */
+export function answersAskedFor(questions: NoulQuestion[]): number {
+  return questions.reduce((n, q) => n + (q.options ? q.options.length + 1 : 1), 0);
+}
+
+/**
+ * A request's time limit, built per answer: `first` for the first, `each` for every
+ * further one. A time limit belongs to a statement, never to the whole group, so a
+ * request carrying thirty statements is never held to the limit of one.
+ */
+export function perStatementLimitMs(answers: number, first: number, each: number): number {
+  return first + each * Math.max(0, answers - 1);
+}
+
 /** Read the local entry the user picked, if any, ignoring one this build cannot serve. */
 export async function readDecisionLocalSlot(
   getLocalDefault: () => Promise<string | null>,
@@ -149,39 +168,15 @@ export async function resolveDecisionBackend(
       // it is not a truncation, it is a 422 and a failed gate on every long scene.
       const limit = resolved.maxLengthTokens ?? decisionSlotContextSize(slot);
       const maxStateTokens = Math.max(256, limit - SIDECAR_STATE_HEADROOM_TOKENS);
-      return {
-        debugMode: deps.debugMode,
-        inspection: deps.inspection,
-        maxStateTokens,
-        calibration,
-        // It scores candidates in one pass and never reasons, so nothing is deferred.
-        deferPreGeneration: false,
-        ask: async (state, questions) =>
-          (
-            await askNoulQuestions({
-              connection: {
-                endpoint: `${resolved.baseUrl}/v1/systemone`,
-                apiKey: "",
-                model: resolved.model,
-                maxStateTokens,
-              },
-              state,
-              questions,
-              // Local and on loopback, but a model still has to run: the sidecar
-              // budget rather than the hosted one, grown per question for a model that
-              // answers them one after another, and never past the reasoning budget.
-              timeoutMs: Math.min(
-                DECISION_TIMEOUT_MS.thinking,
-                DECISION_TIMEOUT_MS.sidecar + (resolved.perQuestionMs ?? 0) * Math.max(0, questions.length - 1),
-              ),
-              signal,
-              questionShape: calibration.questionShape,
-              debugMode: deps.debugMode,
-              inspection: deps.inspection,
-            })
-          ).answers,
-        askMixed: async (state, questions) => {
-          const result = await askNoulQuestions({
+      // Local and on loopback, but a model still has to run: the sidecar's limit for the
+      // first answer, then its measured cost for each further one. A model with no
+      // measured cost gets the full limit for every answer. Never one limit for the
+      // whole group, however many statements it carries.
+      const askSidecar = (state: unknown, questions: NoulQuestion[]) =>
+        // Its server answers one request at a time, so a request's clock starts once it
+        // reaches the model, not while another request is still being answered.
+        whenDecisionServerFree(resolved.baseUrl, resolved.serverSlots, signal, () =>
+          askNoulQuestions({
             connection: {
               endpoint: `${resolved.baseUrl}/v1/systemone`,
               apiKey: "",
@@ -190,21 +185,26 @@ export async function resolveDecisionBackend(
             },
             state,
             questions,
-            // Each Choice option, and the added "none of these", costs about as much as
-            // one more yes/no statement (measured on Open-Jev 9B), so options count too.
-            timeoutMs: Math.min(
-              DECISION_TIMEOUT_MS.thinking,
-              DECISION_TIMEOUT_MS.sidecar +
-                (resolved.perQuestionMs ?? 0) *
-                  Math.max(0, questions.reduce((n, q) => n + (q.options ? q.options.length + 1 : 1), 0) - 1),
+            timeoutMs: perStatementLimitMs(
+              answersAskedFor(questions),
+              DECISION_TIMEOUT_MS.sidecar,
+              resolved.perQuestionMs ?? DECISION_TIMEOUT_MS.sidecar,
             ),
             signal,
             questionShape: calibration.questionShape,
             debugMode: deps.debugMode,
             inspection: deps.inspection,
-          });
-          return result;
-        },
+          }),
+        );
+      return {
+        debugMode: deps.debugMode,
+        inspection: deps.inspection,
+        maxStateTokens,
+        calibration,
+        // It scores candidates in one pass and never reasons, so nothing is deferred.
+        deferPreGeneration: false,
+        ask: async (state, questions) => (await askSidecar(state, questions)).answers,
+        askMixed: askSidecar,
       };
     }
 
@@ -276,38 +276,28 @@ export async function resolveDecisionBackend(
   // and the managed sidecar carries its own calibration because there the model is
   // known.
   const calibration = DEFAULT_DECISION_CALIBRATION;
+  // The connection's Time limit is per statement. A request that asks several at once
+  // gets that much for each of them, never one limit for the whole group.
+  const perStatement = connection.timeoutMs ?? DECISION_TIMEOUT_MS.systemOne;
+  const askConnection = (state: unknown, questions: NoulQuestion[]) =>
+    askNoulQuestions({
+      connection,
+      state,
+      questions,
+      timeoutMs: perStatementLimitMs(answersAskedFor(questions), perStatement, perStatement),
+      signal,
+      questionShape: calibration.questionShape,
+      debugMode: deps.debugMode,
+      inspection: deps.inspection,
+    });
   return {
     debugMode: deps.debugMode,
     inspection: deps.inspection,
     maxStateTokens: connection.maxStateTokens,
     calibration,
     deferPreGeneration: false,
-    ask: async (state, questions) =>
-      (
-        await askNoulQuestions({
-          connection,
-          state,
-          questions,
-          timeoutMs: connection.timeoutMs,
-          signal,
-          questionShape: calibration.questionShape,
-          debugMode: deps.debugMode,
-          inspection: deps.inspection,
-        })
-      ).answers,
-    askMixed: async (state, questions) => {
-      const result = await askNoulQuestions({
-        connection,
-        state,
-        questions,
-        timeoutMs: connection.timeoutMs,
-        signal,
-        questionShape: calibration.questionShape,
-        debugMode: deps.debugMode,
-        inspection: deps.inspection,
-      });
-      return result;
-    },
+    ask: async (state, questions) => (await askConnection(state, questions)).answers,
+    askMixed: askConnection,
   };
 }
 

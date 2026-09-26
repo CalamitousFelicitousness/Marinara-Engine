@@ -88,7 +88,7 @@ The Decision default is separate from your chat, agent, image, video, and audio 
 
 Hosted decisions send the selected recent messages and statements to the chosen provider and can incur charges. Smart response order also includes the [character roster](#what-the-model-sees). The **Recent-message token budget** defaults to 30,000 estimated tokens for hosted sources and 3,500 for custom servers. Reduce it if your server has a smaller context limit. Marinara drops older messages first, then trims the oldest portion of the newest message. Token estimates can differ from a server's tokenizer; a rejected or over-budget request gives no answer.
 
-**Time limit (seconds)** is how long each Decision connection waits for an answer during chats, from 0.5 to 30 seconds (1.5 by default). A later answer counts as no answer. Some hosted providers are sometimes slower than 1.5 seconds, which makes decisions look randomly broken, so click **Test** a few times and set the limit above the slowest answer. The trade-off: a statement asked before the reply, such as a decision in a preset or an activation question for an agent that runs before the reply, can hold up the reply for up to this long.
+**Time limit (seconds)** is how long each Decision connection waits for each statement's answer during chats, from 0.5 to 30 seconds (1.5 by default). A turn that asks several statements in one request gets this much for each of them. A later answer counts as no answer. Some hosted providers are sometimes slower than 1.5 seconds, which makes decisions look randomly broken, so click **Test** a few times and set the limit above the slowest answer. The trade-off: statements asked before the reply, such as decisions in a preset or an activation question for an agent that runs before the reply, can hold up the reply for up to this long each.
 
 Deleting a connection used for a linked key warns you and leaves the Decision connection needing relinking. Imported standalone connection files also need keys or links restored; they never contain API keys or borrowed connection IDs.
 
@@ -109,6 +109,8 @@ These are the catalog's estimates, based on the pinned model versions and measur
 2. Read the warning, then turn on **Enable decision sidecar**. Confirming shows the verdict for your machine, and the button reads **Enable anyway** when that verdict is a warning.
 3. Pick a model and confirm its size, hardware verdict and licenses. Nothing downloads before that point. **Open-Jev 2B** needs much less memory than **Open-Jev 9B**; neither guarantees correct answers for your chat.
 4. Select **Decision sidecar** under **Decision model**.
+
+**Speed.** A model's first answer after it starts is slower, so Marinara asks it one warm-up question while it loads. When the warm-up succeeds, **Test** and the first turn show its normal speed. If it fails, the model still starts, and the first question pays the delay instead. Every statement reads the recent chat again, so a turn with many statements on a long chat takes longer: on a long chat, Open-Jev 2B takes about a quarter of a second per statement.
 
 You can also paste a decision model's HuggingFace repository. Marinara reads that repository's own manifest, checks that the artifact type maps to a runtime this build ships, and shows you the base weights it will pull and the total size before offering to install it. A repository it cannot vouch for is refused with the reason rather than installed hopefully.
 
@@ -134,9 +136,12 @@ Prompt statements and lorebook Decision fields use the backend's default; changi
 
 A decision that does not arrive in time gives no answer. Generation continues using the [feature's fallback](#where-marinara-uses-it); this can omit a prompt branch or a required lorebook entry.
 
-- **1.5 seconds** for a Decision connection, unless you change its **Time limit**. See [Set up a Decision connection](#set-up-a-decision-connection).
-- **4 seconds** for a local model or the decision sidecar. When one turn asks many statements, Open-Jev 9B gets a little more time for each extra one.
-- **20 seconds** for a local model that has to think first.
+Every time limit is per statement. A request that asks several statements at once gets the limit for each of them, and each Choice answer counts as a statement. A local model works on only a few requests at a time, so statements wait their turn, and a statement's time starts only when the model starts on it.
+
+- **1.5 seconds** per statement for a Decision connection, unless you change its **Time limit**. See [Set up a Decision connection](#set-up-a-decision-connection).
+- **4 seconds** per statement for a local model.
+- **4 seconds** for the decision sidecar's first statement. Each further statement gets the model's measured time: 0.35 seconds for Open-Jev 2B and 0.8 seconds for Open-Jev 9B. A model you installed by pasting its repository gets 4 seconds for each.
+- **20 seconds** per statement for a local model that has to think first.
 
 Decision requests stop when you cancel a generation.
 
@@ -144,7 +149,7 @@ Decision requests stop when you cancel a generation.
 
 - **Also use it to pick who speaks in Smart response order.** Off by default. See [Group Chats](../chats/group-chats.md#response-order-individual-only).
 - **Decision statements per turn.** Limits prompt and lorebook statement planning, 32 by default and up to 255. The allowance is applied at several stages; it is not a single cap on all Decision requests or spending during a turn. Agent activation questions and Smart response order are separate. See [Limits and cost](../prompts/conditional-prompts.md#limits-and-cost) for the scope, batching and priority rules.
-- **Also gate agents that run before the reply** and **Thinking** appear for a local model. See [Use a model you already run](#use-a-model-you-already-run).
+- **Also gate agents that run before the reply** and **Thinking** appear for the **Primary local model** and **Utility local model**. The decision sidecar never reasons, so it has neither. See [Use a model you already run](#use-a-model-you-already-run).
 
 ## Accuracy: plan for wrong answers
 

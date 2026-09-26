@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { createServer } from "node:http";
 import { readFileSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
+import { trackPageFetches, waitForPageFetchesToSettle } from "./page-fetch-fixture.js";
 import { seedUIState } from "./ui-state-fixture.js";
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
@@ -167,6 +168,8 @@ for (const presentation of ["classic", "visual-novel"] as const) {
         },
         { id: chat.id, version },
       );
+      // A reload that cuts off one of the page's fetches is a WebKit page error (#6677).
+      await trackPageFetches(page);
       await page.goto("/");
       const waitForGeneration = async () => {
         await expect
@@ -182,8 +185,9 @@ for (const presentation of ["classic", "visual-novel"] as const) {
       };
       const reload = async () => {
         await waitForGeneration();
-        // Finish the generation's background cache/status requests before unloading WebKit's document.
-        await page.waitForLoadState("networkidle");
+        // The refetches a finished generation or a test-side API write sets off must
+        // finish before the reload, or WebKit reports each one it cuts off.
+        await waitForPageFetchesToSettle(page);
         await page.reload();
       };
       const sprites = page.getByRole("img", { name: /full.*sprite/i });

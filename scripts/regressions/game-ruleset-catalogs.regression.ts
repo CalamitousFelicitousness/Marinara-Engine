@@ -496,13 +496,13 @@ const installedPackages = packages.map((fixture) => {
   ];
   const manifest = {
     schemaVersion: 2,
-    // 1.37, because the example ruleset carries the combat bridge's battle block, a scaled catalog
+    // 1.45, because the example ruleset carries the combat bridge's battle block, a scaled catalog
     // row, a layer, a combat block, catalog mechanics a fight reads, a catalog of creatures, the
     // keys that give that fight a board, the ones that say what one turn of it can do, a creature
     // written in the ruleset's own terms, a track always shown, a summary list's columns, a
     // modifier off the sheet, a list added up, a track of numbered boxes, an untrained rule, a live
-    // state and contests.
-    capabilityApi: { major: 1, minor: 43 },
+    // state, contests, and conditions that change numbers.
+    capabilityApi: { major: 1, minor: 45 },
     builtAgainst: { engineVersion: "2.4.6", engineCommit: "0".repeat(40) },
     id: packageId,
     name: fixture.id,

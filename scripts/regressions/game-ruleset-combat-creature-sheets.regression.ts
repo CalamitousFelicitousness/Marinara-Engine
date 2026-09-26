@@ -1520,13 +1520,19 @@ try {
       contributions: { assets: { paths: ["ruleset.json", "catalogs/road_trouble.json"] } },
     }) as any;
   /** The example without an entry that names the moment it waits for, which gates on 1.33 (and on
-   *  1.44 for somebody using something), so these cases are answered by the sheet gate. */
+   *  1.44 for somebody using something), and without the numbers a condition changes or the levels
+   *  of a track (1.45), so these cases are answered by the sheet gate. */
   const older = (edit: (doc: Record<string, any>) => void = () => {}) =>
     variant(emberText, (doc) => {
       for (const catalog of doc.catalogs) {
         catalog.entries = catalog.entries?.filter(
           (entry: Record<string, any>) => typeof entry.mechanics?.reaction !== "object",
         );
+      }
+      delete doc.combat.levels;
+      for (const entry of doc.combat.conditions) {
+        delete entry.modifiers;
+        entry.effects = entry.effects?.filter((effect: string) => !effect.startsWith("own-checks-"));
       }
       edit(doc);
     });

@@ -1967,9 +1967,9 @@
       },
       {
         "condition": "frightened",
-        "effects": ["own-attacks-disadvantage", "cannot-approach-source"],
-        "whileSourceInSight": ["own-attacks-disadvantage"],
-        "$comment": "SRD 5.1, Frightened: disadvantage on attacks \"while the source of its fear is within line of sight\", and it \"can't willingly move closer to the source\" at all. So only the first is gated on sight, which is why whileSourceInSight names it rather than saying true."
+        "effects": ["own-attacks-disadvantage", "own-checks-disadvantage", "cannot-approach-source"],
+        "whileSourceInSight": ["own-attacks-disadvantage", "own-checks-disadvantage"],
+        "$comment": "SRD 5.1, Frightened: disadvantage on ability checks and attack rolls \"while the source of its fear is within line of sight\", and it \"can't willingly move closer to the source\" at all. So only the first two are gated on sight, which is why whileSourceInSight names them rather than saying true. A fight makes its ability checks in contests."
       },
       {
         "$comment": "SRD 5.1, Grappled: speed 0, and it ends if the grappler is incapacitated. The Engine notices only going down, which endsWhenSourceDown says.",
@@ -1996,8 +1996,9 @@
         "failsSaves": ["str_save", "dex_save"]
       },
       {
+        "$comment": "SRD 5.1, Poisoned: disadvantage on attack rolls and ability checks. A fight makes its ability checks in contests, so that is where the second half is read.",
         "condition": "poisoned",
-        "effects": ["own-attacks-disadvantage"]
+        "effects": ["own-attacks-disadvantage", "own-checks-disadvantage"]
       },
       {
         "condition": "prone",
@@ -2030,6 +2031,17 @@
         ],
         "failsSaves": ["str_save", "dex_save"]
       }
+    ],
+    "levels": [
+      {
+        "$comment": "SRD 5.1, Exhaustion, counted on the sheet track of that name. Every level the track has reached counts, so each adds to the ones below it. Level 4 halves the hit point maximum and level 6 is death, and neither is something a level can say yet, so those two stay plain records.",
+        "track": "exhaustion",
+        "at": 1,
+        "effects": ["own-checks-disadvantage"]
+      },
+      { "track": "exhaustion", "at": 2, "modifiers": [{ "to": "speed", "times": 0.5 }] },
+      { "track": "exhaustion", "at": 3, "effects": ["own-attacks-disadvantage", "own-saves-disadvantage"] },
+      { "track": "exhaustion", "at": 5, "effects": ["speed-zero"] }
     ],
     "checks": [
       {

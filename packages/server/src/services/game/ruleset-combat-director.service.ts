@@ -891,7 +891,7 @@ function rulesetCandidatesFrom(
       for (const targetId of rulesetOptionTargets(definition, encounter, actorId, option)) {
         const target = rulesetCombatant(encounter, targetId);
         if (!target || target.down) continue;
-        const chance = rulesetContestChance(combat, actor, target, contest) ?? 0.5;
+        const chance = rulesetContestChance(definition, combat, actor, target, contest, encounter) ?? 0.5;
         const held = new Set(rulesetCombatConditions(definition, actor));
         const theirs = new Set(rulesetCombatConditions(definition, target));
         const frees = (contest.ends ?? []).some((entry) => entry.on === "actor" && held.has(entry.condition));

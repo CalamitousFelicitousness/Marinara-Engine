@@ -331,6 +331,13 @@ Release-related behavior already in the repo:
 
 Standard release flow:
 
+For the next main release after v2.4.6, also complete the coordinated
+[Quartermaster and Relationship Tracker catalog promotion](https://github.com/Pasta-Devs/Marinara-Agents/issues/1091).
+In Marinara-Agents, remove these two IDs from `STAGING_ONLY_PACKAGE_IDS`, rebuild their packages,
+and update the published catalog counts and documentation before promoting Agents `staging` to `main`
+alongside this Engine release. Copying the preview catalog to `main` alone keeps both packages hidden
+from stable Engine users. Leave other staging-only packages at their existing release tier.
+
 1. Bump the canonical version in root `package.json`.
 2. Run `pnpm version:sync -- --android-version-code <next-code>` to sync all derived version fields.
 3. Run `pnpm credits:check`; if it reports stale contributor credits, run `pnpm credits:sync` and include the Credits modal update in the release PR.

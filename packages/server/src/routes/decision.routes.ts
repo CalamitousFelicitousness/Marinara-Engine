@@ -545,6 +545,7 @@ export async function decisionRoutes(app: FastifyInstance) {
       const result = await whenDecisionServerFree(baseUrl, serverSlots, undefined, () =>
         askNoulQuestions({
           connection: {
+            protocol: "system_one",
             endpoint: `${resolution.resolved.baseUrl}/v1/systemone`,
             apiKey: "",
             model: resolution.resolved.model,

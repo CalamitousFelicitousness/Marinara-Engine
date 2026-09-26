@@ -20,7 +20,7 @@ import {
 import { logger } from "../../lib/logger.js";
 import { getAnswerStyle } from "./decision-thinking-cache.js";
 import { decisionSlotContextSize, resolveDecisionSlot } from "./decision-slots.js";
-import { askSidecarNoulQuestions } from "./sidecar-decision.backend.js";
+import { askSidecarNoulQuestions, connectionChatTarget, type ChatDecisionTarget } from "./sidecar-decision.backend.js";
 import { resolveDecisionConnection, type DecisionConnectionRow } from "./decision-connection.js";
 import { whenDecisionServerFree } from "./decision-server-queue.js";
 import { askNoulQuestions, DECISION_CHOICE_NONE, type NoulQuestion } from "./system-one.client.js";
@@ -130,6 +130,63 @@ export function perStatementLimitMs(answers: number, first: number, each: number
   return first + each * Math.max(0, answers - 1);
 }
 
+/**
+ * A chat model asked for one yes/no token per statement: a local chat slot, or a
+ * chat-model Decision connection on the user's own server.
+ */
+async function chatBackend(
+  target: ChatDecisionTarget,
+  maxStateTokens: number,
+  deps: DecisionDefaultDeps,
+  signal: AbortSignal | undefined,
+): Promise<DecisionBackend> {
+  // Exactly the formula askQuestion uses, so what is deferred matches what is
+  // actually slow. Reading the cached verdict without the "auto" guard would keep
+  // deferring after the user switched the slot to Off, where every request is a
+  // fast one-token call again.
+  const thinks =
+    target.thinking === "allowed" || (target.thinking === "auto" && getAnswerStyle(target.modelIdentity) === "thinks");
+  return {
+    debugMode: deps.debugMode,
+    inspection: deps.inspection,
+    maxStateTokens,
+    // A chat model is prompted, not queried, so it reads the question as written and
+    // answers on the ordinary scale.
+    calibration: DEFAULT_DECISION_CALIBRATION,
+    deferPreGeneration: thinks && !(await deps.getThinkingPreGeneration()),
+    ask: async (state, questions) =>
+      askSidecarNoulQuestions({
+        slot: target,
+        state,
+        questions,
+        signal,
+        debugMode: deps.debugMode,
+        inspection: deps.inspection,
+      }),
+    askMixed: async (state, questions) => {
+      const binaryAnswers = new Set<string>();
+      const result = await askChoicesAsStatements(
+        (innerState, inner) =>
+          askSidecarNoulQuestions({
+            slot: target,
+            state: innerState,
+            questions: inner,
+            signal,
+            debugMode: deps.debugMode,
+            inspection: deps.inspection,
+            onAnswer: (id, answer) => {
+              if (answer.uncalibrated) binaryAnswers.add(id);
+            },
+          }),
+        state,
+        questions,
+        DEFAULT_DECISION_CALIBRATION.defaultThreshold,
+      );
+      return { ...result, binaryAnswers };
+    },
+  };
+}
+
 /** Read the local entry the user picked, if any, ignoring one this build cannot serve. */
 export async function readDecisionLocalSlot(
   getLocalDefault: () => Promise<string | null>,
@@ -178,6 +235,7 @@ export async function resolveDecisionBackend(
         whenDecisionServerFree(resolved.baseUrl, resolved.serverSlots, signal, () =>
           askNoulQuestions({
             connection: {
+              protocol: "system_one",
               endpoint: `${resolved.baseUrl}/v1/systemone`,
               apiKey: "",
               model: resolved.model,
@@ -208,52 +266,12 @@ export async function resolveDecisionBackend(
       };
     }
 
-    // Exactly the formula askQuestion uses, so what is deferred matches what is
-    // actually slow. Reading the cached verdict without the "auto" guard would keep
-    // deferring after the user switched the slot to Off, where every request is a
-    // fast one-token call again.
-    const thinks =
-      resolved.thinking === "allowed" ||
-      (resolved.thinking === "auto" && getAnswerStyle(resolved.modelIdentity) === "thinks");
-    return {
-      debugMode: deps.debugMode,
-      inspection: deps.inspection,
-      maxStateTokens: Math.max(256, decisionSlotContextSize(slot) - SIDECAR_STATE_HEADROOM_TOKENS),
-      // A local chat model is prompted, not queried, so it reads the question as
-      // written and answers on the ordinary scale.
-      calibration: DEFAULT_DECISION_CALIBRATION,
-      deferPreGeneration: thinks && !(await deps.getThinkingPreGeneration()),
-      ask: async (state, questions) =>
-        askSidecarNoulQuestions({
-          slot: resolved,
-          state,
-          questions,
-          signal,
-          debugMode: deps.debugMode,
-          inspection: deps.inspection,
-        }),
-      askMixed: async (state, questions) => {
-        const binaryAnswers = new Set<string>();
-        const result = await askChoicesAsStatements(
-          (innerState, inner) =>
-            askSidecarNoulQuestions({
-              slot: resolved,
-              state: innerState,
-              questions: inner,
-              signal,
-              debugMode: deps.debugMode,
-              inspection: deps.inspection,
-              onAnswer: (id, answer) => {
-                if (answer.uncalibrated) binaryAnswers.add(id);
-              },
-            }),
-          state,
-          questions,
-          DEFAULT_DECISION_CALIBRATION.defaultThreshold,
-        );
-        return { ...result, binaryAnswers };
-      },
-    };
+    return chatBackend(
+      resolved,
+      Math.max(256, decisionSlotContextSize(slot) - SIDECAR_STATE_HEADROOM_TOKENS),
+      deps,
+      signal,
+    );
   }
 
   const row = await deps.getDefaultConnection();
@@ -265,7 +283,15 @@ export async function resolveDecisionBackend(
   }
   const connection = resolved.connection;
   if (deps.inspection) deps.inspection.model = connection.model;
-  // Every Decision connection keeps the documented operating point and wire shape.
+  // An ordinary chat model on the user's own server, asked the way a local slot is.
+  if (connection.protocol === "chat_logprobs")
+    return chatBackend(
+      connectionChatTarget(row.id, row.name ?? connection.model, connection),
+      connection.maxStateTokens,
+      deps,
+      signal,
+    );
+  // Every System One connection keeps the documented operating point and wire shape.
   //
   // Deliberate, including for the `custom` source. A custom endpoint is any System
   // One host, and this code cannot tell a self-hosted Open-Jev from TypeSafe's own

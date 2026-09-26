@@ -6039,6 +6039,7 @@
                               "type": "string",
                               "enum": [
                                 "aimed",
+                                "hit",
                                 "harmed",
                                 "used"
                               ]
@@ -7131,6 +7132,79 @@
                             ],
                             "additionalProperties": false
                           },
+                          "reaction": {
+                            "type": "object",
+                            "properties": {
+                              "on": {
+                                "type": "string",
+                                "enum": [
+                                  "aimed",
+                                  "hit",
+                                  "harmed",
+                                  "used"
+                                ]
+                              },
+                              "at": {
+                                "type": "string",
+                                "enum": [
+                                  "source",
+                                  "chosen"
+                                ],
+                                "default": "source"
+                              },
+                              "cancels": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "against": {
+                                "type": "object",
+                                "properties": {
+                                  "catalogs": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 12
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "catalogs"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "$comment": {}
+                            },
+                            "required": [
+                              "on"
+                            ],
+                            "additionalProperties": false,
+                            "if": {
+                              "required": [
+                                "cancels"
+                              ]
+                            },
+                            "then": {
+                              "properties": {
+                                "on": {
+                                  "enum": [
+                                    "aimed",
+                                    "used"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "on"
+                              ]
+                            }
+                          },
+                          "self": {
+                            "type": "boolean",
+                            "const": true
+                          },
                           "$comment": {}
                         },
                         "required": [
@@ -7138,7 +7212,109 @@
                           "name",
                           "budget"
                         ],
-                        "additionalProperties": false
+                        "additionalProperties": false,
+                        "allOf": [
+                          {
+                            "if": {
+                              "required": [
+                                "sequence"
+                              ]
+                            },
+                            "then": {
+                              "not": {
+                                "anyOf": [
+                                  {
+                                    "required": [
+                                      "toHit"
+                                    ]
+                                  },
+                                  {
+                                    "required": [
+                                      "autoHit"
+                                    ]
+                                  },
+                                  {
+                                    "required": [
+                                      "damage"
+                                    ]
+                                  },
+                                  {
+                                    "required": [
+                                      "save"
+                                    ]
+                                  },
+                                  {
+                                    "required": [
+                                      "saveDifficulty"
+                                    ]
+                                  },
+                                  {
+                                    "required": [
+                                      "applies"
+                                    ]
+                                  },
+                                  {
+                                    "required": [
+                                      "targetCount"
+                                    ]
+                                  },
+                                  {
+                                    "required": [
+                                      "area"
+                                    ]
+                                  },
+                                  {
+                                    "required": [
+                                      "reaction"
+                                    ]
+                                  },
+                                  {
+                                    "required": [
+                                      "self"
+                                    ]
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          {
+                            "if": {
+                              "required": [
+                                "self"
+                              ]
+                            },
+                            "then": {
+                              "not": {
+                                "anyOf": [
+                                  {
+                                    "required": [
+                                      "targetCount"
+                                    ]
+                                  },
+                                  {
+                                    "required": [
+                                      "area"
+                                    ]
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          {
+                            "if": {
+                              "required": [
+                                "reaction"
+                              ]
+                            },
+                            "then": {
+                              "not": {
+                                "required": [
+                                  "signature"
+                                ]
+                              }
+                            }
+                          }
+                        ]
                       },
                       "maxItems": 12,
                       "default": []

@@ -139,6 +139,11 @@ export function rulesetRollText(
   });
 }
 
+/** A defense in the ruleset's own word for it, when the file gave it one. */
+function defenseText(names: RulesetCombatNames, defense: number): string {
+  return names.defense ? `${names.defense} ${defense}` : String(defense);
+}
+
 /** What a condition, or a level of a track, that changed a number is called in the log. */
 function bonusNamer(names: RulesetCombatNames, t: TFunction): (bonus: RulesetConditionBonus) => string {
   return (bonus) =>
@@ -175,6 +180,7 @@ const WINDOW_LINES = {
   between: "windowBetween",
   leaving: "windowLeaving",
   aimed: "windowAimed",
+  hit: "windowHit",
   harmed: "windowHarmed",
   used: "windowUsed",
 } as const;
@@ -204,7 +210,7 @@ export function rulesetCombatEventLine(
       const named = bonusNamer(names, t);
       // The ruleset's own word for what it was rolled against, when the file gave it one, and what
       // the target's conditions added to it.
-      const defense = names.defense ? `${names.defense} ${event.defense}` : String(event.defense);
+      const defense = defenseText(names, event.defense);
       return key(
         event.outcome === "critical" ? "attackCritical" : event.outcome === "hit" ? "attackHit" : "attackMiss",
         {
@@ -385,7 +391,29 @@ export function rulesetCombatEventLine(
         others: Math.max(0, event.waiting.length - 1),
         mover: names.combatant(event.sourceId ?? event.moverId ?? ""),
         label: event.label ?? "",
+        total: event.total ?? "",
+        defense: event.defense === undefined ? "" : defenseText(names, event.defense),
       });
+    case "recheck": {
+      // The held roll against the defense the answer left: said whichever way it went, since the
+      // reader saw it called a hit a moment ago.
+      const named = bonusNamer(names, t);
+      const defense = defenseText(names, event.defense);
+      return key(event.outcome === "miss" ? "recheckMiss" : "recheckHit", {
+        actor: names.combatant(event.actorId),
+        target: names.combatant(event.targetId),
+        label: event.label,
+        total: event.total,
+        defense: event.guards?.length
+          ? t("game.combat.ruleset.roll.guarded", {
+              defense,
+              guards: event.guards
+                .map((guard) => t("game.combat.ruleset.roll.guard", { name: named(guard), value: signed(guard.value) }))
+                .join(", "),
+            })
+          : defense,
+      });
+    }
     case "pass":
       return key("pass", { actor: names.combatant(event.actorId) });
     case "cancelled":

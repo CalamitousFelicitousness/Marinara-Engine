@@ -442,7 +442,12 @@ const capabilityPackageManifestBaseSchema = z
 //        after one use (`endsAfter`). Not a soft seam, for the same reason as 1.20 through 1.44: an
 //        Engine that cannot read these refuses the whole ruleset or catalog file, so a package that
 //        ships any of them declares 1.45. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 45 } as const);
+// 1.46: a reaction may wait for `on: "hit"` (an attack roll has just hit its holder, before the
+//        damage; what is taken counts for that attack), and a creature's action may carry the same
+//        `reaction` object and `self: true` for one that lands on the creature itself. Not a soft
+//        seam, for the same reason as 1.20 through 1.45: an Engine that cannot read these refuses the
+//        whole catalog, so a package that ships any of them declares 1.46. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 46 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

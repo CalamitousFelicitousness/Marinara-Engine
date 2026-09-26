@@ -28,8 +28,10 @@
 //
 // A catalog entry may say WHICH moment it waits for, and then it is offered in the window that
 // moment opens: `used` before somebody on the other side uses something it reaches, and `aimed`
-// before something lands on its holder, where taking it may `cancel` what was held; and `harmed`
-// after something has hurt them, where nothing unmakes it. What it costs is paid before anybody is
+// before something lands on its holder, where taking it may `cancel` what was held; `hit` after an
+// attack roll has hit them and before its damage, where what they take counts for that attack and
+// its roll is checked again; and `harmed` after something has hurt them, where nothing unmakes it.
+// A creature's own action may wait for a moment too. What it costs is paid before anybody is
 // asked, so a cancelled action is stopped from happening rather than from having been bought.
 //
 // A condition may change NUMBERS as well as switch effects on: its holder's defense, attack rolls,
@@ -40,8 +42,6 @@
 //   - a chain of them. The fight keeps ONE window rather than a stack, so nothing opened inside a
 //     window opens another: a counter cannot itself be countered, and a reaction that hurts
 //     somebody opens no second moment.
-//   - a moment after an attack has hit and before its damage, which is where some answers change
-//     the number that decided it.
 //   - three-quarter and total cover, elevation, flying over obstacles, squeezing, hiding and
 //     surprise, and movement forced on somebody by an attack.
 //   - who an opponent chooses to attack. Everything an enemy could do is on the same menu a player
@@ -114,6 +114,7 @@ export {
   rulesetActionAvailable,
   rulesetAimCells,
   rulesetAimLegal,
+  rulesetAnswerDeflects,
   rulesetAreaTargets,
   rulesetAttackMode,
   rulesetBonusDice,

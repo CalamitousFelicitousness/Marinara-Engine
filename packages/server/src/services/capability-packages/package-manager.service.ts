@@ -828,6 +828,25 @@ function entriesCarryConditionEndings(entries: unknown): boolean {
   });
 }
 
+const HIT_MOMENTS_ISSUE =
+  "A ruleset whose reactions answer being hit, or whose creatures react or act on themselves, requires schemaVersion 2 and capabilityApi 1.46 or newer";
+
+/** A reaction on the `hit` moment, and a creature's action that is a reaction or lands on the
+ *  creature itself, which are 1.46: a new value in the strict reaction object and new keys in the
+ *  strict creature action. */
+function entriesCarryHitMoments(entries: unknown): boolean {
+  if (!Array.isArray(entries)) return false;
+  return entries.some((entry) => {
+    const record = plainRecord(entry);
+    if (plainRecord(plainRecord(record?.mechanics)?.reaction)?.on === "hit") return true;
+    const actions = plainRecord(record?.creature)?.actions;
+    return (
+      Array.isArray(actions) &&
+      actions.some((action) => plainRecord(action)?.reaction !== undefined || plainRecord(action)?.self !== undefined)
+    );
+  });
+}
+
 const LIVE_STATES_ISSUE =
   "A ruleset whose sheet has live states, whose derived values read an enum table, or whose rests put a state back, requires schemaVersion 2 and capabilityApi 1.42 or newer";
 
@@ -970,6 +989,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryCreatureChecks(header.entries) && !declaresApi(43)) return CONTESTS_ISSUE;
       if (entriesCarryUsedMoments(header.entries) && !declaresApi(44)) return USED_MOMENTS_ISSUE;
       if (entriesCarryConditionEndings(header.entries) && !declaresApi(45)) return CONDITION_NUMBERS_ISSUE;
+      if (entriesCarryHitMoments(header.entries) && !declaresApi(46)) return HIT_MOMENTS_ISSUE;
       const asset = header.asset;
       if (typeof asset !== "string") continue;
       // A path that does not normalize is never a declared one, whatever else failed to normalize.
@@ -992,6 +1012,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryCreatureChecks(fileEntries) && !declaresApi(43)) return CONTESTS_ISSUE;
       if (entriesCarryUsedMoments(fileEntries) && !declaresApi(44)) return USED_MOMENTS_ISSUE;
       if (entriesCarryConditionEndings(fileEntries) && !declaresApi(45)) return CONDITION_NUMBERS_ISSUE;
+      if (entriesCarryHitMoments(fileEntries) && !declaresApi(46)) return HIT_MOMENTS_ISSUE;
     }
   }
   // The battle block lives inside the ruleset file too, so it is read the same way and for the same

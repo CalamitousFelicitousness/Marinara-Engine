@@ -450,6 +450,8 @@ interface GameCombatUIProps {
       view: DirectedRulesetView;
       /** The ruleset's own name for a budget id. */
       budgetLabel: (id: string) => string;
+      /** What the ruleset calls its defense. */
+      defenseLabel?: string;
       busy: boolean;
       onChoose: (optionId: string, targetIds: string[], payWith?: string) => void;
       onFlee: () => void;
@@ -1672,6 +1674,7 @@ export function GameCombatUI({
     <RulesetCombatMenu
       view={rulesetFight.view}
       budgetLabel={rulesetFight.budgetLabel}
+      defenseLabel={rulesetFight.defenseLabel}
       busy={rulesetFight.busy}
       onChoose={rulesetFight.onChoose}
       onFlee={rulesetFight.onFlee}

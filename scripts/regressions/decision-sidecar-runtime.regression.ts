@@ -508,9 +508,15 @@ exec sleep 30
   const crashedPid = decisionProcessService.getStatus().pid;
   assert.ok(crashedPid, "the process is up while it warms");
   process.kill(crashedPid, "SIGKILL");
-  while (decisionProcessService.getStatus().pid !== null) await new Promise((resolve) => setTimeout(resolve, 20));
-  held!.respond(500);
-  assert.equal(await crashedDuringWarmUp, null, "a process that exits during the warm-up is not published");
+  // The held warm-up answer is never sent: the exit itself has to end the start, not the
+  // warm-up's one-minute limit.
+  const crashResult = await Promise.race([
+    crashedDuringWarmUp,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("the start waited out the warm-up after the exit")), 5000),
+    ),
+  ]);
+  assert.equal(crashResult, null, "a process that exits during the warm-up is not published");
   assert.match(decisionProcessService.getStatus().error ?? "", /exited/u, "and the reason is kept for the panel");
   // Clears the one-minute backoff the failed start leaves.
   await decisionProcessService.stop();

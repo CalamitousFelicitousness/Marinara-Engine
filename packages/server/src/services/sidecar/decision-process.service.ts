@@ -272,6 +272,10 @@ class DecisionProcessService {
           // with no reason for the panel to show. A stop or a restart clears
           // `this.child` before killing, so only an exit on its own lands here.
           this.error = `The decision sidecar exited with code ${code}.`;
+          // A warm-up in flight is asking this process, so it will never answer. Cancelled
+          // here, after the reason is kept, so the start reports the exit at once instead
+          // of waiting out the warm-up's limit.
+          this.warmUpAbort?.abort();
         }
         finish(null, `The decision sidecar exited with code ${code}.`);
       });

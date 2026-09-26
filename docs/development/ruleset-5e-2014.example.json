@@ -1065,6 +1065,11 @@
         {
           "id": "unconscious",
           "label": "Unconscious"
+        },
+        {
+          "$comment": "Not an SRD condition: the state a Parry leaves its holder in for the one attack it answers.",
+          "id": "parrying",
+          "label": "Parrying"
         }
       ]
     }
@@ -1571,6 +1576,17 @@
                 "text": "It lets anyone pass who can show a stamped token, and it asks twice."
               }
             ],
+            "actions": [
+              {
+                "$comment": "SRD 5.1 Parry, a creature's own reaction beside its sheet: when an attack roll has hit it, it adds 2 to its Armor Class against that one attack, which is then checked again against the new number. The SRD asks for a melee attack it can see; a reaction here cannot tell a swing from a shot, so it parries either.",
+                "id": "parry",
+                "name": "Parry",
+                "budget": "reaction",
+                "self": true,
+                "reaction": { "on": "hit" },
+                "applies": [{ "condition": "parrying", "duration": { "rounds": 1 }, "endsAfter": "attacked" }]
+              }
+            ],
             "sheet": {
               "abilities": {
                 "str": 16,
@@ -2030,7 +2046,8 @@
           "attacks-from-adjacent-critical"
         ],
         "failsSaves": ["str_save", "dex_save"]
-      }
+      },
+      { "condition": "parrying", "modifiers": [{ "to": "defense", "flat": 2 }] }
     ],
     "levels": [
       {

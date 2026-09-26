@@ -265,6 +265,45 @@ function conditionSavesAndLevels(node) {
   });
 }
 
+// A creature's action: a sequence carries nothing of its own, one that lands on the creature itself
+// takes no other target, and a reaction is not also bought between turns. Refinements, so the editor
+// is told here. Found by shape: `sequence` beside `signature`, `reaction` and `self`.
+const SEQUENCE_CARRIES_NOTHING = [
+  "toHit",
+  "autoHit",
+  "damage",
+  "save",
+  "saveDifficulty",
+  "applies",
+  "targetCount",
+  "area",
+  "reaction",
+  "self",
+];
+function creatureActionShape(node) {
+  if (Array.isArray(node)) return node.forEach(creatureActionShape);
+  if (!node || typeof node !== "object") return;
+  Object.values(node).forEach(creatureActionShape);
+  const properties = node.properties;
+  if (
+    node.type !== "object" ||
+    !properties?.sequence ||
+    !properties.signature ||
+    !properties.reaction ||
+    !properties.self
+  )
+    return;
+  node.allOf = [
+    ...(node.allOf ?? []),
+    {
+      if: { required: ["sequence"] },
+      then: { not: { anyOf: SEQUENCE_CARRIES_NOTHING.map((key) => ({ required: [key] })) } },
+    },
+    { if: { required: ["self"] }, then: { not: { anyOf: [{ required: ["targetCount"] }, { required: ["area"] }] } } },
+    { if: { required: ["reaction"] }, then: { not: { required: ["signature"] } } },
+  ];
+}
+
 // A creature either carries a sheet in the ruleset's own terms, and then takes its health, defense,
 // initiative, speed, scores and saves from it and gives none of them here, or carries no sheet and
 // gives the three numbers a fight cannot do without, and at least one action. Zod refines that; the
@@ -460,6 +499,7 @@ requireCatalogFeeds(schema);
 requireSaveEndsUntilSave(schema);
 cancelOnlyWhenAimed(schema);
 modifierSaysSomething(schema);
+creatureActionShape(schema);
 conditionSavesAndLevels(schema);
 oneSourceForCreature(schema);
 requireDamageAmount(schema);

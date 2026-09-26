@@ -998,6 +998,31 @@ const catalogDice = z
 
 const catalogAmountShape = { dice: catalogDice.optional(), flat: z.number().int().optional() };
 
+/** The moment a reaction waits for, and what it answers. A catalog entry and a creature's own action
+ *  say it the same way. */
+const rulesetReactionMomentSchema = z
+  .object({
+    on: z.enum(["aimed", "hit", "harmed", "used"]),
+    at: z.enum(["source", "chosen"]).default("source"),
+    /** Stops what opened the window from happening at all. Only a moment BEFORE something resolves
+     *  may be answered that way: what has already happened cannot be called off, and a roll that
+     *  has already hit is changed by what the answer does to the numbers, not undone. */
+    cancels: z.literal(true).optional(),
+    against: z
+      .object({ catalogs: z.array(sheetId).min(1).max(12) })
+      .strict()
+      .optional(),
+  })
+  .strict()
+  .superRefine((reaction, ctx) => {
+    if (reaction.cancels && (reaction.on === "harmed" || reaction.on === "hit")) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Only an "aimed" or "used" reaction cancels: what has already happened cannot be called off',
+      });
+    }
+  });
+
 /** How many SECOND amounts one blow may carry beside its first. Three, because a blow written as a
  *  list of four separate things is a blow nobody at a table could read out. */
 export const RULESET_DAMAGE_MAX_PLUS = 3;
@@ -1215,6 +1240,9 @@ const catalogMechanicsSchema = z
      *    resolves, and what is taken there may `cancel` it.
      *  - `used`: somebody on the other side is about to use something, anywhere this reaches,
      *    whoever it is aimed at or none. Before it resolves too, and it may be cancelled.
+     *  - `hit`: an attack roll has just hit the holder, and its damage has not been dealt. What is
+     *    taken there counts for that attack: its roll is checked again against the holder's
+     *    defense as it then stands.
      *  - `harmed`: something has just hurt the holder. The window opens AFTER it resolves, because
      *    the amount is what the moment is about, and nothing taken there unmakes it.
      *
@@ -1230,27 +1258,7 @@ const catalogMechanicsSchema = z
         // which is what leaving it out says. A package that ships one is not broken by this.
         z.literal(false),
         z.literal(true),
-        z
-          .object({
-            on: z.enum(["aimed", "harmed", "used"]),
-            at: z.enum(["source", "chosen"]).default("source"),
-            /** Stops what opened the window from happening at all. Only a moment BEFORE something
-             *  resolves may be answered that way: what has already happened cannot be called off. */
-            cancels: z.literal(true).optional(),
-            against: z
-              .object({ catalogs: z.array(sheetId).min(1).max(12) })
-              .strict()
-              .optional(),
-          })
-          .strict()
-          .superRefine((reaction, ctx) => {
-            if (reaction.cancels && reaction.on === "harmed") {
-              ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                message: 'Only an "aimed" or "used" reaction cancels: what has already happened cannot be called off',
-              });
-            }
-          }),
+        rulesetReactionMomentSchema,
       ])
       .optional(),
     /** How many targets one use may take. One unless it says otherwise. */
@@ -1516,6 +1524,10 @@ const creatureActionSchema = z
       .object({ cost: z.number().int().min(1).max(20) })
       .strict()
       .optional(),
+    /** Taken at a moment rather than on a turn, exactly as a catalog entry's reaction is. */
+    reaction: rulesetReactionMomentSchema.optional(),
+    /** It lands on the creature itself rather than on somebody else: a parry, a guard, a hardening. */
+    self: z.literal(true).optional(),
   })
   .strict()
   .superRefine((action, ctx) => {
@@ -1531,6 +1543,8 @@ const creatureActionSchema = z
         "applies",
         "targetCount",
         "area",
+        "reaction",
+        "self",
       ] as const) {
         if (action[key] !== undefined) {
           ctx.addIssue({
@@ -1540,6 +1554,27 @@ const creatureActionSchema = z
           });
         }
       }
+    }
+    // Landing on itself leaves no one else to pick or catch.
+    if (action.self) {
+      for (const key of ["targetCount", "area"] as const) {
+        if (action[key] !== undefined) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [key],
+            message: "An action that lands on the creature itself takes no other target",
+          });
+        }
+      }
+    }
+    // A signature action is bought between turns, and a reaction is taken at its moment: one action
+    // is one or the other.
+    if (action.reaction && action.signature) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["signature"],
+        message: "A reaction is taken at its moment, so it is not bought between turns as well",
+      });
     }
     if (action.save && action.saveDifficulty !== undefined) {
       ctx.addIssue({
@@ -4269,6 +4304,7 @@ function creatureIssues(
 
   if (creature.sheet) creatureSheetIssues(definition, creature.sheet, [...at, "sheet"], add, narrowedByLayers);
 
+  const catalogIds = new Set((definition.catalogs ?? []).map((catalog) => catalog.id));
   const byId = new Map<string, RulesetCreatureAction>();
   creature.actions.forEach((action, index) => {
     if (byId.has(action.id)) add([...at, "actions", index, "id"], `Duplicate action id "${action.id}"`);
@@ -4303,11 +4339,18 @@ function creatureIssues(
         add([...where, "saveEnds", "save"], `Unknown save "${applies.saveEnds.save}"`);
       }
     });
+    // What a reaction answers is named by catalog, so it has to be one this ruleset has.
+    action.reaction?.against?.catalogs.forEach((id, againstIndex) => {
+      if (!catalogIds.has(id))
+        add([...path, "reaction", "against", "catalogs", againstIndex], `Unknown catalog "${id}"`);
+    });
     action.sequence?.forEach((step, stepIndex) => {
       const where: (string | number)[] = [...path, "sequence", stepIndex, "action"];
       const named = byId.get(step.action);
       if (!named) return add(where, `Unknown action "${step.action}"`);
       if (named.id === action.id) return add(where, "A sequence cannot name itself");
+      // A reaction waits for its moment, so it is never one of the strikes a turn's action makes.
+      if (named.reaction) return add(where, `"${step.action}" is a reaction, so no sequence can make it`);
       // One budget, one list of strikes. A sequence of sequences would spend one budget on a tree,
       // and there would be nothing left to say how deep it may go.
       if (named.sequence) add(where, `"${step.action}" is a sequence, and a sequence cannot name another`);

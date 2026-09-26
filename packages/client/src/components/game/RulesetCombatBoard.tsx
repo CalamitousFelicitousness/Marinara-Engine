@@ -45,6 +45,8 @@ export interface RulesetCombatBoardProps {
   /** The Engine's own combatants, for the portraits only: every number on screen is the view's. */
   units: Combatant[];
   budgetLabel: (id: string) => string;
+  /** What the ruleset calls its defense. */
+  defenseLabel?: string;
   /** The scene's terrain theme, which is the same string the board was generated from. */
   environment?: string;
   busy: boolean;
@@ -64,6 +66,7 @@ export function RulesetCombatBoard({
   view,
   units,
   budgetLabel,
+  defenseLabel,
   environment,
   busy,
   onChoose,
@@ -458,6 +461,7 @@ export function RulesetCombatBoard({
         <RulesetCombatMenu
           view={view}
           budgetLabel={budgetLabel}
+          defenseLabel={defenseLabel}
           busy={busy}
           onChoose={onChoose}
           onFlee={onFlee}

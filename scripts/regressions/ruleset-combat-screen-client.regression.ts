@@ -651,6 +651,19 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ],
     ["cover", say({ type: "cover", targetId: "lurker", bonus: 2, defense: 15 })],
     [
+      "recheck",
+      say({
+        type: "recheck",
+        actorId: "lurker",
+        targetId: "brenna",
+        optionId: "claw",
+        label: "Barbed claw",
+        total: 20,
+        defense: 23,
+        outcome: "miss",
+      }),
+    ],
+    [
       "area",
       say({
         type: "area",

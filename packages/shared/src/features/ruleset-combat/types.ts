@@ -161,6 +161,15 @@ export interface RulesetStatBlockAction {
   sequence?: Array<{ action: string; times: number }>;
   /** Bought out of the block's own `signaturePoints` instead of a budget. */
   signature?: { cost: number };
+  /** Taken at a moment rather than on a turn, as a catalog entry's reaction is. */
+  reaction?: {
+    on: RulesetReactionMoment;
+    at?: "source" | "chosen";
+    cancels?: true;
+    against?: { catalogs: string[] };
+  };
+  /** It lands on the creature itself. */
+  self?: true;
 }
 
 /** An opponent's numbers. A bestiary entry becomes one of these, and a hand-written one is still
@@ -472,14 +481,25 @@ export type RulesetWindowTrigger =
   /** Somebody on the other side is ABOUT to use something, whoever it is aimed at: held the same
    *  way, for everybody holding an answer that reaches them. */
   | { kind: "used"; sourceId: string; optionId: string; label: string; catalog?: string }
+  /** An attack roll has just hit the one being asked, and its damage has not been dealt. What they
+   *  take counts for it: the roll (`total`, made against `defense`) is checked again afterwards. */
+  | {
+      kind: "hit";
+      sourceId: string;
+      optionId: string;
+      label: string;
+      catalog?: string;
+      total: number;
+      defense: number;
+    }
   /** Something has just hurt the ones being asked. It has already happened: nothing answered here
    *  unmakes it, and `sourceId` is whoever dealt it, for a reaction aimed back at them. */
   | { kind: "harmed"; sourceId: string; label: string; catalog?: string };
 
 /** The moments the Engine notices, and opens a window for. `aimed` is before something lands on
- *  the holder, `used` is before somebody on the other side uses something, and `harmed` is after
- *  something has hurt the holder. */
-export type RulesetReactionMoment = "aimed" | "harmed" | "used";
+ *  the holder, `used` is before somebody on the other side uses something, `hit` is after an attack
+ *  roll has hit the holder and before its damage, and `harmed` is after something has hurt them. */
+export type RulesetReactionMoment = "aimed" | "hit" | "harmed" | "used";
 
 /** What the fight goes back to once the window closes. A window opened after something has already
  *  happened carries none: there is nothing to pick up. */
@@ -495,6 +515,32 @@ export interface RulesetActionResume {
   payWith?: string;
   /** An answer stopped it. What it cost is still spent: it was paid for before the asking. */
   cancelled?: true;
+  /** Held after one of its attack rolls hit, rather than before anything happened. */
+  held?: RulesetHeldAttack;
+}
+
+/** An attack held after its roll hit, while the one it hit is asked. It picks up exactly here: the
+ *  same roll against that target, then the rest of this action's targets, then the rest of its parts
+ *  when it is one part of an action made of others. */
+export interface RulesetHeldAttack {
+  /** Its place among the parts of the action it belongs to, when that action is made of others. */
+  part?: number;
+  targetId: string;
+  /** The targets still to come after this one, of the same action or part, in order. */
+  rest: string[];
+  roll: {
+    mode: RulesetCombatRollMode;
+    total: number;
+    /** What it was rolled against. */
+    defense: number;
+    critical: boolean;
+    /** A natural face decided it, so no change to the defense can turn it. */
+    natural: boolean;
+  };
+  /** The attacker's one-use conditions the roll used, spent once the blow is over. */
+  mine: string[];
+  /** Whoever the action had already hurt before it was held, for the moment after it. */
+  hurt: string[];
 }
 
 /** A walk stopped in its tracks, with everything needed to finish it exactly as it would have gone:
@@ -700,6 +746,9 @@ export type RulesetCombatEvent =
       moment?: RulesetReactionMoment;
       label?: string;
       sourceId?: string;
+      /** For a held hit: what the roll came to, and what it was made against. */
+      total?: number;
+      defense?: number;
     }
   /** Somebody let their window go by without spending anything. */
   | { type: "pass"; actorId: string; window: string }
@@ -727,6 +776,19 @@ export type RulesetCombatEvent =
       from: RulesetCombatCell;
       to: RulesetCombatCell;
       path: RulesetCombatCell[];
+    }
+  /** A held attack's roll, checked again once the one it hit had answered: against what their
+   *  defense then was, and whether it still lands. */
+  | {
+      type: "recheck";
+      actorId: string;
+      targetId: string;
+      optionId: string;
+      label: string;
+      total: number;
+      defense: number;
+      guards?: RulesetConditionBonus[];
+      outcome: RulesetCombatAttackOutcome;
     }
   /** What the ground the target stands on added to the defense the next attack is rolled against. */
   | { type: "cover"; targetId: string; bonus: number; defense: number }

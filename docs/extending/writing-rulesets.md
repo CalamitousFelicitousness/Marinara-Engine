@@ -1153,6 +1153,23 @@ as a `sheet`, takes `health`, `defense`, `initiativeModifier`, `speed`, `abiliti
   - `signature`: `{ "cost": n }`, bought with the creature's own points instead of a budget, and
     only while somebody else is acting: the fight offers it in the window between one turn and the
     next (see Windows).
+  - `reaction`: the same object a catalog entry's `mechanics.reaction` is (see Windows): the action
+    is on no turn's menu and is offered at the moment it names instead. A reaction is not also a
+    signature action, and no sequence may make one.
+  - `self: true`: it lands on the creature itself rather than on somebody else, and so takes no
+    `targetCount` or `area`. Both need Capability API 1.46. A Parry is both, with a `parrying`
+    condition that adds 2 to defense:
+
+    ```json
+    {
+      "id": "parry",
+      "name": "Parry",
+      "budget": "reaction",
+      "self": true,
+      "reaction": { "on": "hit" },
+      "applies": [{ "condition": "parrying", "duration": { "rounds": 1 }, "endsAfter": "attacked" }]
+    }
+    ```
 - A save needs a difficulty on the action itself: `save.difficulty` for a save the action forces, or
   `saveDifficulty` for a condition that ends on a save when the action has no save of its own. A
   block action is written in plain numbers even on a creature with a sheet, so that number lives on
@@ -1546,7 +1563,7 @@ Contests are Capability API 1.43 for a packaged ruleset.
 Some moments belong to somebody who is not the one acting. The Engine holds the fight open for them
 rather than deciding for them, and that pause is a window.
 
-Five things open one, and two of them come out of what you already declared:
+Six things open one, and two of them come out of what you already declared:
 
 - **Somebody breaks away.** A walk that leaves the reach of an enemy who could strike stops on that
   step and asks them. See Strikes at somebody walking away, above.
@@ -1560,13 +1577,17 @@ Five things open one, and two of them come out of what you already declared:
 - **Something is aimed at somebody.** Before it resolves, everybody on the OTHER side it is
   pointed at who holds an entry waiting for that moment is asked. A friend healing you is not a
   threat to answer, so a friend's action opens no window.
+- **An attack roll hits somebody.** Before its damage, the one it hit is asked, when they hold an
+  entry waiting for that moment. What they take counts for this attack: see The moment after a hit,
+  below.
 - **Something has hurt somebody.** After it resolves, everybody it damaged who holds an entry
   waiting for THAT moment is asked, whoever did it. Being hurt is a fact about you; an entry pointed
   back at whoever caused it still cannot be pointed at a friend.
 
-The last three are what a catalog entry asks for by naming the moment it waits for. When one action
-opens both of the first two, the use is asked about first; if nobody calls it off, the ones it is
-aimed at are asked next, and it resolves once both have been answered.
+The last four are what a catalog entry, or a creature's own action, asks for by naming the moment it
+waits for. When one action opens both `used` and `aimed`, the use is asked about first; if nobody
+calls it off, the ones it is aimed at are asked next, and it resolves once both have been answered.
+Being hit is asked about as each of its rolls hits, and being hurt once the whole action is over.
 
 What a window does, whichever opened it:
 
@@ -1592,14 +1613,14 @@ The first two you declare nothing for: a ruleset with `opportunity.budget` gets 
 "reaction": { "on": "aimed", "at": "source", "cancels": true }
 ```
 
-- `on` is `used`, `aimed` or `harmed`, and it is what puts the entry on that window's menu. Those
-  three are the only moments the Engine watches for. An entry that still says `"reaction": true` says only
+- `on` is `used`, `aimed`, `hit` or `harmed`, and it is what puts the entry on that window's menu.
+  Those four are the only moments the Engine watches for. An entry that still says `"reaction": true` says only
   that it is not taken on a turn, which is not enough to offer it anywhere, so it stays on no menu.
 - `at` is `source` (the default) or `chosen`. `source` points what is taken at whoever caused the
   moment and fills the target in, so nobody is asked to pick; `chosen` keeps the entry's own
   targets and asks.
 - `cancels` stops what the window was holding from happening at all. Only a `used` or `aimed` entry
-  may say it: a moment that has already happened cannot be called off.
+  may say it: a moment that has already happened cannot be called off, and a hit has been rolled.
 - `against` narrows what the entry answers to things used from certain catalogs:
   `"against": { "catalogs": ["spells"] }` answers a spell and nothing else. An action with no entry
   behind it (a weapon on a list, a creature's own action) comes from no catalog, so it never opens
@@ -1624,8 +1645,34 @@ A counter is written like this, and on a board it answers only somebody within i
 }
 ```
 
+**The moment after a hit.** An entry on `hit` is how Shield, a Parry and Uncanny Dodge are said. The
+attack is held after its roll, and the one it hit is asked before any damage is dealt. What they take
+counts for that attack: its roll is not made again but checked again, against their defense as it now
+stands, so a condition that adds to defense can turn the hit into a miss, and a natural face that
+always hits still hits. A condition that lasts one attack (`endsAfter: "attacked"`) put on as the
+answer covers this attack, its damage included, and is spent by it, which is how "halve that
+attack's damage" is said: `resist-all` for one attack.
+
+```json
+"mechanics": {
+  "kind": "buff",
+  "targets": "self",
+  "budget": "reaction",
+  "reaction": { "on": "hit" },
+  "applies": [{ "condition": "shielded", "duration": { "rounds": 1, "at": "turn-start" } }]
+}
+```
+
+The attack picks up exactly where it was held: the rest of its targets, and, for a creature's action
+made of other actions, the rest of its parts. Each roll that hits somebody holding such an answer is
+held in its turn, and a fight saved while the window is open comes back the same way. An attack made
+inside a window (a strike at somebody walking away, a signature action, an answer) is never held,
+because nothing opened inside a window opens another. The log shows the roll and what it was made
+against when the window opens, and, when the answer changed the defense, whether it now misses.
+Opponents the Engine plays take a guard only when it turns the hit into a miss.
+
 A package that names a moment needs Capability API 1.33, and one that uses `used` or `against`
-needs 1.44.
+needs 1.44. One that waits for `hit` needs 1.46.
 
 ### Not yet
 
@@ -1635,7 +1682,7 @@ Said plainly, because a ruleset should not claim what the Engine does not do:
   obstacles, no squeezing, no mounts, no hiding or surprise, and nothing moves anybody but their own
   walk and a contest's push. Nobody drags a creature they hold.
 - **A contest is plain.** It has no size limits and opens no window (nobody may answer one).
-- **An entry may wait for three moments only**, `used`, `aimed` and `harmed` (see Windows, above).
+- **An entry may wait for four moments only**, `used`, `aimed`, `hit` and `harmed` (see Windows, above).
   Those are the moments the Engine notices on an entry's behalf; the other two windows, somebody
   breaking away and the pause between two turns, are opened by the fight itself and are not moments
   an entry can ask for. There is no moment for a save being rolled, a death, a turn beginning, or
@@ -1643,12 +1690,13 @@ Said plainly, because a ruleset should not claim what the Engine does not do:
 - **A counter stops what it answers outright.** It cannot tell one entry of a catalog from another,
   and there is no check to stop something bigger than itself.
 - **No chain of them.** The fight keeps one window rather than a stack, so nothing opened inside a
-  window opens another: a counter cannot itself be countered, and what a reaction deals opens no
-  further moment.
-- **A number is changed before the roll, never after it.** An answer to being aimed at can put on a
-  condition that raises its holder's defense until the start of their next turn, and the held attack
-  is rolled against it. There is no moment after an attack has hit and before its damage, so an
-  answer cannot wait to see whether it is needed, and nothing halves the damage of one blow.
+  window opens another: a counter cannot itself be countered, what a reaction deals opens no
+  further moment, and an attack made inside a window is not held when it hits.
+- **Only an attack roll is a hit.** Something that lands without one (darts that simply hit, an area
+  everyone saves against) opens no `hit` moment, and an answer cannot tell a swing from a shot, so a
+  Parry the rules keep to swords parries arrows too.
+- **Damage is changed by halving, not by an amount.** An answer can make one attack's harm half
+  (`resist-all` for that attack); it cannot take a rolled number off it.
 - **Nothing is refunded.** What a cancelled action cost is spent.
 - **What a condition changes is a closed list.** Defense, attack rolls, saves, contest checks and
   speed, and nothing else: no bonus to the damage its holder deals, and no level that lowers the

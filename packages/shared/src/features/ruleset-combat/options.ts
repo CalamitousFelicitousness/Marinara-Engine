@@ -1183,10 +1183,40 @@ export function rulesetReactionPointsAtSource(action: RulesetCombatAction): bool
   return !!action.reaction && action.reaction.at !== "chosen" && action.targets.side !== "self";
 }
 
+/**
+ * On a held hit, whether taking this answer would turn the hit into a miss: the defense its holder
+ * would have once what it puts on them has landed, against the roll that hit. Null when the answer
+ * changes no defense of theirs at all, which is how anything other than a guard is weighed.
+ */
+export function rulesetAnswerDeflects(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+  optionId: string,
+): boolean | null {
+  const combat = definition.combat;
+  const window = state.window;
+  const held = window?.resume?.kind === "action" ? window.resume.held : undefined;
+  if (!combat || window?.trigger.kind !== "hit" || !held || held.targetId !== actor.id) return null;
+  const action = actor.actions.find((entry) => entry.id === optionId);
+  if (!action || action.targets.side !== "self") return null;
+  const applied = new Set((action.applies ?? []).map((entry) => entry.condition));
+  const active = new Set(rulesetCombatConditions(definition, actor));
+  const gain = (combat.conditions ?? [])
+    .filter((entry) => applied.has(entry.condition) && !active.has(entry.condition))
+    .flatMap((entry) => entry.modifiers ?? [])
+    .reduce((total, modifier) => total + (modifier.to === "defense" ? (modifier.flat ?? 0) : 0), 0);
+  if (gain === 0) return null;
+  if (held.roll.natural) return false;
+  return held.roll.total < rulesetDefenseAgainst(definition, combat, state, actor).defense + gain;
+}
+
 /** Which moment a window is, for the reactions that wait for one. A walk and the turn between two
  *  actors are windows of their own kind and wait for nothing. */
 export function rulesetWindowMoment(trigger: RulesetWindowTrigger): RulesetReactionMoment | null {
-  return trigger.kind === "aimed" || trigger.kind === "harmed" || trigger.kind === "used" ? trigger.kind : null;
+  return trigger.kind === "aimed" || trigger.kind === "hit" || trigger.kind === "harmed" || trigger.kind === "used"
+    ? trigger.kind
+    : null;
 }
 
 /**

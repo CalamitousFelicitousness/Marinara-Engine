@@ -790,18 +790,21 @@ function blockActions(block: RulesetStatBlockLike, perCell: number | undefined):
     budget: action.budget,
     // A sequence may be pointed at as many targets as all of its parts together, so a caller can
     // send each strike somewhere else. Fewer is legal too: every part takes the ones it was given.
-    targets: {
-      side: "enemy" as const,
-      count: action.sequence
-        ? Math.max(
-            1,
-            action.sequence.reduce((total, step) => {
-              const named = block.actions[indexById.get(step.action) ?? -1];
-              return total + (named ? Math.max(1, named.targetCount ?? 1) * step.times : 0);
-            }, 0),
-          )
-        : Math.max(1, action.targetCount ?? 1),
-    },
+    // One that lands on the creature itself points at nobody: its effect is its own.
+    targets: action.self
+      ? { side: "self" as const, count: 0 }
+      : {
+          side: "enemy" as const,
+          count: action.sequence
+            ? Math.max(
+                1,
+                action.sequence.reduce((total, step) => {
+                  const named = block.actions[indexById.get(step.action) ?? -1];
+                  return total + (named ? Math.max(1, named.targetCount ?? 1) * step.times : 0);
+                }, 0),
+              )
+            : Math.max(1, action.targetCount ?? 1),
+        },
     ...(action.toHit !== undefined ? { toHit: action.toHit } : {}),
     ...(action.autoHit ? { autoHit: true } : {}),
     ...(action.damage
@@ -825,6 +828,16 @@ function blockActions(block: RulesetStatBlockLike, perCell: number | undefined):
         }
       : {}),
     ...(action.signature ? { signature: { cost: action.signature.cost } } : {}),
+    ...(action.reaction
+      ? {
+          reaction: {
+            on: action.reaction.on,
+            at: action.reaction.at ?? "source",
+            ...(action.reaction.cancels ? { cancels: true as const } : {}),
+            ...(action.reaction.against ? { against: { catalogs: [...action.reaction.against.catalogs] } } : {}),
+          },
+        }
+      : {}),
     // A reach written as 0 is no reach, exactly as a weapon column reading 0 is: without it a
     // creature that only shoots would be read as swinging, and could strike a passer-by.
     ...(perCell !== undefined && action.reach !== undefined && action.reach > 0

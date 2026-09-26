@@ -156,8 +156,11 @@ export interface DirectedRulesetView {
     id: string;
     kind: "reaction" | "signature";
     /** Which moment, for the ones a reaction waits for, and what is happening at it. */
-    moment?: "aimed" | "harmed" | "used";
+    moment?: "aimed" | "hit" | "harmed" | "used";
     label?: string;
+    /** For a held hit: what the roll came to, and what it was made against. */
+    total?: number;
+    defense?: number;
     /** Who caused the moment: whoever aimed the thing, or whoever dealt the damage. Its own field
      *  rather than `moverId`, which is for the walk that opened a window by leaving a reach. */
     sourceId?: string;

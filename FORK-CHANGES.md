@@ -2,7 +2,7 @@
 
 Changes that exist only in this fork (`CalamitousFelicitousness/Marinara-Engine`), kept here rather than in `CHANGELOG.md` so syncing with `upstream/staging` does not conflict on every merge.
 
-Upstream is [Pasta-Devs/Marinara-Engine](https://github.com/Pasta-Devs/Marinara-Engine). See `CLAUDE.md § Fork Workflow` for the sync and run procedure.
+Upstream is [Pasta-Devs/Marinara-Engine](https://github.com/Pasta-Devs/Marinara-Engine). Syncs merge `upstream/staging` into `staging`; `.claude/skills/marinara-upstream-sync/SKILL.md` has the procedure.
 
 ## Patches to upstream files
 
@@ -2539,10 +2539,6 @@ round-trip, CRLF-vs-LF on scripted edits, and the `localeCompare` sort the local
 
 Fork-only: upstream has no `.claude/` skills. Nothing here changes product behavior.
 
-### Generated `AGENTS.md`
-
-`AGENTS.md` is generated from `CLAUDE.md` plus `.github/agents/codex-overlay.md`, so a contributor rule written for one AI agent cannot silently go missing for the other. Regenerate with `pnpm agent-docs:sync`; `pnpm agent-docs:check` runs inside `pnpm check` and fails on drift.
-
 ### pnpm 11 configuration migration
 
 Every dependency override moved from `package.json#pnpm` into `pnpm-workspace.yaml`, because pnpm 11 no longer reads that field and was silently dropping all 17 pins. Build-script permissions moved from `onlyBuiltDependencies` to the `allowBuilds` map. `protobufjs` resolves to `7.6.5` — the later of the two conflicting pins, matching the committed lockfile.
@@ -2561,9 +2557,8 @@ runner's `--filter`. Upstream replaced the per-script `regression:*` aliases wit
 recursively on a 30-second-per-file budget, so plain `pnpm regression` picks the script up with no
 registration at all; only the focused prompt lane needs the explicit filter.
 
-`pnpm check` keeps both fork guards (`agent-docs:check`, `dev-ports:check`) ahead of upstream's
-`format:check`. Patches `package.json`, which upstream edits constantly — re-check both after
-every sync.
+`pnpm check` keeps the fork's `dev-ports:check` guard ahead of upstream's `format:check`. Patches
+`package.json`, which upstream edits constantly; re-check both after every sync.
 
 ### Local dev environment
 

@@ -10,8 +10,7 @@ modes here produce a **green result that is wrong**, or a red result that has
 nothing to do with your change. This skill exists so those are recognized on
 sight instead of rediscovered.
 
-Read `CLAUDE.md` for architecture and repo rules — this skill is only about
-proving a change works.
+This skill is only about proving a change works.
 
 ## Pick the lane that matches the change
 
@@ -24,9 +23,8 @@ proving a change works.
 | Chat UI shell, panels, popovers                   | the two relevant e2e specs (see below)               | ~1 min      |
 | Broad refactor across surfaces                    | full `pnpm smoke:ui`                                 | **~1 hour** |
 
-`pnpm check` runs stale-client cleanup, the Impeccable guard, both fork guards
-(`agent-docs:check`, `dev-ports:check`), localization checks, the Prettier
-format check, lint, typecheck, and the production build. It does **not** run regressions, and it does not
+`pnpm check` runs stale-client cleanup, the Impeccable guard, the fork's
+`dev-ports:check` guard, localization checks, the Prettier format check, lint, typecheck, and the production build. It does **not** run regressions, and it does not
 execute your code — it only proves it compiles and the guards hold.
 
 That distinction matters. A green `pnpm check` says nothing about whether a

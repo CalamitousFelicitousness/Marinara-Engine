@@ -1,6 +1,6 @@
 ---
 name: marinara-upstream-sync
-description: How to sync this fork with upstream Pasta-Devs/Marinara-Engine — why the merge is a merge and not a rebase, how to see every conflict before touching the working tree, the specific fork patches that collide on each sync and how each one is resolved, and the five silent losses that no conflict marker will warn you about. Use this skill whenever the user wants to sync, rebase, update, merge, or pull in upstream changes; asks whether upstream has new commits or how far behind the fork is; mentions upstream/staging, a version bump, or a large batch of incoming commits; or hits a merge conflict anywhere in this repo. Consult it before resolving any conflict here, and before concluding that a post-merge test failure is yours.
+description: How to sync this fork with upstream Pasta-Devs/Marinara-Engine — why the merge is a merge and not a rebase, how to see every conflict before touching the working tree, the specific fork patches that collide on each sync and how each one is resolved, and the four silent losses that no conflict marker will warn you about. Use this skill whenever the user wants to sync, rebase, update, merge, or pull in upstream changes; asks whether upstream has new commits or how far behind the fork is; mentions upstream/staging, a version bump, or a large batch of incoming commits; or hits a merge conflict anywhere in this repo. Consult it before resolving any conflict here, and before concluding that a post-merge test failure is yours.
 ---
 
 # Syncing this fork with upstream
@@ -10,9 +10,8 @@ edits. A sync is therefore not a mechanical merge: the dangerous outcomes are
 silent, not loud. A fork patch that gets reverted still compiles, still passes
 lint, and only surfaces later as a feature that quietly stopped working.
 
-This skill covers the merge itself. `CLAUDE.md` covers architecture and the
-remote layout, `FORK-CHANGES.md` lists what this fork changes and which of
-those live in files upstream also touches, and
+This skill covers the merge itself. `FORK-CHANGES.md` lists what this fork
+changes and which of those live in files upstream also touches, and
 `.claude/skills/marinara-validation/SKILL.md` covers proving the result works.
 
 Everything below was verified on the 2026-08-20 sync: 447 upstream commits,
@@ -35,8 +34,7 @@ files to 69. Measure the overlap, not the log.
 
 ## Merge, never rebase
 
-`CLAUDE.md § Fork Workflow` prescribes a merge, and the remote layout assumes
-one. `staging` tracks `upstream/staging` for fetch while `remote.pushDefault`
+The remote layout assumes a merge. `staging` tracks `upstream/staging` for fetch while `remote.pushDefault`
 sends pushes to `origin`, so a bare push is correct and `-u` would retarget
 tracking and break the split.
 
@@ -225,9 +223,8 @@ currently catches**. `author-note-presets.regression.ts` exercises the shared
 helpers in `services/prompt/author-notes.ts`, not this route's wiring, so the
 revert passes every check. Verify the resolution by reading the merged file.
 
-**`package.json`** carries fork guards upstream does not have. Keep
-`agent-docs:check` and `dev-ports:check` in `check` alongside whatever upstream
-has added, and re-add the fork's `author-note-presets` filter to
+**`package.json`** carries a fork guard upstream does not have. Keep
+`dev-ports:check` in `check` alongside whatever upstream has added, and re-add the fork's `author-note-presets` filter to
 `regression:prompt`.
 
 **Adjacency conflicts** — `en.json` and `core-flows.e2e.ts` — mean both sides
@@ -243,6 +240,9 @@ delete. The fork's edits to those files were stale-key pruning, and the whole
 mechanism comes across, so nothing is lost by dropping eleven stale
 translations.
 
+**`AGENTS.md` is upstream's, unmodified.** Take upstream's side of every change
+to it. A fork edit there turns each later upstream edit into a conflict.
+
 **The store persistence version no longer has to collide.** Both lineages used
 to number `version:` independently from a shared ancestor, which is why the
 fork's migrate guards were widened by hand. Upstream now reads the name and
@@ -254,9 +254,10 @@ against fork stores sitting at 100.
 
 ## Checks that no conflict marker will warn you about
 
-Five losses happen without a conflict. The first two are reverts, because only
-one side edits the file; the third is an inbound fix that lands nowhere; the
-fourth is a fork field missing from code upstream added whole.
+Four losses happen without a conflict. The first is a revert, because only one
+side edits the field; the second is an inbound fix that lands nowhere; the third
+is a fork field missing from code upstream added whole; the fourth is an
+upstream call to a helper the fork retired.
 
 **`package.json#pnpm`.** This fork moved dependency overrides into
 `pnpm-workspace.yaml` for pnpm 11; upstream stays on pnpm 10.x and keeps them
@@ -277,21 +278,6 @@ Anything new on the upstream side has to be mirrored into
 both security bumps. Note that upstream has started writing
 `patchedDependencies` and `auditConfig` into `pnpm-workspace.yaml` directly;
 those merge cleanly and need no mirroring. Only `overrides` is split.
-
-**`AGENTS.md`.** Upstream hand-edits it directly, while this fork generates it
-from `CLAUDE.md` plus `.github/agents/codex-overlay.md`. An upstream
-`AGENTS.md` edit therefore arrives as a clean auto-merge that
-`pnpm agent-docs:check` then rejects. Fold the new content into `CLAUDE.md` at
-the matching position, then:
-
-```bash
-pnpm agent-docs:sync
-```
-
-Upstream maintains its own `CLAUDE.md` too — 15 commits of history as of
-2026-08, though none landed in that sync's window. When a sync does bring a
-`CLAUDE.md` change, merge it into the fork's `CLAUDE.md` (the generation
-source) and regenerate the same way.
 
 **An upstream fix aimed at code this fork relocated.** Where the fork has gutted
 a file and moved its parts elsewhere, an upstream fix to the moved part arrives
@@ -396,7 +382,7 @@ git worktree remove --force /tmp/upwt; git worktree prune; rm -rf /tmp/upwt
 ## Validate and record
 
 `pnpm check` is the real test of whether the merge reverted a fork patch. It
-runs `agent-docs:check` and `dev-ports:check`, which exist for exactly that.
+runs `dev-ports:check`, which exists for exactly that.
 Then run the fork's own regressions, since those are what a silent revert
 breaks. `.claude/skills/marinara-validation/SKILL.md` covers the rest,
 including which failures are already known.

@@ -173,7 +173,7 @@ Maintains an editable relationship web for the character cards assigned to a Rol
 - **Phase**: Post-Processing, with relationship context supplied to later replies.
 - **Where it works**: Roleplay group chats.
 - **Availability**: **Staging only**, requiring Engine **2.4.4+** with the staging preview catalog. Stable publication is planned with the next Engine main release.
-- **Install and activate**: install **Relationship Tracker** from **Agents → Download Agents** and restart when prompted. In each Roleplay chat, enable agents in **Chat Settings → Agents**, add it under **Tracker Agents**, and choose its model connection. The web appears in the Tracker Panel.
+- **Install and activate**: install **Relationship Tracker** from **Agents → Download Agents** and restart when prompted. In each Roleplay chat, enable agents in **Chat Settings → Agents**, add it under **Tracker Agents**, and choose its model connection. The web appears in the Tracker Panel. Select **All relationships** or **Scene-only relationships** there once to initialize the chat before editing or updating relationships.
 - **Key controls**: **All relationships** or **Scene-only relationships** for prompt context, **Update from History** for a bounded recent-message scan, and manual editing, locking, and **Resume automatic updates**. **Context Size** (default 5 messages), **Presence lookback** (default 15), and the history scan's message count are separate controls. Hover or keyboard-focus a line to read it; on touch or pen, press the line. See the [Relationship Tracker package guide](https://github.com/Pasta-Devs/Marinara-Agents/blob/staging/packages/relationship-tracker/README.md).
 
 ### Memory Nag

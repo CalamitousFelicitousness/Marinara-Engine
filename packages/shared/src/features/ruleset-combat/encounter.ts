@@ -456,6 +456,7 @@ function abilityAction(
             // `undefined` here would not survive the trip through JSON the state has to make.
             at: moment.at ?? "source",
             ...(moment.cancels ? { cancels: true as const } : {}),
+            ...(moment.against ? { against: { catalogs: [...moment.against.catalogs] } } : {}),
           },
         }
       : {}),
@@ -653,6 +654,8 @@ function abilityActions(
     }
     const action = abilityAction(definition, source, index, rowIndex, name, entry, build, evaluated, perCellOf(ref));
     if (!action) return;
+    // Which catalog it came from, which is what a reaction that answers only some entries reads.
+    action.catalog = ref.slice(0, ref.indexOf("/"));
     seen.add(ref);
     actions.push(action);
   });

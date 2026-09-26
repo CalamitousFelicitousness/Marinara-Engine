@@ -195,9 +195,10 @@ function cancelOnlyWhenAimed(node) {
   if (!node || typeof node !== "object") return;
   Object.values(node).forEach(cancelOnlyWhenAimed);
   const keys = Object.keys(node.properties ?? {}).filter((key) => key !== "$comment");
-  if (node.type === "object" && keys.length === 3 && ["on", "at", "cancels"].every((key) => keys.includes(key))) {
+  if (node.type === "object" && ["on", "at", "cancels", "against"].every((key) => keys.includes(key))) {
+    // Only a moment BEFORE something resolves may call it off.
     node.if = { required: ["cancels"] };
-    node.then = { properties: { on: { const: "aimed" } }, required: ["on"] };
+    node.then = { properties: { on: { enum: ["aimed", "used"] } }, required: ["on"] };
   }
 }
 

@@ -6039,7 +6039,8 @@
                               "type": "string",
                               "enum": [
                                 "aimed",
-                                "harmed"
+                                "harmed",
+                                "used"
                               ]
                             },
                             "at": {
@@ -6053,6 +6054,26 @@
                             "cancels": {
                               "type": "boolean",
                               "const": true
+                            },
+                            "against": {
+                              "type": "object",
+                              "properties": {
+                                "catalogs": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "minItems": 1,
+                                  "maxItems": 12
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "catalogs"
+                              ],
+                              "additionalProperties": false
                             },
                             "$comment": {}
                           },
@@ -6068,7 +6089,10 @@
                           "then": {
                             "properties": {
                               "on": {
-                                "const": "aimed"
+                                "enum": [
+                                  "aimed",
+                                  "used"
+                                ]
                               }
                             },
                             "required": [

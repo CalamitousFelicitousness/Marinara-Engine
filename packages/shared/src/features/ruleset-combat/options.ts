@@ -1060,7 +1060,8 @@ export function rulesetWindowOptions(
   const moment = rulesetWindowMoment(window.trigger);
   if (!moment) return [];
   const source = "sourceId" in window.trigger ? window.trigger.sourceId : "";
-  return rulesetReactionsAt(definition, combat, state, actor, moment, source).map((action) => {
+  const catalog = "catalog" in window.trigger ? window.trigger.catalog : undefined;
+  return rulesetReactionsAt(definition, combat, state, actor, moment, source, catalog).map((action) => {
     const option = optionFrom(definition, combat, state, actor, action, true)!;
     // Nobody to pick unless the entry says its holder picks: it is aimed back at whoever caused
     // the moment, or, for something its holder does to themselves, at its holder.
@@ -1077,7 +1078,7 @@ export function rulesetReactionPointsAtSource(action: RulesetCombatAction): bool
 /** Which moment a window is, for the reactions that wait for one. A walk and the turn between two
  *  actors are windows of their own kind and wait for nothing. */
 export function rulesetWindowMoment(trigger: RulesetWindowTrigger): RulesetReactionMoment | null {
-  return trigger.kind === "aimed" || trigger.kind === "harmed" ? trigger.kind : null;
+  return trigger.kind === "aimed" || trigger.kind === "harmed" || trigger.kind === "used" ? trigger.kind : null;
 }
 
 /**
@@ -1096,13 +1097,21 @@ export function rulesetReactionsAt(
   /** Whoever caused the moment. One aimed back at them needs them still to BE a target: an answer
    *  before this one may have taken them out, and nothing is offered that the rules would refuse. */
   sourceId: string,
+  /** The catalog of the entry behind what caused the moment, when there is one. A reaction that
+   *  answers only some catalogs answers nothing without it. */
+  catalog?: string,
 ): RulesetCombatAction[] {
   if (!rulesetCombatStanding(actor)) return [];
   const effects = rulesetCombatEffects(definition, combat, actor, state);
   if (effects.has("cannot-act") || effects.has("cannot-react")) return [];
   return actor.actions.filter((action) => {
     if (action.reaction?.on !== moment) return false;
+    const against = action.reaction.against?.catalogs;
+    if (against && (catalog === undefined || !against.includes(catalog))) return false;
     if (optionFrom(definition, combat, state, actor, action, true) === null) return false;
+    // Somebody using something is answered only from where the answer reaches them, whether or not
+    // it is aimed back at them: a counter that simply calls it off still has to reach it.
+    if (moment === "used" && rulesetTargetRefusal(state, actor.id, action.id, sourceId) !== null) return false;
     if (!rulesetReactionPointsAtSource(action)) return true;
     return rulesetOptionTargets(definition, state, actor.id, action).includes(sourceId);
   });

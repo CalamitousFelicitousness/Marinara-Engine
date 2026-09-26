@@ -91,9 +91,13 @@ function withoutLaterGates(doc: Record<string, any>): void {
   // block that just went, so it leaves with it.
   doc.catalogs = (doc.catalogs ?? []).filter((catalog: Record<string, any>) => catalog.holds !== "creatures");
   if (doc.catalogs.length === 0) delete doc.catalogs;
-  // And the 1.29 keys that say what one turn can do, for the same reason.
+  // And the 1.29 keys that say what one turn can do, for the same reason, and an entry that names
+  // the moment it waits for (1.33, and 1.44 for somebody using something).
   for (const catalog of doc.catalogs ?? []) {
-    catalog.entries = (catalog.entries ?? []).filter((entry: Record<string, any>) => entry.mechanics?.kind !== "rider");
+    catalog.entries = (catalog.entries ?? []).filter(
+      (entry: Record<string, any>) =>
+        entry.mechanics?.kind !== "rider" && typeof entry.mechanics?.reaction !== "object",
+    );
   }
   for (const entry of doc.catalogs?.[0]?.entries ?? []) {
     for (const key of [
@@ -135,7 +139,7 @@ const catalogFile = (entries: unknown[], catalog = "knacks") =>
   const catalog = ember.catalogs![0]!;
   assert.equal(catalog.id, "knacks");
   assert.deepEqual(catalog.feeds, ["knacks", "tricks"]);
-  assert.equal(catalog.entries!.length, 7);
+  assert.equal(catalog.entries!.length, 8);
   assert.equal(
     catalog.entries!.filter((entry) => entry.rows.length > 1).length,
     2,
@@ -375,7 +379,7 @@ const catalogFile = (entries: unknown[], catalog = "knacks") =>
   const withAsset = parsedOrThrow(ruleset(asAsset));
   const good = parseRulesetCatalogFile(withAsset, "knacks", JSON.parse(catalogFile(emberEntries)));
   assert.ok(good.ok, `the same entries are usable from a file: ${good.ok ? "" : good.issues.join("; ")}`);
-  assert.equal(good.ok && good.entries.length, 7);
+  assert.equal(good.ok && good.entries.length, 8);
 
   const wrongName = parseRulesetCatalogFile(withAsset, "knacks", JSON.parse(catalogFile(emberEntries, "tricks")));
   assert.ok(!wrongName.ok && /this file is for "tricks"/.test(wrongName.issues[0]!));
@@ -647,7 +651,8 @@ try {
     // The entries in the FILE gate on their own later declarations too, and these cases are about
     // the scaled row and nothing else.
     scaledFile.entries = (scaledFile.entries ?? []).filter(
-      (entry: Record<string, any>) => entry.mechanics?.kind !== "rider",
+      (entry: Record<string, any>) =>
+        entry.mechanics?.kind !== "rider" && typeof entry.mechanics?.reaction !== "object",
     );
     for (const entry of scaledFile.entries) {
       for (const key of ["plus", "free", "gives", "standard", "rider"]) delete entry.mechanics?.[key];
@@ -731,7 +736,7 @@ try {
     const pinned = await catalogRequest({ rulesetId: "local/ember-roads", catalogId: "knacks", version: "1" });
     assert.equal(pinned.statusCode, 200, pinned.body);
     assert.equal(pinned.json().version, 1);
-    assert.equal(pinned.json().entries.length, 7, "a game on version 1 picks from version 1's catalog");
+    assert.equal(pinned.json().entries.length, 8, "a game on version 1 picks from version 1's catalog");
 
     const gone = await catalogRequest({ rulesetId: "local/ember-roads", catalogId: "knacks", version: "9" });
     assert.equal(gone.statusCode, 404, gone.body);
@@ -743,7 +748,7 @@ try {
     const served = await catalogRequest({ rulesetId: "ember-roads", catalogId: "knacks" });
     assert.equal(served.statusCode, 200, served.body);
     const payload = served.json();
-    assert.equal(payload.entries.length, 7);
+    assert.equal(payload.entries.length, 8);
     assert.equal(payload.version, 1);
     assert.deepEqual(
       payload.entries.map((entry: RulesetCatalogEntry) => entry.id),

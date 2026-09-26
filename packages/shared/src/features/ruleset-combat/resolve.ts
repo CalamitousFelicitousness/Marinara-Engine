@@ -972,18 +972,28 @@ export function applyRulesetCombatChoice(
   // Paid for, and then held for everybody it is aimed at who has something that answers being
   // aimed at. What it cost is spent either way: an answer that calls it off stops it from
   // happening, not from having been bought.
-  const held = openMoment(
-    ctx,
-    { kind: "aimed", sourceId: working.id, optionId: action.id, label: action.label },
-    workingTargets,
-    {
-      kind: "action",
-      actorId: working.id,
-      optionId: action.id,
-      targetIds: workingTargets.map((target) => target.id),
-      ...(choice.payWith !== undefined ? { payWith: choice.payWith } : {}),
-    },
-  );
+  const resume: RulesetActionResume = {
+    kind: "action",
+    actorId: working.id,
+    optionId: action.id,
+    targetIds: workingTargets.map((target) => target.id),
+    ...(choice.payWith !== undefined ? { payWith: choice.payWith } : {}),
+  };
+  // Somebody on the other side may answer the USE first, wherever it is aimed; then the ones it is
+  // aimed at get their own say. Whatever is held resolves once the last window has closed.
+  const held =
+    openMoment(
+      ctx,
+      {
+        kind: "used",
+        sourceId: working.id,
+        optionId: action.id,
+        label: action.label,
+        ...(action.catalog ? { catalog: action.catalog } : {}),
+      },
+      ctx.state.combatants,
+      resume,
+    ) || openAimed(ctx, resume, action.label, action.catalog);
   if (!held) harmedBy(ctx, working, action, () => resolveAction(ctx, working, action, workingTargets, choice.payWith));
   noteOutcome(ctx);
   return finish();
@@ -1134,7 +1144,7 @@ function takeReaction(
   roller: RulesetCombatRoller,
 ): RulesetCombatStep {
   const trigger = window.trigger;
-  if (trigger.kind !== "aimed" && trigger.kind !== "harmed") {
+  if (trigger.kind !== "aimed" && trigger.kind !== "harmed" && trigger.kind !== "used") {
     return refusal(state, choice.actorId, "unknown-option", choice.optionId);
   }
   const declared = actor.actions.find((entry) => entry.id === choice.optionId && entry.reaction);
@@ -1194,7 +1204,7 @@ function takeReaction(
       type: "cancelled",
       actorId: stopped.actorId,
       optionId: stopped.optionId,
-      label: trigger.kind === "aimed" ? trigger.label : action.label,
+      label: trigger.kind === "aimed" || trigger.kind === "used" ? trigger.label : action.label,
       byId: taking.id,
     });
   }
@@ -1233,7 +1243,10 @@ function goOn(definition: RulesetDefinition, combat: RulesetCombat, ctx: Ruleset
     return;
   }
   if (resume?.kind === "action") {
-    if (!over) resumeAction(ctx, resume);
+    if (over) return;
+    // A use nobody stopped is aimed next: the ones it is aimed at get their own say before it lands.
+    if (trigger.kind === "used" && !resume.cancelled && openAimed(ctx, resume, trigger.label, trigger.catalog)) return;
+    resumeAction(ctx, resume);
     return;
   }
   if (!over && trigger.kind === "between-turns") beginNextTurn(definition, combat, ctx);
@@ -1441,7 +1454,7 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
  */
 function openMoment(
   ctx: RulesetCombatContext,
-  trigger: Extract<RulesetWindowTrigger, { kind: "aimed" | "harmed" }>,
+  trigger: Extract<RulesetWindowTrigger, { kind: "aimed" | "harmed" | "used" }>,
   candidates: readonly RulesetCombatant[],
   resume?: RulesetActionResume,
 ): boolean {
@@ -1449,15 +1462,18 @@ function openMoment(
   const moment = rulesetWindowMoment(trigger);
   if (!moment) return false;
   // Being aimed at is about what somebody MEANS to do to you, and a friend healing you or handing
-  // you something is not a threat to answer: only the other side opens that moment. Being hurt is
-  // a fact about you whoever did it, so it opens for anybody, and a reaction pointed back at the
-  // source is still kept off a friend by the same legality every other target goes through.
+  // you something is not a threat to answer: only the other side opens that moment, and the same
+  // for somebody using something at all. Being hurt is a fact about you whoever did it, so it opens
+  // for anybody, and a reaction pointed back at the source is still kept off a friend by the same
+  // legality every other target goes through.
   const source = rulesetCombatant(ctx.state, trigger.sourceId);
   const waiting = candidates
     .filter((one) => one.id !== trigger.sourceId)
-    .filter((one) => moment !== "aimed" || !source || one.side !== source.side)
+    .filter((one) => moment === "harmed" || !source || one.side !== source.side)
     .filter(
-      (one) => rulesetReactionsAt(ctx.definition, ctx.combat, ctx.state, one, moment, trigger.sourceId).length > 0,
+      (one) =>
+        rulesetReactionsAt(ctx.definition, ctx.combat, ctx.state, one, moment, trigger.sourceId, trigger.catalog)
+          .length > 0,
     )
     .map((one) => one.id);
   if (waiting.length === 0) return false;
@@ -1468,6 +1484,27 @@ function openMoment(
 /** What a window was holding, once everybody in it has answered. It resolves from the state as it
  *  stands NOW rather than as it stood then: an answer may have taken a target out, and the fight
  *  that resumes is the fight the window left behind. */
+/** The moment for the ones something held is aimed at, holding it once more. False when nobody there
+ *  has anything to answer it with, and then it simply goes ahead. */
+function openAimed(
+  ctx: RulesetCombatContext,
+  resume: RulesetActionResume,
+  label: string,
+  catalog: string | undefined,
+): boolean {
+  const actor = rulesetCombatant(ctx.state, resume.actorId);
+  if (!actor || !rulesetCombatStanding(actor)) return false;
+  const targets = resume.targetIds
+    .map((id) => rulesetCombatant(ctx.state, id))
+    .filter((target): target is RulesetCombatant => !!target && !target.defeated);
+  return openMoment(
+    ctx,
+    { kind: "aimed", sourceId: actor.id, optionId: resume.optionId, label, ...(catalog ? { catalog } : {}) },
+    targets,
+    resume,
+  );
+}
+
 function resumeAction(ctx: RulesetCombatContext, resume: RulesetActionResume): void {
   const actor = rulesetCombatant(ctx.state, resume.actorId);
   const action = actor?.actions.find((entry) => entry.id === resume.optionId);
@@ -1506,7 +1543,7 @@ function harmedBy(
   if (hurt.size === 0) return;
   openMoment(
     ctx,
-    { kind: "harmed", sourceId: actor.id, label: action.label },
+    { kind: "harmed", sourceId: actor.id, label: action.label, ...(action.catalog ? { catalog: action.catalog } : {}) },
     [...hurt].map((id) => rulesetCombatant(ctx.state, id)).filter((one): one is RulesetCombatant => !!one),
   );
 }

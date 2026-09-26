@@ -567,7 +567,7 @@ An entry may carry an optional `mechanics` block that says what it does in numbe
 
 The picker shows this block as one line. Who reads the rest depends on which block your ruleset opted in with:
 
-- With a [`combat` block](#combat-a-fight-your-own-rules-resolve), the fight reads its combat effects. `range`, `area` and `friendlyFire` apply on a battlefield with positions; `reaction` marks an entry as one that answers something, and until an entry can name the trigger it waits for, an entry marked this way is on no menu. `check` applies to skill checks, as described above.
+- With a [`combat` block](#combat-a-fight-your-own-rules-resolve), the fight reads its combat effects. `range`, `area` and `friendlyFire` apply on a battlefield with positions; `reaction` marks an entry as one that answers something rather than one taken on a turn, and names the moment it waits for (see [Windows](#windows-holding-the-fight-open)); one marked plain `true` names none and is on no menu. `check` applies to skill checks, as described above.
 - With only a [`battle` block](#battles-lending-the-sheet-to-marinaras-combat), a battle reads `kind`, `range`, `area`, `friendlyFire`, `amount`, `damageType` and `cost`, because those are the parts Marinara's own combat has somewhere to put.
 
 The vocabulary is closed, so a key or a value that is not in the list above is refused instead of being quietly ignored.
@@ -1495,7 +1495,7 @@ Contests are Capability API 1.43 for a packaged ruleset.
 Some moments belong to somebody who is not the one acting. The Engine holds the fight open for them
 rather than deciding for them, and that pause is a window.
 
-Four things open one, and two of them come out of what you already declared:
+Five things open one, and two of them come out of what you already declared:
 
 - **Somebody breaks away.** A walk that leaves the reach of an enemy who could strike stops on that
   step and asks them. See Strikes at somebody walking away, above.
@@ -1503,6 +1503,9 @@ Four things open one, and two of them come out of what you already declared:
   can afford one of its own `signature` actions is asked whether to buy one, before the next turn
   begins. That is the only moment they are bought in: a signature action is on nobody's turn menu,
   its own included.
+- **Somebody uses something.** Before it resolves, everybody on the OTHER side holding an entry
+  waiting for that moment is asked, whoever it is aimed at, as long as that entry reaches whoever is
+  using it. A standard action and a contest open no such moment.
 - **Something is aimed at somebody.** Before it resolves, everybody on the OTHER side it is
   pointed at who holds an entry waiting for that moment is asked. A friend healing you is not a
   threat to answer, so a friend's action opens no window.
@@ -1510,7 +1513,9 @@ Four things open one, and two of them come out of what you already declared:
   waiting for THAT moment is asked, whoever did it. Being hurt is a fact about you; an entry pointed
   back at whoever caused it still cannot be pointed at a friend.
 
-The last two are what a catalog entry asks for by naming the moment it waits for.
+The last three are what a catalog entry asks for by naming the moment it waits for. When one action
+opens both of the first two, the use is asked about first; if nobody calls it off, the ones it is
+aimed at are asked next, and it resolves once both have been answered.
 
 What a window does, whichever opened it:
 
@@ -1536,14 +1541,18 @@ The first two you declare nothing for: a ruleset with `opportunity.budget` gets 
 "reaction": { "on": "aimed", "at": "source", "cancels": true }
 ```
 
-- `on` is `aimed` or `harmed`, and it is what puts the entry on that window's menu. Those two are
-  the only moments the Engine watches for. An entry that still says `"reaction": true` says only
+- `on` is `used`, `aimed` or `harmed`, and it is what puts the entry on that window's menu. Those
+  three are the only moments the Engine watches for. An entry that still says `"reaction": true` says only
   that it is not taken on a turn, which is not enough to offer it anywhere, so it stays on no menu.
 - `at` is `source` (the default) or `chosen`. `source` points what is taken at whoever caused the
   moment and fills the target in, so nobody is asked to pick; `chosen` keeps the entry's own
   targets and asks.
-- `cancels` stops what the window was holding from happening at all. Only an `aimed` entry may say
-  it: a moment that has already happened cannot be called off.
+- `cancels` stops what the window was holding from happening at all. Only a `used` or `aimed` entry
+  may say it: a moment that has already happened cannot be called off.
+- `against` narrows what the entry answers to things used from certain catalogs:
+  `"against": { "catalogs": ["spells"] }` answers a spell and nothing else. An action with no entry
+  behind it (a weapon on a list, a creature's own action) comes from no catalog, so it never opens
+  the moment for an entry that names catalogs. Leave `against` out and the entry answers anything.
 
 Give it a `budget` too, or it spends the list's default. A reaction almost always spends a budget of
 its own, which is what stops one turn holding several.
@@ -1552,7 +1561,20 @@ its own, which is what stops one turn holding several.
 not from having been bought: the budget and the pools are already gone. If your system refunds
 them, it cannot say so yet.
 
-A package that names a moment needs Capability API 1.33.
+A counter is written like this, and on a board it answers only somebody within its own `range`:
+
+```json
+"mechanics": {
+  "kind": "utility",
+  "range": 8,
+  "free": true,
+  "cost": [{ "pool": "luck", "amount": 1 }],
+  "reaction": { "on": "used", "cancels": true, "against": { "catalogs": ["knacks"] } }
+}
+```
+
+A package that names a moment needs Capability API 1.33, and one that uses `used` or `against`
+needs 1.44.
 
 ### Not yet
 
@@ -1563,11 +1585,13 @@ Said plainly, because a ruleset should not claim what the Engine does not do:
   walk and a contest's push. Nobody drags a creature they hold.
 - **A contest is plain.** It has no size limits, opens no window (nobody may answer one), and no
   condition makes it easier or harder.
-- **An entry may wait for two moments only**, `aimed` and `harmed` (see Windows, above). Those are
-  the moments the Engine notices on an entry's behalf; the other two windows, somebody breaking away
-  and the pause between two turns, are opened by the fight itself and are not moments an entry can
-  ask for. There is no moment for a save being rolled, a spell being cast as such, a death, a turn
-  beginning, or anything falling.
+- **An entry may wait for three moments only**, `used`, `aimed` and `harmed` (see Windows, above).
+  Those are the moments the Engine notices on an entry's behalf; the other two windows, somebody
+  breaking away and the pause between two turns, are opened by the fight itself and are not moments
+  an entry can ask for. There is no moment for a save being rolled, a death, a turn beginning, or
+  anything falling.
+- **A counter stops what it answers outright.** It cannot tell one entry of a catalog from another,
+  and there is no check to stop something bigger than itself.
 - **No chain of them.** The fight keeps one window rather than a stack, so nothing opened inside a
   window opens another: a counter cannot itself be countered, and what a reaction deals opens no
   further moment.

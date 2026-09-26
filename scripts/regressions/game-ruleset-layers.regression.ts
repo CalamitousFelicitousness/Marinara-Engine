@@ -707,7 +707,8 @@ try {
       doc.catalogs = (doc.catalogs ?? []).filter((catalog: Record<string, any>) => catalog.holds !== "creatures");
       for (const catalog of doc.catalogs ?? []) {
         catalog.entries = (catalog.entries ?? []).filter(
-          (entry: Record<string, any>) => entry.mechanics?.kind !== "rider",
+          (entry: Record<string, any>) =>
+            entry.mechanics?.kind !== "rider" && typeof entry.mechanics?.reaction !== "object",
         );
       }
       for (const entry of doc.catalogs?.[0]?.entries ?? []) {

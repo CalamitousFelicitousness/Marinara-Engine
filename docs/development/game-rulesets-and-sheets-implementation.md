@@ -233,7 +233,8 @@ positions, movement, reach and ranges, areas, cover, opportunity attacks, the pi
 screen, out of the Tactical style's own look). C5 what a turn can do and what interrupts one, split
 into C5a (the turn economy, riders and the condition vocabulary) and C5b (the window itself: a walk
 held open, and the one a signature action is bought in). C5c what else opens a window (the moments
-an entry waits for), C5d contests, and later the remaining conditions and more moments.
+an entry waits for), C5d contests, C5e the `used` moment and what a reaction answers, and later the
+remaining conditions.
 
 ### What C1 settled
 
@@ -791,6 +792,32 @@ Capability API 1.43, for #6707.
   breaks, each caught), a seeded sweep in `scripts/regressions/ruleset-combat-director.regression.ts`
   (contests taken, sometimes won, never refused, and a picker that never takes one is caught), and the Contests group in
   `e2e/game-combat-director.e2e.ts`.
+
+### What C5e settled
+
+Capability API 1.44, for #6712.
+
+- **A third moment.** `mechanics.reaction.on` takes `used`: somebody on the other side uses
+  something. It opens BEFORE the use resolves, for everybody on the other side holding an entry for
+  it, whoever the use is aimed at, and `cancels` is allowed on it as on `aimed`. Only a real action
+  opens it (an attack, an ability, a block); a standard action and a contest do not.
+- **What a reaction answers.** `mechanics.reaction.against: { catalogs }`, on any moment, limits an
+  entry to actions that came from an entry of those catalogs. Ability actions built from a catalog
+  row carry `catalog`, and the `aimed`, `used` and `harmed` triggers carry the source action's
+  catalog; an action with no entry behind it (a weapon row, a stat block's own action) carries none
+  and never matches an entry that names catalogs. Catalog ids are checked at import.
+- **Reach.** A `used` answer is offered only when the holder's own reach or range covers the user
+  (`rulesetTargetRefusal`, so line of sight too), even when it cancels and points at nobody. Without
+  this an unpositioned rule would have let a counter answer from across the board.
+- **Order.** On a turn, `used` opens first; when it closes uncancelled, `aimed` opens for the
+  targets with the same held action, and it resolves once that closes too. One window at a time, as
+  before, so a counter cannot itself be countered.
+- **Examples.** Ember Roads gains Smother, a free knack that spends a point of Luck to stop a knack
+  used within eight paces. The 5e reference carries no spells; the 5e package's Counterspell adopts
+  `{ "on": "used", "against": { "catalogs": ["spells"] }, "cancels": true }` in its next release.
+- **Proven** by `scripts/regressions/game-ruleset-combat-moments.regression.ts` (the refusals, the
+  moment and its cancel, the catalog filter, reach on a board, `used` before `aimed`, no chain, the
+  log line and the 1.44 gate).
 
 ## Gaps a ruleset author found
 

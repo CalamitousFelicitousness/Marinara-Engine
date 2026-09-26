@@ -216,7 +216,7 @@ console.info("game ruleset JSON Schema regression passed.");
   const named = (reaction.anyOf as Array<Record<string, never>>).find((member) => !!member.properties?.cancels);
   assert.ok(named, "the published schema has lost the moment a reaction names");
   assert.deepEqual(named.if, { required: ["cancels"] });
-  assert.deepEqual(named.then, { properties: { on: { const: "aimed" } }, required: ["on"] });
+  assert.deepEqual(named.then, { properties: { on: { enum: ["aimed", "used"] } }, required: ["on"] });
 }
 
 // ── One source for each of a creature's numbers, in the published schema too ──

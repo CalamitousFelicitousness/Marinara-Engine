@@ -436,7 +436,13 @@ const capabilityPackageManifestBaseSchema = z
 //        entries of these catalogs open its moment). Not a soft seam, for the same reason as 1.20
 //        through 1.43: an Engine that cannot read these refuses the whole catalog, so a package that
 //        ships any of them declares 1.44. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 44 } as const);
+// 1.45: a combat condition may change numbers (`modifiers` to defense, attacks, saves, checks and
+//        speed) and make checks easier or harder, `combat.levels` makes a live track's levels count
+//        as conditions, and an applied condition may count down as turns begin (`duration.at`) or end
+//        after one use (`endsAfter`). Not a soft seam, for the same reason as 1.20 through 1.44: an
+//        Engine that cannot read these refuses the whole ruleset or catalog file, so a package that
+//        ships any of them declares 1.45. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 45 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

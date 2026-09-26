@@ -2,9 +2,10 @@
 //
 // Everything a combatant can do is resolved ONCE, here: an attack row becomes a to-hit number and a
 // damage roll, a catalog-marked ability row becomes what its `mechanics` says it does, and an
-// opponent's block is read as it stands. Armour and bonuses do not move mid-fight in this kind, so
-// nothing re-reads the build afterwards; health, conditions and resources are the parts that change,
-// and those are read through the sheet's own helpers every time they are touched.
+// opponent's block is read as it stands. The build does not move mid-fight in this kind, so nothing
+// re-reads it afterwards; health, conditions and resources are the parts that change, and those are
+// read through the sheet's own helpers every time they are touched. What a condition does to a
+// number is added where the number is used, never written into the combatant.
 
 import {
   RULESET_CATALOG_ROW_KEY,
@@ -14,6 +15,7 @@ import {
   type RulesetCombat,
   type RulesetCombatAbilitySource,
   type RulesetCombatAttackSource,
+  type RulesetCombatCondition,
   type RulesetCombatDistanceSource,
   type RulesetDefinition,
   type RulesetSheetBuild,
@@ -189,9 +191,9 @@ export function rulesetActiveConditions(
   combat: RulesetCombat,
   combatant: RulesetCombatant,
   state?: RulesetEncounterState,
-): Array<NonNullable<RulesetCombat["conditions"]>[number]> {
+): RulesetActiveCondition[] {
   const active = new Set(rulesetCombatConditions(definition, combatant));
-  return (combat.conditions ?? []).flatMap((entry) => {
+  const conditions = (combat.conditions ?? []).flatMap((entry): RulesetActiveCondition[] => {
     if (!active.has(entry.condition)) return [];
     const gate = entry.whileSourceInSight;
     if (!gate || sourceInSight(combatant, entry.condition, state)) return [entry];
@@ -202,6 +204,71 @@ export function rulesetActiveConditions(
     // and were never named, so the entry stays even when the gate took every effect it had: a
     // fright you fail a save against whether or not you can see it is exactly what the list is for.
     return [{ ...entry, effects: entry.effects.filter((effect) => !gate.includes(effect)) }];
+  });
+  return combat.levels?.length ? [...conditions, ...activeLevels(definition, combat, combatant)] : conditions;
+}
+
+/** A condition entry that is on somebody right now: one of the fight's own conditions, or a level of a
+ *  live track, which reads exactly like one. `level` is set only on a level, whose `condition` is then
+ *  the track's id. */
+export type RulesetActiveCondition = RulesetCombatCondition & { level?: number };
+
+/** The levels of the holder's own tracks that are reached. Only a sheet has tracks, so a combatant
+ *  written in plain numbers has none. */
+function activeLevels(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  combatant: RulesetCombatant,
+): RulesetActiveCondition[] {
+  if (!combatant.sheet) return [];
+  const live = readRulesetLive(definition, combatant.sheet.build, combatant.sheet.live);
+  return (combat.levels ?? []).flatMap((level) => {
+    const value = live.tracks.find((track) => track.id === level.track)?.value ?? 0;
+    if (value < level.at) return [];
+    return [
+      {
+        condition: level.track,
+        level: level.at,
+        effects: level.effects,
+        ...(level.modifiers ? { modifiers: level.modifiers } : {}),
+        ...(level.failsSaves ? { failsSaves: level.failsSaves } : {}),
+        ...(level.saves ? { saves: level.saves } : {}),
+      },
+    ];
+  });
+}
+
+/** One number one condition changes, with the condition it came from. */
+export interface RulesetConditionModifier {
+  condition: string;
+  level?: number;
+  modifier: NonNullable<RulesetCombatCondition["modifiers"]>[number];
+}
+
+/**
+ * Everything this combatant's conditions (and levels) do to one number. For a save, a condition that
+ * names its saves changes only those; everything else it changes whatever the roll is for.
+ */
+export function rulesetConditionModifiers(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  combatant: RulesetCombatant,
+  to: NonNullable<RulesetCombatCondition["modifiers"]>[number]["to"],
+  state?: RulesetEncounterState,
+  save?: string,
+): RulesetConditionModifier[] {
+  if (!combat.conditions?.some((entry) => entry.modifiers) && !combat.levels?.some((level) => level.modifiers)) {
+    return [];
+  }
+  return rulesetActiveConditions(definition, combat, combatant, state).flatMap((entry) => {
+    if (to === "saves" && save !== undefined && entry.saves && !entry.saves.includes(save)) return [];
+    return (entry.modifiers ?? [])
+      .filter((modifier) => modifier.to === to)
+      .map((modifier) => ({
+        condition: entry.condition,
+        ...(entry.level !== undefined ? { level: entry.level } : {}),
+        modifier,
+      }));
   });
 }
 
@@ -253,6 +320,23 @@ export function rulesetSaveMode(
   // Dodging is not only about being harder to hit: where the ruleset says so, the saves that are
   // about getting out of the way are rolled with advantage too, for as long as the dodge lasts.
   if (combatant.flags.dodging && combat.standardEffects?.dodge?.saves.includes(save)) advantage = true;
+  if (advantage === disadvantage) return "normal";
+  return advantage ? "advantage" : "disadvantage";
+}
+
+/** How this combatant's own side of a contest is thrown: the check effects of their conditions,
+ *  cancelling each other out as they do on an attack. A ruleset that never rolls twice keeps its
+ *  single throw. */
+export function rulesetCheckMode(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  combatant: RulesetCombatant,
+  state?: RulesetEncounterState,
+): "normal" | "advantage" | "disadvantage" {
+  if (!combat.attackRoll.advantage) return "normal";
+  const effects = rulesetCombatEffects(definition, combat, combatant, state);
+  const advantage = effects.has("own-checks-advantage");
+  const disadvantage = effects.has("own-checks-disadvantage");
   if (advantage === disadvantage) return "normal";
   return advantage ? "advantage" : "disadvantage";
 }
@@ -926,7 +1010,12 @@ export function rulesetMovementAllowance(
   const perCell = combat.distance?.perCell;
   if (perCell === undefined || !(perCell > 0)) return 0;
   if (rulesetCombatEffects(definition, combat, combatant, state).has("speed-zero")) return 0;
-  const speed = combatant.speed;
+  // What a condition does to speed: every flat change first, then halving or doubling, so "10 feet
+  // slower, and half speed" is half of what is left.
+  const changes = rulesetConditionModifiers(definition, combat, combatant, "speed", state);
+  let speed = combatant.speed;
+  for (const { modifier } of changes) speed += modifier.flat ?? 0;
+  for (const { modifier } of changes) speed *= modifier.times ?? 1;
   if (!Number.isFinite(speed) || speed <= 0) return 0;
   return Math.max(1, Math.floor(speed / perCell));
 }

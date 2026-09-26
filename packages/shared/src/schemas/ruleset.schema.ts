@@ -1039,11 +1039,13 @@ const combatStandardActionSchema = z.enum(["dash", "disengage", "dodge", "help",
 export const RULESET_COMBAT_STANDARD_ACTIONS = combatStandardActionSchema.options;
 
 /** How long a condition an entry applies lasts. `until-save` has no clock of its own, so it needs
- *  the save that ends it beside it, or nothing would ever take it off again. */
+ *  the save that ends it beside it, or nothing would ever take it off again. Rounds count the
+ *  holder's own turns down as each one ENDS; `at: "turn-start"` counts them as each one begins, which
+ *  is how "until the start of your next turn" is said. */
 const catalogDurationSchema = z.union([
   z.literal("instant"),
   z.literal("until-save"),
-  z.object({ rounds: z.number().int().min(1).max(1000) }).strict(),
+  z.object({ rounds: z.number().int().min(1).max(1000), at: z.literal("turn-start").optional() }).strict(),
 ]);
 
 const catalogAppliesSchema = z
@@ -1054,6 +1056,10 @@ const catalogAppliesSchema = z
       .object({ save: sheetId, at: z.enum(["turn-end", "turn-start"]) })
       .strict()
       .optional(),
+    /** It comes off after the first of these that happens to its holder: their own next attack roll,
+     *  the next attack roll made against them, or their own next save. Whatever clock it has still
+     *  runs beside it, so "on its next attack before the end of its next turn" is both. */
+    endsAfter: z.enum(["own-attack", "attacked", "own-save"]).optional(),
   })
   .strict()
   .superRefine((applies, ctx) => {
@@ -2040,6 +2046,10 @@ const combatConditionEffectSchema = z.enum([
   /** The holder's own saves, scoped by `saves` when the condition names any. */
   "own-saves-advantage",
   "own-saves-disadvantage",
+  /** The holder's own side of a contest, rolled twice and the better or worse kept, where the
+   *  ruleset rolls twice at all. */
+  "own-checks-advantage",
+  "own-checks-disadvantage",
   /** Half of every kind of harm, whatever the hide underneath already said. */
   "resist-all",
   /** The holder may not point anything at whoever put this on them. */
@@ -2051,13 +2061,110 @@ const combatConditionEffectSchema = z.enum([
 export const RULESET_COMBAT_CONDITION_EFFECTS = combatConditionEffectSchema.options;
 
 /** The two effects `saves` narrows. Anything else ignores it, so naming saves without one of these
- *  is an author saying something the fight could never read. */
-const SAVE_SCOPED_EFFECTS = ["own-saves-advantage", "own-saves-disadvantage"] as const;
+ *  (or a modifier to saves) is an author saying something the fight could never read. */
+export const RULESET_SAVE_SCOPED_EFFECTS = ["own-saves-advantage", "own-saves-disadvantage"] as const;
+
+/** The numbers a condition may change, from a closed list. `defense` is what an attack against the
+ *  holder has to reach; `attacks`, `saves` and `checks` are the holder's own rolls; `speed` is how far
+ *  the holder walks, in the ruleset's own distance unit. */
+export const RULESET_COMBAT_MODIFIER_TARGETS = ["defense", "attacks", "saves", "checks", "speed"] as const;
+/** The ones that are ROLLED, so dice may be added to them and are rolled every time. */
+export const RULESET_ROLLED_MODIFIER_TARGETS: readonly string[] = ["attacks", "saves", "checks"];
+
+/** One number a condition changes, and by how much: a flat number (with its own sign), dice rolled
+ *  each time the number is used (`minus` takes them away instead), or, for speed only, `times` half or
+ *  double, applied after any flat change. */
+const combatModifierSchema = z
+  .object({
+    to: z.enum(RULESET_COMBAT_MODIFIER_TARGETS),
+    flat: z.number().int().min(-100).max(100).optional(),
+    dice: catalogDice.optional(),
+    minus: z.literal(true).optional(),
+    times: z.union([z.literal(0.5), z.literal(2)]).optional(),
+  })
+  .strict()
+  .superRefine((modifier, ctx) => {
+    const add = (path: string, message: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
+    if (modifier.flat === undefined && modifier.dice === undefined && modifier.times === undefined) {
+      add("to", "A modifier changes its number by a flat amount, by dice or, for speed, by times");
+    }
+    if (modifier.flat === 0) add("flat", "A flat change of 0 changes nothing");
+    if (modifier.dice !== undefined && !RULESET_ROLLED_MODIFIER_TARGETS.includes(modifier.to)) {
+      add("dice", `Dice are rolled, so they change ${RULESET_ROLLED_MODIFIER_TARGETS.join(", ")} and nothing else`);
+    }
+    if (modifier.minus && modifier.dice === undefined) add("minus", '"minus" takes dice away, so it needs "dice"');
+    if (modifier.times !== undefined && modifier.to !== "speed") add("times", '"times" changes speed only');
+  });
+
+/** What a condition does to saves has to be about saves: `saves` narrows the save effects and the
+ *  modifiers to saves, and nothing else reads it. */
+function savesNeedSomethingToNarrow(
+  entry: { saves?: string[]; effects: string[]; modifiers?: Array<{ to: string }> },
+  ctx: z.RefinementCtx,
+): void {
+  if (!entry.saves) return;
+  const effect = entry.effects.some((one) => (RULESET_SAVE_SCOPED_EFFECTS as readonly string[]).includes(one));
+  const modifier = entry.modifiers?.some((one) => one.to === "saves") ?? false;
+  if (!effect && !modifier) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["saves"],
+      message: `"saves" narrows ${RULESET_SAVE_SCOPED_EFFECTS.join(" and ")} and modifiers to saves, so it needs one of them beside it`,
+    });
+  }
+}
+
+/** The effects a LEVEL may not have: a level is not something anybody put on its holder, so it has
+ *  no source to be kept from, and it ends only when the track goes down, not by standing up or being
+ *  hurt. */
+export const RULESET_LEVEL_REFUSED_EFFECTS = [
+  "half-move-to-stand",
+  "ends-on-damage",
+  "cannot-target-source",
+  "cannot-approach-source",
+] as const;
+
+/**
+ * A level of a live track: while the holder's track is at `at` or more, this counts as one of their
+ * conditions, so levels add up as the track climbs. How exhaustion is said, and any other track whose
+ * rungs make things worse.
+ */
+const combatLevelSchema = z
+  .object({
+    track: sheetId,
+    at: z.number().int().min(1).max(1000),
+    effects: z.array(combatConditionEffectSchema).max(12).default([]),
+    modifiers: z.array(combatModifierSchema).min(1).max(6).optional(),
+    failsSaves: z.array(sheetId).min(1).max(12).optional(),
+    saves: z.array(sheetId).min(1).max(12).optional(),
+  })
+  .strict()
+  .superRefine((entry, ctx) => {
+    entry.effects.forEach((effect, index) => {
+      if ((RULESET_LEVEL_REFUSED_EFFECTS as readonly string[]).includes(effect)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["effects", index],
+          message: `A level cannot have "${effect}": nobody put it on, and it ends only when the track goes down`,
+        });
+      }
+    });
+    if (entry.effects.length === 0 && !entry.modifiers && !entry.failsSaves) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["effects"],
+        message: "A level does something: effects, modifiers or saves it fails",
+      });
+    }
+    savesNeedSomethingToNarrow(entry, ctx);
+  });
 
 const combatConditionSchema = z
   .object({
     condition: sheetId,
     effects: z.array(combatConditionEffectSchema).max(12).default([]),
+    /** The numbers it changes while it holds. */
+    modifiers: z.array(combatModifierSchema).min(1).max(6).optional(),
     /** Saves this condition fails without rolling. */
     failsSaves: z.array(sheetId).min(1).max(12).optional(),
     /** Which saves the save effects above are about. All of them when this is left out. */
@@ -2073,15 +2180,7 @@ const combatConditionSchema = z
     endsWhenSourceDown: z.boolean().optional(),
   })
   .strict()
-  .superRefine((entry, ctx) => {
-    if (entry.saves && !entry.effects.some((effect) => (SAVE_SCOPED_EFFECTS as readonly string[]).includes(effect))) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["saves"],
-        message: `"saves" narrows ${SAVE_SCOPED_EFFECTS.join(" and ")}, so it needs one of them beside it`,
-      });
-    }
-  });
+  .superRefine(savesNeedSomethingToNarrow);
 
 /** A number a contest reads for whoever takes part in it: a value off the sheet, read once when the
  *  fight begins, the way a defense or a save is. A creature written in plain numbers gives its own. */
@@ -2259,6 +2358,8 @@ const combatSchema = z
       .strict()
       .optional(),
     conditions: z.array(combatConditionSchema).max(80).optional(),
+    /** Levels of live tracks that count as conditions while the track is high enough. */
+    levels: z.array(combatLevelSchema).max(20).optional(),
     /** The numbers a contest reads, and the contests a combatant may take. */
     checks: z.array(combatCheckSchema).max(12).optional(),
     contests: z.array(combatContestSchema).max(12).optional(),
@@ -3543,6 +3644,31 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
               `This condition does not have the effect "${effect}" to gate`,
             );
           }
+        });
+      }
+    });
+
+    // A level reads a plain track by its number. A wound track is marked with kinds rather than
+    // counted, so no rung of one could be read this way.
+    const levelled = new Set<string>();
+    combat.levels?.forEach((entry, index) => {
+      const path = at("levels", index);
+      if (!tracks.has(entry.track)) issue([...path, "track"], `Unknown track "${entry.track}"`);
+      else if (woundTracks.has(entry.track)) {
+        issue([...path, "track"], `"${entry.track}" is a wound track; a level reads a plain track's number`);
+      } else {
+        // A level above a fixed top is never reached, which is nearly always a typo for one that is.
+        const top = sheet.live.tracks.find((track) => track.id === entry.track)!.max;
+        if (typeof top === "number" && entry.at > top) {
+          issue([...path, "at"], `"${entry.track}" goes up to ${top}, so level ${entry.at} is never reached`);
+        }
+      }
+      const key = `${entry.track}@${entry.at}`;
+      if (levelled.has(key)) issue([...path, "at"], `Level ${entry.at} of "${entry.track}" is given twice`);
+      levelled.add(key);
+      for (const saveKey of ["failsSaves", "saves"] as const) {
+        entry[saveKey]?.forEach((save, saveIndex) => {
+          if (!saves.has(save)) issue([...path, saveKey, saveIndex], `Unknown save "${save}"`);
         });
       }
     });

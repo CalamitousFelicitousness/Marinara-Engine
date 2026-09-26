@@ -787,6 +787,47 @@ function rulesetCarriesContests143Keys(ruleset: { combat?: unknown } | undefined
   return !!combat && (combat.checks !== undefined || combat.contests !== undefined);
 }
 
+const CONDITION_NUMBERS_ISSUE =
+  "A ruleset whose conditions change numbers or count levels, or end after one use or as a turn begins, requires schemaVersion 2 and capabilityApi 1.45 or newer";
+
+function plainRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
+}
+
+/** The 1.45 keys in the ruleset file itself: `levels` in the combat block, and a combat condition's
+ *  `modifiers` or check effects. */
+function rulesetCarriesConditionNumbers145Keys(ruleset: { combat?: unknown } | undefined): boolean {
+  const combat = plainRecord(ruleset?.combat);
+  if (!combat) return false;
+  if (combat.levels !== undefined) return true;
+  const conditions = Array.isArray(combat.conditions) ? combat.conditions : [];
+  return conditions.some((entry) => {
+    const condition = plainRecord(entry);
+    if (!condition) return false;
+    if (condition.modifiers !== undefined) return true;
+    const effects = Array.isArray(condition.effects) ? condition.effects : [];
+    return effects.includes("own-checks-advantage") || effects.includes("own-checks-disadvantage");
+  });
+}
+
+/** A condition an entry or a creature's action applies that ends after one use or counts down as
+ *  turns begin, which is 1.45: new keys in the same strict `applies`. */
+function entriesCarryConditionEndings(entries: unknown): boolean {
+  if (!Array.isArray(entries)) return false;
+  const endsNewly = (applies: unknown) =>
+    Array.isArray(applies) &&
+    applies.some((one) => {
+      const entry = plainRecord(one);
+      return entry?.endsAfter !== undefined || plainRecord(entry?.duration)?.at !== undefined;
+    });
+  return entries.some((entry) => {
+    const record = plainRecord(entry);
+    if (endsNewly(plainRecord(record?.mechanics)?.applies)) return true;
+    const actions = plainRecord(record?.creature)?.actions;
+    return Array.isArray(actions) && actions.some((action) => endsNewly(plainRecord(action)?.applies));
+  });
+}
+
 const LIVE_STATES_ISSUE =
   "A ruleset whose sheet has live states, whose derived values read an enum table, or whose rests put a state back, requires schemaVersion 2 and capabilityApi 1.42 or newer";
 
@@ -928,6 +969,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryCheckFaces(header.entries) && !declaresApi(37)) return facesIssue;
       if (entriesCarryCreatureChecks(header.entries) && !declaresApi(43)) return CONTESTS_ISSUE;
       if (entriesCarryUsedMoments(header.entries) && !declaresApi(44)) return USED_MOMENTS_ISSUE;
+      if (entriesCarryConditionEndings(header.entries) && !declaresApi(45)) return CONDITION_NUMBERS_ISSUE;
       const asset = header.asset;
       if (typeof asset !== "string") continue;
       // A path that does not normalize is never a declared one, whatever else failed to normalize.
@@ -949,6 +991,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryCheckFaces(fileEntries) && !declaresApi(37)) return facesIssue;
       if (entriesCarryCreatureChecks(fileEntries) && !declaresApi(43)) return CONTESTS_ISSUE;
       if (entriesCarryUsedMoments(fileEntries) && !declaresApi(44)) return USED_MOMENTS_ISSUE;
+      if (entriesCarryConditionEndings(fileEntries) && !declaresApi(45)) return CONDITION_NUMBERS_ISSUE;
     }
   }
   // The battle block lives inside the ruleset file too, so it is read the same way and for the same
@@ -1042,6 +1085,8 @@ export function getCapabilityPackageInstallIssue(
       return "A ruleset whose weapons cap their own strikes requires schemaVersion 2 and capabilityApi 1.32 or newer";
     }
   }
+  // Numbers a condition changes, and levels of a track, which are 1.45's. Same file, same reason.
+  if (!declaresApi(45) && rulesetCarriesConditionNumbers145Keys(ruleset)) return CONDITION_NUMBERS_ISSUE;
   // Contests and the checks they read, which are 1.43's. Same file, same reason.
   if (!declaresApi(43) && rulesetCarriesContests143Keys(ruleset)) return CONTESTS_ISSUE;
   // Live states, the enum tables that follow them and the rests that put them back, which are

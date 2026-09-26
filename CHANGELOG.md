@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Game Mode rulesets that resolve their own fights can have conditions change numbers: raise or lower defense, add or take away a flat number or dice on attack rolls, saves and contest checks, or change speed by a number, halve it or double it. Conditions can make contests harder or easier, end at the start of their holder's turn or after one attack or save, and a track such as exhaustion can make things worse level by level. A condition that ends as a turn begins no longer shortens that turn's walk. Capability API 1.45 (#6719).
+
 - The installed decision sidecar no longer shows a Thinking setting it does not have, which snapped back to Auto when changed. It is warmed up while it starts, so Test and the first turn show its normal speed instead of a one-time two-second delay, and Open-Jev 2B gets more time for a turn with many decision statements, which on a long chat used to run out and read every statement as no (#6716, #6717, #6718).
 - Decision time limits now apply to each statement, never to a whole group. A local model answers every statement of a turn instead of dropping the ones that waited for a free slot, a Decision connection's Time limit is given to each statement a request asks, and the decision sidecar no longer cuts a large turn off at 20 seconds (#6721).
 

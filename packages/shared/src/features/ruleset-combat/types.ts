@@ -49,8 +49,34 @@ export interface RulesetCombatDamage extends RulesetCombatAmount {
 /** A condition a hit or a failed save puts on its target. */
 export interface RulesetCombatApplies {
   condition: string;
-  duration: "instant" | "until-save" | { rounds: number };
+  duration: "instant" | "until-save" | { rounds: number; at?: "turn-start" };
   saveEnds?: { save: string; at: "turn-end" | "turn-start" };
+  endsAfter?: RulesetConditionEnding;
+}
+
+/** What takes a condition off after it has been used once: the holder's own next attack roll, the
+ *  next attack roll made against the holder, or the holder's own next save. */
+export type RulesetConditionEnding = "own-attack" | "attacked" | "own-save";
+
+/** One side of a contest as it was thrown: the check it added, and, when a condition made it more or
+ *  less than one throw or changed the number, how. */
+export interface RulesetContestSide {
+  check: string;
+  rolls: number[];
+  modifier: number;
+  total: number;
+  mode?: RulesetCombatRollMode;
+  bonuses?: RulesetConditionBonus[];
+}
+
+/** What one condition (or a level of a track) added to, or took from, one roll or number. `level` is
+ *  set when it came from a level, and then `condition` is the track's id. Dice it rolled are kept, so
+ *  the log can say what was thrown. */
+export interface RulesetConditionBonus {
+  condition: string;
+  level?: number;
+  value: number;
+  rolls?: number[];
 }
 
 export interface RulesetCombatSaveRider {
@@ -311,6 +337,10 @@ export interface RulesetTrackedCondition {
   /** Turns of the affected combatant left, or null for a condition with no clock of its own. */
   rounds: number | null;
   saveEnds?: { save: string; at: "turn-end" | "turn-start" };
+  /** When its rounds count down: as each of the holder's turns begins, rather than as each ends. */
+  clock?: "turn-start";
+  /** What takes it off after one use, whatever its clock says. */
+  endsAfter?: RulesetConditionEnding;
   /** The difficulty the repeated save is rolled against: the one that applied it. */
   difficulty?: number;
   /** Who applied it, and whether their concentration is what holds it. */
@@ -537,8 +567,12 @@ export type RulesetCombatEvent =
       rolls: number[];
       kept: number;
       modifier: number;
+      /** What the attacker's conditions added, already inside `total`. */
+      bonuses?: RulesetConditionBonus[];
       total: number;
       defense: number;
+      /** What the target's conditions added to its defense, already inside `defense`. */
+      guards?: RulesetConditionBonus[];
       outcome: RulesetCombatAttackOutcome;
     }
   | {
@@ -552,6 +586,8 @@ export type RulesetCombatEvent =
       rolls: number[];
       kept: number;
       modifier: number;
+      /** What the saver's conditions added, already inside `total`. */
+      bonuses?: RulesetConditionBonus[];
       total: number;
       difficulty: number;
       success: boolean;
@@ -593,7 +629,17 @@ export type RulesetCombatEvent =
       targetId: string;
       condition: string;
       active: boolean;
-      reason: "applied" | "immune" | "save" | "expired" | "damage" | "concentration" | "revived" | "down" | "contest";
+      reason:
+        | "applied"
+        | "immune"
+        | "save"
+        | "expired"
+        | "damage"
+        | "concentration"
+        | "revived"
+        | "down"
+        | "contest"
+        | "spent";
     }
   | { type: "spend"; actorId: string; pool: string; label: string; amount: number }
   | { type: "budget"; actorId: string; budget: string; left: number }
@@ -668,8 +714,8 @@ export type RulesetCombatEvent =
       targetId: string;
       optionId: string;
       label: string;
-      attacker: { check: string; rolls: number[]; modifier: number; total: number };
-      defender: { check: string; rolls: number[]; modifier: number; total: number };
+      attacker: RulesetContestSide;
+      defender: RulesetContestSide;
       winner: "actor" | "target";
     }
   /** Somebody pushed across the board by somebody else. Forced, so it spends nothing of their own

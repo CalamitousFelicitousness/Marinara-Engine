@@ -294,6 +294,7 @@ try {
     const ash = rulesetCombatant(state, "ash")!;
     assert.equal(
       rulesetContestChance(
+        ember,
         ember.combat!,
         rulesetCombatant(state, "juno")!,
         ash,

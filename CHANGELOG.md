@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Game Mode rulesets that resolve their own fights can answer an attack after it hits and before its damage: a Shield or a parry raises defense and the same roll is checked again, so the hit can become a miss, and an answer can halve that one attack's harm. Creatures can have reactions of their own, including ones that land on themselves, and opponents the Engine plays raise a guard only when it turns the hit aside. Capability API 1.46 (#6728).
+
 - Game Mode rulesets that resolve their own fights can have conditions change numbers: raise or lower defense, add or take away a flat number or dice on attack rolls, saves and contest checks, or change speed by a number, halve it or double it. Conditions can make contests harder or easier, end at the start of their holder's turn or after one attack or save, and a track such as exhaustion can make things worse level by level. A condition that ends as a turn begins no longer shortens that turn's walk. Capability API 1.45 (#6719).
 
 - A Decision connection can use a chat model on a server you already run, such as Ollama, LM Studio or llama.cpp, so the model is not loaded a second time just for decisions. Choose the new **OpenAI-compatible chat model** source, or click **Use this model for decisions** on a Custom connection. A Test against a server that does not offer the chosen source's endpoint now says so instead of reporting it as unreachable (#6714).

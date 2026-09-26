@@ -88,6 +88,7 @@ import type {
   RulesetEncounterOutcome,
   RulesetEncounterState,
   RulesetEncounterSummary,
+  RulesetHeldAttack,
   RulesetTrackedCondition,
   RulesetWalkResume,
   RulesetWindowResume,
@@ -1045,7 +1046,9 @@ export function applyRulesetCombatChoice(
       ctx.state.combatants,
       resume,
     ) || openAimed(ctx, resume, action.label, action.catalog);
-  if (!held) harmedBy(ctx, working, action, () => resolveAction(ctx, working, action, workingTargets, choice.payWith));
+  if (!held) {
+    harmedBy(ctx, working, action, resume, () => resolveAction(ctx, working, action, workingTargets, choice.payWith));
+  }
   noteOutcome(ctx);
   return finish();
 }
@@ -1212,7 +1215,7 @@ function takeReaction(
   roller: RulesetCombatRoller,
 ): RulesetCombatStep {
   const trigger = window.trigger;
-  if (trigger.kind !== "aimed" && trigger.kind !== "harmed" && trigger.kind !== "used") {
+  if (trigger.kind !== "aimed" && trigger.kind !== "hit" && trigger.kind !== "harmed" && trigger.kind !== "used") {
     return refusal(state, choice.actorId, "unknown-option", choice.optionId);
   }
   const declared = actor.actions.find((entry) => entry.id === choice.optionId && entry.reaction);
@@ -1582,32 +1585,56 @@ function resumeAction(ctx: RulesetCombatContext, resume: RulesetActionResume): v
   // What resumes lands on the fight as it stands NOW rather than as it stood when it was aimed, so
   // anybody the fight is already over for is left out, the same way a sequence leaves them out. A
   // ruleset with a dying rule keeps a character on the board at zero, so this is about an opponent
-  // taken out by an answer: nothing in a window can do that yet, because a creature cannot hold a
-  // reaction, and the line is here so the day one can does not need it noticing.
+  // taken out by an answer: a creature's own reaction can do that now.
   const targets = resume.targetIds
     .map((id) => rulesetCombatant(ctx.state, id))
     .filter((target): target is RulesetCombatant => !!target && !target.defeated);
-  harmedBy(ctx, actor, action, () => resolveAction(ctx, actor, action, targets, resume.payWith));
+  harmedBy(ctx, actor, action, resume, () => resolveAction(ctx, actor, action, targets, resume.payWith, resume.held));
 }
 
 /** An action, and then the window for everybody it hurt who has something that answers being hurt.
  *  Read off the damage the action itself wrote, so nothing inside the resolver has to know that a
- *  window exists. */
+ *  window exists.
+ *
+ *  An attack may come back HELD instead: one of its rolls hit somebody who holds an answer for being
+ *  hit. Then the window for that opens instead, holding the action exactly where it stopped along
+ *  with whoever it had already hurt, and being hurt is asked about once it has finished. */
 function harmedBy(
   ctx: RulesetCombatContext,
   actor: RulesetCombatant,
   action: RulesetCombatAction,
-  resolve: () => void,
+  resume: RulesetActionResume,
+  resolve: () => RulesetHitHold | null,
 ): void {
   const before = ctx.events.length;
-  resolve();
-  if (rulesetEncounterOutcome(ctx.state) !== "ongoing") return;
-  const hurt = new Set(
-    ctx.events
+  const hold = resolve();
+  const hurt = new Set([
+    ...(resume.held?.hurt ?? []),
+    ...ctx.events
       .slice(before)
       .filter((event) => event.type === "damage" && event.dealt > 0)
       .map((event) => (event as Extract<RulesetCombatEvent, { type: "damage" }>).targetId),
-  );
+  ]);
+  if (hold) {
+    const { label, optionId, catalog, ...held } = hold;
+    const { held: _previous, ...base } = resume;
+    openWindow(ctx, {
+      kind: "reaction",
+      trigger: {
+        kind: "hit",
+        sourceId: actor.id,
+        optionId,
+        label,
+        ...(catalog ? { catalog } : {}),
+        total: held.roll.total,
+        defense: held.roll.defense,
+      },
+      waiting: [held.targetId],
+      resume: { ...base, held: { ...held, hurt: [...hurt] } },
+    });
+    return;
+  }
+  if (rulesetEncounterOutcome(ctx.state) !== "ongoing") return;
   if (hurt.size === 0) return;
   openMoment(
     ctx,
@@ -1649,6 +1676,7 @@ function openWindow(ctx: RulesetCombatContext, window: Omit<RulesetCombatWindow,
     ...(moment ? { moment } : {}),
     ...("label" in window.trigger ? { label: window.trigger.label } : {}),
     ...("sourceId" in window.trigger ? { sourceId: window.trigger.sourceId } : {}),
+    ...(window.trigger.kind === "hit" ? { total: window.trigger.total, defense: window.trigger.defense } : {}),
   });
 }
 
@@ -1726,7 +1754,8 @@ function resolveSequence(
   actor: RulesetCombatant,
   action: RulesetCombatAction,
   targets: RulesetCombatant[],
-): void {
+  held?: RulesetHeldAttack,
+): RulesetHitHold | null {
   const byId = new Map(actor.actions.map((entry) => [entry.id, entry]));
   const parts: RulesetCombatAction[] = [];
   for (const step of action.sequence ?? []) {
@@ -1739,19 +1768,27 @@ function resolveSequence(
   const wanted = parts.reduce((total, part) => total + part.targets.count, 0);
   const enough = targets.length >= wanted;
   let cursor = 0;
-  for (const part of parts) {
+  for (const [index, part] of parts.entries()) {
     const count = part.targets.count;
     const chosen = (enough ? targets.slice(cursor, cursor + count) : targets.slice(0, count)).filter(
       (target) => !target.defeated,
     );
     cursor += count;
-    // One budget for the whole sequence, and each part still keeps its own books: a part that counts
-    // its uses spends one, a part that recharges is spent until its dice bring it back, and a part
-    // that has none left simply does not happen.
-    if (chosen.length === 0 || !rulesetSequencePartAvailable(actor, part)) continue;
-    spendAvailability(ctx, actor, part);
-    resolveAction(ctx, actor, part, chosen);
+    // A sequence picked up after one of its parts was held starts at that part, which was paid for
+    // and has its roll already: every part before it has happened.
+    if (held && index < (held.part ?? 0)) continue;
+    const resuming = held && index === (held.part ?? 0) ? held : undefined;
+    if (!resuming) {
+      // One budget for the whole sequence, and each part still keeps its own books: a part that
+      // counts its uses spends one, a part that recharges is spent until its dice bring it back, and
+      // a part that has none left simply does not happen.
+      if (chosen.length === 0 || !rulesetSequencePartAvailable(actor, part)) continue;
+      spendAvailability(ctx, actor, part);
+    }
+    const hold = resolveAction(ctx, actor, part, chosen, undefined, resuming);
+    if (hold) return { ...hold, part: index };
   }
+  return null;
 }
 
 /**
@@ -1832,10 +1869,27 @@ function resolveAction(
   action: RulesetCombatAction,
   targets: RulesetCombatant[],
   payWith?: string,
-): void {
-  if (action.sequence) return resolveSequence(ctx, actor, action, targets);
-  if (action.gives) grantBudgets(ctx, actor, action);
-  if (action.concentration) startConcentration(ctx, actor, action);
+  /** Picking up an attack held after one of its rolls hit: that roll, then the targets after it. */
+  held?: RulesetHeldAttack,
+): RulesetHitHold | null {
+  if (action.sequence) return resolveSequence(ctx, actor, action, targets, held);
+  if (held) {
+    // Everything before the held roll has happened, what the use gives its user included.
+    targets = [held.targetId, ...held.rest]
+      .map((id) => rulesetCombatant(ctx.state, id))
+      .filter((target): target is RulesetCombatant => !!target && !target.defeated);
+    // The one it hit is gone before the blow could land: what the roll used is spent all the same.
+    if (targets[0]?.id !== held.targetId) {
+      spendOneUse(
+        ctx,
+        actor,
+        actor.tracked.filter((entry) => entry.endsAfter === "own-attack" && held.mine.includes(entry.condition)),
+      );
+    }
+  } else {
+    if (action.gives) grantBudgets(ctx, actor, action);
+    if (action.concentration) startConcentration(ctx, actor, action);
+  }
   const steps = payWith ? rulesetCostSteps(ctx.definition, action, payWith) : 0;
   const extra = action.use?.perCostStep && steps > 0 ? { amount: action.use.perCostStep, times: steps } : undefined;
 
@@ -1871,7 +1925,37 @@ function resolveAction(
     // How the roll finally leaned, which is one of the things a rider may ask about. An action
     // nobody rolls for leaned no way at all.
     let mode: RulesetCombatRollMode = "normal";
-    if (action.toHit !== undefined && !action.autoHit) {
+    if (held && target.id === held.targetId) {
+      // The roll was made before the one it hit was asked. It is not made again: it is checked
+      // against their defense as it stands now, which is what an answer at this moment changes. A
+      // natural face decided it whatever the defense.
+      const roll = held.roll;
+      const guarded = rulesetDefenseAgainst(ctx.definition, ctx.combat, ctx.state, target);
+      const landsAt = roll.critical ? "critical" : "hit";
+      const outcome = roll.natural || roll.total >= guarded.defense ? landsAt : "miss";
+      if (guarded.defense !== roll.defense) {
+        ctx.events.push({
+          type: "recheck",
+          actorId: actor.id,
+          targetId: target.id,
+          optionId: action.id,
+          label: action.label,
+          total: roll.total,
+          defense: guarded.defense,
+          ...(guarded.guards.length > 0 ? { guards: guarded.guards } : {}),
+          outcome,
+        });
+      }
+      mode = roll.mode;
+      // The attacker's are the ones the roll used; the target's are read now, so one they put on as
+      // their answer counts for this attack and is spent by it.
+      used = {
+        mine: actor.tracked.filter((entry) => entry.endsAfter === "own-attack" && held.mine.includes(entry.condition)),
+        theirs: oneUseConditions(target, "attacked"),
+      };
+      landed = outcome !== "miss";
+      critical = outcome === "critical";
+    } else if (action.toHit !== undefined && !action.autoHit) {
       mode = rulesetAttackMode(ctx.definition, ctx.combat, actor, target, {
         state: ctx.state,
         optionId: action.id,
@@ -1927,6 +2011,32 @@ function resolveAction(
       used = { mine: oneUseConditions(actor, "own-attack"), theirs: oneUseConditions(target, "attacked") };
       landed = outcome !== "miss";
       critical = outcome === "critical";
+      // A hit on somebody who holds an answer for being hit stops here, before its damage: the
+      // window asks them, and the attack picks up from this roll once they have answered. Nothing
+      // opened inside a window opens another, so an attack made inside one is never held.
+      if (
+        landed &&
+        !ctx.state.window &&
+        rulesetEncounterOutcome(ctx.state) === "ongoing" &&
+        rulesetReactionsAt(ctx.definition, ctx.combat, ctx.state, target, "hit", actor.id, action.catalog).length > 0
+      ) {
+        return {
+          targetId: target.id,
+          rest: targets.slice(targets.indexOf(target) + 1).map((one) => one.id),
+          roll: {
+            mode,
+            total,
+            defense: guarded.defense,
+            critical,
+            natural: single && kept === dice.sides && naturals.max !== "none",
+          },
+          mine: used.mine.map((entry) => entry.condition),
+          hurt: [],
+          label: action.label,
+          optionId: action.id,
+          ...(action.catalog ? { catalog: action.catalog } : {}),
+        };
+      }
     }
     if (!landed) {
       spendUsed();
@@ -2074,7 +2184,11 @@ function resolveAction(
     }
     spendUsed();
   }
+  return null;
 }
+
+/** Where an attack stopped: the held attack's own record, and what its window says about it. */
+type RulesetHitHold = RulesetHeldAttack & { label: string; optionId: string; catalog?: string };
 
 // ── Between turns ──
 

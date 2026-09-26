@@ -234,7 +234,7 @@ screen, out of the Tactical style's own look). C5 what a turn can do and what in
 into C5a (the turn economy, riders and the condition vocabulary) and C5b (the window itself: a walk
 held open, and the one a signature action is bought in). C5c what else opens a window (the moments
 an entry waits for), C5d contests, C5e the `used` moment and what a reaction answers, C5f the numbers
-a condition changes and levels of a track, and later the moment after a hit.
+a condition changes and levels of a track, and C5g the moment after a hit and creatures that react.
 
 ### What C1 settled
 
@@ -853,6 +853,45 @@ Capability API 1.45, for #6719.
   published schema, defense, attacks with dice both ways, saves narrowed, checks leaning and adding,
   speed halved and restored at turn start, the three one-use endings, levels on both examples, the log
   and the 1.45 gate).
+
+### What C5g settled
+
+Capability API 1.46, for #6728.
+
+- **The moment.** `mechanics.reaction.on: "hit"` (the reaction object is now one shared schema,
+  `rulesetReactionMomentSchema`): an attack roll has hit the holder, before its damage. `cancels` is
+  refused on it. It opens only for the one hit (any side), only when they hold an answer, and never
+  while a window is already open, so opportunity strikes, signature actions and answers are never
+  held.
+- **Holding an attack.** `resolveAction` returns a hold instead of dealing the blow: the target, the
+  targets after it (`rest`), the roll (`mode`, `total`, `defense`, `critical`, `natural`), the
+  attacker's one-use conditions it used (`mine`, by id), and, through `resolveSequence`, the `part`
+  of an action made of others. `harmedBy` opens the `hit` window with the held attack on the action
+  resume (`resume.held`, plus `hurt`, whoever the action had already damaged) and asks about being
+  hurt only once the whole action is over. `resumeAction` passes `held` back in: the preamble (gives,
+  concentration) is skipped, earlier parts are skipped, the held part is not paid for again, and the
+  held roll is checked against the defense as it now stands. A changed defense logs a `recheck`
+  event; a natural face keeps its outcome. The target's one-use conditions are read at the recheck,
+  so a guard put on as the answer is spent by that attack.
+- **Creatures.** A creature action may carry `reaction` (same object) and `self: true` (targets its
+  own holder, no `targetCount` or `area`); a sequence may not carry either or name a reaction, and a
+  reaction is not also a signature action. `against` catalogs are checked on creatures too.
+- **The picker.** `rulesetAnswerDeflects(definition, state, actor, optionId)`: on a held hit, true
+  when the defense an answer's own conditions add would beat the roll, false when not (or on a
+  natural face), null when the answer changes no defense. The director skips a false answer and
+  scores a true one as `healing: 1`.
+- **Log and view.** The window event and the directed view carry `total` and `defense` for a hit;
+  "Snag hits Brenna with Scimitar: 20 against Armor Class 18. Brenna may answer." and "Against Armor
+  Class 23 (Shielded + 5), Snag's Scimitar now misses Brenna."
+- **Examples.** The 5e reference's Toll Sergeant parries (a `parrying` condition, +2 defense for one
+  attack). Ember Roads has no budget a reaction could spend, so it gains none.
+- **Proven** by `scripts/regressions/game-ruleset-combat-hit.regression.ts` (Shield turning a hit, a
+  roll that beats it, a natural 20, letting it go, Uncanny Dodge halving, a creature's Parry spent by
+  the attack, a two-part action held at each part, several targets with the rest rolled after the
+  answer and being hurt asked about at the end, a save and reload mid-window, nothing held inside a
+  window, the refusals, the log and the 1.46 gate) and a forty-seed case in
+  `scripts/regressions/ruleset-combat-director.regression.ts` (the Engine raises Shield only when it
+  turns the hit aside, and lets other blows land).
 
 ## Gaps a ruleset author found
 

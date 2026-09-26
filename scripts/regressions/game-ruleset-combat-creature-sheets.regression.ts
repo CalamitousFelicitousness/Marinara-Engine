@@ -257,10 +257,13 @@ function started(input: {
       const bestiary = doc.catalogs.find((catalog: Record<string, any>) => catalog.id === "creatures");
       edit(bestiary.entries.find((entry: Record<string, any>) => entry.id === "toll-sergeant").creature);
     });
-  // The shipped creature has a sheet and no actions beside it, and that is a whole creature: its
-  // sheet's own lists are what it does.
+  // The shipped creature has a sheet and one action beside it, its Parry, and that is a whole
+  // creature: its sheet's own lists are what it does on a turn, and the Parry waits for a moment.
   assert.equal(issuesOf(withSergeant(() => {})), "");
-  assert.equal(creatureEntry(fiveE, "creatures", "toll-sergeant").creature!.actions.length, 0);
+  assert.deepEqual(
+    creatureEntry(fiveE, "creatures", "toll-sergeant").creature!.actions.map((action) => action.id),
+    ["parry"],
+  );
 
   // Anything the sheet says, said a second time beside it, is refused by name.
   const twice: Array<[string, unknown]> = [
@@ -470,7 +473,12 @@ for (const setup of [
     rulesetCombatHealth(definition, combat, twin),
     `${setup.what}: and health`,
   );
-  assert.deepEqual(foe.actions, twin.actions, `${setup.what}: the same lists, read by the same code`);
+  // What its sheet's lists hold, that is: an action written beside the sheet (a Parry) is its own.
+  assert.deepEqual(
+    foe.actions.filter((action) => action.kind !== "block"),
+    twin.actions,
+    `${setup.what}: the same lists, read by the same code`,
+  );
   assert.ok(foe.actions.length > 0, `${setup.what}: and there is something on them`);
   // What the entry adds beside the sheet is kept.
   assert.equal(foe.block?.tier, entry.creature!.tier);

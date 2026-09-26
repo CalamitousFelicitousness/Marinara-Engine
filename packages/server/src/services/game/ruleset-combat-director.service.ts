@@ -32,6 +32,7 @@ import {
   placeSpawns,
   readRulesetLive,
   rulesetAimCells,
+  rulesetAnswerDeflects,
   rulesetCellDistance,
   rulesetCombatant,
   rulesetCombatConditions,
@@ -625,6 +626,9 @@ export function directedRulesetView(
             ...("sourceId" in held.window.trigger ? { sourceId: held.window.trigger.sourceId } : {}),
             ...(rulesetWindowMoment(held.window.trigger) ? { moment: rulesetWindowMoment(held.window.trigger)! } : {}),
             ...("label" in held.window.trigger ? { label: held.window.trigger.label } : {}),
+            ...(held.window.trigger.kind === "hit"
+              ? { total: held.window.trigger.total, defense: held.window.trigger.defense }
+              : {}),
             controller: held.controller,
           },
           ...(held.controller === "manual" && !state.window
@@ -840,7 +844,9 @@ export function rulesetWindowTargetOf(
   const trigger = encounter.window?.trigger;
   if (!trigger || option.targets.count > 0 || option.id === RULESET_PASS_OPTION) return undefined;
   if (trigger.kind === "leaves-reach") return trigger.moverId;
-  if (trigger.kind !== "aimed" && trigger.kind !== "harmed" && trigger.kind !== "used") return undefined;
+  if (trigger.kind !== "aimed" && trigger.kind !== "hit" && trigger.kind !== "harmed" && trigger.kind !== "used") {
+    return undefined;
+  }
   const action = actor.actions.find((entry) => entry.id === option.id);
   return action && rulesetReactionPointsAtSource(action) ? trigger.sourceId : undefined;
 }
@@ -880,6 +886,19 @@ function rulesetCandidatesFrom(
     if (standing && option.targets.count <= 0 && !option.area) continue;
     if (option.kind === "end-turn") {
       candidates.push({ action: { choice: { actorId, optionId: option.id, targetIds: [] }, option }, hold: true });
+      continue;
+    }
+    // A guard taken after being hit is worth the blow it turns aside, and nothing at all when the
+    // roll beats it anyway: spending it then would only waste it. Read before any other weighing,
+    // since a guard aimed at its own holder would otherwise be scored as help for a friend.
+    const deflects = menu ? rulesetAnswerDeflects(definition, encounter, actor, option.id) : null;
+    if (deflects === false) continue;
+    if (deflects) {
+      candidates.push({
+        action: { choice: { actorId, optionId: option.id, targetIds: [], ...paying(payWith) }, option },
+        healing: 1,
+        cost: price,
+      });
       continue;
     }
     // A contest is weighed by what winning it would do, times the chance of winning against THAT

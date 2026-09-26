@@ -32,6 +32,9 @@ export interface RulesetCombatMenuProps {
   /** The ruleset's own name for a budget id, so the menu says "Bonus action" or "Action" as the
    *  file does, never a word this Engine picked. */
   budgetLabel: (id: string) => string;
+  /** What the ruleset calls the number an attack is rolled against ("Armor Class", "Guard"), so a
+   *  held hit reads as the log does. Empty when the ruleset names none. */
+  defenseLabel?: string;
   busy: boolean;
   onChoose: (
     optionId: string,
@@ -58,6 +61,7 @@ const buttonClass =
  *  itself; the other two are the kind of window they are. */
 const WINDOW_PROMPTS = {
   aimed: "Aimed",
+  hit: "Hit",
   harmed: "Harmed",
   used: "Used",
   signature: "Between",
@@ -67,6 +71,7 @@ const WINDOW_PROMPTS = {
 export function RulesetCombatMenu({
   view,
   budgetLabel,
+  defenseLabel,
   busy,
   onChoose,
   onFlee,
@@ -324,6 +329,13 @@ export function RulesetCombatMenu({
             name: askedName,
             mover: nameOf(view.window.sourceId ?? view.window.moverId),
             label: view.window.label ?? "",
+            total: view.window.total ?? "",
+            defense:
+              view.window.defense === undefined
+                ? ""
+                : defenseLabel
+                  ? `${defenseLabel} ${view.window.defense}`
+                  : String(view.window.defense),
           })}
         </p>
       ) : (

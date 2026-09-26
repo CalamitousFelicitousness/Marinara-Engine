@@ -1506,6 +1506,75 @@ console.log(
     assert.equal(rulesetWindowTargetOf(held, corwin, answer), undefined, "and a pause between turns points at nobody");
   }
 
+  // Shield, on the moment after a hit: the Engine takes it only when it turns the hit into a miss,
+  // and never spends it on a blow it could not stop.
+  {
+    const shielding = parsedOrThrow(
+      variant(fiveEText, (doc) => {
+        doc.sheet.live.conditions.push({ id: "shielded", label: "Shielded" });
+        doc.combat.conditions.push({ condition: "shielded", modifiers: [{ to: "defense", flat: 5 }] });
+      }),
+      "the 5e example with Shield's condition",
+    );
+    const shield = {
+      id: "shield",
+      label: "Shield",
+      rows: [{ list: "spells", values: { name: "Shield", level: 1, prepared: true } }],
+      mechanics: {
+        kind: "buff",
+        targets: "self",
+        budget: "reaction",
+        reaction: { on: "hit" },
+        applies: [{ condition: "shielded", duration: { rounds: 1, at: "turn-start" } }],
+      },
+    } as unknown as RulesetCatalogEntry;
+    const shieldRows = rowsFromCatalogEntry("spells", shield).map((row) => row.row);
+    const guarded = { ...base, lists: { ...base.lists, spells: [...(base.lists?.spells ?? []), ...shieldRows] } };
+    const hits = { opened: 0, deflected: 0, letGo: 0 };
+    for (let seed = 1; seed <= 40; seed++) {
+      const state = started({
+        definition: shielding,
+        cards: [card("Corwin", guarded)],
+        partyCatalogs: { spells: [...spellEntries, shield] },
+        party: [{ id: "corwin", name: "Corwin" }],
+        enemies: [
+          { id: "a", name: "Thorn Lurker" },
+          { id: "b", name: "Thorn Lurker" },
+        ],
+        seed,
+      });
+      commandRulesetCombatDirector(shielding, state, { type: "control", unitId: "corwin", controller: "ai" });
+      for (let turn = 0; turn < 10 && !state.outcome; turn++) {
+        const before = state.rulesetFight!.events.length;
+        assert.ok(commandRulesetCombatDirector(shielding, state, { type: "continue" }).ok);
+        assert.equal(state.rulesetFight!.encounter.window, undefined, `seed ${seed}: a held hit left open`);
+        const events = state.rulesetFight!.events.slice(before).map((entry) => entry.event);
+        assert.ok(!events.some((event) => event.type === "refused"), `seed ${seed}: an answer the rules refused`);
+        for (const [index, event] of events.entries()) {
+          if (event.type !== "window" || event.moment !== "hit") continue;
+          hits.opened++;
+          const shielded = events
+            .slice(index + 1)
+            .some((later) => later.type === "condition" && later.condition === "shielded" && later.active);
+          if (!shielded) {
+            hits.letGo++;
+            continue;
+          }
+          hits.deflected++;
+          const recheck = events.slice(index + 1).find((later) => later.type === "recheck");
+          assert.equal(
+            recheck?.type === "recheck" && recheck.outcome,
+            "miss",
+            `seed ${seed}: a Shield spent for nothing`,
+          );
+        }
+      }
+    }
+    assert.ok(hits.opened > 0, "hits on a Shield holder the Engine plays were held");
+    assert.ok(hits.deflected > 0, "the Engine raised it when it turned the hit aside");
+    assert.ok(hits.letGo > 0, "and let a blow it could not stop land");
+  }
+
   assert.ok(moments.opened > 0, "being hurt opened windows for a party member the Engine plays");
   assert.ok(moments.taken > 0, "and the Engine answered them, pointed back at whoever did it");
   // Availability alone never forces a spend: letting the moment go by is a candidate like any other,

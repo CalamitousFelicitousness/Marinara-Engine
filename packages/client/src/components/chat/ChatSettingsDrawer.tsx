@@ -6216,6 +6216,7 @@ export function ChatSettingsDrawer({
           )}
 
           <ChatVariablesSection
+            key={chat.id}
             sectionId={`${chatMode}-chat-variables`}
             order={CHAT_SETTINGS_ORDER.chatVariables}
             chatId={chat.id}

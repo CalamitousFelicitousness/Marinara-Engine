@@ -46,6 +46,19 @@ const afterDelete = reconcileRows(editedThenDeleted, {});
 assert.equal(afterDelete.length, 1);
 assert.equal(afterDelete[0]!.value, "still typing");
 
+// A failed save leaves the row unstamped, so the fold that follows the rolled
+// back metadata keeps the typed value rather than reverting it.
+const failedEdit: VariableRow[] = [{ key: "a", name: "char1", value: "Anna", savedName: "char1", savedValue: "Mary" }];
+const afterFailure = reconcileRows(failedEdit, { char1: "Mary" });
+assert.equal(afterFailure[0]!.value, "Anna", "a rejected write must not silently revert the row");
+assert.equal(afterFailure[0]!.savedValue, "Mary", "the snapshot still reflects what is stored");
+
+// A brand-new row whose save failed stays a draft instead of vanishing.
+const failedNewRow: VariableRow[] = [{ ...newDraftRow(), name: "char9", value: "Nine" }];
+const afterNewRowFailure = reconcileRows(failedNewRow, {});
+assert.equal(afterNewRowFailure.length, 1, "a draft whose write failed is still on screen");
+assert.equal(afterNewRowFailure[0]!.value, "Nine");
+
 // Names with no row yet are appended, and drafts stay at the end.
 const withDraft: VariableRow[] = [
   { key: "a", name: "char1", value: "Mary", savedName: "char1", savedValue: "Mary" },

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Braces, Plus, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { MAX_CHAT_VARIABLE_VALUE_LENGTH, validateChatVariableName } from "@marinara-engine/shared";
@@ -54,15 +55,19 @@ export function ChatVariablesSection({ sectionId, order, chatId, variables }: Ch
     wasExpanded.current = Boolean(expanded);
   }, [expanded, chatId, qc]);
 
+  // `onSaved` stamps the row's saved snapshot, and runs only once the PATCH has
+  // landed: a failed write rolls the cached metadata back, so a row marked
+  // saved up front would read as untouched and lose the edit to the next fold.
   const save = useCallback(
-    (patch: Record<string, string | null>) => {
+    (patch: Record<string, string | null>, onSaved?: () => void) => {
       setPendingWrites((count) => count + 1);
       void updateMeta
         .mutateAsync({ id: chatId, macroVariables: patch })
-        .catch(() => undefined)
+        .then(() => onSaved?.())
+        .catch(() => toast.error(localizeUi("ui.chatSettings.chatvariablessection.couldNotSaveThatVariable")))
         .finally(() => setPendingWrites((count) => count - 1));
     },
-    [chatId, updateMeta],
+    [chatId, localizeUi, updateMeta],
   );
 
   const nameIssue = useCallback(
@@ -87,8 +92,11 @@ export function ChatVariablesSection({ sectionId, order, chatId, variables }: Ch
     // so a failure cannot leave both or neither.
     const patch: Record<string, string | null> = { [name]: row.value };
     if (row.savedName && row.savedName !== name) patch[row.savedName] = null;
-    updateRow(key, { name, savedName: name, savedValue: row.value });
-    save(patch);
+    // Show the trimmed name straight away; the row stays dirty until the write
+    // lands, so a failure leaves the typed value on screen to retry.
+    const savedValue = row.value;
+    updateRow(key, { name });
+    save(patch, () => updateRow(key, { savedName: name, savedValue }));
   };
 
   const removeRow = (key: string) => {

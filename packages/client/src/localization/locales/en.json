@@ -5586,6 +5586,7 @@
   "ui.chatSettings.chatvariablessection.addVariable": "Add variable",
   "ui.chatSettings.chatvariablessection.aPromptSectionOrLorebookEntryThatSetsA": "A prompt section or lorebook entry that sets a variable of the same name overwrites the value you enter here.",
   "ui.chatSettings.chatvariablessection.chatVariables": "Chat Variables",
+  "ui.chatSettings.chatvariablessection.couldNotSaveThatVariable": "Could not save that variable. Your text is still here — press Enter to try again.",
   "ui.chatSettings.chatvariablessection.name": "name",
   "ui.chatSettings.chatvariablessection.noVariablesYetAddOneNamedChar1WithTheValue": "No variables yet. Add one named char1 with the value Mary, then type {{example}} in a message and the AI reads Mary.",
   "ui.chatSettings.chatvariablessection.removeVariable": "Remove variable",

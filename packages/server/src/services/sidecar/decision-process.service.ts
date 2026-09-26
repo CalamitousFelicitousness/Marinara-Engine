@@ -264,6 +264,12 @@ class DecisionProcessService {
         if (this.child === child) {
           this.child = null;
           this.baseUrl = null;
+          // Set here too, not only through finish(): once the address line has settled
+          // the start, finish() ignores this. A crash during the warm-up, the model's
+          // first forward pass, would then fail the start and back off for a minute
+          // with no reason for the panel to show. A stop or a restart clears
+          // `this.child` before killing, so only an exit on its own lands here.
+          this.error = `The decision sidecar exited with code ${code}.`;
         }
         finish(null, `The decision sidecar exited with code ${code}.`);
       });
@@ -273,7 +279,13 @@ class DecisionProcessService {
     // 1.5 s on Open-Jev 2B against 0.09 s for the same request after it. Paid here,
     // while callers already wait on the load, so the first gate and the Test button
     // after a start see the model's normal speed instead of the warm-up.
-    if (baseUrl && !stopped() && this.child === child) await this.warmUp(baseUrl, model);
+    if (baseUrl && !stopped() && this.child === child) {
+      const failed = await this.warmUp(baseUrl, model);
+      // Only while the process is still ours and running. A stop or an exit during the
+      // warm-up is reported by its own path, and the model is not "slow", it is gone.
+      if (failed && !stopped() && this.child === child)
+        logger.warn("[decision-sidecar] Warm-up request failed (%s); the first question may be slow", failed);
+    }
 
     // A stop can also land after the child printed its address but before this line
     // runs. Publishing that address would hand gates a process nobody wants running.
@@ -288,10 +300,10 @@ class DecisionProcessService {
 
   /**
    * One small question, shaped like the Test button's, sent before the address is
-   * published. A failure is not fatal: the model is loaded and serving, and only the
-   * first real question pays the warm-up instead.
+   * published. Returns the error code of a failed request. A failure is not fatal: the
+   * model is loaded and serving, and only the first real question pays the warm-up.
    */
-  private async warmUp(baseUrl: string, model: SidecarDecisionModelInfo): Promise<void> {
+  private async warmUp(baseUrl: string, model: SidecarDecisionModelInfo): Promise<string | undefined> {
     const result = await askNoulQuestions({
       connection: { endpoint: `${baseUrl}/v1/systemone`, apiKey: "", model: "jev-latest", maxStateTokens: 256 },
       state: { recent_messages: [{ role: "user", name: "User", content: "The door is open." }] },
@@ -299,8 +311,7 @@ class DecisionProcessService {
       timeoutMs: WARM_UP_TIMEOUT_MS,
       questionShape: model.calibration.questionShape,
     });
-    if (result.error)
-      logger.warn("[decision-sidecar] Warm-up request failed (%s); the first question may be slow", result.error);
+    return result.error;
   }
 
   /**

@@ -115,10 +115,10 @@ export interface SidecarDecisionModelInfo {
   /**
    * Measured extra time per question beyond the first. The prefix cache stays off, so
    * every question, and every Choice option, re-reads the whole scene: the cost grows
-   * with the number of questions and with the scene's length, and is measured on a
-   * full-length scene. The request budget grows by this much per question, so a group
-   * of questions is not cut off by a budget sized for one. Only curated entries carry
-   * one; a pasted model keeps the flat sidecar budget.
+   * with the number of questions and with the scene's length. Each entry says what
+   * scene length it was measured on. The request budget grows by this much per
+   * question, so a group of questions is not cut off by a budget sized for one. Only
+   * curated entries carry one; a pasted model keeps the flat sidecar budget.
    */
   perQuestionMs?: number;
   licenses: string[];

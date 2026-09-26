@@ -493,6 +493,24 @@ exec sleep 30
   await stopped;
   assert.equal(await cancelledDuringWarmUp, null, "a stop during the warm-up cancels the start");
   assert.equal(decisionProcessService.getStatus().running, false);
+  assert.equal(decisionProcessService.getStatus().error, null, "a stop is not reported as a failure");
+
+  // The warm-up is the model's first forward pass, where a CUDA failure shows up. A
+  // process that dies there fails the start, and the panel must be told why rather
+  // than showing a stopped sidecar and a minute of failed-open gates with no reason.
+  holdNext = true;
+  const crashing = nextRequest();
+  const crashedDuringWarmUp = decisionProcessService.ensureRunning(model);
+  await crashing;
+  const crashedPid = decisionProcessService.getStatus().pid;
+  assert.ok(crashedPid, "the process is up while it warms");
+  process.kill(crashedPid, "SIGKILL");
+  while (decisionProcessService.getStatus().pid !== null) await new Promise((resolve) => setTimeout(resolve, 20));
+  held!.respond(500);
+  assert.equal(await crashedDuringWarmUp, null, "a process that exits during the warm-up is not published");
+  assert.match(decisionProcessService.getStatus().error ?? "", /exited/u, "and the reason is kept for the panel");
+  // Clears the one-minute backoff the failed start leaves.
+  await decisionProcessService.stop();
 
   // ── the chosen GPU is the one weighed ─────────────────────────────────────────
 

@@ -8,6 +8,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -47,8 +48,12 @@ echo "0, GPU-fake, NVIDIA Fake, $total, $used, 615.71.09, 12.0"
 chmodSync(join(binDir, "nvidia-smi"), 0o755);
 process.env.PATH = `${binDir}:${process.env.PATH ?? ""}`;
 
-const { DECISION_SIDECAR_DEFAULT_SETTINGS, parseDecisionSidecarSettings, SIDECAR_DECISION_MODELS } =
-  await import("../../packages/shared/src/index.js");
+const {
+  buildDecisionInstructions,
+  DECISION_SIDECAR_DEFAULT_SETTINGS,
+  parseDecisionSidecarSettings,
+  SIDECAR_DECISION_MODELS,
+} = await import("../../packages/shared/src/index.js");
 const { setDecisionSidecarSettingsReader } =
   await import("../../packages/server/src/services/decision/decision-slots.js");
 const { serializeDecisionRuntimeManifestStamp } =
@@ -65,6 +70,45 @@ const { inspectDecisionRepo } = await import("../../packages/server/src/services
 
 const realFetch = globalThis.fetch;
 const model = structuredClone(SIDECAR_DECISION_MODELS[0]!);
+
+// The address the fake Python announces: a stand-in decision server that records what
+// it is asked and can hold an answer back, so a case can look at the engine while the
+// warm-up request is still in flight.
+const received: Array<{ path: string; body: Record<string, unknown> }> = [];
+let held: { respond: (status: number) => void } | null = null;
+let holdNext = false;
+let arrived: (() => void) | null = null;
+const fakeDecisionServer = createServer((req: IncomingMessage, res: ServerResponse) => {
+  let raw = "";
+  req.on("data", (chunk) => (raw += chunk));
+  req.on("end", () => {
+    received.push({ path: req.url ?? "", body: JSON.parse(raw || "{}") as Record<string, unknown> });
+    const respond = (status: number) => {
+      if (res.headersSent) return;
+      res.writeHead(status, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify(status === 200 ? { answers: { "warm-up": { type: "noul", noul: 0.9 } } } : { error: "x" }),
+      );
+    };
+    arrived?.();
+    if (holdNext) {
+      holdNext = false;
+      held = { respond };
+    } else respond(200);
+  });
+});
+await new Promise<void>((resolve) => fakeDecisionServer.listen(0, "127.0.0.1", resolve));
+const fakeAddress = fakeDecisionServer.address();
+assert.ok(fakeAddress && typeof fakeAddress !== "string");
+const fakeUrl = `http://127.0.0.1:${fakeAddress.port}`;
+const nextRequest = () =>
+  new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("the start never sent a warm-up request")), 10_000);
+    arrived = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+  });
 
 try {
   // ── which files a repository may contain ──────────────────────────────────────
@@ -347,7 +391,7 @@ try {
     runtime.pythonPath,
     `#!/bin/sh
 echo started >> "${spawnMarker}"
-echo '{"url": "http://127.0.0.1:9"}'
+echo '{"url": "${fakeUrl}"}'
 exec sleep 30
 `,
   );
@@ -394,9 +438,26 @@ exec sleep 30
   assert.equal(decisionProcessService.getStatus().running, false);
 
   // Positive control, and proof a cancelled start does not leave a one-minute backoff.
-  const url = await decisionProcessService.ensureRunning(model);
-  assert.equal(url, "http://127.0.0.1:9", "an uninterrupted start launches straight away");
+  // The first request a freshly loaded model answers is slow (about 1.5 s on 2B against
+  // 0.09 s after it), so a start sends one small question before it publishes the
+  // address. While that answer is held, the process must not read as running yet.
+  holdNext = true;
+  const warming = nextRequest();
+  const startingUp = decisionProcessService.ensureRunning(model);
+  await warming;
+  assert.equal(decisionProcessService.getStatus().running, false, "the address is not published during the warm-up");
+  held!.respond(200);
+  const url = await startingUp;
+  assert.equal(url, fakeUrl, "an uninterrupted start launches straight away");
   assert.equal(readFileSync(spawnMarker, "utf8").trim(), "started");
+  assert.equal(received.length, 1, "exactly one warm-up request before the address was published");
+  assert.equal(received[0]!.path, "/v1/systemone");
+  assert.equal(received[0]!.body.model, "jev-latest");
+  assert.deepEqual(
+    Object.values(received[0]!.body.questions as Record<string, { instructions: unknown }>).map((q) => q.instructions),
+    [buildDecisionInstructions("The door is open.", model.calibration.questionShape)],
+    "shaped like a real question for this model",
+  );
 
   // ── the running model is counted once ─────────────────────────────────────────
 
@@ -408,6 +469,30 @@ exec sleep 30
   await decisionProcessService.stop();
   assert.equal(decisionProcessService.getStatus().running, false);
   writeFileSync(gpuState, "24463 14\n");
+
+  // ── the warm-up never blocks a start, and a stop during it still wins ─────────
+
+  // A failed warm-up is not a failed start: the model is loaded and serving, and only
+  // the first real question pays the warm-up.
+  holdNext = true;
+  const failing = nextRequest();
+  const afterFailedWarmUp = decisionProcessService.ensureRunning(model);
+  await failing;
+  held!.respond(500);
+  assert.equal(await afterFailedWarmUp, fakeUrl, "a failed warm-up still publishes the address");
+  await decisionProcessService.stop();
+
+  // A stop that lands while the warm-up is in flight cancels the start, exactly as a
+  // stop during loading does: the address of a process nobody wants is never handed out.
+  holdNext = true;
+  const stopping = nextRequest();
+  const cancelledDuringWarmUp = decisionProcessService.ensureRunning(model);
+  await stopping;
+  const stopped = decisionProcessService.stop();
+  held!.respond(200);
+  await stopped;
+  assert.equal(await cancelledDuringWarmUp, null, "a stop during the warm-up cancels the start");
+  assert.equal(decisionProcessService.getStatus().running, false);
 
   // ── the chosen GPU is the one weighed ─────────────────────────────────────────
 
@@ -425,7 +510,11 @@ exec sleep 30
   delete process.env.MARINARA_DECISION_CUDA_DEVICE;
 } finally {
   globalThis.fetch = realFetch;
+  // Released before the stop: a failed case can leave a warm-up held, and the stop
+  // waits for the start that is waiting on it.
+  held?.respond(200);
   await decisionProcessService.stop().catch(() => null);
+  fakeDecisionServer.close();
   rmSync(root, { recursive: true, force: true });
 }
 

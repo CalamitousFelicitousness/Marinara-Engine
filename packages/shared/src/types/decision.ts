@@ -183,7 +183,11 @@ export interface DecisionModelOption {
   unavailable: DecisionUnavailableReason | null;
   /** Extra detail for a reason that names something specific, e.g. a platform requirement. */
   detail?: string;
-  /** For local slots: the Thinking setting and what the last probe concluded. */
+  /**
+   * Only for the two local chat slots, the ones with a Thinking setting: that setting
+   * and what the last probe concluded. The decision sidecar never has them, and the
+   * panel shows its Thinking controls only when `thinking` is present.
+   */
   thinking?: DecisionThinkingMode;
   answerStyle?: DecisionAnswerStyle;
   /**

@@ -18,6 +18,7 @@ import type { SidecarDecisionModelInfo } from "@marinara-engine/shared";
 import { runWithRootLogContext } from "../../lib/log-context.js";
 import { logger } from "../../lib/logger.js";
 import { getDataDir } from "../../utils/data-dir.js";
+import { askNoulQuestions } from "../decision/system-one.client.js";
 import {
   artifactSnapshotPath,
   decisionRuntimeInstalled,
@@ -31,6 +32,8 @@ const LOG_PATH = join(getDataDir(), "sidecar-runtime", "decision", "server.log")
 const READY_TIMEOUT_MS = 180_000;
 /** How long a failed start is remembered before another one is attempted. */
 const START_BACKOFF_MS = 60_000;
+/** The first request on a cold kernel cache took 14.4 s once; a warm-up never waits longer than this. */
+const WARM_UP_TIMEOUT_MS = 60_000;
 
 export interface DecisionProcessStatus {
   running: boolean;
@@ -266,6 +269,12 @@ class DecisionProcessService {
       });
     });
 
+    // The first request a freshly loaded model answers is slow, on every start: about
+    // 1.5 s on Open-Jev 2B against 0.09 s for the same request after it. Paid here,
+    // while callers already wait on the load, so the first gate and the Test button
+    // after a start see the model's normal speed instead of the warm-up.
+    if (baseUrl && !stopped() && this.child === child) await this.warmUp(baseUrl, model);
+
     // A stop can also land after the child printed its address but before this line
     // runs. Publishing that address would hand gates a process nobody wants running.
     if (stopped() || this.child !== child) {
@@ -275,6 +284,23 @@ class DecisionProcessService {
     }
     this.baseUrl = baseUrl;
     return baseUrl;
+  }
+
+  /**
+   * One small question, shaped like the Test button's, sent before the address is
+   * published. A failure is not fatal: the model is loaded and serving, and only the
+   * first real question pays the warm-up instead.
+   */
+  private async warmUp(baseUrl: string, model: SidecarDecisionModelInfo): Promise<void> {
+    const result = await askNoulQuestions({
+      connection: { endpoint: `${baseUrl}/v1/systemone`, apiKey: "", model: "jev-latest", maxStateTokens: 256 },
+      state: { recent_messages: [{ role: "user", name: "User", content: "The door is open." }] },
+      questions: [{ id: "warm-up", instructions: "The door is open." }],
+      timeoutMs: WARM_UP_TIMEOUT_MS,
+      questionShape: model.calibration.questionShape,
+    });
+    if (result.error)
+      logger.warn("[decision-sidecar] Warm-up request failed (%s); the first question may be slow", result.error);
   }
 
   /**

@@ -110,6 +110,8 @@ These are the catalog's estimates, based on the pinned model versions and measur
 3. Pick a model and confirm its size, hardware verdict and licenses. Nothing downloads before that point. **Open-Jev 2B** needs much less memory than **Open-Jev 9B**; neither guarantees correct answers for your chat.
 4. Select **Decision sidecar** under **Decision model**.
 
+**Speed.** A model's first answer after it starts is slower, so Marinara asks it one warm-up question while it loads. **Test** and the first turn then show its normal speed. Every statement reads the recent chat again, so a turn with many statements on a long chat takes longer: on a long chat, Open-Jev 2B takes about a quarter of a second per statement.
+
 You can also paste a decision model's HuggingFace repository. Marinara reads that repository's own manifest, checks that the artifact type maps to a runtime this build ships, and shows you the base weights it will pull and the total size before offering to install it. A repository it cannot vouch for is refused with the reason rather than installed hopefully.
 
 On a machine with more than one NVIDIA GPU, a **GPU** menu chooses the card it loads on. The verdicts are for that card, and changing it stops the model so it starts again there.
@@ -135,7 +137,7 @@ Prompt statements and lorebook Decision fields use the backend's default; changi
 A decision that does not arrive in time gives no answer. Generation continues using the [feature's fallback](#where-marinara-uses-it); this can omit a prompt branch or a required lorebook entry.
 
 - **1.5 seconds** for a Decision connection, unless you change its **Time limit**. See [Set up a Decision connection](#set-up-a-decision-connection).
-- **4 seconds** for a local model or the decision sidecar. When one turn asks many statements, Open-Jev 9B gets a little more time for each extra one.
+- **4 seconds** for a local model or the decision sidecar. When one turn asks many statements, Open-Jev 2B and 9B get more time for each extra statement and each extra Choice answer.
 - **20 seconds** for a local model that has to think first.
 
 Decision requests stop when you cancel a generation.
@@ -144,7 +146,7 @@ Decision requests stop when you cancel a generation.
 
 - **Also use it to pick who speaks in Smart response order.** Off by default. See [Group Chats](../chats/group-chats.md#response-order-individual-only).
 - **Decision statements per turn.** Limits prompt and lorebook statement planning, 32 by default and up to 255. The allowance is applied at several stages; it is not a single cap on all Decision requests or spending during a turn. Agent activation questions and Smart response order are separate. See [Limits and cost](../prompts/conditional-prompts.md#limits-and-cost) for the scope, batching and priority rules.
-- **Also gate agents that run before the reply** and **Thinking** appear for a local model. See [Use a model you already run](#use-a-model-you-already-run).
+- **Also gate agents that run before the reply** and **Thinking** appear for the **Primary local model** and **Utility local model**. The decision sidecar never reasons, so it has neither. See [Use a model you already run](#use-a-model-you-already-run).
 
 ## Accuracy: plan for wrong answers
 

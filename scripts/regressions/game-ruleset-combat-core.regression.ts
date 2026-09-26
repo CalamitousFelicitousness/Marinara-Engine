@@ -57,13 +57,25 @@ import {
 } from "../../packages/shared/src/index.js";
 
 const read = (path: string) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8");
+/** 1.45's numbers a condition changes, its check effects and the levels of a track, which every gate
+ *  this lane proves predates too. */
+const withoutConditionNumbers = (doc: Record<string, any>) => {
+  delete doc.combat.levels;
+  const older = (effect: string) => !effect.startsWith("own-checks-");
+  for (const entry of doc.combat.conditions ?? []) {
+    delete entry.modifiers;
+    entry.effects = (entry.effects ?? []).filter(older);
+    if (Array.isArray(entry.whileSourceInSight)) entry.whileSourceInSight = entry.whileSourceInSight.filter(older);
+  }
+};
 /** The reference less 1.43's contests and the checks they read, which every gate this lane proves
- *  predates. */
+ *  predates, and less 1.45's keys. */
 const fiveEText = (() => {
   const doc = JSON.parse(read("../../docs/development/ruleset-5e-2014.example.json"));
   delete doc.combat.checks;
   delete doc.combat.contests;
   for (const catalog of doc.catalogs ?? []) for (const entry of catalog.entries ?? []) delete entry.creature?.checks;
+  withoutConditionNumbers(doc);
   return JSON.stringify(doc);
 })();
 /** The example less the sheet keys 1.37 added (a track always shown, a summary list's columns),
@@ -86,6 +98,7 @@ const emberText = (() => {
   // And 1.43's contests and the checks they read.
   delete doc.combat.checks;
   delete doc.combat.contests;
+  withoutConditionNumbers(doc);
   return JSON.stringify(doc);
 })();
 

@@ -13,6 +13,7 @@ import type {
   DirectedRulesetEvent,
   DirectedRulesetView,
   RulesetCombatRollMode,
+  RulesetConditionBonus,
   RulesetDefinition,
   RulesetValueRef,
 } from "@marinara-engine/shared";
@@ -99,8 +100,17 @@ function signed(modifier: number): string {
  * the fight did not report.
  */
 export function rulesetRollText(
-  roll: { rolls: number[]; kept: number; modifier: number; total: number; mode?: RulesetCombatRollMode },
+  roll: {
+    rolls: number[];
+    kept: number;
+    modifier: number;
+    total: number;
+    mode?: RulesetCombatRollMode;
+    bonuses?: RulesetConditionBonus[];
+  },
   t: TFunction,
+  /** What a condition that added something is called. Its id when nothing better is at hand. */
+  bonusName: (bonus: RulesetConditionBonus) => string = (bonus) => bonus.condition,
 ): string {
   const sum = roll.rolls.reduce((total, face) => total + face, 0);
   const base =
@@ -114,12 +124,27 @@ export function rulesetRollText(
             rolls: roll.rolls.join(sum === roll.kept ? " + " : ", "),
             kept: roll.kept,
           });
-  if (roll.modifier === 0) return base;
+  // The roll's own modifier, then what each condition added, each named: "12 + 5 + 3 (Blessed) = 20".
+  const added = [
+    ...(roll.modifier === 0 ? [] : [signed(roll.modifier)]),
+    ...(roll.bonuses ?? []).map((bonus) =>
+      t("game.combat.ruleset.roll.bonus", { value: signed(bonus.value), name: bonusName(bonus) }),
+    ),
+  ];
+  if (added.length === 0) return base;
   return t("game.combat.ruleset.roll.totalWithModifier", {
     roll: base,
-    modifier: signed(roll.modifier),
+    modifier: added.join(" "),
     total: roll.total,
   });
+}
+
+/** What a condition, or a level of a track, that changed a number is called in the log. */
+function bonusNamer(names: RulesetCombatNames, t: TFunction): (bonus: RulesetConditionBonus) => string {
+  return (bonus) =>
+    bonus.level === undefined
+      ? names.condition(bonus.condition)
+      : t("game.combat.ruleset.roll.level", { track: names.track(bonus.condition), level: bonus.level });
 }
 
 /** The reason a step was refused, as a sentence. The server sends the same words back as the second
@@ -175,18 +200,31 @@ export function rulesetCombatEventLine(
       return key("round", { round: event.round });
     case "turn":
       return key("turn", { actor: names.combatant(event.actorId) });
-    case "attack":
+    case "attack": {
+      const named = bonusNamer(names, t);
+      // The ruleset's own word for what it was rolled against, when the file gave it one, and what
+      // the target's conditions added to it.
+      const defense = names.defense ? `${names.defense} ${event.defense}` : String(event.defense);
       return key(
         event.outcome === "critical" ? "attackCritical" : event.outcome === "hit" ? "attackHit" : "attackMiss",
         {
           actor: names.combatant(event.actorId),
           target: names.combatant(event.targetId),
           label: event.label,
-          roll: rulesetRollText(event, t),
-          // The ruleset's own word for what it was rolled against, when the file gave it one.
-          defense: names.defense ? `${names.defense} ${event.defense}` : String(event.defense),
+          roll: rulesetRollText(event, t, named),
+          defense: event.guards?.length
+            ? t("game.combat.ruleset.roll.guarded", {
+                defense,
+                guards: event.guards
+                  .map((guard) =>
+                    t("game.combat.ruleset.roll.guard", { name: named(guard), value: signed(guard.value) }),
+                  )
+                  .join(", "),
+              })
+            : defense,
         },
       );
+    }
     case "save":
       if (event.automatic) {
         return key("saveAutomatic", { actor: names.combatant(event.actorId), save: names.save(event.save) });
@@ -194,7 +232,7 @@ export function rulesetCombatEventLine(
       return key(event.success ? "saveSuccess" : "saveFailure", {
         actor: names.combatant(event.actorId),
         save: names.save(event.save),
-        roll: rulesetRollText(event, t),
+        roll: rulesetRollText(event, t, bonusNamer(names, t)),
         difficulty: event.difficulty,
       });
     case "damage": {
@@ -230,9 +268,18 @@ export function rulesetCombatEventLine(
     case "contest": {
       // Both sides as a roll, with the check each one added, so the line reads the way the table
       // would say it without adding anything up itself.
-      const side = (roll: { check: string; rolls: number[]; modifier: number; total: number }) => ({
+      // What was kept is what is left of the total once the check and the conditions are taken off
+      // it: the whole handful, or the better or worse of two.
+      const side = (roll: (typeof event)["attacker"]) => ({
         check: names.check(roll.check),
-        roll: rulesetRollText({ ...roll, kept: roll.rolls.reduce((sum, face) => sum + face, 0) }, t),
+        roll: rulesetRollText(
+          {
+            ...roll,
+            kept: roll.total - roll.modifier - (roll.bonuses ?? []).reduce((sum, bonus) => sum + bonus.value, 0),
+          },
+          t,
+          bonusNamer(names, t),
+        ),
       });
       const attacker = side(event.attacker);
       const defender = side(event.defender);

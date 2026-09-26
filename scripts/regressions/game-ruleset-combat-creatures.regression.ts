@@ -1475,11 +1475,14 @@ const traveller = (live: unknown = {}): RulesetCombatantInput => ({
       delete source.strikesCappedBy;
     }
     delete doc.combat?.standardEffects;
+    // And the numbers a condition changes and the levels of a track, later again (1.45).
+    delete doc.combat?.levels;
     for (const entry of doc.combat?.conditions ?? []) {
-      for (const key of ["saves", "whileSourceInSight", "endsWhenSourceDown"]) delete entry[key];
+      for (const key of ["saves", "whileSourceInSight", "endsWhenSourceDown", "modifiers"]) delete entry[key];
       entry.effects = (entry.effects ?? []).filter(
         (effect: string) =>
           !effect.startsWith("own-saves-") &&
+          !effect.startsWith("own-checks-") &&
           effect !== "resist-all" &&
           !effect.startsWith("cannot-target-") &&
           !effect.startsWith("cannot-approach-"),

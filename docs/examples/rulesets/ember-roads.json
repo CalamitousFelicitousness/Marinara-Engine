@@ -1128,6 +1128,14 @@
         "effects": ["own-attacks-disadvantage", "ends-on-damage"]
       },
       {
+        "$comment": "Hurt enough to show it: a step slower and a little easier to land a blow on. Numbers rather than effect names, because this system rolls once and has no advantage for an effect to switch on.",
+        "condition": "wounded",
+        "modifiers": [
+          { "to": "defense", "flat": -1 },
+          { "to": "speed", "flat": -2 }
+        ]
+      },
+      {
         "condition": "pinned",
         "effects": ["cannot-act", "speed-zero"]
       },
@@ -1137,6 +1145,15 @@
         "effects": ["speed-zero"],
         "endsWhenSourceDown": true
       }
+    ],
+    "levels": [
+      {
+        "$comment": "Heat builds up on the road and a camp takes a point of it off. From 3 the hands shake, and at the top of the track the legs go too; at 5 both count.",
+        "track": "heat",
+        "at": 3,
+        "modifiers": [{ "to": "attacks", "flat": -1 }]
+      },
+      { "track": "heat", "at": 5, "modifiers": [{ "to": "speed", "times": 0.5 }] }
     ],
     "checks": [
       {

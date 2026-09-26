@@ -233,8 +233,8 @@ positions, movement, reach and ranges, areas, cover, opportunity attacks, the pi
 screen, out of the Tactical style's own look). C5 what a turn can do and what interrupts one, split
 into C5a (the turn economy, riders and the condition vocabulary) and C5b (the window itself: a walk
 held open, and the one a signature action is bought in). C5c what else opens a window (the moments
-an entry waits for), C5d contests, C5e the `used` moment and what a reaction answers, and later the
-remaining conditions.
+an entry waits for), C5d contests, C5e the `used` moment and what a reaction answers, C5f the numbers
+a condition changes and levels of a track, and later the moment after a hit.
 
 ### What C1 settled
 
@@ -818,6 +818,41 @@ Capability API 1.44, for #6712.
 - **Proven** by `scripts/regressions/game-ruleset-combat-moments.regression.ts` (the refusals, the
   moment and its cancel, the catalog filter, reach on a board, `used` before `aimed`, no chain, the
   log line and the 1.44 gate).
+
+### What C5f settled
+
+Capability API 1.45, for #6719.
+
+- **Modifiers.** `combat.conditions[].modifiers` (at most 6): `to` one of `defense`, `attacks`,
+  `saves`, `checks`, `speed`; a `flat` number (its own sign, never 0), `dice` rolled every use (only
+  on the three rolled numbers, `minus` takes them away), or `times` 0.5 or 2 (speed only, after the
+  flat changes). `saves` on a condition now narrows save modifiers too. Speed modifiers are read only
+  on a board and need no `distance` to be written, as `speed-zero` does not.
+- **Where they are read.** Nothing is written into the combatant: `rulesetConditionModifiers` is
+  asked where each number is used. Defense in `rulesetDefenseAgainst` (resolve and forecast both);
+  attack rolls, saves and contest sides roll their dice after the roll's own dice and carry
+  `bonuses` (defense carries `guards`) with the condition and, for a level, the level; the forecast's
+  chance to hit and chance to win convolve the bonus dice (`rulesetBonusDice`), and a contest side
+  rolls twice where `own-checks-advantage`/`-disadvantage` say so (`rulesetCheckMode`, only when
+  `attackRoll.advantage`). Speed in `rulesetMovementAllowance`, so Dash reads it too.
+- **Endings.** Applied `duration: { rounds, at: "turn-start" }` counts down as the holder's turns
+  begin; `endsAfter` (`own-attack`, `attacked`, `own-save`) removes it with reason `spent` after the
+  first of those. An attack notes the one-use conditions it used when it is rolled and spends exactly
+  those once the blow is over, so a one-attack ward still halves that blow's harm and a fresh mark
+  the same blow puts on is kept. The walk is read again after the turn-start clocks run, so a condition that ends as
+  a turn begins no longer holds that turn's walk (a change for existing save-ends at turn start too).
+- **Levels.** `combat.levels` (at most 20): `{ track, at, effects?, modifiers?, failsSaves?, saves? }`
+  on a plain live track (wound tracks refused, no two entries for one level). Every reached level is
+  synthesised into `rulesetActiveConditions` as an entry whose `condition` is the track id, so every
+  reader sees it. Refused on a level: `half-move-to-stand`, `ends-on-damage`, `cannot-target-source`,
+  `cannot-approach-source`. Only a sheet has tracks.
+- **Examples.** The 5e reference counts exhaustion's levels 1, 2, 3 and 5 (4 and 6 are Not yet), and
+  Poisoned and Frightened make checks harder. Ember Roads' Heat takes 1 off attacks from 3 and halves
+  speed at 5, and Wounded is 1 easier to hit and 2 paces slower.
+- **Proven** by `scripts/regressions/game-ruleset-combat-conditions.regression.ts` (refusals and the
+  published schema, defense, attacks with dice both ways, saves narrowed, checks leaning and adding,
+  speed halved and restored at turn start, the three one-use endings, levels on both examples, the log
+  and the 1.45 gate).
 
 ## Gaps a ruleset author found
 

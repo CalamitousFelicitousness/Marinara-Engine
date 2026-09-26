@@ -859,15 +859,17 @@ same keys for a d20 system:
   `attacks-against-disadvantage`, `attacks-against-adjacent-advantage`,
   `attacks-against-far-disadvantage`, `attacks-from-adjacent-critical`, `cannot-act`,
   `cannot-react`, `speed-zero`, `half-move-to-stand`, `ends-on-damage`, `own-saves-advantage`,
-  `own-saves-disadvantage`, `resist-all`, `cannot-target-source` and `cannot-approach-source`.
+  `own-saves-disadvantage`, `own-checks-advantage`, `own-checks-disadvantage`, `resist-all`,
+  `cannot-target-source` and `cannot-approach-source`.
   `failsSaves` names saves the condition fails without rolling. The six that need distance or
   movement (`attacks-against-adjacent-advantage`, `attacks-against-far-disadvantage`,
   `attacks-from-adjacent-critical`, `speed-zero`, `half-move-to-stand`, `cannot-approach-source`)
   are read by a fight on a board and say nothing in one without (see Positions). `cannot-react`
-  keeps its holder out of the window a walk opens, so they are never asked. Three more keys sit
+  keeps its holder out of the window a walk opens, so they are never asked. Four more keys sit
   beside the effects:
-  - `saves`: which of your saves the two save effects are about. All of them when it is left out,
-    and naming it without one of those two effects is refused.
+  - `modifiers`: the numbers it changes while it holds. See Numbers a condition changes, below.
+  - `saves`: which of your saves the two save effects, and any modifier to saves, are about. All of
+    them when it is left out, and naming it with neither beside it is refused.
   - `whileSourceInSight`: what counts only while whoever applied it is in the holder's line of
     sight. `true` gates the whole condition; a list of its own effects gates only those and leaves
     the rest standing, which is what a fright that stops you walking any nearer whether or not you
@@ -876,7 +878,8 @@ same keys for a d20 system:
   - `endsWhenSourceDown`: it comes off the moment whoever applied it goes down.
 
   `own-saves-advantage` and its opposite roll the save twice and keep one, exactly as an attack is
-  rolled, and they cancel each other out. `resist-all` halves every kind of harm on top of whatever
+  rolled, and they cancel each other out. `own-checks-advantage` and its opposite do the same to the
+  holder's side of a contest, which is where a fight makes its ability checks. `resist-all` halves every kind of harm on top of whatever
   the target's own hide said, and cancels against a vulnerability the same way.
   `cannot-target-source` keeps the holder from pointing anything at whoever put it on them, and
   `cannot-approach-source` keeps them from walking any nearer to that somebody than the cell they
@@ -886,6 +889,47 @@ same keys for a d20 system:
   ```json
   { "condition": "restrained", "effects": ["own-saves-disadvantage"], "saves": ["dex_save"] }
   ```
+
+  **Numbers a condition changes.** Each entry in `modifiers` names what it changes, `to`, and by how
+  much:
+  - `defense`: the number an attack against the holder has to reach. A flat number only.
+  - `attacks`, `saves`, `checks`: the holder's own attack rolls, saves and contest checks. A flat
+    number, or `dice` rolled every time the roll is made (`"1d4"`); `minus: true` takes the dice
+    away instead of adding them.
+  - `speed`: how far the holder walks, in your own distance unit (`flat`), or `times` 0.5 or 2 for
+    half or double, applied after every flat change. Read only on a board, as `speed-zero` is.
+
+  A flat number carries its own sign, and 0 is refused. Every modifier shows in the log beside the
+  roll it changed, with the condition's name ("12 + 5 + 3 (Blessed) = 20"), and the menu's chance to
+  hit and chance to win count it. Conditions stack with each other; the same condition twice is still
+  one condition.
+
+  ```json
+  "conditions": [
+    { "condition": "blessed", "modifiers": [{ "to": "attacks", "dice": "1d4" }, { "to": "saves", "dice": "1d4" }] },
+    { "condition": "shielded", "modifiers": [{ "to": "defense", "flat": 5 }] },
+    { "condition": "slowed", "modifiers": [{ "to": "speed", "times": 0.5 }, { "to": "defense", "flat": -2 }] }
+  ]
+  ```
+
+- `levels`: optional. Levels of a live track that count as conditions while the track is high
+  enough, which is how a condition that gets worse in steps, such as exhaustion, is said. Each entry
+  names a plain `track` (not a wound track), the level `at` which it starts, and what it does, with
+  the same `effects`, `modifiers`, `failsSaves` and `saves` a condition has. Every level the track has
+  reached counts, so they add up as it climbs. A level has no source and ends only when the track
+  goes down, so `half-move-to-stand`, `ends-on-damage`, `cannot-target-source` and
+  `cannot-approach-source` are refused on one. Only a combatant with a sheet has tracks. The log names
+  a level by its track and number ("- 1 (Heat 3)").
+
+  ```json
+  "levels": [
+    { "track": "exhaustion", "at": 1, "effects": ["own-checks-disadvantage"] },
+    { "track": "exhaustion", "at": 2, "modifiers": [{ "to": "speed", "times": 0.5 }] },
+    { "track": "exhaustion", "at": 3, "effects": ["own-attacks-disadvantage", "own-saves-disadvantage"] }
+  ]
+  ```
+
+  Modifiers, levels and the check effects need Capability API 1.45.
 
 - `checks` and `contests`: optional. What a contest reads, and the contests anybody in a fight may
   start: grabbing, shoving, breaking free. See Contests, below. Capability API 1.43.
@@ -929,7 +973,14 @@ something that simply hits) rolls its dice ONCE for all of them, and one that ro
 target rolls its dice again for each hit. `applies` puts conditions on what it
 affects, each with a `duration` of `instant` (no clock of its own: it stays until something takes it
 off), `until-save` (which needs `saveEnds` beside it) or `{ "rounds": n }`, and an optional
-`saveEnds` naming the save and whether it is repeated at `turn-end` or `turn-start`. `temporary`
+`saveEnds` naming the save and whether it is repeated at `turn-end` or `turn-start`. Rounds count the
+holder's own turns down as each one ends; `{ "rounds": 1, "at": "turn-start" }` counts them as each
+begins, which is how "until the start of your next turn" is said. `endsAfter` takes the condition off
+after the first `own-attack` (the holder's next attack roll), `attacked` (the next attack roll made
+against the holder) or `own-save` (the holder's next save), whatever its clock says, so
+`{ "duration": { "rounds": 1 }, "endsAfter": "own-attack" }` is "on its next attack before the end of
+its next turn". One that lasts an attack lasts the whole of it, its damage included, and a fresh one
+the same blow puts on stays. Both need Capability API 1.45. `temporary`
 grants temporary points on the health pool, and they never stack: the bigger buffer stands.
 `scales` grows the amount by the extra DICE its table gives for the value it reads. `cost` is paid
 through the sheet's own `use` command, and `budget` overrides which part of the economy it spends.
@@ -1583,8 +1634,7 @@ Said plainly, because a ruleset should not claim what the Engine does not do:
 - **Beyond the modest board**: no three-quarter or total cover, no elevation, no flying over
   obstacles, no squeezing, no mounts, no hiding or surprise, and nothing moves anybody but their own
   walk and a contest's push. Nobody drags a creature they hold.
-- **A contest is plain.** It has no size limits, opens no window (nobody may answer one), and no
-  condition makes it easier or harder.
+- **A contest is plain.** It has no size limits and opens no window (nobody may answer one).
 - **An entry may wait for three moments only**, `used`, `aimed` and `harmed` (see Windows, above).
   Those are the moments the Engine notices on an entry's behalf; the other two windows, somebody
   breaking away and the pause between two turns, are opened by the fight itself and are not moments
@@ -1595,13 +1645,14 @@ Said plainly, because a ruleset should not claim what the Engine does not do:
 - **No chain of them.** The fight keeps one window rather than a stack, so nothing opened inside a
   window opens another: a counter cannot itself be countered, and what a reaction deals opens no
   further moment.
-- **A reaction stops something or does something; it cannot change a number on it.** There is no way
-  to say "harder to hit until your next turn", because a condition is a name off a closed list
-  rather than a modifier. That is a limit of conditions, not of reactions.
+- **A number is changed before the roll, never after it.** An answer to being aimed at can put on a
+  condition that raises its holder's defense until the start of their next turn, and the held attack
+  is rolled against it. There is no moment after an attack has hit and before its damage, so an
+  answer cannot wait to see whether it is needed, and nothing halves the damage of one blow.
 - **Nothing is refunded.** What a cancelled action cost is spent.
-- Conditions do what the closed effect list can say and no more. A condition that gives
-  disadvantage on ability CHECKS, or one that gets worse in levels the way exhaustion does, is a
-  plain record on the sheet today.
+- **What a condition changes is a closed list.** Defense, attack rolls, saves, contest checks and
+  speed, and nothing else: no bonus to the damage its holder deals, and no level that lowers the
+  most a character can have or takes them out of the fight.
 - **A creature written in plain numbers has no wound track.** On a ruleset whose health is a track,
   such a creature still loses points; give it a `sheet` and its blows mark boxes, softened first by
   its own `resist`, `vulnerable` and `immune`.

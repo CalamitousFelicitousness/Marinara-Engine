@@ -6138,6 +6138,10 @@
                                     "minimum": 1,
                                     "maximum": 1000
                                   },
+                                  "at": {
+                                    "type": "string",
+                                    "const": "turn-start"
+                                  },
                                   "$comment": {}
                                 },
                                 "required": [
@@ -6169,6 +6173,14 @@
                               "at"
                             ],
                             "additionalProperties": false
+                          },
+                          "endsAfter": {
+                            "type": "string",
+                            "enum": [
+                              "own-attack",
+                              "attacked",
+                              "own-save"
+                            ]
                           },
                           "$comment": {}
                         },
@@ -6882,6 +6894,10 @@
                                           "minimum": 1,
                                           "maximum": 1000
                                         },
+                                        "at": {
+                                          "type": "string",
+                                          "const": "turn-start"
+                                        },
                                         "$comment": {}
                                       },
                                       "required": [
@@ -6913,6 +6929,14 @@
                                     "at"
                                   ],
                                   "additionalProperties": false
+                                },
+                                "endsAfter": {
+                                  "type": "string",
+                                  "enum": [
+                                    "own-attack",
+                                    "attacked",
+                                    "own-save"
+                                  ]
                                 },
                                 "$comment": {}
                               },
@@ -8850,6 +8874,8 @@
                     "ends-on-damage",
                     "own-saves-advantage",
                     "own-saves-disadvantage",
+                    "own-checks-advantage",
+                    "own-checks-disadvantage",
                     "resist-all",
                     "cannot-target-source",
                     "cannot-approach-source"
@@ -8857,6 +8883,120 @@
                 },
                 "maxItems": 12,
                 "default": []
+              },
+              "modifiers": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "to": {
+                      "type": "string",
+                      "enum": [
+                        "defense",
+                        "attacks",
+                        "saves",
+                        "checks",
+                        "speed"
+                      ]
+                    },
+                    "flat": {
+                      "type": "integer",
+                      "minimum": -100,
+                      "maximum": 100,
+                      "not": {
+                        "const": 0
+                      }
+                    },
+                    "dice": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                    },
+                    "minus": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "times": {
+                      "type": "number",
+                      "enum": [
+                        0.5,
+                        2
+                      ]
+                    },
+                    "$comment": {}
+                  },
+                  "required": [
+                    "to"
+                  ],
+                  "additionalProperties": false,
+                  "allOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "required": [
+                            "flat"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "dice"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "times"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "if": {
+                        "required": [
+                          "dice"
+                        ]
+                      },
+                      "then": {
+                        "properties": {
+                          "to": {
+                            "enum": [
+                              "attacks",
+                              "saves",
+                              "checks"
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "if": {
+                        "required": [
+                          "times"
+                        ]
+                      },
+                      "then": {
+                        "properties": {
+                          "to": {
+                            "const": "speed"
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "if": {
+                        "required": [
+                          "minus"
+                        ]
+                      },
+                      "then": {
+                        "required": [
+                          "dice"
+                        ]
+                      }
+                    }
+                  ]
+                },
+                "minItems": 1,
+                "maxItems": 6
               },
               "failsSaves": {
                 "type": "array",
@@ -8903,6 +9043,8 @@
                         "ends-on-damage",
                         "own-saves-advantage",
                         "own-saves-disadvantage",
+                        "own-checks-advantage",
+                        "own-checks-disadvantage",
                         "resist-all",
                         "cannot-target-source",
                         "cannot-approach-source"
@@ -8921,9 +9063,305 @@
             "required": [
               "condition"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "if": {
+                  "required": [
+                    "saves"
+                  ]
+                },
+                "then": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "effects"
+                      ],
+                      "properties": {
+                        "effects": {
+                          "contains": {
+                            "enum": [
+                              "own-saves-advantage",
+                              "own-saves-disadvantage"
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "required": [
+                        "modifiers"
+                      ],
+                      "properties": {
+                        "modifiers": {
+                          "contains": {
+                            "properties": {
+                              "to": {
+                                "const": "saves"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
           },
           "maxItems": 80
+        },
+        "levels": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "track": {
+                "type": "string",
+                "maxLength": 40,
+                "pattern": "^[a-z][a-z0-9_]*$"
+              },
+              "at": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000
+              },
+              "effects": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "own-attacks-advantage",
+                    "own-attacks-disadvantage",
+                    "attacks-against-advantage",
+                    "attacks-against-disadvantage",
+                    "attacks-against-adjacent-advantage",
+                    "attacks-against-far-disadvantage",
+                    "attacks-from-adjacent-critical",
+                    "cannot-act",
+                    "cannot-react",
+                    "speed-zero",
+                    "own-saves-advantage",
+                    "own-saves-disadvantage",
+                    "own-checks-advantage",
+                    "own-checks-disadvantage",
+                    "resist-all"
+                  ]
+                },
+                "maxItems": 12,
+                "default": []
+              },
+              "modifiers": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "to": {
+                      "type": "string",
+                      "enum": [
+                        "defense",
+                        "attacks",
+                        "saves",
+                        "checks",
+                        "speed"
+                      ]
+                    },
+                    "flat": {
+                      "type": "integer",
+                      "minimum": -100,
+                      "maximum": 100,
+                      "not": {
+                        "const": 0
+                      }
+                    },
+                    "dice": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[1-9]\\d{0,2}d(?:[2-9]|[1-9]\\d{1,3})(?:[+-]\\d{1,4})?$"
+                    },
+                    "minus": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "times": {
+                      "type": "number",
+                      "enum": [
+                        0.5,
+                        2
+                      ]
+                    },
+                    "$comment": {}
+                  },
+                  "required": [
+                    "to"
+                  ],
+                  "additionalProperties": false,
+                  "allOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "required": [
+                            "flat"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "dice"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "times"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "if": {
+                        "required": [
+                          "dice"
+                        ]
+                      },
+                      "then": {
+                        "properties": {
+                          "to": {
+                            "enum": [
+                              "attacks",
+                              "saves",
+                              "checks"
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "if": {
+                        "required": [
+                          "times"
+                        ]
+                      },
+                      "then": {
+                        "properties": {
+                          "to": {
+                            "const": "speed"
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "if": {
+                        "required": [
+                          "minus"
+                        ]
+                      },
+                      "then": {
+                        "required": [
+                          "dice"
+                        ]
+                      }
+                    }
+                  ]
+                },
+                "minItems": 1,
+                "maxItems": 6
+              },
+              "failsSaves": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 40,
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "minItems": 1,
+                "maxItems": 12
+              },
+              "saves": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 40,
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "minItems": 1,
+                "maxItems": 12
+              },
+              "$comment": {}
+            },
+            "required": [
+              "track",
+              "at"
+            ],
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "if": {
+                  "required": [
+                    "saves"
+                  ]
+                },
+                "then": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "effects"
+                      ],
+                      "properties": {
+                        "effects": {
+                          "contains": {
+                            "enum": [
+                              "own-saves-advantage",
+                              "own-saves-disadvantage"
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "required": [
+                        "modifiers"
+                      ],
+                      "properties": {
+                        "modifiers": {
+                          "contains": {
+                            "properties": {
+                              "to": {
+                                "const": "saves"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "anyOf": [
+                  {
+                    "required": [
+                      "effects"
+                    ],
+                    "properties": {
+                      "effects": {
+                        "minItems": 1
+                      }
+                    }
+                  },
+                  {
+                    "required": [
+                      "modifiers"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "failsSaves"
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "maxItems": 20
         },
         "checks": {
           "type": "array",

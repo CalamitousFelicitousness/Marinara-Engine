@@ -64,6 +64,8 @@ class DecisionProcessService {
    * began with and gives up at every checkpoint where it has changed.
    */
   private generation = 0;
+  /** Cancels the warm-up of the start in progress, so a stop never waits it out. */
+  private warmUpAbort: AbortController | null = null;
 
   getStatus(): DecisionProcessStatus {
     return {
@@ -280,7 +282,11 @@ class DecisionProcessService {
     // while callers already wait on the load, so the first gate and the Test button
     // after a start see the model's normal speed instead of the warm-up.
     if (baseUrl && !stopped() && this.child === child) {
-      const failed = await this.warmUp(baseUrl, model);
+      const abort = new AbortController();
+      this.warmUpAbort = abort;
+      const failed = await this.warmUp(baseUrl, model, abort.signal).finally(() => {
+        if (this.warmUpAbort === abort) this.warmUpAbort = null;
+      });
       // Only while the process is still ours and running. A stop or an exit during the
       // warm-up is reported by its own path, and the model is not "slow", it is gone.
       if (failed && !stopped() && this.child === child)
@@ -303,12 +309,17 @@ class DecisionProcessService {
    * published. Returns the error code of a failed request. A failure is not fatal: the
    * model is loaded and serving, and only the first real question pays the warm-up.
    */
-  private async warmUp(baseUrl: string, model: SidecarDecisionModelInfo): Promise<string | undefined> {
+  private async warmUp(
+    baseUrl: string,
+    model: SidecarDecisionModelInfo,
+    signal: AbortSignal,
+  ): Promise<string | undefined> {
     const result = await askNoulQuestions({
       connection: { endpoint: `${baseUrl}/v1/systemone`, apiKey: "", model: "jev-latest", maxStateTokens: 256 },
       state: { recent_messages: [{ role: "user", name: "User", content: "The door is open." }] },
       questions: [{ id: "warm-up", instructions: "The door is open." }],
       timeoutMs: WARM_UP_TIMEOUT_MS,
+      signal,
       questionShape: model.calibration.questionShape,
     });
     return result.error;
@@ -336,6 +347,9 @@ class DecisionProcessService {
     this.generation += 1;
     // An explicit stop is a fresh start's prelude, so it clears the backoff.
     this.failedModelId = null;
+    // Before waiting on the start below: a warm-up request left open would otherwise
+    // hold the stop for up to its whole time limit.
+    this.warmUpAbort?.abort();
     await this.terminate();
     await this.starting?.catch(() => null);
     // The start may have spawned between the first terminate and giving up.

@@ -84,7 +84,7 @@ const fakeDecisionServer = createServer((req: IncomingMessage, res: ServerRespon
   req.on("end", () => {
     received.push({ path: req.url ?? "", body: JSON.parse(raw || "{}") as Record<string, unknown> });
     const respond = (status: number) => {
-      if (res.headersSent) return;
+      if (res.headersSent || res.destroyed) return;
       res.writeHead(status, { "Content-Type": "application/json" });
       res.end(
         JSON.stringify(status === 200 ? { answers: { "warm-up": { type: "noul", noul: 0.9 } } } : { error: "x" }),
@@ -488,9 +488,12 @@ exec sleep 30
   const stopping = nextRequest();
   const cancelledDuringWarmUp = decisionProcessService.ensureRunning(model);
   await stopping;
-  const stopped = decisionProcessService.stop();
-  held!.respond(200);
-  await stopped;
+  // The held answer is never sent. The stop has to cancel the warm-up request itself,
+  // not wait out its time limit, which the stand-in would hold open for the whole minute.
+  await Promise.race([
+    decisionProcessService.stop(),
+    new Promise((_, reject) => setTimeout(() => reject(new Error("the stop waited out the warm-up request")), 5000)),
+  ]);
   assert.equal(await cancelledDuringWarmUp, null, "a stop during the warm-up cancels the start");
   assert.equal(decisionProcessService.getStatus().running, false);
   assert.equal(decisionProcessService.getStatus().error, null, "a stop is not reported as a failure");

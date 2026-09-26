@@ -110,7 +110,7 @@ These are the catalog's estimates, based on the pinned model versions and measur
 3. Pick a model and confirm its size, hardware verdict and licenses. Nothing downloads before that point. **Open-Jev 2B** needs much less memory than **Open-Jev 9B**; neither guarantees correct answers for your chat.
 4. Select **Decision sidecar** under **Decision model**.
 
-**Speed.** A model's first answer after it starts is slower, so Marinara asks it one warm-up question while it loads. **Test** and the first turn then show its normal speed. Every statement reads the recent chat again, so a turn with many statements on a long chat takes longer: on a long chat, Open-Jev 2B takes about a quarter of a second per statement.
+**Speed.** A model's first answer after it starts is slower, so Marinara asks it one warm-up question while it loads. When the warm-up succeeds, **Test** and the first turn show its normal speed. If it fails, the model still starts, and the first question pays the delay instead. Every statement reads the recent chat again, so a turn with many statements on a long chat takes longer: on a long chat, Open-Jev 2B takes about a quarter of a second per statement.
 
 You can also paste a decision model's HuggingFace repository. Marinara reads that repository's own manifest, checks that the artifact type maps to a runtime this build ships, and shows you the base weights it will pull and the total size before offering to install it. A repository it cannot vouch for is refused with the reason rather than installed hopefully.
 

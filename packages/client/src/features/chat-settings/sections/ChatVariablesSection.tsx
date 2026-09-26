@@ -7,6 +7,7 @@ import { ChatSettingsSection } from "../ChatSettingsSection";
 import { chatKeys, useUpdateChatMetadata } from "../../../hooks/use-chats";
 import { useUIStore } from "../../../stores/ui.store";
 import { cn } from "../../../lib/utils";
+import { newDraftRow, reconcileRows, toRows, type VariableRow } from "./chat-variables-rows";
 
 interface ChatVariablesSectionProps {
   sectionId: string;
@@ -16,27 +17,10 @@ interface ChatVariablesSectionProps {
   variables: Record<string, string>;
 }
 
-interface VariableRow {
-  /** Stable key so a rename does not remount the row and drop focus. */
-  key: string;
-  name: string;
-  value: string;
-  /** The name this row is saved under, or null while it is still a draft. */
-  savedName: string | null;
-}
-
 // Passed through interpolation rather than written into the locale string:
-// i18next would read a literal {{char1}} in the copy as a placeholder.
+// i18next would read a literal {{char1}} in the copy as a placeholder, and
+// scripts/check-locales.mjs would report it as a token translators must keep.
 const EXAMPLE_TAG = "{{char1}}";
-
-let rowKeySeed = 0;
-const nextRowKey = () => `chat-variable-${(rowKeySeed += 1)}`;
-
-function toRows(variables: Record<string, string>): VariableRow[] {
-  return Object.entries(variables)
-    .filter(([, value]) => typeof value === "string")
-    .map(([name, value]) => ({ key: nextRowKey(), name, value, savedName: name }));
-}
 
 export function ChatVariablesSection({ sectionId, order, chatId, variables }: ChatVariablesSectionProps) {
   const { t: localizeUi } = useUiTranslation();
@@ -50,16 +34,15 @@ export function ChatVariablesSection({ sectionId, order, chatId, variables }: Ch
   const [pendingWrites, setPendingWrites] = useState(0);
 
   // A patch carries only the names it changes, so the cached map is partial
-  // until the server answers. Re-seed from props only while nothing is in
+  // until the server answers. Fold saved values in only while nothing is in
   // flight — that is also when a {{setvar}} from a generation shows up.
   // The signature, not the object, is the dependency: an unrelated metadata
-  // write hands us an equal map with a new identity, and re-seeding then would
-  // discard a row the user is still typing.
+  // write hands us an equal map with a new identity.
   const savedSignature = useMemo(() => JSON.stringify(variables), [variables]);
   useEffect(() => {
     if (pendingWrites > 0) return;
     const saved = JSON.parse(savedSignature) as Record<string, string>;
-    setRows((current) => [...toRows(saved), ...current.filter((row) => row.savedName === null)]);
+    setRows((current) => reconcileRows(current, saved));
   }, [savedSignature, pendingWrites]);
 
   // Nothing invalidates the chat after a generation persists a {{setvar}} —
@@ -99,12 +82,12 @@ export function ChatVariablesSection({ sectionId, order, chatId, variables }: Ch
     if (!row) return;
     const name = row.name.trim();
     if (nameIssue(row)) return;
-    if (row.savedName === name && variables[name] === row.value) return;
+    if (row.savedName === name && row.savedValue === row.value) return;
     // A rename is one patch: drop the old name and write the new one together,
     // so a failure cannot leave both or neither.
     const patch: Record<string, string | null> = { [name]: row.value };
     if (row.savedName && row.savedName !== name) patch[row.savedName] = null;
-    updateRow(key, { name, savedName: name });
+    updateRow(key, { name, savedName: name, savedValue: row.value });
     save(patch);
   };
 
@@ -190,9 +173,7 @@ export function ChatVariablesSection({ sectionId, order, chatId, variables }: Ch
         )}
         <button
           type="button"
-          onClick={() =>
-            setRows((current) => [...current, { key: nextRowKey(), name: "", value: "", savedName: null }])
-          }
+          onClick={() => setRows((current) => [...current, newDraftRow()])}
           className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-[var(--border)] px-3 py-2 text-xs text-[var(--muted-foreground)] transition-colors hover:border-[var(--primary)]/40 hover:text-[var(--primary)]"
         >
           <Plus size="0.75rem" /> {localizeUi("ui.chatSettings.chatvariablessection.addVariable")}

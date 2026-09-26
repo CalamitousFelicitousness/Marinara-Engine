@@ -237,14 +237,18 @@ assert.equal(sawSignal, passthrough.signal, "no deadline means no extra signal w
 const originalFetch = globalThis.fetch;
 const originalAudioDescriptor = Object.getOwnPropertyDescriptor(globalThis, "Audio");
 
+// The service reuses one element, clearing its source between clips.
 class RegressionAudio {
+  src = "";
   volume = 1;
   muted = false;
   paused = false;
   ended = false;
   onended: (() => void) | null = null;
   onerror: (() => void) | null = null;
-  constructor(_url: string) {}
+  constructor(src = "") {
+    this.src = src;
+  }
   play(): Promise<void> {
     setTimeout(() => this.onended?.(), 0);
     return Promise.resolve();
@@ -252,6 +256,10 @@ class RegressionAudio {
   pause(): void {
     this.paused = true;
   }
+  removeAttribute(name: string): void {
+    if (name === "src") this.src = "";
+  }
+  load(): void {}
 }
 
 let live = 0;

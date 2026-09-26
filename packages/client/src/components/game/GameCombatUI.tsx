@@ -581,6 +581,9 @@ function buildCombatVoiceConfigSignature(config?: TTSConfig | null, resolvedConn
     config.baseUrl,
     config.model,
     config.voice,
+    config.skipTagContent ? "skip-tags" : "read-tags",
+    config.skipCodeBlocks !== false ? "skip-code" : "read-code",
+    config.skipBracketedText ? "skip-brackets" : "read-brackets",
     config.narratorVoiceEnabled ? "narrator-voice" : "narrator-global",
     config.narratorVoice,
     config.voiceMode,
@@ -594,9 +597,14 @@ function buildCombatVoiceConfigSignature(config?: TTSConfig | null, resolvedConn
   ].join("|");
 }
 
-function buildCombatVoiceLineKey(configSignature: string, line: PartyDialogueLine, voice?: string): string {
+function buildCombatVoiceLineKey(
+  configSignature: string,
+  line: PartyDialogueLine,
+  chunks: string[],
+  voice?: string,
+): string {
   return `combat-voice-v2:${hashCombatVoiceKey(
-    [configSignature, line.character, line.type, line.expression ?? "", voice ?? "", line.content].join("\n"),
+    [configSignature, line.character, line.type, line.expression ?? "", voice ?? "", JSON.stringify(chunks)].join("\n"),
   )}`;
 }
 
@@ -898,14 +906,14 @@ export function GameCombatUI({
       const voice = resolveTTSVoiceForSpeaker(ttsConfig, line.character);
       if (ttsConfig.source === "elevenlabs" && !voice) continue;
 
-      const chunks = splitTTSChunks(line.content, { maxChars: resolveTTSChunkCharLimit(ttsConfig) });
+      const chunks = splitTTSChunks(line.content, { ...ttsConfig, maxChars: resolveTTSChunkCharLimit(ttsConfig) });
       if (chunks.length === 0) continue;
 
       lines.push({
         ...line,
         chunks,
         voice: voice || undefined,
-        voiceKey: buildCombatVoiceLineKey(combatVoiceConfigSignature, line, voice),
+        voiceKey: buildCombatVoiceLineKey(combatVoiceConfigSignature, line, chunks, voice),
       });
     }
 

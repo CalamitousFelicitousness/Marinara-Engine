@@ -11,6 +11,298 @@ const extra = (value: unknown): Record<string, any> => (typeof value === "string
 const contentOf = (body: any) => body.messages.map((message: any) => message.content).join("\n");
 const sharp = createRequire(new URL("../packages/server/package.json", import.meta.url))("sharp");
 
+for (const mode of ["roleplay", "conversation"] as const) {
+  test(`Slash command argument syntax stays visible in ${mode}`, async ({ page, request }, info) => {
+    const response = await request.post("/api/chats", { data: { name: "Command syntax", mode } });
+    expect(response.ok(), await response.text()).toBeTruthy();
+    const chat = (await response.json()) as { id: string };
+    try {
+      await openChat(page, chat.id, {
+        chatHelpSeenModes: ["roleplay", "conversation"],
+        trackerPanelEnabled: false,
+        trackerPanelOpen: false,
+        enterToSendRP: true,
+        enterToSendConvo: true,
+        theme: info.project.name === "desktop-chromium" ? "light" : "dark",
+        appAccentColor: "#3b9fe8",
+      });
+      const composer = page.locator("textarea[data-chat-composer]");
+      const input = page.locator(".chat-input-container");
+      await expect(composer).toBeVisible();
+      await composer.fill("/as");
+      const asSuggestion = input.getByRole("button", { name: /^\/as\b/u });
+      await expect(asSuggestion).toBeVisible();
+      await page.screenshot({ path: info.outputPath(`${mode}-slash-suggestion.png`) });
+      await asSuggestion.click();
+      await expect(composer).toHaveValue("/as ");
+
+      await composer.fill("/help");
+      await input.getByRole("button", { name: /^\/help\b/u }).click();
+      await expect(composer).toHaveValue("/help ");
+      await composer.press("Enter");
+      const help = input.locator("section").filter({ has: page.getByRole("heading", { name: "Available Commands" }) });
+      await expect(help).toBeVisible();
+      await expect(help).toHaveCSS("opacity", "1");
+      await page.screenshot({ path: info.outputPath(`${mode}-slash-help.png`) });
+      const usages = [
+        ["as", "/as [name] [message (optional)]"],
+        ["roll", "/roll [dice (optional)]"],
+        ["hide", "/hide [range] [name (optional)]"],
+        ["send", "/send [message]"],
+      ] as const;
+      for (const [, usage] of usages) await expect(help.locator("code")).toContainText([usage]);
+      await help.getByRole("button", { name: "Dismiss", exact: true }).click();
+      for (const [command, usage] of usages) {
+        await composer.fill(`/${command}`);
+        const suggestion = input.getByRole("button", { name: new RegExp(`^/${command}\\b`, "u") });
+        await expect(suggestion).toBeVisible();
+        await expect(suggestion).toContainText(usage);
+        const bounds = await suggestion.evaluate((element) => {
+          const rect = element.getBoundingClientRect();
+          return {
+            left: rect.left,
+            right: rect.right,
+            viewport: innerWidth,
+            overflow: element.scrollWidth - element.clientWidth,
+          };
+        });
+        expect(bounds.left).toBeGreaterThanOrEqual(-1);
+        expect(bounds.right).toBeLessThanOrEqual(bounds.viewport + 1);
+        expect(bounds.overflow).toBeLessThanOrEqual(1);
+        await suggestion.click();
+        await expect(composer).toHaveValue(`/${command} `);
+      }
+      await composer.fill("/dice");
+      await input.getByRole("button", { name: /^\/roll\b/u }).click();
+      await expect(composer).toHaveValue("/roll ");
+      if (mode === "conversation") {
+        await composer.fill("/status");
+        const status = input.getByRole("button", { name: /^\/status online\b/u });
+        await expect(status).toContainText("/status online [name (optional)]");
+        await status.click();
+        await expect(composer).toHaveValue("/status online ");
+      }
+      expect(await (await request.get(`/api/chats/${chat.id}/messages`)).json()).toEqual([]);
+    } finally {
+      await request.delete(`/api/chats/${chat.id}`);
+    }
+  });
+}
+
+test("Roleplay interruptions trim the latest message and restore its original safely", async ({
+  page,
+  request,
+}, info) => {
+  test.setTimeout(90_000);
+  let narrative = "Alice catches the handle and asks her to wait.";
+  const requests: any[] = [];
+  const provider = createServer(async (incoming, response) => {
+    if (incoming.method !== "POST") {
+      incoming.resume();
+      response.writeHead(404).end();
+      return;
+    }
+    const chunks: Buffer[] = [];
+    for await (const chunk of incoming) chunks.push(Buffer.from(chunk));
+    requests.push(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+    response.writeHead(200, { "content-type": "text/event-stream", connection: "close" });
+    response.end(
+      `data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: `[interrupt: part="I will unlock the door"] ${narrative}` }, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`,
+    );
+  });
+  await new Promise<void>((resolve) => provider.listen(0, "127.0.0.1", resolve));
+  const address = provider.address();
+  if (!address || typeof address === "string") throw new Error("Fixture did not bind");
+  const fixture = await createFixture(request, `http://127.0.0.1:${address.port}/v1`, ["Alice"]);
+  const { chat } = fixture;
+  const original = '"I will unlock the door and then reveal the secret."';
+  const interrupted = '"I will unlock the door—"';
+  let releaseRestore = () => {};
+  try {
+    const metadata = await request.patch(`/api/chats/${chat.id}/metadata`, {
+      data: { roleplayCommandsEnabled: true },
+    });
+    expect(metadata.ok(), await metadata.text()).toBeTruthy();
+    await openChat(page, chat.id);
+    await page.evaluate(async () => {
+      const { useChatStore } = await import("/src/stores/chat.store.ts" as string);
+      useChatStore.getState().setShouldOpenSettings(true);
+    });
+    const section = page.locator('[data-chat-settings-section="roleplay-agents"]');
+    const header = section.locator('[role="button"][aria-expanded]').first();
+    if ((await header.getAttribute("aria-expanded")) === "false") await header.click();
+    const commands = page.locator("[data-roleplay-commands]");
+    await commands.getByRole("button", { name: "Expand Commands", exact: true }).click();
+    const toggle = commands.getByRole("checkbox", { name: /^Interruptions\b/u });
+    await expect(toggle).not.toBeChecked();
+    await toggle.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: info.outputPath("interrupt-settings-disabled.png"), animations: "disabled" });
+    await commands
+      .locator("label")
+      .filter({ hasText: /^Interruptions$/u })
+      .click();
+    await expect(toggle).toBeChecked();
+    await expect
+      .poll(async () => extra((await (await request.get(`/api/chats/${chat.id}`)).json()).metadata))
+      .toMatchObject({ roleplayCommandToggles: { interrupt: true } });
+    await page.screenshot({ path: info.outputPath("interrupt-settings-enabled.png"), animations: "disabled" });
+    await page.getByRole("button", { name: "Close chat settings", exact: true }).click();
+    await page.locator("textarea[data-chat-composer]").fill(original);
+    await page.locator(".mari-chat-send-btn").click();
+    const notice = page.locator('[data-roleplay-command="interrupt"]').last();
+    await expect(notice).toBeVisible();
+    await expect(page.locator(".mari-chat-send-btn .lucide-send")).toBeVisible();
+    const stored = async () => (await (await request.get(`/api/chats/${chat.id}/messages`)).json()) as any[];
+    const messages = await stored();
+    const source = messages.filter((message) => message.role === "assistant").at(-1);
+    const target = messages.filter((message) => message.role === "user").at(-1);
+    expect(target.content).toBe(interrupted);
+    expect(source.content).not.toContain("[interrupt");
+    expect(contentOf(requests.at(-1))).toContain("[interrupt:");
+    expect(extra(source.extra).roleplayCommandActivity[0].interruption).toMatchObject({
+      targetMessageId: target.id,
+      originalContent: original,
+      interruptedContent: interrupted,
+    });
+    const targetBubble = page.locator(`[data-message-id="${target.id}"]`);
+    await expect(targetBubble).toContainText("I will unlock the door");
+    await expect(targetBubble).not.toContainText("reveal the secret");
+    const disclosure = notice.getByRole("button", { name: "Alice used interrupt command!", exact: true });
+    await disclosure.focus();
+    await page.keyboard.press("Enter");
+    await expect(disclosure).toHaveAttribute("aria-expanded", "true");
+    await expect(notice.getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
+    await expect(notice.getByRole("button", { name: "Delete", exact: true })).toHaveCount(0);
+    const restore = notice.getByRole("button", { name: "Restore original message", exact: true });
+    await expect(restore).toBeEnabled();
+    for (const theme of ["dark", "light"] as const) {
+      await page.evaluate(async (theme) => {
+        const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+        useUIStore.getState().setTheme(theme);
+        useUIStore.getState().setAppAccentColor("#3b9fe8");
+      }, theme);
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      const accent = await restore.evaluate((element) => {
+        const probe = document.createElement("span");
+        probe.style.color = "var(--primary)";
+        element.append(probe);
+        const color = getComputedStyle(probe).color;
+        probe.remove();
+        return color;
+      });
+      await expect(restore).toHaveCSS("color", accent);
+      const commandText = notice.locator("pre").first();
+      const panelTextColor = await commandText.evaluate((element) => {
+        const probe = document.createElement("span");
+        probe.style.color = "var(--marinara-chat-chrome-panel-text)";
+        element.append(probe);
+        const color = getComputedStyle(probe).color;
+        probe.remove();
+        return color;
+      });
+      await expect(commandText).toHaveCSS("color", panelTextColor);
+      await expect(commandText).toHaveCSS("-webkit-text-stroke-width", "0px");
+      await expect(commandText).toHaveCSS("text-shadow", "none");
+      await notice.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: info.outputPath(`interrupt-${theme}.png`), animations: "disabled" });
+    }
+    const pendingRestore = new Promise<void>((resolve) => {
+      releaseRestore = resolve;
+    });
+    await page.route(`**/api/chats/${chat.id}/messages/${source.id}/interrupt/restore`, async (route) => {
+      expect(route.request().postDataJSON()).toEqual({ swipeIndex: 0, activityIndex: 0 });
+      await pendingRestore;
+      await route.continue();
+    });
+    await restore.click();
+    await expect(restore).toBeDisabled();
+    releaseRestore();
+    await expect(notice.getByRole("status")).toHaveText("Original message restored.");
+    await expect(restore).toHaveCount(0);
+    await expect(targetBubble).toContainText("reveal the secret");
+    await expect.poll(async () => (await stored()).find((message) => message.id === target.id)?.content).toBe(original);
+    await page.reload();
+    await notice.getByRole("button", { name: "Alice used interrupt command!", exact: true }).click();
+    await expect(notice.getByRole("status")).toHaveText("Original message restored.");
+    await expect(restore).toHaveCount(0);
+
+    narrative = "Alice steps between her and the lock this time.";
+    await page.locator("textarea[data-chat-composer]").fill(original);
+    await page.locator(".mari-chat-send-btn").click();
+    await expect(page.getByText(narrative, { exact: true })).toBeVisible();
+    await expect(page.locator(".mari-chat-send-btn .lucide-send")).toBeVisible();
+    const nextTarget = (await stored()).filter((message) => message.role === "user").at(-1);
+    const edited = await request.patch(`/api/chats/${chat.id}/messages/${nextTarget.id}`, {
+      data: { content: "A later manual correction must stay intact." },
+    });
+    expect(edited.ok(), await edited.text()).toBeTruthy();
+    await page.reload();
+    await notice.getByRole("button", { name: "Alice used interrupt command!", exact: true }).click();
+    await restore.click();
+    await expect(notice.getByRole("alert")).toContainText("Could not restore the message:");
+    await expect(restore).toBeEnabled();
+    await expect
+      .poll(async () => (await stored()).find((message) => message.id === nextTarget.id)?.content)
+      .toBe("A later manual correction must stay intact.");
+
+    narrative = "Alice reaches the door before she can finish speaking.";
+    await page.locator("textarea[data-chat-composer]").fill(original);
+    await page.locator(".mari-chat-send-btn").click();
+    await expect(page.getByText(narrative, { exact: true })).toBeVisible();
+    await expect(page.locator(".mari-chat-send-btn .lucide-send")).toBeVisible();
+    const inactiveTarget = (await stored()).filter((message) => message.role === "user").at(-1);
+    const alternateContent = "An alternate message stays selected during Restore.";
+    const alternate = await request.post(`/api/chats/${chat.id}/messages/${inactiveTarget.id}/swipes`, {
+      data: { content: alternateContent, silent: true },
+    });
+    expect(alternate.ok(), await alternate.text()).toBeTruthy();
+    await page.reload();
+    const inactiveBubble = page.locator(`[data-message-id="${inactiveTarget.id}"]`);
+    // Complete both edits through the real UI: the matching cut text remains in
+    // the recent-edit overlay even after its PATCH has settled.
+    for (const content of ["A temporary completed correction.", interrupted]) {
+      await inactiveBubble.getByRole("button", { name: "Edit", exact: true }).click();
+      await inactiveBubble.locator("textarea[data-chat-message-editor]").fill(content);
+      await inactiveBubble.getByRole("button", { name: "Save edit", exact: true }).click();
+      await expect(inactiveBubble.locator("textarea[data-chat-message-editor]")).toHaveCount(0);
+      await expect
+        .poll(async () => (await stored()).find((message) => message.id === inactiveTarget.id)?.content)
+        .toBe(content);
+    }
+    await inactiveBubble.getByRole("button", { name: "Next swipe", exact: true }).click();
+    await expect(inactiveBubble).toContainText(alternateContent);
+    await expect
+      .poll(async () => (await stored()).find((message) => message.id === inactiveTarget.id)?.activeSwipeIndex)
+      .toBe(1);
+    await notice.getByRole("button", { name: "Alice used interrupt command!", exact: true }).click();
+    await restore.click();
+    await expect(notice.getByRole("status")).toHaveText("Original message restored.");
+    await expect(inactiveBubble).toContainText(alternateContent);
+    expect((await stored()).find((message) => message.id === inactiveTarget.id)?.activeSwipeIndex).toBe(1);
+    await inactiveBubble.getByRole("button", { name: "Previous swipe", exact: true }).click();
+    await expect(inactiveBubble).toContainText("reveal the secret");
+    await expect
+      .poll(async () => (await stored()).find((message) => message.id === inactiveTarget.id)?.content)
+      .toBe(original);
+    const restoredTarget = (await stored()).find((message) => message.id === inactiveTarget.id);
+    expect(
+      await page.evaluate(
+        async ({ chatId, message }) => {
+          const { preserveRecentMessageContentEdit } = await import("/src/hooks/use-chats.ts" as string);
+          return preserveRecentMessageContentEdit(chatId, message).content;
+        },
+        { chatId: chat.id, message: restoredTarget },
+      ),
+    ).toBe(original);
+  } finally {
+    releaseRestore();
+    await page.unrouteAll({ behavior: "wait" });
+    await fixture.cleanup();
+    provider.closeAllConnections();
+    await new Promise<void>((resolve) => provider.close(() => resolve()));
+  }
+});
+
 async function openChat(page: Page, chatId: string, state = {}) {
   page.setDefaultTimeout(10_000);
   await page.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: "" } }));
@@ -429,6 +721,40 @@ test("Roleplay commands default off, scope private notes, and follow swipes and 
     await note.getByRole("button", { name: "Alice used notes command!", exact: true }).click();
     await note.getByRole("button", { name: "Edit", exact: true }).click();
     const editor = page.locator('[data-component="ExpandedTextarea"]');
+    const checkEditorColors = async (command: string) => {
+      for (const theme of ["dark", "light"] as const) {
+        await page.evaluate(async (theme) => {
+          const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+          useUIStore.getState().setTheme(theme);
+          useUIStore.getState().setAppAccentColor("#3b9fe8");
+          useUIStore.getState().setChatChromeTextColor(theme === "dark" ? "#d4d4d4" : "#242424");
+        }, theme);
+        await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+        const colors = await editor.evaluate((element) => {
+          const probe = element.ownerDocument.createElement("span");
+          element.append(probe);
+          probe.style.color = "var(--marinara-chat-chrome-panel-muted)";
+          const text = getComputedStyle(probe).color;
+          probe.style.color = "var(--marinara-chat-chrome-button-text)";
+          const icon = getComputedStyle(probe).color;
+          probe.remove();
+          return { text, icon };
+        });
+        await testInfo.attach(`${command}-editor-${theme}`, {
+          body: await page.screenshot({
+            animations: "disabled",
+            path: testInfo.outputPath(`${command}-editor-${theme}.png`),
+          }),
+          contentType: "image/png",
+        });
+        await expect(editor.getByText(/^\d+ characters$/u)).toHaveCSS("color", colors.text);
+        await expect(editor.getByRole("button", { name: "Cancel", exact: true }).first()).toHaveCSS(
+          "color",
+          colors.icon,
+        );
+      }
+    };
+    await checkEditorColors("notes");
     await editor.locator("textarea").fill("EDITED_BATCH_SECRET");
     const editUrl = `**/api/chats/${chat.id}/messages/*/extra?swipeIndex=*`;
     await page.route(editUrl, (route) => route.fulfill({ status: 500, json: { error: "Synthetic save failure" } }), {
@@ -442,6 +768,27 @@ test("Roleplay commands default off, scope private notes, and follow swipes and 
     expect(await preview(narrator)).toContain("EDITED_BATCH_SECRET");
     expect(await preview(bob)).not.toContain("EDITED_BATCH_SECRET");
     await expect(note).toContainText('[notes: content="BATCH_SECRET"]');
+    const memory = page.locator('[data-roleplay-command="memory"]').last();
+    await memory.getByRole("button", { name: "Alice used memory command!", exact: true }).click();
+    await memory.getByRole("button", { name: "Edit", exact: true }).click();
+    await checkEditorColors("memory");
+    await editor.locator("textarea").fill("EDITED_REMINDER: retrieve the key tomorrow");
+    await editor.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(editor).toBeHidden();
+    await memory.getByRole("button", { name: "Edit", exact: true }).click();
+    await editor.locator("textarea").fill("CANCELED_REMINDER");
+    await editor.getByRole("button", { name: "Cancel", exact: true }).first().click();
+    await expect(editor).toBeHidden();
+    output = "She considers her next move.";
+    await generate(alice);
+    const editedPrompt = contentOf(requests.at(-1));
+    expect(editedPrompt).toContain("Do not recap scenes or repeat chat history.");
+    expect(editedPrompt).toContain("1–3 short bullets, under 80 words total");
+    expect(editedPrompt).toContain("EDITED_BATCH_SECRET");
+    expect(editedPrompt).toContain("EDITED_REMINDER: retrieve the key tomorrow");
+    expect(editedPrompt).not.toMatch(/ALICE_REMINDER|CANCELED_REMINDER|\[notes: content="BATCH_SECRET"\]/u);
+    expect(await preview(narrator)).toContain("EDITED_REMINDER: retrieve the key tomorrow");
+    expect(await preview(bob)).not.toContain("EDITED_REMINDER");
     await testInfo.attach(`roleplay-command-edit-${testInfo.project.name}.png`, {
       body: await page.screenshot({ animations: "disabled", path: testInfo.outputPath("roleplay-command-edit.png") }),
       contentType: "image/png",

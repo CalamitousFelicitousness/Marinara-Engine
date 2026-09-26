@@ -6,11 +6,12 @@ import { createHash, randomInt, randomUUID } from "crypto";
 import { existsSync, readFileSync } from "fs";
 import { basename, extname, join } from "path";
 import { z } from "zod";
+import { estimateTextTokens, sliceTextToTokenBudget } from "@marinara-engine/shared";
 import { eq } from "../db/file-query.js";
 import { IMPORTED_GAME_ENGINE_ANCHOR_PREFIX } from "../db/file-backed-store.js";
 import { chats as chatsTable } from "../db/schema/index.js";
 import { logger, logDebugOverride } from "../lib/logger.js";
-import { isLocalInferenceBaseUrl } from "../middleware/ip-allowlist.js";
+import { registerSequentialGameTasks, retainSequentialGameTask } from "../services/game/sequential-tasks.js";
 import { readImageDimensionsFromFile } from "../utils/image-metadata.js";
 import { createChatsStorage, METADATA_WRITE_ORDINALS_KEY } from "../services/storage/chats.storage.js";
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
@@ -274,6 +275,13 @@ import {
   resolveStoryboardAnimationRefinement,
 } from "../services/video/storyboard-animation-refinement.js";
 import {
+  NOVELAI_CHARACTER_PROMPT_RULES,
+  NOVELAI_V5_MAX_CHARACTER_PROMPTS,
+  defaultCharacterPromptPosition,
+  resolveNovelAiCharacterPromptLimit,
+  sanitizeCharacterPrompts,
+} from "../services/image/character-prompts.js";
+import {
   resolveConnectionImageDefaults,
   resolveConnectionImageQuality,
 } from "../services/image/image-generation-defaults.js";
@@ -299,6 +307,7 @@ import { applyStoryboardAgentSettings } from "../services/game/storyboard-agent-
 import {
   STORYBOARD_FALLBACK_BEAT_MAX_CHARS,
   completeStoryboardPlan,
+  shouldRetryStoryboardWithoutReasoning,
   compactStoryboardFallbackBeat,
   compactStoryboardTextAtWordBoundary,
   createStoryboardReviewPlanEnvelope,
@@ -1043,7 +1052,13 @@ async function summarizeIllustrationFromNarration(args: {
       sceneConnId,
       args.chat.connectionId,
     );
-    const parameters = resolveStoredGameGenerationParameters(args.meta, defaultGenerationParameters);
+    const parameters = resolveStoredGameGenerationParameters(args.meta, defaultGenerationParameters, {
+      includeChatParameters: inheritsChatGenerationParameters({
+        requestedConnectionId: sceneConnId,
+        resolvedConnectionId: conn.id,
+        chatConnectionId: args.chat.connectionId,
+      }),
+    });
     const provider = await createGameMainProvider(args.connections, conn, baseUrl);
     const messages = await buildIllustrationNarrationSummaryMessages({
       promptOverridesStorage: args.promptOverridesStorage,
@@ -1279,7 +1294,8 @@ export async function resolveDynamicGameImagePromptConnection(args: {
 }) {
   const explicitConnectionId = readTrimmedString(args.meta.illustratorPromptConnectionId);
   if (explicitConnectionId) {
-    return resolveConnection(args.connections, explicitConnectionId, null);
+    const resolved = await resolveConnection(args.connections, explicitConnectionId, null);
+    return { ...resolved, requestedConnectionId: explicitConnectionId };
   }
 
   let lastError: unknown;
@@ -1294,7 +1310,10 @@ export async function resolveDynamicGameImagePromptConnection(args: {
   );
   for (const candidateId of candidateIds) {
     try {
-      return await resolveConnection(args.connections, candidateId, null);
+      const resolved = await resolveConnection(args.connections, candidateId, null);
+      // Report the candidate that actually resolved: a stale scene id that matches the chat
+      // connection but no longer exists must not make the fallback look like the chat connection.
+      return { ...resolved, requestedConnectionId: candidateId };
     } catch (err) {
       lastError = err;
     }
@@ -1302,7 +1321,8 @@ export async function resolveDynamicGameImagePromptConnection(args: {
 
   const defaultAgentConnection = await args.connections.getDefaultForAgents();
   if (defaultAgentConnection) {
-    return resolveConnection(args.connections, defaultAgentConnection.id, null);
+    const resolved = await resolveConnection(args.connections, defaultAgentConnection.id, null);
+    return { ...resolved, requestedConnectionId: defaultAgentConnection.id };
   }
 
   throw lastError instanceof Error ? lastError : new Error("No text connection configured for dynamic image prompts");
@@ -1367,8 +1387,14 @@ async function createDynamicGameImagePromptGenerator(args: {
       );
       return undefined;
     }
-    const { conn, baseUrl, defaultGenerationParameters } = resolvedConnection;
-    const parameters = resolveStoredGameGenerationParameters(args.meta, defaultGenerationParameters);
+    const { conn, baseUrl, defaultGenerationParameters, requestedConnectionId } = resolvedConnection;
+    const parameters = resolveStoredGameGenerationParameters(args.meta, defaultGenerationParameters, {
+      includeChatParameters: inheritsChatGenerationParameters({
+        requestedConnectionId,
+        resolvedConnectionId: conn.id,
+        chatConnectionId: args.chat.connectionId,
+      }),
+    });
     const provider = await createGameMainProvider(args.connections, conn, baseUrl);
 
     return async (request) => {
@@ -1820,6 +1846,7 @@ const gameSetupConfigSchema = z.object({
   useCampaignArtStyle: z.boolean().optional(),
   imageStyleProfileId: z.string().nullable().optional(),
   activeLorebookIds: z.array(z.string()).optional(),
+  activeLorebookEntryIds: z.array(z.string().min(1)).max(100).optional(),
   enableCustomWidgets: z.boolean().optional(),
   customHudWidgets: z.array(hudWidgetSchema).max(MAX_GAME_HUD_WIDGETS).optional(),
   enableSpotifyDj: z.boolean().optional(),
@@ -1843,6 +1870,8 @@ const createGameSchema = z.object({
   preferences: z.string().max(5000).default(""),
   shareLabels: z
     .object({
+      experienceName: z.string().max(120).optional(),
+      experienceSeedKey: z.string().max(120).optional(),
       characterNames: z.record(z.string(), z.string().max(500)).optional(),
       lorebookNames: z.record(z.string(), z.string().max(500)).optional(),
       promptPresetNames: z.record(z.string(), z.string().max(500)).optional(),
@@ -3058,7 +3087,7 @@ function parseStoredGenerationParameters(raw: unknown): StoredGenerationParamete
   return result.success ? result.data : null;
 }
 
-function mergeStoredGenerationParameters(...sources: Array<unknown>): StoredGenerationParameters | null {
+export function mergeStoredGenerationParameters(...sources: Array<unknown>): StoredGenerationParameters | null {
   const merged: StoredGenerationParameters = {};
   for (const source of sources) {
     const parsed = parseStoredGenerationParameters(source);
@@ -3096,15 +3125,39 @@ function chatParameterLayers(meta: Record<string, unknown> | null | undefined): 
   ];
 }
 
-function resolveStoredGameGenerationParameters(
+/**
+ * Chat-wide generation parameters (`meta.chatParameters`) are edited against the chat's own
+ * connection. A dedicated satellite connection (Scene Analysis, illustrator prompt, storyboard
+ * planner) must run on its own defaults only: provider-specific `customParameters` such as an
+ * OpenRouter `provider` routing object otherwise leak into a provider that rejects them.
+ *
+ * The chat parameters are inherited only when the resolved connection is the chat's own
+ * connection. A chat on the random pool has no single id to compare against, so it inherits
+ * whenever no dedicated connection was requested. A fallback to some other connection (for
+ * example the default agent connection) never inherits, even when nothing was requested.
+ */
+export function inheritsChatGenerationParameters(args: {
+  requestedConnectionId: string | null | undefined;
+  resolvedConnectionId: string;
+  chatConnectionId: string | null | undefined;
+}): boolean {
+  const requested = args.requestedConnectionId || null;
+  if (args.resolvedConnectionId === args.chatConnectionId) return true;
+  if (requested) return requested === args.chatConnectionId;
+  return args.chatConnectionId === "random";
+}
+
+export function resolveStoredGameGenerationParameters(
   meta: Record<string, unknown> | null | undefined,
   connectionDefaults: StoredGenerationParameters | null | undefined,
+  options: { includeChatParameters?: boolean } = {},
 ) {
+  const { includeChatParameters = true } = options;
   const setupConfig = (meta?.gameSetupConfig as Record<string, unknown> | null | undefined) ?? null;
   return mergeStoredGenerationParameters(
     connectionDefaults,
     setupConfig?.generationParameters,
-    ...chatParameterLayers(meta),
+    ...(includeChatParameters ? chatParameterLayers(meta) : []),
   );
 }
 
@@ -3295,9 +3348,9 @@ function gameGenOptions(
   return merged;
 }
 
-const SESSION_SUMMARY_CHARS_PER_TOKEN = 4;
 const SESSION_SUMMARY_MIN_TRANSCRIPT_CHARS = 256;
 const GAME_SETUP_MIN_OUTPUT_TOKENS = 16_384;
+const EXPERIENCE_GENERATION_MIN_OUTPUT_TOKENS = 1_024;
 const SESSION_CONCLUSION_MIN_OUTPUT_TOKENS = 8192;
 const CAMPAIGN_PROGRESSION_MIN_OUTPUT_TOKENS = SESSION_CONCLUSION_MIN_OUTPUT_TOKENS;
 const GAME_GENERATION_TIMEOUT_MS = 5 * 60 * 1000;
@@ -3519,21 +3572,14 @@ const SESSION_SUMMARY_TRUNCATION_MARKER = "\n\n[Middle of session transcript tru
 type GameTranscriptMessage = { id: string; role: string; content: string | null | undefined };
 
 function truncateSessionTranscriptMiddle(content: string, targetTokens: number): string {
-  const targetChars = Math.max(
-    SESSION_SUMMARY_MIN_TRANSCRIPT_CHARS,
-    Math.floor(targetTokens * SESSION_SUMMARY_CHARS_PER_TOKEN),
-  );
-  const chars = Array.from(content);
-  if (chars.length <= targetChars) return content;
-
-  if (targetChars <= SESSION_SUMMARY_TRUNCATION_MARKER.length + SESSION_SUMMARY_MIN_TRANSCRIPT_CHARS) {
-    return chars.slice(0, targetChars).join("");
-  }
-
-  const availableChars = targetChars - SESSION_SUMMARY_TRUNCATION_MARKER.length;
-  const headChars = Math.ceil(availableChars * 0.65);
-  const tailChars = Math.floor(availableChars * 0.35);
-  return chars.slice(0, headChars).join("") + SESSION_SUMMARY_TRUNCATION_MARKER + chars.slice(-tailChars).join("");
+  const minimumTokens = estimateTextTokens(Array.from(content).slice(0, SESSION_SUMMARY_MIN_TRANSCRIPT_CHARS).join(""));
+  const budget = Math.max(minimumTokens, Math.floor(targetTokens));
+  if (estimateTextTokens(content) <= budget) return content;
+  const availableTokens = budget - estimateTextTokens(SESSION_SUMMARY_TRUNCATION_MARKER);
+  if (availableTokens <= minimumTokens) return sliceTextToTokenBudget(content, budget);
+  const head = sliceTextToTokenBudget(content, Math.ceil(availableTokens * 0.65));
+  const tail = sliceTextToTokenBudget(content, availableTokens - estimateTextTokens(head), true);
+  return head + SESSION_SUMMARY_TRUNCATION_MARKER + tail;
 }
 
 function buildSessionConclusionMessages(args: {
@@ -3676,10 +3722,10 @@ function fitSessionConclusionMessages(args: {
     guard += 1;
     transcriptTruncated = true;
 
-    const currentTranscriptTokens = Math.ceil(Array.from(transcriptText).length / SESSION_SUMMARY_CHARS_PER_TOKEN);
+    const currentTranscriptTokens = estimateTextTokens(transcriptText);
     const overflowTokens = Math.max(1, fit.estimatedTokensBefore - (fit.inputBudget ?? fit.estimatedTokensBefore - 1));
     const targetTranscriptTokens = Math.max(
-      Math.ceil(SESSION_SUMMARY_MIN_TRANSCRIPT_CHARS / SESSION_SUMMARY_CHARS_PER_TOKEN),
+      estimateTextTokens(Array.from(transcriptText).slice(0, SESSION_SUMMARY_MIN_TRANSCRIPT_CHARS).join("")),
       currentTranscriptTokens - overflowTokens - 32,
     );
     const nextTranscriptText = truncateSessionTranscriptMiddle(transcriptText, targetTranscriptTokens);
@@ -4288,10 +4334,8 @@ async function runGameLorebookKeeperAfterConclusion(args: {
   }
 }
 
-function queueGameLorebookKeeperAfterConclusion(
-  args: Parameters<typeof runGameLorebookKeeperAfterConclusion>[0],
-): void {
-  void runGameLorebookKeeperAfterConclusion(args).catch((err) => {
+function queueGameLorebookKeeperAfterConclusion(args: Parameters<typeof runGameLorebookKeeperAfterConclusion>[0]) {
+  return runGameLorebookKeeperAfterConclusion(args).catch((err) => {
     logger.warn(err, "[game/lorebook-keeper] Queued run crashed for chat %s", args.chatId);
   });
 }
@@ -5396,70 +5440,13 @@ function asStoryboardRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
-const MAX_STORYBOARD_CHARACTER_PROMPTS = 6;
-
-function defaultStoryboardCharacterPosition(index: number, total: number): { x: number; y: number } {
-  if (total <= 1) return { x: 0.5, y: 0.5 };
-  if (total <= 3) return { x: (index + 1) / (total + 1), y: 0.5 };
-
-  const columns = 3;
-  const rows = Math.ceil(total / columns);
-  const row = Math.floor(index / columns);
-  const rowStart = row * columns;
-  const rowCount = Math.min(columns, total - rowStart);
-  return {
-    x: (index - rowStart + 1) / (rowCount + 1),
-    y: (row + 1) / (rows + 1),
-  };
-}
-
-function normalizeStoryboardCharacterCoordinate(value: unknown, fallback: number): number {
-  const numeric = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(numeric)) return fallback;
-  return Math.round(Math.min(1, Math.max(0, numeric)) * 100) / 100;
-}
-
-function matchStoryboardCharacterPromptName(value: unknown, characters: string[]): string | null {
-  const requested = typeof value === "string" ? normalizeAvatarLookupName(value) : "";
-  if (!requested) return null;
-  return characters.find((name) => normalizeAvatarLookupName(name) === requested) ?? null;
-}
-
-function sanitizeStoryboardCharacterPrompts(value: unknown, characters: string[]): SceneIllustrationCharacterPrompt[] {
-  if (!Array.isArray(value) || characters.length === 0) return [];
-  const seen = new Set<string>();
-  const candidates: Array<
-    Omit<SceneIllustrationCharacterPrompt, "position"> & { position?: { x: number; y: number } }
-  > = [];
-
-  for (const rawEntry of value.slice(0, MAX_STORYBOARD_CHARACTER_PROMPTS)) {
-    const entry = asStoryboardRecord(rawEntry);
-    const name = matchStoryboardCharacterPromptName(entry.name, characters);
-    const prompt = compactStoryboardText(entry.prompt, 1400);
-    if (!name || !prompt) continue;
-    const normalizedName = normalizeAvatarLookupName(name);
-    if (seen.has(normalizedName)) continue;
-    seen.add(normalizedName);
-
-    const rawPosition = asStoryboardRecord(entry.position);
-    const hasPosition = rawPosition.x != null || rawPosition.y != null;
-    candidates.push({
-      name,
-      prompt,
-      negativePrompt: compactStoryboardText(entry.negativePrompt, 700) || undefined,
-      position: hasPosition
-        ? {
-            x: normalizeStoryboardCharacterCoordinate(rawPosition.x, 0.5),
-            y: normalizeStoryboardCharacterCoordinate(rawPosition.y, 0.5),
-          }
-        : undefined,
-    });
-  }
-
-  return candidates.map((entry, index) => ({
-    ...entry,
-    position: entry.position ?? defaultStoryboardCharacterPosition(index, candidates.length),
-  }));
+/** Plan-time sanitizer keeps up to the V5 cap; render time trims to the actual model's limit. */
+function sanitizeStoryboardCharacterPrompts(
+  value: unknown,
+  characters: string[],
+  limit = NOVELAI_V5_MAX_CHARACTER_PROMPTS,
+): SceneIllustrationCharacterPrompt[] {
+  return sanitizeCharacterPrompts(value, characters, limit);
 }
 
 function storyboardCharacterPromptIdentity(name: string): string {
@@ -5474,10 +5461,11 @@ function resolveStoryboardCharacterPromptsForImage(args: {
   characters: string[];
   characterDescriptions: Map<string, string>;
   includeCharacterAppearance: boolean;
+  limit: number;
 }): SceneIllustrationCharacterPrompt[] {
-  if (args.characters.length < 2) return [];
+  if (args.characters.length < 2 || args.limit <= 0) return [];
   const promptByName = new Map(args.prompts.map((entry) => [normalizeAvatarLookupName(entry.name), entry] as const));
-  const selectedCharacters = args.characters.slice(0, MAX_STORYBOARD_CHARACTER_PROMPTS);
+  const selectedCharacters = args.characters.slice(0, args.limit);
 
   return selectedCharacters.map((name, index) => {
     const existing = promptByName.get(normalizeAvatarLookupName(name));
@@ -5490,7 +5478,7 @@ function resolveStoryboardCharacterPromptsForImage(args: {
       name,
       prompt: [basePrompt, appearance ? `appearance: ${appearance}` : ""].filter(Boolean).join(", "),
       negativePrompt: existing?.negativePrompt,
-      position: existing?.position ?? defaultStoryboardCharacterPosition(index, selectedCharacters.length),
+      position: existing?.position ?? defaultCharacterPromptPosition(index, selectedCharacters.length),
     };
   });
 }
@@ -5833,14 +5821,11 @@ export async function buildStoryboardIllustratorMessages(args: {
   });
   const structuredCharacterPromptInstructions = args.structuredCharacterPrompts
     ? [
-        "NovelAI V4/V4.5 native multi-character prompting is enabled for this request.",
+        "NovelAI native multi-character prompting is enabled for this request.",
         'Extend every keyframe with "characterPrompts": [ { "name": string, "prompt": string, "negativePrompt": string, "position": { "x": number, "y": number } } ].',
         "For scenes with two or more named visible characters, include exactly one characterPrompts entry for every name in keyframe.characters, using the exact same spelling.",
         "Keep keyframe.imagePrompt as the base scene prompt: subject-count tags, shared interaction, camera, composition, environment, lighting, mood, and props. Put character-specific identity, appearance, clothing, expression, pose, and role in that character's prompt.",
-        "Start each character prompt with girl, boy, or other without a number, then add the canonical character tag or visual identity traits.",
-        "For interactions, use NovelAI action roles such as source#hug, target#hug, or mutual#hug in the relevant character prompts when applicable.",
-        "Use negativePrompt to block traits belonging only to the other visible characters. Use an empty string when no character-specific negative is needed.",
-        "position is the character's approximate normalized center: x=0 is left, x=1 is right, y=0 is top, y=1 is bottom. Keep positions consistent with camera composition and character order.",
+        ...NOVELAI_CHARACTER_PROMPT_RULES,
         "For zero or one named visible character, return an empty characterPrompts array.",
       ].join("\n")
     : "";
@@ -5968,6 +5953,24 @@ async function serializeGameTurnStoryboard(args: {
 }
 
 export async function gameRoutes(app: FastifyInstance) {
+  registerSequentialGameTasks(app, [
+    "/setup",
+    "/session/conclude",
+    "/session/conclude/apply-json",
+    "/session/regenerate-lorebook",
+    "/session/regenerate-conclusion",
+    "/session/update-campaign-progression",
+    "/character-sheet/regenerate",
+    "/party/recruit",
+    "/:chatId/experience-generation",
+    "/party-turn",
+    "/scene-wrap",
+    "/storyboard/generate",
+    "/generate-scene-video",
+    "/generate-assets/preview",
+    "/generate-assets",
+    "/map/generate",
+  ]);
   // Startup-wide storyboard recovery is gone (#5592 Phase 2): the per-request
   // sweeps below use storyboardRecoveryCutoff(), whose boot-time floor marks
   // every pre-boot in-progress row failed the first time its chat is read.
@@ -6750,7 +6753,7 @@ export async function gameRoutes(app: FastifyInstance) {
     }
 
     let setupLorebookContext: string | undefined;
-    if ((setupConfig.activeLorebookIds?.length ?? 0) > 0) {
+    if ((setupConfig.activeLorebookIds?.length ?? 0) > 0 || (setupConfig.activeLorebookEntryIds?.length ?? 0) > 0) {
       const setupPromptMacroContext = await buildChatMacroContext({
         db: app.db,
         chat: { id: chatId, mode: "game" },
@@ -6786,6 +6789,11 @@ export async function gameRoutes(app: FastifyInstance) {
         characterIds: setupConfig.partyCharacterIds,
         personaId: setupPersonaId,
         activeLorebookIds: setupConfig.activeLorebookIds,
+        forcedEntryIds: setupConfig.activeLorebookEntryIds,
+        ignoreForcedEntryProbability: true,
+        entryStateOverrides: (meta.entryStateOverrides ?? meta.lorebookEntryStateOverrides) as
+          | Record<string, { ephemeral?: number | null; enabled?: boolean }>
+          | undefined,
         excludedLorebookIds: setupLorebookScopeExclusions.excludedLorebookIds,
         excludedSourceAgentIds: setupLorebookScopeExclusions.excludedSourceAgentIds,
         generationTriggers: ["game_setup", "game"],
@@ -6801,10 +6809,7 @@ export async function gameRoutes(app: FastifyInstance) {
         .join("\n\n");
       if (combinedLore) {
         setupLorebookContext = combinedLore;
-        logger.info(
-          "[game/setup] Injecting %d constant lorebook entries into world generation",
-          lorebookResult.totalEntries,
-        );
+        logger.info("[game/setup] Injecting %d lorebook entries into world generation", lorebookResult.totalEntries);
       }
     }
 
@@ -7198,6 +7203,11 @@ export async function gameRoutes(app: FastifyInstance) {
   };
 
   // ── POST /game/session/start ──
+  registerSequentialGameTasks(app, ["/session/start"], async (request) => {
+    const { gameId, sourceChatId } = startSessionSchema.parse(request.body);
+    const sessions = await createChatsStorage(app.db).listByGroup(gameId);
+    return selectSessionForNextStart(sessions, sourceChatId)?.id ?? null;
+  });
   app.post("/session/start", async (req, reply) => {
     const { gameId, sourceChatId, connectionId } = startSessionSchema.parse(req.body);
     const existingStart = pendingSessionStarts.get(gameId);
@@ -7724,14 +7734,17 @@ export async function gameRoutes(app: FastifyInstance) {
         /* non-fatal */
       }
 
-      queueGameLorebookKeeperAfterConclusion({
-        app,
-        chatId,
-        connectionId: conn.id,
-        sessionNumber,
-        sessionSummary: appliedConclusion.summary,
-        streaming,
-      });
+      retainSequentialGameTask(
+        req,
+        queueGameLorebookKeeperAfterConclusion({
+          app,
+          chatId,
+          connectionId: conn.id,
+          sessionNumber,
+          sessionSummary: appliedConclusion.summary,
+          streaming,
+        }),
+      );
 
       logger.info("[game/session/conclude] Session %d concluded for chat %s", sessionNumber, chatId);
       return { summary: appliedConclusion.summary };
@@ -7892,13 +7905,16 @@ export async function gameRoutes(app: FastifyInstance) {
         /* non-fatal */
       }
 
-      queueGameLorebookKeeperAfterConclusion({
-        app,
-        chatId,
-        connectionId,
-        sessionNumber,
-        sessionSummary: appliedConclusion.summary,
-      });
+      retainSequentialGameTask(
+        req,
+        queueGameLorebookKeeperAfterConclusion({
+          app,
+          chatId,
+          connectionId,
+          sessionNumber,
+          sessionSummary: appliedConclusion.summary,
+        }),
+      );
 
       return { summary: appliedConclusion.summary };
     })();
@@ -10827,7 +10843,8 @@ export async function gameRoutes(app: FastifyInstance) {
 
   app.post<{ Params: { chatId: string } }>(
     "/:chatId/experience-generation",
-    { bodyLimit: 64 * 1024 },
+    // Entry IDs can outgrow 64 KiB before their selected content reaches the model context limit.
+    { bodyLimit: 1024 * 1024 },
     async (req, reply) => {
       const input = experienceGenerationSchema.parse(req.body ?? {});
       const chats = createChatsStorage(app.db);
@@ -10903,13 +10920,18 @@ export async function gameRoutes(app: FastifyInstance) {
           lastGenerationType: "game_setup",
           idleDuration: "0 seconds",
         });
+        let loreMacroLimitExceeded = false;
         const resolveLoreMacrosForFinal = (value: string, lorebookEntryCounts?: Readonly<Record<string, number>>) => {
           setLorebookEntryCounts(lorePromptMacroContext, lorebookEntryCounts);
-          // Preserve large literal entries while keeping expansion bounded and
-          // retaining the resolver's recursion/expansion-count safeguards.
-          return resolveMacrosWithVariableSnapshot(value, lorePromptMacroContext, {
-            maxMacroOutputLength: Math.max(value.length, 200_000),
+          const macroBudget = { expansions: 0, exceeded: false };
+          // Allow expansions that can fit the configured window, while retaining
+          // bounded allocation and the resolver's recursion/count safeguards.
+          const resolved = resolveMacrosWithVariableSnapshot(value, lorePromptMacroContext, {
+            maxMacroOutputLength: Math.max(value.length, (modelAccessPolicy.effectiveMaxContext ?? 50_000) * 4),
+            macroBudget,
           });
+          loreMacroLimitExceeded ||= macroBudget.exceeded;
+          return resolved;
         };
         const loreScopeExclusions = resolveLorebookScopeExclusions("game", meta);
         const lorebookResult = await processLorebooks(app.db, [], null, {
@@ -10918,6 +10940,9 @@ export async function gameRoutes(app: FastifyInstance) {
           personaId: lorePersonaId,
           excludedLorebookIds: loreScopeExclusions.excludedLorebookIds,
           excludedSourceAgentIds: loreScopeExclusions.excludedSourceAgentIds,
+          entryStateOverrides: (meta.entryStateOverrides ?? meta.lorebookEntryStateOverrides) as
+            | Record<string, { ephemeral?: number | null; enabled?: boolean }>
+            | undefined,
           forcedEntryIds: input.lorebookEntryIds,
           // The selection is exact. Without this the ordinary scope-based scan runs
           // beside it and every global book — plus anything bound to the party, the
@@ -10936,6 +10961,14 @@ export async function gameRoutes(app: FastifyInstance) {
           ignoreForcedEntryProbability: true,
           resolveContent: resolveLoreMacrosForFinal,
         });
+        if (loreMacroLimitExceeded) {
+          return reply.code(422).send({
+            code: "context_limit",
+            truncated: false,
+            error:
+              "A selected lorebook entry exceeds the macro expansion limit for this world-generation request. Choose a larger-context connection or shorten its macros; no partial lore was sent.",
+          });
+        }
         const combinedLore = [
           lorebookResult.worldInfoBefore,
           ...lorebookResult.depthEntries.map((entry) => entry.content),
@@ -11092,6 +11125,8 @@ export async function gameRoutes(app: FastifyInstance) {
           return { raw, finishReason };
         };
 
+        // Honor deliberately small package/connection caps; reject only context-induced collapse.
+        const minimumOutputTokens = Math.min(EXPERIENCE_GENERATION_MIN_OUTPUT_TOKENS, maxTokens);
         let attemptMessages = baseMessages;
         let lastRaw = "";
         let lastFinishReason: string | null = null;
@@ -11100,21 +11135,34 @@ export async function gameRoutes(app: FastifyInstance) {
             messages: attemptMessages,
             policy: modelAccessPolicy,
             maxTokens: options.maxTokens,
+            responseFormat: options.responseFormat,
           });
           // This one-shot prompt has no disposable history. Dropping its system
           // tail would silently discard lore the player explicitly selected.
-          if (fit.trimmed) {
+          const availableOutputTokens = fit.maxTokens ?? options.maxTokens ?? maxTokens;
+          if (fit.trimmed || availableOutputTokens < minimumOutputTokens) {
             return reply.code(422).send({
               code: "context_limit",
               truncated: false,
-              error: lorebookSelectionRequested
-                ? "The selected lorebook entries and world-generation instructions exceed this connection's context window. Choose a larger-context connection, fewer lore entries, or shorter instructions."
-                : "The world-generation instructions exceed this connection's context window. Choose a larger-context connection or shorten the instructions.",
+              error:
+                availableOutputTokens < minimumOutputTokens
+                  ? `The world-generation selection leaves only ${availableOutputTokens} tokens for the answer; at least ${minimumOutputTokens} are needed. Choose a larger-context connection, fewer lore entries, or shorter instructions.`
+                  : lorebookSelectionRequested
+                    ? "The selected lorebook entries and world-generation instructions exceed this connection's context window. Choose a larger-context connection, fewer lore entries, or shorter instructions."
+                    : "The world-generation instructions exceed this connection's context window. Choose a larger-context connection or shorten the instructions.",
               estimatedInputTokens: fit.estimatedTokensBefore,
               inputBudget: fit.inputBudget,
+              availableOutputTokens,
+              minimumOutputTokens,
             });
           }
-          options.maxTokens = fit.maxTokens ?? options.maxTokens;
+          options.maxTokens = availableOutputTokens;
+          debugLog(
+            "[debug/game/experience-generation] attempt=%d fittedMaxTokens=%d inputTokens=%d",
+            attempt,
+            availableOutputTokens,
+            fit.estimatedTokensBefore,
+          );
           let raw: string;
           let finishReason: string | null;
           try {
@@ -11144,7 +11192,7 @@ export async function gameRoutes(app: FastifyInstance) {
           if (finishReason === "length") {
             return reply.code(422).send({
               error:
-                "The model's JSON was cut off before it finished. Increase the connection's max output tokens and try again.",
+                "The model's JSON was cut off before it finished. Choose a larger-context connection, reduce the selected content, or increase the output limit if the context has room.",
               truncated: true,
               raw: raw.slice(0, 20_000),
               finishReason,
@@ -11194,7 +11242,7 @@ export async function gameRoutes(app: FastifyInstance) {
             if (isLikelyTruncatedJsonResponse(raw, finishReason ?? undefined)) {
               return reply.code(422).send({
                 error:
-                  "The model's JSON was cut off before it finished. Increase the connection's max output tokens and try again.",
+                  "The model's JSON was cut off before it finished. Choose a larger-context connection, reduce the selected content, or increase the output limit if the context has room.",
                 truncated: true,
                 raw: raw.slice(0, 20_000),
                 finishReason,
@@ -11651,12 +11699,19 @@ export async function gameRoutes(app: FastifyInstance) {
 
     const meta = parseMeta(chat.metadata);
     const sceneConnId = (meta.gameSceneConnectionId as string) || null;
+    const requestedSceneConnId = input.connectionId ?? sceneConnId;
     const { conn, baseUrl, defaultGenerationParameters } = await resolveConnection(
       connections,
-      input.connectionId ?? sceneConnId,
+      requestedSceneConnId,
       chat.connectionId,
     );
-    const gameGenerationParameters = resolveStoredGameGenerationParameters(meta, defaultGenerationParameters);
+    const gameGenerationParameters = resolveStoredGameGenerationParameters(meta, defaultGenerationParameters, {
+      includeChatParameters: inheritsChatGenerationParameters({
+        requestedConnectionId: requestedSceneConnId,
+        resolvedConnectionId: conn.id,
+        chatConnectionId: chat.connectionId,
+      }),
+    });
     const enableGen = !!meta.enableSpriteGeneration;
     const enableAutoGen = enableGen && meta.gameImageAutoGenerationEnabled !== false;
     const storyboardBackgroundVisualEnabled = meta.gameStoryboardViewerDisplayMode === "background";
@@ -12327,8 +12382,11 @@ export async function gameRoutes(app: FastifyInstance) {
       const providerSupportsStructuredCharacterPrompts =
         supportsSceneIllustrationStructuredCharacterPrompts(storyboardImageRequestContext);
       const structuredCharacterPrompts = useNovelAiCharacterPrompts && providerSupportsStructuredCharacterPrompts;
+      const storyboardCharacterPromptLimit = structuredCharacterPrompts
+        ? resolveNovelAiCharacterPromptLimit(storyboardImageRequestContext.imgModel)
+        : 0;
       const storyboardMaxVisibleCharacters = structuredCharacterPrompts
-        ? Math.min(MAX_STORYBOARD_CHARACTER_PROMPTS, storyboardReferenceImageLimit)
+        ? Math.min(storyboardCharacterPromptLimit, storyboardReferenceImageLimit)
         : storyboardReferenceImageLimit;
 
       const sceneConnId =
@@ -12342,10 +12400,18 @@ export async function gameRoutes(app: FastifyInstance) {
         sceneConnId,
         chat.connectionId,
       );
+      const includeChatParameters = inheritsChatGenerationParameters({
+        requestedConnectionId: sceneConnId,
+        resolvedConnectionId: conn.id,
+        chatConnectionId: chat.connectionId,
+      });
       const parameters =
         ownerMode === "game"
-          ? resolveStoredGameGenerationParameters(meta, defaultGenerationParameters)
-          : mergeStoredGenerationParameters(defaultGenerationParameters, ...chatParameterLayers(meta));
+          ? resolveStoredGameGenerationParameters(meta, defaultGenerationParameters, { includeChatParameters })
+          : mergeStoredGenerationParameters(
+              defaultGenerationParameters,
+              ...(includeChatParameters ? chatParameterLayers(meta) : []),
+            );
       const provider = await createGameMainProvider(connections, conn, baseUrl);
 
       const setupCfg = ownerMode === "game" ? ((meta.gameSetupConfig as Record<string, unknown> | null) ?? null) : null;
@@ -12487,14 +12553,14 @@ export async function gameRoutes(app: FastifyInstance) {
             conn.provider,
           );
           const parsedPlan = await completeStoryboardPlan({
-            retryWithoutReasoning:
-              plannerOptions.reasoningEffort !== "none" &&
-              conn.provider === "custom" &&
-              isLocalInferenceBaseUrl(baseUrl),
+            retryWithoutReasoning: shouldRetryStoryboardWithoutReasoning(
+              { provider: conn.provider, baseUrl, treatAsLocalEndpoint: conn.treatAsLocalEndpoint },
+              plannerOptions.reasoningEffort,
+            ),
             customThinkingTags: parameters?.customThinkingTags,
             generate: async (withoutReasoning) => {
               if (withoutReasoning)
-                logger.warn("[game/storyboard] Retrying empty local planner output without reasoning");
+                logger.warn("[game/storyboard] Retrying unusable local planner output without reasoning");
               const result = await runGameChatComplete(
                 provider,
                 illustratorMessages.messages,
@@ -12510,7 +12576,13 @@ export async function gameRoutes(app: FastifyInstance) {
                 "Game storyboard illustrator",
                 GAME_STORYBOARD_ILLUSTRATOR_TIMEOUT_MS,
               );
-              if (debugLogsEnabled) debugLog("[debug/game/storyboard-illustrator] raw response:\n%s", result.content);
+              if (debugLogsEnabled)
+                debugLog(
+                  "[debug/game/storyboard-illustrator] finishReason=%s usage=%s raw response:\n%s",
+                  result.finishReason,
+                  JSON.stringify(result.usage ?? null),
+                  result.content,
+                );
               return result;
             },
           });
@@ -12597,6 +12669,7 @@ export async function gameRoutes(app: FastifyInstance) {
               characters: plannedFrame.characters,
               characterDescriptions: charDescriptionByName,
               includeCharacterAppearance: includeCharacterAppearanceAtRender,
+              limit: storyboardCharacterPromptLimit,
             })
           : [];
         const illustration: SceneIllustrationRequest = {
@@ -13067,9 +13140,12 @@ export async function gameRoutes(app: FastifyInstance) {
           frameResults[index] = await renderStoryboardFrame(frame);
         }
       };
-      const requestedFrameWorkerLimit = videoRuntime
-        ? GAME_STORYBOARD_VIDEO_FRAME_CONCURRENCY
-        : GAME_STORYBOARD_IMAGE_FRAME_CONCURRENCY;
+      const requestedFrameWorkerLimit =
+        meta.gameSequentialAgents === true
+          ? 1
+          : videoRuntime
+            ? GAME_STORYBOARD_VIDEO_FRAME_CONCURRENCY
+            : GAME_STORYBOARD_IMAGE_FRAME_CONCURRENCY;
       const frameWorkerLimit = resolveSceneIllustrationGenerationConcurrency(
         {
           imgSource,
@@ -13089,7 +13165,7 @@ export async function gameRoutes(app: FastifyInstance) {
       const releaseBackgroundStoryboardLock = releaseStoryboardLock;
       releaseStoryboardLock = null;
 
-      void (async () => {
+      const backgroundRendering = (async () => {
         const backgroundTimeout = setTimeout(() => {
           backgroundController.abort(
             new Error(
@@ -13165,6 +13241,7 @@ export async function gameRoutes(app: FastifyInstance) {
           releaseBackgroundStoryboardLock?.();
         }
       })();
+      retainSequentialGameTask(req, backgroundRendering);
 
       return {
         storyboard: initialStoryboard,
@@ -13816,9 +13893,10 @@ export async function gameRoutes(app: FastifyInstance) {
           };
         }
       };
-      const portraitPreviewWorkerCount = input.queueImageGenerationRequests
-        ? 1
-        : Math.min(GAME_ASSET_PORTRAIT_CONCURRENCY, input.npcsNeedingAvatars.length);
+      const portraitPreviewWorkerCount =
+        meta.gameSequentialAgents === true || input.queueImageGenerationRequests
+          ? 1
+          : Math.min(GAME_ASSET_PORTRAIT_CONCURRENCY, input.npcsNeedingAvatars.length);
       await Promise.all(Array.from({ length: portraitPreviewWorkerCount }, () => runPortraitPreviewWorker()));
       items.push(...portraitPreviewItems.filter((item): item is PreviewAssetItem => item !== null));
     }
@@ -14289,9 +14367,10 @@ export async function gameRoutes(app: FastifyInstance) {
             }
           }
         };
-        const portraitWorkerCount = input.queueImageGenerationRequests
-          ? 1
-          : Math.min(GAME_ASSET_PORTRAIT_CONCURRENCY, input.npcsNeedingAvatars.length);
+        const portraitWorkerCount =
+          meta.gameSequentialAgents === true || input.queueImageGenerationRequests
+            ? 1
+            : Math.min(GAME_ASSET_PORTRAIT_CONCURRENCY, input.npcsNeedingAvatars.length);
         await Promise.all(Array.from({ length: portraitWorkerCount }, () => runPortraitWorker()));
 
         // Persist avatar URLs to NPC list in metadata

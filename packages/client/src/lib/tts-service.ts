@@ -11,6 +11,7 @@ import {
   ttsFailureKindFromResponse,
   type TTSSynthesisPolicy,
 } from "./tts-synthesis-policy";
+import { SILENT_AUDIO_DATA_URI } from "./silent-audio";
 
 export type TTSState = "idle" | "loading" | "playing" | "paused" | "blocked" | "error";
 
@@ -155,7 +156,7 @@ function sleepWithAbort(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-const USER_GESTURE_EVENTS = ["pointerdown", "keydown", "touchend"] as const;
+const USER_GESTURE_EVENTS = ["pointerdown", "pointerup", "keydown", "touchend"] as const;
 
 function waitForUserGesture(signal?: AbortSignal): Promise<void> {
   if (typeof window === "undefined") return Promise.resolve();
@@ -165,7 +166,14 @@ function waitForUserGesture(signal?: AbortSignal): Promise<void> {
       for (const name of USER_GESTURE_EVENTS) window.removeEventListener(name, onGesture, true);
       signal?.removeEventListener("abort", onAbort);
     };
-    const onGesture = () => {
+    const onGesture = (event: Event) => {
+      if (!event.isTrusted) return;
+      if (event.type === "pointerdown" && (event as PointerEvent).pointerType !== "mouse") return;
+      if (event.type === "pointerup" && (event as PointerEvent).pointerType === "mouse") return;
+      if (event.type === "keydown") {
+        const key = event as KeyboardEvent;
+        if (key.key === "Escape" || key.ctrlKey || key.metaKey || key.altKey) return;
+      }
       cleanup();
       resolve();
     };
@@ -263,11 +271,10 @@ export async function playWhenAvailable(
 class TTSService {
   private audio: HTMLAudioElement | null = null;
   /**
-   * Every element handed to play(), not just the current one. Interleaved
-   * playback attempts can orphan an earlier element off the single ref, after
-   * which nothing can pause it and clips overlap (#2647).
+   * The one element every clip plays through, so an interleaved attempt cannot
+   * orphan an earlier element that nothing can pause (#2647).
    */
-  private activeAudios = new Set<HTMLAudioElement>();
+  private playbackElement: HTMLAudioElement | null = null;
   /** Consecutive failed sequences, so a dead engine stops being retried forever. */
   private consecutiveFailures = 0;
   private currentObjectUrl: string | null = null;
@@ -353,6 +360,29 @@ class TTSService {
   }
 
   // ── Playback ──────────────────────────────────
+
+  private getPlaybackElement(): HTMLAudioElement {
+    return (this.playbackElement ??= new Audio());
+  }
+
+  /** Prime the same element that will play the voice, before an async request loses the tap. */
+  preparePlayback(): void {
+    if (this.audio || typeof Audio === "undefined") return;
+    const audio = this.getPlaybackElement();
+    const sequence = this.sequence;
+    audio.src = SILENT_AUDIO_DATA_URI;
+    audio.muted = false;
+    audio.volume = 1;
+    void audio
+      .play()
+      .then(() => {
+        // A fast/cached voice can replace the silent source before play() settles.
+        if (this.sequence === sequence && !this.audio && audio.src === SILENT_AUDIO_DATA_URI) audio.pause();
+      })
+      .catch(() => {
+        // Autoplay without a gesture still uses the bounded, abortable recovery below.
+      });
+  }
 
   private beginPlaybackOptions(options: Pick<TTSSpeakOptions, "volume" | "muted">): void {
     this.livePlaybackVolume = typeof options.volume === "number" ? clampPlaybackVolume(options.volume) : null;
@@ -465,6 +495,7 @@ class TTSService {
     this.stop();
     this.beginPlaybackOptions(options);
     const sequence = ++this.sequence;
+    this.preparePlayback();
     this.lastError = null;
 
     this.setState("loading", id ?? null);
@@ -477,6 +508,7 @@ class TTSService {
       blob = await this.getAudioBlob(text, { ...options, signal: abortController.signal });
     } catch (err) {
       if (!this.isCurrentSequence(sequence)) return;
+      this.cleanup();
       if (err instanceof Error && err.name === "AbortError") {
         this.setState("idle");
         return;
@@ -497,13 +529,13 @@ class TTSService {
     }
     this.currentObjectUrl = objectUrl;
 
-    const audio = new Audio(objectUrl);
+    const audio = this.getPlaybackElement();
+    audio.src = objectUrl;
     this.applyPlaybackOptions(audio, options);
     this.audio = audio;
-    this.activeAudios.add(audio);
 
     audio.onended = () => {
-      if (!this.isCurrentSequence(sequence) || this.audio !== audio) return;
+      if (!this.isCurrentSequence(sequence) || this.audio !== audio || this.currentObjectUrl !== objectUrl) return;
       if (this.abortController === abortController) {
         this.abortController = null;
       }
@@ -511,7 +543,7 @@ class TTSService {
       this.setState("idle");
     };
     audio.onerror = () => {
-      if (!this.isCurrentSequence(sequence) || this.audio !== audio) return;
+      if (!this.isCurrentSequence(sequence) || this.audio !== audio || this.currentObjectUrl !== objectUrl) return;
       if (this.abortController === abortController) {
         this.abortController = null;
       }
@@ -532,13 +564,14 @@ class TTSService {
 
     try {
       await playWhenAvailable(audio, abortController.signal, () => {
-        if (this.isCurrentSequence(sequence) && this.audio === audio) this.setState("blocked", id ?? null);
+        if (this.isCurrentSequence(sequence) && this.audio === audio && this.currentObjectUrl === objectUrl)
+          this.setState("blocked", id ?? null);
       });
-      if (!this.isCurrentSequence(sequence) || this.audio !== audio) return;
+      if (!this.isCurrentSequence(sequence) || this.audio !== audio || this.currentObjectUrl !== objectUrl) return;
       this.consecutiveFailures = 0;
       this.setState("playing", id ?? null);
     } catch (err) {
-      if (!this.isCurrentSequence(sequence) || this.audio !== audio) return;
+      if (!this.isCurrentSequence(sequence) || this.audio !== audio || this.currentObjectUrl !== objectUrl) return;
       if (this.abortController === abortController) {
         this.abortController = null;
       }
@@ -561,6 +594,7 @@ class TTSService {
     this.stop();
     this.beginPlaybackOptions(options);
     const sequence = ++this.sequence;
+    this.preparePlayback();
     this.lastError = null;
 
     this.setState("loading", id ?? null);
@@ -601,6 +635,7 @@ class TTSService {
 
     const playBlob = async (blob: Blob, request: TTSSpeakRequest, index: number): Promise<void> => {
       if (!this.isCurrentSequence(sequence)) return;
+      if (abortController.signal.aborted) throw playbackAbortError();
       this.cleanup();
 
       const objectUrl = URL.createObjectURL(blob);
@@ -610,10 +645,10 @@ class TTSService {
       }
       this.currentObjectUrl = objectUrl;
 
-      const audio = new Audio(objectUrl);
+      const audio = this.getPlaybackElement();
+      audio.src = objectUrl;
       this.applyPlaybackOptions(audio, options);
       this.audio = audio;
-      this.activeAudios.add(audio);
       const runChunkStart = () => {
         try {
           options.onChunkStart?.(request, index);
@@ -643,10 +678,11 @@ class TTSService {
           } catch {
             /* ignore interrupted playback cleanup */
           }
+          if (this.isCurrentSequence(sequence)) this.cleanup();
           finish(resolve);
         };
         const fail = (error: Error) => {
-          if (!this.isCurrentSequence(sequence) || this.audio !== audio) return;
+          if (!this.isCurrentSequence(sequence) || this.audio !== audio || this.currentObjectUrl !== objectUrl) return;
           finish(() => {
             this.cleanup();
             this.lastError = error.message;
@@ -657,7 +693,7 @@ class TTSService {
 
         abortController.signal.addEventListener("abort", onAbort, { once: true });
         audio.onended = () => {
-          if (!this.isCurrentSequence(sequence) || this.audio !== audio) return;
+          if (!this.isCurrentSequence(sequence) || this.audio !== audio || this.currentObjectUrl !== objectUrl) return;
           finish(() => {
             try {
               runChunkEnd();
@@ -682,12 +718,13 @@ class TTSService {
         };
 
         void playWhenAvailable(audio, abortController.signal, () => {
-          if (this.isCurrentSequence(sequence) && this.audio === audio) {
+          if (this.isCurrentSequence(sequence) && this.audio === audio && this.currentObjectUrl === objectUrl) {
             this.setState("blocked", request.activeId ?? id ?? null);
           }
         })
           .then(() => {
-            if (!this.isCurrentSequence(sequence) || this.audio !== audio) return;
+            if (!this.isCurrentSequence(sequence) || this.audio !== audio || this.currentObjectUrl !== objectUrl)
+              return;
             this.consecutiveFailures = 0;
             runChunkStart();
             this.setState("playing", request.activeId ?? id ?? null);
@@ -697,6 +734,7 @@ class TTSService {
     };
 
     const handleFetchFailure = (error: Error) => {
+      this.cleanup();
       this.lastError = error.message;
       this.consecutiveFailures += 1;
       console.warn("[TTS] Audio chunk generation failed; stopping the sequence:", error);
@@ -833,6 +871,7 @@ class TTSService {
       this.setState("idle");
     } finally {
       detachAbortSignal();
+      if (this.isCurrentSequence(sequence)) this.cleanup();
     }
   }
 
@@ -842,18 +881,6 @@ class TTSService {
     this.abortController?.abort();
     this.abortController = null;
     this.clearPlaybackOptions();
-
-    for (const audio of this.activeAudios) {
-      try {
-        audio.pause();
-      } catch {
-        /* an element mid-start can throw; it is being discarded anyway */
-      }
-      audio.onended = null;
-      audio.onerror = null;
-    }
-    this.activeAudios.clear();
-    this.audio = null;
 
     this.cleanup();
     this.lastError = null;
@@ -871,15 +898,16 @@ class TTSService {
   resume(): void {
     if (this.state !== "paused" || !this.audio) return;
     const audio = this.audio;
+    const objectUrl = this.currentObjectUrl;
     void playWhenAvailable(audio, this.abortController?.signal, () => {
-      if (this.audio === audio) this.setState("blocked");
+      if (this.audio === audio && this.currentObjectUrl === objectUrl) this.setState("blocked");
     })
       .then(() => {
-        if (this.audio !== audio) return;
+        if (this.audio !== audio || this.currentObjectUrl !== objectUrl) return;
         this.setState("playing");
       })
       .catch((err) => {
-        if (this.audio !== audio) return;
+        if (this.audio !== audio || this.currentObjectUrl !== objectUrl) return;
         this.cleanup();
         const error = err instanceof Error ? err : new Error("Browser blocked audio playback");
         this.lastError = error.message;
@@ -891,16 +919,17 @@ class TTSService {
   restart(): void {
     if (!this.audio || (this.state !== "playing" && this.state !== "paused")) return;
     const audio = this.audio;
+    const objectUrl = this.currentObjectUrl;
     audio.currentTime = 0;
     void playWhenAvailable(audio, this.abortController?.signal, () => {
-      if (this.audio === audio) this.setState("blocked");
+      if (this.audio === audio && this.currentObjectUrl === objectUrl) this.setState("blocked");
     })
       .then(() => {
-        if (this.audio !== audio) return;
+        if (this.audio !== audio || this.currentObjectUrl !== objectUrl) return;
         this.setState("playing");
       })
       .catch((err) => {
-        if (this.audio !== audio) return;
+        if (this.audio !== audio || this.currentObjectUrl !== objectUrl) return;
         this.cleanup();
         const error = err instanceof Error ? err : new Error("Browser blocked audio playback");
         this.lastError = error.message;
@@ -909,6 +938,14 @@ class TTSService {
   }
 
   private cleanup(): void {
+    if (this.playbackElement) {
+      this.playbackElement.pause();
+      this.playbackElement.onended = null;
+      this.playbackElement.onerror = null;
+      this.playbackElement.removeAttribute("src");
+      this.playbackElement.load();
+    }
+    this.audio = null;
     if (this.currentObjectUrl) {
       URL.revokeObjectURL(this.currentObjectUrl);
       this.currentObjectUrl = null;

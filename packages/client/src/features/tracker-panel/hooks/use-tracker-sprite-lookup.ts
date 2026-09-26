@@ -91,7 +91,7 @@ export function useTrackerSpriteLookup({
 
   const resolveSpriteCharacterId = useCallback(
     (character: PresentCharacter) => {
-      const rawId = character.characterId?.trim() ?? "";
+      const rawId = typeof character.characterId === "string" ? character.characterId.trim() : "";
       if (rawId && characterSpriteLookup.knownIds.has(rawId)) return rawId;
       const idNameMatch = characterSpriteLookup.idByName.get(normalizeLookupText(rawId));
       if (idNameMatch) return idNameMatch;

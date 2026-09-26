@@ -1496,6 +1496,7 @@ const SETTINGS_PRIMARY_BUTTON_CLASS = "mari-chrome-control mari-chrome-control--
 const SETTINGS_COMPACT_PRIMARY_BUTTON_CLASS =
   "mari-chrome-control mari-chrome-control--compact mari-chrome-control--selected text-[0.625rem]";
 type MarinaraAndroidBridge = {
+  openLauncher?: (token?: string) => void;
   openConsole?: {
     (token: string): void;
     (): void;
@@ -1581,14 +1582,25 @@ function AndroidStatusBarSetting() {
   }
 
   return (
-    <ToggleSetting
-      anchorId={getSettingsControlAnchorId("android-status-bar")}
-      label={t("settings.application.androidStatusBar.label")}
-      checked={visible}
-      onChange={handleChange}
-      help={help}
-      disabled={!supported}
-    />
+    <>
+      <ToggleSetting
+        anchorId={getSettingsControlAnchorId("android-status-bar")}
+        label={t("settings.application.androidStatusBar.label")}
+        checked={visible}
+        onChange={handleChange}
+        help={help}
+        disabled={!supported}
+      />
+      {typeof getMarinaraAndroidBridge()?.openLauncher === "function" && (
+        <button
+          type="button"
+          className={SETTINGS_BUTTON_CLASS}
+          onClick={() => getMarinaraAndroidBridge()?.openLauncher?.(getAndroidBridgeToken() ?? undefined)}
+        >
+          {t("settings.application.androidLauncher")}
+        </button>
+      )}
+    </>
   );
 }
 
@@ -6506,12 +6518,11 @@ function ThemesSettings({ showIntro = true }: { showIntro?: boolean } = {}) {
         if (duplicate) {
           recordSkippedTheme(`"${importedThemeName}" is already synced.`);
         } else {
-          const created = await createTheme.mutateAsync({
+          await createTheme.mutateAsync({
             name: importedThemeName,
             css: importedThemeCss,
             installedAt: new Date().toISOString(),
           });
-          workingThemes = [created, ...workingThemes];
           imported++;
         }
       }
@@ -6861,7 +6872,7 @@ const CSS_TEMPLATE = `/* ══════════════════�
   /* ── Borders ── */
   /* --border: #27272a; */
   /* --sidebar-border: #27272a; */
-  /* --marinara-shell-edge-border: color-mix(in srgb, var(--foreground) 14%, var(--background) 86%); */
+  /* --marinara-shell-edge-border: color-mix(in srgb, var(--primary) 14%, var(--background) 86%); */
 
   /* ── Text ── */
   /* --muted-foreground: #71717a; */

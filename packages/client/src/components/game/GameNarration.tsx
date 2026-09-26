@@ -87,8 +87,11 @@ import {
   type TTSConfig,
   type GameNpc,
   type SkillCheckResult,
+  type GameDicePlaceholderRecord,
+  type GameDiceTurnNotice,
   formatSkillCheckResultSummary,
 } from "@marinara-engine/shared";
+import { applyGameDiceMarkers, formatGameDiceModifier, formatGameDiceRolls } from "../../lib/game-dice-markers";
 import type { CharacterMap, PersonaInfo } from "../chat/chat-area.types";
 import { MESSAGE_SELECTION_SURFACE_CLASS } from "../chat/message-selection-styles";
 import { useTranslation as useUiTranslation } from "react-i18next";
@@ -399,6 +402,8 @@ interface GameNarrationProps {
   generationFailed?: boolean;
   /** Retry the GM generation */
   onRetryGeneration?: () => void;
+  /** Regenerate the saved turn when its separate outcome narration failed. */
+  onRetryTurn?: () => void;
   /** Whether direction effects (cinematic overlays) are currently playing */
   directionsActive?: boolean;
   /** Whether a validated saved narration position exists for the current assistant message. */
@@ -800,7 +805,7 @@ function getGameSegmentVoiceRequest(
   if (segment.type !== "dialogue" && segment.type !== "narration") return null;
 
   if (segment.type === "dialogue") {
-    const chunks = splitTTSChunks(segment.content, { maxChars: resolveTTSChunkCharLimit(config) });
+    const chunks = splitTTSChunks(segment.content, { ...config, maxChars: resolveTTSChunkCharLimit(config) });
     if (chunks.length === 0) return null;
     const tone = resolveGameSegmentTtsEmotion(segment);
     const voice = resolveTTSVoiceForSpeaker(
@@ -819,7 +824,7 @@ function getGameSegmentVoiceRequest(
   }
 
   if (config.dialogueOnly) return null;
-  const chunks = splitTTSChunks(segment.content, { maxChars: resolveTTSChunkCharLimit(config) });
+  const chunks = splitTTSChunks(segment.content, { ...config, maxChars: resolveTTSChunkCharLimit(config) });
   if (chunks.length === 0) return null;
   const voice = resolveTTSNarratorVoice(config);
   if (config.source === "elevenlabs" && !voice) return null;
@@ -903,7 +908,92 @@ function getLogActionSegmentIndex(segments: NarrationSegment[]): number {
   );
 }
 
-function formatSkillCheckLogContent(message: NarrationMessage): NarrationSegment[] {
+/**
+ * What the one-request dice pass did on this turn, or null.
+ *
+ * It lives on the message extra rather than in the content because the content has to
+ * stay what the player reads: a substituted number is a bare number, so the prompt leaf
+ * and an already-saved transcript both read it as prose, and a marker or a notice baked
+ * into the text would change how an older turn reads.
+ */
+function readGameDiceTurnNotice(
+  message: Pick<NarrationMessage, "extra"> | null | undefined,
+): GameDiceTurnNotice | null {
+  if (!message) return null;
+  const notice = parseMessageExtraRecord(message.extra).gameDiceTurn;
+  if (!notice || typeof notice !== "object" || Array.isArray(notice)) return null;
+  return notice as GameDiceTurnNotice;
+}
+
+function readGameDicePlaceholderRecords(
+  message: Pick<NarrationMessage, "extra"> | null | undefined,
+): GameDicePlaceholderRecord[] | null {
+  const records = readGameDiceTurnNotice(message)?.placeholders;
+  return Array.isArray(records) ? (records as GameDicePlaceholderRecord[]) : null;
+}
+
+/**
+ * The one-request dice turn notice, as plain session-log lines.
+ *
+ * A clean turn records nothing, so this renders nothing. When something could not be
+ * rolled the player is told in words rather than left to wonder why a sentence reads the
+ * way it does: one line per event, in the register the rest of the log uses. Nothing here
+ * invents a number, and none of these lines claims a roll happened.
+ */
+function formatGameDiceTurnNoticeSegments(
+  message: NarrationMessage,
+  localizeUi: (key: string) => string,
+): NarrationSegment[] {
+  const notice = readGameDiceTurnNotice(message);
+  if (!notice) return [];
+  const segments: NarrationSegment[] = [];
+  const countOf = (value: unknown): number =>
+    typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+  for (let index = 0; index < countOf(notice.unreadablePlaceholders); index += 1) {
+    segments.push({
+      id: `${message.id}-dice-turn-placeholder-${index}`,
+      type: "system",
+      content: localizeUi("game.dice.turnNotice.placeholderUnreadable"),
+    });
+  }
+  for (let index = 0; index < countOf(notice.branchFailures); index += 1) {
+    segments.push({
+      id: `${message.id}-dice-turn-branch-${index}`,
+      type: "system",
+      content: localizeUi("game.dice.turnNotice.branchFailed"),
+    });
+  }
+  if (notice.passFailed === true) {
+    segments.push({
+      id: `${message.id}-dice-turn-failed`,
+      type: "system",
+      content: localizeUi("game.dice.turnNotice.passFailed"),
+    });
+  }
+  // The sighted pool's own two lines. A pool that had no value left rolled nothing, so
+  // the line says the check was left unrolled rather than implying a number exists; a
+  // mismatch says the engine's record stands, because it does.
+  for (let index = 0; index < countOf(notice.poolOverflow); index += 1) {
+    segments.push({
+      id: `${message.id}-dice-turn-pool-overflow-${index}`,
+      type: "system",
+      content: localizeUi("game.dice.turnNotice.poolOverflow"),
+    });
+  }
+  if (Array.isArray(notice.poolMismatches) && notice.poolMismatches.length > 0) {
+    segments.push({
+      id: `${message.id}-dice-turn-pool-mismatch`,
+      type: "system",
+      content: localizeUi("game.dice.turnNotice.poolMismatch"),
+    });
+  }
+  return segments;
+}
+
+function formatSkillCheckLogContent(
+  message: NarrationMessage,
+  localizeUi: (key: string) => string,
+): NarrationSegment[] {
   const skillChecks = parseGmTags(message.content || "").skillChecks;
   const extra = parseMessageExtraRecord(message.extra);
   const diceRolls = readDiceRollResults(extra.diceRollResults ?? extra.diceRollResult);
@@ -935,6 +1025,7 @@ function formatSkillCheckLogContent(message: NarrationMessage): NarrationSegment
       }),
     ),
     ...checkSegments,
+    ...formatGameDiceTurnNoticeSegments(message, localizeUi),
   ];
 }
 
@@ -961,6 +1052,7 @@ export function GameNarration({
   onSkipScene,
   generationFailed,
   onRetryGeneration,
+  onRetryTurn,
   directionsActive,
   hasStoredNarrationPosition,
   restoredSegmentIndex,
@@ -1342,6 +1434,8 @@ export function GameNarration({
     return null;
   }, [messages]);
 
+  const outcomeNarrationFailed =
+    !!latestAssistant && parseMessageExtraRecord(latestAssistant.extra).gameOutcomeNarrationFailed === true;
   const lastAutoTranslation = useRef<{ id: string; source: string } | null>(null);
   useEffect(() => {
     if (!parsedActiveChatMetadata.autoTranslate || isStreaming || !latestAssistant || generationFailed) return;
@@ -1953,6 +2047,52 @@ export function GameNarration({
     sourceMessagesById,
   ]);
 
+  // ── One-request dice: the inline marker (#6215) ──
+  // The substituted number is saved bare, so the breakdown is reattached here at render
+  // time and nowhere else. A record that cannot be matched to exactly one number in this
+  // text is skipped: the plain number is still true, the session log still carries the
+  // roll, and marking the wrong word would be worse than marking nothing.
+  const describeGameDiceRoll = useCallback(
+    (record: GameDicePlaceholderRecord): string => {
+      const breakdown = formatGameDiceRolls(record);
+      const modifier = formatGameDiceModifier(record);
+      if (!modifier) {
+        return localizeUi("game.dice.marker.rolled", {
+          notation: record.raw,
+          breakdown,
+          total: record.total,
+        });
+      }
+      const source = localizeUi(
+        record.modifierSource === "skill"
+          ? "game.dice.marker.sourceSkill"
+          : record.modifierSource === "attribute"
+            ? "game.dice.marker.sourceAttribute"
+            : "game.dice.marker.sourceFlat",
+      );
+      return localizeUi("game.dice.marker.rolledWithModifier", {
+        notation: record.raw,
+        modifier,
+        source,
+        breakdown,
+        total: record.total,
+      });
+    },
+    [localizeUi],
+  );
+  const markGameDiceNumbers = useCallback(
+    (content: string, message: Pick<NarrationMessage, "extra"> | null | undefined, leaveAlone: boolean): string => {
+      // Left alone in two cases. A translated segment is not the text the offsets were
+      // taken in, and its numbers may have been rewritten by the translator. A segment
+      // still being revealed by the typewriter is cut mid-word, so a half-revealed "43"
+      // reads as a standalone "4" and would take a record that rolled 4; the markers wait
+      // for the reveal to finish, and the plain number is still true in the meantime.
+      if (leaveAlone) return content;
+      return applyGameDiceMarkers(content, readGameDicePlaceholderRecords(message), describeGameDiceRoll);
+    },
+    [describeGameDiceRoll],
+  );
+
   const active = segments[activeIndex] ?? null;
   const activeDisplayLen = active ? effectDisplayLength(active.content) : 0;
   const doneTyping = !!active && visibleChars >= activeDisplayLen;
@@ -1972,12 +2112,15 @@ export function GameNarration({
     !activeIsTranslating &&
     doneTyping &&
     gameTranslationMatchesMessage(activeSourceMessage, activeTranslationSource);
-  const activeVisibleContent =
+  const activeVisibleContent = markGameDiceNumbers(
     active && showActiveTranslationOnly
       ? activeTranslatedSegmentText!
       : active
         ? slicePreservingEffects(active.content, visibleChars)
-        : "";
+        : "",
+    activeSourceMessage,
+    showActiveTranslationOnly || !doneTyping,
+  );
   const activeCopyKey = active ? `active:${active.id}` : null;
   const activeCopyText = active ? (active.readableContent ?? stripGmTagsKeepReadables(active.content)) : "";
   const gameVoiceEnabled = Boolean(gameSpeechEnabled && ttsConfig?.autoplayGame);
@@ -2537,7 +2680,7 @@ export function GameNarration({
       if (latestAssistant && msg.id === latestAssistant.id) {
         // Current scene: include already-read segments + current active segment
         const allSegs = parseNarrationSegments(msg, speakerColors);
-        const skillCheckSegs = formatSkillCheckLogContent(msg);
+        const skillCheckSegs = formatSkillCheckLogContent(msg, localizeUi);
         // Apply segment edit overlays
         if (segmentEdits) {
           for (let si = 0; si < allSegs.length; si++) {
@@ -2572,7 +2715,7 @@ export function GameNarration({
       } else {
         // Past scenes: include ALL segments (narration, dialogue, party chat)
         const segs = parseNarrationSegments(msg, speakerColors);
-        const skillCheckSegs = formatSkillCheckLogContent(msg);
+        const skillCheckSegs = formatSkillCheckLogContent(msg, localizeUi);
         // Apply segment edit overlays
         if (segmentEdits) {
           for (let si = 0; si < segs.length; si++) {
@@ -2716,6 +2859,7 @@ export function GameNarration({
     segmentDeletes,
     sourceMessagesById,
     doneTyping,
+    localizeUi,
   ]);
   const logPageSize = Math.max(1, messagesPerPage > 0 ? messagesPerPage : logEntries.length || 20);
   const [visibleLogCount, setVisibleLogCount] = useState(logPageSize);
@@ -3826,6 +3970,7 @@ export function GameNarration({
   // allowed over the advance controls, so this is the only thing telling the player the
   // turn is not finished.
   const narrationNeedsAttention =
+    (outcomeNarrationFailed && !isStreaming && !scenePreparing) ||
     (!!sceneAnalysisFailed && !active) ||
     (!!generationFailed && !isStreaming && !scenePreparing && !sceneAnalysisFailed && !!onRetryGeneration) ||
     !!combatGenerationFailed ||
@@ -4128,11 +4273,15 @@ export function GameNarration({
       !!translatedSegmentText &&
       !isTranslating &&
       gameTranslationMatchesMessage(sourceMessage, translationSource);
-    const segmentDisplayContent = showTranslationOnly
-      ? translatedSegmentText!
-      : seg.type === "readable"
-        ? (seg.readableContent ?? seg.content)
-        : seg.content;
+    const segmentDisplayContent = markGameDiceNumbers(
+      showTranslationOnly
+        ? translatedSegmentText!
+        : seg.type === "readable"
+          ? (seg.readableContent ?? seg.content)
+          : seg.content,
+      sourceMessage,
+      showTranslationOnly,
+    );
     const canPeekPrompt =
       showMessageActions &&
       !!onPeekPrompt &&
@@ -4862,6 +5011,21 @@ export function GameNarration({
               </div>
             )}
 
+            {outcomeNarrationFailed && !isStreaming && !scenePreparing && (
+              <div
+                role="status"
+                className="flex flex-wrap items-center gap-2 py-3 text-sm text-[var(--muted-foreground)]"
+              >
+                <span>{localizeUi("ui.game.gamenarration.outcomeNarrationFailed")}</span>
+                {onRetryTurn && (
+                  <button type="button" onClick={onRetryTurn} className={NARRATION_ACTION_BTN}>
+                    <RefreshCw size={12} />
+                    {localizeUi("ui.game.gamenarration.retryOutcomeNarration")}
+                  </button>
+                )}
+              </div>
+            )}
+
             {/* GM generation failed — show inline retry */}
             {generationFailed && !isStreaming && !scenePreparing && !sceneAnalysisFailed && onRetryGeneration && (
               <div className="flex items-center gap-2 py-3">
@@ -4876,7 +5040,7 @@ export function GameNarration({
               </div>
             )}
 
-            {!scenePreparing && !active && !isStreaming && !sceneAnalysisFailed && (
+            {!scenePreparing && !active && !isStreaming && !sceneAnalysisFailed && !outcomeNarrationFailed && (
               <p className="text-sm text-[var(--muted-foreground)]">
                 {localizeUi("ui.game.gamenarration.sendAnActionToBeginTheScene")}
               </p>
@@ -5423,11 +5587,15 @@ export function GameNarration({
                         !!translatedSegmentText &&
                         !isTranslating &&
                         gameTranslationMatchesMessage(segmentSourceMessage, translationSource);
-                      const segmentDisplayContent = showTranslationOnly
-                        ? translatedSegmentText!
-                        : seg.type === "readable"
-                          ? (seg.readableContent ?? seg.content)
-                          : seg.content;
+                      const segmentDisplayContent = markGameDiceNumbers(
+                        showTranslationOnly
+                          ? translatedSegmentText!
+                          : seg.type === "readable"
+                            ? (seg.readableContent ?? seg.content)
+                            : seg.content,
+                        segmentSourceMessage,
+                        showTranslationOnly,
+                      );
                       const sourceRole = seg.sourceRole ?? sourceMessageRole;
                       const isUserAuthoredSource = sourceRole === "user" || sourceMessageRole === "user";
                       const isActiveSeg = active?.id === seg.id;

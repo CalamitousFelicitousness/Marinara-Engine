@@ -1,3 +1,4 @@
+import { useMessagePresetVariables } from "../../hooks/use-message-preset-variables";
 // ──────────────────────────────────────────────
 // Chat: Conversation message shell
 // Resolves character/persona identity, builds render context,
@@ -187,6 +188,7 @@ export const ConversationMessage = memo(function ConversationMessage({
   const quoteFormat = useUIStore((s) => s.quoteFormat);
   const conversationAvatarShape = useUIStore((s) => s.conversationAvatarShape);
   const activeChatMetadata = useChatStore((s) => s.activeChat?.metadata);
+  const presetVariables = useMessagePresetVariables(`${message.id}:${message.activeSwipeIndex ?? 0}`);
   const scopedRegexMode = useMemo(() => parseChatMetadata(activeChatMetadata).scopedRegexMode, [activeChatMetadata]);
   const { applyToAIOutput } = useApplyRegex();
 
@@ -319,7 +321,7 @@ export const ConversationMessage = memo(function ConversationMessage({
 
   // Conversation-only cosmetic display name (convoDisplayName). This component only
   // ever mounts in Conversation mode, so reading it here can't leak into RP/Game.
-  // It's read live (character map / active persona), so renaming reflects on
+  // It's read live (character map / chat persona), so renaming reflects on
   // existing messages. Identity and macros keep the base `name`; only the visible
   // label swaps. For personas we only have the *current* persona's live name, so we
   // never stamp it onto a different persona's historical messages.
@@ -331,12 +333,18 @@ export const ConversationMessage = memo(function ConversationMessage({
         : undefined
     : primaryCharInfo?.convoDisplayName;
   const headerDisplayName = convoDisplayName && convoDisplayName.trim() ? convoDisplayName : displayName;
+  const macroUserName = plainUserMessages
+    ? "User"
+    : msgPersona
+      ? (msgPersona.name ?? "User")
+      : (personaInfo?.name ?? "User");
 
   const macroContext = useMemo(
     () => ({
-      userName: displayName,
+      variables: presetVariables,
+      userName: macroUserName,
       persona: {
-        name: displayName,
+        name: macroUserName,
         description: plainUserMessages ? undefined : msgPersona ? msgPersona.description : personaInfo?.description,
         personality: plainUserMessages ? undefined : msgPersona ? msgPersona.personality : personaInfo?.personality,
         backstory: plainUserMessages ? undefined : msgPersona ? msgPersona.backstory : personaInfo?.backstory,
@@ -352,6 +360,8 @@ export const ConversationMessage = memo(function ConversationMessage({
     }),
     [
       displayName,
+      macroUserName,
+      presetVariables,
       msgPersona,
       personaInfo?.appearance,
       personaInfo?.backstory,
@@ -952,17 +962,13 @@ export const ConversationMessage = memo(function ConversationMessage({
   // ── Reaction chip row ──
   // Rendered by the shell as a sibling of the message row, OUTSIDE the
   // [data-card-css] container, so a character's bubble theme can't restyle it.
-  // Indented to sit under the message body; right-aligned for user bubbles.
+  // Sits before the revealable action row, indented under the message body
+  // and right-aligned for user bubbles.
   // Holds the whole-message reactions; segment-targeted ones render inline under
   // their segment inside the grouped layout instead.
   const reactionRow =
     messageReactions.length > 0 && !isHiddenCollapsed ? (
-      <div
-        className={cn(
-          "mari-message-reactions-row pb-1",
-          isBubbleStyle && isUser ? "flex justify-end px-4" : "pl-[4.5rem] pr-4",
-        )}
-      >
+      <div className={cn("mari-message-reactions-row pb-1", isBubbleStyle && isUser ? "flex justify-end" : "pl-14")}>
         <MessageReactions
           reactions={messageReactions}
           resolveReactorName={resolveReactorName}
@@ -1149,8 +1155,7 @@ export const ConversationMessage = memo(function ConversationMessage({
   if (groupedLayoutActive) {
     return (
       <>
-        <ConversationMessageGrouped ctx={ctx} msgRef={msgRef} />
-        {reactionRow}
+        <ConversationMessageGrouped ctx={ctx} msgRef={msgRef} reactionRow={reactionRow} />
         {modals}
       </>
     );
@@ -1161,43 +1166,49 @@ export const ConversationMessage = memo(function ConversationMessage({
     <>
       <div
         ref={msgRef}
-        className={cn(
-          "mari-message relative w-full min-w-0 max-w-full px-4 transition-colors",
-          !noHoverGroup && "group",
-          isBubbleStyle
-            ? cn("py-1", isUser ? "mari-message-user" : "mari-message-assistant", !isGrouped && "mt-0.5")
-            : cn(
-                "py-0.5 hover:bg-[var(--secondary)]/30",
-                isUser ? "mari-message-user" : "mari-message-assistant",
-                isGrouped ? "mt-0" : "mt-0.5",
-                isStreaming && "bg-[var(--secondary)]/20",
-              ),
-          isConversationStart && cn("rounded-lg ring-1", CONVERSATION_MESSAGE_CHROME_RING_CLASS),
-          isHiddenFromAI && cn("rounded-lg ring-1 saturate-75", CONVERSATION_MESSAGE_CHROME_RING_CLASS),
-          multiSelectMode && isSelected && MESSAGE_SELECTION_SURFACE_CLASS,
-        )}
+        className={cn("min-w-0", !noHoverGroup && "group")}
         tabIndex={0}
         data-message-id={message.id}
         data-message-role={message.role}
-        data-card-css={message.characterId ?? undefined}
-        data-grouped={isGrouped || undefined}
         onClick={handleMobileTap}
       >
-        {isUser && !isHiddenCollapsed && <MessageReplyPreview reply={extra.replyTo} />}
         <div
-          className={cn("min-w-0 max-w-full", !isBubbleStyle && "flex gap-4")}
-          data-component="ConversationMessage.Content"
-        >
-          {isBubbleStyle ? (
-            <ConversationMessageBubble ctx={ctx} controlsSlot={messageControlsAbove ? messageControls : null} />
-          ) : (
-            <ConversationMessageLine ctx={ctx} controlsSlot={messageControlsAbove ? messageControls : null} />
+          className={cn(
+            "mari-message relative w-full min-w-0 max-w-full px-4 transition-colors",
+            isBubbleStyle
+              ? cn("py-1", isUser ? "mari-message-user" : "mari-message-assistant", !isGrouped && "mt-0.5")
+              : cn(
+                  "py-0.5 hover:bg-[var(--secondary)]/30",
+                  isUser ? "mari-message-user" : "mari-message-assistant",
+                  isGrouped ? "mt-0" : "mt-0.5",
+                  isStreaming && "bg-[var(--secondary)]/20",
+                ),
+            isConversationStart && cn("rounded-lg ring-1", CONVERSATION_MESSAGE_CHROME_RING_CLASS),
+            isHiddenFromAI && cn("rounded-lg ring-1 saturate-75", CONVERSATION_MESSAGE_CHROME_RING_CLASS),
+            multiSelectMode && isSelected && MESSAGE_SELECTION_SURFACE_CLASS,
           )}
-        </div>
+          data-card-css={message.characterId ?? undefined}
+          data-grouped={isGrouped || undefined}
+        >
+          {isUser && !isHiddenCollapsed && <MessageReplyPreview reply={extra.replyTo} />}
+          <div
+            className={cn("min-w-0 max-w-full", !isBubbleStyle && "flex gap-4")}
+            data-component="ConversationMessage.Content"
+          >
+            {isBubbleStyle ? (
+              <ConversationMessageBubble ctx={ctx} controlsSlot={messageControlsAbove ? messageControls : null} />
+            ) : (
+              <ConversationMessageLine ctx={ctx} controlsSlot={messageControlsAbove ? messageControls : null} />
+            )}
+          </div>
 
-        {!messageControlsAbove && messageControls}
+          {!messageControlsAbove && <ConversationMessageSwipes ctx={ctx} />}
+        </div>
+        <div className="px-4">
+          {reactionRow}
+          {!messageControlsAbove && actionsRow}
+        </div>
       </div>
-      {reactionRow}
       {modals}
     </>
   );

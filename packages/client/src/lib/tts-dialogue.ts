@@ -128,6 +128,9 @@ function buildTTSConfigCacheSignature(config: TTSConfig, resolvedConnectionId: s
     config.elevenLabsStability,
     config.elevenLabsLanguageCode,
     config.voice,
+    config.skipTagContent ? "skip-tags" : "read-tags",
+    config.skipCodeBlocks !== false ? "skip-code" : "read-code",
+    config.skipBracketedText ? "skip-brackets" : "read-brackets",
     config.narratorVoiceEnabled ? "narrator-voice" : "narrator-global",
     config.narratorVoice,
     config.voiceMode,
@@ -296,14 +299,49 @@ const TTS_KEYCAP_MARK_RE = /\uFE0F?\u20E3/gu;
 const TTS_EMOJI_SEQUENCE_RE =
   /[\p{Regional_Indicator}\p{Extended_Pictographic}](?:\uFE0F|\p{Emoji_Modifier}|\u200D[\p{Regional_Indicator}\p{Extended_Pictographic}])*/gu;
 
+type TTSReadOptions = Partial<Pick<TTSConfig, "skipTagContent" | "skipCodeBlocks" | "skipBracketedText">> & {
+  preserveEmotionIndicators?: boolean;
+};
+
+/** Filter complete blocks before speaker extraction or line chunking can split them. */
+export function filterTTSText(value: string, options: TTSReadOptions = {}): string {
+  let filtered = value
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/(`{3,}|~{3,}|'{3,})[ \t]*(?:[\w+-]+[ \t]*\r?\n)?([\s\S]*?)\1/g, (_match, _fence, content: string) =>
+      options.skipCodeBlocks !== false ? " " : content,
+    );
+  if (options.skipTagContent) {
+    const parts: string[] = [];
+    const tags: string[] = [];
+    let cursor = 0;
+    for (const match of filtered.matchAll(/<\/?([a-z][\w:-]*)\b[^>]*>/gi)) {
+      if (tags.length === 0) parts.push(filtered.slice(cursor, match.index));
+      const name = match[1]!.toLowerCase();
+      if (name === "speaker") {
+        if (tags.length === 0) parts.push(match[0]);
+      } else if (match[0].startsWith("</")) {
+        const start = tags.lastIndexOf(name);
+        if (start >= 0) tags.length = start;
+      } else if (
+        !/\/\s*>$/.test(match[0]) &&
+        !/^(?:area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/.test(name)
+      ) {
+        tags.push(name);
+      }
+      cursor = match.index + match[0].length;
+    }
+    if (tags.length === 0) parts.push(filtered.slice(cursor));
+    filtered = parts.join(" ");
+  }
+  return options.skipBracketedText ? filtered.replace(/!?\[[^\]]*\](?:\([^)]*\))?/g, " ") : filtered;
+}
+
 export function cleanTTSInputText(
   value: string,
-  options: { preserveEmotionIndicators?: boolean; preserveParagraphs?: boolean } = {},
+  options: TTSReadOptions & { preserveParagraphs?: boolean } = {},
 ): string {
-  let cleaned = stripTTSMarkup(value)
+  let cleaned = stripTTSMarkup(filterTTSText(value, options))
     .replace(VN_TTS_LINE_PREFIX_RE, "")
-    .replace(/```[\s\S]*?```/g, " ")
-    .replace(/~~~[\s\S]*?~~~/g, " ")
     .replace(/`[^`\n]*`/g, " ")
     .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")
     .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
@@ -431,12 +469,9 @@ function splitCleanTTSInputIntoChunks(value: string, maxChars = DEFAULT_TTS_CHUN
   return packTTSChunkPieces(sentencePieces, maxChars);
 }
 
-export function splitTTSChunks(
-  value: string,
-  options: { preserveEmotionIndicators?: boolean; maxChars?: number } = {},
-): string[] {
+export function splitTTSChunks(value: string, options: TTSReadOptions & { maxChars?: number } = {}): string[] {
   const maxChars = options.maxChars ?? DEFAULT_TTS_CHUNK_CHAR_LIMIT;
-  return value
+  return filterTTSText(value, options)
     .split(/\r?\n+/)
     .map((chunk) => cleanTTSInputText(chunk, options))
     .filter(Boolean)
@@ -452,7 +487,7 @@ export function buildTTSVoiceRequests(
   options: { fastFirstChunk?: boolean } = {},
 ): TTSVoiceRequest[] {
   const maxChars = resolveTTSChunkCharLimit(config);
-  const normalized = decodeEncodedSpeakerTags(text);
+  const normalized = filterTTSText(decodeEncodedSpeakerTags(text), config);
   const hasSpeakerTags = hasSpeakerTag(normalized);
   const shouldExtractUtterances = config.dialogueOnly || hasSpeakerTags;
   const utterances =
@@ -465,7 +500,7 @@ export function buildTTSVoiceRequests(
             // removed as blocks, but with paragraph breaks kept: they are the
             // chunker's first and most natural split point.
             {
-              text: cleanTTSInputText(normalized, { preserveParagraphs: true }),
+              text: cleanTTSInputText(normalized, { ...config, preserveParagraphs: true }),
               speaker: fallbackSpeaker || undefined,
             } satisfies TTSUtterance,
           ];
@@ -481,7 +516,7 @@ export function buildTTSVoiceRequests(
     const voice = resolveTTSVoiceForSpeaker(config, speaker, resolvedCharacterId);
     if (config.source === "elevenlabs" && !voice) return [];
 
-    const split = splitTTSChunks(utterance.text, { maxChars });
+    const split = splitTTSChunks(utterance.text, { ...config, maxChars });
     // Applied before the pause pass below, which keys on the last chunk of an
     // utterance: splitting afterwards would move the pause off the real tail.
     const chunks =

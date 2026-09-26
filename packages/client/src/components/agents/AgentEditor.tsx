@@ -64,6 +64,7 @@ import {
 } from "../../hooks/use-knowledge-sources";
 import { cn } from "../../lib/utils";
 import { MacroTextarea } from "../ui/MacroTextarea";
+import { formatEstimatedTokens } from "../../lib/character-token-count";
 import { StoryboardAgentSettingsPanel } from "./StoryboardAgentSettingsPanel";
 import {
   getAgentRunIntervalMeta,
@@ -81,6 +82,7 @@ import { HelpTooltip } from "../ui/HelpTooltip";
 import { SettingsSwitch } from "../panels/settings/SettingControls";
 import {
   BUILT_IN_AGENTS,
+  estimateTextTokens,
   BUILT_IN_TOOLS,
   DEFAULT_AGENT_CONTEXT_SIZE,
   DEFAULT_AGENT_TOOLS,
@@ -1914,6 +1916,15 @@ export function AgentEditor() {
   };
 
   const isPending = updateAgent.isPending || createAgent.isPending;
+  const promptTemplateHelp = (
+    <p className="min-w-0 flex-1 text-[0.625rem] text-[var(--muted-foreground)]">
+      {builtIn
+        ? localizeUi("ui.agents.agenteditor.leaveEmptyToUseTheBuiltInDefaultPrompt")
+        : localResultType === "text_rewrite"
+          ? localizeUi("ui.agents.agenteditor.writeTheFullSystemPromptForThisCustomEditor")
+          : localizeUi("ui.agents.agenteditor.writeTheFullSystemPromptForThisCustomAgent")}
+    </p>
+  );
 
   return (
     <div className="mari-editor-shell mari-editor-legacy-bridge flex flex-1 flex-col overflow-hidden">
@@ -4043,13 +4054,21 @@ export function AgentEditor() {
                   <pre className="w-full max-h-[50vh] overflow-y-auto resize-y rounded-xl bg-[var(--secondary)] px-4 py-3 font-mono text-xs leading-relaxed ring-1 ring-[var(--border)] text-[var(--muted-foreground)] whitespace-pre-wrap">
                     {defaultPrompt || "No default prompt."}
                   </pre>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                    {promptTemplateHelp}
+                    <p className="ml-auto shrink-0 text-right text-[0.625rem] text-[var(--muted-foreground)]">
+                      {formatEstimatedTokens(estimateTextTokens(defaultPrompt || ""), localizeUi)}
+                    </p>
+                  </div>
                   <span className="absolute right-3 top-2 rounded-md bg-[var(--card)] px-1.5 py-0.5 text-[0.5625rem] font-medium text-[var(--muted-foreground)] ring-1 ring-[var(--border)]">
                     {localizeUi("ui.agents.agenteditor.defaultClickCopyDefaultToEditToCustomize")}
                   </span>
                 </div>
               ) : (
                 <MacroTextarea
+                  showTokenCount
                   value={localPrompt}
+                  tokenCountFooter={promptTemplateHelp}
                   onChange={(value) => {
                     setLocalPrompt(value);
                     markDirty();
@@ -4064,13 +4083,6 @@ export function AgentEditor() {
                   className="w-full resize-y rounded-xl bg-[var(--secondary)] px-4 py-3 font-mono text-xs leading-relaxed ring-1 ring-[var(--border)] placeholder:text-[var(--muted-foreground)]/50 focus:outline-none focus:ring-2 focus:ring-[var(--ring)] max-h-[60vh] overflow-y-auto"
                 />
               )}
-              <p className="mt-1 text-[0.625rem] text-[var(--muted-foreground)]">
-                {builtIn
-                  ? localizeUi("ui.agents.agenteditor.leaveEmptyToUseTheBuiltInDefaultPrompt")
-                  : localResultType === "text_rewrite"
-                    ? localizeUi("ui.agents.agenteditor.writeTheFullSystemPromptForThisCustomEditor")
-                    : localizeUi("ui.agents.agenteditor.writeTheFullSystemPromptForThisCustomAgent")}
-              </p>
 
               <div className="mt-4 space-y-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -4148,6 +4160,7 @@ export function AgentEditor() {
                             placeholder={localizeUi("ui.agents.agenteditor.shortDescriptionShownInChatSettings")}
                           />
                           <MacroTextarea
+                            showTokenCount
                             value={option.promptTemplate}
                             onChange={(value) => handleUpdatePromptTemplate(option.id, { promptTemplate: value })}
                             rows={7}

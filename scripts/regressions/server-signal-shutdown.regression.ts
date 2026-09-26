@@ -1,8 +1,8 @@
 // Exercise the production entrypoint: a PID-targeted interrupt must reach the
 // server even with a TTY, and duplicate terminal signals must not cut off close.
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { execFileSync, spawn } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { createConnection, createServer } from "node:net";
@@ -18,6 +18,43 @@ const address = probe.address();
 assert.ok(address && typeof address !== "string");
 const port = address.port;
 await new Promise<void>((done) => probe.close(() => done()));
+// PID-targeted kill is forceful on Windows. Exercise its actual console delivery instead.
+if (process.platform === "win32") {
+  try {
+    execFileSync(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        join(root, "scripts/regressions/fixtures/windows-console-shutdown.ps1"),
+        "-Root",
+        root,
+        "-Loader",
+        pathToFileURL(serverRequire.resolve("tsx/esm")).href,
+        "-DataDir",
+        dir,
+        "-Port",
+        String(port),
+      ],
+      { stdio: "inherit", timeout: 45_000 },
+    );
+  } catch (error) {
+    for (const name of ["progress.log", "stdout.log", "stderr.log"]) {
+      try {
+        process.stderr.write(`Windows console fixture ${name}:\n${readFileSync(join(dir, name), "utf8")}\n`);
+      } catch {
+        // A failure before process creation may leave no redirected output.
+      }
+    }
+    throw error;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+  process.exit(0);
+}
 const child = spawn(
   process.execPath,
   [
@@ -81,7 +118,7 @@ try {
   child.kill("SIGINT");
   await waitFor(() => output.includes("Received SIGINT; shutting down"), 2_000);
   process.kill(serverPid, "SIGINT");
-  assert.equal(await exited, 130, "The launcher should retain its signal exit code");
+  assert.equal(await exited, 0, "A graceful server shutdown must not become a launcher error");
   assert.ok(output.includes("Shutdown complete"), `Repeated interrupts must finish graceful close: ${output}`);
   assert.ok(!output.includes("forcing exit now"), output);
   assert.throws(() => process.kill(serverPid!, 0), "No server may survive the launcher");
@@ -100,3 +137,23 @@ try {
   rmSync(dir, { recursive: true, force: true });
 }
 console.log("Production server PID-targeted TTY interrupt and duplicate-signal graceful shutdown passed.");
+
+// A hung-up PTY returns EIO on stdout; an isTTY stub over pipes cannot test
+// the logger's exit flush or the session stamp after the terminal disappears.
+for (const nodeEnv of ["production", "development"]) {
+  for (const mode of ["hangup", "signal", "busy-hangup"]) {
+    execFileSync(
+      "python3",
+      [
+        join(root, "scripts/regressions/fixtures/posix-terminal-shutdown.py"),
+        root,
+        process.execPath,
+        pathToFileURL(serverRequire.resolve("tsx/esm")).href,
+        mode,
+        nodeEnv,
+      ],
+      { stdio: "inherit", timeout: 40_000 },
+    );
+  }
+}
+console.log("Real POSIX terminal hangup flushed confirmed saves, released the lease, and stamped a clean exit.");

@@ -230,9 +230,21 @@ export function AdvancedParametersSection({
           <p className="text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]">
             {localizeUi("settings.customGenerationParameters.availabilityHint")}
           </p>
+          {baseline.isError && (
+            <>
+              <p className="text-[0.625rem] text-[var(--muted-foreground)]">
+                {localizeUi("generationParameters.effective.unavailable")}
+              </p>
+              <AgentSettingsActionButton type="button" onClick={() => void baseline.refetch()}>
+                {localizeUi("generationParameters.effective.retry")}
+              </AgentSettingsActionButton>
+            </>
+          )}
           <ChatGenerationParametersFields
             value={{ ...effectiveParams, customParameters: chatCustomParameters }}
             showServiceTier={conn?.provider === "openrouter" || conn?.provider === "nanogpt"}
+            provider={typeof conn?.provider === "string" ? conn.provider : undefined}
+            model={typeof conn?.model === "string" ? conn.model : undefined}
             sources={{
               overrides,
               baseline: baseline.data,
@@ -372,6 +384,7 @@ export function AdvancedParametersSection({
             <AgentSettingsActionButton
               type="button"
               variant="primary"
+              disabled={saveDefaults.isPending}
               onClick={saveAsConnectionDefault}
               className="w-full"
             >

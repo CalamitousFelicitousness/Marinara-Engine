@@ -21,15 +21,6 @@ blockExoticSubdeps: true
 patchedDependencies:
   onnxruntime-node@1.24.3: patches/onnxruntime-node@1.24.3.patch
 
-# GHSA-vwc7-r8mq-g2x9 needs a pre-existing destination symlink. Both extraction
-# callers (sidecar and the patched ONNX installer) now use private mkdtemp roots.
-# archive-extraction-security.regression.ts proves containment and retry privacy.
-# ponytail: remove this exception and the ONNX patch when upstream ships a fix;
-# any new adm-zip extraction caller must preserve the same private-root invariant.
-auditConfig:
-  ignoreGhsas:
-    - GHSA-vwc7-r8mq-g2x9
-
 # Native/build dependencies permitted to run install scripts.
 # pnpm 11 replaced onlyBuiltDependencies with the allowBuilds map. The list is
 # retained so a transitional pnpm 10 launcher still permits the same four
@@ -54,7 +45,7 @@ overrides:
   "@babel/plugin-transform-modules-systemjs": "7.29.4"
   "@hono/node-server": "2.0.10"
   "@modelcontextprotocol/sdk": "1.30.0"
-  "adm-zip@0.5.17": "0.6.0"
+  "adm-zip@<0.6.1": "0.6.1"
   body-parser: "2.3.0"
   brace-expansion: "5.0.9"
   "brace-expansion@5.0.5": "5.0.9"

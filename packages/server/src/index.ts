@@ -120,6 +120,11 @@ async function main() {
   process.on("SIGINT", () => {
     void shutdown("SIGINT");
   });
+  if (process.platform !== "win32") {
+    process.on("SIGHUP", () => {
+      void shutdown("SIGHUP");
+    });
+  }
 
   try {
     await app.listen({ port, host });

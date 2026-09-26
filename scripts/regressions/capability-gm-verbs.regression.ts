@@ -37,11 +37,13 @@ import {
   GM_VERB_TABLE_ASSET_PATH,
   GM_VERB_TABLE_MAX_BYTES,
   gmVerbMetadataKeyIssue,
+  gmVerbSchema,
   gmVerbTableSchema,
   parseGmVerbTableWithCompat,
   RESERVED_GM_TAG_NAMES,
 } from "../../packages/shared/src/schemas/gm-verb-table.schema.js";
 import { CHAT_PRESET_EXCLUDED_METADATA_KEYS } from "../../packages/shared/src/types/chat-preset.js";
+import { CAPABILITY_COMMAND_TAG_PATTERN } from "../../packages/server/src/services/capability-packages/capability-command-registry.service.js";
 
 const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
 
@@ -335,6 +337,48 @@ assert.deepEqual(unpinnedTags, [], `new built-in GM tags are not in RESERVED_GM_
 // Case-folding is the point of the pin: the reminder renders [Note:/[Book: capitalized while the
 // shipped parse regex is case-insensitive.
 assert.ok(reserved.has("note") && reserved.has("book"), "the journal tags are pinned case-folded");
+// `roll` is reserved BY HAND, because neither sweep above can reach it: Roleplay's own `[roll:`
+// command is parsed in a mode this corpus does not cover, and the Game placeholder's inner
+// `[roll: 2d6+3]` is written by the model rather than rendered by a reminder. Both are shadowable —
+// a verb intercepts a tag by matching the capability command pattern, which both spellings do — so
+// the pin is the assertion below rather than a derivation.
+assert.ok(reserved.has("roll"), "`roll` stays reserved: a package verb named roll shadows both [roll: readers");
+const capabilityCommandTag = new RegExp(`^${CAPABILITY_COMMAND_TAG_PATTERN}$`, "i");
+assert.match(
+  "[roll: 2d6+3]",
+  capabilityCommandTag,
+  "the placeholder's inner tag is shadowable, which is why roll is reserved",
+);
+assert.match('[roll: character="Mari" notation="2d6"]', capabilityCommandTag, "so is the Roleplay command");
+assert.equal(
+  gmVerbSchema.safeParse({ name: "roll", description: "Shadow the dice", effect: "event" }).success,
+  false,
+  "and the schema refuses a package verb that would claim the name",
+);
+// `branch` and `on` are reserved by hand too, and they are NOT the same case. `[branch: crates]`
+// matches the capability command pattern exactly, so a package verb named branch would intercept
+// every one-request dice block before the engine's arm saw it. `on` cannot be shadowed at all —
+// `[on success]` puts a space between the name and the `]` — so it is reserved to close the name
+// space and is pinned here as defensive, never as the reason the delimiters are stripped.
+assert.ok(reserved.has("branch"), "`branch` stays reserved: a package verb named branch shadows the block opener");
+assert.ok(reserved.has("on"), "`on` stays reserved, defensively");
+assert.match(
+  "[branch: crates]",
+  capabilityCommandTag,
+  "the block opener is shadowable, which is why branch is reserved",
+);
+for (const delimiter of ["[on success]", "[on failure]", "[/branch]"]) {
+  assert.doesNotMatch(
+    delimiter,
+    capabilityCommandTag,
+    `${delimiter} cannot be shadowed by a package verb, so reserving its name buys nothing`,
+  );
+}
+assert.equal(
+  gmVerbSchema.safeParse({ name: "branch", description: "Shadow the block", effect: "event" }).success,
+  false,
+  "and the schema refuses a package verb that would claim the block opener",
+);
 
 // ── Pin 2: engine-owned metadata namespaces ──────────────────────────────────
 
@@ -623,7 +667,9 @@ function parseChatMetadataReadKeys(source: string): string[] {
     if (binding) bound.add(binding[1]!);
   }
   for (const name of bound) {
-    for (const read of source.matchAll(new RegExp(`\\b${escapedForPattern(name)}\\s*\\??\\.\\s*([a-z][a-zA-Z0-9]*)`, "g"))) {
+    for (const read of source.matchAll(
+      new RegExp(`\\b${escapedForPattern(name)}\\s*\\??\\.\\s*([a-z][a-zA-Z0-9]*)`, "g"),
+    )) {
       keys.push(read[1]!);
     }
   }
@@ -761,18 +807,24 @@ assert.deepEqual(
 );
 // The honest boundary of the whole derivation, and the half of it that a count can express: a write
 // handed a variable or a helper's return value, in either write shape. Its keys cannot be read from
-// here at all, so the COUNT is pinned — a twenty-first fails this regression until someone reads it
-// by hand and either widens a walk above or adds the namespace to
-// ENGINE_OWNED_METADATA_KEY_PREFIXES. Eighteen are `patchMetadata`/`updateMetadata` calls; the other
+// here at all, so the COUNT is pinned — another opaque call fails until someone reads it by hand
+// and either widens a walk above or adds the namespace to ENGINE_OWNED_METADATA_KEY_PREFIXES.
+// Twenty are `patchMetadata`/`updateMetadata` calls; the other
 // two are route PATCHes, and neither is a live gap today — one is the mutation hook's own
 // implementation, whose keys the client-mutation arm reads at its call sites instead, and the other
 // is a debounced scene patch assembled into a variable whose four keys the literal beside it repeats
-// verbatim. The other half of the boundary — a read off a parameter inside a helper — has no count
+// verbatim. The twenty-first call is st-chat.importer.ts passing `remappedMetadata`: it preserves
+// existing metadata, remaps Advanced Memory knowledge/narrator settings and roster anchors, and
+// rewrites summary, summaryEntries, and lastAutomaticSummaryMessageId. `advancedMemory` is now reserved;
+// `summary` and `last` already were. This is an audited variable payload, not a newly ignored literal.
+// The twenty-second is legacy-chat-parameter-migration.ts passing buildLegacyChatParameterPatch, which
+// writes only chatParameters and chatParameterOverrides, both under the reserved `chat` prefix.
+// The other half of the boundary — a read off a parameter inside a helper — has no count
 // to pin, which is why sub-source 7 exists rather than a seventh sweep. The docs state both limits.
 assert.equal(
   unreadableWriteCalls,
-  20,
-  `chat-metadata writes this sweep cannot read statically changed: expected 20, found ${unreadableWriteCalls}. ` +
+  22,
+  `chat-metadata writes this sweep cannot read statically changed: expected 22, found ${unreadableWriteCalls}. ` +
     "This count is a boundary marker, not a budget, so do not simply edit the number to match. Read the " +
     "call this added by hand — the sites are listed below — and decide what it writes: if it commits a key " +
     "under a namespace that is not already in ENGINE_OWNED_METADATA_KEY_PREFIXES, add that namespace (or " +
@@ -782,9 +834,18 @@ assert.equal(
 );
 
 const ownedPrefixes = new Set<string>(ENGINE_OWNED_METADATA_KEY_PREFIXES);
-const unpinnedPrefixes = [...new Set([...engineMetadataKeys].map((key) => /^[a-z]+/.exec(key)?.[0] ?? key))]
-  .filter((prefix) => !ownedPrefixes.has(prefix))
-  .sort();
+const unpinnedPrefixes = [
+  ...new Set(
+    [...engineMetadataKeys]
+      .filter(
+        (key) =>
+          !ENGINE_OWNED_METADATA_KEY_PREFIXES.some(
+            (owned) => key === owned || (key.startsWith(owned) && /^[A-Z]/.test(key.charAt(owned.length))),
+          ),
+      )
+      .map((key) => /^[a-z]+/.exec(key)?.[0] ?? key),
+  ),
+].sort();
 assert.deepEqual(
   unpinnedPrefixes,
   [],
@@ -819,6 +880,20 @@ assert.match(
   gmVerbMetadataKeyIssue("conversation-calls", "conversationCallsEnabled") ?? "",
   /engine-owned metadata namespace "conversationCalls"/,
 );
+// Advanced Memory belongs to the host: package IDs must not claim its settings or coordinator.
+for (const [packageId, metadataKey] of [
+  ["advanced", "advancedMemory"],
+  ["advanced", "advancedMemoryState"],
+  ["advanced", "advancedMemoryRosterChanges"],
+  ["advanced-memory", "advancedMemory"],
+  ["advanced-memory", "advancedMemoryState"],
+  ["advanced-memory", "advancedMemoryRosterChanges"],
+] as const) {
+  assert.ok(engineMetadataKeys.has(metadataKey), `the protected Advanced Memory key ${metadataKey} exists`);
+  assert.match(gmVerbMetadataKeyIssue(packageId, metadataKey) ?? "", /engine-owned metadata namespace/);
+}
+assert.equal(gmVerbMetadataKeyIssue("advanced-tools", "advancedToolsEnabled"), null);
+assert.equal(gmVerbMetadataKeyIssue("advanced", "advancedToolsEnabled"), null);
 // Denylist, exact match on a namespace only the index-signature sweep can find: the shipped
 // `background` package normalizes to `background`, which is an Engine chat-metadata key itself.
 assert.ok(engineMetadataKeys.has("background"), "the undeclared key behind the `background` refusal is real");
@@ -895,10 +970,7 @@ refusesVerb(
   { ...weatherVerb, description: "Line one.\u2028Line two." },
   "a Unicode line separator breaks the prompt line too",
 );
-refusesVerb(
-  { ...weatherVerb, description: "Set the sky.\tThen stop." },
-  "a tab is refused as a control character",
-);
+refusesVerb({ ...weatherVerb, description: "Set the sky.\tThen stop." }, "a tab is refused as a control character");
 refusesVerb({ ...weatherVerb, metadataKey: undefined }, "a state verb must name its metadata key");
 refusesVerb({ ...standingVerb, metadataKey: "pixelforgeStanding" }, "an event verb must not squat a key");
 refusesVerb({ ...weatherVerb, effect: "broadcast" }, "an unknown effect is refused");

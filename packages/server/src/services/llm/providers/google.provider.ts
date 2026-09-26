@@ -55,6 +55,7 @@ interface GeminiUsageMetadata {
   candidatesTokenCount: number;
   totalTokenCount: number;
   thoughtsTokenCount?: number;
+  cachedContentTokenCount?: number;
 }
 
 interface GeminiResponsePayload {
@@ -350,12 +351,25 @@ function formatGeminiPromptBlock(feedback: GeminiPromptFeedback | undefined): st
   return message ? `${reason}: ${message}` : reason;
 }
 
-function geminiFinishReasonError(finishReason: string | undefined, hasOutput: boolean): string | null {
+export class GeminiNoContentError extends Error {
+  constructor(
+    readonly finishReason: string,
+    readonly usage?: LLMUsage,
+  ) {
+    super(`Gemini finished without content (${finishReason})`);
+  }
+}
+
+function geminiFinishReasonError(
+  finishReason: string | undefined,
+  hasOutput: boolean,
+  usage?: LLMUsage,
+): GeminiNoContentError | null {
   const normalized = typeof finishReason === "string" ? finishReason.trim().toUpperCase() : "";
   if (!normalized || normalized === "STOP") return null;
   if (hasOutput && normalized === "MAX_TOKENS") return null;
   if (hasOutput) return null;
-  return `Gemini finished without content (${finishReason})`;
+  return new GeminiNoContentError(finishReason!, usage);
 }
 
 function assertGeminiUsableResponse(
@@ -371,8 +385,8 @@ function assertGeminiUsableResponse(
 
   if (!candidate) throw new Error("Gemini returned no candidates. The prompt may have been blocked or filtered.");
 
-  const finishError = geminiFinishReasonError(candidate.finishReason, hasOutput);
-  if (finishError) throw new Error(finishError);
+  const finishError = geminiFinishReasonError(candidate.finishReason, hasOutput, geminiUsage(payload.usageMetadata));
+  if (finishError) throw finishError;
 
   if (!hasOutput) throw new Error("Gemini returned no content.");
 }
@@ -555,6 +569,7 @@ function geminiUsage(usage?: GeminiUsageMetadata): LLMUsage | undefined {
     completionTokens: usage.candidatesTokenCount,
     totalTokens: usage.totalTokenCount,
     completionReasoningTokens: usage.thoughtsTokenCount,
+    cachedPromptTokens: usage.cachedContentTokenCount,
   };
 }
 
@@ -774,8 +789,9 @@ export class GoogleProvider extends BaseLLMProvider {
           const finishError = geminiFinishReasonError(
             candidate?.finishReason,
             responseText.length > 0 || toolCalls.length > 0 || parts.length > 0,
+            streamUsage,
           );
-          if (finishError) throw new Error(finishError);
+          if (finishError) throw finishError;
 
           for (const part of parts) {
             // Gemini sends functionCall args as an object, not a partial-JSON delta, so a
@@ -815,8 +831,8 @@ export class GoogleProvider extends BaseLLMProvider {
     // A tools round may legitimately carry no prose at all — only the functionCall — so the
     // empty-content guard has to clear on tool calls too.
     if (!responseText && toolCalls.length === 0 && !options.signal?.aborted) {
-      const finishError = geminiFinishReasonError(lastFinishReason, false);
-      if (finishError) throw new Error(finishError);
+      const finishError = geminiFinishReasonError(lastFinishReason, false, streamUsage);
+      if (finishError) throw finishError;
       if (!sawCandidate)
         throw new Error("Gemini stream returned no candidates. The prompt may have been blocked or filtered.");
       throw new Error("Gemini stream returned no content.");
@@ -943,10 +959,11 @@ export class GoogleProvider extends BaseLLMProvider {
               ? { presencePenalty: options.presencePenalty }
               : {}),
             ...(thinkingConfig ? { thinkingConfig } : {}),
-            ...googleResponseFormatConfig(options.responseFormat),
             ...(options.stop?.length ? { stopSequences: options.stop } : {}),
           }
         : {}),
+      // An explicitly requested output protocol is not an inferred model sampler.
+      ...googleResponseFormatConfig(options.responseFormat),
     };
 
     if (systemMessages.length > 0) {
@@ -1008,10 +1025,7 @@ export class GoogleProvider extends BaseLLMProvider {
       }
       if (json.usageMetadata) {
         return {
-          promptTokens: json.usageMetadata.promptTokenCount,
-          completionTokens: json.usageMetadata.candidatesTokenCount,
-          totalTokens: json.usageMetadata.totalTokenCount,
-          completionReasoningTokens: json.usageMetadata.thoughtsTokenCount,
+          ...geminiUsage(json.usageMetadata)!,
           finishReason: normalizeGeminiFinishReason(candidate?.finishReason),
         };
       }
@@ -1072,12 +1086,7 @@ export class GoogleProvider extends BaseLLMProvider {
           if (blockReason) throw new Error(`Gemini blocked the prompt (${blockReason})`);
 
           if (parsed.usageMetadata) {
-            streamUsage = {
-              promptTokens: parsed.usageMetadata.promptTokenCount,
-              completionTokens: parsed.usageMetadata.candidatesTokenCount,
-              totalTokens: parsed.usageMetadata.totalTokenCount,
-              completionReasoningTokens: parsed.usageMetadata.thoughtsTokenCount,
-            };
+            streamUsage = geminiUsage(parsed.usageMetadata);
           }
           const candidate = parsed.candidates?.[0];
           const parts: GeminiPart[] = candidate?.content?.parts ?? [];
@@ -1088,8 +1097,9 @@ export class GoogleProvider extends BaseLLMProvider {
           const finishError = geminiFinishReasonError(
             candidate?.finishReason,
             responseText.length > 0 || parts.length > 0,
+            streamUsage,
           );
-          if (finishError) throw new Error(finishError);
+          if (finishError) throw finishError;
 
           for (const part of parts) {
             // Capture thought signature from any part
@@ -1114,8 +1124,8 @@ export class GoogleProvider extends BaseLLMProvider {
     }
 
     if (!responseText) {
-      const finishError = geminiFinishReasonError(lastFinishReason, false);
-      if (finishError) throw new Error(finishError);
+      const finishError = geminiFinishReasonError(lastFinishReason, false, streamUsage);
+      if (finishError) throw finishError;
       if (!sawCandidate)
         throw new Error("Gemini stream returned no candidates. The prompt may have been blocked or filtered.");
       throw new Error("Gemini stream returned no content.");

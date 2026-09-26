@@ -688,43 +688,48 @@ export function AuthorNotesPanel({
       )}
 
       <MacroTextarea
+        showTokenCount
         value={notes}
+        tokenCountAlign="start"
         onChange={(value) => patchDraft({ notes: value })}
         title={editingPreset ? editingPreset.name : localizeUi("ui.chat.authornotespanel.authorSNotes")}
         placeholder={localizeUi("ui.chat.authornotespanel.eGKeepTheToneDarkAndSuspensefulThe")}
         rows={4}
         ariaLabel={localizeUi("ui.chat.authornotespanel.authorSNotes")}
         wrapperClassName="mari-author-notes-field min-w-0"
+        tokenCountFooter={
+          <div className="flex items-center gap-2">
+            <span className="shrink-0 text-[0.625rem] text-[var(--muted-foreground)]">
+              {localizeUi("ui.chat.authornotespanel.injectionDepth")}
+            </span>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={depthStr}
+              onChange={(e) => patchDraft({ depthStr: e.target.value.replace(/[^0-9]/g, "") })}
+              onBlur={() => patchDraft({ depthStr: String(parseAuthorNoteDepth(depthStr)) })}
+              className="mari-chrome-field mari-chrome-field--compact w-14 !rounded-md px-2 py-0.5 text-center text-[0.625rem] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            />
+            <div className="ml-auto flex shrink-0 items-center gap-1.5">
+              {dirty && (
+                <span className="text-[0.625rem] italic text-[var(--muted-foreground)]">
+                  {localizeUi("ui.chat.authornotespanel.editedMarker")}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => void saveDraft()}
+                disabled={!dirty || savePending}
+                className="rounded-md border border-[var(--border)] bg-[var(--secondary)] px-2 py-0.5 text-[0.625rem] text-[var(--foreground)] transition-colors hover:bg-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {localizeUi("ui.chat.authornotespanel.save")}
+              </button>
+            </div>
+          </div>
+        }
         className="mari-chrome-field resize-none !rounded-md px-2.5 py-2 text-xs leading-relaxed"
       />
-      <div className="mt-2 flex items-center gap-2">
-        <span className="shrink-0 text-[0.625rem] text-[var(--muted-foreground)]">
-          {localizeUi("ui.chat.authornotespanel.injectionDepth")}
-        </span>
-        <input
-          type="text"
-          inputMode="numeric"
-          value={depthStr}
-          onChange={(e) => patchDraft({ depthStr: e.target.value.replace(/[^0-9]/g, "") })}
-          onBlur={() => patchDraft({ depthStr: String(parseAuthorNoteDepth(depthStr)) })}
-          className="mari-chrome-field mari-chrome-field--compact w-14 !rounded-md px-2 py-0.5 text-center text-[0.625rem] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-        />
-        <div className="ml-auto flex shrink-0 items-center gap-1.5">
-          {dirty && (
-            <span className="text-[0.625rem] italic text-[var(--muted-foreground)]">
-              {localizeUi("ui.chat.authornotespanel.editedMarker")}
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={() => void saveDraft()}
-            disabled={!dirty || savePending}
-            className="rounded-md border border-[var(--border)] bg-[var(--secondary)] px-2 py-0.5 text-[0.625rem] text-[var(--foreground)] transition-colors hover:bg-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {localizeUi("ui.chat.authornotespanel.save")}
-          </button>
-        </div>
-      </div>
+
       <p className="mt-1 text-[0.5625rem] text-[var(--muted-foreground)]/60">
         {localizeUi("ui.chat.authornotespanel.depth0AfterTheLatestMessage4FourMessages")}
       </p>

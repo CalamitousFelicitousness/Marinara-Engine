@@ -117,11 +117,28 @@ for (const theme of ["dark", "light"] as const) {
   }, info) => {
     const data = await fixture(request, true);
     try {
-      await open(page, data.chat.id, theme);
+      await open(page, data.chat.id, theme, { appAccentColor: "#3b82f6" });
       const vn = page.locator("[data-roleplay-vn]");
       await expect(vn).toContainText("A small light flickers across the desk.");
-      await expect(vn).not.toContainText("The archive falls quiet.");
       await expect(vn.getByRole("img", { name: "Mari", exact: true })).toBeVisible();
+      // Test paragraph progression in VN mode
+      const prevBtn = vn.getByRole("button", { name: "Previous paragraph" });
+      const nextBtn = vn.getByRole("button", { name: "Next paragraph" });
+      const navigation = vn.locator("[data-roleplay-vn-navigation]");
+      await expect(prevBtn).toHaveCSS("color", "rgb(59, 130, 246)");
+      await expect(nextBtn).toHaveCSS("color", "rgb(59, 130, 246)");
+      await expect(navigation.locator(":scope > span")).toHaveCSS("color", "rgb(59, 130, 246)");
+      await expect(nextBtn).toBeDisabled();
+      await expect(prevBtn).toBeEnabled();
+      await prevBtn.click();
+      await expect(vn).toContainText('"We have a new experiment," Mari says.');
+      await prevBtn.click();
+      await expect(vn).toContainText("The archive falls quiet.");
+      await expect(prevBtn).toBeDisabled();
+      await nextBtn.click();
+      await expect(vn).toContainText('"We have a new experiment," Mari says.');
+      await nextBtn.click();
+      await expect(vn).toContainText("A small light flickers across the desk.");
       await expect(page.locator("[data-chat-scroll] [data-message-id]")).toHaveCount(0);
       const input = page.locator(".mari-chat-input textarea");
       await expect(input).toBeVisible();
@@ -158,11 +175,72 @@ for (const theme of ["dark", "light"] as const) {
   });
 }
 
+for (const translationOnly of [false, true]) {
+  test(`Roleplay VN shows aligned translations and preserves mismatched source (${translationOnly})`, async ({
+    page,
+    request,
+  }) => {
+    const data = await fixture(request);
+    try {
+      await request.patch(`/api/chats/${data.chat.id}/metadata`, { data: { translationDisplayOnly: translationOnly } });
+      await open(page, data.chat.id);
+      const paragraph = page.getByRole("region", { name: "Current paragraph" });
+      await expect(paragraph).toContainText("A small light flickers across the desk.");
+      for (const translation of ["Uno.\n\nDos.\n\nTres.", "Merged translation."]) {
+        await page.evaluate(
+          async ({ id, source, translation }) => {
+            const { useTranslationStore } = await import("/src/stores/translation.store.ts" as string);
+            useTranslationStore.getState().setTranslation(id, translation, source);
+          },
+          { id: data.message.id, source: data.message.content, translation },
+        );
+        if (translation.startsWith("Uno")) {
+          await expect(paragraph).toContainText("Tres.");
+          await page.getByRole("button", { name: "Previous paragraph" }).click();
+          await expect(paragraph).toContainText("Dos.");
+          if (!translationOnly) await expect(paragraph).toContainText("We have a new experiment");
+        } else {
+          await expect(paragraph).toContainText("We have a new experiment");
+          await expect(paragraph).not.toContainText("Merged translation");
+        }
+      }
+    } finally {
+      await data.cleanup();
+    }
+  });
+}
+
+test("Roleplay VN loads preceding pages without opening history", async ({ page, request }) => {
+  const data = await fixture(request);
+  try {
+    for (const content of ["Middle turn.", "Newest turn."]) {
+      expect(
+        (
+          await request.post(`/api/chats/${data.chat.id}/messages`, {
+            data: { role: "assistant", characterId: data.character.id, content },
+          })
+        ).ok(),
+      ).toBeTruthy();
+    }
+    await open(page, data.chat.id, "dark", { messagesPerPage: 1 });
+    const paragraph = page.getByRole("region", { name: "Current paragraph" });
+    await expect(paragraph).toContainText("Newest turn.");
+    await page.getByRole("button", { name: "Previous paragraph" }).click();
+    await expect(paragraph).toContainText("Middle turn.");
+    await page.getByRole("button", { name: "Previous paragraph" }).click();
+    await expect(paragraph).toContainText("A small light flickers across the desk.");
+    await expect(page.locator("[data-chat-scroll] [data-message-id]")).toHaveCount(0);
+  } finally {
+    await data.cleanup();
+  }
+});
+
 test("Roleplay VN waits for complete streaming paragraphs and discards old swipe text", async ({ page, request }) => {
   const data = await fixture(request);
   try {
     await open(page, data.chat.id);
     const paragraph = page.getByRole("region", { name: "Current paragraph" });
+    await page.getByRole("button", { name: "Previous paragraph" }).click();
     await page.evaluate(
       async ({ chatId, messageId, characterId }) => {
         const { useChatStore } = (await import("/src/stores/chat.store.ts" as string)) as PageChatStoreModule;
@@ -202,6 +280,153 @@ test("Roleplay VN waits for complete streaming paragraphs and discards old swipe
     await page.locator(".mari-chat-input textarea").press("ArrowUp");
     await expect(page.locator("[data-chat-scroll] [data-chat-message-editor]")).toBeVisible();
   } finally {
+    await data.cleanup();
+  }
+});
+
+test("Roleplay VN starts a newly generated reply at its first paragraph", async ({ page, request }) => {
+  const data = await fixture(request);
+  try {
+    await request.patch(`/api/chats/${data.chat.id}`, { data: { connectionId: "synthetic-vn-generation" } });
+    const generatedContent =
+      "The first generated paragraph.\n\nThe middle generated paragraph.\n\nThe final generated paragraph.";
+    await page.route("**/api/generate", (route) =>
+      route.fulfill({
+        contentType: "text/event-stream",
+        body: [
+          {
+            type: "message_saved",
+            data: {
+              id: "generated-vn-message",
+              chatId: data.chat.id,
+              role: "assistant",
+              characterId: data.character.id,
+              content: generatedContent,
+              activeSwipeIndex: 0,
+              extra: {},
+              createdAt: new Date().toISOString(),
+            },
+          },
+          { type: "done", data: {} },
+        ]
+          .map((event) => `data: ${JSON.stringify(event)}\n\n`)
+          .join(""),
+      }),
+    );
+    await open(page, data.chat.id);
+    const paragraph = page.getByRole("region", { name: "Current paragraph" });
+    await expect(paragraph).toContainText("A small light flickers across the desk.");
+    await page.locator("textarea.mari-chat-input-textarea").fill("Continue the story.");
+    await page.locator("button.mari-chat-send-btn").click();
+    await expect(paragraph).toContainText("The first generated paragraph.");
+    await expect(paragraph).not.toContainText("The final generated paragraph.");
+  } finally {
+    await data.cleanup();
+  }
+});
+
+test("Roleplay VN starts an inactive chat's completed regenerated swipe at its first paragraph", async ({
+  page,
+  request,
+}) => {
+  const data = await fixture(request);
+  let inactiveChatId: string | null = null;
+  let releaseGeneration!: () => void;
+  try {
+    const inactiveChatResponse = await request.post("/api/chats", {
+      data: { name: "Other Visual Novel chat", mode: "roleplay", characterIds: [data.character.id] },
+    });
+    expect(inactiveChatResponse.ok(), await inactiveChatResponse.text()).toBeTruthy();
+    const inactiveChat = await inactiveChatResponse.json();
+    inactiveChatId = inactiveChat.id;
+    expect(
+      (
+        await request.patch(`/api/chats/${inactiveChatId}/metadata`, {
+          data: { roleplayDisplayStyle: "visual-novel" },
+        })
+      ).ok(),
+    ).toBeTruthy();
+    expect(
+      (
+        await request.post(`/api/chats/${inactiveChatId}/messages`, {
+          data: { role: "assistant", characterId: data.character.id, content: "The other chat." },
+        })
+      ).ok(),
+    ).toBeTruthy();
+    await request.patch(`/api/chats/${data.chat.id}`, { data: { connectionId: "synthetic-vn-generation" } });
+    const generatedContent =
+      "The first inactive paragraph.\n\nThe middle inactive paragraph.\n\nThe final inactive paragraph.";
+    const generationReleased = new Promise<void>((resolve) => {
+      releaseGeneration = resolve;
+    });
+    await page.route("**/api/generate", async (route) => {
+      await generationReleased;
+      await route.fulfill({
+        contentType: "text/event-stream",
+        body: [
+          {
+            type: "message_saved",
+            data: {
+              id: data.message.id,
+              chatId: data.chat.id,
+              role: "assistant",
+              characterId: data.character.id,
+              content: generatedContent,
+              activeSwipeIndex: 1,
+              extra: {},
+              createdAt: new Date().toISOString(),
+            },
+          },
+          { type: "done", data: {} },
+        ]
+          .map((event) => `data: ${JSON.stringify(event)}\n\n`)
+          .join(""),
+      });
+    });
+    await open(page, data.chat.id);
+    const paragraph = page.getByRole("region", { name: "Current paragraph" });
+    await page.getByRole("button", { name: "Show chat history" }).click();
+    await page.getByRole("button", { name: "Regenerate", exact: true }).last().click();
+    const confirmRegenerate = page.getByRole("dialog").getByRole("button", { name: "Regenerate", exact: true });
+    if (await confirmRegenerate.isVisible().catch(() => false)) await confirmRegenerate.click();
+    await expect(page.locator("button.mari-chat-send-btn svg.lucide-circle-stop")).toBeVisible();
+    await page.evaluate(async (chatId) => {
+      const { useChatStore } = (await import("/src/stores/chat.store.ts" as string)) as PageChatStoreModule;
+      useChatStore.getState().setActiveChatId(chatId);
+    }, inactiveChatId);
+    await expect(paragraph).toContainText("The other chat.");
+    expect(
+      (
+        await request.post(`/api/chats/${data.chat.id}/messages/${data.message.id}/swipes`, {
+          data: { content: generatedContent },
+        })
+      ).ok(),
+    ).toBeTruthy();
+    expect(
+      (
+        await request.put(`/api/chats/${data.chat.id}/messages/${data.message.id}/active-swipe`, {
+          data: { index: 1 },
+        })
+      ).ok(),
+    ).toBeTruthy();
+    releaseGeneration();
+    await expect
+      .poll(async () =>
+        page.evaluate(async (chatId) => {
+          const { useChatStore } = (await import("/src/stores/chat.store.ts" as string)) as PageChatStoreModule;
+          return !useChatStore.getState().abortControllers.has(chatId);
+        }, data.chat.id),
+      )
+      .toBeTruthy();
+    await page.evaluate(async (chatId) => {
+      const { useChatStore } = (await import("/src/stores/chat.store.ts" as string)) as PageChatStoreModule;
+      useChatStore.getState().setActiveChatId(chatId);
+    }, data.chat.id);
+    await expect(paragraph).toContainText("The first inactive paragraph.");
+    await expect(paragraph).not.toContainText("The final inactive paragraph.");
+  } finally {
+    releaseGeneration?.();
+    if (inactiveChatId) await request.delete(`/api/chats/${inactiveChatId}`);
     await data.cleanup();
   }
 });
@@ -492,5 +717,43 @@ test("VN history opens at the newest message and scene art respects size, activi
   } finally {
     await data.cleanup();
     for (const id of extras) await request.delete(`/api/characters/${id}`);
+  }
+});
+
+test("Roleplay VN portrait honors avatar crop and allows history expansion", async ({ page, request }) => {
+  const data = await fixture(request, true);
+  try {
+    const crop = { srcX: 0.2, srcY: 0.1, srcWidth: 0.5, srcHeight: 0.5 };
+    const charRes = await request.get(`/api/characters/${data.character.id}`);
+    expect(charRes.ok()).toBeTruthy();
+    const charJson = await charRes.json();
+    const rawData = JSON.parse(charJson.data);
+    rawData.extensions = { ...(rawData.extensions ?? {}), avatarCrop: crop };
+    expect(
+      (await request.patch(`/api/characters/${data.character.id}`, { data: { data: rawData } })).ok(),
+    ).toBeTruthy();
+
+    await open(page, data.chat.id);
+    const vn = page.locator("[data-roleplay-vn]");
+    const avatarImg = vn.getByRole("img", { name: "Mari", exact: true });
+    await expect(avatarImg).toBeVisible();
+    await expect(avatarImg).toHaveCSS("position", "absolute");
+    expect(
+      await avatarImg.evaluate((element) => ({
+        width: element.style.width,
+        height: element.style.height,
+        top: element.style.top,
+        left: element.style.left,
+      })),
+    ).toEqual({ width: "200%", height: "200%", top: "-20%", left: "-40%" });
+
+    const expandBtn = vn.getByRole("button", { name: "Show chat history" });
+    await expect(expandBtn).toBeVisible();
+    await expandBtn.click();
+    const history = page.locator("[data-chat-scroll]");
+    await expect(history).toBeVisible();
+    await expect(history.locator(`[data-message-id="${data.message.id}"]`).first()).toBeVisible();
+  } finally {
+    await data.cleanup();
   }
 });

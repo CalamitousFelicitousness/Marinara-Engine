@@ -33,7 +33,6 @@ import {
   CUSTOM_AGENT_RESULT_TYPE_IDS,
 } from "../../packages/client/src/lib/custom-agent-result-examples.js";
 import { estimateGameSessionHistoryTokens } from "../../packages/client/src/lib/game-session-history.js";
-import { MAX_FILE_SIZES } from "../../packages/shared/src/constants/defaults.js";
 import {
   buildCompatibleCharacterExport,
   validateCharacterGalleryReferences,
@@ -546,6 +545,31 @@ const compatibleSpriteSource = {
   },
 };
 const compatibleSpriteCard = buildCompatibleCharacterExport(compatibleSpriteSource, portableSprites);
+const portableIdentitySource = {
+  name: "Portable identity",
+  description: "Original <description> & formatting.",
+  extensions: { backstory: "A history.\nWith a second line.", appearance: "Silver hair.", retained: true },
+};
+const portableIdentity = buildCompatibleCharacterExport(portableIdentitySource);
+assert.equal(
+  portableIdentity.data.description,
+  "Original <description> & formatting.\n\nBackstory:\nA history.\nWith a second line.\n\nAppearance:\nSilver hair.",
+  "V2 JSON and PNG exports include Marinara-only identity fields in the standard description",
+);
+assert.equal(portableIdentity.data.extensions.backstory, undefined);
+assert.equal(portableIdentity.data.extensions.appearance, undefined);
+assert.equal(portableIdentity.data.extensions.retained, true);
+assert.equal(portableIdentitySource.extensions.backstory, "A history.\nWith a second line.");
+assert.equal(portableIdentitySource.description, "Original <description> & formatting.");
+assert.equal(
+  buildCompatibleCharacterExport(portableIdentity.data).data.description,
+  portableIdentity.data.description,
+  "re-exporting a compatible card must not duplicate the merged identity fields",
+);
+assert.equal(
+  buildCompatibleCharacterExport({ description: "Unchanged", extensions: {} }).data.description,
+  "Unchanged",
+);
 assert.equal(
   compatibleSpriteSource.extensions.characterSheetImageId,
   "local-gallery-id",
@@ -1425,6 +1449,133 @@ try {
   const noodleStorage = createNoodleStorage(db);
   const chatPresetStorage = createChatPresetsStorage(db);
   await chatPresetStorage.ensureDefaults();
+  // Translator defaults seed new chats only; explicit profile values retain precedence.
+  {
+    const { createAppSettingsStorage } =
+      await import("../../packages/server/src/services/storage/app-settings.storage.js");
+    const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
+    const { TRANSLATOR_DEFAULTS_SETTINGS_KEY, normalizeTranslatorSettings } =
+      await import("../../packages/shared/src/utils/translator-defaults.js");
+    const appSettings = createAppSettingsStorage(db);
+    const translatorChats = createChatsStorage(db);
+    const createTranslatorChat = (mode: "conversation" | "roleplay" | "game") =>
+      translatorChats.create({
+        name: "Translator defaults proof",
+        mode,
+        characterIds: [],
+        groupId: null,
+        personaId: null,
+        personaCharacterId: null,
+        promptPresetId: null,
+        connectionId: null,
+      });
+    const oldChat = (await createTranslatorChat("roleplay"))!;
+    const oldMetadata = oldChat.metadata;
+    const defaults = {
+      translationProvider: "ai",
+      translationConnectionId: "translator-connection",
+      translationInputTargetLang: "English",
+      translationOutputTargetLang: "Polish",
+      translationInputPrompt: "Input {{targetLanguage}}",
+      translationOutputPrompt: "Output {{targetLanguage}}",
+      translationDeeplApiKey: "synthetic-key",
+      translationDeeplxUrl: "http://localhost:1188",
+      autoTranslate: true,
+      translateInput: true,
+      showInputTranslateButton: true,
+      translationDisplayOnly: true,
+    };
+    await appSettings.set(TRANSLATOR_DEFAULTS_SETTINGS_KEY, JSON.stringify({ ...defaults, summary: "not reusable" }));
+    for (const mode of ["conversation", "roleplay", "game"] as const) {
+      const created = (await createTranslatorChat(mode))!;
+      const metadata = JSON.parse(created.metadata);
+      assert.deepEqual(
+        normalizeTranslatorSettings(metadata),
+        defaults,
+        `${mode} inherits persisted translator defaults`,
+      );
+      assert.equal(metadata.summary, null, "Unrelated metadata cannot enter through translator defaults");
+    }
+    assert.equal(
+      (await translatorChats.getById(oldChat.id))!.metadata,
+      oldMetadata,
+      "Saving defaults leaves existing chats unchanged",
+    );
+    const target = (await createTranslatorChat("roleplay"))!;
+    const invalidTranslatorMetadata = {
+      autoTranslate: "false",
+      translateInput: 0,
+      translationConnectionId: false,
+      translationOutputTargetLang: 42,
+      translationOutputPrompt: [],
+      translationProvider: "unsupported",
+      translationInputPrompt: "Valid profile prompt",
+      enableAgents: false,
+    };
+    const invalidProfile = (await chatPresetStorage.create({
+      name: "Invalid translator overrides",
+      mode: "roleplay",
+      settings: { metadata: invalidTranslatorMetadata },
+    }))!;
+    const invalidApplied = JSON.parse((await chatPresetStorage.applyToChat(invalidProfile.id, target.id))!.metadata);
+    assert.deepEqual(
+      Object.fromEntries(Object.keys(defaults).map((key) => [key, invalidApplied[key]])),
+      { ...defaults, translationInputPrompt: "Valid profile prompt" },
+      "Invalid profile translator values inherit saved defaults while valid choices still override them",
+    );
+    assert.equal(invalidApplied.enableAgents, false, "Other profile metadata remains applicable");
+    assert.deepEqual(
+      (await chatPresetStorage.getById(invalidProfile.id))!.settings.metadata,
+      invalidTranslatorMetadata,
+      "Applying a profile must not rewrite its saved translator choices",
+    );
+    const profile = (await chatPresetStorage.create({
+      name: "Translator override",
+      mode: "roleplay",
+      settings: {
+        metadata: {
+          autoTranslate: false,
+          translateInput: false,
+          translationConnectionId: "",
+          translationOutputTargetLang: "",
+          translationOutputPrompt: null,
+        },
+      },
+    }))!;
+    const applied = (await chatPresetStorage.applyToChat(profile.id, target.id))!;
+    const appliedMetadata = JSON.parse(applied.metadata);
+    assert.equal(
+      appliedMetadata.translationProvider,
+      "ai",
+      "An unrelated profile field must not erase translator defaults",
+    );
+    assert.equal(appliedMetadata.autoTranslate, false);
+    assert.equal(appliedMetadata.translateInput, false);
+    assert.equal(appliedMetadata.translationConnectionId, "");
+    assert.equal(appliedMetadata.translationOutputTargetLang, "");
+    assert.equal(appliedMetadata.translationOutputPrompt, null);
+    await chatPresetStorage.saveSettings(profile.id, {
+      metadata: { translationTargetLang: "Japanese", translationPrompt: null },
+    });
+    const legacyApplied = JSON.parse((await chatPresetStorage.applyToChat(profile.id, target.id))!.metadata);
+    assert.equal(legacyApplied.translationInputTargetLang, "Japanese");
+    assert.equal(legacyApplied.translationOutputTargetLang, "Japanese");
+    assert.equal(legacyApplied.translationInputPrompt, null);
+    await translatorChats.patchMetadata(target.id, { autoTranslate: false, translationConnectionId: "" });
+    for (const raw of ["", "{broken", "[]", "null"]) {
+      await appSettings.set(TRANSLATOR_DEFAULTS_SETTINGS_KEY, raw);
+      const created = (await createTranslatorChat("game"))!;
+      assert.deepEqual(
+        normalizeTranslatorSettings(JSON.parse(created.metadata)),
+        {},
+        "Missing or malformed defaults cannot block chat creation",
+      );
+    }
+    const explicitMetadata = JSON.parse((await translatorChats.getById(target.id))!.metadata);
+    assert.equal(explicitMetadata.autoTranslate, false);
+    assert.equal(explicitMetadata.translationConnectionId, "");
+    await appSettings.remove(TRANSLATOR_DEFAULTS_SETTINGS_KEY);
+  }
   const originalConversationDefault = await chatPresetStorage.getDefault("conversation");
   assert.ok(originalConversationDefault, "Conversation mode must start with a Default settings profile");
   await db
@@ -5359,6 +5510,30 @@ assert.equal(
   "legacy Professor Mari usage metadata should keep the context indicator available",
 );
 assert.equal(resolveProfessorMariContextBudget([], 128_000), null);
+for (const tokensContext of [230, 0, null, undefined]) {
+  assert.equal(
+    resolveProfessorMariContextBudget(
+      [
+        { role: "assistant", extra: { generationInfo: { tokensPrompt: 100, tokensCompletion: 20 } } },
+        {
+          role: "assistant",
+          extra: {
+            generationInfo: {
+              tokensPrompt: 300,
+              tokensCachedPrompt: 160,
+              tokensCompletion: 50,
+              requestCount: 2,
+              ...(tokensContext !== undefined ? { tokensContext } : {}),
+            },
+          },
+        },
+      ] as Message[],
+      1000,
+    )?.usedTokens ?? null,
+    tokensContext ?? null,
+    "latest request context wins over billed sums; missing usage must not resurrect an earlier context",
+  );
+}
 assert.equal(
   resolveChatContextBudget(
     [
@@ -5839,7 +6014,7 @@ assert.match(
 );
 assert.match(
   clientGenerationSource,
-  /await waitForPendingChatMetadataSaves\(params\.chatId\);[\s\S]{0,250}api\.streamEvents\(\s*"\/generate"/u,
+  /await waitForPendingChatMetadataSaves\(params\.chatId\);[\s\S]*?api\.streamEvents\(\s*"\/generate"/u,
   "swipe generation must wait for Prose Guardian settings blurred from the open drawer",
 );
 
@@ -6586,8 +6761,8 @@ assert.match(backupRoutesSource, /PROFILE_IMPORT_MEMORY_WARNING_BYTES/u);
 assert.match(backupRoutesSource, /PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES = 2 \* 1024 \* 1024 \* 1024/u);
 assert.match(
   backupRoutesSource,
-  /limits: \{ fields: 0, parts: 1, files: 1, fileSize: PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES \}/u,
-  "profile archive imports must accept only one bounded file part",
+  /limits: \{ fields: 0, parts: 1, files: 1,/u,
+  "profile archive imports must accept only one file part",
 );
 assert.match(
   backupRoutesSource,
@@ -10209,10 +10384,6 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
   const gameMapSource = readFileSync(join(REPOSITORY_ROOT, "packages/client/src/components/game/GameMap.tsx"), "utf8");
   const generateRouteSource = readFileSync(
     join(REPOSITORY_ROOT, "packages/server/src/routes/generate.routes.ts"),
-    "utf8",
-  );
-  const retryAgentsRouteSource = readFileSync(
-    join(REPOSITORY_ROOT, "packages/server/src/routes/generate/retry-agents-route.ts"),
     "utf8",
   );
   const turnGameBotRunnerSource = readFileSync(

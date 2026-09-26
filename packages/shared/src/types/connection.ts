@@ -18,6 +18,7 @@ export type APIProvider =
   | "nanogpt"
   | "xai"
   | "arli"
+  | "zai"
   | "custom"
   | "image_generation"
   | "video_generation"

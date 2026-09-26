@@ -65,11 +65,18 @@ assert.equal(
   2,
   "both the bubble and line layouts must receive the controls slot",
 );
-assert.match(
-  conversationMessage,
-  /\{!messageControlsAbove && messageControls\}/u,
-  "the Conversation shell must keep the below-body placement",
-);
+// Below the body the pair splits around the reaction row: swipes under the body, actions after reactions.
+for (const [surface, source] of [
+  ["conversation", conversationMessage],
+  ["conversation grouped", conversationGrouped],
+]) {
+  for (const pattern of [
+    /\{!messageControlsAbove && <ConversationMessageSwipes ctx=\{ctx\} \/>\}/u,
+    /\{!messageControlsAbove && actionsRow\}/u,
+  ]) {
+    assert.match(source, pattern, `${surface} messages must keep the below-body placement`);
+  }
+}
 
 // Swipes and the action row travel as one node. Splitting them would strand the
 // swipe row below the body while the actions moved above it.

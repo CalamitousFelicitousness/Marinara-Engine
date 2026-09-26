@@ -10,20 +10,8 @@ import {
   useState,
   type UIEvent,
 } from "react";
-import {
-  ArrowLeft,
-  ArrowUpDown,
-  Check,
-  Download,
-  Hash,
-  MessageCircle,
-  Pencil,
-  Plus,
-  Search,
-  Star,
-  User,
-} from "lucide-react";
-import { type CharacterData, type Persona } from "@marinara-engine/shared";
+import { ArrowLeft, ArrowUpDown, Download, Hash, MessageCircle, Pencil, Plus, Search, Star, User } from "lucide-react";
+import { estimateTextTokens, type CharacterData, type Persona } from "@marinara-engine/shared";
 import type { CharacterCatalogEntry } from "@marinara-engine/shared";
 import { useTranslation, useTranslation as useUiTranslation } from "react-i18next";
 import {
@@ -79,7 +67,6 @@ type LibraryCard = {
   tags: string[];
   tokenEstimate: number;
   favorite: boolean;
-  active: boolean;
   creatorNotes: string;
   hasExplicitSummary: boolean;
   sections: LibrarySection[];
@@ -176,10 +163,10 @@ function getPersonaSections(persona: Persona): LibrarySection[] {
 }
 
 function estimatePersonaTokens(persona: Persona) {
-  return Math.ceil(
+  return estimateTextTokens(
     [persona.description, persona.personality, persona.scenario, persona.backstory, persona.appearance]
       .map(getText)
-      .join("").length / 4,
+      .join(""),
   );
 }
 
@@ -198,7 +185,6 @@ function toCharacterLibraryCard(char: ParsedCharacterRow): LibraryCard {
     tags: getCharacterTags(char),
     tokenEstimate: estimateCharacterCardTokens(char.parsed),
     favorite: !!char.parsed.extensions?.fav,
-    active: false,
     creatorNotes: getText(char.parsed.creator_notes),
     hasExplicitSummary: Boolean(getText(char.parsed.summary)),
     sections: getCharacterSections(char),
@@ -219,7 +205,6 @@ function toPersonaLibraryCard(persona: Persona): LibraryCard {
     tags: persona.tags.filter((tag) => tag.trim().length > 0),
     tokenEstimate: estimatePersonaTokens(persona),
     favorite: false,
-    active: persona.isActive,
     creatorNotes: getText(persona.creatorNotes),
     hasExplicitSummary: false,
     sections: getPersonaSections(persona),
@@ -287,7 +272,7 @@ function CardLibraryDetailCard({
                   )}
                 >
                   <Hash size="0.75rem" />
-                  {formatEstimatedTokens(card.tokenEstimate)}
+                  {formatEstimatedTokens(card.tokenEstimate, localizeUi)}
                 </span>
                 {card.favorite && (
                   <span
@@ -296,11 +281,6 @@ function CardLibraryDetailCard({
                   >
                     <Star size="0.75rem" className="fill-current" />{" "}
                     {localizeUi("ui.characters.cardlibrarydetailcard.favorite")}
-                  </span>
-                )}
-                {card.active && (
-                  <span className="mari-chrome-muted-badge mari-chrome-accent-surface gap-1 px-2.5 py-1 text-[0.6875rem]">
-                    <Check size="0.75rem" /> {localizeUi("ui.characters.lorebooktab.active")}
                   </span>
                 )}
               </div>

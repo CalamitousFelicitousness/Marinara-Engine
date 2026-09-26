@@ -9,7 +9,12 @@ import { basename, join, resolve } from "node:path";
 import { eq } from "../../db/file-query.js";
 import type { DB } from "../../db/connection.js";
 import { flushDB } from "../../db/connection.js";
-import { CASCADE_DANGLING_EXEMPT_PREFIXES, CASCADES, FILE_BACKED_TABLES } from "../../db/file-backed-store.js";
+import {
+  CASCADE_DANGLING_EXEMPT_PREFIXES,
+  CASCADES,
+  FILE_BACKED_TABLES,
+  getRegisteredFileTable,
+} from "../../db/file-backed-store.js";
 import { getFileTableConfig, isFileTable, type AnyFileColumn, type AnyFileTable } from "../../db/file-schema.js";
 import * as schema from "../../db/schema/index.js";
 import { getFileStorageDir, getMonorepoRoot, isCustomToolScriptEnabled } from "../../config/runtime-config.js";
@@ -415,28 +420,30 @@ const JSON_COLUMNS: Record<string, readonly string[]> = {
   regex_scripts: ["trimStrings", "placement", "targetCharacterIds", "targetPromptPresetIds"],
 };
 
+function buildTableMeta(table: Parameters<typeof getFileTableConfig>[0]): TableMeta {
+  const config = getFileTableConfig(table);
+  const columns = config.columns.map((column) => ({
+    key: column.key,
+    dbName: column.name,
+    column,
+    primary: column.primary,
+    notNull: column.isNotNull,
+  }));
+  return {
+    name: config.name,
+    table,
+    columns,
+    byKey: new Map(columns.map((column) => [column.key, column])),
+    primaryKey: columns.find((column) => column.primary)?.key ?? null,
+  };
+}
+
 function buildTableMetas() {
   const metas = new Map<string, TableMeta>();
   for (const candidate of Object.values(schema)) {
     if (!isFileTable(candidate)) continue;
-    const table = candidate;
-    const config = getFileTableConfig(table);
-    const name = config.name;
-    if (!FILE_BACKED_TABLE_SET.has(name)) continue;
-    const columns = config.columns.map((column) => ({
-      key: column.key,
-      dbName: column.name,
-      column,
-      primary: column.primary,
-      notNull: column.isNotNull,
-    }));
-    metas.set(name, {
-      name,
-      table,
-      columns,
-      byKey: new Map(columns.map((column) => [column.key, column])),
-      primaryKey: columns.find((column) => column.primary)?.key ?? null,
-    });
+    const meta = buildTableMeta(candidate);
+    if (FILE_BACKED_TABLE_SET.has(meta.name)) metas.set(meta.name, meta);
   }
   return metas;
 }
@@ -715,8 +722,14 @@ function deepMerge(base: unknown, patch: unknown): unknown {
 }
 
 function getMeta(table: string): TableMeta {
-  const meta = TABLE_METAS.get(table);
-  if (!meta) throw new Error(`Unknown file-backed table: ${table}`);
+  let meta = TABLE_METAS.get(table);
+  if (!meta) {
+    // Capability packages register their tables after this module loads (registerTables).
+    const registered = getRegisteredFileTable(table);
+    if (!registered) throw new Error(`Unknown file-backed table: ${table}`);
+    meta = buildTableMeta(registered);
+    TABLE_METAS.set(table, meta);
+  }
   return meta;
 }
 
@@ -2125,7 +2138,6 @@ function summarizePersonaRow(row: Row): Row {
   return {
     id: row.id,
     name: row.name,
-    isActive: row.isActive === "true",
     comment: row.comment ?? "",
     description: typeof row.description === "string" ? truncateStr(row.description, 120) : "",
     avatarPath: row.avatarPath ?? null,
@@ -2847,8 +2859,8 @@ export class MariDbService {
         };
       }
       case "active": {
-        const row = (await this.rawRows("personas")).find((candidate) => candidate.isActive === "true") ?? null;
-        return { ok: true, mode: "read", command: context.command, output: row ? parseRow("personas", row) : null };
+        // Retain legacy read compatibility without reviving a global selection.
+        return { ok: true, mode: "read", command: context.command, output: null };
       }
       case "get": {
         const id = requiredString(args, ["id", "personaId"], "persona id");
@@ -5920,8 +5932,7 @@ export class MariDbService {
         };
       }
       case "active": {
-        const row = (await this.rawRows("personas")).find((r) => r.isActive === "true") ?? null;
-        return { ok: true, mode: "read", command: context.command, output: row ? parseRow("personas", row) : null };
+        return { ok: true, mode: "read", command: context.command, output: null };
       }
       case "get": {
         const id = parsed.positionals[0];
@@ -8781,7 +8792,7 @@ export class MariDbService {
       "Customization:       mari themes list|active|get|create|update|set-active",
       "Images/media:        mari images connections|preview|generate|edit|assign|delete|list",
       "Creative data:       mari characters list|get|search|create|update|delete",
-      "Creative data:       mari personas list|active|get|search|create|update|delete",
+      "Creative data:       mari personas list|get|search|create|update|delete",
       "Creative data:       mari lorebooks list|get|get-entry <entry-id>|entries <lorebook-id>|search|create|update <lorebook-id>|add-entry <lorebook-id>|update-entry <entry-id>|delete-entry <entry-id>|link-character|unlink-character|delete",
       "Creative data:       mari presets list|get|sections <preset-id>|get-section <id>|groups|get-group|choice-blocks|get-choice-block|add-section|update-section|delete-section|add-group|update-group|delete-group|add-choice-block|update-choice-block|delete-choice-block|create|update",
       "Chats (read-only):   mari chats list|get|messages|search",
@@ -8809,7 +8820,6 @@ export class MariDbService {
     return [
       "Usage: mari personas <command>",
       "Read:  list [--limit <n>]",
-      "Read:  active",
       "Read:  get <id>",
       "Read:  search <query> [--limit <n>]",
       "Write: create --name <name> [--description <text>] [--personality <text>] [--scenario <text>] [--backstory <text>] [--appearance <text>] [--phonetic-name <text>] [--convo-display-name <text>] [--about-me <text>] [--convo-behavior <text-or-json>] [--comment <text>] [--creator <text>] [--creator-notes <text>] [--apply] [--reason <text>]",

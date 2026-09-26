@@ -16,6 +16,7 @@ import type {
 } from "../llm/base-provider.js";
 import { parseTextualToolCalls } from "../llm/textual-tool-call-parser.js";
 import { createLLMProvider } from "../llm/provider-registry.js";
+import { GeminiNoContentError } from "../llm/providers/google.provider.js";
 import { setConnectionRateLimit } from "../llm/connection-rate-limit-registry.js";
 import { getLocalSidecarProvider, LOCAL_SIDECAR_MODEL } from "../llm/local-sidecar.js";
 import { createChatsStorage } from "../storage/chats.storage.js";
@@ -216,7 +217,7 @@ const SKIPPED_DIRS = new Set([
 ]);
 
 export function professorMariWorkspaceResponseFormat(provider: string): ChatOptions["responseFormat"] | undefined {
-  return provider === "openrouter" ? { type: "json_object" } : undefined;
+  return ["openrouter", "google", "google_vertex"].includes(provider) ? { type: "json_object" } : undefined;
 }
 
 export const PROFESSOR_MARI_APP_DATA_ACTIONS = [
@@ -232,7 +233,6 @@ export const PROFESSOR_MARI_APP_DATA_ACTIONS = [
   "character.folder.list",
   "character.moveToFolder",
   "persona.list",
-  "persona.active",
   "persona.get",
   "persona.search",
   "persona.create",
@@ -632,7 +632,7 @@ Command families:
 - \`mari images\`: image-generation connections, HITL image prompt previews, generated/edited preview assets, and assignment/deletion for avatars, personas, lorebooks, sprites, backgrounds, and galleries.
 - \`mari wiki\`: read-only Fandom and Wikipedia/MediaWiki discovery and page reads. Use it for trusted Wikipedia links instead of raw shell networking.
 - \`mari characters\`: list, get, search, create, update, delete. Prefer this helper for character edits, including backstory, appearance, and About Me changes. Use \`app_data\` \`character.folder.list\` and \`character.moveToFolder\` for character folders.
-- \`mari personas\`: list, active, get, search, create, update, delete. Prefer this helper for persona edits.
+- \`mari personas\`: list, get, search, create, update, delete. Prefer this helper for persona edits.
 - \`mari lorebooks\`: list, get, entries <lorebook-id>, get-entry <entry-id>, search, create, update <lorebook-id>, add-entry <lorebook-id>, update-entry <entry-id>, delete-entry <entry-id>, link-character, unlink-character, delete.
 - \`mari presets\`: shell mirror of the \`preset.*\` app_data actions — \`list|get|sections|get-section|groups|get-group|choice-blocks|get-choice-block|add-section|update-section|delete-section|add-group|update-group|delete-group|add-choice-block|update-choice-block|delete-choice-block\`, plus \`create\`/\`update\` via \`--json\` (writes need \`--apply\`). For your own edits prefer the \`app_data\` \`preset.*\` actions: \`preset.create\`/\`preset.update\` handle a WHOLE preset (\`groups\`, \`sections\`, \`choiceBlocks\`), and to see or edit ONE part in place use \`preset.sections\`/\`getSection\`/\`updateSection\`/\`addSection\`/\`deleteSection\` and the parallel \`group\` and \`choiceBlock\` actions. Use \`mari db\` only for advanced raw-table repairs after inspecting schemas.
 - \`mari chats\`: read-only list/get/messages/search.
@@ -698,7 +698,7 @@ Field rules:
 ${MARI_GUIDED_SEQUENCES}
 
 \`app_data\` quick reference:
-- Reads: \`chat.list|get|messages|search\`, \`character.list|get|search|folder.list\`, \`persona.list|active|get|search\`, \`lorebook.list|get|entries|getEntry|search|folder.list|libraryFolder.list\`, \`theme.list|active|get\`, \`personal_extension.list|get|search\`, \`agent.list|get|search\`, \`preset.list|get|search|sections|getSection|groups|getGroup|choiceBlocks|getChoiceBlock\`, \`home_widget.list|get\`, \`instruction.list|get\`.
+- Reads: \`chat.list|get|messages|search\`, \`character.list|get|search|folder.list\`, \`persona.list|get|search\`, \`lorebook.list|get|entries|getEntry|search|folder.list|libraryFolder.list\`, \`theme.list|active|get\`, \`personal_extension.list|get|search\`, \`agent.list|get|search\`, \`preset.list|get|search|sections|getSection|groups|getGroup|choiceBlocks|getChoiceBlock\`, \`home_widget.list|get\`, \`instruction.list|get\`.
 - Chat reading: use \`chat.messages\` with \`chatId\`; preserve user-requested bounds with \`last\` or \`afterPost\`, and page only inside that range with \`limit\` and \`offset\`.
 - Oversized chat ranges elide \`messages\`; re-read one post with \`last: 1\` or \`afterPost\`, \`field: "messages[0].content"\`, and \`offset\`/\`limit\` content windows.
 - Writes: \`character.create|update|moveToFolder\`, \`persona.create|update\`, \`lorebook.create|update|addEntry|updateEntry|deleteEntry|folder.create|libraryFolder.create\`, \`theme.create|update|setActive\`, \`personal_extension.create|update\`, \`agent.create|update\`, \`preset.create|update|addSection|updateSection|deleteSection|addGroup|updateGroup|deleteGroup|addChoiceBlock|updateChoiceBlock|deleteChoiceBlock\`, \`home_widget.create|update|delete\`, \`instruction.remember|update|forget\`.
@@ -2714,7 +2714,23 @@ export class ProfessorMariWorkspaceService {
 
       for (let round = 0; round < MAX_COMMAND_ROUNDS; round += 1) {
         if (controller.signal.aborted) throw new Error("aborted");
-        const result = await this.chatCompleteWorkspace(provider, messages, baseOptions, () => {}, debugLog);
+        let result: ChatCompletionResult;
+        try {
+          result = await this.chatCompleteWorkspace(provider, messages, baseOptions, () => {}, debugLog);
+        } catch (error) {
+          controller.signal.throwIfAborted();
+          if (
+            !(error instanceof GeminiNoContentError) ||
+            error.finishReason.trim().toUpperCase() !== "MALFORMED_FUNCTION_CALL"
+          )
+            throw error;
+          // No command was returned or executed: reuse the bounded protocol repair loop below.
+          logger.warn(
+            error,
+            "Professor Mari received a malformed Gemini function call; repairing the JSON command frame",
+          );
+          result = { content: null, toolCalls: [], finishReason: "error", usage: error.usage };
+        }
         latestUsage = result.usage;
         latestFinishReason = result.finishReason ?? null;
         const usage = mapUsage(result.usage);

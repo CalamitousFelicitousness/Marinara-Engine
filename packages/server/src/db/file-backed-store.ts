@@ -386,6 +386,7 @@ const BUILT_IN_FILE_BACKED_TABLES = [
   "game_scene_videos",
   "game_turn_storyboards",
   "game_turn_storyboard_keyframes",
+  "game_dice_pools",
   "regex_scripts",
   "author_note_presets",
   "tracker_presets",
@@ -399,6 +400,7 @@ const BUILT_IN_FILE_BACKED_TABLES = [
   "ooc_influences",
   "conversation_notes",
   "memory_chunks",
+  "advanced_memory_records",
   "chat_folders",
   "api_connection_folders",
   "custom_themes",
@@ -473,12 +475,14 @@ const SHARD_KEY_COLUMNS: Record<string, string> = {
   game_scene_videos: "chatId",
   game_turn_storyboards: "chatId",
   game_turn_storyboard_keyframes: "storyboardId",
+  game_dice_pools: "chatId",
   chat_images: "chatId",
   character_images: "characterId",
   persona_images: "personaId",
   ooc_influences: "targetChatId",
   conversation_notes: "targetChatId",
   memory_chunks: "chatId",
+  advanced_memory_records: "chatId",
   mari_workspace_context: "chatId",
 };
 // Deliberately mutable, unlike the arrays it mirrors: SHARDED_TABLES aliases
@@ -513,6 +517,7 @@ const LAZY_UNIT_TABLES: ReadonlySet<string> =
         "messages",
         "message_swipes",
         "memory_chunks",
+        "advanced_memory_records",
         "agent_runs",
         "agent_memory",
         "chat_images",
@@ -522,6 +527,7 @@ const LAZY_UNIT_TABLES: ReadonlySet<string> =
         "game_checkpoints",
         "game_scene_videos",
         "game_turn_storyboards",
+        "game_dice_pools",
         "mari_workspace_context",
         "ooc_influences",
         "conversation_notes",
@@ -786,6 +792,7 @@ export const CASCADES: Array<{ parent: FileBackedTable; child: FileBackedTable; 
     { parent: "chats", child: "agent_memory", parentKey: "id", childKey: "chatId" },
     { parent: "chats", child: "chat_images", parentKey: "id", childKey: "chatId" },
     { parent: "chats", child: "memory_chunks", parentKey: "id", childKey: "chatId" },
+    { parent: "chats", child: "advanced_memory_records", parentKey: "id", childKey: "chatId" },
     // #5073: a Mari workspace chat's attached context is scoped to it and must
     // not outlive it (a leaked shard + stale injection into a reused chat id).
     { parent: "chats", child: "mari_workspace_context", parentKey: "id", childKey: "chatId" },
@@ -803,6 +810,7 @@ export const CASCADES: Array<{ parent: FileBackedTable; child: FileBackedTable; 
     { parent: "chats", child: "game_checkpoints", parentKey: "id", childKey: "chatId" },
     { parent: "chats", child: "game_scene_videos", parentKey: "id", childKey: "chatId" },
     { parent: "chats", child: "game_turn_storyboards", parentKey: "id", childKey: "chatId" },
+    { parent: "chats", child: "game_dice_pools", parentKey: "id", childKey: "chatId" },
     {
       parent: "game_turn_storyboards",
       child: "game_turn_storyboard_keyframes",
@@ -817,6 +825,11 @@ export const CASCADES: Array<{ parent: FileBackedTable; child: FileBackedTable; 
     { parent: "messages", child: "game_state_snapshots", parentKey: "id", childKey: "messageId" },
     { parent: "messages", child: "spatial_context_snapshots", parentKey: "id", childKey: "messageId" },
     { parent: "messages", child: "game_checkpoints", parentKey: "id", childKey: "messageId" },
+    // A pool row is the record of what ONE turn was dealt. A rewind that removes the
+    // message removes the turn, so the row must go with it: left behind, it would be the
+    // "latest" row the next turn refills from, and the chat would resume from a queue
+    // belonging to a turn that no longer exists.
+    { parent: "messages", child: "game_dice_pools", parentKey: "id", childKey: "messageId" },
     // Matched on messageId ALONE — never scoped by chatId. See
     // IMPORTED_GAME_ENGINE_ANCHOR_PREFIX above for why the experience-state import must not
     // store a foreign chat's message ids verbatim, and for its validate() exemption.
@@ -862,6 +875,11 @@ const SET_NULL_RELATIONS: Array<{
 const tableMetasByObject = new WeakMap<object, TableMeta>();
 const columnMetasByObject = new WeakMap<object, ColumnMeta>();
 const tableMetasByName = new Map<string, TableMeta>();
+
+/** Live lookup, so consumers that snapshot the schema at load still see package tables registered later. */
+export function getRegisteredFileTable(name: string): Table | undefined {
+  return tableMetasByName.get(name)?.table;
+}
 
 function tableNameOf(table: Table): string {
   return getFileTableConfig(table).name;
@@ -1818,6 +1836,7 @@ function defaultForColumn(column: ColumnMeta) {
  */
 const VECTOR_TEXT_COLUMNS: Record<string, ReadonlySet<string>> = {
   memory_chunks: new Set(["embedding"]),
+  advanced_memory_records: new Set(["embedding"]),
   lorebook_entries: new Set(["embedding"]),
 };
 

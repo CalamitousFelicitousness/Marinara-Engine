@@ -49,24 +49,28 @@ const exited = new Promise((done) => child.once("exit", done));
 const base = `http://127.0.0.1:${port}`;
 async function waitForPid(previous?: number): Promise<number> {
   const started = Date.now();
+  let lastError: unknown;
   while (Date.now() - started < 10_000) {
     if (child.exitCode !== null) assert.fail(`Supervisor exited: ${output}`);
+    let body: { pid: number; parent: number } | undefined;
     try {
       const response = await fetch(`${base}/__restart-pid`, { signal: AbortSignal.timeout(500) });
-      const body = (await response.json()) as { pid: number; parent: number };
-      if (body.pid !== previous) {
-        assert.equal(body.parent, child.pid, "Replacement must remain owned by the launcher");
-        return body.pid;
-      }
-    } catch {
-      /* still booting */
+      body = (await response.json()) as { pid: number; parent: number };
+    } catch (error) {
+      lastError = error;
+    }
+    if (body && body.pid !== previous) {
+      assert.equal(body.parent, child.pid, "Replacement must remain owned by the launcher");
+      return body.pid;
     }
     await new Promise((done) => setTimeout(done, 100));
   }
-  assert.fail(`Server did not become ready: ${output}`);
+  assert.fail(`Server did not become ready: ${output}\nLast request error: ${String(lastError)}`);
 }
+let serverPid: number | undefined;
 try {
   const original = await waitForPid();
+  serverPid = original;
   const invalid = await fetch(`${base}/api/admin/restart`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -80,10 +84,11 @@ try {
   });
   assert.equal(restarted.status, 202);
   const replacement = await waitForPid(original);
+  serverPid = replacement;
   assert.notEqual(replacement, original);
   assert.throws(() => process.kill(original, 0), "The old process must be gone before its replacement serves");
   assert.ok(!output.includes("writer lease"), output);
-  for (const launcher of ["start.sh", "start.bat", "start-termux.sh"]) {
+  for (const launcher of ["start.sh", "start.bat", "start-local.bat", "start-termux.sh"]) {
     assert.ok(readFileSync(join(root, launcher), "utf8").includes("node ../../scripts/run-server.mjs dist/index.js"));
   }
   for (const manifest of ["package.json", "packages/server/package.json"]) {
@@ -91,6 +96,14 @@ try {
     assert.ok(pkg.scripts.start.includes("scripts/run-server.mjs"), `${manifest} must supervise pnpm start`);
   }
 } finally {
+  // Windows kill does not forward to descendants; clean up the fixture server first.
+  if (process.platform === "win32" && serverPid) {
+    try {
+      process.kill(serverPid, "SIGTERM");
+    } catch {
+      /* already stopped */
+    }
+  }
   child.kill("SIGTERM");
   await exited;
   rmSync(dir, { recursive: true, force: true });

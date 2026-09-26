@@ -476,6 +476,41 @@ declarations. Package browser/server code remains trusted code and can access it
 only install packages you trust. Readiness is checked rather than servability, so an update that leaves
 a package `restart-required` stops its verbs resolving until Engine restarts.
 
+### Capability API 1.17: prepare an Experience before its opening turn
+
+A `game-surface` package may declare `contributions.gameSurface.prepareBeforeStart: true`
+with schema version 2 and Capability API 1.17. The Engine mounts that surface
+while the game is ready, before enabling Start Game. Classic games and packages without
+the flag retain their existing startup flow.
+
+The opted-in main surface receives two additional props:
+
+- `startup: boolean` stays true until the player finishes the Engine introduction with Continue.
+  Pause world simulation and player actions while it is true.
+- `setStartupReady(context: string | null): void` reports preparation state. Send `null` while
+  loading, saving, or recovering from failure. Send a string only after the actual world is
+  persisted and usable; an empty string permits startup without additional context.
+
+The host blocks Start Game, its widget preparation confirmation, and initial-turn retries
+until a ready string arrives. While blocked, the package's own loading and failure/retry
+interface remains visible. Once ready, the package is hidden behind the normal Engine
+introduction. Continue opens the ordinary surface, which may remount: keep world preparation
+idempotent and restore persisted state instead of generating it again. A returning game that
+has already completed its introduction does not repeat startup preparation.
+
+Opening context is limited to **8,000 characters**. Invalid or oversized context keeps startup
+blocked and displays an error; the host does not truncate world facts. Supply a compact account
+of the prepared starting location and its actual cast. The Engine appends this text to its
+existing first-turn `generationGuide` with source `game_start`, so the opening uses the world
+that exists. This does not register context for later turns; keep using the package's normal
+prompt contribution or turn-generation context for those.
+
+Readiness callbacks belong to the mounted chat, game, and package. Late callbacks from another
+scope are ignored. A module/runtime failure blocks startup rather than treating missing world
+context as success. On reload, the package must report readiness from its saved world. The
+server prompt-context contributor remains read-only and subject to its short deadline; do not
+use it for world generation or as a long-running startup barrier.
+
 ## Initial packages
 
 - all currently built-in agents;
@@ -546,3 +581,56 @@ Desktop uses a browse list with an adjacent detail region. Mobile uses one pane 
 ## Extraction gate
 
 An extraction is complete only when the base production client and server bundles no longer contain the package implementation, a fresh install cannot activate it without downloading the package, an upgraded install retains it, and package install/update/uninstall passes on desktop, mobile, and Termux-compatible filesystems.
+
+### Capability API 1.18: keep Experience setup in the Game wizard
+
+A `game-surface` package can declare `contributions.gameSurface.setup` with schema
+version 2 and Capability API 1.18. The Engine keeps its usual seven setup steps,
+including Party, goals, models, and lorebooks. Only new games offer Experiences;
+reopening setup for an existing game preserves its Experience and package config.
+Packages without this declaration retain their legacy setup dialog.
+
+```json
+{
+  "setup": {
+    "seed": { "key": "seed", "label": "World seed" },
+    "config": { "generate": true, "packWanted": true },
+    "requires": { "enableCustomWidgets": false }
+  }
+}
+```
+
+All three fields are optional. The declared seed appears beneath the selected
+Experience with a Randomize button. The seed is an unsigned whole number from 0
+to 4294967295; blank, fractional, negative, exponent, or hex input blocks Start.
+The host writes the numeric seed and declared constants to `experienceConfig`;
+`config` cannot contain the seed key. Constants must serialize to at most 8,000
+characters. A seed label is package-authored display text; omit it to use the
+Engine's localized label.
+
+A declared widget requirement is enforced while the Experience is active. The
+host sets the control to the declared value, locks it, and explains which
+Experience set it. A setup-file import cannot override the declared value. The
+player's own earlier choice is kept untouched and is restored as soon as the
+Experience is turned off. The spatial-map setup controls are hidden for these
+Experiences, so no separate map draft, template, or builder is launched.
+
+The Lorebooks step can select up to 100 individual enabled entries, including
+entries from unattached books. Disabled books, entries, and chat exclusions are
+respected. These ids travel in `GameSetupConfig.activeLorebookEntryIds`. On
+`/game/setup` they are additive forced entries: they skip probability rolls but
+retain ordinary token limits. Global, character-bound, and attached lore still
+participate in the ordinary scan. Packages can read the same selected ids from
+the setup config for their own world-generation request. Imported entry ids that
+do not exist on this machine are reported and skipped.
+
+A setup-file import restores an installed compatible Experience and its valid
+numeric seed, but discards arbitrary package config. The current manifest supplies
+constants again. A file that carries no usable Experience seed leaves the
+prefilled random seed alone. Existing games skip Experience imports with an
+explanation. Creation snapshots retain the Experience name and seed for the setup
+summary.
+
+Use the existing startup-readiness declaration independently when the world must
+be prepared before the opening turn. Declare API 1.18 as the package minimum;
+older hosts cannot interpret this setup declaration.

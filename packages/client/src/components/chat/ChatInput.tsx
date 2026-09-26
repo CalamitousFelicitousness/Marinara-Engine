@@ -45,6 +45,7 @@ import {
   matchSlashCommand,
   shouldExecuteQuickPostAsCommand,
   getSlashCompletions,
+  getSlashCommandUsage,
   type SlashCommand,
   type SlashCommandContext,
 } from "../../lib/slash-commands";
@@ -1889,14 +1890,16 @@ export const ChatInput = memo(function ChatInput({
                 setCompletions([]);
               }}
               className={cn(
-                "flex w-full min-w-0 items-start gap-2 px-3 py-2.5 text-left text-sm transition-colors",
+                "flex w-full min-w-0 flex-col items-start gap-1 px-3 py-2.5 text-left text-sm transition-colors",
                 i === selectedCompletion
                   ? "bg-foreground/10 text-foreground"
                   : "text-foreground/70 hover:bg-foreground/5",
               )}
             >
-              <span className="shrink-0 whitespace-nowrap font-mono font-semibold text-foreground/80">/{cmd.name}</span>
-              <span className="min-w-0 flex-1 text-xs leading-snug opacity-60 [overflow-wrap:anywhere]">
+              <span className="min-w-0 whitespace-normal font-mono font-semibold text-foreground/80 [overflow-wrap:anywhere]">
+                {getSlashCommandUsage(cmd, localizeUi)}
+              </span>
+              <span className="min-w-0 text-xs leading-snug opacity-60 [overflow-wrap:anywhere]">
                 {cmd.description}
               </span>
             </button>
@@ -1967,7 +1970,7 @@ export const ChatInput = memo(function ChatInput({
               {pushStoryMenuOpen && (
                 <div
                   role="menu"
-                  className="absolute bottom-full left-1/2 z-50 mb-2 w-64 -translate-x-1/2 rounded-xl border border-[var(--border)] bg-[var(--card)] p-1 shadow-2xl"
+                  className="absolute bottom-full left-1/2 z-50 mb-2 w-64 -translate-x-1/2 rounded-xl border border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--card)] p-1 shadow-2xl"
                 >
                   <button
                     type="button"

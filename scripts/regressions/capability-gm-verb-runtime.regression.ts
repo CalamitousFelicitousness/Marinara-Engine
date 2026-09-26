@@ -542,6 +542,7 @@ try {
   ]) {
     const refused = parseAndStripGmVerbCalls(`Before. ${bad} After.`, live);
     assert.equal(refused.calls.length, 0, `must refuse ${bad}`);
+    assert.match(refused.refusals[0]!, /Game command .* was refused:/, "the caller can explain the rejected command");
     assert.equal(refused.matched, true);
     assert.equal(refused.content.replace(/\s+/g, " ").trim(), "Before. After.", `must still strip ${bad}`);
   }
@@ -932,7 +933,8 @@ try {
   // Ordering, because the two live in one `if`/fallthrough: the gate must be consulted BEFORE the
   // empty-response error is sent, or a verb-only turn is told it produced nothing.
   assert.ok(
-    generateRoute.indexOf(anchorGateCall[0]) < generateRoute.indexOf("The AI returned an empty response."),
+    generateRoute.indexOf(anchorGateCall[0]) <
+      generateRoute.indexOf('sendSseEvent(reply, { type: "error", data: emptyResponseMessage })'),
     "the verb count must reach the anchor gate ahead of the empty-response error frame",
   );
 
@@ -995,7 +997,8 @@ try {
   );
 
   // The seam is advertised only now that the runtime behind it exists.
-  assert.deepEqual({ ...supportedCapabilityApi }, { major: 1, minor: 16 });
+  assert.equal(supportedCapabilityApi.major, 1);
+  assert.ok(supportedCapabilityApi.minor >= 16, "the host advertises the GM verb runtime introduced in API 1.16");
   const manifestSchema = readFileSync(
     join(repositoryRoot, "packages/shared/src/schemas/capability-package.schema.ts"),
     "utf8",

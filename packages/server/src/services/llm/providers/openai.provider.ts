@@ -117,6 +117,7 @@ type OpenAIProviderKind =
   | "mistral"
   | "cohere"
   | "arli"
+  | "zai"
   | "custom"
   | "openai-chatgpt"
   | "local-sidecar";
@@ -600,6 +601,8 @@ export class OpenAIProvider extends BaseLLMProvider {
         return "Cohere OpenAI-compatible API";
       case "arli":
         return "Arli AI API";
+      case "zai":
+        return "Z.AI API";
       case "local-sidecar":
         return "Local sidecar OpenAI-compatible endpoint";
       case "openai-chatgpt":
@@ -1037,7 +1040,11 @@ export class OpenAIProvider extends BaseLLMProvider {
   }
 
   private shouldUseOpenRouterPromptCaching(options: ChatOptions): boolean {
-    return !this.isGenericCustomProvider() && this.baseUrl.includes("openrouter.ai") && !!options.enableCaching;
+    return (
+      (this.providerKind === "openrouter" ||
+        (!this.isGenericCustomProvider() && this.baseUrl.includes("openrouter.ai"))) &&
+      !!options.enableCaching
+    );
   }
 
   private applyOpenRouterPromptCaching(body: Record<string, unknown>, options: ChatOptions): void {

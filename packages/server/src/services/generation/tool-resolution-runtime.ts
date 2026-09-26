@@ -28,11 +28,14 @@ import {
   type SpotifyRuntimeAgent,
 } from "./spotify-agent-runtime.js";
 import { resolveSpotifyToolAvailabilityRequest } from "./spotify-tool-availability.js";
+import { shouldAttachSummariesToAgents } from "./roleplay-summary-retrieval.js";
 import {
   formatZonedConversationTime,
   getZonedDateParts,
   resolveConversationTimeZone,
 } from "../conversation/timezone.js";
+
+const LORE_SEARCH_MIN_SIMILARITY = 0.25;
 
 type CustomToolsStore = {
   listEnabled(): Promise<
@@ -168,14 +171,50 @@ export function resolveChatToolDefs(args: {
   const autoAttachNames = new Set(args.autoAttachToolNames.filter((name) => !AGENT_ONLY_TOOL_NAMES.has(name)));
   if (!args.enableChatTools && autoAttachNames.size === 0) return undefined;
 
-  const hasToolFilter = args.activeToolIds.length > 0;
-  return args.allToolDefs.filter((toolDef) => {
-    const name = toolDef.function.name;
-    if (AGENT_ONLY_TOOL_NAMES.has(name)) return false;
-    if (autoAttachNames.has(name)) return true;
-    if (!args.enableChatTools) return false;
-    return hasToolFilter ? args.activeToolIds.includes(name) : isChatToolEnabledByDefault(name);
-  });
+  return args.allToolDefs.filter((toolDef) => isChatToolResolved(toolDef.function.name, args));
+}
+
+/**
+ * Whether one named built-in tool survives the filter above.
+ *
+ * Split out of `resolveChatToolDefs` so a caller that has to know the answer BEFORE the
+ * tool set is built can ask the same question instead of restating its three rules. The
+ * one caller today is the Game format reminder (#6215): the prompt line that
+ * describes `roll_dice` and the attachment itself are gated on this one fact, so the tool
+ * is never attached without being described and never described without being attached.
+ *
+ * Deliberately only meaningful for a built-in name. A custom tool can be missing from the
+ * loaded definitions for reasons this cannot see (disabled, renamed, an invalid schema),
+ * so the answer for one is an upper bound rather than a fact.
+ */
+export function isChatToolResolved(
+  name: string,
+  args: { enableChatTools: boolean; activeToolIds: readonly string[]; autoAttachToolNames: readonly string[] },
+): boolean {
+  if (AGENT_ONLY_TOOL_NAMES.has(name)) return false;
+  if (args.autoAttachToolNames.includes(name)) return true;
+  if (!args.enableChatTools) return false;
+  return args.activeToolIds.length > 0 ? args.activeToolIds.includes(name) : isChatToolEnabledByDefault(name);
+}
+
+/** The chat's tool filter, or an empty list when it has none. Empty means "no filter". */
+export function readChatActiveToolIds(chatMetadata: Record<string, unknown>): string[] {
+  return Array.isArray(chatMetadata.activeToolIds) ? (chatMetadata.activeToolIds as string[]) : [];
+}
+
+/**
+ * The chat's "Enable Tool Use" answer for a main generation turn: the request's own
+ * override first, then the stored toggle, and nothing at all on a connection without a
+ * tools API. Shared with callers that need it before `resolveGenerationTools` runs.
+ */
+export function resolveChatToolsEnabled(args: {
+  requestBody: Record<string, unknown>;
+  chatMetadata: Record<string, unknown>;
+  nativeToolsAvailable: boolean;
+}): boolean {
+  if (!args.nativeToolsAvailable) return false;
+  if (args.requestBody.enableTools === true) return true;
+  return !booleanFalseText(args.chatMetadata.enableTools) && booleanText(args.chatMetadata.enableTools);
 }
 
 function parseExtra(extra: unknown): Record<string, unknown> {
@@ -748,9 +787,7 @@ async function resolveToolRuntime(
     const agentSettings = parseSettings(agent.settings);
     return Array.isArray(agentSettings.enabledTools) && agentSettings.enabledTools.length > 0;
   });
-  const activeToolIds: string[] = Array.isArray(chatMetadata.activeToolIds)
-    ? (chatMetadata.activeToolIds as string[])
-    : [];
+  const activeToolIds = readChatActiveToolIds(chatMetadata);
   const { allToolDefs, customToolDefs, ...loadedTools } = await loadToolDefinitions({
     customToolsStore,
     resolveTools: enableChatTools || enableAgentTools || autoAttachToolNames.length > 0,
@@ -812,6 +849,8 @@ async function resolveToolRuntime(
   }
 
   const searchLorebookForTools = async (query: string, category?: string | null, requireVectors = false) => {
+    const normalizedQuery = query.trim().toLowerCase();
+    if (!normalizedQuery) return [];
     const entries = await lorebooksStore.listActiveEntries({
       chatId,
       characterIds: resolveToolLorebookCharacterIds(promptCharacterIds, lorebookCharacterIds),
@@ -829,20 +868,36 @@ async function resolveToolRuntime(
     const vectorized = eligible.filter(
       (entry: any) => !entry.excludeFromVectorization && Array.isArray(entry.embedding) && entry.embedding.length > 0,
     );
+    const toResult = (entry: any, similarity?: number) => ({
+      name: entry.name,
+      content: entry.content,
+      tag: entry.tag,
+      keys: entry.keys as string[],
+      ...(similarity === undefined ? {} : { similarity }),
+    });
+    // Literal hits remain searchable while vectors are missing, stale, or deliberately excluded.
+    const results = new Map(
+      eligible
+        .filter((entry: any) =>
+          [entry.name, entry.content, ...(Array.isArray(entry.keys) ? entry.keys : [])].some(
+            (value) => typeof value === "string" && value.toLowerCase().includes(normalizedQuery),
+          ),
+        )
+        .map((entry: any) => [entry.id, toResult(entry)]),
+    );
     if (vectorized.length) {
       try {
         const matches = await semanticShortlistLorebookEntries(vectorized, query, {
           ...lorebookEmbeddingOptions,
           topK: 20,
         });
-        if (matches)
-          return matches.map(({ entry, similarity }) => ({
-            name: entry.name,
-            content: entry.content,
-            tag: entry.tag,
-            keys: entry.keys,
-            similarity,
-          }));
+        if (matches) {
+          // A low calibrated floor rejects noise without inheriting automatic-activation limits.
+          for (const { entry, similarity } of matches) {
+            if (similarity >= LORE_SEARCH_MIN_SIMILARITY) results.set(entry.id, toResult(entry, similarity));
+          }
+          return [...results.values()].slice(0, 20);
+        }
         if (requireVectors)
           throw new Error(
             "Lore search embeddings are unavailable or incompatible. Check the embedding connection and re-vectorize the lorebook.",
@@ -856,24 +911,7 @@ async function resolveToolRuntime(
         "No vectorized lore entries are available. Vectorize an enabled lorebook before using Game lore search.",
       );
     }
-    const normalizedQuery = query.toLowerCase();
-    return eligible
-      .filter((entry: any) => {
-        const nameMatch = typeof entry.name === "string" && entry.name.toLowerCase().includes(normalizedQuery);
-        const contentMatch = typeof entry.content === "string" && entry.content.toLowerCase().includes(normalizedQuery);
-        const keyMatch =
-          Array.isArray(entry.keys) &&
-          entry.keys.some((key: unknown) => typeof key === "string" && key.toLowerCase().includes(normalizedQuery));
-        const categoryMatch = !category || entry.tag === category;
-        return categoryMatch && (nameMatch || contentMatch || keyMatch);
-      })
-      .slice(0, 20)
-      .map((entry: any) => ({
-        name: entry.name,
-        content: entry.content,
-        tag: entry.tag,
-        keys: entry.keys as string[],
-      }));
+    return [...results.values()].slice(0, 20);
   };
 
   const updateChatMetadataForTools = async (patchOrUpdater: MetadataPatchInput): Promise<MetadataPatch> => {
@@ -894,7 +932,11 @@ async function resolveToolRuntime(
     }
     Object.assign(chatMetadata, updatedMeta);
     agentContext.chatSummary =
-      typeof chatMetadata.summary === "string" && chatMetadata.summary.trim() ? chatMetadata.summary.trim() : null;
+      shouldAttachSummariesToAgents(agentContext.chatMode, chatMetadata) &&
+      typeof chatMetadata.summary === "string" &&
+      chatMetadata.summary.trim()
+        ? chatMetadata.summary.trim()
+        : null;
     emitMetadataPatch(emittedPatch);
     return updatedMeta;
   };
@@ -1078,12 +1120,12 @@ export async function resolveAgentGenerationTools(
 }
 
 export async function resolveGenerationTools(args: ResolveGenerationToolsArgs): Promise<ResolvedGenerationTools> {
-  const chatToolsExplicitlyDisabled = booleanFalseText(args.chatMetadata.enableTools);
   const available = args.nativeToolsAvailable !== false;
-  const enableChatTools =
-    available &&
-    (args.requestBody.enableTools === true ||
-      (!chatToolsExplicitlyDisabled && booleanText(args.chatMetadata.enableTools)));
+  const enableChatTools = resolveChatToolsEnabled({
+    requestBody: args.requestBody,
+    chatMetadata: args.chatMetadata,
+    nativeToolsAvailable: available,
+  });
   return resolveToolRuntime(args, {
     enableChatTools,
     autoAttachToolNames: available
@@ -1093,7 +1135,9 @@ export async function resolveGenerationTools(args: ResolveGenerationToolsArgs): 
             ? ["search_lorebook"]
             : []),
         ]
-      : [],
+      : args.agentContext.chatMode === "roleplay"
+        ? (args.autoAttachToolNames ?? []).filter((name) => name === "roll_dice")
+        : [],
     preloadSpotifyPlayback: true,
     restoreSpotifyAgentDefaultTools: true,
   });

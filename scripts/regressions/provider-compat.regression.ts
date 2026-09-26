@@ -15,6 +15,11 @@ import {
   isNativeGlmEndpoint,
 } from "../../packages/server/src/services/llm/providers/glm-request-compat.js";
 import {
+  describeEmptyModelResponse,
+  sentOutputBudget,
+  GENERIC_EMPTY_RESPONSE_MESSAGE,
+} from "../../packages/server/src/services/generation/empty-response-reason.js";
+import {
   applyAnthropicToolChoice,
   AnthropicProvider,
   supportsAnthropicThinkingDisable,
@@ -1517,6 +1522,117 @@ assert.equal(glm53CustomGatewayReasoningEffort("z-ai/glm-5.3", "http://192.168.1
 assert.equal(glm53CustomGatewayReasoningEffort("some-model", "https://gateway.example.com/v1", "none"), null);
 assert.equal(glm53CustomGatewayReasoningEffort("z-ai/glm-5.2", "https://gateway.example.com/v1", "none"), null);
 
+// Native Z.AI provider (#5963): the shared resolver promotes a Maximum preset
+// to "max" for GLM 5.2 / 5.3 instead of lowering it to "high" on the way to
+// glm53ReasoningEffort. Only the named provider is promoted -- the resolver has
+// no base URL, so a Custom connection to api.z.ai keeps its previous behavior.
+assert.equal(resolveProviderReasoningEffort({ provider: "zai", model: "glm-5.3", reasoningEffort: "maximum" }), "max");
+assert.equal(
+  resolveProviderReasoningEffort({ provider: "zai", model: "glm-5.3-flash", reasoningEffort: "maximum" }),
+  "max",
+);
+assert.equal(resolveProviderReasoningEffort({ provider: "zai", model: "glm-5.2", reasoningEffort: "maximum" }), "max");
+assert.equal(resolveProviderReasoningEffort({ provider: "zai", model: "glm-5.1", reasoningEffort: "maximum" }), "high");
+assert.equal(resolveProviderReasoningEffort({ provider: "zai", model: "glm-5.3", reasoningEffort: "high" }), "high");
+assert.equal(resolveProviderReasoningEffort({ provider: "zai", model: "glm-5.3", reasoningEffort: "low" }), "low");
+assert.equal(resolveProviderReasoningEffort({ provider: "zai", model: "glm-5.3", reasoningEffort: undefined }), null);
+assert.equal(
+  resolveProviderReasoningEffort({ provider: "custom", model: "glm-5.3", reasoningEffort: "maximum" }),
+  "high",
+  "a Custom connection is not promoted by the resolver",
+);
+assert.equal(findKnownModel("zai", "glm-5.3")?.context, 1000000);
+assert.equal(findKnownModel("zai", "glm-5.3-flash")?.maxOutput, 128000);
+
+const zaiGlm53MaxBody: Record<string, unknown> = {};
+applyGlmThinkingParameters(zaiGlm53MaxBody, {
+  model: "glm-5.3",
+  baseUrl: "https://api.z.ai/api/paas/v4",
+  providerKind: "zai",
+  reasoningEffort: "max",
+});
+assert.deepEqual(zaiGlm53MaxBody, { thinking: { type: "enabled" }, reasoning_effort: "max" });
+
+const zaiGlm53DefaultBody: Record<string, unknown> = {};
+applyGlmThinkingParameters(zaiGlm53DefaultBody, {
+  model: "glm-5.3-flash",
+  baseUrl: "https://api.z.ai/api/paas/v4",
+  providerKind: "zai",
+  reasoningEffort: undefined,
+});
+assert.deepEqual(
+  zaiGlm53DefaultBody,
+  { thinking: { type: "enabled" } },
+  "no configured effort leaves Z.AI's own default (max) in place",
+);
+
+// An empty reply says what the provider reported (#5963).
+assert.equal(
+  describeEmptyModelResponse({
+    finishReason: "length",
+    usage: { completionTokens: 8192, completionReasoningTokens: 8190 },
+    maxTokens: 8192,
+    hadThinking: true,
+  }),
+  "The model used its whole output budget (8192 of 8192 output tokens, 8190 of them reasoning) before writing any visible text. Raise Max Tokens or lower Reasoning Effort, then try again.",
+);
+assert.equal(
+  describeEmptyModelResponse({ finishReason: "length", hadThinking: false }),
+  "The model used its whole output budget before writing any visible text. Raise Max Tokens or lower Reasoning Effort, then try again.",
+  "finish_reason alone is enough to name the cap",
+);
+assert.equal(
+  describeEmptyModelResponse({
+    finishReason: "stop",
+    usage: { completionTokens: 4096, completionReasoningTokens: 4000 },
+    maxTokens: 4096,
+    hadThinking: true,
+  }),
+  "The model used its whole output budget (4096 of 4096 output tokens, 4000 of them reasoning) before writing any visible text. Raise Max Tokens or lower Reasoning Effort, then try again.",
+  "completion at the cap with hidden thinking is the cap even when finish says stop",
+);
+assert.equal(
+  describeEmptyModelResponse({ finishReason: "sensitive", hadThinking: true }),
+  'The provider stopped the reply for content policy (finish reason "sensitive") and returned no text.',
+);
+assert.equal(
+  describeEmptyModelResponse({
+    finishReason: "stop",
+    usage: { completionTokens: 700, completionReasoningTokens: 700 },
+    maxTokens: 8192,
+    hadThinking: true,
+  }),
+  'The model finished reasoning (700 reasoning tokens, finish reason "stop") but returned no visible text. Try again, or lower Reasoning Effort.',
+);
+assert.equal(
+  describeEmptyModelResponse({ finishReason: "stop", hadThinking: false }),
+  'The AI returned an empty response (finish reason "stop"). Try sending your message again.',
+);
+assert.equal(describeEmptyModelResponse({ hadThinking: false }), GENERIC_EMPTY_RESPONSE_MESSAGE);
+for (const finishReason of ["sensitive", "model_context_window_exceeded"]) {
+  assert.equal(
+    describeEmptyModelResponse({ finishReason, hadThinking: true, usage: { completionTokens: 16 }, maxTokens: 16 }),
+    describeEmptyModelResponse({ finishReason, hadThinking: false }),
+    "explicit provider stop reasons take priority over token-budget inference",
+  );
+}
+// The quoted budget is the one the provider sent: the route's number capped by the
+// connection override, as BaseLLMProvider.applyMaxTokensCap does on the way out.
+// Seen live 2026-09-11: override 16, route 4096, wire max_tokens=16, message said "16 of 4096".
+assert.equal(sentOutputBudget(4096, 16), 16);
+assert.equal(sentOutputBudget(4096, null), 4096);
+assert.equal(sentOutputBudget(4096, 0), 4096, "a zero override is no override");
+assert.equal(sentOutputBudget(undefined, 16), undefined, "no route budget stays unknown");
+assert.equal(
+  describeEmptyModelResponse({
+    finishReason: "length",
+    usage: { completionTokens: 16, completionReasoningTokens: 16 },
+    maxTokens: sentOutputBudget(4096, 16),
+    hadThinking: true,
+  }),
+  "The model used its whole output budget (16 of 16 output tokens, 16 of them reasoning) before writing any visible text. Raise Max Tokens or lower Reasoning Effort, then try again.",
+);
+
 const nanogptMandatoryGlmBody: Record<string, unknown> = {};
 applyGlmThinkingParameters(nanogptMandatoryGlmBody, {
   model: "glm-5.3-flash",
@@ -2131,6 +2247,72 @@ try {
   assert.deepEqual(arliRequest?.body.init_images, [onePixelPng]);
 } finally {
   await new Promise<void>((resolve, reject) => arliImageServer.close((error) => (error ? reject(error) : resolve())));
+}
+
+// OpenRouter routes a /chat/completions request only to endpoints that emit every
+// modality in `modalities`. Most of its image models return image only, so the
+// request must ask for image alone; the handful that also return text opt in.
+const openRouterModalityRequests: Array<{ url: string | undefined; model: unknown; modalities: unknown }> = [];
+const openRouterModalityServer = createServer(async (request, response) => {
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
+  openRouterModalityRequests.push({ url: request.url, model: body.model, modalities: body.modalities });
+  response.writeHead(200, { "content-type": "application/json" });
+  response.end(
+    JSON.stringify({
+      choices: [{ message: { images: [{ image_url: { url: `data:image/png;base64,${onePixelPng}` } }] } }],
+    }),
+  );
+});
+await new Promise<void>((resolve) => openRouterModalityServer.listen(0, "127.0.0.1", resolve));
+try {
+  const address = openRouterModalityServer.address();
+  assert.ok(address && typeof address === "object");
+  const baseUrl = `http://127.0.0.1:${address.port}/api/v1`;
+  const runModel = async (model?: string) => {
+    openRouterModalityRequests.length = 0;
+    const result = await generateImage("openrouter", baseUrl, "openrouter-secret", "openrouter", {
+      prompt: "a red ceramic mug",
+      model,
+      allowLocalUrls: true,
+    });
+    assert.equal(result.base64, onePixelPng);
+    assert.equal(openRouterModalityRequests.length, 1);
+    assert.equal(openRouterModalityRequests[0]?.url, "/api/v1/chat/completions");
+    assert.equal(openRouterModalityRequests[0]?.model, model?.trim() || "google/gemini-2.5-flash-image");
+    return openRouterModalityRequests[0]?.modalities;
+  };
+
+  // Image-only models. "flux" is in the legacy prefix list; the others are the
+  // regression this guards — models the old list did not know about that would
+  // otherwise 404 with "No endpoints found that support ... image, text".
+  for (const model of [
+    "black-forest-labs/flux.2-klein-4b",
+    "microsoft/mai-image-2.5",
+    "x-ai/grok-imagine-image-2.0",
+    "future-provider/image-only",
+  ]) {
+    assert.deepEqual(await runModel(model), ["image"], `${model} must request image-only modalities`);
+  }
+
+  // Models that also return text must keep asking for it.
+  for (const model of [
+    "google/gemini-2.5-flash-image",
+    "google/gemini-3-pro-image-preview",
+    " GOOGLE/GEMINI-3.1-FLASH-IMAGE ",
+    "openai/gpt-5-image",
+    "openai/gpt-5.4-image-2",
+    "openrouter/auto",
+    "openrouter/auto-beta",
+  ]) {
+    assert.deepEqual(await runModel(model), ["image", "text"], `${model} must still request text output`);
+  }
+  assert.deepEqual(await runModel(), ["image", "text"], "the default Gemini model must still request text output");
+} finally {
+  await new Promise<void>((resolve, reject) =>
+    openRouterModalityServer.close((error) => (error ? reject(error) : resolve())),
+  );
 }
 
 assert.equal(resolveConnectionImageQuality({ imageGenerationQuality: "high" }), "high");

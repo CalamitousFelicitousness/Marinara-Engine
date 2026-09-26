@@ -40,7 +40,6 @@ import { useGenerateGallerySelfie } from "../../hooks/use-gallery";
 import {
   characterKeys,
   spriteKeys,
-  useActivePersona,
   useCharacters,
   usePersona,
   useUpdateCharacter,
@@ -84,12 +83,14 @@ import { useEncounter } from "../../hooks/use-encounter";
 import { useScene } from "../../hooks/use-scene";
 import { useEncounterStore } from "../../stores/encounter.store";
 import { useTranslationStore } from "../../stores/translation.store";
+import { getChatTranslationConfig } from "../../hooks/use-translate";
 import { ttsService } from "../../lib/tts-service";
 import { resolveTTSSynthesisPolicy } from "../../lib/tts-synthesis-policy";
 import { notifyTTSAutoplayPaused } from "../../lib/tts-error-notice";
 import { useEffectiveTTSConfig } from "../../hooks/use-tts";
 import {
   buildTTSVoiceRequests,
+  filterTTSText,
   findTTSCharacterIdBySpeakerName,
   withTTSVoiceRequestCacheKeys,
 } from "../../lib/tts-dialogue";
@@ -138,6 +139,7 @@ import { HomeCreditsModal } from "./HomeCreditsModal";
 import { HomeBrowserHub } from "./HomeBrowserHub";
 import { NewChatConnectionGate } from "./NewChatConnectionGate";
 import { ChatCommonOverlays, preloadChatSettingsDrawer, type ChatSettingsInitialSection } from "./ChatCommonOverlays";
+import { ADVANCED_MEMORY_SETTINGS_EVENT } from "../../hooks/use-advanced-memory";
 import { CreatorNotesCssInjector, type CardCssMode, type PersonaCssRow } from "./CreatorNotesCssInjector";
 import type { ChatModeFilter } from "../../lib/card-css";
 import {
@@ -350,19 +352,6 @@ function isCharacterRow(value: unknown): value is CharacterRow {
     typeof (value as { id?: unknown }).id === "string" &&
     typeof (value as { data?: unknown }).data !== "undefined"
   );
-}
-
-function resolveChatPersonaId(chat: unknown): string | null {
-  const rawPersonaId = (chat as { personaId?: unknown } | null | undefined)?.personaId;
-  if (typeof rawPersonaId === "string" && rawPersonaId.trim()) return rawPersonaId.trim();
-
-  const metadata = parseChatMetadata((chat as { metadata?: unknown } | null | undefined)?.metadata);
-  const setupConfig = metadata.gameSetupConfig;
-  const rawSetupPersonaId =
-    setupConfig && typeof setupConfig === "object" && !Array.isArray(setupConfig)
-      ? (setupConfig as { personaId?: unknown }).personaId
-      : null;
-  return typeof rawSetupPersonaId === "string" && rawSetupPersonaId.trim() ? rawSetupPersonaId.trim() : null;
 }
 
 function toCharacterMapValue(char: CharacterRow): CharacterMapValue {
@@ -641,6 +630,16 @@ export const ChatArea = memo(function ChatArea() {
   }, [handleOpenSettingsPanel]);
 
   useEffect(() => {
+    const openMemorySettings = (event: Event) => {
+      const chatId = (event as CustomEvent<{ chatId?: string }>).detail?.chatId;
+      if (chatId !== useChatStore.getState().activeChatId) return;
+      handleOpenSettingsPanel(undefined, { initialSection: "memory-recall" });
+    };
+    window.addEventListener(ADVANCED_MEMORY_SETTINGS_EVENT, openMemorySettings);
+    return () => window.removeEventListener(ADVANCED_MEMORY_SETTINGS_EVENT, openMemorySettings);
+  }, [handleOpenSettingsPanel]);
+
+  useEffect(() => {
     window.addEventListener(CHAT_TOOLBAR_ACTION_EVENT, closeFloatingChatDrawers);
     window.addEventListener(CHAT_FLOATING_UI_DISMISS_EVENT, closeFloatingChatDrawers);
     return () => {
@@ -861,9 +860,8 @@ export const ChatArea = memo(function ChatArea() {
   // other fields don't renew the array identity. [#3164]
   const chatCharacterIdsRaw = chat?.characterIds;
   const chatCharIds = useMemo(() => getChatCharacterIds({ characterIds: chatCharacterIdsRaw }), [chatCharacterIdsRaw]);
-  const chatPersonaId = useMemo(() => resolveChatPersonaId(chat), [chat]);
+  const chatPersonaId = chat?.personaId ?? null;
   const { data: chatPersona } = usePersona(chatPersonaId);
-  const { data: activePersonaFallback } = useActivePersona(!!chat?.id && !chatPersonaId && chatMode === "conversation");
 
   const activeCharacterQueries = useQueries({
     queries: chatCharIds.map((id) => ({
@@ -1029,10 +1027,8 @@ export const ChatArea = memo(function ChatArea() {
     });
   }, [gameLibraryCharacters, isGameChat]);
 
-  // Active persona info (for user message styling: name, avatar, colors)
+  // Chat persona info (for user message styling: name, avatar, colors)
   const personaInfo = useMemo(() => {
-    // Roleplay and Game may intentionally have no Persona; only Conversation
-    // falls back to the globally active account Persona.
     if (chat?.personaCharacterId) {
       const row = identityCharacterRow;
       if (row && row.id === chat.personaCharacterId) {
@@ -1073,7 +1069,7 @@ export const ChatArea = memo(function ChatArea() {
       }
       return undefined;
     }
-    const persona = chatPersona ?? (chatMode === "conversation" ? activePersonaFallback : null);
+    const persona = chatPersona;
     if (!persona) return undefined;
     return {
       id: persona.id,
@@ -1092,7 +1088,7 @@ export const ChatArea = memo(function ChatArea() {
       dialogueColor: persona.dialogueColor || undefined,
       boxColor: persona.boxColor || undefined,
     };
-  }, [activePersonaFallback, chat, chatMode, chatPersona, identityCharacterRow]);
+  }, [chat, chatPersona, identityCharacterRow]);
 
   const { startEncounter } = useEncounter();
   const { concludeScene, abandonScene, forkScene, isForking } = useScene();
@@ -1477,9 +1473,9 @@ export const ChatArea = memo(function ChatArea() {
   // (personas have no other data-card-css hook), so only feed it in Convo mode.
   const cardCssPersonas = useMemo<PersonaCssRow[] | undefined>(() => {
     if (chatMode !== "conversation") return undefined;
-    const persona = chatPersona ?? activePersonaFallback;
+    const persona = chatPersona;
     return persona?.id ? [{ id: persona.id, creatorNotes: persona.creatorNotes }] : undefined;
-  }, [chatMode, chatPersona, activePersonaFallback]);
+  }, [chatMode, chatPersona]);
   const cardCssInjector = (
     <CreatorNotesCssInjector
       characterIds={chatCharIds}
@@ -1493,51 +1489,11 @@ export const ChatArea = memo(function ChatArea() {
   // Sync translation config from chat metadata to the translation store
   useEffect(() => {
     if (!chat?.id) return;
-    const legacyTargetLanguage = chatMeta.translationTargetLang?.trim() || "en";
-    const legacySystemPrompt = typeof chatMeta.translationPrompt === "string" ? chatMeta.translationPrompt : undefined;
-    const inputSystemPrompt =
-      chatMeta.translationInputPrompt === undefined
-        ? legacySystemPrompt
-        : typeof chatMeta.translationInputPrompt === "string"
-          ? chatMeta.translationInputPrompt
-          : undefined;
-    const outputSystemPrompt =
-      chatMeta.translationOutputPrompt === undefined
-        ? legacySystemPrompt
-        : typeof chatMeta.translationOutputPrompt === "string"
-          ? chatMeta.translationOutputPrompt
-          : undefined;
-    useTranslationStore.getState().setConfig({
-      chatId: chat.id,
-      provider: chatMeta.translationProvider ?? "google",
-      // A cleared settings field stores "" — fall back to the legacy/default
-      // language so translation never runs with an empty target.
-      inputTargetLanguage: chatMeta.translationInputTargetLang?.trim() || legacyTargetLanguage,
-      outputTargetLanguage: chatMeta.translationOutputTargetLang?.trim() || legacyTargetLanguage,
-      connectionId: chatMeta.translationConnectionId,
-      inputSystemPrompt,
-      outputSystemPrompt,
-      deeplApiKey: chatMeta.translationDeeplApiKey,
-      deeplxUrl: chatMeta.translationDeeplxUrl,
-    });
-  }, [
-    chat?.id,
-    chatMeta.translationProvider,
-    chatMeta.translationTargetLang,
-    chatMeta.translationInputTargetLang,
-    chatMeta.translationOutputTargetLang,
-    chatMeta.translationConnectionId,
-    chatMeta.translationPrompt,
-    chatMeta.translationInputPrompt,
-    chatMeta.translationOutputPrompt,
-    chatMeta.translationDeeplApiKey,
-    chatMeta.translationDeeplxUrl,
-  ]);
+    useTranslationStore.getState().setConfig(getChatTranslationConfig(chat.id, chatMeta));
+  }, [chat?.id, chatMeta]);
 
   // On chat switch, clear in-memory translations and seed from persisted extras.
-  // Also re-seed when new pages are fetched (pagination) so older persisted
-  // translations become visible.
-  const msgPageCount = msgData?.pages.length ?? 0;
+  // Also re-seed when message extras arrive after a chat switch or pagination.
   const prevChatIdRef = useRef(chat?.id);
   useEffect(() => {
     if (!messages) return;
@@ -1553,8 +1509,7 @@ export const ChatArea = memo(function ChatArea() {
         extra?: string | Record<string, unknown> | null;
       }>,
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chat?.id, msgPageCount]);
+  }, [chat?.id, messages]);
 
   // Sync chat background from metadata when switching chats. Set the UI store
   // to whatever the chat's metadata says — including null. The previous version
@@ -2722,7 +2677,7 @@ export const ChatArea = memo(function ChatArea() {
       if (mode === "roleplay" && cfg.roleplaySpeakerExtractorEnabled) {
         try {
           const extracted = await extractRoleplayTTSSpeakers({
-            message: lastMsg.content,
+            message: filterTTSText(lastMsg.content, cfg),
             group: getChatDisplayName(chat) || characterNames.join(", "),
             user: personaInfo?.name || "User",
             characters: characterNames,
@@ -2900,9 +2855,11 @@ export const ChatArea = memo(function ChatArea() {
   }, [pageCount, isFetchingNextPage]);
 
   const handleLoadMore = useCallback(() => {
-    if (!scrollRef.current || !hasNextPage || isFetchingNextPage) return;
-    prevScrollHeightRef.current = scrollRef.current.scrollHeight;
-    isLoadingMoreRef.current = true;
+    if (!hasNextPage || isFetchingNextPage) return;
+    if (scrollRef.current) {
+      prevScrollHeightRef.current = scrollRef.current.scrollHeight;
+      isLoadingMoreRef.current = true;
+    }
     fetchNextPage();
   }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
 

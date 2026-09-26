@@ -86,7 +86,7 @@ try {
     );
     const sidecar = source.slice(
       source.indexOf('resolved.protocol === "system_one"'),
-      source.indexOf("const thinks ="),
+      source.indexOf("return chatBackend("),
     );
     assert.ok(sidecar.length > 0, "the System One sidecar branch must still exist");
     assert.match(sidecar, /whenDecisionServerFree\(resolved\.baseUrl, resolved\.serverSlots, signal/u);

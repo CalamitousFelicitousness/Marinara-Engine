@@ -319,7 +319,13 @@ class DecisionProcessService {
     signal: AbortSignal,
   ): Promise<string | undefined> {
     const result = await askNoulQuestions({
-      connection: { endpoint: `${baseUrl}/v1/systemone`, apiKey: "", model: "jev-latest", maxStateTokens: 256 },
+      connection: {
+        protocol: "system_one",
+        endpoint: `${baseUrl}/v1/systemone`,
+        apiKey: "",
+        model: "jev-latest",
+        maxStateTokens: 256,
+      },
       state: { recent_messages: [{ role: "user", name: "User", content: "The door is open." }] },
       questions: [{ id: "warm-up", instructions: "The door is open." }],
       timeoutMs: WARM_UP_TIMEOUT_MS,

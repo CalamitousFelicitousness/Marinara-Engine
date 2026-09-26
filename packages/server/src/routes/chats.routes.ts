@@ -7,6 +7,8 @@ import AdmZip from "adm-zip";
 import { logger } from "../lib/logger.js";
 import { cardPromptText } from "../services/prompt/card-text.js";
 import {
+  DECISION_PROMPT_QUESTION_LIMIT_SETTINGS_KEY,
+  parseDecisionPromptQuestionLimit,
   PROFESSOR_MARI_ID,
   createChatSchema,
   createMessageSchema,
@@ -42,6 +44,7 @@ import {
   SPEAKER_CLOSE_TAG,
   characterDataSchema,
   formatSpeakerTag,
+  rulesetLiveStatesSchema,
 } from "@marinara-engine/shared";
 import type {
   CharacterData,
@@ -58,6 +61,7 @@ import type {
   LorebookEntryTimingState,
   PresentCharacter,
   RPGStatsConfig,
+  RulesetLiveStates,
   WorldCustomField,
   HomeFeedSnapshot,
 } from "@marinara-engine/shared";
@@ -75,8 +79,31 @@ import { resolveChatUserIdentity } from "../services/chat-user-identity.js";
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
 import { createAgentsStorage } from "../services/storage/agents.storage.js";
 import { createLorebooksStorage } from "../services/storage/lorebooks.storage.js";
-import { createGameStateStorage, type GameStateVisibleAnchor } from "../services/storage/game-state.storage.js";
+import {
+  cachedPromptDecisionAnswers,
+  collectTurnDecisionTexts,
+  reachableDecisionStatements,
+  type HeldDecisions,
+  createLorebookDecisionResolver,
+  decisionModelUsable,
+  latestTurnDecisionId,
+  planPromptDecisions,
+  promptDecisionCacheKey,
+} from "../services/decision/prompt-decisions.js";
+import {
+  DECISION_TIMERS_METADATA_KEY,
+  decisionTurnFor,
+  heldDecision,
+  readDecisionTimers,
+} from "../services/decision/decision-timers.js";
 import { applyTrackerPresetToChat, readChatTrackerPresetId } from "../services/tracker/tracker-preset.service.js";
+import { gameGmPromptDecisionTexts } from "../services/generation/game-gm-prompt-runtime.js";
+import { DECISION_SETTINGS_KEYS } from "../services/decision/decision-default.js";
+import {
+  createGameStateStorage,
+  parseStoredRulesetLive,
+  type GameStateVisibleAnchor,
+} from "../services/storage/game-state.storage.js";
 import {
   formatOwnerSpatialBreadcrumb,
   injectOwnerSpatialPrompt,
@@ -404,7 +431,7 @@ export function normalizeChatForResponse<T extends { metadata?: unknown; charact
 type SummaryEntriesPatchBody =
   | { operation: "replace"; entry: Partial<ChatSummaryEntry> & { id: string; content: string } }
   | { operation: "delete"; entryId?: string; entryIds?: string[] }
-  | { operation: "toggle"; entryId: string; enabled: boolean }
+  | { operation: "toggle"; entryId?: string; entryIds?: string[]; enabled: boolean }
   | { operation: "reorder"; entryIds: string[] };
 
 async function loadLatestChatGameSnapshot(
@@ -1510,8 +1537,15 @@ export async function chatsRoutes(app: FastifyInstance) {
       }
       deleteEntryIds = requestedIds as string[];
     } else if (body.operation === "toggle") {
-      if (typeof body.entryId !== "string" || !body.entryId.trim() || typeof body.enabled !== "boolean") {
-        return reply.status(400).send({ error: "toggle requires entryId and enabled" });
+      const ids = body.entryIds ?? [body.entryId];
+      if (
+        !Array.isArray(ids) ||
+        !ids.length ||
+        !ids.every((id) => typeof id === "string" && id.trim()) ||
+        new Set(ids).size !== ids.length ||
+        typeof body.enabled !== "boolean"
+      ) {
+        return reply.status(400).send({ error: "toggle requires entryId or unique entryIds and enabled" });
       }
     } else if (body.operation === "reorder") {
       if (
@@ -1563,8 +1597,9 @@ export async function chatsRoutes(app: FastifyInstance) {
         nextEntries = entries.filter((entry) => !deletedIds.has(entry.id));
       } else if (body.operation === "toggle") {
         const now = new Date().toISOString();
+        const toggledIds = new Set(body.entryIds ?? [body.entryId]);
         nextEntries = entries.map((entry) =>
-          entry.id === body.entryId ? { ...entry, enabled: body.enabled, updatedAt: now } : entry,
+          toggledIds.has(entry.id) ? { ...entry, enabled: body.enabled, updatedAt: now } : entry,
         );
       } else if (body.operation === "reorder") {
         const entriesById = new Map(entries.map((entry) => [entry.id, entry]));
@@ -1695,6 +1730,17 @@ export async function chatsRoutes(app: FastifyInstance) {
           })
         : undefined;
       const lorebooksStore = createLorebooksStorage(app.db);
+      // The proposal payload round-trips the turn provenance captured at
+      // proposal time; entries applied here are anchored to the same turn so
+      // message deletion can cascade them. Older clients that dropped the
+      // unknown payload keys degrade to unstamped (cascade-ineligible) writes.
+      const approvalRefs = Array.isArray(payload.sourceMessageRefs)
+        ? payload.sourceMessageRefs.flatMap((ref) => {
+            if (!isRecord(ref) || typeof ref.id !== "string" || !ref.id.trim()) return [];
+            const swipeIndex = (ref as { swipeIndex?: unknown }).swipeIndex;
+            return [{ id: ref.id, swipeIndex: typeof swipeIndex === "number" ? swipeIndex : null }];
+          })
+        : undefined;
       const targetLorebookId = await persistLorebookKeeperUpdates({
         lorebooksStore,
         chatId: req.params.id,
@@ -1709,6 +1755,11 @@ export async function chatsRoutes(app: FastifyInstance) {
           typeof payload.worldName === "string" && payload.worldName.trim()
             ? payload.worldName.trim()
             : (chat as { name?: string | null }).name,
+        sourceAgentId:
+          typeof payload.sourceAgentId === "string" && payload.sourceAgentId.trim()
+            ? payload.sourceAgentId
+            : "lorebook-keeper",
+        sourceMessageRefs: approvalRefs,
         updates,
       });
       return { ok: true, targetLorebookId };
@@ -2292,13 +2343,39 @@ export async function chatsRoutes(app: FastifyInstance) {
       if (swipeIndex !== undefined && (!Number.isSafeInteger(swipeIndex) || swipeIndex < 0))
         return reply.status(400).send({ error: "Invalid swipe index" });
       const partial = { ...(req.body as Record<string, unknown>) };
+      if (
+        Object.prototype.hasOwnProperty.call(partial, "isConversationStart") &&
+        typeof partial.isConversationStart !== "boolean"
+      )
+        return reply.status(400).send({ error: "isConversationStart must be a boolean" });
       for (const key of ["hiddenFromAICharacterIds", "conversationStartForCharacterIds"] as const) {
         if (Object.prototype.hasOwnProperty.call(partial, key)) {
           partial[key] = normalizeMessageCharacterIds(partial[key]);
         }
       }
-      const updated =
-        swipeIndex === undefined
+      const syncAllSwipeExtra: Record<string, unknown> = {};
+      if (Object.prototype.hasOwnProperty.call(partial, "hiddenFromAI")) {
+        syncAllSwipeExtra.hiddenFromAI = partial.hiddenFromAI;
+      }
+      if (Object.prototype.hasOwnProperty.call(partial, "hiddenFromAICharacterIds")) {
+        syncAllSwipeExtra.hiddenFromAICharacterIds = partial.hiddenFromAICharacterIds;
+      }
+      if (Object.prototype.hasOwnProperty.call(partial, "isConversationStart")) {
+        syncAllSwipeExtra.isConversationStart = partial.isConversationStart;
+      }
+      if (Object.prototype.hasOwnProperty.call(partial, "conversationStartForCharacterIds")) {
+        syncAllSwipeExtra.conversationStartForCharacterIds = partial.conversationStartForCharacterIds;
+      }
+      if (Object.prototype.hasOwnProperty.call(partial, "reactions")) {
+        syncAllSwipeExtra.reactions = partial.reactions;
+      }
+
+      const contextFlagChanged =
+        Object.prototype.hasOwnProperty.call(partial, "isConversationStart") ||
+        Object.prototype.hasOwnProperty.call(partial, "conversationStartForCharacterIds");
+      const updated = contextFlagChanged
+        ? await storage.updateMessageExtraWithContextStart(req.params.messageId, partial, syncAllSwipeExtra, swipeIndex)
+        : swipeIndex === undefined
           ? await storage.updateMessageExtra(req.params.messageId, partial)
           : await storage.updateMessageExtraForSwipe(req.params.messageId, swipeIndex, partial);
       if (!updated) return reply.status(404).send({ error: "Message not found" });
@@ -2319,26 +2396,9 @@ export async function chatsRoutes(app: FastifyInstance) {
           );
         if (userReacted) recordUserReaction(req.params.chatId);
       }
-      const syncAllSwipeExtra: Record<string, unknown> = {};
-      if (Object.prototype.hasOwnProperty.call(partial, "hiddenFromAI")) {
-        syncAllSwipeExtra.hiddenFromAI = partial.hiddenFromAI;
-      }
-      if (Object.prototype.hasOwnProperty.call(partial, "hiddenFromAICharacterIds")) {
-        syncAllSwipeExtra.hiddenFromAICharacterIds = partial.hiddenFromAICharacterIds;
-      }
-      if (Object.prototype.hasOwnProperty.call(partial, "isConversationStart")) {
-        syncAllSwipeExtra.isConversationStart = partial.isConversationStart;
-      }
-      if (Object.prototype.hasOwnProperty.call(partial, "conversationStartForCharacterIds")) {
-        syncAllSwipeExtra.conversationStartForCharacterIds = partial.conversationStartForCharacterIds;
-      }
-      if (Object.prototype.hasOwnProperty.call(partial, "reactions")) {
-        syncAllSwipeExtra.reactions = partial.reactions;
-      }
 
-      if (Object.keys(syncAllSwipeExtra).length > 0) {
-        // AI visibility, context boundaries, and reactions are message-level fields, so keep them
-        // stable across swipe changes instead of binding them to one swipe.
+      if (!contextFlagChanged && Object.keys(syncAllSwipeExtra).length > 0) {
+        // Message-level fields stay stable across swipe changes.
         const swipes = await storage.getSwipes(req.params.messageId);
         for (const swipe of swipes) {
           await storage.updateSwipeExtra(req.params.messageId, swipe.index, syncAllSwipeExtra);
@@ -2476,6 +2536,7 @@ export async function chatsRoutes(app: FastifyInstance) {
       manualOverrides,
       fieldLocks: parseTrackerFieldLocks(row.fieldLocks),
       hiddenTrackerFields: parseTrackerHiddenFields(row.hiddenTrackerFields),
+      rulesetLive: parseStoredRulesetLive(row.rulesetLive),
       committed: (row.committed as any) === 1,
       createdAt: row.createdAt,
     };
@@ -2581,6 +2642,7 @@ export async function chatsRoutes(app: FastifyInstance) {
       manualOverrides: storedManualOverrides,
       fieldLocks,
       hiddenTrackerFields,
+      rulesetLive: parseStoredRulesetLive(row.rulesetLive),
       createdAt: row.createdAt,
     };
   });
@@ -2626,6 +2688,7 @@ export async function chatsRoutes(app: FastifyInstance) {
       personaStats: any[];
       fieldLocks: Record<string, boolean> | null;
       hiddenTrackerFields: Record<string, boolean> | null;
+      rulesetLive: RulesetLiveStates | null;
     }> = {};
     if (body.date !== undefined) fields.date = coerceGameStateTextValue(body.date);
     if (body.time !== undefined) fields.time = coerceGameStateTextValue(body.time);
@@ -2659,6 +2722,14 @@ export async function chatsRoutes(app: FastifyInstance) {
     if (body.fieldLocks !== undefined) fields.fieldLocks = normalizeTrackerFieldLocks(body.fieldLocks);
     if (body.hiddenTrackerFields !== undefined)
       fields.hiddenTrackerFields = normalizeTrackerHiddenFields(body.hiddenTrackerFields);
+    // Live ruleset sheet state edited on the in-game sheet (a rest, a spent hit die, a corrected
+    // pool). Bounded here like every other write of it; what the numbers mean is the ruleset's
+    // business and the player's own game, so legality is not judged.
+    if (body.rulesetLive !== undefined) {
+      const live = body.rulesetLive === null ? null : rulesetLiveStatesSchema.safeParse(body.rulesetLive);
+      if (live && !live.success) return reply.status(400).send({ error: "rulesetLive is not valid live sheet state" });
+      fields.rulesetLive = live ? live.data : null;
+    }
     // Target the same snapshot the GET endpoint returns — the one for the last
     // assistant message's active swipe — so edits persist to the row the user
     // actually sees. Falls back to updateLatest when no messages exist yet.
@@ -2733,13 +2804,18 @@ export async function chatsRoutes(app: FastifyInstance) {
           personaStats: (fields.personaStats as any) ?? null,
           fieldLocks: normalizeTrackerFieldLocks(fields.fieldLocks),
           hiddenTrackerFields: normalizeTrackerHiddenFields(fields.hiddenTrackerFields),
+          ...(fields.rulesetLive !== undefined ? { rulesetLive: fields.rulesetLive } : {}),
         },
         Object.keys(manualOverrides).length > 0 ? manualOverrides : null,
       );
       updated = await gameStateStore.getLatest(req.params.id);
     }
     if (!updated) return reply.status(404).send({ error: "No game state found" });
-    return projectGameSnapshotLocation(updated, ownerSpatialProjection);
+    // The row stores live sheet state as JSON text; callers get the same object the GET returns.
+    return projectGameSnapshotLocation(
+      { ...updated, rulesetLive: parseStoredRulesetLive(updated.rulesetLive) },
+      ownerSpatialProjection,
+    );
   });
 
   // Delete all game state for a chat
@@ -2792,7 +2868,9 @@ export async function chatsRoutes(app: FastifyInstance) {
             .filter((entry): entry is { role: string; content: string } => entry !== null)
         : [];
       if (cachedPrompt.length === 0) return null;
-      if (advancedMemoryEnabled) {
+      // A selected turn is a historical request, not memory being reused for a
+      // new generation. Later images, summaries and policy edits cannot alter it.
+      if (advancedMemoryEnabled && !allowHistoricalCache) {
         const receipt = extra.advancedMemoryReceipt;
         if (!isRecord(receipt) || !Object.prototype.hasOwnProperty.call(receipt, "sourceEndMessageId")) return null;
         const end =
@@ -2874,12 +2952,6 @@ export async function chatsRoutes(app: FastifyInstance) {
             parseExtra(activeSwipe.extra) as Record<string, unknown>,
             Boolean(requestedMessage),
           );
-        }
-        if (!cached) {
-          for (const sw of swipes) {
-            cached = await readCachedPrompt(parseExtra(sw.extra) as Record<string, unknown>, Boolean(requestedMessage));
-            if (cached) break;
-          }
         }
       }
 
@@ -3081,6 +3153,103 @@ export async function chatsRoutes(app: FastifyInstance) {
           const activeLorebookIds = Array.isArray(chatMeta.activeLorebookIds)
             ? (chatMeta.activeLorebookIds as string[])
             : [];
+          // Decision statements (#6569): the preview shows what this turn has already
+          // answered and never asks the model; anything unanswered reads as no, and the
+          // preview says so.
+          const decisionUnanswered = new Set<string>();
+          // Statements past the per-turn limit, which generation would not ask either.
+          const decisionDropped = new Set<string>();
+          const decisionLocalSetting = await appSettings.get(DECISION_SETTINGS_KEYS.localDefault);
+          const decisionConnectionId = (await connections.getDefaultForDecision())?.id ?? null;
+          // The cache key uses the setting as generation does; the report says whether it can serve.
+          const decisionModelId = decisionLocalSetting ?? decisionConnectionId;
+          const decisionModelSet = decisionModelUsable(decisionLocalSetting, decisionConnectionId);
+          // Every live preview below reports the statements it had no answer for.
+          const decisionReport = () =>
+            decisionUnanswered.size > 0 || decisionDropped.size > 0
+              ? {
+                  decisions: {
+                    unanswered: [...decisionUnanswered].filter((statement) => !decisionDropped.has(statement)),
+                    ...(decisionDropped.size > 0 ? { dropped: [...decisionDropped] } : {}),
+                    decisionModelSet,
+                  },
+                }
+              : {};
+          const decisionLimit = parseDecisionPromptQuestionLimit(
+            await appSettings.get(DECISION_PROMPT_QUESTION_LIMIT_SETTINGS_KEY),
+          );
+          let decisionPlanKeys: string[] = [];
+          let decisionSlotsUsed = 0;
+          // Sticky and cooldown (#6582): the timers as they stand this turn, read and never saved.
+          const previewDecisionTimers = readDecisionTimers(chatMeta[DECISION_TIMERS_METADATA_KEY]);
+          const previewDecisionTurn = decisionTurnFor(previewDecisionTimers, latestTurnDecisionId(filteredMessages));
+          const heldDecisions: HeldDecisions = (kind, key, modifiers) =>
+            heldDecision(previewDecisionTimers, previewDecisionTurn, kind, key, modifiers?.every);
+          {
+            const texts = collectTurnDecisionTexts({
+              // The same sources generation plans from: preset sections only outside
+              // Conversation and Game, where the conversation prompt takes their place.
+              preset:
+                preset && chatMode !== "conversation" && chatMode !== "game"
+                  ? { sections, groups, choiceBlocks, choices: chatChoices }
+                  : undefined,
+              ctx: promptMacroContext,
+              extra: [
+                personaDescription,
+                resolveRoleplayChatSummary(chatMode, chatMeta),
+                chatMeta.groupScenarioText,
+                ...(chatMode === "conversation"
+                  ? [
+                      typeof chatMeta.customSystemPrompt === "string" && chatMeta.customSystemPrompt.trim()
+                        ? chatMeta.customSystemPrompt
+                        : presetStringField(preset as Record<string, unknown> | null, "conversationPrompt"),
+                    ]
+                  : []),
+                // Resolved in the same macro pass as the prompt.
+                chatMeta.authorNotes,
+                ...(chatMode === "game"
+                  ? gameGmPromptDecisionTexts(
+                      chatMeta,
+                      presetStringField(preset as Record<string, unknown> | null, "gamePrompt"),
+                    )
+                  : []),
+              ],
+            });
+            const plan = planPromptDecisions(
+              [{ texts, ctx: promptMacroContext, reachable: reachableDecisionStatements(texts, promptMacroContext) }],
+              decisionLimit,
+              { held: heldDecisions },
+            );
+            for (const statement of plan.dropped) decisionDropped.add(statement);
+            decisionPlanKeys = plan.decisions.map((decision) => decision.key);
+            decisionSlotsUsed = plan.decisions.filter((decision) => !decision.held).length;
+            // Always an object, so answers for activating lorebook entries merge into it.
+            promptMacroContext.decisions = {
+              ...(plan.decisions.length > 0
+                ? cachedPromptDecisionAnswers(
+                    plan,
+                    promptDecisionCacheKey(req.params.id, latestTurnDecisionId(filteredMessages), decisionModelId),
+                  )
+                : {}),
+              unanswered: decisionUnanswered,
+            };
+          }
+          // Lorebook entries activated by a decision (#6570) read the answers this turn
+          // already has. The preview never asks, and reports the statements it had none for.
+          const lorebookDecisions = createLorebookDecisionResolver({
+            macroContext: promptMacroContext,
+            // Spent as generation spends it, so the preview drops what generation would.
+            limit: Math.max(0, decisionLimit - decisionSlotsUsed),
+            freeKeys: new Set(decisionPlanKeys),
+            answer: async (plan) =>
+              cachedPromptDecisionAnswers(
+                plan,
+                promptDecisionCacheKey(req.params.id, latestTurnDecisionId(filteredMessages), decisionModelId),
+              ),
+            onUnanswered: (statement) => decisionUnanswered.add(statement),
+            onDropped: (statement) => decisionDropped.add(statement),
+            held: heldDecisions,
+          });
           const entryStateOverrides = resolveEntryStateOverrides(
             chatMeta.entryStateOverrides ?? chatMeta.lorebookEntryStateOverrides,
           );
@@ -3131,6 +3300,7 @@ export async function chatsRoutes(app: FastifyInstance) {
               source: "live_preview",
               exact: false,
               generationInfo: null,
+              ...decisionReport(),
               agentNote:
                 "No saved model request was available, so this is a live best-effort preview assembled without sending.",
             };
@@ -3177,6 +3347,7 @@ export async function chatsRoutes(app: FastifyInstance) {
                 generationTriggers,
                 previewOnly: true,
                 resolveContent: resolvePromptMacros,
+                resolveDecisions: lorebookDecisions,
               },
             );
             const loreContent = [lorebookResult.worldInfoBefore, lorebookResult.worldInfoAfter]
@@ -3195,6 +3366,7 @@ export async function chatsRoutes(app: FastifyInstance) {
               source: "live_preview",
               exact: false,
               generationInfo: null,
+              ...decisionReport(),
               agentNote:
                 "No saved model request was available, so this is a live best-effort preview assembled without sending.",
             };
@@ -3214,6 +3386,7 @@ export async function chatsRoutes(app: FastifyInstance) {
               generationTriggers,
               previewOnly: true,
               resolveContent: resolvePromptMacros,
+              resolveDecisions: lorebookDecisions,
             });
             let messages: Parameters<typeof toPeekPromptMessages>[0] = [...mappedMessages];
             const loreContent = [lorebookResult.worldInfoBefore, lorebookResult.worldInfoAfter]
@@ -3239,6 +3412,7 @@ export async function chatsRoutes(app: FastifyInstance) {
               source: "live_preview",
               exact: false,
               generationInfo: null,
+              ...decisionReport(),
               agentNote:
                 "No saved model request was available, so this is a live best-effort preview assembled without sending.",
             };
@@ -3263,6 +3437,8 @@ export async function chatsRoutes(app: FastifyInstance) {
             chatId: req.params.id,
             characterIds: assistantCharacterIds,
             lorebookCharacterIds,
+            decisions: promptMacroContext.decisions,
+            lorebookDecisions,
             groupCharacterIds: assistantCharacterIds,
             personaId,
             personaName,
@@ -3525,6 +3701,7 @@ export async function chatsRoutes(app: FastifyInstance) {
             source: "live_preview",
             exact: false,
             generationInfo: null,
+            ...decisionReport(),
             agentNote:
               "No saved model request was available, so this is a live best-effort preview assembled without sending.",
           };
@@ -4510,6 +4687,9 @@ export async function chatsRoutes(app: FastifyInstance) {
               personaStats: parseSnapshotJson(snapshot.personaStats, null),
               fieldLocks: parseTrackerFieldLocks(snapshot.fieldLocks),
               hiddenTrackerFields: parseTrackerHiddenFields(snapshot.hiddenTrackerFields),
+              // A branch is a new chat, so there is no row to inherit from: without this a branched
+              // game would start with every pool full again.
+              rulesetLive: parseStoredRulesetLive(snapshot.rulesetLive),
               committed: (snapshot.committed as any) === 1,
             } as any,
             overrides,

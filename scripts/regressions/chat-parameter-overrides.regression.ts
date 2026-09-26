@@ -218,9 +218,10 @@ function resolve(args: {
     model: "fixture",
     connectionParameters: { temperature: 0.4, maxTokens: 1000 },
   });
-  assert.equal(game.temperature, 1);
-  assert.equal(game.parameterSources.temperature, "game mode");
-  assert.equal(game.maxTokens, 16_384);
+  // Game forces nothing: saved values pass through, with no output floor.
+  assert.equal(game.temperature, 0.4);
+  assert.equal(game.parameterSources.temperature, "connection");
+  assert.equal(game.maxTokens, 1000);
 
   const gameOverride = resolve({
     chatMode: "game",
@@ -231,7 +232,7 @@ function resolve(args: {
       temperature: { mode: "override", value: 0.6 },
     },
   });
-  assert.equal(gameOverride.maxTokens, 2000, "an overridden budget skips the game floor");
+  assert.equal(gameOverride.maxTokens, 2000, "a chat override wins in Game");
   assert.equal(gameOverride.temperature, 0.6);
   assert.equal(gameOverride.parameterSources.temperature, "chat");
 
@@ -241,10 +242,9 @@ function resolve(args: {
     model: "gemma-3-27b",
     gameSetupParameters: { topP: 0.8, assistantPrefill: "GM:" },
   });
-  assert.equal(gemma.topP, 0.8, "Gemma games keep their game setup values");
+  assert.equal(gemma.topP, 0.8, "games keep their game setup values");
   assert.equal(gemma.parameterSources.topP, "game mode");
   assert.equal(gemma.assistantPrefill, "GM:");
-  assert.equal(gemma.maxTokens, 16_384);
 
   const scene = resolve({ isSceneChat: true, connectionParameters: { maxTokens: 1000 } });
   assert.equal(scene.maxTokens, 8192);
@@ -392,7 +392,7 @@ try {
   assert.equal(withoutPreset.parameters.maxTokens.source, "default");
 
   const gameBaseline = await baselineFor({ connectionId: plain.id, mode: "game" });
-  assert.equal(gameBaseline.parameters.temperature.source, "game mode");
+  assert.equal(gameBaseline.parameters.temperature.source, "default", "Game adds no layer of its own");
 
   await chats.patchMetadata(roleplay.id, { sceneStatus: "active" });
   const sceneBaseline = await baselineFor({ chatId: roleplay.id });

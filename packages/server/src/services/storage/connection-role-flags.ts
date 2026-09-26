@@ -14,18 +14,20 @@
 //
 // The audio purpose pairs (sfx, music) only ever compete inside the audio
 // category. The agents pair is category-polymorphic: it is the language agent
-// default, the image default, the video default, and the base audio default.
+// default, the image default, the video default, the base audio default, and the
+// decision-model default. A decision connection never takes the fallback side.
 
 import { and, eq, ne } from "../../db/file-query.js";
 import type { DB } from "../../db/connection.js";
 import { apiConnections } from "../../db/schema/index.js";
 
-export type ConnectionDefaultCategory = "image_generation" | "video_generation" | "audio" | "language";
+export type ConnectionDefaultCategory = "image_generation" | "video_generation" | "audio" | "decision" | "language";
 
 export function defaultCategoryForProvider(provider: string): ConnectionDefaultCategory {
   if (provider === "image_generation") return "image_generation";
   if (provider === "video_generation") return "video_generation";
   if (provider === "audio") return "audio";
+  if (provider === "decision") return "decision";
   return "language";
 }
 
@@ -42,7 +44,7 @@ export interface RoleFlagPair {
   fallbackField: RoleFlagField;
 }
 
-/** Language agents, image generation, video generation, and the base audio lane. */
+/** Language agents, image generation, video generation, the base audio lane, and decision models. */
 export const AGENTS_ROLE_PAIR: RoleFlagPair = { defaultField: "defaultForAgents", fallbackField: "fallbackForAgents" };
 /** Game sound effects. Audio connections only. */
 export const SFX_ROLE_PAIR: RoleFlagPair = { defaultField: "defaultForSfx", fallbackField: "fallbackForSfx" };

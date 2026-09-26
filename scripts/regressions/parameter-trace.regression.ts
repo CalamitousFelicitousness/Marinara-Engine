@@ -103,14 +103,14 @@ function resolveRuntime(args: {
 
   const game = resolveRuntime({ chatMode: "game", chatParameters: { topP: 0.9 } });
   assert.equal(game.topP, 1);
-  assert.equal(game.parameterSources.topP, "game mode");
-  assert.equal(game.parameterSources.temperature, "game mode");
+  assert.equal(game.parameterSources.topP, undefined, "Game mode labels nothing, since it sets nothing");
+  assert.equal(game.parameterSources.temperature, undefined);
 
   const gameOverride = resolveRuntime({
     chatMode: "game",
     chatParameterOverrides: { temperature: { mode: "override", value: 0.7 } },
   });
-  assert.equal(gameOverride.temperature, 0.7, "a chat override wins over game mode");
+  assert.equal(gameOverride.temperature, 0.7, "a chat override applies in Game");
   assert.equal(gameOverride.parameterSources.temperature, "chat");
   assert.equal(gameOverride.topP, 1);
 
@@ -122,7 +122,6 @@ function resolveRuntime(args: {
   });
   assert.equal(gemma.topP, 0.9);
   assert.equal(gemma.parameterSources.topP, "chat");
-  assert.equal(gemma.parameterSources.maxTokens, "game mode");
 
   const claude = resolveRuntime({
     provider: "anthropic",

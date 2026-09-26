@@ -29,7 +29,6 @@ import {
 import { mergeModelContextLimit, resolveStoredModelContextLimit } from "./model-access-policy.js";
 import {
   normalizeChatTopP,
-  PARAMETER_TRACE_KEYS,
   storedParameterSources,
   supportsAssistantReasoningPrefill,
   type ParameterTraceSources,
@@ -236,7 +235,6 @@ export function resolveGenerationParameterRuntime(args: GenerationParameterRunti
     );
   };
 
-  const isLocalGemma = (args.connection.model ?? "").toLowerCase().includes("gemma");
   applyParameterOverrides(connectionParams);
   labelStoredLayer(connectionParams, "connection");
   applyParameterOverrides(gameSetupParams);
@@ -251,20 +249,7 @@ export function resolveGenerationParameterRuntime(args: GenerationParameterRunti
     labelLayer("scene", ["maxTokens", "reasoningEffort", "verbosity"]);
   }
 
-  if (isGame && !isLocalGemma) {
-    runtime.temperature = 1;
-    runtime.maxTokens = 16_384;
-    runtime.topP = 1;
-    runtime.topK = 0;
-    runtime.minP = 0;
-    runtime.frequencyPenalty = 0;
-    runtime.presencePenalty = 0;
-    runtime.reasoningEffort = "maximum";
-    runtime.verbosity = null;
-    labelLayer("game mode", PARAMETER_TRACE_KEYS);
-  }
-
-  // Scene and game values keep leftover connection values away from structured output; a chat's Override or Off wins.
+  // Scene values keep leftover connection values away from structured output; a chat's Override or Off wins.
   applyParameterOverrides(chatOverrideParams);
   labelStoredLayer(chatOverrideParams, "chat");
   runtime.customParameters = mergeCustomParameters(
@@ -278,17 +263,14 @@ export function resolveGenerationParameterRuntime(args: GenerationParameterRunti
   );
 
   if (isGame) {
-    const maxTokensOverridden = chatOverrides.maxTokens?.mode === "override";
-    const maxTokensBeforeFloor = runtime.maxTokens;
+    const maxTokensBeforeCap = runtime.maxTokens;
     runtime.maxTokens = clampGenerationMaxOutputTokens({
       provider: args.connection.provider,
       model: args.connection.model,
-      maxTokens: maxTokensOverridden ? runtime.maxTokens : Math.max(runtime.maxTokens, 16_384),
+      maxTokens: runtime.maxTokens,
       maxTokensOverride: args.connection.maxTokensOverride,
     });
-    if (runtime.maxTokens !== maxTokensBeforeFloor) {
-      labelLayer(maxTokensOverridden ? "model rule" : "game mode", ["maxTokens"]);
-    }
+    if (runtime.maxTokens !== maxTokensBeforeCap) labelLayer("model rule", ["maxTokens"]);
   }
 
   const modelLower = (args.connection.model ?? "").toLowerCase();

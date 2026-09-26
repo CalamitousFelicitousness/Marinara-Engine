@@ -15,6 +15,7 @@ import { useTranslation as useUiTranslation } from "react-i18next";
 import type { AudioPurpose, GameAudioPurpose, TTSEffectiveConfigResponse } from "@marinara-engine/shared";
 import { audioConnectionSupportsPurpose } from "../../lib/connection-filters";
 import { cn } from "../../lib/utils";
+import { SettingsSwitchTrack } from "../panels/settings/SettingControls";
 
 export interface GameAudioSetupConnection {
   id: string;
@@ -160,14 +161,7 @@ function GameAudioToggle({ label, description, checked, disabled, className, onT
         <span className="block text-[0.625rem] font-medium text-[var(--foreground)]">{label}</span>
         <span className="mt-0.5 block text-[0.55rem] leading-snug text-[var(--muted-foreground)]">{description}</span>
       </span>
-      <span
-        className={cn(
-          "h-5 w-9 shrink-0 rounded-full p-0.5 transition-colors",
-          on ? "bg-[var(--primary)]" : "bg-[var(--muted-foreground)]/50",
-        )}
-      >
-        <span className={cn("block h-4 w-4 rounded-full bg-white transition-transform", on && "translate-x-3.5")} />
-      </span>
+      <SettingsSwitchTrack checked={on} />
     </button>
   );
 }

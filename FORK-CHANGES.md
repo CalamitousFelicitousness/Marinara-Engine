@@ -33,22 +33,22 @@ The spread must stay above `onClick` so the explicit click handler wins.
 
 ### Log output writes through process.stdout
 
-`packages/server/src/lib/logger.ts` exports `createLogDestination()`, and both that singleton and the Fastify logger in `packages/server/src/app.ts` build pino on the returned stream instead of pino's default destination.
+`packages/server/src/lib/logger.ts` exports `createLogDestination()`, and the shared pino singleton is built on the returned stream instead of pino's default destination. Fastify logs through that same singleton (`loggerInstance` in `app.ts`, upstream's), so one stream covers request lines too.
 
-Upstream gives both loggers `transport: { target: "pino-pretty" }` outside production and nothing inside it. Both resolve to a bare file descriptor: a transport formats in a worker that writes fd 1, and `normalize()` in `pino/lib/tools.js` falls back to `buildSafeSonicBoom({ fd: 1 })` when no stream is passed. Sonic-boom writes with `fs.write`, which reaches a Windows console through `WriteFile`, and `WriteFile` decodes the bytes with the console's OEM code page. UTF-8 is then read as CP850 or CP437, so a Polish prompt logs as `Uczy┼ä opcje znacz─àco zr├│┼╝nicowanymi`. `process.stdout` is a TTY stream writing through `WriteConsoleW`, which carries Unicode whatever the code page is, and still emits plain UTF-8 once redirected to a file or a pipe.
+Upstream gives the logger `transport: { target: "pino-pretty" }` outside production and nothing inside it. Both resolve to a bare file descriptor: a transport formats in a worker that writes fd 1, and `normalize()` in `pino/lib/tools.js` falls back to `buildSafeSonicBoom({ fd: 1 })` when no stream is passed. Sonic-boom writes with `fs.write`, which reaches a Windows console through `WriteFile`, and `WriteFile` decodes the bytes with the console's OEM code page. UTF-8 is then read as CP850 or CP437, so a Polish prompt logs as `Uczy┼ä opcje znacz─àco zr├│┼╝nicowanymi`. `process.stdout` is a TTY stream writing through `WriteConsoleW`, which carries Unicode whatever the code page is, and still emits plain UTF-8 once redirected to a file or a pipe.
 
-Both modes needed it, so the built server behind `start.bat` was affected as well as `pnpm dev`. Formatting now runs in-process rather than on a transport worker; log volume is low at the default `LOG_LEVEL=warn`, and the two loggers keep separate streams, matching the two workers they replace.
+Both modes needed it, so the built server behind `start.bat` was affected as well as `pnpm dev`. Formatting now runs in-process rather than on a transport worker, with upstream's `ignore: "hostname,bootId"` carried into the in-process stream; log volume is low at the default `LOG_LEVEL=warn`. `protectTerminalLogger` wraps the same stream and is a no-op on Windows.
 
 Guarded by `scripts/regressions/log-encoding.regression.ts`.
 
 ### Regression lanes that assume a POSIX path layout
 
-`scripts/regressions/restart-supervisor.regression.ts` and
-`scripts/regressions/server-signal-shutdown.regression.ts` wrap
-`serverRequire.resolve("tsx/esm")` in `pathToFileURL(...).href` before handing it to Node's
-`--import`.
+`scripts/regressions/restart-supervisor.regression.ts`,
+`scripts/regressions/server-signal-shutdown.regression.ts` and
+`scripts/regressions/request-timeouts.regression.ts` wrap the resolved `tsx/esm` path in
+`pathToFileURL(...).href` before handing it to Node's `--import`.
 
-Both lanes arrived with the 2026-09-11 sync. `require.resolve` returns an absolute path, and on
+The first two arrived with the 2026-09-11 sync, `request-timeouts` with the 2026-09-27 one. `require.resolve` returns an absolute path, and on
 Windows that is `E:\AI-Text\...`, which the ESM loader parses as a URL with the scheme `e:` and
 rejects: `Only URLs with a scheme in: file, data, and node are supported`. Neither lane could start
 its server. A `file://` URL is correct on every platform, so this is portable rather than a Windows
@@ -100,8 +100,9 @@ On Windows, Ctrl+C in a `pnpm start` or `start.bat` terminal cut the server off 
 console event reaches both `scripts/run-server.mjs` and the server, and the supervisor then called
 `child.kill(signal)`, which Windows implements as `TerminateProcess`: the server's SIGINT handler
 never ran, the writer lease stayed behind, and up to `SAVE_DEBOUNCE_MS` (750 ms) of writes could be
-lost. The supervisor now forwards signals only off Windows. Closing a WezTerm pane still terminates
-the process tree without a console event, so that path stays abrupt.
+lost. The supervisor forwards signals only off Windows; upstream arrived at the same fix
+independently, so `scripts/run-server.mjs` is upstream's file again. Closing a WezTerm pane still
+terminates the process tree without a console event, so that path stays abrupt.
 
 A second start against the same data directory failed with `StorageWriterLeaseError`. A supervised
 start now asks the lease holder to shut down:
@@ -162,9 +163,10 @@ runs the assembler only for Roleplay, gating it on `chatMode !== "conversation"
 `assembled.macroVariables` afterwards. Game and Conversation never resolved a
 choice block at all, in their prompts or anywhere else.
 
-`packages/server/src/services/prompt/preset-variables.ts` now owns the choice
-resolution the assembler used to hold inline, and resolves a preset's variable
-namespace without assembling a prompt. Generation, the prompt peek, the dry run,
+`packages/server/src/services/prompt/preset-variables.ts` resolves a preset's
+variable namespace without assembling a prompt, reading each choice block through
+the shared `parseChoiceOptions` and `resolveChoiceVariableValue` (upstream moved
+those out of the assembler into `utils/preset-choices.ts`). Generation, the prompt peek, the dry run,
 and the retry-agents route each seed their macro context from it, so card
 fields, lorebook entries, regex scripts, depth prompts, and agent prompts read
 the same values in all three modes.
@@ -292,14 +294,11 @@ refusal is a model that says its price varies: the two NanoGPT rows carry `note:
 "varies_by_modality"` and no rates at all, and all five OpenRouter rows are routers using the `-1`
 sentinel. Zero is a real price and renders as free; negative never renders.
 
-A price is also the wrong thing to show where a plan already covers the call.
-`GET /connections/:id/subscription` reads NanoGPT's allowance, and a model whose row says
-`subscription.included` reads as covered instead of priced, with the remaining quota beside it.
-Coverage alone is not enough to suppress the price: with `allowOverage` false an exhausted allowance
-means the request is refused rather than billed, so the price returns once the quota is gone. That
-endpoint answers with the payment processor and the subscription id beside the counters, so the
-parser selects fields rather than forwarding them, and a regression asserts no identifier reaches a
-client.
+A price is also the wrong thing to show where a plan already covers the call. The allowance comes
+from upstream's NanoGPT usage feature (#6686, `useNanoGptSubscriptionUsage`), and
+`isCoveredBySubscription` in `lib/model-cost.ts` reads a model as covered instead of priced only
+while that usage reports the subscription active, the model row says `subscriptionIncluded`, and
+any reported quota has tokens left, so the price returns once the allowance is gone.
 
 Audio needed a different shape. There is no unit field on an audio row: the vendor names the unit by
 which key it fills, and across the 80 published models it fills six of them. A flat per-generation
@@ -327,9 +326,9 @@ Surfaces: the model dropdown row and selected-model strip in `ConnectionEditor.t
 model help line in `AudioSourceFields.tsx`, and the sound-effect and music lanes in
 `AudioParameterSection.tsx`, which price whatever model their parameters name.
 
-Upstream-hot files touched: `routes/connections.routes.ts` (the reader import, `RemoteModel`, the
-detailed listing query, the subscription route), `routes/tts.routes.ts` (carrying lane and pricing
-through), `types/tts.ts` and `ConnectionEditor.tsx`. The readers themselves are fork-owned modules
+Upstream-hot files touched: `routes/connections.routes.ts` (the reader import, the `pricing` field
+on `RemoteModel`), `routes/tts.routes.ts` (carrying lane and pricing through), `types/tts.ts` and
+`ConnectionEditor.tsx`. The readers themselves are fork-owned modules
 so a merge has one small surface to reconcile.
 
 ### NanoGPT generates sound effects and music, through a job
@@ -497,7 +496,7 @@ the default lives in `packages/shared` as `DEFAULT_AUTHOR_NOTE_DEPTH`. Covered b
 ### Peek Prompt shows where each sampling parameter came from
 
 A sampling parameter passes through the preset (roleplay-style chats only), connection defaults,
-chat Advanced Parameters, scene and game-mode forcing, Claude model rules, per-parameter send
+chat Advanced Parameters, scene forcing, Claude model rules, per-parameter send
 switches, Custom Parameters, provider rules, and a fallback connection. Nothing showed the
 outcome, so a top_p set to 0.95 could reach the model as 1 with no way to tell which layer did it.
 
@@ -521,6 +520,13 @@ Layer labels are added beside the overrides in `resolveGenerationProviderRuntime
 override lines as upstream wrote them; `storedParameterSources` repeats their presence tests. Agent
 labels come from `agentParameterSources`, which mirrors `resolveAgentTemperature` and the max-token
 caps. An agent retry replaces saved traces that include a re-run agent and keeps the rest.
+`completeAgentCall` also accepts bare progress descriptors, as Advanced Memory passes; those calls
+are never traced.
+
+Upstream added its own source tracking (`parameterSources` as plain strings) for the connection
+editor's **Effective** line. The fork keeps its typed trace, and `routes/generate/parameter-preview-route.ts`
+(`POST /generate/parameters`) is rebuilt on `resolveGenerationParameterRuntime`, mapping each trace
+layer onto upstream's `generationParameters.source.*` labels.
 
 Patches to upstream files: `packages/shared/src/types/chat.ts`, `packages/shared/src/types/agent.ts`,
 `packages/server/src/services/llm/base-provider.ts`,
@@ -553,10 +559,9 @@ JSON still merges with the connection's and stays in `chatParameters`. The conne
 its two-state Send switches.
 
 `resolveGenerationParameterRuntime` resolves start values, the roleplay preset, the connection, game
-setup (game chats), the chat's remaining `chatParameters`, scene and game-mode values, then the
-chat's overrides, managed parameters, the game max-token floor (skipped when the chat overrides max
-tokens), and Claude model rules. Scene and game-mode values therefore sit below a chat's Override
-and Off. Main generation, Peek Prompt's dry run, and game side calls read the same overrides; the
+setup (game chats), the chat's remaining `chatParameters`, scene values, then the chat's overrides,
+managed parameters, the model's output cap in Game, and Claude model rules. Scene values therefore
+sit below a chat's Override and Off. Game mode forces nothing (upstream #6511). Main generation, Peek Prompt's dry run, and game side calls read the same overrides; the
 dry run now uses the live route's start values and resolver.
 
 `GET /api/generate/parameter-baseline` resolves the layers below a chat, for a saved chat or for
@@ -1334,6 +1339,66 @@ Verified in a browser: at 1500px, where the gutter is 89px, the panel now render
 Persist migration v96 -> v97 folds the short-lived density setting into the text scale
 (compact/standard/comfortable -> S/M/L). Width presets set width only now; pairing them with a text
 size would re-conflate the axes this work separated.
+
+### Sync with upstream, 2026-09-27
+
+1141 upstream commits (865 non-merge, 133 PRs) over sixteen days, merge base `8906861ac`, v2.4.5 to
+v2.4.6 and storage format 6 to 7. 1129 upstream-changed files, 130 overlapping fork changes. A
+single merge simulated at 64 conflicts, so it ran in two: to the v2.4.6 release point `cc783dd19`
+(252 commits, 36 conflicts), then to `4629eb913` (889 commits, 47 conflicts), each checked on its own.
+
+Storage format 7 marks lorebook entry provenance fields. A data directory opened by this build is
+refused by any earlier build of the fork, so back it up before the first launch.
+
+Upstream deleted `CLAUDE.md` and made `AGENTS.md` its only agent guide (#6505). The fork stopped
+tracking `CLAUDE.md` in the same window, carries upstream's `AGENTS.md` unmodified, and dropped the
+generator that built one from the other.
+
+Resolutions worth remembering:
+
+- **Two lineages built the same feature three times.** Parameter source tracking (upstream's
+  string `parameterSources`, the fork's typed trace), NanoGPT subscription coverage (upstream #6686,
+  the fork's `/connections/:id/subscription`), and the SPA 404 for stale assets (upstream's
+  `createClientNotFoundHandler`, the fork's `isNonSpaRequest`). The fork kept its trace and rebuilt
+  upstream's preview route on it; adopted upstream's NanoGPT usage and its handler, retiring
+  `nanogpt-subscription.ts`, `spa-fallback.regression.ts` and `nanogpt-subscription.regression.ts`.
+  Upstream also moved NanoGPT's `detailed=true` into `modelsEndpoint`, which the fork's own query
+  suffix would have doubled.
+- **Upstream moved code the fork had also moved.** The preset choice helpers went to
+  `utils/preset-choices.ts` in shared while the fork's copy sat in `preset-variables.ts`; upstream's
+  copy carried a fix (an explicitly empty multi-choice separator is kept), so the fork now imports it.
+  `ChatOptions` and its siblings went to `types/generation-integration.ts`; the only fork-only field
+  was `onRequestBody`.
+- **Game mode stopped forcing parameters** (#6511). The fork's runtime labelled the forced values
+  as a trace layer, so the removal had to be applied by hand in `resolveGenerationParameterRuntime`,
+  and the fork's `chat-parameter-overrides` and `parameter-trace` lanes, which pinned the forced
+  values, now pin their absence.
+- **New decision-model connections.** The fork's `enforceRoleFlagExclusivity` gained a `decision`
+  category; a decision connection never takes the agents fallback.
+- **Logging.** Fastify now logs through the shared singleton, so `createLogDestination` feeds one
+  logger and keeps upstream's `bootId`, mixin and serializers. Fork startup migrations run under
+  upstream's `startup.phase`.
+- **New call sites against fork-required fields.** Upstream's scene planner called `assemblePrompt`
+  without the fork's required `localVariables`, and Advanced Memory calls `completeAgentCall` with a
+  partial context and bare descriptors. Both compiled only after adapting, which is the loud case.
+- **`.agents/skills` is a symlink** to `.claude/skills`. With `core.symlinks=false` a Windows
+  checkout writes it as a 17-byte text file and the Impeccable guard in `pnpm check` fails; the local
+  config is now `core.symlinks=true`.
+- **`package.json#pnpm`.** `nanoid@3` 3.3.19, `postcss` 8.5.28 and `adm-zip@<0.6.1` 0.6.1 mirrored
+  into `pnpm-workspace.yaml`, with upstream's onnxruntime 1.30.0 pins.
+
+Lanes adapted to the fork's shapes rather than repaired: `capability-gm-verbs` counts the fork's
+legacy chat-parameter migration write (20), `game-satellite-connection-parameters` and
+`game-generation-parameters` seed a chat Override instead of legacy `chatParameters`,
+`message-controls-position` follows upstream's split of swipes and actions around the reaction row,
+the tracker paint e2e spec seeds `trackerPanelWidth`, and the `tts-synthesis-policy` audio stub gained
+the `src`, `removeAttribute` and `load` of upstream's single playback element. `request-timeouts`, new
+upstream, joins the lanes that hand `--import` a file URL.
+
+Regression suite after the merge, app stopped: 445/450. The five failures are
+`launcher/update` (fork design), the Windows-only `gallery-previews`, `server-signal-shutdown` and
+`decision-sidecar-runtime` (its fake runtime is a `#!/bin/sh` script; the fork is byte-identical to
+upstream on that path), and the flaky `capability-agent-runtime`.
 
 ### Sync with upstream, 2026-09-11
 
@@ -2399,23 +2464,6 @@ would snap back on release.
 That contract changed deliberately, so the assertion now pins width and density instead. That lane is
 still red on the pre-existing upstream `ConnectionEditor.tsx` failure recorded in the
 marinara-validation skill.
-
-### SPA fallback no longer answers asset requests with the app shell
-
-`@fastify/static` is registered with `wildcard: false`, so it enumerates `dist` at registration time.
-Any file written afterwards -- a launcher auto-update, or a rebuild under a running server -- has no
-route and lands on the not-found handler, which returned `index.html` for everything outside `/api/`.
-A hashed chunk request therefore got `200 text/html`, and the browser reported
-`Expected a JavaScript-or-Wasm module script but the server responded with a MIME type of "text/html"`.
-That reads as a broken app rather than a stale tab, and it defeats the client's own
-`vite:preloadError` recovery in `lib/browser-runtime.ts`, which clears the service worker and reloads.
-
-`isNonSpaRequest` in `config/client-static-config.ts` now excludes `/assets/` alongside `/api/`, so a
-missing chunk 404s. Verified live: the running server returned 3024 bytes of `text/html` for
-`/assets/index-JO7zOKHI.js` while that file existed on disk.
-
-Pinned by `scripts/regressions/spa-fallback.regression.ts`. The predicate is a separate export so the
-lane does not need to boot the whole app.
 
 ### Game-state characters are repaired at the boundary
 

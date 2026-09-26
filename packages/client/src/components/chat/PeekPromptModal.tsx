@@ -4,6 +4,7 @@
 import { useState, useMemo } from "react";
 import { X, ChevronRight, ChevronDown } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { useBackdropDismiss } from "../../hooks/use-backdrop-dismiss";
 import {
   NEUTRAL_PANEL_HEADER,
   NEUTRAL_PANEL_SCROLL_AREA,
@@ -14,6 +15,7 @@ import { useTranslation as useUiTranslation } from "react-i18next";
 import {
   estimateTextTokens,
   type AgentParameterTrace,
+  type DecisionDebugPreview,
   type GameToolPlanningInfo,
   type ParameterTrace,
   type ParameterTraceEntry,
@@ -22,6 +24,7 @@ import {
 } from "@marinara-engine/shared";
 import { useConnections } from "../../hooks/use-connections";
 import { useUIStore, type ParameterTraceView } from "../../stores/ui.store";
+import { DecisionDebugPanel } from "./DecisionDebugPanel";
 
 const PROMPT_TAG_CLASS =
   "border border-[var(--marinara-chat-chrome-button-border)] bg-[var(--marinara-chat-chrome-highlight-bg)] text-[var(--marinara-chat-chrome-highlight-text)]";
@@ -48,6 +51,8 @@ interface GenerationInfo {
   assistantPrefill?: string | null;
   tokensPrompt?: number | null;
   tokensCompletion?: number | null;
+  tokensLastRequestInput?: number | null;
+  requestCount?: number;
   tokensCachedPrompt?: number | null;
   tokensCacheWritePrompt?: number | null;
   durationMs?: number | null;
@@ -57,6 +62,7 @@ interface GenerationInfo {
 
 interface PeekPromptModalProps {
   data: {
+    chatId?: string;
     messages: Array<{ role: string; content: string }>;
     chatMode?: string;
     parameters: unknown;
@@ -66,6 +72,7 @@ interface PeekPromptModalProps {
     agentTraces?: AgentParameterTrace[] | null;
     gameToolPlanning?: GameToolPlanningInfo | null;
     agentNote?: string;
+    decisions?: { unanswered: string[]; dropped?: string[]; decisionModelSet: boolean };
   };
   onClose: () => void;
 }
@@ -738,8 +745,22 @@ function ParameterTracePanel({
 //  Main Modal
 // ═══════════════════════════════════════════════
 
-export function PeekPromptModal({ data, onClose }: PeekPromptModalProps) {
+export function PeekPromptModal({ data: originalData, onClose }: PeekPromptModalProps) {
   const { t: localizeUi } = useUiTranslation();
+  const [tested, setTested] = useState<DecisionDebugPreview | null>(null);
+  const [showTest, setShowTest] = useState(false);
+  const data: PeekPromptModalProps["data"] =
+    showTest && tested
+      ? {
+          messages: tested.prompt.messages,
+          parameters: tested.parameters,
+          decisions: tested.prompt.decisions,
+          chatMode: originalData.chatMode,
+          source: "live_preview",
+          exact: false,
+        }
+      : originalData;
+  const backdropDismiss = useBackdropDismiss(onClose);
   const sections = useMemo(
     () => buildDisplaySections(data.messages, data.chatMode === "conversation"),
     [data.chatMode, data.messages],
@@ -790,7 +811,7 @@ export function PeekPromptModal({ data, onClose }: PeekPromptModalProps) {
     <div
       data-chat-floating-panel
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 max-md:pt-[env(safe-area-inset-top)]"
-      onClick={onClose}
+      {...backdropDismiss}
     >
       <div
         className={cn(NEUTRAL_PANEL_SHELL, "mx-4 flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden")}
@@ -807,7 +828,7 @@ export function PeekPromptModal({ data, onClose }: PeekPromptModalProps) {
                 sourceBadgeClass(data),
               )}
             >
-              {sourceLabel(data)}
+              {showTest ? localizeUi("decisionDebug.testedPrompt") : sourceLabel(data)}
             </span>
             <span className="min-w-0 text-[0.625rem] text-[var(--muted-foreground)]">
               {sections.length} {localizeUi("ui.chat.peekpromptmodal.section")}
@@ -825,6 +846,67 @@ export function PeekPromptModal({ data, onClose }: PeekPromptModalProps) {
           </button>
         </div>
         <div className={cn(NEUTRAL_PANEL_SCROLL_AREA, "min-h-0 flex-1 overflow-y-auto p-4 space-y-2")}>
+          {originalData.chatId && (
+            <DecisionDebugPanel
+              key={originalData.chatId}
+              chatId={originalData.chatId}
+              onPreview={(preview) => {
+                setTested(preview);
+                setShowTest(preview !== null);
+              }}
+            />
+          )}
+          {tested && (
+            <div className="flex flex-col items-start gap-2 py-2 text-xs sm:flex-row sm:items-center">
+              <p className="flex-1 text-[var(--muted-foreground)]">
+                {localizeUi(showTest ? "decisionDebug.testedHint" : "decisionDebug.originalHint")}
+              </p>
+              <button
+                type="button"
+                className="mari-chrome-control min-h-10 px-3"
+                onClick={() => setShowTest(!showTest)}
+              >
+                {localizeUi(showTest ? "decisionDebug.showOriginal" : "decisionDebug.showTest")}
+              </button>
+            </div>
+          )}
+          {/* A preview never asks the Decision model, so a decision branch it could not
+              answer is shown as "no". Saying so keeps a preview from being read as final. */}
+          {data.decisions && data.decisions.unanswered.length > 0 && (
+            <div
+              role="status"
+              className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-[0.6875rem] text-[var(--foreground)]"
+            >
+              <p>
+                {localizeUi(
+                  data.decisions.decisionModelSet
+                    ? "ui.chat.peekpromptmodal.decisionsUnanswered"
+                    : "ui.chat.peekpromptmodal.decisionsNoModel",
+                  { count: data.decisions.unanswered.length },
+                )}
+              </p>
+              <ul className="mt-1 list-disc pl-4 text-[var(--muted-foreground)]">
+                {data.decisions.unanswered.slice(0, 12).map((statement) => (
+                  <li key={statement}>{statement}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {/* Statements past Decision statements per turn are never asked, so they read as
+              no every turn. Listing them shows an author what the limit costs. */}
+          {data.decisions?.dropped && data.decisions.dropped.length > 0 && (
+            <div
+              role="status"
+              className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-[0.6875rem] text-[var(--foreground)]"
+            >
+              <p>{localizeUi("ui.chat.peekpromptmodal.decisionsDropped", { count: data.decisions.dropped.length })}</p>
+              <ul className="mt-1 list-disc pl-4 text-[var(--muted-foreground)]">
+                {data.decisions.dropped.slice(0, 12).map((statement) => (
+                  <li key={statement}>{statement}</li>
+                ))}
+              </ul>
+            </div>
+          )}
           {/* Generation info panel */}
           {(gen || planner || paramPills.length > 0) && (
             <div className="rounded-lg border border-[var(--border)] bg-[var(--secondary)]/30 px-4 py-3 space-y-2">
@@ -842,7 +924,10 @@ export function PeekPromptModal({ data, onClose }: PeekPromptModalProps) {
                   {gen?.tokensPrompt != null && (
                     <>
                       {" "}
-                      · {fmtTokens(gen.tokensPrompt)} {localizeUi("ui.chat.peekpromptmodal.actualPromptTokens")}
+                      · {fmtTokens(gen.tokensPrompt)}{" "}
+                      {(gen.requestCount ?? 0) > 1
+                        ? localizeUi("ui.chat.peekpromptmodal.turnPromptTokens", { count: gen.requestCount })
+                        : localizeUi("ui.chat.peekpromptmodal.reportedPromptTokens")}
                     </>
                   )}
                   {(gen?.tokensCachedPrompt ?? 0) > 0 && (
@@ -859,6 +944,18 @@ export function PeekPromptModal({ data, onClose }: PeekPromptModalProps) {
                   )}
                 </span>
               </div>
+              {gen?.tokensLastRequestInput != null && (
+                <p className="text-[0.6875rem] text-[var(--muted-foreground)]">
+                  {localizeUi("ui.chat.peekpromptmodal.lastRequestInput", {
+                    tokens: fmtTokens(gen.tokensLastRequestInput),
+                  })}
+                </p>
+              )}
+              {(gen?.requestCount ?? 0) > 1 && (
+                <p className="text-[0.6875rem] text-[var(--muted-foreground)]">
+                  {localizeUi("ui.chat.peekpromptmodal.toolRequestUsageHint")}
+                </p>
+              )}
               {planner && (
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[0.6875rem] text-[var(--muted-foreground)]">
                   <span>

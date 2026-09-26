@@ -35,36 +35,3 @@ export interface AudioModelPricing {
  * generators.
  */
 export type AudioModelLane = "speech" | "music" | "other";
-
-/**
- * How much of a metered allowance a plan has left.
- *
- * `resetAt` is epoch milliseconds, and is null where the provider states a
- * limit without saying when it rolls over.
- */
-export interface ProviderQuota {
-  used: number;
-  remaining: number;
-  percentUsed: number;
-  resetAt: number | null;
-}
-
-/**
- * A plan that covers calls instead of billing them, as the provider reports it.
- *
- * Only NanoGPT publishes one today. It matters to a cost display because a
- * covered model charges nothing per token until its allowance runs out, so a
- * per-million price shown beside it is a number the caller will never pay.
- */
-export interface ProviderSubscription {
-  active: boolean;
-  /** False means a request is refused once the allowance is gone, not billed. */
-  allowOverage: boolean;
-  /** Which purse the provider says the next request should draw on. */
-  recommendedMode: string | null;
-  /** ISO timestamp the current plan period ends, where the provider states one. */
-  periodEnd: string | null;
-  weeklyInputTokens?: ProviderQuota;
-  dailyInputTokens?: ProviderQuota;
-  dailyImages?: ProviderQuota;
-}

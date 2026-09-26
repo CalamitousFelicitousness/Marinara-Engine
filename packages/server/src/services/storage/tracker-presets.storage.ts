@@ -66,15 +66,13 @@ export function createTrackerPresetsStorage(db: DB) {
         .select()
         .from(trackerPresets)
         .orderBy(asc(trackerPresets.order), asc(trackerPresets.createdAt), asc(trackerPresets.id))) as
-        | TrackerPresetRow[]
-        | undefined;
+        TrackerPresetRow[] | undefined;
       return (rows ?? []).map(projectPreset);
     },
 
     async getById(id: string): Promise<TrackerPreset | null> {
       const rows = (await db.select().from(trackerPresets).where(eq(trackerPresets.id, id))) as
-        | TrackerPresetRow[]
-        | undefined;
+        TrackerPresetRow[] | undefined;
       const row = rows?.[0];
       return row ? projectPreset(row) : null;
     },

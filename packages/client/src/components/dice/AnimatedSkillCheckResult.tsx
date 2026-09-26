@@ -61,6 +61,42 @@ export function AnimatedSkillCheckResult({
           {rollMode}
         </span>
       </div>
+      {/* Why the pool was smaller, or the sum lower, than the sheet says. A wounded character can
+          otherwise only guess at where the missing dice went. */}
+      {result.penalty !== undefined && result.penalty !== 0 && (
+        <div className="skill-check-roll-meta">
+          <span>
+            {result.resolution === "successes"
+              ? localizeUi("ui.dice.animatedskillcheckresult.woundPenaltyDice", { count: -result.penalty })
+              : localizeUi("ui.dice.animatedskillcheckresult.woundPenalty", { penalty: result.penalty })}
+          </span>
+        </div>
+      )}
+      {/* What the sheet itself added or took, beside any wound: a player cannot tell the two apart
+          from the dice alone. */}
+      {result.adjust !== undefined && result.adjust !== 0 && (
+        <div className="skill-check-roll-meta">
+          <span>
+            {localizeUi(
+              result.resolution === "successes"
+                ? "ui.dice.animatedskillcheckresult.adjustDice"
+                : "ui.dice.animatedskillcheckresult.adjust",
+              { value: result.adjust > 0 ? `+${result.adjust}` : `${result.adjust}` },
+            )}
+          </span>
+        </div>
+      )}
+      {/* A face the check moved off the ruleset's own, so extra dice or doubled faces are explained. */}
+      {result.explodeFrom !== undefined && (
+        <div className="skill-check-roll-meta">
+          <span>{localizeUi("ui.dice.animatedskillcheckresult.explodeFrom", { face: result.explodeFrom })}</span>
+        </div>
+      )}
+      {result.doubleFrom !== undefined && (
+        <div className="skill-check-roll-meta">
+          <span>{localizeUi("ui.dice.animatedskillcheckresult.doubleFrom", { face: result.doubleFrom })}</span>
+        </div>
+      )}
       <AnimatedDiceRoll
         notation={result.dice ?? `${result.rolls.length}d20`}
         rolls={result.rolls}
@@ -73,20 +109,34 @@ export function AnimatedSkillCheckResult({
         hero
         highlightValue={result.rollMode !== "normal" ? result.usedRoll : undefined}
         resolution={result.resolution}
+        threshold={result.threshold}
       />
       <div className="skill-check-roll-result">
         <span>
-          {result.rollMode !== "normal"
-            ? localizeUi("ui.dice.animatedskillcheckresult.usingValue1", { value1: result.usedRoll })
-            : result.resolution === "sum" &&
-                result.rolls.length === 1 &&
-                result.usedRoll === result.rolls[0] &&
-                result.total === result.usedRoll + result.modifier
-              ? localizeUi("ui.dice.animatedskillcheckresult.rolledValue1", { value1: result.usedRoll })
-              : localizeUi("ui.dice.animatedskillcheckresult.resultValue1", { value1: result.total })}
+          {/* A pool counts successes, so it says how many it got and how many it owed. Nothing is
+              added up and no single die was kept, which is why neither wording below fits it. */}
+          {result.resolution === "successes"
+            ? localizeUi("ui.dice.animatedskillcheckresult.successesNeeded", {
+                count: result.total,
+                needed: result.dc,
+              })
+            : result.rollMode !== "normal"
+              ? localizeUi("ui.dice.animatedskillcheckresult.usingValue1", { value1: result.usedRoll })
+              : result.resolution === "sum" &&
+                  result.rolls.length === 1 &&
+                  result.usedRoll === result.rolls[0] &&
+                  result.total === result.usedRoll + result.modifier
+                ? localizeUi("ui.dice.animatedskillcheckresult.rolledValue1", { value1: result.usedRoll })
+                : localizeUi("ui.dice.animatedskillcheckresult.resultValue1", { value1: result.total })}
         </span>
         <strong>{label}</strong>
       </div>
+      {/* Beside the outcome, never in place of it: the check still succeeded or failed as it says. */}
+      {result.complication && (
+        <div className="skill-check-roll-meta">
+          <span>{localizeUi("ui.dice.animatedskillcheckresult.complication")}</span>
+        </div>
+      )}
     </div>
   );
 }

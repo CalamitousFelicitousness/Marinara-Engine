@@ -364,12 +364,7 @@ export interface TTSModelsResponse {
  * the base audio pair reports "default" or "fallback" like speech does.
  */
 export type TTSResolutionOrigin =
-  | "explicit"
-  | "purpose_default"
-  | "purpose_fallback"
-  | "default"
-  | "fallback"
-  | "legacy";
+  "explicit" | "purpose_default" | "purpose_fallback" | "default" | "fallback" | "legacy";
 
 /** Returned by GET /api/tts/effective-config */
 export interface TTSEffectiveConfigResponse {

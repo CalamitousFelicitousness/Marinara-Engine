@@ -1,3 +1,4 @@
+import { notifyRoleplayTTSParagraph, withRoleplayTTSParagraphs } from "../../lib/roleplay-vn-tts";
 // ──────────────────────────────────────────────
 // Chat: Main chat area — mode-aware rendering
 // ──────────────────────────────────────────────
@@ -49,6 +50,7 @@ import { usePageActivity } from "../../hooks/use-page-activity";
 import { useRenderTimer, useWhyRender } from "../../lib/perf-diagnostics";
 import { usePresenceClock } from "../../hooks/use-presence-clock";
 import { useKeepLatestChatMessageVisible } from "../../hooks/use-visual-viewport-chat-bottom";
+import { useChatOpeningScroll } from "../../hooks/use-chat-opening-scroll";
 import { api, ApiError, isRequestTimeoutError } from "../../lib/api-client";
 import { getChatDisplayName, getConnectedChatDisplayName, parseChatMetadata } from "../../lib/chat-display";
 import { getChatCharacterIds } from "../../lib/chat-macros";
@@ -57,7 +59,11 @@ import { parseCharacterDisplayData } from "../../lib/character-display";
 import { showConfirmDialog } from "../../lib/app-dialogs";
 import { parseMessageExtraRecord } from "../../lib/chat-message-extra";
 import { trimInactiveMessagePageCaches } from "../../lib/message-page-cache";
-import { normalizeSpriteExpressionMap, resolveSpriteExpressionState } from "../../lib/sprite-expression-state";
+import {
+  normalizeSpriteExpressionMap,
+  resolveLatestSpriteExpressionTurn,
+  resolveSpriteExpressionState,
+} from "../../lib/sprite-expression-state";
 import { chatBackgroundMetadataToUrl, chatBackgroundUrlToMetadata } from "../../lib/backgrounds";
 import { useGameStateStore } from "../../stores/game-state.store";
 import { useGalleryStore } from "../../stores/gallery.store";
@@ -83,7 +89,7 @@ import { useEncounter } from "../../hooks/use-encounter";
 import { useScene } from "../../hooks/use-scene";
 import { useEncounterStore } from "../../stores/encounter.store";
 import { useTranslationStore } from "../../stores/translation.store";
-import { getChatTranslationConfig } from "../../hooks/use-translate";
+import { getChatTranslationConfig } from "@marinara-engine/shared";
 import { ttsService } from "../../lib/tts-service";
 import { resolveTTSSynthesisPolicy } from "../../lib/tts-synthesis-policy";
 import { notifyTTSAutoplayPaused } from "../../lib/tts-error-notice";
@@ -928,8 +934,7 @@ export const ChatArea = memo(function ChatArea() {
     // generate. Prefer the live override/schedule-derived status (matching the presence pill, via
     // the shared resolver) over the generation-time snapshot, which only refreshes on generation.
     const chatStatuses = convoMeta.conversationCharacterStatuses as
-      | Record<string, { status?: string; activity?: string }>
-      | undefined;
+      Record<string, { status?: string; activity?: string }> | undefined;
     const presenceIds = new Set<string>([
       ...Object.keys(chatStatuses ?? {}),
       ...Object.keys((convoMeta.conversationStatusOverrides as Record<string, unknown> | undefined) ?? {}),
@@ -1188,6 +1193,28 @@ export const ChatArea = memo(function ChatArea() {
     () => resolveSpriteExpressionState(messages, chatMeta.spriteExpressions),
     [messages, chatMeta.spriteExpressions],
   );
+  // Keep each scene across chat switches and temporary Roleplay surface unmounts while a chat loads.
+  const completedExpressionTurn = useMemo(() => resolveLatestSpriteExpressionTurn(messages), [messages]);
+  const [retainedExpressionSprites, setRetainedExpressionSprites] = useState<
+    Map<string, ReturnType<typeof resolveLatestSpriteExpressionTurn>>
+  >(() => new Map());
+  const retainedExpressionTurn = activeChatId ? retainedExpressionSprites.get(activeChatId) : undefined;
+  const retainedExpressionIndex =
+    messages?.findIndex((message) => message.id === retainedExpressionTurn?.messageId) ?? -1;
+  // Regeneration can replace the current swipe before its expressions finish. Don't rewind to an older scene.
+  const visibleExpressionTurn =
+    retainedExpressionTurn && (!messages || retainedExpressionIndex > (completedExpressionTurn?.messageIndex ?? -1))
+      ? retainedExpressionTurn
+      : completedExpressionTurn;
+  useEffect(() => {
+    if (!activeChatId || !messages) return;
+    setRetainedExpressionSprites((previous) => {
+      if (previous.get(activeChatId) === visibleExpressionTurn) return previous;
+      const next = new Map(previous);
+      next.set(activeChatId, visibleExpressionTurn);
+      return next;
+    });
+  }, [activeChatId, messages, visibleExpressionTurn]);
   const groupChatMode: string | undefined = chatCharIds.length > 1 ? (chatMeta.groupChatMode ?? "merged") : undefined;
 
   const updateMeta = useUpdateChatMetadata();
@@ -2230,7 +2257,7 @@ export const ChatArea = memo(function ChatArea() {
     (messageId?: string) => {
       if (!activeChatId) return;
       peekPrompt.mutate(messageId ? { chatId: activeChatId, messageId } : activeChatId, {
-        onSuccess: (data) => setPeekPromptData(data),
+        onSuccess: (data) => setPeekPromptData({ ...data, chatId: activeChatId }),
         onError: (error) => {
           const message =
             error instanceof ApiError
@@ -2487,6 +2514,7 @@ export const ChatArea = memo(function ChatArea() {
   const userScrolledAtRef = useRef(0);
   const forcedBottomScrollRef = useRef<{ requestedAt: number; behavior: ScrollBehavior } | null>(null);
   const openedAtBottomChatIdRef = useRef<string | null>(null);
+  const gotoRequest = useChatStore((s) => s.gotoRequest);
   const streamScrollFrameRef = useRef(0);
   const scrollToMessagesBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
     if (hasActiveTextSelection()) return;
@@ -2525,6 +2553,14 @@ export const ChatArea = memo(function ChatArea() {
     [scrollToMessagesBottom],
   );
   useKeepLatestChatMessageVisible(scrollRef, scrollToMessagesBottom);
+  const followOpeningScroll = useChatOpeningScroll(
+    isRoleplay && gotoRequest?.chatId !== activeChatId ? activeChatId : null,
+    scrollRef,
+    scrollToMessagesBottom,
+  );
+  useEffect(() => {
+    openedAtBottomChatIdRef.current = null;
+  }, [activeChatId]);
   useEffect(() => {
     const handleScrollRequest = (event: Event) => {
       const detail = (event as CustomEvent<ChatScrollToBottomDetail>).detail;
@@ -2542,9 +2578,9 @@ export const ChatArea = memo(function ChatArea() {
   }, [activeChatId, scheduleScrollToMessagesBottom]);
 
   useEffect(() => {
-    if (!activeChatId || isFetchingNextPage || isLoadingMoreRef.current) return;
+    if (!activeChatId || !isRoleplay || isFetchingNextPage || isLoadingMoreRef.current) return;
     if (openedAtBottomChatIdRef.current === activeChatId) return;
-    if (isLoading && loadedMessageCount === 0) return;
+    if (!messages || (isLoading && loadedMessageCount === 0) || gotoRequest?.chatId === activeChatId) return;
 
     let frame = 0;
     const scrollWhenSurfaceIsReady = () => {
@@ -2559,7 +2595,7 @@ export const ChatArea = memo(function ChatArea() {
       openedAtBottomChatIdRef.current = activeChatId;
       userScrolledAwayRef.current = false;
       isNearBottomRef.current = true;
-      scheduleScrollToMessagesBottom("auto");
+      followOpeningScroll();
     };
 
     document.addEventListener("selectionchange", scrollWhenSurfaceIsReady);
@@ -2568,7 +2604,16 @@ export const ChatArea = memo(function ChatArea() {
       cancelAnimationFrame(frame);
       document.removeEventListener("selectionchange", scrollWhenSurfaceIsReady);
     };
-  }, [activeChatId, isFetchingNextPage, isLoading, loadedMessageCount, scheduleScrollToMessagesBottom]);
+  }, [
+    activeChatId,
+    isRoleplay,
+    isFetchingNextPage,
+    isLoading,
+    loadedMessageCount,
+    messages,
+    gotoRequest,
+    followOpeningScroll,
+  ]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -2735,6 +2780,13 @@ export const ChatArea = memo(function ChatArea() {
       }
       ttsAutoplayPauseNotifiedRef.current = false;
 
+      if (
+        mode === "roleplay" &&
+        (chatMeta.roleplayDisplayStyle ?? useUIStore.getState().roleplayDisplayStyle) === "visual-novel"
+      ) {
+        ttsRequests = withRoleplayTTSParagraphs(ttsRequests, lastMsg.content, cfg);
+      }
+
       await ttsService.speakSequence(
         withTTSVoiceRequestCacheKeys(ttsRequests, cfg, lastMsg.id, audioConnectionId),
         lastMsg.id,
@@ -2744,10 +2796,19 @@ export const ChatArea = memo(function ChatArea() {
           policy: resolveTTSSynthesisPolicy(cfg),
           volume: ttsLineVolume / 100,
           audioConnectionId: audioConnectionId ?? undefined,
+          onChunkStart: (_request, index) => notifyRoleplayTTSParagraph(targetChatId, lastMsg.id, ttsRequests, index),
         },
       );
     },
-    [characterMap, characterNames, chat, personaInfo?.name, resolveTTSCharacterId, ttsLineVolume],
+    [
+      characterMap,
+      characterNames,
+      chat,
+      chatMeta.roleplayDisplayStyle,
+      personaInfo?.name,
+      resolveTTSCharacterId,
+      ttsLineVolume,
+    ],
   );
   useEffect(() => {
     const handleMessageReady = (event: Event) => {
@@ -2864,7 +2925,6 @@ export const ChatArea = memo(function ChatArea() {
   }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
 
   // ── /goto command: paginate older pages until target message is loaded, then scroll to it
-  const gotoRequest = useChatStore((s) => s.gotoRequest);
   useEffect(() => {
     if (!gotoRequest || gotoRequest.chatId !== activeChatId) return;
     if (!messages) return;
@@ -2892,6 +2952,7 @@ export const ChatArea = memo(function ChatArea() {
       const raf = requestAnimationFrame(() => {
         const el = document.querySelector(`[data-message-id="${CSS.escape(targetId)}"]`);
         if (el instanceof HTMLElement) {
+          openedAtBottomChatIdRef.current = activeChatId;
           el.scrollIntoView({ behavior: "smooth", block: "center" });
           userScrolledAwayRef.current = true; // suppress auto-scroll-to-bottom hijacking the jump
         }
@@ -3315,6 +3376,9 @@ export const ChatArea = memo(function ChatArea() {
           spriteCharacterIds={spriteCharacterIds}
           spriteDisplayModes={visibleSpriteDisplayModes}
           spriteExpressions={spriteExpressions}
+          visibleExpressionSpriteIds={
+            chatMeta.expressionOnlyActiveSprites === true ? visibleExpressionTurn?.characterIds : undefined
+          }
           expressionAvatarResolver={expressionAvatarResolver}
           spritePlacements={spritePlacements}
           spriteScale={spriteScale}

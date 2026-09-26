@@ -23,12 +23,18 @@ import {
   type BulkUpdateLorebookEntriesInput,
   type CreateLorebookFolderInput,
   type LorebookEntry,
+  type SourceMessageRef,
   type UpdateLorebookFolderInput,
 } from "@marinara-engine/shared";
-import { collectEffectivelyDisabledFolderIds, collectFolderSubtreeIds } from "@marinara-engine/shared";
+import {
+  collectEffectivelyDisabledFolderIds,
+  collectFolderSubtreeIds,
+  parseLorebookDecisionActivation,
+} from "@marinara-engine/shared";
 import { normalizeTimestampOverrides, type TimestampOverrides } from "../import/import-timestamps.js";
 import { toPaginatedList } from "../../utils/list-pagination.js";
 import { createChatsStorage } from "./chats.storage.js";
+import { parseSourceMessageRefs } from "./lorebook-provenance.js";
 
 function normalizeLorebookEntryLimit(value: unknown): number {
   const parsed = typeof value === "number" ? value : Number(value);
@@ -147,6 +153,7 @@ function parseLorebookRow(row: Record<string, unknown>) {
     maxRecursionDepth: normalizeLorebookMaxRecursionDepth(row.maxRecursionDepth),
     excludeFromVectorization: row.excludeFromVectorization === "true",
     vectorQueryDepth: normalizeLorebookVectorQueryDepth(row.vectorQueryDepth),
+    vectorIncludeAssistant: row.vectorIncludeAssistant === "true",
     vectorScoreThreshold: normalizeLorebookVectorScoreThreshold(row.vectorScoreThreshold),
     vectorMaxResults: normalizeLorebookVectorMaxResults(row.vectorMaxResults),
     isGlobal: row.isGlobal === "true",
@@ -181,8 +188,20 @@ function parseStringArray(value: unknown): string[] {
   }
 }
 
+/** Provenance fields accepted on top of the zod-validated create/update inputs. The HTTP schemas deliberately strip these — only server-side agent paths may set attribution. */
+export type EntryProvenanceInput = {
+  sourceAgentId?: string | null;
+  sourceMessageRefs?: SourceMessageRef[];
+  /** Repeated tool writes in one turn retain the snapshot taken by its first write. */
+  preserveProvenanceSnapshot?: boolean;
+};
+
+function serializeMessageRefs(refs: SourceMessageRef[] | undefined): string {
+  return JSON.stringify(refs ?? []);
+}
+
 function parseEntryRow(row: Record<string, unknown>) {
-  return {
+  const parsed = {
     ...row,
     enabled: row.enabled === "true",
     constant: row.constant === "true",
@@ -195,6 +214,8 @@ function parseEntryRow(row: Record<string, unknown>) {
     excludeRecursion: row.excludeRecursion === "true",
     delayUntilRecursion: row.delayUntilRecursion === "true",
     excludeFromVectorization: row.excludeFromVectorization === "true",
+    // Rows written before #6570 have neither column.
+    ...parseLorebookDecisionActivation(row),
     folderId: (row.folderId as string | null | undefined) ?? null,
     keys: parseStringArray(row.keys),
     secondaryKeys: parseStringArray(row.secondaryKeys),
@@ -219,7 +240,17 @@ function parseEntryRow(row: Record<string, unknown>) {
           ? JSON.parse(row.embedding as string)
           : null,
     embeddingSpaceId: (row.embeddingSpaceId as string | null | undefined) ?? null,
+    sourceAgentId: (row.sourceAgentId as string | null | undefined) || null,
+    sourceMessageRefs: parseSourceMessageRefs(row.sourceMessageRefs),
   };
+  // previousContent/previousSourceMessageRefs/previousSourceAgentId are the
+  // storage-level depth-1 undo snapshot; they stay internal (the
+  // message-delete cascade reads the raw rows) and must not leak into API
+  // payloads.
+  delete (parsed as Record<string, unknown>).previousContent;
+  delete (parsed as Record<string, unknown>).previousSourceMessageRefs;
+  delete (parsed as Record<string, unknown>).previousSourceAgentId;
+  return parsed;
 }
 
 function parseFolderRow(row: Record<string, unknown>) {
@@ -503,6 +534,7 @@ export function createLorebooksStorage(db: DB) {
           maxRecursionDepth: input.maxRecursionDepth ?? 3,
           excludeFromVectorization: String(input.excludeFromVectorization ?? true),
           vectorQueryDepth: normalizeLorebookVectorQueryDepth(input.vectorQueryDepth),
+          vectorIncludeAssistant: String(input.vectorIncludeAssistant ?? false),
           vectorScoreThreshold: normalizeLorebookVectorScoreThreshold(input.vectorScoreThreshold),
           vectorMaxResults: normalizeLorebookVectorMaxResults(input.vectorMaxResults),
           characterId: characterIds[0] ?? null,
@@ -538,6 +570,8 @@ export function createLorebooksStorage(db: DB) {
         updates.excludeFromVectorization = String(input.excludeFromVectorization);
       if (input.vectorQueryDepth !== undefined)
         updates.vectorQueryDepth = normalizeLorebookVectorQueryDepth(input.vectorQueryDepth);
+      if (input.vectorIncludeAssistant !== undefined)
+        updates.vectorIncludeAssistant = String(input.vectorIncludeAssistant);
       if (input.vectorScoreThreshold !== undefined)
         updates.vectorScoreThreshold = normalizeLorebookVectorScoreThreshold(input.vectorScoreThreshold);
       if (input.vectorMaxResults !== undefined)
@@ -829,7 +863,7 @@ export function createLorebooksStorage(db: DB) {
       return row ? parseEntryRow(row as Record<string, unknown>) : null;
     },
 
-    async createEntry(input: CreateLorebookEntryInput) {
+    async createEntry(input: CreateLorebookEntryInput & EntryProvenanceInput) {
       const id = newId();
       const timestamp = now();
       const requestedFolderId = input.folderId ?? null;
@@ -880,13 +914,25 @@ export function createLorebooksStorage(db: DB) {
         excludeRecursion: String(input.excludeRecursion ?? false),
         delayUntilRecursion: String(input.delayUntilRecursion ?? false),
         excludeFromVectorization: String(input.excludeFromVectorization ?? false),
+        ...parseLorebookDecisionActivation(input),
+        sourceAgentId: input.sourceAgentId ?? null,
+        sourceMessageRefs: serializeMessageRefs(input.sourceMessageRefs),
         createdAt: timestamp,
         updatedAt: timestamp,
       });
       return this.getEntry(id);
     },
 
-    async updateEntry(id: string, input: UpdateLorebookEntryInput) {
+    async updateEntry(
+      id: string,
+      input: UpdateLorebookEntryInput & EntryProvenanceInput,
+      expectedProvenance?: {
+        sourceAgentId: string;
+        sourceMessageRefs: SourceMessageRef[];
+        updatedAt: string;
+        content: string;
+      },
+    ) {
       const updates: Record<string, unknown> = { updatedAt: now() };
       // Must cover EXACTLY the fields buildLorebookEntryEmbeddingText embeds
       // (name, description, keys, secondary keys, content) — description was
@@ -970,12 +1016,60 @@ export function createLorebooksStorage(db: DB) {
       if (input.delayUntilRecursion !== undefined) updates.delayUntilRecursion = String(input.delayUntilRecursion);
       if (input.excludeFromVectorization !== undefined)
         updates.excludeFromVectorization = String(input.excludeFromVectorization);
+      if (input.decisionStatement !== undefined)
+        updates.decisionStatement = parseLorebookDecisionActivation(input).decisionStatement;
+      if (input.decisionMode !== undefined) updates.decisionMode = parseLorebookDecisionActivation(input).decisionMode;
       if (shouldClearEmbedding) {
         updates.embedding = null;
         updates.embeddingSpaceId = null;
       }
 
-      await db.update(lorebookEntries).set(updates).where(eq(lorebookEntries.id, id));
+      // Message provenance. Only server-side agent paths may set attribution —
+      // the HTTP schemas strip these fields, so a PATCH from the UI never
+      // carries them.
+      if (input.sourceAgentId !== undefined) {
+        // Agent write: snapshot the immediate pre-write state (depth-1 undo,
+        // mirroring addSwipe's outgoing-swipe backfill) and take the new refs.
+        if (input.content !== undefined) {
+          const current = (await db.select().from(lorebookEntries).where(eq(lorebookEntries.id, id)))[0];
+          if (
+            current &&
+            ((!input.sourceMessageRefs?.length && !input.preserveProvenanceSnapshot) ||
+              current.sourceAgentId !== input.sourceAgentId ||
+              current.sourceMessageRefs !== serializeMessageRefs(input.sourceMessageRefs))
+          ) {
+            updates.previousContent = current.content;
+            updates.previousSourceMessageRefs = current.sourceMessageRefs ?? "[]";
+            updates.previousSourceAgentId = current.sourceAgentId ?? null;
+          }
+        }
+        updates.sourceAgentId = input.sourceAgentId;
+        updates.sourceMessageRefs = serializeMessageRefs(input.sourceMessageRefs);
+      } else if (input.content !== undefined) {
+        // Content-bearing write without provenance is a human edit: it takes
+        // ownership, so the message-delete cascade must never touch this
+        // entry again — and there is nothing agent-made left to revert to.
+        updates.sourceAgentId = null;
+        updates.sourceMessageRefs = "[]";
+        updates.previousContent = null;
+        updates.previousSourceMessageRefs = null;
+        updates.previousSourceAgentId = null;
+      }
+
+      await db
+        .update(lorebookEntries)
+        .set(updates)
+        .where(
+          expectedProvenance
+            ? and(
+                eq(lorebookEntries.id, id),
+                eq(lorebookEntries.sourceAgentId, expectedProvenance.sourceAgentId),
+                eq(lorebookEntries.sourceMessageRefs, serializeMessageRefs(expectedProvenance.sourceMessageRefs)),
+                eq(lorebookEntries.updatedAt, expectedProvenance.updatedAt),
+                eq(lorebookEntries.content, expectedProvenance.content),
+              )
+            : eq(lorebookEntries.id, id),
+        );
       return this.getEntry(id);
     },
 
@@ -1366,6 +1460,12 @@ export function createLorebooksStorage(db: DB) {
         delete clone.createdAt;
         delete clone.updatedAt;
         delete clone.embedding;
+        // A clone is a user-directed copy: born manual (like imports), never
+        // attributed to the original's author or anchored to the original's
+        // source messages — otherwise deleting those messages would cascade
+        // the clone too.
+        delete clone.sourceAgentId;
+        delete clone.sourceMessageRefs;
         await this.createEntry(clone as unknown as CreateLorebookEntryInput);
       }
 

@@ -5,17 +5,27 @@
 // instead of using `console.log/warn/error` directly. This ensures
 // LOG_LEVEL actually controls what gets printed.
 //
-// Fastify builds its own separate pino instance from a {level, stream}
-// object (see app.ts) rather than importing this singleton, so
-// req.log / reply.log do NOT track runtime LOG_LEVEL changes applied here
-// by the env-watcher hot-reload.
+// Fastify is built on this same instance (app.ts passes it as
+// `loggerInstance`), so req.log / reply.log / app.log are children of it and
+// share its serializers and context fields. Pino children copy the level
+// when they are created, so app.ts calls followLogLevel(app.log) to keep the
+// env-watcher LOG_LEVEL hot reload in effect for request lines too.
+//
+// Every line carries `bootId` (one per process start) and, inside an HTTP
+// request, the fields of the current log context (`requestId`, `route`; see
+// log-context.ts). An Error logged under
+// either `err` or `error` keeps its `cause` chain. See
+// docs/development/logging.md.
 // ──────────────────────────────────────────────
 import pino from "pino";
+import { randomBytes } from "node:crypto";
 import type { EventEmitter } from "node:events";
 import { writeSync } from "node:fs";
+import { hostname } from "node:os";
 import { isatty } from "node:tty";
 import prettyStream from "pino-pretty";
 import { getLogLevel, getNodeEnv } from "../config/runtime-config.js";
+import { logContextMixin } from "./log-context.js";
 
 type TerminalLogStream = EventEmitter & {
   fd?: number;
@@ -50,7 +60,7 @@ function silenceTerminalStream(stream: TerminalLogStream) {
   stream.destroy = noop;
 }
 
-// Register BEFORE either Pino instance: shutdown can reach exit before an async
+// Register BEFORE the Pino instance below: shutdown can reach exit before an async
 // EIO arrives, and SonicBoom's exit-time flush otherwise retries the dead fd forever.
 if (stdoutWasTerminal) {
   process.once("exit", () => {
@@ -77,24 +87,54 @@ export function protectTerminalLogger(log: object, prettyStdout = false): void {
   });
 }
 
+/** Short random id of this process start; tells two runs apart in one log file. */
+const bootId = randomBytes(4).toString("hex");
+
 /**
- * Log destination, shared with the Fastify logger in app.ts.
- *
  * Left to itself pino writes to file descriptor 1, which on Windows reaches the
  * console through WriteFile and is decoded with the console's OEM code page, so
  * a character like U+0144 surfaces as two box-drawing glyphs. process.stdout is
  * a TTY stream and writes through WriteConsoleW, which carries Unicode whatever
  * the active code page is, and still emits plain UTF-8 once redirected to a file
- * or a pipe. Both modes need it: the dev transport and the production default
+ * or a pipe. Both modes need it: the pretty transport and the production default
  * are each fd-based.
  */
 export function createLogDestination() {
   if (getNodeEnv() === "production") return process.stdout;
-  return prettyStream({ colorize: true, destination: process.stdout });
+  // pino-pretty hides hostname by default; bootId is hidden too, since a dev terminal only
+  // ever shows one run. JSON output (production, log files) keeps both.
+  return prettyStream({ colorize: true, ignore: "hostname,bootId", destination: process.stdout });
 }
 
-export const logger = pino({ level: getLogLevel() }, createLogDestination());
+export const logger = pino(
+  {
+    level: getLogLevel(),
+    // Pino's defaults (pid, hostname) plus bootId.
+    base: { pid: process.pid, hostname: hostname(), bootId },
+    mixin: logContextMixin,
+    // Pino only serialises `err` by default; `{ error }` would otherwise print as `{}`.
+    serializers: { err: pino.stdSerializers.err, error: pino.stdSerializers.err },
+  },
+  createLogDestination(),
+);
 protectTerminalLogger(logger, getNodeEnv() !== "production");
+
+/**
+ * Keeps a child logger (Fastify's app.log) on the shared logger's level after
+ * runtime changes; Pino children otherwise keep the level they were created with.
+ */
+export function followLogLevel(child: { level: string }): () => void {
+  child.level = logger.level;
+  const listener = (label: string, _value: number, _previous: string, _previousValue: number, from: unknown) => {
+    if (from === logger && child.level !== label) child.level = label;
+  };
+  logger.on("level-change", listener);
+  // Returns the unsubscribe; app.ts calls it on close so repeated buildApp() calls
+  // (tests, in-process restarts) do not pile up listeners on the shared logger.
+  return () => {
+    logger.off("level-change", listener);
+  };
+}
 
 export function logDebugOverride(overrideEnabled: boolean, message: string, ...args: any[]) {
   if (overrideEnabled && !logger.isLevelEnabled("debug")) {

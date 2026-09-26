@@ -19,12 +19,17 @@ import {
 } from "react";
 import { isMessageShadowedByLiveStream } from "../../lib/generation-stream-policy";
 import { splitRoleplayParagraphs } from "../../lib/roleplay-vn-paragraphs";
+import { ROLEPLAY_TTS_PARAGRAPH_EVENT, type RoleplayTTSParagraphDetail } from "../../lib/roleplay-vn-tts";
+import { ttsService } from "../../lib/tts-service";
+import { usePageActivity } from "../../hooks/use-page-activity";
 import {
+  appendContinuationMessageContent,
   normalizeChatSummaryEntries,
   isLongTermMemoryChatSummaryPromptAllowed,
   STORYBOARD_AGENT_ID,
   type GameTurnStoryboard,
   type ChatSummaryEntry,
+  type AdvancedMemoryJob,
   type MarkerConfig,
   type PromptGroup,
   type PromptSection,
@@ -354,13 +359,16 @@ function RoleplayLiveStreamText({
 
   useLayoutEffect(() => {
     let frame: number | null = null;
-    const readBuffer = () => {
-      const state = useChatStore.getState();
-      return state.streamBuffers.get(chatId) ?? (state.activeChatId === chatId ? state.streamBuffer : "");
+    const readBuffer = (state: ReturnType<typeof useChatStore.getState>) => {
+      const buffer = state.streamBuffers.get(chatId) ?? (state.activeChatId === chatId ? state.streamBuffer : "");
+      const continuation = state.continuationStreams.get(chatId);
+      return continuation
+        ? appendContinuationMessageContent(continuation.content, buffer, continuation.addNewline)
+        : buffer;
     };
     const apply = () => {
       frame = null;
-      const buffer = readBuffer();
+      const buffer = readBuffer(useChatStore.getState());
       let next = buffer;
       if (completedParagraphOnly) {
         const paragraphs = splitRoleplayParagraphs(buffer, true);
@@ -387,10 +395,7 @@ function RoleplayLiveStreamText({
     };
 
     apply();
-    const unsubscribe = useChatStore.subscribe(
-      (state) => state.streamBuffers.get(chatId) ?? (state.activeChatId === chatId ? state.streamBuffer : ""),
-      schedule,
-    );
+    const unsubscribe = useChatStore.subscribe(readBuffer, schedule);
     return () => {
       if (frame !== null) cancelAnimationFrame(frame);
       unsubscribe();
@@ -493,28 +498,30 @@ function RegeneratingMessageContent({
 } & Omit<ComponentProps<typeof ChatMessage>, "message" | "isStreaming">) {
   const { t } = useTranslation();
   const thinkingBuffer = useChatStore((s) => s.thinkingBuffer);
+  const isContinuation = useChatStore((s) => s.continuationStreams.get(msg.chatId)?.messageId === msg.id);
   const streamingOutputStarted = useChatStore((s) =>
     hasVisibleStreamText(s.streamBuffers.get(msg.chatId) ?? (s.activeChatId === msg.chatId ? s.streamBuffer : "")),
   );
-  // Strip old-swipe attachments so a previous illustration doesn't linger
-  // while the new swipe's text is streaming in. The same applies to old
-  // reasoning: expose the action only after this swipe receives its first
-  // reasoning chunk.
+  // A new swipe replaces the old media and reasoning; a continuation retains them.
   const parsedExtra = typeof msg.extra === "string" ? JSON.parse(msg.extra) : (msg.extra ?? {});
   const cleanExtra = {
     ...parsedExtra,
-    attachments: null,
-    roleplayDocuments: null,
-    roleplayCommandActivity: null,
-    roleplayPrivateCommands: null,
-    diceRollResult: null,
-    thinking: thinkingBuffer || null,
+    ...(!isContinuation
+      ? {
+          attachments: null,
+          roleplayDocuments: null,
+          roleplayCommandActivity: null,
+          roleplayPrivateCommands: null,
+          diceRollResult: null,
+        }
+      : {}),
+    thinking: thinkingBuffer || (isContinuation ? parsedExtra.thinking : null),
   };
   return (
     <ChatMessage
       message={{ ...msg, extra: cleanExtra, content: "" }}
       isStreaming
-      streamingOutputStarted={streamingOutputStarted}
+      streamingOutputStarted={isContinuation || streamingOutputStarted}
       visualNovelParagraphIndex={visualNovelParagraphIndex}
       onVisualNovelParagraphCount={onVisualNovelParagraphCount}
       streamingContent={(renderText) => (
@@ -528,8 +535,8 @@ function RegeneratingMessageContent({
         />
       )}
       {...rest}
-      storyboard={null}
-      storyboardGenerating={false}
+      storyboard={isContinuation ? rest.storyboard : null}
+      storyboardGenerating={isContinuation ? rest.storyboardGenerating : false}
     />
   );
 }
@@ -1061,7 +1068,9 @@ function AuthorNotesButton({
     const handle = (e: PointerEvent) => {
       const target = e.target as Node;
       if (ref.current?.contains(target) || panelRef.current?.contains(target)) return;
-      if (target instanceof Element && target.closest("[data-macro-modal]")) return;
+      // The overflow menu also mounts a hidden desktop copy of this trigger.
+      // Let the visible trigger toggle shared state without another copy closing it first.
+      if (target instanceof Element && target.closest('[data-macro-modal], [data-chat-help="author-notes"]')) return;
       // App dialogs (the preset name prompt, the discard guard) portal outside
       // this panel and sit above it. Clicking one is not an outside click, or
       // the panel unmounts under the dialog its own handler opened.
@@ -1245,6 +1254,7 @@ type RoleplaySurfaceProps = {
   spriteCharacterIds: string[];
   spriteDisplayModes: SpriteDisplayMode[];
   spriteExpressions: Record<string, string>;
+  visibleExpressionSpriteIds?: readonly string[];
   expressionAvatarResolver?: ExpressionAvatarResolver;
   spritePlacements: Record<string, SpritePlacement>;
   spriteScale: number;
@@ -1302,7 +1312,7 @@ type RoleplaySurfaceProps = {
     conversationStartForCharacterIds: string[],
   ) => void;
   onToggleHiddenFromAI: (messageId: string, hiddenFromAll: boolean, hiddenFromAICharacterIds?: string[]) => void;
-  onPeekPrompt: () => void;
+  onPeekPrompt: (messageId?: string) => void;
   onBranch?: (messageId: string) => void;
   onCloneSceneFromHere?: (messageId: string) => void;
   isCloneSceneFromHereDisabled?: boolean;
@@ -1368,6 +1378,7 @@ export function ChatRoleplaySurface({
   spriteCharacterIds,
   spriteDisplayModes,
   spriteExpressions,
+  visibleExpressionSpriteIds,
   expressionAvatarResolver,
   spritePlacements,
   spriteScale,
@@ -1467,9 +1478,24 @@ export function ChatRoleplaySurface({
   onSelectAllBelowSelection,
   isGrouped,
 }: RoleplaySurfaceProps) {
+  const continuationMessageId = useChatStore((s) => s.continuationStreams.get(activeChatId)?.messageId);
+  const inlineStreamingMessageId = regenerateMessageId ?? continuationMessageId ?? null;
   const { t: localizeUi } = useUiTranslation();
   const { t } = useTranslation();
   const { data: installedCapabilities = [] } = useInstalledCapabilityPackages();
+  const memoryContextStarts = useMemo(() => {
+    const starts = new Map<string, string[]>();
+    if (chatMeta.advancedMemory?.enabled !== true) return starts;
+    const entries = (chatMeta.advancedMemoryState as AdvancedMemoryJob | undefined)?.contextStarts;
+    if (!Array.isArray(entries)) return starts;
+    for (const entry of entries) {
+      if (!entry || typeof entry.messageId !== "string" || !Array.isArray(entry.audienceCharacterIds)) continue;
+      // Older character-specific automatic windows are no longer active.
+      if (entry.audienceCharacterIds.length) continue;
+      starts.set(entry.sceneStartMessageId ?? entry.messageId, []);
+    }
+    return starts;
+  }, [chatMeta.advancedMemory?.enabled, chatMeta.advancedMemoryState]);
   const activeAgentIds = chatMeta.activeAgentIds;
   const enabledConversationCapabilities =
     chatMeta.enableAgents === true
@@ -1507,6 +1533,8 @@ export function ChatRoleplaySurface({
   const roleplayReducedPaintEffects = useUIStore((s) => s.roleplayReducedPaintEffects);
   const defaultDisplayStyle = useUIStore((s) => s.roleplayDisplayStyle);
   const vnSpriteScale = useUIStore((s) => s.roleplayVnSpriteScale);
+  const vnAutoPlay = useUIStore((s) => s.roleplayVnAutoPlay);
+  const vnAutoPlayDelay = useUIStore((s) => s.roleplayVnAutoPlayDelay);
   const visualNovel = isRoleplay && (chatMeta.roleplayDisplayStyle ?? defaultDisplayStyle) === "visual-novel";
   const [vnHistoryOpen, setVnHistoryOpen] = useState(false);
   const [vnHistoryHasDraft, setVnHistoryHasDraft] = useState(false);
@@ -1534,6 +1562,7 @@ export function ChatRoleplaySurface({
   const [vnSelectedMessageId, setVnSelectedMessageId] = useState<string | null>(null);
   const [vnParagraphIndex, setVnParagraphIndex] = useState<number | null>(null);
   const [vnParagraphCount, setVnParagraphCount] = useState<number>(1);
+  const [vnSpeech, setVnSpeech] = useState<RoleplayTTSParagraphDetail | null>(null);
   const pendingVnPrevious = useRef<string | null>(null);
 
   // Active message in VN view:
@@ -1553,6 +1582,7 @@ export function ChatRoleplaySurface({
   useEffect(() => {
     setVnSelectedMessageId(null);
     setVnParagraphIndex(null);
+    setVnSpeech(null);
     pendingVnPrevious.current = null;
   }, [activeChatId, hasLiveStream]);
 
@@ -1583,6 +1613,21 @@ export function ChatRoleplaySurface({
   }, [activeChatId, hasLiveStream, latestVnMessage, pendingVnReply]);
 
   const currentParagraphIndex = vnParagraphIndex ?? Math.max(0, vnParagraphCount - 1);
+
+  const [ttsState, setTtsState] = useState(ttsService.getState());
+  useEffect(() => ttsService.subscribe((state) => setTtsState(state)), []);
+  useEffect(() => {
+    if (!visualNovel) return;
+    const followSpeech = (event: Event) => {
+      const detail = (event as CustomEvent<RoleplayTTSParagraphDetail>).detail;
+      if (detail?.chatId !== activeChatId || !visibleVnMessages.some((message) => message.id === detail.messageId))
+        return;
+      setVnSelectedMessageId(detail.messageId);
+      setVnSpeech(detail);
+    };
+    window.addEventListener(ROLEPLAY_TTS_PARAGRAPH_EVENT, followSpeech);
+    return () => window.removeEventListener(ROLEPLAY_TTS_PARAGRAPH_EVENT, followSpeech);
+  }, [activeChatId, visibleVnMessages, visualNovel]);
 
   // Navigation handlers
   const canGoPreviousParagraph =
@@ -1653,6 +1698,36 @@ export function ChatRoleplaySurface({
   const compactAuthorNotesOpen = authorNotesOpenOwner === "compact";
   const keyboardOpen = useChatKeyboardOpen();
   const composerFocused = useChatComposerFocused();
+  const modalOpen = useUIStore((s) => s.modal !== null);
+  const pageActive = usePageActivity();
+  useEffect(() => {
+    if (!visualNovel || !vnAutoPlay || vnHistoryOpen || hasLiveStream || composerFocused || modalOpen || !pageActive)
+      return;
+    if (ttsState !== "idle" && ttsState !== "error") return;
+    if (currentParagraphIndex >= vnParagraphCount - 1) return;
+    const timer = window.setTimeout(() => {
+      if (
+        document.hidden ||
+        document.querySelector('[data-component="Modal"], [data-macro-modal], textarea:focus, input:focus')
+      )
+        return;
+      setVnParagraphIndex(currentParagraphIndex + 1);
+    }, vnAutoPlayDelay);
+    return () => window.clearTimeout(timer);
+  }, [
+    visualNovel,
+    vnAutoPlay,
+    vnAutoPlayDelay,
+    vnHistoryOpen,
+    hasLiveStream,
+    ttsState,
+    currentParagraphIndex,
+    vnParagraphCount,
+    activeVnMessage?.id,
+    composerFocused,
+    modalOpen,
+    pageActive,
+  ]);
   const mobileComposerActive = isMobileToolbarViewport && composerFocused;
   const ambientVisualsPaused =
     generationVisualsPaused || (isMobileToolbarViewport && (keyboardOpen || composerFocused || hasMobileDraftInput));
@@ -1724,6 +1799,10 @@ export function ChatRoleplaySurface({
   }, [activeChatId]);
 
   const [transcriptWindowStart, setTranscriptWindowStart] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    // /continue targets the latest reply, even when the reader was browsing an older window.
+    if (continuationMessageId) setTranscriptWindowStart(null);
+  }, [continuationMessageId]);
   const pendingLoadMoreRevealRef = useRef<{
     previousLength: number;
     previousStartIndex: number;
@@ -2093,6 +2172,7 @@ export function ChatRoleplaySurface({
           <Suspense fallback={null}>
             <SpriteOverlay
               characterIds={spriteCharacterIds}
+              visibleCharacterIds={visibleExpressionSpriteIds}
               messages={msgPayload}
               side={visualNovel ? "center" : spritePosition}
               spriteDisplayModes={spriteDisplayModes}
@@ -2104,7 +2184,9 @@ export function ChatRoleplaySurface({
               expressionSpriteScale={expressionSpriteScale}
               fullBodySpriteScale={fullBodySpriteScale}
               spriteScaleMultiplier={visualNovel ? vnSpriteScale : 1}
-              activeCharacterIds={visualNovel ? activeVnSpriteIds : undefined}
+              activeCharacterIds={
+                visualNovel && chatMeta.expressionOnlyActiveSprites !== true ? activeVnSpriteIds : undefined
+              }
               spriteOpacity={spriteOpacity}
               expressionSpriteOpacity={expressionSpriteOpacity}
               fullBodySpriteOpacity={fullBodySpriteOpacity}
@@ -2126,7 +2208,7 @@ export function ChatRoleplaySurface({
                     paddingRight: "calc(1rem + var(--tracker-panel-hud-clear-right, 0px))",
                   }}
                 >
-                  {chat && chatMeta.enableAgents && (
+                  {chat && (chatMeta.enableAgents || chatMeta.advancedMemory?.enabled === true) && (
                     <div
                       data-chat-help="agents"
                       data-roleplay-agent-window
@@ -2135,6 +2217,7 @@ export function ChatRoleplaySurface({
                       <Suspense fallback={null}>
                         <RoleplayHUD
                           chatId={chat.id}
+                          advancedMemoryEnabled={chatMeta.advancedMemory?.enabled === true}
                           isStreaming={isStreaming}
                           onRetriggerTrackers={onRerunTrackers}
                           onRetryFailedAgents={onRetryFailedAgents}
@@ -2257,7 +2340,7 @@ export function ChatRoleplaySurface({
                   centerCompact ? "flex" : "flex md:hidden",
                 )}
               >
-                {chat && chatMeta.enableAgents && (
+                {chat && (chatMeta.enableAgents || chatMeta.advancedMemory?.enabled === true) && (
                   <div
                     className="flex w-full min-w-0 items-start justify-between gap-1.5 pb-1 pt-2"
                     style={{
@@ -2269,6 +2352,7 @@ export function ChatRoleplaySurface({
                       <Suspense fallback={null}>
                         <RoleplayHUD
                           chatId={chat.id}
+                          advancedMemoryEnabled={chatMeta.advancedMemory?.enabled === true}
                           isStreaming={isStreaming}
                           onRetriggerTrackers={onRerunTrackers}
                           onRetryFailedAgents={onRetryFailedAgents}
@@ -2382,7 +2466,7 @@ export function ChatRoleplaySurface({
                     </div>
                   </div>
                 )}
-                {chat && !chatMeta.enableAgents && (
+                {chat && !chatMeta.enableAgents && chatMeta.advancedMemory?.enabled !== true && (
                   <div
                     className={cn("flex w-full items-center justify-end px-2 pb-1 pt-2", CHAT_TOOLBAR_ICON_GAP_CLASS)}
                   >
@@ -2543,7 +2627,7 @@ export function ChatRoleplaySurface({
                   if (
                     isMessageShadowedByLiveStream({
                       hasLiveStream,
-                      regenerateMessageId,
+                      regenerateMessageId: inlineStreamingMessageId,
                       streamedMessageId,
                       messageId: msg.id,
                     })
@@ -2553,7 +2637,7 @@ export function ChatRoleplaySurface({
                   const sourceIndex = transcriptWindow.startIndex + i;
                   const messageDepth = (messages?.length ?? 0) - 1 - sourceIndex;
                   const messageOrderIndex = loadedMessageOffset + sourceIndex;
-                  const isRegenerating = hasLiveStream && regenerateMessageId === msg.id;
+                  const isRegenerating = hasLiveStream && inlineStreamingMessageId === msg.id;
                   const inlineStoryboard =
                     roleplayStoryboardByTurn.get(`${msg.id}:${msg.activeSwipeIndex ?? 0}`) ?? null;
                   const inlineStoryboardGenerating =
@@ -2582,7 +2666,7 @@ export function ChatRoleplaySurface({
                           onSetActiveSwipe={onSetActiveSwipe}
                           onToggleConversationStart={onToggleConversationStart}
                           onToggleHiddenFromAI={onToggleHiddenFromAI}
-                          onPeekPrompt={onPeekPrompt}
+                          onPeekPrompt={() => onPeekPrompt(msg.id)}
                           onBranch={onBranch}
                           onCloneSceneFromHere={onCloneSceneFromHere}
                           isCloneSceneFromHereDisabled={isCloneSceneFromHereDisabled}
@@ -2603,10 +2687,12 @@ export function ChatRoleplaySurface({
                           onToggleSelect={onToggleSelectMessage}
                           storyboard={inlineStoryboard}
                           storyboardGenerating={inlineStoryboardGenerating}
+                          memoryStartCharacterIds={memoryContextStarts.get(msg.id)}
                         />
                       ) : (
                         <ChatMessage
                           message={msg}
+                          followSpeechParagraphs={visualNovel}
                           isStreaming={false}
                           onDelete={onDelete}
                           onRegenerate={onRegenerate}
@@ -2615,7 +2701,7 @@ export function ChatRoleplaySurface({
                           onSetActiveSwipe={onSetActiveSwipe}
                           onToggleConversationStart={onToggleConversationStart}
                           onToggleHiddenFromAI={onToggleHiddenFromAI}
-                          onPeekPrompt={onPeekPrompt}
+                          onPeekPrompt={() => onPeekPrompt(msg.id)}
                           onBranch={onBranch}
                           onCloneSceneFromHere={onCloneSceneFromHere}
                           isCloneSceneFromHereDisabled={isCloneSceneFromHereDisabled}
@@ -2636,6 +2722,7 @@ export function ChatRoleplaySurface({
                           onToggleSelect={onToggleSelectMessage}
                           storyboard={inlineStoryboard}
                           storyboardGenerating={inlineStoryboardGenerating}
+                          memoryStartCharacterIds={memoryContextStarts.get(msg.id)}
                         />
                       )}
                     </div>
@@ -2652,7 +2739,7 @@ export function ChatRoleplaySurface({
 
                 {showHistory && !isStreaming && <CyoaChoices messages={messages} />}
 
-                {showHistory && hasLiveStream && !regenerateMessageId && (
+                {showHistory && hasLiveStream && !inlineStreamingMessageId && (
                   <StreamingIndicator
                     activeChatId={activeChatId}
                     chatCharIds={chatCharIds}
@@ -2709,9 +2796,10 @@ export function ChatRoleplaySurface({
                     {!vnHistoryOpen && (
                       <div className="rounded-xl border border-[var(--border)] bg-[var(--marinara-chat-chrome-panel-bg)] shadow-lg">
                         {hasLiveStream ? (
-                          regenerateMessageId && messages?.find((message) => message.id === regenerateMessageId) ? (
+                          inlineStreamingMessageId &&
+                          messages?.find((message) => message.id === inlineStreamingMessageId) ? (
                             <RegeneratingMessageContent
-                              msg={messages.find((message) => message.id === regenerateMessageId)!}
+                              msg={messages.find((message) => message.id === inlineStreamingMessageId)!}
                               visualNovel
                               visualNovelMediaTarget={vnMediaTarget}
                               visualNovelParagraphIndex={vnParagraphIndex ?? undefined}
@@ -2745,7 +2833,10 @@ export function ChatRoleplaySurface({
                             <ChatMessage
                               key={`${activeChatId}:${activeVnMessage.id}:${activeVnMessage.activeSwipeIndex}`}
                               message={activeVnMessage}
+                              memoryStartCharacterIds={memoryContextStarts.get(activeVnMessage.id)}
                               visualNovel
+                              visualNovelSpeech={vnSpeech}
+                              onVisualNovelSpeechParagraph={setVnParagraphIndex}
                               visualNovelParagraphIndex={vnParagraphIndex ?? undefined}
                               onVisualNovelParagraphCount={setVnParagraphCount}
                               visualNovelMediaTarget={vnMediaTarget}

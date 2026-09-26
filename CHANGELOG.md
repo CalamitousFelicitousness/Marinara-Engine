@@ -4,6 +4,430 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Game Mode rulesets that resolve their own fights can answer an attack after it hits and before its damage: a Shield or a parry raises defense and the same roll is checked again, so the hit can become a miss, and an answer can halve that one attack's harm. Creatures can have reactions of their own, including ones that land on themselves, and opponents the Engine plays raise a guard only when it turns the hit aside. Capability API 1.46 (#6728).
+
+- Game Mode rulesets that resolve their own fights can have conditions change numbers: raise or lower defense, add or take away a flat number or dice on attack rolls, saves and contest checks, or change speed by a number, halve it or double it. Conditions can make contests harder or easier, end at the start of their holder's turn or after one attack or save, and a track such as exhaustion can make things worse level by level. A condition that ends as a turn begins no longer shortens that turn's walk. Capability API 1.45 (#6719).
+
+- A Decision connection can use a chat model on a server you already run, such as Ollama, LM Studio or llama.cpp, so the model is not loaded a second time just for decisions. Choose the new **OpenAI-compatible chat model** source, or click **Use this model for decisions** on a Custom connection. A Test against a server that does not offer the chosen source's endpoint now says so instead of reporting it as unreachable (#6714).
+- The installed decision sidecar no longer shows a Thinking setting it does not have, which snapped back to Auto when changed. It is warmed up while it starts, so Test and the first turn show its normal speed instead of a one-time two-second delay, and Open-Jev 2B gets more time for a turn with many decision statements, which on a long chat used to run out and read every statement as no (#6716, #6717, #6718).
+- Decision time limits now apply to each statement, never to a whole group. A local model answers every statement of a turn instead of dropping the ones that waited for a free slot, a Decision connection's Time limit is given to each statement a request asks, and the decision sidecar no longer cuts a large turn off at 20 seconds (#6721).
+
+- Game Mode rulesets that resolve their own fights can write a counter: an ability that answers an opponent using something, whoever it was aimed at, and may call it off before it happens. An answer can be limited to abilities from certain catalogs, such as spells, and on a battlefield it reaches only as far as its own range. Capability API 1.44 (#6712).
+
+- Game Mode rulesets that resolve their own fights can declare contests: grab, shove over or back, and break free, where both sides roll and add their own number and the winner holds, knocks down or pushes the loser. The menu shows the chance to win, and opponents the Engine plays use them now and then. Capability API 1.43 (#6707).
+
+- Game Mode rulesets can give a sheet live states such as a form or a stance, one value out of a list that the Game Master or the player changes in play and a rest may put back, and derive numbers from a state or an enum field, so a stance can add dice to one ability's rolls. Capability API 1.42 (#6656).
+
+- Positioned ruleset fights no longer freeze when a wall stands between two fighters: whoever the Engine plays walks the way round instead of waiting for a straight path that never opens (#6678).
+
+- Game Mode rulesets can group abilities, skills and saves into sections, shown under their headings on the sheet and to the Game Master, and say what a check does untrained, by skill or by section: cost dice or points, roll one step harder, or not be attempted at all. A one-request branch check now rolls for the party member it names. Capability API 1.41 (#6655).
+
+- Local models can use an existing GGUF file without downloading another copy, select f16/q8_0/q4_0 KV caches, and show GPU buffer allocations reported by llama.cpp after loading (#6675).
+- Lorebook semantic search can optionally consider character replies as a separate query, preserving specific user cues and keeping user-only retrieval as the default (#6670).
+
+- RunPod Serverless exposes the shared ComfyUI generation settings, including prompt prefixes, sampling, reference placeholders, and LoRAs, and applies them to submitted workflows (#6699).
+- Game translations keep dialogue aligned when translators alter internal speaker tags, and preserve notes or books embedded in narration (#6687).
+
+- Added Gemini 3.8 Flash, 3.7 Flash, 3.5 Flash-Lite and 3.1 Flash-Lite Image to the Google model list, so they arrive with their own context window and output limit instead of being treated as unknown models whose reasoning effort and output cap cannot be sent. Corrected the context and output limits of the existing Gemini image models to the ones Google documents (#6683).
+
+- Advanced Memory finds old scenes from distinctive details even with excerpts disabled, without extra recall model calls. Characters can share access to a scene when only some messages are hidden from them; scene recaps keep shared events plain and use character conditions for private sections. Constant Chat Summaries retain their character conditions (#6679).
+
+- Game Mode wound tracks can be numbered boxes as many as a character's rating, with a penalty table over boxes filled or remaining, take marks on the box a hit names, refuse a mark when full (a fight counts a hit no box can take as taking the character out), heal one kind of harm from a rest or a command, and gain levels from a list on the sheet. Capability API 1.40 (#6654).
+
+- Automatic agent runs with NanoGPT Kimi K3 no longer send an unsupported request to disable reasoning (#6658).
+- Manual Illustrator requests honor the configured output-token limit instead of silently capping it at 1,800 tokens (#6659).
+- Development pull requests use a small Chromium smoke suite instead of the full browser matrix. Full desktop Chromium, mobile Chromium, and mobile WebKit coverage runs nightly, on demand, and before promotion to `main`; contributors run focused regressions locally before pushing (#6661).
+
+- Game Mode rulesets can work out values from a character's live resources and tracks as they stand, add up a column of a list (such as the weight of packed gear), cap a skill or save at any sheet value, and hide sheet items when a field is not a value or is one of several. Capability API 1.39 (#6653).
+
+- Any agent package's Home widget can open one item in its own Home tab through `onOpenPost`. Before, only Noodle could jump to an item; other agents could only open their tab.
+
+- Decision debug output shows scores and thresholds, and Peek Prompt can test decision statements against the selected model, including local reasoning models normally deferred before a reply, without generating a reply or changing the chat's decision state (#6650).
+- The **Noodle** and **Slurp** Lorebook Generation filters, and the Noodle and Slurp Remastered chat and character settings, no longer disappear after a package update that waits for a restart. The Noodle filter also shows for Slurp Legacy, which sends the Noodle trigger.
+
+- **Copy Support Diagnostics** now wraps the report in a ``` code block, so it reads cleanly when pasted into Discord or GitHub (#6668).
+
+- A NanoGPT connection can show its subscription usage. An optional **Management Token** field accepts a NanoGPT token with the *Usage only* scope, so quota readings never need your inference key, and a **Show subscription usage** toggle displays the weekly and daily input-token quotas beside the connection, in the chat connection picker, and in the chat's **Connection** settings while you play. A look up that NanoGPT cannot answer reads as unknown instead of as unused quota, and the model list marks subscription-included models — including a green `1x` at the normal rate — and the ones charged at a higher input-token multiplier.
+
+- Generation now reports when a prompt that does not fit spends the reply budget instead of dropping messages. A reply budget cut to its 128-token floor is logged as a warning, so a configured Max Tokens that never reaches the provider is visible instead of silent (#6614).
+
+- Game Mode pool rulesets can name standing re-throws the Game Master asks for on a check (`reroll="id"`), and a spend can buy a re-throw. A spend's limit can come from the character sheet or from the check's own dice, a ruleset can declare up to four spends, and any ruleset can add numbers from the sheet to the checks they apply to, shown on the dice card. Capability API 1.38 (#6652).
+
+- Game Mode rulesets can pick a difficulty by name (`difficulty="Hard"`) instead of a number, and a pool ruleset's ladder step now sets the per-die target it prints. A pool ruleset can let a check lower the face dice roll again or count twice on, let an ability check add a second ability, and count a fumble as low faces on half the dice or more, which on a successful check shows as a complication alongside the result. Capability API 1.37 (#6651).
+
+- Game Mode rulesets can give a track a maximum the character sheet sets, hide a track by a field or always show it to the Game Master, print chosen columns beside a summary list's names (`Gear: Crowbar 1d6`) and name its rows with an enum column. When a ruleset has a wound track, the Game Master is taught the command that marks it without the ruleset having to explain it (#6657).
+
+- Lorebook entry Generation filters add **Slurp**, so entries can target Slurp Remastered posts, and the Noodle and Slurp filters now show only while their package is installed. Existing filter choices stay saved when a package is removed (#6660).
+
+- The Roleplay whisper browser regression finishes preparing visual-novel fixtures before reloading, avoiding false WebKit access-control failures in contributor checks (#6628).
+
+- Lorebook and Chat Summary review windows start with focus on the review explanation, so continuing to type cannot accidentally discard a proposal with Space or Enter (#6638).
+
+- Game translations use edited narration, dialogue, and readable text, preserve segment alignment, and discard translation requests invalidated by a later edit or deletion (#6615).
+
+- Agents, including Illustrator, receive complete character card lore and persona descriptions instead of silently losing details beyond the old field limits (#6620).
+
+- User Input prompt regexes in Roleplay’s Individual group chats also apply to other characters' messages, while each character's own replies keep AI Output rules and character-specific exclusions stay in effect (#6637).
+
+- Roleplay Advanced Memory scans and indexes globally hidden history, including turns hidden manually or by automatic summaries, preserving scene summaries and participant access during initial and later processing. If recovery changes a manually corrected scene's boundaries, disable its old correction to keep the text for reference, or delete it, then prepare history again (#6631).
+
+- Professor Mari can author Decision activation and conditional prompts with live model awareness, lean timing guidance, and separate preferences for use and cache-sensitive placement. Setup warnings are remembered per chat, and an enabled Memory can stop them across future chats. New invalid agent activation settings are rejected instead of silently disabling the question; legacy settings remain editable and undoable without blocking unrelated changes (#6629).
+
+- Imports that use decisions now warn when no Decision model is selected, explain the fallback behavior, and link to the Decision Models guide. If the selection cannot be checked, the notice says so without interrupting the import. The notice also covers custom agent imports and Agent catalog installations, including agents with activation questions (#6605).
+
+- Decision model guides now distinguish Jev from Open-Jev and clarify what each feature sends, threshold defaults, statement allowances, answer reuse, lorebook fallbacks, sidecar hardware needs, and prompt-cache costs. Author examples describe observable events and separate connection testing from testing statements in a chat.
+ 
+- Add bounded agent-owned Home widget presentation metadata and full-bleed package widget surfaces.
+
+- Agents can offer up to three Home widgets without placing them automatically. The Widget Manager groups built-in, agent, and personal widgets; users add, hide, restore, and reorder agent widgets, while custom agents can publish bounded text during their normal runs. Capability packages can supply verified interactive widgets in an Engine-owned frame. Noodle's Latest Posts widget is available through its companion agent package (#6621).
+- Contributors can use an optional **Dev MCP** (`tools/dev-mcp`), a small MCP server that lets a coding agent read a local engine's prompts, cache statistics and logs, run typechecks and regressions, and restart the engine safely. It is not part of the app build or the Docker image; see `tools/dev-mcp/README.md`.
+
+- Roleplay's optional **Whisper** command shares an inline secret only with its recipient and the appointed narrator. Recipients can be characters or your persona; revealing a hidden secret on screen does not give it to other characters' prompts (#6616).
+
+- Roleplay's Expression Engine has an optional **Only show active sprites** toggle. It keeps the current sprites visible while expressions generate, then shows only enabled characters returned by the completed result (#6611).
+
+- A Game Mode ruleset's bestiary creature can now be written in the ruleset's own terms: give it a `sheet` shaped exactly like a character's, as partial as you like, and a fight builds it the way it builds a party member. Its health, defense, saves, initiative, speed and the attacks and abilities on its lists come from the ruleset's own formulas, so a ruleset whose opponents use different abilities, skills or lists no longer has to squeeze them into a fixed set of numbers. Such a creature pays for its abilities out of its own pools and can pay out of a bigger one, whether the Engine or the Game Master decides for it. On a ruleset whose health is a wound track, a blow marks its boxes after its resistances and immunities have had their say. It is still an opponent: out at zero, never rolling against death, and never saved over a character who shares its name. Each number is given in one place only, so a creature with a sheet does not also list its health or defense. A creature the Game Master invents can be written on the ruleset's sheet too, so an invented mage has spell slots and spells named straight from the ruleset's catalogs. Unless it is a boss, it only gets what its ruleset opens to it (a Sorcerer's spells, not the whole list), and the spells it was not given are filled in by its temperament and competence without another request to the model: a protective caster leans to spells that hold up its side, a skilled one to counters and reactions. A boss is written in full by the Game Master. Either is still held to its threat tier, with its health, defense, to-hit, save difficulties and best round (the biggest slot it can afford included) pulled onto the tier's scale. Both example rulesets ship one, and ruleset packages that include one need Capability API 1.34. A refusal because the fight is waiting on somebody else's answer, or because that moment has already passed, now says so instead of a generic message (#6610).
+
+- Manual Gallery and `/illustrate` requests preserve the selected custom Illustrator prompt, including perspective and layout instructions alongside or after a response schema. Requests too large for the connection's context limit report an error instead of silently cutting instructions (#6597).
+- Character-browser imports and PNG downloads no longer crash when browser translation replaces their button labels before the loading icon changes (#6598).
+
+- Update local embeddings and Whisper to Transformers.js 4 with matching ONNX runtimes and retain the native installer's private temporary directories. Upgrade Intiface integration to Buttplug 5 while preserving existing haptic intensity values, including zero, full vibration strength, and directional outputs. Reject incompatible feature ranges before starting output, and stop the device if only some features accept a command (#6603, #6604).
+
+- Update static file serving with the latest security fix, refresh TypeScript and formatting tools, and update Android and CI build dependencies. CodeQL initialization and analysis now advance together so security checks continue to run (#6601).
+- New **Settings > Advanced > Features** section for optional server behaviours. Every switch is off by default, so nothing changes until you turn one on. **Stable lorebook picks** and **Retry failed provider calls** can now be turned on there as well as with `LOREBOOK_STABLE_GROUP_WINNERS` and `PROVIDER_RETRY_TRANSIENT_ERRORS`, which still win when set. See docs/configuration/features.md.
+
+- Decision statements take two more modifiers: `every:3` asks a statement only every 3 turns (reading as no between checks, without taking a statement slot), and `priority:high` or `priority:low` decides which statements are asked first and dropped first when a turn has more than **Decision statements per turn** allows (#6599).
+
+- Decision statements that cannot affect a turn no longer use up **Decision statements per turn**. Only statements in enabled preset sections, selected preset variable options, lorebook entries that activate, and blocks not already ruled out are asked. Peek Prompt lists any statements the limit leaves out, and the preset guides now warn preset makers to be careful with decision blocks near the top of a preset, where a changing answer makes caching providers bill the whole prompt again (#6582).
+
+- A decision block inside a preset variable option now works. It was planned under the wrong key, so it read as no on every turn (#6582).
+
+- Decision statements can keep their answer for a few turns: `{{#if decision:"..." sticky:3 cooldown:5}}` stays yes for 3 turns after a yes, then reads as no for 5, without being asked or taking a statement slot meanwhile. Regenerations and swipes do not count as turns (#6582).
+
+- RPG pool names can be cleared and typed with spaces without resetting to HP or MP while editing (#6566).
+- Chat and game dialogs stay open when a drag ends on their backdrop, and overlapping pointers cannot combine into an accidental dismissal (#6576, #6577).
+- Browser notifications use the app's service worker when available and alert again for each completed reply in the same chat (#6571).
+- Browser checks wait for the settings search to finish focusing its result and capture the visible Advanced Memory inspector without scrolling its full container (#6578, #6579).
+- In Individual group chats, characters can hand the next reply to another available character with an @mention. Conversation and Roleplay reuse the current turn queue, with one reply per character to prevent loops; swipes and continuations do not start handoffs (#6567).
+- Server robustness, all opt-in and off by default (see the Robustness table in docs/CONFIGURATION.md): `PROVIDER_RETRY_TRANSIENT_ERRORS` retries a refused connection or a gateway 502/503 up to twice before any output reached the user (never on the primary of a connection with a fallback), `STORAGE_SKIP_UNCHANGED_WRITES` skips rewriting unchanged storage files, `STORAGE_YIELDING_SERIALIZE` keeps large chat saves from pausing other requests, `STORAGE_CACHE_WINDOWS_BOOT_ID` makes Windows starts about 1.5 to 2 s faster, and `SHUTDOWN_WINDOWS_CONSOLE_SIGNALS`, `SHUTDOWN_FORCE_EXIT_ON_REPEAT`, `SHUTDOWN_EARLY_FLUSH` and `SHUTDOWN_RUNTIME_STOP_BUDGET_MS` tune how the server stops. Always on, with no behaviour change: Windows identity probes run hidden instead of flashing a console window, shutdown logs which runtime stop failed or was slow, and a privileged `GET /api/admin/runtime-diagnostics` reports storage residency and whether each capability package runtime is live.
+- Capability packages no longer fail with "Root plugin has already booted" (which could also stop the server) when a background task calls an internal route while startup is still registering routes: such calls now wait until registration has ended. A package whose activate() or selfCheck() calls an internal route during startup gets an error at once instead of hanging startup, and a package that fails only because the server started too early is no longer rolled back or marked as errored; it is retried on the next start.
+
+- Roleplay Personal Notes and command instructions survive Advanced Memory context cutoffs, including when regenerating a reply (#6583).
+
+- Each Decision connection has a **Time limit** (0.5 to 30 seconds, 1.5 by default). A hosted provider that is sometimes slower than 1.5 seconds made decisions look randomly broken, with no way to allow for it. **Test** now waits longer and shows how long the answer took next to the limit, and says when an answer would arrive too late during chats (#6580).
+
+- Lorebook entries can be activated by your Decision model. In an entry's new **Decision** field, **Require** makes the entry activate only when a statement about the recent chat is also true (so passing mentions stay out), and **Trigger** lets the statement activate the entry without its keywords. Statements are asked only when the entry could otherwise activate, answered once per turn, and read as no without a Decision model. Imports and exports keep the setting (#6570).
+
+- The Decision Models guide now says exactly what a decision model reads: only the statement and the recent chat messages. It never sees the preset, character cards, persona description, lorebook entries or anything inserted **@ Depth**, and decision statements read the last 5 messages.
+
+- The full browser regression matrix uses more shards (ten for desktop Chromium and mobile WebKit, eight for mobile Chromium, instead of four each), bringing its expected runtime from about 30 minutes to under 20 and keeping it clear of the 30-minute job limit (#6573).
+- Server logs are easier to follow: every line a request causes carries its `requestId` (also returned as the `x-request-id` header), startup steps are timed with one ready summary, a failure is logged once with its cause chain, user stops are logged at info, repeating failures are rate limited, and model or provider text stays at debug. See docs/development/logging.md.
+- The regression runner gives every file its own temporary DATA_DIR, FILE_STORAGE_DIR and empty .env, so a regression can no longer read or lock the data folder named by a developer's .env.
+- Two opt-in lorebook settings, both off by default (see the Lorebooks table in docs/CONFIGURATION.md): `LOREBOOK_STABLE_GROUP_WINNERS` keeps the same inclusion-group winner in a chat while its candidates stay the same, so the prompt prefix stays cacheable, and `LOREBOOK_COMPACT_STORED_SCANS` keeps the full text of activated lorebook entries only on the newest reply of a chat, which makes chats with large lorebooks much smaller. `scripts/compact-lorebook-scans.mjs` applies the same rule to older chats (dry run by default).
+
+- Agent history lookups no longer compare every loaded agent run with every loaded message, preventing long server stalls as more chats are opened (#6562).
+
+- Conditional prompts can ask your Decision model about the scene: `{{#if decision:"..."}}` for yes or no, and `{{#if decision_choice:"..." == "option"}}` to pick one option. They work in presets, cards, lorebooks and agent prompts, are answered once per turn (post-processing agents once per reply), and read as no when there is no Decision model or no answer. A new **Decision statements per turn** setting limits how many are asked, fields that use them warn when no Decision model is set, and imports that contain them say so (#6569).
+
+- A new **Decision Models** guide explains what a decision model is, the three ways to get one (a local model you already run, a hosted Decision connection, or the installable Open-Jev), which to pick, including on Termux, and everywhere Marinara uses it. The agent guide now covers decision statements in an agent's prompt, and the package guide has notes for agent and Game Mode Experience authors.
+
+- Open-Jev 9B can be installed as a decision model alongside 2B. It was more accurate in our tests, but it needs about 22 GB of GPU memory and takes about a second per question, so its request budget grows with the number of questions.
+
+- Installing a decision model after a dropped connection or a sleep keeps the files that already finished, checked against their published sizes and checksums, instead of downloading everything again.
+
+- Development servers, scripts and regression specs no longer stay open after finishing when they log while the log worker is still starting; this intermittently failed the image-dimension regression. The regression summary also names every file that did not pass (#6529).
+
+- Smart response order in group chats can ask your Decision model who should speak, one yes/no question per character, instead of making a full AI call each turn. Turn it on under **Decision model** in the Connections panel. It is off by default. If the decision model does not answer, Smart order makes its usual AI call (#6559).
+
+- Advanced Recall cutoff summaries report activity in the Agents menu and preserve each character POV without duplicating summary conditions (#6557).
+
+- Message voice controls share a compact audio menu. Clear cached voice removes only that message’s audio and regenerates it on the next playback, without discarding other chats’ saved voice lines (#6514).
+
+- Roleplay dice outcomes follow the selected accent. Message usage and Peek Prompt distinguish tool-turn totals from the last request's input size, so repeated tool requests are not mistaken for an oversized context (#6550).
+- Advanced Memory also checks actual provider-reported input after the main reply, resetting to the latest known scene and reusing its recap in Chat Summaries when the input limit is exceeded. Cached input counts; output tokens and cumulative tool-turn usage do not (#6550).
+- Advanced Memory summary prompts request character-name conditions for separate POV knowledge. Recall resolves those conditions for the responding character; raw excerpts are omitted when they could expose a hidden section, while the narrator retains the full recap (#6550).
+
+- GPT-6 Sol and Luna are selectable in OpenAI connections with their documented limits, reasoning controls, and compatible streaming and tool requests (#6546).
+
+- Claude Opus 5.5 is selectable in Claude connections with its 1M context and 128k output limits, supported reasoning settings, and compatible tool requests (#6544).
+
+- Scene setup lets you choose its persona and Conversation characters. Characters in an active Scene pause automatic messages in the source Conversation until the Scene ends (#6542, #6541).
+- Roleplay tracker widgets tolerate saved blank rows, and Custom Tracker updates discard nameless entries after applying field locks instead of making a chat unusable (#6549).
+
+- Marinara can now download and run a purpose-built decision model for activation questions. It runs as its own local process, so it answers them whether or not you also run a local chat model. It is off by default and behind a warning, a confirmation carrying your machine's verdict, and a separate size-and-license step, because it costs about 10 GB of disk and 5 GB of GPU memory. If you already run a local chat model, that model is more accurate on roleplay questions; the decision model is faster and slightly smaller. You can also paste a decision model's repository, which is installed only when its own manifest declares a runtime this build ships.
+
+- On a machine with several NVIDIA GPUs, the decision model installer has a GPU menu for the card it runs on. Where the machine cannot run a decision model at all, the installer offers to set up a Decision connection instead.
+
+- The decision model preflight checks GPU compute capability, not just whether an NVIDIA card is present. Pascal cards and older cannot run the runtime whatever memory they have, and without this check the download would have been offered and then failed at load.
+
+- Activation question thresholds now start from whatever the selected decision model actually answers around, instead of always 0.5. Probabilities are not comparable between models: a general local model answers a clear scene change at 0.99 while a purpose-built decision model answers the same turn at 0.2, so one fixed number made the second kind skip every relevant turn while appearing to work. The editor seeds new questions from the selected model and offers to put its recommended value back.
+
+- Choosing a decision model that turns out to be unusable now leaves your current choice alone. A rejected selection reported the error but also silently switched the Decision model to None, which stopped every activation question until it was noticed.
+
+- Activation questions can be answered by the local model you already run, on either the main or the utility slot, with no download and nothing leaving your machine. Pick it under **Decision model**, which now lists local models alongside Decision connections and shows why an unavailable entry cannot be used. A **Thinking** setting handles models that always reason first; those gate post-processing agents by default so replies do not wait.
+
+- Support diagnostics report the server's own GPU and each local model slot: what is configured, whether it is running, and the estimated memory it needs, with a combined verdict. The existing GPU line is the browser's, which said nothing about the machine running the local model.
+
+- Advanced Memory completes partially covered scene ranges when preparing a missing scene, preserves older manual character corrections through reindexing, and keeps original access data in exports. Scene participants can be returned by name as well as ID; only actual participants receive access (#6537).
+
+- Advanced Memory keeps one memory per scene, assigns access to actual participants, and treats unassigned scenes as narrator-only; an explicit all-participants result grants the current chat characters access. Existing automatic assignments stay narrator-only until reviewed; preparation checks participants while keeping saved summaries (#6533).
+- Custom agents can use optional activation questions with a Decision connection to skip irrelevant turns. Question and keyword controls share one activation card with consistent labels and styling. Keyword and cadence settings still apply; failed decisions leave agents eligible to run. Decision connections support TypeSafe, OpenRouter, and user-run System One endpoints, including linked OpenRouter credentials (#6530).
+
+- Game helpers preserve unconfigured task defaults and explain when saved output limits cut off structured responses (#6511).
+
+- Game Mode honors connection and chat generation parameters instead of replacing them with fixed sampling and output settings (#6511).
+- Grok 4.6 and 4.7 keep enabled tools, including web search, instead of losing them as unrecognized models, with their supported context and reasoning settings (#6521).
+- Sidebar sorting applies to folder rows as well as their contents, including names, dates, and content-based sorts; manual folder ordering remains available (#6497).
+
+- A Game Mode party member you hand to the Engine to play can now pay a ruleset's ability out of a higher pool than it names: a spell cast out of a bigger slot, with whatever the ruleset says the extra buys. Only you could do that before, so a character played by the Engine never cast a spell that grows any bigger, on a turn or in a reaction alike. Each way of paying is weighed on its own and priced with the rungs it climbs, so the bigger version is not mistaken for a free one. Opponents built from a plain stat block are unchanged: it has no pools to pay out of (#6528).
+
+- A Game Mode ruleset's catalog entry can now say WHICH moment it waits for, so a spell or a trick written as a reaction finally has somewhere to be taken. Two moments: before something lands on its holder, where taking it may stop that thing from happening at all, and after something has hurt them, where it is pointed back at whoever did it. What the stopped action cost is still spent, because it was paid for before anybody was asked, and an entry pointed at whoever caused the moment fills the target in rather than asking you to pick. An entry that only says it is a reaction, without naming a moment, stays off every menu exactly as before. Ruleset packages that name a moment need Capability API 1.33. The fight still keeps one window rather than a stack, so a counter cannot itself be countered, and a reaction cannot change a number on what it answers, only stop it or answer it. A combatant the Engine plays now weighs letting a moment go by against spending on it, the way it weighs ending a turn, so having a reaction to spend no longer means always spending it; that includes a strike at somebody walking away. A friend aiming something at you, like a heal, opens no window at all.
+
+- Character, persona, and lorebook folder contents follow the selected sidebar sort order (#6497).
+- The extra-actions menu sits to the left of Emoji, farther from Send, while keeping existing Post Only and Guided Generation actions (#6507).
+- Conversation scene invitations stay beside the proposing reply; open setup when ready, including after cancelling or reloading (#6496).
+- PWA manifest requests include credentials so Android Chrome can read the manifest behind Basic Auth (#6492).
+
+- Advanced Memory scene recaps request 2–3 paragraphs with room for reasoning, and constant-summary consolidation no longer fails on tiny proportional token targets (#6512).
+- Advanced Recall scene checks appear in agent call activity, including shared post-processing tracker calls. Reindexing preserves progress toward the next scene check (#6512).
+- Advanced Memory constants use message-range titles, reject unfinished helper output, and deactivate the originals when a completed compacted replacement is saved. Ranged constants that overlap live context stay out of that prompt and its archived-summary compaction budget (#6512).
+- Advanced Memory's context threshold applies to the outgoing prompt without subtracting reply tokens. Automatic scene resets apply to all characters and can be undone with the existing All flag; temporary open-scene trimming no longer creates persistent character-specific flags (#6512).
+- New Start flag changes save together with Advanced Memory cutoffs, keeping the previous state intact if a save fails (#6512).
+
+- Advanced Memory identifies corrections needing review and exposes unfinished scene summaries for targeted recovery without resetting the archive (#6526).
+- Advanced Memory keeps saved scene indexes across source-text edits, swipes, illustrations and live context flags. Recalled excerpts use current message text, while character-access checks remain enforced (#6526).
+
+- Advanced Memory reindexing rebuilds saved text vectors without rerunning scene detection or summarization. Saved scene corrections no longer depend on outdated generated-summary inputs, and stale scene corrections can be reviewed and saved without changing their text (#6509).
+
+- Removed the obsolete root suggestion-chips implementation brief, `MARI_SUGGESTION_CHIPS_TASK.md` (#6504).
+
+- Consolidated root coding-agent guidance in `AGENTS.md` and updated contributor and reviewer references after removing the duplicate `CLAUDE.md` (#6504).
+
+- Advanced Memory resets live context to the latest detected scene when its context limit is reached, then keeps that cutoff while new messages accumulate until the next reset. Existing ranged summaries are reused after generation (#6503).
+
+- Advanced Memory preserves earlier confirmed memories across personal POV start flags and lets you correct a saved scene's character access without reprocessing the chat (#6503).
+
+- Advanced Memory shows post-generation scene checks in the Agents menu and checks the configured number of recent messages at its standalone interval (#6499).
+- Mobile chat images allow native pinch zoom, including app shells that honor viewport scaling limits (#6501).
+- Empty Recalled Scenes markers add no extra blank lines to the prompt (#6502).
+
+- Tapping Author's Notes again closes its panel in the mobile Roleplay toolbar (#6495).
+- Message Peek Prompt stays tied to the selected reply and swipe after images, summaries or memory settings change, preserving the character and commands actually sent to the model (#6493).
+- Advanced Memory uses enabled Chat Summaries and their character conditions even when the original messages are hidden or before a character's start flag. New and compacted constants retain character conditions; recalled scenes and raw messages keep their knowledge restrictions (#6493).
+
+- Advanced Memory keeps applicable enabled constants in the prompt and combines them after the reply when they exceed 70% of the configured summary and recall budget. Constants have priority, followed by all selected scene summaries, then excerpts; total memory may use up to 2,000 extra tokens. Existing ranged and legacy summaries reuse Chat Summaries and its Maximum output size.
+- Presets offer one **Recalled Scenes** marker for paired summaries and excerpts. Existing Recalled Messages markers remain compatible aliases.
+- Recalled messages and new scene summaries omit illustration attachments and their unavailable-content notices while retaining readable text attachments.
+- Post-generation scene checks receive chat message numbers and identify exact scene endings. They share eligible tracker calls when available and archive completed ranges after the reply; scenes still in live context stay excluded from recall.
+
+- Advanced Memory uses one **Recalled Scenes** prompt section, with each scene summary immediately followed by its available excerpt. Existing preset markers and saved swipe memories remain usable without another search or archive reset.
+- Advanced Memory stops polling ready archives while idle, keeping unrelated character and preset requests responsive. Long-chat replies and Peek Prompt avoid repeated metadata parsing and repeated whole-scene budget scans; previews without a preset retain message IDs so history can fit the budget (#6484).
+- Advanced Memory scene recall toggles and deletion stay responsive in long chats: archive checks reuse parsed message metadata, the inspector loads summaries without resending hidden excerpts, and user edits interrupt background processing safely (#6484).
+- Conversation chats reuse character-owned schedules. Enabling schedules no longer starts generation, and weekly renewal requires an explicit per-character opt-in without repeated retries after failure (#6481, #6477).
+- Schedule generation stops when cancelled or when its editor, manager, or chat settings closes. Invalid model output remains editable and can be applied to the draft after validation; completed days survive a later day’s failure (#6480, #6476).
+- Disabled Regex and Functions keep their switches and action buttons fully visible while dimming only their descriptions (#6463).
+
+- OpenAI-compatible image connections can fetch models from custom provider URLs without a dedicated provider integration (#6464).
+
+- Advanced Memory no longer starts or waits for continuity generation before the main Roleplay reply. Constants reuse existing ranged Chat Summaries, add only uncovered history after the reply, and combine only summary text when the constant-only budget is exceeded. All summary calls honor Chat Summary’s Maximum output size; replaced constants become inactive in Chat Summaries (#6474).
+- Every saved scene, legacy continuity and ongoing summary has a confirmed Delete summary action at the bottom of its vault editor. Original messages remain intact (#6474).
+- Toggling a Chat Summary no longer locks every entry, and Activate All / Deactivate All save together in one request. Background constant updates refresh Chat Summaries automatically (#6474).
+- Connection test results survive a late save refresh and stay with the selected connection, fixing intermittent missing fal.ai feedback on iPhone Safari. The mobile drag regression now measures scrolling after cancellation has settled (#6474).
+
+- Advanced Memory reuses the original reply's saved summaries and recalled scenes across unchanged regenerated swipes, avoiding another search or continuity-model call. Changes to source history, character access, memories or the context budget are still checked before reuse (#6474).
+
+- Advanced Memory recalls up to three relevant past scenes by default, with a configurable maximum. Each scene summary is paired with one bounded excerpt and a grouped message range; recalled context identifies the live range and last user message. Routine recall reuses the archive, bounds optional embedding latency, and stays out of agent and auxiliary generation requests (#6471).
+- Advanced Memory checks scenes independently after main Roleplay replies at the configured interval, and prepares the archive only when a scene ends. Background progress appears as **Advanced Recall** in the top-left Agents menu, including when ordinary agents are disabled (#6471).
+
+- Advanced Memory skips scene recaps that overlap live messages and uses only fully archived manual-summary ranges for continuity, avoiding duplicate story context at cutoffs (#6468).
+
+- Advanced Memory uses its selected helper for scene recaps, separates archived scenes from the constant-summary size limit, and sends standalone summary instructions with only the eligible source material. Completed summaries and scene detection survive Resume after an update (#6461).
+- Individual scene memories can be deleted from their editor after confirmation. Original chat messages are kept, and routine preparation does not recreate the deleted summary.
+
+- The schedule editor can generate a week one day at a time using seven smaller requests, preserves the draft on failure, and stops generation when closed (#6449). It offers connection selection and persistent errors, rejects incomplete or overlapping generated days, displays full-day blocks, prevents competing edits during generation, and refreshes the week date after day regeneration (#6455).
+
+- A Game Mode fight can now be held open for somebody who is not the one acting. Walking out of an enemy's reach stops the walk on that step and asks them whether to strike instead of striking for them, and the walk then picks up where it left off, paying for every cell it really crossed. When a turn ends, an opponent holding its own points is asked whether to buy one of its signature actions before the next turn begins, which is the only moment those are bought in. Your own party member's window is yours to answer, with the option and a Pass on the menu; everybody else's is answered by whoever plays them, and a Game Master's boss is asked through the Game Master. Nothing else moves while a window is open, one chance each per walk, and a game closed mid-walk comes back with the same people still to ask. Ruleset packages need no change and no newer Capability API: a ruleset that declares an opportunity budget gets the first, a bestiary with signature points gets the second.
+
+- Advanced Memory resumes unfinished summaries without replaying failed compactions or reporting completed scene detection as new work (#6461).
+
+- Advanced Memory retains earlier scenes across shared “Mark as new start” cutoffs, shows automatic cutoffs in chat, and updates them when manual flags move or are removed. Hidden messages and character knowledge limits remain respected (#6450).
+
+- Advanced Memory can prepare the full eligible Roleplay history through **Prepare existing history**, resumes unfinished scene detection, and shares one scene summary between characters with the same history. The narrator uses the shared archive across character participation boundaries without separate scene copies. The archive avoids redundant owner copies and uses compact memory rows; new recaps omit current-situation and open-tension sections (#6450).
+
+- When a Game Mode fight ends, the recap the Game Master reads now names anybody still carrying a condition and says those stay until the Game Master takes them off, with the command that does it. A charm or a fright does not expire because the fighting stopped, and what would end one is the spell's own terms or the fiction rather than arithmetic, so it is a ruling to make rather than something the Engine should guess. The condition a ruleset's own dying rule puts on somebody at zero is left out of that list, because healing or stabilising them is what lifts it.
+
+- A Game Mode ruleset can now say that one weapon is a single strike a turn however many attacks its wielder has. A weapon list that buys several strikes may name a column that holds its own rows to one, which is what a crossbow needs: 5e's Loading property says you fire once when you take the Attack action whatever your count, and until now a character with Extra Attack was offered the same number of shots with a crossbow as swings with a sword. Ruleset packages that use it need Capability API 1.32, and a list that says nothing is unchanged.
+
+- The ruleset authoring guide now says WHY a health pool cannot carry kinds of harm, rather than only that it is refused: a pool records how much damage landed, a wound track records how much and what kind each piece of it was, so a system where a wound stays bashing, lethal or aggravated after the blow needs a track. The refusal an author sees says the same thing and names the remedy.
+
+- Downloadable packages can use the host Engine's LLM, image and video integrations, inheriting provider fixes, queues and request safeguards without bundling stale service copies. These integrations require Capability API 1.31.
+- Conversation mode now has a persisted background-image opacity control while keeping its readability gradient visible.
+
+- Combined damage types mark one wound per hit on rulesets configured for one mark per blow, using the most severe landed kind.
+
+- Game wound sheets describe zero-penalty wounds accurately, and saved dice cards retain the applied wound penalty after reloading.
+
+- Roleplay dice commands accept an optional situational bonus or penalty and DC, combine the adjustment with the automatic attribute bonus, and show the DC on the existing dice card (#6417).
+
+- Game Mode catalog abilities can modify dice-pool checks with rerolls, bonus dice, successes or thresholds. Their effects and costs appear in the picker and character prompt. Free and paid abilities use the same check command, with costs applied once. Packages using these effects require Capability API 1.30 (#6411).
+
+- Ruleset combat can use wound tracks for health, applying the ruleset's damage kinds, healing and falling rules instead of subtracting hit points (#6407).
+
+- Refresh from ruleset offers newly added columns, including numbers and switches, for existing picked rows while preserving values already on the sheet (#6400).
+
+- Dice-pool rulesets can let players spend resources for extra dice or successes on a check, with costs, limits and actual spending recorded by the Engine (#6405).
+
+- Character sheets support wound tracks, ordered damage kinds, healing and persistent overflow. A ruleset can apply the current wound penalty to its checks; these features require Capability API 1.30 (#6407).
+- Atlas Cloud browser checks verify persisted model options directly, avoiding a race with the temporary save confirmation.
+
+- Atlas Cloud video connections show a **Model options** section under **Video Defaults** with every input the selected model has beyond clip length, aspect ratio, and resolution, such as negative prompt, seed, audio, shot type, prompt expansion, and LoRA lists. Each option shows Atlas Cloud's description and default, stays unsent until changed, and is saved per model. Switching models hides the old controls until the selected schema loads; ordinary field names such as `prototype` are preserved and object inputs are validated. The section also lists the clip lengths and resolutions the model accepts and warns when a text-to-video model cannot use the gallery image (#6408).
+- **Fetch Models** on an Atlas Cloud image or video connection loads Atlas Cloud's current catalog instead of a fixed starter list. Video models list image-to-video first and show their starting price per second; the starter list remains the fallback when the catalog cannot be reached (#6408).
+- Atlas Cloud scene videos fit each request to the selected model's published input schema: the source illustration goes to the image field the model declares, resolution and aspect ratio become a `size` where the model requires one, clip length snaps to a length the model offers, and fields the model does not declare are left out. **Test Video** supplies a plain first frame to image-to-video models, and the server log reports when a text-to-video model cannot use the source illustration (#6408).
+- Roleplay World tracker temperature and weather controls sit beside the date/time controls, with space reserved for their values on mobile and desktop (#6424).
+- Roleplay dice instructions keep optional DCs and situational modifiers inside the command or tool arguments instead of announcing them in narration (#6425).
+
+- The Inventory Tracker browser regression waits for its editing modes and disables the toolbar opening animation, avoiding missed clicks on clipped controls in CI (#6421).
+
+- Downloaded packages using the bundled Claude Agent SDK can resolve the host's installed native CLI helper, including pnpm and container installs; managed links refresh after SDK updates (#6403).
+
+- Automatic output translation finishes and saves on the server even after the page closes, including rewritten replies, individual swipes, and replies saved before a later processing error; completion alerts wait for the saved result while the next send remains available. Returning to a chat refreshes older cached translations even when its cached settings are stale, and older Game narration can still translate after unrelated server work finishes. Malformed Game command tags no longer cause repeated scans while preparing narration for translation (#6412).
+
+- Desktop chat, character, and persona drags allow normal mouse-wheel scrolling while holding an item, retain chat assignment and folder drops, and cancel with Escape. The browser regression uses the same mouse flow without hanging in native drag mode (#6413, #6399).
+
+- Game Mode ruleset combat supports multi-strike turns, several damage types per hit, action-granting abilities, automatic damage riders and additional condition effects. Catalog previews explain these mechanics before selection. Packages using the new keys require Capability API 1.29; see the [ruleset authoring guide](docs/extending/writing-rulesets.md).
+- The Roleplay swipe media regression follows the continuation behavior shipped in #6396, so the node regression lane passes again on `staging`.
+
+- Roleplay `/continue` and `/cont` display their streamed text inside the original reply, preserving its existing content and newline preference; an empty send still creates a separate reply (#6394).
+- Narrator dice commands can target the active persona by name, including character cards used as personas, and apply that identity's assigned RPG attribute modifier (#6395).
+
+- Conversation and Roleplay chats keep the latest message in view while their opening layout finishes loading, on desktop and mobile; scrolling through older history still takes precedence (#6392).
+- A Game Mode fight on a ruleset that says what one square of a battlefield is worth is now played on that battlefield, on screen. The board is the same one Tactical battles use, with the same terrain, and everything on it is said in the ruleset's own distance rather than in squares: "Movement 8 paces", "Can be walked to for 15 ft", "Juno moves to 4, 6 for 6 paces and has 2 paces left". Choosing Move lights up every square your character can reach with what it costs, draws the way there as you hover or focus one, and marks in amber any square whose path someone would strike at, naming them under the board. Choosing an attack or an ability lights up who it may be pointed at and lets you click them on the board as well as in the list, and an attack that reaches nobody says "Nobody is in reach. Move closer." instead of offering a swing at nothing. Something that lands as a burst, a cone or a line is aimed at a square, and the square under your pointer says who it would catch, friends included. Movement can be spent before and after an action, so the menu comes back with what is left. The whole board is reachable from the keyboard: arrow keys move between squares, Enter takes the square, Escape leaves a half-made choice, and every square says what it is, who is on it and what it would cost. Your Combat Preference now decides how such a fight is shown: Classic plays it without positions and Tactical plays it on the board. A ruleset that says nothing about distance, a game set to Classic, and Marinara's own Tactical and Classic battles are all unchanged.
+
+- Touch dragging in chats and resource libraries lets a second finger scroll the list while the first keeps holding the item; lifting the scrolling finger no longer drops or assigns it (#6390).
+
+- Inventory Tracker preserves saved items when a model response is incomplete or contains malformed rows, including batched agent calls. Failed updates use the existing retry path instead of repairing missing inventory into deletions (#6387).
+
+- Inline code in documentation follows the reader's theme so paths and settings remain readable in light mode (#6371).
+- Scene summaries explicitly use a narrator's point of view and attribute thoughts and feelings to the participant they belong to (#6379).
+- Conversation Presence keeps the activity editor open when a mobile keyboard resizes or pans the viewport (#6380).
+- Roleplay Visual Novel paragraphs follow speech playback, with optional timed autoplay and a paragraph delay in Appearance settings (#6373).
+- Termux client builds get temporary heap headroom instead of inheriting the smaller server limit; explicit memory overrides are preserved (#6381).
+- A Game Mode ruleset that resolves its own fights can now say what one square of a battlefield is worth in its own distance, and a game on such a ruleset set to Tactical combat is fought on a board. How far a turn walks, how far a weapon reaches or is thrown, how far an ability carries and what a wall blocks are all the ruleset's own numbers.
+- On that board an ability lands as the shape its ruleset draws, a burst, a cone or a line, a creature's breath included; cover adds what the ruleset says to the number an attack is rolled against; a shot taken too far off or with a foe at your elbow is harder when the ruleset says so; walking out of somebody's reach lets them strike at you; and the conditions that talk about distance finally mean something.
+- Opponents nobody plays now move: they close the distance, get up when they are knocked down, weigh every square they could fight from, sprint when nobody is in reach, and do not walk through three people's reach for a slightly better target.
+- A ruleset that says nothing about distance, and any game set to Classic combat, fights exactly as it did. The 5e example gains distances on its weapons and its creatures and Ember Roads gains one line saying a square is two paces; ruleset packages that carry any of it need Capability API 1.28, and games with no ruleset are unchanged.
+- A Game Mode fight on a ruleset that resolves its own combat is now played on screen, in that ruleset's own words. The menu is your character's own attacks and abilities plus the standard actions the ruleset lists, each saying what it spends out of the ruleset's action economy and pools and what it is likely to do; choosing one that needs a target offers only the combatants the rules allow it to be pointed at, and a spell that can be paid for from a higher pool asks which one first. The panel below shows the turn order with whoever is on turn, the round, everybody's health and defence in the ruleset's own names, their conditions with the rounds left, temporary points, concentration, the two counts of the ruleset's dying rule, and an opponent's threat and traits behind a Details link. The log prints the real arithmetic, such as "Juno attacks Rust jackal with Road axe: 8 (5 + 3) + 3 = 11 against Guard 6, a hit", with advantage, criticals, saves, resistances, recharge rolls and uses left all said out loud. Turns nobody is playing run one at a time so the log can be read, the per-member manual and AI toggle still works, and a choice the rules refuse says why without changing anything. When the fight ends, the recap the Game Master is given uses the ruleset's real numbers and says the sheets are already up to date, because every accepted action was written to them as it happened. The setup wizard and the ruleset import review now say what battles will really do, read from what the ruleset file carries. Your Combat Preference is kept and not used for such a game, and games with no ruleset, or on a ruleset that does not resolve its own fights, are unchanged.
+- A Game Mode fight can now be resolved by the ruleset's own rules on the server. When a game is on a ruleset that describes how it resolves combat, the battle is fought with that ruleset's dice against its own numbers: each party member's health, resources, conditions and concentration are read off their own character sheet and written back to it after every action, so closing the tab in the middle of a fight loses nothing and there is no end-of-battle tally that could disagree with the sheet. Opponents come from the ruleset's bestiary by name, or, for something the Game Master invents, from a stat block pulled onto the ruleset's own threat scale, or last from the plain numbers of the threat rung it belongs to, and the battle records in plain words every change it had to make. Opponents nobody plays choose from the same list of legal actions a player would see, and a boss the Game Master controls is asked to pick one of them and nothing else. The encounter the Game Master writes now describes each enemy in the ruleset's own terms as well. The battle screen that plays it is the entry above, and games with no ruleset are unchanged.
+- Rulesets can ship a bestiary: a catalog that holds creatures instead of character-sheet rows, each written in the ruleset's own numbers, with health that can be dice rolled when a fight starts, resistances and immunities, the threat tier it belongs to, short traits the Game Master is shown, and actions that can hit, force a save, apply a condition, run out of uses, come back on a recharge roll, strike several times for one action, or be spent from the creature's own pool of points. An opponent the Game Master invents instead is pulled onto the ruleset's own threat scale before anything is rolled, and says in plain words what it changed. This part is the shared rules engine and the file format; the saved battle and the screen that use it are the two entries above. Both example rulesets in the authoring guide now ship a small bestiary of their own creatures. Ruleset packages with a bestiary need Capability API 1.27, and games with no ruleset are unchanged.
+- Groundwork for Game Mode battles that follow a ruleset's own rules: a ruleset can now describe how it resolves a fight, with an optional `combat` block naming what is rolled and against what, the actions a turn may hold, which sheet lists are weapons and which are abilities, what its conditions do, concentration, what happens to a character at zero, its damage types and the scale an opponent is picked from. Its ready-made catalog entries can say how many targets something takes, whether it always lands, what conditions it applies, what temporary points it grants, how it grows with the character and which action it spends. This part is the shared rules engine and the file format; the saved battle and the screen that play it are the entries above, and a game on a ruleset without the block fights exactly as it did. The 5e example and Ember Roads both ship a combat block in the authoring guide, which also lists in plain words what is not modelled yet. Ruleset packages that ship the block need Capability API 1.26, and games with no ruleset are unchanged.
+- AI translations use the selected connection's output-token budget and cap instead of always defaulting to 4,096; the existing Max Tokens setting also controls the translation fallback (#6366).
+- Advanced Settings now groups text, agent, image, video, ComfyUI and embedding timeout controls for slow backends. Saved limits persist across restarts; media and installed-package changes identify when a restart is needed (#6363).
+- Built-in agents can select which context sources they receive, and preserve those selections on save, export and reload. Grouped agents retain the union of their selected sources (#6356).
+- SwarmUI image connections can keep generated files in the backend, send selected LoRAs and their weights, and pass reference images through the native generation API (#6350).
+- Completion sounds and browser/native alerts wait until automatic output translation has finished saving, including a fallback notification if translation fails (#6352).
+- OpenAI-compatible agent calls finish at the stream's completion marker even when the provider keeps the HTTP connection open (#6349).
+- Saved chat defaults reuse setup choices without capturing or overwriting the new chat's name (#6355).
+- The mobile chat setup wizard keeps its footer inside the available screen when Commands are expanded (#6354).
+- Long Game narration can use more of the mobile screen while short messages stay compact (#6351).
+- Agent category buttons show their full labels, and the Personas empty state now reads “No personas yet” (#6357, #6358).
+- Home lifecycle checks scale their heap allowance with the warmed app while retaining structural leak checks. Storage shutdown regressions use production logging and verify that every autosave exit hook is released (#6353, #6360).
+- Claude cache-duration documentation distinguishes Agent SDK requests from Claude Code subagents; all ten translated guides now explain the setting (#6344).
+- A Game Mode ruleset can now offer layers: named variants of itself, such as Low magic or Hard winter, that you turn on for a game under the ruleset you picked. A layer can make the difficulty ladder harsher, take choices out of a character sheet field, leave some of the ruleset's ready-made catalog entries out of the sheet editor's picker, and give the Game Master extra instructions, including for the world it builds during setup. Rulesets may also say what kind of world suits them even without a layer, which world generation now reads. Layers can rule each other out, your choices are fixed for that game's lifetime exactly like the ruleset itself, and nothing on an existing sheet is rewritten: a value a layer takes away stays on a character who already had it. Ember Roads, Gravewatch and the 5e example each ship a layer in the authoring guide. Ruleset packages that offer layers or world guidance need Capability API 1.25, and games with no ruleset are unchanged.
+- Game Mode rulesets can now be built on dice pools. In a pool ruleset the number on a character sheet is how many dice you throw rather than a bonus you add, and the difficulty is how many successes the check needs. The ruleset says which faces count, whether a high face rolls another die or counts twice, whether low faces cancel successes, and what counts as a fumble or a standout success; the Engine throws the dice, counts them, and replaces any result the Game Master wrote for itself. Your sheet shows those numbers as dice instead of as a bonus, and the dice card picks out the dice that reached the target and reads how many successes came up against how many the check needed. Importing a ruleset and the Rules step of game setup now say in plain words how it rolls a check, including any optional pool rules it turns on. The Game Master can also make one check harder or easier by moving the per-die target or by adding and taking dice, where the ruleset allows it, and can roll a skill with a different ability by name, which works on every ruleset. A new example ruleset, Gravewatch, ships in the authoring guide beside Ember Roads. Ruleset packages built on dice pools need Capability API 1.24, and games with no ruleset are unchanged.
+- A ruleset sheet can now take the newer text of rows you added from a ruleset's catalog. When the wording of a spell, attack or feature has changed in the ruleset since you picked it, a line under that list says how many rows have newer text, with a Review button. The review shows each row with what your sheet holds beside what the ruleset says, and you tick the ones you want before anything is written. Only text is compared and only the ticked rows change, so your own numbers, switches and anything you typed in another column of the row are left alone. Cells that a ruleset keeps for you, such as uses that follow an ability score, now also show as read-only with a note saying the ruleset sets them.
+- Game Mode rulesets can keep some sheet numbers themselves, and the Game Master can use an ability by name. A ruleset's ready-made entries may say that a number column follows the character, such as uses equal to an ability score or a class resource that grows with a level, and the sheet editor keeps that cell right instead of leaving it to you. The Game Master can also say that a character uses something they picked from a catalog, and the Engine pays the whole price: whatever the ruleset says it costs, plus one use of each counter that came with it. A spell paid with a slot comes out of the slot level the ruleset names for it, and the Game Master can ask for a higher one instead. If any part cannot be paid, the whole thing is refused and nothing is spent, and something that costs nothing is simply narrated. Ruleset packages that ship these values need Capability API 1.23.
+
+- Game Mode rulesets can lend their character sheets to battles with a new optional `battle` block. A fight starts on the sheet's health, energy and spell slots, and the health lost or regained and the resources spent are written back when it ends. The block names which sheet lists supply skills: a row picked from a catalog becomes a usable skill when its catalog entry describes what it does, and rows in other lists, typed by hand, or without that description are left out. Health is carried as a share of the maximum both ways, because the numbers in battle are Marinara's: a character at half health on the sheet starts at half the battle's health bar. Battles still use Marinara's own combat math, attack rolls, saving throws and concentration are not applied, an abandoned fight writes nothing back, and a ruleset without the block leaves combat unchanged. Ruleset packages that ship the block need Capability API 1.22.
+- Returning to a chat while a background translation is being saved now replaces the old translation correctly when Show Only Translation is enabled (#6337).
+- Game Features switches share consistent track sizing and thumb spacing, including custom HUD widgets and narrow mobile layouts (#6339).
+- Custom Tracker accepts top-level incremental updates as well as updates nested under `fields`, using the existing row merge and lock handling (#6340).
+- Claude Subscription connections can request a one-hour prompt cache, and connection exports keep unsaved cache-duration changes. Cache logs report the actual five-minute and one-hour write counts and avoid cost estimates when the write duration is unknown (#6341).
+
+- Character name resolution exposes each chat member's saved aliases alongside their canonical name, including disabled members, without changing existing name-only callers (#6328).
+- Peek Prompt includes capability package context and roleplay events through the same placement path as generation, including package Agent Sections (#6331).
+- Visual Novel portraits open the existing full-size image viewer with mouse, keyboard or touch (#6332).
+- The Conversation sidebar's Character Schedule Manager icon keeps its intended size instead of shrinking inside button padding (#6333).
+- Professor Mari's fenced code blocks have copy buttons that preserve code whitespace and report clipboard failures, sharing the Docs viewer's controls (#6334).
+- OpenAI-compatible connections to OpenCode Go/Zen automatically send a stable per-chat session header and identify Marinara Engine, including nested generation, retries and chat translations (#6325).
+
+- Mindless Tactical enemies follow the fewest legal steps instead of choosing a longer cheap detour, while still paying terrain and weather movement costs (#6324).
+- Regenerating a translated reply now translates its new content instead of retaining the previous version beside the original when Show Only Translation is enabled (#6317).
+- Launchers check the complete client build inventory and rebuild missing or empty assets before startup. Missing frontend files return 404 instead of HTML, with recovery guidance for blank pages after updates (#6320).
+- Selfie documentation lists the supported model command forms and the Conversation-mode setup requirements (#6318).
+- Reasoning-only replies without evidence of an exhausted output limit no longer suggest lowering Reasoning Effort as the cause; the error points to retrying and inspecting the response (#6321).
+
+- Image connections support fal.ai text-to-image generation, with FLUX starter models, custom model endpoints and parameters, and the existing image previews and gallery (#6312).
+- Connection tests retain fast results after automatically saving edited settings.
+
+- Browser regression fixtures resolve dependencies from Vite's transformed imports instead of expiring resource timings. Wizard persistence checks wait for the settings drawer before reloading and preserve the original error if timeout cleanup fails (#6303, #6304).
+
+- Built-in tracker Agent Sections use the selected turn's saved state at their preset positions, without repeating that data in the automatic context. Trackers without an active section retain their usual placement (#6308).
+
+- Settings search opens Game Assets in Imports, where the existing asset browser, uploads and rescan controls live (#6309).
+- Home and its browser header identify installed staging builds beside the version, independently of the selected update target (#6307).
+
+- Game difficulty now affects enemy AI decision consistency in Classic and Tactical, while companions retain their own competence. Older title-case settings work throughout combat, encounters and loot; the current Traditional damage modifiers affect enemies only and are explicitly reserved for that ruleset.
+- Combat accepts and saves campaign weather, applying rain's elemental modifiers, tagged projectile/sight penalties, and Tactical snow movement costs. Sheltered or uncertain exposure is neutral; conditions remain visible with weather animations off and stay fixed across reloads.
+- Game creation retains Battlefield Size while removing the unused campaign Battlefield Seed control and “current style” from Classic. New battles receive individual internal seeds, while saved battle maps and restarts retain theirs.
+- Combat started from a restored checkpoint uses the restored scene's weather, and Classic end-of-round elemental mechanics respect the encounter's weather modifiers.
+
+- Linux sandbox regressions probe the actual host process instead of Bubblewrap’s isolated supervisor and accept explicit denial when reading a masked secret file, avoiding false failures without weakening the isolation checks.
+
+- Combat AI review fixes keep Methodical units focused on real opponents, respect legacy skill ranges, and report invalid enemy MP and corrupt saves clearly. Combat events can be translated, item prompts match their targets, and mobile terrain inspection leaves battle controls accessible. Battlefield reload checks no longer depend on browser resource-timing history (#6303).
+
+- Codex has a dedicated `AGENTS.md` with OpenAI model and tool guidance; skills remain shared through `.agents/skills → .claude/skills`. Completed, locally validated and reviewed PRs now proceed to ready for review without a separate confirmation.
+
+- New Game Mode battles use saved combat temperaments in Classic and Tactical, including Patient, Methodical and Coordinated. Explicit Mindless hints also work for other creature types. Companion control can be chosen per member; generated enemies retain usable MP, and Classic support skills target the correct side with saved cooldowns.
+- New Game Mode battles can let the GM direct authored bosses in Classic and Tactical, with legendary actions, turn-start anticipation, and optional Counterspell/guard reactions. Saved decisions protect resources across reloads, duplicate commands and late GM replies; manual party reactions show their MP or spell-slot cost.
+- Restoring combat preserves the encounter anchor and mechanics instead of clearing them during screen initialization.
+- Classic combat consumes items only when their accepted action executes, keeping abandoned retries and skipped turns from spending inventory, and retains spent spell slots between rounds. Tactical AI uses the same skill-power floor as combat resolution when weighing area attacks.
+- Game creation describes Tactical combat without an external game comparison and no longer asks for permanent terrain guidance. Added combat AI, Summoning and versioned ruleset handoffs, with the implemented boss/reaction boundaries and remaining ruleset work.
+- Groundwork for selectable Game Mode rulesets: a capability package can now ship its rules as a validated `ruleset.json` data file (Capability API 1.20, package kind `ruleset`), and chats have a place to record which ruleset a game was created on. Nothing selects a ruleset yet, so every existing and new game plays exactly as before. See `docs/development/game-rulesets-and-sheets-implementation.md`.
+- Game Mode checks in a game that pinned a ruleset now use that ruleset: its dice, its difficulty ladder, the character's ruleset sheet, and its own rule for natural results (5e SRD 5.1 has no automatic success or failure on checks and saves). The Game Master can add `who="Name"` to check a party member, and a check that carries a modifier it invented itself is rolled again with the modifier from the sheet. Games without a ruleset are unchanged.
+- Characters and personas can hold a sheet for each installed Game Mode ruleset, edited under **Stats** in a layout that comes from the ruleset. A sheet is a starting build that a game copies. Sheets for rulesets that are not installed are kept, shown as one removable line, and travel with exports; each sheet is limited to 64 KB.
+- New games can be created on an installed Game Mode ruleset through a **Rules** choice in the setup wizard, separate from Combat Preference. The ruleset stays with the game, each party member's sheet is copied into the game (a blank one when they have none), and nothing in a game writes back to the character or persona. Shared setup files carry the ruleset and fall back to Marinara's own rules, with a notice, when it is not installed or the installed version is older than the one the file was made with. A card keeps its sheet through a session conclusion and an in-game sheet edit, and a recruited party member gets one too.
+- A game on a ruleset now keeps each party member's sheet up to date as you play. The Game Master records spent and regained resources, damage, healing, conditions and rests with a `[sheet: ...]` command, and the Engine checks every one against the sheet: a spell cast with no slot left is refused and you are told. The in-game character sheet shows the ruleset sheet with live pools, conditions, rest buttons and an **Edit sheet** mode. Live values belong to the message they happened in, so a swipe or a regenerated turn never spends twice.
+- The agent catalog shows the 5e (SRD 5.1) rules package under the **Game** filter, and the agents overview explains that a package marked **Rules** adds a Game Mode ruleset rather than an agent.
+- Community Game Mode rulesets: a ruleset anyone wrote can be imported from a single JSON file (**Import agents** in the Agents panel, then **Game Mode ruleset**), or received from a custom agent repository that carries a `rulesets` folder. A review shows what the ruleset covers and the full text it sends to the Game Master before anything is stored. Imported rulesets are named after where they came from (`local/my-5e`, `alice/v20`), so they can never replace an official one. Every imported version is kept, and a game always plays on the exact version it was created on; a changed file needs a higher version number. Turning **Allow custom Agent imports** off hides imported rulesets from new games without touching games that already use one.
+- Game Mode rulesets can now ship catalogs: ready-made spells, features or gear that fill a character sheet's lists, so nobody types every row by hand. One entry can fill more than one list, picked rows are copies you can edit, and catalog text is never sent to the model. See [Writing Game Mode Rulesets](docs/extending/writing-rulesets.md).
+- The character, persona and in-game sheet editors now have **Add from catalog** on every list a catalog fills. The picker searches and filters, marks what the sheet already holds, and says what each list would gain before you add anything.
+- Installed rulesets now appear in the Agents panel under **Rules**, where a rules package can be uninstalled and an imported ruleset removed. Removing one that games still play on asks again and says how many.
+- The setup wizard's note for a ruleset without combat rules now names the Combat Preference you picked (Classic or Tactical) instead of saying "default combat".
+- New guide for ruleset authors, [Writing Game Mode Rulesets](docs/extending/writing-rulesets.md), with a small non-d20 example ruleset and a JSON Schema for editor help (`docs/extending/ruleset.schema.json`, regenerated with `pnpm ruleset:schema`).
+- Storage flushes already waiting when shutdown starts now join the final write drain, avoiding a spurious closed-store error while preserving pending data and reporting failed admitted writes even when shutdown retries successfully (#6298).
+
+- Capability packages can now offer tools the model calls during a turn, so a package that owns live state receives structured, validated data instead of parsing it back out of the reply. Narration still streams while the call happens. See `docs/development/optional-agent-packages.md` for the package-author API.
+
+- Deleting a chat message (or bulk-deleting messages) now cleans up lore that agents extracted from the deleted turns. The Lorebook Keeper's entries remember which messages they came from: rewriting an entry in place is undone when the turn that rewrote it is deleted, entries whose whole source turn is gone are removed, and hand-written entries are never touched.
+- Regenerating a message no longer keeps lore written from the discarded swipe active in the prompt. Swiping back to the original response brings its lore back.
+- Lorebook entries expose the messages they were extracted from, and the entries list can be filtered by source message, so lore left behind by a deleted message can be found and purged explicitly.
+- Character schedules accept custom daily safety limits above eight, preserve them through schedule imports, and still respect the chat check-in cap (#6291).
+- Local embedding launches raise the logical batch when needed so physical batches above 2,048 tokens are not silently capped by llama.cpp (#6293).
+- Professor Mari validates edits and undo without scanning unrelated chat history, preserving lazy storage and avoiding repeated unrelated-error warnings. Plain-text agent memory no longer produces false JSON errors; explicit database validation still reports existing broken references without deleting data (#6294).
+
+- Repeated keeper writes preserve the original undo snapshot, and legacy profile imports clear foreign message references so restored lore remains usable. Storage format 7 protects the new provenance fields from older builds that cannot preserve them (#6288).
+- Refresh compatible dependency and CI-action versions while preserving the supported Node, schema and native-runtime compatibility pins. The sandbox regression fixture also resolves macOS temporary-directory aliases before comparing canonical store links, and restart-test failures retain startup-stage diagnostics.
+
+- Starting a Conversation or Roleplay chat from a character card keeps that character selected when saved wizard defaults are applied (#6284).
+- CI isolates language checks from live agent-catalog availability and gives cold native server startup its own deadline while preserving the restart deadline.
+- Roleplay documents choose one of three built-in styles for each document kind and keep that choice with the saved command. Real dice rolls appear inside the reply where they were requested, using the existing dice animation and preserving their results after reload (#6279).
+- Pinch zoom on mobile preserves the Roleplay layout and media size instead of treating the smaller visual viewport as an open keyboard (#6278).
+- Advanced Memory scene decisions have room for reasoning models to finish, respect the helper connection's output cap, and explain output-limit failures (#6280).
+- Model discovery errors expose the underlying network error code and clarify that the provider must be reachable from the Marinara server (#6268).
+- Roleplay interruption instructions explicitly cover dialogue and actions, with a concrete example of a plausible intervention (#6281).
+
+- Tactical Game Mode can combine a GM terrain brief with a reusable battlefield seed and size. Requested terrain is validated and preserved, with an explicit generated-terrain fallback when a layout cannot be used. Flying and teleporting units gain distinct movement rules while retaining terrain defense and evasion bonuses. Malformed saved grids are excluded from GM battlefield summaries (#6265).
+- Added a contributor roadmap separating combat participation from battlefield rules, with follow-up plans for summoning and versioned tabletop rules profiles (#6265).
+- Codex contributors review locally with CodeRabbit and resolve valid findings before requesting PR review, reducing use of the repository's shared review quota. Documented false positives or purely pedantic suggestions do not block review.
+
+- Custom agent outputs now show separate public-output and private-context editors under the same spoiler protection. Responses that omit private context retain the previous visible turn’s value (#6254).
+- Copied Support Diagnostics include only the latest five relevant client events, omitting routine visibility events and keeping reports shorter while preserving the full local recovery history (#6261).
+- Character Library and Characters panel token estimates include the full character card, including example messages, alternate greetings, instructions, and embedded lore (#6255).
+
+- Personal Extensions can use Marinara's built-in text token estimator through `marinara.estimateTextTokens(text)` (#6257).
+- Character Library previews preserve saved portrait crops without stretching them in compact or mobile layouts. Library and Recent Chats hover feedback keeps image sizes stable to avoid transient resampling artifacts (#6247, #6249).
+- Memory Recall reuses a continuity summary when its sources are unchanged and it still fits the adjusted context budget, avoiding duplicate entries and unnecessary summary requests (#6250).
+
 ## [2.4.6]
 
 - Shutdown regression checks use persisted cleanup results after terminal exit, avoiding false failures when a closed terminal discards its final log output (#6245).

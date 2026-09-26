@@ -68,17 +68,24 @@ export function mergeRetriedAgentTraces(saved: unknown, retried: readonly AgentP
   return [...kept, ...retried];
 }
 
+/** Executor configs carry what the parameter trace labels; bare progress descriptors do not. */
+function isAgentExecConfigs(
+  agents: readonly AgentExecConfig[] | AgentTaskProgress["agents"],
+): agents is readonly AgentExecConfig[] {
+  return agents.every((agent) => "settings" in agent);
+}
+
 /** Observe an existing call while forwarding its explicit agent debug setting. */
 export async function completeAgentCall(
-  context: AgentContext,
-  agents: readonly AgentExecConfig[],
+  context: Pick<AgentContext, "agentDebug" | "sceneCheck" | "agentProgress" | "signal" | "agentTrace">,
+  agents: readonly AgentExecConfig[] | AgentTaskProgress["agents"],
   provider: BaseLLMProvider,
   messages: ChatMessage[],
   options: ChatOptions,
 ) {
   if (context.agentDebug && options.debugMode !== true) options = { ...options, debugMode: true };
   const agentTrace = context.agentTrace;
-  if (!agentTrace) return observeAgentCall(context, agents, provider, messages, options);
+  if (!agentTrace || !isAgentExecConfigs(agents)) return observeAgentCall(context, agents, provider, messages, options);
 
   const capture: { sent: SentRequestParameters | null } = { sent: null };
   const callerOnRequestBody = options.onRequestBody;
@@ -118,7 +125,7 @@ export async function completeAgentCall(
 }
 
 async function observeAgentCall(
-  context: AgentContext,
+  context: Pick<AgentContext, "agentDebug" | "sceneCheck" | "agentProgress" | "signal">,
   agents: ReadonlyArray<AgentTaskProgress["agents"][number]>,
   provider: BaseLLMProvider,
   messages: ChatMessage[],
@@ -140,7 +147,7 @@ async function observeAgentCall(
       {
         role: "user",
         contextKind: "prompt",
-        content: `${sceneCheck.prompt}\n\nKeep the requested tracker JSON unchanged and add one reserved top-level field: "__scene_check": {"starts": [{"messageId": "exact source message ID"}]}. Use an empty starts array when no new scene starts. For a batch, put this field beside the agent ID fields, not inside a tracker result.`,
+        content: `${sceneCheck.prompt}\n\nKeep the requested tracker JSON unchanged and add one reserved top-level field: "__scene_check": {"ends": [{"messageNumber": 42}]}. Use an empty ends array when no scene clearly ends. For a batch, put this field beside the agent ID fields, not inside a tracker result.`,
       },
     ];
     const maxContext = minContextLimit(
@@ -190,7 +197,19 @@ async function observeAgentCall(
   const startedAt = Date.now();
   const progress: AgentTaskProgress = {
     callId: randomUUID(),
-    agents: agents.map(({ id, type, name, phase }) => ({ id, type, name, phase })),
+    agents: [
+      ...agents.map(({ id, type, name, phase }) => ({ id, type, name, phase })),
+      ...(sceneCheck
+        ? [
+            {
+              id: "advanced-recall",
+              type: "advanced-recall",
+              name: "Advanced Recall",
+              phase: "post_processing" as const,
+            },
+          ]
+        : []),
+    ],
     stage: "waiting",
     receivedChunks: 0,
     receivedCharacters: 0,
@@ -261,13 +280,13 @@ async function observeAgentCall(
           !result.toolCalls.length &&
           payload &&
           typeof payload === "object" &&
-          Array.isArray((payload as Record<string, unknown>).starts) &&
-          ((payload as Record<string, unknown>).starts as unknown[]).every(
-            (start) =>
-              start &&
-              typeof start === "object" &&
-              typeof (start as Record<string, unknown>).messageId === "string" &&
-              ((start as Record<string, unknown>).messageId as string).trim(),
+          Array.isArray((payload as Record<string, unknown>).ends) &&
+          ((payload as Record<string, unknown>).ends as unknown[]).every(
+            (end) =>
+              end &&
+              typeof end === "object" &&
+              Number.isInteger((end as Record<string, unknown>).messageNumber) &&
+              Number((end as Record<string, unknown>).messageNumber) > 0,
           )
         ) {
           sceneCheck.result = payload;

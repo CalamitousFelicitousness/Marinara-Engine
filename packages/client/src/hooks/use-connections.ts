@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+import { showConfirmDialog } from "../lib/app-dialogs";
 // ──────────────────────────────────────────────
 // React Query: Connection hooks
 // ──────────────────────────────────────────────
@@ -14,8 +16,8 @@ import type {
   AudioConnectionSettings,
   Chat,
   ConnectionTestResult,
+  DecisionSource,
   ImageGenerationQuality,
-  ProviderSubscription,
   TextModelPricing,
 } from "@marinara-engine/shared";
 
@@ -95,6 +97,10 @@ export type CreateConnectionPayload = {
   videoGenerationSource?: string | null;
   videoService?: string | null;
   audioSource?: string | null;
+  decisionSource?: DecisionSource | null;
+  credentialsFromConnectionId?: string | null;
+  maxStateTokens?: number | null;
+  decisionTimeoutMs?: number | null;
   audioVoice?: string | null;
   audioSoundEffects?: boolean;
   audioMusic?: boolean;
@@ -122,14 +128,17 @@ export function useUpdateConnection() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, ...data }: { id: string } & Record<string, unknown>) => api.patch(`/connections/${id}`, data),
-    onSuccess: (_data, variables) => {
-      qc.invalidateQueries({ queryKey: connectionKeys.list() });
-      qc.invalidateQueries({ queryKey: connectionKeys.detail(variables.id) });
-      qc.invalidateQueries({ queryKey: parameterBaselineKeys.all });
-      // An audio connection carries the voice catalog and the settings speech
-      // resolves through, so both go stale with it.
-      qc.invalidateQueries({ queryKey: ttsKeys.all });
-    },
+    // Auto-save before testing must finish refreshing the editor before a fast
+    // test response arrives, otherwise hydration clears the new result. An audio
+    // connection also carries the voice catalog and the settings speech resolves
+    // through, so both go stale with it.
+    onSuccess: (_data, variables) =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: connectionKeys.list() }),
+        qc.invalidateQueries({ queryKey: connectionKeys.detail(variables.id) }),
+        qc.invalidateQueries({ queryKey: parameterBaselineKeys.all }),
+        qc.invalidateQueries({ queryKey: ttsKeys.all }),
+      ]),
   });
 }
 
@@ -158,8 +167,23 @@ export function useDuplicateConnection() {
 
 export function useDeleteConnection() {
   const qc = useQueryClient();
+  const { t } = useTranslation();
   return useMutation({
-    mutationFn: (id: string) => api.delete(`/connections/${id}`),
+    mutationFn: async (id: string) => {
+      const rows = await api.get<Array<{ name: string; credentialsFromConnectionId?: string | null }>>("/connections");
+      const dependants = rows.filter((row) => row.credentialsFromConnectionId === id);
+      if (
+        dependants.length &&
+        !(await showConfirmDialog({
+          title: t("connections.decision.deleteTitle"),
+          message: t("connections.decision.deleteWarning", { names: dependants.map((row) => row.name).join(", ") }),
+          confirmLabel: t("connections.decision.deleteConfirm"),
+          tone: "destructive",
+        }))
+      )
+        throw new Error(t("connections.decision.deleteCancelled"));
+      return api.delete(`/connections/${id}`);
+    },
     onSuccess: async (_data, id) => {
       qc.invalidateQueries({ queryKey: connectionKeys.list() });
       qc.invalidateQueries({ queryKey: parameterBaselineKeys.all });
@@ -249,8 +273,10 @@ export type RemoteConnectionModel = {
   context?: number;
   maxOutput?: number;
   pricing?: TextModelPricing;
-  /** True where the connection's plan covers this model rather than billing it. */
+  /** NanoGPT: whether the model is covered by the subscription. */
   subscriptionIncluded?: boolean;
+  /** NanoGPT: input tokens charged per token of subscription quota (2 = 2x). */
+  inputTokenMultiplier?: number;
 };
 
 export function useFetchModels() {
@@ -260,19 +286,42 @@ export function useFetchModels() {
   });
 }
 
-/**
- * The plan covering a connection, where its provider publishes one.
- *
- * Kept out of the connection detail because it is the one field that changes
- * without anyone editing anything: an allowance drains as the app is used.
- */
-export function useConnectionSubscription(id: string | null, enabled: boolean) {
+/** One NanoGPT quota window; counters are null when the lookup was unavailable. */
+export type NanoGptQuotaWindow = {
+  used: number | null;
+  remaining: number | null;
+  /** A fraction, not a percentage; may exceed 1. */
+  percentUsed: number | null;
+  /** UNIX epoch milliseconds. */
+  resetAt: number | null;
+  degraded: boolean;
+};
+
+export type NanoGptSubscriptionUsage = {
+  active: boolean;
+  state: string;
+  limits: {
+    dailyInputTokens: number | null;
+    weeklyInputTokens: number | null;
+    dailyImages: number | null;
+  };
+  dailyInputTokens: NanoGptQuotaWindow | null;
+  weeklyInputTokens: NanoGptQuotaWindow | null;
+  dailyImages: NanoGptQuotaWindow | null;
+  currentPeriodEnd: string | null;
+  credential: "management_token" | "api_key";
+  /** Provider id the reading belongs to, so the meter is labelled from data. */
+  provider: string;
+};
+
+/** Read the NanoGPT subscription quotas for the usage widget. */
+export function useNanoGptSubscriptionUsage(connectionId: string | null, enabled: boolean) {
   return useQuery({
-    queryKey: [...connectionKeys.detail(id ?? ""), "subscription"] as const,
-    queryFn: () => api.get<{ subscription: ProviderSubscription | null }>(`/connections/${id}/subscription`),
-    enabled: Boolean(id) && enabled,
+    queryKey: [...connectionKeys.detail(connectionId ?? ""), "subscription-usage"],
+    queryFn: () => api.get<NanoGptSubscriptionUsage>(`/connections/${connectionId}/subscription-usage`),
+    enabled: enabled && !!connectionId,
+    // Quotas move slowly and NanoGPT may rate limit reads; keep it calm.
     staleTime: 60_000,
-    // A provider that serves no plan answers 400, which is an answer.
     retry: false,
   });
 }

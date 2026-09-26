@@ -7,6 +7,8 @@ import { cn, copyToClipboard, getAvatarCropStyle, isLegacyAvatarCrop } from "../
 import {
   hasSpeakerTag,
   normalizeAvatarCrop,
+  getRoleplayWhispers,
+  getRoleplayCommandContentOffset,
   replaceSpeakerSpans,
   speakerBodyFromMatch,
   speakerNameFromMatch,
@@ -16,8 +18,18 @@ import {
 } from "@marinara-engine/shared";
 import { applyInlineMarkdown, renderMarkdownBlocks, applyInlineMarkdownHTML } from "../../lib/markdown";
 import { MessageReplyPreview, ReplyToMessageButton } from "./MessageReplyPreview";
-import { RoleplayCommandResults } from "./RoleplayCommandResults";
+import {
+  RoleplayCommandResults,
+  RoleplayDiceRoll,
+  RoleplayWhisper,
+  replaceRoleplayCommandMarkers,
+} from "./RoleplayCommandResults";
 import { splitRoleplayParagraphs } from "../../lib/roleplay-vn-paragraphs";
+import {
+  notifyRoleplayTTSParagraph,
+  withRoleplayTTSParagraphs,
+  type RoleplayTTSParagraphDetail,
+} from "../../lib/roleplay-vn-tts";
 import {
   normalizeCardAssetImageSyntax,
   resolveCardAssetUrl,
@@ -29,7 +41,7 @@ import { useReducedAmbientEffects } from "../../hooks/use-reduced-ambient-effect
 import { PendingTypingDots } from "./PendingTypingDots";
 import { ChatImagePreview } from "./ChatImagePreview";
 import { recordClientRuntimeEvent } from "../../lib/client-runtime-diagnostics";
-import { isDiceRollResult } from "../../lib/dice-roll-result";
+import { isDiceRollResult, readRoleplayDiceRolls } from "../../lib/dice-roll-result";
 import { DiceMessageContent, diceRollReplacesMessageContent } from "./ConversationMessageShared";
 import {
   User,
@@ -42,6 +54,7 @@ import {
   Check,
   X,
   Flag,
+  Headphones,
   Eye,
   Search,
   ScrollText,
@@ -51,6 +64,7 @@ import {
   VolumeX,
   Mic,
   MicOff,
+  Eraser,
   Loader2,
   Pause,
   Play,
@@ -673,14 +687,17 @@ function ConversationStartMarkers({
   characterIds,
   characters,
   panel,
+  memoryStartCharacterIds,
 }: {
   sharedStart: boolean;
   characterIds: string[];
   characters: AIVisibilityCharacter[];
   panel?: boolean;
+  memoryStartCharacterIds?: string[];
 }) {
   const { t: localizeUi } = useUiTranslation();
-  const targetedCharacters = characterIds
+  sharedStart ||= memoryStartCharacterIds?.length === 0;
+  const targetedCharacters = [...new Set([...characterIds, ...(memoryStartCharacterIds ?? [])])]
     .map((id) => characters.find((character) => character.id === id))
     .filter((character): character is AIVisibilityCharacter => Boolean(character));
   if (!sharedStart && targetedCharacters.length === 0) return null;
@@ -702,7 +719,11 @@ function ConversationStartMarkers({
   ];
 
   return (
-    <div className={cn("w-full", panel ? "mb-1 px-1" : "mb-0.5 px-2")}>
+    <div
+      className={cn("w-full", panel ? "mb-1 px-1" : "mb-0.5 px-2")}
+      data-advanced-memory-start={memoryStartCharacterIds ? "true" : undefined}
+      title={memoryStartCharacterIds ? localizeUi("chat.advancedMemory.contextStartHelp") : undefined}
+    >
       {sharedStart && panel && (
         <div
           aria-hidden="true"
@@ -936,6 +957,9 @@ interface ChatMessageProps {
   isStreaming?: boolean;
   /** Compact paragraph presentation; full message actions stay in the history. */
   visualNovel?: boolean;
+  followSpeechParagraphs?: boolean;
+  visualNovelSpeech?: RoleplayTTSParagraphDetail | null;
+  onVisualNovelSpeechParagraph?: (index: number) => void;
   /** Explicit VN paragraph index to render instead of automatically picking the latest paragraph. */
   visualNovelParagraphIndex?: number;
   /** Callback notifying the total number of paragraphs available in this message for VN rendering. */
@@ -952,6 +976,7 @@ interface ChatMessageProps {
   onEdit?: (messageId: string, content: string) => void | Promise<void>;
   onSetActiveSwipe?: (messageId: string, index: number) => void;
   onToggleConversationStart?: ToggleConversationStart;
+  memoryStartCharacterIds?: string[];
   onToggleHiddenFromAI?: ToggleHiddenFromAI;
   onPeekPrompt?: () => void;
   onBranch?: (messageId: string) => void;
@@ -1813,6 +1838,9 @@ export const ChatMessage = memo(function ChatMessage({
   message,
   isStreaming,
   visualNovel = false,
+  followSpeechParagraphs = false,
+  visualNovelSpeech,
+  onVisualNovelSpeechParagraph,
   visualNovelParagraphIndex,
   onVisualNovelParagraphCount,
   visualNovelMediaTarget,
@@ -1824,6 +1852,7 @@ export const ChatMessage = memo(function ChatMessage({
   onEdit,
   onSetActiveSwipe,
   onToggleConversationStart,
+  memoryStartCharacterIds,
   onToggleHiddenFromAI,
   onPeekPrompt,
   onBranch,
@@ -2051,37 +2080,40 @@ export const ChatMessage = memo(function ChatMessage({
     },
     [characterMap],
   );
-  const ttsVoiceRequests = useMemo(
-    () =>
-      ttsConfig
-        ? withTTSVoiceRequestCacheKeys(
-            buildTTSVoiceRequests(
-              message.content,
-              ttsConfig,
-              ttsSpeakerName,
-              message.characterId,
-              resolveTTSCharacterId,
-              { fastFirstChunk: ttsConfig.progressivePlayback },
-            ),
-            ttsConfig,
-            message.id,
-            ttsAudioConnectionId,
-          )
-        : [],
-    [
-      message.characterId,
+  const ttsVoiceRequests = useMemo(() => {
+    if (!ttsConfig) return [];
+    const requests = buildTTSVoiceRequests(
       message.content,
-      message.id,
-      resolveTTSCharacterId,
-      ttsAudioConnectionId,
       ttsConfig,
       ttsSpeakerName,
-    ],
-  );
+      message.characterId,
+      resolveTTSCharacterId,
+      { fastFirstChunk: ttsConfig.progressivePlayback },
+    );
+    return withTTSVoiceRequestCacheKeys(
+      visualNovel || followSpeechParagraphs
+        ? withRoleplayTTSParagraphs(requests, message.content, ttsConfig)
+        : requests,
+      ttsConfig,
+      message.id,
+      ttsAudioConnectionId,
+    );
+  }, [
+    message.characterId,
+    message.content,
+    message.id,
+    resolveTTSCharacterId,
+    ttsAudioConnectionId,
+    ttsConfig,
+    ttsSpeakerName,
+    visualNovel,
+    followSpeechParagraphs,
+  ]);
   const hasTTSContent = ttsVoiceRequests.length > 0;
   const [ttsState, setTTSState] = useState(ttsService.getState());
   const [ttsActiveId, setTTSActiveId] = useState<string | null>(ttsService.getActiveId());
   const [ttsProgress, setTTSProgress] = useState(ttsService.getProgress());
+  const [clearingTTS, setClearingTTS] = useState(false);
   useEffect(
     () =>
       ttsService.subscribe((state, id, progress) => {
@@ -2138,9 +2170,19 @@ export const ChatMessage = memo(function ChatMessage({
         policy: resolveTTSSynthesisPolicy(ttsConfig),
         volume: ttsLinePlaybackVolume,
         audioConnectionId: ttsAudioConnectionId ?? undefined,
+        onChunkStart: (_request, index) =>
+          notifyRoleplayTTSParagraph(message.chatId, message.id, ttsVoiceRequests, index),
       });
     }
-  }, [hasTTSContent, message.id, ttsAudioConnectionId, ttsConfig, ttsLinePlaybackVolume, ttsVoiceRequests]);
+  }, [
+    hasTTSContent,
+    message.chatId,
+    message.id,
+    ttsAudioConnectionId,
+    ttsConfig,
+    ttsLinePlaybackVolume,
+    ttsVoiceRequests,
+  ]);
 
   const handlePauseResumeTTS = useCallback(() => {
     if (ttsService.getActiveId() !== message.id) return;
@@ -2156,6 +2198,33 @@ export const ChatMessage = memo(function ChatMessage({
       ttsService.restart();
     }
   }, [message.id]);
+
+  // Drop this message's cached clips (primary keys and text aliases) so the
+  // next Speak regenerates them instead of replaying audio synthesized by an
+  // older provider or configuration. Deliberately does NOT re-speak: awaiting
+  // a full speakSequence parked the spinner until the reply finished playing,
+  // and auto-playing audio the user never asked for.
+  const handleClearCachedVoice = useCallback(() => {
+    if (!hasTTSContent || clearingTTS) return;
+    const liveState = ttsService.getState();
+    const liveActiveId = ttsService.getActiveId();
+    const liveBusy =
+      liveState === "loading" || liveState === "playing" || liveState === "paused" || liveState === "blocked";
+    if (liveBusy && liveActiveId !== message.id) return;
+
+    ttsService.stop();
+    setClearingTTS(true);
+    void (async () => {
+      try {
+        await ttsService.clearCachedAudio(ttsVoiceRequests);
+      } catch (err) {
+        console.warn("[TTS] Clearing the cached voice failed:", err);
+        toast.error(localizeUi("ui.chat.chatmessage.clearCachedVoiceFailed"));
+      } finally {
+        setClearingTTS(false);
+      }
+    })();
+  }, [clearingTTS, hasTTSContent, localizeUi, message.id, ttsVoiceRequests]);
 
   const startEditing = useCallback(() => {
     if (!onEdit || isStreaming) return;
@@ -2259,7 +2328,7 @@ export const ChatMessage = memo(function ChatMessage({
     if (!message.extra) return {};
     return typeof message.extra === "string" ? JSON.parse(message.extra) : message.extra;
   }, [message.extra]);
-  const isConversationStart = !!extra.isConversationStart;
+  const isConversationStart = !!extra.isConversationStart || memoryStartCharacterIds?.length === 0;
   const conversationStartForCharacterIds: string[] = extra.conversationStartForCharacterIds ?? [];
   const isHiddenFromAllAI = extra.hiddenFromAI === true;
   const hiddenFromAICharacterIds: string[] = Array.isArray(extra.hiddenFromAICharacterIds)
@@ -2418,7 +2487,15 @@ export const ChatMessage = memo(function ChatMessage({
       if (genInfo.tokensPrompt != null || genInfo.tokensCompletion != null) {
         const p = genInfo.tokensPrompt != null ? genInfo.tokensPrompt : null;
         const c = genInfo.tokensCompletion ?? "?";
-        parts.push(p != null ? `${p}→${c} tok` : `${c} tok`);
+        const tokenUsage = p != null ? `${p}→${c} tok` : `${c} tok`;
+        parts.push(
+          (genInfo.requestCount ?? 0) > 1
+            ? localizeUi("ui.chat.chatmessage.usageAcrossRequests", {
+                count: genInfo.requestCount,
+                usage: tokenUsage,
+              })
+            : tokenUsage,
+        );
       }
       if ((genInfo.tokensCachedPrompt ?? 0) > 0) {
         parts.push(`cache hit ${genInfo.tokensCachedPrompt!.toLocaleString()}`);
@@ -2429,7 +2506,7 @@ export const ChatMessage = memo(function ChatMessage({
       if (genInfo.durationMs != null) parts.push(`${(genInfo.durationMs / 1000).toFixed(1)}s`);
     }
     return parts.length > 0 ? parts.join(" · ") : null;
-  }, [genInfo, showModelName, showTokenUsage]);
+  }, [genInfo, showModelName, showTokenUsage, localizeUi]);
   // useLayoutEffect runs after DOM mutation but before browser paint — prevents visible scroll jump
   useLayoutEffect(() => {
     // Restore scroll position saved before the state change
@@ -2651,6 +2728,16 @@ export const ChatMessage = memo(function ChatMessage({
   );
   const displayContent = useMemo(() => formatDisplayContent(message.content), [formatDisplayContent, message.content]);
 
+  useEffect(() => {
+    if (!visualNovel || !ttsConfig || visualNovelSpeech?.messageId !== message.id || !onVisualNovelSpeechParagraph)
+      return;
+    // Display regexes/macros can remove or merge source paragraphs. Match the
+    // speech against the very same text that the VN renderer splits below.
+    const mapped = withRoleplayTTSParagraphs(visualNovelSpeech.requests, displayContent, ttsConfig, false);
+    const index = mapped[visualNovelSpeech.chunkIndex]?.paragraphIndex;
+    if (index !== undefined) onVisualNovelSpeechParagraph(index);
+  }, [displayContent, message.id, onVisualNovelSpeechParagraph, ttsConfig, visualNovel, visualNovelSpeech]);
+
   const displayName = isUser ? userName : charName;
   const avatarUrl = isUser
     ? msgPersona
@@ -2858,25 +2945,95 @@ export const ChatMessage = memo(function ChatMessage({
     return `mari-html-message-${suffix || "content"}`;
   }, [message.id]);
 
+  const inlineRoleplayCommands = useMemo(() => {
+    const commands =
+      isRoleplay && !isUser
+        ? [
+            ...readRoleplayDiceRolls(fullText, extra).map((roll) => ({ ...roll, kind: "roll" as const })),
+            ...getRoleplayWhispers(extra).map((whisper) => ({
+              ...whisper,
+              kind: "whisper" as const,
+              offset: getRoleplayCommandContentOffset(fullText, whisper.activity),
+            })),
+          ].sort((a, b) => a.offset - b.offset || a.index - b.index)
+        : [];
+    let paragraphStart = 0;
+    let nextParagraphStart = Number.POSITIVE_INFINITY;
+    if (visualNovel) {
+      for (let index = 0; index <= activeVnParagraphIndex; index++) {
+        const paragraph = vnParagraphs[index] ?? "";
+        paragraphStart = fullText.indexOf(paragraph, paragraphStart);
+        if (paragraphStart < 0) break;
+        if (index < activeVnParagraphIndex) paragraphStart += paragraph.length;
+      }
+      const next = vnParagraphs[activeVnParagraphIndex + 1];
+      if (paragraphStart >= 0 && next !== undefined) {
+        const found = fullText.indexOf(next, paragraphStart + text.length);
+        if (found >= 0) nextParagraphStart = found;
+      }
+    }
+    return commands
+      .filter(
+        (command) => paragraphStart >= 0 && command.offset >= paragraphStart && command.offset < nextParagraphStart,
+      )
+      .map((command) => ({ ...command, offset: Math.min(command.offset - paragraphStart, text.length) }));
+  }, [isRoleplay, isUser, fullText, extra, visualNovel, activeVnParagraphIndex, vnParagraphs, text.length]);
+
+  const renderInlineRoleplayCommand = useCallback(
+    (command: (typeof inlineRoleplayCommands)[number]) =>
+      command.kind === "whisper" ? (
+        <RoleplayWhisper
+          key={`whisper-${message.id}-${message.activeSwipeIndex}-${command.index}-${personaInfo?.id}`}
+          character={command.command.character}
+          text={command.command.text}
+          forPersona={command.recipient.kind === "persona" && command.recipient.id === (personaInfo?.id ?? "user")}
+        />
+      ) : (
+        <RoleplayDiceRoll
+          key={`roll-${message.id}-${message.activeSwipeIndex}-${command.index}`}
+          result={command.result}
+          createdAt={message.createdAt}
+        />
+      ),
+    [message.id, message.activeSwipeIndex, message.createdAt, personaInfo?.id],
+  );
+
   const renderedContent = useMemo(() => {
+    const renderPart = (part: string) =>
+      renderContent(
+        part,
+        dialogueColor,
+        speakerColorMap,
+        boldDialogue,
+        htmlScopeClass,
+        quoteFormat,
+        selfCharacterId,
+        galleryIndex,
+        nameColorMap,
+        textShadowStr,
+      );
+    let markerPrefix = "\uE000";
+    while (text.includes(markerPrefix)) markerPrefix = "\uE000" + markerPrefix;
+    const slots = new Map<string, ReactNode>();
+    let markedText = text;
+    for (const command of inlineRoleplayCommands) {
+      const marker = `${markerPrefix}${command.index}\uE001`;
+      slots.set(marker, renderInlineRoleplayCommand(command));
+    }
+    for (const roll of [...inlineRoleplayCommands].reverse()) {
+      const marker = `${markerPrefix}${roll.index}\uE001`;
+      markedText = markedText.slice(0, roll.offset) + marker + markedText.slice(roll.offset);
+    }
+    const prose = replaceRoleplayCommandMarkers(renderPart(markedText), slots);
     return (
       <>
         {isUser && <MessageReplyPreview reply={extra.replyTo} />}
-        {renderContent(
-          text,
-          dialogueColor,
-          speakerColorMap,
-          boldDialogue,
-          htmlScopeClass,
-          quoteFormat,
-          selfCharacterId,
-          galleryIndex,
-          nameColorMap,
-          textShadowStr,
-        )}
+        {prose}
       </>
     );
   }, [
+    inlineRoleplayCommands,
+    renderInlineRoleplayCommand,
     extra.replyTo,
     isUser,
     text,
@@ -2972,6 +3129,14 @@ export const ChatMessage = memo(function ChatMessage({
   // in place of the real text.
   const showTranslationOnly =
     translationDisplayOnly && !!effectiveTranslationText && !isTranslating && translationSource === message.content;
+  // A translation has no reliable source-text offsets. Keep its visible
+  // paragraph's command results after the translated prose.
+  const renderedTranslationOnly = (
+    <>
+      {renderedTranslation}
+      {inlineRoleplayCommands.map(renderInlineRoleplayCommand)}
+    </>
+  );
 
   const handleCopy = () => {
     copyToClipboard(message.content);
@@ -3158,7 +3323,7 @@ export const ChatMessage = memo(function ChatMessage({
             {diceRollResult ? (
               <DiceMessageContent diceRollResult={diceRollResult} createdAt={message.createdAt} />
             ) : null}
-            {diceReplacesContent ? null : showTranslationOnly ? renderedTranslation : renderedContent}
+            {diceReplacesContent ? null : showTranslationOnly ? renderedTranslationOnly : renderedContent}
             {isStreaming && (
               <span className="ml-0.5 inline-block h-4 w-[0.125rem] animate-pulse rounded-full bg-blue-400" />
             )}
@@ -3254,6 +3419,79 @@ export const ChatMessage = memo(function ChatMessage({
       </div>
     );
 
+  // Outside the audio menu, so a running sequence shows its place without opening it.
+  const ttsChunkCounter = ttsChunkProgress ? (
+    <span
+      className="shrink-0 px-0.5 text-center text-[0.625rem] tabular-nums text-[var(--muted-foreground)]"
+      style={{ minWidth: "2.25rem" }}
+      title={ttsProgressLabel}
+      aria-label={ttsProgressLabel}
+    >
+      {ttsChunkProgress.index}/{ttsChunkProgress.total}
+    </span>
+  ) : null;
+
+  const roleplayTtsControls = ttsEnabled && (
+    <>
+      {ttsChunkCounter}
+      <MessageAudioMenu align="right" dark>
+        {isSpeakingThis && (ttsState === "playing" || ttsState === "paused") && (
+          <>
+            <ActionBtn
+              icon={isPausedThis ? <Play size={MESSAGE_ACTION_ICON_SIZE} /> : <Pause size={MESSAGE_ACTION_ICON_SIZE} />}
+              onClick={handlePauseResumeTTS}
+              title={
+                isPausedThis
+                  ? localizeUi("ui.chat.chatmessage.resumeSpeaking")
+                  : localizeUi("ui.chat.chatmessage.pauseSpeaking")
+              }
+            />
+            <ActionBtn
+              icon={<RefreshCw size={MESSAGE_ACTION_ICON_SIZE} />}
+              onClick={handleRestartTTS}
+              title={localizeUi("ui.chat.chatmessage.restartSpeaking")}
+            />
+          </>
+        )}
+        <ActionBtn
+          icon={
+            isLoadingThis ? (
+              <Loader2 size={MESSAGE_ACTION_ICON_SIZE} className="animate-spin" />
+            ) : isSpeakingThis ? (
+              <MicOff size={MESSAGE_ACTION_ICON_SIZE} />
+            ) : (
+              <Mic size={MESSAGE_ACTION_ICON_SIZE} />
+            )
+          }
+          onClick={handleSpeak}
+          title={
+            !hasTTSContent
+              ? localizeUi("ui.chat.chatmessage.noDialogueToSpeak")
+              : isLoadingThis
+                ? localizeUi("ui.panels.ttsconfigcard.loading")
+                : isSpeakingThis
+                  ? localizeUi("ui.chat.chatmessage.stopSpeaking")
+                  : localizeUi("ui.chat.chatmessage.speak")
+          }
+          disabled={!hasTTSContent || clearingTTS || (ttsBusy && !isSpeakingThis)}
+        />
+        <ActionBtn
+          icon={
+            clearingTTS ? (
+              <Loader2 size={MESSAGE_ACTION_ICON_SIZE} className="animate-spin" />
+            ) : (
+              <Eraser size={MESSAGE_ACTION_ICON_SIZE} />
+            )
+          }
+          onClick={handleClearCachedVoice}
+          title={localizeUi("ui.chat.chatmessage.clearCachedVoice")}
+          disabled={!hasTTSContent || clearingTTS || (ttsBusy && !isSpeakingThis)}
+        />
+        <TTSLineVolumeSlider volume={ttsLineVolume} onVolumeChange={handleTTSLineVolumeChange} dark />
+      </MessageAudioMenu>
+    </>
+  );
+
   const vnAvatarCropStyle = expressionAvatarUrl ? {} : avatarCropStyle;
 
   if (visualNovel) {
@@ -3268,12 +3506,19 @@ export const ChatMessage = memo(function ChatMessage({
             style={{ width: `min(${5 * vnPortraitScale}rem, 26vw)`, height: `min(${5 * vnPortraitScale}rem, 26vw)` }}
           >
             {displayAvatarUrl ? (
-              <img
-                src={displayAvatarUrl}
-                alt={displayName}
-                className="h-full w-full object-cover"
-                style={vnAvatarCropStyle}
-              />
+              <button
+                type="button"
+                className="block h-full w-full cursor-zoom-in focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--primary)]"
+                onClick={() => openImageLightbox(displayAvatarUrl)}
+                aria-label={localizeUi("ui.chat.chatmessage.openValue1Avatar", { value1: displayName })}
+              >
+                <img
+                  src={displayAvatarUrl}
+                  alt={displayName}
+                  className="h-full w-full object-cover"
+                  style={vnAvatarCropStyle}
+                />
+              </button>
             ) : (
               <div
                 className="flex h-full items-center justify-center text-[var(--muted-foreground)]"
@@ -3310,7 +3555,7 @@ export const ChatMessage = memo(function ChatMessage({
                   {diceRollResult && (
                     <DiceMessageContent diceRollResult={diceRollResult} createdAt={message.createdAt} />
                   )}
-                  {diceReplacesContent ? null : showTranslationOnly ? renderedTranslation : renderedContent}
+                  {diceReplacesContent ? null : showTranslationOnly ? renderedTranslationOnly : renderedContent}
                   {roleplayAttachments}
                   {roleplayCommandResults}
                   {renderedTranslation && !showTranslationOnly && (
@@ -3321,6 +3566,7 @@ export const ChatMessage = memo(function ChatMessage({
                 </>
               )}
             </div>
+            {ttsEnabled && <div className="mt-2 flex flex-wrap items-center gap-2">{roleplayTtsControls}</div>}
           </div>
         </div>
         {imageLightbox && (
@@ -3453,7 +3699,7 @@ export const ChatMessage = memo(function ChatMessage({
                     {diceRollResult ? (
                       <DiceMessageContent diceRollResult={diceRollResult} createdAt={message.createdAt} />
                     ) : null}
-                    {diceReplacesContent ? null : showTranslationOnly ? renderedTranslation : renderedContent}
+                    {diceReplacesContent ? null : showTranslationOnly ? renderedTranslationOnly : renderedContent}
                   </div>
                 )}
               </div>
@@ -3620,67 +3866,7 @@ export const ChatMessage = memo(function ChatMessage({
             onClick={() => onDelete?.(message.id)}
             title={localizeUi("lorebook.editor.batch.delete")}
           />
-          {ttsEnabled && (
-            <>
-              {isSpeakingThis && !isLoadingThis && (
-                <>
-                  <ActionBtn
-                    icon={
-                      isPausedThis ? (
-                        <Play size={MESSAGE_ACTION_ICON_SIZE} />
-                      ) : (
-                        <Pause size={MESSAGE_ACTION_ICON_SIZE} />
-                      )
-                    }
-                    onClick={handlePauseResumeTTS}
-                    title={
-                      isPausedThis
-                        ? localizeUi("ui.chat.chatmessage.resumeSpeaking")
-                        : localizeUi("ui.chat.chatmessage.pauseSpeaking")
-                    }
-                  />
-                  <ActionBtn
-                    icon={<RefreshCw size={MESSAGE_ACTION_ICON_SIZE} />}
-                    onClick={handleRestartTTS}
-                    title={localizeUi("ui.chat.chatmessage.restartSpeaking")}
-                  />
-                </>
-              )}
-              {ttsChunkProgress && (
-                <span
-                  className="shrink-0 px-0.5 text-center text-[0.625rem] tabular-nums text-[var(--muted-foreground)]"
-                  style={{ minWidth: "2.25rem" }}
-                  title={ttsProgressLabel}
-                  aria-label={ttsProgressLabel}
-                >
-                  {ttsChunkProgress.index}/{ttsChunkProgress.total}
-                </span>
-              )}
-              <ActionBtn
-                icon={
-                  isLoadingThis ? (
-                    <Loader2 size={MESSAGE_ACTION_ICON_SIZE} className="animate-spin" />
-                  ) : isSpeakingThis ? (
-                    <MicOff size={MESSAGE_ACTION_ICON_SIZE} />
-                  ) : (
-                    <Mic size={MESSAGE_ACTION_ICON_SIZE} />
-                  )
-                }
-                onClick={handleSpeak}
-                title={
-                  !hasTTSContent
-                    ? localizeUi("ui.chat.chatmessage.noDialogueToSpeak")
-                    : isLoadingThis
-                      ? localizeUi("ui.panels.ttsconfigcard.loading")
-                      : isSpeakingThis
-                        ? localizeUi("ui.chat.chatmessage.stopSpeaking")
-                        : localizeUi("ui.chat.chatmessage.speak")
-                }
-                disabled={!hasTTSContent || (ttsBusy && !isSpeakingThis)}
-              />
-              <TTSLineVolumeControl volume={ttsLineVolume} onVolumeChange={handleTTSLineVolumeChange} dark />
-            </>
-          )}
+          {roleplayTtsControls}
         </div>
       </>
     );
@@ -3861,6 +4047,7 @@ export const ChatMessage = memo(function ChatMessage({
             )}
 
             <ConversationStartMarkers
+              memoryStartCharacterIds={memoryStartCharacterIds}
               sharedStart={isConversationStart}
               characterIds={conversationStartForCharacterIds}
               characters={aiVisibilityCharacters}
@@ -4202,59 +4389,68 @@ export const ChatMessage = memo(function ChatMessage({
         />
         {ttsEnabled && (
           <>
-            {isSpeakingThis && (ttsState === "playing" || ttsState === "paused") && (
-              <>
-                <ActionBtn
-                  icon={
-                    isPausedThis ? <Play size={MESSAGE_ACTION_ICON_SIZE} /> : <Pause size={MESSAGE_ACTION_ICON_SIZE} />
-                  }
-                  onClick={handlePauseResumeTTS}
-                  title={
-                    isPausedThis
-                      ? localizeUi("ui.chat.chatmessage.resumeSpeaking")
-                      : localizeUi("ui.chat.chatmessage.pauseSpeaking")
-                  }
-                />
-                <ActionBtn
-                  icon={<RefreshCw size={MESSAGE_ACTION_ICON_SIZE} />}
-                  onClick={handleRestartTTS}
-                  title={localizeUi("ui.chat.chatmessage.restartSpeaking")}
-                />
-              </>
-            )}
-            {ttsChunkProgress && (
-              <span
-                className="shrink-0 px-0.5 text-center text-[0.625rem] tabular-nums text-[var(--muted-foreground)]"
-                style={{ minWidth: "2.25rem" }}
-                title={ttsProgressLabel}
-                aria-label={ttsProgressLabel}
-              >
-                {ttsChunkProgress.index}/{ttsChunkProgress.total}
-              </span>
-            )}
-            <ActionBtn
-              icon={
-                isLoadingThis ? (
-                  <Loader2 size={MESSAGE_ACTION_ICON_SIZE} className="animate-spin" />
-                ) : isSpeakingThis ? (
-                  <VolumeX size={MESSAGE_ACTION_ICON_SIZE} />
-                ) : (
-                  <Volume2 size={MESSAGE_ACTION_ICON_SIZE} />
-                )
-              }
-              onClick={handleSpeak}
-              title={
-                !hasTTSContent
-                  ? localizeUi("ui.chat.chatmessage.noDialogueToSpeak")
-                  : isLoadingThis
-                    ? localizeUi("ui.panels.ttsconfigcard.loading")
-                    : isSpeakingThis
-                      ? localizeUi("ui.chat.chatmessage.stopSpeaking")
-                      : localizeUi("ui.chat.chatmessage.speak")
-              }
-              disabled={!hasTTSContent || (ttsBusy && !isSpeakingThis)}
-            />
-            <TTSLineVolumeControl volume={ttsLineVolume} onVolumeChange={handleTTSLineVolumeChange} />
+            {ttsChunkCounter}
+            <MessageAudioMenu align={isUser ? "right" : "left"}>
+              {isSpeakingThis && !isLoadingThis && (
+                <>
+                  <ActionBtn
+                    icon={
+                      isPausedThis ? (
+                        <Play size={MESSAGE_ACTION_ICON_SIZE} />
+                      ) : (
+                        <Pause size={MESSAGE_ACTION_ICON_SIZE} />
+                      )
+                    }
+                    onClick={handlePauseResumeTTS}
+                    title={
+                      isPausedThis
+                        ? localizeUi("ui.chat.chatmessage.resumeSpeaking")
+                        : localizeUi("ui.chat.chatmessage.pauseSpeaking")
+                    }
+                  />
+                  <ActionBtn
+                    icon={<RefreshCw size={MESSAGE_ACTION_ICON_SIZE} />}
+                    onClick={handleRestartTTS}
+                    title={localizeUi("ui.chat.chatmessage.restartSpeaking")}
+                  />
+                </>
+              )}
+              <ActionBtn
+                icon={
+                  isLoadingThis ? (
+                    <Loader2 size={MESSAGE_ACTION_ICON_SIZE} className="animate-spin" />
+                  ) : isSpeakingThis ? (
+                    <VolumeX size={MESSAGE_ACTION_ICON_SIZE} />
+                  ) : (
+                    <Volume2 size={MESSAGE_ACTION_ICON_SIZE} />
+                  )
+                }
+                onClick={handleSpeak}
+                title={
+                  !hasTTSContent
+                    ? localizeUi("ui.chat.chatmessage.noDialogueToSpeak")
+                    : isLoadingThis
+                      ? localizeUi("ui.panels.ttsconfigcard.loading")
+                      : isSpeakingThis
+                        ? localizeUi("ui.chat.chatmessage.stopSpeaking")
+                        : localizeUi("ui.chat.chatmessage.speak")
+                }
+                disabled={!hasTTSContent || clearingTTS || (ttsBusy && !isSpeakingThis)}
+              />
+              <ActionBtn
+                icon={
+                  clearingTTS ? (
+                    <Loader2 size={MESSAGE_ACTION_ICON_SIZE} className="animate-spin" />
+                  ) : (
+                    <Eraser size={MESSAGE_ACTION_ICON_SIZE} />
+                  )
+                }
+                onClick={handleClearCachedVoice}
+                title={localizeUi("ui.chat.chatmessage.clearCachedVoice")}
+                disabled={!hasTTSContent || clearingTTS || (ttsBusy && !isSpeakingThis)}
+              />
+              <TTSLineVolumeSlider volume={ttsLineVolume} onVolumeChange={handleTTSLineVolumeChange} />
+            </MessageAudioMenu>
           </>
         )}
       </div>
@@ -4363,6 +4559,7 @@ export const ChatMessage = memo(function ChatMessage({
           )}
 
           <ConversationStartMarkers
+            memoryStartCharacterIds={memoryStartCharacterIds}
             sharedStart={isConversationStart}
             characterIds={conversationStartForCharacterIds}
             characters={aiVisibilityCharacters}
@@ -4423,7 +4620,7 @@ export const ChatMessage = memo(function ChatMessage({
                       {diceRollResult ? (
                         <DiceMessageContent diceRollResult={diceRollResult} createdAt={message.createdAt} />
                       ) : null}
-                      {diceReplacesContent ? null : showTranslationOnly ? renderedTranslation : renderedContent}
+                      {diceReplacesContent ? null : showTranslationOnly ? renderedTranslationOnly : renderedContent}
                       {isStreaming && (
                         <span className="ml-0.5 inline-block h-4 w-[0.125rem] animate-pulse rounded-full bg-white/70" />
                       )}
@@ -4558,32 +4755,30 @@ export const ChatMessage = memo(function ChatMessage({
   );
 });
 
-function TTSLineVolumeControl({
-  volume,
-  onVolumeChange,
+function MessageAudioMenu({
+  children,
+  align = "left",
   dark,
 }: {
-  volume: number;
-  onVolumeChange: (volume: number) => void;
+  children: React.ReactNode;
+  align?: "left" | "right";
   dark?: boolean;
 }) {
   const { t: localizeUi } = useUiTranslation();
-  const { open, setOpen, buttonRef, menuRef, position } = useMessageActionMenu("right");
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const muted = volume <= 0;
-  const label = `${localizeUi("ui.chat.ttslinevolumecontrol.lineVolume")}: ${volume}%`;
+  const { open, setOpen, buttonRef, menuRef, position } = useMessageActionMenu(align);
+  const label = localizeUi("ui.chat.chatmessage.voiceControls");
 
   useEffect(() => {
     if (!open) return;
-    const frame = requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
+    const frame = requestAnimationFrame(() => menuRef.current?.querySelector("button")?.focus({ preventScroll: true }));
     return () => cancelAnimationFrame(frame);
-  }, [open]);
+  }, [menuRef, open]);
 
   return (
-    <div className="inline-flex">
+    <>
       <ActionBtn
         buttonRef={buttonRef}
-        icon={muted ? <VolumeX size={MESSAGE_ACTION_ICON_SIZE} /> : <Volume2 size={MESSAGE_ACTION_ICON_SIZE} />}
+        icon={<Headphones size={MESSAGE_ACTION_ICON_SIZE} />}
         onClick={() => setOpen((value) => !value)}
         title={label}
         ariaPressed={open}
@@ -4597,43 +4792,71 @@ function TTSLineVolumeControl({
             ref={menuRef}
             style={position}
             role="dialog"
-            aria-label={localizeUi("ui.chat.ttslinevolumecontrol.lineVolume")}
+            aria-label={label}
             className={cn(
-              "marinara-chat-popover fixed z-[9999] flex w-44 max-w-[calc(100vw-1.5rem)] flex-col gap-2.5 rounded-lg border p-2.5 shadow-xl",
+              "marinara-chat-popover fixed z-[9999] flex max-w-[calc(100vw-1.5rem)] flex-row flex-wrap items-center gap-1 rounded-lg border p-1.5 shadow-xl",
               dark
                 ? "border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--marinara-chat-chrome-panel-bg)] text-[var(--marinara-chat-chrome-panel-title)] shadow-black/30"
                 : "border-[var(--border)] bg-[var(--popover)] text-[var(--popover-foreground)] shadow-black/20",
             )}
           >
-            <div className="flex items-center justify-between gap-2 text-[0.6875rem]">
-              <span className={dark ? "text-[var(--marinara-chat-chrome-panel-title)]" : "text-[var(--foreground)]"}>
-                {localizeUi("ui.chat.ttslinevolumecontrol.lineVolume")}
-              </span>
-              <span
-                className={cn(
-                  "tabular-nums",
-                  dark ? "text-[var(--marinara-chat-chrome-panel-muted)]" : "text-[var(--muted-foreground)]",
-                )}
-              >
-                {volume}%
-              </span>
-            </div>
-            <input
-              ref={inputRef}
-              type="range"
-              min={0}
-              max={100}
-              step={1}
-              value={volume}
-              onChange={(event) => onVolumeChange(Number(event.currentTarget.value))}
-              className="mari-tts-line-volume-slider w-full"
-              aria-label={localizeUi("ui.chat.ttslinevolumecontrol.lineVolume")}
-              title={localizeUi("ui.chat.ttslinevolumecontrol.lineVolume")}
-              style={{ "--range-progress": `${volume}%` } as React.CSSProperties}
-            />
+            {children}
           </div>,
           document.body,
         )}
+    </>
+  );
+}
+
+function TTSLineVolumeSlider({
+  volume,
+  onVolumeChange,
+  dark,
+  autoFocus,
+}: {
+  volume: number;
+  onVolumeChange: (volume: number) => void;
+  dark?: boolean;
+  autoFocus?: boolean;
+}) {
+  const { t: localizeUi } = useUiTranslation();
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (!autoFocus) return;
+    const frame = requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
+    return () => cancelAnimationFrame(frame);
+  }, [autoFocus]);
+
+  return (
+    <div className="flex items-center gap-2">
+      <span
+        aria-hidden="true"
+        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md p-0 text-base leading-none text-[var(--marinara-chat-message-action-text)] max-md:h-8 max-md:w-7 max-md:text-sm"
+      >
+        <Volume2 size={MESSAGE_ACTION_ICON_SIZE} className="shrink-0" />
+      </span>
+      <input
+        ref={inputRef}
+        type="range"
+        min={0}
+        max={100}
+        step={1}
+        value={volume}
+        onChange={(event) => onVolumeChange(Number(event.currentTarget.value))}
+        className="mari-tts-line-volume-slider w-28"
+        aria-label={localizeUi("ui.chat.ttslinevolumecontrol.lineVolume")}
+        title={localizeUi("ui.chat.ttslinevolumecontrol.lineVolume")}
+        style={{ "--range-progress": `${volume}%` } as React.CSSProperties}
+      />
+      <span
+        className={cn(
+          "tabular-nums text-[0.6875rem]",
+          dark ? "text-[var(--marinara-chat-chrome-panel-muted)]" : "text-[var(--muted-foreground)]",
+        )}
+      >
+        {volume}%
+      </span>
     </div>
   );
 }

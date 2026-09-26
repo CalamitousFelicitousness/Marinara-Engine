@@ -5,12 +5,7 @@
 // never pay. And a rate of zero reads as free rather than as "$0", which scans
 // as a missing value.
 
-import type {
-  AudioModelPricing,
-  AudioPricingUnit,
-  ProviderSubscription,
-  TextModelPricing,
-} from "@marinara-engine/shared";
+import type { AudioModelPricing, AudioPricingUnit, TextModelPricing } from "@marinara-engine/shared";
 import type { TFunction } from "i18next";
 
 /**
@@ -56,29 +51,26 @@ export function formatAudioRate(pricing: AudioModelPricing, localizeUi: TFunctio
   })}`;
 }
 
+/** The fields of a subscription usage reading that coverage depends on. */
+export interface SubscriptionCoverageReading {
+  active: boolean;
+  weeklyInputTokens: { remaining: number | null } | null;
+  dailyInputTokens: { remaining: number | null } | null;
+}
+
 /**
  * Whether a plan covers this model right now.
  *
  * Coverage alone is not enough: with overage off, an exhausted allowance means
  * the request is refused rather than billed, so a model that is covered on paper
  * bills nothing and does nothing. The price is the honest thing to show then.
+ * A null counter is "not reported", never an empty allowance.
  */
 export function isCoveredBySubscription(
-  subscription: ProviderSubscription | null | undefined,
+  usage: SubscriptionCoverageReading | null | undefined,
   subscriptionIncluded: boolean | undefined,
 ): boolean {
-  if (!subscription?.active || subscriptionIncluded !== true) return false;
-  const remaining = subscription.weeklyInputTokens?.remaining ?? subscription.dailyInputTokens?.remaining;
-  return remaining === undefined || remaining > 0;
-}
-
-/** How much of the metered allowance is left, as a short line. */
-export function formatQuotaRemaining(subscription: ProviderSubscription, localizeUi: TFunction): string | null {
-  const quota = subscription.weeklyInputTokens ?? subscription.dailyInputTokens;
-  if (!quota) return null;
-  const compact = new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 });
-  return localizeUi("ui.connections.modelcost.quotaRemaining", {
-    remaining: compact.format(quota.remaining),
-    total: compact.format(quota.used + quota.remaining),
-  });
+  if (!usage?.active || subscriptionIncluded !== true) return false;
+  const remaining = usage.weeklyInputTokens?.remaining ?? usage.dailyInputTokens?.remaining ?? null;
+  return remaining === null || remaining > 0;
 }

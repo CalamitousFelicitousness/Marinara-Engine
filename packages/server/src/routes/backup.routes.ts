@@ -45,6 +45,7 @@ import {
   MARINARA_UNIVERSAL_PRESET_SYSTEM_KEY,
   normalizePersonalExtensionCapabilities,
   type ExportEnvelope,
+  parseLorebookDecisionActivation,
 } from "@marinara-engine/shared";
 import { getDataDir } from "../utils/data-dir.js";
 import { getFileStorageDir } from "../config/runtime-config.js";
@@ -492,6 +493,7 @@ function buildCompatibleLorebookExport(lb: Record<string, any>) {
       preventRecursion: entry.preventRecursion === true,
       excludeRecursion: entry.excludeRecursion === true,
       delayUntilRecursion: entry.delayUntilRecursion === true,
+      ...parseLorebookDecisionActivation(entry),
     };
   });
 
@@ -649,7 +651,7 @@ export function sanitizeProfileTableRows(tableName: string, rows: Array<Record<s
     });
   }
   if (tableName === "api_connections") {
-    return rows.map((row) => ({ ...row, apiKeyEncrypted: "" }));
+    return rows.map((row) => ({ ...row, apiKeyEncrypted: "", managementTokenEncrypted: "" }));
   }
   if (tableName === "agent_configs") {
     return rows.map((row) => redactAgentSecrets(row));
@@ -724,6 +726,8 @@ const PROFILE_CONNECTION_CREDENTIAL_IDENTITY_FIELDS = [
   "videoGenerationSource",
   "videoService",
   "audioSource",
+  "decisionSource",
+  "credentialsFromConnectionId",
 ] as const;
 
 const PROFILE_CONNECTION_AUTOMATIC_SELECTION_FIELDS = [
@@ -757,10 +761,13 @@ export function quarantineProfileApiConnectionRow(
   existing?: Record<string, unknown>,
 ): ProfileApiConnectionImportPlan {
   const existingCredential = typeof existing?.apiKeyEncrypted === "string" ? existing.apiKeyEncrypted : "";
+  const existingManagementToken =
+    typeof existing?.managementTokenEncrypted === "string" ? existing.managementTokenEncrypted : "";
   const trustedIdentity = !!existing && profileConnectionCredentialIdentityMatches(existing, row);
   const secured: Record<string, unknown> = {
     ...row,
     apiKeyEncrypted: trustedIdentity ? existingCredential : "",
+    managementTokenEncrypted: trustedIdentity ? existingManagementToken : "",
     profileImportReviewRequired: trustedIdentity ? "false" : "true",
   };
   if (trustedIdentity) return { row: secured, trustedIdentity };
@@ -3974,6 +3981,7 @@ export async function backupRoutes(app: FastifyInstance) {
                   maxRecursionDepth: lb.maxRecursionDepth,
                   excludeFromVectorization: lb.excludeFromVectorization ?? false,
                   vectorQueryDepth: lb.vectorQueryDepth ?? 10,
+                  vectorIncludeAssistant: lb.vectorIncludeAssistant === true,
                   vectorScoreThreshold: lb.vectorScoreThreshold ?? 0.3,
                   vectorMaxResults: lb.vectorMaxResults ?? 10,
                   enabled: lb.enabled ?? true,
@@ -4054,7 +4062,13 @@ export async function backupRoutes(app: FastifyInstance) {
                     typeof entry.folderId === "string" && folderIdMap.has(entry.folderId)
                       ? folderIdMap.get(entry.folderId)
                       : null;
-                  await lbs.createEntry({ ...entry, lorebookId: (created as any).id, folderId });
+                  await lbs.createEntry({
+                    ...entry,
+                    lorebookId: (created as any).id,
+                    folderId,
+                    sourceAgentId: null,
+                    sourceMessageRefs: [],
+                  });
                 }
               }
               stats.lorebooks++;

@@ -130,4 +130,6 @@ export interface PersonaStatsConfig {
    * spread-first and already preserves unknown keys.
    */
   fields?: import("./character.js").CharacterTrackerCustomFieldDefault[];
+  /** Starting builds for Game Mode rulesets, keyed by ruleset id. A game copies the one it needs. */
+  rulesetSheets?: Record<string, unknown>;
 }

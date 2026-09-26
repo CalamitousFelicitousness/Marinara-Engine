@@ -62,7 +62,8 @@ import { CharacterScheduleEditorModal } from "../chat/CharacterScheduleEditorMod
 import { useUIStore } from "../../stores/ui.store";
 import { lorebookKeys, useLorebook, useUpdateLorebook } from "../../hooks/use-lorebooks";
 import { useConnections } from "../../hooks/use-connections";
-import { useInstalledCapabilityPackages } from "../../hooks/use-capability-packages";
+import { isCapabilityPackageAvailable, useInstalledCapabilityPackages } from "../../hooks/use-capability-packages";
+import { RulesetSheetsSection } from "../rulesets/RulesetSheetsSection";
 import { showConfirmDialog, showPromptDialog } from "../../lib/app-dialogs";
 import { formatCardVersionTimestamp, getCardVersionTitle } from "../../lib/card-version-history";
 import { dataImageUrlToFile } from "../../lib/data-image-file";
@@ -1223,7 +1224,7 @@ export function CharacterEditor() {
               <ColorsTab formData={formData} updateExtension={updateExtension} avatarUrl={avatarPreview} />
             </section>
             <section data-editor-section="stats">
-              <StatsTab formData={formData} updateExtension={updateExtension} />
+              <StatsTab formData={formData} updateExtension={updateExtension} onDraftChange={markDirty} />
             </section>
             <section data-editor-section="advanced">
               <AdvancedTab
@@ -1508,9 +1509,7 @@ function ConvoTab({
   const { t: localizeUi } = useUiTranslation();
   const generateCharacterConvoProfile = useGenerateCharacterConvoProfile();
   const { data: installedCapabilities = [] } = useInstalledCapabilityPackages(kind === "character");
-  const noodleInstalled = installedCapabilities.some(
-    (capability) => capability.id === "noodle" && capability.status === "active",
-  );
+  const noodleInstalled = isCapabilityPackageAvailable(installedCapabilities, "noodle");
   const currentCharacterIdRef = useRef(characterId);
   currentCharacterIdRef.current = characterId;
   const currentConvoProfileDraft = {
@@ -5020,9 +5019,11 @@ function createNewRpgPool(existing: readonly RPGStatPool[]): RPGStatPool {
 function StatsTab({
   formData,
   updateExtension,
+  onDraftChange,
 }: {
   formData: CharacterData;
   updateExtension: (key: string, value: unknown) => void;
+  onDraftChange: () => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
   const stats: RPGStatsConfig = (formData.extensions.rpgStats as RPGStatsConfig) ?? DEFAULT_RPG_STATS;
@@ -5155,8 +5156,14 @@ function StatsTab({
                     }
                   />
                   <input
-                    value={pool.name}
-                    onChange={(e) => updatePool(i, { name: e.target.value })}
+                    key={pool.name}
+                    defaultValue={pool.name}
+                    onChange={onDraftChange}
+                    onBlur={(e) => {
+                      const name = e.currentTarget.value.trim() || pool.name;
+                      e.currentTarget.value = name;
+                      if (name !== pool.name) updatePool(i, { name });
+                    }}
                     className="min-w-0 rounded-lg border border-[var(--border)] bg-[var(--input)] px-2 py-1 text-xs font-medium"
                     placeholder={localizeUi("ui.characters.metadatatab.name")}
                   />
@@ -5305,6 +5312,11 @@ function StatsTab({
           </div>
         )}
       </div>
+
+      <RulesetSheetsSection
+        sheets={formData.extensions.rulesetSheets as Record<string, unknown> | undefined}
+        onChange={(sheets) => updateExtension("rulesetSheets", sheets)}
+      />
     </div>
   );
 }

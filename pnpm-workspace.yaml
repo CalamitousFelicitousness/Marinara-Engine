@@ -19,7 +19,9 @@ confirmModulesPurge: false
 blockExoticSubdeps: true
 
 patchedDependencies:
-  onnxruntime-node@1.24.3: patches/onnxruntime-node@1.24.3.patch
+  onnxruntime-node@1.30.0: patches/onnxruntime-node@1.30.0.patch
+  # Upstream READY-handshake fix (pinojs/thread-stream#246, #251). Drop once a release after 4.2.0 ships it.
+  thread-stream@4.2.0: patches/thread-stream@4.2.0.patch
 
 # Native/build dependencies permitted to run install scripts.
 # pnpm 11 replaced onlyBuiltDependencies with the allowBuilds map. The list is
@@ -55,11 +57,11 @@ overrides:
   hono: "4.13.5"
   ip-address: "10.3.1"
   js-yaml: "4.3.2"
-  "nanoid@3.3.12": "3.3.18"
-  onnxruntime-common: "1.24.3"
-  onnxruntime-node: "1.24.3"
-  onnxruntime-web: "1.24.3"
-  postcss: "8.5.26"
+  "nanoid@3": "3.3.19"
+  # Match Transformers.js; each backend keeps its own matching common runtime.
+  onnxruntime-node: "1.30.0"
+  onnxruntime-web: "1.31.0-dev.20260914-8d85527a0"
+  postcss: "8.5.28"
   # 7.6.5 supersedes the earlier 7.5.5 pin (chore: patch production
   # dependencies for v2.4.0). Do not reintroduce 7.5.5.
   protobufjs: "7.6.5"

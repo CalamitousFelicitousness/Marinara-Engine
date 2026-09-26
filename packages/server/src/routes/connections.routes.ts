@@ -1,3 +1,6 @@
+import { resolveDecisionConnection } from "../services/decision/decision-connection.js";
+import { askNoulQuestions } from "../services/decision/system-one.client.js";
+import { connectionChatTarget, probeDecisionSlot } from "../services/decision/sidecar-decision.backend.js";
 // ──────────────────────────────────────────────
 // Routes: Connections
 // ──────────────────────────────────────────────
@@ -9,19 +12,22 @@ import {
   ATLAS_CLOUD_IMAGE_MODELS,
   ATLAS_CLOUD_VIDEO_MODELS,
   ZAI_IMAGE_MODELS,
+  FAL_IMAGE_MODELS,
   IMAGE_DEFAULTS_STORAGE_KEY,
   MODEL_LISTS,
   VIDEO_DEFAULTS_STORAGE_KEY,
   connectionImageCaptioningDefaultsSchema,
   createConnectionSchema,
   createDefaultVideoGenerationProfile,
+  decisionTestTimeoutMs,
   generationParametersSchema,
   inferImageSource,
   inferVideoSource,
   isLocalAuthProvider,
-  isOpenAIGpt6AstraModel,
+  isOpenAIGpt6Model,
   localAuthProviderBaseUrl,
   normalizeVideoGenerationProfile,
+  type AtlasCloudVideoModelSchemaResponse,
 } from "@marinara-engine/shared";
 import type { TextModelPricing } from "@marinara-engine/shared";
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
@@ -34,7 +40,6 @@ import {
 import { resetMemoryRecallVectorizerCache } from "../services/memory-recall-embedding.js";
 import { createLLMProvider } from "../services/llm/provider-registry.js";
 import { readTextModelPricing } from "../services/llm/model-pricing.js";
-import { fetchNanoGptSubscription } from "../services/llm/nanogpt-subscription.js";
 import { resolveStoredChatOptions, resolveStoredMaxTokens } from "../services/generation/generation-parameters.js";
 import { describeEmptyModelResponse, sentOutputBudget } from "../services/generation/empty-response-reason.js";
 import { isGlm53MandatoryReasoningModel } from "../services/llm/providers/glm-request-compat.js";
@@ -50,8 +55,9 @@ import {
   resolveConnectionImageQuality,
 } from "../services/image/image-generation-defaults.js";
 import { buildVeniceApiUrl, normalizeVeniceImageModels } from "../services/image/venice-image.js";
+import { buildFalImageUrl } from "../services/image/fal-image.js";
 import { isImageLocalUrlsEnabled, isProviderLocalUrlsEnabled } from "../config/runtime-config.js";
-import { logDebugOverride } from "../lib/logger.js";
+import { logger, logDebugOverride } from "../lib/logger.js";
 import {
   assertInsideDir,
   extensionFromImageMime,
@@ -60,6 +66,19 @@ import {
   safeFetch,
 } from "../utils/security.js";
 import { DATA_DIR } from "../utils/data-dir.js";
+import { decryptApiKey } from "../utils/crypto.js";
+import {
+  fetchNanoGptSubscriptionUsage,
+  readNanoGptModelSubscriptionMetadata,
+} from "../services/nanogpt/subscription-usage.js";
+import {
+  buildAtlasCloudModelSchemaUrl,
+  buildAtlasCloudTestReferenceImage,
+  describeAtlasCloudModelLimits,
+  fetchAtlasCloudModelSchema,
+  listAtlasCloudModelOptionFields,
+} from "../services/media/atlas-cloud-video-schema.js";
+import { fetchAtlasCloudModels } from "../services/media/atlas-cloud.js";
 import {
   buildNanoGptVideoUrl,
   fetchNanoGptVideoModels,
@@ -147,7 +166,7 @@ function usesResponsesEndpointForTestMessage(provider: string, model: string): b
   if (!isOpenAICompatibleProvider(provider) || provider === "custom") return false;
   const normalized = model.toLowerCase();
   return (
-    isOpenAIGpt6AstraModel(normalized) ||
+    (isOpenAIGpt6Model(normalized) && provider !== "openrouter") ||
     normalized.startsWith("gpt-5.6") ||
     normalized.startsWith("gpt-5.5") ||
     normalized.startsWith("gpt-5.4") ||
@@ -213,6 +232,21 @@ export function parseComfyLoaderModelNames(info: unknown, nodeName: string, inpu
   const options = input[0];
   if (!Array.isArray(options)) return null;
   return options.filter((option): option is string => typeof option === "string");
+}
+
+/** Atlas Cloud's live catalog, or the curated starter list when the catalog cannot be read. */
+async function listAtlasCloudModels(
+  baseUrl: string,
+  kind: "image" | "video",
+  starterModels: ReadonlyArray<{ id: string; name: string }>,
+): Promise<Array<{ id: string; name: string }>> {
+  try {
+    const models = await fetchAtlasCloudModels(baseUrl, kind);
+    if (models.length > 0) return models;
+  } catch (error) {
+    logger.warn(error, "[atlas-cloud] could not read the %s model catalog; using the starter list", kind);
+  }
+  return starterModels.map((model) => ({ id: model.id, name: model.name }));
 }
 
 function localUrlPolicyForProvider(provider: string, imageSource: string) {
@@ -411,15 +445,25 @@ function knownStabilityImageModels() {
 
 export async function connectionsRoutes(app: FastifyInstance) {
   const storage = createConnectionsStorage(app.db);
-  const maskConnection = <T extends { apiKeyEncrypted?: unknown } | null>(conn: T): T =>
-    conn ? ({ ...conn, apiKeyEncrypted: conn.apiKeyEncrypted ? "••••••••" : "" } as T) : conn;
+  const maskConnection = <T extends { apiKeyEncrypted?: unknown; managementTokenEncrypted?: unknown } | null>(
+    conn: T,
+  ): T =>
+    conn
+      ? ({
+          ...conn,
+          apiKeyEncrypted: conn.apiKeyEncrypted ? "••••••••" : "",
+          managementTokenEncrypted: conn.managementTokenEncrypted ? "••••••••" : "",
+        } as T)
+      : conn;
 
   app.get("/", async () => {
     return storage.list();
   });
 
   app.post("/refresh-local-context", async () => {
-    const candidates = (await storage.list()).filter(canRefreshLocalContext);
+    const candidates = (await storage.list()).filter(
+      (row) => row.provider !== "decision" && canRefreshLocalContext(row),
+    );
     const updated: string[] = [];
     // Each connection makes four bounded metadata probes; keep only three connections active at once.
     for (let index = 0; index < candidates.length; index += 3) {
@@ -577,6 +621,58 @@ export async function connectionsRoutes(app: FastifyInstance) {
         if (audioResult) return audioResult;
       }
 
+      if (conn.provider === "decision") {
+        const resolved = await resolveDecisionConnection(conn, (id) => storage.getWithKey(id));
+        if (!resolved.connection)
+          return {
+            success: false,
+            message: resolved.error,
+            errorCode: resolved.error,
+            latencyMs: Date.now() - start,
+            modelName: null,
+          };
+        // Waits past the connection's own limit so a slow answer comes back with its
+        // real time. The client compares that time with `timeLimitMs`, the limit chats use.
+        const timeLimitMs = resolved.connection.timeoutMs;
+        const testTimeoutMs = decisionTestTimeoutMs(timeLimitMs ?? 0);
+        if (resolved.connection.protocol === "chat_logprobs") {
+          // The same probe as a local model's Test, so it also reports whether the
+          // server returned log-probabilities and whether the model had to think.
+          const probe = await probeDecisionSlot(
+            connectionChatTarget(conn.id, conn.name, { ...resolved.connection, timeoutMs: testTimeoutMs }),
+          );
+          return {
+            success: probe.probability !== null,
+            message: probe.error ?? "Decision model answered.",
+            errorCode: probe.probability === null ? (probe.error ?? "no_answer") : undefined,
+            decisionProbability: probe.probability ?? undefined,
+            latencyMs: probe.latencyMs,
+            timeLimitMs,
+            testTimeoutMs,
+            logprobs: probe.logprobs,
+            answersDirectly: probe.answersDirectly,
+            modelName: resolved.connection.model,
+          };
+        }
+        const result = await askNoulQuestions({
+          connection: resolved.connection,
+          state: { recent_messages: [{ role: "user", name: "User", content: "The door is open." }] },
+          questions: [{ id: "test", instructions: "The door is open." }],
+          timeoutMs: testTimeoutMs,
+          debugMode: requestDebug,
+        });
+        const probability = result.answers.get("test");
+        return {
+          success: probability !== undefined,
+          message: result.error ?? "Decision model answered.",
+          errorCode: result.error,
+          decisionProbability: probability,
+          latencyMs: result.latencyMs,
+          timeLimitMs,
+          testTimeoutMs,
+          modelName: resolved.connection.model,
+        };
+      }
       if (conn.provider === "claude_subscription") {
         if (!conn.model) {
           return {
@@ -711,6 +807,16 @@ export async function connectionsRoutes(app: FastifyInstance) {
           latencyMs: Date.now() - start,
           modelName: conn.model,
         };
+      } else if (conn.provider === "image_generation" && imageSource === "fal") {
+        if (!conn.apiKey?.trim()) throw new Error("fal.ai requires an API key");
+        buildFalImageUrl(baseUrl, conn.model);
+        return {
+          success: true,
+          message:
+            "fal.ai connection configured. Use Test Image to verify your key and generate an image using credits.",
+          latencyMs: Date.now() - start,
+          modelName: conn.model,
+        };
       } else if (conn.provider === "image_generation" && imageSource === "horde") {
         // Horde: heartbeat is the lightweight health endpoint for the public API.
         testUrl = buildHordeUrl(baseUrl, "status/heartbeat");
@@ -795,29 +901,65 @@ export async function connectionsRoutes(app: FastifyInstance) {
     }
   });
 
-  // ── Plan coverage, where the provider publishes it ──
-  app.get<{ Params: { id: string } }>("/:id/subscription", async (req, reply) => {
-    const conn = await storage.getWithKey(req.params.id);
-    if (!conn) return reply.status(404).send({ error: "Connection not found" });
-    if (conn.provider !== "nanogpt") return reply.status(400).send({ error: "Provider publishes no subscription" });
-    if (!conn.apiKey) return { subscription: null };
-
-    const { PROVIDERS } = await import("@marinara-engine/shared");
-    const baseUrl = (conn.baseUrl || PROVIDERS.nanogpt.defaultBaseUrl || "").replace(/\/+$/, "");
-    try {
-      return { subscription: await fetchNanoGptSubscription(baseUrl, conn.apiKey) };
-    } catch (err) {
-      return reply.status(502).send({
-        error: `Failed to read subscription: ${err instanceof Error ? err.message : "Unknown error"}`,
-      });
+  // ── Atlas Cloud: the selected video model's own inputs, for the connection editor ──
+  app.get<{ Querystring: { model?: string } }>("/atlas-cloud/video-model-schema", async (req, reply) => {
+    const model = String(req.query.model ?? "").trim();
+    if (!model || model.length > 200 || !buildAtlasCloudModelSchemaUrl(model)) {
+      return reply.status(400).send({ error: "Enter an Atlas Cloud model ID such as vendor/model/image-to-video" });
     }
+    const schema = await fetchAtlasCloudModelSchema(model);
+    const response: AtlasCloudVideoModelSchemaResponse = schema
+      ? {
+          model,
+          available: true,
+          fields: listAtlasCloudModelOptionFields(schema),
+          limits: describeAtlasCloudModelLimits(schema),
+        }
+      : { model, available: false, fields: [], limits: null };
+    return response;
   });
 
   // ── Fetch available models from the provider API ──
+  /**
+   * NanoGPT subscription usage for the connection editor widget.
+   * Prefers the connection's management token (`usage:read`, cannot spend
+   * balance) and falls back to the inference API key.
+   */
+  app.get<{ Params: { id: string } }>("/:id/subscription-usage", async (req, reply) => {
+    const conn = await storage.getById(req.params.id);
+    if (!conn) return reply.status(404).send({ error: "Connection not found" });
+    if (conn.provider !== "nanogpt") {
+      return reply.status(400).send({ error: "Subscription usage is only available for NanoGPT connections" });
+    }
+    if (conn.profileImportReviewRequired === "true") {
+      return reply.status(409).send({ error: "Review and save this imported connection before reading its usage" });
+    }
+
+    try {
+      const managementToken = await storage.getManagementToken(req.params.id);
+      const apiKey = managementToken ? "" : decryptApiKey(conn.apiKeyEncrypted ?? "");
+      if (!managementToken && !apiKey) {
+        return reply.status(400).send({ error: "Add an API key or management token to read NanoGPT usage" });
+      }
+      const usage = await fetchNanoGptSubscriptionUsage({ managementToken, apiKey });
+      if (!usage) return reply.status(400).send({ error: "No NanoGPT credential available for usage lookup" });
+      return usage;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to read NanoGPT usage";
+      return reply.status(502).send({ error: message });
+    }
+  });
+
   app.get<{ Params: { id: string } }>("/:id/models", async (req, reply) => {
     const conn = await storage.getWithKey(req.params.id);
     if (!conn) return reply.status(404).send({ error: "Connection not found" });
 
+    if (conn.provider === "decision") {
+      // Jev is only the default of the System One sources; a chat server needs the
+      // model name the user entered.
+      const model = conn.model || (conn.decisionSource === "openai_compatible" ? "" : "jev-latest");
+      return { models: model ? [{ id: model, name: model }] : [] };
+    }
     try {
       // PROVIDERS.audio has no modelsEndpoint, so the generic branch below would
       // request the bare base URL. The speech catalog is per source.
@@ -854,7 +996,13 @@ export async function connectionsRoutes(app: FastifyInstance) {
         conn.provider === "video_generation" ? resolveVideoGenerationSource(conn as any, conn.baseUrl || "") : "";
       if (conn.provider === "video_generation") {
         if (videoSource === "atlas") {
-          return { models: ATLAS_CLOUD_VIDEO_MODELS.map((model) => ({ id: model.id, name: model.name })) };
+          return {
+            models: await listAtlasCloudModels(
+              conn.baseUrl || DEFAULT_ATLAS_CLOUD_VIDEO_BASE_URL,
+              "video",
+              ATLAS_CLOUD_VIDEO_MODELS,
+            ),
+          };
         }
         if (videoSource === "nanogpt") {
           const models = await fetchNanoGptVideoModels(
@@ -898,10 +1046,20 @@ export async function connectionsRoutes(app: FastifyInstance) {
         conn.provider === "image_generation" ? resolveImageGenerationSource(conn as any, baseUrl) : "";
       const mediaSource = imageSource || videoSource;
       if (conn.provider === "image_generation" && imageSource === "atlas") {
-        return { models: ATLAS_CLOUD_IMAGE_MODELS.map((model) => ({ id: model.id, name: model.name })) };
+        // `baseUrl` may have fallen back to the generic image provider default; the catalog lives on Atlas Cloud.
+        return {
+          models: await listAtlasCloudModels(
+            conn.baseUrl || DEFAULT_ATLAS_CLOUD_VIDEO_BASE_URL,
+            "image",
+            ATLAS_CLOUD_IMAGE_MODELS,
+          ),
+        };
       }
       if (conn.provider === "image_generation" && imageSource === "zai") {
         return { models: ZAI_IMAGE_MODELS.map((model) => ({ id: model.id, name: model.name })) };
+      }
+      if (conn.provider === "image_generation" && imageSource === "fal") {
+        return { models: FAL_IMAGE_MODELS.map((model) => ({ id: model.id, name: model.name })) };
       }
       baseUrl = normalizeConnectionTestBaseUrl(baseUrl, conn.provider);
       const lowerBase = baseUrl.toLowerCase();
@@ -1216,14 +1374,10 @@ export async function connectionsRoutes(app: FastifyInstance) {
         return { models: normalizeModelsResponse("google", { models: collected }) };
       }
 
-      // NanoGPT serves prices, context and output limits only on the detailed
-      // listing; the plain one carries an id and an owner. The flag is unknown to
-      // the other OpenAI-compatible providers, so it is asked for by name.
-      const modelsQuery = conn.provider === "nanogpt" ? "?detailed=true" : "";
       const modelsUrl =
         conn.provider === "google_vertex"
           ? buildGoogleVertexModelUrl(baseUrl, conn.model, "models")
-          : `${baseUrl}${provider?.modelsEndpoint ?? "/models"}${modelsQuery}`;
+          : `${baseUrl}${provider?.modelsEndpoint || "/models"}`;
 
       const res = await safeFetch(modelsUrl, {
         headers,
@@ -1258,8 +1412,14 @@ export async function connectionsRoutes(app: FastifyInstance) {
       const models = normalizeModelsResponse(conn.provider, json);
       return { models };
     } catch (err) {
+      logger.warn(err, "Model discovery failed for connection %s", conn.id);
+      // Node's fetch hides socket/DNS failures in Error.cause. Keep the code
+      // visible without exposing provider headers, credentials or response bodies.
+      const cause = err instanceof Error ? err.cause : undefined;
+      const code = isRecord(cause) && typeof cause.code === "string" ? cause.code : undefined;
+      const detail = err instanceof Error ? err.message : "Unknown error";
       return reply.status(502).send({
-        error: `Failed to fetch models: ${err instanceof Error ? err.message : "Unknown error"}`,
+        error: `Failed to fetch models: ${detail}${code && /^[A-Z0-9_]+$/.test(code) ? ` (${code})` : ""}. The connection is made from the Marinara server; check that the provider is reachable there.`,
       });
     }
   });
@@ -1410,9 +1570,14 @@ export async function connectionsRoutes(app: FastifyInstance) {
     const start = Date.now();
     try {
       const { generateVideo } = await import("../services/video/video-generation.js");
+      // Image-to-video Atlas Cloud models reject a text-only request, so the test supplies a neutral first frame.
+      const referenceImage = isAtlasVideo
+        ? await buildAtlasCloudTestReferenceImage(videoModel, activeDefaults.aspectRatio)
+        : null;
       const result = await generateVideo(videoSource, baseUrl, videoApiKey, videoServiceHint, {
         prompt,
         model: videoModel,
+        referenceImage,
         debugMode: readDebugMode(req.body),
         durationSeconds: activeDefaults.durationSeconds,
         aspectRatio: activeDefaults.aspectRatio,
@@ -1433,6 +1598,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
                       : undefined,
         comfyWorkflow: conn.comfyuiWorkflow || undefined,
         comfyLoras: isComfyUiVideo ? defaults.comfyui.loras : [],
+        atlasModelOptions: isAtlasVideo ? defaults.atlas.modelOptions[videoModel.trim()] : undefined,
         fps: isComfyUiVideo ? defaults.comfyui.fps : undefined,
       });
       return {
@@ -1656,8 +1822,20 @@ interface RemoteModel {
   context?: number;
   maxOutput?: number;
   pricing?: TextModelPricing;
-  /** True where the connection's plan covers this model rather than billing it. */
+  /** Aggregator subscription metadata (NanoGPT `detailed=true`). */
   subscriptionIncluded?: boolean;
+  /** How many input tokens this model consumes per token of quota. */
+  inputTokenMultiplier?: number;
+}
+
+/**
+ * Read NanoGPT's `subscription` block from a detailed model record.
+ * See `readNanoGptModelSubscriptionMetadata` for the parsing rules.
+ */
+function readSubscriptionMetadata(
+  model: Record<string, unknown>,
+): Pick<RemoteModel, "subscriptionIncluded" | "inputTokenMultiplier"> {
+  return readNanoGptModelSubscriptionMetadata(model);
 }
 
 function readProviderMetadataRecord(value: unknown): Record<string, unknown> | null {
@@ -1667,19 +1845,6 @@ function readProviderMetadataRecord(value: unknown): Record<string, unknown> | n
 function readPositiveInteger(value: unknown): number | undefined {
   const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : undefined;
-}
-
-/**
- * Whether the caller's plan covers this model, where its row says so.
- *
- * NanoGPT publishes it per model because coverage is not all-or-nothing: on one
- * account 292 of 296 listed models were included and four were not.
- */
-function readSubscriptionCoverage(model: Record<string, unknown>): { subscriptionIncluded?: boolean } {
-  const row = model.subscription;
-  if (!row || typeof row !== "object" || Array.isArray(row)) return {};
-  const included = (row as Record<string, unknown>).included;
-  return typeof included === "boolean" ? { subscriptionIncluded: included } : {};
 }
 
 /** Keeps a priceless model's row byte-identical to what it was before pricing existed. */
@@ -1817,7 +1982,7 @@ function normalizeModelsResponse(provider: string, json: Record<string, unknown>
 
     default: {
       // OpenAI-compatible: { data: [{ id: "gpt-4o", ... }] }
-      // This covers openai, mistral, openrouter, custom
+      // This covers openai, mistral, openrouter, custom, nanogpt
       const data = (json.data ?? []) as Array<Record<string, unknown> & { id?: string; name?: string }>;
       return data
         .map((m) => ({
@@ -1825,7 +1990,7 @@ function normalizeModelsResponse(provider: string, json: Record<string, unknown>
           name: m.name ?? m.id ?? "",
           ...readOpenAICompatibleModelLimits(m),
           ...spreadPricing(readTextModelPricing(provider, m)),
-          ...readSubscriptionCoverage(m),
+          ...readSubscriptionMetadata(m),
         }))
         .filter((m) => m.id);
     }

@@ -11,6 +11,7 @@ import {
   useCallback,
   useMemo,
   useState,
+  type CSSProperties,
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { useTranslation, useTranslation as useUiTranslation } from "react-i18next";
@@ -49,6 +50,7 @@ import {
 import { useThrottledStreamBuffer } from "../../hooks/use-throttled-stream-buffer";
 import { useConversationCustomEmojis } from "../../hooks/use-conversation-custom-emojis";
 import { useConversationCustomStickers } from "../../hooks/use-conversation-custom-stickers";
+import { useReducedAmbientEffects } from "../../hooks/use-reduced-ambient-effects";
 import type { CharacterMap, MessageSelectionToggle, PersonaInfo } from "./chat-area.types";
 import {
   normalizeTextForMatch,
@@ -61,6 +63,7 @@ import { useInstalledCapabilityPackages } from "../../hooks/use-capability-packa
 import { CapabilityElement } from "../capabilities/CapabilityElement";
 import { TURN_GAME_BOT_REQUEST_EVENT } from "../../lib/capability-turn-game-events";
 import { useGenerate } from "../../hooks/use-generate";
+import { useChatOpeningScroll } from "../../hooks/use-chat-opening-scroll";
 import {
   useChatComposerFocused,
   useChatKeyboardOpen,
@@ -94,7 +97,7 @@ interface ConversationViewProps {
   onEdit: (messageId: string, content: string) => void;
   onSetActiveSwipe: (messageId: string, index: number) => void;
   onToggleHiddenFromAI: (messageId: string, current: boolean) => void;
-  onPeekPrompt: () => void;
+  onPeekPrompt: (messageId?: string) => void;
   onIllustrate?: (prompt?: string) => void | Promise<void>;
   onGenerateSelfie?: (characterId?: string) => void | Promise<void>;
   lastAssistantMessageId: string | null;
@@ -283,6 +286,41 @@ function splitAssistantContentLines(content: string, charName?: string | null): 
 const globalSeenKeys = new Set<string>();
 const MAX_GLOBAL_SEEN_KEYS = 5_000;
 
+function getBackgroundBlurStyle(blurPx: number): Pick<CSSProperties, "filter" | "transform"> {
+  if (blurPx <= 0) return {};
+  return {
+    filter: `blur(${blurPx}px)`,
+    transform: `scale(${Math.min(1.08, 1 + blurPx * 0.0025)})`,
+  };
+}
+
+function ConversationBackground({
+  url,
+  blurPx,
+  opacity,
+  reduceMotion,
+}: {
+  url: string | null;
+  blurPx: number;
+  opacity: number;
+  reduceMotion: boolean;
+}) {
+  const backgroundBlurStyle = getBackgroundBlurStyle(blurPx);
+  return url ? (
+    <img
+      src={url}
+      alt=""
+      draggable={false}
+      className="mari-background pointer-events-none absolute inset-0 h-full w-full select-none object-cover object-center"
+      style={{
+        opacity,
+        transition: reduceMotion ? "none" : "opacity 180ms ease-out, filter 180ms ease-out, transform 180ms ease-out",
+        ...backgroundBlurStyle,
+      }}
+    />
+  ) : null;
+}
+
 export function ConversationView({
   chatId,
   messages,
@@ -435,6 +473,10 @@ export function ConversationView({
   // default stops without collapsing Marinara's two-color background.
   const convoGradient = useUIStore((s) => s.convoGradient);
   const theme = useUIStore((s) => s.theme);
+  const chatBackground = useUIStore((s) => s.chatBackground);
+  const chatBackgroundBlur = useUIStore((s) => s.chatBackgroundBlur);
+  const conversationBackgroundImageOpacity = useUIStore((s) => s.conversationBackgroundImageOpacity);
+  const reduceAmbientEffects = useReducedAmbientEffects();
   const gradientStyle = useMemo(() => {
     const g = convoGradient[theme];
     const defaults = theme === "dark" ? { from: "#0a0a0e", to: "#1c2133" } : { from: "#f2eff7", to: "#eae6f0" };
@@ -573,6 +615,7 @@ export function ConversationView({
   const composerScrollTopRef = useRef(0);
   const userScrolledAtRef = useRef(0);
   const openedAtBottomChatIdRef = useRef<string | null>(null);
+  const gotoRequest = useChatStore((state) => state.gotoRequest);
   const streamScrollFrameRef = useRef(0);
   const keyboardOpen = useChatKeyboardOpen();
   const composerFocused = useChatComposerFocused();
@@ -603,17 +646,12 @@ export function ConversationView({
     [],
   );
 
-  const scheduleScrollToMessagesBottom = useCallback(
-    (behavior: ScrollBehavior = "smooth") => {
-      scrollToMessagesBottom(behavior);
-      requestAnimationFrame(() => {
-        scrollToMessagesBottom(behavior);
-        requestAnimationFrame(() => scrollToMessagesBottom(behavior));
-      });
-    },
-    [scrollToMessagesBottom],
-  );
   useKeepLatestChatMessageVisible(scrollRef, scrollToMessagesBottom);
+  const followOpeningScroll = useChatOpeningScroll(
+    gotoRequest?.chatId === chatId ? null : chatId,
+    scrollRef,
+    scrollToMessagesBottom,
+  );
 
   useEffect(() => {
     if (shouldKeepMobileComposerOpen) setMobileHistoryComposerCollapsed(false);
@@ -715,6 +753,7 @@ export function ConversationView({
 
   useLayoutEffect(() => {
     setTranscriptWindowStart(null);
+    openedAtBottomChatIdRef.current = null;
   }, [chatId]);
 
   const messagesPerPage = useUIStore((s) => s.messagesPerPage);
@@ -729,7 +768,6 @@ export function ConversationView({
     () => getTranscriptRenderWindow(messages, { maxMountedMessages, startIndex: transcriptWindowStart }),
     [maxMountedMessages, messages, transcriptWindowStart],
   );
-  const gotoRequest = useChatStore((state) => state.gotoRequest);
   // ChatArea clears the request after scrolling; only reveal its transcript window once.
   const handledTranscriptGotoRef = useRef<typeof gotoRequest>(null);
 
@@ -775,7 +813,7 @@ export function ConversationView({
   useLayoutEffect(() => {
     if (!chatId || isFetchingNextPage || isLoadingMoreRef.current) return;
     if (openedAtBottomChatIdRef.current === chatId) return;
-    if (isLoading && (messages?.length ?? 0) === 0) return;
+    if (!messages || (isLoading && messages.length === 0)) return;
     if (transcriptWindow.hiddenAfterCount > 0) return;
     // A pending jump-to-message owns the initial scroll position. With an
     // unbounded render window nothing is ever hidden after the target, so the
@@ -799,7 +837,7 @@ export function ConversationView({
       openedAtBottomChatIdRef.current = chatId;
       userScrolledAwayRef.current = false;
       isNearBottomRef.current = true;
-      scheduleScrollToMessagesBottom("auto");
+      followOpeningScroll();
     };
     document.addEventListener("selectionchange", openAtBottom);
     openAtBottom();
@@ -810,7 +848,7 @@ export function ConversationView({
     isFetchingNextPage,
     isLoading,
     messages,
-    scheduleScrollToMessagesBottom,
+    followOpeningScroll,
     totalMessageCount,
     transcriptWindow.hiddenAfterCount,
   ]);
@@ -1263,6 +1301,21 @@ export function ConversationView({
       data-chat-mode="conversation"
       style={{ ...gradientStyle, isolation: "isolate" }}
     >
+      {chatBackground ? (
+        <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden" aria-hidden="true">
+          <ConversationBackground
+            url={chatBackground}
+            blurPx={chatBackgroundBlur}
+            opacity={conversationBackgroundImageOpacity / 100}
+            reduceMotion={reduceAmbientEffects}
+          />
+          <div
+            data-conversation-background-gradient-veil
+            className="pointer-events-none absolute inset-0"
+            style={{ ...gradientStyle, opacity: 0.35 }}
+          />
+        </div>
+      ) : null}
       {/* ── Messages scroll area ── */}
       <div
         ref={scrollRef}
@@ -1391,7 +1444,7 @@ export function ConversationView({
                 onEdit={onEdit}
                 onSetActiveSwipe={onSetActiveSwipe}
                 onToggleHiddenFromAI={onToggleHiddenFromAI}
-                onPeekPrompt={onPeekPrompt}
+                onPeekPrompt={() => onPeekPrompt(msg.id)}
                 isLastAssistantMessage={msg.id === lastAssistantMessageId}
                 characterMap={characterMap}
                 personaInfo={personaInfo as any}
@@ -1426,7 +1479,7 @@ export function ConversationView({
                   onEdit={onEdit}
                   onSetActiveSwipe={onSetActiveSwipe}
                   onToggleHiddenFromAI={onToggleHiddenFromAI}
-                  onPeekPrompt={onPeekPrompt}
+                  onPeekPrompt={() => onPeekPrompt(regenerationDraftMessage.id)}
                   isLastAssistantMessage={false}
                   characterMap={characterMap}
                   personaInfo={personaInfo as any}
@@ -1458,7 +1511,7 @@ export function ConversationView({
             onEdit={onEdit}
             onSetActiveSwipe={onSetActiveSwipe}
             onToggleHiddenFromAI={onToggleHiddenFromAI}
-            onPeekPrompt={onPeekPrompt}
+            onPeekPrompt={() => onPeekPrompt(liveStreamMessage.id)}
             isLastAssistantMessage={false}
             characterMap={characterMap}
             personaInfo={personaInfo as any}

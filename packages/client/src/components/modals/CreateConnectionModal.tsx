@@ -13,7 +13,7 @@ import { useTranslation as useUiTranslation } from "react-i18next";
 interface Props {
   open: boolean;
   onClose: () => void;
-  /** Preselects a provider, so a caller that already knows the kind does not ask again. */
+  /** Preselect a provider, for callers that open this to set up one kind of connection. */
   initialProvider?: APIProvider;
 }
 
@@ -39,7 +39,7 @@ export function CreateConnectionModal({ open, onClose, initialProvider }: Props)
         provider,
         baseUrl: providerDef?.defaultBaseUrl ?? "",
         apiKey: "",
-        model: defaultModel?.id ?? "",
+        model: provider === "decision" ? "jev-latest" : (defaultModel?.id ?? ""),
         maxContext: defaultModel?.context || 128000,
         // A fresh audio row would otherwise carry no source at all, which every
         // reader has to coerce to a guess.
@@ -116,7 +116,7 @@ export function CreateConnectionModal({ open, onClose, initialProvider }: Props)
                     : "bg-[var(--secondary)] text-[var(--muted-foreground)] ring-1 ring-[var(--border)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
                 )}
               >
-                {info.name}
+                {key === "decision" ? localizeUi("connections.decision.label") : info.name}
               </button>
             ))}
           </div>

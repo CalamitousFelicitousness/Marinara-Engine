@@ -3116,6 +3116,13 @@ body {
   container-type: inline-size;
 }
 
+.mari-home-widget[data-home-widget-kind="package"] {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--card);
+}
+
 .mari-home-professor-widget .mari-professor-pixel-scene [data-part="sprite"] {
   width: 68%;
 }
@@ -3209,6 +3216,12 @@ body {
     );
 }
 
+/* Image grids use their cards' hover feedback without resampling or filtering the artwork. */
+.mari-home-widget:is(.mari-home-widget--recent, .mari-home-widget--character-library) {
+  --mari-home-widget-hover-transform: none;
+  --mari-home-widget-hover-filter: none;
+}
+
 @media (hover: hover) and (pointer: fine) {
   .mari-home-widget > :not(.mari-home-widget__drag-handle) {
     transform-origin: center;
@@ -3230,6 +3243,16 @@ body {
 }
 
 .mari-home-feed-grid[data-home-grid-columns="1"] :is(.mari-home-widget--recent, .mari-home-widget--character-library) {
+  grid-column: span 1;
+  grid-row: span 2;
+}
+
+.mari-home-feed-grid .mari-home-widget[data-home-widget-size="large"] {
+  grid-column: span 2;
+  grid-row: span 2;
+}
+
+.mari-home-feed-grid[data-home-grid-columns="1"] .mari-home-widget[data-home-widget-size="large"] {
   grid-column: span 1;
   grid-row: span 2;
 }
@@ -3861,6 +3884,12 @@ strong {
      markup with an attribute allowlist that strips `dir`. */
   direction: ltr;
   unicode-bidi: isolate;
+}
+
+.docs-reader-content .mari-md-inline-code {
+  color: var(--foreground);
+  background: var(--secondary);
+  border-color: var(--border);
 }
 
 /* Mixed-direction defence, docs viewer only: links and bold runs frequently

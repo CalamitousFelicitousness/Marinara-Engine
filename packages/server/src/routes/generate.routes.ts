@@ -264,6 +264,7 @@ import {
   buildPromptMacroContext,
   decodeDeferredPresetConditionals,
   normalizeChatMacroVariables,
+  mergeGeneratedChatMacroVariables,
   parsePresetVariableNames,
   collectCharacterAdvancedPromptEntries,
   resolveCharacterAdvancedPromptIds,
@@ -2366,17 +2367,15 @@ export async function generateRoutes(app: FastifyInstance) {
       const persistChatMacroVariables = async () => {
         const serialized = JSON.stringify(chatMacroVariables);
         if (serialized === persistedMacroVariables) return;
-        const requestChanges = Object.fromEntries(
-          Object.entries(chatMacroVariables).filter(([name, value]) => persistedMacroVariableSnapshot[name] !== value),
-        );
         await chats.patchMetadata(
           input.chatId,
           (current) => ({
             ...current,
-            macroVariables: normalizeChatMacroVariables({
-              ...normalizeChatMacroVariables(current.macroVariables),
-              ...requestChanges,
-            }),
+            macroVariables: mergeGeneratedChatMacroVariables(
+              current.macroVariables,
+              persistedMacroVariableSnapshot,
+              chatMacroVariables,
+            ),
           }),
           { touchUpdatedAt: false },
         );

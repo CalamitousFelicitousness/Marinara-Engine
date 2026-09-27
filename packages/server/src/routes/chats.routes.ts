@@ -1321,12 +1321,6 @@ export async function chatsRoutes(app: FastifyInstance) {
       if (Object.keys(incoming).length > 1) {
         return reply.status(400).send({ error: "macroVariables must be patched on its own" });
       }
-      const currentVariables = parseChatMetadata(chat.metadata).macroVariables;
-      const existingNames = new Set(
-        currentVariables && typeof currentVariables === "object" && !Array.isArray(currentVariables)
-          ? Object.keys(currentVariables as Record<string, unknown>)
-          : [],
-      );
       const removedNames = new Set<string>();
       // Null-prototype: assigning a string to a plain object's "__proto__" key
       // hits the prototype setter and is silently dropped, so an existing
@@ -1347,17 +1341,19 @@ export async function chatsRoutes(app: FastifyInstance) {
         if (value.length > MAX_CHAT_VARIABLE_VALUE_LENGTH) {
           return reply.status(400).send({ error: `Chat variable ${name} is too long` });
         }
-        // Names created here must be readable as a bare {{name}}; names that a
-        // {{setvar}} already stored keep whatever shape they were given.
-        if (!existingNames.has(name) && validateChatVariableName(name)) {
-          return reply.status(400).send({ error: `Invalid chat variable name: ${name}` });
-        }
         changedValues[name] = value;
       }
       const { normalizeChatMacroVariables } = await import("../services/prompt/index.js");
       let overflowed = false;
+      let invalidName: string | undefined;
       const updated = await storage.patchMetadata(req.params.id, (freshMeta) => {
-        const merged = { ...normalizeChatMacroVariables(freshMeta.macroVariables), ...changedValues };
+        const saved = normalizeChatMacroVariables(freshMeta.macroVariables);
+        // Only names that still exist may use legacy setvar spelling.
+        invalidName = Object.keys(changedValues).find(
+          (name) => !Object.hasOwn(saved, name) && validateChatVariableName(name) !== null,
+        );
+        if (invalidName !== undefined) return {};
+        const merged = { ...saved, ...changedValues };
         for (const name of removedNames) delete merged[name];
         // normalizeChatMacroVariables keeps only the first MAX_CHAT_VARIABLES
         // entries, so without this a name past the cap would be dropped while
@@ -1366,8 +1362,11 @@ export async function chatsRoutes(app: FastifyInstance) {
           overflowed = true;
           return {}; // change nothing; `incoming` still holds the unvalidated map
         }
-        return { ...incoming, macroVariables: normalizeChatMacroVariables(merged) };
+        return { macroVariables: normalizeChatMacroVariables(merged) };
       });
+      if (invalidName !== undefined) {
+        return reply.status(400).send({ error: `Invalid chat variable name: ${invalidName}` });
+      }
       if (overflowed) {
         return reply.status(400).send({ error: `A chat cannot hold more than ${MAX_CHAT_VARIABLES} variables` });
       }

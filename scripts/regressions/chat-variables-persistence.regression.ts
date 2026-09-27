@@ -19,7 +19,7 @@ const { default: Fastify } = await import("../../packages/server/node_modules/fa
 const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
 const { chatsRoutes } = await import("../../packages/server/src/routes/chats.routes.js");
 const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
-const { normalizeChatMacroVariables } = await import("../../packages/server/src/services/prompt/macro-context.js");
+const { normalizeChatMacroVariables, mergeGeneratedChatMacroVariables } = await import("../../packages/server/src/services/prompt/macro-context.js");
 const { MAX_CHAT_VARIABLES } = await import("../../packages/shared/src/index.js");
 
 const db = await getDB();
@@ -77,6 +77,30 @@ try {
   );
   assert.equal((await patchVariables({ lead: "Mary" })).statusCode, 200);
   assert.deepEqual(await storedVariables(), { lead: "Mary", mood: "tense" });
+
+  // A generation started before the editor changed these names. Its pending
+  // setvar writes must not resurrect a deleted/renamed name or replace an edit.
+  const beforeGeneration = await storedVariables();
+  assert.equal((await patchVariables({ lead: null, hero: "Mary", mood: "calm" })).statusCode, 200);
+  await chats.patchMetadata(chat.id, (current) => ({
+    macroVariables: mergeGeneratedChatMacroVariables(current.macroVariables, beforeGeneration, {
+      ...beforeGeneration,
+      lead: "stale",
+      mood: "angry",
+      fresh: "generated",
+    }),
+  }));
+  assert.deepEqual(await storedVariables(), { hero: "Mary", mood: "calm", fresh: "generated" });
+  assert.equal((await patchVariables({ hero: null, fresh: null, lead: "Mary", mood: "tense" })).statusCode, 200);
+  assert.deepEqual(
+    mergeGeneratedChatMacroVariables({ mood: "calm" }, { mood: "calm" }, { mood: "happy" }),
+    { mood: "happy" },
+    "a generation still updates values untouched since its snapshot",
+  );
+  assert.equal(
+    mergeGeneratedChatMacroVariables({}, {}, { ["__proto__"]: "safe own value" })["__proto__"],
+    "safe own value",
+  );
 
   // A name a {{setvar}} created keeps its own shape: still editable and
   // removable even though the UI could not have created it.

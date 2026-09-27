@@ -99,6 +99,24 @@ export function normalizeChatMacroVariables(value: unknown): Record<string, stri
   return Object.fromEntries(entries);
 }
 
+/** Persist generation writes only while the saved value still matches its starting snapshot. */
+export function mergeGeneratedChatMacroVariables(
+  current: unknown,
+  previous: Record<string, string>,
+  generated: Record<string, string>,
+): Record<string, string> {
+  const merged = normalizeChatMacroVariables(current);
+  for (const [name, value] of Object.entries(generated)) {
+    const before = Object.hasOwn(previous, name) ? previous[name] : undefined;
+    const saved = Object.hasOwn(merged, name) ? merged[name] : undefined;
+    // A newer editor change (including removal/rename) wins over this request.
+    if (value !== before && saved === before) {
+      Object.defineProperty(merged, name, { value, enumerable: true, writable: true, configurable: true });
+    }
+  }
+  return normalizeChatMacroVariables(merged);
+}
+
 /**
  * Names a preset defines through its stored variable values.
  *

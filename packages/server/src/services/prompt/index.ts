@@ -17,6 +17,7 @@ export {
   decodeDeferredPresetConditionals,
   resolveMacrosForPreview,
   normalizeChatMacroVariables,
+  mergeGeneratedChatMacroVariables,
   parsePresetVariableNames,
   collectCharacterAdvancedPromptEntries,
   collectCharacterDepthPromptEntries,

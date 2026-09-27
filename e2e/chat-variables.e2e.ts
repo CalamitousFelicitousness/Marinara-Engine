@@ -2,11 +2,8 @@ import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { seedUIState } from "./ui-state-fixture.js";
 
-// The Chat Variables editor builds each patch up front while the requests
-// themselves are serialized. A second operation on a row therefore has to
-// target the name the first one establishes, or the two writes disagree about
-// which name exists. These sequences are only reproducible with a real in-flight
-// request, so they live here rather than in the node regressions.
+// Queued variable edits must target the last successfully saved name, including
+// when a preceding rename fails. Hold real requests to exercise that ordering.
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 const record = (value: unknown): Record<string, any> => (typeof value === "string" ? JSON.parse(value) : (value ?? {}));
 
@@ -39,7 +36,12 @@ async function openChatVariables(page: import("@playwright/test").Page, chatId: 
 }
 
 // Holds the first metadata PATCH so a second operation is queued behind it.
-async function holdFirstMetadataPatch(page: import("@playwright/test").Page, chatId: string): Promise<Gate> {
+async function holdFirstMetadataPatch(
+  page: import("@playwright/test").Page,
+  chatId: string,
+  fail = false,
+  afterFirst?: () => Promise<void>,
+): Promise<Gate> {
   let started = false;
   let release = () => {};
   const gate = new Promise<void>((resolve) => {
@@ -51,6 +53,12 @@ async function holdFirstMetadataPatch(page: import("@playwright/test").Page, cha
       held = true;
       started = true;
       await gate;
+      if (fail) return route.fulfill({ status: 503, json: { error: "Synthetic rename failure" } });
+      if (afterFirst) {
+        const response = await route.fetch();
+        await afterFirst();
+        return route.fulfill({ response });
+      }
     }
     await route.continue();
   });
@@ -144,4 +152,93 @@ test("a value edit is sent for a name only {{setvar}} could have created", async
   await value.press("Enter");
 
   await expect.poll(() => patches).toEqual([{ macroVariables: { "story.day": "4" } }]);
+});
+
+for (const action of ["delete", "rename"] as const) {
+  test(`a ${action} queued behind a failed rename targets the saved variable`, async ({ page, request }) => {
+    const chat = await createChat(request, "Failed queued rename");
+    let gate: Gate | undefined;
+    try {
+      await request.patch(`/api/chats/${chat.id}/metadata`, { data: { macroVariables: { char1: "Mary" } } });
+      const drawer = await openChatVariables(page, chat.id);
+      const name = drawer.locator("[data-chat-variable-row]").first().getByLabel("Variable name");
+      await expect(name).toHaveValue("char1");
+      gate = await holdFirstMetadataPatch(page, chat.id, true);
+      await name.fill("lead");
+      await name.press("Enter");
+      await expect.poll(gate.started).toBe(true);
+      if (action === "delete") {
+        await drawer
+          .locator("[data-chat-variable-row]")
+          .first()
+          .getByRole("button", { name: "Remove variable" })
+          .click();
+      } else {
+        await name.fill("hero");
+        await name.press("Enter");
+      }
+      gate.release();
+      await expect
+        .poll(async () => storedVariables(request, chat.id))
+        .toEqual(action === "delete" ? {} : { hero: "Mary" });
+    } finally {
+      gate?.release();
+      await request.delete(`/api/chats/${chat.id}?force=true`);
+    }
+  });
+}
+
+test("a queued delete preserves an independently recreated original name", async ({ page, request }) => {
+  const chat = await createChat(request, "Recreated variable during rename");
+  let gate: Gate | undefined;
+  try {
+    await request.patch(`/api/chats/${chat.id}/metadata`, { data: { macroVariables: { char1: "Mary" } } });
+    const drawer = await openChatVariables(page, chat.id);
+    const name = drawer.locator("[data-chat-variable-row]").first().getByLabel("Variable name");
+    await expect(name).toHaveValue("char1");
+    gate = await holdFirstMetadataPatch(page, chat.id, false, async () => {
+      const recreated = await request.patch(`/api/chats/${chat.id}/metadata`, {
+        data: { macroVariables: { char1: "Another character" } },
+      });
+      expect(recreated.ok()).toBeTruthy();
+    });
+    await name.fill("lead");
+    await name.press("Enter");
+    await expect.poll(gate.started).toBe(true);
+    await drawer.locator("[data-chat-variable-row]").first().getByRole("button", { name: "Remove variable" }).click();
+    gate.release();
+    await expect.poll(async () => storedVariables(request, chat.id)).toEqual({ char1: "Another character" });
+  } finally {
+    gate?.release();
+    await request.delete(`/api/chats/${chat.id}?force=true`);
+  }
+});
+
+test("a value reverted while a save is pending still persists the latest edit", async ({ page, request }) => {
+  const chat = await createChat(request, "Reverted pending variable edit");
+  let gate: Gate | undefined;
+  try {
+    await request.patch(`/api/chats/${chat.id}/metadata`, { data: { macroVariables: { char1: "Mary" } } });
+    const drawer = await openChatVariables(page, chat.id);
+    const value = drawer.locator("[data-chat-variable-row]").first().getByLabel("Variable value");
+    await expect(value).toHaveValue("Mary");
+    gate = await holdFirstMetadataPatch(page, chat.id);
+    await value.fill("Anna");
+    await value.press("Enter");
+    await expect.poll(gate.started).toBe(true);
+    await value.fill("Mary");
+    await value.press("Enter");
+    const firstSaved = page.waitForResponse(
+      (response) =>
+        response.url().endsWith(`/api/chats/${chat.id}/metadata`) && response.request().method() === "PATCH",
+    );
+    gate.release();
+    await firstSaved;
+    await expect.poll(async () => storedVariables(request, chat.id)).toEqual({ char1: "Mary" });
+    await value.press("Tab");
+    await expect(value).toHaveValue("Mary");
+  } finally {
+    gate?.release();
+    await request.delete(`/api/chats/${chat.id}?force=true`);
+  }
 });

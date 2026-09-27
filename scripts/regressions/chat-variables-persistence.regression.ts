@@ -2,6 +2,7 @@
 // writes back mid-request. The metadata route must therefore merge rather than
 // replace, and must express a removal explicitly.
 import assert from "node:assert/strict";
+import { mock } from "node:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -22,6 +23,7 @@ const { createChatsStorage } = await import("../../packages/server/src/services/
 const { normalizeChatMacroVariables, mergeGeneratedChatMacroVariables } =
   await import("../../packages/server/src/services/prompt/macro-context.js");
 const { MAX_CHAT_VARIABLES } = await import("../../packages/shared/src/index.js");
+const { chats: chatsTable } = await import("../../packages/server/src/db/schema/index.js");
 
 const db = await getDB();
 const app = Fastify();
@@ -202,9 +204,11 @@ try {
   const held = new Promise<void>((resolve) => {
     releaseHold = resolve;
   });
+  const holdingStarted = Promise.withResolvers<void>();
   const holding = chats.patchMetadata(
     chat.id,
     async (current) => {
+      holdingStarted.resolve();
       await held;
       const kept = normalizeChatMacroVariables(current.macroVariables);
       delete kept["story.day"];
@@ -212,11 +216,41 @@ try {
     },
     { touchUpdatedAt: false },
   );
-  const staleRequest = patchVariables({ "story.day": "4" });
-  // Let the route take its own metadata read — which still sees the name —
-  // before the queued removal lands.
-  await new Promise((resolve) => setTimeout(resolve, 50));
-  releaseHold();
+  await holdingStarted.promise;
+  const requestRead = Promise.withResolvers<void>();
+  const queryPrototype = Object.getPrototypeOf(db.select().from(chatsTable));
+  const originalThen = queryPrototype.then;
+  // Observe the actual database snapshot read by the route, rather than guessing
+  // how long Fastify needs to reach it. The held removal has already read its row.
+  const readSpy = mock.method(
+    queryPrototype,
+    "then",
+    function (this: unknown, onfulfilled: (rows: any[]) => unknown, onrejected: (error: unknown) => unknown) {
+      return originalThen.call(
+        this,
+        (rows: any[]) => {
+          if (
+            rows.some(
+              (row) =>
+                row.id === chat.id &&
+                normalizeChatMacroVariables(JSON.parse(row.metadata).macroVariables)["story.day"] === "3",
+            )
+          ) {
+            requestRead.resolve();
+          }
+          return onfulfilled(rows);
+        },
+        onrejected,
+      );
+    },
+  );
+  const staleRequest = patchVariables({ "story.day": "4" }).then((response) => response);
+  try {
+    await requestRead.promise;
+  } finally {
+    readSpy.mock.restore();
+    releaseHold();
+  }
   const [, staleResponse] = await Promise.all([holding, staleRequest]);
   assert.equal(staleResponse.statusCode, 400, "a name removed since the request began counts as a creation");
   assert.ok(!("story.day" in (await storedVariables())), "and nothing is written back under that name");

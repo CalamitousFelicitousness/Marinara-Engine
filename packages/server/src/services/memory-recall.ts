@@ -168,10 +168,19 @@ export async function embedMemoryRecallTexts(
     if (options.signal?.aborted) {
       throw options.signal.reason ?? new DOMException("Embedding was aborted", "AbortError");
     }
-    if (!embeddings || embeddings.length !== batch.length) {
+    if (!embeddings) {
+      if (!options.embeddingSource && !warnedUnavailableEmbeddingSource) {
+        warnedUnavailableEmbeddingSource = true;
+        logger.warn(
+          "[memory-recall] No embedder configured; memory recall is disabled until an embedding source is available",
+        );
+      }
+      return [];
+    }
+    if (embeddings.length !== batch.length) {
       logger.warn(
-        "[memory-recall] Embedding source returned %d/%d vectors; preserving existing memory chunks",
-        embeddings?.length ?? 0,
+        "[memory-recall] Embedding source returned %d/%d vectors; discarding incomplete embedding results",
+        embeddings.length,
         batch.length,
       );
       return [];
@@ -206,15 +215,7 @@ export async function embedMemoryRecallTexts(
       batches.length,
     );
   }
-  if (allEmbeddings.length > 0) return allEmbeddings;
-
-  if (!warnedUnavailableEmbeddingSource) {
-    warnedUnavailableEmbeddingSource = true;
-    logger.warn(
-      "[memory-recall] No embedder configured; memory recall is disabled until an embedding source is available",
-    );
-  }
-  return [];
+  return allEmbeddings;
 }
 
 function normalizeReadBehindMessageCount(value: number | null | undefined): number {

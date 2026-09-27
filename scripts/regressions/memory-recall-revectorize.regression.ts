@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { logger } from "../../packages/server/src/lib/logger.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -18,6 +19,21 @@ process.env.FILE_STORAGE_DIR = dir;
 const db = await createFileNativeDB();
 
 try {
+  const warnings: unknown[][] = [];
+  const priorWarn = logger.warn;
+  logger.warn = ((...args: unknown[]) => warnings.push(args)) as typeof logger.warn;
+  try {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      assert.deepEqual(await embedMemoryRecallTexts(["query"], { localEmbedder: async () => null }), []);
+    }
+    assert.equal(warnings.length, 1, "an unavailable local embedder warns only once");
+    assert.match(String(warnings[0]![0]), /No embedder configured/);
+    assert.deepEqual(await embedMemoryRecallTexts(["query"], { localEmbedder: async () => [] }), []);
+    assert.equal(warnings.length, 2, "a malformed non-null result still reports its vector count");
+    assert.match(String(warnings[1]![0]), /incomplete embedding results/);
+  } finally {
+    logger.warn = priorWarn;
+  }
   const embeddingCalls: string[][] = [];
   const ordered = await embedMemoryRecallTexts(["א".repeat(70_000), "é".repeat(70_000), "third"], {
     embeddingSource: {

@@ -312,13 +312,16 @@ try {
   const bounded = finishMemoryDecisionDiagnostics(
     {
       ...diagnostics,
-      results: Array.from({ length: 200 }, (_, index) => ({
-        id: String(index),
-        kind: "scene" as const,
-        text: "A past memory",
-        score: index / 200,
-        selected: false,
-      })),
+      results: [
+        ...Array.from({ length: 200 }, (_, index) => ({
+          id: String(index),
+          kind: "scene" as const,
+          text: "A past memory",
+          score: index / 200,
+          selected: false,
+        })),
+        { id: "0", kind: "scene" as const, text: "Repeated candidate", score: 0.25, selected: false },
+      ],
     },
     new Set(["0"]),
     false,
@@ -326,6 +329,7 @@ try {
   assert.equal(bounded.results.length, 128);
   assert.equal(bounded.omittedCount, 72);
   assert.equal(bounded.results[0]!.id, "0", "selected outcomes survive the saved-report cap");
+  assert.equal(bounded.results[0]!.score, 0.25, "repeated candidates show the latest score once");
 
   // Bounded requests, atomic fallback, and cancellation, independent of provider timing.
   let batches = 0;

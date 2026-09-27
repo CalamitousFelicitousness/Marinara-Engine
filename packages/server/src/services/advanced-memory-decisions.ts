@@ -41,6 +41,9 @@ export function finishMemoryDecisionDiagnostics(
   fallback: boolean,
 ) {
   diagnostics.fallback = fallback;
+  diagnostics.results = [
+    ...new Map(diagnostics.results.map((result) => [`${result.kind}:${result.id}`, result])).values(),
+  ];
   for (const result of diagnostics.results) result.selected = selectedIds.has(result.id);
   // ponytail: keep at most 128 outcomes per saved report, selected first; add paging if full archives need inspection.
   diagnostics.results.sort((a, b) => Number(b.selected) - Number(a.selected) || (b.score ?? -1) - (a.score ?? -1));

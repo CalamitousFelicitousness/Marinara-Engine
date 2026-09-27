@@ -2240,7 +2240,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       if (decisionDebug && advancedMemoryService && advancedMemorySettings.decisionEnabled) {
         // These are historical observations, not proof that a saved prompt can be reused today.
         let recall: AdvancedMemoryDecisionDiagnostics | undefined;
-        for (const message of allChatMessages.toReversed()) {
+        for (const message of [...allChatMessages].reverse()) {
           const saved = advancedMemoryDecisionDiagnosticsSchema.safeParse(
             parseExtra(parseExtra(message.extra).advancedMemoryReceipt).decisionRecall,
           );

@@ -120,15 +120,15 @@ The **NPCs** tab of the Adventure Journal tracks how each NPC feels about you. E
 
 The reputation label changes as you act in the story. It is one of these seven, from best to worst:
 
-| Label          | Meaning             |
-| -------------- | ------------------- |
-| **Devoted**    | Deeply loyal to you |
-| **Allied**     | Strong ally         |
-| **Friendly**   | Positive            |
-| **Neutral**    | No strong feeling   |
-| **Unfriendly** | Negative            |
-| **Hostile**    | Turned against you  |
-| **Enemy**      | Actively opposed    |
+| Label | Meaning |
+|---|---|
+| **Devoted** | Deeply loyal to you |
+| **Allied** | Strong ally |
+| **Friendly** | Positive |
+| **Neutral** | No strong feeling |
+| **Unfriendly** | Negative |
+| **Hostile** | Turned against you |
+| **Enemy** | Actively opposed |
 
 A label appears only after an NPC's reputation has moved away from the starting point. A brand-new NPC with unchanged reputation shows no label yet.
 

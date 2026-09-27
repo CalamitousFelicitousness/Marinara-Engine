@@ -11,6 +11,7 @@ import {
   parseDecisionPromptQuestionLimit,
   PROFESSOR_MARI_ID,
   CHAT_VARIABLE_STORED_NAME_RE,
+  MAX_CHAT_VARIABLES,
   MAX_CHAT_VARIABLE_VALUE_LENGTH,
   validateChatVariableName,
   createChatSchema,
@@ -1324,7 +1325,11 @@ export async function chatsRoutes(app: FastifyInstance) {
           : [],
       );
       const removedNames = new Set<string>();
-      const changedValues: Record<string, string> = {};
+      // Null-prototype: assigning a string to a plain object's "__proto__" key
+      // hits the prototype setter and is silently dropped, so an existing
+      // variable of that name (only {{setvar}} can create one) would never
+      // update. Spreading this later copies the key as an own property.
+      const changedValues: Record<string, string> = Object.create(null) as Record<string, string>;
       for (const [name, value] of Object.entries(rawVariables as Record<string, unknown>)) {
         if (!CHAT_VARIABLE_STORED_NAME_RE.test(name)) {
           return reply.status(400).send({ error: `Invalid chat variable name: ${name}` });
@@ -1347,11 +1352,22 @@ export async function chatsRoutes(app: FastifyInstance) {
         changedValues[name] = value;
       }
       const { normalizeChatMacroVariables } = await import("../services/prompt/index.js");
+      let overflowed = false;
       const updated = await storage.patchMetadata(req.params.id, (freshMeta) => {
         const merged = { ...normalizeChatMacroVariables(freshMeta.macroVariables), ...changedValues };
         for (const name of removedNames) delete merged[name];
+        // normalizeChatMacroVariables keeps only the first MAX_CHAT_VARIABLES
+        // entries, so without this a name past the cap would be dropped while
+        // the request reported success.
+        if (Object.keys(merged).length > MAX_CHAT_VARIABLES) {
+          overflowed = true;
+          return {}; // change nothing; `incoming` still holds the unvalidated map
+        }
         return { ...incoming, macroVariables: normalizeChatMacroVariables(merged) };
       });
+      if (overflowed) {
+        return reply.status(400).send({ error: `A chat cannot hold more than ${MAX_CHAT_VARIABLES} variables` });
+      }
       return updated ? normalizeChatForResponse(updated) : updated;
     }
     if (incoming.conversationSchedulesEnabled === false) {

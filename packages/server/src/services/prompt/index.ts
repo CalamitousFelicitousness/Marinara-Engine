@@ -16,6 +16,7 @@ export {
   cloneMacroContextForPreview,
   resolveMacrosForPreview,
   normalizeChatMacroVariables,
+  parsePresetVariableNames,
   collectCharacterAdvancedPromptEntries,
   collectCharacterDepthPromptEntries,
   collectCharacterPostHistoryEntries,

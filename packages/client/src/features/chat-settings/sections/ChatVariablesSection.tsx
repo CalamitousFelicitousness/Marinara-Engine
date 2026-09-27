@@ -3,12 +3,22 @@ import { Braces, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation as useUiTranslation } from "react-i18next";
-import { MAX_CHAT_VARIABLE_VALUE_LENGTH, validateChatVariableName } from "@marinara-engine/shared";
+import { MAX_CHAT_VARIABLE_VALUE_LENGTH, type ChatVariableNameIssue } from "@marinara-engine/shared";
 import { ChatSettingsSection } from "../ChatSettingsSection";
 import { chatKeys, useUpdateChatMetadata } from "../../../hooks/use-chats";
 import { useUIStore } from "../../../stores/ui.store";
+import { useChatStore } from "../../../stores/chat.store";
 import { cn } from "../../../lib/utils";
-import { newDraftRow, reconcileRows, toRows, type VariableRow } from "./chat-variables-rows";
+import {
+  buildCommitPatch,
+  buildRemovePatch,
+  effectiveSavedName,
+  newDraftRow,
+  reconcileRows,
+  rowNameIssue,
+  toRows,
+  type VariableRow,
+} from "./chat-variables-rows";
 
 interface ChatVariablesSectionProps {
   sectionId: string;
@@ -33,6 +43,11 @@ export function ChatVariablesSection({ sectionId, order, chatId, variables }: Ch
 
   const [rows, setRows] = useState<VariableRow[]>(() => toRows(variables));
   const [pendingWrites, setPendingWrites] = useState(0);
+  // Per row: the name its last queued write will establish, and how many of its
+  // writes are still in flight. Requests are serialized, but their patches are
+  // built up front, so a later patch must target the earlier one's new name.
+  const pendingNamesRef = useRef(new Map<string, string | null>());
+  const queuedWritesRef = useRef(new Map<string, number>());
 
   // A patch carries only the names it changes, so the cached map is partial
   // until the server answers. Fold saved values in only while nothing is in
@@ -47,37 +62,52 @@ export function ChatVariablesSection({ sectionId, order, chatId, variables }: Ch
   }, [savedSignature, pendingWrites]);
 
   // Nothing invalidates the chat after a generation persists a {{setvar}} —
-  // that write deliberately leaves updatedAt alone. Refetch when the user
-  // opens the section so the list is not stale.
+  // that write deliberately leaves updatedAt alone, to keep the chat list from
+  // reordering. So refetch on the two moments that matter: when the section is
+  // opened, and when a generation for this chat finishes while it is open.
   const wasExpanded = useRef(false);
   useEffect(() => {
     if (expanded && !wasExpanded.current) void qc.invalidateQueries({ queryKey: chatKeys.detail(chatId) });
     wasExpanded.current = Boolean(expanded);
   }, [expanded, chatId, qc]);
 
+  const streaming = useChatStore((s) => s.streamingChatId === chatId);
+  const wasStreaming = useRef(false);
+  useEffect(() => {
+    if (!streaming && wasStreaming.current && expanded) {
+      void qc.invalidateQueries({ queryKey: chatKeys.detail(chatId) });
+    }
+    wasStreaming.current = streaming;
+  }, [streaming, expanded, chatId, qc]);
+
   // `onSaved` stamps the row's saved snapshot, and runs only once the PATCH has
   // landed: a failed write rolls the cached metadata back, so a row marked
   // saved up front would read as untouched and lose the edit to the next fold.
   const save = useCallback(
-    (patch: Record<string, string | null>, onSaved?: () => void) => {
+    (patch: Record<string, string | null>, onSaved?: () => void, rowKey?: string) => {
       setPendingWrites((count) => count + 1);
+      if (rowKey) queuedWritesRef.current.set(rowKey, (queuedWritesRef.current.get(rowKey) ?? 0) + 1);
       void updateMeta
         .mutateAsync({ id: chatId, macroVariables: patch })
         .then(() => onSaved?.())
         .catch(() => toast.error(localizeUi("ui.chatSettings.chatvariablessection.couldNotSaveThatVariable")))
-        .finally(() => setPendingWrites((count) => count - 1));
+        .finally(() => {
+          setPendingWrites((count) => count - 1);
+          if (!rowKey) return;
+          const outstanding = (queuedWritesRef.current.get(rowKey) ?? 1) - 1;
+          if (outstanding > 0) {
+            queuedWritesRef.current.set(rowKey, outstanding);
+            return;
+          }
+          // Nothing else queued for this row, so `savedName` is authoritative again.
+          queuedWritesRef.current.delete(rowKey);
+          pendingNamesRef.current.delete(rowKey);
+        });
     },
     [chatId, localizeUi, updateMeta],
   );
 
-  const nameIssue = useCallback(
-    (row: VariableRow) =>
-      validateChatVariableName(
-        row.name,
-        rows.filter((other) => other.key !== row.key).map((other) => other.name.trim()),
-      ),
-    [rows],
-  );
+  const nameIssue = useCallback((row: VariableRow) => rowNameIssue(row, rows), [rows]);
 
   const updateRow = (key: string, patch: Partial<VariableRow>) =>
     setRows((current) => current.map((row) => (row.key === key ? { ...row, ...patch } : row)));
@@ -87,25 +117,31 @@ export function ChatVariablesSection({ sectionId, order, chatId, variables }: Ch
     if (!row) return;
     const name = row.name.trim();
     if (nameIssue(row)) return;
-    if (row.savedName === name && row.savedValue === row.value) return;
-    // A rename is one patch: drop the old name and write the new one together,
-    // so a failure cannot leave both or neither.
-    const patch: Record<string, string | null> = { [name]: row.value };
-    if (row.savedName && row.savedName !== name) patch[row.savedName] = null;
+    const previousName = effectiveSavedName(row, pendingNamesRef.current.get(key));
+    if (previousName === name && row.savedValue === row.value) return;
+    // A rename is one patch: drop the name it replaces and write the new one
+    // together, so a failure cannot leave both or neither.
+    const patch = buildCommitPatch(name, row.value, previousName);
     // Show the trimmed name straight away; the row stays dirty until the write
     // lands, so a failure leaves the typed value on screen to retry.
     const savedValue = row.value;
     updateRow(key, { name });
-    save(patch, () => updateRow(key, { savedName: name, savedValue }));
+    pendingNamesRef.current.set(key, name);
+    save(patch, () => updateRow(key, { savedName: name, savedValue }), key);
   };
 
   const removeRow = (key: string) => {
     const row = rows.find((entry) => entry.key === key);
     setRows((current) => current.filter((entry) => entry.key !== key));
-    if (row?.savedName) save({ [row.savedName]: null });
+    if (!row) return;
+    const patch = buildRemovePatch(effectiveSavedName(row, pendingNamesRef.current.get(key)));
+    // The row is gone, so nothing can rename it again: forget its pending name
+    // rather than leaving a stale claim behind.
+    pendingNamesRef.current.set(key, null);
+    if (patch) save(patch, undefined, key);
   };
 
-  const issueMessage = (issue: ReturnType<typeof validateChatVariableName>) => {
+  const issueMessage = (issue: ChatVariableNameIssue | null) => {
     if (issue === "reserved") return localizeUi("ui.chatSettings.chatvariablessection.thatNameBelongsToABuiltInMacro");
     if (issue === "duplicate")
       return localizeUi("ui.chatSettings.chatvariablessection.thatNameIsAlreadyUsedInThisChat");
@@ -138,7 +174,7 @@ export function ChatVariablesSection({ sectionId, order, chatId, variables }: Ch
               const issue = nameIssue(row);
               const message = issueMessage(issue);
               return (
-                <div key={row.key} className="space-y-1">
+                <div key={row.key} data-chat-variable-row={row.savedName ?? ""} className="space-y-1">
                   <div className="flex items-center gap-2">
                     <input
                       value={row.name}

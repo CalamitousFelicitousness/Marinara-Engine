@@ -66,6 +66,45 @@ assert.equal(
   "yes",
 );
 
+// ── Preset precedence while preset values are still pending ──
+// History is resolved before the assembler merges preset values, so a name the
+// preset owns must be left alone rather than taking the chat's value: the
+// provider-boundary pass, which runs after that merge, fills it in.
+const pendingPresetContext = baseContext({
+  localVariables: { char1: "Mary" },
+  deferredPresetVariableNames: new Set(["char1"]),
+});
+assert.equal(resolveMacros("{{char1}} walks in.", pendingPresetContext, {}), "{{char1}} walks in.");
+assert.equal(
+  resolveMacros("{{char2}} walks in.", pendingPresetContext, {}),
+  "{{char2}} walks in.",
+  "a name no map defines is still left as typed",
+);
+// A chat variable the preset does not own keeps resolving immediately.
+assert.equal(
+  resolveMacros(
+    "{{mood}}",
+    baseContext({ localVariables: { mood: "tense" }, deferredPresetVariableNames: new Set(["char1"]) }),
+    {},
+  ),
+  "tense",
+);
+// Once the preset value is merged in, it wins and the claim is moot.
+assert.equal(
+  resolveMacros(
+    "{{char1}}",
+    baseContext({
+      variables: { char1: "Anna" },
+      localVariables: { char1: "Mary" },
+      deferredPresetVariableNames: new Set(["char1"]),
+    }),
+    {},
+  ),
+  "Anna",
+);
+// getvar is explicit about reading chat state, so it is unaffected.
+assert.equal(resolveMacros("{{getvar::char1}}", pendingPresetContext, {}), "Mary");
+
 // An unset name reads as empty through getvar, unchanged behavior.
 assert.equal(resolveMacros("[{{getvar::missing}}]", baseContext({ localVariables: {} }), {}), "[]");
 

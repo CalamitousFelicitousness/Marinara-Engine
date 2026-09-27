@@ -252,6 +252,7 @@ import {
   appendFallbackChatSummaryToSystemPrompt,
   buildPromptMacroContext,
   normalizeChatMacroVariables,
+  parsePresetVariableNames,
   collectCharacterAdvancedPromptEntries,
   resolveCharacterAdvancedPromptIds,
   resolveCharacterMacroData,
@@ -2805,6 +2806,19 @@ export async function generateRoutes(app: FastifyInstance) {
           held: heldDecisions,
           answer: (plan) => answerDecisionPlan(plan, decisionMessages(), preReplyDecisionTurnId),
         });
+        // Preset variables outrank chat variables, but their values only arrive
+        // when the assembler runs — after history is resolved. Claim the names
+        // now so a chat variable of the same name does not win by being early;
+        // the claim is dropped once the real values are merged in below.
+        if (presetId && resolvedPreset && chatMode !== "conversation" && chatMode !== "game") {
+          const presetVariableNames = new Set<string>(parsePresetVariableNames(resolvedPreset.variableValues));
+          for (const choiceBlock of decisionPresetParts
+            ? decisionPresetParts.choiceBlocks
+            : await presets.listChoiceBlocksForPreset(presetId)) {
+            presetVariableNames.add(choiceBlock.variableName);
+          }
+          if (presetVariableNames.size > 0) promptMacroContext.deferredPresetVariableNames = presetVariableNames;
+        }
         const resolveHistoryMessageMacros = <T extends { content: string; characterId?: string | null }>(
           messages: T[],
         ): T[] => resolvePromptMessageMacros(messages, promptMacroContext, historyMacroProfilesById);
@@ -3168,6 +3182,9 @@ export async function generateRoutes(app: FastifyInstance) {
 
           const assembled = await assemblePrompt(assemblerInput);
           Object.assign(promptMacroContext.variables, assembled.macroVariables);
+          // Preset values are available now, so deferred names resolve normally
+          // (and preset-first) in the provider-boundary pass.
+          delete promptMacroContext.deferredPresetVariableNames;
           promptMacroContext.agentData = {
             ...promptMacroContext.agentData,
             ...assembled.macroAgentData,

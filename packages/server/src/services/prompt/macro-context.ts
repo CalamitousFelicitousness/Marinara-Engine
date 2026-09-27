@@ -95,6 +95,23 @@ export function normalizeChatMacroVariables(value: unknown): Record<string, stri
   return Object.fromEntries(entries);
 }
 
+/**
+ * Names a preset defines through its stored variable values.
+ *
+ * Only the names matter to callers that need to know which names a preset owns
+ * before the assembler has resolved their values.
+ */
+export function parsePresetVariableNames(rawVariableValues: unknown): string[] {
+  if (typeof rawVariableValues !== "string" || !rawVariableValues.trim()) return [];
+  try {
+    const parsed: unknown = JSON.parse(rawVariableValues);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return [];
+    return Object.keys(parsed as Record<string, unknown>);
+  } catch {
+    return [];
+  }
+}
+
 /** Clone mutable macro maps for preview-only resolution that must discard variable writes. */
 export function cloneMacroContextForPreview(macroCtx: MacroContext): MacroContext {
   return {

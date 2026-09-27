@@ -20,6 +20,7 @@ const { getDB, closeDB } = await import("../../packages/server/src/db/connection
 const { chatsRoutes } = await import("../../packages/server/src/routes/chats.routes.js");
 const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
 const { normalizeChatMacroVariables } = await import("../../packages/server/src/services/prompt/macro-context.js");
+const { MAX_CHAT_VARIABLES } = await import("../../packages/shared/src/index.js");
 
 const db = await getDB();
 const app = Fastify();
@@ -125,6 +126,56 @@ try {
     "values must be strings or null",
   );
   assert.deepEqual(await storedVariables(), { lead: "Mary", mood: "tense" }, "a rejected patch changes nothing");
+
+  // A {{setvar}} can store a variable called __proto__. Fastify's JSON parser
+  // refuses any body carrying that key, so it cannot be reached through this
+  // route at all — the stored value simply stays as it was. (The handler also
+  // collects changes in a null-prototype object, so a non-HTTP caller cannot be
+  // silently ignored either.)
+  await chats.patchMetadata(
+    chat.id,
+    (current) => ({
+      ...current,
+      macroVariables: { ...normalizeChatMacroVariables(current.macroVariables), ["__proto__"]: "before" },
+    }),
+    { touchUpdatedAt: false },
+  );
+  assert.equal((await storedVariables())["__proto__"], "before", "the fixture stored it as an own property");
+  const protoPatch = await app.inject({
+    method: "PATCH",
+    url: `/api/chats/${chat.id}/metadata`,
+    payload: '{"macroVariables":{"__proto__":"after"}}',
+    headers: { "content-type": "application/json" },
+  });
+  assert.equal(protoPatch.statusCode, 400, "the JSON parser refuses the body outright");
+  assert.equal((await storedVariables())["__proto__"], "before", "and nothing is written");
+  await chats.patchMetadata(
+    chat.id,
+    (current) => {
+      const kept = normalizeChatMacroVariables(current.macroVariables);
+      delete kept["__proto__"];
+      return { ...current, macroVariables: kept };
+    },
+    { touchUpdatedAt: false },
+  );
+
+  // The 500-entry cap is enforced up front instead of quietly truncating.
+  const bulk: Record<string, string> = {};
+  for (let index = 0; index < MAX_CHAT_VARIABLES; index += 1) bulk[`bulk_${index}`] = String(index);
+  await chats.patchMetadata(chat.id, (current) => ({ ...current, macroVariables: bulk }), { touchUpdatedAt: false });
+  assert.equal(Object.keys(await storedVariables()).length, MAX_CHAT_VARIABLES);
+  const overflow = await patchVariables({ one_too_many: "nope" });
+  assert.equal(overflow.statusCode, 400, "a name past the cap is refused rather than dropped behind a 200");
+  assert.ok(!("one_too_many" in (await storedVariables())));
+  assert.equal(Object.keys(await storedVariables()).length, MAX_CHAT_VARIABLES, "the stored map is untouched");
+  // Editing an existing name at the cap is still fine: the count does not grow.
+  assert.equal((await patchVariables({ bulk_0: "edited" })).statusCode, 200);
+  assert.equal((await storedVariables()).bulk_0, "edited");
+  // And a patch that removes one while adding another stays within the cap.
+  assert.equal((await patchVariables({ bulk_1: null, replacement: "ok" })).statusCode, 200);
+  const atCap = await storedVariables();
+  assert.ok(!("bulk_1" in atCap));
+  assert.equal(atCap.replacement, "ok");
 
   // The storage gate stays permissive so existing setvar values survive.
   assert.deepEqual(normalizeChatMacroVariables({ "my.var": "kept", "bad name": "dropped", n: 1 }), {

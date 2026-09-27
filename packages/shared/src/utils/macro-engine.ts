@@ -28,6 +28,16 @@ export interface MacroContext {
   variables: Record<string, string>;
   /** SillyTavern-compatible local variables persisted in the current chat. */
   localVariables?: Record<string, string>;
+  /**
+   * Names a preset variable will define later in this request.
+   *
+   * History is resolved before the assembler merges preset values into
+   * `variables`, so without this the chat's own value would be baked into a
+   * message while prompt sections got the preset's — one request, two names.
+   * Listing the name here leaves the tag for the provider-boundary pass, which
+   * runs after that merge and so sees the preset value.
+   */
+  deferredPresetVariableNames?: ReadonlySet<string>;
   /** Last user input message (for {{input}}) */
   lastInput?: string;
   /** Chat ID (for {{chatId}}) */
@@ -2928,6 +2938,9 @@ export function resolveMacros(template: string, ctx: MacroContext, options: Reso
     if (unresolvedCharacterReferences.has(name)) return match;
     const presetValue = readMacroVariable(ctx.variables, name);
     if (presetValue !== undefined) return presetValue;
+    // A preset owns this name but its value has not been merged yet: leave the
+    // tag for the later pass rather than letting the chat value win the race.
+    if (ctx.deferredPresetVariableNames?.has(name)) return match;
     const chatValue = readMacroVariable(ctx.localVariables, name);
     return chatValue !== undefined ? chatValue : match; // leave unknown macros as-is
   });

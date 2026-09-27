@@ -92,6 +92,7 @@ import {
   resolveMacrosWithVariableSnapshot,
   resolvePromptIdleDuration,
   resolvePromptLastGenerationType,
+  parsePresetVariableNames,
   resolvePromptMessageMacros,
   setLorebookEntryCounts,
   type AssemblerInput,
@@ -1181,6 +1182,17 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       onDropped: (statement) => decisionDropped.add(statement),
       held: heldDecisions,
     });
+    // Same claim as the live route: preset variables outrank chat variables but
+    // their values arrive with the assembler, after history is resolved.
+    // `!promptParts`: custom prompt parts replace the preset's sections and never
+    // reach the assembler, so nothing would release a claimed name there.
+    if (!promptParts && effectivePresetId && effectivePreset && chatMode !== "conversation" && chatMode !== "game") {
+      const presetVariableNames = new Set<string>(parsePresetVariableNames(effectivePreset.variableValues));
+      for (const choiceBlock of await presets.listChoiceBlocksForPreset(effectivePresetId)) {
+        presetVariableNames.add(choiceBlock.variableName);
+      }
+      if (presetVariableNames.size > 0) promptMacroContext.deferredPresetVariableNames = presetVariableNames;
+    }
     const resolveHistoryMessageMacros = <T extends { content: string; characterId?: string | null }>(
       messages: T[],
     ): T[] => resolvePromptMessageMacros(messages, promptMacroContext, historyMacroProfilesById);
@@ -1704,6 +1716,8 @@ export async function registerDryRunRoute(app: FastifyInstance) {
 
       const assembled = await assemblePrompt(assemblerInput);
       Object.assign(promptMacroContext.variables, assembled.macroVariables);
+      // Values are in hand; deferred names resolve preset-first from here on.
+      delete promptMacroContext.deferredPresetVariableNames;
       promptMacroContext.agentData = {
         ...promptMacroContext.agentData,
         ...assembled.macroAgentData,

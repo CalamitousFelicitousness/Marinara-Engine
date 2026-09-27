@@ -2,8 +2,12 @@
 // settles. That fold must not throw away what the user typed in the meantime.
 import assert from "node:assert/strict";
 import {
+  buildCommitPatch,
+  buildRemovePatch,
+  effectiveSavedName,
   newDraftRow,
   reconcileRows,
+  rowNameIssue,
   toRows,
   type VariableRow,
 } from "../../packages/client/src/features/chat-settings/sections/chat-variables-rows.js";
@@ -85,6 +89,55 @@ assert.deepEqual(
 assert.deepEqual(
   toRows({ ok: "yes", bad: 7 as unknown as string }).map((row) => row.name),
   ["ok"],
+);
+
+// ── Queued writes must target the name the previous write establishes ──
+// Requests are serialized but their patches are built up front, so a rename
+// followed by another rename or a delete has to chase the pending name.
+const renamed: VariableRow = { key: "a", name: "lead", value: "Mary", savedName: "char1", savedValue: "Mary" };
+
+// Rename char1 -> lead, then lead -> hero before the first write settles.
+assert.deepEqual(buildCommitPatch("lead", "Mary", effectiveSavedName(renamed, undefined)), {
+  lead: "Mary",
+  char1: null,
+});
+assert.deepEqual(
+  buildCommitPatch("hero", "Mary", effectiveSavedName({ ...renamed, name: "hero" }, "lead")),
+  { hero: "Mary", lead: null },
+  "the second rename must drop `lead`, not `char1`, or `lead` is orphaned",
+);
+
+// Rename char1 -> lead, then delete the row while the rename is pending.
+assert.deepEqual(
+  buildRemovePatch(effectiveSavedName(renamed, "lead")),
+  { lead: null },
+  "the delete follows the rename",
+);
+assert.deepEqual(buildRemovePatch(effectiveSavedName(renamed, undefined)), { char1: null });
+assert.equal(buildRemovePatch(effectiveSavedName(newDraftRow(), undefined)), null, "a draft has nothing to remove");
+
+// A row whose pending write removed it carries a null claim.
+assert.equal(effectiveSavedName(renamed, null), null);
+
+// A value-only commit does not delete anything.
+assert.deepEqual(buildCommitPatch("char1", "Anna", "char1"), { char1: "Anna" });
+
+// ── Names already stored by {{setvar}} stay editable ──
+const legacy: VariableRow = { key: "a", name: "story.day", value: "4", savedName: "story.day", savedValue: "3" };
+assert.equal(rowNameIssue(legacy, [legacy]), null, "a stored dotted name must accept a value edit");
+assert.equal(rowNameIssue({ ...legacy, name: "my-var", savedName: "my-var" }, []), null, "dashed names too");
+assert.equal(
+  rowNameIssue({ ...legacy, name: "story.week" }, []),
+  "format",
+  "renaming a legacy name still has to produce an addressable name",
+);
+assert.equal(rowNameIssue({ ...legacy, name: "storyWeek" }, []), null, "renaming it to a valid name is allowed");
+assert.equal(rowNameIssue({ ...newDraftRow(), name: "story.day" }, []), "format", "creating one is still refused");
+assert.equal(rowNameIssue({ ...newDraftRow(), name: "char" }, []), "reserved");
+assert.equal(
+  rowNameIssue({ ...legacy, name: "char1" }, [{ ...newDraftRow(), name: "char1" }]),
+  "duplicate",
+  "a rename still collides with another row",
 );
 
 console.info("chat variables row reconciliation regressions passed.");

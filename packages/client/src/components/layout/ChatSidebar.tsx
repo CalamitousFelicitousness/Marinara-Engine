@@ -52,6 +52,8 @@ import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useTouchFolderDrag } from "../../hooks/use-touch-folder-drag";
 import { TouchDragHandle } from "../ui/TouchDragHandle";
 import { usePresenceClock } from "../../hooks/use-presence-clock";
+import { usePanelKeyboardFocus } from "./use-panel-keyboard-focus";
+import { PanelErrorState, PanelListSkeleton } from "../ui/PanelStates";
 import { toast } from "sonner";
 import {
   BACKGROUND_THUMBNAIL_WIDTH,
@@ -226,7 +228,16 @@ export function ChatSidebar() {
   const { t: localizeUi } = useUiTranslation();
   const { t } = useTranslation();
   const localize = useLocalizedUiText();
-  const { data: chats, isError: chatsError, isLoading, isFetching, refetch: refetchChats } = useChats();
+  const {
+    data: chats,
+    isError: chatsQueryError,
+    isLoading: chatsQueryLoading,
+    isFetching,
+    failureCount: chatsFailureCount,
+    refetch: refetchChats,
+  } = useChats();
+  const chatsError = chatsQueryError || (chatsQueryLoading && chatsFailureCount >= 2);
+  const isLoading = chatsQueryLoading && !chatsError;
   const { data: connections } = useConnections();
   const createChat = useCreateChat();
   const { data: chatPresetsData } = useChatPresets();
@@ -259,6 +270,15 @@ export function ChatSidebar() {
   const editorDirty = useUIStore((s) => s.editorDirty);
   const closeAllDetails = useUIStore((s) => s.closeAllDetails);
   const setSidebarOpen = useUIStore((s) => s.setSidebarOpen);
+  const sidebarIsOpen = useUIStore((s) => s.sidebarOpen);
+  const sidebarNavRef = useRef<HTMLElement>(null);
+  const closeSidebarFromKeyboard = useCallback(() => setSidebarOpen(false), [setSidebarOpen]);
+  const sidebarKeyboard = usePanelKeyboardFocus({
+    open: sidebarIsOpen,
+    containerRef: sidebarNavRef,
+    toggleSelector: '[data-component="TopBar"] [data-tour="sidebar-toggle"]',
+    onClose: closeSidebarFromKeyboard,
+  });
   const chatModeShortcutRequest = useUIStore((s) => s.chatModeShortcutRequest);
   const setPendingNewChatMode = useChatStore((s) => s.setPendingNewChatMode);
 
@@ -1257,9 +1277,12 @@ export function ChatSidebar() {
 
   return (
     <nav
+      ref={sidebarNavRef}
       data-component="ChatSidebar"
       aria-label={localize("Chat navigation")}
-      className="mari-chat-sidebar mari-chrome-token-scope flex h-full flex-col"
+      tabIndex={-1}
+      onKeyDown={sidebarKeyboard.onKeyDown}
+      className="mari-chat-sidebar mari-chrome-token-scope flex h-full flex-col outline-none"
     >
       {/* Header */}
       <div className="mari-sidebar-header relative flex h-12 items-center justify-between bg-[var(--card)]/80 px-4 backdrop-blur-sm">
@@ -1503,30 +1526,14 @@ export function ChatSidebar() {
         }}
       >
         <ChatRowPeek containerRef={chatListRef} activeChatId={activeChatId} disabled={multiSelectMode} />
-        {isLoading && (
-          <div className="flex flex-col gap-2 px-2 py-4">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="shimmer h-10 rounded-lg" />
-            ))}
-          </div>
-        )}
+        {isLoading && <PanelListSkeleton />}
 
         {chatsError && !isLoading && (
-          <div className="flex flex-col items-center gap-2 px-3 py-12 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--destructive)]/10">
-              <AlertTriangle size="1.25rem" className="text-[var(--destructive)]" />
-            </div>
-            <p className="text-xs text-[var(--muted-foreground)]">
-              {localizeUi("ui.layout.chatsidebar.marinaraIsStillWakingUpChatsShouldAppearIn")}
-            </p>
-            <button
-              onClick={() => void refetchChats()}
-              disabled={isFetching}
-              className="mari-chrome-control mari-chrome-control--compact mt-1 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {localize(isFetching ? "Checking..." : "Try Again")}
-            </button>
-          </div>
+          <PanelErrorState
+            message={localizeUi("ui.layout.chatsidebar.marinaraIsStillWakingUpChatsShouldAppearIn")}
+            onRetry={() => void refetchChats()}
+            retrying={isFetching}
+          />
         )}
 
         {displayChats.length === 0 && !isLoading && !chatsError && (

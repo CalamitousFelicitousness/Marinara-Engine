@@ -69,9 +69,6 @@ const StartCharacterChatModal = lazy(() =>
     default: module.StartCharacterChatModal,
   })),
 );
-const GenerationJobsModal = lazy(() =>
-  import("../modals/GenerationJobsModal").then((module) => ({ default: module.GenerationJobsModal })),
-);
 const GlobalSearchModal = lazy(() =>
   import("../modals/GlobalSearchModal").then((module) => ({ default: module.GlobalSearchModal })),
 );
@@ -209,9 +206,6 @@ export function ModalRenderer() {
           characterName={(modal?.props?.characterName as string) ?? ""}
         />
       );
-      break;
-    case "generation-jobs":
-      content = <GenerationJobsModal open onClose={closeModal} />;
       break;
     case "global-chat-search":
       content = (

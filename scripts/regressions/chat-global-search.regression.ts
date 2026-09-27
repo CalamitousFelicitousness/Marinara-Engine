@@ -117,7 +117,7 @@ try {
       createdAt: at(4),
     },
     { id: "rp-4", chatId: "chat-rp", role: "narrator", content: "The silver moon sets.", createdAt: at(10) },
-    { id: "rp-system", chatId: "chat-rp", role: "system", content: "silver moon internal setup", createdAt: at(2) },
+    { id: "rp-system", chatId: "chat-rp", role: "system", content: "silver moon internal setup", createdAt: at(11) },
     { id: "cv-1", chatId: "chat-convo", role: "user", content: "no match here", createdAt: at(4) },
     { id: "cv-2", chatId: "chat-convo", role: "assistant", content: "Silver moon trivia!", createdAt: at(5) },
     { id: "mari-1", chatId: "chat-mari", role: "assistant", content: "silver moon secrets", createdAt: at(11) },

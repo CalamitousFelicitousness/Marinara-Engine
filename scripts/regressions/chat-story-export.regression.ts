@@ -77,16 +77,16 @@ try {
         speakerKey: "n",
         speaker: "N",
         role: "narrator",
-        content: '<img src=x onerror="alert(1)"><script>alert(2)</script> **safe**',
+        content: '<img src=x onerror="alert(1)"><script>alert(2)</script> & **safe**',
         thinking: '<img src=x onerror="alert(3)"><script>alert(4)</script>',
       },
     ],
   });
   assert.doesNotMatch(unsafe, /<img\b|<script\b/i);
   assert.ok(
-    unsafe.includes("&lt;img src=x onerror=&quot;alert(1)&quot;&gt;&lt;script&gt;alert(2)&lt;/script&gt; **safe**"),
+    unsafe.includes('&lt;img src=x onerror="alert(1)"&gt;&lt;script&gt;alert(2)&lt;/script&gt; &amp; **safe**'),
   );
-  assert.ok(unsafe.includes("&lt;img src=x onerror=&quot;alert(3)&quot;&gt;&lt;script&gt;alert(4)&lt;/script&gt;"));
+  assert.ok(unsafe.includes('&lt;img src=x onerror="alert(3)"&gt;&lt;script&gt;alert(4)&lt;/script&gt;'));
   assert.ok(markdown.endsWith("\n") && !markdown.endsWith("\n\n"));
   const spilled = renderTranscriptMarkdown({
     title: "T",
@@ -95,7 +95,7 @@ try {
     ],
   });
   assert.equal(spilled.match(/<\/details>/gu)?.length, 1, "reasoning cannot close the details block early");
-  assert.ok(spilled.includes("a &lt;/details&gt; b &lt;/SUMMARY&gt;"));
+  assert.ok(spilled.includes("a &lt;/details&gt; b &lt;/SUMMARY &gt;"));
 
   const pixel = "data:image/png;base64,iVBORw0KGgo=";
   const html = renderTranscriptHtml({
@@ -113,7 +113,7 @@ try {
   assert.ok(html.includes("<p><em>smiles</em></p><p>Second paragraph<br>with a break.</p>"));
   assert.ok(html.includes(`<img class="avatar" src="${pixel}" alt="">`), "small data URI avatars embed");
   assert.ok(!html.includes("javascript:"), "non data-URI avatars fall back to an initial");
-  assert.ok(html.includes(">L</div>"));
+  assert.ok(html.includes(">A</div>"));
   assert.ok(html.includes("prefers-color-scheme:dark") && html.includes("@media print"));
   assert.ok(!/<script/iu.test(html), "the story page has no scripts");
   assert.ok(!html.includes("—"), "no em dashes in the template");

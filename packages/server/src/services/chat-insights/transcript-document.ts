@@ -70,6 +70,10 @@ function escapeMarkdownInline(value: string): string {
   return value.replace(/([\\`*_[\]#<>|])/gu, "\\$1");
 }
 
+function escapeMarkdownText(value: string): string {
+  return value.replace(/&/gu, "&amp;").replace(/</gu, "&lt;").replace(/>/gu, "&gt;");
+}
+
 export function renderTranscriptMarkdown(input: TranscriptDocumentInput): string {
   const range = describeTranscriptDateRange(input.entries);
   const lines: string[] = [`# ${escapeMarkdownInline(input.title.trim() || "Chat")}`, ""];
@@ -77,9 +81,9 @@ export function renderTranscriptMarkdown(input: TranscriptDocumentInput): string
   lines.push("---", "");
   for (const entry of input.entries) {
     lines.push(`### ${escapeMarkdownInline(entry.speaker)}`, "");
-    lines.push(escapeHtml(entry.content.trim()), "");
+    lines.push(escapeMarkdownText(entry.content.trim()), "");
     if (entry.thinking?.trim()) {
-      const thinking = escapeHtml(entry.thinking.trim());
+      const thinking = escapeMarkdownText(entry.thinking.trim());
       lines.push("<details><summary>Thinking</summary>", "", thinking, "", "</details>", "");
     }
   }

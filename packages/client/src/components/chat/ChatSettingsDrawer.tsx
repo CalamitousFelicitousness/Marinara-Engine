@@ -134,6 +134,10 @@ import { AdvancedMemoryInspector } from "./AdvancedMemoryInspector";
 import { useAdvancedMemoryStatus } from "../../hooks/use-advanced-memory";
 import { AgentSuiteModal } from "./AgentSuiteModal";
 import { ConversationTimeZoneSelect } from "./ConversationTimeZoneSelect";
+import {
+  SemanticSummaryRetrievalControls,
+  type SemanticSummaryRetrievalControlField,
+} from "./SemanticSummaryRetrievalControls";
 import { RoleplayMessagePreview } from "./ChatMessage";
 import { resolveChatContextBudget } from "../../lib/professor-mari-context-budget";
 import { CHAT_SETTINGS_SURFACES } from "./chat-settings-surfaces";
@@ -9353,6 +9357,20 @@ export function ChatSettingsDrawer({
                     labelClassName="text-xs font-medium"
                   />
                 )}
+                {import.meta.env.VITE_MARINARA_LITE !== "true" && (
+                  <SemanticSummaryRetrievalControls
+                    enabled={metadata.semanticSummaryRetrievalEnabled === true}
+                    recentCount={summaryRetrievalSettings.semanticSummaryRecentCount}
+                    olderCount={summaryRetrievalSettings.semanticSummaryOlderCount}
+                    minSimilarity={summaryRetrievalSettings.semanticSummaryMinSimilarity}
+                    recentLabel={localizeUi("ui.chat.chatsettingsdrawer.recentWeeks")}
+                    olderLabel={localizeUi("ui.chat.chatsettingsdrawer.olderWeeks")}
+                    thresholdLabel={localizeUi("ui.chat.chatsettingsdrawer.summaryRelevanceThreshold")}
+                    onChange={(field: SemanticSummaryRetrievalControlField, value) =>
+                      updateMeta.mutate({ id: chat.id, [field]: value })
+                    }
+                  />
+                )}
 
                 <div className="space-y-2 rounded-lg border border-[var(--border)] bg-[var(--secondary)]/35 p-2.5">
                   <div className="space-y-1.5">
@@ -9566,95 +9584,6 @@ export function ChatSettingsDrawer({
               )}
             >
               {renderMemoryRecallControls(metadata.sceneStatus === "active")}
-            </Section>
-          )}
-
-          {isRoleplayMode && import.meta.env.VITE_MARINARA_LITE !== "true" && (
-            <Section
-              id="roleplay-summary-retrieval"
-              style={{ order: -250 }}
-              label={localizeUi("ui.chat.chatsettingsdrawer.roleplaySummaryRetrieval")}
-              icon={<CalendarClock size="0.875rem" />}
-              help={localizeUi("ui.chat.chatsettingsdrawer.roleplaySummaryRetrievalHelp")}
-            >
-              <div className="space-y-2.5">
-                <SettingsSwitch
-                  label={localizeUi("ui.chat.chatsettingsdrawer.semanticSummaryRetrieval")}
-                  description={localizeUi("ui.chat.chatsettingsdrawer.roleplaySummaryRetrievalDescription")}
-                  checked={metadata.semanticSummaryRetrievalEnabled === true}
-                  onChange={(semanticSummaryRetrievalEnabled) =>
-                    updateMeta.mutate({ id: chat.id, semanticSummaryRetrievalEnabled })
-                  }
-                  labelPosition="start"
-                  className={cn(
-                    "justify-between rounded-lg px-3 py-2.5 text-left",
-                    metadata.semanticSummaryRetrievalEnabled === true
-                      ? "bg-[var(--primary)]/10 ring-1 ring-[var(--primary)]/30"
-                      : cn(AGENT_SETTINGS_SURFACE_CLASS, "hover:bg-[var(--accent)]"),
-                  )}
-                  labelClassName="text-xs font-medium"
-                />
-                <div
-                  className={cn(
-                    "grid gap-2 sm:grid-cols-3",
-                    metadata.semanticSummaryRetrievalEnabled !== true && "opacity-50",
-                  )}
-                >
-                  {(
-                    [
-                      {
-                        key: "semanticSummaryRecentCount",
-                        label: localizeUi("ui.chat.chatsettingsdrawer.recentSummaryCount"),
-                        value: summaryRetrievalSettings.semanticSummaryRecentCount,
-                        min: 0,
-                        max: 20,
-                        step: 1,
-                      },
-                      {
-                        key: "semanticSummaryOlderCount",
-                        label: localizeUi("ui.chat.chatsettingsdrawer.olderSummaryCount"),
-                        value: summaryRetrievalSettings.semanticSummaryOlderCount,
-                        min: 0,
-                        max: 20,
-                        step: 1,
-                      },
-                      {
-                        key: "semanticSummaryMinSimilarity",
-                        label: localizeUi("ui.chat.chatsettingsdrawer.summaryRelevanceThreshold"),
-                        value: summaryRetrievalSettings.semanticSummaryMinSimilarity,
-                        min: 0,
-                        max: 1,
-                        step: 0.01,
-                      },
-                    ] as const
-                  ).map((setting) => (
-                    <label
-                      key={setting.key}
-                      className="flex min-w-0 flex-col gap-1.5 rounded-lg bg-[var(--secondary)]/50 px-2.5 py-2 text-[0.625rem] text-[var(--muted-foreground)]"
-                    >
-                      <span className="flex items-center justify-between gap-2">
-                        <span className="font-medium text-[var(--foreground)]">{setting.label}</span>
-                        <span className="tabular-nums">
-                          {setting.key === "semanticSummaryMinSimilarity" ? setting.value.toFixed(2) : setting.value}
-                        </span>
-                      </span>
-                      <input
-                        type="range"
-                        min={setting.min}
-                        max={setting.max}
-                        step={setting.step}
-                        value={setting.value}
-                        disabled={metadata.semanticSummaryRetrievalEnabled !== true}
-                        aria-label={setting.label}
-                        onChange={(event) =>
-                          updateMeta.mutate({ id: chat.id, [setting.key]: Number(event.target.value) })
-                        }
-                        className="h-8 w-full cursor-pointer accent-[var(--primary)] disabled:cursor-not-allowed"
-                      />
-                    </label>
-                  ))}
-                </div>
-              </div>
             </Section>
           )}
 

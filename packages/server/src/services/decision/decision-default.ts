@@ -32,6 +32,7 @@ import { askNoulQuestions, DECISION_CHOICE_NONE, type NoulQuestion } from "./sys
 const SIDECAR_STATE_HEADROOM_TOKENS = 512;
 
 export interface DecisionBackend {
+  model?: string;
   debugMode?: boolean;
   inspection?: DecisionDebugReport;
   /** The budget a state is capped to before it is sent. */
@@ -147,6 +148,7 @@ async function chatBackend(
   const thinks =
     target.thinking === "allowed" || (target.thinking === "auto" && getAnswerStyle(target.modelIdentity) === "thinks");
   return {
+    model: target.model,
     debugMode: deps.debugMode,
     inspection: deps.inspection,
     maxStateTokens,
@@ -255,6 +257,7 @@ export async function resolveDecisionBackend(
           }),
         );
       return {
+        model: resolved.model,
         debugMode: deps.debugMode,
         inspection: deps.inspection,
         maxStateTokens,
@@ -317,6 +320,7 @@ export async function resolveDecisionBackend(
       inspection: deps.inspection,
     });
   return {
+    model: connection.model,
     debugMode: deps.debugMode,
     inspection: deps.inspection,
     maxStateTokens: connection.maxStateTokens,

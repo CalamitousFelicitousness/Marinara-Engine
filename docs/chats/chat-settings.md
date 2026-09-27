@@ -58,7 +58,7 @@ Marinara reserves **preset** for prompt presets. A prompt preset shapes the syst
 
 The **Chat Variables** section lets you give a name to a piece of text and reuse it by typing that name in double braces. Add a variable called `char1` with the value `Mary`, then write `{{char1}} walks in.` in a message. The AI reads "Mary walks in."
 
-Each row has a **name** and a **value**. Names use letters, numbers, and underscores, and must start with a letter or underscore. A name that belongs to a built-in macro, such as `char` or `user`, is refused, because the built-in one always wins. Press Enter or click outside a field to save it. The trash button removes a variable.
+Each row has a **name** and a **value**. Names use letters, numbers, and underscores, and must start with a letter or underscore. Names with exactly 21 characters are reserved for character references. A name that belongs to a built-in macro, such as `char` or `user`, is refused, because the built-in one always wins. Press Enter or click outside a field to save it. The trash button removes a variable.
 
 Three things are worth knowing.
 

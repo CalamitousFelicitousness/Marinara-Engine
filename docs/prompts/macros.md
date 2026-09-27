@@ -213,7 +213,7 @@ You do not have to use `{{setvar}}` to create a variable. The **Chat Variables**
 
 Rules worth knowing:
 
-- Names use letters, numbers, and underscores, and must start with a letter or underscore. A name with a dot or a dash can still be set and read with `{{setvar}}` and `{{getvar}}`, but it will not resolve as a bare `{{name}}`.
+- Names use letters, numbers, and underscores, and must start with a letter or underscore. Names with exactly 21 characters are reserved for character references. A name with a dot or a dash can still be set and read with `{{setvar}}` and `{{getvar}}`, but it will not resolve as a bare `{{name}}`.
 - A built-in macro name cannot be used. `{{char}}` always means the character.
 - Your own message keeps showing the tag you typed. The value is filled in when the prompt is built, so changing a value later also changes the earlier turns that used it.
 - The section lists variables set by `{{setvar}}` too, because they share one storage per chat.

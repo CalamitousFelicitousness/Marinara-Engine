@@ -631,6 +631,7 @@ function macroContextForCharacterProfile(profile: CharacterMacroProfile, base?: 
     characterProfiles: base?.characterProfiles ?? [profile],
     variables: base?.variables ?? {},
     localVariables: base?.localVariables,
+    deferredPresetVariableNames: base?.deferredPresetVariableNames,
     lastInput: base?.lastInput,
     chatId: base?.chatId,
     model: base?.model,

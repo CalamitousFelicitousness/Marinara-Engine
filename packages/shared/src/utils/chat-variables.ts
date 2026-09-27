@@ -8,7 +8,7 @@
 // read back as `{{story.day}}`. Values written by `{{setvar}}` keep their
 // original names and stay editable.
 
-import { SUPPORTED_MACROS } from "./macro-engine.js";
+import { CHARACTER_REFERENCE_ID_PATTERN, SUPPORTED_MACROS } from "./macro-engine.js";
 
 /** Names addressable as a bare `{{name}}`: letter or underscore first, 64 chars max. */
 export const CHAT_VARIABLE_NAME_RE = /^[A-Za-z_]\w{0,63}$/;
@@ -89,7 +89,8 @@ export function validateChatVariableName(name: string, existing?: Iterable<strin
   const trimmed = name.trim();
   if (!trimmed) return "empty";
   if (!CHAT_VARIABLE_NAME_RE.test(trimmed)) return "format";
-  if (isReservedMacroName(trimmed)) return "reserved";
+  if (isReservedMacroName(trimmed) || new RegExp(CHARACTER_REFERENCE_ID_PATTERN.source).test(`{{${trimmed}}}`))
+    return "reserved";
   if (existing) {
     for (const other of existing) {
       if (other === trimmed) return "duplicate";

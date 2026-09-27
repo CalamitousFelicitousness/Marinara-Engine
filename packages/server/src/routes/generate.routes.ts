@@ -3237,6 +3237,8 @@ export async function generateRoutes(app: FastifyInstance) {
             knowledgeRouterActivationPassCompleted = true;
           }
           finalMessages = assembled.messages;
+          // Agent previews are built before the provider-boundary pass.
+          decodeDeferredPresetConditionals(finalMessages, promptMacroContext);
           advancedMemoryPlacements = assembled.advancedMemoryPlacements ?? [];
           presetOwnsAgentPlacement = true;
           characterAdvancedPromptsInjected = true;

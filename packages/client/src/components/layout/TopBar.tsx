@@ -639,8 +639,13 @@ function TopbarMoreMenu({
       aria-label={t("navigation.topbar.moreMenu")}
       data-component="TopbarMoreMenu"
       onKeyDown={handleMenuKeyDown}
-      style={{ top: menuTop + 4, maxHeight: `calc(100dvh - ${menuTop + 12}px)` }}
-      className="mari-chrome-token-scope fixed right-[max(0.5rem,env(safe-area-inset-right))] z-[9000] w-[min(16.5rem,calc(100vw-1rem))] overflow-y-auto overscroll-contain rounded-xl border border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--card)] p-1.5 text-[var(--foreground)] shadow-2xl backdrop-blur-xl"
+      style={{
+        top: menuTop + 4,
+        maxHeight: `calc(100dvh - ${menuTop + 12}px)`,
+        backgroundColor: "var(--background)",
+        backgroundImage: "linear-gradient(var(--card), var(--card))",
+      }}
+      className="mari-chrome-token-scope fixed right-[max(0.5rem,env(safe-area-inset-right))] z-[9000] w-[min(16.5rem,calc(100vw-1rem))] overflow-y-auto overscroll-contain rounded-xl border border-[var(--marinara-chat-chrome-panel-border)] p-1.5 text-[var(--foreground)] shadow-2xl"
     >
       {items.map((item) => (
         <button

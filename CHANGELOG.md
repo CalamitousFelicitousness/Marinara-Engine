@@ -6,6 +6,12 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - Chats can name their own variables in a **Chat Variables** section of **Chat Settings**. Define `char1` as `Mary`, type `{{char1}}` in a message, and the AI reads Mary while your message keeps showing the tag, so changing the value also changes earlier turns. Values are per chat, survive restarts, and share storage with `{{setvar}}`, which lists prompt-set variables there too and still overwrites a name it also uses. Any remaining `{{name}}` resolves from preset variables first, then chat variables; an unknown name is still left as typed, and a name that is a built-in macro cannot be created.
 
+- Regex packs can be selected, exported, and deleted in bulk, with one confirmation and failed deletions retained for retry (#6755).
+- Generation Settings can disable automatic character/persona gallery entries while keeping illustrations and selfies in chat. NovelAI image inspectors now include character captions alongside the scene prompt (#6752, #6748).
+- Conversation's Tools tray always offers **Translate draft**, including on mobile with the optional composer shortcut and automatic translation turned off (#6751).
+- Roleplay supports `/illustrate range=N` and `/illustrate range=N-M` for earlier messages, including before an Advanced Memory boundary, without branching or deleting history. Concurrent range lookups cannot start duplicate illustrations (#6722).
+
+- Client builds no longer depend on whether the checkout folder contains `react`. The restart regression allows cold CI servers more time for their first boot while keeping the normal restart deadline (#6732, #6743).
 - Game Mode rulesets whose fights throw pools can keep initiative as a number that attacks move. It opens as a thrown pool plus a number, one way of attacking takes it from the target instead of hurting them, another spends it as the damage dice and resets it on a hit or loses what the ruleset sets on a miss, and whoever falls to the ruleset's crash line crashes, cannot spend until they recover, and may carry a condition of the ruleset's own. The order follows the numbers every round, the menu asks which way to attack before whom, and the log says every change. Capability API 1.48 (#6740).
 
 - Claude Subscription now bundles a Claude Code runtime compatible with Opus 5.5, avoiding the older-runtime rejection even when a newer global Claude Code installation is present (#6693, #6711).

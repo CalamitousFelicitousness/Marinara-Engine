@@ -1,6 +1,19 @@
 import { createPortal } from "react-dom";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
-import { Check, Download, FileText, GitBranch, Loader2, MessageSquare, Pencil, Trash2, Upload, X } from "lucide-react";
+import {
+  Check,
+  Download,
+  Eye,
+  FileText,
+  GitBranch,
+  Loader2,
+  Maximize2,
+  MessageSquare,
+  Pencil,
+  Trash2,
+  Upload,
+  X,
+} from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -14,15 +27,17 @@ import {
 import { showConfirmDialog, showPromptDialog } from "../../lib/app-dialogs";
 import { CHAT_FLOATING_UI_DISMISS_EVENT, isDesktopShellNavigationTarget } from "../../lib/chat-floating-ui-events";
 import { getChatDisplayName } from "../../lib/chat-display";
-import { compareChatsByActivityDesc } from "../../lib/chat-recency";
+import { orderBranches } from "../../lib/chat-branch-preview";
 import { api } from "../../lib/api-client";
 import { useChatStore } from "../../stores/chat.store";
+import { useUIStore } from "../../stores/ui.store";
 import { cn } from "../../lib/utils";
 import {
   CHAT_TOOLBAR_OVERFLOW_MENU_SELECTOR,
   announceChatToolbarAction,
   getChatToolbarButtonClass,
 } from "./ChatToolbarControls";
+import { ChatBranchTail } from "./ChatBranchTail";
 import {
   NEUTRAL_PANEL_CLOSE_BUTTON,
   NEUTRAL_PANEL_CLOSE_ICON_SIZE,
@@ -62,6 +77,7 @@ export function ChatBranchSelector({
   const { t: localizeUi } = useUiTranslation();
   const { data: groupChats, isLoading } = useChatGroup(groupId ?? null);
   const setActiveChatId = useChatStore((s) => s.setActiveChatId);
+  const openModal = useUIStore((s) => s.openModal);
   const exportChat = useExportChat();
   const deleteChat = useDeleteChat();
   const deleteChatGroup = useDeleteChatGroup();
@@ -78,15 +94,7 @@ export function ChatBranchSelector({
     width: 280,
   });
 
-  const branches = useMemo(() => {
-    const rows = [...(groupChats ?? [])];
-    rows.sort((left, right) => {
-      if (left.id === activeChatId) return -1;
-      if (right.id === activeChatId) return 1;
-      return compareChatsByActivityDesc(left, right);
-    });
-    return rows;
-  }, [activeChatId, groupChats]);
+  const branches = useMemo(() => orderBranches(groupChats ?? [], activeChatId), [activeChatId, groupChats]);
 
   const displayBranches = useMemo<BranchRow[]>(() => {
     if (branches.length > 0) return branches;
@@ -148,6 +156,11 @@ export function ChatBranchSelector({
     } finally {
       setIsImporting(false);
     }
+  };
+
+  const openBranchBrowser = (branchId: string, startInPreview: boolean) => {
+    setOpen(false);
+    openModal("chat-branch-browser", { groupId: groupId ?? null, initialBranchId: branchId, startInPreview });
   };
 
   const handleRenameBranch = async (branch: BranchRow) => {
@@ -311,14 +324,25 @@ export function ChatBranchSelector({
                     {localizeUi("ui.chat.chatbranchselector.switchImportExportOrCleanUpThisChatS")}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setOpen(false)}
-                  aria-label={localizeUi("ui.chat.chatbranchselector.closeChatBranches")}
-                  className={NEUTRAL_PANEL_CLOSE_BUTTON}
-                >
-                  <X size={NEUTRAL_PANEL_CLOSE_ICON_SIZE} />
-                </button>
+                <div className="flex shrink-0 items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => openBranchBrowser(activeChatId, false)}
+                    aria-label={localizeUi("chat.branches.openBrowser")}
+                    title={localizeUi("chat.branches.openBrowser")}
+                    className={NEUTRAL_PANEL_CLOSE_BUTTON}
+                  >
+                    <Maximize2 size={NEUTRAL_PANEL_CLOSE_ICON_SIZE} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOpen(false)}
+                    aria-label={localizeUi("ui.chat.chatbranchselector.closeChatBranches")}
+                    className={NEUTRAL_PANEL_CLOSE_BUTTON}
+                  >
+                    <X size={NEUTRAL_PANEL_CLOSE_ICON_SIZE} />
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -358,18 +382,12 @@ export function ChatBranchSelector({
             <div className={cn(NEUTRAL_PANEL_SCROLL_AREA, "max-h-[min(22rem,calc(100vh-12rem))] overflow-y-auto p-2")}>
               {displayBranches.map((branch) => {
                 const isActive = branch.id === activeChatId;
-                const updatedAt = new Date(branch.updatedAt).toLocaleString(undefined, {
-                  month: "short",
-                  day: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                });
 
                 return (
                   <div
                     key={branch.id}
                     className={cn(
-                      "flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors",
+                      "flex w-full items-center gap-2 rounded-xl px-2.5 py-1.5 text-left transition-colors",
                       isActive ? "bg-[var(--accent)]/70 text-[var(--foreground)]" : "hover:bg-[var(--accent)]/45",
                     )}
                   >
@@ -379,28 +397,37 @@ export function ChatBranchSelector({
                         setActiveChatId(branch.id);
                         setOpen(false);
                       }}
-                      className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                      className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
                     >
                       <div
                         className={cn(
-                          "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl",
+                          "flex h-6 w-6 shrink-0 items-center justify-center rounded-lg",
                           isActive
                             ? "bg-[var(--foreground)]/15 text-[var(--foreground)]"
                             : "bg-[var(--secondary)] text-[var(--muted-foreground)]",
                         )}
                       >
-                        {isActive ? <Check size="0.875rem" /> : <MessageSquare size="0.875rem" />}
+                        {isActive ? <Check size="0.75rem" /> : <MessageSquare size="0.75rem" />}
                       </div>
 
                       <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-medium">{getChatDisplayName(branch)}</div>
-                        <div className="text-[0.6875rem] text-[var(--muted-foreground)]">
-                          {localizeUi("chat.branches.updatedAt", { date: updatedAt })}
-                        </div>
+                        <div className="truncate text-[0.8125rem] font-medium">{getChatDisplayName(branch)}</div>
+                        <ChatBranchTail chatId={branch.id} updatedAt={branch.updatedAt} />
                       </div>
                     </button>
 
-                    <div className="flex shrink-0 items-center gap-1">
+                    <div className="flex shrink-0 items-center gap-0.5">
+                      <button
+                        type="button"
+                        onClick={() => openBranchBrowser(branch.id, true)}
+                        className="rounded-lg p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+                        title={localizeUi("chat.branches.preview")}
+                        aria-label={localizeUi("chat.branches.previewLabel", {
+                          name: getChatDisplayName(branch),
+                        })}
+                      >
+                        <Eye size="0.75rem" />
+                      </button>
                       <button
                         type="button"
                         onClick={() => void handleRenameBranch(branch)}

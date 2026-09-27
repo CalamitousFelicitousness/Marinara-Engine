@@ -1340,6 +1340,27 @@ Persist migration v96 -> v97 folds the short-lived density setting into the text
 (compact/standard/comfortable -> S/M/L). Width presets set width only now; pairing them with a text
 size would re-conflate the axes this work separated.
 
+### Branches can be read without switching to them
+
+Branch rows in the chat's branch popover showed only a name and a timestamp, and every new branch
+is named "New Branch", so siblings were told apart by opening each one. Each row now shows its
+message count and the newest visible line with its speaker (`ChatBranchTail`, reading the same
+four-message `useChatMessagePeek` window as the sidebar hover peek), plus a preview button. The
+popover header gains a button that opens the same browser on the active branch.
+
+The browser (`components/modals/ChatBranchBrowserModal.tsx`, modal type `chat-branch-browser`)
+lists the branches beside a transcript of the selected one. The transcript pages backwards 30
+messages at a time through `useChatTranscriptPreview`, keyed under `messagePeek` so a finished
+generation refreshes it, and inside a `flex-col-reverse` scroller so it opens at the newest message
+and holds its place as older pages load. A divider marks the branch point (`branchMessageId`), and
+the header names the parent branch. Below `sm` the list and transcript are separate screens.
+
+Patches to upstream files: `packages/client/src/components/chat/ChatBranchSelector.tsx`,
+`packages/client/src/components/layout/ModalRenderer.tsx`, `packages/client/src/hooks/use-chats.ts`,
+and `packages/client/src/localization/locales/en.json`.
+
+Covered by `scripts/regressions/chat-branch-preview.regression.ts`.
+
 ### Sync with upstream, 2026-09-27
 
 1141 upstream commits (865 non-merge, 133 PRs) over sixteen days, merge base `8906861ac`, v2.4.5 to

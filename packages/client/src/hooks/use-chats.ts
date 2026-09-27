@@ -429,6 +429,32 @@ export function useChatMessagePeek(chatId: string | null, limit = 4, enabled = f
   });
 }
 
+/**
+ * Read-only transcript of another chat, newest page first, paging backwards on demand.
+ * Keyed under `messagePeek` for the same reason as `useChatMessagePeek`, and so the
+ * post-generation `messagePeek` invalidation refreshes an open preview.
+ */
+export function useChatTranscriptPreview(chatId: string | null, pageSize: number, enabled = true) {
+  return useInfiniteQuery({
+    queryKey: [...chatKeys.messagePeek(chatId ?? ""), "transcript", pageSize],
+    queryFn: ({ pageParam, signal }) => {
+      const params = new URLSearchParams({ limit: String(pageSize) });
+      if (pageParam) params.set("before", pageParam);
+      return api
+        .get<Message[]>(`/chats/${chatId}/messages?${params.toString()}`, { signal })
+        .then((messages) => messages.map(normalizeHydratedMessage));
+    },
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => {
+      const oldestLoaded = lastPage[0];
+      if (lastPage.length < pageSize || !oldestLoaded) return undefined;
+      return `${oldestLoaded.createdAt}|${encodeURIComponent(oldestLoaded.id)}`;
+    },
+    enabled: !!chatId && enabled,
+    staleTime: 15_000,
+  });
+}
+
 export function useChatMessageCount(chatId: string | null) {
   return useQuery({
     queryKey: chatKeys.messageCount(chatId ?? ""),

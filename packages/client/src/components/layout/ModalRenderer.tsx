@@ -69,6 +69,9 @@ const StartCharacterChatModal = lazy(() =>
     default: module.StartCharacterChatModal,
   })),
 );
+const ChatBranchBrowserModal = lazy(() =>
+  import("../modals/ChatBranchBrowserModal").then((module) => ({ default: module.ChatBranchBrowserModal })),
+);
 
 export function ModalRenderer() {
   const modal = useUIStore((s) => s.modal);
@@ -195,6 +198,17 @@ export function ModalRenderer() {
           onClose={closeModal}
           characterId={(modal?.props?.characterId as string) ?? ""}
           characterName={(modal?.props?.characterName as string) ?? ""}
+        />
+      );
+      break;
+    case "chat-branch-browser":
+      content = (
+        <ChatBranchBrowserModal
+          open
+          onClose={closeModal}
+          groupId={(modal?.props?.groupId as string | null) ?? null}
+          initialBranchId={(modal?.props?.initialBranchId as string | null) ?? null}
+          startInPreview={modal?.props?.startInPreview === true}
         />
       );
       break;

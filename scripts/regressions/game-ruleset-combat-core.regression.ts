@@ -99,6 +99,9 @@ const emberText = (() => {
   delete doc.combat.checks;
   delete doc.combat.contests;
   withoutConditionNumbers(doc);
+  // And 1.49's items block, with the catalog written in it.
+  delete doc.items;
+  doc.catalogs = doc.catalogs.filter((catalog: { holds?: string }) => catalog.holds !== "items");
   return JSON.stringify(doc);
 })();
 

@@ -988,6 +988,38 @@ Capability API 1.48, for #6740. The second Storyteller slice: initiative as a nu
   seeded fights, a Game Master's styled choice and a player's command in
   `scripts/regressions/ruleset-combat-director.regression.ts`.
 
+### What the item format settled
+
+Capability API 1.49, for #6765. The first slice of the ruleset items plan: what an item is, and the
+words a ruleset declares for its items. No runtime reads it yet.
+
+- **The `items` block.** Categories (at least one), rarities, tags, stats declared like list columns
+  (with `promptVisible`), slots with counts, `binding` (a label and a maximum), `carry` (the weight
+  stat, `encumberedAbove` and an optional `limit`), currency families, `native` (default `true`) and
+  `freeform` (`"plain"` or `"refuse"`). Binding and carry values are value references read without
+  the live state, as a pool's maximum is. The weight stat is a number whose `min` is 0 or more.
+- **Currencies.** A family's `value`s count its smallest coin, so one coin is worth 1 and no two are
+  worth the same. Unit ids are unique across families, because a cost names a unit alone, and
+  `perWeight` needs `carry`. Two families never change into each other.
+- **A third catalog kind.** `holds: "items"` declares no `feeds` and needs the `items` block. An entry
+  has exactly one of `rows`, `creature` or `item`, and an item carries no `mechanics`. The kind check
+  generalises the bestiary's ("one catalog, one kind of entry"), and a header read without the
+  schema's default counts as rows. The sheet picker and the fight both choose catalogs by `feeds` or
+  by `holds`, so neither ever reads an item catalog; the Game Master's `op="use"` line is now taught
+  only for a catalog of rows.
+- **An item** names its category, rarity and tags from the block, fills declared stats with values
+  each stat could hold (the list-row check, reused with the noun "Stat"), takes no more of a slot
+  than a character has, stacks at most `GAME_INVENTORY_MAX_QUANTITY`, costs a whole amount of a
+  declared unit, and binds only where the ruleset declares binding.
+- **Kept for the slices that act on them:** worn and carried effects, requirements and `itemStat`
+  (I4), attacks (I5), use and charges (I6), rarity caps and invention (I3), loot tables and a layer
+  removing a unit (I7). Each arrives with the slice that acts on it.
+- **Examples.** Gravewatch binds tokens against Nerve and pays in one weightless coin; Ember Roads
+  carries by bulk against a new `load` derived value and pays in coin and salt.
+- **Proven** by `scripts/regressions/game-ruleset-items.regression.ts` (both examples, every refusal
+  of the block and of an item, a catalog file, the published schema, the `use` line and the 1.49
+  gate inline and in a file), with 39 deliberate breaks each caught.
+
 ## Gaps a ruleset author found
 
 The author of [Marinara-RPG-Extension](https://github.com/Kenhito/Marinara-RPG-Extension), who

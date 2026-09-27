@@ -207,6 +207,14 @@
         "section": "gear"
       },
       {
+        "$comment": "What a traveller carries before the road slows them. The items block's carry reads it.",
+        "id": "load",
+        "label": "Load",
+        "op": "sum",
+        "of": [{ "const": 6 }, { "abilityMod": "brawn" }],
+        "section": "gear"
+      },
+      {
         "id": "strain_boxes",
         "label": "Strain boxes",
         "op": "sum",
@@ -464,6 +472,66 @@
         }
       ]
     }
+  },
+  "items": {
+    "$comment": "The words every item of Ember Roads is written in. Bulk is what an item weighs: a traveller carries their Load before the road slows them and twelve at the most. Coin and salt are two families: a moneychanger will not take salt, and a caravan will not take coin.",
+    "categories": [
+      { "id": "weapon", "label": "Weapon" },
+      { "id": "armor", "label": "Armor" },
+      { "id": "ammunition", "label": "Ammunition" },
+      { "id": "provisions", "label": "Provisions" },
+      { "id": "gear", "label": "Gear" }
+    ],
+    "rarities": [
+      { "id": "common", "label": "Common" },
+      { "id": "uncommon", "label": "Uncommon" },
+      { "id": "storied", "label": "Storied" }
+    ],
+    "tags": [
+      { "id": "thrown", "label": "Thrown" },
+      { "id": "ranged", "label": "Ranged" },
+      { "id": "two_handed", "label": "Two-handed" }
+    ],
+    "stats": [
+      { "id": "bulk", "label": "Bulk", "type": "number", "min": 0, "max": 10, "default": 0 },
+      { "id": "guard", "label": "Guard", "type": "number", "min": 0, "max": 4, "default": 0 },
+      { "id": "damage", "label": "Damage", "type": "dice", "example": "1d6" },
+      {
+        "id": "swing",
+        "label": "Rolls with",
+        "type": "enum",
+        "values": ["brawn", "wits", "heart"],
+        "default": "brawn"
+      },
+      { "id": "reach", "label": "Reach", "type": "enum", "values": ["close", "near", "far"], "default": "close" }
+    ],
+    "slots": [
+      { "id": "body", "label": "Body", "count": 1 },
+      { "id": "hands", "label": "Hands", "count": 2 }
+    ],
+    "carry": { "stat": "bulk", "encumberedAbove": { "derived": "load" }, "limit": { "const": 12 } },
+    "currencies": [
+      {
+        "id": "coin",
+        "label": "Coin",
+        "perWeight": 100,
+        "units": [
+          { "id": "bit", "label": "bits", "value": 1 },
+          { "id": "mark", "label": "marks", "value": 10 },
+          { "id": "sovereign", "label": "sovereigns", "value": 100 }
+        ]
+      },
+      {
+        "$comment": "Salt is heavy: ten pinches weigh one bulk, where it takes a hundred coins.",
+        "id": "salt",
+        "label": "Salt",
+        "perWeight": 10,
+        "units": [
+          { "id": "pinch", "label": "pinches", "value": 1 },
+          { "id": "cake", "label": "cakes", "value": 20 }
+        ]
+      }
+    ]
   },
   "catalogs": [
     {
@@ -1027,6 +1095,82 @@
               }
             }
           }
+        }
+      ]
+    },
+    {
+      "$comment": "What the outfitter at the last town sells. A catalog of items writes nothing onto the sheet, so it feeds no list.",
+      "id": "outfitter",
+      "label": "Outfitter",
+      "holds": "items",
+      "entries": [
+        {
+          "id": "hand-axe",
+          "label": "Hand axe",
+          "summary": "Good for kindling, and for throwing when there is no time to chop.",
+          "item": {
+            "category": "weapon",
+            "rarity": "common",
+            "tags": ["thrown"],
+            "stats": { "bulk": 1, "damage": "1d6", "swing": "brawn", "reach": "close" },
+            "slots": { "hands": 1 },
+            "cost": { "amount": 4, "unit": "mark" }
+          }
+        },
+        {
+          "id": "hunting-bow",
+          "label": "Hunting bow",
+          "summary": "Yew, waxed string, and a grip worn smooth by someone else's hand.",
+          "item": {
+            "category": "weapon",
+            "rarity": "common",
+            "tags": ["ranged", "two_handed"],
+            "stats": { "bulk": 2, "damage": "1d8", "swing": "wits", "reach": "far" },
+            "slots": { "hands": 2 },
+            "cost": { "amount": 3, "unit": "sovereign" }
+          }
+        },
+        {
+          "id": "arrows",
+          "label": "Arrows",
+          "summary": "Goose-feathered and iron-tipped, twenty to a quiver.",
+          "item": {
+            "category": "ammunition",
+            "rarity": "common",
+            "stats": { "bulk": 1 },
+            "stack": 20,
+            "cost": { "amount": 1, "unit": "mark" }
+          }
+        },
+        {
+          "id": "leather-coat",
+          "label": "Leather coat",
+          "summary": "Stiff, scarred and warm, and it has turned a knife before.",
+          "item": {
+            "category": "armor",
+            "rarity": "common",
+            "stats": { "bulk": 3, "guard": 1 },
+            "slots": { "body": 1 },
+            "cost": { "amount": 2, "unit": "sovereign" }
+          }
+        },
+        {
+          "id": "road-rations",
+          "label": "Road rations",
+          "summary": "A day of hard bread and harder cheese.",
+          "item": {
+            "category": "provisions",
+            "rarity": "common",
+            "stats": { "bulk": 1 },
+            "stack": 7,
+            "cost": { "amount": 5, "unit": "bit" }
+          }
+        },
+        {
+          "id": "waystone",
+          "label": "Waystone",
+          "summary": "A smooth stone from the first milestone of the old road. Caravan folk sell them for salt, never for coin.",
+          "item": { "category": "gear", "rarity": "storied", "cost": { "amount": 2, "unit": "cake" } }
         }
       ]
     }

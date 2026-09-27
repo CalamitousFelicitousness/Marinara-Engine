@@ -598,6 +598,9 @@ try {
     for (const rest of document.rests) {
       rest.restore = rest.restore.filter((step: { state?: string }) => step.state === undefined);
     }
+    // And 1.49's items block, with the catalog written in it.
+    delete document.items;
+    document.catalogs = document.catalogs.filter((catalog: { holds?: string }) => catalog.holds !== "items");
     // And 1.47's fight, with the bestiary written in its numbers and the charms it offers.
     delete document.combat;
     document.catalogs = (document.catalogs ?? []).filter(

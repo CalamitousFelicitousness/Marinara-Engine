@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { GAME_INVENTORY_MAX_QUANTITY } from "../utils/game-inventory-stacks.js";
 
 // Game Mode rulesets. A ruleset is validated DATA: it parameterises one of a closed set of
 // Engine-owned resolution kinds and declares a character sheet from a closed set of primitives.
@@ -1818,6 +1819,93 @@ export const rulesetCreatureSchema = z
     }
   });
 
+// ── Items: the vocabulary every item of the ruleset is written in ──
+
+/** A category, rarity or tag: a name the ruleset's items use, and what it is shown as. */
+const itemWordSchema = z.object({ id: sheetId, label }).strict();
+
+/** A number or word every item may carry, declared exactly like a list column. `promptVisible` says
+ *  whether the Game Master is shown it beside the item. */
+const itemStatBase = { id: sheetId, label, promptVisible: z.boolean().default(true) };
+export const rulesetItemStatSchema = z.discriminatedUnion("type", [
+  z.object({ ...itemStatBase, ...numberFieldShape }).strict(),
+  z.object({ ...itemStatBase, ...textFieldShape }).strict(),
+  z.object({ ...itemStatBase, ...booleanFieldShape }).strict(),
+  z.object({ ...itemStatBase, ...enumFieldShape }).strict(),
+  z.object({ ...itemStatBase, ...diceFieldShape }).strict(),
+]);
+
+/** Where an item is worn or held, and how many a character has of it: one body, two hands. */
+const itemSlotSchema = z.object({ id: sheetId, label, count: z.number().int().min(1).max(20) }).strict();
+
+/** One coin of a family. `value` is how many of the family's smallest unit it is worth. */
+const currencyUnitSchema = z
+  .object({ id: sheetId, label: promptSafeText(40), value: z.number().int().min(1).max(1_000_000) })
+  .strict();
+
+/** Coins that change into each other by value. Two families never do: a second nation's coin, or a
+ *  setting's favours, is a family of its own. `perWeight` is how many of its coins weigh one unit of
+ *  the carry stat. */
+const currencyFamilySchema = z
+  .object({
+    id: sheetId,
+    label,
+    perWeight: z.number().finite().gt(0).optional(),
+    units: z.array(currencyUnitSchema).min(1).max(10),
+  })
+  .strict();
+
+const itemsSchema = z
+  .object({
+    categories: z.array(itemWordSchema).min(1).max(24),
+    rarities: z.array(itemWordSchema).max(12).optional(),
+    tags: z.array(itemWordSchema).max(48).optional(),
+    stats: z.array(rulesetItemStatSchema).max(24).optional(),
+    slots: z.array(itemSlotSchema).max(12).optional(),
+    /** Attunement, investiture and the like: how many items one character may have bound at once,
+     *  read off their sheet. */
+    binding: z
+      .object({ label: promptSafeText(40), max: rulesetValueRefSchema })
+      .strict()
+      .optional(),
+    /** Which stat is an item's weight, and what a character carries before they are encumbered and
+     *  at most, read off their sheet. Without it weight means nothing and nobody is encumbered. */
+    carry: z
+      .object({ stat: sheetId, encumberedAbove: rulesetValueRefSchema, limit: rulesetValueRefSchema.optional() })
+      .strict()
+      .optional(),
+    currencies: z.array(currencyFamilySchema).max(6).optional(),
+    /** False turns Game Mode's own untyped items off in this ruleset's games. */
+    native: z.boolean().default(true),
+    /** What an item the player types in becomes: a plain item, or nothing at all. */
+    freeform: z.enum(["plain", "refuse"]).default("plain"),
+  })
+  .strict();
+
+/** What a catalog entry of `holds: "items"` is. Every name in it is one the `items` block declares. */
+const catalogItemSchema = z
+  .object({
+    category: sheetId,
+    rarity: sheetId.optional(),
+    tags: z.array(sheetId).max(16).optional(),
+    /** Values for the declared stats, each one its stat could hold. */
+    stats: z.record(sheetScalar).optional(),
+    /** How many of each slot the item takes while worn or held. */
+    slots: z.record(z.number().int().min(1).max(20)).optional(),
+    /** The most one stack holds. Without it a stack holds as many as any Game Mode stack. */
+    stack: z.number().int().min(1).max(GAME_INVENTORY_MAX_QUANTITY).optional(),
+    cost: z
+      .object({ amount: z.number().int().min(0).max(1_000_000_000), unit: sheetId })
+      .strict()
+      .optional(),
+    /** The item has to be bound (attuned, invested) before it does anything while worn. */
+    binds: z
+      .object({ restriction: catalogText(200).optional(), cursed: z.boolean().optional() })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
 const catalogEntrySchema = z
   .object({
     id: z.string().max(80).regex(RULESET_ID_PATTERN, "An entry id is lowercase letters, digits and single hyphens"),
@@ -1834,17 +1922,30 @@ const catalogEntrySchema = z
     /** An opponent instead of rows. An entry is one or the other, never both: rows are picked onto
      *  a character sheet and a creature is put on the other side of a fight. */
     creature: rulesetCreatureSchema.optional(),
+    /** A thing to carry instead: it goes into Game Mode's inventory, not onto a sheet or into a fight. */
+    item: catalogItemSchema.optional(),
   })
   .strict()
   .superRefine((entry, ctx) => {
-    if ((entry.rows === undefined) === (entry.creature === undefined)) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'An entry has exactly one of "rows" or "creature"' });
+    const kinds = [entry.rows, entry.creature, entry.item].filter((kind) => kind !== undefined).length;
+    if (kinds !== 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'An entry has exactly one of "rows", "creature" or "item"',
+      });
     }
     if (entry.creature && entry.mechanics) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["mechanics"],
         message: "A creature says what it does in its own actions, so it carries no mechanics",
+      });
+    }
+    if (entry.item && entry.mechanics) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["mechanics"],
+        message: "An item is written only in its item block, so it carries no mechanics",
       });
     }
   });
@@ -1854,9 +1955,9 @@ const catalogSchema = z
     id: sheetId,
     label,
     /** What this catalog's entries are. `rows` is the picker's own kind, offered on every list the
-     *  catalog feeds; `creatures` is a bestiary, which writes nothing onto a sheet and is never
-     *  offered by the picker at all. */
-    holds: z.enum(["rows", "creatures"]).default("rows"),
+     *  catalog feeds; `creatures` is a bestiary and `items` the things a party carries. Neither of
+     *  those writes anything onto a sheet, so the picker never offers them at all. */
+    holds: z.enum(["rows", "creatures", "items"]).default("rows"),
     /** The sheet lists this catalog's entries may write rows into. */
     feeds: z.array(sheetId).min(1).max(8).optional(),
     filters: z.array(catalogFilterSchema).max(8).optional(),
@@ -1885,14 +1986,14 @@ const catalogSchema = z
     if ((catalog.entries === undefined) === (catalog.asset === undefined)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'A catalog has exactly one of "entries" or "asset"' });
     }
-    // The picker offers a catalog on the lists it feeds, so a bestiary declaring feeds would be
-    // offered on a sheet it can write nothing into.
-    if (catalog.holds === "creatures") {
+    // The picker offers a catalog on the lists it feeds, so a bestiary or an item catalog declaring
+    // feeds would be offered on a sheet it can write nothing into.
+    if (catalog.holds !== "rows") {
       if (catalog.feeds !== undefined) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["feeds"],
-          message: "A catalog of creatures writes no rows, so it feeds no list",
+          message: `A catalog of ${catalog.holds} writes no rows, so it feeds no list`,
         });
       }
     } else if (catalog.feeds === undefined) {
@@ -2636,6 +2737,8 @@ const rulesetDefinitionBaseSchema = z
      *  catalogs still parses to exactly the bytes it did before. */
     catalogs: z.array(catalogSchema).max(12).optional(),
     /** Optional, and absent rather than empty, for the same reason as `catalogs`. */
+    items: itemsSchema.optional(),
+    /** Optional, and absent rather than empty, for the same reason as `catalogs`. */
     battle: battleSchema.optional(),
     /** Optional, and absent rather than empty, for the same reason as `catalogs`. */
     combat: combatSchema.optional(),
@@ -3033,7 +3136,10 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
 
   const fieldById = new Map(sheet.fields.map((field) => [field.id, field]));
   const checkTyped = (
-    item: z.infer<typeof rulesetFieldSchema> | z.infer<typeof rulesetListColumnSchema>,
+    item:
+      | z.infer<typeof rulesetFieldSchema>
+      | z.infer<typeof rulesetListColumnSchema>
+      | z.infer<typeof rulesetItemStatSchema>,
     path: (string | number)[],
   ) => {
     if (item.type === "number") {
@@ -3470,6 +3576,53 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       issue([...path, "onlyWhen"], "Must name a boolean column");
   });
 
+  if (def.items) {
+    const items = def.items;
+    const at = (...rest: (string | number)[]) => ["items", ...rest];
+    unique(items.categories, at("categories"), "item category");
+    unique(items.rarities ?? [], at("rarities"), "rarity");
+    unique(items.tags ?? [], at("tags"), "item tag");
+    unique(items.slots ?? [], at("slots"), "slot");
+    unique(items.stats ?? [], at("stats"), "item stat");
+    items.stats?.forEach((stat, index) => checkTyped(stat, at("stats", index)));
+    // Worked out without the live state, as a pool's maximum is: what a character may bind or carry
+    // is a number their sheet gives them, not one that moves with every blow.
+    if (items.binding) checkRef(items.binding.max, at("binding", "max"), derivedIds, false);
+    if (items.carry) {
+      const weight = items.stats?.find((stat) => stat.id === items.carry!.stat);
+      if (!weight) issue(at("carry", "stat"), `Unknown item stat "${items.carry.stat}"`);
+      else if (weight.type !== "number") issue(at("carry", "stat"), `Item stat "${weight.id}" is not a number`);
+      else if (weight.min < 0)
+        issue(at("carry", "stat"), `Item stat "${weight.id}" is a weight, so its min is 0 or more`);
+      checkRef(items.carry.encumberedAbove, at("carry", "encumberedAbove"), derivedIds, false);
+      if (items.carry.limit) checkRef(items.carry.limit, at("carry", "limit"), derivedIds, false);
+    }
+    unique(items.currencies ?? [], at("currencies"), "currency");
+    // An item's cost names a unit alone, so a unit id means one coin across every family.
+    const units = new Set<string>();
+    items.currencies?.forEach((family, familyIndex) => {
+      const path = at("currencies", familyIndex);
+      const values = new Set<number>();
+      family.units.forEach((unit, unitIndex) => {
+        if (units.has(unit.id)) issue([...path, "units", unitIndex, "id"], `Duplicate currency unit id "${unit.id}"`);
+        units.add(unit.id);
+        // Two units of one value would be the same coin twice, and change could be given in either.
+        if (values.has(unit.value)) {
+          issue(
+            [...path, "units", unitIndex, "value"],
+            `Another unit of "${family.id}" is already worth ${unit.value}`,
+          );
+        }
+        values.add(unit.value);
+      });
+      // Every value counts the family's smallest coin, so the smallest coin counts itself.
+      if (!values.has(1)) issue([...path, "units"], `The smallest unit of "${family.id}" is worth 1`);
+      if (family.perWeight !== undefined && !items.carry) {
+        issue([...path, "perWeight"], "Coins weigh something only when the items block has a carry block");
+      }
+    });
+  }
+
   const catalogs = def.catalogs ?? [];
   unique(catalogs, ["catalogs"], "catalog");
   catalogs.forEach((catalog, index) => {
@@ -3478,6 +3631,10 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
     // own: its budgets, its saves, its damage types and its threat scale.
     if (catalog.holds === "creatures" && !def.combat) {
       issue([...path, "holds"], "A catalog of creatures needs a combat block for its creatures to be written in");
+    }
+    // An item names its category, rarity, stats and slots, and those are the `items` block's.
+    if (catalog.holds === "items" && !def.items) {
+      issue([...path, "holds"], "A catalog of items needs an items block for its items to be written in");
     }
     (catalog.feeds ?? []).forEach((listId, feedIndex) => {
       if (!listById.has(listId)) issue([...path, "feeds", feedIndex], `Unknown list "${listId}"`);
@@ -4304,6 +4461,10 @@ export function parseRulesetDefinition(input: unknown): RulesetParseResult {
 
 export type RulesetCatalogHeader = z.infer<typeof catalogSchema>;
 export type RulesetCatalogEntry = z.infer<typeof catalogEntrySchema>;
+export type RulesetCatalogItem = z.infer<typeof catalogItemSchema>;
+export type RulesetItems = z.infer<typeof itemsSchema>;
+export type RulesetItemStat = z.infer<typeof rulesetItemStatSchema>;
+export type RulesetCurrencyFamily = z.infer<typeof currencyFamilySchema>;
 export type RulesetCatalogEntryRow = z.infer<typeof catalogEntryRowSchema>;
 /** The columns of one entry row the ruleset sets, keyed by column id. */
 export type RulesetCatalogScaled = z.infer<typeof catalogScaledSchema>;
@@ -4333,9 +4494,9 @@ export type RulesetCatalogEntriesById = Record<string, readonly RulesetCatalogEn
  *  fields have the same shapes as a list's columns, so a creature's fields are read by it too, and
  *  `noun` says which of the two a message is about. */
 export function rulesetListRowIssues(
-  list: { columns: ReadonlyArray<RulesetListColumn | RulesetField> },
+  list: { columns: ReadonlyArray<RulesetListColumn | RulesetField | RulesetItemStat> },
   values: Record<string, unknown>,
-  noun: "Column" | "Field" = "Column",
+  noun: "Column" | "Field" | "Stat" = "Column",
 ): string[] {
   const issues: string[] = [];
   const columns = new Map(list.columns.map((column) => [column.id, column]));
@@ -4654,6 +4815,53 @@ function creatureIssues(
 }
 
 /** Everything an entry must satisfy against the ruleset that declares it. */
+/** An item against the ruleset's `items` block: every name it uses is one the block declares, and
+ *  every stat value is one that stat could hold. */
+function itemIssues(
+  definition: RulesetDefinition,
+  item: RulesetCatalogItem,
+  at: (string | number)[],
+  add: (path: (string | number)[], message: string) => void,
+): void {
+  const items = definition.items;
+  if (!items) return add(at, "This ruleset has no items block, so there is nothing for an item to be written in");
+  if (!items.categories.some((category) => category.id === item.category)) {
+    add([...at, "category"], `Unknown item category "${item.category}"`);
+  }
+  if (item.rarity !== undefined) {
+    if (!items.rarities?.length) add([...at, "rarity"], "This ruleset declares no rarities");
+    else if (!items.rarities.some((rarity) => rarity.id === item.rarity)) {
+      add([...at, "rarity"], `Unknown rarity "${item.rarity}"`);
+    }
+  }
+  const tags = new Set((items.tags ?? []).map((tag) => tag.id));
+  const tagged = new Set<string>();
+  item.tags?.forEach((tag, index) => {
+    if (!tags.has(tag)) add([...at, "tags", index], `Unknown item tag "${tag}"`);
+    else if (tagged.has(tag)) add([...at, "tags", index], `Duplicate item tag "${tag}"`);
+    tagged.add(tag);
+  });
+  for (const message of rulesetListRowIssues({ columns: items.stats ?? [] }, item.stats ?? {}, "Stat")) {
+    add([...at, "stats"], message);
+  }
+  const slots = new Map((items.slots ?? []).map((slot) => [slot.id, slot]));
+  for (const [id, count] of Object.entries(item.slots ?? {})) {
+    const slot = slots.get(id);
+    if (!slot) add([...at, "slots", id], `Unknown slot "${id}"`);
+    else if (count > slot.count) add([...at, "slots", id], `A character has ${slot.count} of slot "${id}"`);
+  }
+  if (
+    item.cost &&
+    !(items.currencies ?? []).some((family) => family.units.some((unit) => unit.id === item.cost!.unit))
+  ) {
+    add(
+      [...at, "cost", "unit"],
+      items.currencies?.length ? `Unknown currency unit "${item.cost.unit}"` : "This ruleset declares no currencies",
+    );
+  }
+  if (item.binds && !items.binding) add([...at, "binds"], "This ruleset declares no binding, so nothing is bound");
+}
+
 export function rulesetCatalogEntryIssues(
   definition: RulesetDefinition,
   catalog: RulesetCatalogHeader,
@@ -4678,21 +4886,30 @@ export function rulesetCatalogEntryIssues(
     definition.sheet.live.pools.flatMap((pool) => [pool.id, ...(pool.group ? [pool.group] : [])]),
   );
 
-  const holdsCreatures = catalog.holds === "creatures";
+  // A header read straight from a file, rather than through the schema, has no default filled in.
+  const holds = catalog.holds ?? "rows";
 
   const seen = new Set<string>();
   entries.forEach((entry, index) => {
     if (seen.has(entry.id)) add([index, "id"], `Duplicate entry id "${entry.id}"`);
     seen.add(entry.id);
 
-    // One catalog, one kind of entry: the picker reads a catalog of rows and a fight reads a
-    // catalog of creatures, and neither has anything to do with the other's entries.
-    if (holdsCreatures && !entry.creature) {
-      add([index, "creature"], `Catalog "${catalog.id}" holds creatures, so every entry carries one`);
-    } else if (!holdsCreatures && entry.creature) {
-      add([index, "creature"], `Catalog "${catalog.id}" holds rows, so an entry cannot carry a creature`);
+    // One catalog, one kind of entry: the picker reads a catalog of rows, a fight a catalog of
+    // creatures and the inventory a catalog of items, and none of them reads the others' entries.
+    const kind = entry.creature ? "creatures" : entry.item ? "items" : "rows";
+    if (kind === "rows" && holds !== "rows") {
+      add(
+        [index, holds === "creatures" ? "creature" : "item"],
+        `Catalog "${catalog.id}" holds ${holds}, so every entry carries one`,
+      );
+    } else if (kind !== "rows" && kind !== holds) {
+      add(
+        [index, kind === "creatures" ? "creature" : "item"],
+        `Catalog "${catalog.id}" holds ${holds}, so an entry cannot carry ${kind === "creatures" ? "a creature" : "an item"}`,
+      );
     }
     if (entry.creature) creatureIssues(definition, entry.creature, [index, "creature"], add, narrowedByLayers);
+    if (entry.item) itemIssues(definition, entry.item, [index, "item"], add);
 
     for (const [filterId, value] of Object.entries(entry.filters ?? {})) {
       const filter = filterById.get(filterId);

@@ -7324,6 +7324,9 @@ export async function gameRoutes(app: FastifyInstance) {
         // compare as older than the inherited ones. (allocateWriteOrdinal's mirror floor covers
         // the same hazard, but the mirror is meaningless here regardless.)
         [METADATA_WRITE_ORDINALS_KEY]: _previousWriteOrdinals,
+        // The tellings of one of the previous session's turns: the stacks carry over, the record
+        // of how that turn was told does not.
+        gameInventoryTurn: _previousInventoryTurn,
         ...carryMeta
       } = prevMeta;
 

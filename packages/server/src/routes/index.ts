@@ -51,6 +51,7 @@ import { appSettingsRoutes } from "./app-settings.routes.js";
 import { achievementsRoutes } from "./achievements.routes.js";
 import { gameRoutes } from "./game.routes.js";
 import { combatDirectorRoutes } from "./combat-director.routes.js";
+import { gameInventoryRoutes } from "./game-inventory.routes.js";
 import { gameAssetsRoutes } from "./game-assets.routes.js";
 import { gameRulesetsRoutes } from "./game-rulesets.routes.js";
 import { turnGamesRoutes } from "./turn-games.routes.js";
@@ -120,6 +121,7 @@ export async function registerRoutes(app: FastifyInstance) {
   await app.register(achievementsRoutes, { prefix: "/api/achievements" });
   await app.register(gameRoutes, { prefix: "/api/game" });
   await app.register(combatDirectorRoutes, { prefix: "/api/game/combat/director" });
+  await app.register(gameInventoryRoutes, { prefix: "/api/game/inventory" });
   await app.register(gameAssetsRoutes, { prefix: "/api/game-assets" });
   await app.register(gameRulesetsRoutes, { prefix: "/api/game-rulesets" });
   await app.register(turnGamesRoutes, { prefix: "/api/turn-games" });

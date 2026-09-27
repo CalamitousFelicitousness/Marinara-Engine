@@ -4,7 +4,15 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
-- Phone navigation groups secondary panels under More while keeping Home and Chats within reach. Touch controls are easier to hit, and stacked dialogs keep keyboard focus in the active dialog without closing during IME composition (#6698).
+- Phone navigation keeps Home and Chats visible, moves secondary panels into a keyboard-accessible More menu, and improves touch targets and stacked-dialog focus (#6698).
+
+- Everyone in a Game Mode party carries their own things. The inventory opens on **All**, which shows who carries each stack, with a tab per party member; **Give** hands some or all of a stack to someone else, and dragging a stack onto a tab gives them all of it. The Game Master can say who gains, loses or hands over an item, and its inventory changes are now made by the server when the reply is saved, so they apply even when nobody is reading and a refused one is reported back to it. Every change saves the stacks, the detailed inventory and the journal together, including items a fight uses. Regenerating a reply, or swiping to another version of it, no longer adds its inventory changes on top of the version it replaces, and deleting a version or branching the chat keeps each version's inventory with it (#6772, #6774).
+
+- Character and persona gallery image downloads preserve the iPhone/iPad Home Screen app, using native sharing when available and keeping previews dismissible when saving is cancelled or fails (#6784).
+
+- Character-sheet generation can optionally use the character's saved neutral full-body sprite as a reference, on its own or together with the current avatar.
+
+- Persona sheet generation can use a saved neutral full-body sprite as a reference, alone or alongside the current avatar (#6786).
 
 - Game Mode rulesets can describe items. An `items` block declares the categories, rarities, tags, stats, slots, binding limit, carrying and currency families a ruleset's items are written in, and a catalog of items lists each one with its stats, slots, stack size, cost and binding. Everything is checked at import, both example rulesets carry items, and the author guide explains every key. Nothing in a game reads items yet; the inventory, the sheet and fights take them up next (#6765).
 

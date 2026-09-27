@@ -5,9 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 // The parameter panel only shows settings that change the request for the selected provider and model. This test is
-// the source of truth for those rules: it sends every setting through the real provider code to a local stub, changes
-// one setting at a time, and records which changes alter the request. The ChatGPT wrapper uses the same production
-// Responses body builder, captured before transport so the probe needs neither local credentials nor a network call.
+// the source of truth for those rules: it changes one setting at a time and records which changes alter the request.
+// Most providers use a local HTTP stub; ChatGPT uses its production Responses body builder before transport, and the
+// subscription provider uses an SDK stub.
 // The shared rules must match exactly, for effort on and effort off, so a provider change that makes a hidden setting
 // matter (or a shown one stop mattering) fails here instead of silently misleading the panel.
 const root = mkdtempSync(join(tmpdir(), "marinara-param-relevance-"));

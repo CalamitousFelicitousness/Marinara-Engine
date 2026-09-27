@@ -1,6 +1,7 @@
 import {
   isClaudeAdaptiveOnlyNoSamplingModel,
   isOpenAIGpt56Model,
+  isXaiAutoReasoningModel,
   isXaiConfigurableReasoningModel,
   resolveProviderReasoningEffort,
   shouldSuppressUnknownModelParameters,
@@ -14,7 +15,7 @@ import {
  * implementation. They were derived by sending every setting through the real provider code to a local stub, one
  * change at a time, and keeping only the settings that changed the request. The regression
  * `generation-parameter-relevance` repeats that comparison, so a provider change that makes a hidden setting matter
- * fails the build instead of silently hiding a working control.
+ * fails the focused regression instead of silently hiding a working control.
  *
  * Live model data (effort levels, verbosity support, OpenRouter's per-model parameter list) only ever narrows the
  * result: a control the request builder would not send stays hidden even if the provider says the model accepts it.
@@ -162,7 +163,7 @@ const NEVER_SENT: Record<string, GenerationParameterKey[]> = {
   google: ["verbosity", "serviceTier", "assistantReasoningPrefill"],
   google_vertex: ["verbosity", "serviceTier", "assistantReasoningPrefill"],
   local_sidecar: ["verbosity", "serviceTier", "assistantReasoningPrefill"],
-  xai: ["topK", "frequencyPenalty", "presencePenalty", "serviceTier"],
+  xai: ["topK", "serviceTier"],
   openai: ["topK", "serviceTier"],
   openrouter: ["topK"],
   nanogpt: ["topK"],
@@ -268,6 +269,12 @@ export function relevantGenerationParameters(context: GenerationParameterContext
         // Grok on OpenRouter reasons automatically and rejects penalties.
         if (model.startsWith("x-ai/grok-")) hide("reasoningEffort", "frequencyPenalty", "presencePenalty");
       } else if (provider === "xai") {
+        const xaiReasoningModel =
+          model.startsWith("x-ai/grok-") ||
+          isXaiConfigurableReasoningModel(model) ||
+          isXaiAutoReasoningModel(model) ||
+          model === XAI_MULTI_AGENT_MODEL;
+        if (xaiReasoningModel) hide("frequencyPenalty", "presencePenalty");
         if (!isXaiConfigurableReasoningModel(model) && model !== XAI_MULTI_AGENT_MODEL) hide("reasoningEffort");
       } else {
         const glm = model.includes("glm") && (provider === "nanogpt" || isNativeGlmHost(context.baseUrl));

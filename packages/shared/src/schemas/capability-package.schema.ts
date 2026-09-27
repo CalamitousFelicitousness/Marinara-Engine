@@ -460,7 +460,12 @@ const capabilityPackageManifestBaseSchema = z
 //        order following it every round). Not a soft seam, for the same reason as 1.20 through 1.47:
 //        an Engine that cannot read these refuses the whole ruleset file, so a package that ships any
 //        of them declares 1.48. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 48 } as const);
+// 1.49: a ruleset may describe items: an `items` block (categories, rarities, tags, stats, slots,
+//        binding, carry, currencies, `native` and `freeform`) and a third catalog kind,
+//        `holds: "items"`, whose entries carry an `item`. Not a soft seam, for the same reason as 1.20
+//        through 1.48: an Engine that cannot read these refuses the whole ruleset or catalog file, so
+//        a package that ships any of them declares 1.49. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 49 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

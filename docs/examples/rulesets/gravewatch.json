@@ -345,6 +345,66 @@
       ]
     }
   },
+  "items": {
+    "$comment": "The words every item of Gravewatch is written in. A warden binds as many tokens as their Nerve, and there is one coin with no weight, because nobody on the watch counts what their pockets weigh.",
+    "categories": [
+      { "id": "arm", "label": "Arm" },
+      { "id": "coat", "label": "Coat" },
+      { "id": "tonic", "label": "Tonic" },
+      { "id": "token", "label": "Token" }
+    ],
+    "rarities": [
+      { "id": "common", "label": "Common" },
+      { "id": "rare", "label": "Rare" },
+      { "id": "relic", "label": "Relic" }
+    ],
+    "tags": [
+      { "id": "silver", "label": "Silver" },
+      { "id": "hidden", "label": "Easily hidden" }
+    ],
+    "stats": [
+      {
+        "$comment": "The face each die has to reach when this arm is swung, so one arm can be harder to use well than another.",
+        "id": "target",
+        "label": "Target",
+        "type": "number",
+        "min": 2,
+        "max": 10,
+        "default": 6
+      },
+      { "id": "damage", "label": "Damage", "type": "dice", "example": "1d10" },
+      { "id": "harm", "label": "Harm", "type": "enum", "values": ["blunt", "tearing", "burning"] },
+      { "id": "soak_blunt", "label": "Soak (blunt)", "type": "number", "min": 0, "max": 3, "default": 0 },
+      { "id": "soak_tearing", "label": "Soak (tearing)", "type": "number", "min": 0, "max": 3, "default": 0 },
+      {
+        "$comment": "Shown on the item card but never to the Game Master, who hears about a hidden thing when it is drawn.",
+        "id": "conceal",
+        "label": "Hidden in",
+        "type": "enum",
+        "values": ["pocket", "coat", "none"],
+        "default": "none",
+        "promptVisible": false
+      }
+    ],
+    "slots": [
+      { "id": "body", "label": "Coat", "count": 1 },
+      { "id": "hands", "label": "Hands", "count": 2 },
+      { "id": "worn", "label": "Worn", "count": 3 }
+    ],
+    "binding": { "label": "Bound", "max": { "abilityScore": "nerve" } },
+    "currencies": [
+      {
+        "$comment": "Twelve pennies to the shilling and five shillings to the crown, so every value counts pennies.",
+        "id": "coin",
+        "label": "Coin",
+        "units": [
+          { "id": "penny", "label": "pennies", "value": 1 },
+          { "id": "shilling", "label": "shillings", "value": 12 },
+          { "id": "crown", "label": "crowns", "value": 60 }
+        ]
+      }
+    ]
+  },
   "catalogs": [
     {
       "$comment": "Four charms. Steady Hand and Grave Sight show what mechanics.check is for: an entry a warden picked that changes a CHECK, which the Game Master names on the check itself and the Engine pays for and applies there. Lantern Flare and Stern Word are for a fight: the combat block offers them from the Charms list, each for a point of Resolve.",
@@ -486,6 +546,77 @@
               }
             ]
           }
+        }
+      ]
+    },
+    {
+      "$comment": "Things a warden carries. A catalog of items writes nothing onto the sheet, so it feeds no list; each entry is one item in the words of the items block above.",
+      "id": "kit",
+      "label": "Kit",
+      "holds": "items",
+      "entries": [
+        {
+          "id": "lantern-coat",
+          "label": "Lantern-keeper's coat",
+          "summary": "Waxed canvas over boiled leather, cut long enough to kneel in.",
+          "item": {
+            "category": "coat",
+            "rarity": "common",
+            "stats": { "soak_blunt": 1, "soak_tearing": 1 },
+            "slots": { "body": 1 },
+            "cost": { "amount": 8, "unit": "shilling" }
+          }
+        },
+        {
+          "id": "grave-spade",
+          "label": "Grave spade",
+          "summary": "A long-handled spade with an edge kept sharp for roots.",
+          "item": {
+            "category": "arm",
+            "rarity": "common",
+            "stats": { "target": 6, "damage": "1d10", "harm": "blunt" },
+            "slots": { "hands": 2 },
+            "cost": { "amount": 3, "unit": "shilling" }
+          }
+        },
+        {
+          "id": "silver-nail",
+          "label": "Silver coffin nail",
+          "summary": "A nail of true silver, for the things that climb back out.",
+          "item": {
+            "category": "arm",
+            "rarity": "rare",
+            "tags": ["silver", "hidden"],
+            "stats": { "target": 7, "damage": "1d6", "harm": "tearing", "conceal": "pocket" },
+            "slots": { "hands": 1 },
+            "stack": 12,
+            "cost": { "amount": 2, "unit": "crown" }
+          }
+        },
+        {
+          "id": "warming-tonic",
+          "label": "Warming tonic",
+          "summary": "Bitter, hot and brown. A swallow keeps the cold out of your hands for an hour.",
+          "item": { "category": "tonic", "rarity": "common", "stack": 6, "cost": { "amount": 4, "unit": "penny" } }
+        },
+        {
+          "id": "dawn-bell",
+          "label": "Dawn bell",
+          "summary": "A bell the size of a thumb, rung at the first dawn after the long night.",
+          "item": {
+            "category": "token",
+            "rarity": "relic",
+            "tags": ["hidden"],
+            "stats": { "conceal": "pocket" },
+            "slots": { "worn": 1 },
+            "binds": { "restriction": "Only a warden of the dawn watch can bind it." }
+          }
+        },
+        {
+          "id": "widows-ring",
+          "label": "Widow's ring",
+          "summary": "A plain black ring. Once it has been worn to a burial it will not come off again.",
+          "item": { "category": "token", "rarity": "rare", "slots": { "worn": 1 }, "binds": { "cursed": true } }
         }
       ]
     }

@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Game Mode rulesets can describe items. An `items` block declares the categories, rarities, tags, stats, slots, binding limit, carrying and currency families a ruleset's items are written in, and a catalog of items lists each one with its stats, slots, stack size, cost and binding. Everything is checked at import, both example rulesets carry items, and the author guide explains every key. Nothing in a game reads items yet; the inventory, the sheet and fights take them up next (#6765).
+
 - Advanced Memory swipes respect the shared "All" history cutoff even when its message is hidden from the responding character, without applying later cutoffs to earlier replies (#6766).
 - The browser test for attacks made in an initiative style no longer fails when the fight's random dice let the Grave-rat swarm down Ada before her first turn: the test's swarm throws no initiative dice, so Ada always acts first (#6763).
 

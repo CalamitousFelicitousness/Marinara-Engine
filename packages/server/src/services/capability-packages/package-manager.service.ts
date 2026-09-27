@@ -828,6 +828,14 @@ function entriesCarryConditionEndings(entries: unknown): boolean {
   });
 }
 
+const ITEMS_ISSUE = "A ruleset that describes items requires schemaVersion 2 and capabilityApi 1.49 or newer";
+
+/** An item in place of rows or a creature, which is 1.49: a new key on the strict entry, read
+ *  structurally for the same reason the others are. */
+function entriesCarryItems(entries: unknown): boolean {
+  return Array.isArray(entries) && entries.some((entry) => plainRecord(entry)?.item !== undefined);
+}
+
 const MOVING_INITIATIVE_ISSUE =
   "A ruleset whose fights throw initiative as a pool or let attacks move it requires schemaVersion 2 and capabilityApi 1.48 or newer";
 
@@ -955,6 +963,7 @@ export function getCapabilityPackageInstallIssue(
     rulesetDocument && typeof rulesetDocument === "object"
       ? (rulesetDocument as {
           catalogs?: unknown;
+          items?: unknown;
           battle?: unknown;
           combat?: unknown;
           resolution?: unknown;
@@ -1009,6 +1018,8 @@ export function getCapabilityPackageInstallIssue(
           ? (catalog as { asset?: unknown; entries?: unknown; holds?: unknown })
           : {};
       if (header.holds === "creatures" && !declaresApi(27)) return creatureIssue;
+      if (header.holds === "items" && !declaresApi(49)) return ITEMS_ISSUE;
+      if (entriesCarryItems(header.entries) && !declaresApi(49)) return ITEMS_ISSUE;
       if (entriesCarryScaledRows(header.entries) && !declaresApi(23)) return scaledIssue;
       if (entriesCarryCombatMechanics(header.entries) && !declaresApi(26)) return mechanicsIssue;
       if (entriesCarryCreatures(header.entries) && !declaresApi(27)) return creatureIssue;
@@ -1048,6 +1059,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryConditionEndings(fileEntries) && !declaresApi(45)) return CONDITION_NUMBERS_ISSUE;
       if (entriesCarryHitMoments(fileEntries) && !declaresApi(46)) return HIT_MOMENTS_ISSUE;
       if (entriesCarryCreatureSoak(fileEntries) && !declaresApi(47)) return POOL_FIGHT_ISSUE;
+      if (entriesCarryItems(fileEntries) && !declaresApi(49)) return ITEMS_ISSUE;
     }
   }
   // The battle block lives inside the ruleset file too, so it is read the same way and for the same
@@ -1141,6 +1153,8 @@ export function getCapabilityPackageInstallIssue(
       return "A ruleset whose weapons cap their own strikes requires schemaVersion 2 and capabilityApi 1.32 or newer";
     }
   }
+  // The items block, which is 1.49's. Same file, same reason.
+  if (!declaresApi(49) && ruleset?.items !== undefined) return ITEMS_ISSUE;
   // Initiative thrown as a pool, and a number attacks move, which are 1.48's. Same file, same reason.
   if (!declaresApi(48) && rulesetCarriesMovingInitiative148Keys(ruleset)) return MOVING_INITIATIVE_ISSUE;
   // A fight thrown in pools, and what either kind may now throw every round or cap per turn, which

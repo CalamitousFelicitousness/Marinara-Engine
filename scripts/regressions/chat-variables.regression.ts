@@ -110,7 +110,10 @@ assert.equal(
 // contradict the bare tag in the same message. It decodes preset-first later.
 const deferredConditional = resolveMacros('{{#if char1 == "Anna"}}PRESET{{else}}CHAT{{/if}}', pendingPresetContext, {});
 assert.ok(hasDeferredRelocationConditionals(deferredConditional), "the block must be deferred, not decided");
-const mergedContext = baseContext({ variables: { char1: "Anna" }, localVariables: { char1: "Mary" } });
+const mergedContext = baseContext({
+  variables: { char1: "Anna" },
+  localVariables: { char1: "Mary", char2: "Mary" },
+});
 const decoded = deferredConditional.replace(DEFERRED_RELOCATION_CONDITIONAL_TOKEN_RE, (_match, encoded: string) => {
   const payload = parseDeferredConditionalPayload(encoded);
   assert.ok(payload, "the payload must survive encoding");
@@ -119,6 +122,46 @@ const decoded = deferredConditional.replace(DEFERRED_RELOCATION_CONDITIONAL_TOKE
   });
 });
 assert.equal(decoded, "PRESET", "the decoded branch reads the preset value");
+
+// The operand may also name the variable inside braces, on either side of the
+// comparison — before this was handled, `{{#if {{char1}} == "Anna"}}` was
+// decided inline from the chat value while the bare tag beside it read the
+// preset's.
+const decodeWith = (template: string, ctx: MacroContext) => {
+  const resolved = resolveMacros(template, ctx, {});
+  if (!hasDeferredRelocationConditionals(resolved)) return { deferred: false, text: resolved };
+  const text = resolved.replace(DEFERRED_RELOCATION_CONDITIONAL_TOKEN_RE, (_match, encoded: string) => {
+    const payload = parseDeferredConditionalPayload(encoded);
+    assert.ok(payload);
+    return resolveMacros(selectConditionalPayloadBranch(payload, mergedContext, { trimResult: false }), mergedContext, {
+      trimResult: false,
+    });
+  });
+  return { deferred: true, text };
+};
+const bracedLeft = decodeWith('{{#if {{char1}} == "Anna"}}PRESET{{else}}CHAT{{/if}}', pendingPresetContext);
+assert.ok(bracedLeft.deferred, "a braced operand must defer the block");
+assert.equal(bracedLeft.text, "PRESET");
+const bracedBare = decodeWith("{{#if {{char1}}}}PRESET{{else}}CHAT{{/if}}", pendingPresetContext);
+assert.ok(bracedBare.deferred, "a braced truthiness test must defer too");
+assert.equal(bracedBare.text, "PRESET");
+// A claimed name on the right-hand side defers as well, and then compares
+// against the preset value: char2 is Mary, char1 becomes Anna, so no match.
+const bracedRight = decodeWith(
+  '{{#if char2 == "{{char1}}"}}PRESET{{else}}CHAT{{/if}}',
+  baseContext({
+    localVariables: { char1: "Mary", char2: "Mary" },
+    deferredPresetVariableNames: new Set(["char1"]),
+  }),
+);
+assert.ok(bracedRight.deferred, "a claimed name in the right operand must defer");
+assert.equal(bracedRight.text, "CHAT");
+// {{getvar}} asks for chat state explicitly, so it is not deferred.
+assert.equal(
+  decodeWith('{{#if {{getvar::char1}} == "Mary"}}PRESET{{else}}CHAT{{/if}}', pendingPresetContext).deferred,
+  false,
+  "an explicit chat read stays inline",
+);
 
 // `var:` spelling is claimed too, and an unclaimed name is still decided inline.
 assert.ok(hasDeferredRelocationConditionals(resolveMacros("{{#if var:char1}}y{{/if}}", pendingPresetContext, {})));

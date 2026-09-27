@@ -1960,12 +1960,20 @@ function conditionDependsOnDeferredOperand(condition: string, predicate: (operan
  * value. Accepts the `var:`/`var.` spellings as well as the bare name.
  */
 function isDeferredPresetOperand(operand: string, ctx: MacroContext): boolean {
-  if (!ctx.deferredPresetVariableNames?.size) return false;
-  const name = operand
-    .trim()
-    .replace(/^var[:.]/i, "")
-    .trim();
-  return ctx.deferredPresetVariableNames.has(name);
+  const claimed = ctx.deferredPresetVariableNames;
+  if (!claimed?.size) return false;
+  const unwrap = (value: string) =>
+    value
+      .trim()
+      .replace(/^var[:.]/i, "")
+      .trim();
+  if (claimed.has(unwrap(operand))) return true;
+  // An operand may also name the variable inside braces — `{{char1}} == "Anna"`
+  // on either side of the comparison — which is not the whole operand string.
+  for (const match of operand.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)) {
+    if (claimed.has(unwrap(match[1]!))) return true;
+  }
+  return false;
 }
 
 function branchDependsOnDeferredOperand(

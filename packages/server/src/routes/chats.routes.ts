@@ -42,6 +42,7 @@ import {
   formatRpgStatsForPrompt,
   normalizeRpgStatPools,
   characterDataSchema,
+  readGameInventoryTurn,
   rulesetLiveStatesSchema,
 } from "@marinara-engine/shared";
 import type {
@@ -70,6 +71,7 @@ import {
   readRoleplayInterruption,
   parseMessageCursor,
   withChatMetadataPatchQueue,
+  withChatSwipeSelectionQueue,
 } from "../services/storage/chats.storage.js";
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
 import { createCharactersStorage } from "../services/storage/characters.storage.js";
@@ -109,6 +111,7 @@ import {
 } from "../services/spatial-context/projection.js";
 import { createSpatialContextStorage } from "../services/storage/spatial-context.storage.js";
 import { restoreBranchHudLists, trimJournalForBranch } from "../services/game/branch-state.js";
+import { switchGameInventoryTelling } from "../services/game/game-inventory.service.js";
 import { applyAllSegmentEdits, applyMessageSegmentEdits } from "../services/game/segment-edits.js";
 import type { Journal } from "../services/game/journal.service.js";
 import { createRegexScriptsStorage } from "../services/storage/regex-scripts.storage.js";
@@ -3786,7 +3789,46 @@ export async function chatsRoutes(app: FastifyInstance) {
     "/:chatId/messages/:messageId/active-swipe",
     async (req) => {
       const { index } = req.body as { index: number };
-      return storage.setActiveSwipe(req.params.messageId, index);
+      return withChatSwipeSelectionQueue(req.params.chatId, async () => {
+        const previous = await storage.getMessage(req.params.messageId);
+        const updated = await storage.setActiveSwipe(req.params.messageId, index);
+        // A Game Mode inventory follows the telling that is shown, as long as nothing changed it since
+        // the telling left it (#6774). Only a game that remembers a turn has anything to switch.
+        if (updated && previous && (previous.activeSwipeIndex ?? 0) !== index) {
+          try {
+            const chat = await storage.getById(req.params.chatId);
+            let meta: Record<string, unknown> = {};
+            try {
+              meta = typeof chat?.metadata === "string" ? JSON.parse(chat.metadata) : (chat?.metadata ?? {});
+            } catch {
+              meta = {};
+            }
+            // Null when the stacks changed since that telling: then they are left as the player has
+            // them, on purpose. Only a failure to read or save lands in the catch.
+            if (readGameInventoryTurn(meta.gameInventoryTurn)?.messageId === req.params.messageId) {
+              await switchGameInventoryTelling(
+                app.db,
+                req.params.chatId,
+                req.params.messageId,
+                previous.activeSwipeIndex ?? 0,
+                index,
+              );
+            }
+          } catch (err) {
+            // The inventory could not follow, so the telling is put back rather than shown without it,
+            // unless the player has picked another one since, which is theirs to keep.
+            logger.error(err, "[chats] Could not switch the inventory to swipe %d of %s", index, req.params.messageId);
+            const now = await storage.getMessage(req.params.messageId).catch(() => null);
+            if ((now?.activeSwipeIndex ?? 0) === index) {
+              await storage.setActiveSwipe(req.params.messageId, previous.activeSwipeIndex ?? 0).catch((restoreErr) => {
+                logger.error(restoreErr, "[chats] Could not put swipe %s back", req.params.messageId);
+              });
+            }
+            throw err;
+          }
+        }
+        return updated;
+      });
     },
   );
 

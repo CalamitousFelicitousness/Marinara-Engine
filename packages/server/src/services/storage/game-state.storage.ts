@@ -355,11 +355,21 @@ export function createGameStateStorage(db: DB) {
       const latestBeforeInsert = await this.getLatest(state.chatId);
       // Most callers rebuild a snapshot from the fields they know and have never heard of ruleset
       // live state. When such a caller replaces the row of a message + swipe, the live state that
-      // row already carried (written right after the message was saved) stays with it.
-      const replaced =
-        state.messageId && state.rulesetLive === undefined
-          ? await this.getByChatAndMessage(state.chatId, state.messageId, state.swipeIndex)
-          : null;
+      // row already carried (written right after the message was saved) stays with it. So does the
+      // detailed inventory: the turn's own inventory tags wrote it, and no tracker ever works it out,
+      // so a tracker that carries the previous turn's stats forward would otherwise undo them.
+      const replaced = state.messageId
+        ? await this.getByChatAndMessage(state.chatId, state.messageId, state.swipeIndex)
+        : null;
+      const replacedInventory = (() => {
+        if (!replaced?.playerStats || !state.playerStats) return undefined;
+        const stats = parseSnapshotJson<{ inventory?: unknown } | null>(replaced.playerStats, null);
+        return Array.isArray(stats?.inventory) ? stats.inventory : undefined;
+      })();
+      const playerStats =
+        state.playerStats && replacedInventory
+          ? { ...state.playerStats, inventory: replacedInventory as NonNullable<typeof state.playerStats>["inventory"] }
+          : state.playerStats;
       // Remove any prior snapshot for the same message + swipe so duplicates don't accumulate
       if (state.messageId) {
         await db
@@ -382,7 +392,7 @@ export function createGameStateStorage(db: DB) {
         worldCustomFields: JSON.stringify(normalizeWorldCustomFields(state.worldCustomFields)),
         presentCharacters: JSON.stringify(state.presentCharacters),
         recentEvents: JSON.stringify(state.recentEvents),
-        playerStats: state.playerStats ? JSON.stringify(state.playerStats) : null,
+        playerStats: playerStats ? JSON.stringify(playerStats) : null,
         personaStats: state.personaStats ? JSON.stringify(state.personaStats) : null,
         manualOverrides: serializeManualOverrides(manualOverrides),
         fieldLocks: serializeFieldLocks(state.fieldLocks),

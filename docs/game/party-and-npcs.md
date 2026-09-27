@@ -80,14 +80,20 @@ If the ruleset's package was removed, or the installed copy is older than the on
 
 ## The inventory
 
-Click **Inventory** above the narration to open your bag. Each square is a stack: an item and how many of it you have. Click a stack to select it.
+Click **Inventory** above the narration to open it. Each square is a stack: an item and how many of it there are. Click a stack to select it.
+
+Everyone in the party carries their own things. The inventory opens on **All**, which shows every bag together, with the name of whoever carries each stack in its corner. Click a party member's tab to see only their bag. While nobody else carries anything, there are no tabs and every stack is yours.
 
 - **Change the amount.** Use **-** and **+** to take or add one. To change it by more, type into the number between them and press Enter: a number sets the count (`300`), and a sign adds or takes that many (`+100`, `-50`). Setting a stack to 0 removes it, and asks first when there is more than one.
 - **Split a stack.** Click **Split**, type how many go into the new stack, and click **Split** again. Splitting 100 off 300 apples leaves a stack of 200 and a new stack of 100 beside it.
-- **Merge or reorder.** Drag a stack onto another stack of the same item to merge them. Drag it onto a stack of a different item to swap the two.
-- **Rename.** Type a new name and click **Save**. Renaming a stack to an item you already have adds it to that item's first stack.
+- **Give.** Click **Give**, pick who gets it and how many, and click **Give** again. To hand over a whole stack, you can also drag it onto that person's tab.
+- **Add.** **Add** puts a new item in the bag of the tab that is open, and in your own bag from **All**.
+- **Merge or reorder.** Drag a stack onto another stack of the same item to merge them. The merged stack stays with whoever carried the stack you dropped it on. Drag a stack onto a different item to swap the two.
+- **Rename.** Type a new name and click **Save**. Renaming a stack to an item the same bag already has adds it to that bag's first stack of it.
 
-The Game Master adds and removes items as the story goes, and a fight uses them from the **Items** action. Both count every stack of an item together, so splitting a pile never hides any of it. When the Game Master takes more than you have, it takes all of it. Your stacks, splits included, carry over to the next session.
+A party member's character sheet lists what they carry.
+
+The Game Master adds, removes and hands over items as the story goes, and says who carries them. Each change is made when the reply is saved, and its notification appears when you reach that part of the story. When the Game Master takes an item without saying from whom, it comes from your bag first and then from the rest of the party. A change that cannot happen, such as taking something nobody has, is refused, and the Game Master is told. When you regenerate a reply, its changes start again from where that turn began, and swiping back to an earlier version shows what that version left. This only happens while the inventory is still exactly as the reply left it: once you change something yourself, a new reply adds its changes on top and nothing you did is undone. A fight uses items from the **Items** action and counts every stack of an item together, whoever carries it. Every bag, splits included, carries over to the next session.
 
 ## Recruiting and removing party members
 

@@ -70,7 +70,7 @@ export async function prepareImageSave(url: string, filename: string): Promise<P
   };
 }
 
-/** Share a prepared image synchronously from the tap, falling back to the active platform's file saver. */
+/** Share from the tap; a failed iOS share must never fall back to a PWA-trapping download preview. */
 export function savePreparedImageToDevice(prepared: PreparedImageSave): Promise<void> {
   if (!shouldUseIosImageShare()) return saveBlobToDevice(prepared.blob, prepared.filename);
 
@@ -79,7 +79,7 @@ export function savePreparedImageToDevice(prepared: PreparedImageSave): Promise<
     : { url: prepared.url };
   return navigator.share(shareData).catch((error: unknown) => {
     if (error instanceof DOMException && error.name === "AbortError") return;
-    return saveBlobToDevice(prepared.blob, prepared.filename);
+    throw error;
   });
 }
 

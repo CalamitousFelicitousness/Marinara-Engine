@@ -8896,6 +8896,241 @@ test("Gallery Illustrate offers active custom image agents", async ({ page, requ
   }
 });
 
+type GallerySaveProbe = {
+  mode: "success" | "cancel" | "failure";
+  shares: Array<{
+    activation: boolean;
+    name: string;
+    size: number;
+    type: string;
+  }>;
+  anchors: number;
+  downloadTargets: string[];
+  androidFiles: string[][];
+};
+
+for (const owner of ["character", "persona"] as const) {
+  test(`${owner} gallery image saves keep the app open`, async ({ page, request }, testInfo) => {
+    const ios = testInfo.project.name === "mobile-webkit";
+    const android = testInfo.project.name === "mobile-chromium";
+    const name = `${owner} gallery save regression`;
+    const base = owner === "character" ? "/api/characters" : "/api/characters/personas";
+    const response = await request.post(base, {
+      data: owner === "character" ? { data: { name } } : { name },
+    });
+    expect(response.ok()).toBeTruthy();
+    const entity = (await response.json()) as { id: string };
+    try {
+      const upload = await request.post(`${base}/${entity.id}/gallery/upload`, {
+        multipart: {
+          file: {
+            name: "save-me.png",
+            mimeType: "image/png",
+            buffer: Buffer.from(TRANSPARENT_PNG_BASE64, "base64"),
+          },
+        },
+      });
+      expect(upload.ok()).toBeTruthy();
+      const image = (await upload.json()) as { filePath: string; url: string };
+      const filename = image.filePath.split(/[\\/]/).pop();
+      await page.addInitScript(
+        ({ ios, android }) => {
+          const target = window as unknown as Window & {
+            __gallerySave: GallerySaveProbe;
+            MarinaraAndroid?: { saveFile: (...args: string[]) => void };
+          };
+          target.__gallerySave = {
+            mode: "success",
+            shares: [],
+            anchors: 0,
+            downloadTargets: [],
+            androidFiles: [],
+          };
+          document.addEventListener(
+            "click",
+            (event) => {
+              if (event.target instanceof HTMLAnchorElement && event.target.hasAttribute("download")) {
+                target.__gallerySave.anchors++;
+                target.__gallerySave.downloadTargets.push(event.target.target);
+              }
+            },
+            true,
+          );
+          if (ios) {
+            Object.defineProperty(navigator, "canShare", {
+              configurable: true,
+              value: (data: ShareData) => data.files?.length === 1,
+            });
+            Object.defineProperty(navigator, "share", {
+              configurable: true,
+              value: async (data: ShareData) => {
+                const file = data.files?.[0];
+                if (!file) throw new Error("Expected a prepared image file");
+                target.__gallerySave.shares.push({
+                  activation: navigator.userActivation.isActive,
+                  name: file.name,
+                  size: file.size,
+                  type: file.type,
+                });
+                if (target.__gallerySave.mode !== "success")
+                  throw new DOMException(
+                    "Share probe",
+                    target.__gallerySave.mode === "cancel" ? "AbortError" : "NotAllowedError",
+                  );
+              },
+            });
+          }
+          if (android)
+            target.MarinaraAndroid = {
+              saveFile: (...args) => {
+                target.__gallerySave.androidFiles.push(args);
+              },
+            };
+        },
+        { ios, android },
+      );
+      await page.goto("/");
+      await page.evaluate(
+        async ({ owner, id }) => {
+          const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+          const state = useUIStore.getState();
+          if (owner === "character") state.openCharacterDetail(id);
+          else state.openPersonaDetail(id);
+        },
+        { owner, id: entity.id },
+      );
+      const editor = page.locator(".mari-editor-shell");
+      await openEditorSection(editor, "Gallery");
+      const gallery = editor.locator('[data-editor-section="gallery"]');
+      const appUrl = page.url();
+      const probe = () =>
+        page.evaluate(() => (window as unknown as Window & { __gallerySave: GallerySaveProbe }).__gallerySave);
+      const lightbox = page.getByRole("dialog", {
+        name: "Image preview",
+        exact: true,
+      });
+      const save = lightbox.getByRole("button", {
+        name: "Download image",
+        exact: true,
+      });
+      await gallery.getByTitle("Download", { exact: true }).scrollIntoViewIfNeeded();
+      await testInfo.attach(`${owner}-gallery-before-save.png`, {
+        body: await page.screenshot(),
+        contentType: "image/png",
+      });
+      if (ios) {
+        // The thumbnail download opens a dismissible preview, preparing the file before the next tap.
+        await gallery.getByTitle("Download", { exact: true }).click();
+        await expect(lightbox).toBeVisible();
+        await expect(save).toBeEnabled();
+        await save.click();
+        await expect
+          .poll(async () => (await probe()).shares)
+          .toEqual([
+            {
+              activation: true,
+              name: filename,
+              size: Buffer.from(TRANSPARENT_PNG_BASE64, "base64").length,
+              type: "image/png",
+            },
+          ]);
+        for (const mode of ["cancel", "failure"] as const) {
+          await page.evaluate((mode) => {
+            (window as unknown as Window & { __gallerySave: GallerySaveProbe }).__gallerySave.mode = mode;
+          }, mode);
+          await save.click();
+          await expect.poll(async () => (await probe()).shares.length).toBe(mode === "cancel" ? 2 : 3);
+          if (mode === "failure")
+            await expect(page.getByText("Failed to save image.", { exact: true }).last()).toBeVisible();
+          else await expect(page.getByText("Failed to save image.", { exact: true }).last()).toHaveCount(0);
+          await expect(lightbox).toBeVisible();
+          await expect(page).toHaveURL(appUrl);
+        }
+        expect((await probe()).anchors).toBe(0);
+      } else {
+        const download = android ? null : page.waitForEvent("download");
+        await gallery.getByTitle("Download", { exact: true }).click();
+        if (download) {
+          const file = await download;
+          expect(file.suggestedFilename()).toBe(filename);
+          expect(readFileSync((await file.path())!)).toEqual(Buffer.from(TRANSPARENT_PNG_BASE64, "base64"));
+        } else {
+          await expect
+            .poll(async () => (await probe()).androidFiles)
+            .toEqual([[TRANSPARENT_PNG_BASE64, "image/png", filename]]);
+        }
+        await expect(lightbox).toHaveCount(0);
+        await gallery.getByAltText(name, { exact: true }).click();
+        await expect(lightbox).toBeVisible();
+        const previewDownload = android ? null : page.waitForEvent("download");
+        await save.click();
+        if (previewDownload) expect((await previewDownload).suggestedFilename()).toBe(filename);
+        else await expect.poll(async () => (await probe()).androidFiles.length).toBe(2);
+      }
+      await expect(page).toHaveURL(appUrl);
+      const close = lightbox.getByRole("button", { name: "Close image", exact: true });
+      await close.focus();
+      await page.keyboard.press("Tab");
+      await expect(lightbox.getByRole("button", { name: "Set as avatar", exact: true })).toBeFocused();
+      await page.keyboard.press("Shift+Tab");
+      await expect(close).toBeFocused();
+      const deleteImage = lightbox.getByRole("button", { name: "Delete", exact: true });
+      await deleteImage.focus();
+      await deleteImage.press("Enter");
+      const confirmation = page.getByRole("dialog", {
+        name: owner === "character" ? "Delete Character Image" : "Delete Persona Image",
+        exact: true,
+      });
+      const cancelDelete = confirmation.getByRole("button", { name: "Cancel", exact: true });
+      await expect(confirmation.getByRole("button", { name: /^Close Delete /u })).toBeFocused();
+      await cancelDelete.focus();
+      // WebKit on macOS uses Option+Tab to visit every control.
+      await page.keyboard.press(ios ? "Alt+Tab" : "Tab");
+      await expect(confirmation.getByRole("button", { name: "Delete", exact: true })).toBeFocused();
+      await cancelDelete.click();
+      await expect(confirmation).toHaveCount(0);
+      await expect(deleteImage).toBeFocused();
+      await testInfo.attach(`${owner}-gallery-save-preview.png`, {
+        body: await page.screenshot(),
+        contentType: "image/png",
+      });
+      await lightbox.getByRole("button", { name: "Close image", exact: true }).click();
+      await expect(lightbox).toHaveCount(0);
+      await expect(gallery.getByTitle("Download", { exact: true })).toBeVisible();
+      if (ios) {
+        // Opening the image directly must use the same safe save path; preparation failures remain closable.
+        await page.route(`**${image.url}`, (route) => route.fulfill({ status: 503, body: "Unavailable" }));
+        await gallery.getByAltText(name, { exact: true }).click();
+        await expect(lightbox).toBeVisible();
+        await expect(save).toBeDisabled();
+        await expect(page.getByText("Failed to save image.", { exact: true }).last()).toBeVisible();
+        await lightbox.getByRole("button", { name: "Close image", exact: true }).click();
+        await expect(lightbox).toHaveCount(0);
+        expect((await probe()).anchors).toBe(0);
+        await expect(page).toHaveURL(appUrl);
+        // In insecure contexts iOS has no share API. A browser that previews the download
+        // must use a separate browsing context, never replace the Home Screen app.
+        await page.unroute(`**${image.url}`);
+        await page.evaluate(() => Object.defineProperty(navigator, "share", { configurable: true, value: undefined }));
+        const fallbackDownload = page.waitForEvent("download");
+        await gallery.getByTitle("Download", { exact: true }).click();
+        expect((await fallbackDownload).suggestedFilename()).toBe(filename);
+        expect((await probe()).downloadTargets).toEqual(["_blank"]);
+        await expect(page).toHaveURL(appUrl);
+        await expect(gallery.getByTitle("Download", { exact: true })).toBeVisible();
+      }
+      await gallery.getByAltText(name, { exact: true }).click();
+      await lightbox.getByRole("button", { name: "Delete", exact: true }).click();
+      await confirmation.getByRole("button", { name: "Delete", exact: true }).click();
+      await expect(confirmation).toHaveCount(0);
+      await expect(lightbox).toHaveCount(0);
+      await expect(gallery.getByAltText(name, { exact: true })).toHaveCount(0);
+    } finally {
+      await bestEffortDelete(request, `${base}/${entity.id}`);
+    }
+  });
+}
+
 test("iPhone gallery image saves return through the system share sheet", async ({ page, request }, testInfo) => {
   test.skip(testInfo.project.name !== "mobile-webkit", "The installed iPhone image-save path is WebKit-specific.");
 

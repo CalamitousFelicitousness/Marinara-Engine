@@ -8278,7 +8278,12 @@
                     ]
                   },
                   "minItems": 1,
-                  "maxItems": 4
+                  "maxItems": 4,
+                  "contains": {
+                    "required": [
+                      "takes"
+                    ]
+                  }
                 },
                 "crash": {
                   "type": "object",

@@ -416,15 +416,17 @@ function initiativeOneWay(node) {
   ];
 }
 
-// An attack's style either takes the number or spends it, never both. Found by its shape: `takes`
-// beside `spends`.
+// An attack's style either takes the number or spends it, never both, and at least one of them takes,
+// so a crashed combatant always has one to attack in. Found by its shape: `takes` beside `spends`, and
+// the `styles` list beside `base`.
 function styleTakesOrSpends(node) {
   if (Array.isArray(node)) return node.forEach(styleTakesOrSpends);
   if (!node || typeof node !== "object") return;
   Object.values(node).forEach(styleTakesOrSpends);
   const properties = node.properties;
-  if (node.type !== "object" || !properties?.takes || !properties.spends) return;
-  node.oneOf = [{ required: ["takes"] }, { required: ["spends"] }];
+  if (node.type !== "object") return;
+  if (properties?.takes && properties.spends) node.oneOf = [{ required: ["takes"] }, { required: ["spends"] }];
+  if (properties?.styles && properties.base) properties.styles.contains = { required: ["takes"] };
 }
 
 // Soak soaks something: a number for every kind of harm, one per kind, or both. Found by its shape:

@@ -545,6 +545,8 @@ export interface RulesetActionResume {
   payWith?: string;
   /** The initiative style it was made in, so a held attack picks up in the same one. */
   style?: string;
+  /** What a spending blow throws: its maker's number as they made it. */
+  spend?: number;
   /** An answer stopped it. What it cost is still spent: it was paid for before the asking. */
   cancelled?: true;
   /** Held after one of its attack rolls hit, rather than before anything happened. */

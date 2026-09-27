@@ -1077,14 +1077,17 @@ runs out has crashed. A `dice-pool` fight can say so (Capability API 1.48):
   and as each round begins the order is sorted by the numbers as they stand.
 - **Styles.** Every attack (an attack row, an ability or catalog entry that rolls to hit and does
   harm, a creature's action that does, and an action made of other actions) is offered once per
-  style, and a player picks the style before the target. Up to four; each either takes or spends.
-  A choice that names no style is made in the first; one the attack is not offered in is refused.
+  style, and a player picks the style before the target. Up to four, each either takes or spends,
+  and at least one takes. A choice that names no style is made in the first; one the attack is not
+  offered in is refused. An attack keeps the style it was made in until it is over, even when an
+  answer changes its maker's number before it lands.
 - **A style that takes.** On a hit, the damage is thrown as usual (the extra dice from the hit, the
   weapon's dice, soak by kind, automatic successes), and what it counts comes off the target's
   number instead of their health. The attacker gains all of it plus `gain`.
 - **A style that spends.** Offered only while the attacker's number is above the crash line (0 when
-  you give no `crash`). On a hit, the damage is the attacker's number in dice against the damage
-  target, and nothing else: no weapon dice, no extra dice from the hit, no automatic successes, no
+  you give no `crash`), and never for an action made of other actions, since a number is spent on
+  one blow. On a hit, the damage is the attacker's number as they made the attack, in dice against
+  the damage target, and nothing else: no weapon dice, no extra dice from the hit, no automatic successes, no
   soak. It marks health by the attack's own kind of harm. Once the attack is over, a number that
   landed anywhere goes back to `base`, and one that landed nowhere loses what `onMiss` says at the
   number it was made with (a step table: `[at least, lose]` pairs, ascending; nothing below the
@@ -1854,9 +1857,7 @@ Said plainly, because a ruleset should not claim what the Engine does not do:
   weapon changes it and there is no floor of dice; nothing makes a blow that takes smaller against a
   sturdy target; a crash lifts after a fixed count of turns however deep it went; and an attack made
   in a window (a strike at somebody breaking away, a reaction, a signature move) is made in the
-  first style. An action made of other actions makes every part in its style, one after another: a
-  spending one resets the number after its first part that lands, so the parts after throw the
-  base.
+  first style.
 - **An invented opponent soaks nothing.** A creature the Game Master makes up for one fight is held
   to your threat scale, which says nothing about soak, so it has none.
 

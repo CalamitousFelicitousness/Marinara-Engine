@@ -79,7 +79,9 @@ import {
   rulesetWindowMoment,
   rulesetWindowOptions,
   countRulesetSpend,
+  rulesetActionTakesStyle,
   rulesetAttackStyles,
+  type RulesetInitiativeStyle,
 } from "./options.js";
 import type {
   RulesetActionResume,
@@ -1131,7 +1133,10 @@ export function applyRulesetCombatChoice(
   if (choice.style !== undefined && !offeredStyles.some((style) => style.id === choice.style)) {
     return refusal(state, choice.actorId, "unknown-style", option.id);
   }
-  const styleId = (offeredStyles.find((style) => style.id === choice.style) ?? offeredStyles[0])?.id;
+  const chosenStyle = offeredStyles.find((style) => style.id === choice.style) ?? offeredStyles[0];
+  const styleId = chosenStyle?.id;
+  // A spending blow throws the number its maker has as they make it, whatever a window does to it.
+  const spend = chosenStyle?.spends ? working.initiative : undefined;
   const paid = planRulesetCombatCost(definition, working, action, choice.payWith);
   if (!paid) {
     // The menu said it was affordable, so only a `payWith` the sheet refuses can land here.
@@ -1160,6 +1165,7 @@ export function applyRulesetCombatChoice(
     targetIds: workingTargets.map((target) => target.id),
     ...(choice.payWith !== undefined ? { payWith: choice.payWith } : {}),
     ...(styleId ? { style: styleId } : {}),
+    ...(spend !== undefined ? { spend } : {}),
   };
   // Somebody on the other side may answer the USE first, wherever it is aimed; then the ones it is
   // aimed at get their own say. Whatever is held resolves once the last window has closed.
@@ -1178,7 +1184,7 @@ export function applyRulesetCombatChoice(
     ) || openAimed(ctx, resume, action.label, action.catalog);
   if (!held) {
     harmedBy(ctx, working, action, resume, () =>
-      resolveAction(ctx, working, action, workingTargets, choice.payWith, undefined, styleId),
+      resolveAction(ctx, working, action, workingTargets, choice.payWith, undefined, styleId, spend),
     );
   }
   noteOutcome(ctx);
@@ -1757,7 +1763,7 @@ function resumeAction(ctx: RulesetCombatContext, resume: RulesetActionResume): v
     .map((id) => rulesetCombatant(ctx.state, id))
     .filter((target): target is RulesetCombatant => !!target && !target.defeated);
   harmedBy(ctx, actor, action, resume, () =>
-    resolveAction(ctx, actor, action, targets, resume.payWith, resume.held, resume.style),
+    resolveAction(ctx, actor, action, targets, resume.payWith, resume.held, resume.style, resume.spend),
   );
 }
 
@@ -2042,13 +2048,23 @@ function resolveAction(
   payWith?: string,
   /** Picking up an attack held after one of its rolls hit: that roll, then the targets after it. */
   held?: RulesetHeldAttack,
-  /** The initiative style asked for. An attack made out of a turn, in a window, is made in the first
-   *  style its maker may use. */
+  /** The initiative style it was chosen in. An attack made out of a turn, in a window, is made in the
+   *  first style its maker may use. */
   styleId?: string,
+  /** The number a spending blow throws, read as it was made. */
+  spend?: number,
 ): RulesetHitHold | null {
-  if (action.sequence) return resolveSequence(ctx, actor, action, targets, held, styleId);
-  const offeredStyles = rulesetAttackStyles(ctx.combat, actor, action);
-  const style = offeredStyles.find((one) => one.id === styleId) ?? offeredStyles[0];
+  if (action.sequence) {
+    return resolveSequence(
+      ctx,
+      actor,
+      action,
+      targets,
+      held,
+      styleId ?? rulesetAttackStyles(ctx.combat, actor, action)[0]?.id,
+    );
+  }
+  const style = attackStyle(ctx, actor, action, styleId);
   if (held) {
     // Everything before the held roll has happened, what the use gives its user included.
     targets = [held.targetId, ...held.rest]
@@ -2090,7 +2106,7 @@ function resolveAction(
   const pooled = rulesetCombatIsPool(ctx.combat);
   // A spending attack throws the number its maker has as the blow lands, and whether anything landed
   // decides, once every target has been tried, whether the number resets or a miss costs some of it.
-  const spends = style?.spends ? { number: actor.initiative, landed: false } : null;
+  const spends = style?.spends ? { number: spend ?? actor.initiative, landed: false } : null;
   for (const target of targets) {
     let landed = true;
     let critical = false;
@@ -2516,6 +2532,20 @@ function resolveAction(
     }
   }
   return null;
+}
+
+/** The style an attack is made in: the one it was chosen or held in, whatever has happened to its
+ *  maker's number since, or, for one made out of a turn, the first its maker may use now. None for
+ *  something that is not an attack. */
+function attackStyle(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  styleId: string | undefined,
+): RulesetInitiativeStyle | undefined {
+  if (!rulesetActionTakesStyle(action)) return undefined;
+  if (styleId === undefined) return rulesetAttackStyles(ctx.combat, actor, action)[0];
+  return ctx.combat.initiative.resource?.styles.find((style) => style.id === styleId);
 }
 
 /** A number that attacks move, changed and said so. Crossing the crash line either way is settled

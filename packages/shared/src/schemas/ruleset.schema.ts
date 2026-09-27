@@ -3635,6 +3635,10 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         );
       }
       unique(resource.styles, at("initiative", "resource", "styles"), "style");
+      // Whoever has crashed, and every action made of several, attacks in a style that takes.
+      if (!resource.styles.some((style) => style.takes)) {
+        issue(at("initiative", "resource", "styles"), "At least one style takes: a crashed combatant attacks in one");
+      }
       resource.styles.forEach((style, index) => {
         style.spends?.onMiss?.forEach(([, lose], stepIndex) => {
           if (lose < 0) {

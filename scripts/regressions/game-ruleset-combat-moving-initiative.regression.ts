@@ -15,8 +15,9 @@
  *   - The order following the numbers as each round begins, without a die thrown.
  *   - A crash lifting when the number rises above the line, when the ruleset's count of turns runs
  *     out, and when the fight ends; somebody who opens at the line starting the fight crashed.
- *   - A held hit keeping its style, a reaction's attack made in the first style, and a between-turns
- *     window naming nobody before a new round.
+ *   - A held hit keeping its style and the number it was made with, a reaction's attack made in the
+ *     first style, an action made of several only ever taking, and a between-turns window naming
+ *     nobody before a new round.
  *   - Every import refusal, the 1.48 install gate, the menu's words and the log lines.
  */
 import assert from "node:assert/strict";
@@ -333,6 +334,12 @@ try {
       "a base on the crash line",
     );
     refuses(movingText, (doc) => (doc.combat.initiative.resource.styles = []), /styles/, "no style at all");
+    refuses(
+      movingText,
+      (doc) => doc.combat.initiative.resource.styles.shift(),
+      /At least one style takes: a crashed combatant attacks in one/,
+      "only styles that spend",
+    );
   }
 
   // ── Opening: a pool's successes and plus, a creature's number as its pool ──
@@ -721,6 +728,112 @@ try {
       ["rats", "gained", 2, 5],
     ]);
     assert.equal(eventsOf(answered.events, "damage").length, 0, "nobody's health moved");
+  }
+
+  // ── A held spending blow throws the number it was made with ──
+  {
+    const answering = variantOf((doc) => {
+      doc.catalogs[0].entries.push({
+        id: "riposte",
+        label: "Riposte",
+        rows: [{ list: "charms", values: { name: "Riposte" } }],
+        mechanics: {
+          kind: "attack",
+          attackRoll: true,
+          budget: "quick",
+          reaction: { on: "hit" },
+          amount: { dice: "1d10" },
+          damageType: "tearing",
+        },
+      });
+    });
+    // The rats open at five (7, 7, 2), Ada at four (8, 2).
+    const state = fight(
+      answering,
+      [warden(answering, "ada", ["riposte"]), creature("rats", "grave-rats")],
+      8,
+      2,
+      7,
+      7,
+      2,
+    );
+    // A telling gnaw hits and is held. Ada's riposte throws a ten that throws again: five successes,
+    // five damage dice, all five of the rats' number taken, and the rats crash before the gnaw lands.
+    const gnaw = swing(answering, state, "rats", "Gnaw", "ada", "telling", 7, 7, 2, 3, 4);
+    const riposte = rulesetWindowOptions(answering, gnaw.state, "ada").find((option) => option.label === "Riposte")!;
+    const answered = act(
+      answering,
+      gnaw.state,
+      { actorId: "ada", optionId: riposte.id, targetIds: [], window: gnaw.state.window!.id },
+      10,
+      8,
+      8,
+      8,
+      8,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      2,
+      2,
+      2,
+    );
+    // Still a telling blow, crashed or not, and still five dice: what the rats had when they made it.
+    const damage = eventsOf(answered.events, "damage").find((event) => event.targetId === "ada");
+    assert.deepEqual(damage?.rolls, [6, 6, 2, 2, 2]);
+    assert.deepEqual(shifts(answered.events), [
+      ["rats", "taken", -5, 0],
+      ["ada", "gained", 6, 10],
+      ["ada", "crash", 5, 15],
+      ["rats", "spent", 3, 3],
+    ]);
+    assert.equal(reeling(answering, answered.state, "rats"), false, "back at the base, and no longer crashed");
+  }
+
+  // ── An action made of several only ever takes ──
+  {
+    const swarming = variantOf((doc) => {
+      doc.catalogs[1].entries[0].creature.actions.push({
+        id: "swarm",
+        name: "Swarm",
+        budget: "act",
+        sequence: [{ action: "gnaw", times: 2 }],
+      });
+    });
+    // The rats open at five (7, 7, 2), Ada at four (8, 2).
+    const state = fight(swarming, [warden(swarming, "ada"), creature("rats", "grave-rats")], 8, 2, 7, 7, 2);
+    const swarm = optionOf(swarming, state, "rats", "Swarm");
+    assert.deepEqual(
+      swarm.styles?.map((style) => style.id),
+      ["press"],
+      "a number is spent on one blow",
+    );
+    const spend = act(swarming, state, { actorId: "rats", optionId: swarm.id, targetIds: ["ada"], style: "telling" });
+    assert.equal(firstOf(spend.events, "refused").reason, "unknown-style");
+    // Both gnaws are made as presses: each misses (nothing reaches seven), and nothing is spent.
+    const pressed = act(
+      swarming,
+      state,
+      { actorId: "rats", optionId: swarm.id, targetIds: ["ada"] },
+      2,
+      3,
+      4,
+      5,
+      6,
+      2,
+      3,
+      4,
+      5,
+      6,
+    );
+    assert.deepEqual(
+      eventsOf(pressed.events, "attack").map((event) => event.style),
+      ["press", "press"],
+    );
+    assert.deepEqual(shifts(pressed.events), []);
   }
 
   // ── A window between turns names nobody before a round the numbers re-sort ──

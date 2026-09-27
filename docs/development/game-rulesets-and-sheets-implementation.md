@@ -944,18 +944,21 @@ Capability API 1.48, for #6740. The second Storyteller slice: initiative as a nu
   A pool is thrown through the check roller, its successes plus `plus` the number; a creature's
   `initiativeModifier` is its pool. `pool` and `resource` are a `dice-pool` fight's only, `each` is
   refused beside `resource`, and `each: "round"` with a pool throws the pool again.
-- **Styles, beside the option.** `resource.styles` (one to four, each `takes` or `spends`) are
-  chosen by `choice.style`, not folded into the option id, so everything that finds an action by its
-  id is untouched. An attack is an action that rolls to hit and does harm, or a sequence (every part
-  in its style); contests are never styled. A choice with no style takes the first, one the option
-  does not offer is refused `unknown-style`, and whatever is made out of a turn (an opportunity
-  strike, a signature move, a reaction) is made in the first, so a window menu offers none.
+- **Styles, beside the option.** `resource.styles` (one to four, each `takes` or `spends`, at least
+  one taking, so a crashed combatant always has one) are chosen by `choice.style`, not folded into the
+  option id, so everything that finds an action by its id is untouched. An attack is an action that
+  rolls to hit and does harm, or a sequence (every part in its style, and only a taking one, since a
+  number is spent on one blow); contests are never styled. A choice with no style takes the first,
+  one the option does not offer is refused `unknown-style`, and whatever is made out of a turn (an
+  opportunity strike, a signature move, a reaction) is made in the first, so a window menu offers
+  none. The style is fixed when the attack is made and carried on the resume with the number a
+  spending one throws, so an answer that moves its maker's number never changes either.
 - **Takes.** The blow's damage is thrown as ever, soak included, and routed to the target's number
   through the same `land()` every part of a blow goes through, so clauses and riders take too. The
   maker gains the total plus `gain`, then a crash is settled with the maker as its source and the
   bonus paid. Health is untouched, so nothing after a blow (concentration, conditions that end on
   damage) happens.
-- **Spends.** Offered only above the crash line. The blow throws the maker's number with
+- **Spends.** Offered only above the crash line. The blow throws the maker's number as they made it, with
   `throwHarm`'s soak switched off and no extra dice, clauses or rider; after the whole action the
   number resets to `base` if anything landed, or loses `onMiss` read at the number it was made with.
 - **Crashing** is kept in step with the number by one function: crossing to the line puts the
@@ -971,15 +974,15 @@ Capability API 1.48, for #6740. The second Storyteller slice: initiative as a nu
   spend, against spend now and again from the base, with a crash's bonus) and a spending blow as the
   damage it does. The Game Master's decision options and the route's `ruleset` command carry `style`.
 - **Not built.** Anything that changes what a spending blow throws (a weapon's own, a floor of
-  dice), anything that shrinks a taking blow against a sturdy target, a crash that lasts longer the
-  deeper it went, and a spending sequence that throws its number once for all its parts (each part
-  spends in turn, so the parts after the first that lands throw the base).
+  dice), anything that shrinks a taking blow against a sturdy target, and a crash that lasts longer
+  the deeper it went.
 - **Example.** Gravewatch keeps its rethrown sum; the author guide shows a variant, and the lanes play it.
 - **Proven** by `scripts/regressions/game-ruleset-combat-moving-initiative.regression.ts` (the opening,
   the menu and its words, taking and crashing with the log, spending with no soak or extra dice, the
   miss table, a miss that crashes its maker, rising above the line, recovery by count, an opening
-  crash, the fight ending, a held hit keeping its style, a reaction's attack in the first style, the
-  window at a round's end, a pool thrown every round, every refusal and the 1.48 gate) and twenty
+  crash, the fight ending, a held hit keeping its style and its number through a crash, a reaction's
+  attack in the first style, a sequence only taking, the window at a round's end, a pool thrown every
+  round, every refusal and the 1.48 gate) and twenty
   seeded fights, a Game Master's styled choice and a player's command in
   `scripts/regressions/ruleset-combat-director.regression.ts`.
 

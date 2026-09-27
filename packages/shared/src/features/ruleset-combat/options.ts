@@ -1000,7 +1000,8 @@ export function rulesetActionTakesStyle(action: RulesetCombatAction): boolean {
 }
 
 /** The styles this actor may make this attack in now. A style that spends needs a number above the
- *  crash line to spend, so a crashed actor is offered only the ones that take. */
+ *  crash line to spend, so a crashed actor is offered only the ones that take; and a number is spent
+ *  on one blow, so an action made of several only ever takes. */
 export function rulesetAttackStyles(
   combat: RulesetCombat,
   actor: RulesetCombatant,
@@ -1009,7 +1010,7 @@ export function rulesetAttackStyles(
   const resource = combat.initiative.resource;
   if (!resource || !rulesetActionTakesStyle(action)) return [];
   const line = resource.crash?.at ?? 0;
-  return resource.styles.filter((style) => !style.spends || actor.initiative > line);
+  return resource.styles.filter((style) => !style.spends || (!action.sequence && actor.initiative > line));
 }
 
 /** How this attack is rolled: the actor's own conditions and their target's, the help an ally gave

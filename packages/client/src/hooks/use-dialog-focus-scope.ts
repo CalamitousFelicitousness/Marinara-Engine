@@ -83,7 +83,9 @@ export function useDialogFocusScope(
     return () => {
       window.cancelAnimationFrame(focusInitial);
       document.removeEventListener("keydown", trapFocus);
-      restoreDialogFocus(restoreFocusRef, opener);
+      // Closing an underlying dialog must not move focus out of the topmost
+      // dialog that was opened above it.
+      if (!isActive || isActive()) restoreDialogFocus(restoreFocusRef, opener);
     };
     // isActive is read at event time through a ref-backed callback.
     // eslint-disable-next-line react-hooks/exhaustive-deps

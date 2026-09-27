@@ -356,6 +356,7 @@ export function CharacterEditor() {
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [avatarGeneratorOpen, setAvatarGeneratorOpen] = useState(false);
   const [characterSheetGeneratorOpen, setCharacterSheetGeneratorOpen] = useState(false);
+  const { data: characterSheetSprites } = useCharacterSprites(characterSheetGeneratorOpen ? characterId : null);
   const [newTag, setNewTag] = useState("");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1039,6 +1040,7 @@ export function CharacterEditor() {
           ((formData.extensions.appearance as string | undefined) || formData.description || formData.personality) ?? ""
         }
         defaultAvatarUrl={avatarPreview}
+        neutralFullBodyReferenceUrl={characterSheetSprites?.find((sprite) => sprite.expression === "full_neutral")?.url}
         onClose={() => setCharacterSheetGeneratorOpen(false)}
         onUseAvatar={handleGeneratedCharacterSheet}
       />

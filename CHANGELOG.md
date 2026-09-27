@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Roleplay chats can enable semantic summary recall and adjust recent-summary retention, older-match count, and relevance threshold. Summary vectors are reused in a bounded process-local cache and refreshed when their text or embedding configuration changes; cancelled requests cannot populate that cache. Recall remains off by default, and unavailable embeddings retain the full summary context (#6705).
+
 - Game Mode rulesets can give a sheet live states such as a form or a stance, one value out of a list that the Game Master or the player changes in play and a rest may put back, and derive numbers from a state or an enum field, so a stance can add dice to one ability's rolls. Capability API 1.42 (#6656).
 
 - Positioned ruleset fights no longer freeze when a wall stands between two fighters: whoever the Engine plays walks the way round instead of waiting for a straight path that never opens (#6678).

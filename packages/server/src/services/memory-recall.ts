@@ -91,6 +91,8 @@ export interface RecalledMemory {
 export interface MemoryRecallEmbeddingSource {
   /** Stable identity for the provider/model vector space, when known. */
   spaceId?: string;
+  /** Opaque request identity for process-local caches; may vary with credentials or routing headers. */
+  cacheIdentity?: string;
   label: string;
   embed(texts: string[], signal?: AbortSignal, inputType?: MemoryRecallEmbeddingInputType): Promise<number[][] | null>;
 }
@@ -135,6 +137,10 @@ export async function embedMemoryRecallTexts(
       options.signal,
       options.inputType ?? "document",
     );
+    // Providers may complete after cancellation; do not publish or cache their late result.
+    if (options.signal?.aborted) {
+      throw options.signal.reason ?? new DOMException("Embedding was aborted", "AbortError");
+    }
     if (configuredEmbeddings) {
       logger.debug("[memory-recall] Used configured embedding source %s", options.embeddingSource.label);
       return configuredEmbeddings;
@@ -144,6 +150,9 @@ export async function embedMemoryRecallTexts(
 
   const localEmbedder = options.localEmbedder ?? localEmbed;
   const localEmbeddings = await localEmbedder(texts, options.signal);
+  if (options.signal?.aborted) {
+    throw options.signal.reason ?? new DOMException("Embedding was aborted", "AbortError");
+  }
   if (localEmbeddings) return localEmbeddings;
 
   if (!warnedUnavailableEmbeddingSource) {

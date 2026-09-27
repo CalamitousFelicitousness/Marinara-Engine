@@ -11,6 +11,7 @@ import {
   normalizeGameInventoryStacks,
   readGameInventoryTurn,
   type GameInventoryJournalEntry,
+  type GameInventoryRename,
   type GameInventoryStack,
   type InventoryItem,
   type PlayerStats,
@@ -26,7 +27,7 @@ import { addInventoryEntry, createJournal, type Journal } from "./journal.servic
 export interface GameInventoryChange<T> {
   stacks: GameInventoryStack[];
   journal: readonly GameInventoryJournalEntry[];
-  renames?: ReadonlyArray<{ from: string; to: string }>;
+  renames?: readonly GameInventoryRename[];
   /** Other metadata that belongs with this change, saved in the same write (a turn's record). */
   metadata?: Record<string, unknown>;
   value: T;
@@ -140,7 +141,7 @@ async function followOnRow(
   chatId: string,
   before: readonly GameInventoryStack[],
   after: readonly GameInventoryStack[],
-  renames: ReadonlyArray<{ from: string; to: string }>,
+  renames: readonly GameInventoryRename[],
   target: Exclude<GameInventoryRowTarget, { kind: "none" }>,
 ): Promise<PlayerStats | null> {
   const chats = createChatsStorage(db);

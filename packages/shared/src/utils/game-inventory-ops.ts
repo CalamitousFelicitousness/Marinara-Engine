@@ -103,12 +103,19 @@ export interface GameInventoryJournalEntry {
   quantity: number;
 }
 
+/** A rename that went through, and whose bag the stack was in (absent for the player's own). */
+export interface GameInventoryRename {
+  from: string;
+  to: string;
+  holder?: string;
+}
+
 export interface GameInventoryOpsOutcome {
   stacks: GameInventoryStack[];
   results: GameInventoryOpResult[];
   journal: GameInventoryJournalEntry[];
   /** Renames that went through, oldest first, so the detailed inventory can keep an entry's notes. */
-  renames: Array<{ from: string; to: string }>;
+  renames: GameInventoryRename[];
 }
 
 /**
@@ -123,7 +130,7 @@ export function applyGameInventoryOps(
   let current = stacks;
   const results: GameInventoryOpResult[] = [];
   const journal: GameInventoryJournalEntry[] = [];
-  const renames: Array<{ from: string; to: string }> = [];
+  const renames: GameInventoryRename[] = [];
   const makeId = () => (newId ? newId() : newGameInventoryStackId(current));
   const refuse = (reason: GameInventoryOpRefusal) => results.push({ ok: false, reason });
   const stackOf = (id: string) => current.find((stack) => stack.id === id);
@@ -208,7 +215,7 @@ export function applyGameInventoryOps(
         }
         if (renamed.stacks !== current) {
           const to = renamed.stacks.find((entry) => entry.id === renamed.id)?.name ?? op.name;
-          renames.push({ from: stack.name, to });
+          renames.push({ from: stack.name, to, ...(stack.holder ? { holder: stack.holder } : {}) });
         }
         current = renamed.stacks;
         results.push({ ok: true, id: renamed.id });
@@ -256,7 +263,7 @@ export function followGameInventoryDetails(
   detailed: readonly InventoryItem[] | null | undefined,
   before: readonly GameInventoryStack[],
   after: readonly GameInventoryStack[],
-  renames: ReadonlyArray<{ from: string; to: string }> = [],
+  renames: readonly GameInventoryRename[] = [],
 ): InventoryItem[] {
   const source = Array.isArray(detailed) ? detailed : [];
   let items = source.slice();
@@ -271,10 +278,11 @@ export function followGameInventoryDetails(
   const afterTotals = totalsOf(after);
   const settled = new Set<string>();
 
-  // A rename in the player's bag that emptied the old name into a name the bag did not hold renames
-  // the entry in place. Both names are checked in the player's bag, so a companion's rename in the
-  // same batch never renames the player's entry.
-  for (const { from, to } of renames) {
+  // A rename of a stack in the player's own bag that emptied the old name into a name the bag did not
+  // hold renames the entry in place. A companion's rename is theirs, even when the player's bag
+  // changes the same names in the same batch.
+  for (const { from, to, holder } of renames) {
+    if (gameInventoryBagKey(holder) !== "") continue;
     const fromKey = gameInventoryNameKey(from);
     const toKey = gameInventoryNameKey(to);
     const renamedTo = afterTotals.get(toKey);

@@ -227,7 +227,7 @@ try {
       { item: "Rope", action: "removed", quantity: 1 },
       { item: "Arrow", action: "used", quantity: 3 },
     ]);
-    assert.deepEqual(outcome.renames, [{ from: "Torch", to: "Brand" }]);
+    assert.deepEqual(outcome.renames, [{ from: "Torch", to: "Brand", holder: "Cass" }], "whose bag it was in");
     assert.equal(gameInventoryCount(outcome.stacks, "Arrow", {}), 2, "the player's arrows went first");
     // Nothing that was refused moved anything.
     const untouched = bag();
@@ -276,6 +276,17 @@ try {
     assert.deepEqual(
       followGameInventoryDetails(withTorch, playerTorch, renameAndGive.stacks, renameAndGive.renames),
       detailed,
+    );
+    // And when the player also gains an item of the companion's new name, it starts as a new entry
+    // rather than taking the old one's notes.
+    const renameGiveAndGain = applyGameInventoryOps(playerTorch, [
+      { op: "rename", id: "d", name: "Brand" },
+      { op: "give", id: "e", to: "Bram" },
+      { op: "add", name: "Brand", count: 1 },
+    ]);
+    assert.deepEqual(
+      followGameInventoryDetails(withTorch, playerTorch, renameGiveAndGain.stacks, renameGiveAndGain.renames),
+      [...detailed, { name: "Brand", description: "", quantity: 1, location: "on_person" }],
     );
     // The player's own arrows, given away, leave it.
     const given = applyGameInventoryOps(before, [{ op: "give", id: "c", to: "Cass" }]);

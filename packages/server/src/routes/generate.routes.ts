@@ -253,6 +253,7 @@ import {
   assemblePrompt,
   appendFallbackChatSummaryToSystemPrompt,
   buildPromptMacroContext,
+  decodeDeferredPresetConditionals,
   normalizeChatMacroVariables,
   parsePresetVariableNames,
   collectCharacterAdvancedPromptEntries,
@@ -3185,8 +3186,15 @@ export async function generateRoutes(app: FastifyInstance) {
           const assembled = await assemblePrompt(assemblerInput);
           Object.assign(promptMacroContext.variables, assembled.macroVariables);
           // Preset values are available now, so deferred names resolve normally
-          // (and preset-first) in the provider-boundary pass.
+          // (and preset-first) in the provider-boundary pass. Conditionals were
+          // encoded rather than decided, so settle those here: the boundary pass
+          // resolves macros but does not re-enter a stored block.
           delete promptMacroContext.deferredPresetVariableNames;
+          decodeDeferredPresetConditionals(mappedMessages, promptMacroContext);
+          if (regenerateUserSourceMessage) {
+            decodeDeferredPresetConditionals([regenerateUserSourceMessage], promptMacroContext);
+          }
+          decodeDeferredPresetConditionals(lorebookKeeperMessages, promptMacroContext);
           promptMacroContext.agentData = {
             ...promptMacroContext.agentData,
             ...assembled.macroAgentData,
@@ -7358,6 +7366,14 @@ export async function generateRoutes(app: FastifyInstance) {
                 contextKind: "injection",
               });
             }
+          }
+          // Blocks deferred for a pending preset variable are settled on what is
+          // actually sent: the history array decoded after assembly is a copy
+          // taken earlier. Gated to the modes that can claim a name, so a
+          // Conversation relocation token its own decode deliberately preserved
+          // is never consumed here.
+          if (chatMode !== "conversation" && chatMode !== "game") {
+            decodeDeferredPresetConditionals(preparedMessagesForGen, providerMacroContext);
           }
           // Defense in depth: the relocation decode pass should have consumed
           // every token already; strip any that slipped through so no control

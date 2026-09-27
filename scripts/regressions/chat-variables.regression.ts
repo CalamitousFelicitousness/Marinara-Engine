@@ -3,7 +3,11 @@
 // prototype members out of prompts, and the creation-time name rules.
 import assert from "node:assert/strict";
 import {
+  DEFERRED_RELOCATION_CONDITIONAL_TOKEN_RE,
+  hasDeferredRelocationConditionals,
+  parseDeferredConditionalPayload,
   RESERVED_MACRO_NAMES,
+  selectConditionalPayloadBranch,
   resolveMacros,
   validateChatVariableName,
   type MacroContext,
@@ -102,6 +106,31 @@ assert.equal(
   ),
   "Anna",
 );
+// A conditional on a claimed name is encoded rather than decided, so it cannot
+// contradict the bare tag in the same message. It decodes preset-first later.
+const deferredConditional = resolveMacros('{{#if char1 == "Anna"}}PRESET{{else}}CHAT{{/if}}', pendingPresetContext, {});
+assert.ok(hasDeferredRelocationConditionals(deferredConditional), "the block must be deferred, not decided");
+const mergedContext = baseContext({ variables: { char1: "Anna" }, localVariables: { char1: "Mary" } });
+const decoded = deferredConditional.replace(DEFERRED_RELOCATION_CONDITIONAL_TOKEN_RE, (_match, encoded: string) => {
+  const payload = parseDeferredConditionalPayload(encoded);
+  assert.ok(payload, "the payload must survive encoding");
+  return resolveMacros(selectConditionalPayloadBranch(payload, mergedContext, { trimResult: false }), mergedContext, {
+    trimResult: false,
+  });
+});
+assert.equal(decoded, "PRESET", "the decoded branch reads the preset value");
+
+// `var:` spelling is claimed too, and an unclaimed name is still decided inline.
+assert.ok(hasDeferredRelocationConditionals(resolveMacros("{{#if var:char1}}y{{/if}}", pendingPresetContext, {})));
+assert.equal(
+  resolveMacros(
+    "{{#if mood}}has mood{{/if}}",
+    baseContext({ localVariables: { mood: "tense" }, deferredPresetVariableNames: new Set(["char1"]) }),
+    {},
+  ),
+  "has mood",
+);
+
 // getvar is explicit about reading chat state, so it is unaffected.
 assert.equal(resolveMacros("{{getvar::char1}}", pendingPresetContext, {}), "Mary");
 

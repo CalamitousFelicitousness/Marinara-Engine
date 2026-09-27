@@ -94,6 +94,7 @@ import {
   resolveMacrosWithVariableSnapshot,
   resolvePromptIdleDuration,
   resolvePromptLastGenerationType,
+  decodeDeferredPresetConditionals,
   parsePresetVariableNames,
   resolvePromptMessageMacros,
   setLorebookEntryCounts,
@@ -1730,8 +1731,10 @@ export async function registerDryRunRoute(app: FastifyInstance) {
 
       const assembled = await assemblePrompt(assemblerInput);
       Object.assign(promptMacroContext.variables, assembled.macroVariables);
-      // Values are in hand; deferred names resolve preset-first from here on.
+      // Values are in hand; deferred names resolve preset-first from here on,
+      // and conditionals encoded during history resolution are settled now.
       delete promptMacroContext.deferredPresetVariableNames;
+      decodeDeferredPresetConditionals(mappedMessages, promptMacroContext);
       promptMacroContext.agentData = {
         ...promptMacroContext.agentData,
         ...assembled.macroAgentData,
@@ -2059,6 +2062,13 @@ export async function registerDryRunRoute(app: FastifyInstance) {
     // Mirror the live route's provider-boundary macro guard so Peek Prompt is
     // both accurate and incapable of exposing late raw identity macros (#3704).
     finalMessages = resolveHistoryMessageMacros(finalMessages);
+    // Blocks deferred for a pending preset variable are settled here as well:
+    // the history array decoded above is a copy taken before the assembler
+    // merge. Gated to the modes that can claim a name, so a Conversation
+    // relocation token its own decode deliberately preserved is never consumed.
+    if (chatMode !== "conversation" && chatMode !== "game") {
+      decodeDeferredPresetConditionals(finalMessages, promptMacroContext);
+    }
 
     if (chatMode === "roleplay") {
       const target = promptTargetCharacterId ?? (allCharacterIds.length === 1 ? allCharacterIds[0]! : null);

@@ -14,6 +14,7 @@ export { expandMarker, type MarkerContext, type ExpandedMarker } from "./marker-
 export {
   buildPromptMacroContext,
   cloneMacroContextForPreview,
+  decodeDeferredPresetConditionals,
   resolveMacrosForPreview,
   normalizeChatMacroVariables,
   parsePresetVariableNames,

@@ -1954,6 +1954,20 @@ function conditionDependsOnDeferredOperand(condition: string, predicate: (operan
   );
 }
 
+/**
+ * Whether a `{{#if}}` operand names a preset variable whose value is still
+ * pending, so the block must be deferred rather than decided from the chat's
+ * value. Accepts the `var:`/`var.` spellings as well as the bare name.
+ */
+function isDeferredPresetOperand(operand: string, ctx: MacroContext): boolean {
+  if (!ctx.deferredPresetVariableNames?.size) return false;
+  const name = operand
+    .trim()
+    .replace(/^var[:.]/i, "")
+    .trim();
+  return ctx.deferredPresetVariableNames.has(name);
+}
+
 function branchDependsOnDeferredOperand(
   branches: ConditionalBranchPayload[],
   predicate: (operand: string) => boolean,
@@ -2346,10 +2360,16 @@ function resolveConditionalBlocks(input: string, ctx: MacroContext, options: Res
     const closeStandalone = closeLineStart && closeTrailing !== null;
 
     const deferCharacter = Boolean(options.deferCharacterMacros) && branchDependsOnCharacter(branches);
+    // A pending preset variable defers a block for the same reason a relocation
+    // operand does: its value is not knowable yet, and deciding the branch from
+    // the chat's value would contradict the bare {{name}} in the same message.
+    const deferOperand =
+      options.deferConditionalOperand !== undefined || ctx.deferredPresetVariableNames?.size
+        ? (operand: string) =>
+            options.deferConditionalOperand?.(operand) === true || isDeferredPresetOperand(operand, ctx)
+        : undefined;
     const deferRelocation =
-      !deferCharacter &&
-      options.deferConditionalOperand !== undefined &&
-      branchDependsOnDeferredOperand(branches, options.deferConditionalOperand);
+      !deferCharacter && deferOperand !== undefined && branchDependsOnDeferredOperand(branches, deferOperand);
 
     if (deferCharacter) {
       // Per-character deferral keeps its original (untrimmed) behavior.

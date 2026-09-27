@@ -83,7 +83,15 @@ try {
   });
   assert.ok(chat);
   await chats.patchMetadata(chat.id, { macroVariables: { char1: "Mary", mood: "tense" } });
-  await chats.createMessage({ chatId: chat.id, role: "user", content: "{{char1}} walks in and looks {{mood}}." });
+  // The conditional and the bare tag are in one message on purpose: before the
+  // fix this produced "CHAT_BRANCH then Anna walks in." — the same sentence
+  // disagreeing with itself about which value char1 has.
+  await chats.createMessage({
+    chatId: chat.id,
+    role: "user",
+    content:
+      '{{#if char1 == "Anna"}}PRESET_BRANCH{{else}}CHAT_BRANCH{{/if}} then {{char1}} walks in and looks {{mood}}.',
+  });
 
   const dry = await app.inject({
     method: "POST",
@@ -106,6 +114,11 @@ try {
   );
   assert.ok(!prompt.includes("Mary"), `the shadowed chat value must not reach the model: ${prompt}`);
   assert.ok(!prompt.includes("{{char1}}"), `no raw tag may escape to the model: ${prompt}`);
+
+  // A conditional on the same name must read the preset value too, not the chat's.
+  assert.ok(userText.includes("PRESET_BRANCH"), `the conditional must test the preset value: ${userText}`);
+  assert.ok(!userText.includes("CHAT_BRANCH"), `the chat branch must not be chosen: ${userText}`);
+  assert.ok(!/\u0000|MARINARA_DEFERRED/u.test(prompt), `no deferred control token may reach the model: ${prompt}`);
 
   // A chat variable the preset does not define still resolves from the chat.
   assert.ok(userText.includes("looks tense"), `chat-only variables still resolve: ${userText}`);

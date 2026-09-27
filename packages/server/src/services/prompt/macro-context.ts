@@ -7,6 +7,10 @@
 
 import {
   CHARACTER_REFERENCE_ID_PATTERN,
+  DEFERRED_RELOCATION_CONDITIONAL_TOKEN_RE,
+  hasDeferredRelocationConditionals,
+  parseDeferredConditionalPayload,
+  selectConditionalPayloadBranch,
   CHAT_VARIABLE_STORED_NAME_RE,
   MAX_CHAT_VARIABLES,
   PERSONA_REFERENCE_ID_PATTERN,
@@ -109,6 +113,30 @@ export function parsePresetVariableNames(rawVariableValues: unknown): string[] {
     return Object.keys(parsed as Record<string, unknown>);
   } catch {
     return [];
+  }
+}
+
+/**
+ * Evaluate `{{#if}}` blocks that were deferred because a preset owned their
+ * operand, now that the assembler has merged the real values in.
+ *
+ * Deferral keeps a conditional from being decided off the chat's value while the
+ * preset's is still pending; this is the other half of it. Uses the same token
+ * as the conversation relocation deferral, which never overlaps: preset
+ * variables do not apply in Conversation mode. Mutates the messages in place.
+ */
+export function decodeDeferredPresetConditionals(messages: Array<{ content: string }>, macroCtx: MacroContext): void {
+  for (const message of messages) {
+    if (!hasDeferredRelocationConditionals(message.content)) continue;
+    message.content = message.content.replace(DEFERRED_RELOCATION_CONDITIONAL_TOKEN_RE, (_match, encoded: string) => {
+      const payload = parseDeferredConditionalPayload(encoded);
+      if (!payload) {
+        logger.error("[prompt] Malformed deferred preset conditional token; dropping block");
+        return "";
+      }
+      const selected = selectConditionalPayloadBranch(payload, macroCtx, { trimResult: false });
+      return resolveMacros(selected, macroCtx, { trimResult: false });
+    });
   }
 }
 

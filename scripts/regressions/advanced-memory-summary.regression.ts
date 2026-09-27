@@ -86,7 +86,13 @@ const { createFileNativeDB } = await import("../../packages/server/src/db/file-b
 const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
 const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
 const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
-const { characterDataSchema } = await import("../../packages/shared/dist/index.js");
+const {
+  characterDataSchema,
+  createChatSummaryEntry,
+  normalizeChatSummaryEntries,
+  scopeCharacterSummary,
+  resolveMacros,
+} = await import("../../packages/shared/dist/index.js");
 const { createAdvancedMemoryService } = await import("../../packages/server/src/services/advanced-memory.js");
 const { createConnectionSchema } = await import("../../packages/shared/src/schemas/connection.schema.ts");
 const { DEFAULT_ADVANCED_MEMORY_SETTINGS } = await import("../../packages/shared/src/types/advanced-memory.ts");
@@ -144,6 +150,40 @@ async function createChat(name: string, hardCap?: number, omitReasoning = false)
   return chat;
 }
 try {
+  const readers = ["Maukie", "Pantalone"];
+  const guarded = '{{#if char == "Maukie"}}River{{/if}}\n{{#if char == "Pantalone"}}Bank{{/if}}';
+  assert.equal(scopeCharacterSummary(guarded, readers), guarded);
+  assert.equal(scopeCharacterSummary(scopeCharacterSummary(guarded, readers), readers), guarded);
+  assert.equal(
+    scopeCharacterSummary(`{{#if char == "Maukie" || "Pantalone"}}${guarded}{{/if}}`, readers),
+    guarded,
+    "existing redundant nesting is flattened without combining private POVs",
+  );
+  const branching = scopeCharacterSummary('{{#if char == "Maukie"}}River{{else}}Bank{{/if}} Shared.', readers);
+  const render = (text: string, char: string, variables: Record<string, string> = {}) =>
+    resolveMacros(text, { user: "Mari", char, characters: [char], variables });
+  assert.equal(render(branching, "Maukie"), "River Shared.");
+  assert.equal(render(branching, "Pantalone"), "Bank Shared.");
+  assert.equal(render(branching, "Uninvited"), "");
+  const dynamic = scopeCharacterSummary('{{#if getvar::revealed == "yes"}}Secret{{/if}}', readers);
+  assert.equal(render(dynamic, "Maukie", { revealed: "yes" }), "Secret");
+  assert.equal(render(dynamic, "Maukie", { revealed: "no" }), "");
+  assert.equal(render(dynamic, "Uninvited", { revealed: "yes" }), "");
+  const descriptionGuard = '{{#if description == "Alchemist"}}A character fact{{/if}}';
+  assert(
+    scopeCharacterSummary(descriptionGuard, readers).includes(descriptionGuard),
+    "character-field conditions need the real profile and cannot be simplified using only a name",
+  );
+  const quotedName = 'The "Doctor"';
+  const quoted = scopeCharacterSummary("Private", [quotedName]);
+  assert.equal(render(quoted, quotedName), "Private");
+  assert.equal(render(quoted, "Maukie"), "");
+  assert.throws(
+    () => scopeCharacterSummary("Private", ["{{user}}"]),
+    /character names must not contain macro delimiters/u,
+    "invalid guard names fail before saving a malformed summary",
+  );
+
   const chat = await createChat("Astra short summary");
   await memory.initialize(chat.id);
   const sceneRequest = requests.find((item) => item.instructions?.startsWith("Identify scene transitions"))!;
@@ -248,9 +288,59 @@ try {
     const unrestrictedRequest = requests
       .slice(unrestrictedStart)
       .find((request) => !request.instructions?.startsWith("Identify scene transitions"))!;
-    assert(unrestrictedRequest.instructions?.startsWith("Summarize the supplied Roleplay events"));
+    assert(unrestrictedRequest.instructions?.includes("Summarize the supplied Roleplay events"));
+    assert(unrestrictedRequest.instructions?.includes("Write shared events as plain prose"));
     assert(!unrestrictedRequest.instructions?.includes("Keep character knowledge separate when POVs switch."));
   }
+  const correctionChat = await createChat("Archive preserves corrections across separate POVs");
+  await chats.update(correctionChat.id, { characterIds: [borrower.id, otherPov.id, narratorActor.id] });
+  const correctionSource = await chats.listMessages(correctionChat.id);
+  await chats.updateMessageContent(correctionSource[0]!.id, "Maukie privately visits the river: MAUKIE_SOURCE.");
+  await chats.updateMessageContent(correctionSource[1]!.id, "Pantalone is alone at the bank: PANTALONE_SOURCE.");
+  await chats.updateMessageExtra(correctionSource[0]!.id, { hiddenFromAICharacterIds: [otherPov.id] });
+  await chats.updateMessageExtra(correctionSource[1]!.id, { hiddenFromAICharacterIds: [borrower.id] });
+  await chats.createMessage({
+    chatId: correctionChat.id,
+    role: "user",
+    content: "The following morning, a new scene begins.",
+    extra: { isConversationStart: true },
+  });
+  const correctedPovs =
+    '{{#if char == "Maukie"}}MAUKIE_CORRECTION{{/if}}\n{{#if char == "Pantalone"}}PANTALONE_CORRECTION{{/if}}';
+  await chats.patchMetadata(correctionChat.id, {
+    groupChatMode: "individual",
+    advancedMemory: {
+      ...settings,
+      narratorCharacterId: narratorActor.id,
+      knowledgeStarts: { [borrower.id]: null, [otherPov.id]: null },
+    },
+    summaryEntries: [
+      createChatSummaryEntry({
+        id: "pov-corrections",
+        content: correctedPovs,
+        enabled: true,
+        rangeStartIndex: 1,
+        rangeEndIndex: 2,
+      }),
+    ],
+  });
+  const correctionStart = requests.length;
+  await memory.initialize(correctionChat.id);
+  const correctionRequest = requests
+    .slice(correctionStart)
+    .find((request) => !request.instructions?.startsWith("Identify scene transitions"))!;
+  const correctionInput = JSON.stringify(correctionRequest.input);
+  for (const expected of ["MAUKIE_SOURCE", "PANTALONE_SOURCE", "MAUKIE_CORRECTION", "PANTALONE_CORRECTION"])
+    assert(
+      correctionInput.includes(expected),
+      `the archive helper receives ${expected}, regardless of the current POV`,
+    );
+  assert(
+    correctionInput.includes(JSON.stringify(correctedPovs).slice(1, -1)),
+    "authored knowledge conditions stay intact",
+  );
+  assert(correctionRequest.instructions?.includes("Cover every POV and separate arc in the supplied range"));
+
   const povChat = await createChat("Private knowledge across POVs");
   await chats.update(povChat.id, { characterIds: [borrower.id, otherPov.id, narratorActor.id] });
   await chats.patchMetadata(povChat.id, {
@@ -263,8 +353,16 @@ try {
     },
   });
   const povSource = await chats.listMessages(povChat.id);
-  await chats.updateMessageExtra(povSource[1]!.id, { isConversationStart: true });
-  await chats.updateMessageContent(povSource[1]!.id, "The following morning, the brass compass promise is recalled.");
+  await chats.updateMessageContent(
+    povSource[1]!.id,
+    "Elsewhere, Pantalone privately visits the bank: PANTALONE_SOURCE.",
+  );
+  await chats.createMessage({
+    chatId: povChat.id,
+    role: "user",
+    content: "The following morning, the brass compass promise is recalled.",
+    extra: { isConversationStart: true },
+  });
   const povSummary =
     '{{#if char == "Maukie" || "Narrator"}}Maukie privately remembers the brass compass promise: MAUKIE_SECRET.{{/if}}\n{{#if char == "Pantalone" || "Narrator"}}Pantalone privately remembers the brass compass promise: PANTALONE_SECRET.{{/if}}';
   summaryResponse = povSummary;
@@ -277,11 +375,13 @@ try {
   assert(povRequest.instructions?.startsWith("Keep character knowledge separate when POVs switch."));
   assert.match(povRequest.instructions!, /\{\{#if char == "Exact Name"\}\}/u);
   assert.match(povRequest.instructions!, /The narrator is "Narrator"/u);
+  assert(JSON.stringify(povRequest.input).includes("PANTALONE_SOURCE"), "the cutoff recap includes the second POV");
   await memory.checkScenesAfterGeneration(povChat.id);
   const povStored = JSON.parse((await chats.getById(povChat.id))!.metadata).summaryEntries;
-  assert(
-    povStored.some((entry: { content: string }) => entry.content.includes(povSummary)),
-    "new constants preserve inner POV conditions",
+  assert.equal(
+    povStored.find((entry: { content: string }) => entry.content.includes("MAUKIE_SECRET"))?.content,
+    povSummary,
+    "new constants keep each POV condition once without an extra enclosing character guard",
   );
   for (const [id, own, hidden] of [
     [borrower.id, "MAUKIE_SECRET", "PANTALONE_SECRET"],
@@ -327,6 +427,194 @@ try {
     [],
     "matching the narrator's recap text does not grant a character access to raw private source messages",
   );
+
+  const partialChat = await createChat("One private conversation inside a shared scene");
+  await chats.update(partialChat.id, { characterIds: [borrower.id, otherPov.id, narratorActor.id] });
+  await chats.patchMetadata(partialChat.id, {
+    groupChatMode: "individual",
+    advancedMemory: {
+      ...settings,
+      summaryBudgetTokens: 4096,
+      narratorCharacterId: narratorActor.id,
+      knowledgeStarts: { [borrower.id]: null, [otherPov.id]: null },
+    },
+  });
+  const partialSource = await chats.listMessages(partialChat.id);
+  await chats.updateMessageContent(
+    partialSource[1]!.id,
+    "Date: June 12\nOutside the room, Pantalone discusses PRIVATE_LEDGER.",
+  );
+  await chats.updateMessageExtra(partialSource[0]!.id, { hiddenFromAI: true });
+  await chats.updateMessageExtra(partialSource[1]!.id, {
+    hiddenFromAI: true,
+    hiddenFromAICharacterIds: [borrower.id],
+  });
+  await chats.createMessage({
+    chatId: partialChat.id,
+    role: "user",
+    content: "The following morning, what happened to the brass compass?",
+    extra: { isConversationStart: true },
+  });
+  summaryResponse =
+    'Everyone shared the brass compass promise. {{#if character == "Pantalone" || "Narrator"}}Outside the room, Pantalone discussed PRIVATE_LEDGER.{{/if}}';
+  const partialStart = requests.length;
+  await memory.initialize(partialChat.id);
+  summaryResponse = summary;
+  const partialRequest = requests
+    .slice(partialStart)
+    .find((item) => !item.instructions?.startsWith("Identify scene transitions"))!;
+  assert.match(partialRequest.instructions!, /Write shared events as plain prose/u);
+  assert.match(partialRequest.instructions!, /Message visibility annotations are authoritative/u);
+  const partialInput = JSON.stringify(partialRequest.input);
+  assert(partialInput.includes("brass compass"), "globally hidden shared messages reach the summarizer");
+  assert(partialInput.includes("PRIVATE_LEDGER"), "globally hidden private messages reach the summarizer");
+  assert(
+    partialInput.includes(
+      JSON.stringify('[Message visibility: only ["Pantalone","Narrator"] can know this message.]').slice(1, -1),
+    ),
+  );
+  const partialRecord = (await memory.status(partialChat.id)).records.find(
+    (record) => record.kind === "scene" && record.content,
+  )!;
+  assert.deepEqual(
+    partialRecord.audienceCharacterIds,
+    [borrower.id, otherPov.id].sort(),
+    "partial participants keep scene access",
+  );
+  await memory.updateRecord(partialChat.id, partialRecord.id, { audienceCharacterIds: [otherPov.id] });
+  const beforePartialToggle = requests.length;
+  const toggle = await app.inject({
+    method: "PATCH",
+    url: `/chats/${partialChat.id}/advanced-memory/records/${partialRecord.id}`,
+    payload: { audienceCharacterIds: [borrower.id, otherPov.id] },
+  });
+  assert.equal(toggle.statusCode, 200, toggle.body);
+  assert.equal(requests.length, beforePartialToggle, "changing partial access does not call a model");
+  await memory.checkScenesAfterGeneration(partialChat.id);
+  assert.equal(
+    requests.length,
+    beforePartialToggle,
+    "constants reuse prepared partial scene knowledge without another summary call",
+  );
+  const partialConstants = normalizeChatSummaryEntries(
+    JSON.parse((await chats.getById(partialChat.id))!.metadata).summaryEntries,
+  );
+  const constantCoverage = new Set(partialConstants.flatMap((entry) => entry.messageIds ?? []));
+  assert(
+    partialSource.every((message) => constantCoverage.has(message.id)),
+    "constant summaries cover every scene message, including globally hidden messages",
+  );
+  assert(partialConstants.some((entry) => entry.content.includes("PRIVATE_LEDGER")));
+  for (const id of [borrower.id, otherPov.id, narratorActor.id]) {
+    const prepared = await memory.prepare({
+      chatId: partialChat.id,
+      messages: await chats.listMessages(partialChat.id),
+      audienceCharacterIds: [id],
+      budgetTokens: 12000,
+      readOnly: true,
+    });
+    assert.match(prepared.recalledScenes!, /brass compass promise/u);
+    assert.equal(prepared.recalledScenes!.includes("PRIVATE_LEDGER"), id !== borrower.id);
+    assert.match(prepared.recalledScenes!, /timeframe(?: \(summary corrections take precedence\))?: June 12/u, "scene dates are shared by every participant");
+    assert.match(prepared.chatSummary!, /brass compass promise/u);
+    assert.equal(prepared.chatSummary!.includes("PRIVATE_LEDGER"), id !== borrower.id);
+    assert.match(prepared.chatSummary!, /June 12/u);
+    if (id === borrower.id) assert(!prepared.receipt.recalledMessageIds.includes(partialSource[1]!.id));
+  }
+  assert.equal(requests.length, beforePartialToggle, "recalling partial scenes adds no helper calls");
+  await memory.updateRecord(partialChat.id, partialRecord.id, { content: "Everyone shared the brass compass promise." });
+  const partialExcerpt = await memory.prepare({
+    chatId: partialChat.id,
+    messages: await chats.listMessages(partialChat.id),
+    audienceCharacterIds: [borrower.id],
+    budgetTokens: 12000,
+    readOnly: true,
+  });
+  assert(partialExcerpt.receipt.recalledMessageIds.length > 0);
+  assert.match(partialExcerpt.recalledScenes!, /Excerpt:\nMessages #[^\n]+story timeframe: June 12/u);
+  assert(!partialExcerpt.recalledScenes!.includes("PRIVATE_LEDGER"), "shared dates do not expose private text");
+
+  const changedVisibilityChat = await createChat("Source visibility changed after a plain recap was saved");
+  await chats.update(changedVisibilityChat.id, { characterIds: [borrower.id, otherPov.id, narratorActor.id] });
+  await chats.patchMetadata(changedVisibilityChat.id, {
+    groupChatMode: "individual",
+    advancedMemory: {
+      ...settings,
+      summaryBudgetTokens: 4096,
+      narratorCharacterId: narratorActor.id,
+      knowledgeStarts: { [borrower.id]: null, [otherPov.id]: null },
+    },
+  });
+  const changedVisibilitySource = await chats.listMessages(changedVisibilityChat.id);
+  await chats.updateMessageContent(changedVisibilitySource[1]!.id, "Pantalone discussed PRIVATE_VAULT by the compass.");
+  await chats.createMessage({
+    chatId: changedVisibilityChat.id,
+    role: "user",
+    content: "The following morning, recall the brass compass promise.",
+    extra: { isConversationStart: true },
+  });
+  summaryResponse = "They shared the brass compass promise and discussed PRIVATE_VAULT.";
+  await memory.initialize(changedVisibilityChat.id);
+  summaryResponse = summary;
+  const changedVisibilityRecord = (await memory.status(changedVisibilityChat.id)).records.find(
+    (record) => record.kind === "scene" && record.content,
+  )!;
+  await chats.updateMessageExtra(changedVisibilitySource[1]!.id, { hiddenFromAICharacterIds: [borrower.id] });
+  await memory.refreshTransferredRecords(changedVisibilityChat.id, [changedVisibilityRecord.id]);
+  const beforeVisibilityRecall = requests.length;
+  const prepareChangedVisibility = (id: string) =>
+    chats.listMessages(changedVisibilityChat.id).then((messages) =>
+      memory.prepare({
+        chatId: changedVisibilityChat.id,
+        messages,
+        audienceCharacterIds: [id],
+        budgetTokens: 12000,
+        readOnly: true,
+      }),
+    );
+  assert.equal(
+    (await prepareChangedVisibility(borrower.id)).recalledScenes,
+    null,
+    "an old plain recap cannot expose newly hidden facts",
+  );
+  assert.match(
+    (await prepareChangedVisibility(otherPov.id)).recalledScenes!,
+    /PRIVATE_VAULT/u,
+    "unrestricted readers retain the saved recap",
+  );
+  assert.equal(requests.length, beforeVisibilityRecall, "changed visibility never starts a helper during recall");
+  assert(
+    (await memory.status(changedVisibilityChat.id)).unpreparedScenes?.some(
+      (scene) => scene.sceneId === changedVisibilityRecord.sceneId,
+    ),
+  );
+  summaryResponse =
+    'They shared the brass compass promise. {{#if character == "Pantalone" || "Narrator"}}Pantalone discussed PRIVATE_VAULT.{{/if}}';
+  await memory.initialize(changedVisibilityChat.id, { sceneId: changedVisibilityRecord.sceneId, detectScenes: false });
+  summaryResponse = summary;
+  const repairedVisibility = await prepareChangedVisibility(borrower.id);
+  assert.match(repairedVisibility.recalledScenes!, /brass compass promise/u);
+  assert(
+    !repairedVisibility.recalledScenes!.includes("PRIVATE_VAULT"),
+    "targeted preparation restores safe partial access",
+  );
+  await characters.update(borrower.id, { name: "Renamed Borrower" });
+  assert(
+    (await memory.status(changedVisibilityChat.id)).unpreparedScenes?.some(
+      (scene) => scene.sceneId === changedVisibilityRecord.sceneId,
+    ),
+    "renaming a reader marks name-based scene conditions for preparation",
+  );
+  summaryResponse =
+    '{{#if character == "Renamed Borrower"}}They shared the brass compass promise.{{/if}} {{#if character == "Pantalone" || "Narrator"}}Pantalone discussed PRIVATE_VAULT.{{/if}}';
+  await memory.initialize(changedVisibilityChat.id, { sceneId: changedVisibilityRecord.sceneId, detectScenes: false });
+  summaryResponse = summary;
+  const beforeRenamedRecall = requests.length;
+  const renamedRecall = await prepareChangedVisibility(borrower.id);
+  assert.match(renamedRecall.recalledScenes!, /brass compass promise/u);
+  assert(!renamedRecall.recalledScenes!.includes("PRIVATE_VAULT"));
+  assert.equal(requests.length, beforeRenamedRecall, "a renamed reader's recall adds no helper calls");
+  await characters.update(borrower.id, { name: "Maukie" });
   const narratorChat = await createChat("Narrator shares the whole scene archive");
   await chats.update(narratorChat.id, { characterIds: [borrower.id, narratorActor.id] });
   await chats.createMessagesBatch(

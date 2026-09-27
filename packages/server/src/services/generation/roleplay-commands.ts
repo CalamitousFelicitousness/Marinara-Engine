@@ -2,15 +2,19 @@ import {
   isRoleplayCommandEnabled,
   isRoleplayCommandAllowed,
   getRoleplayPrivateCommands,
+  getRoleplayWhispers,
+  getRoleplayCommandContentOffset,
   ROLEPLAY_COMMAND_KEYS,
   normalizeChatSummaryEntries,
   type RoleplayCommandKey,
   type RoleplayCommand,
   type RoleplayCommandActivity,
+  type RoleplayWhisperRecipient,
   type WrapFormat,
 } from "@marinara-engine/shared";
 import { parseQuotedParam } from "../conversation/character-commands.js";
 import { wrapContent } from "../prompt/format-engine.js";
+import { normalizeCharacterLookupName } from "../game/name-normalization.js";
 
 export type { RoleplayCommand } from "@marinara-engine/shared";
 
@@ -109,6 +113,11 @@ function readCommand(type: string, body: string): RoleplayCommand | null {
       const part = field("part", 8_000);
       return part ? { type, part } : null;
     }
+    case "whisper": {
+      const character = field("character", 200);
+      const text = field("text", 16_000);
+      return character && text ? { type, character, text } : null;
+    }
     default:
       return null;
   }
@@ -143,7 +152,11 @@ export function parseRoleplayCommands(text: string): {
     const command = end - match.index <= MAX_COMMAND_LENGTH ? readCommand(match[1]!.toLowerCase(), body) : null;
     if (command && commands.length < 24) {
       commands.push(command);
-      activity.push({ command, raw: text.slice(match.index, end) });
+      activity.push({
+        command,
+        raw: text.slice(match.index, end),
+        ...(command.type === "whisper" ? { contentOffset: content.length } : {}),
+      });
       if (command.type === "roll" && !roll) roll = { command, start: match.index, end };
     } else invalid++;
     cursor = end;
@@ -221,7 +234,75 @@ export class RoleplayCommandStreamFilter {
 }
 
 type PersonalState = { notes: string; reminders: Map<string, string> };
-type HistoryMessage = { id?: unknown; role?: unknown; characterId?: unknown; extra?: unknown };
+type HistoryMessage = { id?: unknown; role?: unknown; characterId?: unknown; content?: unknown; extra?: unknown };
+
+export function resolveRoleplayWhisperRecipient(
+  name: string,
+  characters: readonly { id: string; name: string }[],
+  persona: { id: string; name: string },
+): RoleplayWhisperRecipient | null {
+  const participants = [
+    ...characters
+      .filter((character) => character.id !== persona.id)
+      .map((character) => ({ ...character, kind: "character" as const })),
+    { ...persona, kind: "persona" as const },
+  ];
+  const matches = participants.filter(
+    (participant) => normalizeCharacterLookupName(participant.name) === normalizeCharacterLookupName(name),
+  );
+  const match = matches.length === 1 ? matches[0] : undefined;
+  return match ? { id: match.id, kind: match.kind } : null;
+}
+
+/** Insert secrets at their saved positions in the final viewer's retained history, after copying shared prompts. */
+export function appendRoleplayWhispers(
+  prompt: Array<{ id?: string | null; contextKind?: string; content: string }>,
+  history: readonly HistoryMessage[],
+  viewer: RoleplayWhisperRecipient | null,
+  narratorId: string | null,
+): boolean {
+  if (!viewer) return false;
+  const sources = new Map(history.map((message) => [message.id, message]));
+  let added = false;
+  for (const message of prompt) {
+    if (!message.id || message.contextKind !== "history") continue;
+    const source = sources.get(message.id);
+    if (source?.role !== "assistant") continue;
+    let extra = source.extra;
+    if (typeof extra === "string") {
+      try {
+        extra = JSON.parse(extra);
+      } catch {
+        continue;
+      }
+    }
+    if (!extra || typeof extra !== "object") continue;
+    const whispers = getRoleplayWhispers(extra as Record<string, unknown>).filter(
+      ({ recipient }) =>
+        (viewer.kind === "character" && viewer.id === narratorId) ||
+        (viewer.kind === recipient.kind && viewer.id === recipient.id),
+    );
+    if (!whispers.length) continue;
+    // History wrappers shift saved offsets. Prefer the unchanged source body, then fall back to edit anchors.
+    const sourceText = typeof source.content === "string" ? source.content : "";
+    const sourceStart = sourceText ? message.content.indexOf(sourceText) : -1;
+    const hasSource = sourceStart >= 0 && sourceStart === message.content.lastIndexOf(sourceText);
+    const positioned = whispers
+      .map((whisper) => ({
+        ...whisper,
+        offset:
+          (hasSource ? sourceStart : 0) +
+          getRoleplayCommandContentOffset(hasSource ? sourceText : message.content, whisper.activity),
+      }))
+      .sort((a, b) => a.offset - b.offset || a.index - b.index);
+    for (const { command, offset } of positioned.reverse()) {
+      const fragment = `\n\n[Private whisper to ${command.character} (known only to this recipient and the appointed narrator)]\n${command.text}\n[End of private whisper]\n\n`;
+      message.content = message.content.slice(0, offset) + fragment + message.content.slice(offset);
+    }
+    added = true;
+  }
+  return added;
+}
 
 export function readRoleplayPersonalState(
   messages: readonly HistoryMessage[],
@@ -360,6 +441,10 @@ export function buildRoleplayCommandsReminder(args: {
     lines.push(
       '- [memory: id="short-stable-id" content="what to revisit and when"] adds or updates a reminder, available to you and narrator alone. Keep it short; only up to three reminders can exist at the same time; if you create more, the oldest one will be removed. [dismiss_memory: id="id"] removes it when fulfilled or no longer relevant.',
     );
+  if (args.privateAvailable && enabled("whisper"))
+    lines.push(
+      '- [whisper: character="name" text="text hidden from anyone but the specified character"] Hides a part of the message and makes it available only to a selected character. No one else will be able to access it, except for the appointed narrator. This can be used to whisper secrets, show visions, etc. Name exactly one chat character or the user\'s persona. Put the command where the secret belongs in the message, and do not repeat its text in public narration.',
+    );
   if (enabled("roll"))
     lines.push(
       '- [roll: character="participant name" notation="1d20" attribute="Strength" modifier="+2" dc="15" reason="action being attempted"] requests a real roll; use roll_dice with the same fields when available. You may target any chat participant, including the user\'s persona by name. Attribute is optional; the engine adds the assigned attribute modifier, so do not add it yourself. Optional modifier adds a situational bonus/penalty once; optional dc sets the total needed to succeed. Keep DCs and modifiers in command/tool fields, not narration. Stop after the command and wait for the result before narrating the outcome. Never invent results or reroll an action.',
@@ -389,13 +474,6 @@ export function appendRoleplayPromptTail(
   format: WrapFormat,
 ): void {
   if (!personal && !commands) return;
-  let index = messages.length - 1;
-  while (index >= 0 && messages[index]!.role !== "user") index--;
-  if (index < 0) {
-    messages.push({ role: "user", content: "" });
-    index = messages.length - 1;
-  }
-  const message = messages[index]!;
   if (personal) {
     // Trackers are an earlier injection, not necessarily the last user message.
     // Add private state only here, after the shared agent prompt has been copied.
@@ -414,8 +492,26 @@ export function appendRoleplayPromptTail(
         );
         contextMessage.content = `${contextMessage.content.slice(0, end)}${personal}\n${contextMessage.content.slice(end)}`;
       } else contextMessage.content += `\n\n${personal}`;
+      personal = "";
     } else
-      message.content += `\n\n${format === "xml" ? `<context>\n${personal}\n</context>` : format === "markdown" ? `# Context\n${personal}` : `Context:\n${personal}`}`;
+      personal =
+        format === "xml"
+          ? `<context>\n${personal}\n</context>`
+          : format === "markdown"
+            ? `# Context\n${personal}`
+            : `Context:\n${personal}`;
   }
-  if (commands) message.content += `\n\n${commands}`;
+  const tail = [personal, commands].filter(Boolean).join("\n\n");
+  if (!tail) return;
+  let index = messages.length - 1;
+  while (index >= 0 && messages[index]!.role !== "user") index--;
+  if (index < 0 || messages[index]!.contextKind === "history") {
+    // Live instructions must survive history filtering. Keep an explicit
+    // assistant prefill last, but never attach these instructions to history.
+    index = messages.length;
+    const last = messages.at(-1);
+    if (last?.role === "assistant" && last.contextKind !== "history") index--;
+    messages.splice(index, 0, { role: "user", content: "", contextKind: "injection" });
+  }
+  messages[index]!.content += `\n\n${tail}`;
 }

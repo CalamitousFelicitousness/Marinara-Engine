@@ -22,12 +22,14 @@ export type LorebookEntryPosition = 0 | 1 | 2 | 7;
 
 /** Why an entry was activated for the current generation. */
 export type LorebookActivationSource =
-  | "current_location"
-  | "keyword"
-  | "semantic"
-  | "constant"
-  | "sticky"
-  | "recursive";
+  "current_location" | "keyword" | "semantic" | "constant" | "sticky" | "recursive" | "decision";
+
+/**
+ * How an entry's decision statement acts on activation (#6570). `require`: the entry
+ * activates as it otherwise would and the statement must also be true. `trigger`: the
+ * statement alone can activate it. No answer reads as no in both.
+ */
+export type LorebookDecisionMode = "off" | "require" | "trigger";
 
 /** Include/exclude behavior for contextual lorebook filters. */
 export type LorebookFilterMode = "any" | "include" | "exclude";
@@ -64,6 +66,8 @@ export interface Lorebook {
   excludeFromVectorization: boolean;
   /** Recent message count used to build semantic/vector search queries. 0 = all messages. */
   vectorQueryDepth: number;
+  /** Also score recent assistant/character context separately; disabled by default. */
+  vectorIncludeAssistant?: boolean;
   /** Minimum cosine similarity required for semantic/vector entry activation. */
   vectorScoreThreshold: number;
   /** Maximum semantic/vector entries this lorebook may contribute per generation. */
@@ -238,6 +242,10 @@ export interface LorebookEntry {
   activationConditions: ActivationCondition[];
   /** Schedule: only active during certain in-game times/dates */
   schedule: LorebookSchedule | null;
+  /** A statement the Decision model answers about the recent chat, used as `decisionMode` says. */
+  decisionStatement: string;
+  /** How `decisionStatement` acts on activation; `off` ignores it. */
+  decisionMode: LorebookDecisionMode;
 
   /** When true, bulk vectorization skips this entry and semantic matching ignores any stored vector */
   excludeFromVectorization: boolean;

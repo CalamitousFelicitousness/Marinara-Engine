@@ -7,11 +7,13 @@ import {
 import { normalizeAgentActivationScanDepth } from "../../routes/generate/agent-activation.js";
 import type { NoulQuestion } from "../decision/system-one.client.js";
 import { countMessagesSinceAgentRun } from "./agent-cadence.js";
+import { logRateLimited } from "../../lib/log-rate-limit.js";
 
 export interface ActivationQuestionCandidate {
   agentId: string;
   question: string;
-  threshold: number;
+  /** Undefined when the agent never chose one; the backend's default applies. */
+  threshold: number | undefined;
   scanDepth: number;
 }
 export interface DecisionMessage {
@@ -37,7 +39,10 @@ export function activationQuestionSettings(settings: Record<string, unknown>) {
   if (!parsed.success || !parsed.data.activationQuestion) return null;
   return {
     question: parsed.data.activationQuestion,
-    threshold: parsed.data.activationThreshold ?? DEFAULT_CUSTOM_AGENT_ACTIVATION_THRESHOLD,
+    // Deliberately not collapsed to a constant here. Probabilities are not comparable
+    // across decision models, so an unset threshold has to reach the resolved backend
+    // and take that model's operating point rather than a global 0.5.
+    threshold: parsed.data.activationThreshold,
     maxSkip: parsed.data.activationMaxSkip,
     scanDepth: normalizeAgentActivationScanDepth(parsed.data.activationScanDepth),
   };
@@ -72,8 +77,11 @@ export async function evaluateActivationQuestions(args: {
   candidates: ActivationQuestionCandidate[];
   messages: DecisionMessage[];
   maxStateTokens: number;
+  /** The selected model's operating point, for agents that never chose one. */
+  defaultThreshold?: number;
   ask: (state: unknown, questions: NoulQuestion[]) => Promise<Map<string, number> | null>;
 }): Promise<{ skip: Set<string>; results: Map<string, number | "failed"> }> {
+  const fallbackThreshold = args.defaultThreshold ?? DEFAULT_CUSTOM_AGENT_ACTIVATION_THRESHOLD;
   const groups = new Map<number, ActivationQuestionCandidate[]>();
   for (const candidate of args.candidates) {
     const group = groups.get(candidate.scanDepth) ?? [];
@@ -94,8 +102,15 @@ export async function evaluateActivationQuestions(args: {
         // Even the role/name wrappers may exceed a tiny user-selected budget.
         if (estimateTextTokens(JSON.stringify(state)) <= budget && questionTokens <= args.maxStateTokens + 250)
           answers = (await args.ask(state, questions)) ?? new Map();
-      } catch {
-        /* An injected transport must also fail open. */
+      } catch (err) {
+        // An injected transport must also fail open; every candidate below then reads "failed".
+        // Non-fatal, and it can repeat every turn, so warn at most once per rate-limit window.
+        logRateLimited(
+          "warn",
+          "agents.activation-questions.transport",
+          err,
+          "[agents] Activation question transport failed; failing open",
+        );
       }
       for (const candidate of candidates) {
         const probability = answers.get(candidate.agentId);
@@ -103,7 +118,7 @@ export async function evaluateActivationQuestions(args: {
           results.set(candidate.agentId, "failed");
         } else {
           results.set(candidate.agentId, probability);
-          if (probability < candidate.threshold) skip.add(candidate.agentId);
+          if (probability < (candidate.threshold ?? fallbackThreshold)) skip.add(candidate.agentId);
         }
       }
     }),

@@ -6,6 +6,156 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - Chats can name their own variables in a **Chat Variables** section of **Chat Settings**. Define `char1` as `Mary`, type `{{char1}}` in a message, and the AI reads Mary while your message keeps showing the tag, so changing the value also changes earlier turns. Values are per chat, survive restarts, and share storage with `{{setvar}}`, which lists prompt-set variables there too and still overwrites a name it also uses. Any remaining `{{name}}` resolves from preset variables first, then chat variables; an unknown name is still left as typed, and a name that is a built-in macro cannot be created.
 
+- Roleplay Advanced Memory can optionally use a selected Decision connection, including Jev, to detect scene endings and choose recalled scenes and excerpts. Summaries still use the summary helper, and the existing recall remains the fallback. Advanced Memory no longer carries an Alpha label (#6749).
+
+- Advanced Memory lets you save a requested review without changing correct text, regenerate an individually deleted scene, and see background preparation failures in a toast (#6737).
+
+- Game Mode rulesets whose checks throw a pool of dice and count successes can fight the same way: an attack throws a pool and needs a number of successes, the successes past those add damage dice, and the damage is thrown and then soaked by the kind of harm before it marks a wound track. Wound penalties and conditions add or take away dice, and saves and contests are pools too. Rulesets of either kind can also throw initiative again every round and cap how much of a resource one turn may spend. Gravewatch, the example pool ruleset, now has fights, weapons and a small bestiary (#6736).
+
+- A creature a ruleset fight takes from its bestiary keeps its own reaction and anything it does to itself, so a monster's Parry is asked for when a blow hits it instead of turning up as an ordinary action on its turn aimed at an enemy (#6731).
+
+- The expression sprite and Roleplay whisper browser regressions wait for the page's own requests to finish before each reload, avoiding false WebKit access-control failures in release checks (#6677).
+
+- Game Mode rulesets that resolve their own fights can answer an attack after it hits and before its damage: a Shield or a parry raises defense and the same roll is checked again, so the hit can become a miss, and an answer can halve that one attack's harm. Creatures can have reactions of their own, including ones that land on themselves, and opponents the Engine plays raise a guard only when it turns the hit aside. Capability API 1.46 (#6728).
+
+- Game Mode rulesets that resolve their own fights can have conditions change numbers: raise or lower defense, add or take away a flat number or dice on attack rolls, saves and contest checks, or change speed by a number, halve it or double it. Conditions can make contests harder or easier, end at the start of their holder's turn or after one attack or save, and a track such as exhaustion can make things worse level by level. A condition that ends as a turn begins no longer shortens that turn's walk. Capability API 1.45 (#6719).
+
+- A Decision connection can use a chat model on a server you already run, such as Ollama, LM Studio or llama.cpp, so the model is not loaded a second time just for decisions. Choose the new **OpenAI-compatible chat model** source, or click **Use this model for decisions** on a Custom connection. A Test against a server that does not offer the chosen source's endpoint now says so instead of reporting it as unreachable (#6714).
+- The installed decision sidecar no longer shows a Thinking setting it does not have, which snapped back to Auto when changed. It is warmed up while it starts, so Test and the first turn show its normal speed instead of a one-time two-second delay, and Open-Jev 2B gets more time for a turn with many decision statements, which on a long chat used to run out and read every statement as no (#6716, #6717, #6718).
+- Decision time limits now apply to each statement, never to a whole group. A local model answers every statement of a turn instead of dropping the ones that waited for a free slot, a Decision connection's Time limit is given to each statement a request asks, and the decision sidecar no longer cuts a large turn off at 20 seconds (#6721).
+
+- Game Mode rulesets that resolve their own fights can write a counter: an ability that answers an opponent using something, whoever it was aimed at, and may call it off before it happens. An answer can be limited to abilities from certain catalogs, such as spells, and on a battlefield it reaches only as far as its own range. Capability API 1.44 (#6712).
+
+- Game Mode rulesets that resolve their own fights can declare contests: grab, shove over or back, and break free, where both sides roll and add their own number and the winner holds, knocks down or pushes the loser. The menu shows the chance to win, and opponents the Engine plays use them now and then. Capability API 1.43 (#6707).
+
+- Game Mode rulesets can give a sheet live states such as a form or a stance, one value out of a list that the Game Master or the player changes in play and a rest may put back, and derive numbers from a state or an enum field, so a stance can add dice to one ability's rolls. Capability API 1.42 (#6656).
+
+- Positioned ruleset fights no longer freeze when a wall stands between two fighters: whoever the Engine plays walks the way round instead of waiting for a straight path that never opens (#6678).
+
+- Game Mode rulesets can group abilities, skills and saves into sections, shown under their headings on the sheet and to the Game Master, and say what a check does untrained, by skill or by section: cost dice or points, roll one step harder, or not be attempted at all. A one-request branch check now rolls for the party member it names. Capability API 1.41 (#6655).
+
+- Local models can use an existing GGUF file without downloading another copy, select f16/q8_0/q4_0 KV caches, and show GPU buffer allocations reported by llama.cpp after loading (#6675).
+- Lorebook semantic search can optionally consider character replies as a separate query, preserving specific user cues and keeping user-only retrieval as the default (#6670).
+
+- RunPod Serverless exposes the shared ComfyUI generation settings, including prompt prefixes, sampling, reference placeholders, and LoRAs, and applies them to submitted workflows (#6699).
+- Game translations keep dialogue aligned when translators alter internal speaker tags, and preserve notes or books embedded in narration (#6687).
+
+- Added Gemini 3.8 Flash, 3.7 Flash, 3.5 Flash-Lite and 3.1 Flash-Lite Image to the Google model list, so they arrive with their own context window and output limit instead of being treated as unknown models whose reasoning effort and output cap cannot be sent. Corrected the context and output limits of the existing Gemini image models to the ones Google documents (#6683).
+
+- Advanced Memory finds old scenes from distinctive details even with excerpts disabled, without extra recall model calls. Characters can share access to a scene when only some messages are hidden from them; scene recaps keep shared events plain and use character conditions for private sections. Constant Chat Summaries retain their character conditions (#6679).
+
+- Game Mode wound tracks can be numbered boxes as many as a character's rating, with a penalty table over boxes filled or remaining, take marks on the box a hit names, refuse a mark when full (a fight counts a hit no box can take as taking the character out), heal one kind of harm from a rest or a command, and gain levels from a list on the sheet. Capability API 1.40 (#6654).
+
+- Automatic agent runs with NanoGPT Kimi K3 no longer send an unsupported request to disable reasoning (#6658).
+- Manual Illustrator requests honor the configured output-token limit instead of silently capping it at 1,800 tokens (#6659).
+- Development pull requests use a small Chromium smoke suite instead of the full browser matrix. Full desktop Chromium, mobile Chromium, and mobile WebKit coverage runs nightly, on demand, and before promotion to `main`; contributors run focused regressions locally before pushing (#6661).
+
+- Game Mode rulesets can work out values from a character's live resources and tracks as they stand, add up a column of a list (such as the weight of packed gear), cap a skill or save at any sheet value, and hide sheet items when a field is not a value or is one of several. Capability API 1.39 (#6653).
+
+- Any agent package's Home widget can open one item in its own Home tab through `onOpenPost`. Before, only Noodle could jump to an item; other agents could only open their tab.
+
+- Decision debug output shows scores and thresholds, and Peek Prompt can test decision statements against the selected model, including local reasoning models normally deferred before a reply, without generating a reply or changing the chat's decision state (#6650).
+- The **Noodle** and **Slurp** Lorebook Generation filters, and the Noodle and Slurp Remastered chat and character settings, no longer disappear after a package update that waits for a restart. The Noodle filter also shows for Slurp Legacy, which sends the Noodle trigger.
+- Quartermaster and Relationship Tracker appear under the Download Agents Roleplay filter. Their guides cover staging downloads, restart and per-chat activation, key controls, and planned availability with the next main release (#6724).
+
+- **Copy Support Diagnostics** now wraps the report in a ``` code block, so it reads cleanly when pasted into Discord or GitHub (#6668).
+
+- A NanoGPT connection can show its subscription usage. An optional **Management Token** field accepts a NanoGPT token with the *Usage only* scope, so quota readings never need your inference key, and a **Show subscription usage** toggle displays the weekly and daily input-token quotas beside the connection, in the chat connection picker, and in the chat's **Connection** settings while you play. A look up that NanoGPT cannot answer reads as unknown instead of as unused quota, and the model list marks subscription-included models — including a green `1x` at the normal rate — and the ones charged at a higher input-token multiplier.
+
+- Generation now reports when a prompt that does not fit spends the reply budget instead of dropping messages. A reply budget cut to its 128-token floor is logged as a warning, so a configured Max Tokens that never reaches the provider is visible instead of silent (#6614).
+
+- Game Mode pool rulesets can name standing re-throws the Game Master asks for on a check (`reroll="id"`), and a spend can buy a re-throw. A spend's limit can come from the character sheet or from the check's own dice, a ruleset can declare up to four spends, and any ruleset can add numbers from the sheet to the checks they apply to, shown on the dice card. Capability API 1.38 (#6652).
+
+- Game Mode rulesets can pick a difficulty by name (`difficulty="Hard"`) instead of a number, and a pool ruleset's ladder step now sets the per-die target it prints. A pool ruleset can let a check lower the face dice roll again or count twice on, let an ability check add a second ability, and count a fumble as low faces on half the dice or more, which on a successful check shows as a complication alongside the result. Capability API 1.37 (#6651).
+
+- Game Mode rulesets can give a track a maximum the character sheet sets, hide a track by a field or always show it to the Game Master, print chosen columns beside a summary list's names (`Gear: Crowbar 1d6`) and name its rows with an enum column. When a ruleset has a wound track, the Game Master is taught the command that marks it without the ruleset having to explain it (#6657).
+
+- Lorebook entry Generation filters add **Slurp**, so entries can target Slurp Remastered posts, and the Noodle and Slurp filters now show only while their package is installed. Existing filter choices stay saved when a package is removed (#6660).
+
+- The Roleplay whisper browser regression finishes preparing visual-novel fixtures before reloading, avoiding false WebKit access-control failures in contributor checks (#6628).
+
+- Lorebook and Chat Summary review windows start with focus on the review explanation, so continuing to type cannot accidentally discard a proposal with Space or Enter (#6638).
+
+- Game translations use edited narration, dialogue, and readable text, preserve segment alignment, and discard translation requests invalidated by a later edit or deletion (#6615).
+
+- Agents, including Illustrator, receive complete character card lore and persona descriptions instead of silently losing details beyond the old field limits (#6620).
+
+- User Input prompt regexes in Roleplay’s Individual group chats also apply to other characters' messages, while each character's own replies keep AI Output rules and character-specific exclusions stay in effect (#6637).
+
+- Roleplay Advanced Memory scans and indexes globally hidden history, including turns hidden manually or by automatic summaries, preserving scene summaries and participant access during initial and later processing. If recovery changes a manually corrected scene's boundaries, disable its old correction to keep the text for reference, or delete it, then prepare history again (#6631).
+
+- Professor Mari can author Decision activation and conditional prompts with live model awareness, lean timing guidance, and separate preferences for use and cache-sensitive placement. Setup warnings are remembered per chat, and an enabled Memory can stop them across future chats. New invalid agent activation settings are rejected instead of silently disabling the question; legacy settings remain editable and undoable without blocking unrelated changes (#6629).
+
+- Imports that use decisions now warn when no Decision model is selected, explain the fallback behavior, and link to the Decision Models guide. If the selection cannot be checked, the notice says so without interrupting the import. The notice also covers custom agent imports and Agent catalog installations, including agents with activation questions (#6605).
+
+- Decision model guides now distinguish Jev from Open-Jev and clarify what each feature sends, threshold defaults, statement allowances, answer reuse, lorebook fallbacks, sidecar hardware needs, and prompt-cache costs. Author examples describe observable events and separate connection testing from testing statements in a chat.
+ 
+- Add bounded agent-owned Home widget presentation metadata and full-bleed package widget surfaces.
+
+- Agents can offer up to three Home widgets without placing them automatically. The Widget Manager groups built-in, agent, and personal widgets; users add, hide, restore, and reorder agent widgets, while custom agents can publish bounded text during their normal runs. Capability packages can supply verified interactive widgets in an Engine-owned frame. Noodle's Latest Posts widget is available through its companion agent package (#6621).
+- Contributors can use an optional **Dev MCP** (`tools/dev-mcp`), a small MCP server that lets a coding agent read a local engine's prompts, cache statistics and logs, run typechecks and regressions, and restart the engine safely. It is not part of the app build or the Docker image; see `tools/dev-mcp/README.md`.
+
+- Roleplay's optional **Whisper** command shares an inline secret only with its recipient and the appointed narrator. Recipients can be characters or your persona; revealing a hidden secret on screen does not give it to other characters' prompts (#6616).
+
+- Roleplay's Expression Engine has an optional **Only show active sprites** toggle. It keeps the current sprites visible while expressions generate, then shows only enabled characters returned by the completed result (#6611).
+
+- A Game Mode ruleset's bestiary creature can now be written in the ruleset's own terms: give it a `sheet` shaped exactly like a character's, as partial as you like, and a fight builds it the way it builds a party member. Its health, defense, saves, initiative, speed and the attacks and abilities on its lists come from the ruleset's own formulas, so a ruleset whose opponents use different abilities, skills or lists no longer has to squeeze them into a fixed set of numbers. Such a creature pays for its abilities out of its own pools and can pay out of a bigger one, whether the Engine or the Game Master decides for it. On a ruleset whose health is a wound track, a blow marks its boxes after its resistances and immunities have had their say. It is still an opponent: out at zero, never rolling against death, and never saved over a character who shares its name. Each number is given in one place only, so a creature with a sheet does not also list its health or defense. A creature the Game Master invents can be written on the ruleset's sheet too, so an invented mage has spell slots and spells named straight from the ruleset's catalogs. Unless it is a boss, it only gets what its ruleset opens to it (a Sorcerer's spells, not the whole list), and the spells it was not given are filled in by its temperament and competence without another request to the model: a protective caster leans to spells that hold up its side, a skilled one to counters and reactions. A boss is written in full by the Game Master. Either is still held to its threat tier, with its health, defense, to-hit, save difficulties and best round (the biggest slot it can afford included) pulled onto the tier's scale. Both example rulesets ship one, and ruleset packages that include one need Capability API 1.34. A refusal because the fight is waiting on somebody else's answer, or because that moment has already passed, now says so instead of a generic message (#6610).
+
+- Manual Gallery and `/illustrate` requests preserve the selected custom Illustrator prompt, including perspective and layout instructions alongside or after a response schema. Requests too large for the connection's context limit report an error instead of silently cutting instructions (#6597).
+- Character-browser imports and PNG downloads no longer crash when browser translation replaces their button labels before the loading icon changes (#6598).
+
+- Update local embeddings and Whisper to Transformers.js 4 with matching ONNX runtimes and retain the native installer's private temporary directories. Upgrade Intiface integration to Buttplug 5 while preserving existing haptic intensity values, including zero, full vibration strength, and directional outputs. Reject incompatible feature ranges before starting output, and stop the device if only some features accept a command (#6603, #6604).
+
+- Update static file serving with the latest security fix, refresh TypeScript and formatting tools, and update Android and CI build dependencies. CodeQL initialization and analysis now advance together so security checks continue to run (#6601).
+- New **Settings > Advanced > Features** section for optional server behaviours. Every switch is off by default, so nothing changes until you turn one on. **Stable lorebook picks** and **Retry failed provider calls** can now be turned on there as well as with `LOREBOOK_STABLE_GROUP_WINNERS` and `PROVIDER_RETRY_TRANSIENT_ERRORS`, which still win when set. See docs/configuration/features.md.
+
+- Decision statements take two more modifiers: `every:3` asks a statement only every 3 turns (reading as no between checks, without taking a statement slot), and `priority:high` or `priority:low` decides which statements are asked first and dropped first when a turn has more than **Decision statements per turn** allows (#6599).
+
+- Decision statements that cannot affect a turn no longer use up **Decision statements per turn**. Only statements in enabled preset sections, selected preset variable options, lorebook entries that activate, and blocks not already ruled out are asked. Peek Prompt lists any statements the limit leaves out, and the preset guides now warn preset makers to be careful with decision blocks near the top of a preset, where a changing answer makes caching providers bill the whole prompt again (#6582).
+
+- A decision block inside a preset variable option now works. It was planned under the wrong key, so it read as no on every turn (#6582).
+
+- Decision statements can keep their answer for a few turns: `{{#if decision:"..." sticky:3 cooldown:5}}` stays yes for 3 turns after a yes, then reads as no for 5, without being asked or taking a statement slot meanwhile. Regenerations and swipes do not count as turns (#6582).
+
+- RPG pool names can be cleared and typed with spaces without resetting to HP or MP while editing (#6566).
+- Chat and game dialogs stay open when a drag ends on their backdrop, and overlapping pointers cannot combine into an accidental dismissal (#6576, #6577).
+- Browser notifications use the app's service worker when available and alert again for each completed reply in the same chat (#6571).
+- Browser checks wait for the settings search to finish focusing its result and capture the visible Advanced Memory inspector without scrolling its full container (#6578, #6579).
+- In Individual group chats, characters can hand the next reply to another available character with an @mention. Conversation and Roleplay reuse the current turn queue, with one reply per character to prevent loops; swipes and continuations do not start handoffs (#6567).
+- Server robustness, all opt-in and off by default (see the Robustness table in docs/CONFIGURATION.md): `PROVIDER_RETRY_TRANSIENT_ERRORS` retries a refused connection or a gateway 502/503 up to twice before any output reached the user (never on the primary of a connection with a fallback), `STORAGE_SKIP_UNCHANGED_WRITES` skips rewriting unchanged storage files, `STORAGE_YIELDING_SERIALIZE` keeps large chat saves from pausing other requests, `STORAGE_CACHE_WINDOWS_BOOT_ID` makes Windows starts about 1.5 to 2 s faster, and `SHUTDOWN_WINDOWS_CONSOLE_SIGNALS`, `SHUTDOWN_FORCE_EXIT_ON_REPEAT`, `SHUTDOWN_EARLY_FLUSH` and `SHUTDOWN_RUNTIME_STOP_BUDGET_MS` tune how the server stops. Always on, with no behaviour change: Windows identity probes run hidden instead of flashing a console window, shutdown logs which runtime stop failed or was slow, and a privileged `GET /api/admin/runtime-diagnostics` reports storage residency and whether each capability package runtime is live.
+- Capability packages no longer fail with "Root plugin has already booted" (which could also stop the server) when a background task calls an internal route while startup is still registering routes: such calls now wait until registration has ended. A package whose activate() or selfCheck() calls an internal route during startup gets an error at once instead of hanging startup, and a package that fails only because the server started too early is no longer rolled back or marked as errored; it is retried on the next start.
+
+- Roleplay Personal Notes and command instructions survive Advanced Memory context cutoffs, including when regenerating a reply (#6583).
+
+- Each Decision connection has a **Time limit** (0.5 to 30 seconds, 1.5 by default). A hosted provider that is sometimes slower than 1.5 seconds made decisions look randomly broken, with no way to allow for it. **Test** now waits longer and shows how long the answer took next to the limit, and says when an answer would arrive too late during chats (#6580).
+
+- Lorebook entries can be activated by your Decision model. In an entry's new **Decision** field, **Require** makes the entry activate only when a statement about the recent chat is also true (so passing mentions stay out), and **Trigger** lets the statement activate the entry without its keywords. Statements are asked only when the entry could otherwise activate, answered once per turn, and read as no without a Decision model. Imports and exports keep the setting (#6570).
+
+- The Decision Models guide now says exactly what a decision model reads: only the statement and the recent chat messages. It never sees the preset, character cards, persona description, lorebook entries or anything inserted **@ Depth**, and decision statements read the last 5 messages.
+
+- The full browser regression matrix uses more shards (ten for desktop Chromium and mobile WebKit, eight for mobile Chromium, instead of four each), bringing its expected runtime from about 30 minutes to under 20 and keeping it clear of the 30-minute job limit (#6573).
+- Server logs are easier to follow: every line a request causes carries its `requestId` (also returned as the `x-request-id` header), startup steps are timed with one ready summary, a failure is logged once with its cause chain, user stops are logged at info, repeating failures are rate limited, and model or provider text stays at debug. See docs/development/logging.md.
+- The regression runner gives every file its own temporary DATA_DIR, FILE_STORAGE_DIR and empty .env, so a regression can no longer read or lock the data folder named by a developer's .env.
+- Two opt-in lorebook settings, both off by default (see the Lorebooks table in docs/CONFIGURATION.md): `LOREBOOK_STABLE_GROUP_WINNERS` keeps the same inclusion-group winner in a chat while its candidates stay the same, so the prompt prefix stays cacheable, and `LOREBOOK_COMPACT_STORED_SCANS` keeps the full text of activated lorebook entries only on the newest reply of a chat, which makes chats with large lorebooks much smaller. `scripts/compact-lorebook-scans.mjs` applies the same rule to older chats (dry run by default).
+
+- Agent history lookups no longer compare every loaded agent run with every loaded message, preventing long server stalls as more chats are opened (#6562).
+
+- Conditional prompts can ask your Decision model about the scene: `{{#if decision:"..."}}` for yes or no, and `{{#if decision_choice:"..." == "option"}}` to pick one option. They work in presets, cards, lorebooks and agent prompts, are answered once per turn (post-processing agents once per reply), and read as no when there is no Decision model or no answer. A new **Decision statements per turn** setting limits how many are asked, fields that use them warn when no Decision model is set, and imports that contain them say so (#6569).
+
+- A new **Decision Models** guide explains what a decision model is, the three ways to get one (a local model you already run, a hosted Decision connection, or the installable Open-Jev), which to pick, including on Termux, and everywhere Marinara uses it. The agent guide now covers decision statements in an agent's prompt, and the package guide has notes for agent and Game Mode Experience authors.
+
+- Open-Jev 9B can be installed as a decision model alongside 2B. It was more accurate in our tests, but it needs about 22 GB of GPU memory and takes about a second per question, so its request budget grows with the number of questions.
+
+- Installing a decision model after a dropped connection or a sleep keeps the files that already finished, checked against their published sizes and checksums, instead of downloading everything again.
+
+- Development servers, scripts and regression specs no longer stay open after finishing when they log while the log worker is still starting; this intermittently failed the image-dimension regression. The regression summary also names every file that did not pass (#6529).
+
+- Smart response order in group chats can ask your Decision model who should speak, one yes/no question per character, instead of making a full AI call each turn. Turn it on under **Decision model** in the Connections panel. It is off by default. If the decision model does not answer, Smart order makes its usual AI call (#6559).
+
+- Advanced Recall cutoff summaries report activity in the Agents menu and preserve each character POV without duplicating summary conditions (#6557).
+
+- Message voice controls share a compact audio menu. Clear cached voice removes only that message’s audio and regenerates it on the next playback, without discarding other chats’ saved voice lines (#6514).
+
 - Roleplay dice outcomes follow the selected accent. Message usage and Peek Prompt distinguish tool-turn totals from the last request's input size, so repeated tool requests are not mistaken for an oversized context (#6550).
 - Advanced Memory also checks actual provider-reported input after the main reply, resetting to the latest known scene and reusing its recap in Chat Summaries when the input limit is exceeded. Cached input counts; output tokens and cumulative tool-turn usage do not (#6550).
 - Advanced Memory summary prompts request character-name conditions for separate POV knowledge. Recall resolves those conditions for the responding character; raw excerpts are omitted when they could expose a hidden section, while the narrator retains the full recap (#6550).
@@ -13,6 +163,19 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - GPT-6 Sol and Luna are selectable in OpenAI connections with their documented limits, reasoning controls, and compatible streaming and tool requests (#6546).
 
 - Claude Opus 5.5 is selectable in Claude connections with its 1M context and 128k output limits, supported reasoning settings, and compatible tool requests (#6544).
+
+- Scene setup lets you choose its persona and Conversation characters. Characters in an active Scene pause automatic messages in the source Conversation until the Scene ends (#6542, #6541).
+- Roleplay tracker widgets tolerate saved blank rows, and Custom Tracker updates discard nameless entries after applying field locks instead of making a chat unusable (#6549).
+
+- Marinara can now download and run a purpose-built decision model for activation questions. It runs as its own local process, so it answers them whether or not you also run a local chat model. It is off by default and behind a warning, a confirmation carrying your machine's verdict, and a separate size-and-license step, because it costs about 10 GB of disk and 5 GB of GPU memory. If you already run a local chat model, that model is more accurate on roleplay questions; the decision model is faster and slightly smaller. You can also paste a decision model's repository, which is installed only when its own manifest declares a runtime this build ships.
+
+- On a machine with several NVIDIA GPUs, the decision model installer has a GPU menu for the card it runs on. Where the machine cannot run a decision model at all, the installer offers to set up a Decision connection instead.
+
+- The decision model preflight checks GPU compute capability, not just whether an NVIDIA card is present. Pascal cards and older cannot run the runtime whatever memory they have, and without this check the download would have been offered and then failed at load.
+
+- Activation question thresholds now start from whatever the selected decision model actually answers around, instead of always 0.5. Probabilities are not comparable between models: a general local model answers a clear scene change at 0.99 while a purpose-built decision model answers the same turn at 0.2, so one fixed number made the second kind skip every relevant turn while appearing to work. The editor seeds new questions from the selected model and offers to put its recommended value back.
+
+- Choosing a decision model that turns out to be unusable now leaves your current choice alone. A rejected selection reported the error but also silently switched the Decision model to None, which stopped every activation question until it was noticed.
 
 - Activation questions can be answered by the local model you already run, on either the main or the utility slot, with no download and nothing leaving your machine. Pick it under **Decision model**, which now lists local models alongside Decision connections and shows why an unavailable entry cannot be used. A **Thinking** setting handles models that always reason first; those gate post-processing agents by default so replies do not wait.
 
@@ -28,6 +191,10 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - Game Mode honors connection and chat generation parameters instead of replacing them with fixed sampling and output settings (#6511).
 - Grok 4.6 and 4.7 keep enabled tools, including web search, instead of losing them as unrecognized models, with their supported context and reasoning settings (#6521).
 - Sidebar sorting applies to folder rows as well as their contents, including names, dates, and content-based sorts; manual folder ordering remains available (#6497).
+
+- A Game Mode party member you hand to the Engine to play can now pay a ruleset's ability out of a higher pool than it names: a spell cast out of a bigger slot, with whatever the ruleset says the extra buys. Only you could do that before, so a character played by the Engine never cast a spell that grows any bigger, on a turn or in a reaction alike. Each way of paying is weighed on its own and priced with the rungs it climbs, so the bigger version is not mistaken for a free one. Opponents built from a plain stat block are unchanged: it has no pools to pay out of (#6528).
+
+- A Game Mode ruleset's catalog entry can now say WHICH moment it waits for, so a spell or a trick written as a reaction finally has somewhere to be taken. Two moments: before something lands on its holder, where taking it may stop that thing from happening at all, and after something has hurt them, where it is pointed back at whoever did it. What the stopped action cost is still spent, because it was paid for before anybody was asked, and an entry pointed at whoever caused the moment fills the target in rather than asking you to pick. An entry that only says it is a reaction, without naming a moment, stays off every menu exactly as before. Ruleset packages that name a moment need Capability API 1.33. The fight still keeps one window rather than a stack, so a counter cannot itself be countered, and a reaction cannot change a number on what it answers, only stop it or answer it. A combatant the Engine plays now weighs letting a moment go by against spending on it, the way it weighs ending a turn, so having a reaction to spend no longer means always spending it; that includes a strike at somebody walking away. A friend aiming something at you, like a heal, opens no window at all.
 
 - Character, persona, and lorebook folder contents follow the selected sidebar sort order (#6497).
 - The extra-actions menu sits to the left of Emoji, farther from Send, while keeping existing Post Only and Guided Generation actions (#6507).

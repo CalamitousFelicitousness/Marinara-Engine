@@ -39,6 +39,7 @@ import { getMariImagesService } from "./mari-images.service.js";
 import { executeWikiCli } from "../professor-mari/fandom-mediawiki/wiki-cli.js";
 import {
   LIMITS,
+  customAgentActivationSettingsSchema,
   PROFESSOR_MARI_ID,
   HOME_CUSTOM_WIDGET_LIMIT,
   HOME_CUSTOM_WIDGETS_SETTINGS_KEY,
@@ -60,11 +61,16 @@ import {
   type MariDbValidationIssue,
   type MariDbValidationResult,
   MARI_PERMISSIONS_MODE_SETTINGS_KEY,
+  lorebookDecisionModeSchema,
+  parseLorebookDecisionActivation,
 } from "@marinara-engine/shared";
+import { guardMariDecisionWrites, MARI_DECISION_STATE_KEY } from "../professor-mari/decision-authoring.js";
 import { computePersonalExtensionHash } from "../extensions/personal-extension-hash.js";
 import { HomeWidgetCatalogConflictError, replaceHomeWidgetCatalog } from "../home-widget-catalog.service.js";
 import { createMariWherePredicate } from "./mari-where-expression.js";
 import { runMariTransformSandbox } from "./mari-transform-sandbox.js";
+import { reloadFeatureSettingsIfTouched } from "../features/feature-settings.js";
+import { createAppSettingsStorage } from "../storage/app-settings.storage.js";
 import { encryptCustomToolWebhookUrl, ENCRYPTED_WEBHOOK_PREFIX } from "../../utils/custom-tool-webhook.js";
 
 type Row = Record<string, unknown>;
@@ -1210,6 +1216,10 @@ export function buildLorebookEntryCreateRow(
     excludeRecursion: "false",
     delayUntilRecursion: "false",
     excludeFromVectorization: "false",
+    ...parseLorebookDecisionActivation({
+      decisionStatement: firstString(data, ["decisionStatement", "decision_statement"]),
+      decisionMode: firstString(data, ["decisionMode", "decision_mode"]),
+    }),
     locked: "false",
     // Message provenance: rows Mari creates are human-directed, so they are
     // born unattributed (and cascade-immune) with an empty source-refs array.
@@ -1300,10 +1310,20 @@ function boolText(value: boolean): string {
 
 function normalizeAgentActionData(input: Row, existing?: Row | null): Row {
   const name = firstString(input, ["name"]) ?? (typeof existing?.name === "string" ? existing.name : "");
-  const settings = {
-    ...(isRecord(existing?.settings) ? existing.settings : parseJsonRecordValue(existing?.settings)),
-    ...(isRecord(input.settings) ? input.settings : {}),
-  };
+  const settings = deepMerge(
+    isRecord(existing?.settings) ? existing.settings : parseJsonRecordValue(existing?.settings),
+    isRecord(input.settings) ? input.settings : {},
+  ) as Row;
+  // Match the editor's clear behavior without wiping unrelated package settings.
+  for (const key of [
+    "activationQuestion",
+    "activationThreshold",
+    "activationScanDepth",
+    "activationMaxSkip",
+    "runInterval",
+  ]) {
+    if (isRecord(input.settings) && (input.settings[key] === null || input.settings[key] === "")) delete settings[key];
+  }
   const resultType = firstString(input, ["resultType", "result_type"]);
   if (resultType) settings.resultType = resultType;
   const row: Row = {
@@ -1327,7 +1347,9 @@ function normalizeAgentActionData(input: Row, existing?: Row | null): Row {
     promptTemplate:
       firstString(input, ["promptTemplate", "prompt_template", "prompt"]) ??
       (typeof existing?.promptTemplate === "string" ? existing.promptTemplate : ""),
-    settings,
+    // Already merged above. Serialize so the generic patch planner does not
+    // merge removed activation fields back in from the previous row.
+    settings: JSON.stringify(settings),
   };
   delete row.agentType;
   delete row.agent_type;
@@ -2165,6 +2187,7 @@ function summarizeLorebookRow(row: Row): Row {
     scanDepth: row.scanDepth,
     tokenBudget: row.tokenBudget,
     vectorQueryDepth: row.vectorQueryDepth,
+    vectorIncludeAssistant: row.vectorIncludeAssistant === "true",
     vectorScoreThreshold: row.vectorScoreThreshold,
     vectorMaxResults: row.vectorMaxResults,
     createdAt: row.createdAt,
@@ -3073,6 +3096,13 @@ export class MariDbService {
         "excludeFromVectorization",
       ) || changed;
     changed =
+      assignBooleanTextField(
+        target,
+        source,
+        ["vectorIncludeAssistant", "vector_include_assistant"],
+        "vectorIncludeAssistant",
+      ) || changed;
+    changed =
       assignBoundedNumberField(
         target,
         source,
@@ -3137,6 +3167,22 @@ export class MariDbService {
     changed = assignNumberField(target, source, ["depth"], "depth") || changed;
     changed = assignStringField(target, source, ["role"], "role") || changed;
     changed = assignStringField(target, source, ["group"], "group") || changed;
+    // Decision activation (#6570), limited and validated like the entry API. An empty
+    // statement clears it; an unknown mode is refused rather than turned off.
+    const statementKey = ["decisionStatement", "decision_statement"].find((key) => typeof source[key] === "string");
+    if (statementKey !== undefined) {
+      target.decisionStatement = parseLorebookDecisionActivation({
+        decisionStatement: source[statementKey],
+      }).decisionStatement;
+      changed = true;
+    }
+    const decisionMode = firstString(source, ["decisionMode", "decision_mode"]);
+    if (decisionMode !== undefined) {
+      const parsedMode = lorebookDecisionModeSchema.safeParse(decisionMode.toLowerCase());
+      if (!parsedMode.success) throw new Error(`decisionMode must be off, require or trigger, not "${decisionMode}"`);
+      target.decisionMode = parsedMode.data;
+      changed = true;
+    }
     changed = assignBooleanTextField(target, source, ["selective"], "selective") || changed;
     const selectiveLogic = normalizeSelectiveLogic(source);
     if (selectiveLogic !== undefined) {
@@ -3584,6 +3630,7 @@ export class MariDbService {
             "maxRecursionDepth",
             "excludeFromVectorization",
             "vectorQueryDepth",
+            "vectorIncludeAssistant",
             "vectorScoreThreshold",
             "vectorMaxResults",
             "scope",
@@ -3608,6 +3655,7 @@ export class MariDbService {
           maxRecursionDepth: 3,
           excludeFromVectorization: "false",
           vectorQueryDepth: 10,
+          vectorIncludeAssistant: "false",
           vectorScoreThreshold: 0.3,
           vectorMaxResults: 10,
           scope: { mode: "all", chatIds: [] },
@@ -3669,6 +3717,7 @@ export class MariDbService {
             "maxRecursionDepth",
             "excludeFromVectorization",
             "vectorQueryDepth",
+            "vectorIncludeAssistant",
             "vectorScoreThreshold",
             "vectorMaxResults",
             "scope",
@@ -3678,7 +3727,7 @@ export class MariDbService {
         this.assignLorebookActionFields(patch, data);
         if (Object.keys(patch).length <= 1) {
           throw new Error(
-            "lorebook.update needs a patch field such as name, description, category, tags, enabled, global, scanDepth, tokenBudget, entryLimit, recursiveScanning, excludeFromVectorization, vectorQueryDepth, vectorScoreThreshold, or vectorMaxResults",
+            "lorebook.update needs a patch field such as name, description, category, tags, enabled, global, scanDepth, tokenBudget, entryLimit, recursiveScanning, excludeFromVectorization, vectorQueryDepth, vectorIncludeAssistant, vectorScoreThreshold, or vectorMaxResults",
           );
         }
         return this.executeMutation(
@@ -3735,6 +3784,8 @@ export class MariDbService {
             "excludeRecursion",
             "delayUntilRecursion",
             "excludeFromVectorization",
+            "decisionStatement",
+            "decisionMode",
             "locked",
             "characterFilterMode",
             "characterFilterIds",
@@ -3806,6 +3857,8 @@ export class MariDbService {
             "excludeRecursion",
             "delayUntilRecursion",
             "excludeFromVectorization",
+            "decisionStatement",
+            "decisionMode",
             "locked",
             "characterFilterMode",
             "characterFilterIds",
@@ -5379,7 +5432,8 @@ export class MariDbService {
         }
         addCharacterDataShapeIssues(tableName, row, id, issues);
         if (tableName === "agent_configs") {
-          this.validateAgentConfigRow(row, id, issues);
+          const change = changes?.find((entry) => entry.table === tableName && entry.id === id);
+          this.validateAgentConfigRow(row, id, issues, change?.beforeRaw);
         }
         if (tableName === "custom_tools") {
           this.validateCustomToolRow(row, id, issues);
@@ -5436,7 +5490,12 @@ export class MariDbService {
     return validationFromIssues(issues);
   }
 
-  private validateAgentConfigRow(row: Row, idValue: unknown, issues: MariDbValidationIssue[]) {
+  private validateAgentConfigRow(
+    row: Row,
+    idValue: unknown,
+    issues: MariDbValidationIssue[],
+    previousRow?: Row | null,
+  ) {
     const id = idValue == null ? null : String(idValue);
     if (typeof row.type !== "string" || row.type.trim().length === 0) {
       issues.push({ level: "error", table: "agent_configs", id, message: "Agent type must be a non-empty string" });
@@ -5478,6 +5537,38 @@ export class MariDbService {
       issues.push({ level: "error", table: "agent_configs", id, message: "Agent promptTemplate must be a string" });
     }
     const settings = tryParseJsonColumn(row, "settings");
+    if (isRecord(settings)) {
+      // Legacy imports/packages accepted arbitrary settings. Validate new values on edits,
+      // preserve the original values on undo, and audit every field in explicit db validate.
+      const previousSettings = previousRow ? tryParseJsonColumn(previousRow, "settings") : undefined;
+      const changedSettings = isRecord(previousSettings)
+        ? Object.fromEntries(
+            Object.entries(settings).filter(([key, value]) => stableJson(value) !== stableJson(previousSettings[key])),
+          )
+        : settings;
+      const activation = customAgentActivationSettingsSchema.safeParse(changedSettings);
+      if (!activation.success) {
+        for (const issue of activation.error.issues) {
+          issues.push({
+            level: "error",
+            table: "agent_configs",
+            id,
+            message: `Agent settings.${issue.path.join(".")}: ${issue.message}`,
+          });
+        }
+      }
+      if (
+        changedSettings.runInterval !== undefined &&
+        (!Number.isSafeInteger(changedSettings.runInterval) || Number(changedSettings.runInterval) < 1)
+      ) {
+        issues.push({
+          level: "error",
+          table: "agent_configs",
+          id,
+          message: "Agent settings.runInterval must be a positive integer",
+        });
+      }
+    }
     if (settings !== undefined && !isRecord(settings)) {
       issues.push({ level: "error", table: "agent_configs", id, message: "Agent settings must be a JSON object" });
     }
@@ -6203,6 +6294,7 @@ export class MariDbService {
           maxRecursionDepth: 3,
           excludeFromVectorization: "false",
           vectorQueryDepth: 10,
+          vectorIncludeAssistant: "false",
           vectorScoreThreshold: 0.3,
           vectorMaxResults: 10,
           scope: { mode: "all", chatIds: [] },
@@ -7208,6 +7300,7 @@ export class MariDbService {
     }
 
     try {
+      await guardMariDecisionWrites(plan.changes);
       await this.captureDeletedLorebookEmbeddings(plan.changes);
       const journalPath = await this.applyPlan(plan);
       const syncOutcomes = await this.syncAffectedCharacterBooks(plan.changes);
@@ -7285,6 +7378,45 @@ export class MariDbService {
     // transforms cannot bypass the structured preset-action boundary.
     protectPromptPresetSystemKeys(changes);
 
+    // Agent Home widget definitions are edited by the user in Agent Editor or by
+    // a verified package update. Mari's app_data and raw DB paths share this gate.
+    const widgetDefinitions = (settings: unknown): unknown => {
+      if (typeof settings !== "string") return undefined;
+      try {
+        return (JSON.parse(settings) as Record<string, unknown>).homeWidgets;
+      } catch {
+        return undefined;
+      }
+    };
+    const deletedAgentIds = new Set(
+      changes.filter((change) => change.table === "agent_configs" && !change.afterRaw).map((change) => change.id),
+    );
+    for (const change of changes) {
+      const ownerDeleted =
+        !change.afterRaw &&
+        [...deletedAgentIds].some((agentId) => change.id.startsWith(`agent_home_widget:${agentId}:`));
+      if (change.table === "app_settings" && change.id.startsWith("agent_home_widget:") && !ownerDeleted) {
+        issues.push({
+          level: "error",
+          table: "app_settings",
+          id: change.id,
+          message: "Professor Mari cannot publish agent Home widget data. The owning agent must publish it.",
+        });
+      }
+      if (change.table !== "agent_configs" || !change.afterRaw) continue;
+      if (
+        stableJson(widgetDefinitions(change.beforeRaw?.settings)) !==
+        stableJson(widgetDefinitions(change.afterRaw.settings))
+      ) {
+        issues.push({
+          level: "error",
+          table: "agent_configs",
+          id: change.id,
+          message: "Professor Mari cannot change agent Home widgets. Edit them in Agent Editor.",
+        });
+      }
+    }
+
     // #5725: the Permissions Mode governs Mari herself, so she must never be
     // able to rewrite it - by ANY path, including raw db mutations and
     // transforms (change-level, so every planner is covered). Only the user's
@@ -7313,6 +7445,18 @@ export class MariDbService {
     };
     for (const change of changes) {
       if (change.table !== "chats" || !change.afterRaw) continue;
+      if (
+        stableJson(parseJsonRecordValue(change.afterRaw.metadata)[MARI_DECISION_STATE_KEY]) !==
+        stableJson(parseJsonRecordValue(change.beforeRaw?.metadata)[MARI_DECISION_STATE_KEY])
+      ) {
+        issues.push({
+          level: "error",
+          table: "chats",
+          id: change.id,
+          message:
+            "Use decision.record in the active Mari chat for Decision interaction state; raw metadata cannot authorize authoring.",
+        });
+      }
       if (chatModeMetadataValue(change.afterRaw.metadata) !== chatModeMetadataValue(change.beforeRaw?.metadata)) {
         issues.push({
           level: "error",
@@ -7810,6 +7954,25 @@ export class MariDbService {
       apply: true,
     }));
     await this.addCascadeDeletes(changes, request.cascade);
+    // Published Home widget state belongs to its agent; plan it in the same journal so Restore reinserts it.
+    const deletedAgentIds = changes.filter((change) => change.table === "agent_configs").map((change) => change.id);
+    if (deletedAgentIds.length > 0) {
+      const settingsMeta = getMeta("app_settings");
+      for (const row of await this.rawRows("app_settings")) {
+        const id = rowId(settingsMeta, row);
+        if (!deletedAgentIds.some((agentId) => id.startsWith(`agent_home_widget:${agentId}:`))) continue;
+        changes.push({
+          table: "app_settings",
+          id,
+          action: "delete",
+          before: parseRow("app_settings", row),
+          after: null,
+          beforeRaw: row,
+          afterRaw: null,
+          apply: true,
+        });
+      }
+    }
     const cascaded = changes.filter((change) => change.cascadeOf);
     if (cascaded.length > 0 && !request.cascade) {
       issues.push({
@@ -8152,7 +8315,7 @@ export class MariDbService {
         }
       }
       addCharacterDataShapeIssues(change.table, row, change.id, issues);
-      if (change.table === "agent_configs") this.validateAgentConfigRow(row, change.id, issues);
+      if (change.table === "agent_configs") this.validateAgentConfigRow(row, change.id, issues, change.beforeRaw);
       if (change.table === "custom_tools") this.validateCustomToolRow(row, change.id, issues);
     }
 
@@ -8241,6 +8404,8 @@ export class MariDbService {
       );
     }
     await flushDB();
+    // A Settings > Features row written here bypasses app-settings storage; refresh its cache.
+    await reloadFeatureSettingsIfTouched(plan.changes, createAppSettingsStorage(this.db));
     return journalPath;
   }
 
@@ -8344,6 +8509,7 @@ export class MariDbService {
       );
     }
     await flushDB();
+    await reloadFeatureSettingsIfTouched(changes, createAppSettingsStorage(this.db));
   }
 
   private async writeJournal(operationId: string, plan: Plan): Promise<string> {

@@ -19,6 +19,7 @@ import {
   parseRoleplayCommands,
   readRoleplayPersonalState,
   RoleplayCommandStreamFilter,
+  resolveRoleplayWhisperRecipient,
 } from "../../packages/server/src/services/generation/roleplay-commands.js";
 import { collectPastReasoningMetadata } from "../../packages/server/src/services/generation/generation-parameters.js";
 import { conversationPromptHistoryContent } from "../../packages/server/src/routes/generate/conversation-prompt-formatting.js";
@@ -171,6 +172,60 @@ const parsed = parseRoleplayCommands(raw);
 assert.equal(parsed.content, "Before  after  the note.");
 assert.equal(parsed.commands.length, 2);
 assert.equal(parsed.invalid, 0);
+
+const whisperRaw = 'Before [whisper: character="Bob" text="The [key] is \\"here\\".\\nKeep it secret."] after.';
+const whisper = parseRoleplayCommands(whisperRaw);
+assert.equal(whisper.content, "Before  after.");
+assert.deepEqual(whisper.commands, [
+  { type: "whisper", character: "Bob", text: 'The [key] is "here".\nKeep it secret.' },
+]);
+assert.equal(whisper.activity[0]?.contentOffset, 7);
+for (let split = 0; split <= whisperRaw.length; split++) {
+  const filter = new RoleplayCommandStreamFilter();
+  assert.equal(
+    filter.push(whisperRaw.slice(0, split)) + filter.push(whisperRaw.slice(split)) + filter.flush(),
+    whisper.content,
+  );
+}
+for (const raw of [
+  '[whisper: character="Bob" text="unfinished',
+  "[whis",
+  '[whisper: text="No recipient"]',
+  `[whisper: character="Bob" text="${"x".repeat(16_001)}"]`,
+]) {
+  assert.equal(parseRoleplayCommands(raw).content, "");
+  assert.equal(parseRoleplayCommands(raw).invalid, 1);
+}
+const whisperPeople = [
+  { id: "alice", name: "Alice" },
+  { id: "bob", name: "Bob" },
+];
+assert.deepEqual(resolveRoleplayWhisperRecipient(" bob ", whisperPeople, { id: "mari", name: "Mari" }), {
+  id: "bob",
+  kind: "character",
+});
+assert.deepEqual(resolveRoleplayWhisperRecipient("Mari", whisperPeople, { id: "mari", name: "Mari" }), {
+  id: "mari",
+  kind: "persona",
+});
+assert.equal(resolveRoleplayWhisperRecipient("Unknown", whisperPeople, { id: "mari", name: "Mari" }), null);
+assert.equal(
+  resolveRoleplayWhisperRecipient("Bob", [...whisperPeople, { id: "other", name: "BOB" }], {
+    id: "mari",
+    name: "Mari",
+  }),
+  null,
+);
+assert.equal(resolveRoleplayWhisperRecipient("Bob", whisperPeople, { id: "mari", name: "Bob" }), null);
+const whisperPermissions = {
+  roleplayCommandsEnabled: true,
+  roleplayCommandToggles: { whisper: true },
+  roleplayWhisperAudience: "narrator",
+  roleplayCommandNarratorId: "narrator",
+};
+assert.equal(isRoleplayCommandAllowed(whisperPermissions, "whisper", "alice"), false);
+assert.equal(isRoleplayCommandAllowed(whisperPermissions, "whisper", null), false);
+assert.equal(isRoleplayCommandAllowed(whisperPermissions, "whisper", "narrator"), true);
 assert.equal(parsed.commands[0]?.type, "notes");
 if (parsed.commands[0]?.type === "notes") assert.match(parsed.commands[0].content, /\nMy cover story is "lost"\./u);
 // Every possible two-chunk boundary, plus single-character streaming, must keep secrets hidden.
@@ -462,9 +517,11 @@ for (const format of ["xml", "markdown", "none"] as const) {
   assert.ok(separated[1]!.content.includes(privateState), "private state joins the earlier tracker injection verbatim");
   assert.equal(publicTracker.content, committed, "a copied public agent prompt remains private-state free");
   assert.equal(separated[2]!.content, "OUTPUT_FORMAT");
-  assert.equal(separated[4]!.content, "PREFILL");
-  assert.ok(separated[3]!.content.includes(reminder));
-  assert.doesNotMatch(separated[3]!.content, /ALICE_LIE|BOB_SECRET/);
+  assert.equal(separated[3]!.content, "LATEST_INPUT", "live instructions must not modify historical turns");
+  assert.equal(separated[4]!.contextKind, "injection", "commands survive a history cutoff");
+  assert.ok(separated[4]!.content.includes(reminder));
+  assert.doesNotMatch(separated[4]!.content, /ALICE_LIE|BOB_SECRET/);
+  assert.equal(separated[5]!.content, "PREFILL");
   if (format === "xml") assert.equal(separated[1]!.content.match(/<context>/gu)?.length, 1);
   if (format === "markdown") {
     const customHeading = [
@@ -475,6 +532,14 @@ for (const format of ["xml", "markdown", "none"] as const) {
     assert.ok(customHeading[0]!.content.includes(privateState));
     assert.equal(customHeading[1]!.content, "Latest");
   }
+  const notesOnly = [
+    { role: "user", content: committed, contextKind: "injection" },
+    { role: "user", content: "LATEST_INPUT", contextKind: "history" },
+  ];
+  appendRoleplayPromptTail(notesOnly, privateState, "", format);
+  assert.equal(notesOnly.length, 2, "joining existing Context must not append an empty instruction message");
+  assert.ok(notesOnly[0]!.content.includes(privateState));
+  assert.equal(notesOnly[1]!.content, "LATEST_INPUT");
 }
 const incompleteContext = "<context>".repeat(20_000);
 const malformedMessages = [
@@ -483,7 +548,9 @@ const malformedMessages = [
 ];
 appendRoleplayPromptTail(malformedMessages, "PRIVATE", "", "xml");
 assert.equal(malformedMessages[0]!.content, incompleteContext, "unterminated Context stays untouched");
-assert.equal(malformedMessages[1]!.content, "Latest\n\n<context>\nPRIVATE\n</context>");
+assert.equal(malformedMessages[1]!.content, "Latest");
+assert.equal(malformedMessages[2]!.contextKind, "injection");
+assert.equal(malformedMessages[2]!.content, "\n\n<context>\nPRIVATE\n</context>");
 const surroundedContext = [{ role: "user", content: "</context>\n<context>\nTRACKER\n</context>\nSUFFIX" }];
 appendRoleplayPromptTail(surroundedContext, "Literal $&", "", "xml");
 assert.equal(surroundedContext[0]!.content, "</context>\n<context>\nTRACKER\nLiteral $&\n</context>\nSUFFIX");

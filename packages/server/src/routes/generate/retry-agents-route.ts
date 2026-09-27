@@ -47,7 +47,21 @@ import {
   shouldUseToolsDuringAgentExecution,
   type ResolvedAgent,
 } from "../../services/agents/agent-pipeline.js";
-import { executeAgent, executeAgentBatch, normalizeAgentContextSize } from "../../services/agents/agent-executor.js";
+import {
+  buildAgentPromptMacroContext,
+  effectiveAgentPromptTemplate,
+  executeAgent,
+  executeAgentBatch,
+  normalizeAgentContextSize,
+} from "../../services/agents/agent-executor.js";
+import { DECISION_SETTINGS_KEYS, resolveDecisionBackend } from "../../services/decision/decision-default.js";
+import {
+  answerAgentTemplateDecisions,
+  latestTurnDecisionId,
+  replyDecisionTurnId,
+} from "../../services/decision/prompt-decisions.js";
+import type { DecisionMessage } from "../../services/generation/agent-activation-questions.js";
+import { createAppSettingsStorage } from "../../services/storage/app-settings.storage.js";
 import { createAgentConcurrencyLimiter } from "../../services/agents/agent-concurrency.js";
 import type { BaseLLMProvider } from "../../services/llm/base-provider.js";
 import { getLocalSidecarProvider, LOCAL_SIDECAR_MODEL } from "../../services/llm/local-sidecar.js";
@@ -56,7 +70,11 @@ import { withConnectionFallbackProvider } from "../../services/llm/connection-fa
 import { sidecarModelService } from "../../services/sidecar/sidecar-model.service.js";
 import { utilitySidecarService } from "../../services/utility-sidecar/utility-sidecar.service.js";
 import { buildUtilitySidecarEntry } from "../../services/utility-sidecar/utility-sidecar.provider.js";
-import { UTILITY_SIDECAR_CONNECTION_ID } from "@marinara-engine/shared";
+import {
+  DECISION_PROMPT_QUESTION_LIMIT_SETTINGS_KEY,
+  parseDecisionPromptQuestionLimit,
+  UTILITY_SIDECAR_CONNECTION_ID,
+} from "@marinara-engine/shared";
 import { buildSpotifyDjConstraints } from "../../services/spotify/spotify-dj-constraints.js";
 import { fingerprintChatSummary } from "../../services/prompt/chat-summary-fingerprint.js";
 import {
@@ -126,6 +144,7 @@ import {
 import { createGameStateStorage } from "../../services/storage/game-state.storage.js";
 import { normalizeCharacterRpgStats } from "../../services/generation/character-prompt-context.js";
 import { createLorebooksStorage } from "../../services/storage/lorebooks.storage.js";
+import { storedContentForTextlessScanEntries } from "../../services/lorebook/lorebook-scan-compaction.js";
 import { createCustomToolsStorage } from "../../services/storage/custom-tools.storage.js";
 import { syncGameMapMetaPartyPosition } from "../../services/game/map-position.service.js";
 import {
@@ -995,13 +1014,25 @@ async function buildRetryAgentContext(args: {
     !Array.isArray(lastAssistantExtra.lorebookScan)
       ? (lastAssistantExtra.lorebookScan as Record<string, unknown>)
       : {};
+  // Scans compacted by the opt-in LOREBOOK_COMPACT_STORED_SCANS keep no entry text; use the stored entry text.
+  const storedLoreContentById = await storedContentForTextlessScanEntries(rawLorebookScan, (id) =>
+    lorebooksStore.getEntry(id),
+  );
+  // Stored scan text was resolved when it was generated; the stored entry text still holds its macros.
+  const scanEntryContent = (row: Record<string, unknown>): string | undefined => {
+    if (typeof row.content === "string") return row.content;
+    const stored = typeof row.id === "string" ? storedLoreContentById.get(row.id) : undefined;
+    if (stored === undefined) return undefined;
+    return resolveHistoryMessageMacros([{ content: stored, characterId: null }])[0]?.content ?? stored;
+  };
   const activatedLorebookEntries = (
     Array.isArray(rawLorebookScan.activatedEntries) ? rawLorebookScan.activatedEntries : []
   ).flatMap((entry) => {
     if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
     const row = entry as Record<string, unknown>;
-    return typeof row.id === "string" && typeof row.content === "string"
-      ? [{ id: row.id, name: typeof row.name === "string" ? row.name : undefined, content: row.content }]
+    const content = scanEntryContent(row);
+    return typeof row.id === "string" && typeof content === "string"
+      ? [{ id: row.id, name: typeof row.name === "string" ? row.name : undefined, content }]
       : [];
   });
   const semanticLorebookEntries = (
@@ -1015,11 +1046,12 @@ async function buildRetryAgentContext(args: {
       row.matchType === "semantic" ||
       activationSources.includes("semantic") ||
       matchedKeys.some((key) => typeof key === "string" && key.startsWith("[semantic:"));
-    if (!semanticMatch || typeof row.id !== "string" || typeof row.content !== "string") return [];
+    const content = scanEntryContent(row);
+    if (!semanticMatch || typeof row.id !== "string" || typeof content !== "string") return [];
     return [
       {
         id: row.id,
-        content: row.content,
+        content,
         ...(typeof row.semanticScore === "number" && Number.isFinite(row.semanticScore)
           ? { semanticScore: row.semanticScore }
           : {}),
@@ -4030,9 +4062,13 @@ async function applyRetryResultEffects(args: {
       }
       try {
         const chatsDb = createChatsStorage(app.db);
-        if (Object.keys(exprMap).length > 0) {
+        if (Array.isArray(spriteData.expressions)) {
           assertRetryActive();
-          await chatsDb.updateMessageExtraForSwipe(retryMessageId, retrySwipeIndex, { spriteExpressions: exprMap });
+          // An empty result hides sprites via the owner list without resetting their retained appearances.
+          await chatsDb.updateMessageExtraForSwipe(retryMessageId, retrySwipeIndex, {
+            ...(Object.keys(exprMap).length > 0 ? { spriteExpressions: exprMap } : {}),
+            expressionSpriteIds: spriteData.expressions.map((entry) => entry.characterId),
+          });
           assertRetryActive();
         }
         if (Object.keys(personaExprMap).length > 0) {
@@ -4633,6 +4669,94 @@ export async function registerRetryAgentsRoute(
         );
       }
 
+      // Decision statements in the retried agents' templates (#6569), asked the way the
+      // live turn asked them: pre-generation agents read the chat before the reply, the
+      // others read it with the reply, and a turn already asked keeps its answers.
+      await runRetrySetupPhase(abortController.signal, async () => {
+        try {
+          const decisionSettings = createAppSettingsStorage(app.db);
+          const decisionModelId =
+            (await decisionSettings.get(DECISION_SETTINGS_KEYS.localDefault)) ??
+            (await conns.getDefaultForDecision())?.id ??
+            null;
+          const limit = parseDecisionPromptQuestionLimit(
+            await decisionSettings.get(DECISION_PROMPT_QUESTION_LIMIT_SETTINGS_KEY),
+          );
+          let backend: Awaited<ReturnType<typeof resolveDecisionBackend>> | undefined;
+          const getBackend = async () =>
+            (backend ??= await resolveDecisionBackend(
+              {
+                getLocalDefault: () => decisionSettings.get(DECISION_SETTINGS_KEYS.localDefault),
+                getThinkingPreGeneration: async () =>
+                  (await decisionSettings.get(DECISION_SETTINGS_KEYS.thinkingPreGeneration)) === "true",
+                getDefaultConnection: () => conns.getDefaultForDecision(),
+                getConnectionWithKey: (id) => conns.getWithKey(id),
+                debugMode,
+              },
+              abortController.signal,
+            ));
+          const toDecisionMessages = (messages: any[], context: AgentContext): DecisionMessage[] =>
+            messages.map((message) => ({
+              role: message.role,
+              name:
+                message.role === "user"
+                  ? retryPersonaContext.personaName
+                  : (context.characters.find((character) => character.id === message.characterId)?.name ?? "Narrator"),
+              content: typeof message.content === "string" ? message.content : "",
+            }));
+          const retried = resolvedAgents.map((entry) => entry.resolved);
+          const answer = (
+            agents: ResolvedAgent[],
+            context: AgentContext,
+            messages: any[],
+            turnId: string | null,
+            afterReply: boolean,
+          ) =>
+            answerAgentTemplateDecisions({
+              agents: agents.map((agent) => ({
+                template: effectiveAgentPromptTemplate(agent),
+                settings: agent.settings,
+              })),
+              macroContext: buildAgentPromptMacroContext(context),
+              messages: toDecisionMessages(messages, context),
+              turnId,
+              chatId,
+              decisionModelId,
+              limit,
+              getBackend,
+              afterReply,
+            });
+          if (preGenerationAgentContext && preGenerationRecentMessages) {
+            // Asked like the live turn asked them, before the reply: the same key, and a
+            // reasoning model holds off unless the user opted into waiting for it.
+            preGenerationAgentContext.decisions = await answer(
+              retried.filter((agent) => agent.phase === "pre_generation"),
+              preGenerationAgentContext,
+              preGenerationRecentMessages,
+              latestTurnDecisionId(preGenerationRecentMessages),
+              false,
+            );
+          }
+          agentContext.decisions = await answer(
+            preGenerationAgentContext ? retried.filter((agent) => agent.phase !== "pre_generation") : retried,
+            agentContext,
+            recentMessages,
+            lastAssistant
+              ? replyDecisionTurnId(
+                  lastAssistant.id,
+                  typeof lastAssistant.content === "string" ? lastAssistant.content : "",
+                )
+              : latestTurnDecisionId(recentMessages),
+            true,
+          );
+        } catch (error) {
+          // A Decision model that cannot start or answer never fails the retry: its
+          // statements read as no, as they do on a live turn.
+          if (abortController.signal.aborted) throw error;
+          logger.warn(error, "[retry-agents] Decision answers unavailable for chat %s; they read as no", chatId);
+        }
+      });
+
       const activeLorebookIds = Array.isArray(chatMeta.activeLorebookIds)
         ? chatMeta.activeLorebookIds.filter(
             (value): value is string => typeof value === "string" && value.trim().length > 0,
@@ -5020,8 +5144,7 @@ export async function registerRetryAgentsRoute(
             }>;
           };
           const availableSprites = agentContext.memory._availableSprites as
-            | Array<{ characterId: string; characterName: string; expressions: string[] }>
-            | undefined;
+            Array<{ characterId: string; characterName: string; expressions: string[] }> | undefined;
           if (Array.isArray(availableSprites)) {
             const rawExpressions = Array.isArray(spriteData.expressions) ? spriteData.expressions : [];
             const validation = validateSpriteExpressionEntries(rawExpressions, availableSprites);

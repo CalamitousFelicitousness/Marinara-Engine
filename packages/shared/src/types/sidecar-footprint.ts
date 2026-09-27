@@ -21,6 +21,8 @@ export interface GpuDevice {
   /** Memory in use at probe time, in bytes. */
   usedBytes: number;
   driverVersion: string;
+  /** CUDA compute capability as "major.minor", when the driver reports it. */
+  computeCapability?: string;
 }
 
 /** The result of probing the machine's GPUs, or why there was nothing to report. */
@@ -67,12 +69,7 @@ export interface SidecarSlotFootprint {
 }
 
 export type SidecarLoadVerdict =
-  | "unsupported"
-  | "not_enough_disk"
-  | "wont_fit"
-  | "wont_fit_beside_sidecar"
-  | "tight"
-  | "recommended";
+  "unsupported" | "not_enough_disk" | "wont_fit" | "wont_fit_beside_sidecar" | "tight" | "recommended";
 
 /** Headroom below which a fit is reported as tight rather than recommended. */
 export const SIDECAR_FOOTPRINT_HEADROOM_BYTES = 1_500_000_000;
@@ -99,6 +96,11 @@ export interface SidecarHealthSection {
   gpu: GpuProbe;
   slots: SidecarSlotFootprint[];
   load: SidecarLoadAssessment | null;
-  /** When the decision sidecar was enabled, and the verdict shown at that moment. */
-  decisionConsent?: { confirmedAt: string; verdict: SidecarLoadVerdict } | null;
+  /**
+   * When the decision sidecar was enabled, and the verdict shown at that moment.
+   *
+   * In the report so support can see at a glance that a warning was acknowledged
+   * rather than guess whether the user understood what they turned on.
+   */
+  decisionConsent?: { confirmedAt: string; verdict: SidecarLoadVerdict | null } | null;
 }

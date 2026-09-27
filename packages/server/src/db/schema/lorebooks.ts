@@ -16,6 +16,7 @@ export const lorebooks = fileTable("lorebooks", {
   maxRecursionDepth: integer("max_recursion_depth").notNull().default(3),
   excludeFromVectorization: text("exclude_from_vectorization").notNull().default("true"),
   vectorQueryDepth: integer("vector_query_depth").notNull().default(10),
+  vectorIncludeAssistant: text("vector_include_assistant").notNull().default("false"),
   vectorScoreThreshold: real("vector_score_threshold").notNull().default(0.3),
   vectorMaxResults: integer("vector_max_results").notNull().default(10),
   characterId: text("character_id"),
@@ -178,6 +179,11 @@ export const lorebookEntries = fileTable("lorebook_entries", {
 
   /** When true, bulk vectorization skips this entry and semantic matching ignores stored vectors */
   excludeFromVectorization: text("exclude_from_vectorization").notNull().default("false"),
+
+  /** Decision activation (#6570): a statement the Decision model answers about the recent chat. */
+  decisionStatement: text("decision_statement").notNull().default(""),
+  /** How the statement acts: "off", "require" (must also be true) or "trigger" (can activate alone). */
+  decisionMode: text("decision_mode").notNull().default("off"),
 
   /** Pre-computed embedding vector (JSON array of floats) for semantic matching; held in memory as a packed Float64Array (#5592). */
   embedding: vectorText("embedding"),

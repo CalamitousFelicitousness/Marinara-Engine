@@ -1,5 +1,5 @@
 import { ActivationQuestionFields } from "./ActivationQuestionFields";
-import { useHasDecisionModel } from "../../hooks/use-decision-model";
+import { useDecisionCalibration, useHasDecisionModel } from "../../hooks/use-decision-model";
 // ──────────────────────────────────────────────
 // Full-Page Agent Editor
 // Click an agent → opens this editor
@@ -108,6 +108,8 @@ import {
   normalizeAgentPromptTemplateOptions,
   normalizeStoryboardAgentSettings,
   parseAgentSettingsRecord,
+  homeAgentWidgetsSchema,
+  type HomeAgentWidgetDefinition,
   CUSTOM_AGENT_CONTEXT_SOURCE_IDS,
   type AgentPhase,
   type AgentPromptTemplateOption,
@@ -756,6 +758,21 @@ export function AgentEditor() {
   );
   /** Whether any decision model is chosen, which is what enables the question fields. */
   const hasDecisionModel = useHasDecisionModel();
+  /**
+   * The selected model's operating point. A saved question keeps whatever its author
+   * chose; this only supplies the starting value, because 0.5 is meaningful for a
+   * model that answers around 0.5 and meaningless for one that answers around 0.2.
+   */
+  const decisionCalibration = useDecisionCalibration();
+  /**
+   * Read through a ref inside the reset effect.
+   *
+   * The calibration is a seed taken at reset time, not a trigger: listing it as a
+   * dependency would re-run the whole form reset whenever the options query refetches
+   * and throw away whatever the user had typed.
+   */
+  const decisionCalibrationRef = useRef(decisionCalibration);
+  decisionCalibrationRef.current = decisionCalibration;
   const [localActivationQuestion, setLocalActivationQuestion] = useState("");
   const [localActivationThreshold, setLocalActivationThreshold] = useState(0.5);
   const [localActivationMaxSkip, setLocalActivationMaxSkip] = useState<number | "">("");
@@ -802,6 +819,7 @@ export function AgentEditor() {
   const [localStoryboardSettings, setLocalStoryboardSettings] = useState<StoryboardAgentSettings>(() =>
     normalizeStoryboardAgentSettings({}),
   );
+  const [localHomeWidgets, setLocalHomeWidgets] = useState<HomeAgentWidgetDefinition[]>([]);
   const [localProseGuardianBanned, setLocalProseGuardianBanned] = useState(DEFAULT_PROSE_GUARDIAN_BANNED_WORDS);
   const [localProseGuardianAvoid, setLocalProseGuardianAvoid] = useState(DEFAULT_PROSE_GUARDIAN_AVOID);
   const [localProseGuardianPrefer, setLocalProseGuardianPrefer] = useState("");
@@ -826,6 +844,31 @@ export function AgentEditor() {
   const [youtubeSaving, setYoutubeSaving] = useState(false);
   const [youtubeError, setYoutubeError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
+  /**
+   * Re-seed the threshold once the decision model's calibration arrives.
+   *
+   * The reset effect reads the calibration through a ref, so an editor opened before
+   * `/api/decision/options` resolves seeds from the fallback 0.5 and keeps it. That
+   * is the wrong number for a model answering around 0.2.
+   *
+   * Fires on the calibration changing, not on the question emptying. Watching the
+   * question would reset a threshold somebody had chosen the moment they cleared the
+   * text to rewrite it, and `dirty` is no better: it is set by any edit anywhere in
+   * the form, so renaming the agent first would strand the fallback 0.5.
+   */
+  const seededCalibrationRef = useRef<number | null>(null);
+  /** Whether the agent on screen brought a threshold of its own. */
+  const storedThresholdRef = useRef(false);
+  useEffect(() => {
+    const seed = decisionCalibration.defaultThreshold;
+    if (seededCalibrationRef.current === seed) return;
+    seededCalibrationRef.current = seed;
+    // An agent that stored its own threshold owns it. One that has a question but
+    // never stored one was seeded from whatever fallback was loaded at the time, so
+    // it still wants the real value.
+    if (storedThresholdRef.current) return;
+    setLocalActivationThreshold(seed);
+  }, [decisionCalibration.defaultThreshold]);
   const setEditorDirty = useUIStore((s) => s.setEditorDirty);
   const musicPlayerSource = useUIStore((s) => s.musicPlayerSource);
   const setMusicPlayerSource = useUIStore((s) => s.setMusicPlayerSource);
@@ -847,6 +890,8 @@ export function AgentEditor() {
       setLocalPhase(normalizeAgentPhaseForType(agentType, dbConfig.phase));
       setLocalConnectionId(normalizeTextConnectionOverride(dbConfig.connectionId));
       const settings = mergeBuiltInAgentSettings(agentType, dbConfig.settings);
+      const homeWidgets = homeAgentWidgetsSchema.safeParse(settings.homeWidgets ?? []);
+      setLocalHomeWidgets(!builtIn && homeWidgets.success ? homeWidgets.data : []);
       setLocalStoryboardSettings(normalizeStoryboardAgentSettings(settings));
       const promptTemplateSource = settings.promptTemplates ?? defaultSettings.promptTemplates;
       setLocalAuthor(
@@ -868,7 +913,10 @@ export function AgentEditor() {
           : "",
       );
       setLocalActivationQuestion(String(settings.activationQuestion ?? ""));
-      setLocalActivationThreshold(Number(settings.activationThreshold ?? 0.5));
+      storedThresholdRef.current = typeof settings.activationThreshold === "number";
+      setLocalActivationThreshold(
+        Number(settings.activationThreshold ?? decisionCalibrationRef.current.defaultThreshold),
+      );
       setLocalActivationMaxSkip(typeof settings.activationMaxSkip === "number" ? settings.activationMaxSkip : "");
       setLocalActivationScanDepth(
         (settings.activationScanDepth as number | undefined) ?? DEFAULT_CUSTOM_AGENT_ACTIVATION_SCAN_DEPTH,
@@ -981,7 +1029,8 @@ export function AgentEditor() {
       setLocalEchoMessageDelaySeconds(DEFAULT_ECHO_CHAMBER_MESSAGE_DELAY_SECONDS);
       setLocalActivationKeywordsText("");
       setLocalActivationQuestion("");
-      setLocalActivationThreshold(0.5);
+      storedThresholdRef.current = false;
+      setLocalActivationThreshold(decisionCalibrationRef.current.defaultThreshold);
       setLocalActivationMaxSkip("");
       setLocalActivationScanDepth(DEFAULT_CUSTOM_AGENT_ACTIVATION_SCAN_DEPTH);
       setLocalInjectAsSection(defaultSettings.injectAsSection === true);
@@ -1033,6 +1082,7 @@ export function AgentEditor() {
     } else {
       // Brand new custom agent — start empty
       setLocalName("New Agent");
+      setLocalHomeWidgets([]);
       setLocalDescription("");
       setLocalAuthor("");
       setLocalPromptTemplates([]);
@@ -1046,7 +1096,8 @@ export function AgentEditor() {
       setLocalEchoMessageDelaySeconds(DEFAULT_ECHO_CHAMBER_MESSAGE_DELAY_SECONDS);
       setLocalActivationKeywordsText("");
       setLocalActivationQuestion("");
-      setLocalActivationThreshold(0.5);
+      storedThresholdRef.current = false;
+      setLocalActivationThreshold(decisionCalibrationRef.current.defaultThreshold);
       setLocalActivationMaxSkip("");
       setLocalActivationScanDepth(DEFAULT_CUSTOM_AGENT_ACTIVATION_SCAN_DEPTH);
       setLocalInjectAsSection(false);
@@ -1235,8 +1286,7 @@ export function AgentEditor() {
 
   const allConnections =
     (connections as
-      | Array<{ id: string; name: string; provider: string; defaultForAgents?: boolean | string }>
-      | undefined) ?? [];
+      Array<{ id: string; name: string; provider: string; defaultForAgents?: boolean | string }> | undefined) ?? [];
 
   /**
    * Whether the engine's utility model slot holds a model for this agent.
@@ -1311,6 +1361,10 @@ export function AgentEditor() {
     if (!agentDetailId) return;
     setSaveError(null);
     const isEditingCustomAgent = isCustomAgent || isNewCustomAgent;
+    if (isEditingCustomAgent && !homeAgentWidgetsSchema.safeParse(localHomeWidgets).success) {
+      setSaveError(localizeUi("ui.agents.agenteditor.invalidHomeWidgets"));
+      return;
+    }
     const agentType = dbConfig?.type ?? builtIn?.id ?? agentDetailId;
     const selectedPhase = resolveCustomAgentPhase(localPhase, localResultType, isEditingCustomAgent);
     const savedPhase = normalizeAgentPhaseForType(agentType, selectedPhase);
@@ -1386,6 +1440,7 @@ export function AgentEditor() {
         author: savedAuthor,
         promptTemplates: savedPromptTemplates,
         ...(isEditingCustomAgent ? { customCapabilities } : {}),
+        ...(isEditingCustomAgent ? { homeWidgets: localHomeWidgets } : {}),
         contextSources: localContextSources,
         ...(isEditingCustomAgent ? { resultType: localResultType } : {}),
         ...(isEditingCustomAgent ? localOutputOptions : {}),
@@ -1503,8 +1558,10 @@ export function AgentEditor() {
       setDirty(false);
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 1500);
+      return true;
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Failed to save agent config");
+      return false;
     }
   }, [
     agentDetailId,
@@ -1522,6 +1579,8 @@ export function AgentEditor() {
     localPrompt,
     localAuthor,
     localPromptTemplates,
+    localHomeWidgets,
+    localizeUi,
     localContextSize,
     localMaxTokens,
     localRunInterval,
@@ -1600,6 +1659,10 @@ export function AgentEditor() {
       toast.error(localizeUi("ui.agents.agenteditor.enableTheMatchingCustomAgentAbilityBeforeExportingThis"));
       return;
     }
+    if (isEditingCustomAgent && !homeAgentWidgetsSchema.safeParse(localHomeWidgets).success) {
+      toast.error(localizeUi("ui.agents.agenteditor.fixHomeWidgetDefinitionsBeforeSaving"));
+      return;
+    }
     const writableLorebookId = localWritableLorebookId.trim();
     const lorebookWriterEnabled =
       isEditingCustomAgent && localLorebookWriteEnabled && customCapabilities.edit_lorebooks === true;
@@ -1623,6 +1686,7 @@ export function AgentEditor() {
       author: savedAuthor,
       promptTemplates: savedPromptTemplates,
       ...(isEditingCustomAgent ? { customCapabilities } : {}),
+      ...(isEditingCustomAgent ? { homeWidgets: localHomeWidgets } : {}),
       contextSources: localContextSources,
       ...(isEditingCustomAgent ? { resultType: localResultType } : {}),
       ...(isEditingCustomAgent ? localOutputOptions : {}),
@@ -2054,8 +2118,7 @@ export function AgentEditor() {
             </button>
             <button
               onClick={async () => {
-                await handleSave();
-                closeAgentDetail();
+                if (await handleSave()) closeAgentDetail();
               }}
               className="rounded-lg bg-amber-500/20 px-3 py-1 hover:bg-amber-500/30"
             >
@@ -2165,6 +2228,103 @@ export function AgentEditor() {
             </div>
             <p className="mt-1.5 text-[0.625rem] text-[var(--muted-foreground)]">{phaseMeta.description}</p>
           </FieldGroup>
+
+          {(isCustomAgent || isNewCustomAgent) && (
+            <FieldGroup
+              label={localizeUi("ui.agents.agenteditor.homeWidgets")}
+              icon={<Layers size="0.875rem" className="text-[var(--primary)]" />}
+              help={localizeUi("ui.agents.agenteditor.homeWidgetsHelp")}
+            >
+              <div className="space-y-3">
+                {localHomeWidgets.map((widget, index) => (
+                  <div key={widget.id} className="space-y-2 rounded-xl border border-[var(--border)] p-3">
+                    <div className="flex gap-2">
+                      <input
+                        className="min-w-0 flex-1 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2 py-1"
+                        aria-label={localizeUi("ui.agents.agenteditor.homeWidgetTitle")}
+                        value={widget.title}
+                        maxLength={80}
+                        onChange={(event) => {
+                          setLocalHomeWidgets((widgets) =>
+                            widgets.map((item) =>
+                              item.id === widget.id ? { ...item, title: event.target.value } : item,
+                            ),
+                          );
+                          markDirty();
+                        }}
+                      />
+                      <button
+                        type="button"
+                        aria-label={localizeUi("ui.agents.agenteditor.removeHomeWidget", { title: widget.title })}
+                        onClick={() => {
+                          setLocalHomeWidgets((widgets) => widgets.filter((item) => item.id !== widget.id));
+                          markDirty();
+                        }}
+                      >
+                        <Trash2 size="1rem" />
+                      </button>
+                    </div>
+                    <input
+                      className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-2 py-1"
+                      aria-label={localizeUi("ui.agents.agenteditor.homeWidgetDescription")}
+                      value={widget.description}
+                      maxLength={240}
+                      onChange={(event) => {
+                        setLocalHomeWidgets((widgets) =>
+                          widgets.map((item) =>
+                            item.id === widget.id ? { ...item, description: event.target.value } : item,
+                          ),
+                        );
+                        markDirty();
+                      }}
+                    />
+                    <label className="flex items-center gap-2 text-xs">
+                      {localizeUi("ui.agents.agenteditor.homeWidgetSize")}
+                      <select
+                        value={widget.size}
+                        onChange={(event) => {
+                          setLocalHomeWidgets((widgets) =>
+                            widgets.map((item) =>
+                              item.id === widget.id
+                                ? { ...item, size: event.target.value as "compact" | "large" }
+                                : item,
+                            ),
+                          );
+                          markDirty();
+                        }}
+                        className="rounded-lg border border-[var(--border)] bg-[var(--background)] px-2 py-1"
+                      >
+                        <option value="compact">{localizeUi("ui.agents.agenteditor.homeWidgetCompact")}</option>
+                        <option value="large">{localizeUi("ui.agents.agenteditor.homeWidgetLarge")}</option>
+                      </select>
+                    </label>
+                    <span className="sr-only">{index + 1}</span>
+                  </div>
+                ))}
+                {localHomeWidgets.length < 3 && (
+                  <button
+                    type="button"
+                    className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs"
+                    onClick={() => {
+                      setLocalHomeWidgets((widgets) => [
+                        ...widgets,
+                        {
+                          id: createCustomAgentType("widget"),
+                          title: localizeUi("ui.agents.agenteditor.newHomeWidget"),
+                          description: "",
+                          size: "compact",
+                        },
+                      ]);
+                      markDirty();
+                    }}
+                  >
+                    <Plus size="0.875rem" className="mr-1 inline" />
+                    {localizeUi("ui.agents.agenteditor.addHomeWidget")}
+                  </button>
+                )}
+              </div>
+            </FieldGroup>
+          )}
 
           {(isCustomAgent || isNewCustomAgent) && (
             <FieldGroup
@@ -2959,6 +3119,7 @@ export function AgentEditor() {
               <ActivationQuestionFields
                 question={localActivationQuestion}
                 threshold={localActivationThreshold}
+                recommendedThreshold={decisionCalibration.defaultThreshold}
                 maxSkip={localActivationMaxSkip}
                 // A local model slot is a decision model too, and it owns no
                 // connection row, so this asks the server which entry is selected

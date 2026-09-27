@@ -216,14 +216,7 @@ export function applyRecentMessageContentEditsToData(
 }
 
 export type ExpungeScope =
-  | "chats"
-  | "characters"
-  | "personas"
-  | "lorebooks"
-  | "presets"
-  | "connections"
-  | "automation"
-  | "media";
+  "chats" | "characters" | "personas" | "lorebooks" | "presets" | "connections" | "automation" | "media";
 
 export interface ConversationSummaryBackfillResult {
   generatedDays: string[];
@@ -1583,6 +1576,7 @@ export function usePeekPrompt() {
         } | null;
         gameToolPlanning?: GameToolPlanningInfo | null;
         agentNote?: string;
+        decisions?: { unanswered: string[]; dropped?: string[]; decisionModelSet: boolean };
       }>(`/chats/${chatId}/peek-prompt`, messageId ? { messageId } : {});
     },
   });

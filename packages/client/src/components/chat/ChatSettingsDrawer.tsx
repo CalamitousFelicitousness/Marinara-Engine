@@ -82,7 +82,7 @@ import { ChatVariablesSection } from "../../features/chat-settings/sections/Chat
 import { CombatStyleSection } from "../../features/chat-settings/sections/CombatStyleSection";
 import { useGameRuleset } from "../../hooks/use-game-ruleset";
 import { isRulesetCombatFight } from "../../lib/ruleset-combat-bridge";
-import { ConnectionSection } from "../../features/chat-settings/sections/ConnectionSection";
+import { ConnectionSection, type ChatConnectionOption } from "../../features/chat-settings/sections/ConnectionSection";
 import { ConversationPromptSection } from "../../features/chat-settings/sections/ConversationPromptSection";
 import { DiscordMirrorControls } from "../../features/chat-settings/sections/DiscordMirrorSection";
 import { FunctionCallingSection } from "../../features/chat-settings/sections/FunctionCallingSection";
@@ -143,7 +143,11 @@ import { useDefaultPreset, usePresetFull, usePresets } from "../../hooks/use-pre
 import { useConnections } from "../../hooks/use-connections";
 import { useKnowledgeSources, useUploadKnowledgeSource } from "../../hooks/use-knowledge-sources";
 import { useGenerate } from "../../hooks/use-generate";
-import { useCapabilityAgentRegistry, useInstalledCapabilityPackages } from "../../hooks/use-capability-packages";
+import {
+  isCapabilityPackageAvailable,
+  useCapabilityAgentRegistry,
+  useInstalledCapabilityPackages,
+} from "../../hooks/use-capability-packages";
 import {
   useUpdateChat,
   useUpdateChatMetadata,
@@ -961,13 +965,9 @@ export function ChatSettingsDrawer({
     () => (typeof chat.metadata === "string" ? JSON.parse(chat.metadata) : (chat.metadata ?? {})),
     [chat.metadata],
   );
-  // Package integrations only show while their package is installed and active.
-  const noodleInstalled = installedCapabilities.some(
-    (capability) => capability.id === "noodle" && capability.status === "active",
-  );
-  const slurp2Installed = installedCapabilities.some(
-    (capability) => capability.id === "slurp2" && capability.status === "active",
-  );
+  // Package integrations only show while their package is installed and usable.
+  const noodleInstalled = isCapabilityPackageAvailable(installedCapabilities, "noodle");
+  const slurp2Installed = isCapabilityPackageAvailable(installedCapabilities, "slurp2");
   // Chat variables live in the same map {{setvar}} writes, so a value a prompt
   // or lorebook set shows up here as an editable row.
   const chatMacroVariables = useMemo<Record<string, string>>(() => {
@@ -1051,27 +1051,18 @@ export function ChatSettingsDrawer({
     );
   }, [effectiveModePromptPresetId, fallbackPromptPreset, promptPresetOptions]);
   const { data: connections } = useConnections();
+  // The chat Connection section reads `showUsageWidget` to gate the NanoGPT
+  // usage meter, so keep these rows typed instead of casting fields away.
+  const connectionRows = useMemo(() => (connections as ChatConnectionOption[] | undefined) ?? [], [connections]);
   const imageConnectionsList = useMemo(
-    () =>
-      ((connections as Array<{ id: string; name: string; model?: string; provider?: string }>) ?? []).filter(
-        (c) => c.provider === "image_generation",
-      ),
-    [connections],
+    () => connectionRows.filter((c) => c.provider === "image_generation"),
+    [connectionRows],
   );
   const videoConnectionsList = useMemo(
-    () =>
-      ((connections as Array<{ id: string; name: string; model?: string; provider?: string }>) ?? []).filter(
-        (c) => c.provider === "video_generation",
-      ),
-    [connections],
+    () => connectionRows.filter((c) => c.provider === "video_generation"),
+    [connectionRows],
   );
-  const textConnectionsList = useMemo(
-    () =>
-      filterLanguageGenerationConnections(
-        (connections as Array<{ id: string; name: string; model?: string; provider?: string }>) ?? [],
-      ),
-    [connections],
-  );
+  const textConnectionsList = useMemo(() => filterLanguageGenerationConnections(connectionRows), [connectionRows]);
   const sidecarModelDownloaded = useSidecarStore((state) => state.modelDownloaded);
   const sidecarModelDisplayName = useSidecarStore((state) => state.modelDisplayName);
   const sidecarMaxContext = useSidecarStore((state) => state.config.contextSize);
@@ -8183,6 +8174,16 @@ export function ChatSettingsDrawer({
                             chatId={chat.id}
                             displayModes={spriteDisplayModes}
                             onToggleDisplayMode={toggleSpriteDisplayMode}
+                            onlyActiveSprites={metadata.expressionOnlyActiveSprites === true}
+                            onToggleOnlyActiveSprites={
+                              isRoleplayMode
+                                ? () =>
+                                    updateMeta.mutate({
+                                      id: chat.id,
+                                      expressionOnlyActiveSprites: metadata.expressionOnlyActiveSprites !== true,
+                                    })
+                                : undefined
+                            }
                             expressionAvatarsEnabled={expressionAvatarsEnabled}
                             onToggleExpressionAvatars={() => {
                               const nextEnabled = !expressionAvatarsEnabled;

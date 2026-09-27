@@ -34,6 +34,7 @@ import { useUIStore } from "../../stores/ui.store";
 import { useGameStateStore } from "../../stores/game-state.store";
 import { useGalleryStore } from "../../stores/gallery.store";
 import { useAgentStore } from "../../stores/agent.store";
+import { invalidateTranslation } from "../../hooks/use-translate";
 import {
   useSyncGameState,
   useCreateGame,
@@ -5136,7 +5137,8 @@ function GameSurfaceComponent({
         try {
           const result =
             sc.resolvedResult ??
-            (isEngineRollableSkillCheckTag(sc) && !poolModeActive
+            // A check the Engine settled as not attempted untrained is owed nothing.
+            (isEngineRollableSkillCheckTag(sc) && !sc.reason && !poolModeActive
               ? (
                   await skillCheck.mutateAsync({
                     chatId: activeChatId,
@@ -5155,6 +5157,13 @@ function GameSurfaceComponent({
                         : undefined,
                     bonusDice:
                       Number.isInteger(sc.bonusDice) && Math.abs(sc.bonusDice!) <= 20 ? sc.bonusDice : undefined,
+                    // A step named in place of dc, and the faces a pool check moved, on the same terms.
+                    difficulty: sc.difficulty,
+                    explode:
+                      Number.isInteger(sc.explode) && sc.explode! >= 2 && sc.explode! <= 1000 ? sc.explode : undefined,
+                    double:
+                      Number.isInteger(sc.double) && sc.double! >= 2 && sc.double! <= 1000 ? sc.double : undefined,
+                    reroll: sc.reroll,
                     messageId: msg.id,
                   })
                 ).result
@@ -8025,6 +8034,7 @@ function GameSurfaceComponent({
       if (!messageId) return;
       const payload = serializeGameSegmentEdit(edit);
       if (!payload) return;
+      invalidateTranslation(messageId);
       const key = `segmentEdit:${messageId}:${segmentIndex}`;
       setSegmentEdits((prev) => {
         const next = new Map(prev);
@@ -8048,6 +8058,7 @@ function GameSurfaceComponent({
   const handleDeleteSegment = useCallback(
     (messageId: string, segmentIndex: number) => {
       if (!messageId) return;
+      invalidateTranslation(messageId);
       const key = `segmentDelete:${messageId}:${segmentIndex}`;
       setSegmentDeletes((prev) => {
         const next = new Set(prev);
@@ -8061,6 +8072,7 @@ function GameSurfaceComponent({
 
   const handleEditMessage = useCallback(
     (messageId: string, content: string) => {
+      invalidateTranslation(messageId);
       updateMessage.mutate({ messageId, content });
     },
     [updateMessage],
@@ -9712,8 +9724,7 @@ function GameSurfaceComponent({
               weaknesses: (gc.weaknesses as string[]) || [],
               extra: (gc.extra as Record<string, string>) || {},
               rpgStats: gc.rpgStats as
-                | { attributes: Array<{ name: string; value: number }>; hp: { value: number; max: number } }
-                | undefined,
+                { attributes: Array<{ name: string; value: number }>; hp: { value: number; max: number } } | undefined,
             }
           : undefined,
       };

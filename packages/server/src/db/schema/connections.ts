@@ -32,6 +32,13 @@ export const apiConnections = fileTable("api_connections", {
   baseUrl: text("base_url").notNull().default(""),
   /** Encrypted API key */
   apiKeyEncrypted: text("api_key_encrypted").notNull().default(""),
+  /**
+   * NanoGPT: encrypted management token (usage:read scope) used only for the
+   * subscription usage widget. Cannot authenticate inference endpoints.
+   */
+  managementTokenEncrypted: text("management_token_encrypted").notNull().default(""),
+  /** NanoGPT: whether the subscription usage widget is shown for this connection. */
+  showUsageWidget: text("show_usage_widget").notNull().default("false"),
   /** Imported endpoints stay unavailable until the user reviews and saves them locally. */
   profileImportReviewRequired: text("profile_import_review_required").notNull().default("false"),
   model: text("model").notNull().default(""),
@@ -81,6 +88,8 @@ export const apiConnections = fileTable("api_connections", {
   decisionSource: text("decision_source"),
   credentialsFromConnectionId: text("credentials_from_connection_id"),
   maxStateTokens: integer("max_state_tokens"),
+  /** A Decision connection's time limit in milliseconds; null uses the default. */
+  decisionTimeoutMs: integer("decision_timeout_ms"),
   /** Default voice id/name for speech synthesis on this audio connection. */
   audioVoice: text("audio_voice"),
   /** Whether this audio connection may generate game sound effects ("true"/"false"). */

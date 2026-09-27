@@ -4,10 +4,20 @@ import { useMessagePresetVariables } from "../../hooks/use-message-preset-variab
 // ──────────────────────────────────────────────
 import { createPortal } from "react-dom";
 import { cn, copyToClipboard, getAvatarCropStyle, isLegacyAvatarCrop } from "../../lib/utils";
-import { normalizeAvatarCrop, type AvatarCrop } from "@marinara-engine/shared";
+import {
+  normalizeAvatarCrop,
+  getRoleplayWhispers,
+  getRoleplayCommandContentOffset,
+  type AvatarCrop,
+} from "@marinara-engine/shared";
 import { applyInlineMarkdown, renderMarkdownBlocks, applyInlineMarkdownHTML } from "../../lib/markdown";
 import { MessageReplyPreview, ReplyToMessageButton } from "./MessageReplyPreview";
-import { RoleplayCommandResults, RoleplayDiceRoll, replaceRoleplayDiceMarkers } from "./RoleplayCommandResults";
+import {
+  RoleplayCommandResults,
+  RoleplayDiceRoll,
+  RoleplayWhisper,
+  replaceRoleplayCommandMarkers,
+} from "./RoleplayCommandResults";
 import { splitRoleplayParagraphs } from "../../lib/roleplay-vn-paragraphs";
 import {
   notifyRoleplayTTSParagraph,
@@ -38,6 +48,7 @@ import {
   Check,
   X,
   Flag,
+  Headphones,
   Eye,
   Search,
   ScrollText,
@@ -47,6 +58,7 @@ import {
   VolumeX,
   Mic,
   MicOff,
+  Eraser,
   Loader2,
   Pause,
   Play,
@@ -2075,6 +2087,7 @@ export const ChatMessage = memo(function ChatMessage({
   const hasTTSContent = ttsVoiceRequests.length > 0;
   const [ttsState, setTTSState] = useState(ttsService.getState());
   const [ttsActiveId, setTTSActiveId] = useState<string | null>(ttsService.getActiveId());
+  const [clearingTTS, setClearingTTS] = useState(false);
   useEffect(
     () =>
       ttsService.subscribe((state, id) => {
@@ -2144,6 +2157,33 @@ export const ChatMessage = memo(function ChatMessage({
       ttsService.restart();
     }
   }, [message.id]);
+
+  // Drop this message's cached clips (primary keys and text aliases) so the
+  // next Speak regenerates them instead of replaying audio synthesized by an
+  // older provider or configuration. Deliberately does NOT re-speak: awaiting
+  // a full speakSequence parked the spinner until the reply finished playing,
+  // and auto-playing audio the user never asked for.
+  const handleClearCachedVoice = useCallback(() => {
+    if (!hasTTSContent || clearingTTS) return;
+    const liveState = ttsService.getState();
+    const liveActiveId = ttsService.getActiveId();
+    const liveBusy =
+      liveState === "loading" || liveState === "playing" || liveState === "paused" || liveState === "blocked";
+    if (liveBusy && liveActiveId !== message.id) return;
+
+    ttsService.stop();
+    setClearingTTS(true);
+    void (async () => {
+      try {
+        await ttsService.clearCachedAudio(ttsVoiceRequests);
+      } catch (err) {
+        console.warn("[TTS] Clearing the cached voice failed:", err);
+        toast.error(localizeUi("ui.chat.chatmessage.clearCachedVoiceFailed"));
+      } finally {
+        setClearingTTS(false);
+      }
+    })();
+  }, [clearingTTS, hasTTSContent, localizeUi, message.id, ttsVoiceRequests]);
 
   const startEditing = useCallback(() => {
     if (!onEdit || isStreaming) return;
@@ -2854,9 +2894,20 @@ export const ChatMessage = memo(function ChatMessage({
     return `mari-html-message-${suffix || "content"}`;
   }, [message.id]);
 
-  const inlineRoleplayRolls = useMemo(() => {
-    const rolls = isRoleplay && !isUser ? readRoleplayDiceRolls(fullText, extra) : [];
+  const inlineRoleplayCommands = useMemo(() => {
+    const commands =
+      isRoleplay && !isUser
+        ? [
+            ...readRoleplayDiceRolls(fullText, extra).map((roll) => ({ ...roll, kind: "roll" as const })),
+            ...getRoleplayWhispers(extra).map((whisper) => ({
+              ...whisper,
+              kind: "whisper" as const,
+              offset: getRoleplayCommandContentOffset(fullText, whisper.activity),
+            })),
+          ].sort((a, b) => a.offset - b.offset || a.index - b.index)
+        : [];
     let paragraphStart = 0;
+    let nextParagraphStart = Number.POSITIVE_INFINITY;
     if (visualNovel) {
       for (let index = 0; index <= activeVnParagraphIndex; index++) {
         const paragraph = vnParagraphs[index] ?? "";
@@ -2864,11 +2915,37 @@ export const ChatMessage = memo(function ChatMessage({
         if (paragraphStart < 0) break;
         if (index < activeVnParagraphIndex) paragraphStart += paragraph.length;
       }
+      const next = vnParagraphs[activeVnParagraphIndex + 1];
+      if (paragraphStart >= 0 && next !== undefined) {
+        const found = fullText.indexOf(next, paragraphStart + text.length);
+        if (found >= 0) nextParagraphStart = found;
+      }
     }
-    return rolls
-      .map((roll) => ({ ...roll, offset: roll.offset - paragraphStart }))
-      .filter((roll) => paragraphStart >= 0 && roll.offset >= 0 && roll.offset <= text.length);
+    return commands
+      .filter(
+        (command) => paragraphStart >= 0 && command.offset >= paragraphStart && command.offset < nextParagraphStart,
+      )
+      .map((command) => ({ ...command, offset: Math.min(command.offset - paragraphStart, text.length) }));
   }, [isRoleplay, isUser, fullText, extra, visualNovel, activeVnParagraphIndex, vnParagraphs, text.length]);
+
+  const renderInlineRoleplayCommand = useCallback(
+    (command: (typeof inlineRoleplayCommands)[number]) =>
+      command.kind === "whisper" ? (
+        <RoleplayWhisper
+          key={`whisper-${message.id}-${message.activeSwipeIndex}-${command.index}-${personaInfo?.id}`}
+          character={command.command.character}
+          text={command.command.text}
+          forPersona={command.recipient.kind === "persona" && command.recipient.id === (personaInfo?.id ?? "user")}
+        />
+      ) : (
+        <RoleplayDiceRoll
+          key={`roll-${message.id}-${message.activeSwipeIndex}-${command.index}`}
+          result={command.result}
+          createdAt={message.createdAt}
+        />
+      ),
+    [message.id, message.activeSwipeIndex, message.createdAt, personaInfo?.id],
+  );
 
   const renderedContent = useMemo(() => {
     const renderPart = (part: string) =>
@@ -2888,22 +2965,15 @@ export const ChatMessage = memo(function ChatMessage({
     while (text.includes(markerPrefix)) markerPrefix = "\uE000" + markerPrefix;
     const slots = new Map<string, ReactNode>();
     let markedText = text;
-    for (const roll of inlineRoleplayRolls) {
-      const marker = `${markerPrefix}${roll.index}\uE001`;
-      slots.set(
-        marker,
-        <RoleplayDiceRoll
-          key={`roll-${message.id}-${message.activeSwipeIndex}-${roll.index}`}
-          result={roll.result}
-          createdAt={message.createdAt}
-        />,
-      );
+    for (const command of inlineRoleplayCommands) {
+      const marker = `${markerPrefix}${command.index}\uE001`;
+      slots.set(marker, renderInlineRoleplayCommand(command));
     }
-    for (const roll of [...inlineRoleplayRolls].reverse()) {
+    for (const roll of [...inlineRoleplayCommands].reverse()) {
       const marker = `${markerPrefix}${roll.index}\uE001`;
       markedText = markedText.slice(0, roll.offset) + marker + markedText.slice(roll.offset);
     }
-    const prose = replaceRoleplayDiceMarkers(renderPart(markedText), slots);
+    const prose = replaceRoleplayCommandMarkers(renderPart(markedText), slots);
     return (
       <>
         {isUser && <MessageReplyPreview reply={extra.replyTo} />}
@@ -2911,11 +2981,9 @@ export const ChatMessage = memo(function ChatMessage({
       </>
     );
   }, [
-    inlineRoleplayRolls,
+    inlineRoleplayCommands,
+    renderInlineRoleplayCommand,
     extra.replyTo,
-    message.id,
-    message.activeSwipeIndex,
-    message.createdAt,
     isUser,
     text,
     dialogueColor,
@@ -3011,17 +3079,11 @@ export const ChatMessage = memo(function ChatMessage({
   const showTranslationOnly =
     translationDisplayOnly && !!effectiveTranslationText && !isTranslating && translationSource === message.content;
   // A translation has no reliable source-text offsets. Keep its visible
-  // paragraph's rolls after the translated prose, preserving their real values.
+  // paragraph's command results after the translated prose.
   const renderedTranslationOnly = (
     <>
       {renderedTranslation}
-      {inlineRoleplayRolls.map((roll) => (
-        <RoleplayDiceRoll
-          key={`translated-roll-${message.id}-${message.activeSwipeIndex}-${roll.index}`}
-          result={roll.result}
-          createdAt={message.createdAt}
-        />
-      ))}
+      {inlineRoleplayCommands.map(renderInlineRoleplayCommand)}
     </>
   );
 
@@ -3307,7 +3369,7 @@ export const ChatMessage = memo(function ChatMessage({
     );
 
   const roleplayTtsControls = ttsEnabled && (
-    <>
+    <MessageAudioMenu align="right" dark>
       {isSpeakingThis && (ttsState === "playing" || ttsState === "paused") && (
         <>
           <ActionBtn
@@ -3346,10 +3408,22 @@ export const ChatMessage = memo(function ChatMessage({
                 ? localizeUi("ui.chat.chatmessage.stopSpeaking")
                 : localizeUi("ui.chat.chatmessage.speak")
         }
-        disabled={!hasTTSContent || (ttsBusy && !isSpeakingThis)}
+        disabled={!hasTTSContent || clearingTTS || (ttsBusy && !isSpeakingThis)}
       />
-      <TTSLineVolumeControl volume={ttsLineVolume} onVolumeChange={handleTTSLineVolumeChange} dark />
-    </>
+      <ActionBtn
+        icon={
+          clearingTTS ? (
+            <Loader2 size={MESSAGE_ACTION_ICON_SIZE} className="animate-spin" />
+          ) : (
+            <Eraser size={MESSAGE_ACTION_ICON_SIZE} />
+          )
+        }
+        onClick={handleClearCachedVoice}
+        title={localizeUi("ui.chat.chatmessage.clearCachedVoice")}
+        disabled={!hasTTSContent || clearingTTS || (ttsBusy && !isSpeakingThis)}
+      />
+      <TTSLineVolumeSlider volume={ttsLineVolume} onVolumeChange={handleTTSLineVolumeChange} dark />
+    </MessageAudioMenu>
   );
 
   const vnAvatarCropStyle = expressionAvatarUrl ? {} : avatarCropStyle;
@@ -4474,7 +4548,7 @@ export const ChatMessage = memo(function ChatMessage({
               title={localizeUi("lorebook.editor.batch.delete")}
             />
             {ttsEnabled && (
-              <>
+              <MessageAudioMenu align={isUser ? "right" : "left"}>
                 {isSpeakingThis && !isLoadingThis && (
                   <>
                     <ActionBtn
@@ -4519,10 +4593,22 @@ export const ChatMessage = memo(function ChatMessage({
                           ? localizeUi("ui.chat.chatmessage.stopSpeaking")
                           : localizeUi("ui.chat.chatmessage.speak")
                   }
-                  disabled={!hasTTSContent || (ttsBusy && !isSpeakingThis)}
+                  disabled={!hasTTSContent || clearingTTS || (ttsBusy && !isSpeakingThis)}
                 />
-                <TTSLineVolumeControl volume={ttsLineVolume} onVolumeChange={handleTTSLineVolumeChange} />
-              </>
+                <ActionBtn
+                  icon={
+                    clearingTTS ? (
+                      <Loader2 size={MESSAGE_ACTION_ICON_SIZE} className="animate-spin" />
+                    ) : (
+                      <Eraser size={MESSAGE_ACTION_ICON_SIZE} />
+                    )
+                  }
+                  onClick={handleClearCachedVoice}
+                  title={localizeUi("ui.chat.chatmessage.clearCachedVoice")}
+                  disabled={!hasTTSContent || clearingTTS || (ttsBusy && !isSpeakingThis)}
+                />
+                <TTSLineVolumeSlider volume={ttsLineVolume} onVolumeChange={handleTTSLineVolumeChange} />
+              </MessageAudioMenu>
             )}
           </div>
         </div>
@@ -4558,32 +4644,30 @@ export const ChatMessage = memo(function ChatMessage({
   );
 });
 
-function TTSLineVolumeControl({
-  volume,
-  onVolumeChange,
+function MessageAudioMenu({
+  children,
+  align = "left",
   dark,
 }: {
-  volume: number;
-  onVolumeChange: (volume: number) => void;
+  children: React.ReactNode;
+  align?: "left" | "right";
   dark?: boolean;
 }) {
   const { t: localizeUi } = useUiTranslation();
-  const { open, setOpen, buttonRef, menuRef, position } = useMessageActionMenu("right");
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const muted = volume <= 0;
-  const label = `${localizeUi("ui.chat.ttslinevolumecontrol.lineVolume")}: ${volume}%`;
+  const { open, setOpen, buttonRef, menuRef, position } = useMessageActionMenu(align);
+  const label = localizeUi("ui.chat.chatmessage.voiceControls");
 
   useEffect(() => {
     if (!open) return;
-    const frame = requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
+    const frame = requestAnimationFrame(() => menuRef.current?.querySelector("button")?.focus({ preventScroll: true }));
     return () => cancelAnimationFrame(frame);
-  }, [open]);
+  }, [menuRef, open]);
 
   return (
-    <div className="inline-flex">
+    <>
       <ActionBtn
         buttonRef={buttonRef}
-        icon={muted ? <VolumeX size={MESSAGE_ACTION_ICON_SIZE} /> : <Volume2 size={MESSAGE_ACTION_ICON_SIZE} />}
+        icon={<Headphones size={MESSAGE_ACTION_ICON_SIZE} />}
         onClick={() => setOpen((value) => !value)}
         title={label}
         ariaPressed={open}
@@ -4597,43 +4681,71 @@ function TTSLineVolumeControl({
             ref={menuRef}
             style={position}
             role="dialog"
-            aria-label={localizeUi("ui.chat.ttslinevolumecontrol.lineVolume")}
+            aria-label={label}
             className={cn(
-              "marinara-chat-popover fixed z-[9999] flex w-44 max-w-[calc(100vw-1.5rem)] flex-col gap-2.5 rounded-lg border p-2.5 shadow-xl",
+              "marinara-chat-popover fixed z-[9999] flex max-w-[calc(100vw-1.5rem)] flex-row flex-wrap items-center gap-1 rounded-lg border p-1.5 shadow-xl",
               dark
                 ? "border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--marinara-chat-chrome-panel-bg)] text-[var(--marinara-chat-chrome-panel-title)] shadow-black/30"
                 : "border-[var(--border)] bg-[var(--popover)] text-[var(--popover-foreground)] shadow-black/20",
             )}
           >
-            <div className="flex items-center justify-between gap-2 text-[0.6875rem]">
-              <span className={dark ? "text-[var(--marinara-chat-chrome-panel-title)]" : "text-[var(--foreground)]"}>
-                {localizeUi("ui.chat.ttslinevolumecontrol.lineVolume")}
-              </span>
-              <span
-                className={cn(
-                  "tabular-nums",
-                  dark ? "text-[var(--marinara-chat-chrome-panel-muted)]" : "text-[var(--muted-foreground)]",
-                )}
-              >
-                {volume}%
-              </span>
-            </div>
-            <input
-              ref={inputRef}
-              type="range"
-              min={0}
-              max={100}
-              step={1}
-              value={volume}
-              onChange={(event) => onVolumeChange(Number(event.currentTarget.value))}
-              className="mari-tts-line-volume-slider w-full"
-              aria-label={localizeUi("ui.chat.ttslinevolumecontrol.lineVolume")}
-              title={localizeUi("ui.chat.ttslinevolumecontrol.lineVolume")}
-              style={{ "--range-progress": `${volume}%` } as React.CSSProperties}
-            />
+            {children}
           </div>,
           document.body,
         )}
+    </>
+  );
+}
+
+function TTSLineVolumeSlider({
+  volume,
+  onVolumeChange,
+  dark,
+  autoFocus,
+}: {
+  volume: number;
+  onVolumeChange: (volume: number) => void;
+  dark?: boolean;
+  autoFocus?: boolean;
+}) {
+  const { t: localizeUi } = useUiTranslation();
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (!autoFocus) return;
+    const frame = requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
+    return () => cancelAnimationFrame(frame);
+  }, [autoFocus]);
+
+  return (
+    <div className="flex items-center gap-2">
+      <span
+        aria-hidden="true"
+        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md p-0 text-base leading-none text-[var(--marinara-chat-message-action-text)] max-md:h-8 max-md:w-7 max-md:text-sm"
+      >
+        <Volume2 size={MESSAGE_ACTION_ICON_SIZE} className="shrink-0" />
+      </span>
+      <input
+        ref={inputRef}
+        type="range"
+        min={0}
+        max={100}
+        step={1}
+        value={volume}
+        onChange={(event) => onVolumeChange(Number(event.currentTarget.value))}
+        className="mari-tts-line-volume-slider w-28"
+        aria-label={localizeUi("ui.chat.ttslinevolumecontrol.lineVolume")}
+        title={localizeUi("ui.chat.ttslinevolumecontrol.lineVolume")}
+        style={{ "--range-progress": `${volume}%` } as React.CSSProperties}
+      />
+      <span
+        className={cn(
+          "tabular-nums text-[0.6875rem]",
+          dark ? "text-[var(--marinara-chat-chrome-panel-muted)]" : "text-[var(--muted-foreground)]",
+        )}
+      >
+        {volume}%
+      </span>
     </div>
   );
 }

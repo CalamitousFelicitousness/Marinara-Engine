@@ -3,6 +3,7 @@
 // ──────────────────────────────────────────────
 import { z } from "zod";
 import { DECISION_SOURCES, IMAGE_GENERATION_QUALITIES } from "../types/connection.js";
+import { DECISION_CONNECTION_TIMEOUT_BOUNDS_MS } from "../types/decision.js";
 import { MAX_IMAGE_PROMPT_INSTRUCTIONS_LENGTH } from "../constants/defaults.js";
 
 export const apiProviderSchema = z.enum([
@@ -83,6 +84,14 @@ export const createConnectionSchema = z.object({
   decisionSource: z.enum(DECISION_SOURCES).nullable().default(null),
   credentialsFromConnectionId: z.string().trim().min(1).nullable().default(null),
   maxStateTokens: z.number().int().min(1).max(30000).nullable().default(null),
+  /** Milliseconds; null keeps the default. */
+  decisionTimeoutMs: z
+    .number()
+    .int()
+    .min(DECISION_CONNECTION_TIMEOUT_BOUNDS_MS.min)
+    .max(DECISION_CONNECTION_TIMEOUT_BOUNDS_MS.max)
+    .nullable()
+    .default(null),
   audioVoice: z.string().nullable().default(null),
   audioSoundEffects: z.boolean().default(false),
   audioMusic: z.boolean().default(false),
@@ -96,6 +105,14 @@ export const createConnectionSchema = z.object({
   maxRequestsPerMinute: z.number().int().min(1).max(600).nullable().default(null),
   treatAsLocalEndpoint: z.boolean().default(false),
   claudeFastMode: z.boolean().default(false),
+  /**
+   * NanoGPT only: a management token with the `usage:read` scope, used solely to
+   * read subscription quotas for the usage widget. It cannot authenticate
+   * inference endpoints, so it is never used in place of the API key.
+   */
+  managementToken: z.string().default(""),
+  /** NanoGPT only: show the subscription usage widget in the connection editor. */
+  showUsageWidget: z.boolean().default(false),
 });
 
 export type CreateConnectionInput = z.infer<typeof createConnectionSchema>;

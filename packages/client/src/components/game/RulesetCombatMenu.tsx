@@ -32,6 +32,9 @@ export interface RulesetCombatMenuProps {
   /** The ruleset's own name for a budget id, so the menu says "Bonus action" or "Action" as the
    *  file does, never a word this Engine picked. */
   budgetLabel: (id: string) => string;
+  /** What the ruleset calls the number an attack is rolled against ("Armor Class", "Guard"), so a
+   *  held hit reads as the log does. Empty when the ruleset names none. */
+  defenseLabel?: string;
   busy: boolean;
   onChoose: (
     optionId: string,
@@ -54,9 +57,21 @@ export interface RulesetCombatMenuProps {
 const buttonClass =
   "min-h-11 rounded-lg border px-3 py-2 text-left text-xs transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary)] disabled:opacity-50";
 
+/** Which question the window is asking, by what opened it. A moment a reaction waits for names
+ *  itself; the other two are the kind of window they are. */
+const WINDOW_PROMPTS = {
+  aimed: "Aimed",
+  hit: "Hit",
+  harmed: "Harmed",
+  used: "Used",
+  signature: "Between",
+  reaction: "Leaving",
+} as const;
+
 export function RulesetCombatMenu({
   view,
   budgetLabel,
+  defenseLabel,
   busy,
   onChoose,
   onFlee,
@@ -310,9 +325,18 @@ export function RulesetCombatMenu({
           phone the shell above still names the actor, and the two would otherwise contradict. */}
       {view.window ? (
         <p className="text-[0.65rem] uppercase tracking-wide text-[var(--primary)]">
-          {view.window.kind === "signature"
-            ? t("game.combat.ruleset.menu.windowBetween", { name: askedName })
-            : t("game.combat.ruleset.menu.windowLeaving", { name: askedName, mover: nameOf(view.window.moverId) })}
+          {t(`game.combat.ruleset.menu.window${WINDOW_PROMPTS[view.window.moment ?? view.window.kind]}`, {
+            name: askedName,
+            mover: nameOf(view.window.sourceId ?? view.window.moverId),
+            label: view.window.label ?? "",
+            total: view.window.total ?? "",
+            defense:
+              view.window.defense === undefined
+                ? ""
+                : defenseLabel
+                  ? `${defenseLabel} ${view.window.defense}`
+                  : String(view.window.defense),
+          })}
         </p>
       ) : (
         <p className="hidden text-[0.65rem] uppercase tracking-wide text-white/45 sm:block">

@@ -12,6 +12,7 @@ import {
   type CapabilityRuntimeLogArgument,
   type InstalledCapabilityPackage,
   parseAgentSettingsRecord,
+  type PackagedAchievementDefinition,
 } from "@marinara-engine/shared";
 import { isDebugAgentsEnabled } from "../../config/runtime-config.js";
 import { logger, logDebugOverride } from "../../lib/logger.js";
@@ -32,6 +33,8 @@ import {
   createCapabilityEmbeddingHost,
   createConfiguredCapabilityEmbeddingHost,
 } from "./capability-embedding.service.js";
+import { createCapabilityAchievementHost } from "./capability-achievement-host.service.js";
+import { registerCapabilityAchievements } from "./capability-achievement-registry.service.js";
 import { createCapabilityPersistenceHost } from "./capability-persistence.service.js";
 import { createCapabilityResourceHost } from "./capability-resources.service.js";
 import {
@@ -44,6 +47,20 @@ import {
   type CapabilityPromptContextContributor,
 } from "./capability-prompt-context.service.js";
 import { registerCapabilityTool, type CapabilityToolRegistration } from "./capability-tool-registry.service.js";
+import { failInjectFastDuring } from "../../lib/fastify-inject-gate.js";
+
+/**
+ * Errors raised by the host's own Fastify lifecycle (the app was booted or started listening before registration
+ * finished) say nothing about the package. Rolling the package back or persisting "error" for them would disable a
+ * healthy package on every later boot, so activation leaves its installed version and status untouched and the next
+ * start retries it.
+ */
+export function isHostLifecycleActivationError(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null)?.code;
+  if (code === "FST_ERR_INSTANCE_ALREADY_LISTENING" || code === "AVV_ERR_ROOT_PLG_BOOTED") return true;
+  const message = error instanceof Error ? error.message : String(error);
+  return /Root plugin has already booted|Fastify instance is already listening/u.test(message);
+}
 
 type Cleanup = () => void | Promise<void>;
 type CapabilityActivationContext = {
@@ -59,6 +76,9 @@ type CapabilityActivationContext = {
     registerPromptContext(contributor: CapabilityPromptContextContributor): Cleanup;
     /** Offer the model a tool this package handles. Requires the `tools` permission. */
     registerTool(registration: CapabilityToolRegistration): Cleanup;
+    /** Contribute badges to the Home achievements panel, shown under this package's own section.
+     *  Requires the `achievements` permission. */
+    registerAchievements(achievements: readonly PackagedAchievementDefinition[]): Cleanup;
     registerPrivilegedRoutes(
       routes: import("fastify").FastifyPluginAsync,
       options: { prefix: string },
@@ -106,6 +126,7 @@ async function createCapabilityRuntimeHost(
       debugOverride: (overrideEnabled: boolean, message: string, ...args: CapabilityRuntimeLogArgument[]) =>
         logDebugOverride(overrideEnabled, message, ...args),
     }),
+    achievements: createCapabilityAchievementHost(app.db, packageId, permissions),
     persistence: createCapabilityPersistenceHost(app.db, permissions),
     resources: createCapabilityResourceHost(app.db),
   });
@@ -134,8 +155,22 @@ async function runCleanups(cleanups: Cleanup[]): Promise<void> {
   if (firstError) throw firstError;
 }
 
+/** The last activation failure of one package in this process (admin runtime diagnostics). */
+export interface CapabilityActivationErrorRecord {
+  message: string;
+  at: string;
+}
+
 class CapabilityModuleRuntime {
   private cleanups = new Map<string, Cleanup>();
+  // Last activation failure per package in this process, cleared by the next
+  // successful activation. Read-only diagnostics state.
+  private activationErrors = new Map<string, CapabilityActivationErrorRecord>();
+
+  /** Read-only view for diagnostics: which package runtimes are live now, and recent activation failures. */
+  runtimeState(): { live: string[]; activationErrors: Record<string, CapabilityActivationErrorRecord> } {
+    return { live: [...this.cleanups.keys()].sort(), activationErrors: Object.fromEntries(this.activationErrors) };
+  }
 
   async start(app: FastifyInstance): Promise<void> {
     // Bundled package modules execute before activate(context), so give their
@@ -206,6 +241,7 @@ class CapabilityModuleRuntime {
     const { installed } = runtimePackage;
     const registeredCleanups: Cleanup[] = [];
     const toolCleanups: Array<() => void> = [];
+    const achievementCleanups: Array<() => void> = [];
     let moduleCleanup: Cleanup | undefined;
     // A package can keep hold of the activation context and call back into it later. Once this
     // activation has been torn down, those calls must not reach the host: a tool registered after
@@ -273,15 +309,39 @@ class CapabilityModuleRuntime {
             toolCleanups.push(release);
             return trackCleanup(release);
           },
+          registerAchievements: (achievements) => {
+            if (!installed.manifest.permissions?.includes("achievements")) {
+              throw new Error(
+                `Capability package ${installed.id} must declare the "achievements" permission to register achievements`,
+              );
+            }
+            if (!activationLive) {
+              throw new Error(
+                `Capability package ${installed.id} cannot register achievements after its activation ended`,
+              );
+            }
+            const release = registerCapabilityAchievements(
+              {
+                packageId: installed.id,
+                packageName: installed.manifest.name,
+                packageVersion: installed.version,
+              },
+              achievements,
+            );
+            achievementCleanups.push(release);
+            return trackCleanup(release);
+          },
           registerPrivilegedRoutes: async (routes, options) =>
             trackCleanup(await registerCapabilityPrivilegedRoutes(app, installed, routes, options)),
           runInternalRoute: (options) => runCapabilityInternalRoute(app, installed.id, options),
         },
       };
-      const cleanup = await module.activate(context);
+      // A package that awaits runInternalRoute here during startup gets an error at once instead of hanging startup.
+      const activate = module.activate;
+      const cleanup = await failInjectFastDuring(() => activate.call(module, context));
       if (typeof cleanup === "function") moduleCleanup = cleanup;
       await capabilityPackageManager.markRuntimeReadiness(installed.id, "registered");
-      await module.selfCheck?.(context);
+      await failInjectFastDuring(() => module.selfCheck?.(context));
       await capabilityPackageManager.markRuntimeStatus(installed.id, "active");
       await capabilityPackageManager.markRuntimeReadiness(installed.id, "ready");
       this.cleanups.set(installed.id, async () => {
@@ -292,17 +352,35 @@ class CapabilityModuleRuntime {
         // Release only this activation's tools before awaiting package cleanup. An old
         // teardown cannot delete replacements registered by a concurrent activation.
         for (const release of toolCleanups.splice(0)) release();
+        for (const release of achievementCleanups.splice(0)) release();
         try {
           if (moduleCleanup) await withDeadline(moduleCleanup(), "Capability module cleanup", 8000);
         } finally {
           await runCleanups(registeredCleanups);
         }
       });
+      this.activationErrors.delete(installed.id);
       logger.info("Activated and verified capability package %s@%s", installed.id, installed.version);
     } catch (error) {
-      logger.error(error, "Failed to activate capability package %s@%s", installed.id, installed.version);
+      const hostLifecycleError = isHostLifecycleActivationError(error);
+      if (hostLifecycleError) {
+        // Not the package's fault and retried on the next start: one warning instead of an error.
+        logger.warn(
+          error,
+          "Capability package %s@%s was not activated because the server finished starting too early; it will be retried on the next start",
+          installed.id,
+          installed.version,
+        );
+      } else {
+        logger.error(error, "Failed to activate capability package %s@%s", installed.id, installed.version);
+      }
+      this.activationErrors.set(installed.id, {
+        message: error instanceof Error ? error.message : String(error),
+        at: new Date().toISOString(),
+      });
       activationLive = false;
       for (const release of toolCleanups.splice(0)) release();
+      for (const release of achievementCleanups.splice(0)) release();
       try {
         try {
           if (moduleCleanup) await withDeadline(moduleCleanup(), "Capability module cleanup", 8000);
@@ -311,6 +389,11 @@ class CapabilityModuleRuntime {
         }
       } catch (cleanupError) {
         logger.warn(cleanupError, "Capability package %s cleanup failed after activation error", installed.id);
+      }
+      if (hostLifecycleError) {
+        // Keep the installed version and status so the next boot activates it normally.
+        if (throwOnFailure) throw error;
+        return;
       }
       const previous = allowRollback ? await capabilityPackageManager.rollbackRuntime(installed.id) : null;
       if (previous) {

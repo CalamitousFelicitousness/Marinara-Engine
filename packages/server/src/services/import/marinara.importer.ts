@@ -19,6 +19,7 @@ import {
   personaCreateInputSchema,
   lorebookFilterModeSchema,
   MAX_FILE_SIZES,
+  parseLorebookDecisionActivation,
 } from "@marinara-engine/shared";
 import type {
   CharacterData,
@@ -719,6 +720,7 @@ async function importLorebookPayload(data: unknown, db: DB) {
       maxRecursionDepth: Number(lb.maxRecursionDepth ?? 3),
       excludeFromVectorization: Boolean(lb.excludeFromVectorization),
       vectorQueryDepth: Number(lb.vectorQueryDepth ?? 10),
+      vectorIncludeAssistant: lb.vectorIncludeAssistant === true,
       vectorScoreThreshold: Number(lb.vectorScoreThreshold ?? 0.3),
       vectorMaxResults: Number(lb.vectorMaxResults ?? 10),
       characterId: typeof lb.characterId === "string" ? lb.characterId : null,
@@ -846,6 +848,7 @@ async function importLorebookPayload(data: unknown, db: DB) {
         dynamicState: (e.dynamicState as any) ?? {},
         activationConditions: (e.activationConditions as any) ?? [],
         schedule: (e.schedule as any) ?? null,
+        ...parseLorebookDecisionActivation(e),
       };
     });
     await storage.bulkCreateEntries(newLb.id as string, entries);

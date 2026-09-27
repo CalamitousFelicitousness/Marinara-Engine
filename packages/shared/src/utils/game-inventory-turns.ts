@@ -106,6 +106,24 @@ export function recordGameInventoryTelling(
 }
 
 /**
+ * The record once the telling at `removed` of `messageId` is deleted: the tellings after it move down
+ * one, as the message's swipes do. Another turn's record is returned as it is.
+ */
+export function forgetGameInventoryTelling(
+  turn: GameInventoryTurn | null,
+  messageId: string,
+  removed: number,
+): GameInventoryTurn | null {
+  if (!turn || turn.messageId !== messageId) return turn;
+  const swipes: Record<string, GameInventoryStack[]> = {};
+  for (const [index, stacks] of Object.entries(turn.swipes)) {
+    const at = Number(index);
+    if (at !== removed) swipes[String(at > removed ? at - 1 : at)] = stacks;
+  }
+  return { ...turn, swipes };
+}
+
+/**
  * The stacks to show when the player switches `messageId` from the telling at `from` to the one at
  * `to`: what `to` left, when the stacks are still what `from` left. Null leaves them as they are.
  */

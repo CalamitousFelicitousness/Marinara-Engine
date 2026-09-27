@@ -6,6 +6,7 @@
 // three inside one metadata-queue slot and one transaction, so they can never disagree.
 import {
   followGameInventoryDetails,
+  forgetGameInventoryTelling,
   gameInventoryForTelling,
   normalizeGameInventoryStacks,
   readGameInventoryTurn,
@@ -217,4 +218,39 @@ export async function switchGameInventoryTelling(
     { kind: "none" },
   );
   return committed && committed.stacks !== committed.value ? committed.stacks : null;
+}
+
+/**
+ * The telling at `removed` of `messageId` was deleted, and the message now shows the one at `shown`,
+ * counted after the deletion. The record's later tellings move down one, as the swipes did. When the
+ * deleted telling was the one shown, the stacks become what the telling now shown left, exactly as
+ * switching to it would.
+ */
+export async function removeGameInventoryTelling(
+  db: DB,
+  chatId: string,
+  messageId: string,
+  removed: number,
+  wasShown: boolean,
+  shown: number,
+): Promise<void> {
+  await commitGameInventoryChange(
+    db,
+    chatId,
+    (stacks, metadata) => {
+      const turn = readGameInventoryTurn(metadata.gameInventoryTurn);
+      if (turn?.messageId !== messageId) return { stacks, journal: [], value: null };
+      // The telling now shown, counted before the deletion.
+      const moved = wasShown
+        ? gameInventoryForTelling(turn, stacks, messageId, removed, shown >= removed ? shown + 1 : shown)
+        : null;
+      return {
+        stacks: moved ?? stacks,
+        journal: [],
+        metadata: { gameInventoryTurn: forgetGameInventoryTelling(turn, messageId, removed) },
+        value: null,
+      };
+    },
+    { kind: "none" },
+  );
 }

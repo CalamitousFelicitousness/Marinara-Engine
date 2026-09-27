@@ -11472,6 +11472,8 @@ export async function generateRoutes(app: FastifyInstance) {
                     hiddenTrackerFields: currentGameStateForLocks?.hiddenTrackerFields,
                   },
                   null, // manual overrides are one-shot — never carry forward
+                  // The stats above are the turn before's; this turn's inventory tags already wrote its own.
+                  { keepReplacedInventory: true },
                 );
                 // Send game state to client so HUD updates live
                 // ONLY send the fields world-state actually produces.

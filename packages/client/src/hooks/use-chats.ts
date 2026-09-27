@@ -1808,6 +1808,8 @@ export function useDeleteSwipe(chatId: string | null) {
       qc.invalidateQueries({ queryKey: chatKeys.messages(chatId) });
       qc.invalidateQueries({ queryKey: lorebookKeys.active(chatId) });
       qc.invalidateQueries({ queryKey: [...chatKeys.all, "swipes", messageId] });
+      // Deleting the telling that is shown shows another, and a game's inventory follows it.
+      qc.invalidateQueries({ queryKey: chatKeys.detail(chatId) });
     },
   });
 }

@@ -351,18 +351,25 @@ export function createGameStateStorage(db: DB) {
       await db.update(gameStateSnapshots).set({ committed: 1 }).where(condition);
     },
 
-    async create(state: Omit<GameState, "id" | "createdAt">, manualOverrides?: Record<string, string> | null) {
+    async create(
+      state: Omit<GameState, "id" | "createdAt">,
+      manualOverrides?: Record<string, string> | null,
+      options?: {
+        /** Keep the detailed inventory of the row being replaced, for a caller that carries the
+         *  previous turn's stats forward (the world-state tracker). The turn's own inventory tags
+         *  wrote that inventory and no tracker works one out, so carrying the stats would undo them. */
+        keepReplacedInventory?: boolean;
+      },
+    ) {
       const latestBeforeInsert = await this.getLatest(state.chatId);
       // Most callers rebuild a snapshot from the fields they know and have never heard of ruleset
       // live state. When such a caller replaces the row of a message + swipe, the live state that
-      // row already carried (written right after the message was saved) stays with it. So does the
-      // detailed inventory: the turn's own inventory tags wrote it, and no tracker ever works it out,
-      // so a tracker that carries the previous turn's stats forward would otherwise undo them.
+      // row already carried (written right after the message was saved) stays with it.
       const replaced = state.messageId
         ? await this.getByChatAndMessage(state.chatId, state.messageId, state.swipeIndex)
         : null;
       const replacedInventory = (() => {
-        if (!replaced?.playerStats || !state.playerStats) return undefined;
+        if (!options?.keepReplacedInventory || !replaced?.playerStats || !state.playerStats) return undefined;
         const stats = parseSnapshotJson<{ inventory?: unknown } | null>(replaced.playerStats, null);
         return Array.isArray(stats?.inventory) ? stats.inventory : undefined;
       })();

@@ -73,11 +73,14 @@ try {
       { id: "x", name: "Rope", quantity: 1, holder: "  Bram   Stoker " },
       { id: "y", name: "Map", quantity: 1, holder: "   " },
       { id: "z", name: "Coin", quantity: 3, holder: 42 },
+      // No letter or digit keys to nothing, which is the player's bag, so it is kept as the player's.
+      { id: "w", name: "Gem", quantity: 1, holder: "???" },
     ]);
     assert.deepEqual(read, [
       { id: "x", name: "Rope", quantity: 1, holder: "Bram Stoker" },
       { id: "y", name: "Map", quantity: 1 },
       { id: "z", name: "Coin", quantity: 3 },
+      { id: "w", name: "Gem", quantity: 1 },
     ]);
     // A saved game from before bags is the player's own bag, byte for byte.
     const legacy = [{ id: "st-rope-0", name: "Rope", quantity: 2 }];
@@ -155,6 +158,8 @@ try {
     assert.equal(part?.stacks.find((stack) => stack.id === "c")?.quantity, 3);
     const back = giveGameInventoryStack(bag(), "d", undefined, undefined, nextId);
     assert.equal(back?.stacks.find((stack) => stack.id === "d")?.holder, undefined, "to the player");
+    const unnamed = giveGameInventoryStack(bag(), "d", "…", undefined, nextId);
+    assert.equal(unnamed?.stacks.find((stack) => stack.id === "d")?.holder, undefined, "a name keying to nothing too");
     const same = bag();
     assert.equal(giveGameInventoryStack(same, "b", "bram")?.stacks, same, "into its own bag changes nothing");
     for (const count of [0, 11, 1.5, Number.NaN]) {
@@ -666,21 +671,33 @@ try {
     assert.equal((await readRow()).inventory[0]!.quantity, 1, "the turn before keeps what it had");
 
     // A tracker that rebuilds the turn's row from the turn before keeps what the tags did.
-    await states.create({
-      chatId: chat.id,
-      messageId: turn.id,
-      swipeIndex: 0,
-      date: "Day 2",
-      time: null,
-      location: null,
-      weather: null,
-      temperature: null,
-      presentCharacters: [],
-      recentEvents: [],
-      playerStats: stats([{ name: "Rope", description: "Hemp", quantity: 1, location: "pack" }]) as never,
-      personaStats: null,
-    });
+    const rebuild = (inventory: InventoryItem[], keepReplacedInventory?: boolean) =>
+      states.create(
+        {
+          chatId: chat.id,
+          messageId: turn.id,
+          swipeIndex: 0,
+          date: "Day 2",
+          time: null,
+          location: null,
+          weather: null,
+          temperature: null,
+          presentCharacters: [],
+          recentEvents: [],
+          playerStats: stats(inventory) as never,
+          personaStats: null,
+        },
+        null,
+        keepReplacedInventory === undefined ? undefined : { keepReplacedInventory },
+      );
+    const turnBefore = [{ name: "Rope", description: "Hemp", quantity: 1, location: "pack" }];
+    await rebuild(turnBefore, true);
     assert.equal((await turnRow()).inventory[0]!.quantity, 3);
+    // Any other write of the row keeps the inventory it is given, an empty one included.
+    await rebuild(turnBefore);
+    assert.equal((await turnRow()).inventory[0]!.quantity, 1);
+    await rebuild([]);
+    assert.deepEqual((await turnRow()).inventory, []);
   } finally {
     await app.close();
     await closeDB();

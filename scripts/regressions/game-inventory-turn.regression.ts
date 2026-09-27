@@ -26,8 +26,13 @@ const { createGameStateStorage } = await import("../../packages/server/src/servi
 const { gameInventoryRoutes } = await import("../../packages/server/src/routes/game-inventory.routes.js");
 const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
 const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
-const { normalizeGameInventoryStacks, gameInventoryCount, readResolvedInventoryTags } =
-  await import("../../packages/shared/src/index.js");
+const { gameRoutes } = await import("../../packages/server/src/routes/game.routes.js");
+const {
+  normalizeGameInventoryStacks,
+  gameInventoryCount,
+  readResolvedInventoryTags,
+  CHAT_PRESET_EXCLUDED_METADATA_KEYS,
+} = await import("../../packages/shared/src/index.js");
 const { ClaudeSubscriptionProvider } =
   await import("../../packages/server/src/services/llm/providers/claude-subscription.provider.js");
 
@@ -48,6 +53,7 @@ app.decorate("db", db);
 await app.register(generateRoutes, { prefix: "/api/generate" });
 await app.register(chatsRoutes, { prefix: "/api/chats" });
 await app.register(gameInventoryRoutes, { prefix: "/api/game/inventory" });
+await app.register(gameRoutes, { prefix: "/api/game" });
 try {
   const connection = await createConnectionsStorage(db).create({
     name: "Inventory fixture",
@@ -267,6 +273,122 @@ try {
       names.includes("Torch") && names.includes("Sword"),
       `the continued row keeps both parts: ${names.join(", ")}`,
     );
+  }
+
+  // ── Branching and deleting tellings keep each telling's result with it (#6774) ──
+  {
+    const gems = async (chatId = chat.id) => {
+      const row = await chats.getById(chatId);
+      const meta = typeof row!.metadata === "string" ? JSON.parse(row!.metadata) : row!.metadata;
+      return gameInventoryCount(normalizeGameInventoryStacks(meta.gameInventory), "Gem");
+    };
+    const gem = (count: number) => `A gem glints. [inventory: action="add" item="Gem" count="${count}"]`;
+    const told = await turn(gem(1));
+    const beforeTurn = (await chats.listMessages(chat.id)).at(-2)!;
+    const retell = async (count: number) => {
+      reply = gem(count);
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/generate/",
+        payload: { chatId: chat.id, streaming: true, regenerateMessageId: told.saved.id },
+      });
+      assert.equal(response.statusCode, 200, response.body);
+      assert.ok(!response.body.includes('"type":"error"'), response.body);
+    };
+    const show = async (index: number, chatId = chat.id, messageId = told.saved.id) => {
+      const response = await app.inject({
+        method: "PUT",
+        url: `/api/chats/${chatId}/messages/${messageId}/active-swipe`,
+        payload: { index },
+      });
+      assert.equal(response.statusCode, 200, response.body);
+    };
+    const drop = async (path: string) => {
+      const response = await app.inject({
+        method: "DELETE",
+        url: `/api/chats/${chat.id}/messages/${told.saved.id}/swipes/${path}`,
+      });
+      assert.equal(response.statusCode, 200, response.body);
+    };
+    await retell(2);
+    await retell(3);
+    assert.equal(await gems(), 3, "three tellings, of one, two and three gems, the last one shown");
+
+    // A branch takes the record with its copy of the turn, so the branch's tellings still switch.
+    const branch = await app.inject({ method: "POST", url: `/api/chats/${chat.id}/branch`, payload: {} });
+    assert.equal(branch.statusCode, 200, branch.body);
+    const branchId = branch.json().id as string;
+    const branchedTurn = (await chats.listMessages(branchId)).at(-1)!;
+    await show(0, branchId, branchedTurn.id);
+    assert.equal(await gems(branchId), 1, "the branch shows its copy of the first telling");
+    assert.equal(await gems(), 3, "and the chat it came from is untouched");
+    // A branch cut before the turn has no copy of it for the record to follow.
+    const cut = await app.inject({
+      method: "POST",
+      url: `/api/chats/${chat.id}/branch`,
+      payload: { upToMessageId: beforeTurn.id },
+    });
+    assert.equal(cut.statusCode, 200, cut.body);
+    const cutRow = await chats.getById(cut.json().id);
+    const cutMeta = typeof cutRow!.metadata === "string" ? JSON.parse(cutRow!.metadata) : cutRow!.metadata;
+    assert.equal(cutMeta.gameInventoryTurn, undefined);
+
+    // Deleting a telling that is not shown: the later ones move down with their results.
+    await drop("0");
+    assert.equal(await gems(), 3);
+    await show(0);
+    assert.equal(await gems(), 2, "the telling now first is the one that gave two");
+    await show(1);
+    assert.equal(await gems(), 3);
+    await retell(4);
+    assert.equal(await gems(), 4, "a new telling still starts where the turn began");
+    // Deleting every other telling, the one shown among them: the telling kept is followed.
+    await show(0);
+    assert.equal(await gems(), 2);
+    await drop("others/2");
+    assert.equal(await gems(), 4, "the telling kept is the one that gave four");
+    // Deleting the telling that is shown: the one shown next is followed.
+    await retell(5);
+    assert.equal(await gems(), 5);
+    await drop("1");
+    assert.equal(await gems(), 4);
+  }
+
+  // The next session carries every bag, but not the record of how one of this session's turns was
+  // told, and a saved chat profile never takes it either.
+  {
+    const gameId = "inventory-turn-sessions";
+    const previous = await chats.create({
+      name: "Inventory turn — Session 1",
+      mode: "game",
+      characterIds: [],
+      groupId: gameId,
+    });
+    assert.ok(previous);
+    const stacks = [
+      { id: "st-rope", name: "Rope", quantity: 2 },
+      { id: "st-arrows", name: "Arrow", quantity: 10, holder: "Bram" },
+    ];
+    await chats.patchMetadata(previous.id, {
+      gameId,
+      gameSessionStatus: "concluded",
+      gameSessionNumber: 1,
+      gameInventory: stacks,
+      gameInventoryTurn: { messageId: "session-one-turn", before: [], swipes: { "0": stacks } },
+    });
+    const started = await app.inject({ method: "POST", url: "/api/game/session/start", payload: { gameId } });
+    assert.equal(started.statusCode, 200, started.body);
+    const next = await chats.getById(started.json().sessionChat.id);
+    const meta = typeof next!.metadata === "string" ? JSON.parse(next!.metadata) : next!.metadata;
+    assert.deepEqual(
+      normalizeGameInventoryStacks(meta.gameInventory).map(
+        (stack) => `${stack.name} ${stack.quantity} ${stack.holder ?? "player"}`,
+      ),
+      ["Rope 2 player", "Arrow 10 Bram"],
+      "every bag carries over",
+    );
+    assert.equal(meta.gameInventoryTurn, undefined, "the previous session's turn record stays behind");
+    assert.ok(CHAT_PRESET_EXCLUDED_METADATA_KEYS.includes("gameInventoryTurn"));
   }
 
   console.info("game inventory turn regressions passed.");

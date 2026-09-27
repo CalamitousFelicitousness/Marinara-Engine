@@ -50,7 +50,9 @@ function cleanName(name: string): string {
 export function cleanGameInventoryHolder(holder: unknown): string | undefined {
   if (typeof holder !== "string") return undefined;
   const cleaned = cleanName(holder).slice(0, GAME_INVENTORY_HOLDER_MAX_LENGTH);
-  return cleaned || undefined;
+  // A name with no letter or digit in it keys to nothing, which cannot be told apart from the
+  // player's own bag, so it is the player's.
+  return cleaned && normalizeCharacterLookupName(cleaned) ? cleaned : undefined;
 }
 
 /** The key two bags are compared by, matched the way a `who=` is: case and accents aside. The

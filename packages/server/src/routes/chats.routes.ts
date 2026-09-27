@@ -111,7 +111,7 @@ import {
 } from "../services/spatial-context/projection.js";
 import { createSpatialContextStorage } from "../services/storage/spatial-context.storage.js";
 import { restoreBranchHudLists, trimJournalForBranch } from "../services/game/branch-state.js";
-import { switchGameInventoryTelling } from "../services/game/game-inventory.service.js";
+import { removeGameInventoryTelling, switchGameInventoryTelling } from "../services/game/game-inventory.service.js";
 import { applyAllSegmentEdits, applyMessageSegmentEdits } from "../services/game/segment-edits.js";
 import type { Journal } from "../services/game/journal.service.js";
 import { createRegexScriptsStorage } from "../services/storage/regex-scripts.storage.js";
@@ -3729,6 +3729,28 @@ export async function chatsRoutes(app: FastifyInstance) {
     },
   );
 
+  /** A deleted swipe leaves a game's record of that turn's tellings (#6774) counted as the message's
+   *  swipes are. The swipe is gone either way, so a failure here drops the record rather than leave
+   *  it pointing at the wrong tellings. */
+  const forgetInventoryTelling = async (
+    chatId: string,
+    messageId: string,
+    removed: number,
+    wasShown: boolean,
+    shown: number,
+  ) => {
+    try {
+      await removeGameInventoryTelling(app.db, chatId, messageId, removed, wasShown, shown);
+    } catch (err) {
+      logger.error(err, "[chats] Could not update the inventory for swipe %d of %s", removed, messageId);
+      await storage
+        .patchMetadata(chatId, (current) =>
+          readGameInventoryTurn(current.gameInventoryTurn)?.messageId === messageId ? { gameInventoryTurn: null } : {},
+        )
+        .catch((clearErr) => logger.error(clearErr, "[chats] Could not drop the inventory record of %s", messageId));
+    }
+  };
+
   // Delete a swipe without deleting the parent message
   app.delete<{ Params: { chatId: string; messageId: string; index: string } }>(
     "/:chatId/messages/:messageId/swipes/:index",
@@ -3738,22 +3760,33 @@ export async function chatsRoutes(app: FastifyInstance) {
         return reply.status(400).send({ error: "Valid swipe index is required" });
       }
 
-      const swipes = await storage.getSwipes(req.params.messageId);
-      if (swipes.length <= 1) {
-        return reply.status(400).send({ error: "Cannot delete the last remaining swipe" });
-      }
+      // One at a time with swipe switches, since both move which telling a game's inventory follows.
+      return withChatSwipeSelectionQueue(req.params.chatId, async () => {
+        const swipes = await storage.getSwipes(req.params.messageId);
+        if (swipes.length <= 1) {
+          return reply.status(400).send({ error: "Cannot delete the last remaining swipe" });
+        }
 
-      const target = swipes.find((swipe: any) => swipe.index === index);
-      if (!target) {
-        return reply.status(404).send({ error: "Swipe not found" });
-      }
+        const target = swipes.find((swipe: any) => swipe.index === index);
+        if (!target) {
+          return reply.status(404).send({ error: "Swipe not found" });
+        }
 
-      const updated = await storage.removeSwipe(req.params.messageId, index);
-      if (!updated) {
-        return reply.status(404).send({ error: "Message not found" });
-      }
+        const previous = await storage.getMessage(req.params.messageId);
+        const updated = await storage.removeSwipe(req.params.messageId, index);
+        if (!updated) {
+          return reply.status(404).send({ error: "Message not found" });
+        }
 
-      return updated;
+        await forgetInventoryTelling(
+          req.params.chatId,
+          req.params.messageId,
+          index,
+          (previous?.activeSwipeIndex ?? 0) === index,
+          updated.activeSwipeIndex ?? 0,
+        );
+        return updated;
+      });
     },
   );
 
@@ -3766,21 +3799,29 @@ export async function chatsRoutes(app: FastifyInstance) {
         return reply.status(400).send({ error: "Valid swipe index is required" });
       }
 
-      const message = await storage.getMessage(req.params.messageId);
-      if (!message || message.chatId !== req.params.chatId) {
-        return reply.status(404).send({ error: "Message not found" });
-      }
-      const swipes = await storage.getSwipes(req.params.messageId);
-      if (!swipes.some((swipe: any) => swipe.index === keepIndex)) {
-        return reply.status(404).send({ error: "Swipe not found" });
-      }
+      return withChatSwipeSelectionQueue(req.params.chatId, async () => {
+        const message = await storage.getMessage(req.params.messageId);
+        if (!message || message.chatId !== req.params.chatId) {
+          return reply.status(404).send({ error: "Message not found" });
+        }
+        const swipes = await storage.getSwipes(req.params.messageId);
+        if (!swipes.some((swipe: any) => swipe.index === keepIndex)) {
+          return reply.status(404).send({ error: "Swipe not found" });
+        }
 
-      // Descending indexes keep the selected swipe stable until lower rows are
-      // removed, after which the existing removal path shifts it safely to 0.
-      for (const swipe of [...swipes].sort((a: any, b: any) => b.index - a.index)) {
-        if (swipe.index !== keepIndex) await storage.removeSwipe(req.params.messageId, swipe.index);
-      }
-      return storage.getMessage(req.params.messageId);
+        // Descending indexes keep the selected swipe stable until lower rows are
+        // removed, after which the existing removal path shifts it safely to 0.
+        let shown = message.activeSwipeIndex ?? 0;
+        for (const swipe of [...swipes].sort((a: any, b: any) => b.index - a.index)) {
+          if (swipe.index === keepIndex) continue;
+          const updated = await storage.removeSwipe(req.params.messageId, swipe.index);
+          if (!updated) continue;
+          const wasShown = shown === swipe.index;
+          shown = updated.activeSwipeIndex ?? 0;
+          await forgetInventoryTelling(req.params.chatId, req.params.messageId, swipe.index, wasShown, shown);
+        }
+        return storage.getMessage(req.params.messageId);
+      });
     },
   );
 
@@ -4569,6 +4610,13 @@ export async function chatsRoutes(app: FastifyInstance) {
         : undefined;
     const branchCharacterIds = resolveChatCharacterIds(newChat.characterIds);
     settingsToKeep = remapAdvancedMemoryMetadata(settingsToKeep, sourceToBranchedMessageId, branchCharacterIds);
+    // A game's record of one turn's tellings (#6774) follows that turn into the branch, whose copy
+    // keeps every swipe index. A branch that stops before the turn has nothing for it to follow.
+    const inventoryTurn = readGameInventoryTurn(settingsToKeep.gameInventoryTurn);
+    const branchedInventoryTurnId = inventoryTurn && sourceToBranchedMessageId.get(inventoryTurn.messageId);
+    if (branchedInventoryTurnId)
+      settingsToKeep.gameInventoryTurn = { ...inventoryTurn, messageId: branchedInventoryTurnId };
+    else delete settingsToKeep.gameInventoryTurn;
     // #5406: `settingsToKeep` is the source metadata verbatim, which carries its
     // `metadataWriteOrdinals` mirror. Inherit the source's write-ordinal counter too, or the
     // branch's first allocation would come in BELOW the stamps it just copied and invert the

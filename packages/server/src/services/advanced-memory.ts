@@ -3,6 +3,7 @@ import {
   ADVANCED_MEMORY_SCENE_AUDIENCE as SCENE_AUDIENCE,
   CHAT_SUMMARY_PROMPT_SETTINGS_KEY,
   DEFAULT_CHAT_SUMMARY_PROMPT,
+  DEFAULT_DECISION_CALIBRATION,
   estimateChatSummaryTokens,
   sliceTextToTokenBudget,
   normalizeAdvancedMemorySettings,
@@ -20,6 +21,7 @@ import {
   characterCustomFieldTrackerLockKey,
   extractLeadingThinkingBlocks,
   type AdvancedMemoryJob,
+  type AdvancedMemoryDecisionDiagnostics,
   type AdvancedMemoryRecord,
   type AdvancedMemorySettings,
   type AdvancedMemoryStatus,
@@ -57,6 +59,8 @@ import { resolveDecisionConnection } from "./decision/decision-connection.js";
 import {
   detectDecisionSceneBoundaries,
   rankDecisionMemories,
+  finishMemoryDecisionDiagnostics,
+  MEMORY_DECISION_SCENE_THRESHOLD,
   MEMORY_DECISION_RECALL_TIMEOUT_MS,
 } from "./advanced-memory-decisions.js";
 import { cosineSimilarity } from "./lorebook/embeddings.js";
@@ -2180,6 +2184,17 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
           const batched = options.batchedCheck;
           let decision: unknown;
           let decisionEnds: string[] | null = null;
+          const diagnostics: AdvancedMemoryDecisionDiagnostics | undefined = ctx.settings.decisionEnabled
+            ? {
+                createdAt: now(),
+                model: null,
+                sourceEndMessageId: request.asOfMessageId,
+                fallback: false,
+                threshold: MEMORY_DECISION_SCENE_THRESHOLD,
+                omittedCount: 0,
+                results: [],
+              }
+            : undefined;
           const backend = await memoryDecisionBackend(ctx, operationOptions);
           if (backend) {
             try {
@@ -2191,6 +2206,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
                 request.messages.map((message) => message.messageId),
                 "end",
                 operationOptions.signal,
+                diagnostics,
               );
             } catch (error) {
               abortIfNeeded(operationOptions.signal);
@@ -2288,6 +2304,18 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
               .map((record) => [record.id, record.sourceFingerprint]),
           );
           const committed = await commitSceneCheckImpl(chatId, request, decision, operationOptions);
+          if (committed && diagnostics)
+            await progress(
+              ctx,
+              {
+                decisionSceneCheck: finishMemoryDecisionDiagnostics(
+                  diagnostics,
+                  new Set(decisionEnds ?? []),
+                  decisionEnds === null,
+                ),
+              },
+              operationOptions,
+            );
           const closedSceneChanged =
             committed &&
             (await records(chatId)).some(
@@ -2996,6 +3024,18 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
         audience[0] === ctx.settings.narratorCharacterId);
     let recallBackend: DecisionBackend | null = null;
     let decisionScores: Map<string, number> | null = null;
+    const recallDiagnostics: AdvancedMemoryDecisionDiagnostics | undefined =
+      ctx.settings.decisionEnabled && !input.readOnly
+        ? {
+            createdAt: now(),
+            model: null,
+            sourceEndMessageId: receipt.sourceEndMessageId ?? null,
+            fallback: false,
+            threshold: DEFAULT_DECISION_CALIBRATION.defaultThreshold,
+            omittedCount: 0,
+            results: [],
+          }
+        : undefined;
     const recallSignal = ctx.settings.decisionEnabled
       ? AbortSignal.any([
           ...(input.signal ? [input.signal] : []),
@@ -3014,10 +3054,17 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
               audience.map((id) => ctx.names.get(id) ?? id),
               candidates.flatMap((record, index) =>
                 record.kind === "scene" || canRecallExcerpt(recalledSceneRecords.get(record.sceneId)!)
-                  ? [{ id: record.id, text: candidateTexts[index]! }]
+                  ? [
+                      {
+                        id: record.id,
+                        text: candidateTexts[index]!,
+                        kind: record.kind === "scene" ? ("scene" as const) : ("excerpt" as const),
+                      },
+                    ]
                   : [],
               ),
               recallSignal,
+              recallDiagnostics,
             );
           }
         } catch (error) {
@@ -3157,6 +3204,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
               text: messageText(ctx, message, indexes.get(message.id)!),
             })),
             recallSignal,
+            recallDiagnostics,
           );
           if (scores) {
             matched = sceneSource
@@ -3219,6 +3267,17 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     receipt.checkpointId = null;
     receipt.recalledSceneIds = [...selectedScenes];
     receipt.recalledMessageIds = excerpts.map((message) => message.id);
+    if (
+      recallDiagnostics &&
+      (receipt.reasons.includes("decision-recall") || receipt.reasons.includes("decision-recall-fallback"))
+    )
+      receipt.decisionRecall = finishMemoryDecisionDiagnostics(
+        recallDiagnostics,
+        new Set([...recalledRecords.map((record) => record.id), ...receipt.recalledMessageIds]),
+        receipt.reasons.some(
+          (reason) => reason === "decision-recall-fallback" || reason === "decision-excerpt-fallback",
+        ),
+      );
     for (const record of recalledRecords) {
       receipt.recordRevisions[record.id] = hash([
         record.content,

@@ -91,7 +91,7 @@ const { createFileNativeDB } = await import("../../packages/server/src/db/file-b
 const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
 const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
 const { createAdvancedMemoryService } = await import("../../packages/server/src/services/advanced-memory.js");
-const { rankDecisionMemories, detectDecisionSceneBoundaries } =
+const { rankDecisionMemories, detectDecisionSceneBoundaries, finishMemoryDecisionDiagnostics } =
   await import("../../packages/server/src/services/advanced-memory-decisions.js");
 const { prepareAdvancedMemoryContext } =
   await import("../../packages/server/src/services/generation/advanced-memory-context.js");
@@ -175,6 +175,14 @@ try {
   assert.doesNotMatch(prepared.recalledScenes!, /PRIVATE_SECRET|Lantern soup was served/);
   assert.deepEqual(prepared.receipt.recalledMessageIds, [source[3]!.id]);
   assert(prepared.receipt.reasons.includes("decision-recall"));
+  const diagnostics = prepared.receipt.decisionRecall!;
+  assert.equal(diagnostics.model, "memory-decisions");
+  assert.equal(diagnostics.fallback, false);
+  assert.equal(diagnostics.sourceEndMessageId, source.at(-1)!.id);
+  assert(diagnostics.results.some((row) => row.kind === "scene" && row.selected && row.score === 0.99));
+  assert(diagnostics.results.some((row) => !row.selected && row.score === 0.01));
+  assert(diagnostics.results.some((row) => row.kind === "message" && row.selected && row.id === source[3]!.id));
+  assert.doesNotMatch(JSON.stringify(diagnostics), /PRIVATE_SECRET/);
   const recallRequests = requests.slice(beforeRecall);
   assert(recallRequests.length >= 2, "rank memories and then select original messages");
   for (const request of recallRequests) {
@@ -198,6 +206,7 @@ try {
     toProviderMessages: (messages) => messages,
   });
   assert(reused.receipt.reasons.includes("reused-swipe-memory"));
+  assert.deepEqual(reused.receipt.decisionRecall, diagnostics, "swipes keep the original evaluation time and scores");
   assert.equal(requests.length, beforePreview, "a compatible swipe makes no decisions again");
 
   rejectAll = true;
@@ -207,6 +216,11 @@ try {
   partial = true;
   const fallback = await memory.prepare(input);
   assert(fallback.receipt.reasons.includes("decision-recall-fallback"));
+  assert.equal(fallback.receipt.decisionRecall?.fallback, true);
+  assert(
+    fallback.receipt.decisionRecall?.results.every((row) => row.score === undefined),
+    "partial batches are not presented as usable scores",
+  );
   partial = false;
   stallNextDecision = true;
   const started = performance.now();
@@ -241,6 +255,9 @@ try {
   });
   await memory.updateSettings(chat.id, { sceneCheckInterval: 1 });
   await memory.checkScenesAfterGeneration(chat.id);
+  const uncertainCheck = (await memory.status(chat.id)).job.decisionSceneCheck!;
+  assert.equal(uncertainCheck.threshold, 0.8);
+  assert(uncertainCheck.results.some((row) => row.score === 0.6 && !row.selected));
   assert(
     (await memory.status(chat.id)).records.some((record) => record.kind === "scene" && record.status === "open"),
     "uncertainty leaves the scene open",
@@ -254,6 +271,9 @@ try {
   });
   await memory.checkScenesAfterGeneration(chat.id);
   const last = (await chats.listMessages(chat.id)).at(-1)!;
+  const endedCheck = (await memory.status(chat.id)).job.decisionSceneCheck!;
+  assert.equal(endedCheck.sourceEndMessageId, last.id);
+  assert(endedCheck.results.some((row) => row.id === last.id && row.score === 0.99 && row.selected));
   assert(
     (await memory.status(chat.id)).records.some(
       (record) => record.kind === "scene" && record.status === "closed" && record.endMessageId === last.id,
@@ -283,10 +303,33 @@ try {
   const currentSource = await chats.listMessages(chat.id);
   const missing = await memory.prepare({ ...input, messages: currentSource });
   assert(missing.receipt.reasons.includes("decision-recall-fallback"));
+  assert.equal(missing.receipt.decisionRecall?.fallback, true);
   await memory.updateSettings(chat.id, { decisionEnabled: false });
   const beforeDisabled = requests.filter((request) => request.kind === "decision").length;
   await memory.prepare({ ...input, messages: currentSource });
   assert.equal(requests.filter((request) => request.kind === "decision").length, beforeDisabled);
+
+  const bounded = finishMemoryDecisionDiagnostics(
+    {
+      ...diagnostics,
+      results: [
+        ...Array.from({ length: 200 }, (_, index) => ({
+          id: String(index),
+          kind: "scene" as const,
+          text: "A past memory",
+          score: index / 200,
+          selected: false,
+        })),
+        { id: "0", kind: "scene" as const, text: "Repeated candidate", score: 0.25, selected: false },
+      ],
+    },
+    new Set(["0"]),
+    false,
+  );
+  assert.equal(bounded.results.length, 128);
+  assert.equal(bounded.omittedCount, 72);
+  assert.equal(bounded.results[0]!.id, "0", "selected outcomes survive the saved-report cap");
+  assert.equal(bounded.results[0]!.score, 0.25, "repeated candidates show the latest score once");
 
   // Bounded requests, atomic fallback, and cancellation, independent of provider timing.
   let batches = 0;

@@ -16,7 +16,9 @@ import {
   isAgentConfigDeleted,
   isBuiltInAgentRuntimeDisabled,
   normalizeAdvancedMemorySettings,
+  advancedMemoryDecisionDiagnosticsSchema,
   type DecisionDebugReport,
+  type AdvancedMemoryDecisionDiagnostics,
 } from "@marinara-engine/shared";
 import {
   appendRoleplayPromptTail,
@@ -2235,6 +2237,26 @@ export async function registerDryRunRoute(app: FastifyInstance) {
 
     // Prompt preview mode: return the exact prompt shape that would be sent.
     if (returnPrompt) {
+      if (decisionDebug && advancedMemoryService && advancedMemorySettings.decisionEnabled) {
+        // These are historical observations, not proof that a saved prompt can be reused today.
+        let recall: AdvancedMemoryDecisionDiagnostics | undefined;
+        for (const message of [...allChatMessages].reverse()) {
+          const saved = advancedMemoryDecisionDiagnosticsSchema.safeParse(
+            parseExtra(parseExtra(message.extra).advancedMemoryReceipt).decisionRecall,
+          );
+          if (saved.success) {
+            recall = saved.data;
+            break;
+          }
+        }
+        const sceneCheck = advancedMemoryDecisionDiagnosticsSchema.safeParse(
+          parseExtra(chatMeta.advancedMemoryState).decisionSceneCheck,
+        );
+        decisionDebug.advancedMemory = {
+          ...(recall ? { recall } : {}),
+          ...(sceneCheck.success ? { sceneCheck: sceneCheck.data } : {}),
+        };
+      }
       if (decisionDebug)
         for (const statement of decisionDropped) {
           if (!decisionDebug.results.some((row) => row.statement === statement))

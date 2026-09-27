@@ -5,6 +5,12 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 ## [Unreleased]
 
 - Chats can name their own variables in a **Chat Variables** section of **Chat Settings**. Define `char1` as `Mary`, type `{{char1}}` in a message, and the AI reads Mary while your message keeps showing the tag, so changing the value also changes earlier turns. Values are per chat, survive restarts, and share storage with `{{setvar}}`, which lists prompt-set variables there too and still overwrites a name it also uses. Any remaining `{{name}}` resolves from preset variables first, then chat variables; an unknown name is still left as typed, and a name that is a built-in macro cannot be created.
+- Character and persona gallery image downloads preserve the iPhone/iPad Home Screen app, using native sharing when available and keeping previews dismissible when saving is cancelled or fails (#6784).
+
+- Character-sheet generation can optionally use the character's saved neutral full-body sprite as a reference, on its own or together with the current avatar.
+
+- Persona sheet generation can use a saved neutral full-body sprite as a reference, alone or alongside the current avatar (#6786).
+
 - Game Mode rulesets can describe items. An `items` block declares the categories, rarities, tags, stats, slots, binding limit, carrying and currency families a ruleset's items are written in, and a catalog of items lists each one with its stats, slots, stack size, cost and binding. Everything is checked at import, both example rulesets carry items, and the author guide explains every key. Nothing in a game reads items yet; the inventory, the sheet and fights take them up next (#6765).
 
 - Decision diagnostics shows Advanced Memory's latest Jev recall and scene-end decisions, including scores, selections and fallback outcomes, without making extra model calls (#6768).

@@ -4,7 +4,7 @@ import {
   combatWeatherSchema,
   applyGameInventoryOps,
   gameInventoryCount,
-  gameInventoryTotals,
+  gameInventoryFightLines,
   normalizeGameInventoryStacks,
 } from "@marinara-engine/shared";
 import { applyGameInventoryChangeHeld } from "../services/game/game-inventory.service.js";
@@ -327,7 +327,13 @@ export async function combatDirectorRoutes(
       requests: z.array(key).max(256),
       // Totals per item, which a player's stacks together may take well past one stack's bound.
       inventory: z
-        .array(z.object({ name: key, quantity: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER) }))
+        .array(
+          z.object({
+            name: key,
+            quantity: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+            ownName: key.optional(),
+          }),
+        )
         .max(200),
       itemSpends: z.record(key, z.number().int().min(0).max(Number.MAX_SAFE_INTEGER)),
       gmCalls: z.number().int().min(0).max(12),
@@ -550,8 +556,12 @@ export async function combatDirectorRoutes(
       app.db.transaction(async () => {
         const previous = await load(chatId, s.anchor);
         if (!previous || previous.row.id !== rowId) throw new Error("Battle changed while saving.");
+        // Spent by the item's own name, which only ever finds that item, not by a nickname.
         const deltas = Object.entries(s.itemSpends)
-          .map(([name, count]) => ({ name, count: count - (previous.state.itemSpends[name] ?? 0) }))
+          .map(([name, count]) => ({
+            name: s.inventory.find((line) => line.name === name)?.ownName ?? name,
+            count: count - (previous.state.itemSpends[name] ?? 0),
+          }))
           .filter((d) => d.count > 0);
         if (deltas.length)
           // Taken by name across every stack and bag of the item, the player's own first, since the
@@ -672,8 +682,11 @@ export async function combatDirectorRoutes(
         }
         const state = createCombatDirector({
           ...input,
-          // One line per item: a fight neither knows nor cares how the player split their stacks.
-          inventory: gameInventoryTotals(normalizeGameInventoryStacks(meta.gameInventory)),
+          // One line per item: a fight neither knows nor cares how the player split their stacks. Each is
+          // shown under a name no other line has, and spent by the item's own name.
+          inventory: gameInventoryFightLines(normalizeGameInventoryStacks(meta.gameInventory)).map(
+            ({ name, quantity, ownName }) => ({ name, quantity, ...(ownName ? { ownName } : {}) }),
+          ),
           party: input.party as Combatant[],
           // What the fight is RESOLVED by is read below and never stored on the Engine's own units.
           enemies: input.enemies.map(({ creature: _c, tier: _t, proposed: _p, ...unit }) => unit) as Combatant[],

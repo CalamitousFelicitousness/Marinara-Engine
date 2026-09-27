@@ -386,6 +386,65 @@ try {
     assert.equal(response.json().error, "Unsupported combat save.");
     assert.equal((await post("/combat/start", input)).json().error, "Unsupported combat save.");
   }
+  // A line shown by a nickname is spent as the item it is, even when the nickname is another item's
+  // own name: a cord the player calls "Potion" is the cord, and the real potion stays.
+  {
+    const nickChat = await chats.create({ name: "Director nickname proof", mode: "game", characterIds: [] });
+    const nickAnchor = await chats.createMessage({
+      chatId: nickChat.id,
+      role: "assistant",
+      content: "[state: combat]",
+    });
+    await chats.patchMetadata(nickChat.id, {
+      gameSetupConfig: { combatDirector: true },
+      gameInventory: [
+        { id: "st-cord", name: "Cord", nickname: "Potion", quantity: 1 },
+        { id: "st-potion", name: "Potion", quantity: 1 },
+      ],
+    });
+    const nickInput = {
+      ...input,
+      chatId: nickChat.id,
+      anchor: nickAnchor.id,
+      enemies: [unit("rat", "enemy")],
+      itemEffects: [
+        ...input.itemEffects,
+        { name: "Potion (Cord)", target: "ally", type: "utility", description: "Tie", power: 1 },
+      ],
+    };
+    const started = await post("/combat/start", nickInput);
+    assert.equal(started.statusCode, 200, started.body);
+    let n: DirectedCombatView = started.json().session;
+    assert.deepEqual(
+      n.inventory.map((line) => [line.name, line.quantity, line.ownName ?? null]),
+      [
+        ["Potion (Cord)", 1, "Cord"],
+        ["Potion", 1, null],
+      ],
+      "two lines never share a name: the nickname another line goes by shows its own name too",
+    );
+    const nickCmd = async (command: DirectedCommand) => {
+      const response = await post("/combat/command", {
+        chatId: nickChat.id,
+        anchor: nickAnchor.id,
+        id: n.id,
+        instanceId: n.instanceId,
+        revision: n.revision,
+        requestId: crypto.randomUUID(),
+        command,
+      });
+      assert.equal(response.statusCode, 200, response.body);
+      n = response.json().session;
+    };
+    await nickCmd({ type: "begin", unitId: "hero" });
+    await nickCmd({
+      type: "tactical",
+      action: { type: "item", unitId: "hero", itemName: "Potion (Cord)", targetId: "hero" },
+    });
+    assert.deepEqual(JSON.parse((await chats.getById(nickChat.id))!.metadata).gameInventory, [
+      { id: "st-potion", name: "Potion", quantity: 1 },
+    ]);
+  }
   console.log(
     "Combat director route: authority, idempotency, terrain, atomic item costs, late GM output, restore identity and branch isolation passed.",
   );

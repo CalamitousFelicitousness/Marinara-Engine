@@ -20,6 +20,9 @@ import {
   carryGameInventory,
   GAME_INVENTORY_MAX_QUANTITY,
   gameInventoryCount,
+  gameInventoryItemId,
+  gameInventoryPlainItemId,
+  gameInventoryStackLabel,
   gameInventoryTotals,
   mergeGameInventoryStacks,
   normalizeGameInventoryStacks,
@@ -35,7 +38,7 @@ import {
 } from "../../packages/client/src/lib/game-inventory-amount.js";
 
 const ids = (stacks: GameInventoryStack[]) => stacks.map((stack) => stack.id);
-const piles = (stacks: GameInventoryStack[]) => stacks.map((stack) => [stack.name, stack.quantity]);
+const piles = (stacks: GameInventoryStack[]) => stacks.map((stack) => [gameInventoryStackLabel(stack), stack.quantity]);
 const fixedId = (id: string) => () => id;
 
 // ── Reading a saved inventory ──
@@ -221,31 +224,67 @@ const apples = (): GameInventoryStack[] => [
   assert.equal(mergeGameInventoryStacks(full, "y", "x"), full, "a merge past one stack's bound is refused");
 }
 
-// ── Renaming one stack ──
+// ── Renaming one stack: a nickname, never another item ──
 {
   const same = apples();
   const renamed = renameGameInventoryStack(same, "a2", "Green apple")!;
   assert.equal(renamed.id, "a2");
   assert.deepEqual(
-    piles(renamed.stacks),
-    [
-      ["Apple", 200],
-      ["Rope", 1],
-      ["Green apple", 100],
-    ],
-    "only that stack is renamed",
+    renamed.stacks[2],
+    { id: "a2", name: "Apple", nickname: "Green apple", quantity: 100 },
+    "only that stack is called something else, and it is still an apple",
   );
-  const into = renameGameInventoryStack(same, "r1", "apple")!;
-  assert.equal(into.id, "a1", "renaming to an item the inventory has pours into its first stack");
+  assert.equal(gameInventoryItemId(renamed.stacks[2]!), gameInventoryItemId(same[0]!));
+  assert.equal(gameInventoryCount(renamed.stacks, "Apple"), 300, "named by its own name");
+  assert.equal(gameInventoryCount(renamed.stacks, "green APPLE"), 300, "or by the nickname, any case");
+  assert.deepEqual(gameInventoryTotals(renamed.stacks), [
+    { name: "Apple", quantity: 300 },
+    { name: "Rope", quantity: 1 },
+  ]);
+  const into = renameGameInventoryStack(same, "r1", "Apple")!;
+  assert.equal(into.id, "r1", "a rope called Apple is never poured into the apples");
   assert.deepEqual(piles(into.stacks), [
-    ["Apple", 201],
+    ["Apple", 200],
+    ["Apple", 1],
     ["Apple", 100],
   ]);
-  const cased = renameGameInventoryStack(same, "a2", "APPLE")!;
-  assert.deepEqual(piles(cased.stacks).at(-1), ["APPLE", 100], "a new spelling of its own name stays its own stack");
+  assert.equal(gameInventoryCount(into.stacks, "rope"), 1, "it is still a rope");
+  assert.equal(mergeGameInventoryStacks(into.stacks, "r1", "a1"), into.stacks, "and never merges with them");
+  const back = renameGameInventoryStack(renamed.stacks, "a2", "  APPLE ")!;
+  assert.deepEqual(back.stacks[2], same[2], "the item's own name, in any case, clears the nickname");
+  assert.equal(renameGameInventoryStack(same, "a2", "APPLE")!.stacks, same, "which is nothing to clear here");
   assert.equal(renameGameInventoryStack(same, "a1", "Apple")!.stacks, same);
+  assert.equal(renameGameInventoryStack(renamed.stacks, "a2", "Green apple")!.stacks, renamed.stacks);
   assert.equal(renameGameInventoryStack(same, "missing", "X"), null);
   assert.equal(renameGameInventoryStack(same, "a1", "   "), null);
+  // Nicknames read back as they were saved, and one that is the own name again is dropped.
+  assert.deepEqual(
+    normalizeGameInventoryStacks([
+      { id: "x", name: "Rope", nickname: "  Grandpa's   rope ", quantity: 2 },
+      { id: "y", name: "Rope", nickname: "ROPE", quantity: 1 },
+      { id: "z", name: "Rope", nickname: 7, quantity: 1 },
+    ]),
+    [
+      { id: "x", name: "Rope", nickname: "Grandpa's rope", quantity: 2 },
+      { id: "y", name: "Rope", quantity: 1 },
+      { id: "z", name: "Rope", quantity: 1 },
+    ],
+  );
+}
+
+// ── Which item a name makes ──
+{
+  assert.equal(gameInventoryPlainItemId("Rope"), "plain:rope");
+  assert.equal(gameInventoryPlainItemId("  ROPE!! "), "plain:rope", "case, spacing and punctuation aside");
+  assert.equal(gameInventoryPlainItemId("Health Potion"), "plain:health-potion");
+  assert.equal(gameInventoryPlainItemId("Épée"), "plain:epee", "accents aside");
+  assert.equal(gameInventoryPlainItemId("Меч"), "plain:меч", "every script keeps its letters");
+  assert.notEqual(gameInventoryPlainItemId("Меч"), gameInventoryPlainItemId("Щит"), "so two such items stay two");
+  assert.match(gameInventoryPlainItemId("🍎"), /^plain:~[0-9a-z]+$/, "no letters at all: a fingerprint");
+  assert.notEqual(gameInventoryPlainItemId("🍎"), gameInventoryPlainItemId("🍐"));
+  const long = `${"a".repeat(50)}1`;
+  assert.notEqual(gameInventoryPlainItemId(long), gameInventoryPlainItemId(`${"a".repeat(50)}2`), "not cut into one");
+  assert.ok(gameInventoryPlainItemId(long).length <= 48);
 }
 
 // ── A new session carries every stack ──
@@ -270,6 +309,17 @@ const apples = (): GameInventoryStack[] => [
     "both apple stacks survive, and the detailed inventory adds only what no stack holds",
   );
   assert.deepEqual(ids(carried).slice(0, 2), ["st-a", "st-b"]);
+  // Nicknames carry over, and an entry that follows an item by id is that item under any name.
+  assert.deepEqual(
+    carryGameInventory(
+      [{ id: "st-r", name: "Rope", nickname: "Grandpa's rope", quantity: 2 }],
+      [
+        { item: gameInventoryPlainItemId("Rope"), name: "Old faithful", description: "", quantity: 2, location: "" },
+        { name: "grandpa's rope", description: "", quantity: 2, location: "" },
+      ],
+    ),
+    [{ id: "st-r", name: "Rope", nickname: "Grandpa's rope", quantity: 2 }],
+  );
   assert.deepEqual(piles(carryGameInventory(undefined, [{ name: "Map", quantity: 1 }])), [["Map", 1]]);
   assert.deepEqual(
     piles(

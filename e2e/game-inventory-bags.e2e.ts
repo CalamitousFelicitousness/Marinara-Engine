@@ -63,8 +63,11 @@ test("each party member carries their own bag, and stacks are given between them
   const savedInventory = async () => {
     const row = await (await request.get(`/api/chats/${chatId}`)).json();
     const metadata = typeof row.metadata === "string" ? JSON.parse(row.metadata) : row.metadata;
-    return (metadata.gameInventory as Array<{ name: string; quantity: number; holder?: string }>).map(
-      (stack) => `${stack.name} ${stack.quantity} ${stack.holder ?? "player"}`,
+    return (
+      metadata.gameInventory as Array<{ name: string; nickname?: string; quantity: number; holder?: string }>
+    ).map(
+      (stack) =>
+        `${stack.name}${stack.nickname ? ` "${stack.nickname}"` : ""} ${stack.quantity} ${stack.holder ?? "player"}`,
     );
   };
   try {
@@ -111,11 +114,25 @@ test("each party member carries their own bag, and stacks are given between them
     await expect(slot("Arrow x20, carried by Player")).toBeVisible();
     await expect.poll(savedInventory).toEqual(["Rope 1 player", "Arrow 20 player", "Rope 2 Bram"]);
 
-    // Adding from a member's tab puts the new item in that member's bag.
+    // Adding by name from a member's tab puts the new item in that member's bag.
     await tab("Bram").click();
+    const newItem = page.getByLabel("Name of the item to add", { exact: true });
+    await newItem.fill("Lantern");
     await page.getByRole("button", { name: "Add", exact: true }).click();
-    await expect(slot("New item")).toBeVisible();
-    await expect.poll(savedInventory).toEqual(["Rope 1 player", "Arrow 20 player", "Rope 2 Bram", "New item 1 Bram"]);
+    await expect(slot("Lantern")).toBeVisible();
+    await expect.poll(savedInventory).toEqual(["Rope 1 player", "Arrow 20 player", "Rope 2 Bram", "Lantern 1 Bram"]);
+
+    // A rename is a nickname: the stack is still rope, so adding rope tops it up.
+    await slot("Rope x2").click();
+    await page.getByLabel("Nickname for Rope", { exact: true }).fill("Climbing rope");
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(slot("Climbing rope x2")).toBeVisible();
+    await newItem.fill("rope");
+    await page.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(slot("Climbing rope x3")).toBeVisible();
+    await expect
+      .poll(savedInventory)
+      .toEqual(["Rope 1 player", "Arrow 20 player", 'Rope "Climbing rope" 3 Bram', "Lantern 1 Bram"]);
     await page.screenshot({ path: testInfo.outputPath("inventory-bags.png") });
   } finally {
     await request.delete(`/api/chats/${chatId}`);

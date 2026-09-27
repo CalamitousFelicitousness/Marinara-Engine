@@ -3,7 +3,8 @@ import {
   combatTacticsSchema,
   gameInventoryBags,
   gameInventoryBagKey,
-  gameInventoryTotals,
+  gameInventoryFightLines,
+  gameInventoryStackLabel,
   normalizeGameInventoryStacks,
   swapGameInventoryStacks,
   type GameInventoryOp,
@@ -1773,20 +1774,6 @@ function readPersistedGameAudioSettings(): GameAudioSettings {
   }
 }
 
-function getNextInventoryItemName(items: Array<{ name: string }>): string {
-  const baseName = "New item";
-  const existingNames = new Set(items.map((item) => normalizeInventoryName(item.name).toLowerCase()));
-  if (!existingNames.has(baseName.toLowerCase())) {
-    return baseName;
-  }
-
-  let suffix = 2;
-  while (existingNames.has(`${baseName} ${suffix}`.toLowerCase())) {
-    suffix += 1;
-  }
-  return `${baseName} ${suffix}`;
-}
-
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -3034,7 +3021,8 @@ function GameSurfaceComponent({
    *  whether the chat changed while one was on its way (and so was not read then). */
   const inventoryCommitSeq = useRef({ sent: 0, applied: 0, skippedResync: false });
   // What a fight offers: one line per item, however the player split its stacks.
-  const inventoryTotals = useMemo(() => gameInventoryTotals(inventoryItems), [inventoryItems]);
+  // What a fight lists: one line per item, each under a name no other line has.
+  const fightInventoryLines = useMemo(() => gameInventoryFightLines(inventoryItems), [inventoryItems]);
   /** What the inventory just did, shown for a moment: gains in green, everything else in red. */
   const [inventoryNotifications, setInventoryNotifications] = useState<Array<{ text: string; gain: boolean }>>([]);
   const [removingPartyMemberId, setRemovingPartyMemberId] = useState<string | null>(null);
@@ -7629,15 +7617,11 @@ function GameSurfaceComponent({
     notificationTimerRef.current = setTimeout(() => setInventoryNotifications([]), 4000);
   }, []);
 
-  /** A new item in one party member's bag (the player's without `holder`). Resolves to its stack's id,
-   *  so the screen can select it. */
+  /** An item added by name into one party member's bag (the player's without `holder`): onto that
+   *  bag's stack of it, or a new stack. Resolves to the stack's id, so the screen can select it. */
   const handleAddInventoryItem = useCallback(
-    async (holder?: string) => {
+    async (addedItemName: string, holder?: string) => {
       if (!activeChatId) return null;
-      // Named after what that bag already holds, since an addition only ever lands in its own bag.
-      const addedItemName = getNextInventoryItemName(
-        inventoryItemsRef.current.filter((stack) => gameInventoryBagKey(stack.holder) === gameInventoryBagKey(holder)),
-      );
       try {
         const [result] = await commitInventory([{ op: "add", name: addedItemName, count: 1, holder }]);
         if (!result?.ok)
@@ -7684,28 +7668,35 @@ function GameSurfaceComponent({
         const after = result.now ?? 0;
         const difference = after - stack.quantity;
         if (difference === 0) return;
-        const item = inventoryLabel(stack.name, Math.abs(difference));
+        const item = inventoryLabel(gameInventoryStackLabel(stack), Math.abs(difference));
         if (difference > 0) {
           showInventoryNotification(localizeUi("ui.game.gamesurfacecomponent.inventoryYouGained", { item }), true);
           toast.success(
-            localizeUi("ui.game.gamesurfacecomponent.addedCountValue1", { count: difference, value1: stack.name }),
+            localizeUi("ui.game.gamesurfacecomponent.addedCountValue1", {
+              count: difference,
+              value1: gameInventoryStackLabel(stack),
+            }),
           );
           return;
         }
         showInventoryNotification(localizeUi("ui.game.gamesurfacecomponent.inventoryYouRemoved", { item }), false);
         toast.success(
           after === 0
-            ? localizeUi("ui.game.gamesurfacecomponent.removedValue1FromInventory", { value1: stack.name })
+            ? localizeUi("ui.game.gamesurfacecomponent.removedValue1FromInventory", {
+                value1: gameInventoryStackLabel(stack),
+              })
             : localizeUi("ui.game.gamesurfacecomponent.removedCountValue1", {
                 count: -difference,
-                value1: stack.name,
+                value1: gameInventoryStackLabel(stack),
               }),
         );
       } catch (error) {
         toast.error(
           error instanceof Error
             ? error.message
-            : localizeUi("ui.game.gamesurfacecomponent.failedToChangeValue1", { value1: stack.name }),
+            : localizeUi("ui.game.gamesurfacecomponent.failedToChangeValue1", {
+                value1: gameInventoryStackLabel(stack),
+              }),
         );
       }
     },
@@ -7721,13 +7712,20 @@ function GameSurfaceComponent({
       try {
         const [result] = await commitInventory([{ op: "split", id: stackId, size }]);
         if (!result?.ok) return null;
-        toast.success(localizeUi("ui.game.gamesurfacecomponent.splitCountValue1", { count: size, value1: stack.name }));
+        toast.success(
+          localizeUi("ui.game.gamesurfacecomponent.splitCountValue1", {
+            count: size,
+            value1: gameInventoryStackLabel(stack),
+          }),
+        );
         return result.id ?? null;
       } catch (error) {
         toast.error(
           error instanceof Error
             ? error.message
-            : localizeUi("ui.game.gamesurfacecomponent.failedToSplitValue1", { value1: stack.name }),
+            : localizeUi("ui.game.gamesurfacecomponent.failedToSplitValue1", {
+                value1: gameInventoryStackLabel(stack),
+              }),
         );
         return null;
       }
@@ -7770,10 +7768,12 @@ function GameSurfaceComponent({
           { op: "give", id: stackId, ...(to ? { to } : {}), ...(count ? { count } : {}) },
         ]);
         if (!result?.ok) {
-          toast.error(localizeUi("ui.game.gamesurfacecomponent.failedToGiveValue1", { value1: stack.name }));
+          toast.error(
+            localizeUi("ui.game.gamesurfacecomponent.failedToGiveValue1", { value1: gameInventoryStackLabel(stack) }),
+          );
           return null;
         }
-        const given = inventoryLabel(stack.name, result.count ?? stack.quantity);
+        const given = inventoryLabel(gameInventoryStackLabel(stack), result.count ?? stack.quantity);
         toast.success(
           to
             ? localizeUi("ui.game.gamesurfacecomponent.gaveValue1ToValue2", { value1: given, value2: to })
@@ -7784,7 +7784,7 @@ function GameSurfaceComponent({
         toast.error(
           error instanceof Error
             ? error.message
-            : localizeUi("ui.game.gamesurfacecomponent.failedToGiveValue1", { value1: stack.name }),
+            : localizeUi("ui.game.gamesurfacecomponent.failedToGiveValue1", { value1: gameInventoryStackLabel(stack) }),
         );
         return null;
       }
@@ -7793,13 +7793,15 @@ function GameSurfaceComponent({
   );
 
   /** A fight used one of an item: taken by name, the player's own bag first, since a fight sees one
-   *  total per item. */
+   *  total per item. A line shown by a nickname is taken by the item's own name, which only ever finds
+   *  that item. */
   const handleUseCombatInventoryItem = useCallback(
     async (itemName: string) => {
       if (!activeChatId) return;
       const normalizedItemName = normalizeInventoryName(itemName) || itemName;
+      const spentName = fightInventoryLines.find((line) => line.name === itemName)?.ownName ?? normalizedItemName;
       try {
-        const [result] = await commitInventory([{ op: "take", name: normalizedItemName, count: 1, as: "used" }]);
+        const [result] = await commitInventory([{ op: "take", name: spentName, count: 1, as: "used" }]);
         if (!result?.ok) {
           toast.error(
             localizeUi("ui.game.gamesurfacecomponent.value1IsNoLongerInYourInventory", {
@@ -7821,13 +7823,12 @@ function GameSurfaceComponent({
         );
       }
     },
-    [activeChatId, commitInventory, showInventoryNotification, localizeUi],
+    [activeChatId, commitInventory, fightInventoryLines, showInventoryNotification, localizeUi],
   );
 
   /**
-   * One stack renamed, resolving to the stack that holds the result (renaming to an item its bag
-   * already has pours it into that bag's first stack of it). The detailed inventory follows on the
-   * server.
+   * One stack given a nickname, or its own name back. It stays the same item, so it never merges into
+   * anything; the detailed inventory follows on the server.
    */
   const handleRenameInventoryItem = useCallback(
     async (stackId: string, nextName: string) => {
@@ -7843,11 +7844,12 @@ function GameSurfaceComponent({
           toast.error(localizeUi("ui.game.gamesurfacecomponent.thatStackIsNoLongerInYourInventory"));
           return null;
         }
-        const resolvedName = inventoryItemsRef.current.find((entry) => entry.id === result.id)?.name ?? nextName;
-        if (resolvedName !== stack.name) {
+        const renamed = inventoryItemsRef.current.find((entry) => entry.id === result.id);
+        const resolvedName = renamed ? gameInventoryStackLabel(renamed) : nextName;
+        if (resolvedName !== gameInventoryStackLabel(stack)) {
           toast.success(
             localizeUi("ui.game.gamesurfacecomponent.renamedValue1ToValue2", {
-              value1: stack.name,
+              value1: gameInventoryStackLabel(stack),
               value2: resolvedName,
             }),
           );
@@ -7858,7 +7860,7 @@ function GameSurfaceComponent({
           error instanceof Error
             ? error.message
             : localizeUi("ui.game.gamesurfacecomponent.failedToRenameValue1ToValue2", {
-                value1: stack.name,
+                value1: gameInventoryStackLabel(stack),
                 value2: nextName,
               }),
         );
@@ -12956,7 +12958,7 @@ function GameSurfaceComponent({
                               battlefield={combatSceneMeta?.battlefield ?? undefined}
                               party={combatParty}
                               enemies={combatEnemies}
-                              inventoryItems={inventoryTotals}
+                              inventoryItems={fightInventoryLines}
                               combatItemEffects={combatItemEffects}
                               combatMechanics={combatMechanics}
                               environment={combatSceneMeta?.environmentType ?? undefined}
@@ -12989,7 +12991,7 @@ function GameSurfaceComponent({
                               chatId={activeChatId}
                               party={combatParty}
                               enemies={combatEnemies}
-                              inventoryItems={inventoryTotals}
+                              inventoryItems={fightInventoryLines}
                               onCombatEnd={handleCombatEnd}
                               onInventoryItemUsed={handleUseCombatInventoryItem}
                               onCombatantsChange={handleCombatantsChange}

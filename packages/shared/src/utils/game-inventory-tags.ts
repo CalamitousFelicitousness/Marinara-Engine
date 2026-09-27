@@ -12,7 +12,12 @@ import {
   type GameInventoryOp,
   type GameInventoryOpResult,
 } from "./game-inventory-ops.js";
-import type { GameInventoryBagRef, GameInventoryStack } from "./game-inventory-stacks.js";
+import {
+  gameInventoryCount,
+  giveFromGameInventoryNamed,
+  type GameInventoryBagRef,
+  type GameInventoryStack,
+} from "./game-inventory-stacks.js";
 import {
   createInventoryTagRegex,
   parseInventoryTagBody,
@@ -130,14 +135,15 @@ export function applyGameInventoryTags(
         if (!to || !to.ok)
           return serializeInventoryTag(shown, { ok: false, reason: to && !to.ok ? to.reason : "no-recipient" });
         if (!to.bag) return serializeInventoryTag(shown, { ok: false, reason: "no-recipient" });
-        const [taken] = apply([{ op: "take", name: item, count: request.count, from: who.bag ?? {} }]);
-        if (!taken?.ok) return serializeInventoryTag(shown, outcomeOf(taken));
-        // What was taken is at most the tag's own count, so adding it back into one bag cannot be
-        // refused: the name was just read off a stack, and the count is inside one stack's bound.
-        const [received] = apply([
-          { op: "add", name: item, count: taken.count ?? request.count, holder: to.bag.holder },
-        ]);
-        return serializeInventoryTag(shown, outcomeOf(received));
+        // Stack by stack, so the item stays the same item and a nickname stays on its stack.
+        const handed = giveFromGameInventoryNamed(current, item, request.count, who.bag ?? {}, to.bag.holder, newId);
+        if (handed.given === 0) return serializeInventoryTag(shown, { ok: false, reason: "none-held" });
+        current = handed.stacks;
+        return serializeInventoryTag(shown, {
+          ok: true,
+          count: handed.given,
+          now: gameInventoryCount(current, item, to.bag),
+        });
       })
       .join(" ");
   });

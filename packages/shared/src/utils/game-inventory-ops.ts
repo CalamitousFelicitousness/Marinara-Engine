@@ -11,12 +11,14 @@ import type { InventoryItem } from "../types/game-state.js";
 import {
   GAME_INVENTORY_HOLDER_MAX_LENGTH,
   GAME_INVENTORY_MAX_QUANTITY,
-  addToGameInventory,
+  GAME_INVENTORY_NAME_MAX_LENGTH,
+  addToGameInventoryNamed,
   cleanGameInventoryHolder,
   gameInventoryBagKey,
   gameInventoryCount,
+  gameInventoryItemId,
   gameInventoryNameKey,
-  gameInventoryTotals,
+  gameInventoryStackLabel,
   giveGameInventoryStack,
   mergeGameInventoryStacks,
   newGameInventoryStackId,
@@ -28,8 +30,6 @@ import {
   type GameInventoryStack,
 } from "./game-inventory-stacks.js";
 
-/** The longest item name an operation carries. */
-export const GAME_INVENTORY_NAME_MAX_LENGTH = 120;
 /** The most operations one request applies. */
 export const GAME_INVENTORY_MAX_OPS = 40;
 
@@ -39,7 +39,8 @@ const holder = z.string().trim().min(1).max(GAME_INVENTORY_HOLDER_MAX_LENGTH);
 const amount = z.number().int().min(1).max(GAME_INVENTORY_MAX_QUANTITY);
 
 export const gameInventoryOpSchema = z.discriminatedUnion("op", [
-  /** Into one bag by name: the player's when `holder` is absent. `log` writes "acquired" in the journal. */
+  /** Into one bag by name, onto the item that name finds (a new one when it finds none): the player's
+   *  bag when `holder` is absent. `log` writes "acquired" in the journal. */
   z
     .object({
       op: z.literal("add"),
@@ -66,6 +67,7 @@ export const gameInventoryOpSchema = z.discriminatedUnion("op", [
     .strict(),
   z.object({ op: z.literal("split"), id: stackId, size: amount }).strict(),
   z.object({ op: z.literal("merge"), from: stackId, into: stackId }).strict(),
+  /** One stack's nickname; the item's own name clears it. */
   z.object({ op: z.literal("rename"), id: stackId, name: itemName }).strict(),
   z.object({ op: z.literal("swap"), first: stackId, second: stackId }).strict(),
   /** Some or all of one stack (all of it without `count`) to another bag: the player's without `to`. */
@@ -103,19 +105,10 @@ export interface GameInventoryJournalEntry {
   quantity: number;
 }
 
-/** A rename that went through, and whose bag the stack was in (absent for the player's own). */
-export interface GameInventoryRename {
-  from: string;
-  to: string;
-  holder?: string;
-}
-
 export interface GameInventoryOpsOutcome {
   stacks: GameInventoryStack[];
   results: GameInventoryOpResult[];
   journal: GameInventoryJournalEntry[];
-  /** Renames that went through, oldest first, so the detailed inventory can keep an entry's notes. */
-  renames: GameInventoryRename[];
 }
 
 /**
@@ -130,7 +123,6 @@ export function applyGameInventoryOps(
   let current = stacks;
   const results: GameInventoryOpResult[] = [];
   const journal: GameInventoryJournalEntry[] = [];
-  const renames: GameInventoryRename[] = [];
   const makeId = () => (newId ? newId() : newGameInventoryStackId(current));
   const refuse = (reason: GameInventoryOpRefusal) => results.push({ ok: false, reason });
   const stackOf = (id: string) => current.find((stack) => stack.id === id);
@@ -139,19 +131,13 @@ export function applyGameInventoryOps(
     switch (op.op) {
       case "add": {
         const bag = { holder: cleanGameInventoryHolder(op.holder) };
-        const next = addToGameInventory(current, op.name, op.count, makeId, bag.holder);
-        if (next === current) {
+        const added = addToGameInventoryNamed(current, op.name, op.count, makeId, bag.holder);
+        if (!added) {
           refuse("refused");
           break;
         }
-        current = next;
-        const key = gameInventoryNameKey(op.name);
-        const id = current.find(
-          (stack) =>
-            gameInventoryNameKey(stack.name) === key &&
-            gameInventoryBagKey(stack.holder) === gameInventoryBagKey(bag.holder),
-        )?.id;
-        results.push({ ok: true, id, count: op.count, now: gameInventoryCount(current, op.name, bag) });
+        current = added.stacks;
+        results.push({ ok: true, id: added.id, count: op.count, now: gameInventoryCount(current, op.name, bag) });
         if (op.log) journal.push({ item: op.name.trim(), action: "acquired", quantity: op.count });
         break;
       }
@@ -182,7 +168,7 @@ export function applyGameInventoryOps(
           now: after,
         });
         if (after < stack.quantity)
-          journal.push({ item: stack.name, action: "removed", quantity: stack.quantity - after });
+          journal.push({ item: gameInventoryStackLabel(stack), action: "removed", quantity: stack.quantity - after });
         break;
       }
       case "split": {
@@ -212,10 +198,6 @@ export function applyGameInventoryOps(
         if (!stack || !renamed) {
           refuse(stack ? "refused" : "missing-stack");
           break;
-        }
-        if (renamed.stacks !== current) {
-          const to = renamed.stacks.find((entry) => entry.id === renamed.id)?.name ?? op.name;
-          renames.push({ from: stack.name, to, ...(stack.holder ? { holder: stack.holder } : {}) });
         }
         current = renamed.stacks;
         results.push({ ok: true, id: renamed.id });
@@ -249,76 +231,73 @@ export function applyGameInventoryOps(
       }
     }
   }
-  return { stacks: current, results, journal, renames };
+  return { stacks: current, results, journal };
 }
 
 /**
  * The detailed inventory on the game state, kept in step with the stacks: one entry per item, its
  * quantity what the player's own bag holds, since everything that reads it (the sheet, the trackers,
- * an encounter's prompt) reads it as the player's. Only the difference is applied, so an entry keeps
- * its description and where it is kept, and a rename of the item's only stack renames the entry
- * rather than starting a blank one. Returns the same array when nothing it tracks changed.
+ * an encounter's prompt) reads it as the player's. Entries follow items, not names: each carries the
+ * id of the item it follows (`item`), so a rename only changes the name an entry shows, and an entry
+ * keeps its description and where it is kept through a rename or a gift. An entry written without an
+ * id (by a tracker, or before entries had them) is matched by name once and then keeps one. Only the
+ * difference is applied. Returns the same array when nothing it tracks changed.
  */
 export function followGameInventoryDetails(
   detailed: readonly InventoryItem[] | null | undefined,
   before: readonly GameInventoryStack[],
   after: readonly GameInventoryStack[],
-  renames: readonly GameInventoryRename[] = [],
 ): InventoryItem[] {
   const source = Array.isArray(detailed) ? detailed : [];
   let items = source.slice();
-  const totalsOf = (stacks: readonly GameInventoryStack[]) =>
-    new Map(
-      gameInventoryTotals(stacks.filter((stack) => gameInventoryBagKey(stack.holder) === "")).map((entry) => [
-        gameInventoryNameKey(entry.name),
-        entry,
-      ]),
-    );
-  const beforeTotals = totalsOf(before);
-  const afterTotals = totalsOf(after);
-  const settled = new Set<string>();
-
-  // A rename of a stack in the player's own bag that emptied the old name into a name the bag did not
-  // hold renames the entry in place. A companion's rename is theirs, even when the player's bag
-  // changes the same names in the same batch.
-  for (const { from, to, holder } of renames) {
-    if (gameInventoryBagKey(holder) !== "") continue;
-    const fromKey = gameInventoryNameKey(from);
-    const toKey = gameInventoryNameKey(to);
-    const renamedTo = afterTotals.get(toKey);
-    if (
-      !renamedTo ||
-      settled.has(fromKey) ||
-      settled.has(toKey) ||
-      !beforeTotals.has(fromKey) ||
-      afterTotals.has(fromKey) ||
-      beforeTotals.has(toKey)
-    )
-      continue;
-    const index = items.findIndex((item) => gameInventoryNameKey(item.name) === fromKey);
-    if (index < 0 || items.some((item) => gameInventoryNameKey(item.name) === toKey)) continue;
-    items[index] = { ...items[index]!, name: renamedTo.name, quantity: renamedTo.quantity };
-    settled.add(fromKey);
-    settled.add(toKey);
-  }
-
-  for (const key of new Set([...beforeTotals.keys(), ...afterTotals.keys()])) {
-    if (settled.has(key)) continue;
-    const difference = (afterTotals.get(key)?.quantity ?? 0) - (beforeTotals.get(key)?.quantity ?? 0);
-    if (difference > 0) {
-      const index = items.findIndex((item) => gameInventoryNameKey(item.name) === key);
-      if (index >= 0) items[index] = { ...items[index]!, quantity: items[index]!.quantity + difference };
-      else
-        items.push({ name: afterTotals.get(key)!.name, description: "", quantity: difference, location: "on_person" });
-    } else if (difference < 0) {
-      let left = -difference;
-      items = items.flatMap((item) => {
-        if (left === 0 || gameInventoryNameKey(item.name) !== key) return [item];
-        const take = Math.min(left, item.quantity);
-        left -= take;
-        return item.quantity - take > 0 ? [{ ...item, quantity: item.quantity - take }] : [];
-      });
+  /** The player's own bag, one line per item: how many, and the names its first stack goes by. */
+  const ownItems = (stacks: readonly GameInventoryStack[]) => {
+    const lines = new Map<string, { quantity: number; label: string; own: string }>();
+    for (const stack of stacks) {
+      if (gameInventoryBagKey(stack.holder) !== "") continue;
+      const item = gameInventoryItemId(stack);
+      const line = lines.get(item);
+      if (line) line.quantity += stack.quantity;
+      else lines.set(item, { quantity: stack.quantity, label: gameInventoryStackLabel(stack), own: stack.name });
     }
+    return lines;
+  };
+  const was = ownItems(before);
+  const now = ownItems(after);
+
+  for (const item of new Set([...was.keys(), ...now.keys()])) {
+    const then = was.get(item);
+    const current = now.get(item);
+    const difference = (current?.quantity ?? 0) - (then?.quantity ?? 0);
+    if (difference === 0 && then?.label === current?.label) continue;
+    // The entries this item has: those carrying its id, or, for one written without an id, its name
+    // as the item was or is shown, or its own name.
+    const names = new Set(
+      [then?.label, then?.own, current?.label, current?.own].flatMap((name) =>
+        name ? [gameInventoryNameKey(name)] : [],
+      ),
+    );
+    const follows = (entry: InventoryItem) =>
+      entry.item === item || (entry.item === undefined && names.has(gameInventoryNameKey(entry.name)));
+    const shown = current?.label;
+    if (difference >= 0) {
+      const index = items.findIndex(follows);
+      if (index >= 0) {
+        const entry = items[index]!;
+        items[index] = { ...entry, item, name: shown ?? entry.name, quantity: entry.quantity + difference };
+      } else if (difference > 0) {
+        items.push({ item, name: shown!, description: "", quantity: difference, location: "on_person" });
+      }
+      continue;
+    }
+    let left = -difference;
+    items = items.flatMap((entry) => {
+      if (!follows(entry)) return [entry];
+      const take = Math.min(left, entry.quantity);
+      left -= take;
+      const rest = entry.quantity - take;
+      return rest > 0 ? [{ ...entry, item, name: shown ?? entry.name, quantity: rest }] : [];
+    });
   }
   const unchanged =
     items.length === source.length &&

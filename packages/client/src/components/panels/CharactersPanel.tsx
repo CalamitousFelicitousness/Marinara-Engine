@@ -70,6 +70,8 @@ import { TouchDragHandle } from "../ui/TouchDragHandle";
 import { PanelLoadMoreBar } from "./PanelLoadMoreBar";
 import { clearActiveChatResourceDrag, writeChatResourceDragPayload } from "../../lib/chat-resource-drag";
 import { ChatResourceActionButton } from "../chat/ChatResourceActionButton";
+import { CharacterBulkTagsModal } from "../characters/CharacterBulkTagsModal";
+import { CharacterDuplicatesModal } from "../characters/CharacterDuplicatesModal";
 
 type CharacterRow = CharacterCatalogEntry;
 type GroupRow = {
@@ -217,6 +219,8 @@ export function CharactersPanel() {
   const [selectedCharacterIds, setSelectedCharacterIds] = useState<Set<string>>(new Set());
   const [exportingSelected, setExportingSelected] = useState(false);
   const [movingSelected, setMovingSelected] = useState(false);
+  const [bulkTagsOpen, setBulkTagsOpen] = useState(false);
+  const [duplicatesOpen, setDuplicatesOpen] = useState(false);
 
   // Parse character data and filter by search
   const parsedCharacters = useMemo(() => {
@@ -885,6 +889,14 @@ export function CharactersPanel() {
 
       <div className="flex flex-col gap-0.5">
         <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setDuplicatesOpen(true)}
+            className="mari-chrome-control mari-chrome-control--small flex-1 justify-start text-[0.6875rem]"
+          >
+            <Search size="0.75rem" />
+            {localizeUi("characters.duplicates.title")}
+          </button>
           <button
             onClick={handleCreateFolder}
             className="mari-chrome-control mari-chrome-control--small flex-1 justify-start text-[0.6875rem]"
@@ -1787,22 +1799,50 @@ export function CharactersPanel() {
           placement="panel"
           selectedCount={selectedCharacterIds.size}
           extraAction={
-            <button
-              type="button"
-              onClick={() => void handleMoveSelected()}
-              disabled={selectedCharacterIds.size === 0 || parsedGroups.length === 0 || movingSelected}
-              className="mari-chrome-control flex-1 px-3 py-2 text-xs"
-              title={localizeUi("lorebook.editor.batch.move")}
-            >
-              <FolderInput size="0.75rem" />
-              {localizeUi("lorebook.editor.batch.move")}
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => void handleMoveSelected()}
+                disabled={selectedCharacterIds.size === 0 || parsedGroups.length === 0 || movingSelected}
+                className="mari-chrome-control flex-1 px-3 py-2 text-xs"
+                title={localizeUi("lorebook.editor.batch.move")}
+              >
+                <FolderInput size="0.75rem" />
+                {localizeUi("lorebook.editor.batch.move")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setBulkTagsOpen(true)}
+                disabled={selectedCharacterIds.size === 0}
+                className="mari-chrome-control flex-1 px-3 py-2 text-xs"
+              >
+                <Tag size="0.75rem" />
+                {localizeUi("characters.bulkTags.actionShort")}
+              </button>
+            </>
           }
           onExport={() => void handleExportSelected()}
           onDelete={handleDeleteSelected}
           exporting={exportingSelected}
         />
       )}
+      <CharacterDuplicatesModal
+        open={duplicatesOpen}
+        onClose={() => setDuplicatesOpen(false)}
+        onOpenCharacter={openCharacterDetailFromPanel}
+      />
+      <CharacterBulkTagsModal
+        open={bulkTagsOpen}
+        onClose={() => setBulkTagsOpen(false)}
+        characters={[...selectedCharacterIds].flatMap((id) => {
+          const character = parsedCharacters.find((entry) => entry.id === id);
+          return character ? [{ id, tags: getCharacterTags(character) }] : [];
+        })}
+        onApplied={() => {
+          setBulkTagsOpen(false);
+          exitSelectionMode();
+        }}
+      />
     </div>
   );
 }

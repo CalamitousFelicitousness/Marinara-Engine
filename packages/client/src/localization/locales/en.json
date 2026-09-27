@@ -9864,6 +9864,7 @@
   "ui.panels.ttsconfigcard.outputAudioFormatWavAreUsefulForLocalSelf": "Output audio format. WAV are useful for local/self-hosted TTS servers that do not support MP3.",
   "ui.panels.ttsconfigcard.pauseBetweenDialoguesInSeconds": "Pause between dialogues in seconds",
   "ui.panels.ttsconfigcard.pauseBetweenDialoguesValue1Value2": "Pause between dialogues: {{value1}} {{value2}}",
+  "ui.panels.ttsconfigcard.pcm": "PCM (converted to WAV for playback)",
   "ui.panels.ttsconfigcard.pocketttsBuiltInOrCustomVoiceFromYourServer": "PocketTTS built-in or custom voice from your server, or a voice URL/path accepted by PocketTTS.",
   "ui.panels.ttsconfigcard.pocketttsSelectsItsLanguageModelWhenYouStartThe": "PocketTTS selects its language/model when you start the local server. This field is kept for clarity and future compatible servers.",
   "ui.panels.ttsconfigcard.progressivePlayback": "Progressive playback",

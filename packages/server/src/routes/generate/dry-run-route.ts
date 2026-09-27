@@ -1000,6 +1000,26 @@ export async function registerDryRunRoute(app: FastifyInstance) {
 
     const chatChoices: Record<string, string | string[]> =
       requestChoices ?? (isDifferentPresetOverride ? (presetDefaultChoices ?? {}) : chatChoicesFromMeta);
+
+    // This preset's sections, groups and choice blocks are wanted in three
+    // places: decision texts, the deferred-variable claim, and assembly. Read
+    // them once, the way the live route reuses `decisionPresetParts`.
+    const readPresetParts = async (presetId: string) => {
+      const [sections, groups, choiceBlocks] = await Promise.all([
+        presets.listSections(presetId),
+        presets.listGroups(presetId),
+        presets.listChoiceBlocksForPreset(presetId),
+      ]);
+      return { sections, groups, choiceBlocks };
+    };
+    const presetPartsCache = new Map<string, ReturnType<typeof readPresetParts>>();
+    const loadPresetParts = (presetId: string) => {
+      const cached = presetPartsCache.get(presetId);
+      if (cached) return cached;
+      const pending = readPresetParts(presetId);
+      presetPartsCache.set(presetId, pending);
+      return pending;
+    };
     const chatMacroVariables = normalizeChatMacroVariables(chatMeta.macroVariables);
     const promptMacroContext = await buildPromptMacroContext({
       db: app.db,
@@ -1116,11 +1136,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
         preset:
           // Custom prompt parts replace the preset's sections with their own text (below).
           !promptParts && effectivePresetId && effectivePreset && chatMode !== "conversation" && chatMode !== "game"
-            ? await Promise.all([
-                presets.listSections(effectivePresetId),
-                presets.listGroups(effectivePresetId),
-                presets.listChoiceBlocksForPreset(effectivePresetId),
-              ]).then(([sections, groups, choiceBlocks]) => ({ sections, groups, choiceBlocks, choices: chatChoices }))
+            ? { ...(await loadPresetParts(effectivePresetId)), choices: chatChoices }
             : undefined,
         ctx: promptMacroContext,
         extra: [
@@ -1188,7 +1204,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
     // reach the assembler, so nothing would release a claimed name there.
     if (!promptParts && effectivePresetId && effectivePreset && chatMode !== "conversation" && chatMode !== "game") {
       const presetVariableNames = new Set<string>(parsePresetVariableNames(effectivePreset.variableValues));
-      for (const choiceBlock of await presets.listChoiceBlocksForPreset(effectivePresetId)) {
+      for (const choiceBlock of (await loadPresetParts(effectivePresetId)).choiceBlocks) {
         presetVariableNames.add(choiceBlock.variableName);
       }
       if (presetVariableNames.size > 0) promptMacroContext.deferredPresetVariableNames = presetVariableNames;
@@ -1605,11 +1621,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
     } else if (effectivePresetId && effectivePreset && chatMode !== "conversation" && chatMode !== "game") {
       const preset = effectivePreset;
       wrapFormat = normalizePromptWrapFormat(preset.wrapFormat);
-      const [sections, groups, choiceBlocks] = await Promise.all([
-        presets.listSections(effectivePresetId),
-        presets.listGroups(effectivePresetId),
-        presets.listChoiceBlocksForPreset(effectivePresetId),
-      ]);
+      const { sections, groups, choiceBlocks } = await loadPresetParts(effectivePresetId);
 
       const eligibleTypes = buildRuntimeAgentSectionEligibleTypes({
         enableAgents: dryRunChatEnableAgents,

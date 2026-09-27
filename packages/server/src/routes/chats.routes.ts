@@ -3743,10 +3743,10 @@ export async function chatsRoutes(app: FastifyInstance) {
       await removeGameInventoryTelling(app.db, chatId, messageId, removed, wasShown, shown);
     } catch (err) {
       logger.error(err, "[chats] Could not update the inventory for swipe %d of %s", removed, messageId);
+      // Without the record a later telling adds on top instead of starting the turn again, which
+      // is how every turn behaved before it; stale indexes could show the wrong telling's stacks.
       await storage
-        .patchMetadata(chatId, (current) =>
-          readGameInventoryTurn(current.gameInventoryTurn)?.messageId === messageId ? { gameInventoryTurn: null } : {},
-        )
+        .patchMetadata(chatId, { gameInventoryTurn: null })
         .catch((clearErr) => logger.error(clearErr, "[chats] Could not drop the inventory record of %s", messageId));
     }
   };

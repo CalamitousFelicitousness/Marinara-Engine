@@ -57,6 +57,7 @@ test("phone More keeps core navigation visible and retains extension actions", a
     Object.assign(window, { __fixtureExtensionActivated: false });
     setPersonalExtensionContributionDispatcher(extension, () => {
       Object.assign(window, { __fixtureExtensionActivated: true });
+      document.querySelector<HTMLButtonElement>("[data-extension-focus-fixture]")?.focus();
     });
   });
 
@@ -76,7 +77,19 @@ test("phone More keeps core navigation visible and retains extension actions", a
       page.evaluate(() => (window as Window & { __fixtureExtensionActivated?: boolean }).__fixtureExtensionActivated),
     )
     .toBe(true);
-  await expect.poll(() => moreButton.evaluate((element) => document.activeElement === element)).toBe(false);
+  await expect(moreButton).toBeFocused();
+
+  await page.evaluate(() => {
+    const button = document.createElement("button");
+    button.dataset.extensionFocusFixture = "";
+    button.textContent = "Extension focus fixture";
+    document.body.append(button);
+  });
+  await moreButton.click();
+  await extensionAction.click();
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await expect(page.locator("[data-extension-focus-fixture]")).toBeFocused();
+  await page.locator("[data-extension-focus-fixture]").evaluate((element) => element.remove());
 
   await moreButton.click();
   await page.evaluate(async () => {

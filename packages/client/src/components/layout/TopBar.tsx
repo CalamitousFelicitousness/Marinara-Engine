@@ -629,6 +629,9 @@ function TopbarMoreMenu({
     if (!item.key.startsWith("extension:")) triggerRef.current?.focus({ preventScroll: true });
     close(false);
     item.onSelect();
+    requestAnimationFrame(() => {
+      if (document.activeElement === document.body) triggerRef.current?.focus({ preventScroll: true });
+    });
   };
 
   const menu = open ? (

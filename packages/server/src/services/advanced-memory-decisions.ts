@@ -1,5 +1,9 @@
-import { estimateChatSummaryTokens, sliceTextToTokenBudget } from "@marinara-engine/shared";
-import type { DecisionBackend } from "./decision/decision-default.js";
+import {
+  estimateChatSummaryTokens,
+  sliceTextToTokenBudget,
+  type AdvancedMemoryDecisionDiagnostics,
+} from "@marinara-engine/shared";
+import type { DecisionBackend, MixedDecisionAnswers } from "./decision/decision-default.js";
 import type { NoulQuestion } from "./decision/system-one.client.js";
 
 /** Bound foreground recall across all batches, including original-message selection. */
@@ -7,12 +11,50 @@ export const MEMORY_DECISION_RECALL_TIMEOUT_MS = 10_000;
 export const MEMORY_DECISION_SCENE_THRESHOLD = 0.8;
 const QUESTIONS_PER_BATCH = 24;
 
+type DiagnosticCandidate = {
+  id: string;
+  text: string;
+  kind?: AdvancedMemoryDecisionDiagnostics["results"][number]["kind"];
+};
+
+function recordDiagnostics(
+  diagnostics: AdvancedMemoryDecisionDiagnostics | undefined,
+  candidates: readonly DiagnosticCandidate[],
+  result: MixedDecisionAnswers | null,
+) {
+  if (!diagnostics) return;
+  diagnostics.results.push(
+    ...candidates.map((candidate) => ({
+      id: candidate.id,
+      kind: candidate.kind ?? ("message" as const),
+      text: candidate.text.slice(0, 160),
+      score: result?.answers.get(candidate.id),
+      binary: result?.binaryAnswers?.has(candidate.id) || undefined,
+      selected: false,
+    })),
+  );
+}
+
+export function finishMemoryDecisionDiagnostics(
+  diagnostics: AdvancedMemoryDecisionDiagnostics,
+  selectedIds: ReadonlySet<string>,
+  fallback: boolean,
+) {
+  diagnostics.fallback = fallback;
+  for (const result of diagnostics.results) result.selected = selectedIds.has(result.id);
+  // ponytail: keep at most 128 outcomes per saved report, selected first; add paging if full archives need inspection.
+  diagnostics.results.sort((a, b) => Number(b.selected) - Number(a.selected) || (b.score ?? -1) - (a.score ?? -1));
+  diagnostics.omittedCount = Math.max(0, diagnostics.results.length - 128);
+  diagnostics.results = diagnostics.results.slice(0, 128);
+  return diagnostics;
+}
+
 async function answers(
   backend: DecisionBackend,
   state: unknown,
   questions: NoulQuestion[],
   signal?: AbortSignal,
-): Promise<Map<string, number> | null> {
+): Promise<MixedDecisionAnswers | null> {
   signal?.throwIfAborted();
   if (estimateChatSummaryTokens(JSON.stringify(state)) > backend.maxStateTokens) return null;
   const result = await backend.askMixed(state, questions);
@@ -26,7 +68,7 @@ async function answers(
     })
   )
     return null;
-  return result.answers;
+  return result;
 }
 
 /** Judge every supplied candidate; the caller has already enforced its character's access. */
@@ -34,17 +76,22 @@ export async function rankDecisionMemories(
   backend: DecisionBackend,
   conversation: string,
   characters: string[],
-  candidates: readonly { id: string; text: string }[],
+  candidates: readonly DiagnosticCandidate[],
   signal?: AbortSignal,
+  diagnostics?: AdvancedMemoryDecisionDiagnostics,
 ): Promise<Map<string, number> | null> {
+  if (diagnostics) {
+    diagnostics.model = backend.model ?? null;
+    diagnostics.threshold = backend.calibration.defaultThreshold;
+  }
   const limit = Math.min(12_000, backend.maxStateTokens);
   const context = {
     currentConversation: sliceTextToTokenBudget(conversation, Math.min(1500, Math.floor(limit / 3)), true),
     respondingCharacters: characters,
   };
   const result = new Map<string, number>();
-  let batch: Array<{ id: string; text: string }> = [];
-  const state = (memories: typeof batch) => ({ ...context, memories });
+  let batch: DiagnosticCandidate[] = [];
+  const state = (memories: typeof batch) => ({ ...context, memories: memories.map(({ id, text }) => ({ id, text })) });
   const fits = (memories: typeof batch) => estimateChatSummaryTokens(JSON.stringify(state(memories))) <= limit;
   const flush = async () => {
     if (!batch.length) return true;
@@ -57,8 +104,9 @@ export async function rankDecisionMemories(
       })),
       signal,
     );
+    recordDiagnostics(diagnostics, batch, scored);
     if (!scored) return false;
-    for (const { id } of batch) result.set(id, scored.get(id)!);
+    for (const { id } of batch) result.set(id, scored.answers.get(id)!);
     batch = [];
     return true;
   };
@@ -79,7 +127,12 @@ export async function detectDecisionSceneBoundaries(
   candidateIds: readonly string[],
   boundary: "start" | "end",
   signal?: AbortSignal,
+  diagnostics?: AdvancedMemoryDecisionDiagnostics,
 ): Promise<string[] | null> {
+  if (diagnostics) {
+    diagnostics.model = backend.model ?? null;
+    diagnostics.threshold = MEMORY_DECISION_SCENE_THRESHOLD;
+  }
   const selected: string[] = [];
   for (let offset = 0; offset < candidateIds.length; offset += QUESTIONS_PER_BATCH) {
     const ids = candidateIds.slice(offset, offset + QUESTIONS_PER_BATCH);
@@ -95,8 +148,17 @@ export async function detectDecisionSceneBoundaries(
       })),
       signal,
     );
+    recordDiagnostics(
+      diagnostics,
+      ids.map((id) => ({
+        id,
+        kind: "scene_end",
+        text: transcript.find((message) => message.messageId === id)?.content ?? id,
+      })),
+      scored,
+    );
     if (!scored) return null;
-    for (const id of ids) if (scored.get(id)! >= MEMORY_DECISION_SCENE_THRESHOLD) selected.push(id);
+    for (const id of ids) if (scored.answers.get(id)! >= MEMORY_DECISION_SCENE_THRESHOLD) selected.push(id);
   }
   return selected;
 }

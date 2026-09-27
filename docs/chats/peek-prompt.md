@@ -84,7 +84,9 @@ Each result shows its score when available, the threshold used for a yes/no stat
 
 After a test, the prompt below uses the test's answers. Use **Show original prompt** to return to the content you originally opened, or **Show tested prompt** to switch back. **Requests sent and results** shows the actual decision request bodies and returned results, without authentication headers.
 
-Tests use the current chat and current settings, even when you opened Peek Prompt from a historical reply. They do not reconstruct the original decision requests. This first version covers prompt statements and lorebook decisions; it does not run agent activation or post-reply decisions. Ordinary Peek Prompt remains passive until you explicitly choose **Test decisions**.
+Tests use the current chat and current settings, even when you opened Peek Prompt from a historical reply. They do not reconstruct the original decision requests. Tests cover prompt statements and lorebook decisions; they do not run agent activation or post-reply decisions. Ordinary Peek Prompt remains passive until you explicitly choose **Test decisions**.
+
+When **Use Decision model (Jev)** is enabled for Advanced Memory, the panel also shows **Advanced Memory activity**. These saved reports identify the latest recall and scene-end check, with their model, time, scores, selections and fallback status. They can appear even when the prompt has no decision statements. They describe actual past calls, not the current preview or a replay of the selected historical reply. Compatible swipes can reuse an earlier recall report. Up to 128 results are saved per report, with selected results first; omitted results are counted. New reports appear after the next eligible Jev call, and viewing them makes no model requests.
 
 ## Related guides
 

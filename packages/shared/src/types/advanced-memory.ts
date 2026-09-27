@@ -30,6 +30,29 @@ export function normalizeAdvancedMemorySettings(value: unknown): AdvancedMemoryS
   return parsed.success ? parsed.data : { ...DEFAULT_ADVANCED_MEMORY_SETTINGS, knowledgeStarts: {} };
 }
 
+/** Compact, saved evidence from actual memory decisions, never a new preview call. */
+export const advancedMemoryDecisionDiagnosticsSchema = z.object({
+  createdAt: z.string(),
+  model: z.string().nullable(),
+  sourceEndMessageId: z.string().nullable(),
+  fallback: z.boolean(),
+  threshold: z.number().min(0).max(1),
+  omittedCount: z.number().int().nonnegative(),
+  results: z
+    .array(
+      z.object({
+        id: z.string(),
+        kind: z.enum(["scene", "excerpt", "message", "scene_end"]),
+        text: z.string().max(160),
+        score: z.number().min(0).max(1).optional(),
+        binary: z.boolean().optional(),
+        selected: z.boolean(),
+      }),
+    )
+    .max(128),
+});
+export type AdvancedMemoryDecisionDiagnostics = z.infer<typeof advancedMemoryDecisionDiagnosticsSchema>;
+
 export interface AdvancedMemoryJob {
   id?: string;
   blocking?: boolean;
@@ -40,6 +63,7 @@ export interface AdvancedMemoryJob {
   error: string | null;
   reviewRecordId?: string | null;
   processedMessageId?: string | null;
+  decisionSceneCheck?: AdvancedMemoryDecisionDiagnostics;
   /** Invalidates cached prompts when a user removes an automatic context flag. */
   contextStartRevision?: number;
   /** Shared automatic scene reset, controlled by the existing New Start flag UI. */
@@ -99,6 +123,7 @@ export interface AdvancedMemoryStatus {
 }
 
 export interface AdvancedMemoryReceipt {
+  decisionRecall?: AdvancedMemoryDecisionDiagnostics;
   sourceEndMessageId?: string | null;
   sourceFingerprint: string;
   policyRevision: string;

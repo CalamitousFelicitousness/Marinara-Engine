@@ -8800,6 +8800,7 @@ type GallerySaveProbe = {
     type: string;
   }>;
   anchors: number;
+  downloadTargets: string[];
   androidFiles: string[][];
 };
 
@@ -8837,13 +8838,16 @@ for (const owner of ["character", "persona"] as const) {
             mode: "success",
             shares: [],
             anchors: 0,
+            downloadTargets: [],
             androidFiles: [],
           };
           document.addEventListener(
             "click",
             (event) => {
-              if (event.target instanceof HTMLAnchorElement && event.target.hasAttribute("download"))
+              if (event.target instanceof HTMLAnchorElement && event.target.hasAttribute("download")) {
                 target.__gallerySave.anchors++;
+                target.__gallerySave.downloadTargets.push(event.target.target);
+              }
             },
             true,
           );
@@ -8983,6 +8987,16 @@ for (const owner of ["character", "persona"] as const) {
         await expect(lightbox).toHaveCount(0);
         expect((await probe()).anchors).toBe(0);
         await expect(page).toHaveURL(appUrl);
+        // In insecure contexts iOS has no share API. A browser that previews the download
+        // must use a separate browsing context, never replace the Home Screen app.
+        await page.unroute(`**${image.url}`);
+        await page.evaluate(() => Object.defineProperty(navigator, "share", { configurable: true, value: undefined }));
+        const fallbackDownload = page.waitForEvent("download");
+        await gallery.getByTitle("Download", { exact: true }).click();
+        expect((await fallbackDownload).suggestedFilename()).toBe(filename);
+        expect((await probe()).downloadTargets).toEqual(["_blank"]);
+        await expect(page).toHaveURL(appUrl);
+        await expect(gallery.getByTitle("Download", { exact: true })).toBeVisible();
       }
     } finally {
       await bestEffortDelete(request, `${base}/${entity.id}`);

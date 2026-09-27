@@ -31,6 +31,8 @@ function triggerBrowserDownload(blob: Blob, filename: string) {
   const anchor = document.createElement("a");
   anchor.href = objectUrl;
   anchor.download = filename;
+  // WebKit can display downloads instead of saving them, especially without the share API.
+  anchor.target = "_blank";
   anchor.rel = "noopener";
   document.body.appendChild(anchor);
   anchor.click();

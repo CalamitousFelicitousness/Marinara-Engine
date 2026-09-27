@@ -19,7 +19,8 @@ const { default: Fastify } = await import("../../packages/server/node_modules/fa
 const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
 const { chatsRoutes } = await import("../../packages/server/src/routes/chats.routes.js");
 const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
-const { normalizeChatMacroVariables, mergeGeneratedChatMacroVariables } = await import("../../packages/server/src/services/prompt/macro-context.js");
+const { normalizeChatMacroVariables, mergeGeneratedChatMacroVariables } =
+  await import("../../packages/server/src/services/prompt/macro-context.js");
 const { MAX_CHAT_VARIABLES } = await import("../../packages/shared/src/index.js");
 
 const db = await getDB();
@@ -182,6 +183,43 @@ try {
     },
     { touchUpdatedAt: false },
   );
+
+  // Whether a name counts as "already stored" is judged when the write runs, not
+  // when the request arrived. Holding the metadata queue with a patch that
+  // removes the name makes the request's own read stale: the loose name is then
+  // a creation, and creating a name a bare {{name}} could never address is
+  // refused. Reading the arrival snapshot instead would have written it.
+  await chats.patchMetadata(
+    chat.id,
+    (current) => ({
+      ...current,
+      macroVariables: { ...normalizeChatMacroVariables(current.macroVariables), "story.day": "3" },
+    }),
+    { touchUpdatedAt: false },
+  );
+  assert.equal((await storedVariables())["story.day"], "3", "the fixture is in place for the stale-read window");
+  let releaseHold = () => {};
+  const held = new Promise<void>((resolve) => {
+    releaseHold = resolve;
+  });
+  const holding = chats.patchMetadata(
+    chat.id,
+    async (current) => {
+      await held;
+      const kept = normalizeChatMacroVariables(current.macroVariables);
+      delete kept["story.day"];
+      return { ...current, macroVariables: kept };
+    },
+    { touchUpdatedAt: false },
+  );
+  const staleRequest = patchVariables({ "story.day": "4" });
+  // Let the route take its own metadata read — which still sees the name —
+  // before the queued removal lands.
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  releaseHold();
+  const [, staleResponse] = await Promise.all([holding, staleRequest]);
+  assert.equal(staleResponse.statusCode, 400, "a name removed since the request began counts as a creation");
+  assert.ok(!("story.day" in (await storedVariables())), "and nothing is written back under that name");
 
   // The 500-entry cap is enforced up front instead of quietly truncating.
   const bulk: Record<string, string> = {};

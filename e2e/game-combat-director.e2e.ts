@@ -471,6 +471,12 @@ test("Combat director ruleset: an attack is made in a style where initiative is 
       crash: { at: 0, condition: "reeling" },
     },
   };
+  // Ada has to get a turn, and the fight's seed is random: a swarm that opened ahead of her could spend
+  // its number on her before she moved. So the swarm throws no initiative dice (a pool may be empty
+  // here), which opens it at 3 and Ada at 3 or more, and a tie goes to the larger pool: Ada acts first.
+  gravewatch.resolution.pool.min = 0;
+  const night = (gravewatch.catalogs as Array<Record<string, any>>).find((catalog) => catalog.id === "night")!;
+  night.entries.find((entry: Record<string, any>) => entry.id === "grave-rats").creature.initiativeModifier = 0;
   const policyBefore = await request.get("/api/agents/import-policy");
   expect(policyBefore.ok(), await policyBefore.text()).toBeTruthy();
   const importsWereEnabled = (await policyBefore.json()).enabled === true;
@@ -561,7 +567,9 @@ test("Combat director ruleset: an attack is made in a style where initiative is 
       data: { chatId, anchor, style: "ruleset", party: [ada], enemies: [rats] },
     });
     expect(start.ok(), await start.text()).toBeTruthy();
-    expect((await start.json()).session.style).toBe("ruleset");
+    const started: DirectedCombatView = (await start.json()).session;
+    expect(started.style).toBe("ruleset");
+    expect(started.ruleset?.order[0], "Ada acts first, so a turn of hers is always reached").toBe("ada");
     const patch = await request.patch(`/api/chats/${chatId}/metadata`, {
       data: {
         gameSessionStatus: "active",

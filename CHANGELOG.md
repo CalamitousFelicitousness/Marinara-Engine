@@ -6,6 +6,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - Everyone in a Game Mode party carries their own things. The inventory opens on **All**, which shows who carries each stack, with a tab per party member; **Give** hands some or all of a stack to someone else, and dragging a stack onto a tab gives them all of it. The Game Master can say who gains, loses or hands over an item, and its inventory changes are now made by the server when the reply is saved, so they apply even when nobody is reading and a refused one is reported back to it. Every change saves the stacks, the detailed inventory and the journal together, including items a fight uses. Regenerating a reply, or swiping to another version of it, no longer adds its inventory changes on top of the version it replaces, and deleting a version or branching the chat keeps each version's inventory with it (#6772, #6774).
 
+- Character and persona gallery image downloads preserve the iPhone/iPad Home Screen app, using native sharing when available and keeping previews dismissible when saving is cancelled or fails (#6784).
+
 - Character-sheet generation can optionally use the character's saved neutral full-body sprite as a reference, on its own or together with the current avatar.
 
 - Persona sheet generation can use a saved neutral full-body sprite as a reference, alone or alongside the current avatar (#6786).

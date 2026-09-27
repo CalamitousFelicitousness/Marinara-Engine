@@ -19,6 +19,8 @@ export function useDialogFocusScope(
   initialFocusRef?: RefObject<HTMLElement | null>,
   restoreFocusRef?: RefObject<HTMLElement | null>,
   ownedPortalSelector?: string,
+  /** Trap focus only while this scope owns the topmost overlay. */
+  isActive?: () => boolean,
 ) {
   useEffect(() => {
     if (!open) return;
@@ -43,6 +45,7 @@ export function useDialogFocusScope(
 
     const trapFocus = (event: KeyboardEvent) => {
       if (event.key !== "Tab") return;
+      if (isActive && !isActive()) return;
       const container = containerRef.current;
       if (!container) return;
       const roots = [
@@ -82,5 +85,7 @@ export function useDialogFocusScope(
       document.removeEventListener("keydown", trapFocus);
       restoreDialogFocus(restoreFocusRef, opener);
     };
+    // isActive is read at event time through a ref-backed callback.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [containerRef, initialFocusRef, open, ownedPortalSelector, restoreFocusRef]);
 }

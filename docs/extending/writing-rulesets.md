@@ -1026,8 +1026,9 @@ What a pool fight rolls beyond that is its `pool` block:
   for any kind, and `byKind` one per kind of your health track, which wins over `all` for its kind;
   a kind neither names is not soaked. With `"roll": true` the target throws that many dice against
   the damage target and each success takes one off. With `"roll": false` the number comes off the
-  damage dice before they are thrown. Nothing goes below zero, automatic successes are soaked like any
-  other, and nothing is thrown to soak a blow that counted nothing. A creature gives its own
+  damage dice before they are thrown, so it never touches automatic successes, which thrown soak takes
+  off like any other. Nothing goes below zero, and nothing is thrown to soak a blow that counted
+  nothing. A creature gives its own
   numbers as `soak: { "all": 1, "byKind": { "knock": 3 } }`, which needs the block's `soak` to say how
   soak is taken. Resistance, vulnerability, immunity and `resist-all` apply after soak, to what is
   left.

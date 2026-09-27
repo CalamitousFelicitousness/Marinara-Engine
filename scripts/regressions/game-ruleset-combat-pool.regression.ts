@@ -39,6 +39,7 @@ import {
   rulesetProposedStatBlock,
   rulesetSheetBuildSchema,
   rulesetWindowOptions,
+  RULESET_PASS_OPTION,
   supportedCapabilityApi,
   type RulesetCombatChoice,
   type RulesetCombatEvent,
@@ -311,6 +312,27 @@ try {
       (doc) => (doc.catalogs[0].entries[2].mechanics.amount.dice = "2d6"),
       /throws d10s, so damage dice are d10s/,
       "an entry's damage on another die",
+    );
+    refuses(
+      gravewatchText,
+      (doc) =>
+        (doc.catalogs[1].entries[0].creature.riders = [
+          { id: "pack", name: "Pack", on: "hit", oncePer: "turn", amount: { dice: "1d6" } },
+        ]),
+      /riders\.0\.amount\.dice: A "dice-pool" fight throws d10s/,
+      "a creature's rider on another die",
+    );
+    refuses(
+      gravewatchText,
+      (doc) =>
+        doc.catalogs[0].entries.push({
+          id: "sly",
+          label: "Sly",
+          rows: [{ list: "charms", values: { name: "Sly" } }],
+          mechanics: { kind: "rider", rider: { on: "hit", oncePer: "turn", amount: { dice: "1d6" } } },
+        }),
+      /mechanics\.rider\.amount\.dice: A "dice-pool" fight throws d10s/,
+      "an entry's rider on another die",
     );
     refuses(
       gravewatchText,
@@ -593,6 +615,53 @@ try {
     assert.equal(eventsOf(answered.events, "damage").length, 0);
     // Paid for out of turn, and counted against what she may spend before her own turn comes round.
     assert.equal(rulesetCombatant(answered.state, "ada")!.limits!.resolve!.spent, 1);
+  }
+
+  // ── A window between two turns names nobody before a round that throws initiative again ──
+  {
+    const signing = (each: boolean) =>
+      gravewatch((doc) => {
+        if (!each) delete doc.combat.initiative.each;
+        const rats = doc.catalogs[1].entries[0].creature;
+        rats.signaturePoints = 1;
+        rats.actions.push({
+          id: "skitter",
+          name: "Skitter",
+          budget: "act",
+          signature: { cost: 1 },
+          toHit: 5,
+          damage: { dice: "1d10" },
+        });
+      });
+    for (const [each, expected] of [
+      [true, ""],
+      [false, "ada"],
+    ] as const) {
+      const definition = signing(each);
+      // Ada, then the rats, then the warden: the round ends on the warden's turn, and the rats may act
+      // between it and whoever is next.
+      let state = fight(definition, [
+        ada(definition),
+        creature("rats", "grave-rats"),
+        creature("hollow", "hollow-warden"),
+      ]);
+      assert.deepEqual(state.order, ["ada", "rats", "hollow"]);
+      state = act(definition, state, { actorId: "ada", optionId: "end-turn", targetIds: [] }).state;
+      if (state.window)
+        state = act(definition, state, {
+          actorId: "rats",
+          optionId: RULESET_PASS_OPTION,
+          targetIds: [],
+          window: state.window.id,
+        }).state;
+      state = act(definition, state, { actorId: "rats", optionId: "end-turn", targetIds: [] }).state;
+      const lastTurn = act(definition, state, { actorId: "hollow", optionId: "end-turn", targetIds: [] });
+      assert.deepEqual(
+        lastTurn.state.window?.trigger,
+        { kind: "between-turns", nextActorId: expected },
+        `each round: ${each}`,
+      );
+    }
   }
 
   // ── A defense of nothing still needs one success ──

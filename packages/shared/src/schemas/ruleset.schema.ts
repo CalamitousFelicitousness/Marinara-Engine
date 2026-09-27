@@ -4535,6 +4535,7 @@ function creatureIssues(
   const riderIds = new Set<string>();
   creature.riders?.forEach((rider, index) => {
     const path = [...at, "riders", index];
+    wrongDie(rider.amount.dice, [...path, "amount", "dice"]);
     if (riderIds.has(rider.id)) add([...path, "id"], `Duplicate rider id "${rider.id}"`);
     riderIds.add(rider.id);
     if (rider.type && damageTypes && !damageTypes.has(rider.type.trim().toLowerCase())) {
@@ -4693,6 +4694,7 @@ export function rulesetCatalogEntryIssues(
       mechanics.plus?.forEach((clause, clauseIndex) =>
         wrongDie(clause.dice, [index, "mechanics", "plus", clauseIndex, "dice"]),
       );
+      wrongDie(mechanics.rider?.amount.dice, [index, "mechanics", "rider", "amount", "dice"]);
     }
     mechanics?.cost?.forEach((cost, costIndex) => {
       if (!costTargets.has(cost.pool)) {

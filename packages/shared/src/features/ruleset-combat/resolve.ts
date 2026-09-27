@@ -2505,19 +2505,26 @@ export function advanceRulesetTurn(
 function openSignatureWindow(ctx: RulesetCombatContext): boolean {
   const waiting = ctx.state.order.filter((id) => rulesetSignatureOptions(ctx.definition, ctx.state, id).length > 0);
   if (waiting.length === 0) return false;
-  const nextActorId = nextTurnActor(ctx.state)?.id ?? "";
+  // A round that throws initiative again has no next actor until it has been thrown, and that is
+  // done once the window has closed, so a window at the end of a round names nobody rather than
+  // whoever the old order would have put first.
+  const next = nextTurnActor(ctx.state);
+  const unknown = next?.wraps && ctx.combat.initiative.each === "round";
+  const nextActorId = unknown ? "" : (next?.combatant.id ?? "");
   openWindow(ctx, { kind: "signature", trigger: { kind: "between-turns", nextActorId }, waiting });
   return true;
 }
 
-/** Who acts next, read without moving the fight: the window between two turns says whose turn it is
- *  holding up. */
-function nextTurnActor(state: RulesetEncounterState): RulesetCombatant | null {
+/** Who acts next, read without moving the fight, and whether their turn begins a new round: the
+ *  window between two turns says whose turn it is holding up. */
+function nextTurnActor(state: RulesetEncounterState): { combatant: RulesetCombatant; wraps: boolean } | null {
   let turn = state.turn;
+  let wraps = false;
   for (let step = 0; step < state.order.length; step++) {
+    if (turn + 1 >= state.order.length) wraps = true;
     turn = turn + 1 >= state.order.length ? 0 : turn + 1;
     const candidate = rulesetCombatant(state, state.order[turn]!);
-    if (candidate && canTakeTurn(candidate)) return candidate;
+    if (candidate && canTakeTurn(candidate)) return { combatant: candidate, wraps };
   }
   return null;
 }

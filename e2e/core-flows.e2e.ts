@@ -9074,6 +9074,22 @@ for (const owner of ["character", "persona"] as const) {
       await expect(lightbox.getByRole("button", { name: "Set as avatar", exact: true })).toBeFocused();
       await page.keyboard.press("Shift+Tab");
       await expect(close).toBeFocused();
+      const deleteImage = lightbox.getByRole("button", { name: "Delete", exact: true });
+      await deleteImage.focus();
+      await deleteImage.press("Enter");
+      const confirmation = page.getByRole("dialog", {
+        name: owner === "character" ? "Delete Character Image" : "Delete Persona Image",
+        exact: true,
+      });
+      const cancelDelete = confirmation.getByRole("button", { name: "Cancel", exact: true });
+      await expect(confirmation.getByRole("button", { name: /^Close Delete /u })).toBeFocused();
+      await cancelDelete.focus();
+      // WebKit on macOS uses Option+Tab to visit every control.
+      await page.keyboard.press(ios ? "Alt+Tab" : "Tab");
+      await expect(confirmation.getByRole("button", { name: "Delete", exact: true })).toBeFocused();
+      await cancelDelete.click();
+      await expect(confirmation).toHaveCount(0);
+      await expect(deleteImage).toBeFocused();
       await testInfo.attach(`${owner}-gallery-save-preview.png`, {
         body: await page.screenshot(),
         contentType: "image/png",
@@ -9103,6 +9119,12 @@ for (const owner of ["character", "persona"] as const) {
         await expect(page).toHaveURL(appUrl);
         await expect(gallery.getByTitle("Download", { exact: true })).toBeVisible();
       }
+      await gallery.getByAltText(name, { exact: true }).click();
+      await lightbox.getByRole("button", { name: "Delete", exact: true }).click();
+      await confirmation.getByRole("button", { name: "Delete", exact: true }).click();
+      await expect(confirmation).toHaveCount(0);
+      await expect(lightbox).toHaveCount(0);
+      await expect(gallery.getByAltText(name, { exact: true })).toHaveCount(0);
     } finally {
       await bestEffortDelete(request, `${base}/${entity.id}`);
     }

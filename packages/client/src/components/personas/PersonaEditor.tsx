@@ -413,7 +413,8 @@ function PersonaGalleryTab({
   const [lightbox, setLightbox] = useState<PersonaGalleryImage | null>(null);
   const lightboxRef = useRef<HTMLDivElement>(null);
   const lightboxCloseRef = useRef<HTMLButtonElement>(null);
-  useDialogFocusScope(!!lightbox, lightboxRef, lightboxCloseRef);
+  // Nested confirmations own focus while retaining the preview's original return target.
+  useDialogFocusScope(!!lightbox, lightboxRef, lightboxCloseRef, undefined, '[data-component="Modal"]');
   const [selectingImages, setSelectingImages] = useState(false);
   const [selectedImageIds, setSelectedImageIds] = useState<Set<string>>(() => new Set());
   const selectedImages = useMemo(

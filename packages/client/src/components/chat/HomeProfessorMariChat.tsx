@@ -5170,7 +5170,7 @@ export function HomeProfessorMariChat({
       // Optimistic update from local state
       setMessages((current) => current.filter((m) => m.id !== messageId));
       try {
-        await api.delete(`/chats/${chatId}/messages/${messageId}`);
+        await api.delete(`/chats/${chatId}/messages/${messageId}?trash=false`);
       } catch (error) {
         console.error("[Professor Mari] Failed to delete message", error);
         await loadMessages(chatId).catch(() => undefined);

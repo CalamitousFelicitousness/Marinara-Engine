@@ -13,7 +13,7 @@ import { ToggleSetting } from "./SettingControls";
 export const FEATURE_SWITCHES_CONTROL_ID = "feature-switches";
 
 /** Server switches in display order. */
-const SERVER_SWITCHES: ReadonlyArray<FeatureSwitchName> = ["stableLorebookGroupPicks", "providerRetry"];
+const SERVER_SWITCHES: ReadonlyArray<FeatureSwitchName> = ["stableLorebookGroupPicks", "providerRetry", "messageTrash"];
 
 /**
  * Settings > Advanced > Features: optional server behaviours. Every switch starts off, which keeps

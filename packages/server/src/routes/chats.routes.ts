@@ -43,6 +43,13 @@ import {
   normalizeRpgStatPools,
   characterDataSchema,
   rulesetLiveStatesSchema,
+  applyContextMessageLimitWithPins,
+  isMessagePinnedToContext,
+  normalizeMessageMarkPatch,
+  readMessagePrivateNote,
+  stripPrivateMessageNote,
+  MESSAGE_MARK_EXTRA_KEYS,
+  MAX_PINNED_CONTEXT_MESSAGES,
 } from "@marinara-engine/shared";
 import type {
   CharacterData,
@@ -71,9 +78,11 @@ import {
   parseMessageCursor,
   withChatMetadataPatchQueue,
 } from "../services/storage/chats.storage.js";
+import { createMessageTrashStorage } from "../services/storage/message-trash.storage.js";
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
 import { createCharactersStorage } from "../services/storage/characters.storage.js";
 import { resolveChatUserIdentity } from "../services/chat-user-identity.js";
+import { isFeatureEnabled } from "../services/features/feature-settings.js";
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
 import { createAgentsStorage } from "../services/storage/agents.storage.js";
 import { createLorebooksStorage } from "../services/storage/lorebooks.storage.js";
@@ -689,6 +698,7 @@ function resolveEntryStateOverrides(value: unknown): EntryStateOverrides | undef
 
 export async function chatsRoutes(app: FastifyInstance) {
   const storage = createChatsStorage(app.db);
+  const messageTrashStore = createMessageTrashStorage(app.db);
   const appSettings = createAppSettingsStorage(app.db);
 
   const cleanupEmptyRoleplayDmChats = async () => {
@@ -2251,9 +2261,21 @@ export async function chatsRoutes(app: FastifyInstance) {
     return created;
   });
 
-  // Delete message
-  app.delete<{ Params: { chatId: string; messageId: string } }>("/:chatId/messages/:messageId", async (req, reply) => {
-    await storage.removeMessage(req.params.messageId);
+  // Game state is not restorable through the message-only trash, so retain permanent Game deletes.
+  const chatUsesMessageTrash = async (chatId: string) =>
+    isFeatureEnabled("messageTrash") && (await storage.getById(chatId))?.mode !== "game";
+
+  app.delete<{
+    Params: { chatId: string; messageId: string };
+    Querystring: { trash?: string };
+  }>("/:chatId/messages/:messageId", async (req, reply) => {
+    const message = await storage.getMessage(req.params.messageId);
+    if (!message || message.chatId !== req.params.chatId) return reply.status(404).send({ error: "Message not found" });
+    const trashed =
+      req.query.trash === "false" || !(await chatUsesMessageTrash(req.params.chatId))
+        ? []
+        : await messageTrashStore.trashMessages(req.params.chatId, [req.params.messageId]);
+    if (trashed.length === 0) await storage.removeMessage(req.params.messageId);
     return reply.status(204).send();
   });
 
@@ -2263,8 +2285,39 @@ export async function chatsRoutes(app: FastifyInstance) {
     if (!Array.isArray(messageIds) || messageIds.length === 0) {
       return reply.status(400).send({ error: "messageIds array is required" });
     }
-    await storage.removeMessages(messageIds, req.params.chatId);
+    const ids = messageIds.filter((id): id is string => typeof id === "string");
+    if (await chatUsesMessageTrash(req.params.chatId)) await messageTrashStore.trashMessages(req.params.chatId, ids);
+    else await storage.removeMessages(ids, req.params.chatId);
     return reply.status(204).send();
+  });
+
+  app.get<{ Params: { chatId: string } }>("/:chatId/trash", async (req, reply) => {
+    if (!(await storage.getById(req.params.chatId))) return reply.status(404).send({ error: "Chat not found" });
+    return messageTrashStore.list(req.params.chatId);
+  });
+
+  app.post<{ Params: { chatId: string } }>("/:chatId/trash/restore", async (req, reply) => {
+    const body = z.object({ entryIds: z.array(z.string().min(1)).min(1).max(5000) }).safeParse(req.body);
+    if (!body.success) return reply.status(400).send({ error: "entryIds array is required" });
+    if (!(await storage.getById(req.params.chatId))) return reply.status(404).send({ error: "Chat not found" });
+    const active = (app as unknown as { activeGenerations?: Map<string, unknown> }).activeGenerations;
+    if (active?.has(req.params.chatId))
+      return reply.status(409).send({ error: "Wait for the current generation to finish before restoring messages." });
+    return messageTrashStore.restore(req.params.chatId, body.data.entryIds);
+  });
+
+  app.post<{ Params: { chatId: string } }>("/:chatId/trash/delete", async (req, reply) => {
+    const body = z
+      .object({ entryIds: z.array(z.string().min(1)).min(1).max(5000).optional(), all: z.boolean().optional() })
+      .safeParse(req.body);
+    if (!body.success || (!body.data.all && !body.data.entryIds))
+      return reply.status(400).send({ error: "entryIds array or all: true is required" });
+    if (!(await storage.getById(req.params.chatId))) return reply.status(404).send({ error: "Chat not found" });
+    const deleted = await messageTrashStore.deleteForever(
+      req.params.chatId,
+      body.data.all ? undefined : body.data.entryIds,
+    );
+    return { deleted };
   });
 
   // Edit message content
@@ -2304,78 +2357,97 @@ export async function chatsRoutes(app: FastifyInstance) {
   // Update message extra (partial merge) — also syncs to the active swipe
   app.patch<{ Params: { chatId: string; messageId: string }; Querystring: { swipeIndex?: string } }>(
     "/:chatId/messages/:messageId/extra",
-    async (req, reply) => {
-      const message = await storage.getMessage(req.params.messageId);
-      if (!message || message.chatId !== req.params.chatId)
-        return reply.status(404).send({ error: "Message not found" });
-      const swipeIndex = req.query.swipeIndex === undefined ? undefined : Number(req.query.swipeIndex);
-      if (swipeIndex !== undefined && (!Number.isSafeInteger(swipeIndex) || swipeIndex < 0))
-        return reply.status(400).send({ error: "Invalid swipe index" });
-      const partial = { ...(req.body as Record<string, unknown>) };
-      if (
-        Object.prototype.hasOwnProperty.call(partial, "isConversationStart") &&
-        typeof partial.isConversationStart !== "boolean"
-      )
-        return reply.status(400).send({ error: "isConversationStart must be a boolean" });
-      for (const key of ["hiddenFromAICharacterIds", "conversationStartForCharacterIds"] as const) {
-        if (Object.prototype.hasOwnProperty.call(partial, key)) {
-          partial[key] = normalizeMessageCharacterIds(partial[key]);
+    async (req, reply) =>
+      withChatMetadataPatchQueue(req.params.chatId, async () => {
+        const message = await storage.getMessage(req.params.messageId);
+        if (!message || message.chatId !== req.params.chatId)
+          return reply.status(404).send({ error: "Message not found" });
+        const swipeIndex = req.query.swipeIndex === undefined ? undefined : Number(req.query.swipeIndex);
+        if (swipeIndex !== undefined && (!Number.isSafeInteger(swipeIndex) || swipeIndex < 0))
+          return reply.status(400).send({ error: "Invalid swipe index" });
+        const markPatch = normalizeMessageMarkPatch({ ...(req.body as Record<string, unknown>) });
+        if ("error" in markPatch) return reply.status(400).send({ error: markPatch.error });
+        const partial = markPatch.patch;
+        if (partial.pinnedToContext === true && !isMessagePinnedToContext(message.extra)) {
+          const chatRows = await storage.listMessages(req.params.chatId);
+          if (chatRows.filter((row) => isMessagePinnedToContext(row.extra)).length >= MAX_PINNED_CONTEXT_MESSAGES) {
+            return reply.status(409).send({
+              error: `A chat can pin at most ${MAX_PINNED_CONTEXT_MESSAGES} messages. Unpin one first.`,
+            });
+          }
         }
-      }
-      const syncAllSwipeExtra: Record<string, unknown> = {};
-      if (Object.prototype.hasOwnProperty.call(partial, "hiddenFromAI")) {
-        syncAllSwipeExtra.hiddenFromAI = partial.hiddenFromAI;
-      }
-      if (Object.prototype.hasOwnProperty.call(partial, "hiddenFromAICharacterIds")) {
-        syncAllSwipeExtra.hiddenFromAICharacterIds = partial.hiddenFromAICharacterIds;
-      }
-      if (Object.prototype.hasOwnProperty.call(partial, "isConversationStart")) {
-        syncAllSwipeExtra.isConversationStart = partial.isConversationStart;
-      }
-      if (Object.prototype.hasOwnProperty.call(partial, "conversationStartForCharacterIds")) {
-        syncAllSwipeExtra.conversationStartForCharacterIds = partial.conversationStartForCharacterIds;
-      }
-      if (Object.prototype.hasOwnProperty.call(partial, "reactions")) {
-        syncAllSwipeExtra.reactions = partial.reactions;
-      }
-
-      const contextFlagChanged =
-        Object.prototype.hasOwnProperty.call(partial, "isConversationStart") ||
-        Object.prototype.hasOwnProperty.call(partial, "conversationStartForCharacterIds");
-      const updated = contextFlagChanged
-        ? await storage.updateMessageExtraWithContextStart(req.params.messageId, partial, syncAllSwipeExtra, swipeIndex)
-        : swipeIndex === undefined
-          ? await storage.updateMessageExtra(req.params.messageId, partial)
-          : await storage.updateMessageExtraForSwipe(req.params.messageId, swipeIndex, partial);
-      if (!updated) return reply.status(404).send({ error: "Message not found" });
-      // A lone user reaction (no text after it) is a valid turn: feed it to the
-      // autonomous-messaging cadence so a character may notice and respond,
-      // time-gated. Only when this update leaves the user with a reaction here
-      // (so removing one's last reaction doesn't count as fresh activity).
-      if (Object.prototype.hasOwnProperty.call(partial, "reactions")) {
-        const next = partial.reactions;
-        const userReacted =
-          Array.isArray(next) &&
-          next.some(
-            (r) =>
-              !!r &&
-              typeof r === "object" &&
-              Array.isArray((r as { by?: unknown }).by) &&
-              (r as { by: unknown[] }).by.includes("user"),
-          );
-        if (userReacted) recordUserReaction(req.params.chatId);
-      }
-
-      if (!contextFlagChanged && Object.keys(syncAllSwipeExtra).length > 0) {
-        // Message-level fields stay stable across swipe changes.
-        const swipes = await storage.getSwipes(req.params.messageId);
-        for (const swipe of swipes) {
-          await storage.updateSwipeExtra(req.params.messageId, swipe.index, syncAllSwipeExtra);
+        if (
+          Object.prototype.hasOwnProperty.call(partial, "isConversationStart") &&
+          typeof partial.isConversationStart !== "boolean"
+        )
+          return reply.status(400).send({ error: "isConversationStart must be a boolean" });
+        for (const key of ["hiddenFromAICharacterIds", "conversationStartForCharacterIds"] as const) {
+          if (Object.prototype.hasOwnProperty.call(partial, key)) {
+            partial[key] = normalizeMessageCharacterIds(partial[key]);
+          }
         }
-      }
+        const syncAllSwipeExtra: Record<string, unknown> = {};
+        if (Object.prototype.hasOwnProperty.call(partial, "hiddenFromAI")) {
+          syncAllSwipeExtra.hiddenFromAI = partial.hiddenFromAI;
+        }
+        if (Object.prototype.hasOwnProperty.call(partial, "hiddenFromAICharacterIds")) {
+          syncAllSwipeExtra.hiddenFromAICharacterIds = partial.hiddenFromAICharacterIds;
+        }
+        if (Object.prototype.hasOwnProperty.call(partial, "isConversationStart")) {
+          syncAllSwipeExtra.isConversationStart = partial.isConversationStart;
+        }
+        if (Object.prototype.hasOwnProperty.call(partial, "conversationStartForCharacterIds")) {
+          syncAllSwipeExtra.conversationStartForCharacterIds = partial.conversationStartForCharacterIds;
+        }
+        if (Object.prototype.hasOwnProperty.call(partial, "reactions")) {
+          syncAllSwipeExtra.reactions = partial.reactions;
+        }
+        for (const key of MESSAGE_MARK_EXTRA_KEYS) {
+          if (Object.prototype.hasOwnProperty.call(partial, key)) syncAllSwipeExtra[key] = partial[key];
+        }
 
-      return updated;
-    },
+        const contextFlagChanged =
+          Object.prototype.hasOwnProperty.call(partial, "isConversationStart") ||
+          Object.prototype.hasOwnProperty.call(partial, "conversationStartForCharacterIds");
+        const updated = contextFlagChanged
+          ? await storage.updateMessageExtraWithContextStart(
+              req.params.messageId,
+              partial,
+              syncAllSwipeExtra,
+              swipeIndex,
+            )
+          : swipeIndex === undefined
+            ? await storage.updateMessageExtra(req.params.messageId, partial)
+            : await storage.updateMessageExtraForSwipe(req.params.messageId, swipeIndex, partial);
+        if (!updated) return reply.status(404).send({ error: "Message not found" });
+        // A lone user reaction (no text after it) is a valid turn: feed it to the
+        // autonomous-messaging cadence so a character may notice and respond,
+        // time-gated. Only when this update leaves the user with a reaction here
+        // (so removing one's last reaction doesn't count as fresh activity).
+        if (Object.prototype.hasOwnProperty.call(partial, "reactions")) {
+          const next = partial.reactions;
+          const userReacted =
+            Array.isArray(next) &&
+            next.some(
+              (r) =>
+                !!r &&
+                typeof r === "object" &&
+                Array.isArray((r as { by?: unknown }).by) &&
+                (r as { by: unknown[] }).by.includes("user"),
+            );
+          if (userReacted) recordUserReaction(req.params.chatId);
+        }
+
+        if (!contextFlagChanged && Object.keys(syncAllSwipeExtra).length > 0) {
+          // Message-level fields stay stable across swipe changes.
+          const swipes = await storage.getSwipes(req.params.messageId);
+          for (const swipe of swipes) {
+            await storage.updateSwipeExtra(req.params.messageId, swipe.index, syncAllSwipeExtra);
+          }
+        }
+
+        return updated;
+      }),
   );
 
   // Bulk-set hiddenFromAI on many messages (iterates per message through the storage layer)
@@ -3000,7 +3072,7 @@ export async function chatsRoutes(app: FastifyInstance) {
           // Apply context message limit
           const contextLimit = chatMeta.contextMessageLimit as number | null;
           if (contextLimit && contextLimit > 0 && filteredMessages.length > contextLimit) {
-            filteredMessages = filteredMessages.slice(-contextLimit);
+            filteredMessages = applyContextMessageLimitWithPins(filteredMessages, contextLimit);
           }
 
           const mappedMessages = filteredMessages.map((m: any) => ({
@@ -3987,9 +4059,12 @@ export async function chatsRoutes(app: FastifyInstance) {
   const serializeChatTranscript = async (
     chat: ChatRow,
     format: ExportFormat,
-    options: { includeReasoning?: boolean } = {},
+    options: { includeReasoning?: boolean; includePrivateNotes?: boolean } = {},
   ) => {
     const includeReasoning = options.includeReasoning === true;
+    const includePrivateNotes = options.includePrivateNotes === true;
+    const exportNoteExtra = (extra: Record<string, unknown>) =>
+      includePrivateNotes ? extra : stripPrivateMessageNote(extra);
     const rawMessages = await storage.listMessages(chat.id);
     const charIds = parseExportCharacterIds(chat.characterIds);
     const metadata = parseExportMetadata(chat.metadata);
@@ -4082,6 +4157,8 @@ export async function chatsRoutes(app: FastifyInstance) {
           const thinking = includeReasoning ? getExportThinking(parseExportMetadata(msg.extra)) : null;
           const parts = [`[${name}]${ts ? ` (${ts})` : ""}`, resolveExportMessageContent(msg)];
           if (thinking) parts.push(`[Thinking]\n${thinking}`);
+          const note = includePrivateNotes ? readMessagePrivateNote(msg.extra) : null;
+          if (note) parts.push(`[Private note]\n${note}`);
           return parts.join("\n");
         })
         .join("\n\n");
@@ -4125,7 +4202,9 @@ export async function chatsRoutes(app: FastifyInstance) {
         storage.prepareRoleplayInterruptionExtraForCopy(extra, (content, target) =>
           resolveExportMessageContent({ content, characterId: target.characterId }),
         );
-      const messageExtra = await normalizeInterruptionExtra(sanitizeJsonlMessageExtra(rawMessageExtra));
+      const messageExtra = await normalizeInterruptionExtra(
+        exportNoteExtra(sanitizeJsonlMessageExtra(rawMessageExtra)),
+      );
       const thinking = includeReasoning ? getExportThinking(rawMessageExtra) : null;
       const swipes = await storage.getSwipes(msg.id);
       const activeContent = msg.content;
@@ -4147,7 +4226,9 @@ export async function chatsRoutes(app: FastifyInstance) {
                 extra:
                   swipe.index === msg.activeSwipeIndex
                     ? messageExtra
-                    : await normalizeInterruptionExtra(sanitizeJsonlMessageExtra(parseExportMetadata(swipe.extra))),
+                    : await normalizeInterruptionExtra(
+                        exportNoteExtra(sanitizeJsonlMessageExtra(parseExportMetadata(swipe.extra))),
+                      ),
                 createdAt: swipe.createdAt,
               })),
             )
@@ -4215,10 +4296,17 @@ export async function chatsRoutes(app: FastifyInstance) {
   };
 
   app.post<{
-    Body: { chatIds?: string[]; format?: string; scope?: "selected" | "all"; includeReasoning?: boolean | string };
+    Body: {
+      chatIds?: string[];
+      format?: string;
+      scope?: "selected" | "all";
+      includeReasoning?: boolean | string;
+      includePrivateNotes?: boolean | string;
+    };
   }>("/export/bulk", async (req, reply) => {
     const format = normalizeExportFormat(req.body?.format);
     const includeReasoning = normalizeExportBoolean(req.body?.includeReasoning);
+    const includePrivateNotes = normalizeExportBoolean(req.body?.includePrivateNotes);
     const scope = req.body?.scope === "all" ? "all" : "selected";
     const uniqueIds = [...new Set((req.body?.chatIds ?? []).filter((id): id is string => typeof id === "string"))];
 
@@ -4238,7 +4326,7 @@ export async function chatsRoutes(app: FastifyInstance) {
 
     for (let index = 0; index < chatsToExport.length; index++) {
       const chat = chatsToExport[index]!;
-      const serialized = await serializeChatTranscript(chat, format, { includeReasoning });
+      const serialized = await serializeChatTranscript(chat, format, { includeReasoning, includePrivateNotes });
       const file = buildBulkExportFilename(
         chat,
         index,
@@ -4288,25 +4376,26 @@ export async function chatsRoutes(app: FastifyInstance) {
   });
 
   // Export chat — supports JSONL (default, SillyTavern-compatible) and plain text
-  app.get<{ Params: { id: string }; Querystring: { format?: string; includeReasoning?: string } }>(
-    "/:id/export",
-    async (req, reply) => {
-      const chat = await storage.getById(req.params.id);
-      if (!chat) return reply.status(404).send({ error: "Chat not found" });
+  app.get<{
+    Params: { id: string };
+    Querystring: { format?: string; includeReasoning?: string; includePrivateNotes?: string };
+  }>("/:id/export", async (req, reply) => {
+    const chat = await storage.getById(req.params.id);
+    if (!chat) return reply.status(404).send({ error: "Chat not found" });
 
-      const format = normalizeExportFormat(req.query.format);
-      const includeReasoning = normalizeExportBoolean(req.query.includeReasoning);
-      const serialized = await serializeChatTranscript(chat as ChatRow, format, { includeReasoning });
+    const format = normalizeExportFormat(req.query.format);
+    const includeReasoning = normalizeExportBoolean(req.query.includeReasoning);
+    const includePrivateNotes = normalizeExportBoolean(req.query.includePrivateNotes);
+    const serialized = await serializeChatTranscript(chat as ChatRow, format, {
+      includeReasoning,
+      includePrivateNotes,
+    });
 
-      return reply
-        .header("Content-Type", serialized.contentType)
-        .header(
-          "Content-Disposition",
-          `attachment; filename="${encodeURIComponent(chat.name)}.${serialized.extension}"`,
-        )
-        .send(serialized.content);
-    },
-  );
+    return reply
+      .header("Content-Type", serialized.contentType)
+      .header("Content-Disposition", `attachment; filename="${encodeURIComponent(chat.name)}.${serialized.extension}"`)
+      .send(serialized.content);
+  });
 
   // ── Branch (duplicate) ──
 

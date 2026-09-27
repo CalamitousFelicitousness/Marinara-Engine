@@ -121,6 +121,7 @@ import { SwipeJumpControl } from "./SwipeJumpControl";
 import { toast } from "sonner";
 import { MessageThinkingModal } from "./MessageThinkingModal";
 import { MESSAGE_ACTION_ICON_SIZE, MessageActionButton } from "./MessageActionButton";
+import { MessageMarkIndicators, MessageMarksAction } from "./MessageMarks";
 import { RoleplayStoryboardMessageMedia } from "./RoleplayStoryboardMessageMedia";
 
 const MESSAGE_DOUBLE_TAP_MS = 320;
@@ -4055,6 +4056,8 @@ export const ChatMessage = memo(function ChatMessage({
                 />
               )}
               <GuidedRegenerateActionBtn onClick={() => onRegenerate?.(message.id)} />
+              <MessageMarksAction message={message} align={isUser ? "right" : "left"} />
+              <MessageMarkIndicators message={message} />
               {onToggleConversationStart && (
                 <ConversationStartAction
                   messageId={message.id}
@@ -4482,6 +4485,8 @@ export const ChatMessage = memo(function ChatMessage({
               />
             )}
             <GuidedRegenerateActionBtn onClick={() => onRegenerate?.(message.id)} />
+            <MessageMarksAction message={message} align={isUser ? "right" : "left"} />
+            <MessageMarkIndicators message={message} />
             {onToggleConversationStart && (
               <ConversationStartAction
                 messageId={message.id}

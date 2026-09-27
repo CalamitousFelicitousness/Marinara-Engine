@@ -12,6 +12,7 @@ import {
 } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api, ApiError, isRequestTimeoutError, requestTimeoutSignal } from "../lib/api-client";
+import { translate } from "../localization/i18n";
 import { useChatStore } from "../stores/chat.store";
 import { useAgentStore } from "../stores/agent.store";
 import { useGameStateStore } from "../stores/game-state.store";
@@ -36,6 +37,7 @@ import type {
   ExportEnvelope,
   Message,
   MessageSwipe,
+  MessageTrashEntry,
   DaySummaryEntry,
   WeekSummaryEntry,
   HomeFeedSnapshot,
@@ -52,6 +54,7 @@ export const chatKeys = {
   detail: (id: string) => [...chatKeys.all, "detail", id] as const,
   messages: (chatId: string) => [...chatKeys.all, "messages", chatId] as const,
   messageCount: (chatId: string) => [...chatKeys.all, "messageCount", chatId] as const,
+  trash: (chatId: string) => [...chatKeys.all, "trash", chatId] as const,
   messagePeek: (chatId: string) => [...chatKeys.all, "messagePeek", chatId] as const,
   personaAttributions: (chatId: string) => [...chatKeys.all, "personaAttributions", chatId] as const,
   memories: (chatId: string) => [...chatKeys.all, "memories", chatId] as const,
@@ -1316,9 +1319,21 @@ export function useCreateMessage(chatId: string | null) {
 export function useDeleteMessage(chatId: string | null) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (messageId: string) => api.delete(`/chats/${chatId}/messages/${messageId}`),
-    onSuccess: () => {
+    mutationFn: (target: string | { messageId: string; skipTrash?: boolean }) => {
+      const { messageId, skipTrash } = typeof target === "string" ? { messageId: target, skipTrash: false } : target;
+      return api.delete(`/chats/${chatId}/messages/${messageId}${skipTrash ? "?trash=false" : ""}`);
+    },
+    onSuccess: (_data, target) => {
       if (chatId) {
+        const skipTrash = typeof target === "string" ? false : target.skipTrash === true;
+        const usesTrash = qc.getQueryData<Chat>(chatKeys.detail(chatId))?.mode !== "game";
+        if (!skipTrash && usesTrash) {
+          qc.invalidateQueries({ queryKey: chatKeys.trash(chatId) });
+          toast.success(translate("ui.chat.messagetrash.movedToTrash", { count: 1 }), {
+            description: translate("ui.chat.messagetrash.movedToTrashHint"),
+          });
+        }
+        qc.invalidateQueries({ queryKey: ["chat-message-search", chatId] });
         qc.invalidateQueries({ queryKey: chatKeys.messages(chatId) });
         qc.invalidateQueries({ queryKey: chatKeys.messagePeek(chatId) });
         qc.invalidateQueries({ queryKey: chatKeys.messageCount(chatId) });
@@ -1333,14 +1348,64 @@ export function useDeleteMessages(chatId: string | null) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (messageIds: string[]) => api.post(`/chats/${chatId}/messages/bulk-delete`, { messageIds }),
-    onSuccess: () => {
+    onSuccess: (_data, messageIds) => {
       if (chatId) {
+        const usesTrash = qc.getQueryData<Chat>(chatKeys.detail(chatId))?.mode !== "game";
+        if (usesTrash) {
+          qc.invalidateQueries({ queryKey: chatKeys.trash(chatId) });
+          toast.success(translate("ui.chat.messagetrash.movedToTrash", { count: messageIds.length }), {
+            description: translate("ui.chat.messagetrash.movedToTrashHint"),
+          });
+        }
+        qc.invalidateQueries({ queryKey: ["chat-message-search", chatId] });
         qc.invalidateQueries({ queryKey: chatKeys.messages(chatId) });
         qc.invalidateQueries({ queryKey: chatKeys.messagePeek(chatId) });
         qc.invalidateQueries({ queryKey: chatKeys.messageCount(chatId) });
         qc.invalidateQueries({ queryKey: chatKeys.list() });
         qc.invalidateQueries({ queryKey: lorebookKeys.active(chatId) });
       }
+    },
+  });
+}
+
+export function useMessageTrash(chatId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: chatKeys.trash(chatId ?? ""),
+    queryFn: ({ signal }) => api.get<MessageTrashEntry[]>(`/chats/${chatId}/trash`, { signal }),
+    enabled: !!chatId && enabled,
+    staleTime: 10_000,
+  });
+}
+
+function invalidateAfterTrashChange(qc: QueryClient, chatId: string) {
+  qc.invalidateQueries({ queryKey: chatKeys.trash(chatId) });
+  qc.invalidateQueries({ queryKey: chatKeys.messages(chatId) });
+  qc.invalidateQueries({ queryKey: chatKeys.messagePeek(chatId) });
+  qc.invalidateQueries({ queryKey: chatKeys.messageCount(chatId) });
+  qc.invalidateQueries({ queryKey: chatKeys.list() });
+  qc.invalidateQueries({ queryKey: ["chat-message-search", chatId] });
+}
+
+export function useRestoreTrashedMessages(chatId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (entryIds: string[]) =>
+      api.post<{ restoredMessageIds: string[]; conflictEntryIds: string[] }>(`/chats/${chatId}/trash/restore`, {
+        entryIds,
+      }),
+    onSuccess: () => {
+      if (chatId) invalidateAfterTrashChange(qc, chatId);
+    },
+  });
+}
+
+export function useDeleteTrashedMessages(chatId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (entryIds?: string[]) =>
+      api.post<{ deleted: number }>(`/chats/${chatId}/trash/delete`, entryIds ? { entryIds } : { all: true }),
+    onSuccess: () => {
+      if (chatId) qc.invalidateQueries({ queryKey: chatKeys.trash(chatId) });
     },
   });
 }
@@ -1588,7 +1653,9 @@ export function useExportChat() {
     mutationFn: async ({ chatId, format = "jsonl" }: { chatId: string; format?: "jsonl" | "text" }) => {
       const ext = format === "text" ? ".txt" : ".jsonl";
       const includeReasoning = useUIStore.getState().includeReasoningInExports;
-      const reasoningParam = includeReasoning ? "&includeReasoning=true" : "";
+      const reasoningParam = `${includeReasoning ? "&includeReasoning=true" : ""}${
+        useUIStore.getState().includePrivateNotesInExports ? "&includePrivateNotes=true" : ""
+      }`;
       await api.download(
         `/chats/${encodeURIComponent(chatId)}/export?format=${encodeURIComponent(format)}${reasoningParam}`,
         `chat-${chatId}${ext}`,
@@ -1614,7 +1681,13 @@ export function useBulkExportChats() {
     }) =>
       api.downloadPost(
         "/chats/export/bulk",
-        { chatIds, format, scope, includeReasoning: useUIStore.getState().includeReasoningInExports },
+        {
+          chatIds,
+          format,
+          scope,
+          includeReasoning: useUIStore.getState().includeReasoningInExports,
+          includePrivateNotes: useUIStore.getState().includePrivateNotesInExports,
+        },
         `chat-transcripts-${format}.zip`,
       ),
   });

@@ -1328,7 +1328,7 @@ export const ChatInput = memo(function ChatInput({
       let rollbackFailed = false;
       if (createdMessageId) {
         try {
-          await deleteMessage.mutateAsync(createdMessageId);
+          await deleteMessage.mutateAsync({ messageId: createdMessageId, skipTrash: true });
         } catch {
           rollbackFailed = true;
         }

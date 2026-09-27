@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- The browser test for attacks made in an initiative style no longer fails when the fight's random dice let the Grave-rat swarm down Ada before her first turn: the test's swarm throws no initiative dice, so Ada always acts first (#6763).
+
 - Regex packs can be selected, exported, and deleted in bulk, with one confirmation and failed deletions retained for retry (#6755).
 - Generation Settings can disable automatic character/persona gallery entries while keeping illustrations and selfies in chat. NovelAI image inspectors now include character captions alongside the scene prompt (#6752, #6748).
 - Conversation's Tools tray always offers **Translate draft**, including on mobile with the optional composer shortcut and automatic translation turned off (#6751).

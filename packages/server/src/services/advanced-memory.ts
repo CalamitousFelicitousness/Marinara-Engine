@@ -266,23 +266,22 @@ function contextStartMessageId(messages: readonly AdvancedMemoryMessage[], audie
 }
 
 // A null audience selects only shared flags, so personal POV starts cannot move a shared reset.
-function contextBoundary(ctx: Context, audience: string[] | null, historical = false) {
+function contextBoundary(ctx: Context, audience: string[] | null) {
   const manualStart = contextStartMessageId(
     ctx.messages,
     audience === null ? [] : audience.length ? audience : ctx.characterIds,
   );
   const sharedManualStart = contextStartMessageId(ctx.messages, []);
   const savedStarts = object(ctx.metadata.advancedMemoryState).contextStarts;
-  const savedStart =
-    !historical && Array.isArray(savedStarts)
-      ? savedStarts
-          .map(object)
-          .find(
-            (start) =>
-              strings(start.audienceCharacterIds).length === 0 &&
-              (start.manualStartMessageId ?? null) === (sharedManualStart || null),
-          )
-      : undefined;
+  const savedStart = Array.isArray(savedStarts)
+    ? savedStarts
+        .map(object)
+        .find(
+          (start) =>
+            strings(start.audienceCharacterIds).length === 0 &&
+            (start.manualStartMessageId ?? null) === (sharedManualStart || null),
+        )
+    : undefined;
   return {
     manualStart,
     boundaryIndex: Math.max(
@@ -2821,7 +2820,8 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     ) {
       receipt.reasons.push("unverified-summary-omitted");
     }
-    const { boundaryIndex: initialBoundary } = contextBoundary(ctx, audience, historical);
+    // The source prefix already excludes future turns; applicable automatic starts also govern swipes.
+    const { boundaryIndex: initialBoundary } = contextBoundary(ctx, audience);
     let boundaryIndex = initialBoundary;
     let live = visible.filter((message) => indexes.get(message.id)! > boundaryIndex);
     const constants = sourceEntries(ctx, sources, historical)
@@ -3670,6 +3670,10 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       throw new Error("Advanced Memory settings or summary corrections changed before generation; retry");
     if (advancedMemorySourceFingerprint(ctx.messages) !== receipt.sourceFingerprint)
       throw new Error("Chat history changed before generation; retry");
+    const { boundaryIndex } = contextBoundary(ctx, null);
+    const preparedBoundary = ctx.messages.findIndex((message) => message.id === receipt.boundaryMessageId);
+    if (preparedBoundary < boundaryIndex)
+      throw new Error("The shared Advanced Memory history cutoff changed before generation; retry");
     const current = await records(chatId);
     for (const [id, revision] of Object.entries(receipt.recordRevisions)) {
       const record = current.find((item) => item.id === id);

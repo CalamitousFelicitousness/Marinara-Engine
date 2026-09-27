@@ -1,4 +1,20 @@
-import { assignCombatTactics, combatTacticsSchema } from "@marinara-engine/shared";
+import {
+  addToGameInventory,
+  assignCombatTactics,
+  combatTacticsSchema,
+  GAME_INVENTORY_MAX_QUANTITY,
+  gameInventoryNameKey,
+  gameInventoryTotals,
+  mergeGameInventoryStacks,
+  newGameInventoryStackId,
+  normalizeGameInventoryStacks,
+  renameGameInventoryStack,
+  setGameInventoryStackQuantity,
+  splitGameInventoryStack,
+  takeFromGameInventory,
+  type GameInventoryStack,
+  type InventoryItem as PlayerInventoryItem,
+} from "@marinara-engine/shared";
 // ──────────────────────────────────────────────
 // Game: Main Surface (rendered by ChatArea when mode === "game")
 // ──────────────────────────────────────────────
@@ -1648,8 +1664,11 @@ function IntroTypewriter({ text, onComplete }: { text: string; onComplete?: () =
 
 function normalizeInventoryCount(value: number | undefined): number {
   if (!Number.isFinite(value)) return 1;
-  return Math.max(1, Math.min(9999, Math.floor(value ?? 1)));
+  return Math.max(1, Math.min(GAME_INVENTORY_MAX_QUANTITY, Math.floor(value ?? 1)));
 }
+
+/** The most one `[inventory: ...]` command may add or take: a bound on what a model writes. */
+const GM_INVENTORY_COUNT_MAX = 9999;
 
 function removeInventoryUnit<T extends { name: string; quantity: number }>(
   items: T[],
@@ -3116,10 +3135,12 @@ function GameSurfaceComponent({
     Array<{ segment: number; update: InventoryTag }>
   >([]);
   const [inventoryOpen, setInventoryOpen] = useState(false);
-  const [inventoryItems, setInventoryItems] = useState<Array<{ name: string; quantity: number }>>(() => {
-    return (chatMeta.gameInventory as Array<{ name: string; quantity: number }>) ?? [];
-  });
+  const [inventoryItems, setInventoryItems] = useState<GameInventoryStack[]>(() =>
+    normalizeGameInventoryStacks(chatMeta.gameInventory),
+  );
   const inventoryItemsRef = useRef(inventoryItems);
+  // What a fight offers: one line per item, however the player split its stacks.
+  const inventoryTotals = useMemo(() => gameInventoryTotals(inventoryItems), [inventoryItems]);
   const [inventoryNotifications, setInventoryNotifications] = useState<string[]>([]);
   const [removingPartyMemberId, setRemovingPartyMemberId] = useState<string | null>(null);
   const [pendingMapMove, setPendingMapMove] = useState<{
@@ -3476,7 +3497,7 @@ function GameSurfaceComponent({
     setNarrationDoneTurnKey(null);
     lastProcessedMsgRef.current = null;
     // Reset inventory/readables for the new chat or game.
-    setInventoryItems((chatMeta.gameInventory as Array<{ name: string; quantity: number }>) ?? []);
+    setInventoryItems(normalizeGameInventoryStacks(chatMeta.gameInventory));
     setInventoryNotifications([]);
     setPendingInventorySegmentUpdates([]);
     setActiveReadable(null);
@@ -3520,14 +3541,15 @@ function GameSurfaceComponent({
       let nextPlayerStats = currentPlayerStats;
 
       for (const invUpdate of updates) {
-        const quantity = normalizeInventoryCount(invUpdate.count);
+        const quantity = Math.min(GM_INVENTORY_COUNT_MAX, normalizeInventoryCount(invUpdate.count));
         for (const itemName of invUpdate.items) {
           const normalizedItemName = normalizeInventoryName(itemName);
           if (!normalizedItemName) continue;
 
           let applied = false;
+          let changed = quantity;
           if (invUpdate.action === "add") {
-            updated = addInventoryUnit(updated, normalizedItemName, quantity);
+            updated = addToGameInventory(updated, normalizedItemName, quantity);
             if (nextPlayerStats) {
               nextPlayerStats = {
                 ...nextPlayerStats,
@@ -3539,20 +3561,18 @@ function GameSurfaceComponent({
             );
             applied = true;
           } else {
-            const nextInventory = removeInventoryUnit(updated, normalizedItemName, quantity);
-            if (nextInventory !== updated) {
-              updated = nextInventory;
+            // Taken across every stack of the item, and never more than there is.
+            const taken = takeFromGameInventory(updated, normalizedItemName, quantity);
+            if (taken.taken > 0) {
+              updated = taken.stacks;
+              changed = taken.taken;
               notifications.push(
-                quantity > 1 ? `You lost ${normalizedItemName} x${quantity}!` : `You lost ${normalizedItemName}!`,
+                changed > 1 ? `You lost ${normalizedItemName} x${changed}!` : `You lost ${normalizedItemName}!`,
               );
               applied = true;
             }
             if (nextPlayerStats) {
-              const nextDetailedInventory = removeInventoryUnit(
-                nextPlayerStats.inventory,
-                normalizedItemName,
-                quantity,
-              );
+              const nextDetailedInventory = removeInventoryUnit(nextPlayerStats.inventory, normalizedItemName, changed);
               if (nextDetailedInventory !== nextPlayerStats.inventory) {
                 nextPlayerStats = { ...nextPlayerStats, inventory: nextDetailedInventory };
                 applied = true;
@@ -3564,7 +3584,7 @@ function GameSurfaceComponent({
             journalEntries.push({
               item: normalizedItemName,
               action: invUpdate.action === "add" ? "acquired" : "lost",
-              quantity,
+              quantity: changed,
             });
           }
         }
@@ -7668,195 +7688,200 @@ function GameSurfaceComponent({
     [activeChatId, chatMeta.gameJournal, updateChatMetadata, localizeUi],
   );
 
-  const handleAddInventoryItem = useCallback(async () => {
-    if (!activeChatId) return null;
-
-    const addedItemName = getNextInventoryItemName(inventoryItems);
-    const updatedInventory = [...inventoryItems, { name: addedItemName, quantity: 1 }];
-
-    const currentGameState = useGameStateStore.getState().current;
-    const currentPlayerStats = currentGameState?.chatId === activeChatId ? currentGameState.playerStats : null;
-    const nextPlayerStats = currentPlayerStats
-      ? {
-          ...currentPlayerStats,
-          inventory: [
-            ...currentPlayerStats.inventory,
-            { name: addedItemName, description: "", quantity: 1, location: "on_person" },
-          ],
-        }
-      : null;
-    const shouldPatchGameState =
-      Boolean(currentGameState?.chatId === activeChatId) && Boolean(currentPlayerStats) && Boolean(nextPlayerStats);
-    let patchedGameState = false;
-
-    try {
-      if (shouldPatchGameState && nextPlayerStats) {
-        await api.patch(`/chats/${activeChatId}/game-state`, { playerStats: nextPlayerStats });
-        patchedGameState = true;
-      }
-
-      await updateChatMetadata.mutateAsync({
-        id: activeChatId,
-        gameInventory: updatedInventory,
-      });
-
-      setInventoryItems(updatedInventory);
-      if (shouldPatchGameState && currentGameState && nextPlayerStats) {
-        useGameStateStore.getState().setGameState({
-          ...currentGameState,
-          playerStats: nextPlayerStats,
-        });
-      }
-
-      setInventoryNotifications([`You gained ${addedItemName}!`]);
-      if (notificationTimerRef.current) clearTimeout(notificationTimerRef.current);
-      notificationTimerRef.current = setTimeout(() => setInventoryNotifications([]), 4000);
-      toast.success(localizeUi("ui.game.gamesurfacecomponent.addedValue1ToInventory", { value1: addedItemName }));
-      return addedItemName;
-    } catch (error) {
-      if (patchedGameState) {
-        api.patch(`/chats/${activeChatId}/game-state`, { playerStats: currentPlayerStats }).catch(() => {});
-      }
-      const message = error instanceof Error ? error.message : `Failed to add ${addedItemName} to inventory.`;
-      toast.error(message);
-      return null;
-    }
-  }, [activeChatId, inventoryItems, updateChatMetadata, localizeUi]);
-
-  const handleIncrementInventoryItem = useCallback(
-    async (itemName: string) => {
+  /**
+   * One change to the inventory, saved: the stacks the screen shows, and the detailed inventory on the
+   * game state when `mirror` changes it. The game state goes first and is put back if the stacks
+   * cannot be saved, as every inventory change always has. Throws what the save threw.
+   *
+   * The detailed inventory keeps one entry per item, so a split, a merge or a reorder, which never
+   * change how many of anything there are, pass no `mirror` and leave it alone.
+   */
+  const commitInventory = useCallback(
+    async (
+      updatedInventory: GameInventoryStack[],
+      mirror?: (inventory: PlayerInventoryItem[]) => PlayerInventoryItem[],
+    ) => {
       if (!activeChatId) return;
-
-      const normalizedItemName = normalizeInventoryName(itemName);
-      if (!normalizedItemName) return;
-
-      const updatedInventory = addInventoryUnit(inventoryItems, normalizedItemName);
-      if (updatedInventory === inventoryItems) {
-        toast.error(localizeUi("ui.game.gamesurfacecomponent.failedToIncreaseValue1", { value1: normalizedItemName }));
-        return;
-      }
-
       const currentGameState = useGameStateStore.getState().current;
       const currentPlayerStats = currentGameState?.chatId === activeChatId ? currentGameState.playerStats : null;
-      const nextPlayerStats = currentPlayerStats
-        ? {
-            ...currentPlayerStats,
-            inventory: addInventoryUnit(currentPlayerStats.inventory, normalizedItemName),
-          }
-        : null;
-      const shouldPatchGameState =
-        Boolean(currentGameState?.chatId === activeChatId) && Boolean(currentPlayerStats) && Boolean(nextPlayerStats);
+      const mirrored = currentPlayerStats && mirror ? mirror(currentPlayerStats.inventory) : null;
+      const nextPlayerStats =
+        currentPlayerStats && mirrored && mirrored !== currentPlayerStats.inventory
+          ? { ...currentPlayerStats, inventory: mirrored }
+          : null;
       let patchedGameState = false;
-
       try {
-        if (shouldPatchGameState && nextPlayerStats) {
+        if (nextPlayerStats) {
           await api.patch(`/chats/${activeChatId}/game-state`, { playerStats: nextPlayerStats });
           patchedGameState = true;
         }
-
-        await updateChatMetadata.mutateAsync({
-          id: activeChatId,
-          gameInventory: updatedInventory,
-        });
-
+        await updateChatMetadata.mutateAsync({ id: activeChatId, gameInventory: updatedInventory });
+        inventoryItemsRef.current = updatedInventory;
         setInventoryItems(updatedInventory);
-        if (shouldPatchGameState && currentGameState && nextPlayerStats) {
-          useGameStateStore.getState().setGameState({
-            ...currentGameState,
-            playerStats: nextPlayerStats,
-          });
+        if (nextPlayerStats && currentGameState) {
+          useGameStateStore.getState().setGameState({ ...currentGameState, playerStats: nextPlayerStats });
         }
-
-        setInventoryNotifications([`You gained ${normalizedItemName}!`]);
-        if (notificationTimerRef.current) clearTimeout(notificationTimerRef.current);
-        notificationTimerRef.current = setTimeout(() => setInventoryNotifications([]), 4000);
-        toast.success(localizeUi("ui.game.gamesurfacecomponent.added1Value1", { value1: normalizedItemName }));
       } catch (error) {
         if (patchedGameState) {
           api.patch(`/chats/${activeChatId}/game-state`, { playerStats: currentPlayerStats }).catch(() => {});
         }
-        const message = error instanceof Error ? error.message : `Failed to increase ${normalizedItemName}.`;
-        toast.error(message);
+        throw error;
       }
     },
-    [activeChatId, inventoryItems, updateChatMetadata, localizeUi],
+    [activeChatId, updateChatMetadata],
   );
 
-  const handleRemoveInventoryItem = useCallback(
-    async (itemName: string) => {
-      if (!activeChatId) return;
+  const showInventoryNotification = useCallback((text: string) => {
+    setInventoryNotifications([text]);
+    if (notificationTimerRef.current) clearTimeout(notificationTimerRef.current);
+    notificationTimerRef.current = setTimeout(() => setInventoryNotifications([]), 4000);
+  }, []);
 
-      const updatedInventory = removeInventoryUnit(inventoryItems, itemName);
-      if (updatedInventory === inventoryItems) {
-        toast.error(localizeUi("ui.game.gamesurfacecomponent.value1IsNoLongerInYourInventory", { value1: itemName }));
+  /** Resolves to the new stack's id, so the screen can select it. */
+  const handleAddInventoryItem = useCallback(async () => {
+    if (!activeChatId) return null;
+    const inventoryItems = inventoryItemsRef.current;
+
+    const addedItemName = getNextInventoryItemName(inventoryItems);
+    const addedStack = { id: newGameInventoryStackId(inventoryItems), name: addedItemName, quantity: 1 };
+    try {
+      await commitInventory([...inventoryItems, addedStack], (inventory) => [
+        ...inventory,
+        { name: addedItemName, description: "", quantity: 1, location: "on_person" },
+      ]);
+      showInventoryNotification(`You gained ${addedItemName}!`);
+      toast.success(localizeUi("ui.game.gamesurfacecomponent.addedValue1ToInventory", { value1: addedItemName }));
+      return addedStack.id;
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : localizeUi("ui.game.gamesurfacecomponent.failedToAddValue1ToInventory", { value1: addedItemName }),
+      );
+      return null;
+    }
+  }, [activeChatId, commitInventory, showInventoryNotification, localizeUi]);
+
+  /**
+   * One stack set to a count: the +1 and -1 buttons, and whatever the player typed. Zero removes the
+   * stack. The detailed inventory follows by the difference, since it keeps one total per item.
+   */
+  const handleSetInventoryStackQuantity = useCallback(
+    async (stackId: string, quantity: number) => {
+      if (!activeChatId) return;
+      // The latest saved inventory, not this render's: a second quick action builds on the first.
+      const inventoryItems = inventoryItemsRef.current;
+      const stack = inventoryItems.find((entry) => entry.id === stackId);
+      if (!stack) {
+        toast.error(localizeUi("ui.game.gamesurfacecomponent.thatStackIsNoLongerInYourInventory"));
         return;
       }
-
-      const currentGameState = useGameStateStore.getState().current;
-      const currentPlayerStats = currentGameState?.chatId === activeChatId ? currentGameState.playerStats : null;
-      const nextPlayerStats = currentPlayerStats
-        ? (() => {
-            const updatedDetailedInventory = removeInventoryUnit(currentPlayerStats.inventory, itemName);
-            return updatedDetailedInventory === currentPlayerStats.inventory
-              ? currentPlayerStats
-              : { ...currentPlayerStats, inventory: updatedDetailedInventory };
-          })()
-        : null;
-      const shouldPatchGameState =
-        Boolean(currentGameState?.chatId === activeChatId) &&
-        Boolean(currentPlayerStats) &&
-        nextPlayerStats !== currentPlayerStats;
-      let patchedGameState = false;
-
+      const updatedInventory = setGameInventoryStackQuantity(inventoryItems, stackId, quantity);
+      if (updatedInventory === inventoryItems) return;
+      const after = updatedInventory.find((entry) => entry.id === stackId)?.quantity ?? 0;
+      const difference = after - stack.quantity;
       try {
-        if (shouldPatchGameState && nextPlayerStats) {
-          await api.patch(`/chats/${activeChatId}/game-state`, { playerStats: nextPlayerStats });
-          patchedGameState = true;
+        await commitInventory(updatedInventory, (inventory) =>
+          difference > 0
+            ? addInventoryUnit(inventory, stack.name, difference)
+            : removeInventoryUnit(inventory, stack.name, -difference),
+        );
+        if (difference > 0) {
+          showInventoryNotification(
+            difference > 1 ? `You gained ${stack.name} x${difference}!` : `You gained ${stack.name}!`,
+          );
+          toast.success(
+            localizeUi("ui.game.gamesurfacecomponent.addedCountValue1", { count: difference, value1: stack.name }),
+          );
+          return;
         }
-
-        await updateChatMetadata.mutateAsync({
-          id: activeChatId,
-          gameInventory: updatedInventory,
-        });
-
-        setInventoryItems(updatedInventory);
-        if (shouldPatchGameState && currentGameState && nextPlayerStats) {
-          useGameStateStore.getState().setGameState({
-            ...currentGameState,
-            playerStats: nextPlayerStats,
-          });
-        }
-
         api
           .post("/game/journal/entry", {
             chatId: activeChatId,
             type: "item",
-            data: { item: itemName, action: "removed", quantity: 1 },
+            data: { item: stack.name, action: "removed", quantity: -difference },
           })
           .catch(() => {});
-
-        setInventoryNotifications([`You removed ${itemName}.`]);
-        if (notificationTimerRef.current) clearTimeout(notificationTimerRef.current);
-        notificationTimerRef.current = setTimeout(() => setInventoryNotifications([]), 4000);
-        toast.success(localizeUi("ui.game.gamesurfacecomponent.removedValue1FromInventory", { value1: itemName }));
+        showInventoryNotification(
+          -difference > 1 ? `You removed ${stack.name} x${-difference}.` : `You removed ${stack.name}.`,
+        );
+        toast.success(
+          after === 0
+            ? localizeUi("ui.game.gamesurfacecomponent.removedValue1FromInventory", { value1: stack.name })
+            : localizeUi("ui.game.gamesurfacecomponent.removedCountValue1", {
+                count: -difference,
+                value1: stack.name,
+              }),
+        );
       } catch (error) {
-        if (patchedGameState) {
-          api.patch(`/chats/${activeChatId}/game-state`, { playerStats: currentPlayerStats }).catch(() => {});
-        }
-        const message = error instanceof Error ? error.message : `Failed to remove ${itemName} from inventory.`;
-        toast.error(message);
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : localizeUi("ui.game.gamesurfacecomponent.failedToChangeValue1", { value1: stack.name }),
+        );
       }
     },
-    [activeChatId, inventoryItems, updateChatMetadata, localizeUi],
+    [activeChatId, commitInventory, showInventoryNotification, localizeUi],
   );
 
+  /** Part of a stack into a new stack beside it. Nothing about the item changes, only how it is piled. */
+  const handleSplitInventoryStack = useCallback(
+    async (stackId: string, size: number) => {
+      if (!activeChatId) return null;
+      // The latest saved inventory, not this render's: a second quick action builds on the first.
+      const inventoryItems = inventoryItemsRef.current;
+      const stack = inventoryItems.find((entry) => entry.id === stackId);
+      const updatedInventory = splitGameInventoryStack(inventoryItems, stackId, size);
+      if (!stack || updatedInventory === inventoryItems) return null;
+      try {
+        await commitInventory(updatedInventory);
+        toast.success(localizeUi("ui.game.gamesurfacecomponent.splitCountValue1", { count: size, value1: stack.name }));
+        return updatedInventory[updatedInventory.findIndex((entry) => entry.id === stackId) + 1]?.id ?? null;
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : localizeUi("ui.game.gamesurfacecomponent.failedToSplitValue1", { value1: stack.name }),
+        );
+        return null;
+      }
+    },
+    [activeChatId, commitInventory, localizeUi],
+  );
+
+  /** One stack poured into another stack of the same item, which keeps its place. */
+  const handleMergeInventoryStacks = useCallback(
+    async (fromId: string, intoId: string) => {
+      if (!activeChatId) return;
+      // The latest saved inventory, not this render's: a second quick action builds on the first.
+      const inventoryItems = inventoryItemsRef.current;
+      const into = inventoryItems.find((entry) => entry.id === intoId);
+      const updatedInventory = mergeGameInventoryStacks(inventoryItems, fromId, intoId);
+      if (!into || updatedInventory === inventoryItems) return;
+      try {
+        await commitInventory(updatedInventory);
+        toast.success(localizeUi("ui.game.gamesurfacecomponent.mergedValue1", { value1: into.name }));
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : localizeUi("ui.game.gamesurfacecomponent.failedToMergeValue1", { value1: into.name }),
+        );
+      }
+    },
+    [activeChatId, commitInventory, localizeUi],
+  );
+
+  /** A fight used one of an item: taken from its stacks by name, since a fight sees one total per item. */
   const handleUseCombatInventoryItem = useCallback(
     async (itemName: string) => {
       if (!activeChatId) return;
+      // The latest saved inventory, not this render's: a second quick action builds on the first.
+      const inventoryItems = inventoryItemsRef.current;
 
       const normalizedItemName = normalizeInventoryName(itemName);
-      const updatedInventory = removeInventoryUnit(inventoryItems, normalizedItemName);
-      if (updatedInventory === inventoryItems) {
+      const taken = takeFromGameInventory(inventoryItems, normalizedItemName, 1);
+      if (taken.taken === 0) {
         toast.error(
           localizeUi("ui.game.gamesurfacecomponent.value1IsNoLongerInYourInventory", {
             value1: normalizedItemName || itemName,
@@ -7864,42 +7889,8 @@ function GameSurfaceComponent({
         );
         return;
       }
-
-      const currentGameState = useGameStateStore.getState().current;
-      const currentPlayerStats = currentGameState?.chatId === activeChatId ? currentGameState.playerStats : null;
-      const nextPlayerStats = currentPlayerStats
-        ? (() => {
-            const updatedDetailedInventory = removeInventoryUnit(currentPlayerStats.inventory, normalizedItemName);
-            return updatedDetailedInventory === currentPlayerStats.inventory
-              ? currentPlayerStats
-              : { ...currentPlayerStats, inventory: updatedDetailedInventory };
-          })()
-        : null;
-      const shouldPatchGameState =
-        Boolean(currentGameState?.chatId === activeChatId) &&
-        Boolean(currentPlayerStats) &&
-        nextPlayerStats !== currentPlayerStats;
-      let patchedGameState = false;
-
       try {
-        if (shouldPatchGameState && nextPlayerStats) {
-          await api.patch(`/chats/${activeChatId}/game-state`, { playerStats: nextPlayerStats });
-          patchedGameState = true;
-        }
-
-        await updateChatMetadata.mutateAsync({
-          id: activeChatId,
-          gameInventory: updatedInventory,
-        });
-
-        setInventoryItems(updatedInventory);
-        if (shouldPatchGameState && currentGameState && nextPlayerStats) {
-          useGameStateStore.getState().setGameState({
-            ...currentGameState,
-            playerStats: nextPlayerStats,
-          });
-        }
-
+        await commitInventory(taken.stacks, (inventory) => removeInventoryUnit(inventory, normalizedItemName));
         api
           .post("/game/journal/entry", {
             chatId: activeChatId,
@@ -7907,96 +7898,76 @@ function GameSurfaceComponent({
             data: { item: normalizedItemName, action: "used", quantity: 1 },
           })
           .catch(() => {});
-
-        setInventoryNotifications([`You used ${normalizedItemName}.`]);
-        if (notificationTimerRef.current) clearTimeout(notificationTimerRef.current);
-        notificationTimerRef.current = setTimeout(() => setInventoryNotifications([]), 4000);
+        showInventoryNotification(`You used ${normalizedItemName}.`);
         toast.success(localizeUi("ui.game.gamesurfacecomponent.usedValue1", { value1: normalizedItemName }));
       } catch (error) {
-        if (patchedGameState) {
-          api.patch(`/chats/${activeChatId}/game-state`, { playerStats: currentPlayerStats }).catch(() => {});
-        }
-        const message = error instanceof Error ? error.message : `Failed to use ${normalizedItemName}.`;
-        toast.error(message);
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : localizeUi("ui.game.gamesurfacecomponent.failedToUseValue1", { value1: normalizedItemName }),
+        );
       }
     },
-    [activeChatId, inventoryItems, updateChatMetadata, localizeUi],
+    [activeChatId, commitInventory, showInventoryNotification, localizeUi],
   );
 
+  /**
+   * One stack renamed, resolving to the stack that holds the result (renaming to an item the
+   * inventory already has pours it into that item's first stack). The detailed inventory renames its
+   * entry when this was the item's only stack, and otherwise moves this stack's count to the new name.
+   */
   const handleRenameInventoryItem = useCallback(
-    async (currentName: string, nextName: string) => {
+    async (stackId: string, nextName: string) => {
       if (!activeChatId) return null;
-
-      const renamedInventory = renameInventoryItem(inventoryItems, currentName, nextName);
-      if (!renamedInventory) {
-        toast.error(
-          localizeUi("ui.game.gamesurfacecomponent.value1IsNoLongerInYourInventory", { value1: currentName }),
-        );
+      // The latest saved inventory, not this render's: a second quick action builds on the first.
+      const inventoryItems = inventoryItemsRef.current;
+      const stack = inventoryItems.find((entry) => entry.id === stackId);
+      const renamed = stack ? renameGameInventoryStack(inventoryItems, stackId, nextName) : null;
+      if (!stack || !renamed) {
+        toast.error(localizeUi("ui.game.gamesurfacecomponent.thatStackIsNoLongerInYourInventory"));
         return null;
       }
-
-      const { items: updatedInventory, resolvedName } = renamedInventory;
-      if (updatedInventory === inventoryItems) {
-        return resolvedName;
-      }
-
-      const currentGameState = useGameStateStore.getState().current;
-      const currentPlayerStats = currentGameState?.chatId === activeChatId ? currentGameState.playerStats : null;
-      const nextPlayerStats = currentPlayerStats
-        ? (() => {
-            const renamedDetailedInventory = renameInventoryItem(currentPlayerStats.inventory, currentName, nextName);
-            return renamedDetailedInventory
-              ? { ...currentPlayerStats, inventory: renamedDetailedInventory.items }
-              : currentPlayerStats;
-          })()
-        : null;
-      const shouldPatchGameState =
-        Boolean(currentGameState?.chatId === activeChatId) &&
-        Boolean(currentPlayerStats) &&
-        nextPlayerStats !== currentPlayerStats;
-      let patchedGameState = false;
-
+      if (renamed.stacks === inventoryItems) return renamed.id;
+      const resolvedName = renamed.stacks.find((entry) => entry.id === renamed.id)?.name ?? nextName;
+      const onlyStack =
+        inventoryItems.filter((entry) => gameInventoryNameKey(entry.name) === gameInventoryNameKey(stack.name))
+          .length === 1;
       try {
-        if (shouldPatchGameState && nextPlayerStats) {
-          await api.patch(`/chats/${activeChatId}/game-state`, { playerStats: nextPlayerStats });
-          patchedGameState = true;
-        }
-
-        await updateChatMetadata.mutateAsync({
-          id: activeChatId,
-          gameInventory: updatedInventory,
+        await commitInventory(renamed.stacks, (inventory) => {
+          if (onlyStack) return renameInventoryItem(inventory, stack.name, resolvedName)?.items ?? inventory;
+          return addInventoryUnit(
+            removeInventoryUnit(inventory, stack.name, stack.quantity),
+            resolvedName,
+            stack.quantity,
+          );
         });
-
-        setInventoryItems(updatedInventory);
-        if (shouldPatchGameState && currentGameState && nextPlayerStats) {
-          useGameStateStore.getState().setGameState({
-            ...currentGameState,
-            playerStats: nextPlayerStats,
-          });
-        }
-
         toast.success(
           localizeUi("ui.game.gamesurfacecomponent.renamedValue1ToValue2", {
-            value1: currentName,
+            value1: stack.name,
             value2: resolvedName,
           }),
         );
-        return resolvedName;
+        return renamed.id;
       } catch (error) {
-        if (patchedGameState) {
-          api.patch(`/chats/${activeChatId}/game-state`, { playerStats: currentPlayerStats }).catch(() => {});
-        }
-        const message = error instanceof Error ? error.message : `Failed to rename ${currentName} to ${resolvedName}.`;
-        toast.error(message);
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : localizeUi("ui.game.gamesurfacecomponent.failedToRenameValue1ToValue2", {
+                value1: stack.name,
+                value2: resolvedName,
+              }),
+        );
         return null;
       }
     },
-    [activeChatId, inventoryItems, updateChatMetadata, localizeUi],
+    [activeChatId, commitInventory, localizeUi],
   );
 
   const handleReorderInventoryItem = useCallback(
     async (fromIndex: number, toIndex: number) => {
       if (!activeChatId) return;
+      // The latest saved inventory, not this render's: a second quick action builds on the first.
+      const inventoryItems = inventoryItemsRef.current;
       if (fromIndex === toIndex) return;
       if (fromIndex < 0 || toIndex < 0) return;
       if (fromIndex >= inventoryItems.length || toIndex >= inventoryItems.length) return;
@@ -8011,6 +7982,7 @@ function GameSurfaceComponent({
       // Optimistic local update so the swap feels instant; rollback on error.
       // Only the visible gameInventory order is persisted — playerStats.inventory
       // is name-indexed by the agent, so its array order is not observable.
+      inventoryItemsRef.current = updatedInventory;
       setInventoryItems(updatedInventory);
 
       try {
@@ -8026,7 +7998,7 @@ function GameSurfaceComponent({
         toast.error(message);
       }
     },
-    [activeChatId, inventoryItems, updateChatMetadata],
+    [activeChatId, updateChatMetadata],
   );
 
   const handleEditSegment = useCallback(
@@ -13072,7 +13044,7 @@ function GameSurfaceComponent({
                               battlefield={combatSceneMeta?.battlefield ?? undefined}
                               party={combatParty}
                               enemies={combatEnemies}
-                              inventoryItems={inventoryItems}
+                              inventoryItems={inventoryTotals}
                               combatItemEffects={combatItemEffects}
                               combatMechanics={combatMechanics}
                               environment={combatSceneMeta?.environmentType ?? undefined}
@@ -13105,7 +13077,7 @@ function GameSurfaceComponent({
                               chatId={activeChatId}
                               party={combatParty}
                               enemies={combatEnemies}
-                              inventoryItems={inventoryItems}
+                              inventoryItems={inventoryTotals}
                               onCombatEnd={handleCombatEnd}
                               onInventoryItemUsed={handleUseCombatInventoryItem}
                               onCombatantsChange={handleCombatantsChange}
@@ -13471,8 +13443,9 @@ function GameSurfaceComponent({
                 onClose={() => setInventoryOpen(false)}
                 onAddItem={handleAddInventoryItem}
                 onRenameItem={handleRenameInventoryItem}
-                onRemoveItem={handleRemoveInventoryItem}
-                onIncrementItem={handleIncrementInventoryItem}
+                onSetItemQuantity={handleSetInventoryStackQuantity}
+                onSplitItem={handleSplitInventoryStack}
+                onMergeItems={handleMergeInventoryStacks}
                 onReorderItem={handleReorderInventoryItem}
                 canInteract={sessionInteractive && narrationDone && !isStreaming}
                 onUseItem={(itemName) => {

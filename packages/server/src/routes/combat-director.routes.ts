@@ -1,5 +1,12 @@
 import { createGameStateStorage, parseStoredRulesetLive } from "../services/storage/game-state.storage.js";
-import { normalizeGameDifficulty, combatWeatherSchema } from "@marinara-engine/shared";
+import {
+  normalizeGameDifficulty,
+  combatWeatherSchema,
+  gameInventoryCount,
+  gameInventoryTotals,
+  normalizeGameInventoryStacks,
+  takeFromGameInventory,
+} from "@marinara-engine/shared";
 import { resolveCombatWeather } from "../services/game/weather.service.js";
 import type { FastifyInstance } from "fastify";
 import { randomUUID } from "node:crypto";
@@ -546,13 +553,13 @@ export async function combatDirectorRoutes(
           await chats.patchMetadata(
             chatId,
             (meta) => {
-              const inventory = Array.isArray(meta.gameInventory)
-                ? (structuredClone(meta.gameInventory) as Array<{ name: string; quantity: number }>)
-                : [];
+              // Taken by name across every stack of the item, since the fight saw one total per item.
+              let inventory = normalizeGameInventoryStacks(meta.gameInventory);
               for (const d of deltas) {
-                const item = inventory.find((i) => i.name === d.name);
-                if (!item || item.quantity < d.count) throw new Error("Inventory changed. Reload the battle.");
-                item.quantity -= d.count;
+                if (gameInventoryCount(inventory, d.name) < d.count) {
+                  throw new Error("Inventory changed. Reload the battle.");
+                }
+                inventory = takeFromGameInventory(inventory, d.name, d.count).stacks;
               }
               return { gameInventory: inventory };
             },
@@ -663,7 +670,8 @@ export async function combatDirectorRoutes(
         }
         const state = createCombatDirector({
           ...input,
-          inventory: Array.isArray(meta.gameInventory) ? meta.gameInventory : [],
+          // One line per item: a fight neither knows nor cares how the player split their stacks.
+          inventory: gameInventoryTotals(normalizeGameInventoryStacks(meta.gameInventory)),
           party: input.party as Combatant[],
           // What the fight is RESOLVED by is read below and never stored on the Engine's own units.
           enemies: input.enemies.map(({ creature: _c, tier: _t, proposed: _p, ...unit }) => unit) as Combatant[],

@@ -43,6 +43,9 @@ function manualChunks(id: string) {
   if (id.endsWith("/components/game/game-narration-format.ts")) return "game-narration-format";
   if (id.endsWith("/components/game/GameNarrationVisuals.tsx")) return "game-narration-visuals";
   if (id.endsWith("/lib/game-tag-parser.ts")) return "game-tag-parser";
+  // The inventory screen grows with every kind of item a ruleset can describe, so it is its own chunk
+  // rather than weight on GameSurface's budget.
+  if (id.endsWith("/components/game/GameInventory.tsx")) return "game-inventory";
   if (!id.includes("/node_modules/")) return undefined;
   // Match the dependency path, not names in the checkout's parent directories.
   id = id.slice(id.lastIndexOf("/node_modules/") + "/node_modules/".length);

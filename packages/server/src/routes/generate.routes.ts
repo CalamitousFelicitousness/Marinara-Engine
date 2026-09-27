@@ -166,6 +166,8 @@ import {
   isRoleplayCommandEnabled,
   isRoleplayCommandAllowed,
   getRoleplayCommandActivity,
+  gameInventoryTotals,
+  normalizeGameInventoryStacks,
   type RoleplayCommandActivity,
   type RulesetLiveStates,
 } from "@marinara-engine/shared";
@@ -4448,13 +4450,10 @@ export async function generateRoutes(app: FastifyInstance) {
               // these turns; the gate declines to widen that wart rather than matching it.
               experienceGmVerbs:
                 gmVerbTableForPrompt && !input.impersonate ? renderGmVerbInstructions(gmVerbTableForPrompt) : undefined,
+              // One line per item with its total, so a stack the player split reads as one thing.
               playerInventory: (() => {
-                try {
-                  const inv = (chatMeta.gameInventory as Array<{ name: string; quantity: number }>) ?? [];
-                  return inv.length > 0 ? inv : undefined;
-                } catch {
-                  return undefined;
-                }
+                const inv = gameInventoryTotals(normalizeGameInventoryStacks(chatMeta.gameInventory));
+                return inv.length > 0 ? inv : undefined;
               })(),
             }),
           );

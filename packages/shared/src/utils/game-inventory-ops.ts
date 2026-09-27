@@ -271,11 +271,15 @@ export function followGameInventoryDetails(
   const afterTotals = totalsOf(after);
   const settled = new Set<string>();
 
-  // A rename that emptied the old name into a name nothing held renames the entry in place.
+  // A rename in the player's bag that emptied the old name into a name the bag did not hold renames
+  // the entry in place. Both names are checked in the player's bag, so a companion's rename in the
+  // same batch never renames the player's entry.
   for (const { from, to } of renames) {
     const fromKey = gameInventoryNameKey(from);
     const toKey = gameInventoryNameKey(to);
+    const renamedTo = afterTotals.get(toKey);
     if (
+      !renamedTo ||
       settled.has(fromKey) ||
       settled.has(toKey) ||
       !beforeTotals.has(fromKey) ||
@@ -285,11 +289,7 @@ export function followGameInventoryDetails(
       continue;
     const index = items.findIndex((item) => gameInventoryNameKey(item.name) === fromKey);
     if (index < 0 || items.some((item) => gameInventoryNameKey(item.name) === toKey)) continue;
-    items[index] = {
-      ...items[index]!,
-      name: afterTotals.get(toKey)?.name ?? to,
-      quantity: afterTotals.get(toKey)?.quantity ?? items[index]!.quantity,
-    };
+    items[index] = { ...items[index]!, name: renamedTo.name, quantity: renamedTo.quantity };
     settled.add(fromKey);
     settled.add(toKey);
   }

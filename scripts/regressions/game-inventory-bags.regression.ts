@@ -266,6 +266,17 @@ try {
       withTorch,
       "a companion's rename leaves an entry of the old name alone",
     );
+    // Even when the player's own stack of that name goes in the same batch: the entry leaves, and no
+    // entry takes the companion's new name.
+    const playerTorch = [...before, { id: "e", name: "Torch", quantity: 1 }];
+    const renameAndGive = applyGameInventoryOps(playerTorch, [
+      { op: "rename", id: "d", name: "Brand" },
+      { op: "give", id: "e", to: "Bram" },
+    ]);
+    assert.deepEqual(
+      followGameInventoryDetails(withTorch, playerTorch, renameAndGive.stacks, renameAndGive.renames),
+      detailed,
+    );
     // The player's own arrows, given away, leave it.
     const given = applyGameInventoryOps(before, [{ op: "give", id: "c", to: "Cass" }]);
     assert.deepEqual(followGameInventoryDetails(detailed, before, given.stacks), [detailed[0]]);

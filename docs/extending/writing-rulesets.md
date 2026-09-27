@@ -1054,7 +1054,7 @@ declaring first changes nothing any rule reads, so there is nothing for a key to
 
 Some pool systems keep initiative as a number for the whole fight and let attacks move it: one way
 of attacking takes it from the target, another spends the attacker's own as damage, and whoever
-runs out has crashed. A `dice-pool` fight can say so (Capability API 1.48):
+falls to a set line has crashed. A `dice-pool` fight can say so (Capability API 1.48):
 
 ```json
 "initiative": {

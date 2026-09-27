@@ -1294,6 +1294,7 @@ export function PersonaEditor() {
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [avatarGeneratorOpen, setAvatarGeneratorOpen] = useState(false);
   const [characterSheetGeneratorOpen, setCharacterSheetGeneratorOpen] = useState(false);
+  const { data: characterSheetSprites } = useCharacterSprites(characterSheetGeneratorOpen ? personaId : null);
   const loadedPersonaIdRef = useRef<string | null>(null);
   /** Authoritative avatar path last reconciled into the editor. */
   const authoritativeAvatarPathRef = useRef<string | null>(null);
@@ -1947,6 +1948,7 @@ export function PersonaEditor() {
         entityName={formData.name || localizeUi("ui.characters.charactersheet.characterFallback")}
         defaultAppearance={formData.appearance || formData.description || formData.personality}
         defaultAvatarUrl={avatarPreview}
+        neutralFullBodyReferenceUrl={characterSheetSprites?.find((sprite) => sprite.expression === "full_neutral")?.url}
         onClose={() => setCharacterSheetGeneratorOpen(false)}
         onUseAvatar={handleGeneratedCharacterSheet}
       />

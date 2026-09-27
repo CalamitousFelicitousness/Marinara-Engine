@@ -9523,6 +9523,9 @@ export async function generateRoutes(app: FastifyInstance) {
                   );
                   if (playerStats) sendSseEvent(reply, { type: "game_state_patch", data: { playerStats } });
                 }
+              } else {
+                // The chat is gone, so nothing was carried out and the answers are taken back below.
+                throw new Error("The chat's inventory could not be read");
               }
             } catch (err) {
               logger.error(err, "[game/inventory] Could not carry out the inventory tags for chat %s", input.chatId);

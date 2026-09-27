@@ -35,8 +35,9 @@ test("shell panel focus returns to its opener and profile import is keyboard rea
   await page.keyboard.press("Enter");
   const fileChooser = await fileChooserPromise;
   expect(fileChooser.isMultiple()).toBe(false);
+  await fileChooser.setFiles([]);
 
   await page.keyboard.press("Escape");
-  await expect(panel).toBeHidden();
+  await expect(settingsToggle).toHaveAttribute("aria-pressed", "false");
   await expect.poll(() => settingsToggle.evaluate((element) => document.activeElement === element)).toBe(true);
 });

@@ -119,6 +119,12 @@ assert.equal(buildRemovePatch(effectiveSavedName(newDraftRow(), undefined)), nul
 // A row whose pending write removed it carries a null claim.
 assert.equal(effectiveSavedName(renamed, null), null);
 
+// A legacy prototype-key name must be an own deletion entry in the JSON patch.
+assert.deepEqual(JSON.parse(JSON.stringify(buildCommitPatch("lead", "Mary", "__proto__"))), {
+  ["__proto__"]: null,
+  lead: "Mary",
+});
+
 // A value-only commit does not delete anything.
 assert.deepEqual(buildCommitPatch("char1", "Anna", "char1"), { char1: "Anna" });
 

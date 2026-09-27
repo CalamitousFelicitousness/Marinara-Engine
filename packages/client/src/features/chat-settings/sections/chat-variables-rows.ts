@@ -110,9 +110,7 @@ export function buildCommitPatch(
   value: string,
   previousName: string | null,
 ): Record<string, string | null> {
-  const patch: Record<string, string | null> = { [name]: value };
-  if (previousName && previousName !== name) patch[previousName] = null;
-  return patch;
+  return previousName && previousName !== name ? { [previousName]: null, [name]: value } : { [name]: value };
 }
 
 /** The patch that removes a row, targeting whatever name it currently occupies. */

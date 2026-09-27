@@ -243,15 +243,32 @@ try {
     );
   }
 
-  // ── The detailed inventory follows by difference ──
+  // ── The detailed inventory is the player's own bag, followed by difference ──
   {
     const detailed: InventoryItem[] = [
       { name: "Rope", description: "Hemp", quantity: 2, location: "pack" },
-      { name: "Arrow", description: "", quantity: 15, location: "on_person" },
+      { name: "Arrow", description: "", quantity: 5, location: "on_person" },
     ];
     const before = bag();
+    // What a companion carries is theirs, however it changes.
+    const betweenCompanions = applyGameInventoryOps(before, [{ op: "give", id: "b", to: "Cass" }]);
+    assert.equal(
+      followGameInventoryDetails(detailed, before, betweenCompanions.stacks),
+      detailed,
+      "a gift between two",
+    );
+    const bramGains = applyGameInventoryOps(before, [{ op: "add", name: "Arrow", count: 4, holder: "Bram" }]);
+    assert.equal(followGameInventoryDetails(detailed, before, bramGains.stacks), detailed, "a companion's gain");
+    const withTorch = [...detailed, { name: "Torch", description: "Pitch", quantity: 1, location: "pack" }];
+    const cassRenames = applyGameInventoryOps(before, [{ op: "rename", id: "d", name: "Brand" }]);
+    assert.equal(
+      followGameInventoryDetails(withTorch, before, cassRenames.stacks, cassRenames.renames),
+      withTorch,
+      "a companion's rename leaves an entry of the old name alone",
+    );
+    // The player's own arrows, given away, leave it.
     const given = applyGameInventoryOps(before, [{ op: "give", id: "c", to: "Cass" }]);
-    assert.equal(followGameInventoryDetails(detailed, before, given.stacks), detailed, "a gift moves nothing");
+    assert.deepEqual(followGameInventoryDetails(detailed, before, given.stacks), [detailed[0]]);
     const renamed = applyGameInventoryOps(before, [{ op: "rename", id: "a", name: "Hemp rope" }]);
     assert.deepEqual(followGameInventoryDetails(detailed, before, renamed.stacks, renamed.renames)[0], {
       name: "Hemp rope",
@@ -259,6 +276,7 @@ try {
       quantity: 2,
       location: "pack",
     });
+    // Taking takes the player's own first, and only that part leaves the player's list.
     const changed = applyGameInventoryOps(before, [
       { op: "take", name: "Arrow", count: 15 },
       { op: "add", name: "Map", count: 2 },

@@ -247,9 +247,10 @@ export function applyGameInventoryOps(
 
 /**
  * The detailed inventory on the game state, kept in step with the stacks: one entry per item, its
- * quantity the party's total. Only the difference is applied, so an entry keeps its description and
- * where it is kept, and a rename of the item's only stack renames the entry rather than starting a
- * blank one. Returns the same array when nothing it tracks changed.
+ * quantity what the player's own bag holds, since everything that reads it (the sheet, the trackers,
+ * an encounter's prompt) reads it as the player's. Only the difference is applied, so an entry keeps
+ * its description and where it is kept, and a rename of the item's only stack renames the entry
+ * rather than starting a blank one. Returns the same array when nothing it tracks changed.
  */
 export function followGameInventoryDetails(
   detailed: readonly InventoryItem[] | null | undefined,
@@ -260,7 +261,12 @@ export function followGameInventoryDetails(
   const source = Array.isArray(detailed) ? detailed : [];
   let items = source.slice();
   const totalsOf = (stacks: readonly GameInventoryStack[]) =>
-    new Map(gameInventoryTotals(stacks).map((entry) => [gameInventoryNameKey(entry.name), entry]));
+    new Map(
+      gameInventoryTotals(stacks.filter((stack) => gameInventoryBagKey(stack.holder) === "")).map((entry) => [
+        gameInventoryNameKey(entry.name),
+        entry,
+      ]),
+    );
   const beforeTotals = totalsOf(before);
   const afterTotals = totalsOf(after);
   const settled = new Set<string>();
@@ -269,7 +275,14 @@ export function followGameInventoryDetails(
   for (const { from, to } of renames) {
     const fromKey = gameInventoryNameKey(from);
     const toKey = gameInventoryNameKey(to);
-    if (settled.has(fromKey) || settled.has(toKey) || afterTotals.has(fromKey) || beforeTotals.has(toKey)) continue;
+    if (
+      settled.has(fromKey) ||
+      settled.has(toKey) ||
+      !beforeTotals.has(fromKey) ||
+      afterTotals.has(fromKey) ||
+      beforeTotals.has(toKey)
+    )
+      continue;
     const index = items.findIndex((item) => gameInventoryNameKey(item.name) === fromKey);
     if (index < 0 || items.some((item) => gameInventoryNameKey(item.name) === toKey)) continue;
     items[index] = {

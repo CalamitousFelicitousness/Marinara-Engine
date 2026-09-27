@@ -57,6 +57,8 @@ const OFFICIAL_PACKAGE_MODES: Readonly<Record<string, readonly CatalogMode[]>> =
   "character-tracker": ["roleplay"],
   "custom-tracker": ["roleplay"],
   "inventory-tracker": ["roleplay"],
+  quartermaster: ["roleplay"],
+  "relationship-tracker": ["roleplay"],
   "memory-nag": ["roleplay"],
   "long-term-memory": ["conversation", "roleplay", "game"],
   expression: ["roleplay"],

@@ -40,6 +40,53 @@ export interface DecisionRequest {
   questionShape?: DecisionQuestionShape;
 }
 
+/**
+ * POST to a Decision connection's own URL under the provider URL policy.
+ *
+ * DNS validation precedes the fetch and cannot itself be aborted, so the whole
+ * operation is raced against `signal`.
+ */
+export async function postDecisionRequest(
+  endpoint: string,
+  apiKey: string,
+  body: unknown,
+  signal: AbortSignal,
+): Promise<Response> {
+  signal.throwIfAborted();
+  let onAbort: (() => void) | undefined;
+  const aborted = new Promise<never>((_, reject) => {
+    onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+  try {
+    return await Promise.race([
+      safeFetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+        },
+        body: JSON.stringify(body),
+        signal,
+        policy: {
+          allowLocal: isProviderLocalUrlsEnabled(),
+          allowLoopback: true,
+          allowMdns: true,
+          allowedProtocols: ["https:", "http:"],
+          allowedOrigins: [new URL(endpoint).origin],
+          flagName: "PROVIDER_LOCAL_URLS_ENABLED",
+        },
+        maxResponseBytes: 1024 * 1024,
+        bufferResponse: true,
+        decodeCompressedResponse: true,
+      }),
+      aborted,
+    ]);
+  } finally {
+    if (onAbort) signal.removeEventListener("abort", onAbort);
+  }
+}
+
 /** Safe, bounded System One transport. Error bodies may contain chat data, so never log them. */
 export async function askNoulQuestions(req: DecisionRequest): Promise<{
   answers: Map<string, number>;
@@ -54,7 +101,6 @@ export async function askNoulQuestions(req: DecisionRequest): Promise<{
   const timeout = AbortSignal.timeout(req.timeoutMs ?? 1500);
   const signal = req.signal ? AbortSignal.any([req.signal, timeout]) : timeout;
   let error: DecisionRequestError | undefined;
-  let onAbort: (() => void) | undefined;
   let trace: DecisionDebugRequest | undefined;
   try {
     signal.throwIfAborted();
@@ -83,34 +129,7 @@ export async function askNoulQuestions(req: DecisionRequest): Promise<{
       "[decision] System One request: %s",
       JSON.stringify(body),
     );
-    // DNS validation precedes fetch and cannot itself be aborted. Bound the entire operation.
-    const aborted = new Promise<never>((_, reject) => {
-      onAbort = () => reject(signal.reason);
-      signal.addEventListener("abort", onAbort, { once: true });
-    });
-    const response = await Promise.race([
-      safeFetch(req.connection.endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(req.connection.apiKey ? { Authorization: `Bearer ${req.connection.apiKey}` } : {}),
-        },
-        body: JSON.stringify(body),
-        signal,
-        policy: {
-          allowLocal: isProviderLocalUrlsEnabled(),
-          allowLoopback: true,
-          allowMdns: true,
-          allowedProtocols: ["https:", "http:"],
-          allowedOrigins: [new URL(req.connection.endpoint).origin],
-          flagName: "PROVIDER_LOCAL_URLS_ENABLED",
-        },
-        maxResponseBytes: 1024 * 1024,
-        bufferResponse: true,
-        decodeCompressedResponse: true,
-      }),
-      aborted,
-    ]);
+    const response = await postDecisionRequest(req.connection.endpoint, req.connection.apiKey, body, signal);
     if (!response.ok) {
       error = `http_${response.status}`;
     } else {
@@ -154,7 +173,6 @@ export async function askNoulQuestions(req: DecisionRequest): Promise<{
           ? "invalid_response"
           : "network";
   }
-  if (onAbort) signal.removeEventListener("abort", onAbort);
   const results = req.questions.map((question) => ({
     id: question.id,
     ...(answers.has(question.id) ? { probability: answers.get(question.id) } : {}),

@@ -42,7 +42,7 @@ import {
 import { translate } from "../localization/i18n";
 import { waitForPendingChatMetadataSaves } from "../lib/chat-metadata-save-barrier";
 import { agentKeys } from "./use-agents";
-import { advancedMemoryKeys, ADVANCED_MEMORY_SETTINGS_EVENT } from "./use-advanced-memory";
+import { advancedMemoryKeys, ADVANCED_MEMORY_SETTINGS_EVENT, notifyAdvancedMemoryFailure } from "./use-advanced-memory";
 import type { AdvancedMemoryJob, AdvancedMemoryReceipt, AdvancedMemoryStatus } from "@marinara-engine/shared";
 import { discardPendingGameStatePatch } from "./use-game-state-patcher";
 import { spatialContextKeys } from "./use-spatial-context";
@@ -87,6 +87,7 @@ type RetryAgentsOptions = {
     negativePrompt?: string;
   };
   illustratorRetryTargets?: IllustratorRetryTarget[];
+  illustratorMessageRange?: [string, string];
   /** Force image generation for the retried custom image agents' results (snapshot button, #4682). */
   forceImageGeneration?: boolean;
 };
@@ -1871,6 +1872,7 @@ export function useGenerate() {
               const data = event.data as { chatId?: string; job?: AdvancedMemoryJob } | undefined;
               if (data?.chatId !== params.chatId || !data.job) break;
               const job = data.job;
+              if (isActiveChat()) notifyAdvancedMemoryFailure(params.chatId, job);
               qc.setQueryData<AdvancedMemoryStatus>(advancedMemoryKeys.status(params.chatId), (current) =>
                 current ? { ...current, job } : current,
               );
@@ -3654,6 +3656,7 @@ export function useGenerate() {
               ? { illustratorPromptReviewOverride: options.illustratorPromptReviewOverride }
               : {}),
             ...(options?.illustratorRetryTargets ? { illustratorRetryTargets: options.illustratorRetryTargets } : {}),
+            ...(options?.illustratorMessageRange ? { illustratorMessageRange: options.illustratorMessageRange } : {}),
             ...(options?.forceImageGeneration ? { forceImageGeneration: true } : {}),
             musicPlayerEnabled: useUIStore.getState().musicPlayerEnabled,
             musicPlayerSource: useUIStore.getState().musicPlayerSource,
@@ -3952,7 +3955,10 @@ export function useGenerate() {
               imagePromptReviewRequested = true;
               window.dispatchEvent(
                 new CustomEvent("marinara:image-prompt-review", {
-                  detail: event.data,
+                  detail: {
+                    ...(event.data as Record<string, unknown>),
+                    illustratorMessageRange: options?.illustratorMessageRange,
+                  },
                 }),
               );
               break;

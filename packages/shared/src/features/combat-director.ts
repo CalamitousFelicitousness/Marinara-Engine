@@ -42,6 +42,8 @@ export type DirectedCommand =
       optionId: string;
       targetIds: string[];
       payWith?: string;
+      /** The initiative style an attack is made in, where initiative is a number attacks move. */
+      style?: string;
       to?: { x: number; y: number };
       at?: { x: number; y: number };
     }
@@ -66,6 +68,7 @@ export interface CombatDecisionOption {
   targetIds?: string[];
   label?: string;
   payWith?: string;
+  style?: string;
   /** Where a ruleset fight's own shape is aimed. `to` above is where the actor walks first, which
    *  a positioned candidate may carry too. */
   at?: { x: number; y: number };
@@ -156,8 +159,11 @@ export interface DirectedRulesetView {
     id: string;
     kind: "reaction" | "signature";
     /** Which moment, for the ones a reaction waits for, and what is happening at it. */
-    moment?: "aimed" | "harmed";
+    moment?: "aimed" | "hit" | "harmed" | "used";
     label?: string;
+    /** For a held hit: what the roll came to, and what it was made against. */
+    total?: number;
+    defense?: number;
     /** Who caused the moment: whoever aimed the thing, or whoever dealt the damage. Its own field
      *  rather than `moverId`, which is for the walk that opened a window by leaving a reach. */
     sourceId?: string;

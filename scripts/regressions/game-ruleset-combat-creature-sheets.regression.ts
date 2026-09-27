@@ -78,7 +78,15 @@ import {
 import type { Combatant } from "../../packages/shared/src/types/game.js";
 
 const read = (path: string) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8");
-const fiveEText = read("../../docs/development/ruleset-5e-2014.example.json");
+/** The reference less 1.43's contests and the checks they read, which every gate this lane proves
+ *  predates. */
+const fiveEText = (() => {
+  const doc = JSON.parse(read("../../docs/development/ruleset-5e-2014.example.json"));
+  delete doc.combat.checks;
+  delete doc.combat.contests;
+  for (const catalog of doc.catalogs ?? []) for (const entry of catalog.entries ?? []) delete entry.creature?.checks;
+  return JSON.stringify(doc);
+})();
 /** The example less the sheet keys 1.37 added (a track always shown, a summary list's columns),
  *  1.38's modifier off the sheet, 1.39's list sum, 1.40's box track, 1.41's untrained rule and
  *  1.42's live state: every gate this lane proves is older, so it is proven on a file that trips
@@ -96,6 +104,12 @@ const emberText = (() => {
   delete doc.sheet.live.states;
   for (const rest of doc.rests)
     rest.restore = rest.restore.filter((step: { state?: string }) => step.state === undefined);
+  // And 1.43's contests and the checks they read.
+  delete doc.combat.checks;
+  delete doc.combat.contests;
+  // And 1.49's items block, with the catalog written in it.
+  delete doc.items;
+  doc.catalogs = doc.catalogs.filter((catalog: { holds?: string }) => catalog.holds !== "items");
   return JSON.stringify(doc);
 })();
 
@@ -246,10 +260,13 @@ function started(input: {
       const bestiary = doc.catalogs.find((catalog: Record<string, any>) => catalog.id === "creatures");
       edit(bestiary.entries.find((entry: Record<string, any>) => entry.id === "toll-sergeant").creature);
     });
-  // The shipped creature has a sheet and no actions beside it, and that is a whole creature: its
-  // sheet's own lists are what it does.
+  // The shipped creature has a sheet and one action beside it, its Parry, and that is a whole
+  // creature: its sheet's own lists are what it does on a turn, and the Parry waits for a moment.
   assert.equal(issuesOf(withSergeant(() => {})), "");
-  assert.equal(creatureEntry(fiveE, "creatures", "toll-sergeant").creature!.actions.length, 0);
+  assert.deepEqual(
+    creatureEntry(fiveE, "creatures", "toll-sergeant").creature!.actions.map((action) => action.id),
+    ["parry"],
+  );
 
   // Anything the sheet says, said a second time beside it, is refused by name.
   const twice: Array<[string, unknown]> = [
@@ -459,7 +476,12 @@ for (const setup of [
     rulesetCombatHealth(definition, combat, twin),
     `${setup.what}: and health`,
   );
-  assert.deepEqual(foe.actions, twin.actions, `${setup.what}: the same lists, read by the same code`);
+  // What its sheet's lists hold, that is: an action written beside the sheet (a Parry) is its own.
+  assert.deepEqual(
+    foe.actions.filter((action) => action.kind !== "block"),
+    twin.actions,
+    `${setup.what}: the same lists, read by the same code`,
+  );
   assert.ok(foe.actions.length > 0, `${setup.what}: and there is something on them`);
   // What the entry adds beside the sheet is kept.
   assert.equal(foe.block?.tier, entry.creature!.tier);
@@ -1508,24 +1530,41 @@ try {
       restartRequired: false,
       contributions: { assets: { paths: ["ruleset.json", "catalogs/road_trouble.json"] } },
     }) as any;
+  /** The example without an entry that names the moment it waits for, which gates on 1.33 (and on
+   *  1.44 for somebody using something), and without the numbers a condition changes or the levels
+   *  of a track (1.45), so these cases are answered by the sheet gate. */
+  const older = (edit: (doc: Record<string, any>) => void = () => {}) =>
+    variant(emberText, (doc) => {
+      for (const catalog of doc.catalogs) {
+        catalog.entries = catalog.entries?.filter(
+          (entry: Record<string, any>) => typeof entry.mechanics?.reaction !== "object",
+        );
+      }
+      delete doc.combat.levels;
+      for (const entry of doc.combat.conditions) {
+        delete entry.modifiers;
+        entry.effects = entry.effects?.filter((effect: string) => !effect.startsWith("own-checks-"));
+      }
+      edit(doc);
+    });
   const sheetIssue = /creatures carry a sheet of their own requires schemaVersion 2 and capabilityApi 1\.34 or newer/;
   // An Engine before 1.34 refuses the whole strict catalog over the one key, so the file says so.
-  assert.match(getCapabilityPackageInstallIssue(manifest(33), variant(emberText)) ?? "", sheetIssue);
-  assert.equal(getCapabilityPackageInstallIssue(manifest(34), variant(emberText)), null);
+  assert.match(getCapabilityPackageInstallIssue(manifest(33), older()) ?? "", sheetIssue);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(34), older()), null);
   // Without its sheet-written creature it installs on what it needed before.
-  const plain = variant(emberText, (doc) => {
+  const plain = older((doc) => {
     for (const catalog of doc.catalogs) {
       catalog.entries = catalog.entries?.filter((entry: Record<string, any>) => !entry.creature?.sheet);
     }
   });
   assert.equal(getCapabilityPackageInstallIssue(manifest(33), plain), null);
   // And the entries may sit in the catalog file instead, which the gate reads too.
-  const asAsset = variant(emberText, (doc) => {
+  const asAsset = older((doc) => {
     const bestiary = doc.catalogs.find((catalog: Record<string, any>) => catalog.id === "road_trouble");
     bestiary.asset = "catalogs/road_trouble.json";
     delete bestiary.entries;
   });
-  const entries = variant(emberText).catalogs.find((catalog: Record<string, any>) => catalog.id === "road_trouble")
+  const entries = older().catalogs.find((catalog: Record<string, any>) => catalog.id === "road_trouble")
     .entries as unknown[];
   const assets = new Map<string, unknown>([
     ["catalogs/road_trouble.json", { schemaVersion: 1, catalog: "road_trouble", entries }],

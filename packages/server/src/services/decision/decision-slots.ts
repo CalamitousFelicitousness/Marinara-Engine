@@ -70,6 +70,12 @@ export interface ResolvedDecisionSlot {
    * 422 instead of truncating, so it must never inherit a chat slot's context size.
    */
   maxLengthTokens?: number;
+  /**
+   * How many requests the model's server works on at once. More are queued there, so
+   * decisions wait for one of these before their time limit starts: a statement's
+   * limit is for answering it, not for waiting behind the others.
+   */
+  serverSlots: number;
 }
 
 export type DecisionSlotFailure = { slot: DecisionLocalSlot; reason: DecisionUnavailableReason; detail?: string };
@@ -213,6 +219,7 @@ export async function resolveDecisionSlot(
         label: description.label,
         thinking: primaryThinking(),
         protocol: "chat_logprobs",
+        serverSlots: sidecarModelService.getConfig().maxParallelJobs,
       },
     };
   }
@@ -253,6 +260,8 @@ export async function resolveDecisionSlot(
         // A purpose-built decision model never reasons: it scores candidates in one
         // forward pass and has no text to think in.
         thinking: "off",
+        // Its server answers one request at a time behind a lock.
+        serverSlots: 1,
       },
     };
   }
@@ -279,6 +288,7 @@ export async function resolveDecisionSlot(
       label: description.label,
       thinking: utilityThinking(),
       protocol: "chat_logprobs",
+      serverSlots: utilitySidecarService.getConfig().maxParallelJobs,
     },
   };
 }

@@ -3,7 +3,9 @@ import {
   DECISION_SOURCES,
   DECISION_SOURCE_BASE_URLS,
   DECISION_TIMEOUT_MS,
+  decisionSourceTakesUrl,
   defaultDecisionStateTokens,
+  defaultDecisionTimeoutMs,
   resolveDecisionConnectionTimeoutMs,
   type DecisionSource,
 } from "@marinara-engine/shared";
@@ -531,7 +533,7 @@ export function ConnectionEditor() {
     setLocalDecisionSource((c.decisionSource as DecisionSource) ?? "typesafe");
     setLocalCredentialsFrom((c.credentialsFromConnectionId as string) ?? "");
     setLocalMaxStateTokens(Number(c.maxStateTokens ?? defaultDecisionStateTokens(c.decisionSource as string)));
-    setLocalDecisionTimeoutMs(resolveDecisionConnectionTimeoutMs(c.decisionTimeoutMs));
+    setLocalDecisionTimeoutMs(resolveDecisionConnectionTimeoutMs(c.decisionTimeoutMs, c.decisionSource as string));
     setLocalAudioSource((c.audioSource as string) || "elevenlabs");
     setLocalAudioVoice((c.audioVoice as string) ?? "");
     setLocalAudioSoundEffects(c.audioSoundEffects === "true" || c.audioSoundEffects === true);
@@ -896,7 +898,7 @@ export function ConnectionEditor() {
       maxStateTokens: localProvider === "decision" ? localMaxStateTokens : null,
       // The default is stored as null, so a connection that never chose a limit follows it.
       decisionTimeoutMs:
-        localProvider === "decision" && localDecisionTimeoutMs !== DECISION_TIMEOUT_MS.systemOne
+        localProvider === "decision" && localDecisionTimeoutMs !== defaultDecisionTimeoutMs(localDecisionSource)
           ? localDecisionTimeoutMs
           : null,
       audioSource: isAudioProvider ? localAudioSource || null : null,
@@ -1135,7 +1137,7 @@ export function ConnectionEditor() {
       decisionSource: localProvider === "decision" ? localDecisionSource : null,
       maxStateTokens: localProvider === "decision" ? localMaxStateTokens : null,
       decisionTimeoutMs:
-        localProvider === "decision" && localDecisionTimeoutMs !== DECISION_TIMEOUT_MS.systemOne
+        localProvider === "decision" && localDecisionTimeoutMs !== defaultDecisionTimeoutMs(localDecisionSource)
           ? localDecisionTimeoutMs
           : null,
       embeddingModel: supportsDirectEmbeddings ? localEmbeddingModel : existingEmbeddingModel,
@@ -1859,21 +1861,26 @@ export function ConnectionEditor() {
             </FieldGroup>
           )}
 
-          {localProvider === "openrouter" && (
+          {(localProvider === "openrouter" || localProvider === "custom") && (
             <button
               type="button"
-              disabled={dirty || createDecisionConnection.isPending}
+              disabled={
+                dirty || createDecisionConnection.isPending || (localProvider === "custom" && !localModel.trim())
+              }
               className="text-left text-xs text-[var(--primary)] underline disabled:opacity-50"
               onClick={() => {
                 if (!connectionDetailId) return;
+                // OpenRouter lends its key to hosted Jev. A Custom connection lends its
+                // server, model and key, so the chat model it already runs answers decisions.
+                const chat = localProvider === "custom";
                 createDecisionConnection.mutate(
                   {
                     name: t("connections.decision.linkedName", { name: localName }),
                     provider: "decision",
-                    decisionSource: "openrouter",
-                    baseUrl: DECISION_SOURCE_BASE_URLS.openrouter,
+                    decisionSource: chat ? "openai_compatible" : "openrouter",
+                    baseUrl: chat ? localBaseUrl : DECISION_SOURCE_BASE_URLS.openrouter,
                     apiKey: "",
-                    model: "jev-latest",
+                    model: chat ? localModel.trim() : "jev-latest",
                     credentialsFromConnectionId: connectionDetailId,
                     defaultForAgents: !(
                       allConnections as Array<{ provider: string; defaultForAgents?: unknown }> | undefined
@@ -1891,7 +1898,7 @@ export function ConnectionEditor() {
                 );
               }}
             >
-              {t("connections.decision.shortcut")}
+              {t(localProvider === "custom" ? "connections.decision.chatShortcut" : "connections.decision.shortcut")}
             </button>
           )}
 
@@ -1909,6 +1916,7 @@ export function ConnectionEditor() {
                   setLocalDecisionSource(source);
                   setLocalBaseUrl(DECISION_SOURCE_BASE_URLS[source]);
                   setLocalMaxStateTokens(defaultDecisionStateTokens(source));
+                  setLocalDecisionTimeoutMs(defaultDecisionTimeoutMs(source));
                   setLocalApiKey("");
                   setClearStoredApiKeyOnSave(true);
                   const matches =
@@ -1927,7 +1935,11 @@ export function ConnectionEditor() {
               </select>
               <p className="text-xs text-[var(--muted-foreground)]">
                 {t(
-                  localDecisionSource === "custom" ? "connections.decision.customHelp" : "connections.decision.privacy",
+                  localDecisionSource === "custom"
+                    ? "connections.decision.customHelp"
+                    : localDecisionSource === "openai_compatible"
+                      ? "connections.decision.chatHelp"
+                      : "connections.decision.privacy",
                 )}
               </p>
               {localDecisionSource !== "typesafe" && (
@@ -2011,7 +2023,7 @@ export function ConnectionEditor() {
                 {t("connections.decision.timeLimitHelp", {
                   min: DECISION_CONNECTION_TIMEOUT_BOUNDS_MS.min / 1000,
                   max: DECISION_CONNECTION_TIMEOUT_BOUNDS_MS.max / 1000,
-                  default: DECISION_TIMEOUT_MS.systemOne / 1000,
+                  default: defaultDecisionTimeoutMs(localDecisionSource) / 1000,
                 })}
               </p>
             </section>
@@ -2142,7 +2154,7 @@ export function ConnectionEditor() {
                 help={localizeUi("ui.connections.connectioneditor.theApiEndpointUrlUsuallyAutoFilledForKnown")}
               >
                 <input
-                  disabled={isDecisionProvider && localDecisionSource !== "custom"}
+                  disabled={isDecisionProvider && !decisionSourceTakesUrl(localDecisionSource)}
                   value={localBaseUrl}
                   onChange={(e) => {
                     setLocalBaseUrl(e.target.value);

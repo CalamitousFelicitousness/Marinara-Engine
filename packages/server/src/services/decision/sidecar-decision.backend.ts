@@ -9,8 +9,10 @@
  * The shared state goes first and the question last, so llama-server's prompt cache is
  * reused across every question of one group.
  *
- * Nothing here leaves the machine, and nothing throws: a slot that cannot answer
- * returns no answer for that agent, and the gate runs it.
+ * A chat-model Decision connection is asked exactly the same way, at the URL the user
+ * entered and under the provider URL policy. A managed slot's requests never leave the
+ * machine. Nothing throws: a target that cannot answer returns no answer for that
+ * agent, and the gate runs it.
  */
 import {
   DECISION_THINKING_MAX_TOKENS,
@@ -19,16 +21,19 @@ import {
   type DecisionDebugReport,
   type DecisionDebugRequest,
 } from "@marinara-engine/shared";
+import { logRateLimited } from "../../lib/log-rate-limit.js";
 import { logger, logDebugOverride } from "../../lib/logger.js";
+import type { DecisionConnection } from "./decision-connection.js";
 import {
   getAnswerStyle,
   recordDirectAnswer,
   recordOneTokenFailure,
   recordThinkingAnswer,
 } from "./decision-thinking-cache.js";
+import { whenDecisionServerFree } from "./decision-server-queue.js";
 import { type ResolvedDecisionSlot } from "./decision-slots.js";
 import { isDirectAnswer, readLogprobAnswer, readWordAnswer, type TopLogprob } from "./logprob-answer.js";
-import type { NoulQuestion } from "./system-one.client.js";
+import { postDecisionRequest, type NoulQuestion } from "./system-one.client.js";
 
 const SYSTEM_PROMPT =
   "You answer one question about the conversation below. Reply with exactly one word: yes or no. Do not explain, and do not write anything else.";
@@ -53,6 +58,43 @@ interface SidecarDiagnostics {
   inspection?: DecisionDebugReport;
   debugMode?: boolean;
   onAnswer?: (id: string, answer: SidecarAnswer) => void;
+  /** Why a request produced no usable answer, for the Test button. */
+  onError?: (error: string) => void;
+}
+
+/**
+ * Who answers: a managed local slot on loopback, or a chat-model Decision connection,
+ * which brings its own URL, key and time limit.
+ */
+export type ChatDecisionTarget = Pick<
+  ResolvedDecisionSlot,
+  "baseUrl" | "serverSlots" | "model" | "modelIdentity" | "label" | "thinking"
+> & { connection?: DecisionConnection };
+
+/**
+ * A chat-model Decision connection as a target.
+ *
+ * It has no Thinking setting of its own, so it runs on Auto, and the verdict is cached
+ * per connection and model so changing either starts on the fast path again. How many
+ * requests the user's server works on at once is unknown, so it is asked one at a
+ * time: each statement's time limit then starts when the server takes it, rather than
+ * running out while it waits behind the others.
+ */
+export function connectionChatTarget(id: string, label: string, connection: DecisionConnection): ChatDecisionTarget {
+  return {
+    baseUrl: "",
+    serverSlots: 1,
+    model: connection.model,
+    modelIdentity: `connection:${id}:${connection.model}`,
+    label,
+    thinking: "auto",
+    connection,
+  };
+}
+
+/** Every caller asking the same server shares its queue. */
+function serverKey(slot: ChatDecisionTarget): string {
+  return slot.connection?.endpoint ?? slot.baseUrl;
 }
 
 function buildMessages(state: unknown, question: string) {
@@ -71,7 +113,7 @@ function buildMessages(state: unknown, question: string) {
  * way the user's own chats do with that model.
  */
 async function askOnce(
-  slot: ResolvedDecisionSlot,
+  slot: ChatDecisionTarget,
   state: unknown,
   question: NoulQuestion,
   allowThinking: boolean,
@@ -79,7 +121,9 @@ async function askOnce(
   diagnostics: SidecarDiagnostics = {},
 ): Promise<SidecarAnswer | null> {
   const start = Date.now();
-  const timeout = AbortSignal.timeout(allowThinking ? DECISION_TIMEOUT_MS.thinking : DECISION_TIMEOUT_MS.sidecar);
+  const connection = slot.connection;
+  const limit = connection?.timeoutMs ?? DECISION_TIMEOUT_MS.sidecar;
+  const timeout = AbortSignal.timeout(allowThinking ? Math.max(limit, DECISION_TIMEOUT_MS.thinking) : limit);
   const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
   const body: Record<string, unknown> = {
     model: slot.model,
@@ -105,7 +149,8 @@ async function askOnce(
     if (diagnostics.inspection.mode === "inspect") return null;
   }
   const debug = diagnostics.debugMode === true || process.env.DEBUG_AGENTS === "true";
-  logDebugOverride(debug, "[decision] Local request: %s", JSON.stringify(body));
+  const source = connection ? "Chat connection" : "Local";
+  logDebugOverride(debug, "[decision] %s request: %s", source, JSON.stringify(body));
   const finish = (answer: SidecarAnswer | null, error?: string) => {
     const result = {
       id: question.id,
@@ -116,17 +161,30 @@ async function askOnce(
         : {}),
     };
     if (trace) Object.assign(trace, { results: [result], latencyMs: Date.now() - start, ...(error ? { error } : {}) });
-    logDebugOverride(debug, "[decision] Local result: %s%s", JSON.stringify(result), error ? ` (${error})` : "");
+    logDebugOverride(debug, "[decision] %s result: %s%s", source, JSON.stringify(result), error ? ` (${error})` : "");
+    if (error) diagnostics.onError?.(error);
+    // A gate asks on every turn, so a connection that stays down logs once per window.
+    // A managed slot's own service already reports why it is down.
+    if (!answer && error && error !== "cancelled" && connection)
+      logRateLimited(
+        "warn",
+        `decision.chat-connection:${error}`,
+        undefined,
+        "[decision] Chat-model decision request failed: %s",
+        error,
+      );
     return answer;
   };
   let response: Response;
   try {
-    response = await fetch(`${slot.baseUrl}/v1/chat/completions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: combined,
-    });
+    response = connection
+      ? await postDecisionRequest(connection.endpoint, connection.apiKey, body, combined)
+      : await fetch(`${slot.baseUrl}/v1/chat/completions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+          signal: combined,
+        });
   } catch {
     return finish(null, signal?.aborted ? "cancelled" : timeout.aborted ? "timeout" : "network");
   }
@@ -174,7 +232,7 @@ async function askOnce(
  * forever. Off never switches: a model that cannot answer that way fails open.
  */
 async function askQuestion(
-  slot: ResolvedDecisionSlot,
+  slot: ChatDecisionTarget,
   state: unknown,
   question: NoulQuestion,
   signal: AbortSignal | undefined,
@@ -216,12 +274,12 @@ async function askQuestion(
  * Answer a group of questions against one slot.
  *
  * There is no single parallel pass as with System One, so the group's questions go out
- * concurrently and llama-server's own slots serve them. Every question shares the same
- * state prefix, which is what makes that cheap.
+ * as many at a time as llama-server has slots, and the rest wait for one. Every
+ * question shares the same state prefix, which is what makes that cheap.
  */
 export async function askSidecarNoulQuestions(
   args: {
-    slot: ResolvedDecisionSlot;
+    slot: ChatDecisionTarget;
     state: unknown;
     questions: NoulQuestion[];
     signal?: AbortSignal;
@@ -230,7 +288,11 @@ export async function askSidecarNoulQuestions(
   const answers = new Map<string, number>();
   await Promise.all(
     args.questions.map(async (question) => {
-      const probability = await askQuestion(args.slot, args.state, question, args.signal, args);
+      // Each statement's time limit starts once the server can work on it, not while it
+      // waits behind the others for one of llama-server's slots.
+      const probability = await whenDecisionServerFree(serverKey(args.slot), args.slot.serverSlots, args.signal, () =>
+        askQuestion(args.slot, args.state, question, args.signal, args),
+      );
       if (probability !== null) answers.set(question.id, probability);
     }),
   );
@@ -239,18 +301,28 @@ export async function askSidecarNoulQuestions(
 
 /** The Test button's probe: one fixed question, reporting how the slot answered it. */
 export async function probeDecisionSlot(
-  slot: ResolvedDecisionSlot,
+  slot: ChatDecisionTarget,
   signal?: AbortSignal,
 ): Promise<{
   probability: number | null;
   logprobs: boolean;
   answersDirectly: boolean;
   latencyMs: number;
+  /** Why the last attempt gave no answer, when neither did. */
+  error?: string;
 }> {
+  // Timed from when the server can take it, so a Test clicked during a busy turn
+  // reports how long the model takes to answer, not how long it queued.
+  return whenDecisionServerFree(serverKey(slot), slot.serverSlots, signal, () => probeOnce(slot, signal));
+}
+
+async function probeOnce(slot: ChatDecisionTarget, signal: AbortSignal | undefined) {
   const start = Date.now();
+  let error: string | undefined;
+  const diagnostics: SidecarDiagnostics = { onError: (reason) => (error = reason) };
   const state = { recent_messages: [{ role: "user", name: "User", content: "The door is open." }] };
   const question = { id: "probe", instructions: "The door is open." };
-  const oneToken = await askOnce(slot, state, question, false, signal);
+  const oneToken = await askOnce(slot, state, question, false, signal, diagnostics);
   if (oneToken?.direct && oneToken.probability !== null) {
     recordDirectAnswer(slot.modelIdentity, oneToken.uncalibrated);
     return {
@@ -260,7 +332,7 @@ export async function probeDecisionSlot(
       latencyMs: Date.now() - start,
     };
   }
-  const thinking = await askOnce(slot, state, question, true, signal);
+  const thinking = await askOnce(slot, state, question, true, signal, diagnostics);
   if (thinking?.probability !== null && thinking !== null) {
     recordThinkingAnswer(slot.modelIdentity, thinking.uncalibrated);
     return {
@@ -270,5 +342,5 @@ export async function probeDecisionSlot(
       latencyMs: Date.now() - start,
     };
   }
-  return { probability: null, logprobs: false, answersDirectly: false, latencyMs: Date.now() - start };
+  return { probability: null, logprobs: false, answersDirectly: false, latencyMs: Date.now() - start, error };
 }

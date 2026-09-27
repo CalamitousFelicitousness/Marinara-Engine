@@ -8,7 +8,15 @@
 
 import type { RulesetCombat, RulesetDefinition } from "../../schemas/ruleset.schema.js";
 import { readRulesetLive, type RulesetSheetOp } from "../rulesets/live-state.js";
-import { rollRulesetDice, sumOf } from "./dice.js";
+import { parseRulesetCombatDice, rollRulesetDice, sumOf } from "./dice.js";
+import {
+  rulesetCombatIsPool,
+  rulesetCombatPenalty,
+  rulesetSoakOf,
+  throwRulesetCombatPool,
+  throwRulesetDamageDice,
+  type RulesetCombatPoolThrow,
+} from "./pool.js";
 import {
   currentRulesetActor,
   refreshRulesetBudgets,
@@ -20,9 +28,17 @@ import {
   rulesetCombatDamageKind,
   rulesetCombatHealth,
   rulesetCombatStanding,
+  rulesetCheckMode,
+  rulesetInitiativeModifierNow,
+  rulesetInitiativeOrder,
+  rulesetPoolInitiative,
+  throwInitiativeDice,
+  rulesetConditionModifiers,
   rulesetMovementAllowance,
   rulesetSaveMode,
+  rulesetImmuneToCondition,
   writeRulesetSheet,
+  type RulesetConditionModifier,
 } from "./encounter.js";
 import {
   rulesetAreaCells,
@@ -30,6 +46,7 @@ import {
   rulesetCellEnterCost,
   rulesetOpportunityAttack,
   rulesetPositionOf,
+  rulesetPushPath,
   rulesetStepLeavesReach,
   rulesetThreateningEnemies,
 } from "./grid.js";
@@ -43,6 +60,7 @@ import {
   rulesetAreaTargets,
   rulesetAttackMode,
   rulesetCombatOptions,
+  rulesetContestCheck,
   rulesetCostSteps,
   rulesetCriticalFromAdjacent,
   rulesetDefenseAgainst,
@@ -61,6 +79,10 @@ import {
   rulesetTargetRefusal,
   rulesetWindowMoment,
   rulesetWindowOptions,
+  countRulesetSpend,
+  rulesetActionTakesStyle,
+  rulesetAttackStyles,
+  type RulesetInitiativeStyle,
 } from "./options.js";
 import type {
   RulesetActionResume,
@@ -71,6 +93,7 @@ import type {
   RulesetCombatChoice,
   RulesetCombatEvent,
   RulesetCombatOption,
+  RulesetCombatPoolRoll,
   RulesetCombatRefusal,
   RulesetCombatRider,
   RulesetCombatRollMode,
@@ -78,9 +101,14 @@ import type {
   RulesetCombatStep,
   RulesetCombatWindow,
   RulesetCombatant,
+  RulesetConditionBonus,
+  RulesetConditionEnding,
+  RulesetContestSide,
   RulesetEncounterOutcome,
   RulesetEncounterState,
   RulesetEncounterSummary,
+  RulesetHeldAttack,
+  RulesetTrackedCondition,
   RulesetWalkResume,
   RulesetWindowResume,
   RulesetWindowTrigger,
@@ -155,6 +183,57 @@ function rollAmount(
   return { rolls, flat, total: sumOf(rolls) + flat };
 }
 
+/**
+ * One amount of harm in a `dice-pool` fight: its dice (and the extra dice a hit earned, and what a
+ * higher payment adds) thrown against the damage target, its flat part added as automatic successes,
+ * and what the target soaks of its kind taken off. Soak that is thrown is thrown the same way and
+ * takes one off for each success; soak that is not comes off the dice before they are thrown. Either
+ * way nothing goes below zero, and automatic successes are soaked like any other.
+ */
+function throwHarm(
+  ctx: RulesetCombatContext,
+  target: RulesetCombatant,
+  amount: RulesetCombatAmount,
+  damageType: string | undefined,
+  extraDice: number,
+  extra?: { amount: RulesetCombatAmount; times: number },
+  /** Whether the target's soak is taken off at all. A spending blow's harm is never soaked. */
+  withSoak = true,
+): {
+  rolls: number[];
+  flat: number;
+  total: number;
+  pool: NonNullable<RulesetDamageInput["pool"]>;
+} {
+  const kind = ctx.combat.damageKinds ? rulesetCombatDamageKind(ctx.combat, damageType) : undefined;
+  const soak = withSoak ? rulesetSoakOf(target, kind) : 0;
+  const rule = ctx.combat.pool?.soak;
+  let dice = amount.count + extraDice + (extra && extra.times > 0 ? extra.amount.count * extra.times : 0);
+  const flat = amount.flat + (extra && extra.times > 0 ? extra.amount.flat * extra.times : 0);
+  let soaked: { value: number; rolls?: number[]; taken: number } | undefined;
+  if (rule && !rule.roll && soak > 0) {
+    const taken = Math.min(Math.max(0, dice), soak);
+    dice -= taken;
+    soaked = { value: soak, taken };
+  }
+  const thrown = throwRulesetDamageDice(ctx.definition, ctx.combat, ctx.roll, dice);
+  const counted = thrown.successes + Math.max(0, flat);
+  let total = counted;
+  // Nothing to take off is nothing to throw for.
+  if (rule?.roll && soak > 0 && total > 0) {
+    const soakThrow = throwRulesetDamageDice(ctx.definition, ctx.combat, ctx.roll, soak);
+    const taken = Math.min(total, soakThrow.successes);
+    total -= taken;
+    soaked = { value: soak, rolls: soakThrow.rolls, taken };
+  }
+  return {
+    rolls: thrown.rolls,
+    flat: Math.max(0, flat),
+    total,
+    pool: { target: thrown.target, successes: counted, ...(soaked ? { soak: soaked } : {}) },
+  };
+}
+
 /** What a critical hit adds, by the rule the ruleset declared: the same dice thrown again, or their
  *  highest faces added once. */
 function criticalExtra(
@@ -162,7 +241,7 @@ function criticalExtra(
   amount: RulesetCombatAmount,
   extra?: { amount: RulesetCombatAmount; times: number },
 ): { rolls: number[]; flat: number } {
-  const rule = ctx.combat.attackRoll.critical;
+  const rule = ctx.combat.attackRoll?.critical ?? "none";
   const dice: Array<{ count: number; sides: number }> = [{ count: amount.count, sides: amount.sides }];
   if (extra && extra.times > 0) {
     dice.push({ count: extra.amount.count * extra.times, sides: extra.amount.sides });
@@ -185,6 +264,8 @@ interface RulesetDamageInput {
   amount: number;
   saved?: boolean;
   critical?: boolean;
+  /** Under `dice-pool`: what the damage dice counted, and what soak took off before `amount`. */
+  pool?: Extract<RulesetCombatEvent, { type: "damage" }>["pool"];
 }
 
 /**
@@ -256,6 +337,7 @@ function applyDamage(
     health: after.value,
     maxHealth: after.max,
     ...(input.critical ? { critical: true } : {}),
+    ...(input.pool ? { pool: input.pool } : {}),
   });
   return dealt;
 }
@@ -580,13 +662,41 @@ function rollSave(
       success: false,
       automatic: true,
     });
+    spendConditions(ctx, combatant, "own-save");
     return false;
+  }
+  const mode = rulesetSaveMode(ctx.definition, ctx.combat, combatant, save, ctx.state);
+  if (rulesetCombatIsPool(ctx.combat)) {
+    // The save's number is its pool, and its difficulty the successes it needs, never fewer than one.
+    const bonuses = rollBonuses(
+      ctx,
+      rulesetConditionModifiers(ctx.definition, ctx.combat, combatant, "saves", ctx.state, save),
+    );
+    const needed = Math.max(1, difficulty);
+    const thrown = throwPool(ctx, combatant, modifier + bonusTotal(bonuses), mode);
+    const success = !thrown.botch && thrown.successes >= needed;
+    ctx.events.push({
+      type: "save",
+      actorId: combatant.id,
+      ...(sourceId ? { sourceId } : {}),
+      save,
+      ...(mode === "normal" ? {} : { mode }),
+      rolls: thrown.rolls,
+      kept: thrown.successes,
+      modifier,
+      ...(bonuses.length > 0 ? { bonuses } : {}),
+      total: thrown.successes,
+      difficulty: needed,
+      success,
+      pool: poolRecord(thrown),
+    });
+    spendConditions(ctx, combatant, "own-save");
+    return success;
   }
   // Rolled twice and one kept when a condition says so, exactly as an attack is. A roll that leans
   // no way says nothing about how it was made, so a fight with no such condition logs what it
   // always logged.
-  const dice = ctx.combat.attackRoll.dice;
-  const mode = rulesetSaveMode(ctx.definition, ctx.combat, combatant, save, ctx.state);
+  const dice = ctx.combat.attackRoll!.dice;
   const first = rollRulesetDice(ctx.roll, dice.count, dice.sides);
   const second = mode === "normal" ? null : rollRulesetDice(ctx.roll, dice.count, dice.sides);
   const kept = second
@@ -594,7 +704,12 @@ function rollSave(
       ? Math.max(sumOf(first), sumOf(second))
       : Math.min(sumOf(first), sumOf(second))
     : sumOf(first);
-  const total = kept + modifier;
+  // What the saver's conditions add, rolled after the save's own dice.
+  const bonuses = rollBonuses(
+    ctx,
+    rulesetConditionModifiers(ctx.definition, ctx.combat, combatant, "saves", ctx.state, save),
+  );
+  const total = kept + modifier + bonusTotal(bonuses);
   const success = total >= difficulty;
   ctx.events.push({
     type: "save",
@@ -605,11 +720,69 @@ function rollSave(
     rolls: second ? [...first, ...second] : first,
     kept,
     modifier,
+    ...(bonuses.length > 0 ? { bonuses } : {}),
     total,
     difficulty,
     success,
   });
+  spendConditions(ctx, combatant, "own-save");
   return success;
+}
+
+/** A pool thrown to act, with the thrower's wound penalty in it: what a `dice-pool` fight throws for
+ *  an attack, a save and a side of a contest. The penalty is dice off the pool, under the ruleset's
+ *  own floor, exactly as it is on a check. */
+function throwPool(
+  ctx: RulesetCombatContext,
+  who: RulesetCombatant,
+  dice: number,
+  mode: RulesetCombatRollMode,
+): RulesetCombatPoolThrow & { penalty: number } {
+  const penalty = rulesetCombatPenalty(ctx.definition, who);
+  return { ...throwRulesetCombatPool(ctx.definition, ctx.roll, dice + penalty, mode), penalty };
+}
+
+/** What an event says about one pool it threw. */
+function poolRecord(thrown: RulesetCombatPoolThrow & { penalty: number }): RulesetCombatPoolRoll {
+  return {
+    dice: thrown.dice,
+    target: thrown.target,
+    ...(thrown.penalty < 0 ? { penalty: thrown.penalty } : {}),
+    ...(thrown.botch ? { botch: true } : {}),
+  };
+}
+
+/** What conditions add to one roll, each rolled now: a flat number as it is, dice thrown (and taken
+ *  away where the modifier says `minus`). */
+function rollBonuses(ctx: RulesetCombatContext, modifiers: RulesetConditionModifier[]): RulesetConditionBonus[] {
+  return modifiers.map(({ condition, level, modifier }) => {
+    let value = modifier.flat ?? 0;
+    const dice = modifier.dice ? parseRulesetCombatDice(modifier.dice) : null;
+    const rolls = dice ? rollRulesetDice(ctx.roll, dice.count, dice.sides) : undefined;
+    if (dice && rolls) value += (modifier.minus ? -1 : 1) * (sumOf(rolls) + dice.flat);
+    return { condition, ...(level !== undefined ? { level } : {}), value, ...(rolls ? { rolls } : {}) };
+  });
+}
+
+function bonusTotal(bonuses: readonly RulesetConditionBonus[]): number {
+  return bonuses.reduce((total, bonus) => total + bonus.value, 0);
+}
+
+/** Conditions that last one use, taken off once it has happened to their holder. */
+function spendConditions(ctx: RulesetCombatContext, combatant: RulesetCombatant, ending: RulesetConditionEnding): void {
+  spendOneUse(ctx, combatant, oneUseConditions(combatant, ending));
+}
+
+function oneUseConditions(combatant: RulesetCombatant, ending: RulesetConditionEnding): RulesetTrackedCondition[] {
+  return combatant.tracked.filter((entry) => entry.endsAfter === ending);
+}
+
+/** Takes off exactly these, if they are still on. One the same blow put on afresh is a new one, not
+ *  the one that was used, so it stays. */
+function spendOneUse(ctx: RulesetCombatContext, combatant: RulesetCombatant, used: RulesetTrackedCondition[]): void {
+  for (const entry of used) {
+    if (combatant.tracked.includes(entry)) removeCondition(ctx, combatant, entry.condition, "spent");
+  }
 }
 
 // ── Conditions ──
@@ -621,16 +794,19 @@ function applyConditionId(
   applies: RulesetCombatApplies,
   extra: { sourceId?: string; difficulty?: number; concentration?: boolean } = {},
 ): void {
-  if (matches(target.block?.conditionImmunities, condition.trim().toLowerCase())) {
+  if (rulesetImmuneToCondition(target, condition)) {
     ctx.events.push({ type: "condition", targetId: target.id, condition, active: false, reason: "immune" });
     return;
   }
   if (target.sheet) writeRulesetSheet(ctx.definition, target, { op: "condition", condition, active: true });
   const rounds = typeof applies.duration === "object" ? applies.duration.rounds : null;
+  const clock = typeof applies.duration === "object" ? applies.duration.at : undefined;
   target.tracked = target.tracked.filter((entry) => entry.condition !== condition);
   target.tracked.push({
     condition,
     rounds,
+    ...(clock ? { clock } : {}),
+    ...(applies.endsAfter ? { endsAfter: applies.endsAfter } : {}),
     ...(applies.saveEnds ? { saveEnds: applies.saveEnds } : {}),
     ...(extra.difficulty !== undefined ? { difficulty: extra.difficulty } : {}),
     ...(extra.sourceId ? { source: extra.sourceId } : {}),
@@ -643,7 +819,7 @@ function removeCondition(
   ctx: RulesetCombatContext,
   target: RulesetCombatant,
   condition: string,
-  reason: "save" | "expired" | "damage" | "concentration" | "revived",
+  reason: "save" | "expired" | "damage" | "concentration" | "revived" | "contest" | "spent" | "recovered",
 ): void {
   target.tracked = target.tracked.filter((entry) => entry.condition !== condition);
   if (target.sheet) writeRulesetSheet(ctx.definition, target, { op: "condition", condition, active: false });
@@ -675,7 +851,8 @@ function tickConditions(ctx: RulesetCombatContext, actor: RulesetCombatant, at: 
         continue;
       }
     }
-    if (at !== "turn-end" || entry.rounds === null) continue;
+    // A clock counts the holder's turns down as each one ends, or, where it says so, as each begins.
+    if (entry.rounds === null || at !== (entry.clock ?? "turn-end")) continue;
     entry.rounds -= 1;
     if (entry.rounds <= 0) removeCondition(ctx, actor, entry.condition, "expired");
   }
@@ -871,7 +1048,7 @@ export function applyRulesetCombatChoice(
     if (cell) resolveMove(ctx, walking, cell);
     else resolveStand(ctx, walking, option);
     const ended = rulesetEncounterOutcome(ctx.state);
-    if (ended !== "ongoing") ctx.events.push({ type: "outcome", outcome: ended });
+    if (ended !== "ongoing") pushOutcome(ctx, ended);
     return finish();
   }
 
@@ -909,6 +1086,7 @@ export function applyRulesetCombatChoice(
       const price = planRulesetCombatCost(definition, working, granted.action);
       if (!price) return refusal(state, choice.actorId, "insufficient", option.id);
       if (price.live && working.sheet) working.sheet.live = price.live;
+      countRulesetSpend(working, price.cost);
       for (const entry of price.cost) {
         ctx.events.push({
           type: "spend",
@@ -950,32 +1128,66 @@ export function applyRulesetCombatChoice(
   }
 
   const action = working.actions.find((entry) => entry.id === option.id)!;
+  // Where initiative is a number attacks move, the style it is made in: the one asked for, which has
+  // to be one this attack is offered in, or the first when none was asked for.
+  const offeredStyles = rulesetAttackStyles(combat, working, action);
+  if (choice.style !== undefined && !offeredStyles.some((style) => style.id === choice.style)) {
+    return refusal(state, choice.actorId, "unknown-style", option.id);
+  }
+  const chosenStyle = offeredStyles.find((style) => style.id === choice.style) ?? offeredStyles[0];
+  const styleId = chosenStyle?.id;
+  // A spending blow throws the number its maker has as they make it, whatever a window does to it.
+  const spend = chosenStyle?.spends ? working.initiative : undefined;
   const paid = planRulesetCombatCost(definition, working, action, choice.payWith);
   if (!paid) {
     // The menu said it was affordable, so only a `payWith` the sheet refuses can land here.
     return refusal(state, choice.actorId, "insufficient", option.id);
   }
   if (paid.live && working.sheet) working.sheet.live = paid.live;
+  countRulesetSpend(working, paid.cost);
   for (const entry of paid.cost) {
     ctx.events.push({ type: "spend", actorId: working.id, pool: entry.pool, label: entry.label, amount: entry.amount });
   }
   spendAvailability(ctx, working, action);
+  // A contest is settled between the two of them on the spot, and opens no window: nobody else is
+  // asked about it.
+  if (action.contest) {
+    resolveContest(ctx, working, action, action.contest, workingTargets[0]!);
+    noteOutcome(ctx);
+    return finish();
+  }
   // Paid for, and then held for everybody it is aimed at who has something that answers being
   // aimed at. What it cost is spent either way: an answer that calls it off stops it from
   // happening, not from having been bought.
-  const held = openMoment(
-    ctx,
-    { kind: "aimed", sourceId: working.id, optionId: action.id, label: action.label },
-    workingTargets,
-    {
-      kind: "action",
-      actorId: working.id,
-      optionId: action.id,
-      targetIds: workingTargets.map((target) => target.id),
-      ...(choice.payWith !== undefined ? { payWith: choice.payWith } : {}),
-    },
-  );
-  if (!held) harmedBy(ctx, working, action, () => resolveAction(ctx, working, action, workingTargets, choice.payWith));
+  const resume: RulesetActionResume = {
+    kind: "action",
+    actorId: working.id,
+    optionId: action.id,
+    targetIds: workingTargets.map((target) => target.id),
+    ...(choice.payWith !== undefined ? { payWith: choice.payWith } : {}),
+    ...(styleId ? { style: styleId } : {}),
+    ...(spend !== undefined ? { spend } : {}),
+  };
+  // Somebody on the other side may answer the USE first, wherever it is aimed; then the ones it is
+  // aimed at get their own say. Whatever is held resolves once the last window has closed.
+  const held =
+    openMoment(
+      ctx,
+      {
+        kind: "used",
+        sourceId: working.id,
+        optionId: action.id,
+        label: action.label,
+        ...(action.catalog ? { catalog: action.catalog } : {}),
+      },
+      ctx.state.combatants,
+      resume,
+    ) || openAimed(ctx, resume, action.label, action.catalog);
+  if (!held) {
+    harmedBy(ctx, working, action, resume, () =>
+      resolveAction(ctx, working, action, workingTargets, choice.payWith, undefined, styleId, spend),
+    );
+  }
   noteOutcome(ctx);
   return finish();
 }
@@ -986,13 +1198,132 @@ export function applyRulesetCombatChoice(
  * has none to spend. The window between two turns is where it is offered (`openSignatureWindow`);
  * the price, the refusals and the resolution are all here.
  */
+/**
+ * One contest: both sides throw the fight's own attack dice and add the best check they may use here;
+ * the higher total wins and a tie goes where the contest says. Winning ends, applies and
+ * pushes what the contest names, in that order, with the winner as the source of what it applies, so
+ * a hold ends when the holder goes down. Losing does nothing at all, which is what a failed grab is.
+ */
+function resolveContest(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  contest: NonNullable<RulesetCombatAction["contest"]>,
+  target: RulesetCombatant,
+): void {
+  // Each side thrown as its own conditions say: twice with one kept, and whatever they add rolled
+  // after the dice. A side nothing leans or adds to is written exactly as it always was. In a pool
+  // fight each side throws its check as a pool and the one with more net successes wins.
+  const thrown = (who: RulesetCombatant, check: string, modifier: number): RulesetContestSide => {
+    const mode = rulesetCheckMode(ctx.definition, ctx.combat, who, ctx.state);
+    if (rulesetCombatIsPool(ctx.combat)) {
+      const bonuses = rollBonuses(ctx, rulesetConditionModifiers(ctx.definition, ctx.combat, who, "checks", ctx.state));
+      const pool = throwPool(ctx, who, modifier + bonusTotal(bonuses), mode);
+      return {
+        check,
+        rolls: pool.rolls,
+        modifier,
+        total: pool.botch ? 0 : pool.successes,
+        ...(mode === "normal" ? {} : { mode }),
+        ...(bonuses.length > 0 ? { bonuses } : {}),
+        pool: poolRecord(pool),
+      };
+    }
+    const { count, sides } = ctx.combat.attackRoll!.dice;
+    const first = rollRulesetDice(ctx.roll, count, sides);
+    const second = mode === "normal" ? null : rollRulesetDice(ctx.roll, count, sides);
+    const kept = second
+      ? mode === "advantage"
+        ? Math.max(sumOf(first), sumOf(second))
+        : Math.min(sumOf(first), sumOf(second))
+      : sumOf(first);
+    const bonuses = rollBonuses(ctx, rulesetConditionModifiers(ctx.definition, ctx.combat, who, "checks", ctx.state));
+    return {
+      check,
+      rolls: second ? [...first, ...second] : first,
+      modifier,
+      total: kept + modifier + bonusTotal(bonuses),
+      ...(mode === "normal" ? {} : { mode }),
+      ...(bonuses.length > 0 ? { bonuses } : {}),
+    };
+  };
+  const mine = rulesetContestCheck(actor, contest, "attacker");
+  const theirs = rulesetContestCheck(target, contest, "defender");
+  const attacker = thrown(actor, mine.check, mine.modifier);
+  const defender = thrown(target, theirs.check, theirs.modifier);
+  const margin = attacker.total - defender.total;
+  const winner = margin > 0 || (margin === 0 && contest.ties === "attacker") ? "actor" : "target";
+  ctx.events.push({
+    type: "contest",
+    actorId: actor.id,
+    targetId: target.id,
+    optionId: action.id,
+    label: action.label,
+    attacker,
+    defender,
+    winner,
+  });
+  if (winner !== "actor") return;
+  for (const entry of contest.ends ?? []) {
+    const on = entry.on === "actor" ? actor : target;
+    if (rulesetCombatConditions(ctx.definition, on).includes(entry.condition)) {
+      removeCondition(ctx, on, entry.condition, "contest");
+    }
+  }
+  for (const entry of contest.applies ?? []) {
+    applyConditionId(
+      ctx,
+      target,
+      entry.condition,
+      { condition: entry.condition, duration: entry.rounds !== undefined ? { rounds: entry.rounds } : "instant" },
+      { sourceId: actor.id },
+    );
+  }
+  if (contest.push !== undefined) {
+    const path = rulesetPushPath(ctx.state, actor.id, target.id, contest.push);
+    const from = rulesetPositionOf(target);
+    const to = path[path.length - 1];
+    if (from && to) {
+      target.x = to.x;
+      target.y = to.y;
+      ctx.events.push({ type: "pushed", actorId: actor.id, targetId: target.id, from, to: { ...to }, path });
+    }
+  }
+}
+
 /** The outcome, said once. The window path ends a fight in more than one place, and a log that
  *  said so twice would read as two endings. */
 function noteOutcome(ctx: RulesetCombatContext): void {
   const outcome = rulesetEncounterOutcome(ctx.state);
   if (outcome === "ongoing") return;
   if (ctx.events[ctx.events.length - 1]?.type === "outcome") return;
+  pushOutcome(ctx, outcome);
+}
+
+/** The fight is over: whatever it lifts as it ends, then the outcome. Every way a fight ends says so
+ *  through here, so none of them leaves anybody crashed. */
+function pushOutcome(ctx: RulesetCombatContext, outcome: Exclude<RulesetEncounterOutcome, "ongoing">): void {
+  ctx.events.push(...liftRulesetCrashes(ctx.definition, ctx.state));
   ctx.events.push({ type: "outcome", outcome });
+}
+
+/**
+ * Nobody is crashed once the fight is over, however it ended: the number attacks move means nothing
+ * outside it, and a crash condition left on a sheet would outlast the fight it belonged to. Returns
+ * what came off, for a log that is still being written.
+ */
+export function liftRulesetCrashes(definition: RulesetDefinition, state: RulesetEncounterState): RulesetCombatEvent[] {
+  const condition = definition.combat?.initiative.resource?.crash?.condition;
+  const events: RulesetCombatEvent[] = [];
+  for (const combatant of state.combatants) {
+    if (combatant.crashedTurns === undefined) continue;
+    delete combatant.crashedTurns;
+    if (!condition || !rulesetCombatConditions(definition, combatant).includes(condition)) continue;
+    combatant.tracked = combatant.tracked.filter((entry) => entry.condition !== condition);
+    if (combatant.sheet) writeRulesetSheet(definition, combatant, { op: "condition", condition, active: false });
+    events.push({ type: "condition", targetId: combatant.id, condition, active: false, reason: "recovered" });
+  }
+  return events;
 }
 
 /**
@@ -1063,7 +1394,7 @@ function takeReaction(
   roller: RulesetCombatRoller,
 ): RulesetCombatStep {
   const trigger = window.trigger;
-  if (trigger.kind !== "aimed" && trigger.kind !== "harmed") {
+  if (trigger.kind !== "aimed" && trigger.kind !== "hit" && trigger.kind !== "harmed" && trigger.kind !== "used") {
     return refusal(state, choice.actorId, "unknown-option", choice.optionId);
   }
   const declared = actor.actions.find((entry) => entry.id === choice.optionId && entry.reaction);
@@ -1106,6 +1437,7 @@ function takeReaction(
   const paid = planRulesetCombatCost(definition, taking, action, choice.payWith);
   if (!paid) return refusal(state, choice.actorId, "insufficient", choice.optionId);
   if (paid.live && taking.sheet) taking.sheet.live = paid.live;
+  countRulesetSpend(taking, paid.cost);
   for (const entry of paid.cost) {
     ctx.events.push({ type: "spend", actorId: taking.id, pool: entry.pool, label: entry.label, amount: entry.amount });
   }
@@ -1123,7 +1455,7 @@ function takeReaction(
       type: "cancelled",
       actorId: stopped.actorId,
       optionId: stopped.optionId,
-      label: trigger.kind === "aimed" ? trigger.label : action.label,
+      label: trigger.kind === "aimed" || trigger.kind === "used" ? trigger.label : action.label,
       byId: taking.id,
     });
   }
@@ -1162,7 +1494,10 @@ function goOn(definition: RulesetDefinition, combat: RulesetCombat, ctx: Ruleset
     return;
   }
   if (resume?.kind === "action") {
-    if (!over) resumeAction(ctx, resume);
+    if (over) return;
+    // A use nobody stopped is aimed next: the ones it is aimed at get their own say before it lands.
+    if (trigger.kind === "used" && !resume.cancelled && openAimed(ctx, resume, trigger.label, trigger.catalog)) return;
+    resumeAction(ctx, resume);
     return;
   }
   if (!over && trigger.kind === "between-turns") beginNextTurn(definition, combat, ctx);
@@ -1370,7 +1705,7 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
  */
 function openMoment(
   ctx: RulesetCombatContext,
-  trigger: Extract<RulesetWindowTrigger, { kind: "aimed" | "harmed" }>,
+  trigger: Extract<RulesetWindowTrigger, { kind: "aimed" | "harmed" | "used" }>,
   candidates: readonly RulesetCombatant[],
   resume?: RulesetActionResume,
 ): boolean {
@@ -1378,15 +1713,18 @@ function openMoment(
   const moment = rulesetWindowMoment(trigger);
   if (!moment) return false;
   // Being aimed at is about what somebody MEANS to do to you, and a friend healing you or handing
-  // you something is not a threat to answer: only the other side opens that moment. Being hurt is
-  // a fact about you whoever did it, so it opens for anybody, and a reaction pointed back at the
-  // source is still kept off a friend by the same legality every other target goes through.
+  // you something is not a threat to answer: only the other side opens that moment, and the same
+  // for somebody using something at all. Being hurt is a fact about you whoever did it, so it opens
+  // for anybody, and a reaction pointed back at the source is still kept off a friend by the same
+  // legality every other target goes through.
   const source = rulesetCombatant(ctx.state, trigger.sourceId);
   const waiting = candidates
     .filter((one) => one.id !== trigger.sourceId)
-    .filter((one) => moment !== "aimed" || !source || one.side !== source.side)
+    .filter((one) => moment === "harmed" || !source || one.side !== source.side)
     .filter(
-      (one) => rulesetReactionsAt(ctx.definition, ctx.combat, ctx.state, one, moment, trigger.sourceId).length > 0,
+      (one) =>
+        rulesetReactionsAt(ctx.definition, ctx.combat, ctx.state, one, moment, trigger.sourceId, trigger.catalog)
+          .length > 0,
     )
     .map((one) => one.id);
   if (waiting.length === 0) return false;
@@ -1397,6 +1735,27 @@ function openMoment(
 /** What a window was holding, once everybody in it has answered. It resolves from the state as it
  *  stands NOW rather than as it stood then: an answer may have taken a target out, and the fight
  *  that resumes is the fight the window left behind. */
+/** The moment for the ones something held is aimed at, holding it once more. False when nobody there
+ *  has anything to answer it with, and then it simply goes ahead. */
+function openAimed(
+  ctx: RulesetCombatContext,
+  resume: RulesetActionResume,
+  label: string,
+  catalog: string | undefined,
+): boolean {
+  const actor = rulesetCombatant(ctx.state, resume.actorId);
+  if (!actor || !rulesetCombatStanding(actor)) return false;
+  const targets = resume.targetIds
+    .map((id) => rulesetCombatant(ctx.state, id))
+    .filter((target): target is RulesetCombatant => !!target && !target.defeated);
+  return openMoment(
+    ctx,
+    { kind: "aimed", sourceId: actor.id, optionId: resume.optionId, label, ...(catalog ? { catalog } : {}) },
+    targets,
+    resume,
+  );
+}
+
 function resumeAction(ctx: RulesetCombatContext, resume: RulesetActionResume): void {
   const actor = rulesetCombatant(ctx.state, resume.actorId);
   const action = actor?.actions.find((entry) => entry.id === resume.optionId);
@@ -1406,36 +1765,62 @@ function resumeAction(ctx: RulesetCombatContext, resume: RulesetActionResume): v
   // What resumes lands on the fight as it stands NOW rather than as it stood when it was aimed, so
   // anybody the fight is already over for is left out, the same way a sequence leaves them out. A
   // ruleset with a dying rule keeps a character on the board at zero, so this is about an opponent
-  // taken out by an answer: nothing in a window can do that yet, because a creature cannot hold a
-  // reaction, and the line is here so the day one can does not need it noticing.
+  // taken out by an answer: a creature's own reaction can do that now.
   const targets = resume.targetIds
     .map((id) => rulesetCombatant(ctx.state, id))
     .filter((target): target is RulesetCombatant => !!target && !target.defeated);
-  harmedBy(ctx, actor, action, () => resolveAction(ctx, actor, action, targets, resume.payWith));
+  harmedBy(ctx, actor, action, resume, () =>
+    resolveAction(ctx, actor, action, targets, resume.payWith, resume.held, resume.style, resume.spend),
+  );
 }
 
 /** An action, and then the window for everybody it hurt who has something that answers being hurt.
  *  Read off the damage the action itself wrote, so nothing inside the resolver has to know that a
- *  window exists. */
+ *  window exists.
+ *
+ *  An attack may come back HELD instead: one of its rolls hit somebody who holds an answer for being
+ *  hit. Then the window for that opens instead, holding the action exactly where it stopped along
+ *  with whoever it had already hurt, and being hurt is asked about once it has finished. */
 function harmedBy(
   ctx: RulesetCombatContext,
   actor: RulesetCombatant,
   action: RulesetCombatAction,
-  resolve: () => void,
+  resume: RulesetActionResume,
+  resolve: () => RulesetHitHold | null,
 ): void {
   const before = ctx.events.length;
-  resolve();
-  if (rulesetEncounterOutcome(ctx.state) !== "ongoing") return;
-  const hurt = new Set(
-    ctx.events
+  const hold = resolve();
+  const hurt = new Set([
+    ...(resume.held?.hurt ?? []),
+    ...ctx.events
       .slice(before)
       .filter((event) => event.type === "damage" && event.dealt > 0)
       .map((event) => (event as Extract<RulesetCombatEvent, { type: "damage" }>).targetId),
-  );
+  ]);
+  if (hold) {
+    const { label, optionId, catalog, ...held } = hold;
+    const { held: _previous, ...base } = resume;
+    openWindow(ctx, {
+      kind: "reaction",
+      trigger: {
+        kind: "hit",
+        sourceId: actor.id,
+        optionId,
+        label,
+        ...(catalog ? { catalog } : {}),
+        total: held.roll.total,
+        defense: held.roll.defense,
+      },
+      waiting: [held.targetId],
+      resume: { ...base, held: { ...held, hurt: [...hurt] } },
+    });
+    return;
+  }
+  if (rulesetEncounterOutcome(ctx.state) !== "ongoing") return;
   if (hurt.size === 0) return;
   openMoment(
     ctx,
-    { kind: "harmed", sourceId: actor.id, label: action.label },
+    { kind: "harmed", sourceId: actor.id, label: action.label, ...(action.catalog ? { catalog: action.catalog } : {}) },
     [...hurt].map((id) => rulesetCombatant(ctx.state, id)).filter((one): one is RulesetCombatant => !!one),
   );
 }
@@ -1473,6 +1858,7 @@ function openWindow(ctx: RulesetCombatContext, window: Omit<RulesetCombatWindow,
     ...(moment ? { moment } : {}),
     ...("label" in window.trigger ? { label: window.trigger.label } : {}),
     ...("sourceId" in window.trigger ? { sourceId: window.trigger.sourceId } : {}),
+    ...(window.trigger.kind === "hit" ? { total: window.trigger.total, defense: window.trigger.defense } : {}),
   });
 }
 
@@ -1550,7 +1936,10 @@ function resolveSequence(
   actor: RulesetCombatant,
   action: RulesetCombatAction,
   targets: RulesetCombatant[],
-): void {
+  held?: RulesetHeldAttack,
+  /** The initiative style the whole sequence is made in: every part in it. */
+  styleId?: string,
+): RulesetHitHold | null {
   const byId = new Map(actor.actions.map((entry) => [entry.id, entry]));
   const parts: RulesetCombatAction[] = [];
   for (const step of action.sequence ?? []) {
@@ -1563,19 +1952,27 @@ function resolveSequence(
   const wanted = parts.reduce((total, part) => total + part.targets.count, 0);
   const enough = targets.length >= wanted;
   let cursor = 0;
-  for (const part of parts) {
+  for (const [index, part] of parts.entries()) {
     const count = part.targets.count;
     const chosen = (enough ? targets.slice(cursor, cursor + count) : targets.slice(0, count)).filter(
       (target) => !target.defeated,
     );
     cursor += count;
-    // One budget for the whole sequence, and each part still keeps its own books: a part that counts
-    // its uses spends one, a part that recharges is spent until its dice bring it back, and a part
-    // that has none left simply does not happen.
-    if (chosen.length === 0 || !rulesetSequencePartAvailable(actor, part)) continue;
-    spendAvailability(ctx, actor, part);
-    resolveAction(ctx, actor, part, chosen);
+    // A sequence picked up after one of its parts was held starts at that part, which was paid for
+    // and has its roll already: every part before it has happened.
+    if (held && index < (held.part ?? 0)) continue;
+    const resuming = held && index === (held.part ?? 0) ? held : undefined;
+    if (!resuming) {
+      // One budget for the whole sequence, and each part still keeps its own books: a part that
+      // counts its uses spends one, a part that recharges is spent until its dice bring it back, and
+      // a part that has none left simply does not happen.
+      if (chosen.length === 0 || !rulesetSequencePartAvailable(actor, part)) continue;
+      spendAvailability(ctx, actor, part);
+    }
+    const hold = resolveAction(ctx, actor, part, chosen, undefined, resuming, styleId);
+    if (hold) return { ...hold, part: index };
   }
+  return null;
 }
 
 /**
@@ -1656,10 +2053,42 @@ function resolveAction(
   action: RulesetCombatAction,
   targets: RulesetCombatant[],
   payWith?: string,
-): void {
-  if (action.sequence) return resolveSequence(ctx, actor, action, targets);
-  if (action.gives) grantBudgets(ctx, actor, action);
-  if (action.concentration) startConcentration(ctx, actor, action);
+  /** Picking up an attack held after one of its rolls hit: that roll, then the targets after it. */
+  held?: RulesetHeldAttack,
+  /** The initiative style it was chosen in. An attack made out of a turn, in a window, is made in the
+   *  first style its maker may use. */
+  styleId?: string,
+  /** The number a spending blow throws, read as it was made. */
+  spend?: number,
+): RulesetHitHold | null {
+  if (action.sequence) {
+    return resolveSequence(
+      ctx,
+      actor,
+      action,
+      targets,
+      held,
+      styleId ?? rulesetAttackStyles(ctx.combat, actor, action)[0]?.id,
+    );
+  }
+  const style = attackStyle(ctx, actor, action, styleId);
+  if (held) {
+    // Everything before the held roll has happened, what the use gives its user included.
+    targets = [held.targetId, ...held.rest]
+      .map((id) => rulesetCombatant(ctx.state, id))
+      .filter((target): target is RulesetCombatant => !!target && !target.defeated);
+    // The one it hit is gone before the blow could land: what the roll used is spent all the same.
+    if (targets[0]?.id !== held.targetId) {
+      spendOneUse(
+        ctx,
+        actor,
+        actor.tracked.filter((entry) => entry.endsAfter === "own-attack" && held.mine.includes(entry.condition)),
+      );
+    }
+  } else {
+    if (action.gives) grantBudgets(ctx, actor, action);
+    if (action.concentration) startConcentration(ctx, actor, action);
+  }
   const steps = payWith ? rulesetCostSteps(ctx.definition, action, payWith) : 0;
   const extra = action.use?.perCostStep && steps > 0 ? { amount: action.use.perCostStep, times: steps } : undefined;
 
@@ -1681,67 +2110,206 @@ function resolveAction(
   const heal = once(action.heal);
   const temporary = once(action.temporary);
 
+  const pooled = rulesetCombatIsPool(ctx.combat);
+  // A spending attack throws the number its maker has as the blow lands, and whether anything landed
+  // decides, once every target has been tried, whether the number resets or a miss costs some of it.
+  const spends = style?.spends ? { number: spend ?? actor.initiative, landed: false } : null;
   for (const target of targets) {
     let landed = true;
     let critical = false;
+    // Under `dice-pool`, the successes a hit had past the ones it needed: each is one more damage die.
+    let extraDice = 0;
+    // What lasted one attack, on either side of it: noted when the roll is made and spent once this
+    // blow is over, landed or not, so it counts for the blow's damage as well as its roll.
+    let used: { mine: RulesetTrackedCondition[]; theirs: RulesetTrackedCondition[] } | null = null;
+    const spendUsed = () => {
+      if (!used) return;
+      spendOneUse(ctx, actor, used.mine);
+      spendOneUse(ctx, target, used.theirs);
+    };
     // How the roll finally leaned, which is one of the things a rider may ask about. An action
     // nobody rolls for leaned no way at all.
     let mode: RulesetCombatRollMode = "normal";
-    if (action.toHit !== undefined && !action.autoHit) {
+    if (held && target.id === held.targetId) {
+      // The roll was made before the one it hit was asked. It is not made again: it is checked
+      // against their defense as it stands now, which is what an answer at this moment changes. A
+      // natural face decided it whatever the defense.
+      const roll = held.roll;
+      const guarded = rulesetDefenseAgainst(ctx.definition, ctx.combat, ctx.state, target);
+      const landsAt = roll.critical ? "critical" : "hit";
+      // A pool's successes meet what the defense now asks, never fewer than one.
+      const needed = pooled ? Math.max(1, guarded.defense) : guarded.defense;
+      const outcome = roll.natural || roll.total >= needed ? landsAt : "miss";
+      if (pooled && outcome !== "miss") extraDice = roll.total - needed;
+      if (needed !== roll.defense) {
+        ctx.events.push({
+          type: "recheck",
+          actorId: actor.id,
+          targetId: target.id,
+          optionId: action.id,
+          label: action.label,
+          total: roll.total,
+          defense: needed,
+          ...(guarded.guards.length > 0 ? { guards: guarded.guards } : {}),
+          outcome,
+        });
+      }
+      mode = roll.mode;
+      // The attacker's are the ones the roll used; the target's are read now, so one they put on as
+      // their answer counts for this attack and is spent by it.
+      used = {
+        mine: actor.tracked.filter((entry) => entry.endsAfter === "own-attack" && held.mine.includes(entry.condition)),
+        theirs: oneUseConditions(target, "attacked"),
+      };
+      landed = outcome !== "miss";
+      critical = outcome === "critical";
+    } else if (action.toHit !== undefined && !action.autoHit) {
       mode = rulesetAttackMode(ctx.definition, ctx.combat, actor, target, {
         state: ctx.state,
         optionId: action.id,
       });
       // What the ground the target stands on is worth, said out loud before the roll it changed.
-      const guarded = rulesetDefenseAgainst(ctx.combat, ctx.state, target);
+      const guarded = rulesetDefenseAgainst(ctx.definition, ctx.combat, ctx.state, target);
       if (guarded.cover > 0) {
         ctx.events.push({ type: "cover", targetId: target.id, bonus: guarded.cover, defense: guarded.defense });
       }
-      const dice = ctx.combat.attackRoll.dice;
-      const first = rollRulesetDice(ctx.roll, dice.count, dice.sides);
-      const second = mode === "normal" ? null : rollRulesetDice(ctx.roll, dice.count, dice.sides);
-      const kept = second
-        ? mode === "advantage"
-          ? Math.max(sumOf(first), sumOf(second))
-          : Math.min(sumOf(first), sumOf(second))
-        : sumOf(first);
-      const naturals = ctx.combat.attackRoll.naturals;
-      const single = dice.count === 1;
-      const total = kept + action.toHit;
-      let outcome: "hit" | "miss" | "critical" = total >= guarded.defense ? "hit" : "miss";
-      if (single && kept === dice.sides && naturals.max !== "none") {
-        outcome = naturals.max === "critical" ? "critical" : "hit";
-      } else if (single && kept === 1 && naturals.min === "miss") outcome = "miss";
-      // A condition that says a blow from the next cell always tells is read last, so a hit that
-      // landed becomes the critical the ruleset promised.
-      if (outcome === "hit" && rulesetCriticalFromAdjacent(ctx.definition, ctx.combat, ctx.state, actor, target)) {
-        outcome = "critical";
+      if (pooled) {
+        // The to-hit number is the pool, what the attacker's conditions add is dice, and the
+        // defense is the successes it needs, never fewer than one. A botch misses whatever it
+        // counted, and there are no criticals: what a strong hit is worth is its extra successes.
+        const bonuses = rollBonuses(
+          ctx,
+          rulesetConditionModifiers(ctx.definition, ctx.combat, actor, "attacks", ctx.state),
+        );
+        const thrown = throwPool(ctx, actor, action.toHit + bonusTotal(bonuses), mode);
+        const needed = Math.max(1, guarded.defense);
+        const outcome = !thrown.botch && thrown.successes >= needed ? "hit" : "miss";
+        ctx.events.push({
+          type: "attack",
+          actorId: actor.id,
+          targetId: target.id,
+          optionId: action.id,
+          label: action.label,
+          mode,
+          rolls: thrown.rolls,
+          kept: thrown.successes,
+          modifier: action.toHit,
+          ...(bonuses.length > 0 ? { bonuses } : {}),
+          total: thrown.successes,
+          defense: needed,
+          ...(guarded.guards.length > 0 ? { guards: guarded.guards } : {}),
+          outcome,
+          pool: poolRecord(thrown),
+          ...(style ? { style: style.id } : {}),
+        });
+        actor.flags.helped = false;
+        used = { mine: oneUseConditions(actor, "own-attack"), theirs: oneUseConditions(target, "attacked") };
+        landed = outcome === "hit";
+        if (landed) extraDice = thrown.successes - needed;
+        if (
+          landed &&
+          !ctx.state.window &&
+          rulesetEncounterOutcome(ctx.state) === "ongoing" &&
+          rulesetReactionsAt(ctx.definition, ctx.combat, ctx.state, target, "hit", actor.id, action.catalog).length > 0
+        ) {
+          return {
+            targetId: target.id,
+            rest: targets.slice(targets.indexOf(target) + 1).map((one) => one.id),
+            roll: { mode, total: thrown.successes, defense: needed, critical: false, natural: false },
+            mine: used.mine.map((entry) => entry.condition),
+            hurt: [],
+            label: action.label,
+            optionId: action.id,
+            ...(action.catalog ? { catalog: action.catalog } : {}),
+          };
+        }
+      } else {
+        const dice = ctx.combat.attackRoll!.dice;
+        const first = rollRulesetDice(ctx.roll, dice.count, dice.sides);
+        const second = mode === "normal" ? null : rollRulesetDice(ctx.roll, dice.count, dice.sides);
+        const kept = second
+          ? mode === "advantage"
+            ? Math.max(sumOf(first), sumOf(second))
+            : Math.min(sumOf(first), sumOf(second))
+          : sumOf(first);
+        const naturals = ctx.combat.attackRoll!.naturals;
+        const single = dice.count === 1;
+        // What the attacker's conditions add, rolled after the attack's own dice.
+        const bonuses = rollBonuses(
+          ctx,
+          rulesetConditionModifiers(ctx.definition, ctx.combat, actor, "attacks", ctx.state),
+        );
+        const total = kept + action.toHit + bonusTotal(bonuses);
+        let outcome: "hit" | "miss" | "critical" = total >= guarded.defense ? "hit" : "miss";
+        if (single && kept === dice.sides && naturals.max !== "none") {
+          outcome = naturals.max === "critical" ? "critical" : "hit";
+        } else if (single && kept === 1 && naturals.min === "miss") outcome = "miss";
+        // A condition that says a blow from the next cell always tells is read last, so a hit that
+        // landed becomes the critical the ruleset promised.
+        if (outcome === "hit" && rulesetCriticalFromAdjacent(ctx.definition, ctx.combat, ctx.state, actor, target)) {
+          outcome = "critical";
+        }
+        ctx.events.push({
+          type: "attack",
+          actorId: actor.id,
+          targetId: target.id,
+          optionId: action.id,
+          label: action.label,
+          mode,
+          rolls: second ? [...first, ...second] : first,
+          kept,
+          modifier: action.toHit,
+          ...(bonuses.length > 0 ? { bonuses } : {}),
+          total,
+          defense: guarded.defense,
+          ...(guarded.guards.length > 0 ? { guards: guarded.guards } : {}),
+          outcome,
+        });
+        // Help is spent by the attack it was given for, landed or not.
+        actor.flags.helped = false;
+        used = { mine: oneUseConditions(actor, "own-attack"), theirs: oneUseConditions(target, "attacked") };
+        landed = outcome !== "miss";
+        critical = outcome === "critical";
+        // A hit on somebody who holds an answer for being hit stops here, before its damage: the
+        // window asks them, and the attack picks up from this roll once they have answered. Nothing
+        // opened inside a window opens another, so an attack made inside one is never held.
+        if (
+          landed &&
+          !ctx.state.window &&
+          rulesetEncounterOutcome(ctx.state) === "ongoing" &&
+          rulesetReactionsAt(ctx.definition, ctx.combat, ctx.state, target, "hit", actor.id, action.catalog).length > 0
+        ) {
+          return {
+            targetId: target.id,
+            rest: targets.slice(targets.indexOf(target) + 1).map((one) => one.id),
+            roll: {
+              mode,
+              total,
+              defense: guarded.defense,
+              critical,
+              natural: single && kept === dice.sides && naturals.max !== "none",
+            },
+            mine: used.mine.map((entry) => entry.condition),
+            hurt: [],
+            label: action.label,
+            optionId: action.id,
+            ...(action.catalog ? { catalog: action.catalog } : {}),
+          };
+        }
       }
-      ctx.events.push({
-        type: "attack",
-        actorId: actor.id,
-        targetId: target.id,
-        optionId: action.id,
-        label: action.label,
-        mode,
-        rolls: second ? [...first, ...second] : first,
-        kept,
-        modifier: action.toHit,
-        total,
-        defense: guarded.defense,
-        outcome,
-      });
-      // Help is spent by the attack it was given for, landed or not.
-      actor.flags.helped = false;
-      landed = outcome !== "miss";
-      critical = outcome === "critical";
     }
-    if (!landed) continue;
+    if (!landed) {
+      spendUsed();
+      continue;
+    }
 
     let saved = false;
     if (action.save) {
       saved = rollSave(ctx, target, action.save.save, action.save.difficulty, actor.id);
-      if (saved && action.save.onSuccess === "negates") continue;
+      if (saved && action.save.onSuccess === "negates") {
+        spendUsed();
+        continue;
+      }
     }
     const halved = saved && action.save?.onSuccess === "half";
 
@@ -1763,7 +2331,22 @@ function resolveAction(
         : undefined;
     let woundKind: { id: string; severity: number } | undefined;
     const blowEventStart = ctx.events.length;
+    // A blow made in a style that takes lands on the target's number instead of their health: each
+    // part of it takes its successes off, and the whole blow is settled once every part has landed.
+    const takes = style?.takes ? { from: target.initiative, taken: 0 } : null;
     const land = (part: RulesetDamageInput) => {
+      if (takes) {
+        const amount = Math.max(0, Math.floor(part.amount));
+        takes.taken += amount;
+        shiftInitiative(ctx, target, -amount, "taken", {
+          sourceId: actor.id,
+          ...(part.label ? { label: part.label } : {}),
+          rolls: part.rolls,
+          flat: part.flat,
+          ...(part.pool ? { pool: part.pool } : {}),
+        });
+        return;
+      }
       before ??= healthOf(ctx, target);
       const partDealt = applyDamage(ctx, target, part, !!woundTrack);
       dealt += partDealt;
@@ -1775,7 +2358,62 @@ function resolveAction(
         if (kind && (!woundKind || kind.severity > woundKind.severity)) woundKind = kind;
       }
     };
-    if (damage && action.damage) {
+    if (pooled && action.damage && spends) {
+      // The maker's own number, thrown as damage dice: nothing the weapon adds, nothing the hit had
+      // past its needed successes, and no soak.
+      spends.landed = true;
+      const thrown = throwHarm(
+        ctx,
+        target,
+        { count: Math.max(0, spends.number), sides: 0, flat: 0 },
+        action.damage.type,
+        0,
+        undefined,
+        false,
+      );
+      land({
+        sourceId: actor.id,
+        label: action.label,
+        ...(action.damage.type ? { damageType: action.damage.type } : {}),
+        rolls: thrown.rolls,
+        flat: 0,
+        amount: halved ? Math.floor(thrown.total / 2) : thrown.total,
+        ...(halved ? { saved: true } : {}),
+        pool: thrown.pool,
+      });
+    } else if (pooled && action.damage) {
+      // Every target's damage is thrown for them, because what the hit added past its needed
+      // successes and what they soak are theirs. The first amount carries the extra dice; each
+      // clause and a rider is its own pool of its own kind.
+      const first = throwHarm(ctx, target, action.damage, action.damage.type, extraDice, extra);
+      land({
+        sourceId: actor.id,
+        label: action.label,
+        ...(action.damage.type ? { damageType: action.damage.type } : {}),
+        rolls: first.rolls,
+        flat: first.flat,
+        amount: halved ? Math.floor(first.total / 2) : first.total,
+        ...(halved ? { saved: true } : {}),
+        pool: first.pool,
+      });
+      (action.damage.plus ?? []).forEach((clause) => {
+        const own = clause.save ? rollSave(ctx, target, clause.save.save, clause.save.difficulty, actor.id) : false;
+        if (own && clause.save?.onSuccess === "none") return;
+        const clauseHalved = clause.save ? own : halved;
+        const type = clause.type ?? action.damage?.type;
+        const thrown = throwHarm(ctx, target, clause, type, 0);
+        land({
+          sourceId: actor.id,
+          label: action.label,
+          ...(type ? { damageType: type } : {}),
+          rolls: thrown.rolls,
+          flat: thrown.flat,
+          amount: clauseHalved ? Math.floor(thrown.total / 2) : thrown.total,
+          ...(clauseHalved ? { saved: true } : {}),
+          pool: thrown.pool,
+        });
+      });
+    } else if (damage && action.damage) {
       const rolled = damage();
       const bonus = critical ? criticalExtra(ctx, action.damage, extra) : { rolls: [], flat: 0 };
       const total = rolled.total + sumOf(bonus.rolls) + bonus.flat;
@@ -1814,10 +2452,13 @@ function resolveAction(
     // And whatever adds itself to a hit without anybody choosing it: one more clause of this blow,
     // doubled by a critical exactly as the rest of it is. Only a blow that DEALS something can carry
     // one, because a rider is extra damage on a hit and an action with none never struck for any.
-    const rider = action.damage ? firingRider(ctx, actor, action, target, mode) : null;
+    const rider = action.damage && !spends ? firingRider(ctx, actor, action, target, mode) : null;
     if (rider) {
       ctx.events.push({ type: "rider", actorId: actor.id, targetId: target.id, riderId: rider.id, label: rider.label });
-      const rolled = rollAmount(ctx, rider.amount);
+      const type = rider.type ?? action.damage?.type;
+      const rolled: { rolls: number[]; flat: number; total: number; pool?: RulesetDamageInput["pool"] } = pooled
+        ? throwHarm(ctx, target, rider.amount, type, 0)
+        : rollAmount(ctx, rider.amount);
       const bonus = critical ? criticalExtra(ctx, rider.amount) : { rolls: [], flat: 0 };
       const total = rolled.total + sumOf(bonus.rolls) + bonus.flat;
       land({
@@ -1829,6 +2470,7 @@ function resolveAction(
         amount: halved ? Math.floor(total / 2) : total,
         ...(halved ? { saved: true } : {}),
         ...(critical ? { critical: true } : {}),
+        ...(rolled.pool ? { pool: rolled.pool } : {}),
       });
     }
     if (woundKind && woundTrack && "track" in health) {
@@ -1846,6 +2488,16 @@ function resolveAction(
       }
     }
     if (before) afterBlow(ctx, target, dealt, critical);
+    // What a taking blow took goes to its maker, with what landing one is worth on top; and taking
+    // somebody down to the line crashes them, which is worth the crash's own bonus.
+    if (takes) {
+      shiftInitiative(ctx, actor, takes.taken + (style?.takes?.gain ?? 0), "gained", { sourceId: target.id });
+      const line = ctx.combat.initiative.resource?.crash;
+      if (line && takes.from > line.at && target.initiative <= line.at) {
+        settleCrash(ctx, target, actor.id);
+        if (line.bonus > 0) shiftInitiative(ctx, actor, line.bonus, "crash", { sourceId: target.id });
+      }
+    }
     if (heal) {
       const rolled = heal();
       dealHeal(ctx, target, { sourceId: actor.id, rolls: rolled.rolls, flat: rolled.flat, amount: rolled.total });
@@ -1874,8 +2526,89 @@ function resolveAction(
         });
       }
     }
+    spendUsed();
+  }
+  // A spending blow that landed spends the whole number, back to the base; one that landed on nobody
+  // costs what a miss costs at the number it was made with, which may crash its own maker.
+  if (spends && action.toHit !== undefined) {
+    const resource = ctx.combat.initiative.resource!;
+    if (spends.landed) shiftInitiative(ctx, actor, resource.base - actor.initiative, "spent");
+    else {
+      const lose = stepValue(style?.spends?.onMiss, spends.number);
+      if (lose > 0) shiftInitiative(ctx, actor, -lose, "missed");
+    }
+  }
+  return null;
+}
+
+/** The style an attack is made in: the one it was chosen or held in, whatever has happened to its
+ *  maker's number since, or, for one made out of a turn, the first its maker may use now. None for
+ *  something that is not an attack. */
+function attackStyle(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  styleId: string | undefined,
+): RulesetInitiativeStyle | undefined {
+  if (!rulesetActionTakesStyle(action)) return undefined;
+  if (styleId === undefined) return rulesetAttackStyles(ctx.combat, actor, action)[0];
+  return ctx.combat.initiative.resource?.styles.find((style) => style.id === styleId);
+}
+
+/** A number that attacks move, changed and said so. Crossing the crash line either way is settled
+ *  here; the bonus for crashing somebody is the attacker's, and is settled where they did it. */
+function shiftInitiative(
+  ctx: RulesetCombatContext,
+  combatant: RulesetCombatant,
+  amount: number,
+  reason: Extract<RulesetCombatEvent, { type: "shift" }>["reason"],
+  extra: Partial<
+    Omit<Extract<RulesetCombatEvent, { type: "shift" }>, "type" | "actorId" | "amount" | "total" | "reason">
+  > = {},
+): void {
+  combatant.initiative += amount;
+  ctx.events.push({ type: "shift", actorId: combatant.id, amount, total: combatant.initiative, reason, ...extra });
+  if (reason !== "taken") settleCrash(ctx, combatant);
+}
+
+/** Whether a combatant is crashed, kept in step with their number: crossing to the line or below puts
+ *  the ruleset's crash condition on them (from whoever did it, when somebody did), and rising above it
+ *  takes it off. `crashedTurns` is what counts their turns towards recovering. */
+function settleCrash(ctx: RulesetCombatContext, combatant: RulesetCombatant, sourceId?: string): void {
+  const crash = ctx.combat.initiative.resource?.crash;
+  if (!crash) return;
+  const crashed = combatant.initiative <= crash.at;
+  if (crashed && combatant.crashedTurns === undefined) {
+    combatant.crashedTurns = 0;
+    if (crash.condition) {
+      applyConditionId(
+        ctx,
+        combatant,
+        crash.condition,
+        { condition: crash.condition, duration: "instant" },
+        {
+          ...(sourceId ? { sourceId } : {}),
+        },
+      );
+    }
+  } else if (!crashed && combatant.crashedTurns !== undefined) {
+    delete combatant.crashedTurns;
+    if (crash.condition && rulesetCombatConditions(ctx.definition, combatant).includes(crash.condition)) {
+      removeCondition(ctx, combatant, crash.condition, "recovered");
+    }
   }
 }
+
+/** What a step table says at a number: the value of the last step at or below it, and nothing below
+ *  the first. */
+function stepValue(table: ReadonlyArray<readonly [number, number]> | undefined, at: number): number {
+  let value = 0;
+  for (const [threshold, step] of table ?? []) if (at >= threshold) value = step;
+  return value;
+}
+
+/** Where an attack stopped: the held attack's own record, and what its window says about it. */
+type RulesetHitHold = RulesetHeldAttack & { label: string; optionId: string; catalog?: string };
 
 // ── Between turns ──
 
@@ -1967,19 +2700,26 @@ export function advanceRulesetTurn(
 function openSignatureWindow(ctx: RulesetCombatContext): boolean {
   const waiting = ctx.state.order.filter((id) => rulesetSignatureOptions(ctx.definition, ctx.state, id).length > 0);
   if (waiting.length === 0) return false;
-  const nextActorId = nextTurnActor(ctx.state)?.id ?? "";
+  // A round that throws initiative again has no next actor until it has been thrown, and that is
+  // done once the window has closed, so a window at the end of a round names nobody rather than
+  // whoever the old order would have put first.
+  const next = nextTurnActor(ctx.state);
+  const unknown = next?.wraps && (ctx.combat.initiative.each === "round" || !!ctx.combat.initiative.resource);
+  const nextActorId = unknown ? "" : (next?.combatant.id ?? "");
   openWindow(ctx, { kind: "signature", trigger: { kind: "between-turns", nextActorId }, waiting });
   return true;
 }
 
-/** Who acts next, read without moving the fight: the window between two turns says whose turn it is
- *  holding up. */
-function nextTurnActor(state: RulesetEncounterState): RulesetCombatant | null {
+/** Who acts next, read without moving the fight, and whether their turn begins a new round: the
+ *  window between two turns says whose turn it is holding up. */
+function nextTurnActor(state: RulesetEncounterState): { combatant: RulesetCombatant; wraps: boolean } | null {
   let turn = state.turn;
+  let wraps = false;
   for (let step = 0; step < state.order.length; step++) {
+    if (turn + 1 >= state.order.length) wraps = true;
     turn = turn + 1 >= state.order.length ? 0 : turn + 1;
     const candidate = rulesetCombatant(state, state.order[turn]!);
-    if (candidate && canTakeTurn(candidate)) return candidate;
+    if (candidate && canTakeTurn(candidate)) return { combatant: candidate, wraps };
   }
   return null;
 }
@@ -2004,8 +2744,23 @@ function beginNextTurn(definition: RulesetDefinition, combat: RulesetCombat, ctx
   ctx.state.turn = turn;
   ctx.state.round = round;
   if (fresh) {
-    for (const combatant of ctx.state.combatants) refreshRulesetBudgets(combat, combatant.budgets, "round");
+    for (const combatant of ctx.state.combatants) {
+      refreshRulesetBudgets(combat, combatant.budgets, "round");
+      refreshSpendLimits(combatant, "round");
+    }
     ctx.events.push({ type: "round", round });
+    // A ruleset whose initiative is thrown every round throws it again now, and the round starts at
+    // whoever is first in the new order and can take a turn.
+    if (combat.initiative.each === "round" || combat.initiative.resource) {
+      // A number attacks move is not thrown again: the order simply follows it as it now stands.
+      if (combat.initiative.resource) reorderByInitiative(ctx);
+      else rethrowInitiative(definition, combat, ctx);
+      const first = ctx.state.order.findIndex((id) => {
+        const candidate = rulesetCombatant(ctx.state, id);
+        return !!candidate && canTakeTurn(candidate);
+      });
+      ctx.state.turn = Math.max(0, first);
+    }
   }
   // A rider fires once in its period. "turn" is fresh at the start of every turn, whosever it is,
   // so a strike made while somebody else is acting can still carry one; "round" waits for the round
@@ -2015,6 +2770,7 @@ function beginNextTurn(definition: RulesetDefinition, combat: RulesetCombat, ctx
   const actor = currentRulesetActor(ctx.state);
   if (actor) {
     refreshRulesetBudgets(combat, actor.budgets, "turn");
+    refreshSpendLimits(actor, "turn");
     // A stance lasts until the actor's next turn, and that turn is now. Help was given to somebody
     // else and is spent by their own next attack, so it survives this.
     actor.flags = actor.flags.helped ? { helped: true } : {};
@@ -2022,11 +2778,78 @@ function beginNextTurn(definition: RulesetDefinition, combat: RulesetCombat, ctx
     ctx.events.push({ type: "turn", actorId: actor.id, round });
     refreshRulesetSignature(actor);
     rollRulesetRecharges(ctx, actor);
+    recoverFromCrash(ctx, actor);
     tickConditions(ctx, actor, "turn-start");
+    // A condition that ended as the turn began no longer holds this turn's walk: nothing has been
+    // spent yet, so the allowance is simply read again.
+    refreshRulesetMovement(definition, combat, actor, ctx.state);
     if (actor.dying && !actor.stable && !actor.defeated) deathSave(ctx, actor);
   }
   const after = rulesetEncounterOutcome(ctx.state);
-  if (after !== "ongoing") ctx.events.push({ type: "outcome", outcome: after });
+  if (after !== "ongoing") pushOutcome(ctx, after);
+}
+
+/** What a combatant may spend of a limited pool starts again with the period the limit is counted in. */
+function refreshSpendLimits(combatant: RulesetCombatant, per: "turn" | "round"): void {
+  for (const limit of Object.values(combatant.limits ?? {})) if (limit.per === per) limit.spent = 0;
+}
+
+/** A crashed combatant's own turn begins: one more towards recovering, and at the ruleset's count the
+ *  number goes back to the base before they act. */
+function recoverFromCrash(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
+  const crash = ctx.combat.initiative.resource?.crash;
+  if (actor.crashedTurns === undefined || !crash?.recoverAfter) return;
+  actor.crashedTurns += 1;
+  if (actor.crashedTurns < crash.recoverAfter) return;
+  shiftInitiative(ctx, actor, ctx.combat.initiative.resource!.base - actor.initiative, "recovered");
+}
+
+/** The order sorted again by everybody's number as it stands, which is how a round begins where
+ *  initiative is a number attacks move. */
+function reorderByInitiative(ctx: RulesetCombatContext): void {
+  ctx.state.order = rulesetInitiativeOrder(ctx.state.combatants);
+  pushInitiativeOrder(ctx);
+}
+
+/** The order as it now stands, said once, for everybody still in the fight. */
+function pushInitiativeOrder(ctx: RulesetCombatContext): void {
+  ctx.events.push({
+    type: "initiative",
+    entries: ctx.state.order.flatMap((id) => {
+      const combatant = rulesetCombatant(ctx.state, id);
+      return combatant && !combatant.defeated
+        ? [
+            {
+              actorId: id,
+              roll: combatant.initiativeRoll,
+              modifier: combatant.initiativeModifier,
+              total: combatant.initiative,
+            },
+          ]
+        : [];
+    }),
+  });
+}
+
+/** Initiative thrown again for everybody still in the fight, with each one's modifier as it stands
+ *  now, and the order sorted by the same rules it opened with. Somebody the fight is over for keeps
+ *  their old number and simply never takes a turn. */
+function rethrowInitiative(definition: RulesetDefinition, combat: RulesetCombat, ctx: RulesetCombatContext): void {
+  for (const combatant of ctx.state.combatants) {
+    if (combatant.defeated) continue;
+    const now = rulesetInitiativeModifierNow(definition, combat, combatant);
+    const thrown = combat.initiative.pool
+      ? rulesetPoolInitiative(definition, combat, ctx.roll, now)
+      : (() => {
+          const faces = throwInitiativeDice(combat, ctx.roll);
+          return { roll: faces, modifier: now, total: sumOf(faces) + now };
+        })();
+    combatant.initiativeRoll = thrown.roll;
+    combatant.initiativeModifier = thrown.modifier;
+    combatant.initiative = thrown.total;
+  }
+  ctx.state.order = rulesetInitiativeOrder(ctx.state.combatants);
+  pushInitiativeOrder(ctx);
 }
 
 /** Who won, if anybody has yet. A fight is over for a side when nobody on it is still standing;

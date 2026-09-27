@@ -78,6 +78,17 @@ The separate **Edit Sheet** button described above still edits the general sheet
 
 If the ruleset's package was removed, or the installed copy is older than the one the game was created on, the block shows a notice instead, and checks cannot be rolled until the package is installed again.
 
+## The inventory
+
+Click **Inventory** above the narration to open your bag. Each square is a stack: an item and how many of it you have. Click a stack to select it.
+
+- **Change the amount.** Use **-** and **+** to take or add one. To change it by more, type into the number between them and press Enter: a number sets the count (`300`), and a sign adds or takes that many (`+100`, `-50`). Setting a stack to 0 removes it, and asks first when there is more than one.
+- **Split a stack.** Click **Split**, type how many go into the new stack, and click **Split** again. Splitting 100 off 300 apples leaves a stack of 200 and a new stack of 100 beside it.
+- **Merge or reorder.** Drag a stack onto another stack of the same item to merge them. Drag it onto a stack of a different item to swap the two.
+- **Rename.** Type a new name and click **Save**. Renaming a stack to an item you already have adds it to that item's first stack.
+
+The Game Master adds and removes items as the story goes, and a fight uses them from the **Items** action. Both count every stack of an item together, so splitting a pile never hides any of it. When the Game Master takes more than you have, it takes all of it. Your stacks, splits included, carry over to the next session.
+
 ## Recruiting and removing party members
 
 The Game Master controls who is in your party as the story unfolds. There is no manual "add companion" button. Instead, the GM adds or removes party members through the narration, based on what happens in the scene.

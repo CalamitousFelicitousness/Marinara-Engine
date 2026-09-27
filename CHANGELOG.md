@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Game Mode's inventory changes a stack by any amount: type a count, or +N to add and -N to take, instead of clicking once per item. A stack can be split into a size you choose (300 apples split by 100 leaves 200 and 100), and dropping a stack onto another of the same item merges them. Split stacks carry over to the next session, and the Game Master and fights still count every stack of an item together (#6759).
+
 - Fixed a production startup regression that left Docker and installed web apps on a blank screen before React could load (#6760).
 
 - Regex packs can be selected, exported, and deleted in bulk, with one confirmation and failed deletions retained for retry (#6755).

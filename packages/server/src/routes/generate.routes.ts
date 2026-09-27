@@ -166,6 +166,14 @@ import {
   isRoleplayCommandEnabled,
   isRoleplayCommandAllowed,
   getRoleplayCommandActivity,
+  applyGameInventoryTags,
+  createInventoryTagRegex,
+  gameInventoryBags,
+  gameInventoryTellingStart,
+  readGameInventoryTurn,
+  recordGameInventoryTelling,
+  refuseGameInventoryTags,
+  replaceTrailingInventoryTags,
   gameInventoryTotals,
   normalizeGameInventoryStacks,
   type RoleplayCommandActivity,
@@ -196,6 +204,7 @@ import {
   sheetCommandCards,
   type GameRulesetSheetTurn,
 } from "../services/game/ruleset-sheet-turn.service.js";
+import { commitGameInventoryChange, followGameInventoryOnRow } from "../services/game/game-inventory.service.js";
 import { createCustomToolsStorage } from "../services/storage/custom-tools.storage.js";
 import { createLorebooksStorage } from "../services/storage/lorebooks.storage.js";
 import { createRegexScriptsStorage } from "../services/storage/regex-scripts.storage.js";
@@ -4417,6 +4426,21 @@ export async function generateRoutes(app: FastifyInstance) {
           const dicePoolBlock = dicePoolSessionForPrompt
             ? renderGameDicePoolPromptBlock(dicePoolSessionForPrompt, gameSkillModifierContext)
             : undefined;
+          // The inventory this telling starts from: for a regenerated reply whose turn the stacks still
+          // remember, where the turn began, since that is what its tags are carried out on.
+          const promptInventoryStacks =
+            input.regenerateMessageId && regenMsg
+              ? gameInventoryTellingStart(
+                  readGameInventoryTurn(chatMeta.gameInventoryTurn),
+                  normalizeGameInventoryStacks(chatMeta.gameInventory),
+                  {
+                    kind: "regenerate",
+                    messageId: input.regenerateMessageId,
+                    replaced: typeof regenMsg.activeSwipeIndex === "number" ? regenMsg.activeSwipeIndex : 0,
+                    replacedContent: typeof regenMsg.content === "string" ? regenMsg.content : "",
+                  },
+                ).start
+              : normalizeGameInventoryStacks(chatMeta.gameInventory);
           const formatReminder = resolvePromptMacros(
             buildGmFormatReminder({
               hasSceneModel,
@@ -4475,11 +4499,13 @@ export async function generateRoutes(app: FastifyInstance) {
               // these turns; the gate declines to widen that wart rather than matching it.
               experienceGmVerbs:
                 gmVerbTableForPrompt && !input.impersonate ? renderGmVerbInstructions(gmVerbTableForPrompt) : undefined,
-              // One line per item with its total, so a stack the player split reads as one thing.
+              // One line per item with its total, so a stack the player split reads as one thing,
+              // and the same per bag once anybody else in the party carries something.
               playerInventory: (() => {
-                const inv = gameInventoryTotals(normalizeGameInventoryStacks(chatMeta.gameInventory));
+                const inv = gameInventoryTotals(promptInventoryStacks);
                 return inv.length > 0 ? inv : undefined;
               })(),
+              partyInventory: gameInventoryBags(promptInventoryStacks),
             }),
           );
           finalMessages.push({ role: "user" as const, content: formatReminder });
@@ -9044,6 +9070,78 @@ export async function generateRoutes(app: FastifyInstance) {
             }
           }
 
+          // ── Inventory tags (Game mode) ──
+          // After every rewrite above, like the sheet commands: each `[inventory:]` tag is answered
+          // with what really happened, so a refusal is read back next turn and the client only
+          // announces. A regenerated telling starts from where its turn began when the stacks are
+          // still what the telling it replaces left (`gameInventoryTellingStart`), so tellings never
+          // add up. The answers are worked out here, on the stacks as they are, so the reply is saved
+          // with them; the stacks themselves only change once the reply is saved (below), so a reply
+          // that is never saved changes nothing.
+          let inventoryTurn: {
+            requested: string;
+            preview: string;
+            telling: Parameters<typeof gameInventoryTellingStart>[2];
+            party: { player?: string; members: string[] };
+            tellsInventory: boolean;
+            messageId: string | null;
+            /** The swipe a regenerated or continued telling replaced or added to. */
+            replaced: number | null;
+          } | null = null;
+          const tellsInventory = /\[inventory:/i.test(fullResponse);
+          const retellsInventoryTurn =
+            !!input.regenerateMessageId &&
+            readGameInventoryTurn(chatMeta.gameInventoryTurn)?.messageId === input.regenerateMessageId;
+          if (chatMode === "game" && !input.impersonate && (tellsInventory || retellsInventoryTurn)) {
+            try {
+              const party = { player: personaName || undefined, members: canonicalGamePartyNames };
+              const retoldId = input.regenerateMessageId ?? input.continueMessageId ?? null;
+              const retold = retoldId ? await chats.getMessage(retoldId) : null;
+              const telling = retold
+                ? {
+                    kind: input.regenerateMessageId ? ("regenerate" as const) : ("continue" as const),
+                    messageId: retold.id,
+                    replaced: retold.activeSwipeIndex ?? 0,
+                    replacedContent: typeof retold.content === "string" ? retold.content : "",
+                  }
+                : ({ kind: "new" } as const);
+              const current = await chats.getById(input.chatId);
+              const currentMeta =
+                typeof current?.metadata === "string"
+                  ? (JSON.parse(current.metadata || "{}") as Record<string, unknown>)
+                  : ((current?.metadata ?? {}) as Record<string, unknown>);
+              const plan = gameInventoryTellingStart(
+                readGameInventoryTurn(currentMeta.gameInventoryTurn),
+                normalizeGameInventoryStacks(currentMeta.gameInventory),
+                telling,
+              );
+              const requested = fullResponse;
+              const preview = tellsInventory ? applyGameInventoryTags(requested, plan.start, party).content : requested;
+              if (preview !== fullResponse) {
+                fullResponse = preview;
+                contentReplaced = true;
+              }
+              inventoryTurn = {
+                requested,
+                preview,
+                telling,
+                party,
+                tellsInventory,
+                messageId: retold?.id ?? null,
+                replaced: retold ? (retold.activeSwipeIndex ?? 0) : null,
+              };
+            } catch (err) {
+              // Nothing is carried out, and the reply says so: no tag in it may read as done.
+              logger.error(err, "[game/inventory] Could not read the inventory for chat %s", input.chatId);
+              inventoryTurn = null;
+              const refused = refuseGameInventoryTags(fullResponse, "unapplied");
+              if (refused !== fullResponse) {
+                fullResponse = refused;
+                contentReplaced = true;
+              }
+            }
+          }
+
           // ── One-request dice: the turn notice (#6215) ──
           // Sibling of the narration-failure notice above: a clean turn records nothing, and a
           // turn where something could not be rolled says so in plain words instead of leaving
@@ -9370,6 +9468,124 @@ export async function generateRoutes(app: FastifyInstance) {
             savedSwipeIndex = 0;
           }
           // Empty messageId on the paths that save no message; that costs the claim, never the effect.
+          // ── Inventory tags: the stacks, the turn's record, and the detailed inventory on its row ──
+          // Now that the reply is saved, its tags are carried out on the stacks as they are, in one
+          // save with the journal. What this telling left is remembered beside where its turn began,
+          // and what its tags did is laid onto the row the reply was saved with.
+          if (inventoryTurn && savedMsg?.id) {
+            const pending = inventoryTurn;
+            let carriedOut = false;
+            try {
+              const swipeIndex = savedSwipeIndex ?? 0;
+              const committed = await commitGameInventoryChange(
+                app.db,
+                input.chatId,
+                (stacks, metadata) => {
+                  const plan = gameInventoryTellingStart(
+                    readGameInventoryTurn(metadata.gameInventoryTurn),
+                    stacks,
+                    pending.telling,
+                  );
+                  const outcome = pending.tellsInventory
+                    ? applyGameInventoryTags(pending.requested, plan.start, pending.party)
+                    : { content: pending.requested, stacks: plan.start, journal: [] };
+                  return {
+                    stacks: outcome.stacks,
+                    journal: outcome.journal,
+                    // What this telling left, remembered in the same write as the stacks.
+                    metadata: {
+                      gameInventoryTurn: recordGameInventoryTelling(
+                        pending.messageId ?? savedMsg.id,
+                        plan.before,
+                        plan.swipes,
+                        swipeIndex,
+                        outcome.stacks,
+                      ),
+                    },
+                    value: { content: outcome.content, before: stacks, plan },
+                  };
+                },
+                { kind: "none" },
+              );
+              if (committed) {
+                carriedOut = true;
+                const { plan, content, before } = committed.value;
+                // The stacks moved while the reply was being written (the player changed them), so
+                // its saved answers are brought in line with what really happened.
+                if (content !== pending.preview) {
+                  const answers = [...content.matchAll(createInventoryTagRegex())].map((match) => match[0]);
+                  const saved = typeof savedMsg.content === "string" ? savedMsg.content : "";
+                  const corrected = replaceTrailingInventoryTags(saved, answers);
+                  if (corrected !== saved) {
+                    savedMsg = (await chats.updateMessageContent(savedMsg.id, corrected)) ?? savedMsg;
+                    // And everything after this reads the corrected reply too.
+                    fullResponse = replaceTrailingInventoryTags(fullResponse, answers);
+                    if (continuedMessageRewriteSource !== null) continuedMessageRewriteSource = corrected;
+                  }
+                }
+                if (committed.stacks !== before) {
+                  sendSseEvent(reply, { type: "metadata_patch", data: { gameInventory: committed.stacks } });
+                }
+                const restarted = plan.start !== before;
+                // A telling that started again carries its turn's beginning even when its own tags
+                // changed nothing, since its row may have been cloned from the telling it replaced.
+                if (restarted || committed.stacks !== plan.start) {
+                  // The row this telling started from: the turn's own beginning when it started
+                  // again, the telling it replaced when it built on that one, and otherwise the row
+                  // before it.
+                  // A continuation starts from its own message's row, which its first part wrote.
+                  const startRow =
+                    restarted || pending.messageId === null || pending.replaced === null
+                      ? baseGameStateSnapshot
+                      : ((await gameStateStore.getByChatAndMessage(
+                          input.chatId,
+                          pending.messageId,
+                          pending.replaced,
+                        )) ?? baseGameStateSnapshot);
+                  const playerStats = await followGameInventoryOnRow(
+                    app.db,
+                    input.chatId,
+                    plan.start,
+                    committed.stacks,
+                    {
+                      kind: "message",
+                      messageId: savedMsg.id,
+                      swipeIndex,
+                      baseSnapshot: startRow,
+                    },
+                  );
+                  if (playerStats) sendSseEvent(reply, { type: "game_state_patch", data: { playerStats } });
+                }
+              } else {
+                // The chat is gone, so nothing was carried out and the answers are taken back below.
+                throw new Error("The chat's inventory could not be read");
+              }
+            } catch (err) {
+              logger.error(err, "[game/inventory] Could not carry out the inventory tags for chat %s", input.chatId);
+              // When the stacks never changed, the saved answers are taken back: nothing happened.
+              if (!carriedOut && savedMsg?.id) {
+                try {
+                  const refusals = [
+                    ...refuseGameInventoryTags(pending.preview, "unapplied").matchAll(createInventoryTagRegex()),
+                  ].map((match) => match[0]);
+                  const saved = typeof savedMsg.content === "string" ? savedMsg.content : "";
+                  const corrected = replaceTrailingInventoryTags(saved, refusals);
+                  if (corrected !== saved) {
+                    savedMsg = (await chats.updateMessageContent(savedMsg.id, corrected)) ?? savedMsg;
+                    fullResponse = replaceTrailingInventoryTags(fullResponse, refusals);
+                    if (continuedMessageRewriteSource !== null) continuedMessageRewriteSource = corrected;
+                  }
+                } catch (restoreErr) {
+                  logger.error(
+                    restoreErr,
+                    "[game/inventory] Could not take back the answers for chat %s",
+                    input.chatId,
+                  );
+                }
+              }
+            }
+          }
+
           if (savedMsg?.id && savedSwipeIndex !== null && outputTranslationConfig && !input.impersonate) {
             translationMessages.set(savedMsg.id, savedSwipeIndex);
             // Persist ownership before message_saved can trigger Game's legacy
@@ -11292,6 +11508,8 @@ export async function generateRoutes(app: FastifyInstance) {
                     hiddenTrackerFields: currentGameStateForLocks?.hiddenTrackerFields,
                   },
                   null, // manual overrides are one-shot — never carry forward
+                  // The stats above are the turn before's; this turn's inventory tags already wrote its own.
+                  { keepReplacedInventory: true },
                 );
                 // Send game state to client so HUD updates live
                 // ONLY send the fields world-state actually produces.

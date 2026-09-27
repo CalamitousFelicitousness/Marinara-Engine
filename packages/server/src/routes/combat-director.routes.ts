@@ -1,5 +1,13 @@
 import { createGameStateStorage, parseStoredRulesetLive } from "../services/storage/game-state.storage.js";
-import { normalizeGameDifficulty, combatWeatherSchema } from "@marinara-engine/shared";
+import {
+  normalizeGameDifficulty,
+  combatWeatherSchema,
+  applyGameInventoryOps,
+  gameInventoryCount,
+  gameInventoryTotals,
+  normalizeGameInventoryStacks,
+} from "@marinara-engine/shared";
+import { applyGameInventoryChangeHeld } from "../services/game/game-inventory.service.js";
 import { resolveCombatWeather } from "../services/game/weather.service.js";
 import type { FastifyInstance } from "fastify";
 import { randomUUID } from "node:crypto";
@@ -174,6 +182,7 @@ const command = z.discriminatedUnion("type", [
     optionId: key,
     targetIds: z.array(key).max(20),
     payWith: key.optional(),
+    style: key.optional(),
     /** Where the `move` option walks to, and the cell a shape is aimed at. Both are checked against
      *  the menu by the resolver; this only bounds them to a board's own size. */
     to: coord.optional(),
@@ -316,8 +325,11 @@ export async function combatDirectorRoutes(
         .max(256),
       tasks: z.array(z.unknown()).max(4000),
       requests: z.array(key).max(256),
-      inventory: z.array(z.object({ name: key, quantity: z.number().int().min(0).max(10000) })).max(200),
-      itemSpends: z.record(key, z.number().int().min(0).max(10000)),
+      // Totals per item, which a player's stacks together may take well past one stack's bound.
+      inventory: z
+        .array(z.object({ name: key, quantity: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER) }))
+        .max(200),
+      itemSpends: z.record(key, z.number().int().min(0).max(Number.MAX_SAFE_INTEGER)),
       gmCalls: z.number().int().min(0).max(12),
       // The ruleset fight itself. Its numbers are the ruleset's own and are checked by the resolver
       // that reads them; what is bounded here is the SHAPE and the size, the way the rest is.
@@ -542,21 +554,19 @@ export async function combatDirectorRoutes(
           .map(([name, count]) => ({ name, count: count - (previous.state.itemSpends[name] ?? 0) }))
           .filter((d) => d.count > 0);
         if (deltas.length)
-          await chats.patchMetadata(
-            chatId,
-            (meta) => {
-              const inventory = Array.isArray(meta.gameInventory)
-                ? (structuredClone(meta.gameInventory) as Array<{ name: string; quantity: number }>)
-                : [];
-              for (const d of deltas) {
-                const item = inventory.find((i) => i.name === d.name);
-                if (!item || item.quantity < d.count) throw new Error("Inventory changed. Reload the battle.");
-                item.quantity -= d.count;
-              }
-              return { gameInventory: inventory };
-            },
-            { metadataQueueHeld: true },
-          );
+          // Taken by name across every stack and bag of the item, the player's own first, since the
+          // fight saw one total per item; the detailed inventory and the journal follow with it.
+          await applyGameInventoryChangeHeld(app.db, chatId, (stacks) => {
+            for (const d of deltas) {
+              if (gameInventoryCount(stacks, d.name) < d.count)
+                throw new Error("Inventory changed. Reload the battle.");
+            }
+            const outcome = applyGameInventoryOps(
+              stacks,
+              deltas.map((d) => ({ op: "take" as const, name: d.name, count: d.count, as: "used" as const })),
+            );
+            return { stacks: outcome.stacks, journal: outcome.journal, value: null };
+          });
         if (s.style === "ruleset" && s.rulesetFight) live = await writeRulesetLive(chatId, s.anchor, s.rulesetFight);
         await store.updateStateById(rowId, JSON.stringify(s), true, chatId);
       }),
@@ -602,7 +612,7 @@ export async function combatDirectorRoutes(
           .array(
             z.object({
               name: z.string().max(200),
-              quantity: z.number().int().min(0).max(10000),
+              quantity: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
               description: z.string().max(2000).optional(),
             }),
           )
@@ -662,7 +672,8 @@ export async function combatDirectorRoutes(
         }
         const state = createCombatDirector({
           ...input,
-          inventory: Array.isArray(meta.gameInventory) ? meta.gameInventory : [],
+          // One line per item: a fight neither knows nor cares how the player split their stacks.
+          inventory: gameInventoryTotals(normalizeGameInventoryStacks(meta.gameInventory)),
           party: input.party as Combatant[],
           // What the fight is RESOLVED by is read below and never stored on the Engine's own units.
           enemies: input.enemies.map(({ creature: _c, tier: _t, proposed: _p, ...unit }) => unit) as Combatant[],

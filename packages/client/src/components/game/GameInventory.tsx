@@ -1,5 +1,5 @@
 // Game: Inventory Panel
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import {
   DndContext,
   type DragEndEvent,
@@ -10,56 +10,114 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import { Check, ChevronLeft, ChevronRight, Minus, Package, Plus, Wand2, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Gift, Minus, Package, Plus, Scissors, Wand2, X } from "lucide-react";
+import { gameInventoryBagKey, gameInventoryNameKey } from "@marinara-engine/shared";
 import { cn } from "../../lib/utils";
+import { defaultInventorySplitSize, parseInventoryAmount, parseInventoryCount } from "../../lib/game-inventory-amount";
 import { useTranslation as useUiTranslation } from "react-i18next";
 
+/** One stack. Two stacks may hold the same item, so a stack is told apart by its id, never its name. */
 export interface InventoryItem {
+  id: string;
   name: string;
   quantity: number;
+  /** The party member who carries it. Absent for the player's own character. */
+  holder?: string;
 }
+
+/** One party member's bag: `holder` as a stack has it (absent for the player), and the name shown. */
+export interface InventoryBag {
+  holder?: string;
+  name: string;
+}
+
+/** The shared view, or one bag by its key (`gameInventoryBagKey`, the player's is ""). */
+type InventoryView = { kind: "all" } | { kind: "bag"; key: string };
 
 interface GameInventoryProps {
   items: InventoryItem[];
+  /** Whose bags there are, the player's first. With more than one, the screen shows a tab per bag
+   *  beside the shared view, and stacks can be given from one to another. */
+  bags?: InventoryBag[];
   open: boolean;
   onClose: () => void;
-  /** Called when the user wants to add a new item */
-  onAddItem?: () => Promise<string | null> | string | null;
+  /** Called when the user wants to add a new item, into the open tab's bag (the player's from the
+   *  shared view). Resolves to the new stack's id. */
+  onAddItem?: (holder?: string) => Promise<string | null> | string | null;
   /** Called when the user wants to use an item during input phase */
   onUseItem?: (itemName: string) => void;
-  /** Called when the user wants to rename an item */
-  onRenameItem?: (currentName: string, nextName: string) => Promise<string | null> | string | null;
-  /** Called when the user wants to manually remove one unit of an item */
-  onRemoveItem?: (itemName: string) => void | Promise<void>;
-  /** Called when the user wants to manually add one unit of an item */
-  onIncrementItem?: (itemName: string) => void | Promise<void>;
-  /** Called when the user drags one item onto another to swap their positions */
-  onReorderItem?: (fromIndex: number, toIndex: number) => void | Promise<void>;
+  /** Called when the user renames a stack. Resolves to the id of the stack holding the result. */
+  onRenameItem?: (stackId: string, nextName: string) => Promise<string | null> | string | null;
+  /** Called when the user sets a stack's count: the +1 and -1 buttons, or a typed amount. 0 removes it. */
+  onSetItemQuantity?: (stackId: string, quantity: number) => void | Promise<void>;
+  /** Called when the user splits part of a stack into a new one. Resolves to the new stack's id. */
+  onSplitItem?: (stackId: string, size: number) => Promise<string | null> | string | null;
+  /** Called when the user drops a stack onto another stack of the same item. */
+  onMergeItems?: (fromId: string, intoId: string) => void | Promise<void>;
+  /** Called when the user gives some or all of a stack to another bag (the player's without `to`).
+   *  Resolves to the stack that received it. */
+  onGiveItem?: (stackId: string, to: string | undefined, count?: number) => Promise<string | null> | string | null;
+  /** Called when the user drags one stack onto another item to swap their places. */
+  onSwapItems?: (firstId: string, secondId: string) => void | Promise<void>;
   /** Whether the player can interact (input phase) */
   canInteract?: boolean;
 }
 
 const ITEMS_PER_PAGE = 20;
 
+/** A drop's change is fire-and-forget: whoever handles it says what went wrong, and a rejection it
+ *  did not catch is not left unhandled here. */
+function settle(result: unknown): void {
+  void Promise.resolve(result).catch(() => undefined);
+}
+
 export function GameInventory({
   items,
+  bags = [],
   open,
   onClose,
   onAddItem,
   onUseItem,
   onRenameItem,
-  onRemoveItem,
-  onIncrementItem,
-  onReorderItem,
+  onSetItemQuantity,
+  onSplitItem,
+  onMergeItems,
+  onGiveItem,
+  onSwapItems,
   canInteract,
 }: GameInventoryProps) {
   const { t: localizeUi } = useUiTranslation();
   const [selectedItem, setSelectedItem] = useState<string | null>(null);
-  const [renameDraft, setRenameDraft] = useState("");
+  // What was typed as a new name, kept with the stack and name it was typed for.
+  const [renameTyped, setRenameTyped] = useState<{ key: string; text: string } | null>(null);
   const [renamePending, setRenamePending] = useState(false);
   const [addPending, setAddPending] = useState(false);
-  const [amountPending, setAmountPending] = useState<"increment" | "decrement" | null>(null);
+  const [amountPending, setAmountPending] = useState(false);
+  // What was typed into the amount field, kept with the stack and count it was typed for.
+  const [amountTyped, setAmountTyped] = useState<{ key: string; text: string } | null>(null);
+  const [splitDraft, setSplitDraft] = useState<string | null>(null);
+  const [splitPending, setSplitPending] = useState(false);
+  const [giveDraft, setGiveDraft] = useState<{ to: string; count: string } | null>(null);
+  const [givePending, setGivePending] = useState(false);
+  const [view, setView] = useState<InventoryView>({ kind: "all" });
   const [pageIndex, setPageIndex] = useState(0);
+
+  // Tabs only when somebody besides the player could carry something.
+  const showBags = bags.length > 1;
+  const bagByKey = useMemo(() => new Map(bags.map((bag) => [gameInventoryBagKey(bag.holder), bag])), [bags]);
+  const bagName = (holder: string | undefined) =>
+    bagByKey.get(gameInventoryBagKey(holder))?.name ?? holder ?? bags[0]?.name ?? "";
+  // A tab whose bag is gone (its member left and carries nothing) falls back to the shared view.
+  const activeView = useMemo<InventoryView>(
+    () => (showBags && (view.kind === "all" || bagByKey.has(view.key)) ? view : { kind: "all" }),
+    [bagByKey, showBags, view],
+  );
+  const visibleItems = useMemo(
+    () =>
+      activeView.kind === "all" ? items : items.filter((item) => gameInventoryBagKey(item.holder) === activeView.key),
+    [activeView, items],
+  );
+  const activeBag = activeView.kind === "bag" ? bagByKey.get(activeView.key) : undefined;
 
   // Mouse: 4px distance threshold so quick clicks still select.
   // Touch: 200ms hold within 5px so swipe-to-scroll still works on mobile.
@@ -68,17 +126,9 @@ export function GameInventory({
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
   );
 
-  const handleItemClick = useCallback(
-    (item: InventoryItem) => {
-      if (!canInteract) {
-        // Just toggle inspect
-        setSelectedItem((prev) => (prev === item.name ? null : item.name));
-        return;
-      }
-      setSelectedItem((prev) => (prev === item.name ? null : item.name));
-    },
-    [canInteract],
-  );
+  const handleItemClick = useCallback((item: InventoryItem) => {
+    setSelectedItem((prev) => (prev === item.id ? null : item.id));
+  }, []);
 
   const handleUse = useCallback(
     (itemName: string) => {
@@ -88,21 +138,42 @@ export function GameInventory({
     [onUseItem],
   );
 
-  // Clear selection if the selected item was removed
+  // Clear selection if the selected stack was removed, or is not in the tab that is open.
   useEffect(() => {
-    if (selectedItem && !items.some((i) => i.name === selectedItem)) {
+    if (selectedItem && !visibleItems.some((i) => i.id === selectedItem)) {
       setSelectedItem(null);
     }
-  }, [items, selectedItem]);
+  }, [visibleItems, selectedItem]);
 
-  const selectedInventoryItem = selectedItem ? (items.find((item) => item.name === selectedItem) ?? null) : null;
-  const pageCount = Math.max(1, Math.ceil(items.length / ITEMS_PER_PAGE));
+  const selectedInventoryItem = selectedItem ? (visibleItems.find((item) => item.id === selectedItem) ?? null) : null;
+  const pageCount = Math.max(1, Math.ceil(visibleItems.length / ITEMS_PER_PAGE));
   const pageStart = pageIndex * ITEMS_PER_PAGE;
-  const pageItems = items.slice(pageStart, pageStart + ITEMS_PER_PAGE);
+  const pageItems = visibleItems.slice(pageStart, pageStart + ITEMS_PER_PAGE);
 
+  // Worked out while rendering, like the amount below, so a name typed right after picking a stack
+  // is never overwritten by the pick catching up.
+  const renameKey = selectedInventoryItem ? `${selectedInventoryItem.id}:${selectedInventoryItem.name}` : "";
+  const renameDraft =
+    renameTyped && renameTyped.key === renameKey ? renameTyped.text : (selectedInventoryItem?.name ?? "");
+  const setRenameDraft = useCallback((text: string) => setRenameTyped({ key: renameKey, text }), [renameKey]);
+
+  // The amount field shows the stack as it stands whenever it changes or another stack is picked, and
+  // a split in progress is dropped with it. Worked out while rendering rather than reset afterwards,
+  // so an amount typed right after picking a stack is never overwritten by that pick catching up.
+  const selectedStackId = selectedInventoryItem?.id;
+  const selectedQuantity = selectedInventoryItem?.quantity;
+  const amountKey = selectedInventoryItem ? `${selectedInventoryItem.id}:${selectedInventoryItem.quantity}` : "";
+  const amountDraft =
+    amountTyped && amountTyped.key === amountKey
+      ? amountTyped.text
+      : selectedQuantity === undefined
+        ? ""
+        : String(selectedQuantity);
+  const setAmountDraft = useCallback((text: string) => setAmountTyped({ key: amountKey, text }), [amountKey]);
   useEffect(() => {
-    setRenameDraft(selectedInventoryItem?.name ?? "");
-  }, [selectedInventoryItem?.name]);
+    setSplitDraft(null);
+    setGiveDraft(null);
+  }, [selectedStackId]);
 
   useEffect(() => {
     setPageIndex((current) => Math.min(current, pageCount - 1));
@@ -110,24 +181,24 @@ export function GameInventory({
 
   useEffect(() => {
     if (!selectedItem) return;
-    const selectedIndex = items.findIndex((item) => item.name === selectedItem);
+    const selectedIndex = visibleItems.findIndex((item) => item.id === selectedItem);
     if (selectedIndex >= 0) {
       setPageIndex(Math.floor(selectedIndex / ITEMS_PER_PAGE));
     }
-  }, [items, selectedItem]);
+  }, [visibleItems, selectedItem]);
 
   const handleRename = useCallback(
-    async (itemName: string) => {
+    async (item: InventoryItem) => {
       if (!onRenameItem) return;
 
       const nextName = renameDraft.trim().replace(/\s+/g, " ");
-      if (!nextName || nextName === itemName.trim()) return;
+      if (!nextName || nextName === item.name.trim()) return;
 
       setRenamePending(true);
       try {
-        const resolvedName = await onRenameItem(itemName, nextName);
-        if (resolvedName) {
-          setSelectedItem(resolvedName);
+        const resolvedId = await onRenameItem(item.id, nextName);
+        if (resolvedId) {
+          setSelectedItem(resolvedId);
         }
       } finally {
         setRenamePending(false);
@@ -136,59 +207,136 @@ export function GameInventory({
     [onRenameItem, renameDraft],
   );
 
+  const activeHolder = activeBag?.holder;
   const handleAdd = useCallback(async () => {
     if (!onAddItem) return;
 
     setAddPending(true);
     try {
-      const addedItemName = await onAddItem();
-      if (addedItemName) {
-        setSelectedItem(addedItemName);
-        setPageIndex(Math.floor(items.length / ITEMS_PER_PAGE));
+      const addedStackId = await onAddItem(activeHolder);
+      if (addedStackId) {
+        setSelectedItem(addedStackId);
+        setPageIndex(Math.floor(visibleItems.length / ITEMS_PER_PAGE));
       }
     } finally {
       setAddPending(false);
     }
-  }, [items.length, onAddItem]);
+  }, [activeHolder, visibleItems.length, onAddItem]);
 
-  const handleIncrement = useCallback(
-    async (itemName: string) => {
-      if (!onIncrementItem) return;
-
-      setAmountPending("increment");
+  const setQuantity = useCallback(
+    async (item: InventoryItem, quantity: number) => {
+      if (!onSetItemQuantity || quantity === item.quantity) return;
+      setAmountPending(true);
       try {
-        await onIncrementItem(itemName);
+        await onSetItemQuantity(item.id, quantity);
       } finally {
-        setAmountPending(null);
+        setAmountPending(false);
       }
     },
-    [onIncrementItem],
+    [onSetItemQuantity],
   );
 
-  const handleDecrement = useCallback(
-    async (itemName: string) => {
-      if (!onRemoveItem) return;
-
-      setAmountPending("decrement");
+  /** What was typed into the amount field: a count, or +N / -N. Emptying a stack of more than one asks
+   *  first, since that is the whole pile gone in one keystroke. Enter disables the field while it
+   *  saves, which blurs it, and the confirmation takes focus too: one commit runs at a time, so neither
+   *  commits the same amount again. */
+  const amountCommitting = useRef(false);
+  const commitAmount = useCallback(
+    async (item: InventoryItem) => {
+      if (amountCommitting.current) return;
+      const next = parseInventoryAmount(amountDraft, item.quantity);
+      if (next === null || next === item.quantity) {
+        setAmountDraft(String(item.quantity));
+        return;
+      }
+      amountCommitting.current = true;
       try {
-        await onRemoveItem(itemName);
+        if (
+          next === 0 &&
+          item.quantity > 1 &&
+          !window.confirm(
+            localizeUi("ui.game.gameinventory.removeAllValue1Confirm", { count: item.quantity, value1: item.name }),
+          )
+        ) {
+          setAmountDraft(String(item.quantity));
+          return;
+        }
+        setAmountDraft(String(next));
+        await setQuantity(item, next);
       } finally {
-        setAmountPending(null);
+        amountCommitting.current = false;
       }
     },
-    [onRemoveItem],
+    [amountDraft, localizeUi, setAmountDraft, setQuantity],
+  );
+
+  const commitSplit = useCallback(
+    async (item: InventoryItem) => {
+      if (!onSplitItem || splitDraft === null) return;
+      const size = parseInventoryCount(splitDraft, item.quantity - 1);
+      if (size === null) return;
+      setSplitPending(true);
+      try {
+        const newStackId = await onSplitItem(item.id, size);
+        if (newStackId) setSplitDraft(null);
+      } finally {
+        setSplitPending(false);
+      }
+    },
+    [onSplitItem, splitDraft],
+  );
+
+  /** Some or all of the selected stack to the bag picked in the give row. */
+  const commitGive = useCallback(
+    async (item: InventoryItem) => {
+      if (!onGiveItem || giveDraft === null) return;
+      const count = parseInventoryCount(giveDraft.count, item.quantity);
+      if (count === null) return;
+      const receiver = bags.find((bag) => gameInventoryBagKey(bag.holder) === giveDraft.to);
+      if (!receiver || gameInventoryBagKey(receiver.holder) === gameInventoryBagKey(item.holder)) return;
+      setGivePending(true);
+      try {
+        const receivedId = await onGiveItem(item.id, receiver.holder, count < item.quantity ? count : undefined);
+        if (receivedId) {
+          setGiveDraft(null);
+          // Followed into the shared view when the open tab no longer holds it.
+          if (activeView.kind === "bag" && activeView.key !== giveDraft.to) setSelectedItem(null);
+          else setSelectedItem(receivedId);
+        }
+      } finally {
+        setGivePending(false);
+      }
+    },
+    [activeView, bags, giveDraft, onGiveItem],
   );
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
-      if (!onReorderItem) return;
-      const fromIndex = event.active.data.current?.index;
-      const toIndex = event.over?.data.current?.index;
-      if (typeof fromIndex !== "number" || typeof toIndex !== "number") return;
-      if (fromIndex === toIndex) return;
-      void onReorderItem(fromIndex, toIndex);
+      // Stacks are found by id, so a list that changed during the drag never swaps the wrong pair.
+      const fromId = event.active.data.current?.id;
+      const from = typeof fromId === "string" ? visibleItems.find((item) => item.id === fromId) : undefined;
+      if (!from) return;
+      // Onto a bag's tab: the whole stack is given to whoever that is.
+      const over = event.over?.data.current as { id?: string; bag?: string } | undefined;
+      if (typeof over?.bag === "string") {
+        const receiver = bags.find((bag) => gameInventoryBagKey(bag.holder) === over.bag);
+        if (onGiveItem && receiver && over.bag !== gameInventoryBagKey(from.holder)) {
+          settle(onGiveItem(from.id, receiver.holder));
+        }
+        return;
+      }
+      const toId = over?.id;
+      if (typeof toId !== "string" || toId === from.id) return;
+      // Onto another stack of the same item, the two become one; onto anything else, they swap places.
+      const to = visibleItems.find((item) => item.id === toId);
+      if (!to) return;
+      if (onMergeItems && gameInventoryNameKey(from.name) === gameInventoryNameKey(to.name)) {
+        settle(onMergeItems(from.id, to.id));
+        return;
+      }
+      if (onSwapItems) settle(onSwapItems(from.id, to.id));
     },
-    [onReorderItem],
+    [bags, visibleItems, onGiveItem, onMergeItems, onSwapItems],
   );
 
   if (!open) return null;
@@ -215,8 +363,8 @@ export function GameInventory({
               {localizeUi("ui.game.gamecharactersheet.inventory")}
             </h2>
             <span className="rounded bg-white/8 px-1.5 py-0.5 text-[0.6rem] tabular-nums text-white/80">
-              {items.length}{" "}
-              {items.length === 1
+              {visibleItems.length}{" "}
+              {visibleItems.length === 1
                 ? localizeUi("ui.game.gameinventory.item")
                 : localizeUi("ui.panels.importsettings.items")}
             </span>
@@ -229,34 +377,68 @@ export function GameInventory({
           </button>
         </div>
 
-        {/* Item list */}
-        <div className="flex-1 overflow-y-auto p-3">
-          {items.length > 0 ? (
-            <>
-              {pageCount > 1 && (
-                <div className="mb-2 flex items-center justify-between gap-2 text-[0.625rem] text-white/45">
-                  <button
-                    onClick={() => setPageIndex((page) => Math.max(0, page - 1))}
-                    disabled={pageIndex === 0}
-                    className="flex h-6 w-6 items-center justify-center rounded border border-white/8 bg-white/[0.03] transition-colors hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-35"
-                    title={localizeUi("ui.game.gameinventory.previousInventoryPage")}
-                  >
-                    <ChevronLeft size={12} />
-                  </button>
-                  <span className="tabular-nums">
-                    {localizeUi("ui.game.gameinventory.page")} {pageIndex + 1} / {pageCount}
-                  </span>
-                  <button
-                    onClick={() => setPageIndex((page) => Math.min(pageCount - 1, page + 1))}
-                    disabled={pageIndex >= pageCount - 1}
-                    className="flex h-6 w-6 items-center justify-center rounded border border-white/8 bg-white/[0.03] transition-colors hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-35"
-                    title={localizeUi("ui.game.gameinventory.nextInventoryPage")}
-                  >
-                    <ChevronRight size={12} />
-                  </button>
-                </div>
-              )}
-              <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+        <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+          {/* Bags: the shared view, then one tab per party member. A stack dropped on a tab is given. */}
+          {showBags && (
+            <div className="overflow-x-auto border-b border-white/8 px-3 py-2 scrollbar-hide [-webkit-overflow-scrolling:touch]">
+              <div className="flex w-max min-w-full gap-1">
+                <button
+                  type="button"
+                  onClick={() => setView({ kind: "all" })}
+                  aria-pressed={activeView.kind === "all"}
+                  className={cn(
+                    "flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[0.625rem] font-medium transition-colors",
+                    activeView.kind === "all"
+                      ? "bg-white/10 text-white/85"
+                      : "text-white/50 hover:bg-white/5 hover:text-white/70",
+                  )}
+                >
+                  {localizeUi("ui.game.gameinventory.all")}
+                </button>
+                {bags.map((bag) => {
+                  const key = gameInventoryBagKey(bag.holder);
+                  return (
+                    <BagTab
+                      key={key || "player"}
+                      bagKey={key}
+                      name={bag.name}
+                      active={activeView.kind === "bag" && activeView.key === key}
+                      dropEnabled={Boolean(onGiveItem)}
+                      onSelect={() => setView({ kind: "bag", key })}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Item list */}
+          <div className="flex-1 overflow-y-auto p-3">
+            {visibleItems.length > 0 ? (
+              <>
+                {pageCount > 1 && (
+                  <div className="mb-2 flex items-center justify-between gap-2 text-[0.625rem] text-white/45">
+                    <button
+                      onClick={() => setPageIndex((page) => Math.max(0, page - 1))}
+                      disabled={pageIndex === 0}
+                      className="flex h-6 w-6 items-center justify-center rounded border border-white/8 bg-white/[0.03] transition-colors hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-35"
+                      title={localizeUi("ui.game.gameinventory.previousInventoryPage")}
+                    >
+                      <ChevronLeft size={12} />
+                    </button>
+                    <span className="tabular-nums">
+                      {localizeUi("ui.game.gameinventory.page")} {pageIndex + 1} / {pageCount}
+                    </span>
+                    <button
+                      onClick={() => setPageIndex((page) => Math.min(pageCount - 1, page + 1))}
+                      disabled={pageIndex >= pageCount - 1}
+                      className="flex h-6 w-6 items-center justify-center rounded border border-white/8 bg-white/[0.03] transition-colors hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-35"
+                      title={localizeUi("ui.game.gameinventory.nextInventoryPage")}
+                    >
+                      <ChevronRight size={12} />
+                    </button>
+                  </div>
+                )}
                 <div className="grid grid-cols-5 gap-1.5">
                   {slots.map((item, i) => {
                     const globalIndex = pageStart + i;
@@ -265,34 +447,47 @@ export function GameInventory({
                         key={`slot-${globalIndex}`}
                         item={item}
                         globalIndex={globalIndex}
-                        selected={Boolean(item && selectedItem === item.name)}
-                        reorderEnabled={Boolean(onReorderItem)}
+                        holderName={showBags && activeView.kind === "all" && item ? bagName(item.holder) : undefined}
+                        selected={Boolean(item && selectedItem === item.id)}
+                        reorderEnabled={Boolean(onSwapItems || onMergeItems || onGiveItem)}
                         onClick={() => item && handleItemClick(item)}
                       />
                     );
                   })}
                 </div>
-              </DndContext>
-            </>
-          ) : (
-            <div className="flex min-h-40 flex-col items-center justify-center rounded border border-dashed border-white/10 bg-white/[0.02] px-4 text-center">
-              <Package size={18} className="mb-2 text-white/25" />
-              <div className="text-[0.75rem] font-medium text-white/55">
-                {localizeUi("ui.game.gameinventory.inventoryEmpty")}
+              </>
+            ) : activeBag && items.length > 0 ? (
+              <div className="flex min-h-40 flex-col items-center justify-center rounded border border-dashed border-white/10 bg-white/[0.02] px-4 text-center">
+                <Package size={18} className="mb-2 text-white/25" />
+                <div className="text-[0.75rem] font-medium text-white/55">
+                  {localizeUi("ui.game.gameinventory.bagEmpty", { value1: activeBag.name })}
+                </div>
               </div>
-              <div className="mt-1 text-[0.65rem] text-white/35">
-                {localizeUi("ui.game.gameinventory.addAnItemToStartTrackingSupplies")}
+            ) : (
+              <div className="flex min-h-40 flex-col items-center justify-center rounded border border-dashed border-white/10 bg-white/[0.02] px-4 text-center">
+                <Package size={18} className="mb-2 text-white/25" />
+                <div className="text-[0.75rem] font-medium text-white/55">
+                  {localizeUi("ui.game.gameinventory.inventoryEmpty")}
+                </div>
+                <div className="mt-1 text-[0.65rem] text-white/35">
+                  {localizeUi("ui.game.gameinventory.addAnItemToStartTrackingSupplies")}
+                </div>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        </DndContext>
 
         {/* Action bar */}
         {(selectedItem || onAddItem) && (
           <div className="border-t border-white/8 bg-white/[0.02] px-4 py-2.5">
-            {selectedItem ? (
+            {selectedInventoryItem ? (
               <div className="mb-2 whitespace-normal break-words text-[0.7rem] font-medium text-white/60 [overflow-wrap:anywhere]">
-                {selectedItem}
+                {selectedInventoryItem.name}
+                {showBags && (
+                  <span className="ml-1.5 font-normal text-white/40">
+                    {localizeUi("ui.game.gameinventory.carriedBy", { value1: bagName(selectedInventoryItem.holder) })}
+                  </span>
+                )}
               </div>
             ) : (
               <div className="mb-2 text-[0.7rem] font-medium text-white/45">
@@ -310,7 +505,7 @@ export function GameInventory({
                     }
                     if (e.key === "Enter") {
                       e.preventDefault();
-                      void handleRename(selectedInventoryItem.name);
+                      void handleRename(selectedInventoryItem);
                     }
                   }}
                   disabled={renamePending}
@@ -318,7 +513,7 @@ export function GameInventory({
                   placeholder={localizeUi("ui.game.gameinventory.itemName")}
                 />
                 <button
-                  onClick={() => void handleRename(selectedInventoryItem.name)}
+                  onClick={() => void handleRename(selectedInventoryItem)}
                   disabled={
                     renamePending || !renameDraft.trim() || renameDraft.trim() === selectedInventoryItem.name.trim()
                   }
@@ -329,7 +524,126 @@ export function GameInventory({
                 </button>
               </div>
             )}
-            <div className="flex gap-1.5">
+            {onSplitItem && selectedInventoryItem && splitDraft !== null && (
+              <div className="mb-2.5 flex items-center gap-1.5">
+                <label
+                  htmlFor="game-inventory-split-size"
+                  className="min-w-0 flex-1 text-[0.65rem] leading-tight text-white/55"
+                >
+                  {localizeUi("ui.game.gameinventory.splitHowMany", { max: selectedInventoryItem.quantity - 1 })}
+                </label>
+                <input
+                  id="game-inventory-split-size"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={selectedInventoryItem.quantity - 1}
+                  value={splitDraft}
+                  autoFocus
+                  onChange={(e) => setSplitDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") setSplitDraft(null);
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void commitSplit(selectedInventoryItem);
+                    }
+                  }}
+                  disabled={splitPending}
+                  className="w-16 rounded border border-white/10 bg-black/40 px-2 py-1.5 text-[0.7rem] tabular-nums text-white/85 outline-none transition-colors focus:border-amber-400/40"
+                />
+                <button
+                  onClick={() => void commitSplit(selectedInventoryItem)}
+                  disabled={
+                    splitPending || parseInventoryCount(splitDraft, selectedInventoryItem.quantity - 1) === null
+                  }
+                  className="flex shrink-0 items-center justify-center gap-1 rounded border border-amber-500/20 bg-amber-500/10 px-2 py-1.5 text-[0.7rem] font-semibold text-amber-300 transition-colors hover:bg-amber-500/15 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Scissors size={12} />
+                  {localizeUi("ui.game.gameinventory.split")}
+                </button>
+                <button
+                  onClick={() => setSplitDraft(null)}
+                  className="rounded p-1 text-white/40 transition-colors hover:bg-white/10 hover:text-white/70"
+                  aria-label={localizeUi("ui.game.gameinventory.cancelSplit")}
+                  title={localizeUi("ui.game.gameinventory.cancelSplit")}
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            )}
+            {onGiveItem && selectedInventoryItem && giveDraft !== null && (
+              <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
+                <label htmlFor="game-inventory-give-to" className="text-[0.65rem] leading-tight text-white/55">
+                  {localizeUi("ui.game.gameinventory.giveTo")}
+                </label>
+                <select
+                  id="game-inventory-give-to"
+                  value={giveDraft.to}
+                  onChange={(e) => setGiveDraft((draft) => (draft ? { ...draft, to: e.target.value } : draft))}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") setGiveDraft(null);
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void commitGive(selectedInventoryItem);
+                    }
+                  }}
+                  disabled={givePending}
+                  className="min-w-0 flex-1 rounded border border-white/10 bg-black/40 px-2 py-1.5 text-[0.7rem] text-white/85 outline-none transition-colors focus:border-amber-400/40"
+                >
+                  {bags
+                    .filter(
+                      (bag) => gameInventoryBagKey(bag.holder) !== gameInventoryBagKey(selectedInventoryItem.holder),
+                    )
+                    .map((bag) => (
+                      <option key={gameInventoryBagKey(bag.holder) || "player"} value={gameInventoryBagKey(bag.holder)}>
+                        {bag.name}
+                      </option>
+                    ))}
+                </select>
+                {selectedInventoryItem.quantity > 1 && (
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={selectedInventoryItem.quantity}
+                    value={giveDraft.count}
+                    onChange={(e) => setGiveDraft((draft) => (draft ? { ...draft, count: e.target.value } : draft))}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") setGiveDraft(null);
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        void commitGive(selectedInventoryItem);
+                      }
+                    }}
+                    disabled={givePending}
+                    aria-label={localizeUi("ui.game.gameinventory.giveHowMany", {
+                      max: selectedInventoryItem.quantity,
+                    })}
+                    title={localizeUi("ui.game.gameinventory.giveHowMany", { max: selectedInventoryItem.quantity })}
+                    className="w-16 rounded border border-white/10 bg-black/40 px-2 py-1.5 text-[0.7rem] tabular-nums text-white/85 outline-none transition-colors focus:border-amber-400/40"
+                  />
+                )}
+                <button
+                  onClick={() => void commitGive(selectedInventoryItem)}
+                  disabled={
+                    givePending || parseInventoryCount(giveDraft.count, selectedInventoryItem.quantity) === null
+                  }
+                  className="flex shrink-0 items-center justify-center gap-1 rounded border border-amber-500/20 bg-amber-500/10 px-2 py-1.5 text-[0.7rem] font-semibold text-amber-300 transition-colors hover:bg-amber-500/15 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Gift size={12} />
+                  {localizeUi("ui.game.gameinventory.give")}
+                </button>
+                <button
+                  onClick={() => setGiveDraft(null)}
+                  className="rounded p-1 text-white/40 transition-colors hover:bg-white/10 hover:text-white/70"
+                  aria-label={localizeUi("ui.game.gameinventory.cancelGive")}
+                  title={localizeUi("ui.game.gameinventory.cancelGive")}
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            )}
+            <div className="flex flex-wrap gap-1.5">
               {onAddItem && (
                 <button
                   onClick={() => void handleAdd()}
@@ -340,57 +654,109 @@ export function GameInventory({
                   {localizeUi("ui.characters.metadatatab.add")}
                 </button>
               )}
-              {selectedInventoryItem && (onRemoveItem || onIncrementItem) && (
+              {selectedInventoryItem && onSetItemQuantity && (
                 <div
                   className="flex h-7 shrink-0 items-center overflow-hidden rounded border border-white/8 bg-white/[0.03]"
                   aria-label={localizeUi("ui.game.gameinventory.value1AmountControls", {
                     value1: selectedInventoryItem.name,
                   })}
                 >
-                  {onRemoveItem && (
-                    <button
-                      type="button"
-                      onClick={() => void handleDecrement(selectedInventoryItem.name)}
-                      disabled={amountPending !== null}
-                      className="flex h-full w-7 items-center justify-center text-white/65 transition-colors hover:bg-white/[0.07] hover:text-white/90 disabled:cursor-not-allowed disabled:opacity-40"
-                      aria-label={
-                        selectedInventoryItem.quantity > 1
-                          ? localizeUi("ui.game.gameinventory.decreaseValue1Amount", {
-                              value1: selectedInventoryItem.name,
-                            })
-                          : localizeUi("ui.game.gameinventory.deleteValue1", { value1: selectedInventoryItem.name })
+                  <button
+                    type="button"
+                    onClick={() => void setQuantity(selectedInventoryItem, selectedInventoryItem.quantity - 1)}
+                    disabled={amountPending}
+                    className="flex h-full w-7 items-center justify-center text-white/65 transition-colors hover:bg-white/[0.07] hover:text-white/90 disabled:cursor-not-allowed disabled:opacity-40"
+                    aria-label={
+                      selectedInventoryItem.quantity > 1
+                        ? localizeUi("ui.game.gameinventory.decreaseValue1Amount", {
+                            value1: selectedInventoryItem.name,
+                          })
+                        : localizeUi("ui.game.gameinventory.deleteValue1", { value1: selectedInventoryItem.name })
+                    }
+                    title={
+                      selectedInventoryItem.quantity > 1
+                        ? localizeUi("ui.game.gameinventory.decreaseAmount")
+                        : localizeUi("ui.game.gameinventory.deleteItem")
+                    }
+                  >
+                    <Minus size={12} />
+                  </button>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={amountDraft}
+                    onChange={(e) => setAmountDraft(e.target.value)}
+                    onFocus={(e) => e.target.select()}
+                    onBlur={() => void commitAmount(selectedInventoryItem)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") setAmountDraft(String(selectedInventoryItem.quantity));
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        void commitAmount(selectedInventoryItem);
                       }
-                      title={
-                        selectedInventoryItem.quantity > 1
-                          ? localizeUi("ui.game.gameinventory.decreaseAmount")
-                          : localizeUi("ui.game.gameinventory.deleteItem")
-                      }
-                    >
-                      <Minus size={12} />
-                    </button>
-                  )}
-                  <span className="min-w-8 border-x border-white/8 px-2 text-center text-[0.7rem] font-semibold tabular-nums text-white/80">
-                    {selectedInventoryItem.quantity}
-                  </span>
-                  {onIncrementItem && (
-                    <button
-                      type="button"
-                      onClick={() => void handleIncrement(selectedInventoryItem.name)}
-                      disabled={amountPending !== null}
-                      className="flex h-full w-7 items-center justify-center text-white/65 transition-colors hover:bg-white/[0.07] hover:text-white/90 disabled:cursor-not-allowed disabled:opacity-40"
-                      aria-label={localizeUi("ui.game.gameinventory.increaseValue1Amount", {
-                        value1: selectedInventoryItem.name,
-                      })}
-                      title={localizeUi("ui.game.gameinventory.increaseAmount")}
-                    >
-                      <Plus size={12} />
-                    </button>
-                  )}
+                    }}
+                    disabled={amountPending}
+                    aria-label={localizeUi("ui.game.gameinventory.value1Amount", {
+                      value1: selectedInventoryItem.name,
+                    })}
+                    title={localizeUi("ui.game.gameinventory.amountHint")}
+                    className="h-full w-14 border-x border-white/8 bg-transparent px-1 text-center text-[0.7rem] font-semibold tabular-nums text-white/80 outline-none focus:bg-white/[0.05]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void setQuantity(selectedInventoryItem, selectedInventoryItem.quantity + 1)}
+                    disabled={amountPending}
+                    className="flex h-full w-7 items-center justify-center text-white/65 transition-colors hover:bg-white/[0.07] hover:text-white/90 disabled:cursor-not-allowed disabled:opacity-40"
+                    aria-label={localizeUi("ui.game.gameinventory.increaseValue1Amount", {
+                      value1: selectedInventoryItem.name,
+                    })}
+                    title={localizeUi("ui.game.gameinventory.increaseAmount")}
+                  >
+                    <Plus size={12} />
+                  </button>
                 </div>
               )}
-              {selectedItem && canInteract && onUseItem && (
+              {selectedInventoryItem && onSplitItem && selectedInventoryItem.quantity > 1 && splitDraft === null && (
                 <button
-                  onClick={() => handleUse(selectedItem)}
+                  type="button"
+                  onClick={() => {
+                    setGiveDraft(null);
+                    setSplitDraft(String(defaultInventorySplitSize(selectedInventoryItem.quantity)));
+                  }}
+                  className="flex h-7 shrink-0 items-center justify-center gap-1 rounded border border-white/8 bg-white/[0.03] px-2 text-[0.7rem] text-white/70 transition-colors hover:bg-white/[0.06]"
+                  aria-label={localizeUi("ui.game.gameinventory.splitValue1", { value1: selectedInventoryItem.name })}
+                  title={localizeUi("ui.game.gameinventory.splitStack")}
+                >
+                  <Scissors size={12} />
+                  {localizeUi("ui.game.gameinventory.split")}
+                </button>
+              )}
+              {selectedInventoryItem && onGiveItem && showBags && giveDraft === null && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const receiver = bags.find(
+                      (bag) => gameInventoryBagKey(bag.holder) !== gameInventoryBagKey(selectedInventoryItem.holder),
+                    );
+                    if (receiver) {
+                      setSplitDraft(null);
+                      setGiveDraft({
+                        to: gameInventoryBagKey(receiver.holder),
+                        count: String(selectedInventoryItem.quantity),
+                      });
+                    }
+                  }}
+                  className="flex h-7 shrink-0 items-center justify-center gap-1 rounded border border-white/8 bg-white/[0.03] px-2 text-[0.7rem] text-white/70 transition-colors hover:bg-white/[0.06]"
+                  aria-label={localizeUi("ui.game.gameinventory.giveValue1", { value1: selectedInventoryItem.name })}
+                  title={localizeUi("ui.game.gameinventory.giveValue1", { value1: selectedInventoryItem.name })}
+                >
+                  <Gift size={12} />
+                  {localizeUi("ui.game.gameinventory.give")}
+                </button>
+              )}
+              {selectedInventoryItem && canInteract && onUseItem && (
+                <button
+                  onClick={() => handleUse(selectedInventoryItem.name)}
                   className="flex flex-1 items-center justify-center gap-1 rounded border border-amber-500/20 bg-amber-500/10 py-1.5 text-[0.7rem] font-semibold text-amber-400 transition-colors hover:bg-amber-500/15"
                 >
                   <Wand2 size={12} />
@@ -405,18 +771,59 @@ export function GameInventory({
   );
 }
 
+/** One bag's tab. Also where a dragged stack is dropped to give it to whoever carries that bag. */
+function BagTab({
+  bagKey,
+  name,
+  active,
+  dropEnabled,
+  onSelect,
+}: {
+  bagKey: string;
+  name: string;
+  active: boolean;
+  dropEnabled: boolean;
+  onSelect: () => void;
+}) {
+  const { t: localizeUi } = useUiTranslation();
+  const { setNodeRef, isOver } = useDroppable({
+    id: `bag-drop-${bagKey || "player"}`,
+    data: { bag: bagKey },
+    disabled: !dropEnabled,
+  });
+  return (
+    <button
+      ref={setNodeRef}
+      type="button"
+      onClick={onSelect}
+      aria-pressed={active}
+      aria-label={localizeUi("ui.game.gameinventory.bagOfValue1", { value1: name })}
+      title={dropEnabled ? localizeUi("ui.game.gameinventory.dropToGiveValue1", { value1: name }) : undefined}
+      className={cn(
+        "flex max-w-[9rem] shrink-0 items-center gap-1.5 truncate rounded-md px-2.5 py-1.5 text-[0.625rem] font-medium transition-colors",
+        active ? "bg-white/10 text-white/85" : "text-white/50 hover:bg-white/5 hover:text-white/70",
+        isOver && "ring-2 ring-amber-400/60",
+      )}
+    >
+      <span className="truncate">{name}</span>
+    </button>
+  );
+}
+
 interface InventorySlotProps {
   item: InventoryItem | null;
   globalIndex: number;
+  /** Who carries the stack, shown in the shared view. */
+  holderName?: string;
   selected: boolean;
   reorderEnabled: boolean;
   onClick: () => void;
 }
 
-function InventorySlot({ item, globalIndex, selected, reorderEnabled, onClick }: InventorySlotProps) {
+function InventorySlot({ item, globalIndex, holderName, selected, reorderEnabled, onClick }: InventorySlotProps) {
   const { t: localizeUi } = useUiTranslation();
   const enabled = reorderEnabled && Boolean(item);
-  const slotData = { index: globalIndex };
+  const slotData = { id: item?.id };
   const {
     setNodeRef: setDragRef,
     attributes,
@@ -445,16 +852,26 @@ function InventorySlot({ item, globalIndex, selected, reorderEnabled, onClick }:
       disabled={!item}
       title={
         item
-          ? item.quantity > 1
-            ? localizeUi("ui.game.inventoryslot.value1Value2", { value1: item.name, value2: item.quantity })
-            : item.name
+          ? [
+              item.quantity > 1
+                ? localizeUi("ui.game.inventoryslot.value1Value2", { value1: item.name, value2: item.quantity })
+                : item.name,
+              holderName ? localizeUi("ui.game.gameinventory.carriedBy", { value1: holderName }) : null,
+            ]
+              .filter(Boolean)
+              .join(" ")
           : undefined
       }
       aria-label={
         item
-          ? item.quantity > 1
-            ? localizeUi("ui.game.inventoryslot.value1XValue2", { value1: item.name, value2: item.quantity })
-            : item.name
+          ? [
+              item.quantity > 1
+                ? localizeUi("ui.game.inventoryslot.value1XValue2", { value1: item.name, value2: item.quantity })
+                : item.name,
+              holderName ? localizeUi("ui.game.gameinventory.carriedBy", { value1: holderName }) : null,
+            ]
+              .filter(Boolean)
+              .join(", ")
           : undefined
       }
       aria-pressed={enabled ? isDragging : undefined}
@@ -473,6 +890,14 @@ function InventorySlot({ item, globalIndex, selected, reorderEnabled, onClick }:
         isOver && !isDragging && "border-amber-400/70 ring-2 ring-amber-400/60",
       )}
     >
+      {item && holderName && (
+        <span
+          aria-hidden="true"
+          className="absolute left-0.5 top-0.5 max-w-[calc(100%-0.25rem)] truncate rounded bg-white/15 px-1 text-[0.5rem] font-semibold leading-tight text-white/75"
+        >
+          {holderName}
+        </span>
+      )}
       {item && (
         <>
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-gradient-to-b from-white/8 to-white/[0.02] text-sm font-bold text-amber-400/80 ring-1 ring-white/8">

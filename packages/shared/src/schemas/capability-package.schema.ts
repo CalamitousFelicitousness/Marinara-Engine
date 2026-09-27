@@ -425,7 +425,47 @@ const capabilityPackageManifestBaseSchema = z
 //        live state, and a rest's restore step may put a `state` back. Not a soft seam, for the same
 //        reason as 1.20 through 1.41: an Engine that cannot read these keys refuses the whole ruleset
 //        file, so a package that ships any of them declares 1.42. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 42 } as const);
+// 1.43: a ruleset's combat block may declare `checks` (numbers off the sheet a contest reads) and
+//        `contests` (both sides throw the attack dice and add a check; winning applies or ends
+//        conditions and pushes on a board), and a creature may give its own `checks`. Not a soft
+//        seam, for the same reason as 1.20 through 1.42: an Engine that cannot read these keys
+//        refuses the whole ruleset or catalog file, so a package that ships any of them declares
+//        1.43. No permission.
+// 1.44: a catalog entry's reaction may wait for `on: "used"` (somebody on the other side is about to
+//        use something, anywhere it reaches, and it may be called off) and may name `against` (only
+//        entries of these catalogs open its moment). Not a soft seam, for the same reason as 1.20
+//        through 1.43: an Engine that cannot read these refuses the whole catalog, so a package that
+//        ships any of them declares 1.44. No permission.
+// 1.45: a combat condition may change numbers (`modifiers` to defense, attacks, saves, checks and
+//        speed) and make checks easier or harder, `combat.levels` makes a live track's levels count
+//        as conditions, and an applied condition may count down as turns begin (`duration.at`) or end
+//        after one use (`endsAfter`). Not a soft seam, for the same reason as 1.20 through 1.44: an
+//        Engine that cannot read these refuses the whole ruleset or catalog file, so a package that
+//        ships any of them declares 1.45. No permission.
+// 1.46: a reaction may wait for `on: "hit"` (an attack roll has just hit its holder, before the
+//        damage; what is taken counts for that attack), and a creature's action may carry the same
+//        `reaction` object and `self: true` for one that lands on the creature itself. Not a soft
+//        seam, for the same reason as 1.20 through 1.45: an Engine that cannot read these refuses the
+//        whole catalog, so a package that ships any of them declares 1.46. No permission.
+// 1.47: a second combat kind, `dice-pool`: a fight thrown in the ruleset's own pools and counted in
+//        successes, with a `pool` block (damage target and soak by kind), a creature's own `soak`,
+//        and an attack row's `toHit.skill`. Beside it, for either kind, `initiative.each` throws
+//        initiative again every round and `combat.spendLimits` caps what one combatant spends of a
+//        pool per turn or round. Not a soft seam, for the same reason as 1.20 through 1.46: an Engine
+//        that cannot read these refuses the whole ruleset or catalog file, so a package that ships
+//        any of them declares 1.47. No permission.
+// 1.48: initiative in a `dice-pool` fight may be thrown as a pool (`initiative.pool`, whose
+//        successes and `plus` are the number), and may be a number attacks move
+//        (`initiative.resource`: styles of attack that take it or spend it, a crash line, and the
+//        order following it every round). Not a soft seam, for the same reason as 1.20 through 1.47:
+//        an Engine that cannot read these refuses the whole ruleset file, so a package that ships any
+//        of them declares 1.48. No permission.
+// 1.49: a ruleset may describe items: an `items` block (categories, rarities, tags, stats, slots,
+//        binding, carry, currencies, `native` and `freeform`) and a third catalog kind,
+//        `holds: "items"`, whose entries carry an `item`. Not a soft seam, for the same reason as 1.20
+//        through 1.48: an Engine that cannot read these refuses the whole ruleset or catalog file, so
+//        a package that ships any of them declares 1.49. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 49 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

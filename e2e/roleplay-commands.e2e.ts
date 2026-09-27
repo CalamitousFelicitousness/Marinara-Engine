@@ -4,6 +4,7 @@ import { readFileSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import { createRequire } from "node:module";
+import { trackPageFetches, waitForPageFetchesToSettle } from "./page-fetch-fixture.js";
 import { seedUIState } from "./ui-state-fixture.js";
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
@@ -396,6 +397,7 @@ for (const presentation of ["classic", "visual-novel"] as const) {
         return fetch(input, init);
       };
     });
+    await trackPageFetches(page);
     const provider = createServer(async (incoming, response) => {
       incoming.resume();
       response.writeHead(200, { "content-type": "text/event-stream", connection: "close" });
@@ -422,7 +424,7 @@ for (const presentation of ["classic", "visual-novel"] as const) {
     };
     const reload = async () => {
       // Let startup requests finish before tearing down WebKit's page context.
-      await page.waitForLoadState("networkidle");
+      await waitForPageFetchesToSettle(page);
       await page.reload();
     };
 

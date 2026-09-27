@@ -127,8 +127,14 @@ pnpm version:check
 pnpm regression
 pnpm regression:prompt
 pnpm smoke:ui
+pnpm smoke:production
 pnpm regression:ui
 ```
+
+`pnpm smoke:production` opens the compiled frontend with the compiled server in isolated test data,
+using desktop Chromium, mobile Chromium, and mobile WebKit. Run `pnpm check` first to build it. The
+required PR check runs its Chromium case; this catches startup failures that the Vite development
+server and HTTP-only container health checks cannot detect.
 
 Regression guards:
 
@@ -330,6 +336,13 @@ Release-related behavior already in the repo:
 - Built installer binaries belong on GitHub Releases and should not be committed back into the repository.
 
 Standard release flow:
+
+For the next main release after v2.4.6, also complete the coordinated
+[Quartermaster and Relationship Tracker catalog promotion](https://github.com/Pasta-Devs/Marinara-Agents/issues/1091).
+In Marinara-Agents, remove these two IDs from `STAGING_ONLY_PACKAGE_IDS`, rebuild their packages,
+and update the published catalog counts and documentation before promoting Agents `staging` to `main`
+alongside this Engine release. Copying the preview catalog to `main` alone keeps both packages hidden
+from stable Engine users. Leave other staging-only packages at their existing release tier.
 
 1. Bump the canonical version in root `package.json`.
 2. Run `pnpm version:sync -- --android-version-code <next-code>` to sync all derived version fields.

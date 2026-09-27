@@ -8,8 +8,12 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import {
+  RULESET_COMBAT_CONDITION_EFFECTS,
   RULESET_CREATURE_PLAIN_NEEDS,
   RULESET_CREATURE_SHEET_REPLACES,
+  RULESET_LEVEL_REFUSED_EFFECTS,
+  RULESET_ROLLED_MODIFIER_TARGETS,
+  RULESET_SAVE_SCOPED_EFFECTS,
   RULESET_SCALED_MAX_COLUMNS,
   rulesetDefinitionSchema,
 } from "../packages/shared/dist/index.js";
@@ -55,26 +59,31 @@ function requireOneCatalogSource(node) {
   }
 }
 
-// An entry writes rows onto a sheet or it is a creature, never both and never neither, and a
-// creature says what it does in its own actions rather than in `mechanics`. Refinements again, so
-// the editor is told here. The node is found by its shape: `rows` beside `creature`.
+// An entry writes rows onto a sheet, is a creature or is an item: exactly one of the three. A
+// creature says what it does in its own actions and an item in its item block, so neither carries
+// `mechanics`. Refinements again, so the editor is told here. The node is found by its shape: `rows`
+// beside `creature` and `item`.
 function requireOneEntryContent(node) {
   if (Array.isArray(node)) return node.forEach(requireOneEntryContent);
   if (!node || typeof node !== "object") return;
   Object.values(node).forEach(requireOneEntryContent);
-  if (node.type === "object" && node.properties?.rows && node.properties.creature) {
-    node.oneOf = [{ required: ["rows"] }, { required: ["creature"], not: { required: ["mechanics"] } }];
+  if (node.type === "object" && node.properties?.rows && node.properties.creature && node.properties.item) {
+    node.oneOf = [
+      { required: ["rows"] },
+      { required: ["creature"], not: { required: ["mechanics"] } },
+      { required: ["item"], not: { required: ["mechanics"] } },
+    ];
   }
 }
 
 // And the header the entries sit in: a catalog of rows names the lists it feeds, a catalog of
-// creatures names none. Found by its shape: `holds` beside `feeds`.
+// creatures or of items names none. Found by its shape: `holds` beside `feeds`.
 function requireCatalogFeeds(node) {
   if (Array.isArray(node)) return node.forEach(requireCatalogFeeds);
   if (!node || typeof node !== "object") return;
   Object.values(node).forEach(requireCatalogFeeds);
   if (node.type === "object" && node.properties?.holds && node.properties.feeds) {
-    node.if = { properties: { holds: { const: "creatures" } }, required: ["holds"] };
+    node.if = { properties: { holds: { enum: ["creatures", "items"] } }, required: ["holds"] };
     node.then = { not: { required: ["feeds"] } };
     node.else = { required: ["feeds"] };
   }
@@ -145,6 +154,17 @@ function enumTableShape(node) {
   properties.table.maxProperties = 40;
 }
 
+// What winning a contest does is at least one thing: it applies, ends or pushes. A refinement, so the
+// editor is told here. Found by its shape: the three side by side.
+function contestDoesSomething(node) {
+  if (Array.isArray(node)) return node.forEach(contestDoesSomething);
+  if (!node || typeof node !== "object") return;
+  Object.values(node).forEach(contestDoesSomething);
+  const properties = node.properties;
+  if (node.type !== "object" || !properties?.applies || !properties.ends || !properties.push) return;
+  requireAnyOf(node, ["applies", "ends", "push"]);
+}
+
 // A rest step's `to` is a word only on a state, where it is "default" or one of the state's values;
 // on a pool or a track it is "max", "min" or a number. A state step is set, never moved by an amount.
 // Refinements again, so the editor is told here. Found by its shape: `state` beside `track` and `to`.
@@ -184,10 +204,109 @@ function cancelOnlyWhenAimed(node) {
   if (!node || typeof node !== "object") return;
   Object.values(node).forEach(cancelOnlyWhenAimed);
   const keys = Object.keys(node.properties ?? {}).filter((key) => key !== "$comment");
-  if (node.type === "object" && keys.length === 3 && ["on", "at", "cancels"].every((key) => keys.includes(key))) {
+  if (node.type === "object" && ["on", "at", "cancels", "against"].every((key) => keys.includes(key))) {
+    // Only a moment BEFORE something resolves may call it off.
     node.if = { required: ["cancels"] };
-    node.then = { properties: { on: { const: "aimed" } }, required: ["on"] };
+    node.then = { properties: { on: { enum: ["aimed", "used"] } }, required: ["on"] };
   }
+}
+
+// A condition's modifier changes its number by something: a flat amount that is not 0, dice (only on
+// a number that is rolled, and `minus` only with dice), or `times` (only on speed). Refinements, so
+// the editor is told here. The node is found by its shape: `to` beside `flat`, `dice` and `times`.
+function modifierSaysSomething(node) {
+  if (Array.isArray(node)) return node.forEach(modifierSaysSomething);
+  if (!node || typeof node !== "object") return;
+  Object.values(node).forEach(modifierSaysSomething);
+  const properties = node.properties;
+  if (node.type !== "object" || !properties?.to || !properties.flat || !properties.dice || !properties.times) return;
+  requireAnyOf(node, ["flat", "dice", "times"]);
+  properties.flat = { ...properties.flat, not: { const: 0 } };
+  node.allOf = [
+    ...(node.allOf ?? []),
+    { if: { required: ["dice"] }, then: { properties: { to: { enum: [...RULESET_ROLLED_MODIFIER_TARGETS] } } } },
+    { if: { required: ["times"] }, then: { properties: { to: { const: "speed" } } } },
+    { if: { required: ["minus"] }, then: { required: ["dice"] } },
+  ];
+}
+
+// `saves` on a condition or a level narrows the save effects and the modifiers to saves, so it needs
+// one of them beside it; and a level does something and never has an effect that needs a source or
+// ends by itself. Refinements, so the editor is told here. Found by shape: `saves` beside `effects`
+// and `modifiers`, with `track` beside them for a level.
+function conditionSavesAndLevels(node) {
+  if (Array.isArray(node)) return node.forEach(conditionSavesAndLevels);
+  if (!node || typeof node !== "object") return;
+  Object.values(node).forEach(conditionSavesAndLevels);
+  const properties = node.properties;
+  if (node.type !== "object" || !properties?.saves || !properties.effects || !properties.modifiers) return;
+  node.allOf = [
+    ...(node.allOf ?? []),
+    {
+      if: { required: ["saves"] },
+      then: {
+        anyOf: [
+          { required: ["effects"], properties: { effects: { contains: { enum: [...RULESET_SAVE_SCOPED_EFFECTS] } } } },
+          {
+            required: ["modifiers"],
+            properties: { modifiers: { contains: { properties: { to: { const: "saves" } } } } },
+          },
+        ],
+      },
+    },
+  ];
+  if (!properties.track) return;
+  const refused = new Set(RULESET_LEVEL_REFUSED_EFFECTS);
+  properties.effects = {
+    ...properties.effects,
+    items: { type: "string", enum: RULESET_COMBAT_CONDITION_EFFECTS.filter((effect) => !refused.has(effect)) },
+  };
+  node.allOf.push({
+    anyOf: [
+      { required: ["effects"], properties: { effects: { minItems: 1 } } },
+      { required: ["modifiers"] },
+      { required: ["failsSaves"] },
+    ],
+  });
+}
+
+// A creature's action: a sequence carries nothing of its own, one that lands on the creature itself
+// takes no other target, and a reaction is not also bought between turns. Refinements, so the editor
+// is told here. Found by shape: `sequence` beside `signature`, `reaction` and `self`.
+const SEQUENCE_CARRIES_NOTHING = [
+  "toHit",
+  "autoHit",
+  "damage",
+  "save",
+  "saveDifficulty",
+  "applies",
+  "targetCount",
+  "area",
+  "reaction",
+  "self",
+];
+function creatureActionShape(node) {
+  if (Array.isArray(node)) return node.forEach(creatureActionShape);
+  if (!node || typeof node !== "object") return;
+  Object.values(node).forEach(creatureActionShape);
+  const properties = node.properties;
+  if (
+    node.type !== "object" ||
+    !properties?.sequence ||
+    !properties.signature ||
+    !properties.reaction ||
+    !properties.self
+  )
+    return;
+  node.allOf = [
+    ...(node.allOf ?? []),
+    {
+      if: { required: ["sequence"] },
+      then: { not: { anyOf: SEQUENCE_CARRIES_NOTHING.map((key) => ({ required: [key] })) } },
+    },
+    { if: { required: ["self"] }, then: { not: { anyOf: [{ required: ["targetCount"] }, { required: ["area"] }] } } },
+    { if: { required: ["reaction"] }, then: { not: { required: ["signature"] } } },
+  ];
 }
 
 // A creature either carries a sheet in the ruleset's own terms, and then takes its health, defense,
@@ -257,6 +376,73 @@ function requireDistanceForMeasured(node) {
       then: { required: ["distance"] },
     },
   ];
+}
+
+// Each combat kind rolls with its own block and never the other's: `attack-vs-defense` says what an
+// attack rolls in `attackRoll`, and `dice-pool` throws the ruleset's own pools and says how damage and
+// soak are thrown in `pool`. Refinements, so the editor is told here. Found by its shape: `kind`
+// beside `attackRoll` and `pool`.
+function oneRollBlockPerKind(node) {
+  if (Array.isArray(node)) return node.forEach(oneRollBlockPerKind);
+  if (!node || typeof node !== "object") return;
+  Object.values(node).forEach(oneRollBlockPerKind);
+  const properties = node.properties;
+  if (node.type !== "object" || !properties?.kind || !properties.attackRoll || !properties.pool) return;
+  node.allOf = [
+    ...(node.allOf ?? []),
+    {
+      if: { required: ["kind"], properties: { kind: { const: "dice-pool" } } },
+      then: { required: ["pool"], not: { required: ["attackRoll"] } },
+      // Initiative thrown as a pool, or moved by attacks, is a pool fight's too.
+      else: {
+        required: ["attackRoll"],
+        not: { required: ["pool"] },
+        properties: { initiative: { not: { anyOf: [{ required: ["pool"] }, { required: ["resource"] }] } } },
+      },
+    },
+  ];
+}
+
+// Initiative is dice added up with a modifier, or a pool whose successes and `plus` are the number,
+// and a number attacks move opens as a pool and is never thrown again. Found by its shape: `dice` beside `pool` and
+// `resource`.
+function initiativeOneWay(node) {
+  if (Array.isArray(node)) return node.forEach(initiativeOneWay);
+  if (!node || typeof node !== "object") return;
+  Object.values(node).forEach(initiativeOneWay);
+  const properties = node.properties;
+  if (node.type !== "object" || !properties?.dice || !properties.pool || !properties.resource) return;
+  node.oneOf = [{ required: ["dice"] }, { required: ["pool"] }];
+  node.allOf = [
+    ...(node.allOf ?? []),
+    { if: { required: ["modifier"] }, then: { required: ["dice"] } },
+    { if: { required: ["plus"] }, then: { required: ["pool"] } },
+    { if: { required: ["resource"] }, then: { required: ["pool"], not: { required: ["each"] } } },
+  ];
+}
+
+// An attack's style either takes the number or spends it, never both, and at least one of them takes,
+// so a crashed combatant always has one to attack in. Found by its shape: `takes` beside `spends`, and
+// the `styles` list beside `base`.
+function styleTakesOrSpends(node) {
+  if (Array.isArray(node)) return node.forEach(styleTakesOrSpends);
+  if (!node || typeof node !== "object") return;
+  Object.values(node).forEach(styleTakesOrSpends);
+  const properties = node.properties;
+  if (node.type !== "object") return;
+  if (properties?.takes && properties.spends) node.oneOf = [{ required: ["takes"] }, { required: ["spends"] }];
+  if (properties?.styles && properties.base) properties.styles.contains = { required: ["takes"] };
+}
+
+// Soak soaks something: a number for every kind of harm, one per kind, or both. Found by its shape:
+// `roll` beside `all` and `byKind`.
+function soakSaysSomething(node) {
+  if (Array.isArray(node)) return node.forEach(soakSaysSomething);
+  if (!node || typeof node !== "object") return;
+  Object.values(node).forEach(soakSaysSomething);
+  const properties = node.properties;
+  if (node.type !== "object" || !properties?.roll || !properties.all || !properties.byKind) return;
+  requireAnyOf(node, ["all", "byKind"]);
 }
 
 /**
@@ -384,15 +570,23 @@ requireOneEntryContent(schema);
 requireCatalogFeeds(schema);
 requireSaveEndsUntilSave(schema);
 cancelOnlyWhenAimed(schema);
+modifierSaysSomething(schema);
+creatureActionShape(schema);
+conditionSavesAndLevels(schema);
 oneSourceForCreature(schema);
 requireDamageAmount(schema);
 requireDistanceForMeasured(schema);
+oneRollBlockPerKind(schema);
+initiativeOneWay(schema);
+styleTakesOrSpends(schema);
+soakSaysSomething(schema);
 boundScaledColumns(schema);
 requireOneHideComparison(schema);
 requireOneHideWhenComparison(schema);
 readOnlyWithLiveTrack(schema);
 enumTableShape(schema);
 restStepTo(schema);
+contestDoesSomething(schema);
 allowAnnotations(schema);
 const text = `${JSON.stringify(
   {

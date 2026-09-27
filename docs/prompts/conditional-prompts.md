@@ -359,7 +359,7 @@ One turn can make several billed requests on a hosted Decision connection. State
 
 A local chat model adds processing time instead of hosted charges. It answers a `decision_choice:` with one yes/no question per option, so a single choice can require several completions.
 
-Each request has a [time limit](../connections/decision-models.md#time-limits): 1.5 seconds by default for a Decision connection, or the local backend's budget. Several requests can add up to a longer wait. A local model that must reason first holds off before the reply unless you turn on **Also gate agents that run before the reply**.
+Each request has a [time limit](../connections/decision-models.md#time-limits): 1.5 seconds by default for a Decision connection (4 for an OpenAI-compatible chat model connection), or the local backend's budget. Several requests can add up to a longer wait. A local model that must reason first holds off before the reply unless you turn on **Also gate agents that run before the reply**.
 
 #### Answer reuse
 

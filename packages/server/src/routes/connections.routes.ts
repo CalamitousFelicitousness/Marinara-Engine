@@ -1,5 +1,6 @@
 import { resolveDecisionConnection } from "../services/decision/decision-connection.js";
 import { askNoulQuestions } from "../services/decision/system-one.client.js";
+import { connectionChatTarget, probeDecisionSlot } from "../services/decision/sidecar-decision.backend.js";
 // ──────────────────────────────────────────────
 // Routes: Connections
 // ──────────────────────────────────────────────
@@ -624,6 +625,25 @@ export async function connectionsRoutes(app: FastifyInstance) {
         // real time. The client compares that time with `timeLimitMs`, the limit chats use.
         const timeLimitMs = resolved.connection.timeoutMs;
         const testTimeoutMs = decisionTestTimeoutMs(timeLimitMs ?? 0);
+        if (resolved.connection.protocol === "chat_logprobs") {
+          // The same probe as a local model's Test, so it also reports whether the
+          // server returned log-probabilities and whether the model had to think.
+          const probe = await probeDecisionSlot(
+            connectionChatTarget(conn.id, conn.name, { ...resolved.connection, timeoutMs: testTimeoutMs }),
+          );
+          return {
+            success: probe.probability !== null,
+            message: probe.error ?? "Decision model answered.",
+            errorCode: probe.probability === null ? (probe.error ?? "no_answer") : undefined,
+            decisionProbability: probe.probability ?? undefined,
+            latencyMs: probe.latencyMs,
+            timeLimitMs,
+            testTimeoutMs,
+            logprobs: probe.logprobs,
+            answersDirectly: probe.answersDirectly,
+            modelName: resolved.connection.model,
+          };
+        }
         const result = await askNoulQuestions({
           connection: resolved.connection,
           state: { recent_messages: [{ role: "user", name: "User", content: "The door is open." }] },
@@ -924,8 +944,12 @@ export async function connectionsRoutes(app: FastifyInstance) {
     const conn = await storage.getWithKey(req.params.id);
     if (!conn) return reply.status(404).send({ error: "Connection not found" });
 
-    if (conn.provider === "decision")
-      return { models: [{ id: conn.model || "jev-latest", name: conn.model || "jev-latest" }] };
+    if (conn.provider === "decision") {
+      // Jev is only the default of the System One sources; a chat server needs the
+      // model name the user entered.
+      const model = conn.model || (conn.decisionSource === "openai_compatible" ? "" : "jev-latest");
+      return { models: model ? [{ id: model, name: model }] : [] };
+    }
     try {
       // Claude (Subscription) has no remote /models endpoint — return the
       // curated static list for the subscription path.

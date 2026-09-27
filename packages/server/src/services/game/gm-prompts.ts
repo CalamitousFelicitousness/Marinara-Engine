@@ -93,6 +93,9 @@ export interface GmPromptContext {
   characterSprites?: CharacterSpriteInfo[];
   /** Player's current inventory items (for GM context) */
   playerInventory?: Array<{ name: string; quantity: number }>;
+  /** Each bag's totals, the player's first (no `holder`). Read instead of `playerInventory` once
+   *  anybody but the player carries something, so the Game Master knows who holds what. */
+  partyInventory?: Array<{ holder?: string; items: Array<{ name: string; quantity: number }> }>;
   /** Language for all narration and dialogue */
   language?: string;
   /** User-overridable GM instruction body. Wrapped in <instructions> before sending. */
@@ -896,10 +899,10 @@ function renderRulesetSheetSection(
     ...(ruleset.rests.length > 0
       ? [`- [sheet: who="Name" op="rest" rest="Rest"] - rests: ${names(ruleset.rests)}.`]
       : []),
-    // Only a ruleset with catalogs of ROWS has entries to use: a bestiary writes nothing onto a
-    // sheet, so without one of those nothing on a sheet carries a price the Engine could pay, and
-    // the line would describe a command that always refuses.
-    ...(ruleset.catalogs?.some((catalog) => catalog.holds !== "creatures")
+    // Only a ruleset with catalogs of ROWS has entries to use: a bestiary or an item catalog writes
+    // nothing onto a sheet, so without one of those nothing on a sheet carries a price the Engine
+    // could pay, and the line would describe a command that always refuses.
+    ...(ruleset.catalogs?.some((catalog) => catalog.holds === "rows")
       ? [
           `- [sheet: who="Name" op="use" name="Name on the sheet"] - pays what that ability costs. Add pool="Pool" to pay from a higher pool of the same group.`,
         ]
@@ -972,6 +975,7 @@ export function buildGmFormatReminder(
     | "playerName"
     | "characterSprites"
     | "playerInventory"
+    | "partyInventory"
     | "language"
     | "rating"
     | "enableQuickTimeEvents"
@@ -1058,6 +1062,19 @@ export function buildGmFormatReminder(
         return [{ name, quantity }];
       })
     : [];
+  // Bags other than the player's, each with a name to show; only these make the block per member.
+  const partyBags = (Array.isArray(ctx.partyInventory) ? ctx.partyInventory : []).flatMap((bag) => {
+    const holder = bag.holder ? normalizePromptText(bag.holder) : "";
+    const items = (Array.isArray(bag.items) ? bag.items : []).flatMap((item) => {
+      const name = normalizePromptText(item?.name);
+      if (!name) return [];
+      const quantity =
+        typeof item?.quantity === "number" && Number.isFinite(item.quantity) ? Math.max(1, item.quantity) : 1;
+      return [{ name, quantity }];
+    });
+    return items.length > 0 ? [{ holder, items }] : [];
+  });
+  const carriedByOthers = partyBags.some((bag) => bag.holder);
 
   // ── Current State (closest to generation) ──
   lines.push(
@@ -1197,7 +1214,7 @@ export function buildGmFormatReminder(
     ...(experienceOwnsInventory
       ? []
       : [
-          `- [inventory: action="add|remove" item="Item A, Item B" count="3"] - every real item gain or loss, keep names short and use count/quantity for stacked items.`,
+          `- [inventory: action="add|remove|give" item="Item A, Item B" count="3" who="Name" to="Name"] - every real item gain or loss, keep names short and use count/quantity for stacked items. Everyone in the party carries their own things: who is whose bag an item goes into or comes out of, and leaving it out means the player (a remove without who then takes from the rest of the party once the player has none). A give hands items from who to to. Never write result, reason or now yourself: the Engine adds them, and a refused one did not happen.`,
         ]),
     `- [Note: contents] or [Book: contents] - when a new readable note or book is acquired and should be tracked in the journal.`,
     `- [state: exploration|dialogue|combat|travel_rest] - only on actual mode transitions. If you're planning to use [state: combat], this one ALWAYS has to be at the end of the turn, as it initiates a new combat generation and UI.`,
@@ -1328,7 +1345,14 @@ export function buildGmFormatReminder(
 
   // Inventory context. Skipped when an experience owns items: an older save can still carry a stale
   // built-in list, which would contradict the inventory the player has on screen.
-  if (!experienceOwnsInventory && playerInventory.length > 0) {
+  if (!experienceOwnsInventory && carriedByOthers) {
+    const playerLabel = normalizePromptText(ctx.playerName) || "Player";
+    lines.push(
+      ``,
+      `PARTY INVENTORY:`,
+      ...partyBags.map((bag) => `- ${bag.holder || playerLabel}: ${buildCompactInventoryLine(bag.items)}`),
+    );
+  } else if (!experienceOwnsInventory && playerInventory.length > 0) {
     lines.push(``, `PLAYER INVENTORY: ${buildCompactInventoryLine(playerInventory)}`);
   }
 

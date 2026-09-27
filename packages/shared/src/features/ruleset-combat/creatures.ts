@@ -145,6 +145,15 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     ...(action.recharge ? { recharge: { dice: { ...action.recharge.dice }, from: action.recharge.from } } : {}),
     ...(action.sequence ? { sequence: action.sequence.map((step) => ({ ...step })) } : {}),
     ...(action.signature ? { signature: { ...action.signature } } : {}),
+    ...(action.reaction
+      ? {
+          reaction: {
+            ...action.reaction,
+            ...(action.reaction.against ? { against: { catalogs: [...action.reaction.against.catalogs] } } : {}),
+          },
+        }
+      : {}),
+    ...(action.self ? { self: true as const } : {}),
   };
 }
 
@@ -285,10 +294,19 @@ function blockFromCreature(creature: RulesetCreature, budgets: ReadonlySet<strin
     ...(creature.speed !== undefined ? { speed: creature.speed } : {}),
     ...(creature.abilities ? { abilities: { ...creature.abilities } } : {}),
     ...(creature.saves ? { saves: { ...creature.saves } } : {}),
+    ...(creature.checks ? { checks: { ...creature.checks } } : {}),
     ...(creature.resist ? { resist: [...creature.resist] } : {}),
     ...(creature.vulnerable ? { vulnerable: [...creature.vulnerable] } : {}),
     ...(creature.immune ? { immune: [...creature.immune] } : {}),
     ...(creature.conditionImmunities ? { conditionImmunities: [...creature.conditionImmunities] } : {}),
+    ...(creature.soak
+      ? {
+          soak: {
+            ...(creature.soak.all !== undefined ? { all: creature.soak.all } : {}),
+            ...(creature.soak.byKind ? { byKind: { ...creature.soak.byKind } } : {}),
+          },
+        }
+      : {}),
     tier: creature.tier,
     ...(creature.traits ? { traits: creature.traits.map((trait) => ({ ...trait })) } : {}),
     ...(creature.signaturePoints !== undefined ? { signaturePoints: creature.signaturePoints } : {}),
@@ -491,6 +509,31 @@ export function clampRulesetStatBlock(
     }
     if (Object.keys(kept).length > 0) block.saves = kept;
     else delete block.saves;
+  }
+  // A contest is won with a number added to the same dice an attack throws, so it is held where a
+  // blow's chance to land is: a check this ruleset does not have is dropped, and one past the tier's
+  // own to-hit (with the same headroom) is brought down to it.
+  if (block.checks) {
+    const known = new Set((combat.checks ?? []).map((check) => check.id));
+    const cap = tier.toHit + RULESET_CLAMP_HEADROOM;
+    const kept: Record<string, number> = {};
+    for (const [id, value] of Object.entries(block.checks)) {
+      if (!known.has(id)) {
+        adjusted.push(`The contest check "${id}" is not one this ruleset has, so it was dropped.`);
+        continue;
+      }
+      if (value > cap) adjusted.push(`Its ${id} is now ${cap} instead of ${value}.`);
+      kept[id] = Math.min(value, cap);
+    }
+    if (Object.keys(kept).length > 0) block.checks = kept;
+    else delete block.checks;
+  }
+  // What an invented opponent soaks is nothing the scale can hold it to: a tier says how hard a
+  // creature is to hit and how much it can take, not what it shrugs off, so a proposed soak would be
+  // toughness no band bounds. It goes, and the fight is told so.
+  if (block.soak) {
+    delete block.soak;
+    adjusted.push("An opponent made up for one fight soaks nothing, so its soak was dropped.");
   }
   // A rider carries a damage type of its own, and a fight reads resistance off the NAME, so a type
   // this ruleset never declared is a word nothing could act on: held to the same names an action's

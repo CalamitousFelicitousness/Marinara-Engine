@@ -4,7 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
-- Game Mode rulesets whose fights throw pools can keep initiative as a number that attacks move. It opens as a thrown pool plus a number, one way of attacking takes it from the target instead of hurting them, another spends it as the damage dice and resets it, and whoever falls to the ruleset's crash line crashes, cannot spend until they recover, and may carry a condition of the ruleset's own. The order follows the numbers every round, the menu asks which way to attack before whom, and the log says every change. Capability API 1.48 (#6740).
+- Game Mode rulesets whose fights throw pools can keep initiative as a number that attacks move. It opens as a thrown pool plus a number, one way of attacking takes it from the target instead of hurting them, another spends it as the damage dice and resets it on a hit or loses what the ruleset sets on a miss, and whoever falls to the ruleset's crash line crashes, cannot spend until they recover, and may carry a condition of the ruleset's own. The order follows the numbers every round, the menu asks which way to attack before whom, and the log says every change. Capability API 1.48 (#6740).
 
 - Roleplay Advanced Memory can optionally use a selected Decision connection, including Jev, to detect scene endings and choose recalled scenes and excerpts. Summaries still use the summary helper, and the existing recall remains the fallback. Advanced Memory no longer carries an Alpha label (#6749).
 

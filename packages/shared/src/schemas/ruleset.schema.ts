@@ -3628,6 +3628,10 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
     }
     if (initiative.resource) {
       const resource = initiative.resource;
+      // The number is a pool's successes, so it is thrown as one; summed dice are an order, not a number of dice.
+      if (!initiative.pool) {
+        issue(at("initiative", "resource"), "A number attacks move opens as a thrown pool, so initiative needs pool");
+      }
       if (initiative.each !== undefined) {
         issue(
           at("initiative", "each"),

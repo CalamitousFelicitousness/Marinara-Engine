@@ -399,7 +399,7 @@ function oneRollBlockPerKind(node) {
 }
 
 // Initiative is dice added up with a modifier, or a pool whose successes and `plus` are the number,
-// and a number attacks move is never thrown again. Found by its shape: `dice` beside `pool` and
+// and a number attacks move opens as a pool and is never thrown again. Found by its shape: `dice` beside `pool` and
 // `resource`.
 function initiativeOneWay(node) {
   if (Array.isArray(node)) return node.forEach(initiativeOneWay);
@@ -412,7 +412,7 @@ function initiativeOneWay(node) {
     ...(node.allOf ?? []),
     { if: { required: ["modifier"] }, then: { required: ["dice"] } },
     { if: { required: ["plus"] }, then: { required: ["pool"] } },
-    { if: { required: ["resource"] }, then: { not: { required: ["each"] } } },
+    { if: { required: ["resource"] }, then: { required: ["pool"], not: { required: ["each"] } } },
   ];
 }
 

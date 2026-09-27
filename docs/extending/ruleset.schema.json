@@ -8369,6 +8369,9 @@
                 ]
               },
               "then": {
+                "required": [
+                  "pool"
+                ],
                 "not": {
                   "required": [
                     "each"

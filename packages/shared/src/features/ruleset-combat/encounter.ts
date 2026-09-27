@@ -1348,6 +1348,12 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
   return state;
 }
 
+/** Whether a creature shrugs this condition off, read the same way wherever one is put on. */
+export function rulesetImmuneToCondition(combatant: RulesetCombatant, condition: string): boolean {
+  const wanted = condition.trim().toLowerCase();
+  return !!combatant.block?.conditionImmunities?.some((entry) => entry.trim().toLowerCase() === wanted);
+}
+
 /** Where initiative is a number attacks move, whoever opens at the crash line or below starts the
  *  fight crashed, exactly as if a blow had put them there, only from nobody. */
 function openCrashes(
@@ -1363,7 +1369,7 @@ function openCrashes(
     combatant.crashedTurns = 0;
     const condition = crash.condition;
     if (!condition) continue;
-    if (combatant.block?.conditionImmunities?.some((entry) => entry.trim().toLowerCase() === condition)) {
+    if (rulesetImmuneToCondition(combatant, condition)) {
       events.push({ type: "condition", targetId: combatant.id, condition, active: false, reason: "immune" });
       continue;
     }

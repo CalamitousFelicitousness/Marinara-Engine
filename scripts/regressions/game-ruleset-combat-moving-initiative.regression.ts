@@ -14,7 +14,8 @@
  *     what the step table says at the number, and may crash its own maker.
  *   - The order following the numbers as each round begins, without a die thrown.
  *   - A crash lifting when the number rises above the line, when the ruleset's count of turns runs
- *     out, and when the fight ends; somebody who opens at the line starting the fight crashed.
+ *     out, and when the fight ends; somebody who opens at the line starting the fight crashed, or
+ *     immune to its condition.
  *   - A held hit keeping its style and the number it was made with, a reaction's attack made in the
  *     first style, an action made of several only ever taking, and a between-turns window naming
  *     nobody before a new round.
@@ -336,6 +337,16 @@ try {
     refuses(movingText, (doc) => (doc.combat.initiative.resource.styles = []), /styles/, "no style at all");
     refuses(
       movingText,
+      (doc) => {
+        delete doc.combat.initiative.pool;
+        delete doc.combat.initiative.plus;
+        doc.combat.initiative.dice = { count: 1, sides: 10 };
+      },
+      /A number attacks move opens as a thrown pool, so initiative needs pool/,
+      "a number attacks move opened by summed dice",
+    );
+    refuses(
+      movingText,
       (doc) => doc.combat.initiative.resource.styles.shift(),
       /At least one style takes: a crashed combatant attacks in one/,
       "only styles that spend",
@@ -584,6 +595,16 @@ try {
     assert.equal(reeling(bare, state, "rats"), true);
     const opening = state.opening.map((event) => event.type);
     assert.deepEqual(opening, ["initiative", "condition", "round", "turn"]);
+    // A creature that shrugs the condition off is still crashed, and the opening says it is immune.
+    const steady = variantOf((doc) => {
+      delete doc.combat.initiative.plus;
+      doc.catalogs[1].entries[0].creature.conditionImmunities = ["reeling"];
+    });
+    const unshaken = fight(steady, [warden(steady, "ada"), creature("rats", "grave-rats")], 8, 9, 2, 3, 4);
+    assert.equal(rulesetCombatant(unshaken, "rats")!.crashedTurns, 0);
+    assert.equal(reeling(steady, unshaken, "rats"), false);
+    const immune = unshaken.opening.find((event) => event.type === "condition");
+    assert.deepEqual(immune && immune.type === "condition" && [immune.targetId, immune.reason], ["rats", "immune"]);
   }
 
   // ── The fight ending lifts every crash ──

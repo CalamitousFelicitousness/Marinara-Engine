@@ -36,6 +36,7 @@ import {
   rulesetConditionModifiers,
   rulesetMovementAllowance,
   rulesetSaveMode,
+  rulesetImmuneToCondition,
   writeRulesetSheet,
   type RulesetConditionModifier,
 } from "./encounter.js";
@@ -793,7 +794,7 @@ function applyConditionId(
   applies: RulesetCombatApplies,
   extra: { sourceId?: string; difficulty?: number; concentration?: boolean } = {},
 ): void {
-  if (matches(target.block?.conditionImmunities, condition.trim().toLowerCase())) {
+  if (rulesetImmuneToCondition(target, condition)) {
     ctx.events.push({ type: "condition", targetId: target.id, condition, active: false, reason: "immune" });
     return;
   }
@@ -1047,7 +1048,7 @@ export function applyRulesetCombatChoice(
     if (cell) resolveMove(ctx, walking, cell);
     else resolveStand(ctx, walking, option);
     const ended = rulesetEncounterOutcome(ctx.state);
-    if (ended !== "ongoing") ctx.events.push({ type: "outcome", outcome: ended });
+    if (ended !== "ongoing") pushOutcome(ctx, ended);
     return finish();
   }
 
@@ -1296,6 +1297,12 @@ function noteOutcome(ctx: RulesetCombatContext): void {
   const outcome = rulesetEncounterOutcome(ctx.state);
   if (outcome === "ongoing") return;
   if (ctx.events[ctx.events.length - 1]?.type === "outcome") return;
+  pushOutcome(ctx, outcome);
+}
+
+/** The fight is over: whatever it lifts as it ends, then the outcome. Every way a fight ends says so
+ *  through here, so none of them leaves anybody crashed. */
+function pushOutcome(ctx: RulesetCombatContext, outcome: Exclude<RulesetEncounterOutcome, "ongoing">): void {
   ctx.events.push(...liftRulesetCrashes(ctx.definition, ctx.state));
   ctx.events.push({ type: "outcome", outcome });
 }
@@ -2779,7 +2786,7 @@ function beginNextTurn(definition: RulesetDefinition, combat: RulesetCombat, ctx
     if (actor.dying && !actor.stable && !actor.defeated) deathSave(ctx, actor);
   }
   const after = rulesetEncounterOutcome(ctx.state);
-  if (after !== "ongoing") ctx.events.push({ type: "outcome", outcome: after });
+  if (after !== "ongoing") pushOutcome(ctx, after);
 }
 
 /** What a combatant may spend of a limited pool starts again with the period the limit is counted in. */

@@ -805,7 +805,7 @@ same keys for a d20 system:
   (so a modifier that reads a wound track is slower once wounded), and the round starts at whoever is
   first in the new order. Capability API 1.47. A `dice-pool` fight may throw it as a pool instead:
   `pool` (a value reference) is how many dice, and their successes plus `plus` are the number, with
-  no `dice` or `modifier` beside it. `resource` keeps that number and lets attacks move it (see
+  no `dice` or `modifier` beside it. `resource`, which needs `pool`, keeps that number and lets attacks move it (see
   "Initiative that attacks move", below). Capability API 1.48.
 - `attackRoll`: required under `attack-vs-defense`, and refused under `dice-pool`, which throws your
   resolution's own pools. The dice, whether the system rolls twice and keeps one (`advantage`), what
@@ -1072,7 +1072,7 @@ runs out has crashed. A `dice-pool` fight can say so (Capability API 1.48):
 ```
 
 - **The opening.** Everybody throws `pool` dice as the fight begins, and the successes plus `plus`
-  are their number. A creature's `initiativeModifier` is its pool, since every number a pool fight
+  are their number, so `resource` needs `pool`: summed dice are an order, not a number of dice. A creature's `initiativeModifier` is its pool, since every number a pool fight
   adds is dice. The number is kept: it is never thrown again (`each` is refused beside `resource`),
   and as each round begins the order is sorted by the numbers as they stand.
 - **Styles.** Every attack (an attack row, an ability or catalog entry that rolls to hit and does

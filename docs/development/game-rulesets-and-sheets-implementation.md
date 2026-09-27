@@ -942,8 +942,9 @@ Capability API 1.48, for #6740. The second Storyteller slice: initiative as a nu
 
 - **The opening.** `initiative` is `dice` (with `modifier`) or `pool` (with `plus`), exactly one.
   A pool is thrown through the check roller, its successes plus `plus` the number; a creature's
-  `initiativeModifier` is its pool. `pool` and `resource` are a `dice-pool` fight's only, `each` is
-  refused beside `resource`, and `each: "round"` with a pool throws the pool again.
+  `initiativeModifier` is its pool. `pool` and `resource` are a `dice-pool` fight's only, `resource`
+  needs `pool` (summed dice are an order, not dice to spend), `each` is refused beside `resource`, and
+  `each: "round"` with a pool throws the pool again.
 - **Styles, beside the option.** `resource.styles` (one to four, each `takes` or `spends`, at least
   one taking, so a crashed combatant always has one) are chosen by `choice.style`, not folded into the
   option id, so everything that finds an action by its id is untouched. An attack is an action that
@@ -965,7 +966,8 @@ Capability API 1.48, for #6740. The second Storyteller slice: initiative as a nu
   condition on (from the source, when there is one) and starts `crashedTurns`; rising above it takes
   it off. `recoverAfter` counts the crashed one's own turn starts and resets them to `base`. An
   opening at the line crashes before the first turn, and every crash is lifted when the fight ends
-  (`liftRulesetCrashes`, called by the outcome and by fleeing), so a sheet never keeps it.
+  (`liftRulesetCrashes`, from `pushOutcome`, which every outcome goes through, and from fleeing), so a
+  sheet never keeps it.
 - **Order and windows.** As each round begins the order is re-sorted by the numbers, with no dice,
   and the pause at the end of a round names nobody next, as a round that throws again does.
 - **Menu and picker.** `option.styles` carries each style's forecast: a taking style what it would

@@ -132,6 +132,7 @@ export * from "./utils/macro-engine.js";
 export * from "./utils/ui-locales.js";
 export * from "./utils/xml-wrapper.js";
 export * from "./utils/music-score.js";
+export * from "./utils/game-inventory-stacks.js";
 export * from "./utils/agent-cost.js";
 export * from "./utils/token-estimator.js";
 export * from "./utils/character-token-estimator.js";

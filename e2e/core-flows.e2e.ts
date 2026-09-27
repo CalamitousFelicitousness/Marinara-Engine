@@ -4588,6 +4588,137 @@ test("Character and Persona avatar actions stay separated and visually balanced"
   }
 });
 
+test("Character-sheet generation offers the saved neutral full-body sprite as an optional reference", async ({
+  page,
+  request,
+}, testInfo) => {
+  const avatar = `data:image/gif;base64,${TRANSPARENT_GIF_BASE64}`;
+  const sprite = `data:image/png;base64,${TRANSPARENT_PNG_BASE64}`;
+  const characterResponse = await request.post("/api/characters", {
+    data: { data: { name: "Sheet reference fixture", description: "Silver hair and a dark travel coat." } },
+  });
+  expect(characterResponse.ok()).toBeTruthy();
+  const character = (await characterResponse.json()) as { id: string };
+  const connectionResponse = await request.post("/api/connections", {
+    data: { name: "Sheet reference fixture", provider: "image_generation", imageGenerationSource: "openai" },
+  });
+  expect(connectionResponse.ok()).toBeTruthy();
+  const connection = (await connectionResponse.json()) as { id: string };
+  const sent: Array<{ purpose: string; referenceImages?: string[] }> = [];
+  await page.route("**/api/characters/avatar-generation", async (route) => {
+    sent.push(route.request().postDataJSON());
+    await route.fulfill({ json: { image: sprite, prompt: "Fixture sheet" } });
+  });
+  try {
+    expect(
+      (
+        await request.post(`/api/characters/${character.id}/avatar`, {
+          data: { avatar, filename: "reference.gif" },
+        })
+      ).ok(),
+    ).toBeTruthy();
+    for (const expression of ["neutral", "full_happy", "full_neutral"]) {
+      expect(
+        (await request.post(`/api/sprites/${character.id}`, { data: { expression, image: sprite } })).ok(),
+      ).toBeTruthy();
+    }
+    await page.goto("/");
+    await page.evaluate(async (id) => {
+      const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+      useUIStore.getState().openCharacterDetail(id);
+      useUIStore.getState().setReviewImagePromptsBeforeSend(false);
+    }, character.id);
+    const editor = page.locator(".mari-editor-shell");
+    await openEditorSection(editor, "Sprites");
+    const create = editor.locator('[data-editor-section="sprites"]').getByRole("button", { name: "Create with AI" });
+    await create.click();
+    const dialog = page.getByRole("dialog", { name: "Create Character Sheet" });
+    await dialog.getByRole("combobox").selectOption(connection.id);
+    const neutral = dialog.getByRole("checkbox", { name: "Use neutral full-body sprite as a reference" });
+    const likeness = dialog.getByRole("checkbox", { name: /Use current avatar as a likeness reference/ });
+    await expect(neutral).not.toBeChecked();
+    await expect(likeness).toBeChecked();
+    await neutral.check();
+    const preview = neutral.locator("..").locator("img");
+    await expect(preview).toHaveAttribute("src", /full_neutral/u);
+    await expect(preview).toHaveCSS("object-fit", "contain");
+    for (const theme of ["dark", "light"] as const) {
+      await page.evaluate(async (value) => {
+        const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+        useUIStore.getState().setTheme(value);
+      }, theme);
+      await expect(neutral).toBeInViewport();
+      await testInfo.attach(`sheet-sprite-reference-${theme}`, {
+        body: await page.screenshot(),
+        contentType: "image/png",
+      });
+    }
+
+    for (const [useSprite, useAvatar, expected] of [
+      [true, true, [sprite, avatar]],
+      [true, false, [sprite]],
+      [false, true, [avatar]],
+      [false, false, undefined],
+    ] as const) {
+      await neutral.setChecked(useSprite);
+      await likeness.setChecked(useAvatar);
+      const count = sent.length;
+      await dialog.getByRole("button", { name: /^(Generate|Regenerate)$/u }).click();
+      await expect(dialog.getByRole("button", { name: "Save as Character Sheet" })).toBeEnabled();
+      expect(sent).toHaveLength(count + 1);
+      expect(sent.at(-1)?.purpose).toBe("character-sheet");
+      expect(sent.at(-1)?.referenceImages).toEqual(expected);
+    }
+
+    await neutral.check();
+    await page.evaluate(async () => {
+      const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+      useUIStore.getState().setReviewImagePromptsBeforeSend(true);
+    });
+    const previewRequest = page.waitForRequest("**/api/characters/avatar-generation/preview");
+    await dialog.getByRole("button", { name: "Regenerate", exact: true }).click();
+    expect((await previewRequest).postDataJSON().referenceImages).toEqual([sprite]);
+    const review = page.getByRole("dialog", { name: "Review Image Prompt", exact: true });
+    await review.getByRole("button", { name: "Generate", exact: true }).click();
+    await expect(dialog.getByRole("button", { name: "Save as Character Sheet" })).toBeEnabled();
+    expect(sent.at(-1)?.referenceImages).toEqual([sprite]);
+
+    await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    await create.click();
+    await expect(neutral).not.toBeChecked();
+    await neutral.check();
+    const referenceUrl = await preview.getAttribute("src");
+    if (!referenceUrl) throw new Error("The neutral sprite preview must have a source URL");
+    await page.route(`**${referenceUrl}`, (route) => route.fulfill({ status: 404 }));
+    const count = sent.length;
+    await dialog.getByRole("button", { name: "Generate", exact: true }).click();
+    await expect(
+      page.getByText(
+        "Could not read the selected reference image. Try reopening the generator or replacing the image.",
+      ),
+    ).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Generate", exact: true })).toBeEnabled();
+    expect(sent).toHaveLength(count);
+    await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    await page.unroute(`**${referenceUrl}`);
+    await editor.getByRole("button", { name: "Full-body", exact: true }).click();
+    const savedNeutral = editor.getByAltText("full_neutral", { exact: true }).locator("../..");
+    await savedNeutral.hover();
+    await savedNeutral.getByRole("button", { name: "Delete", exact: true }).click();
+    const deletion = page.getByRole("dialog", { name: "Delete Sprite", exact: true });
+    await deletion.getByRole("button", { name: "Delete", exact: true }).click();
+    await expect(deletion).not.toBeVisible();
+    await create.click();
+    await expect(neutral).toHaveCount(0);
+    await expect(likeness).toBeChecked();
+  } finally {
+    await Promise.all([
+      bestEffortDelete(request, `/api/characters/${character.id}`),
+      bestEffortDelete(request, `/api/connections/${connection.id}`),
+    ]);
+  }
+});
+
 test("Character and persona sheets persist an explicit reference choice and fall back safely", async ({
   page,
   request,

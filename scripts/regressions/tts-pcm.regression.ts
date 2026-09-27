@@ -143,32 +143,40 @@ try {
   if (process.env.TTS_PCM_BROWSER_PROOF === "1") {
     // Chromium's WebAudio decoder verifies that the actual route response is playable WAV.
     const regressionRequire = createRequire(import.meta.url);
-    const { chromium } = regressionRequire("@playwright/test") as typeof import("@playwright/test");
-    browser = await chromium.launch({ headless: true });
-    const page = await browser.newPage();
-    const decoded = await page.evaluate(async (base64) => {
-      const binary = atob(base64);
-      const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
-      const context = new AudioContext({ sampleRate: 48_000 });
-      try {
-        const audio = await context.decodeAudioData(bytes.buffer);
-        return {
-          duration: audio.duration,
-          channels: audio.numberOfChannels,
-          sampleRate: audio.sampleRate,
-          firstLeftSample: audio.getChannelData(0)[0],
-          firstRightSample: audio.getChannelData(1)[0],
-        };
-      } finally {
-        await context.close();
-      }
-    }, response.rawPayload.toString("base64"));
-    assert.equal(decoded.channels, 2);
-    assert.equal(decoded.sampleRate, 48_000);
-    assert.ok(Math.abs(decoded.duration - pcm.byteLength / (48_000 * 4)) < 0.0001);
-    assert.ok(Math.abs(decoded.firstLeftSample + 1 / 32_768) < 0.00001);
-    assert.ok(Math.abs(decoded.firstRightSample - 32_767 / 32_768) < 0.0001);
-    console.info("TTS PCM browser decode proof ran");
+    const { chromium, webkit, devices } = regressionRequire("@playwright/test") as typeof import("@playwright/test");
+    for (const [browserType, device] of [
+      [chromium, devices["Desktop Chrome"]],
+      [chromium, devices["Pixel 7"]],
+      [webkit, devices["iPhone 15 Pro"]],
+    ] as const) {
+      browser = await browserType.launch({ headless: true });
+      const page = await browser.newPage({ ...device });
+      const decoded = await page.evaluate(async (base64) => {
+        const binary = atob(base64);
+        const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+        const context = new AudioContext({ sampleRate: 48_000 });
+        try {
+          const audio = await context.decodeAudioData(bytes.buffer);
+          return {
+            duration: audio.duration,
+            channels: audio.numberOfChannels,
+            sampleRate: audio.sampleRate,
+            firstLeftSample: audio.getChannelData(0)[0],
+            firstRightSample: audio.getChannelData(1)[0],
+          };
+        } finally {
+          await context.close();
+        }
+      }, response.rawPayload.toString("base64"));
+      assert.equal(decoded.channels, 2);
+      assert.equal(decoded.sampleRate, 48_000);
+      assert.ok(Math.abs(decoded.duration - pcm.byteLength / (48_000 * 4)) < 0.0001);
+      assert.ok(Math.abs(decoded.firstLeftSample + 1 / 32_768) < 0.00001);
+      assert.ok(Math.abs(decoded.firstRightSample - 32_767 / 32_768) < 0.0001);
+      console.info(`TTS PCM browser decode proof ran: ${browserType.name()} ${device.userAgent}`);
+      await browser.close();
+      browser = undefined;
+    }
   } else {
     console.info("TTS PCM browser decode proof not run (set TTS_PCM_BROWSER_PROOF=1 to opt in)");
   }
@@ -194,6 +202,35 @@ try {
   const truncatedWav = await speak();
   assert.equal(truncatedWav.statusCode, 502, "truncated RIFF data is rejected");
   assert.match(truncatedWav.json<{ detail: string }>().detail, /malformed WAV/u);
+
+  // Internally consistent RIFF lengths must not hide invalid subchunks.
+  const emptyData = wavFixture.slice(0, 44);
+  new DataView(emptyData.buffer).setUint32(4, emptyData.length - 8, true);
+  new DataView(emptyData.buffer).setUint32(40, 0, true);
+  const overflowingData = emptyData.slice();
+  new DataView(overflowingData.buffer).setUint32(40, 8, true);
+  const missingFormat = wavFixture.slice();
+  missingFormat.set(new TextEncoder().encode("JUNK"), 12);
+  const shortFormat = wavFixture.slice();
+  new DataView(shortFormat.buffer).setUint32(16, 2, true);
+  for (const body of [emptyData, overflowingData, missingFormat, shortFormat]) {
+    providerMode = { contentType: "audio/pcm", body };
+    const invalidWav = await speak();
+    assert.equal(invalidWav.statusCode, 502, "invalid WAV subchunks are rejected despite a valid RIFF size");
+    assert.match(invalidWav.json<{ detail: string }>().detail, /malformed WAV/u);
+  }
+  // A padded odd-sized metadata chunk is valid and must be passed through.
+  const withMetadata = new Uint8Array(wavFixture.length + 10);
+  withMetadata.set(wavFixture.subarray(0, 12));
+  withMetadata.set(new TextEncoder().encode("JUNK"), 12);
+  new DataView(withMetadata.buffer).setUint32(16, 1, true);
+  withMetadata[20] = 42;
+  withMetadata.set(wavFixture.subarray(12), 22);
+  new DataView(withMetadata.buffer).setUint32(4, withMetadata.length - 8, true);
+  providerMode = { contentType: "audio/pcm", body: withMetadata };
+  const metadataWav = await speak();
+  assert.equal(metadataWav.statusCode, 200);
+  assert.deepEqual(metadataWav.rawPayload, Buffer.from(withMetadata));
 
   const mp3Fixture = new Uint8Array([0xff, 0xff, 0x90, 0x64]);
   providerMode = { contentType: "audio/mpeg", body: mp3Fixture };

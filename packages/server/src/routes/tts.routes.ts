@@ -1726,7 +1726,28 @@ export async function ttsRoutes(app: FastifyInstance) {
         // Do not use generic MP3 sniffing here: FF FF is also a valid signed PCM sample (-1).
         if (detectTTSAudioMimeType(providerAudio) === "audio/wav") {
           const view = new DataView(providerAudio.buffer, providerAudio.byteOffset, providerAudio.byteLength);
-          if (providerAudio.byteLength < 44 || view.getUint32(4, true) + 8 !== providerAudio.byteLength) {
+          let valid = view.getUint32(4, true) + 8 === providerAudio.byteLength;
+          let hasFormat = false;
+          let hasData = false;
+          let offset = 12;
+          while (valid && offset < providerAudio.byteLength) {
+            if (offset + 8 > providerAudio.byteLength) {
+              valid = false;
+              break;
+            }
+            const chunkId = String.fromCharCode(...providerAudio.subarray(offset, offset + 4));
+            const size = view.getUint32(offset + 4, true);
+            offset += 8 + size + (size % 2);
+            valid = offset <= providerAudio.byteLength;
+            if (chunkId === "fmt ") {
+              hasFormat = size >= 16;
+              valid &&= hasFormat;
+            } else if (chunkId === "data") {
+              hasData = size > 0;
+              valid &&= hasData;
+            }
+          }
+          if (!valid || !hasFormat || !hasData) {
             throw new Error("TTS provider returned malformed WAV audio");
           }
         } else {

@@ -1737,11 +1737,20 @@ export async function ttsRoutes(app: FastifyInstance) {
             }
             const chunkId = String.fromCharCode(...providerAudio.subarray(offset, offset + 4));
             const size = view.getUint32(offset + 4, true);
-            offset += 8 + size + (size % 2);
+            const payloadOffset = offset + 8;
+            offset = payloadOffset + size + (size % 2);
             valid = offset <= providerAudio.byteLength;
             if (chunkId === "fmt ") {
               hasFormat = size >= 16;
               valid &&= hasFormat;
+              if (valid) {
+                const formatTag = view.getUint16(payloadOffset, true);
+                // Compressed WAV formats can legitimately report zero bits per sample.
+                valid =
+                  view.getUint16(payloadOffset + 2, true) > 0 &&
+                  view.getUint32(payloadOffset + 4, true) > 0 &&
+                  (formatTag !== 1 || view.getUint16(payloadOffset + 14, true) > 0);
+              }
             } else if (chunkId === "data") {
               hasData = size > 0;
               valid &&= hasData;

@@ -1,5 +1,5 @@
 // Game: Inventory Panel
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   DndContext,
   type DragEndEvent,
@@ -10,11 +10,15 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import { Check, ChevronLeft, ChevronRight, Minus, Package, Plus, Wand2, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Minus, Package, Plus, Scissors, Wand2, X } from "lucide-react";
+import { gameInventoryNameKey } from "@marinara-engine/shared";
 import { cn } from "../../lib/utils";
+import { defaultInventorySplitSize, parseInventoryAmount } from "../../lib/game-inventory-amount";
 import { useTranslation as useUiTranslation } from "react-i18next";
 
+/** One stack. Two stacks may hold the same item, so a stack is told apart by its id, never its name. */
 export interface InventoryItem {
+  id: string;
   name: string;
   quantity: number;
 }
@@ -23,16 +27,18 @@ interface GameInventoryProps {
   items: InventoryItem[];
   open: boolean;
   onClose: () => void;
-  /** Called when the user wants to add a new item */
+  /** Called when the user wants to add a new item. Resolves to the new stack's id. */
   onAddItem?: () => Promise<string | null> | string | null;
   /** Called when the user wants to use an item during input phase */
   onUseItem?: (itemName: string) => void;
-  /** Called when the user wants to rename an item */
-  onRenameItem?: (currentName: string, nextName: string) => Promise<string | null> | string | null;
-  /** Called when the user wants to manually remove one unit of an item */
-  onRemoveItem?: (itemName: string) => void | Promise<void>;
-  /** Called when the user wants to manually add one unit of an item */
-  onIncrementItem?: (itemName: string) => void | Promise<void>;
+  /** Called when the user renames a stack. Resolves to the id of the stack holding the result. */
+  onRenameItem?: (stackId: string, nextName: string) => Promise<string | null> | string | null;
+  /** Called when the user sets a stack's count: the +1 and -1 buttons, or a typed amount. 0 removes it. */
+  onSetItemQuantity?: (stackId: string, quantity: number) => void | Promise<void>;
+  /** Called when the user splits part of a stack into a new one. Resolves to the new stack's id. */
+  onSplitItem?: (stackId: string, size: number) => Promise<string | null> | string | null;
+  /** Called when the user drops a stack onto another stack of the same item. */
+  onMergeItems?: (fromId: string, intoId: string) => void | Promise<void>;
   /** Called when the user drags one item onto another to swap their positions */
   onReorderItem?: (fromIndex: number, toIndex: number) => void | Promise<void>;
   /** Whether the player can interact (input phase) */
@@ -48,8 +54,9 @@ export function GameInventory({
   onAddItem,
   onUseItem,
   onRenameItem,
-  onRemoveItem,
-  onIncrementItem,
+  onSetItemQuantity,
+  onSplitItem,
+  onMergeItems,
   onReorderItem,
   canInteract,
 }: GameInventoryProps) {
@@ -58,7 +65,10 @@ export function GameInventory({
   const [renameDraft, setRenameDraft] = useState("");
   const [renamePending, setRenamePending] = useState(false);
   const [addPending, setAddPending] = useState(false);
-  const [amountPending, setAmountPending] = useState<"increment" | "decrement" | null>(null);
+  const [amountPending, setAmountPending] = useState(false);
+  const [amountDraft, setAmountDraft] = useState("");
+  const [splitDraft, setSplitDraft] = useState<string | null>(null);
+  const [splitPending, setSplitPending] = useState(false);
   const [pageIndex, setPageIndex] = useState(0);
 
   // Mouse: 4px distance threshold so quick clicks still select.
@@ -68,17 +78,9 @@ export function GameInventory({
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
   );
 
-  const handleItemClick = useCallback(
-    (item: InventoryItem) => {
-      if (!canInteract) {
-        // Just toggle inspect
-        setSelectedItem((prev) => (prev === item.name ? null : item.name));
-        return;
-      }
-      setSelectedItem((prev) => (prev === item.name ? null : item.name));
-    },
-    [canInteract],
-  );
+  const handleItemClick = useCallback((item: InventoryItem) => {
+    setSelectedItem((prev) => (prev === item.id ? null : item.id));
+  }, []);
 
   const handleUse = useCallback(
     (itemName: string) => {
@@ -88,14 +90,14 @@ export function GameInventory({
     [onUseItem],
   );
 
-  // Clear selection if the selected item was removed
+  // Clear selection if the selected stack was removed
   useEffect(() => {
-    if (selectedItem && !items.some((i) => i.name === selectedItem)) {
+    if (selectedItem && !items.some((i) => i.id === selectedItem)) {
       setSelectedItem(null);
     }
   }, [items, selectedItem]);
 
-  const selectedInventoryItem = selectedItem ? (items.find((item) => item.name === selectedItem) ?? null) : null;
+  const selectedInventoryItem = selectedItem ? (items.find((item) => item.id === selectedItem) ?? null) : null;
   const pageCount = Math.max(1, Math.ceil(items.length / ITEMS_PER_PAGE));
   const pageStart = pageIndex * ITEMS_PER_PAGE;
   const pageItems = items.slice(pageStart, pageStart + ITEMS_PER_PAGE);
@@ -104,30 +106,41 @@ export function GameInventory({
     setRenameDraft(selectedInventoryItem?.name ?? "");
   }, [selectedInventoryItem?.name]);
 
+  // The amount field shows the stack as it stands whenever it changes or another stack is picked, and
+  // a split in progress is dropped with it.
+  const selectedStackId = selectedInventoryItem?.id;
+  const selectedQuantity = selectedInventoryItem?.quantity;
+  useEffect(() => {
+    setAmountDraft(selectedQuantity === undefined ? "" : String(selectedQuantity));
+  }, [selectedStackId, selectedQuantity]);
+  useEffect(() => {
+    setSplitDraft(null);
+  }, [selectedStackId]);
+
   useEffect(() => {
     setPageIndex((current) => Math.min(current, pageCount - 1));
   }, [pageCount]);
 
   useEffect(() => {
     if (!selectedItem) return;
-    const selectedIndex = items.findIndex((item) => item.name === selectedItem);
+    const selectedIndex = items.findIndex((item) => item.id === selectedItem);
     if (selectedIndex >= 0) {
       setPageIndex(Math.floor(selectedIndex / ITEMS_PER_PAGE));
     }
   }, [items, selectedItem]);
 
   const handleRename = useCallback(
-    async (itemName: string) => {
+    async (item: InventoryItem) => {
       if (!onRenameItem) return;
 
       const nextName = renameDraft.trim().replace(/\s+/g, " ");
-      if (!nextName || nextName === itemName.trim()) return;
+      if (!nextName || nextName === item.name.trim()) return;
 
       setRenamePending(true);
       try {
-        const resolvedName = await onRenameItem(itemName, nextName);
-        if (resolvedName) {
-          setSelectedItem(resolvedName);
+        const resolvedId = await onRenameItem(item.id, nextName);
+        if (resolvedId) {
+          setSelectedItem(resolvedId);
         }
       } finally {
         setRenamePending(false);
@@ -141,9 +154,9 @@ export function GameInventory({
 
     setAddPending(true);
     try {
-      const addedItemName = await onAddItem();
-      if (addedItemName) {
-        setSelectedItem(addedItemName);
+      const addedStackId = await onAddItem();
+      if (addedStackId) {
+        setSelectedItem(addedStackId);
         setPageIndex(Math.floor(items.length / ITEMS_PER_PAGE));
       }
     } finally {
@@ -151,44 +164,85 @@ export function GameInventory({
     }
   }, [items.length, onAddItem]);
 
-  const handleIncrement = useCallback(
-    async (itemName: string) => {
-      if (!onIncrementItem) return;
-
-      setAmountPending("increment");
+  const setQuantity = useCallback(
+    async (item: InventoryItem, quantity: number) => {
+      if (!onSetItemQuantity || quantity === item.quantity) return;
+      setAmountPending(true);
       try {
-        await onIncrementItem(itemName);
+        await onSetItemQuantity(item.id, quantity);
       } finally {
-        setAmountPending(null);
+        setAmountPending(false);
       }
     },
-    [onIncrementItem],
+    [onSetItemQuantity],
   );
 
-  const handleDecrement = useCallback(
-    async (itemName: string) => {
-      if (!onRemoveItem) return;
-
-      setAmountPending("decrement");
+  /** What was typed into the amount field: a count, or +N / -N. Emptying a stack of more than one asks
+   *  first, since that is the whole pile gone in one keystroke. Enter disables the field while it
+   *  saves, which blurs it, and the confirmation takes focus too: one commit runs at a time, so neither
+   *  commits the same amount again. */
+  const amountCommitting = useRef(false);
+  const commitAmount = useCallback(
+    async (item: InventoryItem) => {
+      if (amountCommitting.current) return;
+      const next = parseInventoryAmount(amountDraft, item.quantity);
+      if (next === null || next === item.quantity) {
+        setAmountDraft(String(item.quantity));
+        return;
+      }
+      amountCommitting.current = true;
       try {
-        await onRemoveItem(itemName);
+        if (
+          next === 0 &&
+          item.quantity > 1 &&
+          !window.confirm(
+            localizeUi("ui.game.gameinventory.removeAllValue1Confirm", { count: item.quantity, value1: item.name }),
+          )
+        ) {
+          setAmountDraft(String(item.quantity));
+          return;
+        }
+        setAmountDraft(String(next));
+        await setQuantity(item, next);
       } finally {
-        setAmountPending(null);
+        amountCommitting.current = false;
       }
     },
-    [onRemoveItem],
+    [amountDraft, localizeUi, setQuantity],
+  );
+
+  const commitSplit = useCallback(
+    async (item: InventoryItem) => {
+      if (!onSplitItem || splitDraft === null) return;
+      const size = Number.parseInt(splitDraft, 10);
+      if (!Number.isInteger(size) || size < 1 || size >= item.quantity) return;
+      setSplitPending(true);
+      try {
+        const newStackId = await onSplitItem(item.id, size);
+        if (newStackId) setSplitDraft(null);
+      } finally {
+        setSplitPending(false);
+      }
+    },
+    [onSplitItem, splitDraft],
   );
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
-      if (!onReorderItem) return;
       const fromIndex = event.active.data.current?.index;
       const toIndex = event.over?.data.current?.index;
       if (typeof fromIndex !== "number" || typeof toIndex !== "number") return;
       if (fromIndex === toIndex) return;
-      void onReorderItem(fromIndex, toIndex);
+      // Onto another stack of the same item, the two become one; onto anything else, they swap places.
+      const from = items[fromIndex];
+      const to = items[toIndex];
+      if (onMergeItems && from && to && gameInventoryNameKey(from.name) === gameInventoryNameKey(to.name)) {
+        void onMergeItems(from.id, to.id);
+        return;
+      }
+      if (onReorderItem) void onReorderItem(fromIndex, toIndex);
     },
-    [onReorderItem],
+    [items, onMergeItems, onReorderItem],
   );
 
   if (!open) return null;
@@ -265,8 +319,8 @@ export function GameInventory({
                         key={`slot-${globalIndex}`}
                         item={item}
                         globalIndex={globalIndex}
-                        selected={Boolean(item && selectedItem === item.name)}
-                        reorderEnabled={Boolean(onReorderItem)}
+                        selected={Boolean(item && selectedItem === item.id)}
+                        reorderEnabled={Boolean(onReorderItem || onMergeItems)}
                         onClick={() => item && handleItemClick(item)}
                       />
                     );
@@ -290,9 +344,9 @@ export function GameInventory({
         {/* Action bar */}
         {(selectedItem || onAddItem) && (
           <div className="border-t border-white/8 bg-white/[0.02] px-4 py-2.5">
-            {selectedItem ? (
+            {selectedInventoryItem ? (
               <div className="mb-2 whitespace-normal break-words text-[0.7rem] font-medium text-white/60 [overflow-wrap:anywhere]">
-                {selectedItem}
+                {selectedInventoryItem.name}
               </div>
             ) : (
               <div className="mb-2 text-[0.7rem] font-medium text-white/45">
@@ -310,7 +364,7 @@ export function GameInventory({
                     }
                     if (e.key === "Enter") {
                       e.preventDefault();
-                      void handleRename(selectedInventoryItem.name);
+                      void handleRename(selectedInventoryItem);
                     }
                   }}
                   disabled={renamePending}
@@ -318,7 +372,7 @@ export function GameInventory({
                   placeholder={localizeUi("ui.game.gameinventory.itemName")}
                 />
                 <button
-                  onClick={() => void handleRename(selectedInventoryItem.name)}
+                  onClick={() => void handleRename(selectedInventoryItem)}
                   disabled={
                     renamePending || !renameDraft.trim() || renameDraft.trim() === selectedInventoryItem.name.trim()
                   }
@@ -326,6 +380,57 @@ export function GameInventory({
                 >
                   <Check size={12} />
                   {localizeUi("ui.noodle.noodlehome.save")}
+                </button>
+              </div>
+            )}
+            {onSplitItem && selectedInventoryItem && splitDraft !== null && (
+              <div className="mb-2.5 flex items-center gap-1.5">
+                <label
+                  htmlFor="game-inventory-split-size"
+                  className="min-w-0 flex-1 text-[0.65rem] leading-tight text-white/55"
+                >
+                  {localizeUi("ui.game.gameinventory.splitHowMany", { max: selectedInventoryItem.quantity - 1 })}
+                </label>
+                <input
+                  id="game-inventory-split-size"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={selectedInventoryItem.quantity - 1}
+                  value={splitDraft}
+                  autoFocus
+                  onChange={(e) => setSplitDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") setSplitDraft(null);
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void commitSplit(selectedInventoryItem);
+                    }
+                  }}
+                  disabled={splitPending}
+                  className="w-16 rounded border border-white/10 bg-black/40 px-2 py-1.5 text-[0.7rem] tabular-nums text-white/85 outline-none transition-colors focus:border-amber-400/40"
+                />
+                <button
+                  onClick={() => void commitSplit(selectedInventoryItem)}
+                  disabled={
+                    splitPending ||
+                    !(
+                      Number.parseInt(splitDraft, 10) >= 1 &&
+                      Number.parseInt(splitDraft, 10) < selectedInventoryItem.quantity
+                    )
+                  }
+                  className="flex shrink-0 items-center justify-center gap-1 rounded border border-amber-500/20 bg-amber-500/10 px-2 py-1.5 text-[0.7rem] font-semibold text-amber-300 transition-colors hover:bg-amber-500/15 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Scissors size={12} />
+                  {localizeUi("ui.game.gameinventory.split")}
+                </button>
+                <button
+                  onClick={() => setSplitDraft(null)}
+                  className="rounded p-1 text-white/40 transition-colors hover:bg-white/10 hover:text-white/70"
+                  aria-label={localizeUi("ui.game.gameinventory.cancelSplit")}
+                  title={localizeUi("ui.game.gameinventory.cancelSplit")}
+                >
+                  <X size={12} />
                 </button>
               </div>
             )}
@@ -340,57 +445,83 @@ export function GameInventory({
                   {localizeUi("ui.characters.metadatatab.add")}
                 </button>
               )}
-              {selectedInventoryItem && (onRemoveItem || onIncrementItem) && (
+              {selectedInventoryItem && onSetItemQuantity && (
                 <div
                   className="flex h-7 shrink-0 items-center overflow-hidden rounded border border-white/8 bg-white/[0.03]"
                   aria-label={localizeUi("ui.game.gameinventory.value1AmountControls", {
                     value1: selectedInventoryItem.name,
                   })}
                 >
-                  {onRemoveItem && (
-                    <button
-                      type="button"
-                      onClick={() => void handleDecrement(selectedInventoryItem.name)}
-                      disabled={amountPending !== null}
-                      className="flex h-full w-7 items-center justify-center text-white/65 transition-colors hover:bg-white/[0.07] hover:text-white/90 disabled:cursor-not-allowed disabled:opacity-40"
-                      aria-label={
-                        selectedInventoryItem.quantity > 1
-                          ? localizeUi("ui.game.gameinventory.decreaseValue1Amount", {
-                              value1: selectedInventoryItem.name,
-                            })
-                          : localizeUi("ui.game.gameinventory.deleteValue1", { value1: selectedInventoryItem.name })
+                  <button
+                    type="button"
+                    onClick={() => void setQuantity(selectedInventoryItem, selectedInventoryItem.quantity - 1)}
+                    disabled={amountPending}
+                    className="flex h-full w-7 items-center justify-center text-white/65 transition-colors hover:bg-white/[0.07] hover:text-white/90 disabled:cursor-not-allowed disabled:opacity-40"
+                    aria-label={
+                      selectedInventoryItem.quantity > 1
+                        ? localizeUi("ui.game.gameinventory.decreaseValue1Amount", {
+                            value1: selectedInventoryItem.name,
+                          })
+                        : localizeUi("ui.game.gameinventory.deleteValue1", { value1: selectedInventoryItem.name })
+                    }
+                    title={
+                      selectedInventoryItem.quantity > 1
+                        ? localizeUi("ui.game.gameinventory.decreaseAmount")
+                        : localizeUi("ui.game.gameinventory.deleteItem")
+                    }
+                  >
+                    <Minus size={12} />
+                  </button>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={amountDraft}
+                    onChange={(e) => setAmountDraft(e.target.value)}
+                    onFocus={(e) => e.target.select()}
+                    onBlur={() => void commitAmount(selectedInventoryItem)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") setAmountDraft(String(selectedInventoryItem.quantity));
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        void commitAmount(selectedInventoryItem);
                       }
-                      title={
-                        selectedInventoryItem.quantity > 1
-                          ? localizeUi("ui.game.gameinventory.decreaseAmount")
-                          : localizeUi("ui.game.gameinventory.deleteItem")
-                      }
-                    >
-                      <Minus size={12} />
-                    </button>
-                  )}
-                  <span className="min-w-8 border-x border-white/8 px-2 text-center text-[0.7rem] font-semibold tabular-nums text-white/80">
-                    {selectedInventoryItem.quantity}
-                  </span>
-                  {onIncrementItem && (
-                    <button
-                      type="button"
-                      onClick={() => void handleIncrement(selectedInventoryItem.name)}
-                      disabled={amountPending !== null}
-                      className="flex h-full w-7 items-center justify-center text-white/65 transition-colors hover:bg-white/[0.07] hover:text-white/90 disabled:cursor-not-allowed disabled:opacity-40"
-                      aria-label={localizeUi("ui.game.gameinventory.increaseValue1Amount", {
-                        value1: selectedInventoryItem.name,
-                      })}
-                      title={localizeUi("ui.game.gameinventory.increaseAmount")}
-                    >
-                      <Plus size={12} />
-                    </button>
-                  )}
+                    }}
+                    disabled={amountPending}
+                    aria-label={localizeUi("ui.game.gameinventory.value1Amount", {
+                      value1: selectedInventoryItem.name,
+                    })}
+                    title={localizeUi("ui.game.gameinventory.amountHint")}
+                    className="h-full w-14 border-x border-white/8 bg-transparent px-1 text-center text-[0.7rem] font-semibold tabular-nums text-white/80 outline-none focus:bg-white/[0.05]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void setQuantity(selectedInventoryItem, selectedInventoryItem.quantity + 1)}
+                    disabled={amountPending}
+                    className="flex h-full w-7 items-center justify-center text-white/65 transition-colors hover:bg-white/[0.07] hover:text-white/90 disabled:cursor-not-allowed disabled:opacity-40"
+                    aria-label={localizeUi("ui.game.gameinventory.increaseValue1Amount", {
+                      value1: selectedInventoryItem.name,
+                    })}
+                    title={localizeUi("ui.game.gameinventory.increaseAmount")}
+                  >
+                    <Plus size={12} />
+                  </button>
                 </div>
               )}
-              {selectedItem && canInteract && onUseItem && (
+              {selectedInventoryItem && onSplitItem && selectedInventoryItem.quantity > 1 && splitDraft === null && (
                 <button
-                  onClick={() => handleUse(selectedItem)}
+                  type="button"
+                  onClick={() => setSplitDraft(String(defaultInventorySplitSize(selectedInventoryItem.quantity)))}
+                  className="flex h-7 shrink-0 items-center justify-center gap-1 rounded border border-white/8 bg-white/[0.03] px-2 text-[0.7rem] text-white/70 transition-colors hover:bg-white/[0.06]"
+                  aria-label={localizeUi("ui.game.gameinventory.splitValue1", { value1: selectedInventoryItem.name })}
+                  title={localizeUi("ui.game.gameinventory.splitStack")}
+                >
+                  <Scissors size={12} />
+                  {localizeUi("ui.game.gameinventory.split")}
+                </button>
+              )}
+              {selectedInventoryItem && canInteract && onUseItem && (
+                <button
+                  onClick={() => handleUse(selectedInventoryItem.name)}
                   className="flex flex-1 items-center justify-center gap-1 rounded border border-amber-500/20 bg-amber-500/10 py-1.5 text-[0.7rem] font-semibold text-amber-400 transition-colors hover:bg-amber-500/15"
                 >
                   <Wand2 size={12} />

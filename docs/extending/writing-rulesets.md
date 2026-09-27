@@ -50,6 +50,7 @@ You may add a `"$comment": "..."` line to any object in the file to leave yourse
 | `rests`         | What each kind of rest restores and clears.                                                       |
 | `gm`            | The text the Game Master model is given, and which sheet values it sees for each character.       |
 | `catalogs`      | Optional. Ready-made entries the sheet editor offers, so players do not type long lists by hand.  |
+| `items`         | Optional. The words your items are written in: categories, rarities, stats, slots, money.        |
 | `battle`        | Optional. What a battle may read from the sheet, and what it writes back afterwards.              |
 | `combat`        | Optional. How a fight is resolved by your own rules, and what the battle screen then plays.       |
 | `layers`        | Optional. Variants of your ruleset a player turns on when a game is created.                      |
@@ -458,8 +459,8 @@ The header goes in `catalogs` at the top level of the file, beside `gm`.
 ```
 
 - `id` and `label`: the id follows the sheet id rules, and the label is what the picker is called.
-- `holds`: `"rows"` (the default, and what every catalog written before this release is) or `"creatures"`. A catalog of creatures is a bestiary a fight reads: it writes nothing onto a sheet, declares no `feeds`, and the picker never offers it. See [Creatures](#creatures-a-bestiary-a-fight-reads) below.
-- `feeds`: the lists on your sheet that this catalog's entries may write into, one to eight of them. Required for a catalog of rows and refused on a catalog of creatures. An entry can never write into a list that is not here, and it can never write a value the list's columns could not hold.
+- `holds`: `"rows"` (the default, and what every catalog written before this release is), `"creatures"` or `"items"`. A catalog of creatures is a bestiary a fight reads, and a catalog of items lists things a party carries. Neither writes anything onto a sheet, declares `feeds`, or is ever offered by the picker. See [Creatures](#creatures-a-bestiary-a-fight-reads) and [Items](#items-what-a-party-carries) below.
+- `feeds`: the lists on your sheet that this catalog's entries may write into, one to eight of them. Required for a catalog of rows and refused on a catalog of creatures or items. An entry can never write into a list that is not here, and it can never write a value the list's columns could not hold.
 - `filters`: optional, up to eight. What the picker can narrow the list by. A filter is a `number`, a `text` value, or `tags` (several words). `startFrom` names a sheet field the picker opens on, so a character whose Calling is Tinker sees Tinker entries first.
 - `units`: optional. What a range or an area size in an entry's `mechanics` block means in your system.
 
@@ -625,9 +626,123 @@ The path is always `catalogs/<the catalog's id>.json`. The file itself looks lik
 { "schemaVersion": 1, "catalog": "knacks", "entries": [] }
 ```
 
-Separate catalog files are for packages published through the official catalog: the package lists the file in `contributions.assets.paths` beside `ruleset.json`, and it needs Capability API 1.21. A catalog of creatures, inline or in its own file, needs Capability API 1.27. **A ruleset you import as a single file, or share through a GitHub repository, carries its catalogs inline**, which means they have to fit inside the 256 KB limit on the whole ruleset file. That is room for a few hundred short entries.
+Separate catalog files are for packages published through the official catalog: the package lists the file in `contributions.assets.paths` beside `ruleset.json`, and it needs Capability API 1.21. A catalog of creatures, inline or in its own file, needs Capability API 1.27, and a catalog of items needs 1.49. **A ruleset you import as a single file, or share through a GitHub repository, carries its catalogs inline**, which means they have to fit inside the 256 KB limit on the whole ruleset file. That is room for a few hundred short entries.
 
 The limits are 12 catalogs per ruleset, 2000 entries per catalog either way, and 1 MB for one catalog file.
+
+## Items: what a party carries
+
+Armor, weapons, potions, gear, ammunition and money are items. An optional `items` block declares the words every item of your ruleset is written in, and a catalog with `holds: "items"` lists the items themselves. Both need Capability API 1.49.
+
+### The items block
+
+The block goes in `items` at the top level of the file. This is Ember Roads', a little shortened:
+
+```json
+"items": {
+  "categories": [
+    { "id": "weapon", "label": "Weapon" },
+    { "id": "armor", "label": "Armor" },
+    { "id": "ammunition", "label": "Ammunition" }
+  ],
+  "rarities": [
+    { "id": "common", "label": "Common" },
+    { "id": "storied", "label": "Storied" }
+  ],
+  "tags": [
+    { "id": "thrown", "label": "Thrown" },
+    { "id": "ranged", "label": "Ranged" },
+    { "id": "two_handed", "label": "Two-handed" }
+  ],
+  "stats": [
+    { "id": "bulk", "label": "Bulk", "type": "number", "min": 0, "max": 10, "default": 0 },
+    { "id": "damage", "label": "Damage", "type": "dice", "example": "1d6" },
+    { "id": "swing", "label": "Rolls with", "type": "enum", "values": ["brawn", "wits", "heart"], "default": "brawn" },
+    { "id": "reach", "label": "Reach", "type": "enum", "values": ["close", "near", "far"], "default": "close" }
+  ],
+  "slots": [
+    { "id": "body", "label": "Body", "count": 1 },
+    { "id": "hands", "label": "Hands", "count": 2 }
+  ],
+  "carry": { "stat": "bulk", "encumberedAbove": { "derived": "load" }, "limit": { "const": 12 } },
+  "currencies": [
+    {
+      "id": "coin",
+      "label": "Coin",
+      "perWeight": 100,
+      "units": [
+        { "id": "bit", "label": "bits", "value": 1 },
+        { "id": "mark", "label": "marks", "value": 10 },
+        { "id": "sovereign", "label": "sovereigns", "value": 100 }
+      ]
+    },
+    {
+      "id": "salt",
+      "label": "Salt",
+      "perWeight": 10,
+      "units": [
+        { "id": "pinch", "label": "pinches", "value": 1 },
+        { "id": "cake", "label": "cakes", "value": 20 }
+      ]
+    }
+  ]
+}
+```
+
+- `categories`: one to 24. Every item has exactly one, such as armor, weapon or potion.
+- `rarities`: optional, up to 12. List them from the most common to the rarest.
+- `tags`: optional, up to 48. Properties an item may have, such as thrown or silvered.
+- `stats`: optional, up to 24. The numbers and words an item carries, declared exactly like a list column: `number`, `text`, `boolean`, `enum` or `dice`, with a range, values and a default where the type has them. `promptVisible` (default `true`) says whether the Game Master is shown the stat beside the item. Set it to `false` for something only the player should see, such as where an item is hidden.
+- `slots`: optional, up to 12. Where an item is worn or held, and how many of that slot a character has, from 1 to 20.
+- `binding`: optional. Attunement, investiture, or anything else that limits how many items one character may have bound at once. `label` is what it is called, and `max` is a value read off the character's sheet, such as `{ "abilityScore": "nerve" }` or a derived value. It cannot read the live state, because how many items a character may bind does not change with every blow.
+- `carry`: optional. `stat` names the number stat that is an item's weight, whose `min` is 0 or more. `encumberedAbove` is how much a character carries before they are encumbered, and `limit` (optional) the most they can carry at all. Both are read off the sheet like `binding.max`. Without `carry`, weight means nothing and nobody is ever encumbered.
+- `currencies`: optional, up to six families of one to ten coins each.
+  - Coins of one family change into each other by `value`, which counts the family's smallest coin. So the smallest coin is worth 1, and no two coins of a family are worth the same.
+  - Two families never change into each other. A second nation's coin, or a setting's favours, is a family of its own.
+  - A coin's id is unique across every family, because an item's cost names the coin alone.
+  - `perWeight` (optional, and only beside `carry`) is how many of the family's coins weigh one unit of the carry stat.
+- `native`: `true` by default. `false` turns off Game Mode's own untyped items in your ruleset's games. The Game Master can still invent items, written in your ruleset's words.
+- `freeform`: what an item the player types in becomes. `"plain"` (the default) keeps it as an item with no rules, as today. `"refuse"` allows only items of your ruleset.
+
+### An item
+
+An item catalog declares no `feeds`:
+
+```json
+{ "id": "outfitter", "label": "Outfitter", "holds": "items", "entries": [] }
+```
+
+Each entry carries an `item` instead of `rows` or a `creature`:
+
+```json
+{
+  "id": "hunting-bow",
+  "label": "Hunting bow",
+  "summary": "Yew, waxed string, and a grip worn smooth by someone else's hand.",
+  "item": {
+    "category": "weapon",
+    "rarity": "common",
+    "tags": ["ranged", "two_handed"],
+    "stats": { "bulk": 2, "damage": "1d8", "swing": "wits", "reach": "far" },
+    "slots": { "hands": 2 },
+    "cost": { "amount": 3, "unit": "sovereign" }
+  }
+}
+```
+
+- `id`, `label`, `summary` and `filters` work as they do for any entry. The label is the item's name.
+- `category` is required. `rarity` and `tags` are optional, and all three name the block's own ids. An item can only have a rarity when the block declares some.
+- `stats`: values for the block's stats. Each one is a value its stat could hold.
+- `slots`: how many of each slot the item takes, never more than a character has.
+- `stack`: the most one stack holds, from 1 to 999,999. Without it, a stack holds as many as any Game Mode stack.
+- `cost`: a whole `amount` of one coin, named by its `unit` id.
+- `binds`: the item has to be bound before it does anything while worn. `restriction` (optional) says in words who may bind it, and `cursed: true` marks one that will not let go. Only a ruleset with `binding` can have items that bind.
+
+An item carries no `mechanics`: what it does is written in its `item` block.
+
+### What reads items
+
+Everything above is checked when the ruleset is imported, and your catalogs of items ship with it. Nothing in a game reads items yet. Game Mode's inventory, the character sheet and fights take them up in the releases that follow, and that is when `native`, `freeform`, slots, binding, carrying and money start to change a game.
 
 ## Battles: lending the sheet to Marinara's combat
 

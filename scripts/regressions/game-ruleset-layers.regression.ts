@@ -57,6 +57,9 @@ const emberText = (() => {
   delete doc.sheet.live.states;
   for (const rest of doc.rests)
     rest.restore = rest.restore.filter((step: { state?: string }) => step.state === undefined);
+  // And 1.49's items block, with the catalog written in it.
+  delete doc.items;
+  doc.catalogs = doc.catalogs.filter((catalog: { holds?: string }) => catalog.holds !== "items");
   return JSON.stringify(doc);
 })();
 const gravewatchText = read("../../docs/examples/rulesets/gravewatch.json");

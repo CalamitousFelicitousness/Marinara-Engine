@@ -59,26 +59,31 @@ function requireOneCatalogSource(node) {
   }
 }
 
-// An entry writes rows onto a sheet or it is a creature, never both and never neither, and a
-// creature says what it does in its own actions rather than in `mechanics`. Refinements again, so
-// the editor is told here. The node is found by its shape: `rows` beside `creature`.
+// An entry writes rows onto a sheet, is a creature or is an item: exactly one of the three. A
+// creature says what it does in its own actions and an item in its item block, so neither carries
+// `mechanics`. Refinements again, so the editor is told here. The node is found by its shape: `rows`
+// beside `creature` and `item`.
 function requireOneEntryContent(node) {
   if (Array.isArray(node)) return node.forEach(requireOneEntryContent);
   if (!node || typeof node !== "object") return;
   Object.values(node).forEach(requireOneEntryContent);
-  if (node.type === "object" && node.properties?.rows && node.properties.creature) {
-    node.oneOf = [{ required: ["rows"] }, { required: ["creature"], not: { required: ["mechanics"] } }];
+  if (node.type === "object" && node.properties?.rows && node.properties.creature && node.properties.item) {
+    node.oneOf = [
+      { required: ["rows"] },
+      { required: ["creature"], not: { required: ["mechanics"] } },
+      { required: ["item"], not: { required: ["mechanics"] } },
+    ];
   }
 }
 
 // And the header the entries sit in: a catalog of rows names the lists it feeds, a catalog of
-// creatures names none. Found by its shape: `holds` beside `feeds`.
+// creatures or of items names none. Found by its shape: `holds` beside `feeds`.
 function requireCatalogFeeds(node) {
   if (Array.isArray(node)) return node.forEach(requireCatalogFeeds);
   if (!node || typeof node !== "object") return;
   Object.values(node).forEach(requireCatalogFeeds);
   if (node.type === "object" && node.properties?.holds && node.properties.feeds) {
-    node.if = { properties: { holds: { const: "creatures" } }, required: ["holds"] };
+    node.if = { properties: { holds: { enum: ["creatures", "items"] } }, required: ["holds"] };
     node.then = { not: { required: ["feeds"] } };
     node.else = { required: ["feeds"] };
   }

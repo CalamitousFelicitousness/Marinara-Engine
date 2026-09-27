@@ -82,15 +82,92 @@ export function DecisionDebugPanel({
           )}
           {report && !test.isPending && (
             <>
-              <p className="font-medium break-words">
-                {t("decisionDebug.model", { model: report.model ?? t("decisionDebug.noModel") })}
-              </p>
-              <p className="text-[var(--muted-foreground)]">
-                {t(report.mode === "run" ? "decisionDebug.ranAt" : "decisionDebug.preparedAt", {
-                  time: new Date(report.createdAt).toLocaleString(),
-                })}
-              </p>
-              {report.results.length === 0 && <p role="status">{t("decisionDebug.empty")}</p>}
+              {report.advancedMemory && (
+                <div className="space-y-3">
+                  <h3 className="font-medium">{t("decisionDebug.memory.title")}</h3>
+                  <p className="text-[var(--muted-foreground)]">{t("decisionDebug.memory.scope")}</p>
+                  {!report.advancedMemory.recall && !report.advancedMemory.sceneCheck && (
+                    <p role="status">{t("decisionDebug.memory.empty")}</p>
+                  )}
+                  {(
+                    [
+                      ["recall", report.advancedMemory.recall],
+                      ["sceneCheck", report.advancedMemory.sceneCheck],
+                    ] as const
+                  ).map(
+                    ([kind, saved]) =>
+                      saved && (
+                        <details key={kind} open className="border-t border-[var(--border)] pt-2">
+                          <summary className="cursor-pointer py-2 font-medium">
+                            {t(`decisionDebug.memory.${kind}`)}
+                          </summary>
+                          <p className="break-words">
+                            {t("decisionDebug.model", { model: saved.model ?? t("decisionDebug.noModel") })}
+                          </p>
+                          <p className="text-[var(--muted-foreground)]">
+                            {t("decisionDebug.memory.recordedAt", { time: new Date(saved.createdAt).toLocaleString() })}
+                          </p>
+                          <p className="py-1">
+                            {t(saved.fallback ? "decisionDebug.memory.fallback" : "decisionDebug.memory.completed")}
+                          </p>
+                          <p className="text-[var(--muted-foreground)]">
+                            {t("decisionDebug.threshold")} {saved.threshold}
+                          </p>
+                          <ul className="max-h-80 divide-y divide-[var(--border)] overflow-auto">
+                            {saved.results.map((row) => (
+                              <li key={`${row.kind}:${row.id}`} className="space-y-1 py-2">
+                                <p className="flex flex-wrap gap-x-2 font-medium">
+                                  <span>{t(`decisionDebug.memory.kind.${row.kind}`)}</span>
+                                  <span>
+                                    {t(
+                                      row.selected
+                                        ? "decisionDebug.memory.selected"
+                                        : "decisionDebug.memory.notSelected",
+                                    )}
+                                  </span>
+                                </p>
+                                <p className="whitespace-pre-wrap break-words">{row.text}</p>
+                                <p className="text-[var(--muted-foreground)]">
+                                  {row.score === undefined ? (
+                                    t("decisionDebug.memory.unanswered")
+                                  ) : row.binary ? (
+                                    t(row.score === 1 ? "decisionDebug.yes" : "decisionDebug.no")
+                                  ) : (
+                                    <>
+                                      {t("decisionDebug.score")}{" "}
+                                      {row.score.toLocaleString(undefined, { maximumSignificantDigits: 6 })}
+                                    </>
+                                  )}
+                                </p>
+                                {row.binary && (
+                                  <p className="text-[var(--muted-foreground)]">{t("decisionDebug.binary")}</p>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                          {saved.omittedCount > 0 && (
+                            <p className="pt-2 text-[var(--muted-foreground)]">
+                              {t("decisionDebug.memory.omitted", { count: saved.omittedCount })}
+                            </p>
+                          )}
+                        </details>
+                      ),
+                  )}
+                </div>
+              )}
+              {(!report.advancedMemory || report.results.length > 0) && (
+                <>
+                  <p className="font-medium break-words">
+                    {t("decisionDebug.model", { model: report.model ?? t("decisionDebug.noModel") })}
+                  </p>
+                  <p className="text-[var(--muted-foreground)]">
+                    {t(report.mode === "run" ? "decisionDebug.ranAt" : "decisionDebug.preparedAt", {
+                      time: new Date(report.createdAt).toLocaleString(),
+                    })}
+                  </p>
+                </>
+              )}
+              {report.results.length === 0 && !report.advancedMemory && <p role="status">{t("decisionDebug.empty")}</p>}
               <ul className="divide-y divide-[var(--border)]">
                 {report.results.map((row) => (
                   <li key={`${row.kind}:${row.statement}`} className="space-y-1 py-3">

@@ -12,6 +12,7 @@ import { existsSync, readFileSync } from "fs";
 import { basename, extname, join } from "path";
 import { z } from "zod";
 import { estimateTextTokens, sliceTextToTokenBudget } from "@marinara-engine/shared";
+import { carryGameInventory } from "@marinara-engine/shared";
 import { eq } from "../db/file-query.js";
 import { IMPORTED_GAME_ENGINE_ANCHOR_PREFIX } from "../db/file-backed-store.js";
 import { chats as chatsTable } from "../db/schema/index.js";
@@ -2953,8 +2954,6 @@ function applySessionConclusionPayload(
   };
 }
 
-type ChatInventoryItem = { name: string; quantity: number };
-
 function parseJsonField<T>(raw: unknown, fallback: T): T {
   if (raw == null) return fallback;
   if (typeof raw !== "string") return raw as T;
@@ -2977,38 +2976,6 @@ async function updateLatestGameStateWithTrackerLocks(
     parseGameStateRow(latest as Record<string, unknown>),
   );
   return gameStateStore.updateLatest(chatId, lockedPatch as any);
-}
-
-function normalizeGameInventoryItems(raw: unknown): ChatInventoryItem[] {
-  if (!Array.isArray(raw)) return [];
-
-  return raw.flatMap((item) => {
-    if (!item || typeof item !== "object") return [];
-    const source = item as Record<string, unknown>;
-    const name = typeof source.name === "string" ? source.name.trim() : "";
-    const parsedQuantity =
-      typeof source.quantity === "number" ? source.quantity : Number.parseInt(String(source.quantity ?? ""), 10);
-    const quantity = Number.isFinite(parsedQuantity) && parsedQuantity > 0 ? Math.floor(parsedQuantity) : 1;
-    return name ? [{ name, quantity }] : [];
-  });
-}
-
-function inventoryFromPlayerStats(playerStats: Record<string, unknown> | null): ChatInventoryItem[] {
-  if (!playerStats) return [];
-  return normalizeGameInventoryItems(playerStats.inventory);
-}
-
-function mergeGameInventoryItems(...sources: ChatInventoryItem[][]): ChatInventoryItem[] {
-  const merged = new Map<string, ChatInventoryItem>();
-  for (const source of sources) {
-    for (const item of source) {
-      const key = item.name.toLowerCase();
-      if (!merged.has(key)) {
-        merged.set(key, { ...item });
-      }
-    }
-  }
-  return [...merged.values()];
 }
 
 async function resolveConnection(
@@ -7340,10 +7307,7 @@ export async function gameRoutes(app: FastifyInstance) {
       const previousPlayerStats = parseJsonField<Record<string, unknown> | null>(previousState?.playerStats, null);
       const previousPersonaStats = parseJsonField<any[] | null>(previousState?.personaStats, null);
       const previousHiddenTrackerFields = parseTrackerHiddenFields(previousState?.hiddenTrackerFields);
-      const carriedInventory = mergeGameInventoryItems(
-        normalizeGameInventoryItems(prevMeta.gameInventory),
-        inventoryFromPlayerStats(previousPlayerStats),
-      );
+      const carriedInventory = carryGameInventory(prevMeta.gameInventory, previousPlayerStats?.inventory);
       const {
         gameLastIllustrationTurn: _previousIllustrationTurn,
         gameLastIllustrationSessionNumber: _previousIllustrationSessionNumber,

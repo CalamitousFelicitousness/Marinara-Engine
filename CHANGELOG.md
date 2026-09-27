@@ -5,6 +5,16 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 ## [Unreleased]
 
 - Chats can name their own variables in a **Chat Variables** section of **Chat Settings**. Define `char1` as `Mary`, type `{{char1}}` in a message, and the AI reads Mary while your message keeps showing the tag, so changing the value also changes earlier turns. Values are per chat, survive restarts, and share storage with `{{setvar}}`, which lists prompt-set variables there too and still overwrites a name it also uses. Any remaining `{{name}}` resolves from preset variables first, then chat variables; an unknown name is still left as typed, and a name that is a built-in macro cannot be created.
+- Game Mode rulesets can describe items. An `items` block declares the categories, rarities, tags, stats, slots, binding limit, carrying and currency families a ruleset's items are written in, and a catalog of items lists each one with its stats, slots, stack size, cost and binding. Everything is checked at import, both example rulesets carry items, and the author guide explains every key. Nothing in a game reads items yet; the inventory, the sheet and fights take them up next (#6765).
+
+- Decision diagnostics shows Advanced Memory's latest Jev recall and scene-end decisions, including scores, selections and fallback outcomes, without making extra model calls (#6768).
+
+- Advanced Memory swipes respect the shared "All" history cutoff even when its message is hidden from the responding character, without applying later cutoffs to earlier replies (#6766).
+- The browser test for attacks made in an initiative style no longer fails when the fight's random dice let the Grave-rat swarm down Ada before her first turn: the test's swarm throws no initiative dice, so Ada always acts first (#6763).
+
+- Game Mode's inventory changes a stack by any amount: type a count, or +N to add and -N to take, instead of clicking once per item. A stack can be split into a size you choose (300 apples split by 100 leaves 200 and 100), and dropping a stack onto another of the same item merges them. Split stacks carry over to the next session, and the Game Master and fights still count every stack of an item together (#6759).
+
+- Fixed a production startup regression that left Docker and installed web apps on a blank screen before React could load (#6760).
 
 - Regex packs can be selected, exported, and deleted in bulk, with one confirmation and failed deletions retained for retry (#6755).
 - Generation Settings can disable automatic character/persona gallery entries while keeping illustrations and selfies in chat. NovelAI image inspectors now include character captions alongside the scene prompt (#6752, #6748).

@@ -4719,6 +4719,111 @@ test("Character-sheet generation offers the saved neutral full-body sprite as an
   }
 });
 
+test("Persona sheets accept neutral full-body references and save the result", async ({ page, request }, testInfo) => {
+  const name = "Persona sheet reference fixture";
+  const avatar = `data:image/gif;base64,${TRANSPARENT_GIF_BASE64}`;
+  const sprite = `data:image/png;base64,${TRANSPARENT_PNG_BASE64}`;
+  const personaResponse = await request.post("/api/characters/personas", {
+    data: { name, description: "Silver hair and a dark travel coat." },
+  });
+  expect(personaResponse.ok()).toBeTruthy();
+  const persona = (await personaResponse.json()) as { id: string };
+  let connectionId: string | undefined;
+  const sent: Array<{ referenceImages?: string[] }> = [];
+  try {
+    const connectionResponse = await request.post("/api/connections", {
+      data: { name, provider: "image_generation", imageGenerationSource: "openai" },
+    });
+    expect(connectionResponse.ok()).toBeTruthy();
+    connectionId = ((await connectionResponse.json()) as { id: string }).id;
+    expect(
+      (
+        await request.post(`/api/characters/personas/${persona.id}/avatar`, {
+          data: { avatar, filename: "persona.gif" },
+        })
+      ).ok(),
+    ).toBeTruthy();
+    for (const expression of ["neutral", "full_happy", "full_neutral"]) {
+      expect(
+        (await request.post(`/api/sprites/${persona.id}`, { data: { expression, image: sprite } })).ok(),
+      ).toBeTruthy();
+    }
+    await page.route("**/api/characters/avatar-generation", async (route) => {
+      sent.push(route.request().postDataJSON());
+      await route.fulfill({ json: { image: sprite, prompt: "Generated persona sheet fixture" } });
+    });
+    await page.goto("/");
+    await page.evaluate(async (id) => {
+      const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+      useUIStore.getState().setReviewImagePromptsBeforeSend(false);
+      useUIStore.getState().openPersonaDetail(id);
+    }, persona.id);
+    const editor = page.locator(".mari-editor-shell");
+    await openEditorSection(editor, "Sprites");
+    const create = editor
+      .locator('[data-editor-section="sprites"]')
+      .getByRole("button", { name: "Create with AI", exact: true });
+    await create.click();
+    const dialog = page.getByRole("dialog", { name: "Create Character Sheet", exact: true });
+    await dialog.getByRole("combobox").selectOption(connectionId);
+    const neutral = dialog.getByRole("checkbox", { name: "Use neutral full-body sprite as a reference" });
+    const likeness = dialog.getByRole("checkbox", { name: /Use current avatar as a likeness reference/ });
+    await expect(neutral).not.toBeChecked();
+    await expect(likeness).toBeChecked();
+    await neutral.check();
+    await expect(neutral.locator("..").locator("img")).toHaveAttribute("src", /full_neutral/u);
+    await expect(neutral).toBeInViewport();
+    await testInfo.attach("persona-sheet-neutral-reference.png", {
+      body: await page.screenshot(),
+      contentType: "image/png",
+    });
+    for (const [withAvatar, expected] of [
+      [true, [sprite, avatar]],
+      [false, [sprite]],
+    ] as const) {
+      await likeness.setChecked(withAvatar);
+      await dialog.getByRole("button", { name: /^(Generate|Regenerate)$/u }).click();
+      await expect(dialog.getByRole("button", { name: "Save as Character Sheet" })).toBeEnabled();
+      expect(sent.at(-1)?.referenceImages).toEqual(expected);
+    }
+    // Save the actual generated result through the normal upload, then persist the editor draft.
+    const upload = page.waitForResponse(
+      (response) =>
+        response.url().endsWith(`/api/characters/personas/${persona.id}/gallery/upload`) &&
+        response.request().method() === "POST",
+    );
+    const save = dialog.getByRole("button", { name: "Save as Character Sheet", exact: true });
+    if (testInfo.project.name.includes("mobile")) await save.tap();
+    else await save.click();
+    expect((await upload).ok()).toBeTruthy();
+    const savedImage = (await (await upload).json()) as { id: string };
+    await expect(dialog).toHaveCount(0);
+    await expect(editor.getByAltText(`${name} character sheet`, { exact: true })).toBeVisible();
+    await editor.getByRole("button", { name: "Save", exact: true }).click();
+    await expect
+      .poll(
+        async () => (await (await request.get(`/api/characters/personas/${persona.id}`)).json()).characterSheetImageId,
+      )
+      .toBe(savedImage.id);
+    await create.click();
+    await expect(neutral).not.toBeChecked();
+    await expect(likeness).toBeChecked();
+    await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    await editor.getByRole("button", { name: "Full-body", exact: true }).click();
+    const savedNeutral = editor.getByAltText("full_neutral", { exact: true }).locator("../..");
+    await savedNeutral.hover();
+    await savedNeutral.getByRole("button", { name: "Delete", exact: true }).click();
+    const deletion = page.getByRole("dialog", { name: "Delete Sprite", exact: true });
+    await deletion.getByRole("button", { name: "Delete", exact: true }).click();
+    await expect(deletion).not.toBeVisible();
+    await create.click();
+    await expect(neutral).toHaveCount(0);
+  } finally {
+    await bestEffortDelete(request, `/api/characters/personas/${persona.id}`);
+    if (connectionId) await bestEffortDelete(request, `/api/connections/${connectionId}`);
+  }
+});
+
 test("Character and persona sheets persist an explicit reference choice and fall back safely", async ({
   page,
   request,

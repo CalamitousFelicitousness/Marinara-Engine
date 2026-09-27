@@ -69,6 +69,18 @@ const StartCharacterChatModal = lazy(() =>
     default: module.StartCharacterChatModal,
   })),
 );
+const GenerationJobsModal = lazy(() =>
+  import("../modals/GenerationJobsModal").then((module) => ({ default: module.GenerationJobsModal })),
+);
+const GlobalSearchModal = lazy(() =>
+  import("../modals/GlobalSearchModal").then((module) => ({ default: module.GlobalSearchModal })),
+);
+const ChatStatsModal = lazy(() =>
+  import("../modals/ChatStatsModal").then((module) => ({ default: module.ChatStatsModal })),
+);
+const ActivityOverviewModal = lazy(() =>
+  import("../modals/ActivityOverviewModal").then((module) => ({ default: module.ActivityOverviewModal })),
+);
 
 export function ModalRenderer() {
   const modal = useUIStore((s) => s.modal);
@@ -197,6 +209,20 @@ export function ModalRenderer() {
           characterName={(modal?.props?.characterName as string) ?? ""}
         />
       );
+      break;
+    case "generation-jobs":
+      content = <GenerationJobsModal open onClose={closeModal} />;
+      break;
+    case "global-chat-search":
+      content = (
+        <GlobalSearchModal open onClose={closeModal} initialQuery={(modal?.props?.initialQuery as string) ?? ""} />
+      );
+      break;
+    case "chat-stats":
+      content = <ChatStatsModal open onClose={closeModal} chatId={(modal?.props?.chatId as string) ?? ""} />;
+      break;
+    case "activity-overview":
+      content = <ActivityOverviewModal open onClose={closeModal} />;
       break;
     default:
       content = null;

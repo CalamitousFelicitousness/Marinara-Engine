@@ -2883,6 +2883,14 @@ export const ChatArea = memo(function ChatArea() {
   // ── /goto command: paginate older pages until target message is loaded, then scroll to it
   useEffect(() => {
     if (!gotoRequest || gotoRequest.chatId !== activeChatId) return;
+    if (isGameChat) {
+      // The Game surface shows one narration beat at a time and has no
+      // per-message anchors, so paging the whole history in would only end in
+      // a silent no-op. Open the game and say where earlier turns live.
+      toast.info(localizeUi("chatInsights.gotoUnavailableInGame"));
+      useChatStore.getState().clearGotoRequest();
+      return;
+    }
     if (!messages) return;
 
     const targetNumber = gotoRequest.messageNumber;
@@ -2941,6 +2949,7 @@ export const ChatArea = memo(function ChatArea() {
     isFetchingNextPage,
     fetchNextPage,
     localizeUi,
+    isGameChat,
   ]);
 
   // ═══════════════════════════════════════════════

@@ -35,11 +35,6 @@ for (const scenario of scenarios) {
     });
     expect(created.ok()).toBeTruthy();
     const { id } = (await created.json()) as { id: string };
-    if (scenario.mode === "roleplay") {
-      const updated = await request.patch(`/api/chats/${id}/metadata`, { data: { automaticSummaryEnabled: true } });
-      expect(updated.ok()).toBeTruthy();
-    }
-
     const metadata = async () => {
       const response = await request.get(`/api/chats/${id}`);
       expect(response.ok()).toBeTruthy();
@@ -73,6 +68,10 @@ for (const scenario of scenarios) {
     };
 
     try {
+      if (scenario.mode === "roleplay") {
+        const updated = await request.patch(`/api/chats/${id}/metadata`, { data: { automaticSummaryEnabled: true } });
+        expect(updated.ok()).toBeTruthy();
+      }
       await page.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: "" } }));
       await seedUIState(page, {
         hasCompletedOnboarding: true,

@@ -13,6 +13,7 @@
  *   - The amount field: a count, or +N / -N, bounded like a stack.
  */
 import assert from "node:assert/strict";
+import { performance } from "node:perf_hooks";
 
 import {
   addToGameInventory,
@@ -67,6 +68,12 @@ const fixedId = (id: string) => () => id;
   assert.equal(stored[0]!.id, "st-a");
   assert.notEqual(stored[1]!.id, "st-a");
   assert.deepEqual(normalizeGameInventoryStacks("not a list"), []);
+  // A worked-out id trims dashes from both ends, and a name that is a long run of them stays quick.
+  assert.equal(normalizeGameInventoryStacks([{ name: " --Apple-- ", quantity: 1 }])[0]!.id, "st-apple-0");
+  const started = performance.now();
+  const dashes = normalizeGameInventoryStacks([{ name: `${"-".repeat(100_000)}x`, quantity: 1 }]);
+  assert.equal(dashes[0]!.id, "st-x-0");
+  assert.ok(performance.now() - started < 200, "a long run of dashes is read in linear time");
   // Stored ids are reserved first: an entry saved without an id never takes a later entry's id.
   const reserved = normalizeGameInventoryStacks([
     { name: "Apple", quantity: 1 },

@@ -324,8 +324,11 @@ export async function combatDirectorRoutes(
         .max(256),
       tasks: z.array(z.unknown()).max(4000),
       requests: z.array(key).max(256),
-      inventory: z.array(z.object({ name: key, quantity: z.number().int().min(0).max(10000) })).max(200),
-      itemSpends: z.record(key, z.number().int().min(0).max(10000)),
+      // Totals per item, which a player's stacks together may take well past one stack's bound.
+      inventory: z
+        .array(z.object({ name: key, quantity: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER) }))
+        .max(200),
+      itemSpends: z.record(key, z.number().int().min(0).max(Number.MAX_SAFE_INTEGER)),
       gmCalls: z.number().int().min(0).max(12),
       // The ruleset fight itself. Its numbers are the ruleset's own and are checked by the resolver
       // that reads them; what is bounded here is the SHAPE and the size, the way the rest is.
@@ -610,7 +613,7 @@ export async function combatDirectorRoutes(
           .array(
             z.object({
               name: z.string().max(200),
-              quantity: z.number().int().min(0).max(10000),
+              quantity: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
               description: z.string().max(2000).optional(),
             }),
           )

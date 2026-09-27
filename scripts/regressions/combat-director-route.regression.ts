@@ -60,6 +60,9 @@ await chats.patchMetadata(chat.id, {
   gameInventory: [
     { id: "st-first", name: "Potion", quantity: 1 },
     { id: "st-second", name: "Potion", quantity: 1 },
+    // Two stacks whose total is past what one stack holds: a fight and its save take the total.
+    { id: "st-arrows", name: "Arrow", quantity: 999_999 },
+    { id: "st-arrows-2", name: "Arrow", quantity: 500_000 },
   ],
 });
 const input = {
@@ -150,7 +153,10 @@ try {
   s = start.json().session;
   assert.deepEqual(
     s.inventory.map((item) => [item.name, item.quantity]),
-    [["Potion", 2]],
+    [
+      ["Potion", 2],
+      ["Arrow", 1_499_999],
+    ],
     "a fight sees one line per item, however its stacks are split",
   );
   assert.equal(s.tactical!.battlefield!.brief!.features![0]!.terrain, "forest");
@@ -204,6 +210,8 @@ try {
   // Taken from the first stack, which it empties; the second stack keeps its id and its potion.
   assert.deepEqual(JSON.parse((await chats.getById(chat.id))!.metadata).gameInventory, [
     { id: "st-second", name: "Potion", quantity: 1 },
+    { id: "st-arrows", name: "Arrow", quantity: 999_999 },
+    { id: "st-arrows-2", name: "Arrow", quantity: 500_000 },
   ]);
   const repeat = await cmd(
     { type: "tactical", action: { type: "item", unitId: "hero", itemName: "Potion", targetId: "hero" } },

@@ -35,12 +35,14 @@ function clampQuantity(quantity: number): number {
 }
 
 function slug(name: string): string {
-  return (
-    gameInventoryNameKey(name)
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 40) || "item"
-  );
+  const dashed = gameInventoryNameKey(name).replace(/[^a-z0-9]+/g, "-");
+  // Leading and trailing dashes are trimmed by walking in from each end, not by an anchored pattern,
+  // which could backtrack over a long run of dashes in a name the player typed.
+  let start = 0;
+  let end = dashed.length;
+  while (start < end && dashed[start] === "-") start += 1;
+  while (end > start && dashed[end - 1] === "-") end -= 1;
+  return dashed.slice(start, Math.min(end, start + 40)) || "item";
 }
 
 /** A fresh id no stack in `stacks` has. */

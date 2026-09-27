@@ -625,6 +625,7 @@ function TopbarMoreMenu({
   };
 
   const select = (item: TopbarOverflowItem) => {
+    if (!item.key.startsWith("extension:")) triggerRef.current?.focus({ preventScroll: true });
     close(false);
     item.onSelect();
   };

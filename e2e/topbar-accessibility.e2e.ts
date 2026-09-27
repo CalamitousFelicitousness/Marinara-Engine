@@ -27,6 +27,7 @@ test("phone More keeps core navigation visible and retains extension actions", a
   const topbar = page.locator('[data-component="TopBar"]');
   const home = topbar.getByTitle("Home");
   const chats = topbar.getByTitle("Chats");
+  const moreButton = page.getByRole("button", { name: "More", exact: true });
   await expect(home).toBeVisible();
   await expect(chats).toBeVisible();
   await expect(topbar.getByTitle("Characters")).toBeHidden();
@@ -59,7 +60,7 @@ test("phone More keeps core navigation visible and retains extension actions", a
     });
   });
 
-  await page.getByRole("button", { name: "More", exact: true }).click();
+  await moreButton.click();
   const menu = page.getByRole("menu", { name: "More destinations" });
   await expect(menu).toBeVisible();
   await expect(menu.getByRole("menuitem", { name: "Characters", exact: true })).toBeVisible();
@@ -75,11 +76,48 @@ test("phone More keeps core navigation visible and retains extension actions", a
       page.evaluate(() => (window as Window & { __fixtureExtensionActivated?: boolean }).__fixtureExtensionActivated),
     )
     .toBe(true);
+  await expect.poll(() => moreButton.evaluate((element) => document.activeElement === element)).toBe(false);
 
-  await page.getByRole("button", { name: "More", exact: true }).click();
+  await moreButton.click();
+  await page.evaluate(async () => {
+    const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+    const events: string[] = [];
+    const testWindow = window as Window & { __moreNavigationFocusEvents?: string[] };
+    testWindow.__moreNavigationFocusEvents = events;
+    document.querySelector('[data-topbar-more]')?.addEventListener("focus", () => events.push("more-focus"));
+    document.querySelector('[data-component="RightPanel"]')?.addEventListener("focus", () => events.push("panel-focus"));
+    let wasOpen = useUIStore.getState().rightPanelOpen;
+    useUIStore.subscribe((state) => {
+      if (!wasOpen && state.rightPanelOpen) events.push("panel-open");
+      wasOpen = state.rightPanelOpen;
+    });
+  });
+  await page.evaluate(() => {
+    (window as Window & { __moreNavigationFocusEvents?: string[] }).__moreNavigationFocusEvents?.splice(0);
+  });
   await page.getByRole("menuitem", { name: "Settings", exact: true }).click();
   await expect(topbar.getByTitle("Settings")).toBeHidden();
-  await page.getByRole("button", { name: "More", exact: true }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (window as Window & { __moreNavigationFocusEvents?: string[] }).__moreNavigationFocusEvents?.includes("panel-open"),
+      ),
+    )
+    .toBe(true);
+  const focusOrder = await page.evaluate(
+    () => (window as Window & { __moreNavigationFocusEvents?: string[] }).__moreNavigationFocusEvents ?? [],
+  );
+  expect(focusOrder.indexOf("more-focus")).toBeGreaterThanOrEqual(0);
+  expect(focusOrder.indexOf("more-focus")).toBeLessThan(focusOrder.indexOf("panel-open"));
+  const activeDestination = await page.evaluate(() => {
+    const active = document.activeElement;
+    return {
+      more: active === document.querySelector("[data-topbar-more]"),
+      panel: active === document.querySelector('[data-component="RightPanel"]'),
+    };
+  });
+  expect(activeDestination.more || activeDestination.panel).toBe(true);
+  await moreButton.click();
   await expect(page.getByRole("menuitem", { name: "Settings", exact: true })).toHaveAttribute("aria-current", "true");
   await expect(home).toBeVisible();
   await expect(chats).toBeVisible();

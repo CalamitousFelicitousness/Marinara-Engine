@@ -636,7 +636,7 @@ Armor, weapons, potions, gear, ammunition and money are items. An optional `item
 
 ### The items block
 
-The block goes in `items` at the top level of the file. This is Ember Roads':
+The block goes in `items` at the top level of the file. This is Ember Roads', a little shortened:
 
 ```json
 "items": {
@@ -651,11 +651,13 @@ The block goes in `items` at the top level of the file. This is Ember Roads':
   ],
   "tags": [
     { "id": "thrown", "label": "Thrown" },
+    { "id": "ranged", "label": "Ranged" },
     { "id": "two_handed", "label": "Two-handed" }
   ],
   "stats": [
     { "id": "bulk", "label": "Bulk", "type": "number", "min": 0, "max": 10, "default": 0 },
     { "id": "damage", "label": "Damage", "type": "dice", "example": "1d6" },
+    { "id": "swing", "label": "Rolls with", "type": "enum", "values": ["brawn", "wits", "heart"], "default": "brawn" },
     { "id": "reach", "label": "Reach", "type": "enum", "values": ["close", "near", "far"], "default": "close" }
   ],
   "slots": [

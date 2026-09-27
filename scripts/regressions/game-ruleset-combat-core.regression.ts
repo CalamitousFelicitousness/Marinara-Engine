@@ -57,7 +57,27 @@ import {
 } from "../../packages/shared/src/index.js";
 
 const read = (path: string) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8");
-const fiveEText = read("../../docs/development/ruleset-5e-2014.example.json");
+/** 1.45's numbers a condition changes, its check effects and the levels of a track, which every gate
+ *  this lane proves predates too. */
+const withoutConditionNumbers = (doc: Record<string, any>) => {
+  delete doc.combat.levels;
+  const older = (effect: string) => !effect.startsWith("own-checks-");
+  for (const entry of doc.combat.conditions ?? []) {
+    delete entry.modifiers;
+    entry.effects = (entry.effects ?? []).filter(older);
+    if (Array.isArray(entry.whileSourceInSight)) entry.whileSourceInSight = entry.whileSourceInSight.filter(older);
+  }
+};
+/** The reference less 1.43's contests and the checks they read, which every gate this lane proves
+ *  predates, and less 1.45's keys. */
+const fiveEText = (() => {
+  const doc = JSON.parse(read("../../docs/development/ruleset-5e-2014.example.json"));
+  delete doc.combat.checks;
+  delete doc.combat.contests;
+  for (const catalog of doc.catalogs ?? []) for (const entry of catalog.entries ?? []) delete entry.creature?.checks;
+  withoutConditionNumbers(doc);
+  return JSON.stringify(doc);
+})();
 /** The example less the sheet keys 1.37 added (a track always shown, a summary list's columns),
  *  1.38's modifier off the sheet, 1.39's list sum, 1.40's box track, 1.41's untrained rule and
  *  1.42's live state: every gate this lane proves is older, so it is proven on a file that trips
@@ -75,6 +95,13 @@ const emberText = (() => {
   delete doc.sheet.live.states;
   for (const rest of doc.rests)
     rest.restore = rest.restore.filter((step: { state?: string }) => step.state === undefined);
+  // And 1.43's contests and the checks they read.
+  delete doc.combat.checks;
+  delete doc.combat.contests;
+  withoutConditionNumbers(doc);
+  // And 1.49's items block, with the catalog written in it.
+  delete doc.items;
+  doc.catalogs = doc.catalogs.filter((catalog: { holds?: string }) => catalog.holds !== "items");
   return JSON.stringify(doc);
 })();
 
@@ -257,7 +284,7 @@ function firstOf<T extends RulesetCombatEvent["type"]>(events: RulesetCombatEven
     /Duplicate damage type "Fire"/,
   );
   assert.match(refusal(withCombat((combat) => (combat.standard = ["dodge", "dodge"]))), /Duplicate standard action/);
-  assert.match(refusal(withCombat((combat) => (combat.kind = "grid-tactics"))), /Invalid literal value/);
+  assert.match(refusal(withCombat((combat) => (combat.kind = "grid-tactics"))), /Invalid enum value/);
   assert.match(refusal(withCombat((combat) => (combat.reach = 5))), /Unrecognized key/);
 
   // A pool that counts up cannot be what a fight takes away.
@@ -304,7 +331,7 @@ function firstOf<T extends RulesetCombatEvent["type"]>(events: RulesetCombatEven
       const catalog = (doc.catalogs as Array<Record<string, any>>).find((entry) => entry.entries?.length)!;
       catalog.entries[0].mechanics = { ...catalog.entries[0].mechanics, reaction: { on: "harmed", cancels: true } };
     });
-    assert.match(refusal(badMoment), /Only an "aimed" reaction cancels/);
+    assert.match(refusal(badMoment), /Only an "aimed" or "used" reaction cancels/);
   }
   assert.match(issues({ budget: "swing" }), /Unknown budget "swing"/);
   assert.match(
@@ -1703,8 +1730,10 @@ const labels = (definition: RulesetDefinition, state: RulesetEncounterState, id:
       );
     }
     for (const catalog of doc.catalogs ?? []) {
+      // An entry that names the moment it waits for is later again (1.33).
       catalog.entries = (catalog.entries ?? []).filter(
-        (entry: Record<string, any>) => entry.mechanics?.kind !== "rider",
+        (entry: Record<string, any>) =>
+          entry.mechanics?.kind !== "rider" && typeof entry.mechanics?.reaction !== "object",
       );
       for (const entry of catalog.entries) {
         for (const key of ["plus", "free", "gives", "standard", "rider"]) delete entry.mechanics?.[key];
@@ -3003,6 +3032,10 @@ const labels = (definition: RulesetDefinition, state: RulesetEncounterState, id:
     // And the entries, inline or in the catalog file the install already holds.
     const inline = variant(emberText, (doc) => {
       doc.catalogs = (doc.catalogs ?? []).filter((catalog: Record<string, any>) => catalog.holds !== "creatures");
+      // An entry that names the moment it waits for is later again (1.33).
+      doc.catalogs[0].entries = doc.catalogs[0].entries.filter(
+        (entry: Record<string, any>) => typeof entry.mechanics?.reaction !== "object",
+      );
       doc.catalogs[0].entries[0].mechanics = { kind: "utility", free: true, gives: [{ budget: "act", count: 1 }] };
     });
     assert.match(getCapabilityPackageInstallIssue(manifest(28), inline) ?? "", economyIssue);

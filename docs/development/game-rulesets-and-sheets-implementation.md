@@ -232,8 +232,9 @@ menu) and C3b (the Classic shell on real numbers, `coverage.combat` true). C4 th
 positions, movement, reach and ranges, areas, cover, opportunity attacks, the picker and the view) and C4b (the board on
 screen, out of the Tactical style's own look). C5 what a turn can do and what interrupts one, split
 into C5a (the turn economy, riders and the condition vocabulary) and C5b (the window itself: a walk
-held open, and the one a signature action is bought in). C5c and later: what else opens a window,
-legendary actions, contests and the remaining conditions.
+held open, and the one a signature action is bought in). C5c what else opens a window (the moments
+an entry waits for), C5d contests, C5e the `used` moment and what a reaction answers, C5f the numbers
+a condition changes and levels of a track, and C5g the moment after a hit and creatures that react.
 
 ### What C1 settled
 
@@ -759,6 +760,265 @@ C4b is the board on screen. It draws what C4a resolves and decides nothing of it
   walk, the path, the target, the aims, the sentences, the "nothing in reach" rule, the distance
   formatter and the four refusals, on both example rulesets) and in a fourth mode of
   `e2e/game-combat-director.e2e.ts` that plays a positioned Ember Roads fight in a real browser.
+
+### What C5d settled
+
+Capability API 1.43, for #6707.
+
+- **Contests as data.** `combat.checks` are the numbers a contest reads, each a value off the sheet,
+  read once when the fight begins like defense and saves; a plain creature gives its own `checks`,
+  one with a sheet reads them off it (`checks` joined the keys a sheet replaces). `combat.contests`
+  each name a budget, the checks each side may use (the best is rolled), who takes a tie, an optional
+  `reach` and `strike`, an optional `from: { holding }`, and `onWin`: conditions it `applies` to the
+  loser (winner as the source, optional `rounds`), conditions it `ends` on either side, and a `push`.
+  `reach` and `push` need `combat.distance`. **Differs from the issue on purpose:** the issue gave the
+  attacker a single `check`; both sides take a list, because an escape rolls the better of two.
+- **The fight.** Every combatant gets one action per contest (`contest:<id>`, kind `contest`), added
+  only when the ruleset has contests, so a ruleset without them fights byte for byte as before. A
+  contest spends its budget (or a strike in hand) and is settled on the spot, opening no window. Both
+  sides throw `attackRoll.dice` and add their best check; the `contest` event carries both sides and
+  the winner. A push walks the loser straight away (`rulesetPushPath`), stopping short of anything
+  solid, anybody standing, the edge and a squeezed corner; it spends nothing and draws no strike.
+- **The menu and the picker.** The forecast is the exact chance to win (`rulesetContestChance`),
+  shown as "to win". Breaking free is offered only while held and aimed only at the holder. The
+  Engine's picker scores a contest as a modest setup (breaking free 1, a grab 0.3, a shove 0.15,
+  times the chance), so seeded fights still end; a Game Master's opponent picks it off the same menu.
+  Invented opponents have their checks held to the tier's to-hit, in the plain clamp and on a built
+  sheet.
+- **Examples.** The 5e reference grapples, shoves prone, shoves away 5 feet and escapes, with
+  Grappled now ending when its source goes down; Ember Roads grabs (a new Held condition), breaks
+  free and shoves back 4 paces.
+- **Proven** by `scripts/regressions/game-ruleset-combat-contests.regression.ts` (thirty-six deliberate
+  breaks, each caught), a seeded sweep in `scripts/regressions/ruleset-combat-director.regression.ts`
+  (contests taken, sometimes won, never refused, and a picker that never takes one is caught), and the Contests group in
+  `e2e/game-combat-director.e2e.ts`.
+
+### What C5e settled
+
+Capability API 1.44, for #6712.
+
+- **A third moment.** `mechanics.reaction.on` takes `used`: somebody on the other side uses
+  something. It opens BEFORE the use resolves, for everybody on the other side holding an entry for
+  it, whoever the use is aimed at, and `cancels` is allowed on it as on `aimed`. Only a real action
+  opens it (an attack, an ability, a block); a standard action and a contest do not.
+- **What a reaction answers.** `mechanics.reaction.against: { catalogs }`, on any moment, limits an
+  entry to actions that came from an entry of those catalogs. Ability actions built from a catalog
+  row carry `catalog`, and the `aimed`, `used` and `harmed` triggers carry the source action's
+  catalog; an action with no entry behind it (a weapon row, a stat block's own action) carries none
+  and never matches an entry that names catalogs. Catalog ids are checked at import.
+- **Reach.** A `used` answer is offered only when the holder's own reach or range covers the user
+  (`rulesetTargetRefusal`, so line of sight too), even when it cancels and points at nobody. Without
+  this an unpositioned rule would have let a counter answer from across the board.
+- **Order.** On a turn, `used` opens first; when it closes uncancelled, `aimed` opens for the
+  targets with the same held action, and it resolves once that closes too. One window at a time, as
+  before, so a counter cannot itself be countered.
+- **Examples.** Ember Roads gains Smother, a free knack that spends a point of Luck to stop a knack
+  used within eight paces. The 5e reference carries no spells; the 5e package's Counterspell adopts
+  `{ "on": "used", "against": { "catalogs": ["spells"] }, "cancels": true }` in its next release.
+- **Proven** by `scripts/regressions/game-ruleset-combat-moments.regression.ts` (the refusals, the
+  moment and its cancel, the catalog filter, reach on a board, `used` before `aimed`, no chain, the
+  log line and the 1.44 gate).
+
+### What C5f settled
+
+Capability API 1.45, for #6719.
+
+- **Modifiers.** `combat.conditions[].modifiers` (at most 6): `to` one of `defense`, `attacks`,
+  `saves`, `checks`, `speed`; a `flat` number (its own sign, never 0), `dice` rolled every use (only
+  on the three rolled numbers, `minus` takes them away), or `times` 0.5 or 2 (speed only, after the
+  flat changes). `saves` on a condition now narrows save modifiers too. Speed modifiers are read only
+  on a board and need no `distance` to be written, as `speed-zero` does not.
+- **Where they are read.** Nothing is written into the combatant: `rulesetConditionModifiers` is
+  asked where each number is used. Defense in `rulesetDefenseAgainst` (resolve and forecast both);
+  attack rolls, saves and contest sides roll their dice after the roll's own dice and carry
+  `bonuses` (defense carries `guards`) with the condition and, for a level, the level; the forecast's
+  chance to hit and chance to win convolve the bonus dice (`rulesetBonusDice`), and a contest side
+  rolls twice where `own-checks-advantage`/`-disadvantage` say so (`rulesetCheckMode`, only when
+  `attackRoll.advantage`). Speed in `rulesetMovementAllowance`, so Dash reads it too.
+- **Endings.** Applied `duration: { rounds, at: "turn-start" }` counts down as the holder's turns
+  begin; `endsAfter` (`own-attack`, `attacked`, `own-save`) removes it with reason `spent` after the
+  first of those. An attack notes the one-use conditions it used when it is rolled and spends exactly
+  those once the blow is over, so a one-attack ward still halves that blow's harm and a fresh mark
+  the same blow puts on is kept. The walk is read again after the turn-start clocks run, so a condition that ends as
+  a turn begins no longer holds that turn's walk (a change for existing save-ends at turn start too).
+- **Levels.** `combat.levels` (at most 20): `{ track, at, effects?, modifiers?, failsSaves?, saves? }`
+  on a plain live track (wound tracks refused, no two entries for one level). Every reached level is
+  synthesised into `rulesetActiveConditions` as an entry whose `condition` is the track id, so every
+  reader sees it. Refused on a level: `half-move-to-stand`, `ends-on-damage`, `cannot-target-source`,
+  `cannot-approach-source`. Only a sheet has tracks.
+- **Examples.** The 5e reference counts exhaustion's levels 1, 2, 3 and 5 (4 and 6 are Not yet), and
+  Poisoned and Frightened make checks harder. Ember Roads' Heat takes 1 off attacks from 3 and halves
+  speed at 5, and Wounded is 1 easier to hit and 2 paces slower.
+- **Proven** by `scripts/regressions/game-ruleset-combat-conditions.regression.ts` (refusals and the
+  published schema, defense, attacks with dice both ways, saves narrowed, checks leaning and adding,
+  speed halved and restored at turn start, the three one-use endings, levels on both examples, the log
+  and the 1.45 gate).
+
+### What C5g settled
+
+Capability API 1.46, for #6728.
+
+- **The moment.** `mechanics.reaction.on: "hit"` (the reaction object is now one shared schema,
+  `rulesetReactionMomentSchema`): an attack roll has hit the holder, before its damage. `cancels` is
+  refused on it. It opens only for the one hit (any side), only when they hold an answer, and never
+  while a window is already open, so opportunity strikes, signature actions and answers are never
+  held.
+- **Holding an attack.** `resolveAction` returns a hold instead of dealing the blow: the target, the
+  targets after it (`rest`), the roll (`mode`, `total`, `defense`, `critical`, `natural`), the
+  attacker's one-use conditions it used (`mine`, by id), and, through `resolveSequence`, the `part`
+  of an action made of others. `harmedBy` opens the `hit` window with the held attack on the action
+  resume (`resume.held`, plus `hurt`, whoever the action had already damaged) and asks about being
+  hurt only once the whole action is over. `resumeAction` passes `held` back in: the preamble (gives,
+  concentration) is skipped, earlier parts are skipped, the held part is not paid for again, and the
+  held roll is checked against the defense as it now stands. A changed defense logs a `recheck`
+  event; a natural face keeps its outcome. The target's one-use conditions are read at the recheck,
+  so a guard put on as the answer is spent by that attack.
+- **Creatures.** A creature action may carry `reaction` (same object) and `self: true` (targets its
+  own holder, no `targetCount` or `area`); a sequence may not carry either or name a reaction, and a
+  reaction is not also a signature action. `against` catalogs are checked on creatures too.
+- **The picker.** `rulesetAnswerDeflects(definition, state, actor, optionId)`: on a held hit, true
+  when the defense an answer's own conditions add would beat the roll, false when not (or on a
+  natural face), null when the answer changes no defense. The director skips a false answer and
+  scores a true one as `healing: 1`.
+- **Log and view.** The window event and the directed view carry `total` and `defense` for a hit;
+  "Snag hits Brenna with Scimitar: 20 against Armor Class 18. Brenna may answer." and "Against Armor
+  Class 23 (Shielded + 5), Snag's Scimitar now misses Brenna."
+- **Examples.** The 5e reference's Toll Sergeant parries (a `parrying` condition, +2 defense for one
+  attack). Ember Roads has no budget a reaction could spend, so it gains none.
+- **Proven** by `scripts/regressions/game-ruleset-combat-hit.regression.ts` (Shield turning a hit, a
+  roll that beats it, a natural 20, letting it go, Uncanny Dodge halving, a creature's Parry spent by
+  the attack, a two-part action held at each part, several targets with the rest rolled after the
+  answer and being hurt asked about at the end, a save and reload mid-window, nothing held inside a
+  window, the refusals, the log and the 1.46 gate) and a forty-seed case in
+  `scripts/regressions/ruleset-combat-director.regression.ts` (the Engine raises Shield only when it
+  turns the hit aside, and lets other blows land).
+
+### What the pool kind settled
+
+Capability API 1.47, for #6736. The Storyteller kind the gap report names (W10, with W9), in two
+slices: this one is the kind itself; the second (below) is initiative as a number attacks move.
+
+- **A second kind, and one principle.** `combat.kind: "dice-pool"` needs a `dice-pool` resolution and
+  reads the sheet the way its checks do: every number a roll ADDS is dice, and every number it MEETS
+  is successes. So no key is renamed. `toHit` is the pool, `defense` the successes a blow needs (never
+  fewer than one), a save's number its pool and its difficulty the successes it needs, a contest
+  check a pool, a condition's `flat` modifier dice (a rolled `dice` modifier is refused). Every pool
+  a combatant throws to act goes through `rollDicePoolCheck`, so the die, target, doubling,
+  exploding, cancelling and botch are the resolution's, and `resolution.penaltyFrom` takes its dice
+  off, which attack-vs-defense fights never did. A botch misses; there are no criticals.
+- **Damage.** Each success past the ones needed adds a damage die. An amount's `dice` are dice of the
+  ruleset's own die (refused otherwise, on entries and creatures) and its `flat` part automatic
+  successes; an attack row's dice column is read for its count, `damage.ability` adds dice and
+  `damage.bonus` automatic successes. Damage is thrown per target against `pool.damageTarget` (the
+  resolution's default target when absent) with nothing doubling, exploding, cancelling or botching.
+  Heal and temporary amounts stay sums; initiative is a sum unless thrown as a pool (1.48, below);
+  dying keeps its own dice.
+- **Soak.** `pool.soak` gives value references by kind of the health track (`byKind`, winning over
+  `all`), thrown against the damage target (`roll: true`, each success taking one off) or taken off
+  the damage dice first (`roll: false`). Never below zero, never thrown for a blow that counted
+  nothing, and applied before resistance. A creature gives its own `soak`; a sheet creature reads it
+  off its sheet; an invented opponent's is dropped by the clamp, since no tier bounds it.
+- **For either kind.** `initiative.each: "round"` throws everybody's initiative again as a round
+  begins, with the modifier read off the sheet as it stands then, and re-sorts the order.
+  `combat.spendLimits` caps what one combatant spends of a live pool per turn or round:
+  `planRulesetCombatCost` prices a cost past what is left as unaffordable, and every payment counts
+  against it, answers in a window included. `toHit.skill` lets an attack row throw a skill, with the
+  row's ability swapped in as a check's `with=` does.
+- **Not built.** Declaring actions in reverse order changes nothing any rule reads in a fight where
+  each combatant picks one action when their turn comes, so no key says it.
+- **Examples.** Gravewatch fights: a harm track with knocks and tears, an Arms list, two fight charms
+  (one on a quick budget, so its one-Resolve-a-turn limit binds), soak by kind, initiative every round,
+  and a two-creature bestiary. Its variants in the check lanes leave the fight out.
+- **Proven** by `scripts/regressions/game-ruleset-combat-pool.regression.ts` (the pools, cancel,
+  botch and explode, extra dice, automatic successes, defense, soak thrown and off the dice, the wound
+  penalty and condition dice, leaning throws, saves, contests, a held hit rechecked in successes,
+  initiative every round with the modifier now, spend limits, the exact forecast, bestiary soak, the
+  clamp, every refusal, the log and the 1.47 gate) and twenty seeded Gravewatch fights played by the
+  Engine in `scripts/regressions/ruleset-combat-director.regression.ts`.
+
+### What the moving initiative settled
+
+Capability API 1.48, for #6740. The second Storyteller slice: initiative as a number attacks move.
+
+- **The opening.** `initiative` is `dice` (with `modifier`) or `pool` (with `plus`), exactly one.
+  A pool is thrown through the check roller, its successes plus `plus` the number; a creature's
+  `initiativeModifier` is its pool. `pool` and `resource` are a `dice-pool` fight's only, `resource`
+  needs `pool` (summed dice are an order, not dice to spend), `each` is refused beside `resource`, and
+  `each: "round"` with a pool throws the pool again.
+- **Styles, beside the option.** `resource.styles` (one to four, each `takes` or `spends`, at least
+  one taking, so a crashed combatant always has one) are chosen by `choice.style`, not folded into the
+  option id, so everything that finds an action by its id is untouched. An attack is an action that
+  rolls to hit and does harm, or a sequence (every part in its style, and only a taking one, since a
+  number is spent on one blow); contests are never styled. A choice with no style takes the first,
+  one the option does not offer is refused `unknown-style`, and whatever is made out of a turn (an
+  opportunity strike, a signature move, a reaction) is made in the first, so a window menu offers
+  none. The style is fixed when the attack is made and carried on the resume with the number a
+  spending one throws, so an answer that moves its maker's number never changes either.
+- **Takes.** The blow's damage is thrown as ever, soak included, and routed to the target's number
+  through the same `land()` every part of a blow goes through, so clauses and riders take too. The
+  maker gains the total plus `gain`, then a crash is settled with the maker as its source and the
+  bonus paid. Health is untouched, so nothing after a blow (concentration, conditions that end on
+  damage) happens.
+- **Spends.** Offered only above the crash line. The blow throws the maker's number as they made it, with
+  `throwHarm`'s soak switched off and no extra dice, clauses or rider; after the whole action the
+  number resets to `base` if anything landed, or loses `onMiss` read at the number it was made with.
+- **Crashing** is kept in step with the number by one function: crossing to the line puts the
+  condition on (from the source, when there is one) and starts `crashedTurns`; rising above it takes
+  it off. `recoverAfter` counts the crashed one's own turn starts and resets them to `base`. An
+  opening at the line crashes before the first turn, and every crash is lifted when the fight ends
+  (`liftRulesetCrashes`, from `pushOutcome`, which every outcome goes through, and from fleeing), so a
+  sheet never keeps it.
+- **Order and windows.** As each round begins the order is re-sorted by the numbers, with no dice,
+  and the pause at the end of a round names nobody next, as a round that throws again does.
+- **Menu and picker.** `option.styles` carries each style's forecast: a taking style what it would
+  take (`shift`), a spending one what the maker's number is worth. The director's picker expands
+  every way of paying into one candidate per style. It weighs a taking blow one turn ahead (take then
+  spend, against spend now and again from the base, with a crash's bonus) and a spending blow as the
+  damage it does. The Game Master's decision options and the route's `ruleset` command carry `style`.
+- **Not built.** Anything that changes what a spending blow throws (a weapon's own, a floor of
+  dice), anything that shrinks a taking blow against a sturdy target, and a crash that lasts longer
+  the deeper it went.
+- **Example.** Gravewatch keeps its rethrown sum; the author guide shows a variant, and the lanes play it.
+- **Proven** by `scripts/regressions/game-ruleset-combat-moving-initiative.regression.ts` (the opening,
+  the menu and its words, taking and crashing with the log, spending with no soak or extra dice, the
+  miss table, a miss that crashes its maker, rising above the line, recovery by count, an opening
+  crash, the fight ending, a held hit keeping its style and its number through a crash, a reaction's
+  attack in the first style, a sequence only taking, the window at a round's end, a pool thrown every
+  round, every refusal and the 1.48 gate) and twenty
+  seeded fights, a Game Master's styled choice and a player's command in
+  `scripts/regressions/ruleset-combat-director.regression.ts`.
+
+### What the item format settled
+
+Capability API 1.49, for #6765. The first slice of the ruleset items plan: what an item is, and the
+words a ruleset declares for its items. No runtime reads it yet.
+
+- **The `items` block.** Categories (at least one), rarities, tags, stats declared like list columns
+  (with `promptVisible`), slots with counts, `binding` (a label and a maximum), `carry` (the weight
+  stat, `encumberedAbove` and an optional `limit`), currency families, `native` (default `true`) and
+  `freeform` (`"plain"` or `"refuse"`). Binding and carry values are value references read without
+  the live state, as a pool's maximum is. The weight stat is a number whose `min` is 0 or more.
+- **Currencies.** A family's `value`s count its smallest coin, so one coin is worth 1 and no two are
+  worth the same. Unit ids are unique across families, because a cost names a unit alone, and
+  `perWeight` needs `carry`. Two families never change into each other.
+- **A third catalog kind.** `holds: "items"` declares no `feeds` and needs the `items` block. An entry
+  has exactly one of `rows`, `creature` or `item`, and an item carries no `mechanics`. The kind check
+  generalises the bestiary's ("one catalog, one kind of entry"), and a header read without the
+  schema's default counts as rows. The sheet picker and the fight both choose catalogs by `feeds` or
+  by `holds`, so neither ever reads an item catalog; the Game Master's `op="use"` line is now taught
+  only for a catalog of rows.
+- **An item** names its category, rarity and tags from the block, fills declared stats with values
+  each stat could hold (the list-row check, reused with the noun "Stat"), takes no more of a slot
+  than a character has, stacks at most `GAME_INVENTORY_MAX_QUANTITY`, costs a whole amount of a
+  declared unit, and binds only where the ruleset declares binding.
+- **Kept for the slices that act on them:** worn and carried effects, requirements and `itemStat`
+  (I4), attacks (I5), use and charges (I6), rarity caps and invention (I3), loot tables and a layer
+  removing a unit (I7). Each arrives with the slice that acts on it.
+- **Examples.** Gravewatch binds tokens against Nerve and pays in one weightless coin; Ember Roads
+  carries by bulk against a new `load` derived value and pays in coin and salt.
+- **Proven** by `scripts/regressions/game-ruleset-items.regression.ts` (both examples, every refusal
+  of the block and of an item, a catalog file, the published schema, the `use` line and the 1.49
+  gate inline and in a file), with 39 deliberate breaks each caught.
 
 ## Gaps a ruleset author found
 

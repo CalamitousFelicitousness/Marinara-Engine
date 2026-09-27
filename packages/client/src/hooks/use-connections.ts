@@ -9,7 +9,13 @@ import { api, isRequestTimeoutError, requestTimeoutSignal } from "../lib/api-cli
 import { useUIStore } from "../stores/ui.store";
 import { useChatStore } from "../stores/chat.store";
 import { captureChatMetadataVersion, chatKeys, guardServerChatSnapshot } from "./use-chats";
-import type { APIProvider, Chat, ConnectionTestResult, ImageGenerationQuality } from "@marinara-engine/shared";
+import type {
+  APIProvider,
+  Chat,
+  ConnectionTestResult,
+  DecisionSource,
+  ImageGenerationQuality,
+} from "@marinara-engine/shared";
 
 export const connectionKeys = {
   all: ["connections"] as const,
@@ -83,7 +89,7 @@ export type CreateConnectionPayload = {
   videoGenerationSource?: string | null;
   videoService?: string | null;
   audioSource?: string | null;
-  decisionSource?: "typesafe" | "openrouter" | "custom" | null;
+  decisionSource?: DecisionSource | null;
   credentialsFromConnectionId?: string | null;
   maxStateTokens?: number | null;
   decisionTimeoutMs?: number | null;

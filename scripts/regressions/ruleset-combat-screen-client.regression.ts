@@ -651,6 +651,19 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ],
     ["cover", say({ type: "cover", targetId: "lurker", bonus: 2, defense: 15 })],
     [
+      "recheck",
+      say({
+        type: "recheck",
+        actorId: "lurker",
+        targetId: "brenna",
+        optionId: "claw",
+        label: "Barbed claw",
+        total: 20,
+        defense: 23,
+        outcome: "miss",
+      }),
+    ],
+    [
       "area",
       say({
         type: "area",
@@ -665,6 +678,31 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
         ],
       }),
     ],
+    [
+      "contest",
+      say({
+        type: "contest",
+        actorId: "brenna",
+        targetId: "lurker",
+        optionId: "contest:grapple",
+        label: "Grapple",
+        attacker: { check: "might", rolls: [14], modifier: 7, total: 21 },
+        defender: { check: "agility", rolls: [9], modifier: 2, total: 11 },
+        winner: "actor",
+      }),
+    ],
+    [
+      "pushed",
+      say({
+        type: "pushed",
+        actorId: "brenna",
+        targetId: "lurker",
+        from: { x: 3, y: 2 },
+        to: { x: 4, y: 2 },
+        path: [{ x: 4, y: 2 }],
+      }),
+    ],
+    ["shift", say({ type: "shift", actorId: "brenna", amount: 3, total: 9, reason: "gained", sourceId: "lurker" })],
   ];
   const printed = new Map(table);
   for (const [type, text] of table) {
@@ -744,6 +782,20 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(printed.get("opportunity"), "Thorn Lurker strikes at Brenna with Barbed claw as they move away.");
   assert.equal(printed.get("cover"), "Thorn Lurker is under cover, which adds 2 for a defense of 15.");
   assert.equal(printed.get("area"), "Corwin aims Fireball at 5, 3, covering 3 cells.");
+  assert.equal(
+    printed.get("contest"),
+    "Brenna tries Grapple on Thorn Lurker: 14 + 7 = 21 with Athletics against 9 + 2 = 11 with Acrobatics, and wins.",
+  );
+  assert.equal(printed.get("pushed"), "Brenna pushes Thorn Lurker back 1, to 4, 2.");
+  // Every reason a number attacks move changes; the pool fight's own lane pins a taking blow's dice.
+  assert.equal(printed.get("shift"), "Brenna gains 3 initiative, and is on 9.");
+  const shifted = (reason: Extract<RulesetCombatEvent, { type: "shift" }>["reason"], amount: number) =>
+    line(fiveE, state, { type: "shift", actorId: "brenna", amount, total: 3, reason, sourceId: "lurker" });
+  assert.equal(shifted("taken", -4), "Brenna loses 4 initiative, and is on 3.");
+  assert.equal(shifted("crash", 5), "Brenna gains 5 initiative for crashing Thorn Lurker, and is on 3.");
+  assert.equal(shifted("missed", -2), "Brenna loses 2 initiative for missing, and is on 3.");
+  assert.equal(shifted("spent", -6), "Brenna spends their initiative, and it goes back to 3.");
+  assert.equal(shifted("recovered", 5), "Brenna recovers, and their initiative is back to 3.");
   // A walk that went nowhere is getting back up, and a walk cut short says so.
   assert.equal(
     line(fiveE, state, {
@@ -1353,7 +1405,7 @@ function drawn(...rows: string[]): TacticalGrid {
 
 // ── The menu groups, the movement group first ──
 {
-  assert.deepEqual([...RULESET_MENU_KINDS], ["move", "attack", "ability", "block", "standard", "end-turn"]);
+  assert.deepEqual([...RULESET_MENU_KINDS], ["move", "attack", "ability", "block", "contest", "standard", "end-turn"]);
   const grid = drawn(".....", ".....");
   const state = createRulesetEncounter({
     definition: fiveE,

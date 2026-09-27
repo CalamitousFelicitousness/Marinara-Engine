@@ -15,6 +15,8 @@ Its answers control Marinara's behavior; they are not posted as replies in the c
 - **[Lorebook Decision fields](../lorebooks/entries.md#decision-activation)** check Require or Trigger during the chat's lorebook scan. With no answer, Require cannot admit a new entry and Trigger adds no activation route. Existing Sticky holds and ordinary Trigger-entry activation routes still apply.
 - **[Smart response order](../chats/group-chats.md#response-order-individual-only)** scores who should speak next in a group chat, if enabled. With no answer, Smart order makes its usual AI call.
 
+- **[Advanced Memory Recall](../agents/memory.md#optional-jev-decisions)** can use a separately selected Decision connection for Roleplay scene boundaries and memory selection. Enable **Use Decision model (Jev)** in that chat's Advanced Memory settings. Summaries still use the Helper model. Failed decisions fall back to ordinary recall or scene checks.
+
 An activation question controls whether an agent runs; a decision statement inside its prompt controls what that running agent is told. Use `{{#if decision:"..."}}` for yes/no prompt conditions and `{{#if decision_choice:"..." == "..."}}` for a choice among answers.
 
 ## What the model sees
@@ -30,13 +32,15 @@ For activation questions and prompt/lorebook statements, the model receives the 
 - Macros in the statement are filled in first, so `{{char}}` arrives as the character's name.
 - When the messages do not fit the model's budget, older messages are dropped first. See [Set up a Decision connection](#set-up-a-decision-connection) for the hosted budget.
 
+**Advanced Memory uses its own per-chat connection.** Scene checks read the relevant transcript window. Recall sends recent conversation text and eligible archived recaps or original-message candidates after character access checks; it does not use the fixed last-5-message rule above. Hosted providers receive these texts, potentially in multiple bounded batches. Foreground recall falls back after a combined 10 seconds. See [Optional Jev decisions](../agents/memory.md#optional-jev-decisions).
+
 ## Choosing a Decision model
 
 Open **Connections**, then **Connection defaults**, and pick from **Decision model**. The list has three groups:
 
 - **None**, the default. Nothing is asked, and the activation question fields in the agent editor stay disabled.
 - **Local models**: the **Primary local model** or **Utility local model** you already run. Nothing is downloaded and nothing leaves your machine. The **Decision sidecar**, if you installed one, is listed here too.
-- **Connections**: any Decision connection you created, hosted or self-run.
+- **Connections**: any Decision connection you created: hosted, a System One server you run, or a chat model on a server you already run, such as Ollama or LM Studio.
 
 Entries that cannot answer right now stay in the list, greyed out with the reason, so you can see what to fix. Click **Test** after choosing. The test sends a fixed sample, not your chat.
 
@@ -49,6 +53,7 @@ If you already run a local model, try it first. In a small wording test from one
 | Option | Costs | Needs | Good for |
 | --- | --- | --- | --- |
 | A model you already run | Nothing extra | A local model in **Local Model** | Most people who run a local model |
+| A chat model on your own server | Nothing extra | Ollama, LM Studio, llama.cpp or another OpenAI-compatible server you already run | People whose model runs outside Marinara, so it is not loaded twice |
 | A hosted Decision connection | Billed requests; one turn can make several | An API key (TypeSafe or OpenRouter) | Phones, and PCs that do not run a local model |
 | The installable decision model | Separate disk and GPU memory; see [model sizes](#let-marinara-install-a-decision-model) | Linux x86-64 and a supported NVIDIA GPU | A separate decision model beside your chat model |
 
@@ -77,18 +82,27 @@ A model that thinks first takes seconds, so by default it only answers for thing
 
 **About the numbers.** A general chat model's yes/no probabilities are usable for a threshold, but they were never trained to be calibrated the way a purpose-built decision model's are, and a runtime that returns no log-probabilities answers a flat 1 or 0. Tune thresholds against your own chats rather than trusting the default.
 
+### On a server you already run
+
+If your chat model already runs in Ollama, LM Studio, llama.cpp or another OpenAI-compatible server, it can answer decisions without Marinara loading a second copy.
+
+1. Open the **Custom** connection you use for that server and click **Use this model for decisions**. This creates a Decision connection with the source **OpenAI-compatible chat model** that uses the same base URL, model and key. Or create one yourself: a Decision connection, that source, the same base URL as your chat connection (for example `http://localhost:11434/v1` for Ollama), and the model name the server serves.
+2. Select it under **Decision model** and click **Test**. The result also says whether the server returned log-probabilities and whether the model had to think first.
+
+It is asked the same way as a local model: one yes/no word per statement, read from its probabilities. Statements are sent one at a time, because Marinara cannot know how many requests your server works on at once. **Thinking** is always **Auto** for a connection, so a model that has to think first switches over after two failed answers, and then only answers for gates after the reply unless **Also gate agents that run before the reply** is on. A server on another machine on your network also needs `PROVIDER_LOCAL_URLS_ENABLED`, as any local provider does; see [Connecting a Local or Self-Hosted Model](local-self-hosted.md).
+
 ## Set up a Decision connection
 
 1. In **Connections**, create a connection with provider **Decision**.
-2. Choose **TypeSafe**, **OpenRouter**, or **Custom System One endpoint**. Hosted sources need an API key. Custom accepts a System One server you already run, including Open-Jev; enter its base URL without `/v1/systemone` and use the model name it supports.
-3. For OpenRouter, choose a saved OpenRouter connection under **API key source**, or enter a separate key. Its editor also offers **Use this key for decisions (Jev)**. Linked keys follow later key changes automatically. Custom connections may borrow a custom chat connection's key only when both URLs have the same origin (scheme, host, and port).
+2. Choose **TypeSafe**, **OpenRouter**, **Custom System One endpoint**, or **OpenAI-compatible chat model**. Hosted sources need an API key. Custom accepts a System One server you already run, including Open-Jev; enter its base URL without `/v1/systemone` and use the model name it supports. A chat model server such as Ollama or LM Studio does not speak System One: use **OpenAI-compatible chat model** for it, as described in [On a server you already run](#on-a-server-you-already-run).
+3. For OpenRouter, choose a saved OpenRouter connection under **API key source**, or enter a separate key. Its editor also offers **Use this key for decisions (Jev)**. Linked keys follow later key changes automatically. Custom System One and OpenAI-compatible chat model connections may borrow a custom chat connection's key only when both URLs have the same origin (scheme, host, and port).
 4. Save, then select it under **Decision model** and click **Test**. A successful result shows the probability, how long the answer took, and the connection's time limit. Test waits at least 10 seconds, and 5 seconds past a longer limit, so a slow answer is reported with its real time. If it took longer than the time limit, the result says so: during chats that answer would count as no answer.
 
 The Decision default is separate from your chat, agent, image, video, and audio defaults. Choosing **None** turns decisions off without deleting any activation questions or decision statements.
 
 Hosted decisions send the selected recent messages and statements to the chosen provider and can incur charges. Smart response order also includes the [character roster](#what-the-model-sees). The **Recent-message token budget** defaults to 30,000 estimated tokens for hosted sources and 3,500 for custom servers. Reduce it if your server has a smaller context limit. Marinara drops older messages first, then trims the oldest portion of the newest message. Token estimates can differ from a server's tokenizer; a rejected or over-budget request gives no answer.
 
-**Time limit (seconds)** is how long each Decision connection waits for an answer during chats, from 0.5 to 30 seconds (1.5 by default). A later answer counts as no answer. Some hosted providers are sometimes slower than 1.5 seconds, which makes decisions look randomly broken, so click **Test** a few times and set the limit above the slowest answer. The trade-off: a statement asked before the reply, such as a decision in a preset or an activation question for an agent that runs before the reply, can hold up the reply for up to this long.
+**Time limit (seconds)** is how long each Decision connection waits for each statement's answer during chats, from 0.5 to 30 seconds (1.5 by default, or 4 for an **OpenAI-compatible chat model** connection). A turn that asks several statements in one request gets this much for each of them. A later answer counts as no answer. Some hosted providers are sometimes slower than 1.5 seconds, which makes decisions look randomly broken, so click **Test** a few times and set the limit above the slowest answer. The trade-off: statements asked before the reply, such as decisions in a preset or an activation question for an agent that runs before the reply, can hold up the reply for up to this long each.
 
 Deleting a connection used for a linked key warns you and leaves the Decision connection needing relinking. Imported standalone connection files also need keys or links restored; they never contain API keys or borrowed connection IDs.
 
@@ -110,6 +124,8 @@ These are the catalog's estimates, based on the pinned model versions and measur
 3. Pick a model and confirm its size, hardware verdict and licenses. Nothing downloads before that point. **Open-Jev 2B** needs much less memory than **Open-Jev 9B**; neither guarantees correct answers for your chat.
 4. Select **Decision sidecar** under **Decision model**.
 
+**Speed.** A model's first answer after it starts is slower, so Marinara asks it one warm-up question while it loads. When the warm-up succeeds, **Test** and the first turn show its normal speed. If it fails, the model still starts, and the first question pays the delay instead. Every statement reads the recent chat again, so a turn with many statements on a long chat takes longer: on a long chat, Open-Jev 2B takes about a quarter of a second per statement.
+
 You can also paste a decision model's HuggingFace repository. Marinara reads that repository's own manifest, checks that the artifact type maps to a runtime this build ships, and shows you the base weights it will pull and the total size before offering to install it. A repository it cannot vouch for is refused with the reason rather than installed hopefully.
 
 On a machine with more than one NVIDIA GPU, a **GPU** menu chooses the card it loads on. The verdicts are for that card, and changing it stops the model so it starts again there.
@@ -122,7 +138,7 @@ Probabilities are not directly comparable between models. The same positive exam
 
 | Selected backend | Default yes/no threshold |
 | --- | --- |
-| Primary or Utility local chat model | 0.5 |
+| Primary or Utility local chat model, or an OpenAI-compatible chat model connection | 0.5 |
 | TypeSafe, OpenRouter or Custom System One Decision connection | 0.5 |
 | Managed Decision sidecar | Its model manifest's recommendation; 0.1 for the built-in Open-Jev 2B and 9B |
 
@@ -134,9 +150,13 @@ Prompt statements and lorebook Decision fields use the backend's default; changi
 
 A decision that does not arrive in time gives no answer. Generation continues using the [feature's fallback](#where-marinara-uses-it); this can omit a prompt branch or a required lorebook entry.
 
-- **1.5 seconds** for a Decision connection, unless you change its **Time limit**. See [Set up a Decision connection](#set-up-a-decision-connection).
-- **4 seconds** for a local model or the decision sidecar. When one turn asks many statements, Open-Jev 9B gets a little more time for each extra one.
-- **20 seconds** for a local model that has to think first.
+Every time limit is per statement. A request that asks several statements at once gets the limit for each of them, and each Choice answer counts as a statement. A local model works on only a few requests at a time, so statements wait their turn, and a statement's time starts only when the model starts on it.
+
+- **1.5 seconds** per statement for a TypeSafe, OpenRouter or Custom System One Decision connection, unless you change its **Time limit**. See [Set up a Decision connection](#set-up-a-decision-connection).
+- **4 seconds** per statement for an OpenAI-compatible chat model connection, unless you change its **Time limit**. A model that has to think first gets at least 20 seconds.
+- **4 seconds** per statement for a local model.
+- **4 seconds** for the decision sidecar's first statement. Each further statement gets the model's measured time: 0.35 seconds for Open-Jev 2B and 0.8 seconds for Open-Jev 9B. A model you installed by pasting its repository gets 4 seconds for each.
+- **20 seconds** per statement for a local model that has to think first.
 
 Decision requests stop when you cancel a generation.
 
@@ -144,7 +164,7 @@ Decision requests stop when you cancel a generation.
 
 - **Also use it to pick who speaks in Smart response order.** Off by default. See [Group Chats](../chats/group-chats.md#response-order-individual-only).
 - **Decision statements per turn.** Limits prompt and lorebook statement planning, 32 by default and up to 255. The allowance is applied at several stages; it is not a single cap on all Decision requests or spending during a turn. Agent activation questions and Smart response order are separate. See [Limits and cost](../prompts/conditional-prompts.md#limits-and-cost) for the scope, batching and priority rules.
-- **Also gate agents that run before the reply** and **Thinking** appear for a local model. See [Use a model you already run](#use-a-model-you-already-run).
+- **Also gate agents that run before the reply** and **Thinking** appear for the **Primary local model** and **Utility local model**. The decision sidecar never reasons, so it has neither. See [Use a model you already run](#use-a-model-you-already-run).
 
 ## Accuracy: plan for wrong answers
 
@@ -159,6 +179,7 @@ For concrete wording examples and a way to test them on your own chats, see [Wri
 ## Troubleshooting
 
 - **Test fails.** The message says why: the key was rejected, the provider is rate limiting, the local model is not running, the decision model is not installed, the model did not answer yes or no, or it ran out of time.
+- **Test says the server has no such endpoint.** The Decision source does not match the server. Ollama, LM Studio and other chat model servers need **OpenAI-compatible chat model**; **Custom System One endpoint** is only for System One servers such as Open-Jev.
 - **Test says the answer was over the time limit, or decisions work only some of the time.** The provider answers more slowly than the connection's **Time limit** at least some of the time. Test a few times and raise the limit above the slowest answer.
 - **An agent with an activation question runs on every turn.** No Decision model is set, or it is not answering, so the agent runs as if it had no question. Check **Test**.
 - **A decision branch in a prompt never appears.** See [When a decision branch never appears](../prompts/conditional-prompts.md#when-a-decision-branch-never-appears).

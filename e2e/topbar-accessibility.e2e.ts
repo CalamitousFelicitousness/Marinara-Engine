@@ -84,10 +84,12 @@ test("phone More keeps core navigation visible and retains extension actions", a
     const events: string[] = [];
     const testWindow = window as Window & { __moreNavigationFocusEvents?: string[] };
     testWindow.__moreNavigationFocusEvents = events;
-    document.querySelector('[data-topbar-more]')?.addEventListener("focus", () => events.push("more-focus"));
-    document.querySelector('[data-component="RightPanel"]')?.addEventListener("focus", () => events.push("panel-focus"));
+    document.querySelector("[data-topbar-more]")?.addEventListener("focus", () => events.push("more-focus"));
+    document
+      .querySelector('[data-component="RightPanel"]')
+      ?.addEventListener("focus", () => events.push("panel-focus"));
     let wasOpen = useUIStore.getState().rightPanelOpen;
-    useUIStore.subscribe((state) => {
+    useUIStore.subscribe((state: { rightPanelOpen: boolean }) => {
       if (!wasOpen && state.rightPanelOpen) events.push("panel-open");
       wasOpen = state.rightPanelOpen;
     });
@@ -100,7 +102,9 @@ test("phone More keeps core navigation visible and retains extension actions", a
   await expect
     .poll(() =>
       page.evaluate(() =>
-        (window as Window & { __moreNavigationFocusEvents?: string[] }).__moreNavigationFocusEvents?.includes("panel-open"),
+        (window as Window & { __moreNavigationFocusEvents?: string[] }).__moreNavigationFocusEvents?.includes(
+          "panel-open",
+        ),
       ),
     )
     .toBe(true);
@@ -178,4 +182,34 @@ test("stacked dialogs keep focus in the top dialog and IME Escape does not dismi
   await expect(child).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(child).not.toBeVisible();
+});
+
+test("phone More allows Tab and Shift+Tab to continue past the trigger", async ({ page }, testInfo) => {
+  test.skip(!testInfo.project.name.startsWith("mobile-"), "Phone menu only.");
+  await openCleanHome(page);
+  const more = page.getByRole("button", { name: "More", exact: true });
+  const menu = page.getByRole("menu", { name: "More destinations" });
+  await more.evaluate((trigger) => {
+    for (const [position, name] of [
+      ["beforebegin", "before"],
+      ["afterend", "after"],
+    ] as const) {
+      const button = document.createElement("button");
+      button.textContent = name;
+      button.dataset.tabFixture = name;
+      trigger.insertAdjacentElement(position, button);
+    }
+  });
+  for (const backwards of [false, true]) {
+    const key = `${testInfo.project.name === "mobile-webkit" ? "Alt+" : ""}${backwards ? "Shift+" : ""}Tab`;
+    const destination = page.locator(`[data-tab-fixture="${backwards ? "before" : "after"}"]`);
+    await more.focus();
+    await page.keyboard.press("ArrowDown");
+    await expect(menu.getByRole("menuitem").first()).toBeFocused();
+    await page.keyboard.press("End");
+    await expect(menu.getByRole("menuitem").last()).toBeFocused();
+    await page.keyboard.press(key);
+    await expect(menu).not.toBeVisible();
+    await expect(destination).toBeFocused();
+  }
 });

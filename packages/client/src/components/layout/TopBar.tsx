@@ -618,8 +618,9 @@ function TopbarMoreMenu({
         close(true);
         break;
       case "Tab":
-        event.preventDefault();
-        close(true);
+        // Let native traversal continue from the trigger after the portal closes.
+        triggerRef.current?.focus();
+        close(false);
         break;
     }
   };
@@ -639,13 +640,14 @@ function TopbarMoreMenu({
       data-component="TopbarMoreMenu"
       onKeyDown={handleMenuKeyDown}
       style={{ top: menuTop + 4, maxHeight: `calc(100dvh - ${menuTop + 12}px)` }}
-      className="mari-chrome-token-scope fixed right-[max(0.5rem,env(safe-area-inset-right))] z-[9000] w-[min(16.5rem,calc(100vw-1rem))] overflow-y-auto overscroll-contain rounded-xl border border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--card)] p-1.5 text-[var(--foreground)] shadow-2xl"
+      className="mari-chrome-token-scope fixed right-[max(0.5rem,env(safe-area-inset-right))] z-[9000] w-[min(16.5rem,calc(100vw-1rem))] overflow-y-auto overscroll-contain rounded-xl border border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--card)] p-1.5 text-[var(--foreground)] shadow-2xl backdrop-blur-xl"
     >
       {items.map((item) => (
         <button
           key={item.key}
           type="button"
           role="menuitem"
+          data-topbar-panel={item.key.startsWith("extension:") ? undefined : item.key}
           data-active={item.active ? "true" : undefined}
           aria-current={item.active ? "true" : undefined}
           onClick={() => select(item)}

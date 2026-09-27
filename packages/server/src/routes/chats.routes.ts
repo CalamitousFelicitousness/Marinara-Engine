@@ -48,6 +48,7 @@ import {
   characterDataSchema,
   readGameInventoryTurn,
   rulesetLiveStatesSchema,
+  semanticSummaryRetrievalSettingsSchema,
 } from "@marinara-engine/shared";
 import type {
   CharacterData,
@@ -1271,6 +1272,17 @@ export async function chatsRoutes(app: FastifyInstance) {
     const chat = await storage.getById(req.params.id);
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
     const incoming = req.body as Record<string, unknown>;
+    const summaryRetrievalFieldSchemas = {
+      semanticSummaryRecentCount: semanticSummaryRetrievalSettingsSchema.shape.semanticSummaryRecentCount,
+      semanticSummaryOlderCount: semanticSummaryRetrievalSettingsSchema.shape.semanticSummaryOlderCount,
+      semanticSummaryMinSimilarity: semanticSummaryRetrievalSettingsSchema.shape.semanticSummaryMinSimilarity,
+    } as const;
+    for (const [key, schema] of Object.entries(summaryRetrievalFieldSchemas)) {
+      if (!Object.prototype.hasOwnProperty.call(incoming, key)) continue;
+      const parsed = schema.safeParse(incoming[key]);
+      if (!parsed.success) return reply.status(400).send({ error: "Invalid semantic summary retrieval settings" });
+      incoming[key] = parsed.data;
+    }
     // Validate Discord webhook URL if provided
     if (typeof incoming.discordWebhookUrl === "string" && incoming.discordWebhookUrl.trim()) {
       const url = incoming.discordWebhookUrl.trim();

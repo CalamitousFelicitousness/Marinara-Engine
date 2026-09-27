@@ -6,6 +6,7 @@
 export * from "./types/tts.js";
 export * from "./types/chat.js";
 export * from "./types/advanced-memory.js";
+export * from "./types/semantic-summary-retrieval.js";
 export * from "./types/roleplay-command.js";
 export * from "./types/spotify.js";
 export * from "./types/character.js";

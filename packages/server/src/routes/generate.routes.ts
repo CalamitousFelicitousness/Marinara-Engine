@@ -469,6 +469,7 @@ import {
   toLorebookScanSnapshot,
   type LorebookScanSnapshot,
 } from "./generate/lorebook-scan-snapshot.js";
+import { recordLorebookActivations } from "../services/lorebook/activation-stats.js";
 import {
   buildAvailableSpriteCharacter,
   completeRequiredSpriteExpressionEntries,
@@ -9604,6 +9605,13 @@ export async function generateRoutes(app: FastifyInstance) {
             // Cache the lorebook scan that produced the prompt so Active Context
             // reflects the last generation instead of a best-effort rescan.
             extraUpdate.lorebookScan = lorebookScanSnapshot;
+            // Activation statistics count saved replies, not Continue chunks.
+            if (!input.continueMessageId) {
+              recordLorebookActivations(app.db, {
+                entryIds: lorebookScanSnapshot.activatedEntries.map((entry) => entry.id),
+                chatId: input.chatId,
+              });
+            }
             extraUpdate.chatSummaryFingerprint = fingerprintChatSummary(chatMeta.summary);
             if (advancedMemoryReceipt) extraUpdate.advancedMemoryReceipt = advancedMemoryReceipt;
             // A continuation has its own prompt, but regenerating the whole message

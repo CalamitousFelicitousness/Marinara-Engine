@@ -34,6 +34,7 @@ export function fitLorebookEntryToBudget(
     images.push(image);
     tokens += imageTokens;
   }
+  if (tokens === 0 && images.length === 0) return null;
   return {
     candidate:
       images.length === (candidate.entry.images?.length ?? 0)

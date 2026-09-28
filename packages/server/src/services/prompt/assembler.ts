@@ -780,7 +780,9 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
         .filter((entry) =>
           entry.position === 7
             ? usedImageOutlets.has(entry.outletName ?? "")
-            : entry.position === 2 || markerCtx.lorebookPositionsEmitted?.has(entry.position <= 0 ? "before" : "after"),
+            : entry.position === 2 ||
+              (entry.position <= 1 &&
+                markerCtx.lorebookPositionsEmitted?.has(entry.position <= 0 ? "before" : "after")),
         )
         .map((entry) => (entry.position === 7 ? { ...entry, outletUsed: true } : entry)),
     };

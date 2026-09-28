@@ -137,7 +137,17 @@ export function applyGameInventoryOps(
           break;
         }
         current = added.stacks;
-        results.push({ ok: true, id: added.id, count: op.count, now: gameInventoryCount(current, op.name, bag) });
+        // How many of the item it went onto the bag now holds: the name may have found that item by
+        // a nickname in another bag, which the bag's own count by name would not see.
+        const item = gameInventoryItemId(current.find((stack) => stack.id === added.id)!);
+        const now = current
+          .filter(
+            (stack) =>
+              gameInventoryItemId(stack) === item &&
+              gameInventoryBagKey(stack.holder) === gameInventoryBagKey(bag.holder),
+          )
+          .reduce((total, stack) => total + stack.quantity, 0);
+        results.push({ ok: true, id: added.id, count: op.count, now });
         if (op.log) journal.push({ item: op.name.trim(), action: "acquired", quantity: op.count });
         break;
       }

@@ -29,6 +29,7 @@ import {
   applyGameInventoryTags,
   carryGameInventory,
   followGameInventoryDetails,
+  gameInventoryFightEffects,
   gameInventoryFightLines,
   gameInventoryPlainItemId,
   gameInventoryTotals,
@@ -611,6 +612,11 @@ try {
       nextId,
     );
     assert.deepEqual(added.stacks.at(-1), { id: `st-new-${counter}`, name: "Rope", quantity: 1, holder: "Cass" });
+    assert.deepEqual(
+      readResolvedInventoryTags(added.content).map((tag) => `${tag.ok ? `ok ${tag.now}` : tag.reason}`),
+      ["ok 1"],
+      "and says how many of it Cass now holds",
+    );
     // An item's own name wins over another item's nickname; a named bag is read on its own, so there a
     // nickname finds its item even when somebody else holds an item of that own name.
     const cordCalledRope = [
@@ -631,10 +637,50 @@ try {
     );
     // A fight lists every item under a name no other line has, and spends it by its own name.
     assert.deepEqual(gameInventoryFightLines(cordCalledRope), [
-      { name: "Rope (Cord)", quantity: 1, ownName: "Cord" },
-      { name: "Rope", quantity: 2 },
+      { name: "Rope (Cord)", quantity: 1, ownName: "Cord", shown: "Rope" },
+      { name: "Rope", quantity: 2, shown: "Rope" },
     ]);
-    assert.deepEqual(gameInventoryFightLines([cordCalledRope[0]!]), [{ name: "Rope", quantity: 1, ownName: "Cord" }]);
+    assert.deepEqual(gameInventoryFightLines([cordCalledRope[0]!]), [
+      { name: "Rope", quantity: 1, ownName: "Cord", shown: "Rope" },
+    ]);
+    // Even when a third item is really called what that line became.
+    const lines = gameInventoryFightLines([...cordCalledRope, { id: "t", name: "Rope (Cord)", quantity: 1 }]);
+    assert.deepEqual(
+      lines.map((line) => [line.name, line.ownName ?? null]),
+      [
+        ["Rope (Cord)", "Cord"],
+        ["Rope", null],
+        ["Rope (Cord) 2", "Rope (Cord)"],
+      ],
+      "and a line listed under a number still spends its item by its own name",
+    );
+    assert.equal(
+      takeFromGameInventory([...cordCalledRope, { id: "t", name: "Rope (Cord)", quantity: 1 }], lines[2]!.ownName!, 1)
+        .taken,
+      1,
+    );
+    // Each line's effect is found under its name, or the name it is shown by, or its own name, and an
+    // effect another line took by its exact name is not taken again: the item really called
+    // "Rope (Cord)" gets none, and the effect nobody took is kept as it was.
+    const heal = { name: "rope", type: "heal" };
+    const tie = { name: "Cord", type: "utility" };
+    const odd = { name: "Rope (Cord)", type: "buff" };
+    assert.deepEqual(gameInventoryFightEffects(lines, [heal, tie, odd]), [
+      { name: "Rope (Cord)", type: "buff" },
+      { name: "Rope", type: "heal" },
+      { name: "Cord", type: "utility" },
+    ]);
+    const elixir = gameInventoryFightLines([{ id: "p", name: "Healing Potion", nickname: "Elixir", quantity: 2 }]);
+    assert.deepEqual(
+      gameInventoryFightEffects(elixir, [
+        { name: "Healing Potion", type: "heal" },
+        { name: "Map", type: "utility" },
+      ]),
+      [
+        { name: "Elixir", type: "heal" },
+        { name: "Map", type: "utility" },
+      ],
+    );
     // Taking by a nickname takes the item from every stack of it, whatever each one is called.
     const split = [
       { id: "g", name: "Apple", nickname: "Green apple", quantity: 100 },

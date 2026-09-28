@@ -248,21 +248,74 @@ export function gameInventoryTotals(stacks: readonly GameInventoryStack[]): Game
   return [...totals.values()];
 }
 
+/** One line a fight lists: a total, under a name no other line has. */
+export interface GameInventoryFightLine extends GameInventoryTotal {
+  /** The name the item is shown by in the inventory, before anything was added to keep `name` unique. */
+  shown: string;
+}
+
 /**
  * The lines a fight lists: `gameInventoryTotals`, each under a name no other line has, since a fight
  * tells items apart by name. A nickname that another line also goes by is shown with the item's own
- * name, such as "Potion (Cord)" beside a real "Potion". `ownName` stays what a spend is taken by.
+ * name, such as "Potion (Cord)" beside a real "Potion", and a name still taken after that gets a
+ * number. `ownName` stays what a spend is taken by.
  */
-export function gameInventoryFightLines(stacks: readonly GameInventoryStack[]): GameInventoryTotal[] {
+export function gameInventoryFightLines(stacks: readonly GameInventoryStack[]): GameInventoryFightLine[] {
   const totals = gameInventoryTotals(stacks);
   const uses = new Map<string, number>();
-  for (const line of totals)
-    uses.set(gameInventoryNameKey(line.name), (uses.get(gameInventoryNameKey(line.name)) ?? 0) + 1);
-  return totals.map((line) =>
-    line.ownName && (uses.get(gameInventoryNameKey(line.name)) ?? 0) > 1
-      ? { ...line, name: `${line.name} (${line.ownName})` }
-      : line,
+  for (const line of totals) {
+    const key = gameInventoryNameKey(line.name);
+    uses.set(key, (uses.get(key) ?? 0) + 1);
+  }
+  const taken = new Set<string>();
+  return totals.map((line) => {
+    const base =
+      line.ownName && (uses.get(gameInventoryNameKey(line.name)) ?? 0) > 1
+        ? `${line.name} (${line.ownName})`
+        : line.name;
+    let name = base;
+    for (let n = 2; taken.has(gameInventoryNameKey(name)); n += 1) name = `${base} ${n}`;
+    taken.add(gameInventoryNameKey(name));
+    // A line listed under anything but the item's own name says what that own name is, which is what
+    // a spend is taken by.
+    const ownName = line.ownName ?? (name === line.name ? undefined : line.name);
+    return { ...line, name, ...(ownName ? { ownName } : {}), shown: line.name };
+  });
+}
+
+/**
+ * A fight's item effects, each under the name of the line it belongs to. An effect is found for a line
+ * by the line's own name first; a line with none takes one named as the item is shown, or by its own
+ * name, unless another line already took that effect by its exact name. Effects no line takes are
+ * kept as they are.
+ */
+export function gameInventoryFightEffects<T extends { name: string }>(
+  lines: readonly GameInventoryFightLine[],
+  effects: readonly T[],
+): T[] {
+  const byName = (name: string | undefined) =>
+    name ? effects.find((effect) => gameInventoryNameKey(effect.name) === gameInventoryNameKey(name)) : undefined;
+  const exact = new Map(
+    lines.flatMap((line) => {
+      const effect = byName(line.name);
+      return effect ? [[line.name, effect] as const] : [];
+    }),
   );
+  const claimed = new Set(exact.values());
+  const given = new Map<string, T>(exact);
+  for (const line of lines) {
+    if (given.has(line.name)) continue;
+    const effect = [line.shown, line.ownName].map(byName).find((found) => found && !claimed.has(found));
+    if (effect) given.set(line.name, effect);
+  }
+  const used = new Set(given.values());
+  return [
+    ...lines.flatMap((line) => {
+      const effect = given.get(line.name);
+      return effect ? [effect.name === line.name ? effect : { ...effect, name: line.name }] : [];
+    }),
+    ...effects.filter((effect) => !used.has(effect)),
+  ];
 }
 
 /** Each bag's own totals, the player's first and then in the order a holder first appears. Only bags

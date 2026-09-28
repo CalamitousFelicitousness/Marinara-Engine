@@ -4,6 +4,7 @@ import {
   combatWeatherSchema,
   applyGameInventoryOps,
   gameInventoryCount,
+  gameInventoryFightEffects,
   gameInventoryFightLines,
   normalizeGameInventoryStacks,
 } from "@marinara-engine/shared";
@@ -557,12 +558,14 @@ export async function combatDirectorRoutes(
         const previous = await load(chatId, s.anchor);
         if (!previous || previous.row.id !== rowId) throw new Error("Battle changed while saving.");
         // Spent by the item's own name, which only ever finds that item, not by a nickname.
-        const deltas = Object.entries(s.itemSpends)
-          .map(([name, count]) => ({
-            name: s.inventory.find((line) => line.name === name)?.ownName ?? name,
-            count: count - (previous.state.itemSpends[name] ?? 0),
-          }))
-          .filter((d) => d.count > 0);
+        const spent = new Map<string, number>();
+        for (const [name, count] of Object.entries(s.itemSpends)) {
+          const more = count - (previous.state.itemSpends[name] ?? 0);
+          if (more <= 0) continue;
+          const own = s.inventory.find((line) => line.name === name)?.ownName ?? name;
+          spent.set(own, (spent.get(own) ?? 0) + more);
+        }
+        const deltas = [...spent].map(([name, count]) => ({ name, count }));
         if (deltas.length)
           // Taken by name across every stack and bag of the item, the player's own first, since the
           // fight saw one total per item; the detailed inventory and the journal follow with it.
@@ -680,13 +683,18 @@ export async function combatDirectorRoutes(
             enemy.tactics ??= assignCombatTactics(enemy as Combatant, battlefield.seed);
           }
         }
+        // One line per item: a fight neither knows nor cares how the player split their stacks. Each is
+        // shown under a name no other line has, and spent by the item's own name; its effect is found
+        // under that line's name, or the name it was shown by, or its own name.
+        const fightLines = gameInventoryFightLines(normalizeGameInventoryStacks(meta.gameInventory));
         const state = createCombatDirector({
           ...input,
-          // One line per item: a fight neither knows nor cares how the player split their stacks. Each is
-          // shown under a name no other line has, and spent by the item's own name.
-          inventory: gameInventoryFightLines(normalizeGameInventoryStacks(meta.gameInventory)).map(
-            ({ name, quantity, ownName }) => ({ name, quantity, ...(ownName ? { ownName } : {}) }),
-          ),
+          inventory: fightLines.map(({ name, quantity, ownName }) => ({
+            name,
+            quantity,
+            ...(ownName ? { ownName } : {}),
+          })),
+          itemEffects: gameInventoryFightEffects(fightLines, input.itemEffects),
           party: input.party as Combatant[],
           // What the fight is RESOLVED by is read below and never stored on the Engine's own units.
           enemies: input.enemies.map(({ creature: _c, tier: _t, proposed: _p, ...unit }) => unit) as Combatant[],

@@ -3,6 +3,7 @@ import {
   combatTacticsSchema,
   gameInventoryBags,
   gameInventoryBagKey,
+  gameInventoryFightEffects,
   gameInventoryFightLines,
   gameInventoryStackLabel,
   normalizeGameInventoryStacks,
@@ -3021,8 +3022,13 @@ function GameSurfaceComponent({
    *  whether the chat changed while one was on its way (and so was not read then). */
   const inventoryCommitSeq = useRef({ sent: 0, applied: 0, skippedResync: false });
   // What a fight offers: one line per item, however the player split its stacks.
-  // What a fight lists: one line per item, each under a name no other line has.
+  // What a fight lists: one line per item, each under a name no other line has, with each item's
+  // effect found under that line's name.
   const fightInventoryLines = useMemo(() => gameInventoryFightLines(inventoryItems), [inventoryItems]);
+  const fightItemEffects = useMemo(
+    () => gameInventoryFightEffects(fightInventoryLines, combatItemEffects),
+    [fightInventoryLines, combatItemEffects],
+  );
   /** What the inventory just did, shown for a moment: gains in green, everything else in red. */
   const [inventoryNotifications, setInventoryNotifications] = useState<Array<{ text: string; gain: boolean }>>([]);
   const [removingPartyMemberId, setRemovingPartyMemberId] = useState<string | null>(null);
@@ -12959,7 +12965,7 @@ function GameSurfaceComponent({
                               party={combatParty}
                               enemies={combatEnemies}
                               inventoryItems={fightInventoryLines}
-                              combatItemEffects={combatItemEffects}
+                              combatItemEffects={fightItemEffects}
                               combatMechanics={combatMechanics}
                               environment={combatSceneMeta?.environmentType ?? undefined}
                               formation={combatSceneMeta?.formation ?? undefined}
@@ -13002,7 +13008,7 @@ function GameSurfaceComponent({
                               narration="Battle starts."
                               combatDialogue={combatDialogueLines}
                               combatDialogueCues={combatDialogueCues}
-                              combatItemEffects={combatItemEffects}
+                              combatItemEffects={fightItemEffects}
                               combatMechanics={combatMechanics}
                               voicedCombatSpeakerNames={voicedCombatSpeakerNames}
                               gameVoiceVolume={effectiveGameVoiceVolume}

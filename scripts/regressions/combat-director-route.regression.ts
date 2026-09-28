@@ -409,7 +409,8 @@ try {
       enemies: [unit("rat", "enemy")],
       itemEffects: [
         ...input.itemEffects,
-        { name: "Potion (Cord)", target: "ally", type: "utility", description: "Tie", power: 1 },
+        // Named as the item is in its own right: the fight finds it for the line shown as "Potion (Cord)".
+        { name: "Cord", target: "ally", type: "utility", description: "Tie", power: 1 },
       ],
     };
     const started = await post("/combat/start", nickInput);

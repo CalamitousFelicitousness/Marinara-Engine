@@ -14,7 +14,7 @@ export async function gameInventoryRoutes(app: FastifyInstance) {
     const { chatId, ops } = parsed.data;
     const committed = await commitGameInventoryChange(app.db, chatId, (stacks) => {
       const outcome = applyGameInventoryOps(stacks, ops);
-      return { stacks: outcome.stacks, journal: outcome.journal, renames: outcome.renames, value: outcome.results };
+      return { stacks: outcome.stacks, journal: outcome.journal, value: outcome.results };
     });
     if (!committed) return reply.status(404).send({ error: "Chat not found" });
     return {

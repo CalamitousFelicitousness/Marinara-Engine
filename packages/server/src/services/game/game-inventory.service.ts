@@ -11,7 +11,6 @@ import {
   normalizeGameInventoryStacks,
   readGameInventoryTurn,
   type GameInventoryJournalEntry,
-  type GameInventoryRename,
   type GameInventoryStack,
   type InventoryItem,
   type PlayerStats,
@@ -27,7 +26,6 @@ import { addInventoryEntry, createJournal, type Journal } from "./journal.servic
 export interface GameInventoryChange<T> {
   stacks: GameInventoryStack[];
   journal: readonly GameInventoryJournalEntry[];
-  renames?: readonly GameInventoryRename[];
   /** Other metadata that belongs with this change, saved in the same write (a turn's record). */
   metadata?: Record<string, unknown>;
   value: T;
@@ -129,7 +127,7 @@ export async function applyGameInventoryChangeHeld<T>(
     { metadataQueueHeld: true },
   );
   if (outcome.stacks === before || target.kind === "none") return { stacks: outcome.stacks, value: outcome.value };
-  const playerStats = await followOnRow(db, chatId, before, outcome.stacks, outcome.renames ?? [], target);
+  const playerStats = await followOnRow(db, chatId, before, outcome.stacks, target);
   return { stacks: outcome.stacks, ...(playerStats ? { playerStats } : {}), value: outcome.value };
 }
 
@@ -141,7 +139,6 @@ async function followOnRow(
   chatId: string,
   before: readonly GameInventoryStack[],
   after: readonly GameInventoryStack[],
-  renames: readonly GameInventoryRename[],
   target: Exclude<GameInventoryRowTarget, { kind: "none" }>,
 ): Promise<PlayerStats | null> {
   const chats = createChatsStorage(db);
@@ -162,7 +159,7 @@ async function followOnRow(
   }
   const sourceStats = parsePlayerStats(source?.playerStats);
   if (!source || !sourceStats || !Array.isArray(sourceStats.inventory)) return null;
-  const inventory = followGameInventoryDetails(sourceStats.inventory as InventoryItem[], before, after, renames);
+  const inventory = followGameInventoryDetails(sourceStats.inventory as InventoryItem[], before, after);
   const stats = parsePlayerStats(row?.playerStats) ?? sourceStats;
   if (row && inventory === sourceStats.inventory && JSON.stringify(stats.inventory) === JSON.stringify(inventory)) {
     return null;
@@ -190,7 +187,7 @@ export async function followGameInventoryOnRow(
   after: readonly GameInventoryStack[],
   target: Extract<GameInventoryRowTarget, { kind: "message" }>,
 ): Promise<PlayerStats | null> {
-  return db.transaction(() => followOnRow(db, chatId, before, after, [], target));
+  return db.transaction(() => followOnRow(db, chatId, before, after, target));
 }
 
 /**

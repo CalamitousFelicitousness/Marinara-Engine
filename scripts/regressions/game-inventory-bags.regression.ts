@@ -29,6 +29,10 @@ import {
   applyGameInventoryTags,
   carryGameInventory,
   followGameInventoryDetails,
+  gameInventoryFightEffects,
+  gameInventoryFightLines,
+  gameInventoryPlainItemId,
+  gameInventoryTotals,
   gameInventoryBags,
   gameInventoryForTelling,
   gameInventoryTellingStart,
@@ -174,12 +178,35 @@ try {
     );
     assert.equal(swapGameInventoryStacks(same, "a", "nope"), same);
 
-    // Renaming pours only into the same bag's stack of the new name.
+    // A rename is a nickname: arrows called Rope are still arrows, in their own stack.
     const renamed = renameGameInventoryStack(bag(), "c", "Rope");
-    assert.equal(renamed?.id, "a", "the player's arrows poured into the player's rope");
-    const notAcross = renameGameInventoryStack(bag(), "d", "Rope");
-    assert.equal(notAcross?.id, "d", "Cass's torch renamed, not poured into the player's rope");
-    assert.equal(notAcross?.stacks.find((stack) => stack.id === "d")?.name, "Rope");
+    assert.equal(renamed?.id, "c");
+    assert.deepEqual(
+      renamed?.stacks.find((stack) => stack.id === "c"),
+      {
+        id: "c",
+        name: "Arrow",
+        nickname: "Rope",
+        quantity: 5,
+      },
+    );
+    assert.equal(renamed?.stacks.find((stack) => stack.id === "a")?.quantity, 2, "the rope is untouched");
+    // A nickname travels with its stack, part of it or all of it, into a bag that has none of the item.
+    const partNicknamed = renameGameInventoryStack(bag(), "a", "Grandpa's rope")!.stacks;
+    assert.deepEqual(giveGameInventoryStack(partNicknamed, "a", "Cass", 1, nextId)?.stacks.at(-1), {
+      id: `st-new-${counter}`,
+      name: "Rope",
+      nickname: "Grandpa's rope",
+      quantity: 1,
+      holder: "Cass",
+    });
+    const nicknamed = renameGameInventoryStack(bag(), "d", "Brand")!.stacks;
+    assert.deepEqual(giveGameInventoryStack(nicknamed, "d", undefined, undefined, nextId)?.stacks.at(-1), {
+      id: "d",
+      name: "Torch",
+      nickname: "Brand",
+      quantity: 1,
+    });
 
     // A merge follows its target, so dropping onto another bag's stack hands it over.
     const merged = mergeGameInventoryStacks(bag(), "c", "b");
@@ -227,7 +254,11 @@ try {
       { item: "Rope", action: "removed", quantity: 1 },
       { item: "Arrow", action: "used", quantity: 3 },
     ]);
-    assert.deepEqual(outcome.renames, [{ from: "Torch", to: "Brand", holder: "Cass" }], "whose bag it was in");
+    assert.deepEqual(
+      outcome.stacks.find((stack) => stack.id === "d"),
+      { id: "d", name: "Torch", nickname: "Brand", quantity: 1, holder: "Cass" },
+      "a rename is a nickname on its stack",
+    );
     assert.equal(gameInventoryCount(outcome.stacks, "Arrow", {}), 2, "the player's arrows went first");
     // Nothing that was refused moved anything.
     const untouched = bag();
@@ -243,11 +274,13 @@ try {
     );
   }
 
-  // ── The detailed inventory is the player's own bag, followed by difference ──
+  // ── The detailed inventory is the player's own bag, one entry per item ──
   {
+    const rope = gameInventoryPlainItemId("Rope");
+    const arrow = gameInventoryPlainItemId("Arrow");
     const detailed: InventoryItem[] = [
-      { name: "Rope", description: "Hemp", quantity: 2, location: "pack" },
-      { name: "Arrow", description: "", quantity: 5, location: "on_person" },
+      { item: rope, name: "Rope", description: "Hemp", quantity: 2, location: "pack" },
+      { item: arrow, name: "Arrow", description: "", quantity: 5, location: "on_person" },
     ];
     const before = bag();
     // What a companion carries is theirs, however it changes.
@@ -259,53 +292,115 @@ try {
     );
     const bramGains = applyGameInventoryOps(before, [{ op: "add", name: "Arrow", count: 4, holder: "Bram" }]);
     assert.equal(followGameInventoryDetails(detailed, before, bramGains.stacks), detailed, "a companion's gain");
-    const withTorch = [...detailed, { name: "Torch", description: "Pitch", quantity: 1, location: "pack" }];
     const cassRenames = applyGameInventoryOps(before, [{ op: "rename", id: "d", name: "Brand" }]);
-    assert.equal(
-      followGameInventoryDetails(withTorch, before, cassRenames.stacks, cassRenames.renames),
-      withTorch,
-      "a companion's rename leaves an entry of the old name alone",
-    );
-    // Even when the player's own stack of that name goes in the same batch: the entry leaves, and no
-    // entry takes the companion's new name.
-    const playerTorch = [...before, { id: "e", name: "Torch", quantity: 1 }];
-    const renameAndGive = applyGameInventoryOps(playerTorch, [
-      { op: "rename", id: "d", name: "Brand" },
-      { op: "give", id: "e", to: "Bram" },
-    ]);
-    assert.deepEqual(
-      followGameInventoryDetails(withTorch, playerTorch, renameAndGive.stacks, renameAndGive.renames),
-      detailed,
-    );
-    // And when the player also gains an item of the companion's new name, it starts as a new entry
-    // rather than taking the old one's notes.
-    const renameGiveAndGain = applyGameInventoryOps(playerTorch, [
-      { op: "rename", id: "d", name: "Brand" },
-      { op: "give", id: "e", to: "Bram" },
-      { op: "add", name: "Brand", count: 1 },
-    ]);
-    assert.deepEqual(
-      followGameInventoryDetails(withTorch, playerTorch, renameGiveAndGain.stacks, renameGiveAndGain.renames),
-      [...detailed, { name: "Brand", description: "", quantity: 1, location: "on_person" }],
-    );
+    assert.equal(followGameInventoryDetails(detailed, before, cassRenames.stacks), detailed, "a companion's rename");
     // The player's own arrows, given away, leave it.
     const given = applyGameInventoryOps(before, [{ op: "give", id: "c", to: "Cass" }]);
     assert.deepEqual(followGameInventoryDetails(detailed, before, given.stacks), [detailed[0]]);
-    const renamed = applyGameInventoryOps(before, [{ op: "rename", id: "a", name: "Hemp rope" }]);
-    assert.deepEqual(followGameInventoryDetails(detailed, before, renamed.stacks, renamed.renames)[0], {
-      name: "Hemp rope",
-      description: "Hemp",
-      quantity: 2,
-      location: "pack",
-    });
+    // A nickname is only the name the entry shows: the description and place stay, and no rename is
+    // ever guessed from names, whatever else happens in the same batch.
+    const renamed = applyGameInventoryOps(before, [{ op: "rename", id: "a", name: "Grandpa's rope" }]);
+    assert.deepEqual(followGameInventoryDetails(detailed, before, renamed.stacks), [
+      { item: rope, name: "Grandpa's rope", description: "Hemp", quantity: 2, location: "pack" },
+      detailed[1],
+    ]);
+    const twice = applyGameInventoryOps(before, [
+      { op: "rename", id: "a", name: "Brand" },
+      { op: "rename", id: "a", name: "Beacon" },
+      { op: "rename", id: "d", name: "Rope" },
+      { op: "add", name: "Brand", count: 1, holder: "Bram" },
+    ]);
+    assert.deepEqual(followGameInventoryDetails(detailed, before, twice.stacks), [
+      { item: rope, name: "Beacon", description: "Hemp", quantity: 2, location: "pack" },
+      detailed[1],
+    ]);
     // Taking takes the player's own first, and only that part leaves the player's list.
     const changed = applyGameInventoryOps(before, [
       { op: "take", name: "Arrow", count: 15 },
       { op: "add", name: "Map", count: 2 },
     ]);
     assert.deepEqual(followGameInventoryDetails(detailed, before, changed.stacks), [
+      detailed[0],
+      { item: gameInventoryPlainItemId("Map"), name: "Map", description: "", quantity: 2, location: "on_person" },
+    ]);
+    // An entry written without an item id (by a tracker, or before entries had them) is found by name
+    // once, and keeps the id from then on.
+    const unmarked: InventoryItem[] = [{ name: "rope", description: "Hemp", quantity: 2, location: "pack" }];
+    const oneLess = applyGameInventoryOps(before, [{ op: "set", id: "a", quantity: 1 }]);
+    assert.deepEqual(followGameInventoryDetails(unmarked, before, oneLess.stacks), [
+      { item: rope, name: "Rope", description: "Hemp", quantity: 1, location: "pack" },
+    ]);
+    assert.equal(followGameInventoryDetails(unmarked, before, before), unmarked, "nothing moved, nothing written");
+    // Another item's entry of the same name is never drawn from: an entry without an id is, and keeps
+    // the id from then on.
+    const cordNamedRope: InventoryItem[] = [
+      { item: gameInventoryPlainItemId("Cord"), name: "Rope", description: "Thin", quantity: 1, location: "" },
       { name: "Rope", description: "Hemp", quantity: 2, location: "pack" },
-      { name: "Map", description: "", quantity: 2, location: "on_person" },
+    ];
+    assert.deepEqual(followGameInventoryDetails(cordNamedRope, before, oneLess.stacks), [
+      cordNamedRope[0],
+      { item: rope, name: "Rope", description: "Hemp", quantity: 1, location: "pack" },
+    ]);
+    // An entry carrying the item's id is moved before one found only by name, and an entry nothing
+    // was taken from is left exactly as it was.
+    const both: InventoryItem[] = [
+      { name: "Rope", description: "Old", quantity: 1, location: "" },
+      { item: rope, name: "Rope", description: "Hemp", quantity: 2, location: "pack" },
+    ];
+    assert.deepEqual(followGameInventoryDetails(both, before, oneLess.stacks), [
+      both[0],
+      { item: rope, name: "Rope", description: "Hemp", quantity: 1, location: "pack" },
+    ]);
+    assert.deepEqual(
+      followGameInventoryDetails(
+        both,
+        before,
+        applyGameInventoryOps(before, [{ op: "set", id: "a", quantity: 3 }]).stacks,
+      ),
+      [both[0], { item: rope, name: "Rope", description: "Hemp", quantity: 3, location: "pack" }],
+    );
+    const oneMore = applyGameInventoryOps(before, [{ op: "set", id: "a", quantity: 3 }]);
+    assert.deepEqual(followGameInventoryDetails(unmarked, before, oneMore.stacks), [
+      { item: rope, name: "Rope", description: "Hemp", quantity: 3, location: "pack" },
+    ]);
+    // An entry follows its item by id whatever it is called, and an entry of another item is never
+    // moved for sharing a name.
+    const coil: InventoryItem[] = [
+      { item: rope, name: "Coil", description: "Hemp", quantity: 2, location: "pack" },
+      { item: gameInventoryPlainItemId("Cord"), name: "Rope", description: "Thin", quantity: 1, location: "" },
+    ];
+    assert.deepEqual(followGameInventoryDetails(coil, before, oneMore.stacks), [
+      { item: rope, name: "Rope", description: "Hemp", quantity: 3, location: "pack" },
+      coil[1],
+    ]);
+    // An entry without an id under another held item's own name is that item's: a cord nicknamed
+    // "Rope" takes the cord's entry, gained or lost, never the real rope's.
+    const cord = gameInventoryPlainItemId("Cord");
+    const ropeAndCord: GameInventoryStack[] = [
+      { id: "r", name: "Rope", quantity: 2 },
+      { id: "k", name: "Cord", quantity: 1 },
+    ];
+    const tracked: InventoryItem[] = [
+      { name: "Rope", description: "Hemp", quantity: 2, location: "pack" },
+      { name: "Cord", description: "Thin", quantity: 1, location: "" },
+    ];
+    const cordRenamed = applyGameInventoryOps(ropeAndCord, [{ op: "rename", id: "k", name: "Rope" }]).stacks;
+    assert.deepEqual(followGameInventoryDetails(tracked, ropeAndCord, cordRenamed), [
+      tracked[0],
+      { item: cord, name: "Rope", description: "Thin", quantity: 1, location: "" },
+    ]);
+    const cordGone = applyGameInventoryOps(cordRenamed, [{ op: "set", id: "k", quantity: 0 }]).stacks;
+    assert.deepEqual(followGameInventoryDetails(tracked, cordRenamed, cordGone), [tracked[0]]);
+    // A name the item went by is looked for before the name it takes now.
+    const coiled: GameInventoryStack[] = [{ id: "r", name: "Rope", nickname: "Coil", quantity: 2 }];
+    const stray: InventoryItem[] = [
+      { name: "Beacon", description: "Stray", quantity: 1, location: "" },
+      { name: "Coil", description: "Hemp", quantity: 2, location: "pack" },
+    ];
+    const toBeacon = applyGameInventoryOps(coiled, [{ op: "rename", id: "r", name: "Beacon" }]).stacks;
+    assert.deepEqual(followGameInventoryDetails(stray, coiled, toBeacon), [
+      stray[0],
+      { item: rope, name: "Beacon", description: "Hemp", quantity: 2, location: "pack" },
     ]);
   }
 
@@ -464,6 +559,10 @@ try {
     assert.equal(gameInventoryForTelling(two, withShield, "m1", 1, 7), null, "a telling it never saw");
     assert.ok(sameGameInventory(withSword, JSON.parse(JSON.stringify(withSword))));
     assert.ok(!sameGameInventory(withSword, withShield));
+    assert.ok(
+      !sameGameInventory(withSword, renameGameInventoryStack(withSword, withSword[0]!.id, "Old faithful")!.stacks),
+      "a nickname the player gave since is a change of theirs",
+    );
     // Only the newest tellings are kept.
     let many = recordGameInventoryTelling("m1", start, {}, 0, start);
     for (let swipe = 1; swipe < 30; swipe += 1)
@@ -534,6 +633,152 @@ try {
       ["none-held"],
     );
     assert.equal(gameInventoryCount(onlyCass.stacks, "Torch", { holder: "Cass" }), 1);
+
+    // A nicknamed item is found by either name, and a give hands its stack over, nickname and all.
+    const nicknamed = renameGameInventoryStack(bag(), "a", "Grandpa's rope")!.stacks;
+    const byOwn = applyGameInventoryTags(`[inventory: action="remove" item="rope"]`, nicknamed, party, nextId);
+    assert.deepEqual(
+      readResolvedInventoryTags(byOwn.content).map((tag) => `${tag.item} ${tag.ok ? `ok ${tag.now}` : tag.reason}`),
+      ["rope ok 1"],
+    );
+    const handed = applyGameInventoryTags(
+      `[inventory: action="give" item="Grandpa's rope" count="2" to="Bram"]`,
+      nicknamed,
+      party,
+      nextId,
+    );
+    assert.deepEqual(
+      readResolvedInventoryTags(handed.content).map((tag) => `${tag.ok ? `ok ${tag.count}->${tag.now}` : tag.reason}`),
+      ["ok 2->2"],
+    );
+    assert.deepEqual(
+      handed.stacks.find((stack) => stack.id === "a"),
+      {
+        id: "a",
+        name: "Rope",
+        nickname: "Grandpa's rope",
+        quantity: 2,
+        holder: "Bram",
+      },
+    );
+    // Adding by a name another bag holds makes that item, called by its own name, not a new one.
+    const added = applyGameInventoryTags(
+      `[inventory: action="add" item="GRANDPA'S ROPE" who="Cass"]`,
+      nicknamed,
+      party,
+      nextId,
+    );
+    assert.deepEqual(added.stacks.at(-1), { id: `st-new-${counter}`, name: "Rope", quantity: 1, holder: "Cass" });
+    assert.deepEqual(
+      readResolvedInventoryTags(added.content).map((tag) => `${tag.ok ? `ok ${tag.now}` : tag.reason}`),
+      ["ok 1"],
+      "and says how many of it Cass now holds",
+    );
+    // An item's own name wins over another item's nickname; a named bag is read on its own, so there a
+    // nickname finds its item even when somebody else holds an item of that own name.
+    const cordCalledRope = [
+      { id: "c", name: "Cord", nickname: "Rope", quantity: 1, holder: "Bram" },
+      { id: "r", name: "Rope", quantity: 2 },
+    ];
+    assert.deepEqual(takeFromGameInventory(cordCalledRope, "rope", 1).stacks, [
+      cordCalledRope[0],
+      { id: "r", name: "Rope", quantity: 1 },
+    ]);
+    assert.deepEqual(takeFromGameInventory(cordCalledRope, "rope", 1, { holder: "Bram" }).stacks, [cordCalledRope[1]]);
+    assert.equal(gameInventoryCount(cordCalledRope, "Rope"), 2);
+    assert.equal(gameInventoryCount(cordCalledRope, "Rope", { holder: "Bram" }), 1);
+    assert.equal(
+      gameInventoryCount([cordCalledRope[0]!], "Rope"),
+      1,
+      "with no rope at all, the nickname finds the cord",
+    );
+    // A fight lists every item under a name no other line has, and spends it by its own name.
+    assert.deepEqual(gameInventoryFightLines(cordCalledRope), [
+      { name: "Rope (Cord)", quantity: 1, ownName: "Cord", shown: "Rope" },
+      { name: "Rope", quantity: 2, shown: "Rope" },
+    ]);
+    assert.deepEqual(gameInventoryFightLines([cordCalledRope[0]!]), [
+      { name: "Rope", quantity: 1, ownName: "Cord", shown: "Rope" },
+    ]);
+    // Even when a third item is really called what that line became.
+    const lines = gameInventoryFightLines([...cordCalledRope, { id: "t", name: "Rope (Cord)", quantity: 1 }]);
+    assert.deepEqual(
+      lines.map((line) => [line.name, line.ownName ?? null]),
+      [
+        ["Rope (Cord)", "Cord"],
+        ["Rope", null],
+        ["Rope (Cord) 2", "Rope (Cord)"],
+      ],
+      "and a line listed under a number still spends its item by its own name",
+    );
+    assert.equal(
+      takeFromGameInventory([...cordCalledRope, { id: "t", name: "Rope (Cord)", quantity: 1 }], lines[2]!.ownName!, 1)
+        .taken,
+      1,
+    );
+    // Each line's effect is found by its item's own name first, so the item really called
+    // "Rope (Cord)" keeps its own effect though the cord is listed under that name, and the cord takes
+    // the effect named for it.
+    const heal = { name: "rope", type: "heal" };
+    const tie = { name: "Cord", type: "utility" };
+    const odd = { name: "Rope (Cord)", type: "buff" };
+    assert.deepEqual(gameInventoryFightEffects(lines, [heal, tie, odd]), [
+      { name: "Rope (Cord)", type: "utility" },
+      { name: "Rope", type: "heal" },
+      { name: "Rope (Cord) 2", type: "buff" },
+    ]);
+    // A line with no effect under its own name takes one under the name it is listed or shown by,
+    // unless another line took that effect by its own name.
+    assert.deepEqual(gameInventoryFightEffects(lines, [heal, odd]), [
+      { name: "Rope", type: "heal" },
+      { name: "Rope (Cord) 2", type: "buff" },
+    ]);
+    const elixir = gameInventoryFightLines([{ id: "p", name: "Healing Potion", nickname: "Elixir", quantity: 2 }]);
+    assert.deepEqual(
+      gameInventoryFightEffects(elixir, [
+        { name: "Healing Potion", type: "heal" },
+        { name: "Map", type: "utility" },
+      ]),
+      [
+        { name: "Elixir", type: "heal" },
+        { name: "Map", type: "utility" },
+      ],
+    );
+    assert.deepEqual(
+      gameInventoryFightEffects(elixir, [{ name: "elixir", type: "heal" }]),
+      [{ name: "Elixir", type: "heal" }],
+      "an effect named by the nickname reaches it too",
+    );
+    // A take answers with how many are left of the item it took, even once the last stack of it is gone
+    // and the name alone would now find another item by its nickname.
+    const lastRope = applyGameInventoryOps(cordCalledRope, [{ op: "take", name: "rope", count: 2 }]);
+    assert.deepEqual(lastRope.stacks, [cordCalledRope[0]]);
+    assert.deepEqual(lastRope.results, [{ ok: true, count: 2, now: 0 }]);
+    // A give by a nickname answers with how many of the item the receiver holds, though nothing of
+    // theirs carries that nickname.
+    const toBramsRope = applyGameInventoryTags(
+      `[inventory: action="give" item="Grandpa's rope" count="1" to="Bram"]`,
+      [
+        { id: "a", name: "Rope", nickname: "Grandpa's rope", quantity: 3 },
+        { id: "b", name: "Rope", quantity: 2, holder: "Bram" },
+      ],
+      party,
+      nextId,
+    );
+    assert.deepEqual(
+      readResolvedInventoryTags(toBramsRope.content).map(
+        (tag) => `${tag.ok ? `ok ${tag.count}->${tag.now}` : tag.reason}`,
+      ),
+      ["ok 1->3"],
+    );
+    // Taking by a nickname takes the item from every stack of it, whatever each one is called.
+    const split = [
+      { id: "g", name: "Apple", nickname: "Green apple", quantity: 100 },
+      { id: "r", name: "Apple", quantity: 200 },
+    ];
+    assert.deepEqual(takeFromGameInventory(split, "green apple", 250).stacks, [
+      { id: "r", name: "Apple", quantity: 50 },
+    ]);
 
     // Past the cap, tags are answered as refused rather than read at any cost, even one that
     // claims it already happened.
@@ -645,9 +890,11 @@ try {
       [["Rope", "removed", 1]],
       "the journal in the same write",
     );
-    assert.deepEqual((await readRow()).inventory, [
-      { name: "Rope", description: "Hemp", quantity: 1, location: "pack" },
-    ]);
+    assert.deepEqual(
+      (await readRow()).inventory,
+      [{ name: "Rope", description: "Hemp", quantity: 1, location: "pack", item: gameInventoryPlainItemId("Rope") }],
+      "the entry it moved keeps the item it follows from then on",
+    );
     assert.ok(body.playerStats, "the stats written come back for the screen");
 
     // A malformed request changes nothing at all.
@@ -765,6 +1012,14 @@ try {
       /\[inventory: action="add\|remove\|give" item="Item A, Item B" count="3" who="Name" to="Name"\]/,
     );
     assert.match(shared, /Never write result, reason or now yourself/);
+    // A nickname is shown with the item's own name, which the Game Master may use as well.
+    const nicknamed = buildGmFormatReminder({
+      ...base,
+      playerInventory: gameInventoryTotals(renameGameInventoryStack(bag(), "a", "Grandpa's rope")!.stacks),
+      partyInventory: gameInventoryBags(renameGameInventoryStack(bag(), "a", "Grandpa's rope")!.stacks),
+    });
+    assert.match(nicknamed, /- Ada: Grandpa's rope \(Rope\) ×2; Arrow ×5/);
+    assert.match(nicknamed, /An item listed as "Nickname \(Name\)" is one item: write either name in item, never both/);
   }
 
   console.info("game inventory bag regressions passed.");

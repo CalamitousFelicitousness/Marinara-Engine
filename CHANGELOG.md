@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Professor Mari discards pending package-action discovery when a package is disabled, removed or replaced, so an older activation cannot start a new action.
+
 - Professor Mari can use actions that installed Agent packages offer her. Ask Mari which actions your packages offer, or ask her to do one, and she runs it through the new `package_service` tool. Only packages with the new `mari-actions` permission can offer actions, the package checks every input, and Plan and Manual Permissions Modes apply to each run. Package authors need Capability API 1.50 (#6799).
 
 - A Game Mode ruleset's own items go in the inventory. **From the ruleset** picks them from the ruleset's item catalogs, with its search and filters, and a name the player or the Game Master writes that is one of them adds that item. The selected item shows its category, rarity, tags, stats and description, a stack holds only as many as the ruleset allows before a new one starts, a ruleset can take only its own items from the player, and the Game Master sees what each one is (#6795).

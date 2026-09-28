@@ -143,6 +143,36 @@ for (const invoke of [
   assert.ok(performance.now() - stoppedAt < 1_000, "Stop must not wait for the five-second list deadline");
 }
 releaseStoppedList();
+// Removal or replacement during async discovery invalidates the captured activation.
+for (const replace of [false, true]) {
+  let finishList!: (actions: Array<{ name: string }>) => void;
+  const waitingList = new Promise<Array<{ name: string }>>((resolve) => { finishList = resolve; });
+  let oldRuns = 0;
+  let newRuns = 0;
+  const removeOld = registerCapabilityService("mari-actions:changing", {
+    list: () => waitingList,
+    run: async () => { oldRuns++; return { ok: true, value: "old" }; },
+  });
+  const pendingList = listCapabilityMariActions(live);
+  const pendingRun = runCapabilityMariAction("changing", "mutate", {}, live);
+  await new Promise((resolve) => setImmediate(resolve));
+  removeOld();
+  const removeNew = replace ? registerCapabilityService("mari-actions:changing", {
+    list: () => [{ name: "mutate" }],
+    run: async () => { newRuns++; return { ok: true, value: "new" }; },
+  }) : undefined;
+  finishList([{ name: "mutate" }]);
+  await assert.rejects(pendingRun, /changed while listing/, "stale discovery cannot authorize an action");
+  assert.equal((await pendingList).some((entry) => entry.package === "changing"), false,
+    "an old activation is not advertised after removal or replacement");
+  assert.equal(oldRuns, 0, "a removed activation cannot run after its list resolves");
+  assert.equal(newRuns, 0, "a pending old call is not silently routed to the replacement");
+  if (replace) {
+    assert.equal(await runCapabilityMariAction("changing", "mutate", {}, live), "new");
+    assert.equal(newRuns, 1, "a fresh call may run the replacement activation");
+  }
+  removeNew?.();
+}
 const long = listed[0]!.actions.find((action) => action.name === "long")!;
 assert.ok((long.summary?.length ?? 0) <= 301, "package-authored list text is capped");
 assert.deepEqual(long.inputs, { ok: "fine" }, "only string input descriptions reach Mari");

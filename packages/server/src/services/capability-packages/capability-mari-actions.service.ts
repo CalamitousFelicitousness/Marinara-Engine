@@ -122,7 +122,8 @@ export async function listCapabilityMariActions(
       const service = serviceFor(packageId);
       if (!service) return null;
       try {
-        return { package: packageId, actions: await actionsOf(packageId, service, signal) };
+        const actions = await actionsOf(packageId, service, signal);
+        return serviceFor(packageId) === service ? { package: packageId, actions } : null;
       } catch (error) {
         if (signal.aborted) throw error;
         return null; // One broken or slow package must not hide the others.
@@ -157,6 +158,12 @@ export async function runCapabilityMariAction(
     );
   }
   signal.throwIfAborted();
+  // Discovery can await package code while that activation is disabled, removed or replaced.
+  if (serviceFor(packageId) !== service) {
+    throw new Error(
+      `Package "${packageId}" changed while listing its actions. List its actions again before running one.`,
+    );
+  }
   // The package sees Mari's stop and the deadline through one signal, and the Engine stops waiting on
   // either even if the package ignores it, so a stuck action cannot hold Mari's change lane forever.
   const controller = new AbortController();

@@ -720,6 +720,8 @@ export function takeFromGameInventory(
   name: string,
   count: number,
   from?: GameInventoryBagRef,
+  /** With the player's rules, a bound cursed item is never taken: the curse keeps it. */
+  rules?: GameInventoryItemRules,
 ): { stacks: GameInventoryStack[]; taken: number } {
   // Not held to one stack's bound: the stacks of an item together may hold more than one stack can.
   let left = Number.isFinite(count) ? Math.floor(count) : 0;
@@ -728,6 +730,7 @@ export function takeFromGameInventory(
   let taken = 0;
   for (const { stack, index } of stacksNamed(stacks, name, from)) {
     if (left < 1) break;
+    if (keptByCurse(stack, rules)) continue;
     const take = Math.min(left, stack.quantity);
     left -= take;
     taken += take;

@@ -791,6 +791,13 @@ const apples = (): GameInventoryStack[] => [
   ];
   const mineToo = wearGameInventoryStack(bramsRing, "ring", "bind", next, rules());
   assert.ok(mineToo && !("refused" in mineToo));
+  // Nor use it up by name (a classic fight's Use takes by name), though the Game Master can.
+  assert.deepEqual(takeFromGameInventory(ring.stacks, "ring", 1, undefined, rules()).taken, 0);
+  assert.equal(takeFromGameInventory(ring.stacks, "ring", 1, undefined, rules("game-master")).taken, 1);
+  assert.deepEqual(
+    applyGameInventoryOps(ring.stacks, [{ op: "take", name: "Ring", count: 1 }], next, rules()).results,
+    [{ ok: false, reason: "cursed" }],
+  );
   // Nor can the player give it away or throw it out, though the Game Master can.
   assert.equal(giveGameInventoryStack(ring.stacks, "ring", "Bram", undefined, next, rules()), null);
   assert.equal(setGameInventoryStackQuantity(ring.stacks, "ring", 0, next, rules()), ring.stacks);

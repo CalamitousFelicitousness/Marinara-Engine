@@ -206,9 +206,16 @@ export function applyGameInventoryOps(
         // Which items the name means is settled before the take: once the last stack of an item is
         // gone, the name alone could find another item by its nickname.
         const items = gameInventoryItemsNamed(current, op.name, from);
-        const taken = takeFromGameInventory(current, op.name, op.count, from);
+        const taken = takeFromGameInventory(current, op.name, op.count, from, rules);
         if (taken.taken === 0) {
-          refuse("none-held");
+          // Held, but only as a bound cursed item the player cannot part with.
+          const cursed = current.some(
+            (stack) =>
+              items.has(gameInventoryItemId(stack)) &&
+              (!from || gameInventoryBagKey(stack.holder) === gameInventoryBagKey(from.holder)) &&
+              gameInventoryKeptByCurse(stack, rules),
+          );
+          refuse(cursed ? "cursed" : "none-held");
           break;
         }
         current = taken.stacks;

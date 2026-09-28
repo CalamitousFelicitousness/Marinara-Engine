@@ -163,7 +163,9 @@ export async function loadGameInventoryItemBook(
     actor: who,
     sheets: {
       ...(player ? { player: player.build } : {}),
-      members: cards.filter((card) => card !== player),
+      // Every card by its name, the player's too: a bag is found by its holder's name, and the first
+      // card read for the player may also be a companion's own.
+      members: cards,
     },
   });
 }

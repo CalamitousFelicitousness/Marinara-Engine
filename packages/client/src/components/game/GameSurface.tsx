@@ -7676,32 +7676,34 @@ function GameSurfaceComponent({
     [localizeUi],
   );
 
-  /** Who an addition went to, one line per bag (a ruleset that says what everyone carries may have
-   *  shared it out), and what nobody could carry. */
-  const announceAddition = useCallback(
+  /** Who additions went to, one line per bag each went into (a ruleset that says what everyone
+   *  carries may have shared them out), and in one message, what nobody could carry. */
+  const announceAdditions = useCallback(
     (
-      result: { count?: number; placed?: Array<{ holder?: string; count: number }>; left?: number },
-      name: string,
+      additions: ReadonlyArray<{
+        name: string;
+        result: { count?: number; placed?: Array<{ holder?: string; count: number }>; left?: number };
+      }>,
       holder?: string,
     ) => {
-      const shares = result.placed ?? [{ ...(holder ? { holder } : {}), count: result.count ?? 1 }];
       setInventoryNotifications(
-        shares.map((share) => {
-          const item = inventoryLabel(name, share.count);
-          return {
-            gain: true,
-            text: share.holder
-              ? localizeUi("ui.game.gamesurfacecomponent.inventoryWhoGained", { who: share.holder, item })
-              : localizeUi("ui.game.gamesurfacecomponent.inventoryYouGained", { item }),
-          };
-        }),
+        additions.flatMap(({ name, result }) =>
+          (result.placed ?? [{ ...(holder ? { holder } : {}), count: result.count ?? 1 }]).map((share) => {
+            const item = inventoryLabel(name, share.count);
+            return {
+              gain: true,
+              text: share.holder
+                ? localizeUi("ui.game.gamesurfacecomponent.inventoryWhoGained", { who: share.holder, item })
+                : localizeUi("ui.game.gamesurfacecomponent.inventoryYouGained", { item }),
+            };
+          }),
+        ),
       );
       if (notificationTimerRef.current) clearTimeout(notificationTimerRef.current);
       notificationTimerRef.current = setTimeout(() => setInventoryNotifications([]), 4000);
-      if (result.left) {
-        toast.error(
-          localizeUi("ui.game.gamesurfacecomponent.leftBehindValue1", { value1: inventoryLabel(name, result.left) }),
-        );
+      const left = additions.flatMap(({ name, result }) => (result.left ? [inventoryLabel(name, result.left)] : []));
+      if (left.length > 0) {
+        toast.error(localizeUi("ui.game.gamesurfacecomponent.leftBehindValue1", { value1: left.join(", ") }));
       }
     },
     [inventoryLabel, localizeUi],
@@ -7730,7 +7732,7 @@ function GameSurfaceComponent({
         // Said by the name the stack it went onto is shown by, which may be a nickname.
         const landed = result.id ? inventoryItemsRef.current.find((stack) => stack.id === result.id) : undefined;
         const shownName = landed ? gameInventoryStackLabel(landed) : addedItemName;
-        announceAddition(result, shownName, holder);
+        announceAdditions([{ name: shownName, result }], holder);
         toast.success(localizeUi("ui.game.gamesurfacecomponent.addedValue1ToInventory", { value1: shownName }));
         return result.id ?? null;
       } catch (error) {
@@ -7742,7 +7744,7 @@ function GameSurfaceComponent({
         return null;
       }
     },
-    [activeChatId, announceAddition, commitInventory, inventoryRefusal, localizeUi],
+    [activeChatId, announceAdditions, commitInventory, inventoryRefusal, localizeUi],
   );
 
   /** Items picked from the ruleset, one of each, into one party member's bag (the player's without
@@ -7799,7 +7801,10 @@ function GameSurfaceComponent({
           return result?.ok ? [{ pick, result }] : [];
         });
         if (landed.some(({ result }) => result.placed && result.placed.some((share) => share.holder !== holder))) {
-          landed.forEach(({ pick, result }) => announceAddition(result, pick.name, holder));
+          announceAdditions(
+            landed.map(({ pick, result }) => ({ name: pick.name, result })),
+            holder,
+          );
         } else {
           showInventoryNotification(
             holder
@@ -7820,7 +7825,7 @@ function GameSurfaceComponent({
         return null;
       }
     },
-    [activeChatId, announceAddition, commitInventory, inventoryRefusal, showInventoryNotification, localizeUi],
+    [activeChatId, announceAdditions, commitInventory, inventoryRefusal, showInventoryNotification, localizeUi],
   );
 
   /** One stack put on or taken off, bound or unbound, by whoever carries it. Resolves to the stack it
@@ -8675,8 +8680,10 @@ function GameSurfaceComponent({
     const playerBuild = player ? buildOf(player.card) : undefined;
     return {
       ...(playerBuild ? { player: playerBuild } : {}),
+      // Every card by its name, as the server keeps them: the first card read for the player may also
+      // be a companion's own.
       members: named.flatMap((entry) => {
-        const build = entry === player ? undefined : buildOf(entry.card);
+        const build = buildOf(entry.card);
         return build ? [{ name: entry.name, build }] : [];
       }),
     };

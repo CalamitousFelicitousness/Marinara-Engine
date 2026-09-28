@@ -776,6 +776,12 @@ try {
       ["unbind Widow's ring - ok 1->0"],
     );
     assert.deepEqual(await stacksOf(watch.id), ["Widow's ring 1 player", "Dawn bell 1 player", "Grave spade 1 player"]);
+
+    // When no card has the player's name, the first card is read for the player, and that card's own
+    // bag still reads it too: Bram (Brawn 3) takes all eight rations without strain.
+    const firstOnly = await game("local/ember-carry", ember.version, [{ name: "Bram", rulesetSheet: sheet(3) }]);
+    await change(firstOnly.id, [{ op: "add", name: "Road rations", count: 8, among: ["Bram", ""] }]);
+    assert.deepEqual(await stacksOf(firstOnly.id), ["Road rations 7 Bram", "Road rations 1 Bram"]);
   }
 
   console.info("game inventory turn regressions passed.");

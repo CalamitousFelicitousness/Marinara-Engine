@@ -426,10 +426,14 @@ const apples = (): GameInventoryStack[] => [
     { item: "outfitter/arrows", name: "Arrows", stack: 20 },
     { item: "outfitter/hand-axe", name: "Hand axe" },
     { item: "kit/relic", name: "Relic", stack: 1 },
+    // A layer of this game hides it: it can be held, but not added by its id.
+    { item: "kit/veiled", name: "Veiled lamp" },
   ];
   const rules = (plain: "allow" | "refuse" = "allow"): GameInventoryItemRules => ({
-    itemNamed: (name) => known.find((each) => each.name.toLowerCase() === name.trim().toLowerCase()),
+    itemNamed: (name) =>
+      known.find((each) => each.item !== "kit/veiled" && each.name.toLowerCase() === name.trim().toLowerCase()),
     itemOf: (item) => known.find((each) => each.item === item),
+    offers: (item) => item !== "kit/veiled" && known.some((each) => each.item === item),
     plain,
   });
   let n = 0;
@@ -478,6 +482,7 @@ const apples = (): GameInventoryStack[] => [
     ["Hand axe", "outfitter/hand-axe", 2, "Bram"],
   ]);
   assert.equal(addGameInventoryRulesetItem([], "outfitter/missing", 1, next, undefined, rules()), null);
+  assert.equal(addGameInventoryRulesetItem([], "kit/veiled", 1, next, undefined, rules()), null, "a layer hides it");
   assert.equal(addGameInventoryRulesetItem([], "outfitter/hand-axe", 1, next), null, "no rules, no ruleset items");
 
   // Only the ruleset's items, and items already held, when plain ones are refused.
@@ -492,6 +497,7 @@ const apples = (): GameInventoryStack[] => [
     [
       { op: "add", name: "Rope", count: 1 },
       { op: "add", name: "Relic", item: "kit/missing", count: 1 },
+      { op: "add", name: "Veiled lamp", item: "kit/veiled", count: 1 },
       { op: "add", name: "Relic", item: "kit/relic", count: 1 },
       { op: "add", name: "Relic", item: "kit/relic", count: GAME_INVENTORY_MAX_NEW_STACKS + 1 },
     ],
@@ -500,7 +506,7 @@ const apples = (): GameInventoryStack[] => [
   );
   assert.deepEqual(
     refusedOps.results.map((result) => (result.ok ? "ok" : result.reason)),
-    ["not-ruleset-item", "not-ruleset-item", "ok", "refused"],
+    ["not-ruleset-item", "not-ruleset-item", "not-ruleset-item", "ok", "refused"],
   );
 
   // A stack of arrows holds 20: an addition fills the bag's stacks of it in order, then starts new
@@ -630,6 +636,24 @@ const apples = (): GameInventoryStack[] => [
     [
       ["Arrows", "outfitter/arrows", 3, null],
       ["Old Bitey", "outfitter/hand-axe", 1, null],
+    ],
+  );
+  // With the ruleset's items, an id the ruleset no longer has comes back by its entry's name, while one
+  // a layer hides is still that item.
+  assert.deepEqual(
+    shape(
+      carryGameInventory(
+        [],
+        [
+          { item: "outfitter/gone", name: "Old lantern", description: "", quantity: 1, location: "" },
+          { item: "kit/veiled", name: "Veiled lamp", description: "", quantity: 1, location: "" },
+        ],
+        rules(),
+      ),
+    ),
+    [
+      ["Old lantern", null, 1, null],
+      ["Veiled lamp", "kit/veiled", 1, null],
     ],
   );
   // With the ruleset's items, what comes back is stacked as its item allows, and an entry written

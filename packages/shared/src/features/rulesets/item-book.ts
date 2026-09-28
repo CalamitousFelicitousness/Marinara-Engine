@@ -101,6 +101,7 @@ export function rulesetItemBook(
 ): RulesetItemBook {
   const all = new Map<string, RulesetItemBookEntry>();
   const visible: RulesetItemBookEntry[] = [];
+  const offered = new Set<string>();
   const byName = new Map<string, RulesetItemBookEntry>();
   for (const catalog of definition.catalogs ?? []) {
     if (catalog.holds !== "items") continue;
@@ -118,6 +119,7 @@ export function rulesetItemBook(
       all.set(read.item, read);
       if (catalogEntryHiddenByLayers(definition, options.layerOptions, catalog.id, entry)) continue;
       visible.push(read);
+      offered.add(read.item);
       // Two items of one name: the first the ruleset lists is the one the name finds.
       const key = gameInventoryNameKey(entry.label);
       if (!byName.has(key)) byName.set(key, read);
@@ -126,6 +128,7 @@ export function rulesetItemBook(
   return {
     entries: visible,
     itemOf: (item) => all.get(item),
+    offers: (item) => offered.has(item),
     itemNamed: (name) => byName.get(gameInventoryNameKey(name)),
     plain: options.plain ?? "allow",
   };

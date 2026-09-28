@@ -81,6 +81,9 @@ export interface GameInventoryItemRules {
   itemNamed(name: string): GameInventoryRulesetItem | undefined;
   /** The ruleset's item with this id, while the ruleset still has it. */
   itemOf(item: string): GameInventoryRulesetItem | undefined;
+  /** Whether an item may be added by its id: the ruleset has it and no layer of this game hides it.
+   *  An item a layer hides can still be held, and `itemOf` still reads it. */
+  offers(item: string): boolean;
   /** "refuse" when only the ruleset's items may be added: a player's typed-in item under
    *  `freeform: "refuse"`. */
   plain?: "allow" | "refuse";
@@ -555,7 +558,7 @@ export function addToGameInventoryNamed(
 }
 
 /** One of the ruleset's items added by its id, as `addToGameInventoryNamed` adds by name: refused
- *  when the rules do not have it. */
+ *  when the rules do not offer it (they do not have it, or a layer hides it). */
 export function addGameInventoryRulesetItem(
   stacks: GameInventoryStack[],
   item: string,
@@ -564,7 +567,7 @@ export function addGameInventoryRulesetItem(
   holder?: string,
   rules?: GameInventoryItemRules,
 ): { stacks: GameInventoryStack[]; id: string } | null {
-  const known = rules?.itemOf(item);
+  const known = rules?.offers(item) ? rules.itemOf(item) : undefined;
   if (!known || !Number.isFinite(count)) return null;
   const amount = Math.floor(count);
   if (amount < 1 || amount > GAME_INVENTORY_MAX_QUANTITY) return null;
@@ -835,7 +838,9 @@ export function carryGameInventory(
     // is judged by its name.
     if (typeof item === "string" ? held.has(item) : gameInventoryCount(saved, entry.name) > 0) continue;
     // A ruleset item comes back as that item, under the name its entry shows.
-    const typed = readItemRef(item);
+    // Only one the ruleset still has, when its items are known; any other goes back by its name.
+    const ref = readItemRef(item);
+    const typed = ref && (!rules || rules.itemOf(ref)) ? ref : undefined;
     if (typed) {
       const makeId = () => newGameInventoryStackId(stacks);
       stacks =

@@ -154,9 +154,13 @@ test("a ruleset's items are picked, found by name, shown with what they are and 
       ),
     );
     chats.push(strictId);
-    await openInventory(page, strictId);
-    await expect(page.getByRole("button", { name: "From the ruleset", exact: true })).toBeVisible();
-    await expect(page.getByLabel("Name of the item to add", { exact: true })).toHaveCount(0);
+    // On a page of its own: the first page's start-up script still names the first chat, and the order
+    // two such scripts run in is not defined.
+    const strictPage = await page.context().newPage();
+    await openInventory(strictPage, strictId);
+    await expect(strictPage.getByRole("button", { name: "From the ruleset", exact: true })).toBeVisible();
+    await expect(strictPage.getByLabel("Name of the item to add", { exact: true })).toHaveCount(0);
+    await strictPage.close();
   } finally {
     for (const id of chats) await request.delete(`/api/chats/${id}`);
     for (const id of rulesets) {

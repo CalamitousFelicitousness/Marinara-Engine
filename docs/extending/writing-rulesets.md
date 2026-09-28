@@ -750,7 +750,7 @@ Everything above is checked when the ruleset is imported, and your catalogs of i
 - **`freeform: "refuse"`** leaves the player only your items: the picker, and names that are your items.
 - **What an item is** shows on the selected stack: its category, rarity and tags by their labels, the stats it gives, its summary and how many one stack holds. The picker also shows its `cost`. The Game Master sees each of your items it holds with its category, rarity, tags and the stats you left `promptVisible`, such as `Hand axe [Weapon, Common, Thrown; Damage 1d6, Reach close]`.
 
-Slots, binding and carrying start to change a game in the next release, and `native`, the character sheet, fights and money after that.
+A fight already spends one of your items the way it spends any item. Slots, binding and carrying start to change a game in the next release, and `native`, the character sheet, weapons and armor in a fight, using items by their own rules, and money after that.
 
 ## Battles: lending the sheet to Marinara's combat
 

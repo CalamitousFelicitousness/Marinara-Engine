@@ -672,6 +672,9 @@ try {
     assert.equal(plainRoads.entries.length, 5);
     assert.equal(plainRoads.itemNamed("Waystone"), undefined);
     assert.equal(plainRoads.itemOf("outfitter/waystone")?.name, "Waystone");
+    assert.equal(plainRoads.offers("outfitter/waystone"), false, "nor added by its id");
+    assert.equal(plainRoads.offers("outfitter/hand-axe"), true);
+    assert.equal(plainRoads.offers("outfitter/missing"), false);
     assert.equal(rulesetItemBook(layered, entriesOf(layered)).entries.length, 6, "a layer that is off hides nothing");
     // Two items of one name: the first the ruleset lists is the one the name finds.
     const twice = parsedOrThrow(

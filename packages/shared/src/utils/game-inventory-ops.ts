@@ -145,7 +145,7 @@ export function applyGameInventoryOps(
           ? addGameInventoryRulesetItem(current, op.item, op.count, makeId, bag.holder, rules)
           : addToGameInventoryNamed(current, op.name, op.count, makeId, bag.holder, rules);
         if (!added) {
-          const known = op.item ? rules?.itemOf(op.item) : gameInventoryAddedItem(current, op.name, bag.holder, rules);
+          const known = op.item ? rules?.offers(op.item) : gameInventoryAddedItem(current, op.name, bag.holder, rules);
           refuse(known ? "refused" : "not-ruleset-item");
           break;
         }

@@ -526,7 +526,15 @@ export async function importSTLorebook(
 
     if (existingLorebookId && !createdLorebook) {
       await createChatsStorage(db).pruneLorebookChatMetadata(async (tx) => {
-        const updated = await createLorebooksStorage(tx).update(existingLorebookId, lorebookInput);
+        const transactionalStorage = createLorebooksStorage(tx);
+        const current = await transactionalStorage.getById(existingLorebookId);
+        if (!current) throw new Error("Failed to update lorebook");
+        const updated = await transactionalStorage.update(existingLorebookId, {
+          ...lorebookInput,
+          characterIds: lorebookInput.characterIds
+            ? [...current.characterIds, ...lorebookInput.characterIds]
+            : undefined,
+        });
         if (!updated) throw new Error("Failed to update lorebook");
         if (existingEntryIds.length > 0) {
           await tx.delete(lorebookEntries).where(inArray(lorebookEntries.id, existingEntryIds));

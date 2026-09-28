@@ -1,5 +1,5 @@
 import { constants } from "node:fs";
-import { mkdir, open, writeFile, unlink, lstat } from "node:fs/promises";
+import { mkdir, open, writeFile, unlink } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import {
@@ -36,7 +36,10 @@ export async function discardLorebookImage(image: LorebookEntryImage): Promise<v
 }
 
 /** Strict server-generated paths, bounded reads, and no file symlink traversal. */
-export async function readLorebookImageDataUrl(path: string): Promise<string | null> {
+export async function readLorebookImageDataUrl(
+  path: string,
+  exportBudget?: { remainingBytes: number },
+): Promise<string | null> {
   if (!LOREBOOK_ENTRY_IMAGE_PATH_PATTERN.test(path)) return null;
   const filename = path.slice(path.lastIndexOf("/") + 1);
   try {
@@ -49,11 +52,25 @@ export async function readLorebookImageDataUrl(path: string): Promise<string | n
       if (bytesRead !== buffer.length) return null;
       const info = lorebookImageInfo(buffer);
       if (!info || !filename.endsWith(`.${info.ext}`)) return null;
+      if (exportBudget) {
+        // ponytail: reserve at most 64 MiB of valid images per export before base64 encoding,
+        // plus this bounded 5 MiB read; stream exports if larger selections are needed.
+        if (buffer.length > exportBudget.remainingBytes) {
+          throw Object.assign(
+            new Error(
+              "Reference images exceed the 64 MiB export limit. Export fewer items at a time or use a native profile ZIP.",
+            ),
+            { statusCode: 413 },
+          );
+        }
+        exportBudget.remainingBytes -= buffer.length;
+      }
       return `data:${info.mimeType};base64,${buffer.toString("base64")}`;
     } finally {
       await file.close();
     }
-  } catch {
+  } catch (error) {
+    if (error && typeof error === "object" && "statusCode" in error && error.statusCode === 413) throw error;
     return null;
   }
 }
@@ -63,30 +80,11 @@ export async function embedLorebookImages(
   entries: Array<Record<string, unknown>>,
   exportBudget = { remainingBytes: LOREBOOK_EXPORT_IMAGE_MAX_BYTES },
 ) {
-  // ponytail: in-memory exports reserve at most 64 MiB of reference images per request;
-  // stream the archive and image encoding if larger portable exports are needed.
-  for (const entry of entries) {
-    for (const image of (entry.images ?? []) as LorebookEntryImage[]) {
-      if (!LOREBOOK_ENTRY_IMAGE_PATH_PATTERN.test(image.path)) continue;
-      const filename = image.path.slice(image.path.lastIndexOf("/") + 1);
-      const stat = await lstat(join(lorebookImagesDirectory(), filename)).catch(() => null);
-      if (!stat?.isFile() || stat.size > LOREBOOK_IMAGE_MAX_BYTES) continue;
-      if (stat.size > exportBudget.remainingBytes) {
-        throw Object.assign(
-          new Error(
-            "Reference images exceed the 64 MiB export limit. Export fewer items at a time or use a native profile ZIP.",
-          ),
-          { statusCode: 413 },
-        );
-      }
-      exportBudget.remainingBytes -= stat.size;
-    }
-  }
   const portable: Array<Record<string, unknown>> = [];
   for (const entry of entries) {
     const images: Array<{ dataUrl: string; caption: string }> = [];
     for (const image of (entry.images ?? []) as LorebookEntryImage[]) {
-      const dataUrl = await readLorebookImageDataUrl(image.path);
+      const dataUrl = await readLorebookImageDataUrl(image.path, exportBudget);
       // A missing file is already lost; skipping it keeps the rest of the export usable.
       if (!dataUrl) {
         logger.warn("[lorebooks] Skipping missing reference image %s for entry %s", image.path, String(entry.name));

@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
 import { characterDataSchema } from "../../packages/shared/dist/index.js";
 import { closeDB, getDB } from "../../packages/server/src/db/connection.js";
+import { eq } from "../../packages/server/src/db/file-query.js";
+import { lorebookCharacterLinks } from "../../packages/server/src/db/schema/index.js";
 import { charactersRoutes } from "../../packages/server/src/routes/characters.routes.js";
 import { embedLorebookIntoCharacter } from "../../packages/server/src/services/lorebook/character-book-sync.js";
 import { createCharactersStorage } from "../../packages/server/src/services/storage/characters.storage.js";
@@ -36,6 +38,24 @@ try {
   assert.equal(entries.length, 1);
   assert.notEqual(entries[0]!.id, original.id, "reimport replaces the original entries");
   assert.equal(entries[0]!.content, "Embedded fact");
+
+  const other = (await characters.create(characterDataSchema.parse({ name: "Other linked character" })))!;
+  for (const legacyOnly of [false, true]) {
+    await lorebooks.update(book.id, { characterIds: legacyOnly ? [other.id] : [character.id, other.id] });
+    if (legacyOnly) {
+      await db.delete(lorebookCharacterLinks).where(eq(lorebookCharacterLinks.lorebookId, book.id));
+    }
+    const sharedReimport = await app.inject({
+      method: "POST",
+      url: `/api/characters/${character.id}/embedded-lorebook/import`,
+    });
+    assert.equal(sharedReimport.statusCode, 200, sharedReimport.body);
+    assert.deepEqual(
+      new Set((await lorebooks.getById(book.id))!.characterIds),
+      new Set([character.id, other.id]),
+      `reimport restores its owner without removing an existing ${legacyOnly ? "legacy" : "shared"} link`,
+    );
+  }
 } finally {
   await app.close();
   await closeDB();

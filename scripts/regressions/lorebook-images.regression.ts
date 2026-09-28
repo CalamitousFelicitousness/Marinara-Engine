@@ -3,7 +3,7 @@ import { lorebookEntries } from "../../packages/server/src/db/schema/lorebooks.j
 import { backupRoutes } from "../../packages/server/src/routes/backup.routes.js";
 import AdmZip from "../../node_modules/adm-zip/adm-zip.js";
 import assert from "node:assert/strict";
-import { mkdir, symlink, writeFile, unlink, readFile, readdir, truncate } from "node:fs/promises";
+import { mkdir, symlink, writeFile, unlink, readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { getDB, closeDB } from "../../packages/server/src/db/connection.js";
 import { createCharactersStorage } from "../../packages/server/src/services/storage/characters.storage.js";
@@ -20,8 +20,6 @@ import {
   lorebookImagesDirectory,
   embedCharacterBookImages,
   embedLorebookImages,
-  LOREBOOK_IMAGE_MAX_BYTES,
-  LOREBOOK_EXPORT_IMAGE_MAX_BYTES,
 } from "../../packages/server/src/services/lorebook/lorebook-images.js";
 import { ZodError } from "../../packages/server/node_modules/zod/index.js";
 import { characterDataSchema, createLorebookEntrySchema } from "../../packages/shared/dist/index.js";
@@ -199,25 +197,14 @@ try {
     (error: any) => error.statusCode === 413 && /64 MiB.*fewer items/.test(error.message),
     "aggregate export bytes are bounded across successive books and callers",
   );
-  const oversizedBook = (await storage.create({ name: "Oversized reference export" }))!;
-  const largeReference = await saveLorebookImage(png);
-  const largeFile = join(lorebookImagesDirectory(), largeReference.path.split("/").at(-1)!);
-  // A sparse file proves the route's size guard without allocating large image buffers.
-  await truncate(largeFile, LOREBOOK_IMAGE_MAX_BYTES);
-  for (let index = 0; index <= Math.floor(LOREBOOK_EXPORT_IMAGE_MAX_BYTES / LOREBOOK_IMAGE_MAX_BYTES); index++) {
-    await storage.createEntry({ lorebookId: oversizedBook.id, name: String(index), images: [largeReference] });
-  }
-  for (const format of ["native", "compatible"]) {
-    const oversized = await app.inject({
-      method: "POST",
-      url: "/api/lorebooks/export-bulk",
-      payload: { ids: [oversizedBook.id], format },
-    });
-    assert.equal(oversized.statusCode, 413, "oversized reference exports produce a clear client error");
-    assert.match(oversized.json().error, /64 MiB.*fewer items/);
-  }
-  await storage.remove(oversizedBook.id);
-  await unlink(largeFile);
+  const corrupt = await saveLorebookImage(png);
+  const corruptFile = join(lorebookImagesDirectory(), corrupt.path.split("/").at(-1)!);
+  await writeFile(corruptFile, Buffer.alloc(png.length));
+  const validBudget = { remainingBytes: png.length };
+  const partlyReadable = await embedLorebookImages([{ images: [corrupt, image] }], validBudget);
+  assert.equal(partlyReadable[0]!.images.length, 1, "skipped corrupt files do not displace valid export images");
+  assert.equal(validBudget.remainingBytes, 0);
+  await unlink(corruptFile);
   const profileResponse = await app.inject("/api/backup/export-profile");
   assert.equal(profileResponse.statusCode, 200, profileResponse.body);
   const profile = profileResponse.json();

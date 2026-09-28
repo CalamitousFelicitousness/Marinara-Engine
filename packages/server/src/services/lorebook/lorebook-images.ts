@@ -64,10 +64,11 @@ export async function embedLorebookImages(entries: Array<Record<string, unknown>
     const images: Array<{ dataUrl: string; caption: string }> = [];
     for (const image of (entry.images ?? []) as LorebookEntryImage[]) {
       const dataUrl = await readLorebookImageDataUrl(image.path);
-      if (!dataUrl)
-        throw Object.assign(new Error(`Cannot export missing reference image for ${String(entry.name)}`), {
-          statusCode: 409,
-        });
+      // A missing file is already lost; skipping it keeps the rest of the export usable.
+      if (!dataUrl) {
+        logger.warn("[lorebooks] Skipping missing reference image %s for entry %s", image.path, String(entry.name));
+        continue;
+      }
       images.push({ dataUrl, caption: image.caption });
     }
     portable.push({ ...entry, images });
@@ -115,8 +116,12 @@ export async function saveDecodedLorebookImages(decoded: DecodedLorebookImage[])
       }
     }
   } catch (error) {
-    for (const image of images)
-      if (!decoded.some((item) => "path" in item && item.path === image.path)) await discardLorebookImage(image);
+    for (const image of images) {
+      if (decoded.some((item) => "path" in item && item.path === image.path)) continue;
+      await discardLorebookImage(image).catch((cleanupError: unknown) =>
+        logger.warn(cleanupError, "Failed to remove a partially saved lorebook image"),
+      );
+    }
     throw error;
   }
   return images;

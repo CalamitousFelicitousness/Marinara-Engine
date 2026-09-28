@@ -9,11 +9,25 @@ import type { LorebookImageEntry } from "../generation/lorebook-image-prompt.js"
 import type { ActivatedEntry } from "./keyword-scanner.js";
 
 /** Same per-image estimate used by provider context fitting. */
+function estimateLorebookImageTokens(images: Array<{ caption: string }> = []): number {
+  return images.reduce((tokens, image) => tokens + 256 + estimateTextTokens(image.caption), 0);
+}
+
 export function estimateLorebookEntryTokens(entry: { content: string; images?: Array<{ caption: string }> }): number {
-  return (
-    estimateTextTokens(entry.content) +
-    (entry.images ?? []).reduce((tokens, image) => tokens + 256 + estimateTextTokens(image.caption), 0)
-  );
+  return estimateTextTokens(entry.content) + estimateLorebookImageTokens(entry.images);
+}
+
+/** Fit an entry into a budget, dropping its images before its text so text-only retries keep the lore. */
+export function fitLorebookEntryToBudget(
+  candidate: ActivatedEntry,
+  fits: (tokens: number) => boolean,
+): { candidate: ActivatedEntry; tokens: number } | null {
+  const tokens = estimateLorebookEntryTokens(candidate.entry);
+  if (fits(tokens)) return { candidate, tokens };
+  if (!candidate.entry.images?.length) return null;
+  const textTokens = estimateTextTokens(candidate.entry.content);
+  if (!fits(textTokens)) return null;
+  return { candidate: { ...candidate, entry: { ...candidate.entry, images: [] } }, tokens: textTokens };
 }
 
 /** A prompt message ready for injection. */
@@ -154,13 +168,13 @@ export function applyTokenBudget(activatedEntries: ActivatedEntry[], tokenBudget
   });
 
   for (const entry of sorted) {
-    const entryTokens = estimateLorebookEntryTokens(entry.entry);
-    if (totalTokens + entryTokens > tokenBudget) {
+    const fitted = fitLorebookEntryToBudget(entry, (tokens) => totalTokens + tokens <= tokenBudget);
+    if (!fitted) {
       // Budget exhausted — skip remaining entries
       break;
     }
-    totalTokens += entryTokens;
-    result.push(entry);
+    totalTokens += fitted.tokens;
+    result.push(fitted.candidate);
   }
 
   return result;
@@ -207,7 +221,9 @@ export function processActivatedEntries(
   const outlets = Object.fromEntries(Array.from(outletParts, ([name, parts]) => [name, parts.join("\n")]));
 
   // Estimate tokens
-  const totalTokensEstimate = budgeted.reduce((tokens, a) => tokens + estimateLorebookEntryTokens(a.entry), 0);
+  const totalTokensEstimate =
+    estimateTextTokens(budgeted.map((a) => a.entry.content).join("")) +
+    budgeted.reduce((tokens, a) => tokens + estimateLorebookImageTokens(a.entry.images), 0);
 
   return {
     worldInfoBefore: before,

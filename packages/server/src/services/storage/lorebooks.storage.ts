@@ -31,6 +31,7 @@ import {
 import {
   collectEffectivelyDisabledFolderIds,
   collectFolderSubtreeIds,
+  MAX_LOREBOOK_ENTRY_IMAGES,
   parseLorebookDecisionActivation,
 } from "@marinara-engine/shared";
 import { normalizeTimestampOverrides, type TimestampOverrides } from "../import/import-timestamps.js";
@@ -875,7 +876,8 @@ export function createLorebooksStorage(db: DB) {
           .where(and(eq(lorebookEntries.id, id), eq(lorebookEntries.lorebookId, lorebookId)));
         if (!row) return false;
         const images = createLorebookEntrySchema.shape.images.parse(JSON.parse(row.images || "[]"));
-        if (images.length >= 4) throw new Error("Maximum 4 images per entry");
+        if (images.length >= MAX_LOREBOOK_ENTRY_IMAGES)
+          throw new Error(`Maximum ${MAX_LOREBOOK_ENTRY_IMAGES} images per entry`);
         await tx
           .update(lorebookEntries)
           .set({ images: JSON.stringify([...images, validated]), updatedAt: now() })

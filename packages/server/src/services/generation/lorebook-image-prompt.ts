@@ -65,5 +65,8 @@ export async function appendLorebookImageMessages<T extends ChatMLMessage>(
     }
   }
   const firstHistory = messages.findIndex((message) => message.contextKind === "history");
-  messages.splice(firstHistory >= 0 ? firstHistory : messages.length, 0, ...(references as T[]));
+  // Without history, a trailing assistant message is the prefill and must stay last.
+  const insertAt =
+    firstHistory >= 0 ? firstHistory : messages.at(-1)?.role === "assistant" ? messages.length - 1 : messages.length;
+  messages.splice(insertAt, 0, ...(references as T[]));
 }

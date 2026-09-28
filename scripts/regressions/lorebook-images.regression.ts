@@ -257,6 +257,17 @@ try {
     !replaced.lorebookScanResult?.imageEntries?.some((entry) => entry.id === outlet.id),
     "marker replacement cannot claim an Outlet from discarded template text",
   );
+  const conditional = await assemblePrompt({
+    ...promptInput,
+    sections: [
+      promptInput.sections[0]!,
+      makeSection("outlet", 'kept {{#if char == "Nobody At All"}}{{outlet::outfit}}{{/if}}'),
+    ],
+  });
+  assert.ok(
+    !conditional.lorebookScanResult?.imageEntries?.find((entry) => entry.id === outlet.id)?.outletUsed,
+    "an Outlet removed by a conditional cannot claim its images",
+  );
   const used = await assemblePrompt({
     ...promptInput,
     sections: [promptInput.sections[0]!, makeSection("outlet", "{{outlet::outfit}}")],
@@ -377,8 +388,7 @@ try {
   await unlink(join(lorebookImagesDirectory(), filename));
   await unlink(join(lorebookImagesDirectory(), image.path.split("/").pop()!));
   const missingExport = await app.inject("/api/backup/export-profile?format=compatible");
-  assert.equal(missingExport.statusCode, 409, missingExport.body);
-  assert.match(missingExport.json().error, /Cannot export missing reference image/);
+  assert.equal(missingExport.statusCode, 200, "a missing reference image must not abort the whole export");
   console.info("Lorebook image storage, routes and portable import/export regressions passed");
 } finally {
   await app.close();

@@ -387,6 +387,7 @@ const JSON_COLUMNS: Record<string, readonly string[]> = {
   library_folders: ["itemIds"],
   lorebook_entries: [
     "keys",
+    "images",
     "secondaryKeys",
     "characterFilterIds",
     "characterTagFilters",
@@ -1203,6 +1204,7 @@ export function buildLorebookEntryCreateRow(
     generationTriggerFilterMode: "any",
     generationTriggerFilters: [],
     additionalMatchingSources: [],
+    images: [],
     position: firstNumber(data, ["position"]) ?? 0,
     outletName: firstString(data, ["outletName", "outlet_name"]) ?? "",
     depth: firstNumber(data, ["depth"]) ?? 4,

@@ -31,7 +31,12 @@ import {
   updateTimingStatesForScan,
 } from "./keyword-scanner.js";
 import type { LorebookImageEntry } from "../generation/lorebook-image-prompt.js";
-import { applyTokenBudget, estimateLorebookEntryTokens, processActivatedEntries } from "./prompt-injector.js";
+import {
+  applyTokenBudget,
+  estimateLorebookEntryTokens,
+  fitLorebookEntryToBudget,
+  processActivatedEntries,
+} from "./prompt-injector.js";
 
 export interface LorebookScanResult {
   worldInfoBefore: string;
@@ -677,8 +682,12 @@ function applyCurrentLocationLoreBudget(
   const skipped: LorebookBudgetSkippedEntry[] = [];
   let usedTokens = 0;
   for (const candidate of [...candidates].sort(lorebookSelectionOrder)) {
-    const estimatedTokens = estimateLorebookEntryTokens(candidate.entry);
-    if (tokenBudget > 0 && usedTokens + estimatedTokens > tokenBudget) {
+    const fitted = fitLorebookEntryToBudget(
+      candidate,
+      (tokens) => tokenBudget <= 0 || usedTokens + tokens <= tokenBudget,
+    );
+    if (!fitted) {
+      const estimatedTokens = estimateLorebookEntryTokens(candidate.entry);
       skipped.push({
         id: candidate.entry.id,
         name: candidate.entry.name,
@@ -696,8 +705,8 @@ function applyCurrentLocationLoreBudget(
       });
       continue;
     }
-    selected.push(candidate);
-    usedTokens += estimatedTokens;
+    selected.push(fitted.candidate);
+    usedTokens += fitted.tokens;
   }
   return { selected: selected.sort(lorebookInjectionOrder), skipped };
 }
@@ -718,13 +727,17 @@ function trySelectBudgetedLorebookEntry(
   const lorebookEntryCount = state.perLorebookEntryCounts.get(lorebookId) ?? 0;
   if (lorebookEntryCount >= lorebookEntryLimit) return { selected: false };
 
-  const entryTokens = estimateLorebookEntryTokens(candidate.entry);
   const lorebookBudget = lorebook?.tokenBudget ?? 0;
   const lorebookTokens = state.perLorebookTokens.get(lorebookId) ?? 0;
-  const exceedsLorebookBudget = lorebookBudget > 0 && lorebookTokens + entryTokens > lorebookBudget;
-  const exceedsGlobalBudget = tokenBudget > 0 && state.totalTokens + entryTokens > tokenBudget;
+  const exceedsLorebookBudget = (tokens: number) => lorebookBudget > 0 && lorebookTokens + tokens > lorebookBudget;
+  const exceedsGlobalBudget = (tokens: number) => tokenBudget > 0 && state.totalTokens + tokens > tokenBudget;
+  const fitted = fitLorebookEntryToBudget(
+    candidate,
+    (tokens) => !exceedsLorebookBudget(tokens) && !exceedsGlobalBudget(tokens),
+  );
 
-  if (exceedsLorebookBudget || exceedsGlobalBudget) {
+  if (!fitted) {
+    const entryTokens = estimateLorebookEntryTokens(candidate.entry);
     return {
       selected: false,
       skipped: {
@@ -734,18 +747,19 @@ function trySelectBudgetedLorebookEntry(
         lorebookUsedTokens: lorebookTokens,
         chatBudget: tokenBudget,
         chatUsedTokens: state.totalTokens,
-        blockedBy: getBudgetSkipReason(exceedsLorebookBudget, exceedsGlobalBudget),
+        blockedBy: getBudgetSkipReason(exceedsLorebookBudget(entryTokens), exceedsGlobalBudget(entryTokens)),
       },
     };
   }
 
-  state.selected.push(candidate);
+  const entryTokens = fitted.tokens;
+  state.selected.push(fitted.candidate);
   state.selectedIds.add(candidate.entry.id);
   state.perLorebookTokens.set(lorebookId, lorebookTokens + entryTokens);
   state.perLorebookEntryCounts.set(lorebookId, lorebookEntryCount + 1);
   state.totalTokens += entryTokens;
 
-  return { selected: true, entry: candidate };
+  return { selected: true, entry: fitted.candidate };
 }
 
 function toBudgetSkippedEntries(

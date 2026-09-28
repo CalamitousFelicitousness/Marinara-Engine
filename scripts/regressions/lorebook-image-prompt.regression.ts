@@ -7,7 +7,10 @@ import {
 } from "../../packages/server/src/services/llm/base-provider.js";
 import { withLorebookImageCompatibility } from "../../packages/server/src/services/llm/lorebook-image-provider.js";
 import { appendLorebookImageMessages } from "../../packages/server/src/services/generation/lorebook-image-prompt.js";
-import { saveLorebookImage } from "../../packages/server/src/services/lorebook/lorebook-images.js";
+import {
+  discardLorebookImage,
+  saveLorebookImage,
+} from "../../packages/server/src/services/lorebook/lorebook-images.js";
 import { processActivatedEntries } from "../../packages/server/src/services/lorebook/prompt-injector.js";
 import { scopeLorebookScanResultToCharacterContext } from "../../packages/server/src/services/lorebook/index.js";
 import { createLorebookEntrySchema, type LorebookEntry, type ChatMLMessage } from "../../packages/shared/dist/index.js";
@@ -38,6 +41,9 @@ assert.equal(
   undefined,
   "budget-rejected entries carry no images",
 );
+const textOnly = processActivatedEntries([activation], 50);
+assert.equal(textOnly.totalEntries, 1, "entry text that fits the budget survives when its images do not");
+assert.equal(textOnly.imageEntries, undefined, "over-budget images are dropped before the entry text");
 const processed = processActivatedEntries([activation], 500);
 assert.equal(processed.imageEntries?.length, 1);
 assert.ok(processed.totalTokensEstimate >= 256, "images contribute to budget estimates");
@@ -58,6 +64,12 @@ await appendLorebookImageMessages(outletMessages, [
   { ...processed.imageEntries![0]!, position: 7, content: "", outletUsed: true },
 ]);
 assert.equal(outletMessages.length, 2, "used images-only outlet sends its references");
+const prefilled: ChatMLMessage[] = [
+  { role: "system", content: processed.worldInfoBefore, contextKind: "prompt" },
+  { role: "assistant", content: "Prefill" },
+];
+await appendLorebookImageMessages(prefilled, processed.imageEntries);
+assert.equal(prefilled.at(-1)?.content, "Prefill", "references never follow an assistant prefill");
 const scan = {
   ...processed,
   activatedEntryIds: [entry.id],
@@ -144,4 +156,5 @@ await assert.rejects(async () => {
   }
 }, /not support/);
 assert.equal(partial.requests.length, 1, "streamed output must never be replayed");
+await discardLorebookImage(image);
 console.info("Lorebook image prompt regressions passed");

@@ -944,13 +944,23 @@ async function resolveSection(
     }
   }
 
-  // Track outlets from the content actually resolved, after marker replacement.
-  const imageOutlets = contentMacrosResolved
-    ? []
-    : [...content.matchAll(/\{\{\s*outlet\s*::([^{}]+)\}\}/gi)].map((match) => match[1]!.trim());
+  // Track only outlets that macro resolution actually reads, so conditionals that drop one also drop its images.
+  const imageOutlets = new Set<string>();
+  const outlets = ctx.macroCtx.outlets;
+  const macroCtx = outlets
+    ? {
+        ...ctx.macroCtx,
+        outlets: new Proxy(outlets, {
+          get(target, key, receiver) {
+            if (typeof key === "string" && Object.hasOwn(target, key)) imageOutlets.add(key);
+            return Reflect.get(target, key, receiver);
+          },
+        }),
+      }
+    : ctx.macroCtx;
 
   // Resolve macros
-  content = contentMacrosResolved ? content : resolveMacros(content, ctx.macroCtx, macroOptions);
+  content = contentMacrosResolved ? content : resolveMacros(content, macroCtx, macroOptions);
   if (!content.trim()) return null;
   for (const name of imageOutlets) ctx.usedImageOutlets.add(name);
   const shouldWrapRuntimeAgentSection = Boolean(

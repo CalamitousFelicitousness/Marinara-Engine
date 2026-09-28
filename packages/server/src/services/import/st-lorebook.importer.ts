@@ -393,6 +393,7 @@ export async function importSTLorebook(
   const restoredImages = new Map<(typeof entryList)[number], Awaited<ReturnType<typeof saveDecodedLorebookImages>>>();
   let lorebook: Record<string, unknown> | null = null;
   const createdEntryIds: string[] = [];
+  let committed = false;
   const existingEntryIds: string[] = [];
   let createdLorebook = false;
   try {
@@ -520,6 +521,8 @@ export async function importSTLorebook(
       imported++;
     }
 
+    // Past this point the new entries own their images; rolling them back would lose both old and new entries.
+    committed = true;
     if (existingLorebookId && !createdLorebook) {
       await storage.update(existingLorebookId, lorebookInput);
       for (const id of existingEntryIds) await storage.removeEntry(id);
@@ -534,6 +537,7 @@ export async function importSTLorebook(
       reimported: !!existingLorebookId,
     };
   } catch (error) {
+    if (committed) throw error;
     if (createdLorebook && lorebook) await storage.remove(lorebook.id as string);
     else for (const id of createdEntryIds) await storage.removeEntry(id);
     await discardImportedLorebookImages(restoredImages.values(), decodedImages.values());

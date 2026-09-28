@@ -2513,7 +2513,10 @@ export async function chatsRoutes(app: FastifyInstance) {
         const contextFlagChanged =
           Object.prototype.hasOwnProperty.call(partial, "isConversationStart") ||
           Object.prototype.hasOwnProperty.call(partial, "conversationStartForCharacterIds");
-        const updated = contextFlagChanged
+        const syncSharedExtraAtomically =
+          contextFlagChanged ||
+          MESSAGE_MARK_EXTRA_KEYS.some((key) => Object.prototype.hasOwnProperty.call(partial, key));
+        const updated = syncSharedExtraAtomically
           ? await storage.updateMessageExtraWithContextStart(
               req.params.messageId,
               partial,
@@ -2543,7 +2546,7 @@ export async function chatsRoutes(app: FastifyInstance) {
           if (userReacted) recordUserReaction(req.params.chatId);
         }
 
-        if (!contextFlagChanged && Object.keys(syncAllSwipeExtra).length > 0) {
+        if (!syncSharedExtraAtomically && Object.keys(syncAllSwipeExtra).length > 0) {
           // Message-level fields stay stable across swipe changes.
           const swipes = await storage.getSwipes(req.params.messageId);
           for (const swipe of swipes) {

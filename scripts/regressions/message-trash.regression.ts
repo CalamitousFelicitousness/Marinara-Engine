@@ -276,7 +276,7 @@ try {
   assert(preparedPrompt.includes("LATEST_CONTEXT_SENTINEL_6698"));
   assert(!preparedPrompt.includes("PRIVATE_NOTE_MUST_NOT_REACH_PROMPT_6698"));
 
-  for (let index = 0; index < 9; index += 1) {
+  for (let index = 0; index < MAX_PINNED_CONTEXT_MESSAGES - 1; index += 1) {
     await storage.createMessage({
       chatId: "chat-message-trash",
       role: "user",
@@ -286,23 +286,115 @@ try {
   }
   const concurrentPinTargets = await Promise.all(
     ["pin-race-a", "pin-race-b"].map((content) =>
-      storage.createMessage({ chatId: "chat-message-trash", role: "user", content } as never),
+      storage.createMessage({
+        chatId: "chat-message-trash",
+        role: "assistant",
+        content,
+        extra: { translation: "Active translation" },
+      } as never),
     ),
   );
+  for (const target of concurrentPinTargets) await storage.addSwipe(target!.id, "Inactive alternate", true);
   const concurrentPinResults = await Promise.all(
     concurrentPinTargets.map((target) =>
       app!.inject({
         method: "PATCH",
-        url: `/api/chats/chat-message-trash/messages/${target!.id}/extra`,
-        payload: { pinnedToContext: true },
+        url: `/api/chats/chat-message-trash/messages/${target!.id}/extra?swipeIndex=1`,
+        payload: {
+          pinnedToContext: true,
+          bookmark: true,
+          privateNote: "Shared private note",
+          translation: "Inactive translation",
+        },
       }),
     ),
   );
   assert.deepEqual(
     concurrentPinResults.map((result) => result.statusCode).sort(),
     [200, 409],
-    "the per-chat pin cap remains enforced under concurrent updates",
+    "the per-chat pin cap remains enforced under concurrent inactive-swipe updates",
   );
+  const markedTarget = concurrentPinTargets[concurrentPinResults.findIndex((result) => result.statusCode === 200)]!;
+  const markedMessage = (await storage.getMessage(markedTarget.id))!;
+  const markedExtra = JSON.parse(markedMessage.extra);
+  assert.equal(markedMessage.activeSwipeIndex, 0);
+  assert.equal(markedExtra.pinnedToContext, true, "an inactive swipe pin immediately counts at message level");
+  assert.equal(markedExtra.privateNote, "Shared private note");
+  assert.ok(markedExtra.bookmark);
+  assert.equal(markedExtra.translation, "Active translation", "inactive data cannot overwrite the active swipe");
+  for (const swipe of await storage.getSwipes(markedTarget.id)) {
+    const extra = JSON.parse(swipe.extra!);
+    assert.equal(extra.pinnedToContext, true);
+    assert.equal(extra.privateNote, "Shared private note");
+    assert.deepEqual(extra.bookmark, markedExtra.bookmark);
+    assert.equal(extra.translation, swipe.index === 0 ? "Active translation" : "Inactive translation");
+  }
+  await storage.setActiveSwipe(markedTarget.id, 1);
+  assert.equal(JSON.parse((await storage.getMessage(markedTarget.id))!.extra).pinnedToContext, true);
+  await storage.setActiveSwipe(markedTarget.id, 0);
+  const clearedMarks = await app.inject({
+    method: "PATCH",
+    url: `/api/chats/chat-message-trash/messages/${markedTarget.id}/extra?swipeIndex=1`,
+    payload: { pinnedToContext: false, bookmark: null, privateNote: null },
+  });
+  assert.equal(clearedMarks.statusCode, 200, clearedMarks.body);
+  assert.deepEqual(JSON.parse(clearedMarks.json().extra), {
+    ...markedExtra,
+    pinnedToContext: false,
+    bookmark: null,
+    privateNote: null,
+  });
+  const remainingTarget = concurrentPinTargets.find((target) => target!.id !== markedTarget.id)!;
+  const activePin = await app.inject({
+    method: "PATCH",
+    url: `/api/chats/chat-message-trash/messages/${remainingTarget.id}/extra?swipeIndex=0`,
+    payload: { pinnedToContext: true, translation: "Updated active translation" },
+  });
+  assert.equal(activePin.statusCode, 200, "unpinning an inactive swipe frees the message's pin slot");
+  assert.equal(JSON.parse(activePin.json().extra).translation, "Updated active translation");
+  await app.inject({
+    method: "PATCH",
+    url: `/api/chats/chat-message-trash/messages/${remainingTarget.id}/extra`,
+    payload: { pinnedToContext: false },
+  });
+  await storage.addSwipe(markedTarget.id, "Concurrent swipe target", true);
+  let releaseMarkQueue!: () => void;
+  const markQueueGate = new Promise<void>((resolve) => {
+    releaseMarkQueue = resolve;
+  });
+  const heldMarkQueue = withMessageExtraPatchQueue(markedTarget.id, () => markQueueGate);
+  try {
+    const marking = app.inject({
+      method: "PATCH",
+      url: `/api/chats/chat-message-trash/messages/${markedTarget.id}/extra?swipeIndex=1`,
+      payload: { pinnedToContext: true, bookmark: true, privateNote: "Raced note" },
+    });
+    // Resident file-store preflight reads settle before the next immediate, queuing marks before the swipe.
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const switching = app.inject({
+      method: "PUT",
+      url: `/api/chats/chat-message-trash/messages/${markedTarget.id}/active-swipe`,
+      payload: { index: 2 },
+    });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    releaseMarkQueue();
+    for (const result of await Promise.all([marking, switching])) assert.equal(result.statusCode, 200, result.body);
+  } finally {
+    releaseMarkQueue();
+    await heldMarkQueue;
+  }
+  const racedMessage = (await storage.getMessage(markedTarget.id))!;
+  assert.equal(racedMessage.activeSwipeIndex, 2);
+  const racedExtra = JSON.parse(racedMessage.extra);
+  assert.equal(racedExtra.pinnedToContext, true, "a queued swipe cannot discard a just-saved pin");
+  assert.equal(racedExtra.privateNote, "Raced note");
+  assert.ok(racedExtra.bookmark);
+  const overLimitAfterSwipe = await app.inject({
+    method: "PATCH",
+    url: `/api/chats/chat-message-trash/messages/${remainingTarget.id}/extra`,
+    payload: { pinnedToContext: true },
+  });
+  assert.equal(overLimitAfterSwipe.statusCode, 409, "the raced pin still occupies its slot");
   const restorable = await storage.createMessage({
     chatId: "chat-message-trash",
     role: "assistant",

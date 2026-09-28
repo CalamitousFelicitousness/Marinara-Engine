@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Message marks stay consistent during swipe changes and inactive-swipe edits, preserving the context-pin limit and each swipe's own data.
+
 - Enabling or disabling selected lorebooks includes books hidden by filters, and Undo changes only the books updated by that action.
 
 - Restore all preserves conflicts reported by completed batches when a later batch fails, even if no messages were restored.

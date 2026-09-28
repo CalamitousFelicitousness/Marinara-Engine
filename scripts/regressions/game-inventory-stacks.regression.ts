@@ -35,6 +35,7 @@ import {
   gameInventoryTotals,
   mergeGameInventoryStacks,
   normalizeGameInventoryStacks,
+  sameGameInventory,
   renameGameInventoryStack,
   setGameInventoryStackQuantity,
   splitGameInventoryStack,
@@ -580,6 +581,14 @@ const apples = (): GameInventoryStack[] => [
     ["Rope", null, 1, null],
     ["Arrows", "outfitter/arrows", 17, "Bram"],
   ]);
+  // Past what the receiver's stack can take, the rest starts a new stack in their bag.
+  const overflowing = giveGameInventoryStack(given.stacks, "a1", "Bram", 18, next, rules())!;
+  assert.deepEqual(shape(overflowing.stacks), [
+    ["Rope", null, 1, null],
+    ["Arrows", "outfitter/arrows", 20, "Bram"],
+    ["Arrows", "outfitter/arrows", 15, "Bram"],
+  ]);
+  assert.equal(overflowing.id, "a3", "the receiver's stack it went onto first");
   // A plain item has no such limit.
   assert.deepEqual(shape(addToGameInventoryNamed(heldRope, "Rope", 500, next)!.stacks), [["Rope", null, 501, null]]);
 
@@ -597,6 +606,14 @@ const apples = (): GameInventoryStack[] => [
   assert.ok(splitGameInventoryStack(quivers, "a1", 5, next).every((stack) => stack.name !== "Arrows" || stack.item));
   assert.equal(renameGameInventoryStack(quivers, "a1", "Quiver")!.stacks[0]!.item, "outfitter/arrows");
   assert.deepEqual(gameInventoryTotals(quivers)[0], { name: "Arrows", quantity: 35, item: "outfitter/arrows" });
+  // Two inventories that differ only in which item a stack is are not the same inventory.
+  assert.equal(
+    sameGameInventory(
+      [{ id: "x", name: "Arrows", item: "outfitter/arrows", quantity: 1 }],
+      [{ id: "x", name: "Arrows", quantity: 1 }],
+    ),
+    false,
+  );
 
   // A new session brings back a ruleset item the detailed inventory names and no stack holds as that
   // item, under the name its entry shows, and never adds one a stack still holds.

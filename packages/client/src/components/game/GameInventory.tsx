@@ -540,7 +540,7 @@ export function GameInventory({
         </DndContext>
 
         {/* Action bar */}
-        {(selectedItem || onAddItem || picksItems) && (
+        {(selectedItem || typesItems || picksItems) && (
           <div className="border-t border-white/8 bg-white/[0.02] px-4 py-2.5">
             {selectedInventoryItem && (
               <div className="mb-2 whitespace-normal break-words text-[0.7rem] font-medium text-white/60 [overflow-wrap:anywhere]">

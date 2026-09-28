@@ -2953,8 +2953,7 @@ export const ChatArea = memo(function ChatArea() {
     isFetchingNextPage,
     fetchNextPage,
     localizeUi,
-    chat?.id,
-    chat?.mode,
+    chat,
     chatDetailFetched,
   ]);
 

@@ -5,6 +5,23 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 ## [Unreleased]
 
 - Search across chats with phrase and filter support, inspect chat statistics and activity, and export readable Markdown or HTML transcripts. Internal and hidden-from-user content stays excluded from these views (#6698).
+- OpenAI-compatible text-to-speech can request PCM output and play it as WAV without changing the audio samples. Custom providers must supply the sample rate and channel count; malformed or incomplete PCM is rejected instead of playing distorted audio (#6709).
+
+- Define per-chat variables in **Chat Settings → Chat Variables**. Set `char1` to `Mary` and use `{{char1}}` in a message: the AI reads Mary while the message keeps the tag. Changes apply to earlier turns too. Values survive restarts, include variables set by prompts, and respect preset-variable precedence. Your edits take priority over pending generation writes.
+
+- Phone navigation keeps Home and Chats visible, moves secondary panels into a keyboard-accessible More menu, and improves touch targets and stacked-dialog focus (#6698).
+
+- Roleplay chats can tune recent summaries, older semantic matches, and minimum relevance per chat using the existing summary retrieval controls (#6705).
+
+- Memory recall rebuilds now batch embedding requests for long chats and preserve the previous native index when a rebuild fails or is canceled (#6708).
+
+- Everyone in a Game Mode party carries their own things. The inventory opens on **All**, which shows who carries each stack, with a tab per party member; **Give** hands some or all of a stack to someone else, and dragging a stack onto a tab gives them all of it. The Game Master can say who gains, loses or hands over an item, and its inventory changes are now made by the server when the reply is saved, so they apply even when nobody is reading and a refused one is reported back to it. Every change saves the stacks, the detailed inventory and the journal together, including items a fight uses. Regenerating a reply, or swiping to another version of it, no longer adds its inventory changes on top of the version it replaces, and deleting a version or branching the chat keeps each version's inventory with it (#6772, #6774).
+
+- Character and persona gallery image downloads preserve the iPhone/iPad Home Screen app, using native sharing when available and keeping previews dismissible when saving is cancelled or fails (#6784).
+
+- Character-sheet generation can optionally use the character's saved neutral full-body sprite as a reference, on its own or together with the current avatar.
+
+- Persona sheet generation can use a saved neutral full-body sprite as a reference, alone or alongside the current avatar (#6786).
 
 - Game Mode rulesets can describe items. An `items` block declares the categories, rarities, tags, stats, slots, binding limit, carrying and currency families a ruleset's items are written in, and a catalog of items lists each one with its stats, slots, stack size, cost and binding. Everything is checked at import, both example rulesets carry items, and the author guide explains every key. Nothing in a game reads items yet; the inventory, the sheet and fights take them up next (#6765).
 

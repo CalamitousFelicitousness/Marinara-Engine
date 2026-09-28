@@ -10,6 +10,10 @@ import {
   DECISION_PROMPT_QUESTION_LIMIT_SETTINGS_KEY,
   parseDecisionPromptQuestionLimit,
   PROFESSOR_MARI_ID,
+  CHAT_VARIABLE_STORED_NAME_RE,
+  MAX_CHAT_VARIABLES,
+  MAX_CHAT_VARIABLE_VALUE_LENGTH,
+  validateChatVariableName,
   createChatSchema,
   createMessageSchema,
   appendChatSummaryEntryToMetadata,
@@ -42,7 +46,9 @@ import {
   formatRpgStatsForPrompt,
   normalizeRpgStatPools,
   characterDataSchema,
+  readGameInventoryTurn,
   rulesetLiveStatesSchema,
+  semanticSummaryRetrievalSettingsSchema,
 } from "@marinara-engine/shared";
 import type {
   CharacterData,
@@ -70,6 +76,7 @@ import {
   readRoleplayInterruption,
   parseMessageCursor,
   withChatMetadataPatchQueue,
+  withChatSwipeSelectionQueue,
 } from "../services/storage/chats.storage.js";
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
 import { createCharactersStorage } from "../services/storage/characters.storage.js";
@@ -109,6 +116,7 @@ import {
 } from "../services/spatial-context/projection.js";
 import { createSpatialContextStorage } from "../services/storage/spatial-context.storage.js";
 import { restoreBranchHudLists, trimJournalForBranch } from "../services/game/branch-state.js";
+import { removeGameInventoryTelling, switchGameInventoryTelling } from "../services/game/game-inventory.service.js";
 import { applyAllSegmentEdits, applyMessageSegmentEdits } from "../services/game/segment-edits.js";
 import type { Journal } from "../services/game/journal.service.js";
 import { createRegexScriptsStorage } from "../services/storage/regex-scripts.storage.js";
@@ -1271,6 +1279,17 @@ export async function chatsRoutes(app: FastifyInstance) {
     const chat = await storage.getById(req.params.id);
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
     const incoming = req.body as Record<string, unknown>;
+    const summaryRetrievalFieldSchemas = {
+      semanticSummaryRecentCount: semanticSummaryRetrievalSettingsSchema.shape.semanticSummaryRecentCount,
+      semanticSummaryOlderCount: semanticSummaryRetrievalSettingsSchema.shape.semanticSummaryOlderCount,
+      semanticSummaryMinSimilarity: semanticSummaryRetrievalSettingsSchema.shape.semanticSummaryMinSimilarity,
+    } as const;
+    for (const [key, schema] of Object.entries(summaryRetrievalFieldSchemas)) {
+      if (!Object.prototype.hasOwnProperty.call(incoming, key)) continue;
+      const parsed = schema.safeParse(incoming[key]);
+      if (!parsed.success) return reply.status(400).send({ error: "Invalid semantic summary retrieval settings" });
+      incoming[key] = parsed.data;
+    }
     // Validate Discord webhook URL if provided
     if (typeof incoming.discordWebhookUrl === "string" && incoming.discordWebhookUrl.trim()) {
       const url = incoming.discordWebhookUrl.trim();
@@ -1305,6 +1324,72 @@ export async function chatsRoutes(app: FastifyInstance) {
         return reply.status(400).send({ error: "excludedLorebookIds must be an array of strings" });
       }
       incoming.excludedLorebookIds = Array.from(new Set(incoming.excludedLorebookIds as string[]));
+    }
+    if (Object.prototype.hasOwnProperty.call(incoming, "macroVariables")) {
+      // Chat variables are merged, never replaced: a generation running right
+      // now persists its own {{setvar}} writes into this same map, and metadata
+      // patches replace top-level keys, so sending the whole map would drop
+      // whatever that generation just saved. A null value means "remove this
+      // name" — an absent name is simply untouched.
+      const rawVariables = incoming.macroVariables;
+      if (!rawVariables || typeof rawVariables !== "object" || Array.isArray(rawVariables)) {
+        return reply.status(400).send({ error: "macroVariables must be an object" });
+      }
+      // This branch answers on its own, so it must not swallow the handling the
+      // keys below would have received.
+      if (Object.keys(incoming).length > 1) {
+        return reply.status(400).send({ error: "macroVariables must be patched on its own" });
+      }
+      const removedNames = new Set<string>();
+      // Null-prototype: assigning a string to a plain object's "__proto__" key
+      // hits the prototype setter and is silently dropped, so an existing
+      // variable of that name (only {{setvar}} can create one) would never
+      // update. Spreading this later copies the key as an own property.
+      const changedValues: Record<string, string> = Object.create(null) as Record<string, string>;
+      for (const [name, value] of Object.entries(rawVariables as Record<string, unknown>)) {
+        if (!CHAT_VARIABLE_STORED_NAME_RE.test(name)) {
+          return reply.status(400).send({ error: `Invalid chat variable name: ${name}` });
+        }
+        if (value === null) {
+          removedNames.add(name);
+          continue;
+        }
+        if (typeof value !== "string") {
+          return reply.status(400).send({ error: `Chat variable ${name} must be a string or null` });
+        }
+        if (value.length > MAX_CHAT_VARIABLE_VALUE_LENGTH) {
+          return reply.status(400).send({ error: `Chat variable ${name} is too long` });
+        }
+        changedValues[name] = value;
+      }
+      const { normalizeChatMacroVariables } = await import("../services/prompt/index.js");
+      let overflowed = false;
+      let invalidName: string | undefined;
+      const updated = await storage.patchMetadata(req.params.id, (freshMeta) => {
+        const saved = normalizeChatMacroVariables(freshMeta.macroVariables);
+        // Only names that still exist may use legacy setvar spelling.
+        invalidName = Object.keys(changedValues).find(
+          (name) => !Object.hasOwn(saved, name) && validateChatVariableName(name) !== null,
+        );
+        if (invalidName !== undefined) return {};
+        const merged = { ...saved, ...changedValues };
+        for (const name of removedNames) delete merged[name];
+        // normalizeChatMacroVariables keeps only the first MAX_CHAT_VARIABLES
+        // entries, so without this a name past the cap would be dropped while
+        // the request reported success.
+        if (Object.keys(merged).length > MAX_CHAT_VARIABLES) {
+          overflowed = true;
+          return {}; // change nothing; `incoming` still holds the unvalidated map
+        }
+        return { macroVariables: normalizeChatMacroVariables(merged) };
+      });
+      if (invalidName !== undefined) {
+        return reply.status(400).send({ error: `Invalid chat variable name: ${invalidName}` });
+      }
+      if (overflowed) {
+        return reply.status(400).send({ error: `A chat cannot hold more than ${MAX_CHAT_VARIABLES} variables` });
+      }
+      return updated ? normalizeChatForResponse(updated) : updated;
     }
     if (incoming.conversationSchedulesEnabled === false) {
       // Chat-scoped only: drop this chat's cached copy, but leave the character
@@ -3733,6 +3818,28 @@ export async function chatsRoutes(app: FastifyInstance) {
     },
   );
 
+  /** A deleted swipe leaves a game's record of that turn's tellings (#6774) counted as the message's
+   *  swipes are. The swipe is gone either way, so a failure here drops the record rather than leave
+   *  it pointing at the wrong tellings. */
+  const forgetInventoryTelling = async (
+    chatId: string,
+    messageId: string,
+    removed: number,
+    wasShown: boolean,
+    shown: number,
+  ) => {
+    try {
+      await removeGameInventoryTelling(app.db, chatId, messageId, removed, wasShown, shown);
+    } catch (err) {
+      logger.error(err, "[chats] Could not update the inventory for swipe %d of %s", removed, messageId);
+      // Without the record a later telling adds on top instead of starting the turn again, which
+      // is how every turn behaved before it; stale indexes could show the wrong telling's stacks.
+      await storage
+        .patchMetadata(chatId, { gameInventoryTurn: null })
+        .catch((clearErr) => logger.error(clearErr, "[chats] Could not drop the inventory record of %s", messageId));
+    }
+  };
+
   // Delete a swipe without deleting the parent message
   app.delete<{ Params: { chatId: string; messageId: string; index: string } }>(
     "/:chatId/messages/:messageId/swipes/:index",
@@ -3742,22 +3849,33 @@ export async function chatsRoutes(app: FastifyInstance) {
         return reply.status(400).send({ error: "Valid swipe index is required" });
       }
 
-      const swipes = await storage.getSwipes(req.params.messageId);
-      if (swipes.length <= 1) {
-        return reply.status(400).send({ error: "Cannot delete the last remaining swipe" });
-      }
+      // One at a time with swipe switches, since both move which telling a game's inventory follows.
+      return withChatSwipeSelectionQueue(req.params.chatId, async () => {
+        const swipes = await storage.getSwipes(req.params.messageId);
+        if (swipes.length <= 1) {
+          return reply.status(400).send({ error: "Cannot delete the last remaining swipe" });
+        }
 
-      const target = swipes.find((swipe: any) => swipe.index === index);
-      if (!target) {
-        return reply.status(404).send({ error: "Swipe not found" });
-      }
+        const target = swipes.find((swipe: any) => swipe.index === index);
+        if (!target) {
+          return reply.status(404).send({ error: "Swipe not found" });
+        }
 
-      const updated = await storage.removeSwipe(req.params.messageId, index);
-      if (!updated) {
-        return reply.status(404).send({ error: "Message not found" });
-      }
+        const previous = await storage.getMessage(req.params.messageId);
+        const updated = await storage.removeSwipe(req.params.messageId, index);
+        if (!updated) {
+          return reply.status(404).send({ error: "Message not found" });
+        }
 
-      return updated;
+        await forgetInventoryTelling(
+          req.params.chatId,
+          req.params.messageId,
+          index,
+          (previous?.activeSwipeIndex ?? 0) === index,
+          updated.activeSwipeIndex ?? 0,
+        );
+        return updated;
+      });
     },
   );
 
@@ -3770,21 +3888,29 @@ export async function chatsRoutes(app: FastifyInstance) {
         return reply.status(400).send({ error: "Valid swipe index is required" });
       }
 
-      const message = await storage.getMessage(req.params.messageId);
-      if (!message || message.chatId !== req.params.chatId) {
-        return reply.status(404).send({ error: "Message not found" });
-      }
-      const swipes = await storage.getSwipes(req.params.messageId);
-      if (!swipes.some((swipe: any) => swipe.index === keepIndex)) {
-        return reply.status(404).send({ error: "Swipe not found" });
-      }
+      return withChatSwipeSelectionQueue(req.params.chatId, async () => {
+        const message = await storage.getMessage(req.params.messageId);
+        if (!message || message.chatId !== req.params.chatId) {
+          return reply.status(404).send({ error: "Message not found" });
+        }
+        const swipes = await storage.getSwipes(req.params.messageId);
+        if (!swipes.some((swipe: any) => swipe.index === keepIndex)) {
+          return reply.status(404).send({ error: "Swipe not found" });
+        }
 
-      // Descending indexes keep the selected swipe stable until lower rows are
-      // removed, after which the existing removal path shifts it safely to 0.
-      for (const swipe of [...swipes].sort((a: any, b: any) => b.index - a.index)) {
-        if (swipe.index !== keepIndex) await storage.removeSwipe(req.params.messageId, swipe.index);
-      }
-      return storage.getMessage(req.params.messageId);
+        // Descending indexes keep the selected swipe stable until lower rows are
+        // removed, after which the existing removal path shifts it safely to 0.
+        let shown = message.activeSwipeIndex ?? 0;
+        for (const swipe of [...swipes].sort((a: any, b: any) => b.index - a.index)) {
+          if (swipe.index === keepIndex) continue;
+          const updated = await storage.removeSwipe(req.params.messageId, swipe.index);
+          if (!updated) continue;
+          const wasShown = shown === swipe.index;
+          shown = updated.activeSwipeIndex ?? 0;
+          await forgetInventoryTelling(req.params.chatId, req.params.messageId, swipe.index, wasShown, shown);
+        }
+        return storage.getMessage(req.params.messageId);
+      });
     },
   );
 
@@ -3793,7 +3919,46 @@ export async function chatsRoutes(app: FastifyInstance) {
     "/:chatId/messages/:messageId/active-swipe",
     async (req) => {
       const { index } = req.body as { index: number };
-      return storage.setActiveSwipe(req.params.messageId, index);
+      return withChatSwipeSelectionQueue(req.params.chatId, async () => {
+        const previous = await storage.getMessage(req.params.messageId);
+        const updated = await storage.setActiveSwipe(req.params.messageId, index);
+        // A Game Mode inventory follows the telling that is shown, as long as nothing changed it since
+        // the telling left it (#6774). Only a game that remembers a turn has anything to switch.
+        if (updated && previous && (previous.activeSwipeIndex ?? 0) !== index) {
+          try {
+            const chat = await storage.getById(req.params.chatId);
+            let meta: Record<string, unknown> = {};
+            try {
+              meta = typeof chat?.metadata === "string" ? JSON.parse(chat.metadata) : (chat?.metadata ?? {});
+            } catch {
+              meta = {};
+            }
+            // Null when the stacks changed since that telling: then they are left as the player has
+            // them, on purpose. Only a failure to read or save lands in the catch.
+            if (readGameInventoryTurn(meta.gameInventoryTurn)?.messageId === req.params.messageId) {
+              await switchGameInventoryTelling(
+                app.db,
+                req.params.chatId,
+                req.params.messageId,
+                previous.activeSwipeIndex ?? 0,
+                index,
+              );
+            }
+          } catch (err) {
+            // The inventory could not follow, so the telling is put back rather than shown without it,
+            // unless the player has picked another one since, which is theirs to keep.
+            logger.error(err, "[chats] Could not switch the inventory to swipe %d of %s", index, req.params.messageId);
+            const now = await storage.getMessage(req.params.messageId).catch(() => null);
+            if ((now?.activeSwipeIndex ?? 0) === index) {
+              await storage.setActiveSwipe(req.params.messageId, previous.activeSwipeIndex ?? 0).catch((restoreErr) => {
+                logger.error(restoreErr, "[chats] Could not put swipe %s back", req.params.messageId);
+              });
+            }
+            throw err;
+          }
+        }
+        return updated;
+      });
     },
   );
 
@@ -4050,7 +4215,8 @@ export async function chatsRoutes(app: FastifyInstance) {
       collectExportJournalNpcNames(metadata, charNameMap),
     );
     const persona = await buildPersonaSnapshotForChat(app, chat);
-    const { buildPromptMacroContext, resolvePromptMessageMacros } = await import("../services/prompt/index.js");
+    const { buildPromptMacroContext, resolvePromptMessageMacros, normalizeChatMacroVariables } =
+      await import("../services/prompt/index.js");
     const exportCharacterIds = resolveActiveCharacterIds(charIds, metadata, {
       mode: (chat.mode as string | undefined) ?? "roleplay",
       allowEmpty: true,
@@ -4072,6 +4238,9 @@ export async function chatsRoutes(app: FastifyInstance) {
           : null,
       lastInput: [...msgs].reverse().find((msg) => msg.role === "user")?.content,
       chatId: chat.id,
+      // Without the chat's own variables an exported transcript would print a
+      // raw {{char1}} where the model was sent "Mary".
+      localVariables: normalizeChatMacroVariables(metadata.macroVariables),
       lastGenerationType: "export",
       macroSources: msgs.map((message) => message.content),
     });
@@ -4595,6 +4764,13 @@ export async function chatsRoutes(app: FastifyInstance) {
         : undefined;
     const branchCharacterIds = resolveChatCharacterIds(newChat.characterIds);
     settingsToKeep = remapAdvancedMemoryMetadata(settingsToKeep, sourceToBranchedMessageId, branchCharacterIds);
+    // A game's record of one turn's tellings (#6774) follows that turn into the branch, whose copy
+    // keeps every swipe index. A branch that stops before the turn has nothing for it to follow.
+    const inventoryTurn = readGameInventoryTurn(settingsToKeep.gameInventoryTurn);
+    const branchedInventoryTurnId = inventoryTurn && sourceToBranchedMessageId.get(inventoryTurn.messageId);
+    if (branchedInventoryTurnId)
+      settingsToKeep.gameInventoryTurn = { ...inventoryTurn, messageId: branchedInventoryTurnId };
+    else delete settingsToKeep.gameInventoryTurn;
     // #5406: `settingsToKeep` is the source metadata verbatim, which carries its
     // `metadataWriteOrdinals` mirror. Inherit the source's write-ordinal counter too, or the
     // branch's first allocation would come in BELOW the stamps it just copied and invert the

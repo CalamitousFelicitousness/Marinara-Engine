@@ -1067,6 +1067,21 @@ function RulesetItemDetails({ details, bound }: { details: RulesetItemBookEntry;
       </div>
       {stats && <div className="text-[0.65rem] leading-tight text-white/70">{stats}</div>}
       {details.summary && <div className="text-[0.65rem] leading-tight text-white/55">{details.summary}</div>}
+      {details.invented && (
+        <div className="text-[0.65rem] leading-tight text-white/45">
+          <div>{localizeUi("ui.game.gameinventory.invented")}</div>
+          {details.invented.notes.length > 0 && (
+            <details className="mt-0.5">
+              <summary className="cursor-pointer">{localizeUi("ui.game.gameinventory.inventedChanges")}</summary>
+              <ul className="mt-0.5 space-y-0.5 pl-2">
+                {details.invented.notes.map((note) => (
+                  <li key={note}>{note}</li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </div>
+      )}
       {details.stack !== undefined && (
         <div className="text-[0.65rem] leading-tight text-white/45">
           {localizeUi("ui.game.gameinventory.stackHolds", { max: details.stack })}

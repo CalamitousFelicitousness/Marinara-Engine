@@ -1,6 +1,7 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { seedUIState } from "./ui-state-fixture.js";
+import { inventoryButton } from "./game-inventory-fixture.js";
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 
@@ -63,11 +64,7 @@ async function openInventory(page: Page, chatId: string) {
     { id: chatId, appVersion: version },
   );
   await page.goto("/");
-  await page
-    .getByRole("button", { name: /Inventory/ })
-    .filter({ visible: true })
-    .first()
-    .click({ timeout: 30000 });
+  await inventoryButton(page).click({ timeout: 30000 });
 }
 
 async function pick(page: Page, names: string[]) {
@@ -177,11 +174,7 @@ test("a ruleset's items are placed by who can carry them, worn with Equipped, an
     });
     expect(heavier.ok(), await heavier.text()).toBeTruthy();
     await page.reload();
-    await page
-      .getByRole("button", { name: /Inventory/ })
-      .filter({ visible: true })
-      .first()
-      .click({ timeout: 30000 });
+    await inventoryButton(page).click({ timeout: 30000 });
     await page.getByRole("button", { name: "All", exact: true }).click();
     const from = await page.getByRole("button", { name: /^Arrows x2, carried by / }).boundingBox();
     const onto = await slot("Arrows x9, carried by Bram").boundingBox();

@@ -12,7 +12,7 @@ import { existsSync, readFileSync } from "fs";
 import { basename, extname, join } from "path";
 import { z } from "zod";
 import { estimateTextTokens, sliceTextToTokenBudget } from "@marinara-engine/shared";
-import { carryGameInventory } from "@marinara-engine/shared";
+import { carryGameInventory, rulesetInventedItemRef } from "@marinara-engine/shared";
 import { eq } from "../db/file-query.js";
 import { IMPORTED_GAME_ENGINE_ANCHOR_PREFIX } from "../db/file-backed-store.js";
 import { chats as chatsTable } from "../db/schema/index.js";
@@ -7355,6 +7355,24 @@ export async function gameRoutes(app: FastifyInstance) {
         gamePartyCharacterIds: carriedPartyIds,
         enableAgents: carriedSetupConfig?.enableAgents ?? prevMeta.enableAgents === true,
         ...(carriedInventory.length > 0 ? { gameInventory: carriedInventory } : {}),
+        // The items the Game Master invented come along while anyone still holds them: one nothing
+        // holds is never read again. Without the ruleset to read them they are kept as saved, by the
+        // same rule.
+        ...(carryRules || prevMeta.gameInventedItems !== undefined
+          ? {
+              gameInventedItems: (carryRules
+                ? carryRules.inventedItems()
+                : Array.isArray(prevMeta.gameInventedItems)
+                  ? (prevMeta.gameInventedItems as unknown[])
+                  : []
+              ).filter((made) => {
+                const id = made && typeof made === "object" ? (made as { id?: unknown }).id : undefined;
+                return (
+                  typeof id === "string" && carriedInventory.some((stack) => stack.item === rulesetInventedItemRef(id))
+                );
+              }),
+            }
+          : {}),
       };
       await chats.updateMetadata(newChat.id, updatedNewMeta);
 

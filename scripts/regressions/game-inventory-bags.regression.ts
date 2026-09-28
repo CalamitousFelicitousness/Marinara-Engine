@@ -720,6 +720,28 @@ try {
       [{ name: "Elixir", type: "heal" }],
       "an effect named by the nickname reaches it too",
     );
+    // A take answers with how many are left of the item it took, even once the last stack of it is gone
+    // and the name alone would now find another item by its nickname.
+    const lastRope = applyGameInventoryOps(cordCalledRope, [{ op: "take", name: "rope", count: 2 }]);
+    assert.deepEqual(lastRope.stacks, [cordCalledRope[0]]);
+    assert.deepEqual(lastRope.results, [{ ok: true, count: 2, now: 0 }]);
+    // A give by a nickname answers with how many of the item the receiver holds, though nothing of
+    // theirs carries that nickname.
+    const toBramsRope = applyGameInventoryTags(
+      `[inventory: action="give" item="Grandpa's rope" count="1" to="Bram"]`,
+      [
+        { id: "a", name: "Rope", nickname: "Grandpa's rope", quantity: 3 },
+        { id: "b", name: "Rope", quantity: 2, holder: "Bram" },
+      ],
+      party,
+      nextId,
+    );
+    assert.deepEqual(
+      readResolvedInventoryTags(toBramsRope.content).map(
+        (tag) => `${tag.ok ? `ok ${tag.count}->${tag.now}` : tag.reason}`,
+      ),
+      ["ok 1->3"],
+    );
     // Taking by a nickname takes the item from every stack of it, whatever each one is called.
     const split = [
       { id: "g", name: "Apple", nickname: "Green apple", quantity: 100 },

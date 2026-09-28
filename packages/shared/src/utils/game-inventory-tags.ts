@@ -13,7 +13,8 @@ import {
   type GameInventoryOpResult,
 } from "./game-inventory-ops.js";
 import {
-  gameInventoryCount,
+  gameInventoryCountItems,
+  gameInventoryItemsNamed,
   giveFromGameInventoryNamed,
   type GameInventoryBagRef,
   type GameInventoryStack,
@@ -136,13 +137,16 @@ export function applyGameInventoryTags(
           return serializeInventoryTag(shown, { ok: false, reason: to && !to.ok ? to.reason : "no-recipient" });
         if (!to.bag) return serializeInventoryTag(shown, { ok: false, reason: "no-recipient" });
         // Stack by stack, so the item stays the same item and a nickname stays on its stack.
+        // The items it names are settled first, and counted by item in the receiver's bag, where the
+        // name may be a nickname nothing there carries.
+        const items = gameInventoryItemsNamed(current, item, who.bag ?? {});
         const handed = giveFromGameInventoryNamed(current, item, request.count, who.bag ?? {}, to.bag.holder, newId);
         if (handed.given === 0) return serializeInventoryTag(shown, { ok: false, reason: "none-held" });
         current = handed.stacks;
         return serializeInventoryTag(shown, {
           ok: true,
           count: handed.given,
-          now: gameInventoryCount(current, item, to.bag),
+          now: gameInventoryCountItems(current, items, to.bag),
         });
       })
       .join(" ");

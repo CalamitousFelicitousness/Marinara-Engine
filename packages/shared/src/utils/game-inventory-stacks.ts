@@ -221,6 +221,32 @@ function itemsNamed(stacks: readonly GameInventoryStack[], name: string): Set<st
   return new Set(nicknamed.length > 0 ? nicknamed.map(gameInventoryItemId) : [own]);
 }
 
+/**
+ * The items a name means, read against one bag's stacks when `from` is given (as a take or a give by
+ * name reads it). Settled before a change, so what the change did can be counted afterwards by item,
+ * even once the stacks the name was found on are gone.
+ */
+export function gameInventoryItemsNamed(
+  stacks: readonly GameInventoryStack[],
+  name: string,
+  from?: GameInventoryBagRef,
+): Set<string> {
+  return itemsNamed(from ? stacks.filter((stack) => inBag(stack, from)) : stacks, name);
+}
+
+/** How many stacks of these items hold, across every bag or in one bag's. */
+export function gameInventoryCountItems(
+  stacks: readonly GameInventoryStack[],
+  items: ReadonlySet<string>,
+  from?: GameInventoryBagRef,
+): number {
+  return stacks.reduce(
+    (total, stack) =>
+      total + (items.has(gameInventoryItemId(stack)) && (!from || inBag(stack, from)) ? stack.quantity : 0),
+    0,
+  );
+}
+
 /** One line of `gameInventoryTotals`: an item, the name it is shown by, and how many there are. */
 export interface GameInventoryTotal {
   name: string;

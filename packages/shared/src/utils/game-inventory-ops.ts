@@ -15,8 +15,9 @@ import {
   addToGameInventoryNamed,
   cleanGameInventoryHolder,
   gameInventoryBagKey,
-  gameInventoryCount,
+  gameInventoryCountItems,
   gameInventoryItemId,
+  gameInventoryItemsNamed,
   gameInventoryNameKey,
   gameInventoryStackLabel,
   giveGameInventoryStack,
@@ -153,13 +154,16 @@ export function applyGameInventoryOps(
       }
       case "take": {
         const from = op.from ? { holder: cleanGameInventoryHolder(op.from.holder) } : undefined;
+        // Which items the name means is settled before the take: once the last stack of an item is
+        // gone, the name alone could find another item by its nickname.
+        const items = gameInventoryItemsNamed(current, op.name, from);
         const taken = takeFromGameInventory(current, op.name, op.count, from);
         if (taken.taken === 0) {
           refuse("none-held");
           break;
         }
         current = taken.stacks;
-        results.push({ ok: true, count: taken.taken, now: gameInventoryCount(current, op.name, from) });
+        results.push({ ok: true, count: taken.taken, now: gameInventoryCountItems(current, items, from) });
         if (op.as) journal.push({ item: op.name.trim(), action: op.as, quantity: taken.taken });
         break;
       }
@@ -235,7 +239,7 @@ export function applyGameInventoryOps(
           ok: true,
           id: given.id,
           count: op.count ?? stack.quantity,
-          now: gameInventoryCount(current, stack.name, to),
+          now: gameInventoryCountItems(current, new Set([gameInventoryItemId(stack)]), to),
         });
         break;
       }

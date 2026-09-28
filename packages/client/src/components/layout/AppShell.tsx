@@ -287,7 +287,7 @@ export function AppShell() {
     let frame = 0;
     let focusTimers: number[] = [];
     let orientationTimers: number[] = [];
-    let largestViewportHeight = window.visualViewport?.height ?? window.innerHeight;
+    let largestViewportHeight = 0;
     const supportsVirtualKeyboard = navigator.maxTouchPoints > 0 || window.matchMedia("(any-pointer: coarse)").matches;
     const isIosWebKit = isIosWebKitBrowser(navigator.userAgent, navigator.platform, navigator.maxTouchPoints);
     root.toggleAttribute("data-mari-ios-webkit", isIosWebKit);
@@ -296,21 +296,27 @@ export function AppShell() {
       frame = requestAnimationFrame(() => {
         frame = 0;
         const viewport = window.visualViewport;
-        // Pinch zoom changes the visible area, not the keyboard or layout size.
-        // Keep the unzoomed geometry so scene media magnifies with the page.
-        if (viewport && Math.abs(viewport.scale - 1) > 0.01) return;
-        const heightCandidates = [viewport?.height, window.innerHeight, root.clientHeight].filter(
-          (value): value is number => typeof value === "number" && Number.isFinite(value) && value > 0,
-        );
-        const height = heightCandidates.length > 0 ? Math.min(...heightCandidates) : window.innerHeight;
-        largestViewportHeight = Math.max(largestViewportHeight, height);
+        const scale = viewport && Number.isFinite(viewport.scale) && viewport.scale > 0 ? viewport.scale : 1;
+        // Compare heights at the same zoom level so pinch zoom alone does not
+        // look like a keyboard. Keyboard changes must still update a zoomed chat.
+        const heightCandidates = [
+          viewport ? viewport.height * scale : undefined,
+          window.innerHeight,
+          root.clientHeight,
+        ].filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value > 0);
+        const unzoomedHeight = heightCandidates.length > 0 ? Math.min(...heightCandidates) : window.innerHeight;
+        largestViewportHeight = Math.max(largestViewportHeight, unzoomedHeight);
+        const keyboardOpen = supportsVirtualKeyboard && largestViewportHeight - unzoomedHeight >= 80;
+        // Preserve normal pinch magnification, but fit the visible area while
+        // the keyboard is open. Closing it restores the layout even while zoomed.
+        const height =
+          keyboardOpen && viewport && viewport.height > 0 ? Math.min(unzoomedHeight, viewport.height) : unzoomedHeight;
         const layoutViewportHeight = isIosWebKit ? largestViewportHeight : window.innerHeight;
         const maxOffsetTop = Math.max(0, layoutViewportHeight - height);
         const visualViewportTop = Math.max(0, viewport?.offsetTop ?? 0, viewport?.pageTop ?? 0);
         const offsetTop = Math.min(maxOffsetTop, visualViewportTop);
         root.style.setProperty("--mari-visual-viewport-height", `${Math.max(0, Math.round(height))}px`);
         root.style.setProperty("--mari-visual-viewport-offset-top", `${Math.round(offsetTop)}px`);
-        const keyboardOpen = supportsVirtualKeyboard && largestViewportHeight - height >= 80;
         root.toggleAttribute("data-mari-software-keyboard-open", keyboardOpen);
         dispatchChatVisualViewportChange({
           height,

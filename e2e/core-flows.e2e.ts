@@ -21431,7 +21431,7 @@ test("zoomed mobile chat keeps the composer above the keyboard and restores on d
             }
           ).__setMarinaraVisualViewport(height, top, top, layoutHeight, scale);
         },
-        { height, top, scale, layoutHeight },
+        { height, top, scale, layoutHeight: page.viewportSize()?.height ?? layoutHeight },
       );
 
     for (const scale of [1.05, 1.25, 2]) {
@@ -21474,9 +21474,28 @@ test("zoomed mobile chat keeps the composer above the keyboard and restores on d
     await setViewport(160, 0, 2);
     await expect(page.locator("html")).toHaveAttribute("data-mari-software-keyboard-open", "");
     await expect.poll(async () => (await shell.boundingBox())?.height).toBe(160);
-    await setViewport(300, 0, 2);
+    // Keep tracking if split-view is resized with the keyboard already open.
+    await page.setViewportSize({ width: 360, height: 700 });
+    await setViewport(210, 0, 2);
+    await expect.poll(async () => (await shell.boundingBox())?.height).toBe(210);
+    await expect(page.locator("html")).toHaveAttribute("data-mari-software-keyboard-open", "");
+    await setViewport(350, 0, 2);
+    await expect.poll(async () => (await shell.boundingBox())?.height).toBe(700);
     await expect(page.locator("html")).not.toHaveAttribute("data-mari-software-keyboard-open");
-    await expect.poll(async () => (await shell.boundingBox())?.height).toBe(600);
+    // Android may resize the layout viewport too. Height-only keyboard
+    // updates must retain its baseline across a subsequent width change.
+    await page.setViewportSize({ width: 360, height: 420 });
+    await setViewport(210, 0, 2);
+    await expect.poll(async () => (await shell.boundingBox())?.height).toBe(210);
+    await expect(page.locator("html")).toHaveAttribute("data-mari-software-keyboard-open", "");
+    await page.setViewportSize({ width: 320, height: 360 });
+    await setViewport(180, 0, 2);
+    await expect.poll(async () => (await shell.boundingBox())?.height).toBe(180);
+    await expect(page.locator("html")).toHaveAttribute("data-mari-software-keyboard-open", "");
+    await page.setViewportSize({ width: 320, height: 640 });
+    await setViewport(320, 0, 2);
+    await expect.poll(async () => (await shell.boundingBox())?.height).toBe(640);
+    await expect(page.locator("html")).not.toHaveAttribute("data-mari-software-keyboard-open");
   } finally {
     await page.request.delete(`/api/chats/${chat.id}?force=true`);
   }

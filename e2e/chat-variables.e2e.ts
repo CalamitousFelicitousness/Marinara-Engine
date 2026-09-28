@@ -49,7 +49,9 @@ async function holdFirstMetadataPatch(
   });
   let held = false;
   await page.route(`**/api/chats/${chatId}/metadata`, async (route) => {
-    if (route.request().method() === "PATCH" && !held) {
+    const request = route.request();
+    const body = request.method() === "PATCH" ? request.postDataJSON() : null;
+    if (body && Object.hasOwn(body, "macroVariables") && !held) {
       held = true;
       started = true;
       await gate;
@@ -73,6 +75,18 @@ const createChat = async (request: import("@playwright/test").APIRequestContext,
 
 const storedVariables = async (request: import("@playwright/test").APIRequestContext, chatId: string) =>
   record((await (await request.get(`/api/chats/${chatId}`)).json()).metadata).macroVariables ?? {};
+
+test("a new variable row validates only after the user starts editing", async ({ page, request }) => {
+  const chat = await createChat(request, "New variable validation");
+  const drawer = await openChatVariables(page, chat.id);
+  await drawer.getByRole("button", { name: "Add variable", exact: true }).click();
+  const name = drawer.getByLabel("Variable name");
+  await expect(name).toHaveAttribute("aria-invalid", "false");
+  await name.fill("bad name");
+  await expect(name).toHaveAttribute("aria-invalid", "true");
+  await name.fill("hero");
+  await expect(name).toHaveAttribute("aria-invalid", "false");
+});
 
 test("a delete queued behind a rename targets the renamed variable", async ({ page, request }) => {
   const chat = await createChat(request, "Queued rename then delete");

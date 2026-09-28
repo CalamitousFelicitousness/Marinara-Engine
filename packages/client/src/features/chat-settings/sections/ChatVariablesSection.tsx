@@ -179,7 +179,7 @@ export function ChatVariablesSection({ sectionId, order, chatId, variables }: Ch
         ) : (
           <div className="flex flex-col gap-1">
             {rows.map((row) => {
-              const issue = nameIssue(row);
+              const issue = row.savedName === null && row.name === "" && row.value === "" ? null : nameIssue(row);
               const message = issueMessage(issue);
               return (
                 <div key={row.key} data-chat-variable-row={row.savedName ?? ""} className="space-y-1">

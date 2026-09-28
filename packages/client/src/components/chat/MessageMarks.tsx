@@ -23,7 +23,7 @@ import { MESSAGE_ACTION_ICON_SIZE, MessageActionButton, useMessageActionMenu } f
 type MarkableMessage = { id: string; chatId: string; extra?: unknown };
 
 const POPOVER_CLASS =
-  "marinara-chat-popover fixed z-[9999] w-[min(18rem,calc(100vw-1rem))] rounded-xl border border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--marinara-chat-chrome-panel-bg)] p-2 text-[var(--foreground)] shadow-xl";
+  "marinara-chat-popover fixed z-[9999] max-h-[calc(var(--mari-visual-viewport-height,100dvh)-1rem)] w-[min(18rem,calc(100vw-1rem))] overflow-y-auto overscroll-contain rounded-xl border border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--marinara-chat-chrome-panel-bg)] p-2 text-[var(--foreground)] shadow-xl";
 const MENU_ROW_CLASS =
   "flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition-colors hover:bg-[var(--marinara-chat-chrome-highlight-bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--marinara-chat-chrome-focus-ring)] disabled:pointer-events-none disabled:opacity-50";
 const FIELD_CLASS =
@@ -105,6 +105,7 @@ export function MessageMarksAction({
         createPortal(
           <div
             ref={menuRef}
+            data-chat-floating-panel
             style={position}
             role="dialog"
             aria-label={localizeUi("ui.chat.messagemarks.menuTitle")}
@@ -260,6 +261,7 @@ export function MessageMarkIndicators({ message, className }: { message: Markabl
             createPortal(
               <div
                 ref={menuRef}
+                data-chat-floating-panel
                 style={position}
                 role="note"
                 className={POPOVER_CLASS}

@@ -4005,6 +4005,8 @@ export const ChatMessage = memo(function ChatMessage({
               />
             )}
 
+            <MessageMarkIndicators message={message} className="px-1" />
+
             {/* Hover actions (tap to toggle on mobile) */}
             <div
               onClickCapture={() => {
@@ -4057,7 +4059,6 @@ export const ChatMessage = memo(function ChatMessage({
               )}
               <GuidedRegenerateActionBtn onClick={() => onRegenerate?.(message.id)} />
               <MessageMarksAction message={message} align={isUser ? "right" : "left"} />
-              <MessageMarkIndicators message={message} />
               {onToggleConversationStart && (
                 <ConversationStartAction
                   messageId={message.id}
@@ -4431,6 +4432,8 @@ export const ChatMessage = memo(function ChatMessage({
             />
           )}
 
+          <MessageMarkIndicators message={message} className="px-3" />
+
           {/* Hover actions (tap to toggle on mobile) */}
           <div
             onClickCapture={() => {
@@ -4486,7 +4489,6 @@ export const ChatMessage = memo(function ChatMessage({
             )}
             <GuidedRegenerateActionBtn onClick={() => onRegenerate?.(message.id)} />
             <MessageMarksAction message={message} align={isUser ? "right" : "left"} />
-            <MessageMarkIndicators message={message} />
             {onToggleConversationStart && (
               <ConversationStartAction
                 messageId={message.id}

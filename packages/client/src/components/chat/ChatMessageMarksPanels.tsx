@@ -124,8 +124,13 @@ export function ChatTrashList({ chatId, enabled }: { chatId: string; enabled: bo
       items.map((entry) => entry.id),
       {
         onSuccess: (result) => {
-          if (result.conflictEntryIds.length > 0) toast.error(localizeUi("ui.chat.messagetrash.restoreConflict"));
-          else toast.success(localizeUi("ui.chat.messagetrash.restored", { count: result.restoredMessageIds.length }));
+          const restored =
+            result.restoredMessageIds.length > 0
+              ? localizeUi("ui.chat.messagetrash.restored", { count: result.restoredMessageIds.length })
+              : undefined;
+          if (result.conflictEntryIds.length > 0)
+            toast.warning(localizeUi("ui.chat.messagetrash.restoreConflict"), { description: restored });
+          else if (restored) toast.success(restored);
         },
         onError: (error) =>
           toast.error(error instanceof Error ? error.message : localizeUi("ui.chat.messagetrash.restoreFailed")),

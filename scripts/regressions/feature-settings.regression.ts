@@ -31,21 +31,27 @@ try {
   const { isFeatureEnabled, resetFeatureSettingsForTests, onFeatureSettingsChange } = features;
 
   // ── the registry: exactly these switches, every one off by default ──
-  assert.deepEqual([...FEATURE_SWITCH_NAMES].sort(), ["providerRetry", "stableLorebookGroupPicks"]);
+  assert.deepEqual([...FEATURE_SWITCH_NAMES].sort(), [
+    "messageTrash",
+    "providerRetry",
+    "stableLorebookGroupPicks",
+    "usageAndActivationStats",
+  ]);
   for (const name of FEATURE_SWITCH_NAMES) assert.equal(FEATURE_SWITCH_DEFAULTS[name], false, `${name} defaults off`);
 
   // ── shared normalization: bad values fall back to the default ──
   assert.deepEqual(normalizeFeatureSettings(null), {});
   assert.deepEqual(normalizeFeatureSettings([]), {});
   assert.deepEqual(
-    normalizeFeatureSettings({ stableLorebookGroupPicks: true, providerRetry: "yes", other: true }),
-    { stableLorebookGroupPicks: true },
+    normalizeFeatureSettings({ stableLorebookGroupPicks: true, providerRetry: "yes", messageTrash: true, other: true }),
+    { stableLorebookGroupPicks: true, messageTrash: true },
     "only well-formed known keys survive",
   );
 
   // ── absent = OFF ──
   resetFeatureSettingsForTests();
   for (const name of FEATURE_SWITCH_NAMES) assert.equal(isFeatureEnabled(name), false, `${name} is off by default`);
+  assert.equal(isFeatureEnabled("usageAndActivationStats"), false, "lorebook activation collection is opt-in");
 
   // ── env precedence: set wins both ways, unset or blank falls through ──
   resetFeatureSettingsForTests({ stableLorebookGroupPicks: false, providerRetry: true });
@@ -123,8 +129,19 @@ try {
   assert.ok(unknown.statusCode >= 400, "unknown keys are rejected");
   assert.equal(isFeatureEnabled("providerRetry"), true, "a rejected save keeps the old value");
 
+  const savedWithTrash = await app.inject({
+    method: "PUT",
+    url: "/api/app-settings/features",
+    payload: { providerRetry: true, messageTrash: true },
+  });
+  assert.equal(savedWithTrash.statusCode, 200);
+  assert.deepEqual(savedWithTrash.json().settings, { providerRetry: true, messageTrash: true });
+  assert.equal(isFeatureEnabled("messageTrash"), true, "a saved trash switch takes effect at once");
+  assert.equal(JSON.parse((await storage.get(FEATURE_SETTINGS_KEY))!).messageTrash, true, "messageTrash persists");
+
   // A switch pinned by an env var reports the value in effect, so the locked toggle shows it.
   await app.inject({ method: "PUT", url: "/api/app-settings/features", payload: { providerRetry: true } });
+  assert.equal(isFeatureEnabled("messageTrash"), false, "an omitted trash switch returns to the default (off)");
   process.env.PROVIDER_RETRY_TRANSIENT_ERRORS = "false";
   const pinned = (await app.inject({ method: "GET", url: "/api/app-settings/features" })).json();
   assert.equal(pinned.settings.providerRetry, true, "the saved value is kept");

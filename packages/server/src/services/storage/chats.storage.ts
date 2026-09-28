@@ -61,6 +61,7 @@ import {
 } from "../import/import-timestamps.js";
 import { type CharacterSchedules, type WeekSchedule } from "../conversation/schedule.service.js";
 import type { ConversationStatusOverride } from "@marinara-engine/shared";
+import { MESSAGE_MARK_EXTRA_KEYS } from "@marinara-engine/shared";
 import { resolveConversationTimeZone } from "../conversation/timezone.js";
 import { logger } from "../../lib/logger.js";
 import { logRateLimited } from "../../lib/log-rate-limit.js";
@@ -643,6 +644,7 @@ function freshSwipeMessageExtra(value: unknown): Record<string, unknown> {
     "conversationStartForCharacterIds",
     "reactions",
     "personaSnapshot",
+    ...MESSAGE_MARK_EXTRA_KEYS,
   ]) {
     if (current.commandOnly === true && (key === "hiddenFromAI" || key === "hiddenFromUser")) continue;
     if (Object.prototype.hasOwnProperty.call(current, key)) {
@@ -2546,12 +2548,13 @@ export function createChatsStorage(db: DB) {
       partial: Record<string, unknown>,
       sharedExtra: Record<string, unknown>,
       swipeIndex?: number,
+      opts: { metadataQueueHeld?: boolean } = {},
     ) {
       const owner = await readMessage(id);
       if (!owner) return null;
       // Summary hiding already takes metadata before message queues. Acquire both
       // before the transaction, and never call a queue-taking writer inside it.
-      return withChatMetadataPatchQueue(owner.chatId, () =>
+      const apply = () =>
         withMessageExtraPatchQueue(id, () =>
           db.transaction(async () => {
             const msg = await readMessage(id);
@@ -2612,8 +2615,8 @@ export function createChatsStorage(db: DB) {
             );
             return this.getMessage(id);
           }),
-        ),
-      );
+        );
+      return opts.metadataQueueHeld ? apply() : withChatMetadataPatchQueue(owner.chatId, apply);
     },
 
     /** Merge partial data into a message's extra JSON field. */
@@ -3067,7 +3070,7 @@ export function createChatsStorage(db: DB) {
       if (removedEntries.length > 0) await this.pruneLorebookChatMetadata(async () => removedEntries);
     },
 
-    async removeMessages(ids: string[], chatId?: string) {
+    async removeMessages(ids: string[], chatId?: string, beforeDelete?: (rows: MessageRow[]) => Promise<void>) {
       if (ids.length === 0) return;
       const earliestByChat = new Map<string, string>();
       const removedEntryIds: string[] = [];
@@ -3090,15 +3093,10 @@ export function createChatsStorage(db: DB) {
             const condition = chatId
               ? and(inArray(messages.id, chunk), eq(messages.chatId, chatId))
               : inArray(messages.id, chunk);
-            const existingRows = await db
-              .select({
-                id: messages.id,
-                chatId: messages.chatId,
-                createdAt: messages.createdAt,
-                extra: messages.extra,
-              })
-              .from(messages)
-              .where(condition);
+            const existingRows = await db.select().from(messages).where(condition);
+            // Recovery snapshots share the deletion's queues and transaction, so queued edits
+            // are captured and a failed delete cannot leave a second copy in the trash.
+            await beforeDelete?.(existingRows);
             // Undo newest effects first when a whole interrupted exchange is removed.
             for (const row of existingRows
               .filter((row) => receipts(row.extra).some((receipt) => !receipt.restored))

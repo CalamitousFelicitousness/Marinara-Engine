@@ -28,6 +28,7 @@ import {
   useTestImageGeneration,
   useTestVideoGeneration,
   useDiagnoseClaudeSubscription,
+  useModelParameterCapabilities,
   useFetchModels,
   useSaveConnectionDefaults,
   type ClaudeSubscriptionDiagnosis,
@@ -761,6 +762,7 @@ export function ConnectionEditor() {
       name: m.name,
       context: m.context ?? 0,
       maxOutput: m.maxOutput ?? 0,
+      capabilities: m.capabilities,
       subscriptionIncluded: m.subscriptionIncluded,
       inputTokenMultiplier: m.inputTokenMultiplier,
       isRemote: true as const,
@@ -786,6 +788,12 @@ export function ConnectionEditor() {
   const selectedModelInfo = useMemo(() => {
     return allModels.find((m) => m.id === localModel) ?? null;
   }, [allModels, localModel]);
+  const catalogModelCapabilities = useModelParameterCapabilities(
+    connectionDetailId ? { id: connectionDetailId, provider: localProvider, model: localModel } : null,
+  );
+  const selectedModelCapabilities =
+    (selectedModelInfo && "capabilities" in selectedModelInfo ? (selectedModelInfo.capabilities ?? null) : null) ??
+    catalogModelCapabilities;
 
   // Clear remote models when provider changes
   useEffect(() => {
@@ -3193,6 +3201,8 @@ export function ConnectionEditor() {
                     effectiveParameters={parameterPreview.data?.parameters}
                     provider={localProvider}
                     model={localModel}
+                    baseUrl={localBaseUrl}
+                    modelCapabilities={selectedModelCapabilities}
                     value={localDefaultParameters}
                     showServiceTier={localProvider === "openrouter" || localProvider === "nanogpt"}
                     showCustomHeaders={

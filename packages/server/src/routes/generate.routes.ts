@@ -489,6 +489,7 @@ import {
   toLorebookScanSnapshot,
   type LorebookScanSnapshot,
 } from "./generate/lorebook-scan-snapshot.js";
+import { recordLorebookActivations } from "../services/lorebook/activation-stats.js";
 import {
   buildAvailableSpriteCharacter,
   completeRequiredSpriteExpressionEntries,
@@ -563,7 +564,7 @@ import {
 } from "../services/generation/director-secret-plot-runtime.js";
 import { applyPromptPatchOperations } from "../services/generation/prompt-patch-runtime.js";
 import { resolveGenerationProviderRuntime } from "../services/generation/provider-generation-runtime.js";
-import { supportsNativeToolCalls } from "@marinara-engine/shared";
+import { applyContextMessageLimitWithPins, supportsNativeToolCalls } from "@marinara-engine/shared";
 import { planGameToolCalls } from "../services/generation/game-tool-planning.js";
 import {
   countProfessorMariCommands,
@@ -1773,7 +1774,7 @@ export async function generateRoutes(app: FastifyInstance) {
         contextMessageLimit > 0 &&
         chatMessages.length > contextMessageLimit
       ) {
-        chatMessages = chatMessages.slice(-contextMessageLimit);
+        chatMessages = applyContextMessageLimitWithPins(chatMessages, contextMessageLimit);
       }
       const pastReasoning = collectPastReasoningMetadata(
         chatMessages,
@@ -9965,6 +9966,13 @@ export async function generateRoutes(app: FastifyInstance) {
                 savedSwipeIndex !== null
                   ? await chats.updateMessageExtraForSwipe(savedMsg.id, savedSwipeIndex, extraUpdate)
                   : await chats.updateMessageExtra(savedMsg.id, extraUpdate);
+            }
+            // Activation statistics count successfully saved replies, not Continue chunks.
+            if (!input.continueMessageId) {
+              recordLorebookActivations(app.db, {
+                entryIds: lorebookScanSnapshot.activatedEntries.map((entry) => entry.id),
+                chatId: input.chatId,
+              });
             }
 
             const savedMessagePayload =

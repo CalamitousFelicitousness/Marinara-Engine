@@ -77,6 +77,7 @@ export * from "./schemas/personal-extension.schema.js";
 export * from "./schemas/folder.schema.js";
 export * from "./schemas/scene-analysis.schema.js";
 export * from "./schemas/library-folder.schema.js";
+export * from "./schemas/lorebook-enabled.schema.js";
 export * from "./schemas/home-widget.schema.js";
 
 // Constants
@@ -84,6 +85,7 @@ export * from "./constants/providers.js";
 export * from "./constants/defaults.js";
 export * from "./constants/chat-mode-agent-policy.js";
 export * from "./constants/model-lists.js"; // also exports IMAGE_GENERATION_SOURCES
+export * from "./constants/generation-parameter-relevance.js";
 export * from "./constants/agent-prompts.js";
 export * from "./constants/agent-activation.js";
 export * from "./constants/impersonate.js";
@@ -151,6 +153,9 @@ export * from "./utils/sheet-command-tag.js";
 export * from "./utils/agent-output.js";
 export * from "./utils/generation-guide.js";
 export * from "./utils/lorebook-keyword-matching.js";
+export * from "./utils/lorebook-lint.js";
+export * from "./utils/lorebook-bulk-edit.js";
+export * from "./utils/lorebook-text-format.js";
 export * from "./utils/regex-safety.js";
 export * from "./utils/regex-scoping.js";
 export * from "./utils/game-state-text.js";
@@ -169,6 +174,8 @@ export * from "./utils/game-art-style.js";
 export * from "./utils/thinking-tags.js";
 export * from "./utils/rpg-stats.js";
 export * from "./utils/lorebook-folder-tree.js";
+export * from "./utils/character-duplicates.js";
+export * from "./utils/character-tag-edits.js";
 export * from "./utils/text-matching.js";
 export * from "./utils/chat-search-query.js";
 export * from "./utils/chat-stats.js";
@@ -212,3 +219,4 @@ export * from "./features/ruleset-combat/index.js";
 export * from "./constants/request-timeouts.js";
 
 export * from "./utils/game-narration-text.js";
+export * from "./utils/message-marks.js";

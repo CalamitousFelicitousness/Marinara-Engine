@@ -1472,6 +1472,14 @@ const SETTINGS_SEARCHABLE_CONTROLS: readonly SettingsSearchableControlMeta[] = [
     kind: "Toggle",
   },
   {
+    id: "include-private-notes-in-exports",
+    sectionId: "message-tools",
+    label: "Include private notes in exports",
+    description: "Include your private message notes in chat exports.",
+    aliases: ["notes", "private", "exports"],
+    kind: "Toggle",
+  },
+  {
     id: "debug-mode",
     sectionId: "message-tools",
     label: "Debug mode",
@@ -7222,6 +7230,7 @@ function ImportSettings() {
     return () => window.clearInterval(timer);
   }, [profileImportBusy]);
 
+  const profileImportInputRef = useRef<HTMLInputElement>(null);
   const handleProfileImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -7478,12 +7487,11 @@ function ImportSettings() {
         {...getSettingsSectionAnchorProps("profile-marinara")}
       >
         <div className="flex flex-col gap-2.5">
-          <label
-            className={cn(
-              SETTINGS_PRIMARY_BUTTON_CLASS,
-              "w-full cursor-pointer gap-2",
-              profileImportBusy && "pointer-events-none opacity-75",
-            )}
+          <button
+            type="button"
+            onClick={() => profileImportInputRef.current?.click()}
+            disabled={profileImportBusy}
+            className={cn(SETTINGS_PRIMARY_BUTTON_CLASS, "w-full gap-2")}
           >
             {profileImportBusy ? <Loader2 size="1rem" className="animate-spin" /> : <Download size="1rem" />}
             {profileImportBusy
@@ -7491,14 +7499,17 @@ function ImportSettings() {
                 ? localizeUi("ui.panels.importsettings.scanningProfile")
                 : localizeUi("ui.panels.importsettings.importingProfile")
               : localizeUi("ui.panels.importsettings.importProfileJsonZip")}
-            <input
-              type="file"
-              accept=".json,.zip,application/json,application/zip"
-              onChange={handleProfileImport}
-              disabled={profileImportBusy}
-              className="hidden"
-            />
-          </label>
+          </button>
+          <input
+            ref={profileImportInputRef}
+            type="file"
+            accept=".json,.zip,application/json,application/zip"
+            onChange={handleProfileImport}
+            disabled={profileImportBusy}
+            className="hidden"
+            tabIndex={-1}
+            aria-hidden="true"
+          />
 
           {profileImportProgress && (
             <div
@@ -7792,6 +7803,8 @@ function AdvancedSettings() {
   const setGuideGenerations = useUIStore((s) => s.setGuideGenerations);
   const includeReasoningInExports = useUIStore((s) => s.includeReasoningInExports);
   const setIncludeReasoningInExports = useUIStore((s) => s.setIncludeReasoningInExports);
+  const includePrivateNotesInExports = useUIStore((s) => s.includePrivateNotesInExports);
+  const setIncludePrivateNotesInExports = useUIStore((s) => s.setIncludePrivateNotesInExports);
   const debugMode = useUIStore((s) => s.debugMode);
   const setDebugMode = useUIStore((s) => s.setDebugMode);
   const clearAllData = useClearAllData();
@@ -8761,6 +8774,13 @@ function AdvancedSettings() {
             checked={includeReasoningInExports}
             onChange={setIncludeReasoningInExports}
             help={localizeUi("settings.controls.includeReasoning.help")}
+          />
+          <ToggleSetting
+            anchorId={getSettingsControlAnchorId("include-private-notes-in-exports")}
+            label={localizeUi("settings.controls.includePrivateNotes.label")}
+            checked={includePrivateNotesInExports}
+            onChange={setIncludePrivateNotesInExports}
+            help={localizeUi("settings.controls.includePrivateNotes.help")}
           />
           <ToggleSetting
             anchorId={getSettingsControlAnchorId("debug-mode")}

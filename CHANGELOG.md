@@ -6,6 +6,61 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - A Game Mode ruleset's items can be worn, bound and carried. An item that takes slots has an **Equipped** button and uses its bearer's free slots; one that binds is bound up to the limit on its bearer's sheet, and a cursed one stays bound. When the ruleset says what everything weighs, each bag shows its load, an item added from **All** or by the Game Master without naming anyone goes to whoever can carry it, and nothing is given past anyone's limit. The Game Master can equip and bind items too, and sees each character's load, slots and bound items (#6801).
 
+- Restore all preserves conflicts reported by completed batches when a later batch fails, even if no messages were restored.
+
+- Restore all supports more than 5,000 trashed messages in one operation, reports messages already recovered if a later batch fails, and keeps remaining entries available for retry.
+
+- Restoring several trashed messages reports an error when every write fails, while keeping failed entries available for retry and preserving successful partial restores.
+
+- Deleting a turn with saved Game state stays permanent after changing chat modes or importing it. Mixed selections recover only ordinary messages, and recovery counts reflect that.
+
+- Message marks remain visible in roleplay, private-note menus fit short mobile screens and close when their note is removed, and recovery reports partial restores accurately. Restoring several messages still updates chat memory when one entry fails; Game Mode rejects message-only recovery. Pin hints clarify the model token limit.
+
+- Per-character conversation-start edits complete without hanging, including edits that also pin a message or change its visibility.
+
+- Message recovery preserves edits that finish just before deletion, and changing a message's history-start setting no longer stalls. Bookmark menus focus their first action when opened for keyboard access.
+
+- Expired message recovery records are cleaned up at server startup and hourly, including unopened chats. Recovery ends at 30 days; newer records are preserved, and shutdown waits for active cleanup.
+
+- Message recovery notifications reflect whether the server actually retained deleted messages. Restoring pinned messages refuses to exceed the pin limit and keeps the recovery records intact.
+
+- Bookmark messages, attach private notes, and pin up to ten messages for prompt context. An optional message trash setting keeps supported deleted messages for 30 days for recovery; it is off by default, and Game Mode deletion remains permanent. Private notes stay out of model prompts and are excluded from exports unless explicitly selected. Launcher downgrade protection also preserves recoverable message records (#6698).
+
+- Bulk character tag edits continue after a rejected request and keep only failed cards selected for retry.
+- Regression commands invoked through an absolute or symlink path now execute instead of silently skipping their checks.
+
+- The terminal-shutdown regression now has enough total runner time for its six bounded server boots, without relaxing its per-case shutdown assertions or other regression limits.
+
+- Shutdown regression checks allow time for repeated server startups on slower CI workers while keeping individual shutdown deadlines unchanged.
+
+- Bulk character tag edits keep failed cards selected so you can retry them without selecting successful cards again.
+
+- Bulk character tag edits include selected cards hidden by library search or pagination. Failed saves report the affected cards, preserve their tags and version history, and allow the remaining selection to finish.
+
+- Duplicate-character comparisons return after closing the character editor on phones and desktops, and dismiss when navigating away from Characters.
+
+- The character library can compare possible duplicate cards without deleting them and preview adding or removing tags across selected cards (#6698).
+
+- Lorebook Markdown and CSV downloads preserve spaces and non-English characters in their filenames.
+
+- The native shutdown regression allows cold CI servers time to start while keeping its interrupt and shutdown deadlines unchanged.
+
+- Failed lorebook text imports leave existing entries and folders unchanged, and duplicate-key checks distinguish case-sensitive and regex matching modes.
+- Windows shutdown validation reads redirected output as one string, avoiding false readiness failures while the server is writing its startup log.
+
+- Lorebook activation statistics update after a reply is saved successfully and exclude Continue chunks.
+
+- Lorebooks gain lint checks, a scanner preview, opt-in activation statistics, bulk entry edits, selected enable/disable actions, and Markdown/CSV import and export. Chat previews explain their context limits, and text imports enforce bounded size and entry counts (#6698).
+- Lorebook Markdown export handles long whitespace runs without excessive processing time.
+- Lorebook CSV exports keep spreadsheet formulas inactive and mark their escaping format so imports restore the original text without altering apostrophes in independently authored CSV files.
+- Escape closes a panel from actions inside an expanded folder header, while active fields and menus keep their own Escape behavior.
+
+- Decorative missing-avatar icons stay hidden from screen readers; named character fallbacks retain their accessible labels.
+
+- Panels opened from the navigation bar support keyboard focus and return focus when closed. Cancelling a folder rename or leaving the activity field with Escape keeps its panel open. Profile imports are keyboard-accessible, missing library avatars have a visible fallback, and the chat sidebar shows clearer loading and retry states (#6698).
+
+- Generation settings show controls supported by the selected provider and model, reducing settings that would be ignored. Preset editing keeps its full set of reusable controls (#6698).
+
 - Printed HTML chat exports show included reasoning once, even if its Thinking section is collapsed on screen.
 
 - The native restart regression gives replacement servers time to rebuild routes on slower CI runners while retaining its process-ownership and shutdown checks.
@@ -112,7 +167,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - **Copy Support Diagnostics** now wraps the report in a ``` code block, so it reads cleanly when pasted into Discord or GitHub (#6668).
 
-- A NanoGPT connection can show its subscription usage. An optional **Management Token** field accepts a NanoGPT token with the *Usage only* scope, so quota readings never need your inference key, and a **Show subscription usage** toggle displays the weekly and daily input-token quotas beside the connection, in the chat connection picker, and in the chat's **Connection** settings while you play. A look up that NanoGPT cannot answer reads as unknown instead of as unused quota, and the model list marks subscription-included models — including a green `1x` at the normal rate — and the ones charged at a higher input-token multiplier.
+- A NanoGPT connection can show its subscription usage. An optional **Management Token** field accepts a NanoGPT token with the _Usage only_ scope, so quota readings never need your inference key, and a **Show subscription usage** toggle displays the weekly and daily input-token quotas beside the connection, in the chat connection picker, and in the chat's **Connection** settings while you play. A lookup that NanoGPT cannot answer reads as unknown instead of as unused quota, and the model list marks subscription-included models — including a green `1x` at the normal rate — and the ones charged at a higher input-token multiplier.
 
 - Generation now reports when a prompt that does not fit spends the reply budget instead of dropping messages. A reply budget cut to its 128-token floor is logged as a warning, so a configured Max Tokens that never reaches the provider is visible instead of silent (#6614).
 
@@ -141,7 +196,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - Imports that use decisions now warn when no Decision model is selected, explain the fallback behavior, and link to the Decision Models guide. If the selection cannot be checked, the notice says so without interrupting the import. The notice also covers custom agent imports and Agent catalog installations, including agents with activation questions (#6605).
 
 - Decision model guides now distinguish Jev from Open-Jev and clarify what each feature sends, threshold defaults, statement allowances, answer reuse, lorebook fallbacks, sidecar hardware needs, and prompt-cache costs. Author examples describe observable events and separate connection testing from testing statements in a chat.
- 
+
 - Add bounded agent-owned Home widget presentation metadata and full-bleed package widget surfaces.
 
 - Agents can offer up to three Home widgets without placing them automatically. The Widget Manager groups built-in, agent, and personal widgets; users add, hide, restore, and reorder agent widgets, while custom agents can publish bounded text during their normal runs. Capability packages can supply verified interactive widgets in an Engine-owned frame. Noodle's Latest Posts widget is available through its companion agent package (#6621).

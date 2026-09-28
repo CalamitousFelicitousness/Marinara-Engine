@@ -1405,3 +1405,65 @@ export function useDeletePersonaGroup() {
     onSuccess: () => qc.invalidateQueries({ queryKey: characterKeys.personaGroups }),
   });
 }
+
+// ── Library maintenance: duplicates and bulk tags ──
+
+export interface CharacterDuplicateCard {
+  id: string;
+  name: string;
+  comment: string;
+  avatarPath: string | null;
+  creator: string;
+  version: string;
+  tags: string[];
+  description: string;
+  personality: string;
+  descriptionLength: number;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface CharacterDuplicatesResult {
+  scanned: number;
+  groups: Array<{ ids: string[]; nameMatch: boolean; similarity: number; characters: CharacterDuplicateCard[] }>;
+}
+
+export function useCharacterDuplicates(enabled: boolean) {
+  return useQuery({
+    queryKey: [...characterKeys.all, "duplicates"] as const,
+    queryFn: () => api.get<CharacterDuplicatesResult>("/characters/duplicates"),
+    enabled,
+    staleTime: 0,
+  });
+}
+
+export function useBulkEditCharacterTags() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      ids: string[];
+      add?: string[];
+      remove?: string[];
+      rename?: Array<{ from: string; to: string }>;
+    }) => {
+      const merged = { updatedIds: [] as string[], unchangedIds: [] as string[], failedIds: [] as string[] };
+      for (let start = 0; start < input.ids.length; start += 5000) {
+        const ids = input.ids.slice(start, start + 5000);
+        try {
+          const result = await api.post<typeof merged>("/characters/bulk-tags", { ...input, ids });
+          merged.updatedIds.push(...result.updatedIds);
+          merged.unchangedIds.push(...result.unchangedIds);
+          merged.failedIds.push(...result.failedIds);
+        } catch {
+          merged.failedIds.push(...ids);
+        }
+      }
+      return merged;
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: characterKeys.list() });
+      qc.invalidateQueries({ queryKey: characterKeys.summariesRoot() });
+      qc.invalidateQueries({ queryKey: [...characterKeys.all, "detail"] });
+    },
+  });
+}

@@ -11,13 +11,20 @@ import { z } from "zod";
  */
 export const FEATURE_SETTINGS_KEY = "features";
 
-export const FEATURE_SWITCH_NAMES = ["stableLorebookGroupPicks", "providerRetry"] as const;
+export const FEATURE_SWITCH_NAMES = [
+  "stableLorebookGroupPicks",
+  "providerRetry",
+  "usageAndActivationStats",
+  "messageTrash",
+] as const;
 export type FeatureSwitchName = (typeof FEATURE_SWITCH_NAMES)[number];
 
 /** Default of each switch when nothing is saved and no environment variable pins it. */
 export const FEATURE_SWITCH_DEFAULTS: Readonly<Record<FeatureSwitchName, boolean>> = {
   stableLorebookGroupPicks: false,
   providerRetry: false,
+  usageAndActivationStats: false,
+  messageTrash: false,
 };
 
 export type FeatureSettings = Partial<Record<FeatureSwitchName, boolean>>;
@@ -26,6 +33,8 @@ export const featureSettingsSchema = z
   .object({
     stableLorebookGroupPicks: z.boolean().optional(),
     providerRetry: z.boolean().optional(),
+    usageAndActivationStats: z.boolean().optional(),
+    messageTrash: z.boolean().optional(),
   })
   .strict();
 

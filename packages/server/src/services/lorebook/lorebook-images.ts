@@ -71,9 +71,9 @@ export async function embedLorebookImages(entries: Array<Record<string, unknown>
   return portable;
 }
 
-type DecodedLorebookImage = { caption: string } & ({ buffer: Buffer } | { path: string });
+type DecodedLorebookImage = { caption: string } & ({ dataUrl: string } | { path: string });
 
-/** Validate the entire import before writing assets or replacing entries. */
+/** Validate before writing; retain existing data URLs so imports do not hold decoded buffers for every entry. */
 export async function decodeLorebookImages(value: unknown, allowLocalPaths = false): Promise<DecodedLorebookImage[]> {
   if (value === undefined || value === null) return [];
   if (!Array.isArray(value) || value.length > MAX_LOREBOOK_ENTRY_IMAGES) throw new Error("Invalid reference images");
@@ -95,7 +95,7 @@ export async function decodeLorebookImages(value: unknown, allowLocalPaths = fal
       const info = lorebookImageInfo(buffer);
       if (!info || info.mimeType !== match[1] || buffer.toString("base64") !== match[2])
         throw new Error("Invalid reference image data");
-      return { buffer, caption };
+      return { dataUrl, caption };
     }),
   );
 }
@@ -103,8 +103,13 @@ export async function decodeLorebookImages(value: unknown, allowLocalPaths = fal
 export async function saveDecodedLorebookImages(decoded: DecodedLorebookImage[]): Promise<LorebookEntryImage[]> {
   const images: LorebookEntryImage[] = [];
   try {
-    for (const image of decoded)
-      images.push("path" in image ? image : { ...(await saveLorebookImage(image.buffer)), caption: image.caption });
+    for (const image of decoded) {
+      if ("path" in image) images.push(image);
+      else {
+        const buffer = Buffer.from(image.dataUrl.slice(image.dataUrl.indexOf(",") + 1), "base64");
+        images.push({ ...(await saveLorebookImage(buffer)), caption: image.caption });
+      }
+    }
   } catch (error) {
     for (const image of images)
       if (!decoded.some((item) => "path" in item && item.path === image.path)) await discardLorebookImage(image);

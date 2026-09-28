@@ -100,8 +100,13 @@ export function LorebookEntryImages({
     await run(async () => {
       if (dirtyRef.current) await save(draftRef.current);
       for (const file of files) {
-        const saved = await upload.mutateAsync({ lorebookId, entryId, file });
-        setImages(saved.images ?? []);
+        try {
+          const saved = await upload.mutateAsync({ lorebookId, entryId, file });
+          setImages(saved.images ?? []);
+        } catch {
+          setError(t("ui.lorebooks.expandeddrawer.imageUploadError"));
+          return;
+        }
       }
     });
   }

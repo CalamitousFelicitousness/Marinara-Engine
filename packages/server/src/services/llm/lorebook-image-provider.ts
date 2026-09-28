@@ -1,3 +1,4 @@
+import { logger } from "../../lib/logger.js";
 import { BaseLLMProvider, LLMHttpError, type ChatMessage, type ChatOptions, type LLMUsage } from "./base-provider.js";
 
 /** Retry only explicit image-input incompatibility, before any output has been delivered. */
@@ -50,7 +51,9 @@ export function withLorebookImageCompatibility(
             yield chunk.value;
           }
         } finally {
-          await stream.return(undefined);
+          await stream.return(undefined).catch((error: unknown) => {
+            logger.warn(error, "Failed to close the lorebook image generation stream");
+          });
         }
       } catch (error) {
         if (started || options.signal?.aborted || !hasReferences || !isImageInputUnsupported(error)) throw error;

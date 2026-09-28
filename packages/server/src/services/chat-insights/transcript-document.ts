@@ -153,10 +153,11 @@ h1{font-size:2rem;line-height:1.2;margin:0 0 .35rem;font-weight:600}
 .text p:last-child{margin-bottom:0}
 .turn.narrator .text{font-style:italic}
 code{font:.9em ui-monospace,Consolas,monospace;background:var(--user);padding:0 .25em;border-radius:.25em}
-details{margin-top:.5rem;color:var(--muted);font-size:.9em}
+details,.thinking-print{margin-top:.5rem;color:var(--muted);font-size:.9em}
+.thinking-print{display:none}
 footer{margin-top:2.5rem;color:var(--muted);font:12px/1.4 system-ui,sans-serif;text-align:center}
 @media (max-width:480px){body{font-size:16px}main{padding:2rem 1rem 3rem}.avatar{flex-basis:2rem;width:2rem;height:2rem}}
-@media print{:root{--bg:#fff;--paper:#fff;--ink:#000;--muted:#555;--line:#ccc;--user:#f3f3f3;--accent:#333}body{font-size:12pt}main{max-width:none;padding:0}details::details-content{content-visibility:visible}}
+@media print{:root{--bg:#fff;--paper:#fff;--ink:#000;--muted:#555;--line:#ccc;--user:#f3f3f3;--accent:#333}body{font-size:12pt}main{max-width:none;padding:0}details{display:none}.thinking-print{display:block}}
 `;
 
 export function renderTranscriptHtml(input: TranscriptDocumentInput): string {
@@ -184,8 +185,11 @@ export function renderTranscriptHtml(input: TranscriptDocumentInput): string {
       const time = entry.createdAt
         ? `<time class="time" datetime="${escapeHtml(entry.createdAt)}">${escapeHtml(formatDate(entry.createdAt))}</time>`
         : "";
-      const thinking = entry.thinking?.trim()
-        ? `<details><summary>Thinking</summary>${renderStoryBody(entry.thinking)}</details>`
+      const thinkingBody = entry.thinking?.trim() ? renderStoryBody(entry.thinking) : "";
+      // ponytail: Extra markup only for included reasoning; remove the print copy
+      // once the supported browser baseline permits ::details-content.
+      const thinking = thinkingBody
+        ? `<details><summary>Thinking</summary>${thinkingBody}</details><div class="thinking-print"><div>Thinking</div>${thinkingBody}</div>`
         : "";
       const roleClass = ["user", "assistant", "narrator"].includes(entry.role) ? entry.role : "assistant";
       return `<article class="turn ${roleClass}">${avatarHtml}<div class="body"><div class="meta"><span class="name">${escapeHtml(entry.speaker)}</span>${time}</div><div class="text">${renderStoryBody(entry.content)}</div>${thinking}</div></article>`;

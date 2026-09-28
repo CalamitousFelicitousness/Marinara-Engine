@@ -4,7 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
-- Printed HTML chat exports retain reasoning when it was included, even if its Thinking section is collapsed on screen.
+- Printed HTML chat exports show included reasoning once, even if its Thinking section is collapsed on screen.
 
 - The native restart regression gives replacement servers time to rebuild routes on slower CI runners while retaining its process-ownership and shutdown checks.
 

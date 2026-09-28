@@ -8,6 +8,7 @@ const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.u
 
 test("standalone stories render avatars and included reasoning offline in print", async ({ page }, testInfo) => {
   const avatar = `data:image/png;base64,${readFileSync(new URL("../packages/client/public/icon-192.png", import.meta.url)).toString("base64")}`;
+  const reasoningParagraphs = ["The road is safest in daylight.", "We should rest before the journey."];
   const html = renderTranscriptHtml({
     title: "Moon Road",
     entries: [
@@ -16,7 +17,7 @@ test("standalone stories render avatars and included reasoning offline in print"
         speaker: "Ayla",
         role: "assistant",
         content: "*smiles* We ride at dawn.",
-        thinking: "The road is safest in daylight.\n\nWe should rest before the journey.",
+        thinking: reasoningParagraphs.join("\n\n"),
       },
       { speakerKey: "alex", speaker: "Alex", role: "user", content: "Then we should rest." },
       { speakerKey: "ayla", speaker: "Ayla", role: "assistant", content: "One last story first." },
@@ -32,6 +33,9 @@ test("standalone stories render avatars and included reasoning offline in print"
   await expect(reasoning.first()).toBeHidden();
   await details.locator("summary").click();
   await expect(reasoning.first()).toBeVisible();
+  for (const paragraph of reasoningParagraphs) {
+    await expect(page.locator("p:visible").filter({ hasText: paragraph })).toHaveCount(1);
+  }
   await details.locator("summary").click();
   await expect(reasoning.first()).toBeHidden();
   const portraits = page.locator(".turn.assistant .avatar");
@@ -42,10 +46,8 @@ test("standalone stories render avatars and included reasoning offline in print"
     await page.emulateMedia({ media: medium });
     await page.screenshot({ path: testInfo.outputPath(`story-reasoning-${medium}.png`) });
     await expect(details).toHaveJSProperty("open", false);
-    for (const paragraph of await reasoning.all()) {
-      // WebKit's Playwright visibility helper treats closed details as hidden
-      // even when its contents paint in print; use the browser's visibility API.
-      await expect.poll(() => paragraph.evaluate((element) => element.checkVisibility())).toBe(medium === "print");
+    for (const paragraph of reasoningParagraphs) {
+      await expect(page.locator("p:visible").filter({ hasText: paragraph })).toHaveCount(medium === "print" ? 1 : 0);
     }
     for (const portrait of await portraits.all()) {
       await expect(portrait).toBeVisible();
@@ -62,6 +64,9 @@ test("standalone stories render avatars and included reasoning offline in print"
   }
   await page.emulateMedia({ media: "screen" });
   await expect(reasoning.first()).toBeHidden();
+  for (const paragraph of reasoningParagraphs) {
+    await expect(page.locator("p:visible").filter({ hasText: paragraph })).toHaveCount(0);
+  }
 });
 
 test("chat search, stats and story exports work with private content filtered", async ({

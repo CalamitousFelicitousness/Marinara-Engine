@@ -717,7 +717,8 @@ export async function combatDirectorRoutes(
             quantity,
             ...(ownName ? { ownName } : {}),
           })),
-          itemEffects: gameInventoryFightEffects(fightLines, input.itemEffects),
+          // Nor is what a model guessed for them kept: the ruleset says they do nothing here.
+          itemEffects: itemsOff ? [] : gameInventoryFightEffects(fightLines, input.itemEffects),
           party: input.party as Combatant[],
           // What the fight is RESOLVED by is read below and never stored on the Engine's own units.
           enemies: input.enemies.map(({ creature: _c, tier: _t, proposed: _p, ...unit }) => unit) as Combatant[],

@@ -629,6 +629,8 @@ try {
     assert.equal(started.statusCode, 200, started.body);
     let n: DirectedCombatView = started.json().session;
     assert.deepEqual(n.inventory, [], "no item is offered");
+    const saved = (await store.getByChatAndMessage(noItemsChat.id, noItemsAnchor.id, 0, COMBAT_DIRECTOR_NAMESPACE))!;
+    assert.deepEqual(JSON.parse(saved.state).itemEffects, [], "nor is a guessed effect kept");
     const noItemsCmd = (command: DirectedCommand) =>
       post("/combat/command", {
         chatId: noItemsChat.id,

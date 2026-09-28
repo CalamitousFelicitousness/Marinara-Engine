@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { seedUIState } from "./ui-state-fixture.js";
+import { clickTopbarPanel } from "./topbar-navigation.js";
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 
@@ -25,7 +26,7 @@ test("lorebook tools lint, preview scans, and bulk-enable selected books", async
       version,
     );
     await page.goto("/");
-    await page.locator('[data-tour="panel-lorebooks"]').click();
+    await clickTopbarPanel(page, "lorebooks");
 
     await page.getByRole("button", { name: "Select", exact: true }).click();
     await page.getByRole("button", { name: "Select lorebook", exact: true }).click();

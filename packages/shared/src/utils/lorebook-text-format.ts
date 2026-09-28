@@ -516,7 +516,7 @@ function joinKeys(keys: string[]): string {
 }
 
 function singleLine(value: string): string {
-  return value.replace(/\s*\n\s*/g, " ").trim();
+  return value.replace(/\s+/g, (whitespace) => (whitespace.includes("\n") ? " " : whitespace)).trim();
 }
 
 export function exportLorebookToMarkdown(input: LorebookTextExportInput): string {

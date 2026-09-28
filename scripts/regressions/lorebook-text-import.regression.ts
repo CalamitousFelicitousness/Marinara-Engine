@@ -158,6 +158,15 @@ assert.equal(detectLorebookTextFormat("## Entry\n"), "markdown");
   const strip = (parsed: ReturnType<typeof parseLorebookCsv>) =>
     parsed.entries.map(({ line: _line, invalid: _invalid, ...entry }) => entry);
 
+  assert.equal(
+    exportLorebookToMarkdown({
+      name: "Heading" + "\t".repeat(10_000) + "\n\n\t\tbody",
+      entries: [],
+      folders: [],
+    }),
+    "# Heading body\n",
+    "large tab runs around newlines normalize in linear-time-safe whitespace runs",
+  );
   const markdown = exportLorebookToMarkdown({ name: "Test World", entries, folders });
   const fromMarkdown = parseLorebookMarkdown(markdown);
   assert.equal(fromMarkdown.title, "Test World");

@@ -1019,7 +1019,7 @@ try {
       partyInventory: gameInventoryBags(renameGameInventoryStack(bag(), "a", "Grandpa's rope")!.stacks),
     });
     assert.match(nicknamed, /- Ada: Grandpa's rope \(Rope\) ×2; Arrow ×5/);
-    assert.match(nicknamed, /An item listed as "Nickname \(Name\)" is one item, named either way/);
+    assert.match(nicknamed, /An item listed as "Nickname \(Name\)" is one item: write either name in item, never both/);
   }
 
   console.info("game inventory bag regressions passed.");

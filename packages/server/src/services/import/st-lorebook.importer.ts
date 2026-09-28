@@ -7,8 +7,8 @@ import {
 // Importer: SillyTavern World Info / Lorebook
 // ──────────────────────────────────────────────
 import type { DB } from "../../db/connection.js";
-import { eq, inArray } from "../../db/file-query.js";
-import { lorebookEntries, lorebooks } from "../../db/schema/index.js";
+import { inArray } from "../../db/file-query.js";
+import { lorebookEntries } from "../../db/schema/index.js";
 import { createChatsStorage } from "../storage/chats.storage.js";
 import { createLorebooksStorage } from "../storage/lorebooks.storage.js";
 import type { CreateLorebookEntryInput, LorebookCategory } from "@marinara-engine/shared";
@@ -526,24 +526,8 @@ export async function importSTLorebook(
 
     if (existingLorebookId && !createdLorebook) {
       await createChatsStorage(db).pruneLorebookChatMetadata(async (tx) => {
-        const existingRows = await tx
-          .select({ id: lorebooks.id })
-          .from(lorebooks)
-          .where(eq(lorebooks.id, existingLorebookId));
-        if (existingRows.length === 0) throw new Error("Failed to update lorebook");
-        await tx
-          .update(lorebooks)
-          .set({
-            name: lorebookInput.name,
-            description: lorebookInput.description,
-            category: lorebookInput.category,
-            scanDepth: lorebookInput.scanDepth,
-            tokenBudget: lorebookInput.tokenBudget,
-            recursiveScanning: String(lorebookInput.recursiveScanning),
-            maxRecursionDepth: lorebookInput.maxRecursionDepth,
-            updatedAt: new Date().toISOString(),
-          })
-          .where(eq(lorebooks.id, existingLorebookId));
+        const updated = await createLorebooksStorage(tx).update(existingLorebookId, lorebookInput);
+        if (!updated) throw new Error("Failed to update lorebook");
         if (existingEntryIds.length > 0) {
           await tx.delete(lorebookEntries).where(inArray(lorebookEntries.id, existingEntryIds));
         }

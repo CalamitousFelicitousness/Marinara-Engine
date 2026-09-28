@@ -18,6 +18,7 @@ import {
   type TouchEvent as ReactTouchEvent,
 } from "react";
 import { createPortal } from "react-dom";
+import { useIsMutating } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   Ban,
@@ -41,7 +42,12 @@ import {
 } from "lucide-react";
 import { cn, copyToClipboard } from "../../lib/utils";
 import { showConfirmDialog } from "../../lib/app-dialogs";
-import { useUpdateLorebookEntry, useDeleteLorebookEntry, useDuplicateLorebookEntry } from "../../hooks/use-lorebooks";
+import {
+  lorebookKeys,
+  useUpdateLorebookEntry,
+  useDeleteLorebookEntry,
+  useDuplicateLorebookEntry,
+} from "../../hooks/use-lorebooks";
 import { isCapabilityPackageAvailable, useInstalledCapabilityPackages } from "../../hooks/use-capability-packages";
 import { useUIStore } from "../../stores/ui.store";
 import { MacroTextarea } from "../ui/MacroTextarea";
@@ -274,6 +280,8 @@ export function LorebookEntryRow({
   const pendingOutletNameRef = useRef(entry.outletName);
   const upstreamImagesRef = useRef(entry.images);
   const pendingImagesRef = useRef(entry.images);
+  const uploadingImages =
+    useIsMutating({ mutationKey: lorebookKeys.imageUpload(lorebookId, entry.id), exact: true }) > 0;
 
   // Re-sync local state when the upstream entry changes (e.g. after refetch)
   // so we don't show stale values, but avoid clobbering an in-flight edit.
@@ -472,7 +480,7 @@ export function LorebookEntryRow({
     [deleteEntry, entry.id, entry.name, localizeUi, lorebookId],
   );
 
-  const duplicateDisabled = duplicateEntry.isPending || updateEntry.isPending;
+  const duplicateDisabled = duplicateEntry.isPending || updateEntry.isPending || uploadingImages;
   const handleImagesDraftChange = useCallback((images: LorebookEntryImage[]) => {
     pendingImagesRef.current = images;
   }, []);

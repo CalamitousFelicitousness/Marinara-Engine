@@ -1,0 +1,42 @@
+import assert from "node:assert/strict";
+import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
+import { characterDataSchema } from "../../packages/shared/dist/index.js";
+import { closeDB, getDB } from "../../packages/server/src/db/connection.js";
+import { charactersRoutes } from "../../packages/server/src/routes/characters.routes.js";
+import { embedLorebookIntoCharacter } from "../../packages/server/src/services/lorebook/character-book-sync.js";
+import { createCharactersStorage } from "../../packages/server/src/services/storage/characters.storage.js";
+import { createLorebooksStorage } from "../../packages/server/src/services/storage/lorebooks.storage.js";
+
+const db = await getDB();
+const characters = createCharactersStorage(db);
+const lorebooks = createLorebooksStorage(db);
+const app = Fastify();
+app.decorate("db", db);
+await app.register(charactersRoutes, { prefix: "/api/characters" });
+try {
+  const character = (await characters.create(characterDataSchema.parse({ name: "Reimport owner" })))!;
+  const book = (await lorebooks.create({ name: "Embedded lore", characterIds: [character.id] }))!;
+  const original = (await lorebooks.createEntry({ lorebookId: book.id, name: "Fact", content: "Embedded fact" }))!;
+  await embedLorebookIntoCharacter(db, character.id, book.id);
+  await lorebooks.update(book.id, { characterIds: [] });
+  assert.deepEqual((await lorebooks.getById(book.id))!.characterIds, []);
+
+  const response = await app.inject({
+    method: "POST",
+    url: `/api/characters/${character.id}/embedded-lorebook/import`,
+  });
+  assert.equal(response.statusCode, 200, response.body);
+  assert.equal(response.json().reimported, true);
+  assert.equal(response.json().lorebookId, book.id);
+  const restored = (await lorebooks.getById(book.id))!;
+  assert.deepEqual(restored.characterIds, [character.id], "reimport restores the character link");
+  assert.equal(restored.characterId, character.id, "legacy link matches the restored character");
+  assert.equal(restored.generatedBy, "import", "reimport keeps the existing importer provenance behavior");
+  const entries = await lorebooks.listEntries(book.id);
+  assert.equal(entries.length, 1);
+  assert.notEqual(entries[0]!.id, original.id, "reimport replaces the original entries");
+  assert.equal(entries[0]!.content, "Embedded fact");
+} finally {
+  await app.close();
+  await closeDB();
+}

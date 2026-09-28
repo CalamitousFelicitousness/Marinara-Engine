@@ -1,5 +1,5 @@
 import { constants } from "node:fs";
-import { mkdir, open, writeFile, unlink } from "node:fs/promises";
+import { mkdir, open, writeFile, unlink, lstat } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import {
@@ -12,6 +12,7 @@ import { getDataDir } from "../../config/runtime-config.js";
 import { isAllowedImageBuffer } from "../../utils/security.js";
 
 export const LOREBOOK_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+export const LOREBOOK_EXPORT_IMAGE_MAX_BYTES = 64 * 1024 * 1024;
 export const lorebookImagesDirectory = () => join(getDataDir(), "lorebooks", "images", "entries");
 
 export function lorebookImageInfo(buffer: Buffer) {
@@ -58,7 +59,29 @@ export async function readLorebookImageDataUrl(path: string): Promise<string | n
 }
 
 /** Both lorebook export formats carry bytes rather than another installation's paths. */
-export async function embedLorebookImages(entries: Array<Record<string, unknown>>) {
+export async function embedLorebookImages(
+  entries: Array<Record<string, unknown>>,
+  exportBudget = { remainingBytes: LOREBOOK_EXPORT_IMAGE_MAX_BYTES },
+) {
+  // ponytail: in-memory exports reserve at most 64 MiB of reference images per request;
+  // stream the archive and image encoding if larger portable exports are needed.
+  for (const entry of entries) {
+    for (const image of (entry.images ?? []) as LorebookEntryImage[]) {
+      if (!LOREBOOK_ENTRY_IMAGE_PATH_PATTERN.test(image.path)) continue;
+      const filename = image.path.slice(image.path.lastIndexOf("/") + 1);
+      const stat = await lstat(join(lorebookImagesDirectory(), filename)).catch(() => null);
+      if (!stat?.isFile() || stat.size > LOREBOOK_IMAGE_MAX_BYTES) continue;
+      if (stat.size > exportBudget.remainingBytes) {
+        throw Object.assign(
+          new Error(
+            "Reference images exceed the 64 MiB export limit. Export fewer items at a time or use a native profile ZIP.",
+          ),
+          { statusCode: 413 },
+        );
+      }
+      exportBudget.remainingBytes -= stat.size;
+    }
+  }
   const portable: Array<Record<string, unknown>> = [];
   for (const entry of entries) {
     const images: Array<{ dataUrl: string; caption: string }> = [];
@@ -147,7 +170,10 @@ export async function restoreLorebookImages(value: unknown): Promise<LorebookEnt
 }
 
 /** Keep local character mirrors small; embed bytes only at the export boundary. */
-export async function embedCharacterBookImages<T extends Record<string, any>>(data: T): Promise<T> {
+export async function embedCharacterBookImages<T extends Record<string, any>>(
+  data: T,
+  exportBudget = { remainingBytes: LOREBOOK_EXPORT_IMAGE_MAX_BYTES },
+): Promise<T> {
   const book = data.character_book;
   if (!book || !Array.isArray(book.entries)) return data;
   const entries = [];
@@ -157,7 +183,7 @@ export async function embedCharacterBookImages<T extends Record<string, any>>(da
       entries.push(entry);
       continue;
     }
-    const [portable] = await embedLorebookImages([{ ...entry, images }]);
+    const [portable] = await embedLorebookImages([{ ...entry, images }], exportBudget);
     entries.push({ ...entry, extensions: { ...entry.extensions, marinaraImages: portable!.images } });
   }
   return { ...data, character_book: { ...book, entries } };

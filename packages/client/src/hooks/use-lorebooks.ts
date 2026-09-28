@@ -31,6 +31,8 @@ export const lorebookKeys = {
   detail: (id: string) => [...lorebookKeys.all, "detail", id] as const,
   entries: (lorebookId: string) => [...lorebookKeys.all, "entries", lorebookId] as const,
   entry: (entryId: string) => [...lorebookKeys.all, "entry", entryId] as const,
+  imageUpload: (lorebookId: string, entryId: string) =>
+    [...lorebookKeys.all, "image-upload", lorebookId, entryId] as const,
   folders: (lorebookId: string) => [...lorebookKeys.all, "folders", lorebookId] as const,
   active: (chatId?: string | null) =>
     chatId ? ([...lorebookKeys.all, "active", chatId] as const) : ([...lorebookKeys.all, "active"] as const),
@@ -616,18 +618,21 @@ export function useActiveLorebookEntries(chatId: string | null, enabled = false)
 }
 
 /** Uploads only the image field; entry text and keyword drafts keep their own autosave. */
-export function useUploadLorebookEntryImage() {
+export function useUploadLorebookEntryImage(lorebookId: string, entryId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ lorebookId, entryId, file }: { lorebookId: string; entryId: string; file: File }) => {
+    mutationKey: lorebookKeys.imageUpload(lorebookId, entryId),
+    mutationFn: async ({ file, beforeUpload }: { file: File; beforeUpload?: () => Promise<void> }) => {
+      await beforeUpload?.();
       const form = new FormData();
       form.append("file", file);
       return api.upload<LorebookEntry>(`/lorebooks/${lorebookId}/entries/${entryId}/images`, form);
     },
-    onSuccess: (_entry, variables) => {
-      qc.invalidateQueries({ queryKey: lorebookKeys.entries(variables.lorebookId) });
-      qc.invalidateQueries({ queryKey: lorebookKeys.active() });
-    },
+    onSuccess: () =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: lorebookKeys.entries(lorebookId) }),
+        qc.invalidateQueries({ queryKey: lorebookKeys.active() }),
+      ]),
   });
 }
 

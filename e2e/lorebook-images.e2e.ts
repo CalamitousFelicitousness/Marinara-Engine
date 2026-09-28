@@ -20,6 +20,9 @@ test("reference uploads, captions, removal and wardrobe keyword preserve entry t
     })
   ).json();
   let releaseUpload = () => {};
+  let releaseSecondUpload = () => {};
+  let releaseCaptionSave = () => {};
+  let releaseEntryRefresh = () => {};
   const errors: string[] = [];
   const browserDiagnostics: string[] = [];
   page.on("console", (message) => {
@@ -56,19 +59,68 @@ test("reference uploads, captions, removal and wardrobe keyword preserve entry t
     const gate = new Promise<void>((resolve) => {
       releaseUpload = resolve;
     });
+    const secondGate = new Promise<void>((resolve) => {
+      releaseSecondUpload = resolve;
+    });
+    let uploadRequests = 0;
     await page.route(`**/api/lorebooks/${book.id}/entries/${entry.id}/images`, async (route) => {
-      await gate;
+      await (++uploadRequests === 1 ? gate : secondGate);
       await route.continue();
     });
-    await references.locator('input[type="file"]').setInputFiles([
-      { name: "coat.png", mimeType: "image/png", buffer: png },
-      { name: "boots.png", mimeType: "image/png", buffer: png },
-    ]);
+    await references
+      .locator('input[type="file"]')
+      .setInputFiles({ name: "coat.png", mimeType: "image/png", buffer: png });
     await expect(references.getByRole("button", { name: "Add image", exact: true })).toBeDisabled();
     await page.screenshot({ path: info.outputPath("references-loading.png") });
+    const duplicate = row.getByRole("button", { name: "Duplicate entry", exact: true });
+    await duplicate.scrollIntoViewIfNeeded();
+    await row.hover();
+    await page.screenshot({ path: info.outputPath("duplicate-during-upload.png") });
+    await expect(duplicate).toBeDisabled();
+    // Collapsing the row unmounts the image editor while its upload keeps running.
+    await row.getByRole("button", { name: "Collapse entry", exact: true }).click();
+    await row.getByRole("button", { name: "Expand entry", exact: true }).click();
+    await disclosure.click();
+    await expect(references.getByRole("button", { name: "Add image", exact: true })).toBeDisabled();
+    await references
+      .locator('input[type="file"]')
+      .setInputFiles({ name: "boots.png", mimeType: "image/png", buffer: png });
+    await expect.poll(() => uploadRequests).toBe(2);
+    const refreshed = page.waitForResponse((response) => response.url().endsWith(`/api/lorebooks/${book.id}/entries`));
     releaseUpload();
+    await (await refreshed).finished();
+    await expect.poll(async () => (await readEntry()).images.length).toBe(1);
+    await page.screenshot({ path: info.outputPath("duplicate-during-remounted-upload.png") });
+    await expect(duplicate).toBeDisabled();
+    // Filtering the entry out remounts the whole row, which must read the same pending mutation.
+    const search = page.getByPlaceholder("Search entries…", { exact: true });
+    await search.fill("no matching entry");
+    await expect(row).toHaveCount(0);
+    await search.fill("");
+    await expect(duplicate).toBeDisabled();
+    await disclosure.click();
+    await expect(references.getByRole("button", { name: "Add image", exact: true })).toBeDisabled();
+    const entryRefresh = new Promise<void>((resolve) => {
+      releaseEntryRefresh = resolve;
+    });
+    let refreshingEntry = false;
+    await page.route(
+      `**/api/lorebooks/${book.id}/entries`,
+      async (route) => {
+        refreshingEntry = true;
+        await entryRefresh;
+        await route.continue();
+      },
+      { times: 1 },
+    );
+    releaseSecondUpload();
+    await expect.poll(() => refreshingEntry).toBe(true);
+    await page.screenshot({ path: info.outputPath("duplicate-awaiting-entry-refresh.png") });
+    await expect(duplicate).toBeDisabled();
+    releaseEntryRefresh();
     await expect(references.getByRole("img")).toHaveCount(2);
     await expect.poll(async () => (await readEntry()).images.length).toBe(2);
+    await expect(duplicate).toBeEnabled();
     await references.getByRole("textbox", { name: "Caption" }).first().fill("Blue velvet coat with silver buttons");
     await expect(disclosure).toHaveText(/Reference images.*\(2\)/);
     await disclosure.click();
@@ -92,6 +144,11 @@ test("reference uploads, captions, removal and wardrobe keyword preserve entry t
         return entries.find((candidate: { id: string }) => candidate.id !== entry.id)?.images[0]?.caption;
       })
       .toBe("Pending caption copied immediately");
+    const entries = await (await request.get(`/api/lorebooks/${book.id}/entries`)).json();
+    const copied = entries.find((candidate: { id: string }) => candidate.id !== entry.id);
+    expect(copied.images.map((image: { path: string }) => image.path)).toEqual(
+      (await readEntry()).images.map((image: { path: string }) => image.path),
+    );
     for (const theme of ["light", "dark"] as const) {
       await page.evaluate(async (theme) => {
         const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
@@ -114,6 +171,41 @@ test("reference uploads, captions, removal and wardrobe keyword preserve entry t
     await references.getByRole("button", { name: "Remove image" }).last().click();
     await expect(references.getByRole("img")).toHaveCount(1);
     await expect.poll(async () => (await readEntry()).images[0].caption).toBe("Saved while removing boots");
+    const failedUpload = new Promise<void>((resolve) => {
+      releaseUpload = resolve;
+    });
+    const captionSave = new Promise<void>((resolve) => {
+      releaseCaptionSave = resolve;
+    });
+    let savingCaption = false;
+    await page.route(
+      `**/api/lorebooks/${book.id}/entries/${entry.id}`,
+      async (route) => {
+        savingCaption = true;
+        await captionSave;
+        await route.continue();
+      },
+      { times: 1 },
+    );
+    await references.getByRole("textbox", { name: "Caption" }).first().fill("Caption saved before upload");
+    await page.route(
+      `**/api/lorebooks/${book.id}/entries/${entry.id}/images`,
+      async (route) => {
+        await failedUpload;
+        await route.fulfill({ status: 500, json: { error: "Upload failed" } });
+      },
+      { times: 1 },
+    );
+    await references
+      .locator('input[type="file"]')
+      .setInputFiles({ name: "failed.png", mimeType: "image/png", buffer: png });
+    await expect.poll(() => savingCaption).toBe(true);
+    await expect(duplicate).toBeDisabled();
+    releaseCaptionSave();
+    releaseUpload();
+    await expect(references.getByRole("alert")).toBeVisible();
+    await expect(duplicate).toBeEnabled();
+    expect((await readEntry()).images).toHaveLength(1);
     await references
       .locator('input[type="file"]')
       .setInputFiles({ name: "unsupported.svg", mimeType: "image/svg+xml", buffer: Buffer.from("<svg/>") });
@@ -131,6 +223,9 @@ test("reference uploads, captions, removal and wardrobe keyword preserve entry t
     expect(errors).toEqual([]);
   } finally {
     releaseUpload();
+    releaseSecondUpload();
+    releaseCaptionSave();
+    releaseEntryRefresh();
     await info.attach("browser-diagnostics", {
       body: JSON.stringify(browserDiagnostics),
       contentType: "application/json",

@@ -1,4 +1,4 @@
-import { embedCharacterBookImages } from "../services/lorebook/lorebook-images.js";
+import { embedCharacterBookImages, LOREBOOK_EXPORT_IMAGE_MAX_BYTES } from "../services/lorebook/lorebook-images.js";
 // ──────────────────────────────────────────────
 // Routes: Characters, Personas & Groups
 // ──────────────────────────────────────────────
@@ -2007,11 +2007,12 @@ export async function charactersRoutes(app: FastifyInstance) {
     }
 
     const zip = new AdmZip();
+    const exportBudget = { remainingBytes: LOREBOOK_EXPORT_IMAGE_MAX_BYTES };
     let exportedCount = 0;
     for (const id of ids) {
       const char = await storage.getById(id);
       if (!char) continue;
-      const charData = await embedCharacterBookImages(JSON.parse(char.data));
+      const charData = await embedCharacterBookImages(JSON.parse(char.data), exportBudget);
       const payload =
         format === "compatible"
           ? buildCompatibleCharacterExport(charData)

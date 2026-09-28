@@ -3,13 +3,14 @@ import { lorebookEntries } from "../../packages/server/src/db/schema/lorebooks.j
 import { backupRoutes } from "../../packages/server/src/routes/backup.routes.js";
 import AdmZip from "../../node_modules/adm-zip/adm-zip.js";
 import assert from "node:assert/strict";
-import { mkdir, symlink, writeFile, unlink, readFile, readdir } from "node:fs/promises";
+import { mkdir, symlink, writeFile, unlink, readFile, readdir, truncate } from "node:fs/promises";
 import { join } from "node:path";
 import { getDB, closeDB } from "../../packages/server/src/db/connection.js";
 import { createCharactersStorage } from "../../packages/server/src/services/storage/characters.storage.js";
 import { embedLorebookIntoCharacter } from "../../packages/server/src/services/lorebook/character-book-sync.js";
 import { createLorebooksStorage } from "../../packages/server/src/services/storage/lorebooks.storage.js";
 import { lorebooksRoutes } from "../../packages/server/src/routes/lorebooks.routes.js";
+import { processLorebooks } from "../../packages/server/src/services/lorebook/index.js";
 import { importMarinara } from "../../packages/server/src/services/import/marinara.importer.js";
 import { importSTLorebook } from "../../packages/server/src/services/import/st-lorebook.importer.js";
 import {
@@ -18,6 +19,9 @@ import {
   restoreLorebookImages,
   lorebookImagesDirectory,
   embedCharacterBookImages,
+  embedLorebookImages,
+  LOREBOOK_IMAGE_MAX_BYTES,
+  LOREBOOK_EXPORT_IMAGE_MAX_BYTES,
 } from "../../packages/server/src/services/lorebook/lorebook-images.js";
 import { ZodError } from "../../packages/server/node_modules/zod/index.js";
 import { characterDataSchema, createLorebookEntrySchema } from "../../packages/shared/dist/index.js";
@@ -88,6 +92,42 @@ try {
   assert.equal(served.statusCode, 200, served.body);
   assert.equal(served.headers["content-type"], "image/png");
   assert.deepEqual(served.rawPayload, png);
+  const budgetBook = (await storage.create({ name: "Image budget", tokenBudget: 1000 }))!;
+  const mixed = (await storage.createEntry({
+    lorebookId: budgetBook.id,
+    name: "Mixed reference",
+    keys: ["budget"],
+    order: 0,
+    content: "A blue coat.",
+    images: [image],
+  }))!;
+  const scanBudget = (tokenBudget: number) =>
+    processLorebooks(db, [{ role: "user", content: "budget" }], null, {
+      activeLorebookIds: [budgetBook.id],
+      tokenBudget,
+      previewOnly: true,
+    });
+  assert.equal((await scanBudget(1000)).imageEntries?.[0]?.images.length, 1, "text keeps affordable images");
+  const laterText = (await storage.createEntry({
+    lorebookId: budgetBook.id,
+    name: "Later text",
+    keys: ["budget"],
+    order: 1,
+    content: "The queen guards the northern gate. ".repeat(15),
+  }))!;
+  const textFirst = await scanBudget(300);
+  assert.deepEqual(new Set(textFirst.activatedEntryIds), new Set([mixed.id, laterText.id]));
+  assert.equal(textFirst.imageEntries, undefined, "all affordable text precedes optional images");
+  await storage.removeEntry(laterText.id);
+  const secondImage = await saveLorebookImage(png);
+  await storage.updateEntry(mixed.id, { content: "", images: [image, secondImage] });
+  assert.equal(
+    (await scanBudget(800)).imageEntries?.[0]?.images.length,
+    2,
+    "image-only references are charged once and retain both fitting images",
+  );
+  assert.equal((await scanBudget(300)).imageEntries?.[0]?.images.length, 1, "image-only references obey the budget");
+  await storage.remove(budgetBook.id);
   assert.equal(
     (await app.inject({ method: "POST", url, ...uploadPayload(Buffer.from("<svg/>"), "fake.png") })).statusCode,
     400,
@@ -150,6 +190,34 @@ try {
   );
   const portableCharacter = await embedCharacterBookImages({ character_book: embedded.characterBook });
   assert.equal(portableCharacter.character_book.entries[0]!.extensions.marinaraImages[0].dataUrl, dataUrl);
+  const exportBudget = { remainingBytes: png.length * 2 };
+  await embedLorebookImages([{ images: [image] }], exportBudget);
+  await embedCharacterBookImages({ character_book: embedded.characterBook }, exportBudget);
+  assert.equal(exportBudget.remainingBytes, 0, "books and embedded character books share one export allowance");
+  await assert.rejects(
+    () => embedLorebookImages([{ images: [image] }], exportBudget),
+    (error: any) => error.statusCode === 413 && /64 MiB.*fewer items/.test(error.message),
+    "aggregate export bytes are bounded across successive books and callers",
+  );
+  const oversizedBook = (await storage.create({ name: "Oversized reference export" }))!;
+  const largeReference = await saveLorebookImage(png);
+  const largeFile = join(lorebookImagesDirectory(), largeReference.path.split("/").at(-1)!);
+  // A sparse file proves the route's size guard without allocating large image buffers.
+  await truncate(largeFile, LOREBOOK_IMAGE_MAX_BYTES);
+  for (let index = 0; index <= Math.floor(LOREBOOK_EXPORT_IMAGE_MAX_BYTES / LOREBOOK_IMAGE_MAX_BYTES); index++) {
+    await storage.createEntry({ lorebookId: oversizedBook.id, name: String(index), images: [largeReference] });
+  }
+  for (const format of ["native", "compatible"]) {
+    const oversized = await app.inject({
+      method: "POST",
+      url: "/api/lorebooks/export-bulk",
+      payload: { ids: [oversizedBook.id], format },
+    });
+    assert.equal(oversized.statusCode, 413, "oversized reference exports produce a clear client error");
+    assert.match(oversized.json().error, /64 MiB.*fewer items/);
+  }
+  await storage.remove(oversizedBook.id);
+  await unlink(largeFile);
   const profileResponse = await app.inject("/api/backup/export-profile");
   assert.equal(profileResponse.statusCode, 200, profileResponse.body);
   const profile = profileResponse.json();

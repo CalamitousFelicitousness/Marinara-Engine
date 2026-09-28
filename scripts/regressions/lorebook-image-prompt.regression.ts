@@ -12,7 +12,10 @@ import {
   saveLorebookImage,
 } from "../../packages/server/src/services/lorebook/lorebook-images.js";
 import { processActivatedEntries } from "../../packages/server/src/services/lorebook/prompt-injector.js";
-import { scopeLorebookScanResultToCharacterContext } from "../../packages/server/src/services/lorebook/index.js";
+import {
+  scopeLorebookScanResultToCharacterContext,
+  resolveBudgetAndRecursivelyActivateLorebookEntries,
+} from "../../packages/server/src/services/lorebook/index.js";
 import { createLorebookEntrySchema, type LorebookEntry, type ChatMLMessage } from "../../packages/shared/dist/index.js";
 
 const png = Buffer.from(
@@ -44,6 +47,28 @@ assert.equal(
 const textOnly = processActivatedEntries([activation], 50);
 assert.equal(textOnly.totalEntries, 1, "entry text that fits the budget survives when its images do not");
 assert.equal(textOnly.imageEntries, undefined, "over-budget images are dropped before the entry text");
+const recursive = resolveBudgetAndRecursivelyActivateLorebookEntries(
+  [{ role: "user", content: "wardrobe" }],
+  [
+    makeEntry("starter", { content: "recur-trigger", order: 0, preventRecursion: false }),
+    makeEntry("later", {
+      keys: ["recur-trigger"],
+      content: "The queen guards the northern gate. ".repeat(15),
+      order: 1,
+      images: [],
+    }),
+  ],
+  { scanDepth: 2 },
+  2,
+  new Map([["book", { name: "Book", tokenBudget: 1000, entryLimit: 100 }]]),
+  300,
+  100,
+);
+assert.deepEqual(
+  recursive.map(({ entry }) => entry.id),
+  ["starter", "later"],
+);
+assert.deepEqual(recursive[0]!.entry.images, [], "optional images cannot displace affordable recursive text");
 const processed = processActivatedEntries([activation], 500);
 assert.equal(processed.imageEntries?.length, 1);
 assert.ok(processed.totalTokensEstimate >= 256, "images contribute to budget estimates");

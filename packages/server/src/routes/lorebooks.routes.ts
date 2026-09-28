@@ -4,6 +4,7 @@ import {
   readLorebookImageDataUrl,
   saveLorebookImage,
   LOREBOOK_IMAGE_MAX_BYTES,
+  LOREBOOK_EXPORT_IMAGE_MAX_BYTES,
 } from "../services/lorebook/lorebook-images.js";
 // ──────────────────────────────────────────────
 // Routes: Lorebooks
@@ -607,11 +608,15 @@ export async function lorebooksRoutes(app: FastifyInstance) {
     }
 
     const zip = new AdmZip();
+    const exportBudget = { remainingBytes: LOREBOOK_EXPORT_IMAGE_MAX_BYTES };
     let exportedCount = 0;
     for (const id of ids) {
       const lb = (await storage.getById(id)) as Record<string, unknown> | null;
       if (!lb) continue;
-      const entries = await embedLorebookImages((await storage.listEntries(id)) as Array<Record<string, unknown>>);
+      const entries = await embedLorebookImages(
+        (await storage.listEntries(id)) as Array<Record<string, unknown>>,
+        exportBudget,
+      );
       const folders = await storage.listFolders(id);
       if (format === "compatible") {
         zip.addFile(

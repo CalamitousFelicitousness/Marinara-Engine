@@ -755,13 +755,14 @@ function trySelectBudgetedLorebookEntry(
   }
 
   const entryTokens = fitted.tokens;
-  state.selected.push(fitted.candidate);
+  const selectedEntry = includeImages ? fitted.candidate : candidate;
+  state.selected.push(selectedEntry);
   state.selectedIds.add(candidate.entry.id);
   state.perLorebookTokens.set(lorebookId, lorebookTokens + entryTokens);
   state.perLorebookEntryCounts.set(lorebookId, lorebookEntryCount + 1);
   state.totalTokens += entryTokens;
 
-  return { selected: true, entry: fitted.candidate };
+  return { selected: true, entry: selectedEntry };
 }
 
 function addImagesToBudgetedEntries(
@@ -772,8 +773,9 @@ function addImagesToBudgetedEntries(
 ): ActivatedEntry[] {
   return selected.map((candidate) => {
     const current = state.selected.find((entry) => entry.entry.id === candidate.entry.id) ?? candidate;
-    const textTokens = estimateTextTokens(candidate.entry.content);
-    const oldTokens = textTokens;
+    const oldTokens = candidate.entry.content.trim()
+      ? estimateTextTokens(candidate.entry.content)
+      : estimateLorebookEntryTokens(candidate.entry);
     const lorebookId = candidate.entry.lorebookId;
     const lorebook = lorebooksById.get(lorebookId);
     const lorebookTokens = state.perLorebookTokens.get(lorebookId) ?? 0;
@@ -839,6 +841,7 @@ function selectBudgetedLorebookEntryBatch(
   tokenBudget: number,
   maxEntries: number,
   resolveContent?: LorebookFinalContentResolver,
+  includeOptionalImages = true,
 ): {
   selectedFromCandidates: ActivatedEntry[];
   state: LorebookBudgetSelectionState;
@@ -882,17 +885,14 @@ function selectBudgetedLorebookEntryBatch(
       if (selected.selected) selectedFromCandidates.push(selected.entry);
     }
 
-    selectedFromCandidates.splice(
-      0,
-      selectedFromCandidates.length,
-      ...addImagesToBudgetedEntries(selectedFromCandidates, nextState, lorebooksById, tokenBudget),
-    );
     selectedFromCandidates.sort(lorebookInjectionOrder);
 
     if (sameActivatedEntrySet(pool, selectedFromCandidates)) {
       commitLorebookResolutionPass(pass);
       return {
-        selectedFromCandidates,
+        selectedFromCandidates: includeOptionalImages
+          ? addImagesToBudgetedEntries(selectedFromCandidates, nextState, lorebooksById, tokenBudget)
+          : selectedFromCandidates,
         state: nextState,
         budgetSkippedEntries: toBudgetSkippedEntries(lastSkippedBudgetEntries, lorebooksById),
       };
@@ -934,16 +934,13 @@ function selectBudgetedLorebookEntryBatch(
     if (selected.selected) selectedFromCandidates.push(selected.entry);
   }
 
-  selectedFromCandidates.splice(
-    0,
-    selectedFromCandidates.length,
-    ...addImagesToBudgetedEntries(selectedFromCandidates, nextState, lorebooksById, tokenBudget),
-  );
   selectedFromCandidates.sort(lorebookInjectionOrder);
   if (sameActivatedEntrySet(pool, selectedFromCandidates)) {
     commitLorebookResolutionPass(pass);
     return {
-      selectedFromCandidates,
+      selectedFromCandidates: includeOptionalImages
+        ? addImagesToBudgetedEntries(selectedFromCandidates, nextState, lorebooksById, tokenBudget)
+        : selectedFromCandidates,
       state: nextState,
       budgetSkippedEntries: toBudgetSkippedEntries(lastSkippedBudgetEntries, lorebooksById),
     };
@@ -1047,6 +1044,7 @@ export function resolveBudgetAndRecursivelyActivateLorebookEntriesWithDiagnostic
       tokenBudget,
       maxEntries,
       resolveContent,
+      false,
     );
     state = selectedBatch.state;
     budgetSkippedEntries.push(...selectedBatch.budgetSkippedEntries);
@@ -1082,7 +1080,9 @@ export function resolveBudgetAndRecursivelyActivateLorebookEntriesWithDiagnostic
   }
 
   return {
-    selected: state.selected.sort(lorebookInjectionOrder),
+    selected: addImagesToBudgetedEntries(state.selected, state, lorebooksById, tokenBudget).sort(
+      lorebookInjectionOrder,
+    ),
     budgetSkippedEntries,
   };
 }

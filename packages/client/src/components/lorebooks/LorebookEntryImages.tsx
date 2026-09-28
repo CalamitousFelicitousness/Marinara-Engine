@@ -2,8 +2,9 @@ import { useEffect, useId, useRef, useState, type ChangeEvent } from "react";
 import { toast } from "sonner";
 import { ChevronDown, ImagePlus, Loader2, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useIsMutating } from "@tanstack/react-query";
 import { MAX_LOREBOOK_ENTRY_IMAGES, type LorebookEntryImage } from "@marinara-engine/shared";
-import { useUpdateLorebookEntry, useUploadLorebookEntryImage } from "../../hooks/use-lorebooks";
+import { lorebookKeys, useUpdateLorebookEntry, useUploadLorebookEntryImage } from "../../hooks/use-lorebooks";
 
 export function LorebookEntryImages({
   lorebookId,
@@ -21,7 +22,8 @@ export function LorebookEntryImages({
   hasWardrobeKey: boolean;
 }) {
   const { t } = useTranslation();
-  const upload = useUploadLorebookEntryImage();
+  const upload = useUploadLorebookEntryImage(lorebookId, entryId);
+  const uploading = useIsMutating({ mutationKey: lorebookKeys.imageUpload(lorebookId, entryId), exact: true }) > 0;
   const update = useUpdateLorebookEntry();
   const [expanded, setExpanded] = useState(false);
   const panelId = useId();
@@ -29,7 +31,8 @@ export function LorebookEntryImages({
   const draftRef = useRef(images);
   const dirtyRef = useRef(false);
   const busyRef = useRef(false);
-  const [busy, setBusy] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const busy = saving || uploading;
   const [error, setError] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const sectionRef = useRef<HTMLElement>(null);
@@ -69,7 +72,7 @@ export function LorebookEntryImages({
   async function run(operation: () => Promise<void>) {
     if (busyRef.current) return;
     busyRef.current = true;
-    setBusy(true);
+    setSaving(true);
     setError("");
     try {
       await operation();
@@ -77,7 +80,7 @@ export function LorebookEntryImages({
       setError(t("lorebook.images.saveError"));
     } finally {
       busyRef.current = false;
-      setBusy(false);
+      setSaving(false);
     }
   }
 
@@ -98,10 +101,12 @@ export function LorebookEntryImages({
       return;
     }
     await run(async () => {
-      if (dirtyRef.current) await save(draftRef.current);
       for (const file of files) {
         try {
-          const saved = await upload.mutateAsync({ lorebookId, entryId, file });
+          const saved = await upload.mutateAsync({
+            file,
+            beforeUpload: dirtyRef.current ? () => save(draftRef.current) : undefined,
+          });
           setImages(saved.images ?? []);
         } catch {
           setError(t("ui.lorebooks.expandeddrawer.imageUploadError"));

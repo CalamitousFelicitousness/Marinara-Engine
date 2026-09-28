@@ -4,6 +4,10 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Lorebook references retain affordable images without displacing text, including recursively activated text, and image-only entries count their image budget once.
+- Duplicating a lorebook entry waits for reference-image uploads, and reimporting an embedded lorebook restores its character link.
+- Portable lorebook and character exports share a 64 MiB reference-image limit per request. Split larger selections into smaller exports or use a native profile ZIP.
+
 - Lorebook entries can attach PNG, JPEG, and WebP reference images with optional captions through a collapsed Reference images button. Activated entries send their images to compatible chat models; models that reject image input receive the text and captions with a notice. A shortcut adds `wardrobe` as an ordinary activation keyword (#6798).
 
 - Enabling or disabling selected lorebooks includes books hidden by filters, and Undo changes only the books updated by that action.

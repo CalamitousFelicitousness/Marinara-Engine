@@ -1,4 +1,8 @@
-import { embedCharacterBookImages, embedLorebookImages } from "../services/lorebook/lorebook-images.js";
+import {
+  embedCharacterBookImages,
+  embedLorebookImages,
+  LOREBOOK_EXPORT_IMAGE_MAX_BYTES,
+} from "../services/lorebook/lorebook-images.js";
 // ──────────────────────────────────────────────
 // Routes: Backup
 // ──────────────────────────────────────────────
@@ -521,10 +525,12 @@ async function buildCompatibleProfileZip(app: FastifyInstance) {
   });
   const data = envelope.data as Record<string, any>;
   const zip = new AdmZip();
+  const exportBudget = { remainingBytes: LOREBOOK_EXPORT_IMAGE_MAX_BYTES };
 
   for (const [index, character] of (Array.isArray(data.characters) ? data.characters : []).entries()) {
     const charData = await embedCharacterBookImages(
       typeof character.data === "string" ? JSON.parse(character.data) : character.data,
+      exportBudget,
     );
     zip.addFile(
       `characters/${toSafeExportName(String(charData?.name ?? "character"), `character-${index + 1}`)}.json`,
@@ -553,7 +559,10 @@ async function buildCompatibleProfileZip(app: FastifyInstance) {
       `lorebooks/${toSafeExportName(String(lorebook.name ?? "lorebook"), `lorebook-${index + 1}`)}.json`,
       Buffer.from(
         JSON.stringify(
-          buildCompatibleLorebookExport({ ...lorebook, entries: await embedLorebookImages(lorebook.entries ?? []) }),
+          buildCompatibleLorebookExport({
+            ...lorebook,
+            entries: await embedLorebookImages(lorebook.entries ?? [], exportBudget),
+          }),
           null,
           2,
         ),

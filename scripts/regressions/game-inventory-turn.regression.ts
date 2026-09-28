@@ -5,10 +5,11 @@
  * that finished while nobody was reading it still changes the inventory.
  */
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ChatMessage, ChatOptions, LLMUsage } from "../../packages/server/src/services/llm/base-provider.js";
 
 const dir = mkdtempSync(join(tmpdir(), "marinara-inventory-turn-"));
@@ -27,6 +28,8 @@ const { gameInventoryRoutes } = await import("../../packages/server/src/routes/g
 const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
 const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
 const { gameRoutes } = await import("../../packages/server/src/routes/game.routes.js");
+const { createGameRulesetsStorage } =
+  await import("../../packages/server/src/services/storage/game-rulesets.storage.js");
 const {
   normalizeGameInventoryStacks,
   gameInventoryCount,
@@ -389,6 +392,191 @@ try {
     );
     assert.equal(meta.gameInventoryTurn, undefined, "the previous session's turn record stays behind");
     assert.ok(CHAT_PRESET_EXCLUDED_METADATA_KEYS.includes("gameInventoryTurn"));
+  }
+
+  // ── A ruleset's items (#6795): the route and a turn read the game's ruleset ──
+  {
+    const ember = JSON.parse(
+      readFileSync(fileURLToPath(new URL("../../docs/examples/rulesets/ember-roads.json", import.meta.url)), "utf8"),
+    ) as Record<string, any>;
+    const strict = structuredClone(ember);
+    strict.id = "ember-strict";
+    strict.items.freeform = "refuse";
+    const rulesets = createGameRulesetsStorage(db);
+    await rulesets.put({
+      rulesetId: "local/ember-roads",
+      version: ember.version,
+      sourceKind: "local",
+      definition: JSON.stringify(ember),
+    });
+    await rulesets.put({
+      rulesetId: "local/ember-strict",
+      version: strict.version,
+      sourceKind: "local",
+      definition: JSON.stringify(strict),
+    });
+    const connection = (await createConnectionsStorage(db).list())[0]!;
+    const rulesetGame = async (id: string) => {
+      const game = await chats.create({
+        name: `Ruleset items ${id}`,
+        mode: "game",
+        characterIds: [],
+        connectionId: connection.id,
+        promptPresetId: null,
+      });
+      assert.ok(game);
+      await chats.patchMetadata(game.id, {
+        enableAgents: false,
+        enableTools: false,
+        gameRuleset: { id, version: ember.version, packageId: null, options: {} },
+      });
+      return game;
+    };
+    const stacksOf = async (chatId: string) => {
+      const row = await chats.getById(chatId);
+      const meta = typeof row!.metadata === "string" ? JSON.parse(row!.metadata) : row!.metadata;
+      return normalizeGameInventoryStacks(meta.gameInventory).map(
+        (stack) => `${stack.name}${stack.item ? ` <${stack.item}>` : ""} ${stack.quantity}`,
+      );
+    };
+    const change = async (chatId: string, ops: unknown[]) => {
+      const response = await app.inject({ method: "POST", url: "/api/game/inventory", payload: { chatId, ops } });
+      assert.equal(response.statusCode, 200, response.body);
+      return response.json().results as Array<{ ok: boolean; reason?: string }>;
+    };
+
+    // The player's typed name is the ruleset's item; one picked adds by its id; arrows stack by 20.
+    const roads = await rulesetGame("local/ember-roads");
+    await change(roads.id, [
+      { op: "add", name: "hand AXE", count: 1 },
+      { op: "add", name: "Arrows", item: "outfitter/arrows", count: 30 },
+      { op: "add", name: "Rope", count: 1 },
+    ]);
+    assert.deepEqual(await stacksOf(roads.id), [
+      "Hand axe <outfitter/hand-axe> 1",
+      "Arrows <outfitter/arrows> 20",
+      "Arrows <outfitter/arrows> 10",
+      "Rope 1",
+    ]);
+    // Only its own items, in a ruleset that takes nothing else.
+    const strictGame = await rulesetGame("local/ember-strict");
+    const refusedPlain = await change(strictGame.id, [
+      { op: "add", name: "Rope", count: 1 },
+      { op: "add", name: "Road rations", count: 1 },
+    ]);
+    assert.deepEqual(
+      refusedPlain.map((result) => (result.ok ? "ok" : result.reason)),
+      ["not-ruleset-item", "ok"],
+    );
+    assert.deepEqual(await stacksOf(strictGame.id), ["Road rations <outfitter/road-rations> 1"]);
+    // Arrows the party carried before the game had its ruleset's items: a plain item of that name.
+    const beforeTurn = await chats.getById(strictGame.id);
+    const beforeMeta =
+      typeof beforeTurn!.metadata === "string" ? JSON.parse(beforeTurn!.metadata) : beforeTurn!.metadata;
+    await chats.patchMetadata(strictGame.id, {
+      gameInventory: [...beforeMeta.gameInventory, { id: "st-old-arrows", name: "Arrows", quantity: 4 }],
+    });
+
+    // The Game Master's name is the ruleset's item too, stacked by 7, and its plain items still land
+    // (untyped items are the native switch's, not freeform's).
+    reply = `You find food. [inventory: action="add" item="Road rations" count="9"] And a lamp. [inventory: action="add" item="Lamp"] And a fresh quiver. [inventory: action="add" item="Arrows" count="2"]`;
+    await chats.createMessage({ chatId: strictGame.id, role: "user", content: "I search the wagon." });
+    const gmTurn = await app.inject({
+      method: "POST",
+      url: "/api/generate/",
+      payload: { chatId: strictGame.id, streaming: true },
+    });
+    assert.equal(gmTurn.statusCode, 200, gmTurn.body);
+    const answered = readResolvedInventoryTags((await chats.listMessages(strictGame.id)).at(-1)!.content);
+    assert.deepEqual(
+      answered.map((tag) => `${tag.item} ${tag.ok ? `ok ${tag.count}->${tag.now}` : tag.reason}`),
+      // The ruleset's arrows are another item than the old plain ones, so two are held of them.
+      ["Road rations ok 9->10", "Lamp ok 1->1", "Arrows ok 2->2"],
+    );
+    // The answers streamed before the reply is saved already read the ruleset.
+    const streamed = gmTurn.body
+      .split("\n")
+      .filter((line) => line.startsWith("data: "))
+      .map((line) => {
+        try {
+          return JSON.parse(line.slice("data: ".length)) as { type?: string; data?: unknown };
+        } catch {
+          return null;
+        }
+      })
+      .find((event) => event?.type === "content_replace");
+    assert.match(String(streamed?.data ?? ""), /item="Arrows" count="2" result="ok" now="2"/);
+    assert.deepEqual(await stacksOf(strictGame.id), [
+      "Road rations <outfitter/road-rations> 7",
+      "Arrows 4",
+      "Road rations <outfitter/road-rations> 3",
+      "Lamp 1",
+      "Arrows <outfitter/arrows> 2",
+    ]);
+    // The next turn's prompt says what the ruleset's item is, and that names become its items.
+    reply = "The road goes on.";
+    await chats.createMessage({ chatId: strictGame.id, role: "user", content: "I walk on." });
+    const next = await app.inject({
+      method: "POST",
+      url: "/api/generate/",
+      payload: { chatId: strictGame.id, streaming: true },
+    });
+    assert.equal(next.statusCode, 200, next.body);
+    const prompt = prompts
+      .at(-1)!
+      .map((message) => message.content)
+      .join("\n");
+    assert.match(
+      prompt,
+      /PLAYER INVENTORY: Road rations ×10 \[Provisions, Common; Bulk 1\]; Arrows ×4; Lamp; Arrows ×2 \[Ammunition, Common; Bulk 1\]/,
+    );
+    assert.match(prompt, /an item named exactly as one of them becomes that item/);
+
+    // A new session brings back what only the detailed inventory still names, stacked as its item
+    // allows: thirty arrows are a stack of twenty and one of ten.
+    const gameId = "ruleset-items-sessions";
+    const ended = await chats.create({
+      name: "Ruleset items — Session 1",
+      mode: "game",
+      characterIds: [],
+      groupId: gameId,
+    });
+    assert.ok(ended);
+    await chats.patchMetadata(ended.id, {
+      gameId,
+      gameSessionStatus: "concluded",
+      gameSessionNumber: 1,
+      gameRuleset: { id: "local/ember-roads", version: ember.version, packageId: null, options: {} },
+      gameInventory: [],
+    });
+    const last = await chats.createMessage({ chatId: ended.id, role: "assistant", content: "The road ends here." });
+    await createGameStateStorage(db).create({
+      chatId: ended.id,
+      messageId: last.id,
+      swipeIndex: 0,
+      date: null,
+      time: null,
+      location: null,
+      weather: null,
+      temperature: null,
+      presentCharacters: [],
+      recentEvents: [],
+      playerStats: {
+        stats: [],
+        attributes: null,
+        skills: {},
+        inventory: [{ item: "outfitter/arrows", name: "Arrows", description: "", quantity: 30, location: "on_person" }],
+        activeQuests: [],
+        status: "",
+      } as never,
+      personaStats: null,
+    });
+    const carried = await app.inject({ method: "POST", url: "/api/game/session/start", payload: { gameId } });
+    assert.equal(carried.statusCode, 200, carried.body);
+    assert.deepEqual(await stacksOf(carried.json().sessionChat.id), [
+      "Arrows <outfitter/arrows> 20",
+      "Arrows <outfitter/arrows> 10",
+    ]);
   }
 
   console.info("game inventory turn regressions passed.");

@@ -6,7 +6,7 @@ import {
   gameInventoryCountItems,
   gameInventoryFightEffects,
   gameInventoryFightLines,
-  gameInventoryPlainItemId,
+  gameInventoryItemsOwnNamed,
   normalizeGameInventoryStacks,
 } from "@marinara-engine/shared";
 import { applyGameInventoryChangeHeld } from "../services/game/game-inventory.service.js";
@@ -572,8 +572,8 @@ export async function combatDirectorRoutes(
           // fight saw one total per item; the detailed inventory and the journal follow with it.
           await applyGameInventoryChangeHeld(app.db, chatId, (stacks) => {
             for (const d of deltas) {
-              // Counted as that exact item, so another item's nickname can never make up the count.
-              if (gameInventoryCountItems(stacks, new Set([gameInventoryPlainItemId(d.name)])) < d.count)
+              // Counted as the items of that own name, so another item's nickname can never make up the count.
+              if (gameInventoryCountItems(stacks, gameInventoryItemsOwnNamed(stacks, d.name)) < d.count)
                 throw new Error("Inventory changed. Reload the battle.");
             }
             const outcome = applyGameInventoryOps(

@@ -529,6 +529,29 @@ try {
       }),
       "a hidden guard",
     );
+    // `native: false` (#6822): the Game Master is told it has only the ruleset's items and the ones it
+    // invents, or only the ruleset's when it may not invent.
+    const closedShop = parsedOrThrow(
+      variant(emberText, (doc) => (doc.items.native = false)),
+      "no untyped items",
+    );
+    const shop = buildGmFormatReminder({ ...base, ruleset: closedShop });
+    assert.match(
+      shop,
+      /This ruleset has no untyped items: an add must name one of its items or invent one of its items as below, and any other name is refused as not-ruleset-item\. More of something already held can still be added\./,
+    );
+    assert.match(shop, /invent one of its items in the add/);
+    const listedOnly = parsedOrThrow(
+      variant(emberText, (doc) => {
+        doc.items.native = false;
+        doc.items.propose = false;
+      }),
+      "only listed items",
+    );
+    const listed = buildGmFormatReminder({ ...base, ruleset: listedOnly });
+    assert.match(listed, /an add must name one of its items, and any other name is refused/);
+    assert.doesNotMatch(listed, /invent one of its items/);
+    assert.doesNotMatch(told, /no untyped items/, "a ruleset with Game Mode's own items says nothing of it");
     const secret = buildGmFormatReminder({ ...base, ruleset: secretGuard });
     assert.match(secret, /invent one of its items/);
     assert.doesNotMatch(secret, /guard/, "a stat it is not shown is never named, its cap included");

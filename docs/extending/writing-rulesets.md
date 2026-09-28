@@ -708,7 +708,7 @@ The block goes in `items` at the top level of the file. This is Ember Roads', a 
   - `perWeight` (optional, and only beside `carry`) is how many of the family's coins weigh one unit of the carry stat.
 - `rarityCaps`: optional, one per rarity at most. The most an item the Game Master invents may give at that rarity: the largest value of each number stat named in `stats`, inside that stat's own range, and a whole number for a stat that takes whole numbers. An invented item is held to it; the items your catalogs list are yours and never capped.
 - `propose`: `true` by default. `false` forbids the Game Master to invent items of your ruleset.
-- `native`: `true` by default. `false` turns off Game Mode's own untyped items in your ruleset's games. The Game Master can still invent items, written in your ruleset's words.
+- `native`: `true` by default. `false` turns off Game Mode's own untyped items in your ruleset's games (see **What reads items**). The Game Master can still invent items, written in your ruleset's words.
 - `freeform`: what an item the player types in becomes. `"plain"` (the default) keeps it as an item with no rules, as today. `"refuse"` allows only items of your ruleset.
 
 ### An item
@@ -755,6 +755,7 @@ Everything above is checked when the ruleset is imported, and your catalogs of i
 - **Names find your items.** A name the player types, or one the Game Master writes in `[inventory: action="add"]`, that is the `label` of one of your items, in any case, adds that item. When two items share a label, the one your catalogs list first is the one a name finds.
 - **`stack`** is kept: adding, setting, merging or giving past it fills the stack and starts a new one.
 - **`freeform: "refuse"`** leaves the player only your items: the picker, and names that are your items.
+- **`native: false`** leaves the Game Master only your items and the ones it invents: a name that is neither is refused (`not-ruleset-item`), while more of something already held can still be added, and its instructions say so. A fight no longer asks a model what the inventory's items do, and offers none: your items do nothing in a fight until a later release lets them say what they do. What the player types in still follows `freeform`, and what the party carried comes back in a new session either way.
 - **What an item is** shows on the selected stack: its category, rarity and tags by their labels, the stats it gives, its summary and how many one stack holds. The picker also shows its `cost`. The Game Master sees each of your items it holds with its category, rarity, tags and the stats you left `promptVisible`, such as `Hand axe [Weapon, Common, Thrown; Damage 1d6, Reach close]`.
 
 - **`slots`**: an item that takes slots can be equipped by whoever carries it, while they have those slots free, and one item of a larger stack is taken into its own stack to be worn. The inventory shows each slot in use per character.
@@ -763,7 +764,7 @@ Everything above is checked when the ruleset is imported, and your catalogs of i
 - **The Game Master invents items in your words.** Unless you set `propose: false`, its `[inventory: action="add"]` can describe a new item: `like=` one of your items to start from, then any of `category=`, `rarity=`, `tags=`, `stats=` (`id=value` pairs), `slots=` (`id=count`), `binds=` (`yes`, `cursed` or `no`) and `summary=`, each part by its id or label. The Engine keeps only what your block has: an unknown category, tag, stat or slot is left out, a rarity you do not have becomes your lowest, a number is held to its stat's range and then to `rarityCaps` for its rarity (the part `like` started it from as well), and a name that is one of your items is simply that item. The answer tells the Game Master what was changed (never about a stat you do not show it), and the item's details show every change to the player. The game keeps the item, so the same name is that item for the rest of the game, and a new session keeps it while anyone still holds it.
 - The Game Master can `equip` and `unequip` your items with its inventory command when you have `slots`, and `bind` and `unbind` them when you have `binding`: it is only told of the ones your ruleset has. It sees each character's load, bound items and slots, and what is worn or bound.
 
-A fight already spends one of your items the way it spends any item. What being encumbered does to a character, and what worn and carried items do to the sheet and to checks, come in the next release, and `native`, weapons and armor in a fight, using items by their own rules, and money after that.
+A fight already spends one of your items the way it spends any item, unless `native` is `false`. What being encumbered does to a character, and what worn and carried items do to the sheet and to checks, come in the next release, and weapons and armor in a fight, using items by their own rules, and money after that.
 
 ## Battles: lending the sheet to Marinara's combat
 

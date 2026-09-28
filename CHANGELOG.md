@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- A Game Mode ruleset with `native: false` now keeps Game Mode's own untyped items out of its games: the Game Master gives only the ruleset's items and the ones it invents, and is told so, and fights no longer guess what items do or offer them, until the ruleset can say what they do. The player's typed-in items and what a party carries into a new session are unchanged (#6822).
+
 - In a Game Mode game with a ruleset, the Game Master can invent items in the ruleset's own words, such as a named blade: the Engine keeps only the categories, rarities, tags, stats and slots the ruleset has, holds each bonus to what its rarity allows (the new `rarityCaps`), and says what it changed, in its answer and in the item's details. The game keeps the item, and a ruleset can forbid invention with `propose: false`. Rulesets using either key need Capability API 1.51 (#6814).
 
 - Lorebook references retain affordable images without displacing text, including recursively activated text, and image-only entries count their image budget once.

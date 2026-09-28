@@ -1058,6 +1058,31 @@ of the ruleset, and the ruleset bounds what it may invent.
   turn replaces, the next prompt reads it, a new session keeps only what is held), with 48
   deliberate breaks each caught.
 
+### What the native switch settled
+
+No new keys, for #6822. Slice I3-2 of the ruleset items plan: `items.native: false`, declared since
+1.49, now does what it says.
+
+- **The Game Master's adds.** Its item book refuses a new untyped name (`not-ruleset-item`), so it
+  adds only the ruleset's items and the ones it invents; more of something already held, removing
+  and giving work as before. Its instructions say so beside the proposal form, or say it may give
+  only the listed items when the ruleset also forbids invention. The player's typed-in items still
+  follow `freeform`.
+- **Carrying over.** A new session restores what the party carried whatever the switch says, so a
+  plain item held before it was turned off comes back.
+- **Fights.** The fight-start blueprint no longer asks for `itemEffects` and drops any the model
+  gives; the directed fight starts with no items and no effects; the round and tactical routes refuse
+  an item action; and the screen offers no items. Items do nothing in a fight until I6 and I8 let a
+  ruleset say what they do.
+- **Proven** by `game-inventory-turn.regression.ts` (a Game Master turn: a new untyped name refused,
+  more of a held plain item, a catalog item and an invented one added; the player still typing one in;
+  the next prompt; a plain item carried into a new session), `ruleset-combat-director-route` (the
+  blueprint prompt), `combat-director-route` (a directed fight with no items and the inventory kept),
+  `hybrid-terrain-route` (the round and tactical routes) and `game-ruleset-invented-items` (the
+  instructions, with and without invention), plus `combat-boss-provider` (the fight-start route asks for
+  no guess and drops one) and `e2e/game-ruleset-items.e2e.ts` (a restored classic fight offers no
+  item), with 13 deliberate breaks each caught and the browser check failing without the screen's part.
+
 ## Gaps a ruleset author found
 
 The author of [Marinara-RPG-Extension](https://github.com/Kenhito/Marinara-RPG-Extension), who

@@ -121,8 +121,8 @@ export function rulesetItemFacts(definition: RulesetDefinition, item: RulesetCat
  * The book for a game: its ruleset's item catalogs, with the entries each has (`entries` by catalog
  * id; a catalog that could not be read is simply absent). `layerOptions` are the game's pinned layer
  * choices, which may take entries out. `plain` is whether something that is not one of these items
- * may be added: the ruleset's `freeform` for the player, and always for the Game Master until the
- * native switch arrives. `invented` are the items the Game Master has invented in this game (read with
+ * may be added: the ruleset's `freeform` for the player, and its `native` for the Game Master.
+ * `invented` are the items the Game Master has invented in this game (read with
  * `readRulesetInventedItems`); the Game Master's book (`actor: "game-master"`) can invent more.
  */
 export function rulesetItemBook(

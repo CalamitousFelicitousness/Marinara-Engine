@@ -3028,7 +3028,14 @@ function GameSurfaceComponent({
   // What a fight offers: one line per item, however the player split its stacks.
   // What a fight lists: one line per item, each under a name no other line has, with each item's
   // effect found under that line's name.
-  const fightInventoryLines = useMemo(() => gameInventoryFightLines(inventoryItems), [inventoryItems]);
+  const gameRuleset = useGameRuleset(chatMeta);
+  // A ruleset that turns Game Mode's own items off keeps them out of fights, as the server does: no
+  // item is offered until the ruleset says what it does.
+  const itemsOutOfFights = gameRuleset.status === "ok" && gameRuleset.definition.items?.native === false;
+  const fightInventoryLines = useMemo(
+    () => (itemsOutOfFights ? [] : gameInventoryFightLines(inventoryItems)),
+    [inventoryItems, itemsOutOfFights],
+  );
   const fightItemEffects = useMemo(
     () => gameInventoryFightEffects(fightInventoryLines, combatItemEffects),
     [fightInventoryLines, combatItemEffects],
@@ -8671,8 +8678,7 @@ function GameSurfaceComponent({
   // and slots, and turns the catalog rows the sheet carries into skills. Health travels as a share
   // of the maximum, because the damage is still Marinara's and the two scales are nothing alike,
   // which is what the notice says out loud. A game with no ruleset, or one whose ruleset has no
-  // block, never reaches any of this.
-  const gameRuleset = useGameRuleset(chatMeta);
+  // block, never reaches any of this. (`gameRuleset` is read further up, where the fight's items are.)
   // The ruleset's items, which the inventory shows and offers; undefined without an items block.
   // The party's sheets, which what each character carries and binds is read off, as the server reads
   // them: the player's is the card named for who the chat plays as (the first card when no card has

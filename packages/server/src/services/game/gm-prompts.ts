@@ -1365,6 +1365,11 @@ export function buildGmFormatReminder(
                 `  This game's ruleset has its own items: an item named exactly as one of them becomes that item, and what an item of the ruleset is shows in [brackets] after it in the inventory below (never write the brackets in item).`,
               ]
             : []),
+          ...(ctx.ruleset?.items?.native === false
+            ? [
+                `  This ruleset has no untyped items: an add must name one of its items${ctx.ruleset.items.propose !== false ? " or invent one of its items as below" : ""}, and any other name is refused as not-ruleset-item. More of something already held can still be added.`,
+              ]
+            : []),
           ...(ctx.ruleset?.items && ctx.ruleset.items.propose !== false ? inventGrammarLines(ctx.ruleset.items) : []),
           ...(ctx.ruleset?.items?.carry
             ? [

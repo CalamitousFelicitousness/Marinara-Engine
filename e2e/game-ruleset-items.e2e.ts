@@ -9,7 +9,8 @@ const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.u
  * A ruleset's own items in the inventory (#6795): picked from its catalog, found by a typed name,
  * shown with what they are, and stacked no higher than the ruleset allows. A ruleset that takes only
  * its own items offers only the picker. An item the Game Master invented (#6814) reads like one of the
- * ruleset's own and says what was changed to fit it. Each run imports Ember Roads under its own id, so no other
+ * ruleset's own and says what was changed to fit it. A ruleset that turns Game Mode's own items off
+ * (#6822) offers none in a fight. Each run imports Ember Roads under its own id, so no other
  * spec's copy is touched, and removes it afterwards.
  */
 function emberRoads(id: string, edit: (doc: Record<string, any>) => void = () => {}): string {
@@ -197,6 +198,91 @@ test("a ruleset's items are picked, found by name, shown with what they are and 
     ).toBeVisible();
     await inventedPage.screenshot({ path: testInfo.outputPath("ruleset-invented-item.png") });
     await inventedPage.close();
+  } finally {
+    for (const id of chats) await request.delete(`/api/chats/${id}`);
+    for (const id of rulesets) {
+      await request.delete(`/api/game-rulesets?rulesetId=${encodeURIComponent(id)}&force=true`);
+    }
+    const restored = await request.patch("/api/agents/import-policy", { data: { enabled: importsWereEnabled } });
+    expect(restored.ok(), await restored.text()).toBeTruthy();
+  }
+});
+
+test("a ruleset without Game Mode's own items offers none in a fight", async ({ page, request }, testInfo) => {
+  test.setTimeout(120000);
+  const policyBefore = await request.get("/api/agents/import-policy");
+  expect(policyBefore.ok(), await policyBefore.text()).toBeTruthy();
+  const importsWereEnabled = (await policyBefore.json()).enabled === true;
+  const chats: string[] = [];
+  const rulesets: string[] = [];
+  try {
+    const policy = await request.patch("/api/agents/import-policy", { data: { enabled: true } });
+    expect(policy.ok(), await policy.text()).toBeTruthy();
+    const unit = { hp: 30, maxHp: 30, attack: 5, defense: 5, speed: 5, level: 1, skills: [] };
+    // A classic fight restored mid-way, with a potion in the bag and an effect guessed for it.
+    const fightIn = async (nativeItems: boolean) => {
+      const imported = await request.post("/api/game-rulesets/import", {
+        data: {
+          definition: emberRoads(nativeItems ? "ember-fight-items-e2e" : "ember-fight-no-items-e2e", (doc) => {
+            doc.items.native = nativeItems;
+          }),
+        },
+      });
+      expect(imported.ok(), await imported.text()).toBeTruthy();
+      const rulesetId = (await imported.json()).rulesetId as string;
+      rulesets.push(rulesetId);
+      const chatId = await seedGame(request, rulesetId);
+      chats.push(chatId);
+      const meta = await request.patch(`/api/chats/${chatId}/metadata`, {
+        data: {
+          gameInventory: [{ id: "st-potion", name: "Potion", quantity: 3 }],
+          gameActiveState: "combat",
+          gameImageAutoGenerationEnabled: false,
+          gameStoryboardAutoIllustrationsEnabled: false,
+          gameCombatStyle: "classic",
+          gameCombatState: {
+            party: [{ ...unit, id: "hero", name: "Hero", side: "player" }],
+            enemies: [{ ...unit, id: "guard", name: "Guard", side: "enemy" }],
+            itemEffects: [{ name: "Potion", target: "self", type: "heal", description: "Restore HP" }],
+            mechanics: [],
+            dialogueCues: [],
+            combatStyle: "classic",
+          },
+        },
+      });
+      expect(meta.ok(), await meta.text()).toBeTruthy();
+      const fightPage = await page.context().newPage();
+      await fightPage.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: "" } }));
+      await seedUIState(fightPage, {
+        hasCompletedOnboarding: true,
+        rightPanelOpen: false,
+        sidebarOpen: false,
+        chatHelpSeenModes: ["conversation", "roleplay", "game"],
+        gameInstantTextReveal: true,
+      });
+      await fightPage.addInitScript(
+        ({ id, appVersion }) => {
+          localStorage.setItem("marinara-active-chat-id", id);
+          localStorage.setItem("marinara:whats-new:seen-version", appVersion);
+        },
+        { id: chatId, appVersion: version },
+      );
+      await fightPage.goto("/");
+      const items = fightPage.getByRole("button", { name: "Items", exact: true });
+      await expect(items).toBeVisible({ timeout: 40000 });
+      await items.click();
+      return fightPage;
+    };
+
+    // Game Mode's own items: the potion is offered.
+    const withItems = await fightIn(true);
+    await expect(withItems.getByRole("button", { name: /Potion/ })).toBeVisible();
+    await withItems.close();
+    // Turned off: nothing is offered, whatever effect was guessed for it.
+    const withoutItems = await fightIn(false);
+    await expect(withoutItems.getByRole("button", { name: /Potion/ })).toHaveCount(0);
+    await withoutItems.screenshot({ path: testInfo.outputPath("ruleset-fight-no-items.png") });
+    await withoutItems.close();
   } finally {
     for (const id of chats) await request.delete(`/api/chats/${id}`);
     for (const id of rulesets) {

@@ -83,7 +83,7 @@ test("chat sidebar keeps loading while initial requests retry", async ({ page })
     await expect(search).toHaveValue("");
     await expect(sidebar).toBeVisible();
     await search.press("Escape");
-    await expect(sidebar).not.toBeVisible();
+    await expect(page.locator('[data-tour="sidebar-toggle"]')).toHaveAttribute("aria-pressed", "false");
   } finally {
     finishRetry();
   }

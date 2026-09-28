@@ -101,6 +101,7 @@ test("Author's Notes saves stay ordered, remain per chat, and finish before gene
   const releaseSecond = deferred();
   let saves = 0;
   let generated = false;
+  let notesAtGenerate: string | undefined;
   const latest = "ONLY_CHAT_A: keep the blue experiment secret.";
   try {
     await prepare(page, a);
@@ -120,9 +121,9 @@ test("Author's Notes saves stay ordered, remain per chat, and finish before gene
       await route.fulfill({ response: await route.fetch() });
     });
     await page.route("**/api/generate", async (route) => {
-      generated = true;
-      expect(await readNotes(request, a)).toBe(latest);
+      notesAtGenerate = await readNotes(request, a);
       await route.fulfill({ contentType: "text/event-stream", body: 'data: {"type":"done"}\n\n' });
+      generated = true;
     });
     const notes = await openNotes(page);
     await notes.fill("OLDER_CHAT_A");
@@ -150,6 +151,7 @@ test("Author's Notes saves stay ordered, remain per chat, and finish before gene
     await expect.poll(() => readNotes(request, b)).toBe("ONLY_CHAT_B: tell the red story.");
     releaseSecond.resolve();
     await expect.poll(() => generated).toBe(true);
+    expect(notesAtGenerate, "Generation read storage before notes saved").toBe(latest);
     await expect.poll(() => readNotes(request, a)).toBe(latest);
     await switchChat(page, a);
     await expect(await openNotes(page)).toHaveValue(latest);

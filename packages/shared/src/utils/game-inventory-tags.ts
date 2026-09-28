@@ -213,14 +213,17 @@ export function applyGameInventoryTags(
         if (!to || !to.ok)
           return serializeInventoryTag(shown, { ok: false, reason: to && !to.ok ? to.reason : "no-recipient" });
         if (!to.bag) return serializeInventoryTag(shown, { ok: false, reason: "no-recipient" });
-        // Nobody is handed more than they can carry.
+        // Nobody is handed more than they can carry: weighed by what would really move, which is no
+        // more than the giver holds.
         const from = who.bag ?? {};
+        const named = gameInventoryItemsNamed(current, item, from);
         const first = current.find(
           (stack) =>
-            gameInventoryItemsNamed(current, item, from).has(gameInventoryItemId(stack)) &&
+            named.has(gameInventoryItemId(stack)) &&
             gameInventoryBagKey(stack.holder) === gameInventoryBagKey(from.holder),
         );
-        const heavy = first && gameInventoryGiveRefusal(current, first, to.bag.holder, request.count, rules);
+        const moving = Math.min(request.count, gameInventoryCountItems(current, named, from));
+        const heavy = first && gameInventoryGiveRefusal(current, first, to.bag.holder, moving, rules);
         if (heavy) return serializeInventoryTag(shown, { ok: false, reason: heavy });
         // Stack by stack, so the item stays the same item and a nickname stays on its stack.
         // The items it names are settled first, and counted by item in the receiver's bag, where the

@@ -877,6 +877,10 @@ try {
       ]).tags,
       ["give Arrow Bram too-heavy 5"],
     );
+    // Asking for more than the giver holds weighs only what they hold: Bram's 5 fit the player.
+    assert.deepEqual(answers(`[inventory: action="give" item="Arrow" count="20" who="Bram" to="Ada"]`, packed).tags, [
+      "give Arrow Bram ok 5->5",
+    ]);
     // Putting on, binding, and the Game Master ending a curse; each answers how many are so now.
     const ring: GameInventoryStack[] = [...packed, { id: "rings", name: "Ring", item: "gear/ring", quantity: 2 }];
     const worn = answers(

@@ -7800,7 +7800,13 @@ function GameSurfaceComponent({
           const result = results[index];
           return result?.ok ? [{ pick, result }] : [];
         });
-        if (landed.some(({ result }) => result.placed && result.placed.some((share) => share.holder !== holder))) {
+        if (
+          landed.some(
+            ({ result }) =>
+              result.placed &&
+              result.placed.some((share) => gameInventoryBagKey(share.holder) !== gameInventoryBagKey(holder)),
+          )
+        ) {
           announceAdditions(
             landed.map(({ pick, result }) => ({ name: pick.name, result })),
             holder,

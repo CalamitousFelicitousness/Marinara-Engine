@@ -1052,6 +1052,7 @@ export function LorebooksPanel() {
                       onKeyDown={(event) => {
                         if (event.key === "Enter") event.currentTarget.blur();
                         if (event.key === "Escape") {
+                          event.preventDefault();
                           setEditingFolderId(null);
                           setEditFolderName("");
                         }

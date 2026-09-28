@@ -2048,6 +2048,7 @@ function UserStatusFooter({
             if (event.key === "Enter") {
               event.currentTarget.blur();
             } else if (event.key === "Escape") {
+              event.preventDefault();
               setActivityFocused(false);
               event.currentTarget.blur();
             }

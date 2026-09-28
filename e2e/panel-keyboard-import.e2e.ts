@@ -4,6 +4,46 @@ import { seedUIState } from "./ui-state-fixture.js";
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 
+test("cancelling an empty folder rename leaves its panel open", async ({ page }, testInfo) => {
+  await page.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: null } }));
+  await page.route("**/api/characters/groups/list", (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: "escape-folder",
+          name: "Keep this folder",
+          description: "",
+          characterIds: "[]",
+          avatarPath: null,
+          createdAt: "2026-01-01T00:00:00Z",
+        },
+      ],
+    }),
+  );
+  await seedUIState(page, { hasCompletedOnboarding: true, sidebarOpen: false, rightPanelOpen: false });
+  await page.addInitScript((v) => localStorage.setItem("marinara:whats-new:seen-version", v), version);
+  await page.goto("/");
+  if (testInfo.project.name.includes("mobile")) {
+    await page.getByRole("button", { name: "More", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Characters", exact: true }).click();
+  } else {
+    await page.locator('[data-tour="panel-characters"]').click();
+  }
+  const panel = page.locator('[data-component="RightPanel"]');
+  const folder = panel.locator('[data-character-folder-id="escape-folder"]');
+  const header = folder.getByRole("button", { name: /Keep this folder/u }).first();
+  await expect(header).toHaveAttribute("aria-expanded", "false");
+  await header.press("F2");
+  const rename = folder.getByRole("textbox");
+  await rename.fill("");
+  await rename.press("Escape");
+  await expect(rename).toHaveCount(0);
+  await expect(page.locator('[data-tour="panel-characters"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(panel).toBeVisible();
+  await expect(folder.getByText("Keep this folder", { exact: true })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("empty-folder-rename-panel-retained.png") });
+});
+
 test("shell panel focus returns to its opener and profile import is keyboard reachable", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name.includes("mobile"), "This proof covers the desktop top-bar panel toggles.");
   await page.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: null } }));
@@ -77,6 +117,10 @@ test("chat sidebar keeps loading while initial requests retry", async ({ page })
     await expect(sidebar.getByRole("alert")).toHaveCount(0);
     finishRetry();
     await expect(sidebar.getByRole("status")).toHaveCount(0);
+    const activity = sidebar.getByRole("textbox", { name: "Custom activity", exact: true });
+    await activity.fill("");
+    await activity.press("Escape");
+    await expect(page.locator('[data-tour="sidebar-toggle"]')).toHaveAttribute("aria-pressed", "true");
     const search = sidebar.getByRole("textbox", { name: "Search conversations", exact: true });
     await search.fill("unmatched search");
     await search.press("Escape");

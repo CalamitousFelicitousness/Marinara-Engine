@@ -228,16 +228,7 @@ export function ChatSidebar() {
   const { t: localizeUi } = useUiTranslation();
   const { t } = useTranslation();
   const localize = useLocalizedUiText();
-  const {
-    data: chats,
-    isError: chatsQueryError,
-    isLoading: chatsQueryLoading,
-    isFetching,
-    failureCount: chatsFailureCount,
-    refetch: refetchChats,
-  } = useChats();
-  const chatsError = chatsQueryError || (chatsQueryLoading && chatsFailureCount >= 2);
-  const isLoading = chatsQueryLoading && !chatsError;
+  const { data: chats, isError: chatsError, isLoading, isFetching, refetch: refetchChats } = useChats();
   const { data: connections } = useConnections();
   const createChat = useCreateChat();
   const { data: chatPresetsData } = useChatPresets();
@@ -1401,6 +1392,12 @@ export function ChatSidebar() {
               placeholder={t(`navigation.chatSidebar.search.${activeTab}`)}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape" && !event.nativeEvent.isComposing && searchQuery) {
+                  event.preventDefault();
+                  setSearchQuery("");
+                }
+              }}
               className="mari-chrome-field h-10 w-full py-0 pl-8 pr-3 text-xs md:h-9"
             />
           </div>

@@ -40,4 +40,44 @@ test("shell panel focus returns to its opener and profile import is keyboard rea
   await page.keyboard.press("Escape");
   await expect(settingsToggle).toHaveAttribute("aria-pressed", "false");
   await expect.poll(() => settingsToggle.evaluate((element) => document.activeElement === element)).toBe(true);
+
+  const sidebarToggle = page.locator('[data-tour="sidebar-toggle"]');
+  await sidebarToggle.click();
+  const sidebar = page.locator('[data-component="ChatSidebar"]');
+  const search = sidebar.getByRole("textbox", { name: "Search conversations", exact: true });
+  await search.fill("no matching chat");
+  await search.press("Escape");
+  await expect(search).toHaveValue("");
+  await expect(sidebar).toBeVisible();
+  await search.press("Escape");
+  await expect(sidebarToggle).toHaveAttribute("aria-pressed", "false");
+  await expect(sidebarToggle).toBeFocused();
+});
+
+test("chat sidebar keeps loading while initial requests retry", async ({ page }) => {
+  let attempts = 0;
+  let finishRetry: () => void = () => undefined;
+  const retryPending = new Promise<void>((resolve) => {
+    finishRetry = resolve;
+  });
+  await page.route(/\/api\/chats(?:\?.*)?$/, async (route) => {
+    attempts++;
+    if (attempts <= 2) return route.fulfill({ status: 503, json: { error: "Temporarily unavailable" } });
+    await retryPending;
+    await route.fulfill({ json: [] });
+  });
+  await page.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: null } }));
+  await seedUIState(page, { hasCompletedOnboarding: true, sidebarOpen: true, rightPanelOpen: false });
+  await page.addInitScript((v) => localStorage.setItem("marinara:whats-new:seen-version", v), version);
+  try {
+    await page.goto("/");
+    await expect.poll(() => attempts).toBeGreaterThanOrEqual(3);
+    const sidebar = page.locator('[data-component="ChatSidebar"]');
+    await expect(sidebar.getByRole("status")).toBeVisible();
+    await expect(sidebar.getByRole("alert")).toHaveCount(0);
+    finishRetry();
+    await expect(sidebar.getByRole("status")).toHaveCount(0);
+  } finally {
+    finishRetry();
+  }
 });

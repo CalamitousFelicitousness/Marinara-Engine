@@ -409,33 +409,37 @@ test("available app updates wait for confirmation before refreshing", async ({ p
   expect(mainFrameNavigations).toBe(navigationsAtPrompt + 1);
 });
 
-test("turning off the custom mouse pointer persists immediately and after reload", { tag: "@smoke" }, async ({ page }, testInfo) => {
-  test.skip(!testInfo.project.name.includes("desktop"), "Appearance preference persistence is covered on desktop.");
+test(
+  "turning off the custom mouse pointer persists immediately and after reload",
+  { tag: "@smoke" },
+  async ({ page }, testInfo) => {
+    test.skip(!testInfo.project.name.includes("desktop"), "Appearance preference persistence is covered on desktop.");
 
-  await page.goto("/");
-  await clickTopbarPanel(page, "settings");
-  await page.getByRole("tab", { name: "Appearance" }).click();
+    await page.goto("/");
+    await clickTopbarPanel(page, "settings");
+    await page.getByRole("tab", { name: "Appearance" }).click();
 
-  const cursorToggle = page.getByLabel("Custom Mouse Pointer");
-  await expect(cursorToggle).toBeChecked();
-  await page.getByText("Custom Mouse Pointer", { exact: true }).click();
-  await expect(cursorToggle).not.toBeChecked();
-  await page.waitForTimeout(100);
+    const cursorToggle = page.getByLabel("Custom Mouse Pointer");
+    await expect(cursorToggle).toBeChecked();
+    await page.getByText("Custom Mouse Pointer", { exact: true }).click();
+    await expect(cursorToggle).not.toBeChecked();
+    await page.waitForTimeout(100);
 
-  const persistedCursorPreference = await page.evaluate(() => {
-    const persisted = JSON.parse(localStorage.getItem("marinara-engine-ui") ?? '{"state":{}}') as {
-      state?: { customCursorEnabled?: unknown };
-    };
-    return persisted.state?.customCursorEnabled;
-  });
-  expect(persistedCursorPreference).toBe(false);
+    const persistedCursorPreference = await page.evaluate(() => {
+      const persisted = JSON.parse(localStorage.getItem("marinara-engine-ui") ?? '{"state":{}}') as {
+        state?: { customCursorEnabled?: unknown };
+      };
+      return persisted.state?.customCursorEnabled;
+    });
+    expect(persistedCursorPreference).toBe(false);
 
-  await page.reload();
-  await expect(page.getByLabel("Custom Mouse Pointer")).not.toBeChecked();
-  await expect
-    .poll(() => page.evaluate(() => document.documentElement.dataset.marinaraCustomCursor ?? null))
-    .toBeNull();
-});
+    await page.reload();
+    await expect(page.getByLabel("Custom Mouse Pointer")).not.toBeChecked();
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.dataset.marinaraCustomCursor ?? null))
+      .toBeNull();
+  },
+);
 
 test("Settings switches share one centered track and thumb geometry", async ({ page }) => {
   await page.goto("/");
@@ -5936,311 +5940,316 @@ test("individual group awareness includes only the replying character's sibling 
   }
 });
 
-test("stopped and refused generations keep sent text cleared and accept the first edit", { tag: "@smoke" }, async ({
-  page,
-  request,
-}, testInfo) => {
-  test.setTimeout(120_000);
-  const mobile = testInfo.project.name.includes("mobile");
+test(
+  "stopped and refused generations keep sent text cleared and accept the first edit",
+  { tag: "@smoke" },
+  async ({ page, request }, testInfo) => {
+    test.setTimeout(120_000);
+    const mobile = testInfo.project.name.includes("mobile");
 
-  const suffix = Date.now().toString(36);
-  const providerRequests: Array<Record<string, unknown>> = [];
-  const openProviderResponses = new Set<import("node:http").ServerResponse>();
-  const providerServer = createServer((incoming, response) => {
-    const chunks: Buffer[] = [];
-    incoming.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
-    incoming.on("end", () => {
-      if (incoming.method !== "POST" || incoming.url !== "/v1/chat/completions") {
-        response.writeHead(404, { "content-type": "application/json" });
-        response.end(JSON.stringify({ error: "Unexpected stopped-generation provider request" }));
-        return;
-      }
-      providerRequests.push(JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>);
-      if (providerRequests.length === 4) {
-        response.writeHead(403, { "content-type": "application/json" });
-        response.end(JSON.stringify({ error: { message: "Content prohibited by the provider" } }));
-        return;
-      }
-      openProviderResponses.add(response);
-      response.on("close", () => openProviderResponses.delete(response));
-      response.writeHead(200, {
-        "content-type": "text/event-stream",
-        connection: "keep-alive",
-        "cache-control": "no-cache",
-      });
-      response.flushHeaders();
-      if (providerRequests.length <= 2) {
-        response.write(
-          `data: ${JSON.stringify({
-            choices: [{ index: 0, delta: { content: "Partial response" }, finish_reason: null }],
-          })}\n\n`,
-        );
-      }
-    });
-  });
-  await new Promise<void>((resolve) => providerServer.listen(0, "127.0.0.1", resolve));
-
-  let connectionId = "";
-  let characterId = "";
-  let chatId = "";
-  try {
-    const address = providerServer.address();
-    if (!address || typeof address === "string") throw new Error("Stopped-generation provider fixture did not bind");
-
-    const connectionResponse = await request.post("/api/connections", {
-      data: {
-        name: `Stopped Edit Provider ${suffix}`,
-        provider: "custom",
-        baseUrl: `http://127.0.0.1:${address.port}/v1`,
-        apiKey: "e2e-stopped-edit",
-        model: "stopped-edit-model",
-        maxContext: 32_768,
-      },
-    });
-    expect(connectionResponse.ok(), await connectionResponse.text()).toBeTruthy();
-    connectionId = ((await connectionResponse.json()) as { id: string }).id;
-
-    const characterResponse = await request.post("/api/characters", {
-      data: {
-        data: {
-          name: `Stopped Edit Character ${suffix}`,
-          description: "A patient regression-test partner.",
-          first_mes: "",
-        },
-      },
-    });
-    expect(characterResponse.ok(), await characterResponse.text()).toBeTruthy();
-    characterId = ((await characterResponse.json()) as { id: string }).id;
-
-    const chatResponse = await request.post("/api/chats", {
-      data: {
-        name: `Stopped Edit Chat ${suffix}`,
-        mode: "roleplay",
-        characterIds: [characterId],
-        connectionId,
-      },
-    });
-    expect(chatResponse.ok(), await chatResponse.text()).toBeTruthy();
-    chatId = ((await chatResponse.json()) as { id: string }).id;
-    await request.patch(`/api/chats/${chatId}/metadata`, {
-      data: { enableAgents: false },
-    });
-    await page.addInitScript((activeChatId) => localStorage.setItem("marinara-active-chat-id", activeChatId), chatId);
-    await page.goto("/");
-
-    const input = page.locator("textarea.mari-chat-input-textarea");
-    const sendButton = page.locator("button.mari-chat-send-btn");
-    const stopCurrentGeneration = async (expectedProviderRequestCount: number) => {
-      await expect.poll(() => providerRequests.length).toBe(expectedProviderRequestCount);
-      await expect(sendButton.locator("svg.lucide-circle-stop")).toBeVisible();
-      await sendButton.click();
-      await expect(sendButton.locator("svg.lucide-circle-stop")).toHaveCount(0);
-    };
-    const readMessages = async () => {
-      const response = await request.get(`/api/chats/${chatId}/messages`);
-      return (await response.json()) as Array<{ id: string; role: string; content: string }>;
-    };
-    const editMessageOnce = async (
-      messageId: string,
-      nextContent: string,
-      options: { delaySave?: boolean; failFirstSave?: boolean } = {},
-    ) => {
-      const message = page.locator(`[data-message-id="${messageId}"]`);
-      if (mobile) await message.locator(".mari-message-content").first().click();
-      else await message.hover();
-      await message.getByTitle("Edit", { exact: true }).click();
-      const editor = message.locator("textarea");
-      await editor.fill(nextContent);
-      const saveGate = options.delaySave ? createDeferred() : null;
-      let saveAttempts = 0;
-      const messagePath = `/api/chats/${chatId}/messages/${messageId}`;
-      const messageRoute = `**${messagePath}`;
-      let saveRouteHandler: ((route: Route) => Promise<void>) | null = null;
-      if (saveGate || options.failFirstSave) {
-        saveRouteHandler = async (route) => {
-          if (route.request().method() !== "PATCH") {
-            await route.continue();
-            return;
-          }
-          saveAttempts += 1;
-          if (saveAttempts === 1 && saveGate) await saveGate.promise;
-          if (saveAttempts === 1 && options.failFirstSave) {
-            await route.fulfill({
-              status: 503,
-              contentType: "application/json",
-              body: JSON.stringify({ error: "Temporary message save failure" }),
-            });
-            return;
-          }
-          await route.continue();
-        };
-        await page.route(messageRoute, saveRouteHandler);
-      }
-      try {
-        const saveButton = message.getByLabel("Save edit", { exact: true });
-        await expect(saveButton).toHaveAttribute("title", "Save (Cmd/Ctrl+Enter)");
-        await expect(editor).toHaveAttribute("aria-keyshortcuts", "Control+Enter Meta+Enter");
-        const saveButtonBox = await saveButton.boundingBox();
-        expect(saveButtonBox?.width).toBeGreaterThanOrEqual(44);
-        expect(saveButtonBox?.height).toBeGreaterThanOrEqual(44);
-        await saveButton.click();
-        if (saveGate) {
-          try {
-            await expect(editor).toBeVisible();
-            await expect(editor).toHaveValue(nextContent);
-            await expect(message.getByLabel("Cancel edit", { exact: true })).toBeDisabled();
-            await expect(message.getByLabel("Save edit", { exact: true })).toBeDisabled();
-            await editor.press("Escape");
-            await expect(editor).toBeVisible();
-          } finally {
-            saveGate.resolve();
-          }
+    const suffix = Date.now().toString(36);
+    const providerRequests: Array<Record<string, unknown>> = [];
+    const openProviderResponses = new Set<import("node:http").ServerResponse>();
+    const providerServer = createServer((incoming, response) => {
+      const chunks: Buffer[] = [];
+      incoming.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+      incoming.on("end", () => {
+        if (incoming.method !== "POST" || incoming.url !== "/v1/chat/completions") {
+          response.writeHead(404, { "content-type": "application/json" });
+          response.end(JSON.stringify({ error: "Unexpected stopped-generation provider request" }));
+          return;
         }
-        if (options.failFirstSave) await expect.poll(() => saveAttempts).toBe(2);
-        await expect(message).toContainText(nextContent);
-        await expect
-          .poll(async () =>
-            (await readMessages()).some((candidate) => candidate.role === "user" && candidate.content === nextContent),
-          )
-          .toBe(true);
-      } finally {
-        if (saveRouteHandler) await page.unroute(messageRoute, saveRouteHandler);
-      }
-    };
+        providerRequests.push(JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>);
+        if (providerRequests.length === 4) {
+          response.writeHead(403, { "content-type": "application/json" });
+          response.end(JSON.stringify({ error: { message: "Content prohibited by the provider" } }));
+          return;
+        }
+        openProviderResponses.add(response);
+        response.on("close", () => openProviderResponses.delete(response));
+        response.writeHead(200, {
+          "content-type": "text/event-stream",
+          connection: "keep-alive",
+          "cache-control": "no-cache",
+        });
+        response.flushHeaders();
+        if (providerRequests.length <= 2) {
+          response.write(
+            `data: ${JSON.stringify({
+              choices: [{ index: 0, delta: { content: "Partial response" }, finish_reason: null }],
+            })}\n\n`,
+          );
+        }
+      });
+    });
+    await new Promise<void>((resolve) => providerServer.listen(0, "127.0.0.1", resolve));
 
-    await input.fill("Original message with retained draft");
-    await sendButton.click();
-    await expect(input).toHaveValue("");
-    await input.fill("Unsent composer text");
-    await expect.poll(() => providerRequests.length).toBe(1);
-    const justSentMessage = page
-      .locator("[data-message-id]")
-      .filter({ hasText: "Original message with retained draft" });
-    await expect(justSentMessage).toBeVisible();
-    const justSentMessageId = await justSentMessage.getAttribute("data-message-id");
-    expect(justSentMessageId).toBeTruthy();
-    const stoppedRefreshGate = createDeferred();
-    const messagesPath = `/api/chats/${chatId}/messages`;
-    const messagesRouteMatcher = (url: URL) => url.pathname === messagesPath;
-    let holdStoppedRefresh = true;
-    const stoppedRefreshHandler = async (route: Route) => {
-      if (holdStoppedRefresh && route.request().method() === "GET") await stoppedRefreshGate.promise;
-      await route.continue().catch(() => undefined);
-    };
-    await page.route(messagesRouteMatcher, stoppedRefreshHandler);
+    let connectionId = "";
+    let characterId = "";
+    let chatId = "";
     try {
-      await page.evaluate((messageId) => {
-        const stopButton = document.querySelector<HTMLButtonElement>("button.mari-chat-send-btn");
-        if (!stopButton) throw new Error("Stop generation control is unavailable");
-        stopButton.click();
-        window.dispatchEvent(new CustomEvent("marinara:start-edit-message", { detail: { messageId } }));
-      }, justSentMessageId);
-      const justSentEditor = justSentMessage.locator("textarea");
-      await expect(justSentEditor).toBeVisible();
-      await justSentEditor.fill("Edited on the first save with retained draft");
-      const firstSaveRequest = page.waitForRequest(
-        (candidate) =>
-          candidate.method() === "PATCH" &&
-          new URL(candidate.url()).pathname === `/api/chats/${chatId}/messages/${justSentMessageId}`,
+      const address = providerServer.address();
+      if (!address || typeof address === "string") throw new Error("Stopped-generation provider fixture did not bind");
+
+      const connectionResponse = await request.post("/api/connections", {
+        data: {
+          name: `Stopped Edit Provider ${suffix}`,
+          provider: "custom",
+          baseUrl: `http://127.0.0.1:${address.port}/v1`,
+          apiKey: "e2e-stopped-edit",
+          model: "stopped-edit-model",
+          maxContext: 32_768,
+        },
+      });
+      expect(connectionResponse.ok(), await connectionResponse.text()).toBeTruthy();
+      connectionId = ((await connectionResponse.json()) as { id: string }).id;
+
+      const characterResponse = await request.post("/api/characters", {
+        data: {
+          data: {
+            name: `Stopped Edit Character ${suffix}`,
+            description: "A patient regression-test partner.",
+            first_mes: "",
+          },
+        },
+      });
+      expect(characterResponse.ok(), await characterResponse.text()).toBeTruthy();
+      characterId = ((await characterResponse.json()) as { id: string }).id;
+
+      const chatResponse = await request.post("/api/chats", {
+        data: {
+          name: `Stopped Edit Chat ${suffix}`,
+          mode: "roleplay",
+          characterIds: [characterId],
+          connectionId,
+        },
+      });
+      expect(chatResponse.ok(), await chatResponse.text()).toBeTruthy();
+      chatId = ((await chatResponse.json()) as { id: string }).id;
+      await request.patch(`/api/chats/${chatId}/metadata`, {
+        data: { enableAgents: false },
+      });
+      await page.addInitScript((activeChatId) => localStorage.setItem("marinara-active-chat-id", activeChatId), chatId);
+      await page.goto("/");
+
+      const input = page.locator("textarea.mari-chat-input-textarea");
+      const sendButton = page.locator("button.mari-chat-send-btn");
+      const stopCurrentGeneration = async (expectedProviderRequestCount: number) => {
+        await expect.poll(() => providerRequests.length).toBe(expectedProviderRequestCount);
+        await expect(sendButton.locator("svg.lucide-circle-stop")).toBeVisible();
+        await sendButton.click();
+        await expect(sendButton.locator("svg.lucide-circle-stop")).toHaveCount(0);
+      };
+      const readMessages = async () => {
+        const response = await request.get(`/api/chats/${chatId}/messages`);
+        return (await response.json()) as Array<{ id: string; role: string; content: string }>;
+      };
+      const editMessageOnce = async (
+        messageId: string,
+        nextContent: string,
+        options: { delaySave?: boolean; failFirstSave?: boolean } = {},
+      ) => {
+        const message = page.locator(`[data-message-id="${messageId}"]`);
+        if (mobile) await message.locator(".mari-message-content").first().click();
+        else await message.hover();
+        await message.getByTitle("Edit", { exact: true }).click();
+        const editor = message.locator("textarea");
+        await editor.fill(nextContent);
+        const saveGate = options.delaySave ? createDeferred() : null;
+        let saveAttempts = 0;
+        const messagePath = `/api/chats/${chatId}/messages/${messageId}`;
+        const messageRoute = `**${messagePath}`;
+        let saveRouteHandler: ((route: Route) => Promise<void>) | null = null;
+        if (saveGate || options.failFirstSave) {
+          saveRouteHandler = async (route) => {
+            if (route.request().method() !== "PATCH") {
+              await route.continue();
+              return;
+            }
+            saveAttempts += 1;
+            if (saveAttempts === 1 && saveGate) await saveGate.promise;
+            if (saveAttempts === 1 && options.failFirstSave) {
+              await route.fulfill({
+                status: 503,
+                contentType: "application/json",
+                body: JSON.stringify({ error: "Temporary message save failure" }),
+              });
+              return;
+            }
+            await route.continue();
+          };
+          await page.route(messageRoute, saveRouteHandler);
+        }
+        try {
+          const saveButton = message.getByLabel("Save edit", { exact: true });
+          await expect(saveButton).toHaveAttribute("title", "Save (Cmd/Ctrl+Enter)");
+          await expect(editor).toHaveAttribute("aria-keyshortcuts", "Control+Enter Meta+Enter");
+          const saveButtonBox = await saveButton.boundingBox();
+          expect(saveButtonBox?.width).toBeGreaterThanOrEqual(44);
+          expect(saveButtonBox?.height).toBeGreaterThanOrEqual(44);
+          await saveButton.click();
+          if (saveGate) {
+            try {
+              await expect(editor).toBeVisible();
+              await expect(editor).toHaveValue(nextContent);
+              await expect(message.getByLabel("Cancel edit", { exact: true })).toBeDisabled();
+              await expect(message.getByLabel("Save edit", { exact: true })).toBeDisabled();
+              await editor.press("Escape");
+              await expect(editor).toBeVisible();
+            } finally {
+              saveGate.resolve();
+            }
+          }
+          if (options.failFirstSave) await expect.poll(() => saveAttempts).toBe(2);
+          await expect(message).toContainText(nextContent);
+          await expect
+            .poll(async () =>
+              (await readMessages()).some(
+                (candidate) => candidate.role === "user" && candidate.content === nextContent,
+              ),
+            )
+            .toBe(true);
+        } finally {
+          if (saveRouteHandler) await page.unroute(messageRoute, saveRouteHandler);
+        }
+      };
+
+      await input.fill("Original message with retained draft");
+      await sendButton.click();
+      await expect(input).toHaveValue("");
+      await input.fill("Unsent composer text");
+      await expect.poll(() => providerRequests.length).toBe(1);
+      const justSentMessage = page
+        .locator("[data-message-id]")
+        .filter({ hasText: "Original message with retained draft" });
+      await expect(justSentMessage).toBeVisible();
+      const justSentMessageId = await justSentMessage.getAttribute("data-message-id");
+      expect(justSentMessageId).toBeTruthy();
+      const stoppedRefreshGate = createDeferred();
+      const messagesPath = `/api/chats/${chatId}/messages`;
+      const messagesRouteMatcher = (url: URL) => url.pathname === messagesPath;
+      let holdStoppedRefresh = true;
+      const stoppedRefreshHandler = async (route: Route) => {
+        if (holdStoppedRefresh && route.request().method() === "GET") await stoppedRefreshGate.promise;
+        await route.continue().catch(() => undefined);
+      };
+      await page.route(messagesRouteMatcher, stoppedRefreshHandler);
+      try {
+        await page.evaluate((messageId) => {
+          const stopButton = document.querySelector<HTMLButtonElement>("button.mari-chat-send-btn");
+          if (!stopButton) throw new Error("Stop generation control is unavailable");
+          stopButton.click();
+          window.dispatchEvent(new CustomEvent("marinara:start-edit-message", { detail: { messageId } }));
+        }, justSentMessageId);
+        const justSentEditor = justSentMessage.locator("textarea");
+        await expect(justSentEditor).toBeVisible();
+        await justSentEditor.fill("Edited on the first save with retained draft");
+        const firstSaveRequest = page.waitForRequest(
+          (candidate) =>
+            candidate.method() === "PATCH" &&
+            new URL(candidate.url()).pathname === `/api/chats/${chatId}/messages/${justSentMessageId}`,
+        );
+        await justSentMessage.getByLabel("Save edit", { exact: true }).click();
+        await firstSaveRequest;
+      } finally {
+        holdStoppedRefresh = false;
+        stoppedRefreshGate.resolve();
+        if (!page.isClosed()) await page.unroute(messagesRouteMatcher, stoppedRefreshHandler);
+      }
+      await expect
+        .poll(
+          async () =>
+            (await readMessages()).some(
+              (message) =>
+                message.role === "user" && message.content === "Edited on the first save with retained draft",
+            ),
+          { timeout: 10_000 },
+        )
+        .toBe(true);
+      await expect(sendButton.locator("svg.lucide-circle-stop")).toHaveCount(0);
+      const firstMessage = (await readMessages()).find(
+        (message) => message.role === "user" && message.content === "Edited on the first save with retained draft",
       );
-      await justSentMessage.getByLabel("Save edit", { exact: true }).click();
-      await firstSaveRequest;
-    } finally {
-      holdStoppedRefresh = false;
-      stoppedRefreshGate.resolve();
-      if (!page.isClosed()) await page.unroute(messagesRouteMatcher, stoppedRefreshHandler);
-    }
-    await expect
-      .poll(
-        async () =>
+      expect(firstMessage).toBeTruthy();
+      await editMessageOnce(firstMessage!.id, "Second edit to the same message stays newest", {
+        delaySave: true,
+        failFirstSave: true,
+      });
+      await expect(input).toHaveValue("Unsent composer text");
+
+      await input.fill("Original message with cleared draft");
+      await sendButton.click();
+      await expect(input).toHaveValue("");
+      await stopCurrentGeneration(2);
+      await expect(input).toHaveValue("");
+      const secondMessage = (await readMessages()).find(
+        (message) => message.role === "user" && message.content === "Original message with cleared draft",
+      );
+      expect(secondMessage).toBeTruthy();
+      await editMessageOnce(secondMessage!.id, "Edited on the first save with cleared draft");
+
+      await input.fill("Sent text must stay cleared when stopped before the reply");
+      await sendButton.click();
+      await expect(input).toHaveValue("");
+      await stopCurrentGeneration(3);
+      await expect(input).toHaveValue("");
+      await expect
+        .poll(async () =>
           (await readMessages()).some(
-            (message) => message.role === "user" && message.content === "Edited on the first save with retained draft",
-          ),
-        { timeout: 10_000 },
-      )
-      .toBe(true);
-    await expect(sendButton.locator("svg.lucide-circle-stop")).toHaveCount(0);
-    const firstMessage = (await readMessages()).find(
-      (message) => message.role === "user" && message.content === "Edited on the first save with retained draft",
-    );
-    expect(firstMessage).toBeTruthy();
-    await editMessageOnce(firstMessage!.id, "Second edit to the same message stays newest", {
-      delaySave: true,
-      failFirstSave: true,
-    });
-    await expect(input).toHaveValue("Unsent composer text");
-
-    await input.fill("Original message with cleared draft");
-    await sendButton.click();
-    await expect(input).toHaveValue("");
-    await stopCurrentGeneration(2);
-    await expect(input).toHaveValue("");
-    const secondMessage = (await readMessages()).find(
-      (message) => message.role === "user" && message.content === "Original message with cleared draft",
-    );
-    expect(secondMessage).toBeTruthy();
-    await editMessageOnce(secondMessage!.id, "Edited on the first save with cleared draft");
-
-    await input.fill("Sent text must stay cleared when stopped before the reply");
-    await sendButton.click();
-    await expect(input).toHaveValue("");
-    await stopCurrentGeneration(3);
-    await expect(input).toHaveValue("");
-    await expect
-      .poll(async () =>
-        (await readMessages()).some(
-          (message) =>
-            message.role === "user" && message.content === "Sent text must stay cleared when stopped before the reply",
-        ),
-      )
-      .toBe(true);
-
-    await input.fill("Provider refusal must not duplicate this sent message");
-    await sendButton.click();
-    await expect.poll(() => providerRequests.length).toBe(4);
-    await expect(input).toHaveValue("");
-    await expect
-      .poll(
-        async () =>
-          (await readMessages()).filter(
             (message) =>
-              message.role === "user" && message.content === "Provider refusal must not duplicate this sent message",
-          ).length,
-      )
-      .toBe(1);
+              message.role === "user" &&
+              message.content === "Sent text must stay cleared when stopped before the reply",
+          ),
+        )
+        .toBe(true);
 
-    const transportFailureDraft = "Restore this draft when transport fails before persistence";
-    await page.route("**/api/generate", async (route) => route.abort("failed"));
-    await input.fill(transportFailureDraft);
-    await sendButton.click();
-    await expect(input).toHaveValue(transportFailureDraft);
-    expect(
-      (await readMessages()).some((message) => message.role === "user" && message.content === transportFailureDraft),
-    ).toBe(false);
-    await page.unroute("**/api/generate");
+      await input.fill("Provider refusal must not duplicate this sent message");
+      await sendButton.click();
+      await expect.poll(() => providerRequests.length).toBe(4);
+      await expect(input).toHaveValue("");
+      await expect
+        .poll(
+          async () =>
+            (await readMessages()).filter(
+              (message) =>
+                message.role === "user" && message.content === "Provider refusal must not duplicate this sent message",
+            ).length,
+        )
+        .toBe(1);
 
-    await page.reload();
-    await expect(page.locator(`[data-message-id="${firstMessage!.id}"]`)).toContainText(
-      "Second edit to the same message stays newest",
-    );
-    await expect(page.locator(`[data-message-id="${secondMessage!.id}"]`)).toContainText(
-      "Edited on the first save with cleared draft",
-    );
-    await expect(
-      page.getByText("Sent text must stay cleared when stopped before the reply", { exact: true }),
-    ).toBeVisible();
-  } finally {
-    for (const response of openProviderResponses) response.end();
-    await Promise.allSettled([
-      chatId ? request.delete(`/api/chats/${chatId}`) : Promise.resolve(),
-      characterId ? request.delete(`/api/characters/${characterId}`) : Promise.resolve(),
-      connectionId ? request.delete(`/api/connections/${connectionId}`) : Promise.resolve(),
-    ]);
-    await new Promise<void>((resolve, reject) => {
-      providerServer.close((error) => (error ? reject(error) : resolve()));
-    });
-  }
-});
+      const transportFailureDraft = "Restore this draft when transport fails before persistence";
+      await page.route("**/api/generate", async (route) => route.abort("failed"));
+      await input.fill(transportFailureDraft);
+      await sendButton.click();
+      await expect(input).toHaveValue(transportFailureDraft);
+      expect(
+        (await readMessages()).some((message) => message.role === "user" && message.content === transportFailureDraft),
+      ).toBe(false);
+      await page.unroute("**/api/generate");
+
+      await page.reload();
+      await expect(page.locator(`[data-message-id="${firstMessage!.id}"]`)).toContainText(
+        "Second edit to the same message stays newest",
+      );
+      await expect(page.locator(`[data-message-id="${secondMessage!.id}"]`)).toContainText(
+        "Edited on the first save with cleared draft",
+      );
+      await expect(
+        page.getByText("Sent text must stay cleared when stopped before the reply", { exact: true }),
+      ).toBeVisible();
+    } finally {
+      for (const response of openProviderResponses) response.end();
+      await Promise.allSettled([
+        chatId ? request.delete(`/api/chats/${chatId}`) : Promise.resolve(),
+        characterId ? request.delete(`/api/characters/${characterId}`) : Promise.resolve(),
+        connectionId ? request.delete(`/api/connections/${connectionId}`) : Promise.resolve(),
+      ]);
+      await new Promise<void>((resolve, reject) => {
+        providerServer.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  },
+);
 
 test("Conversation swipe controls match Roleplay sizing and chat-chrome colors", async ({
   page,
@@ -7236,174 +7245,180 @@ test("generation fallbacks identify the replacement connection in a toast", asyn
 });
 
 for (const mode of ["roleplay", "conversation"] as const) {
-  test(`${mode} exposes reasoning and explains unavailable saved summaries`, { tag: "@smoke" }, async ({ page }, testInfo) => {
-    const characters: Array<{ id: string; name: string }> = [];
-    if (mode === "conversation") {
-      for (const name of ["Reasoning One", "Reasoning Two"]) {
-        const characterResponse = await page.request.post("/api/characters", {
-          data: { data: { name } },
-        });
-        expect(characterResponse.ok()).toBeTruthy();
-        characters.push({ id: ((await characterResponse.json()) as { id: string }).id, name });
-      }
-    }
-    const chatResponse = await page.request.post("/api/chats", {
-      data: {
-        name: `${mode} Reasoning Smoke`,
-        mode,
-        characterIds: characters.map((character) => character.id),
-      },
-    });
-    expect(chatResponse.ok()).toBeTruthy();
-    const chat = (await chatResponse.json()) as { id: string };
-
-    try {
+  test(
+    `${mode} exposes reasoning and explains unavailable saved summaries`,
+    { tag: "@smoke" },
+    async ({ page }, testInfo) => {
+      const characters: Array<{ id: string; name: string }> = [];
       if (mode === "conversation") {
-        const metadataResponse = await page.request.patch(`/api/chats/${chat.id}/metadata`, {
-          data: { conversationSetupComplete: true },
-        });
-        expect(metadataResponse.ok()).toBeTruthy();
+        for (const name of ["Reasoning One", "Reasoning Two"]) {
+          const characterResponse = await page.request.post("/api/characters", {
+            data: { data: { name } },
+          });
+          expect(characterResponse.ok()).toBeTruthy();
+          characters.push({ id: ((await characterResponse.json()) as { id: string }).id, name });
+        }
       }
-      const savedMessageResponse = await page.request.post(`/api/chats/${chat.id}/messages`, {
+      const chatResponse = await page.request.post("/api/chats", {
         data: {
-          role: "assistant",
-          content:
-            mode === "conversation"
-              ? `${characters[0]!.name}: A completed response with saved reasoning.`
-              : "A completed response with saved reasoning.",
-          extra: { thinking: "Saved reasoning remains available." },
+          name: `${mode} Reasoning Smoke`,
+          mode,
+          characterIds: characters.map((character) => character.id),
         },
       });
-      expect(savedMessageResponse.ok()).toBeTruthy();
-      const savedMessage = (await savedMessageResponse.json()) as { id: string };
-      const unavailableMessageResponse = await page.request.post(`/api/chats/${chat.id}/messages`, {
-        data: {
-          role: "assistant",
-          content:
-            mode === "conversation"
-              ? `${characters[0]!.name}: A response whose provider omitted its reasoning summary.`
-              : "A response whose provider omitted its reasoning summary.",
-        },
-      });
-      expect(unavailableMessageResponse.ok()).toBeTruthy();
-      const unavailableMessage = (await unavailableMessageResponse.json()) as { id: string };
-      const unavailableMessageExtraResponse = await page.request.patch(
-        `/api/chats/${chat.id}/messages/${unavailableMessage.id}/extra`,
-        {
+      expect(chatResponse.ok()).toBeTruthy();
+      const chat = (await chatResponse.json()) as { id: string };
+
+      try {
+        if (mode === "conversation") {
+          const metadataResponse = await page.request.patch(`/api/chats/${chat.id}/metadata`, {
+            data: { conversationSetupComplete: true },
+          });
+          expect(metadataResponse.ok()).toBeTruthy();
+        }
+        const savedMessageResponse = await page.request.post(`/api/chats/${chat.id}/messages`, {
           data: {
-            generationInfo: {
-              model: "gpt-5.6-sol",
-              provider: "openai",
-              temperature: null,
-              tokensPrompt: 512,
-              tokensCompletion: 120,
-              tokensReasoning: 1034,
-              tokensCachedPrompt: null,
-              tokensCacheWritePrompt: null,
-              durationMs: 1200,
-              finishReason: "stop",
+            role: "assistant",
+            content:
+              mode === "conversation"
+                ? `${characters[0]!.name}: A completed response with saved reasoning.`
+                : "A completed response with saved reasoning.",
+            extra: { thinking: "Saved reasoning remains available." },
+          },
+        });
+        expect(savedMessageResponse.ok()).toBeTruthy();
+        const savedMessage = (await savedMessageResponse.json()) as { id: string };
+        const unavailableMessageResponse = await page.request.post(`/api/chats/${chat.id}/messages`, {
+          data: {
+            role: "assistant",
+            content:
+              mode === "conversation"
+                ? `${characters[0]!.name}: A response whose provider omitted its reasoning summary.`
+                : "A response whose provider omitted its reasoning summary.",
+          },
+        });
+        expect(unavailableMessageResponse.ok()).toBeTruthy();
+        const unavailableMessage = (await unavailableMessageResponse.json()) as { id: string };
+        const unavailableMessageExtraResponse = await page.request.patch(
+          `/api/chats/${chat.id}/messages/${unavailableMessage.id}/extra`,
+          {
+            data: {
+              generationInfo: {
+                model: "gpt-5.6-sol",
+                provider: "openai",
+                temperature: null,
+                tokensPrompt: 512,
+                tokensCompletion: 120,
+                tokensReasoning: 1034,
+                tokensCachedPrompt: null,
+                tokensCacheWritePrompt: null,
+                durationMs: 1200,
+                finishReason: "stop",
+              },
             },
           },
-        },
-      );
-      expect(unavailableMessageExtraResponse.ok()).toBeTruthy();
+        );
+        expect(unavailableMessageExtraResponse.ok()).toBeTruthy();
 
-      await page.addInitScript((chatId) => {
-        localStorage.setItem("marinara-active-chat-id", chatId);
-      }, chat.id);
-      await page.goto("/");
+        await page.addInitScript((chatId) => {
+          localStorage.setItem("marinara-active-chat-id", chatId);
+        }, chat.id);
+        await page.goto("/");
 
-      await updateLiveReasoningState(page, chat.id, "start");
-      const liveMessageId = mode === "roleplay" ? "__streaming__" : "__conversation_live_stream__";
-      const liveMessage = page.locator(`[data-message-id="${liveMessageId}"]`);
+        await updateLiveReasoningState(page, chat.id, "start");
+        const liveMessageId = mode === "roleplay" ? "__streaming__" : "__conversation_live_stream__";
+        const liveMessage = page.locator(`[data-message-id="${liveMessageId}"]`);
 
-      if (mode === "roleplay") {
+        if (mode === "roleplay") {
+          await expect(liveMessage).toBeVisible();
+          await expect(liveMessage.getByText("Thinking…", { exact: true })).toBeVisible();
+        } else {
+          await expect(liveMessage).toHaveCount(0);
+          await expect(page.locator(".mari-typing-indicator")).toBeVisible();
+        }
+        await expect(liveMessage.getByRole("button", { name: "View model thoughts" })).toHaveCount(0);
+
+        await updateLiveReasoningState(page, chat.id, "append-thinking", "First reasoning chunk.");
         await expect(liveMessage).toBeVisible();
-        await expect(liveMessage.getByText("Thinking…", { exact: true })).toBeVisible();
-      } else {
+        const liveThoughtsButton = liveMessage.getByRole("button", { name: "View model thoughts" });
+        await expect(liveThoughtsButton).toBeVisible();
+        await liveThoughtsButton.click();
+
+        const thoughtsDialog = page.getByRole("dialog", { name: "Model Thoughts" });
+        await expect(thoughtsDialog).toBeVisible();
+        await expect(thoughtsDialog).toContainText("First reasoning chunk.");
+
+        await updateLiveReasoningState(page, chat.id, "append-thinking", " Second reasoning chunk.");
+        await expect(thoughtsDialog).toContainText("First reasoning chunk. Second reasoning chunk.");
+        await updateLiveReasoningState(
+          page,
+          chat.id,
+          "append-content",
+          mode === "conversation"
+            ? `${characters[0]!.name}: The visible response begins.`
+            : "The visible response begins.",
+        );
+        await expect(thoughtsDialog).toBeVisible();
+        await expect(thoughtsDialog).toContainText("Second reasoning chunk.");
+        await expect(liveMessage.getByRole("button", { name: "View model thoughts" })).toBeVisible();
+        const closeThoughtsButton = thoughtsDialog.getByRole("button", { name: "Close Model Thoughts" });
+        await expect
+          .poll(() => thoughtsDialog.evaluate((dialog) => dialog.contains(document.activeElement)))
+          .toBe(true);
+        await page.keyboard.press("Tab");
+        await expect(closeThoughtsButton).toBeFocused();
+        await page.keyboard.press("Tab");
+        await expect(closeThoughtsButton).toBeFocused();
+        await page.keyboard.press("Escape");
+        await expect(thoughtsDialog).toBeHidden();
+        await expect(liveThoughtsButton).toBeFocused();
+
+        await updateLiveReasoningState(page, chat.id, "stop");
         await expect(liveMessage).toHaveCount(0);
-        await expect(page.locator(".mari-typing-indicator")).toBeVisible();
+
+        const savedRow = page.locator(`[data-message-id="${savedMessage.id}"]`);
+        if (testInfo.project.name.includes("mobile")) {
+          await savedRow.getByText("A completed response with saved reasoning.", { exact: true }).click();
+        } else {
+          await savedRow.hover();
+        }
+        const savedThoughtsButton = testInfo.project.name.includes("mobile")
+          ? savedRow.getByRole("button", { name: "View model thoughts" })
+          : savedRow.locator('button[title="View model thoughts"]');
+        await expect(savedThoughtsButton).toBeVisible();
+        await savedThoughtsButton.click();
+        const savedThoughtsDialog = page.getByRole("dialog", { name: "Model Thoughts" });
+        await expect(savedThoughtsDialog).toContainText("Saved reasoning remains available.");
+        await page.keyboard.press("Escape");
+        await expect(savedThoughtsDialog).toBeHidden();
+
+        const unavailableRow = page.locator(`[data-message-id="${unavailableMessage.id}"]`);
+        if (testInfo.project.name.includes("mobile")) {
+          await unavailableRow
+            .getByText("A response whose provider omitted its reasoning summary.", { exact: true })
+            .click();
+        } else {
+          await unavailableRow.hover();
+        }
+        const unavailableThoughtsButton = testInfo.project.name.includes("mobile")
+          ? unavailableRow.getByRole("button", { name: "Reasoning summary unavailable" })
+          : unavailableRow.locator('button[title="Reasoning summary unavailable"]');
+        await expect(unavailableThoughtsButton).toBeVisible();
+        await unavailableThoughtsButton.click();
+        const unavailableDialog = page.getByRole("dialog", { name: "Model Thoughts" });
+        await expect(unavailableDialog).toContainText("Reasoning summary unavailable");
+        await expect(unavailableDialog).toContainText(
+          "The model used reasoning, but the provider did not return a displayable summary for this response.",
+        );
+      } finally {
+        await updateLiveReasoningState(page, chat.id, "stop").catch(() => undefined);
+        await page.request.delete(`/api/chats/${chat.id}`).catch(() => undefined);
+        await Promise.all(
+          characters.map((character) => page.request.delete(`/api/characters/${character.id}`).catch(() => undefined)),
+        );
       }
-      await expect(liveMessage.getByRole("button", { name: "View model thoughts" })).toHaveCount(0);
-
-      await updateLiveReasoningState(page, chat.id, "append-thinking", "First reasoning chunk.");
-      await expect(liveMessage).toBeVisible();
-      const liveThoughtsButton = liveMessage.getByRole("button", { name: "View model thoughts" });
-      await expect(liveThoughtsButton).toBeVisible();
-      await liveThoughtsButton.click();
-
-      const thoughtsDialog = page.getByRole("dialog", { name: "Model Thoughts" });
-      await expect(thoughtsDialog).toBeVisible();
-      await expect(thoughtsDialog).toContainText("First reasoning chunk.");
-
-      await updateLiveReasoningState(page, chat.id, "append-thinking", " Second reasoning chunk.");
-      await expect(thoughtsDialog).toContainText("First reasoning chunk. Second reasoning chunk.");
-      await updateLiveReasoningState(
-        page,
-        chat.id,
-        "append-content",
-        mode === "conversation"
-          ? `${characters[0]!.name}: The visible response begins.`
-          : "The visible response begins.",
-      );
-      await expect(thoughtsDialog).toBeVisible();
-      await expect(thoughtsDialog).toContainText("Second reasoning chunk.");
-      await expect(liveMessage.getByRole("button", { name: "View model thoughts" })).toBeVisible();
-      const closeThoughtsButton = thoughtsDialog.getByRole("button", { name: "Close Model Thoughts" });
-      await expect.poll(() => thoughtsDialog.evaluate((dialog) => dialog.contains(document.activeElement))).toBe(true);
-      await page.keyboard.press("Tab");
-      await expect(closeThoughtsButton).toBeFocused();
-      await page.keyboard.press("Tab");
-      await expect(closeThoughtsButton).toBeFocused();
-      await page.keyboard.press("Escape");
-      await expect(thoughtsDialog).toBeHidden();
-      await expect(liveThoughtsButton).toBeFocused();
-
-      await updateLiveReasoningState(page, chat.id, "stop");
-      await expect(liveMessage).toHaveCount(0);
-
-      const savedRow = page.locator(`[data-message-id="${savedMessage.id}"]`);
-      if (testInfo.project.name.includes("mobile")) {
-        await savedRow.getByText("A completed response with saved reasoning.", { exact: true }).click();
-      } else {
-        await savedRow.hover();
-      }
-      const savedThoughtsButton = testInfo.project.name.includes("mobile")
-        ? savedRow.getByRole("button", { name: "View model thoughts" })
-        : savedRow.locator('button[title="View model thoughts"]');
-      await expect(savedThoughtsButton).toBeVisible();
-      await savedThoughtsButton.click();
-      const savedThoughtsDialog = page.getByRole("dialog", { name: "Model Thoughts" });
-      await expect(savedThoughtsDialog).toContainText("Saved reasoning remains available.");
-      await page.keyboard.press("Escape");
-      await expect(savedThoughtsDialog).toBeHidden();
-
-      const unavailableRow = page.locator(`[data-message-id="${unavailableMessage.id}"]`);
-      if (testInfo.project.name.includes("mobile")) {
-        await unavailableRow
-          .getByText("A response whose provider omitted its reasoning summary.", { exact: true })
-          .click();
-      } else {
-        await unavailableRow.hover();
-      }
-      const unavailableThoughtsButton = testInfo.project.name.includes("mobile")
-        ? unavailableRow.getByRole("button", { name: "Reasoning summary unavailable" })
-        : unavailableRow.locator('button[title="Reasoning summary unavailable"]');
-      await expect(unavailableThoughtsButton).toBeVisible();
-      await unavailableThoughtsButton.click();
-      const unavailableDialog = page.getByRole("dialog", { name: "Model Thoughts" });
-      await expect(unavailableDialog).toContainText("Reasoning summary unavailable");
-      await expect(unavailableDialog).toContainText(
-        "The model used reasoning, but the provider did not return a displayable summary for this response.",
-      );
-    } finally {
-      await updateLiveReasoningState(page, chat.id, "stop").catch(() => undefined);
-      await page.request.delete(`/api/chats/${chat.id}`).catch(() => undefined);
-      await Promise.all(
-        characters.map((character) => page.request.delete(`/api/characters/${character.id}`).catch(() => undefined)),
-      );
-    }
-  });
+    },
+  );
 }
 
 test("Roleplay can show streaming reasoning inline and control automatic collapse", async ({ page }, testInfo) => {
@@ -12119,164 +12134,170 @@ test("Game history above the dialogue box opens a historical Peek Prompt", async
   }
 });
 
-test("home shell and primary topbar panels open without client errors", { tag: "@smoke" }, async ({ page }, testInfo) => {
-  const errors = collectUnexpectedErrors(page);
-  await page.goto("/");
+test(
+  "home shell and primary topbar panels open without client errors",
+  { tag: "@smoke" },
+  async ({ page }, testInfo) => {
+    const errors = collectUnexpectedErrors(page);
+    await page.goto("/");
 
-  await expect(page.locator('[data-component="TopBar"]')).toBeVisible();
-  await expect(page.getByRole("heading", { name: "What shall we cook tonight?" })).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByRole("tab", { name: "Home", exact: true })).toHaveAttribute("aria-selected", "true");
-  await expect(page.locator('[data-component="HomeBrowserHub.Address"]')).toContainText("marinara/home");
-  await expect(page.locator('[data-component="HomeBrowserHub.Address"] img')).toHaveAttribute("src", "/favicon.png");
-  await expect(page.locator('.mari-home-browser-chrome img[src="/logo-splash.gif"]')).toBeVisible();
-  await expect(page.locator('.mari-home-hero img[src="/logo-splash.gif"]')).toHaveCount(0);
-  await expect(page.locator('[data-tour="noodle-tab"]')).toHaveCount(0);
-  const guideGeometry = await page.locator('[data-home-widget-id="professor"]').evaluate((guide) => {
-    const panel = guide.querySelector<HTMLElement>('[data-component="HomeBrowserHub.ProfessorWidget"]')!;
-    const content = guide.querySelector<HTMLElement>("[data-home-professor-content]")!;
-    const art = guide.querySelector<HTMLElement>("[data-home-professor-art]")!;
-    const action = guide.querySelector<HTMLElement>("[data-home-professor-action]")!;
-    const grid = guide.parentElement!;
-    const guideBounds = guide.getBoundingClientRect();
-    const panelBounds = panel.getBoundingClientRect();
-    const contentBounds = content.getBoundingClientRect();
-    const artBounds = art.getBoundingClientRect();
-    const actionBounds = action.getBoundingClientRect();
-    const gap = Number.parseFloat(getComputedStyle(grid).columnGap) || 0;
-    const siblingSeparations = Array.from(grid.querySelectorAll<HTMLElement>("[data-home-widget-id]"))
-      .filter((widget) => widget !== guide)
-      .map((widget) => {
-        const bounds = widget.getBoundingClientRect();
-        const horizontal = Math.max(bounds.left - guideBounds.right, guideBounds.left - bounds.right, 0);
-        const vertical = Math.max(bounds.top - guideBounds.bottom, guideBounds.top - bounds.bottom, 0);
-        return Math.max(horizontal, vertical);
-      });
-    const inside = (child: DOMRect, parent: DOMRect) =>
-      child.left >= parent.left - 1 &&
-      child.top >= parent.top - 1 &&
-      child.right <= parent.right + 1 &&
-      child.bottom <= parent.bottom + 1;
-    return {
-      panelInsideFrame: inside(panelBounds, guideBounds),
-      contentInsidePanel: inside(contentBounds, panelBounds),
-      artInsidePanel: inside(artBounds, panelBounds),
-      actionInsidePanel: inside(actionBounds, panelBounds),
-      preservesGridGap: siblingSeparations.every((separation) => separation >= gap - 1),
-      panelOverflow: getComputedStyle(panel).overflow,
-    };
-  });
-  expect(guideGeometry).toEqual({
-    panelInsideFrame: true,
-    contentInsidePanel: true,
-    artInsidePanel: true,
-    actionInsidePanel: true,
-    preservesGridGap: true,
-    panelOverflow: "hidden",
-  });
-  const chromeSurfaces = await page.evaluate(() => ({
-    app: getComputedStyle(document.querySelector<HTMLElement>('[data-component="TopBar"]')!).backgroundColor,
-    home: getComputedStyle(document.querySelector<HTMLElement>(".mari-home-browser-chrome")!).backgroundColor,
-  }));
-  expect(chromeSurfaces.home).toBe(chromeSurfaces.app);
-  const surfaceLightness = (value: string) => {
-    const channels =
-      value
-        .match(/[\d.]+/g)
-        ?.slice(0, 3)
-        .map(Number) ?? [];
-    return channels.reduce((total, channel) => total + channel, 0);
-  };
-  const darkAddressSurfaces = await page.evaluate(() => ({
-    chrome: getComputedStyle(document.querySelector<HTMLElement>(".mari-home-browser-chrome")!).backgroundColor,
-    addressRow: getComputedStyle(document.querySelector<HTMLElement>(".mari-home-browser-address-row")!)
-      .backgroundColor,
-  }));
-  for (const surface of Object.values(darkAddressSurfaces)) {
-    expect(surface).not.toMatch(/^(?:transparent|rgba\([^)]*,\s*0\))$/u);
-  }
-  expect(surfaceLightness(darkAddressSurfaces.addressRow)).toBeLessThan(surfaceLightness(darkAddressSurfaces.chrome));
-
-  await page.evaluate(async () => {
-    const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
-    module.useUIStore.getState().setTheme("light");
-  });
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
-  const lightAddressSurfaces = await page.evaluate(() => ({
-    chrome: getComputedStyle(document.querySelector<HTMLElement>(".mari-home-browser-chrome")!).backgroundColor,
-    addressRow: getComputedStyle(document.querySelector<HTMLElement>(".mari-home-browser-address-row")!)
-      .backgroundColor,
-  }));
-  for (const surface of Object.values(lightAddressSurfaces)) {
-    expect(surface).not.toMatch(/^(?:transparent|rgba\([^)]*,\s*0\))$/u);
-  }
-  expect(surfaceLightness(lightAddressSurfaces.addressRow)).toBeLessThan(surfaceLightness(lightAddressSurfaces.chrome));
-  await page.evaluate(async () => {
-    const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
-    module.useUIStore.getState().setTheme("dark");
-  });
-
-  const charactersButton = page.locator('[data-tour="panel-characters"]');
-  await expect(charactersButton.locator("svg")).toHaveClass(/mari-topbar-accent-icon/);
-  const personasButton = page.locator('[data-tour="panel-personas"]');
-  await expect(personasButton.locator("svg")).toHaveClass(/lucide-venetian-mask/u);
-
-  const corePanelOrder = await page
-    .locator('[data-tour="panel-buttons"] > button[data-tour^="panel-"]')
-    .evaluateAll((buttons) => buttons.map((button) => button.getAttribute("data-tour")));
-  expect(corePanelOrder).toEqual([
-    "panel-characters",
-    "panel-personas",
-    "panel-lorebooks",
-    "panel-presets",
-    "panel-connections",
-    "panel-agents",
-    "panel-settings",
-  ]);
-
-  if (testInfo.project.name.includes("mobile")) {
-    const iconCenters = await page.locator('[data-component="TopBar"] .mari-topbar-action').evaluateAll((buttons) =>
-      buttons
-        .map((button) => {
-          if (button.getBoundingClientRect().width === 0) return null;
-          const icon = button.querySelector("svg");
-          const box = icon?.getBoundingClientRect();
-          return box ? box.x + box.width / 2 : null;
-        })
-        .filter((center): center is number => center !== null),
-    );
-    const spacings = iconCenters.slice(1).map((center, index) => center - iconCenters[index]!);
-    expect(iconCenters.length).toBeGreaterThan(2);
-    expect(spacings.every((spacing) => spacing >= 36)).toBe(true);
-  }
-
-  for (const selector of [
-    '[data-tour="sidebar-toggle"]',
-    '[data-tour="panel-characters"]',
-    '[data-tour="panel-personas"]',
-    '[data-tour="panel-lorebooks"]',
-    '[data-tour="panel-presets"]',
-    '[data-tour="panel-connections"]',
-    '[data-tour="panel-agents"]',
-    '[data-tour="panel-settings"]',
-  ]) {
-    const panel = selector.match(/panel-([a-z]+)/)?.[1];
-    if (panel) await clickTopbarPanel(page, panel);
-    else await page.locator(selector).click();
     await expect(page.locator('[data-component="TopBar"]')).toBeVisible();
-    if (selector === '[data-tour="panel-characters"]') {
-      await expect(page.locator('[data-component="RightPanelHeaderIcon"]')).toHaveClass(
-        /mari-panel-gradient--characters/,
-      );
+    await expect(page.getByRole("heading", { name: "What shall we cook tonight?" })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("tab", { name: "Home", exact: true })).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator('[data-component="HomeBrowserHub.Address"]')).toContainText("marinara/home");
+    await expect(page.locator('[data-component="HomeBrowserHub.Address"] img')).toHaveAttribute("src", "/favicon.png");
+    await expect(page.locator('.mari-home-browser-chrome img[src="/logo-splash.gif"]')).toBeVisible();
+    await expect(page.locator('.mari-home-hero img[src="/logo-splash.gif"]')).toHaveCount(0);
+    await expect(page.locator('[data-tour="noodle-tab"]')).toHaveCount(0);
+    const guideGeometry = await page.locator('[data-home-widget-id="professor"]').evaluate((guide) => {
+      const panel = guide.querySelector<HTMLElement>('[data-component="HomeBrowserHub.ProfessorWidget"]')!;
+      const content = guide.querySelector<HTMLElement>("[data-home-professor-content]")!;
+      const art = guide.querySelector<HTMLElement>("[data-home-professor-art]")!;
+      const action = guide.querySelector<HTMLElement>("[data-home-professor-action]")!;
+      const grid = guide.parentElement!;
+      const guideBounds = guide.getBoundingClientRect();
+      const panelBounds = panel.getBoundingClientRect();
+      const contentBounds = content.getBoundingClientRect();
+      const artBounds = art.getBoundingClientRect();
+      const actionBounds = action.getBoundingClientRect();
+      const gap = Number.parseFloat(getComputedStyle(grid).columnGap) || 0;
+      const siblingSeparations = Array.from(grid.querySelectorAll<HTMLElement>("[data-home-widget-id]"))
+        .filter((widget) => widget !== guide)
+        .map((widget) => {
+          const bounds = widget.getBoundingClientRect();
+          const horizontal = Math.max(bounds.left - guideBounds.right, guideBounds.left - bounds.right, 0);
+          const vertical = Math.max(bounds.top - guideBounds.bottom, guideBounds.top - bounds.bottom, 0);
+          return Math.max(horizontal, vertical);
+        });
+      const inside = (child: DOMRect, parent: DOMRect) =>
+        child.left >= parent.left - 1 &&
+        child.top >= parent.top - 1 &&
+        child.right <= parent.right + 1 &&
+        child.bottom <= parent.bottom + 1;
+      return {
+        panelInsideFrame: inside(panelBounds, guideBounds),
+        contentInsidePanel: inside(contentBounds, panelBounds),
+        artInsidePanel: inside(artBounds, panelBounds),
+        actionInsidePanel: inside(actionBounds, panelBounds),
+        preservesGridGap: siblingSeparations.every((separation) => separation >= gap - 1),
+        panelOverflow: getComputedStyle(panel).overflow,
+      };
+    });
+    expect(guideGeometry).toEqual({
+      panelInsideFrame: true,
+      contentInsidePanel: true,
+      artInsidePanel: true,
+      actionInsidePanel: true,
+      preservesGridGap: true,
+      panelOverflow: "hidden",
+    });
+    const chromeSurfaces = await page.evaluate(() => ({
+      app: getComputedStyle(document.querySelector<HTMLElement>('[data-component="TopBar"]')!).backgroundColor,
+      home: getComputedStyle(document.querySelector<HTMLElement>(".mari-home-browser-chrome")!).backgroundColor,
+    }));
+    expect(chromeSurfaces.home).toBe(chromeSurfaces.app);
+    const surfaceLightness = (value: string) => {
+      const channels =
+        value
+          .match(/[\d.]+/g)
+          ?.slice(0, 3)
+          .map(Number) ?? [];
+      return channels.reduce((total, channel) => total + channel, 0);
+    };
+    const darkAddressSurfaces = await page.evaluate(() => ({
+      chrome: getComputedStyle(document.querySelector<HTMLElement>(".mari-home-browser-chrome")!).backgroundColor,
+      addressRow: getComputedStyle(document.querySelector<HTMLElement>(".mari-home-browser-address-row")!)
+        .backgroundColor,
+    }));
+    for (const surface of Object.values(darkAddressSurfaces)) {
+      expect(surface).not.toMatch(/^(?:transparent|rgba\([^)]*,\s*0\))$/u);
     }
-    if (selector === '[data-tour="panel-personas"]') {
-      await expect(page.locator('[data-component="RightPanelHeaderIcon"] svg')).toHaveClass(/lucide-venetian-mask/u);
-    }
-  }
+    expect(surfaceLightness(darkAddressSurfaces.addressRow)).toBeLessThan(surfaceLightness(darkAddressSurfaces.chrome));
 
-  const health = await page.request.get("/api/health");
-  expect(health.ok()).toBeTruthy();
-  expect(errors).toEqual([]);
-});
+    await page.evaluate(async () => {
+      const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
+      module.useUIStore.getState().setTheme("light");
+    });
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    const lightAddressSurfaces = await page.evaluate(() => ({
+      chrome: getComputedStyle(document.querySelector<HTMLElement>(".mari-home-browser-chrome")!).backgroundColor,
+      addressRow: getComputedStyle(document.querySelector<HTMLElement>(".mari-home-browser-address-row")!)
+        .backgroundColor,
+    }));
+    for (const surface of Object.values(lightAddressSurfaces)) {
+      expect(surface).not.toMatch(/^(?:transparent|rgba\([^)]*,\s*0\))$/u);
+    }
+    expect(surfaceLightness(lightAddressSurfaces.addressRow)).toBeLessThan(
+      surfaceLightness(lightAddressSurfaces.chrome),
+    );
+    await page.evaluate(async () => {
+      const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
+      module.useUIStore.getState().setTheme("dark");
+    });
+
+    const charactersButton = page.locator('[data-tour="panel-characters"]');
+    await expect(charactersButton.locator("svg")).toHaveClass(/mari-topbar-accent-icon/);
+    const personasButton = page.locator('[data-tour="panel-personas"]');
+    await expect(personasButton.locator("svg")).toHaveClass(/lucide-venetian-mask/u);
+
+    const corePanelOrder = await page
+      .locator('[data-tour="panel-buttons"] > button[data-tour^="panel-"]')
+      .evaluateAll((buttons) => buttons.map((button) => button.getAttribute("data-tour")));
+    expect(corePanelOrder).toEqual([
+      "panel-characters",
+      "panel-personas",
+      "panel-lorebooks",
+      "panel-presets",
+      "panel-connections",
+      "panel-agents",
+      "panel-settings",
+    ]);
+
+    if (testInfo.project.name.includes("mobile")) {
+      const iconCenters = await page.locator('[data-component="TopBar"] .mari-topbar-action').evaluateAll((buttons) =>
+        buttons
+          .map((button) => {
+            if (button.getBoundingClientRect().width === 0) return null;
+            const icon = button.querySelector("svg");
+            const box = icon?.getBoundingClientRect();
+            return box ? box.x + box.width / 2 : null;
+          })
+          .filter((center): center is number => center !== null),
+      );
+      const spacings = iconCenters.slice(1).map((center, index) => center - iconCenters[index]!);
+      expect(iconCenters.length).toBeGreaterThan(2);
+      expect(spacings.every((spacing) => spacing >= 36)).toBe(true);
+    }
+
+    for (const selector of [
+      '[data-tour="sidebar-toggle"]',
+      '[data-tour="panel-characters"]',
+      '[data-tour="panel-personas"]',
+      '[data-tour="panel-lorebooks"]',
+      '[data-tour="panel-presets"]',
+      '[data-tour="panel-connections"]',
+      '[data-tour="panel-agents"]',
+      '[data-tour="panel-settings"]',
+    ]) {
+      const panel = selector.match(/panel-([a-z]+)/)?.[1];
+      if (panel) await clickTopbarPanel(page, panel);
+      else await page.locator(selector).click();
+      await expect(page.locator('[data-component="TopBar"]')).toBeVisible();
+      if (selector === '[data-tour="panel-characters"]') {
+        await expect(page.locator('[data-component="RightPanelHeaderIcon"]')).toHaveClass(
+          /mari-panel-gradient--characters/,
+        );
+      }
+      if (selector === '[data-tour="panel-personas"]') {
+        await expect(page.locator('[data-component="RightPanelHeaderIcon"] svg')).toHaveClass(/lucide-venetian-mask/u);
+      }
+    }
+
+    const health = await page.request.get("/api/health");
+    expect(health.ok()).toBeTruthy();
+    expect(errors).toEqual([]);
+  },
+);
 
 test("Home Professor controls and surfaces follow the configured accent", async ({ page }) => {
   await page.goto("/");
@@ -21395,6 +21416,80 @@ test("pinch zoom keeps the Roleplay layout size and does not open keyboard mode"
   }
 });
 
+test("zoomed mobile chat keeps the composer above the keyboard and restores on dismissal", async ({
+  page,
+}, testInfo) => {
+  test.skip(!testInfo.project.name.includes("mobile"), "Software-keyboard viewport behavior is mobile-only.");
+  const response = await page.request.post("/api/chats", {
+    data: { name: "Zoomed keyboard regression", mode: "roleplay", characterIds: [] },
+  });
+  expect(response.ok()).toBeTruthy();
+  const chat = (await response.json()) as { id: string };
+  try {
+    await installMockVisualViewport(page);
+    await prepareFreshClient(page);
+    await page.addInitScript((id) => localStorage.setItem("marinara-active-chat-id", id), chat.id);
+    await page.goto("/");
+    const shell = page.locator('.mari-app[data-chat-surface-active="true"]');
+    const composer = page.locator(".chat-input-container:visible");
+    const textarea = composer.locator("textarea:visible");
+    await expect(textarea).toBeVisible();
+    const original = await shell.boundingBox();
+    expect(original).not.toBeNull();
+    const layoutHeight = await page.evaluate(() => window.innerHeight);
+    const setViewport = (height: number, top: number, scale: number) =>
+      page.evaluate(
+        ({ height, top, scale, layoutHeight }) => {
+          (
+            window as typeof window & {
+              __setMarinaraVisualViewport: (
+                height: number,
+                top: number,
+                pageTop: number,
+                layout: number,
+                scale: number,
+              ) => void;
+            }
+          ).__setMarinaraVisualViewport(height, top, top, layoutHeight, scale);
+        },
+        { height, top, scale, layoutHeight },
+      );
+
+    for (const scale of [1.05, 1.25, 2]) {
+      await setViewport(layoutHeight / scale, 0, scale);
+      await expect(page.locator("html")).not.toHaveAttribute("data-mari-software-keyboard-open");
+      await expect.poll(async () => (await shell.boundingBox())?.height).toBe(original!.height);
+      await textarea.focus();
+      await textarea.fill("Keep this draft visible above the keyboard.");
+      const visibleHeight = 420 / scale;
+      const top = 36;
+      await setViewport(visibleHeight, top, scale);
+      // Attach the actual layout even when the regression fails on the old guard.
+      await testInfo.attach(`zoomed-keyboard-${scale}.png`, {
+        body: await page.screenshot(),
+        contentType: "image/png",
+      });
+      await expect(page.locator("html")).toHaveAttribute("data-mari-software-keyboard-open", "");
+      await expect.poll(async () => (await shell.boundingBox())?.height).toBe(Math.round(visibleHeight));
+      await expect
+        .poll(async () => {
+          const box = await composer.boundingBox();
+          return box ? box.y + box.height : Infinity;
+        })
+        .toBeLessThanOrEqual(top + Math.round(visibleHeight) + 1);
+      await expect(textarea).toHaveValue("Keep this draft visible above the keyboard.");
+      // The OS keyboard can close while the textarea remains focused and zoom stays active.
+      await setViewport(layoutHeight / scale, 0, scale);
+      await expect(page.locator("html")).not.toHaveAttribute("data-mari-software-keyboard-open");
+      await expect.poll(async () => (await shell.boundingBox())?.height).toBe(original!.height);
+      await expect.poll(async () => (await shell.boundingBox())?.y).toBe(original!.y);
+      await textarea.blur();
+    }
+  } finally {
+    await page.request.delete(`/api/chats/${chat.id}?force=true`);
+  }
+});
+
 test("iPhone chat menus stay in the visual viewport while editing", async ({ page }, testInfo) => {
   test.skip(!testInfo.project.name.includes("mobile-webkit"), "The visual-viewport pan regression is iPhone-only.");
 
@@ -22619,7 +22714,11 @@ test("mobile topbar remains reachable while sidebars switch", async ({ page }, t
   expect(chatsBounds).not.toBeNull();
   const visibleActions = topbar.locator("[data-topbar-hover-key]:visible");
   await expect(visibleActions).toHaveCount(2);
-  expect(await visibleActions.evaluateAll((elements) => elements.map((element) => (element as HTMLElement).dataset.topbarHoverKey))).toEqual(["home", "chats"]);
+  expect(
+    await visibleActions.evaluateAll((elements) =>
+      elements.map((element) => (element as HTMLElement).dataset.topbarHoverKey),
+    ),
+  ).toEqual(["home", "chats"]);
   await expect(topbar.getByRole("button", { name: "More", exact: true })).toBeVisible();
   const homeIconBounds = await homeButton.locator("svg").boundingBox();
   const chatsIconBounds = await chatsButton.locator("svg").boundingBox();
@@ -22711,7 +22810,10 @@ test("mobile topbar remains reachable while sidebars switch", async ({ page }, t
   await expect(swappedRightPanel).toHaveAttribute("data-e2e-mobile-shell", "preserved");
   await expect(homeButton).toHaveAttribute("aria-pressed", "false");
   await topbar.getByRole("button", { name: "More", exact: true }).click();
-  await expect(page.locator('[role="menuitem"][data-topbar-panel="characters"]')).toHaveAttribute("aria-current", "true");
+  await expect(page.locator('[role="menuitem"][data-topbar-panel="characters"]')).toHaveAttribute(
+    "aria-current",
+    "true",
+  );
   await page.keyboard.press("Escape");
 
   await chatsButton.click();

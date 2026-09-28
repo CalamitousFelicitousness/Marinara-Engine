@@ -27,7 +27,7 @@ import {
   Folder,
 } from "lucide-react";
 import { cn, getAvatarCropStyle } from "../../lib/utils";
-import { useConnections } from "../../hooks/use-connections";
+import { useConnections, useModelParameterCapabilities } from "../../hooks/use-connections";
 import { usePresets, usePresetFull, useDefaultPreset } from "../../hooks/use-presets";
 import { useCharacterGroups, useCharacters, usePersonas } from "../../hooks/use-characters";
 import { useLorebooks } from "../../hooks/use-lorebooks";
@@ -823,17 +823,19 @@ function PersonaPicker({
 function SetupGenerationParametersPanel({
   enabled,
   value,
-  showServiceTier,
+  connection,
   onEnabledChange,
   onChange,
 }: {
   enabled: boolean;
   value: EditableGenerationParameters;
-  showServiceTier: boolean;
+  /** The selected connection; its provider and model decide which settings are offered. */
+  connection: { id?: string | null; provider?: string | null; model?: string | null; baseUrl?: unknown } | null;
   onEnabledChange: (enabled: boolean) => void;
   onChange: (next: EditableGenerationParameters) => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
+  const modelCapabilities = useModelParameterCapabilities(enabled ? connection : null);
   return (
     <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-3">
       <button
@@ -860,7 +862,14 @@ function SetupGenerationParametersPanel({
       </button>
       {enabled && (
         <div className="mt-3 border-t border-[var(--border)] pt-3">
-          <GenerationParametersFields value={value} showServiceTier={showServiceTier} onChange={onChange} />
+          <GenerationParametersFields
+            value={value}
+            provider={connection?.provider ?? null}
+            model={connection?.model ?? null}
+            baseUrl={typeof connection?.baseUrl === "string" ? connection.baseUrl : null}
+            modelCapabilities={modelCapabilities}
+            onChange={onChange}
+          />
         </div>
       )}
     </div>
@@ -1510,7 +1519,7 @@ function ConversationQuickSetup({ chat, onFinish, defaultsApplied, defaultsActio
         <SetupGenerationParametersPanel
           enabled={customizeParameters}
           value={generationParameters}
-          showServiceTier={selectedConnection?.provider === "openrouter" || selectedConnection?.provider === "nanogpt"}
+          connection={selectedConnection}
           onEnabledChange={setCustomizeParameters}
           onChange={setGenerationParameters}
         />
@@ -2770,7 +2779,7 @@ function RoleplaySetupWizard({ chat, onFinish, defaultsApplied, defaultsAction }
         <SetupGenerationParametersPanel
           enabled={customizeParameters}
           value={generationParameters}
-          showServiceTier={selectedConnection?.provider === "openrouter" || selectedConnection?.provider === "nanogpt"}
+          connection={selectedConnection}
           onEnabledChange={setCustomizeParameters}
           onChange={setGenerationParameters}
         />

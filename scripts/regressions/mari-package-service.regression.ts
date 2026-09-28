@@ -105,7 +105,7 @@ const releaseSlow = registerCapabilityService("mari-actions:slow", {
 });
 registerCapabilityService("slurp2:actions", slurp);
 
-const listed = await listCapabilityMariActions();
+const listed = await listCapabilityMariActions(live);
 assert.deepEqual(
   listed.map((entry) => [entry.package, entry.actions.map((action) => action.name)]),
   [
@@ -115,6 +115,34 @@ assert.deepEqual(
   "only well-formed mari-actions services are listed; a throwing or hanging list hides only its own package",
 );
 releaseSlow();
+// Stop must also interrupt discovery and the list used to validate an action.
+let slowLists = 0;
+const releaseStoppedList = registerCapabilityService("mari-actions:stopped-list", {
+  list: () => {
+    slowLists++;
+    return new Promise(() => undefined);
+  },
+  run: async () => ({ ok: true, value: null }),
+});
+await assert.rejects(runCapabilityMariAction("stopped-list", "add", [], live), /must be a JSON object/);
+await assert.rejects(
+  runCapabilityMariAction("stopped-list", "add", { text: "x".repeat(70_000) }, live),
+  /larger than 64000 characters/,
+);
+assert.equal(slowLists, 0, "invalid input is rejected before calling package code");
+for (const invoke of [
+  (signal: AbortSignal) => listCapabilityMariActions(signal),
+  (signal: AbortSignal) => runCapabilityMariAction("stopped-list", "add", {}, signal),
+]) {
+  const stopListing = new AbortController();
+  const pending = invoke(stopListing.signal);
+  await new Promise((resolve) => setImmediate(resolve));
+  const stoppedAt = performance.now();
+  stopListing.abort();
+  await assert.rejects(pending, /abort/i);
+  assert.ok(performance.now() - stoppedAt < 1_000, "Stop must not wait for the five-second list deadline");
+}
+releaseStoppedList();
 const long = listed[0]!.actions.find((action) => action.name === "long")!;
 assert.ok((long.summary?.length ?? 0) <= 301, "package-authored list text is capped");
 assert.deepEqual(long.inputs, { ok: "fine" }, "only string input descriptions reach Mari");

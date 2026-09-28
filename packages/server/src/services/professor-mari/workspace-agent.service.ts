@@ -4280,7 +4280,9 @@ ${sections.join("\n\n")}
     const packageId = stringArg(args, "package").trim();
     const action = stringArg(args, "action").trim();
     if (!action) {
-      const offered = (await listCapabilityMariActions()).filter((entry) => !packageId || entry.package === packageId);
+      const offered = (await listCapabilityMariActions(signal)).filter(
+        (entry) => !packageId || entry.package === packageId,
+      );
       if (offered.length === 0) {
         return packageId
           ? `Package "${packageId}" offers no Mari actions, or it is not installed and enabled.`

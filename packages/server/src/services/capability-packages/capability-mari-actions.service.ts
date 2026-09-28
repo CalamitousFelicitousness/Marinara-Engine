@@ -1,3 +1,4 @@
+import { addAbortListener } from "node:events";
 import { withDeadline } from "./capability-prompt-context.service.js";
 import { getCapabilityService, listCapabilityServiceKeys } from "./capability-service-registry.service.js";
 
@@ -70,8 +71,26 @@ function serviceFor(packageId: string): CapabilityMariActionsService | null {
 }
 
 /** Package-authored text reaches Mari's prompt, so only bounded strings of well-formed actions pass. */
-async function actionsOf(packageId: string, service: CapabilityMariActionsService): Promise<CapabilityMariAction[]> {
-  const listed = await withDeadline(service.list(), `${packageId} Mari action list`, LIST_TIMEOUT_MS);
+async function actionsOf(
+  packageId: string,
+  service: CapabilityMariActionsService,
+  signal: AbortSignal,
+): Promise<CapabilityMariAction[]> {
+  signal.throwIfAborted();
+  let abortListener: ReturnType<typeof addAbortListener> | undefined;
+  let listed: readonly CapabilityMariAction[];
+  try {
+    const aborted = new Promise<never>((_resolve, reject) => {
+      abortListener = addAbortListener(signal, () => reject(signal.reason));
+    });
+    listed = await withDeadline(
+      Promise.race([Promise.resolve().then(() => service.list()), aborted]),
+      `${packageId} Mari action list`,
+      LIST_TIMEOUT_MS,
+    );
+  } finally {
+    abortListener?.[Symbol.dispose]();
+  }
   if (!Array.isArray(listed)) return [];
   return listed
     .filter((action) => !!action && typeof action.name === "string" && ACTION_NAME_PATTERN.test(action.name))
@@ -92,9 +111,10 @@ async function actionsOf(packageId: string, service: CapabilityMariActionsServic
 }
 
 /** Every active package that offers Mari actions, with the actions it offers. */
-export async function listCapabilityMariActions(): Promise<
-  Array<{ package: string; actions: CapabilityMariAction[] }>
-> {
+export async function listCapabilityMariActions(
+  signal: AbortSignal,
+): Promise<Array<{ package: string; actions: CapabilityMariAction[] }>> {
+  signal.throwIfAborted();
   // In parallel, so several slow packages cost one list deadline, not one each.
   const listed = await Promise.all(
     listCapabilityServiceKeys(SERVICE_PREFIX).map(async (key) => {
@@ -102,8 +122,9 @@ export async function listCapabilityMariActions(): Promise<
       const service = serviceFor(packageId);
       if (!service) return null;
       try {
-        return { package: packageId, actions: await actionsOf(packageId, service) };
-      } catch {
+        return { package: packageId, actions: await actionsOf(packageId, service, signal) };
+      } catch (error) {
+        if (signal.aborted) throw error;
         return null; // One broken or slow package must not hide the others.
       }
     }),
@@ -126,15 +147,15 @@ export async function runCapabilityMariAction(
       `Package "${packageId}" offers no Mari actions. Call package_service without a package to list the ones that do.`,
     );
   }
-  if (!(await actionsOf(packageId, service)).some((entry) => entry.name === action)) {
-    throw new Error(
-      `Package "${packageId}" has no Mari action "${clip(action, 80)}". Call package_service with only package="${packageId}" to list its actions.`,
-    );
-  }
   const payload = input ?? {};
   if (typeof payload !== "object" || Array.isArray(payload)) throw new Error("input must be a JSON object");
   const serialized = JSON.stringify(payload);
   if (serialized.length > MAX_INPUT_CHARS) throw new Error(`input is larger than ${MAX_INPUT_CHARS} characters`);
+  if (!(await actionsOf(packageId, service, signal)).some((entry) => entry.name === action)) {
+    throw new Error(
+      `Package "${packageId}" has no Mari action "${clip(action, 80)}". Call package_service with only package="${packageId}" to list its actions.`,
+    );
+  }
   signal.throwIfAborted();
   // The package sees Mari's stop and the deadline through one signal, and the Engine stops waiting on
   // either even if the package ignores it, so a stuck action cannot hold Mari's change lane forever.

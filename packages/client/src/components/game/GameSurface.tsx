@@ -7676,16 +7676,22 @@ function GameSurfaceComponent({
           picks.map((pick) => ({ op: "add" as const, name: pick.name, item: pick.item, count: 1, holder })),
         );
         const added = picks.filter((_, index) => results[index]?.ok);
-        if (added.length < picks.length) {
-          toast.error(
-            localizeUi("ui.game.gamesurfacecomponent.failedToAddValue1ToInventory", {
-              value1: picks
-                .filter((_, index) => !results[index]?.ok)
-                .map((pick) => pick.name)
-                .join(", "),
-            }),
-          );
-        }
+        // A pick the ruleset no longer offers (a layer hides it, or its catalog changed since the
+        // picker loaded) says so; anything else failed for another reason.
+        const failedFor = (unoffered: boolean) =>
+          picks
+            .filter((_, index) => {
+              const result = results[index];
+              return !result?.ok && (result?.reason === "not-ruleset-item") === unoffered;
+            })
+            .map((pick) => pick.name)
+            .join(", ");
+        const unoffered = failedFor(true);
+        const failed = failedFor(false);
+        if (unoffered)
+          toast.error(localizeUi("ui.game.gamesurfacecomponent.noLongerRulesetItemValue1", { value1: unoffered }));
+        if (failed)
+          toast.error(localizeUi("ui.game.gamesurfacecomponent.failedToAddValue1ToInventory", { value1: failed }));
         if (added.length === 0) return null;
         const shown = added.map((pick) => pick.name).join(", ");
         showInventoryNotification(

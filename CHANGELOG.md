@@ -4,6 +4,14 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Escape closes a panel from actions inside an expanded folder header, while active fields and menus keep their own Escape behavior.
+
+- The native shutdown regression allows cold CI servers time to start while keeping its interrupt and shutdown deadlines unchanged.
+
+- Decorative missing-avatar icons stay hidden from screen readers; named character fallbacks retain their accessible labels.
+
+- Panels opened from the navigation bar support keyboard focus and return focus when closed. Cancelling a folder rename or leaving the activity field with Escape keeps its panel open. Profile imports are keyboard-accessible, missing library avatars have a visible fallback, and the chat sidebar shows clearer loading and retry states (#6698).
+
 - Generation settings show controls supported by the selected provider and model, reducing settings that would be ignored. Preset editing keeps its full set of reusable controls (#6698).
 
 - Printed HTML chat exports show included reasoning once, even if its Thinking section is collapsed on screen.

@@ -10947,6 +10947,8 @@
   "ui.ui.macrotextarea.markdownPreview": "Markdown preview",
   "ui.ui.macrotextarea.previewMarkdown": "Preview Markdown",
   "ui.ui.modal.value1Value2": "{{value1}} {{value2}}",
+  "ui.ui.panelstates.loading": "Loading…",
+  "ui.ui.panelstates.retrying": "Retrying…",
   "ui.ui.parameterheader.thisParameterIsNotSentToTheModel": "This parameter is not sent to the model",
   "ui.ui.parameterheader.thisParameterIsSentToTheModel": "This parameter is sent to the model",
   "ui.ui.professormariworkingwindow.hideProfessorMariWorkingIndicator": "Hide Professor Mari working indicator",

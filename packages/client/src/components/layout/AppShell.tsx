@@ -22,6 +22,7 @@ import {
   useUIStore,
 } from "../../stores/ui.store";
 import { useChatStore } from "../../stores/chat.store";
+import { useDialogStore } from "../../stores/dialog.store";
 import { useBackgroundAutonomousPolling } from "../../hooks/use-background-autonomous";
 import { useClearAutonomousUnread, useUpdateChatMetadata } from "../../hooks/use-chats";
 import { lorebookKeys } from "../../hooks/use-lorebooks";
@@ -37,6 +38,7 @@ import { showConfirmDialog } from "../../lib/app-dialogs";
 import { isIosWebKitBrowser } from "../../lib/generation-stream-policy";
 import { cn } from "../../lib/utils";
 import { parseChatMetadata } from "../../lib/chat-display";
+import { openGlobalSearch } from "../../lib/chat-insights";
 import { requestChatSummaryOpen } from "../../lib/chat-floating-ui-events";
 import { resolveTrackerPanelContentScale, resolveTrackerPanelDesktopWidth } from "../../lib/tracker-panel-layout";
 import {
@@ -245,6 +247,39 @@ export function AppShell() {
 
   // Auto idle detection (10 min inactivity → idle, activity → active)
   useIdleDetection();
+
+  useEffect(() => {
+    const handleGlobalSearchShortcut = (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.isComposing ||
+        event.repeat ||
+        !event.shiftKey ||
+        event.altKey ||
+        !(event.ctrlKey || event.metaKey) ||
+        event.key.toLowerCase() !== "f"
+      ) {
+        return;
+      }
+
+      const target = event.target;
+      if (target instanceof HTMLElement && target.isContentEditable) return;
+      if (target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return;
+      if (
+        target instanceof HTMLInputElement &&
+        !["button", "checkbox", "color", "file", "hidden", "radio", "range", "reset", "submit"].includes(target.type)
+      ) {
+        return;
+      }
+      if (useUIStore.getState().modal || useDialogStore.getState().dialog) return;
+
+      event.preventDefault();
+      openGlobalSearch();
+    };
+
+    document.addEventListener("keydown", handleGlobalSearchShortcut);
+    return () => document.removeEventListener("keydown", handleGlobalSearchShortcut);
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof document === "undefined") return;

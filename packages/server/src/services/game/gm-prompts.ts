@@ -92,11 +92,17 @@ export interface GmPromptContext {
   /** Available sprite expressions per character (name → expressions + custom fullBody aliases) */
   characterSprites?: CharacterSpriteInfo[];
   /** Player's current inventory items (for GM context) */
-  /** `ownName` is the item's own name when `name` is a nickname the player gave it. */
-  playerInventory?: Array<{ name: string; quantity: number; ownName?: string }>;
+  /** `ownName` is the item's own name when `name` is a nickname the player gave it; `item` is the
+   *  ruleset item it is, when it is one. */
+  playerInventory?: Array<{ name: string; quantity: number; ownName?: string; item?: string }>;
   /** Each bag's totals, the player's first (no `holder`). Read instead of `playerInventory` once
    *  anybody but the player carries something, so the Game Master knows who holds what. */
-  partyInventory?: Array<{ holder?: string; items: Array<{ name: string; quantity: number; ownName?: string }> }>;
+  partyInventory?: Array<{
+    holder?: string;
+    items: Array<{ name: string; quantity: number; ownName?: string; item?: string }>;
+  }>;
+  /** What each ruleset item held is, by item id, as one line (`rulesetItemPromptFacts`). */
+  inventoryItemFacts?: Record<string, string>;
   /** Language for all narration and dialogue */
   language?: string;
   /** User-overridable GM instruction body. Wrapped in <instructions> before sending. */
@@ -411,8 +417,12 @@ function buildCampaignPlanLines(plan?: GameCampaignPlan | null): string[] {
   return lines;
 }
 
-function buildCompactInventoryLine(items: Array<{ name: string; quantity: number }>): string {
-  return items.map((item) => `${item.name}${item.quantity > 1 ? ` ×${item.quantity}` : ""}`).join("; ");
+function buildCompactInventoryLine(items: Array<{ name: string; quantity: number; facts?: string }>): string {
+  return items
+    .map(
+      (item) => `${item.name}${item.quantity > 1 ? ` ×${item.quantity}` : ""}${item.facts ? ` [${item.facts}]` : ""}`,
+    )
+    .join("; ");
 }
 
 function buildWidgetSummaryLines(widgets: HudWidget[]): string[] {
@@ -977,6 +987,7 @@ export function buildGmFormatReminder(
     | "characterSprites"
     | "playerInventory"
     | "partyInventory"
+    | "inventoryItemFacts"
     | "language"
     | "rating"
     | "enableQuickTimeEvents"
@@ -1060,13 +1071,19 @@ export function buildGmFormatReminder(
     const own = normalizePromptText(item?.ownName);
     return name && own && own.toLowerCase() !== name.toLowerCase() ? `${name} (${own})` : name;
   };
+  // A ruleset item also says what it is, from its ruleset: category, rarity, tags and visible stats.
+  const itemFacts = (item: { item?: unknown } | undefined) => {
+    const facts = typeof item?.item === "string" ? ctx.inventoryItemFacts?.[item.item] : undefined;
+    const text = normalizePromptText(facts);
+    return text ? { facts: text } : {};
+  };
   const playerInventory = Array.isArray(ctx.playerInventory)
     ? ctx.playerInventory.flatMap((item) => {
         const name = inventoryName(item);
         if (!name) return [];
         const quantity =
           typeof item?.quantity === "number" && Number.isFinite(item.quantity) ? Math.max(1, item.quantity) : 1;
-        return [{ name, quantity }];
+        return [{ name, quantity, ...itemFacts(item) }];
       })
     : [];
   // Bags other than the player's, each with a name to show; only these make the block per member.
@@ -1077,7 +1094,7 @@ export function buildGmFormatReminder(
       if (!name) return [];
       const quantity =
         typeof item?.quantity === "number" && Number.isFinite(item.quantity) ? Math.max(1, item.quantity) : 1;
-      return [{ name, quantity }];
+      return [{ name, quantity, ...itemFacts(item) }];
     });
     return items.length > 0 ? [{ holder, items }] : [];
   });
@@ -1222,6 +1239,11 @@ export function buildGmFormatReminder(
       ? []
       : [
           `- [inventory: action="add|remove|give" item="Item A, Item B" count="3" who="Name" to="Name"] - every real item gain or loss, keep names short and use count/quantity for stacked items. Everyone in the party carries their own things: who is whose bag an item goes into or comes out of, and leaving it out means the player (a remove without who then takes from the rest of the party once the player has none). A give hands items from who to to. An item listed as "Nickname (Name)" is one item: write either name in item, never both. Never write result, reason or now yourself: the Engine adds them, and a refused one did not happen.`,
+          ...(ctx.ruleset?.catalogs?.some((catalog) => catalog.holds === "items")
+            ? [
+                `  This game's ruleset has its own items: an item named exactly as one of them becomes that item, and what an item of the ruleset is shows in [brackets] after it in the inventory below (never write the brackets in item).`,
+              ]
+            : []),
         ]),
     `- [Note: contents] or [Book: contents] - when a new readable note or book is acquired and should be tracked in the journal.`,
     `- [state: exploration|dialogue|combat|travel_rest] - only on actual mode transitions. If you're planning to use [state: combat], this one ALWAYS has to be at the end of the turn, as it initiates a new combat generation and UI.`,

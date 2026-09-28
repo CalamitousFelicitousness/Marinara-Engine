@@ -37,18 +37,19 @@ export function readGameInventoryTurn(raw: unknown): GameInventoryTurn | null {
   return { messageId: source.messageId, before: normalizeGameInventoryStacks(source.before), swipes };
 }
 
-/** Whether two stack lists are the same inventory: the same stacks, in the same order, bags and
- *  names. */
+/** Whether two stack lists are the same inventory: the same stacks, in the same order, bags, names
+ *  and items. */
 export function sameGameInventory(
   first: readonly GameInventoryStack[],
   second: readonly GameInventoryStack[],
 ): boolean {
   const key = (stacks: readonly GameInventoryStack[]) =>
     JSON.stringify(
-      normalizeGameInventoryStacks(stacks).map(({ id, name, nickname, quantity, holder }) => [
+      normalizeGameInventoryStacks(stacks).map(({ id, name, nickname, item, quantity, holder }) => [
         id,
         name,
         nickname ?? null,
+        item ?? null,
         quantity,
         holder ?? null,
       ]),

@@ -11,14 +11,23 @@
  *     the same array.
  *   - A new session keeps every stack and id (the old carry-over kept only the first of a name).
  *   - The amount field: a count, or +N / -N, bounded like a stack.
+ *   - Ruleset items (#6795): a stack that is one is that item whatever it is called, a name that is one
+ *     adds it (over a plain item only called that), a stack of one holds up to its `stack` (adding,
+ *     setting, merging and giving past it start new stacks, never too many), only the ruleset's items
+ *     may be added under `freeform: "refuse"`, and a new session brings one back as itself.
  */
 import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
 
 import {
+  addGameInventoryRulesetItem,
   addToGameInventory,
+  addToGameInventoryNamed,
+  applyGameInventoryOps,
   carryGameInventory,
+  GAME_INVENTORY_MAX_NEW_STACKS,
   GAME_INVENTORY_MAX_QUANTITY,
+  gameInventoryItemsOwnNamed,
   gameInventoryCount,
   gameInventoryItemId,
   gameInventoryPlainItemId,
@@ -26,10 +35,14 @@ import {
   gameInventoryTotals,
   mergeGameInventoryStacks,
   normalizeGameInventoryStacks,
+  sameGameInventory,
   renameGameInventoryStack,
   setGameInventoryStackQuantity,
   splitGameInventoryStack,
+  giveGameInventoryStack,
   takeFromGameInventory,
+  type GameInventoryItemRules,
+  type GameInventoryRulesetItem,
   type GameInventoryStack,
 } from "../../packages/shared/src/index.js";
 import {
@@ -221,7 +234,19 @@ const apples = (): GameInventoryStack[] => [
     { id: "x", name: "Coin", quantity: GAME_INVENTORY_MAX_QUANTITY },
     { id: "y", name: "Coin", quantity: 1 },
   ];
-  assert.equal(mergeGameInventoryStacks(full, "y", "x"), full, "a merge past one stack's bound is refused");
+  assert.equal(mergeGameInventoryStacks(full, "y", "x"), full, "nothing pours into a full stack");
+  const nearlyFull: GameInventoryStack[] = [
+    { id: "x", name: "Coin", quantity: GAME_INVENTORY_MAX_QUANTITY - 2 },
+    { id: "y", name: "Coin", quantity: 5 },
+  ];
+  assert.deepEqual(
+    mergeGameInventoryStacks(nearlyFull, "y", "x").map((stack) => [stack.id, stack.quantity]),
+    [
+      ["x", GAME_INVENTORY_MAX_QUANTITY],
+      ["y", 3],
+    ],
+    "only what fits pours in, and the rest stays where it was",
+  );
 }
 
 // ── Renaming one stack: a nickname, never another item ──
@@ -392,6 +417,263 @@ const apples = (): GameInventoryStack[] => [
     ),
     [["Map", 3]],
     "two detailed entries of a name no stack holds both count",
+  );
+}
+
+// ── Ruleset items ──
+{
+  const known: GameInventoryRulesetItem[] = [
+    { item: "outfitter/arrows", name: "Arrows", stack: 20 },
+    { item: "outfitter/hand-axe", name: "Hand axe" },
+    { item: "kit/relic", name: "Relic", stack: 1 },
+    // A layer of this game hides it: it can be held, but not added by its id.
+    { item: "kit/veiled", name: "Veiled lamp" },
+  ];
+  const rules = (plain: "allow" | "refuse" = "allow"): GameInventoryItemRules => ({
+    itemNamed: (name) =>
+      known.find((each) => each.item !== "kit/veiled" && each.name.toLowerCase() === name.trim().toLowerCase()),
+    itemOf: (item) => known.find((each) => each.item === item),
+    offers: (item) => item !== "kit/veiled" && known.some((each) => each.item === item),
+    plain,
+  });
+  let n = 0;
+  const next = () => `n${++n}`;
+  const shape = (stacks: GameInventoryStack[]) =>
+    stacks.map((stack) => [gameInventoryStackLabel(stack), stack.item ?? null, stack.quantity, stack.holder ?? null]);
+
+  // A stack of a ruleset item is that item, whatever it is called, and apart from a plain one.
+  assert.equal(gameInventoryItemId({ name: "Arrows", item: "outfitter/arrows" }), "outfitter/arrows");
+  assert.notEqual(
+    gameInventoryItemId({ name: "Arrows", item: "outfitter/arrows" }),
+    gameInventoryItemId({ name: "Arrows" }),
+  );
+  assert.equal(gameInventoryItemId({ name: "Quiver", item: "outfitter/arrows" }), "outfitter/arrows");
+  // Read back as saved; anything that is not a catalog and an entry is dropped.
+  assert.deepEqual(
+    normalizeGameInventoryStacks([
+      { id: "a", name: "Arrows", item: "outfitter/arrows", quantity: 3 },
+      { id: "b", name: "Rope", item: "plain:rope", quantity: 1 },
+      { id: "c", name: "Axe", item: "Outfitter/Axe", quantity: 1 },
+      { id: "d", name: "Axe", item: `outfitter/${"a".repeat(130)}`, quantity: 1 },
+    ]).map((stack) => stack.item ?? null),
+    ["outfitter/arrows", null, null, null],
+  );
+
+  // A name that is one of the ruleset's items adds that item, called by its label.
+  const axe = addToGameInventoryNamed([], "HAND AXE", 1, next, undefined, rules());
+  assert.deepEqual(shape(axe!.stacks), [["Hand axe", "outfitter/hand-axe", 1, null]]);
+  // Its nickname finds it too, and a plain item called by the same name is another item.
+  const nicknamed: GameInventoryStack[] = [
+    { id: "q", name: "Arrows", nickname: "Quiver", item: "outfitter/arrows", quantity: 5 },
+  ];
+  assert.deepEqual(shape(addToGameInventoryNamed(nicknamed, "quiver", 2, next, undefined, rules())!.stacks), [
+    ["Quiver", "outfitter/arrows", 7, null],
+  ]);
+  // A plain stack that only has the ruleset item's name as its own gives way to the ruleset's item.
+  const plainArrows: GameInventoryStack[] = [{ id: "p", name: "Arrows", quantity: 4 }];
+  assert.deepEqual(shape(addToGameInventoryNamed(plainArrows, "Arrows", 2, next, undefined, rules())!.stacks), [
+    ["Arrows", null, 4, null],
+    ["Arrows", "outfitter/arrows", 2, null],
+  ]);
+  // Without rules a name is a plain item, as before.
+  assert.deepEqual(shape(addToGameInventoryNamed([], "Hand axe", 1, next)!.stacks), [["Hand axe", null, 1, null]]);
+  // By its id; one the ruleset does not have is refused.
+  assert.deepEqual(shape(addGameInventoryRulesetItem([], "outfitter/hand-axe", 2, next, "Bram", rules())!.stacks), [
+    ["Hand axe", "outfitter/hand-axe", 2, "Bram"],
+  ]);
+  assert.equal(addGameInventoryRulesetItem([], "outfitter/missing", 1, next, undefined, rules()), null);
+  assert.equal(addGameInventoryRulesetItem([], "kit/veiled", 1, next, undefined, rules()), null, "a layer hides it");
+  assert.equal(addGameInventoryRulesetItem([], "outfitter/hand-axe", 1, next), null, "no rules, no ruleset items");
+
+  // Only the ruleset's items, and items already held, when plain ones are refused.
+  assert.equal(addToGameInventoryNamed([], "Rope", 1, next, undefined, rules("refuse")), null);
+  assert.ok(addToGameInventoryNamed([], "Arrows", 1, next, undefined, rules("refuse")));
+  const heldRope: GameInventoryStack[] = [{ id: "r", name: "Rope", quantity: 1 }];
+  assert.deepEqual(shape(addToGameInventoryNamed(heldRope, "rope", 1, next, undefined, rules("refuse"))!.stacks), [
+    ["Rope", null, 2, null],
+  ]);
+  const refusedOps = applyGameInventoryOps(
+    [],
+    [
+      { op: "add", name: "Rope", count: 1 },
+      { op: "add", name: "Relic", item: "kit/missing", count: 1 },
+      { op: "add", name: "Veiled lamp", item: "kit/veiled", count: 1 },
+      { op: "add", name: "Relic", item: "kit/relic", count: 1 },
+      { op: "add", name: "Relic", item: "kit/relic", count: GAME_INVENTORY_MAX_NEW_STACKS + 1 },
+    ],
+    next,
+    rules("refuse"),
+  );
+  assert.deepEqual(
+    refusedOps.results.map((result) => (result.ok ? "ok" : result.reason)),
+    ["not-ruleset-item", "not-ruleset-item", "not-ruleset-item", "ok", "refused"],
+  );
+
+  // A stack of arrows holds 20: an addition fills the bag's stacks of it in order, then starts new
+  // ones of at most 20.
+  const quivers: GameInventoryStack[] = [
+    { id: "a1", name: "Arrows", item: "outfitter/arrows", quantity: 18 },
+    { id: "rope", name: "Rope", quantity: 1 },
+    { id: "a2", name: "Arrows", item: "outfitter/arrows", quantity: 15 },
+    { id: "a3", name: "Arrows", item: "outfitter/arrows", quantity: 2, holder: "Bram" },
+  ];
+  const topped = addToGameInventoryNamed(quivers, "arrows", 30, next, undefined, rules())!;
+  assert.deepEqual(
+    topped.stacks.map((stack) => [stack.id.startsWith("n") ? "new" : stack.id, stack.quantity, stack.holder ?? null]),
+    [
+      ["a1", 20, null],
+      ["rope", 1, null],
+      ["a2", 20, null],
+      ["a3", 2, "Bram"],
+      ["new", 20, null],
+      ["new", 3, null],
+    ],
+  );
+  assert.equal(topped.id, "a1", "the stack it went onto first");
+  // One change never starts more than GAME_INVENTORY_MAX_NEW_STACKS stacks.
+  assert.equal(addToGameInventoryNamed([], "Relic", GAME_INVENTORY_MAX_NEW_STACKS + 1, next, undefined, rules()), null);
+  assert.equal(
+    addToGameInventoryNamed([], "Relic", GAME_INVENTORY_MAX_NEW_STACKS, next, undefined, rules())!.stacks.length,
+    GAME_INVENTORY_MAX_NEW_STACKS,
+  );
+  // Setting past 20 fills that stack and puts the rest in new stacks right after it.
+  const set = setGameInventoryStackQuantity(quivers, "a2", 45, next, rules());
+  assert.deepEqual(
+    set.map((stack) => [stack.id.startsWith("n") ? "new" : stack.id, stack.quantity]),
+    [
+      ["a1", 18],
+      ["rope", 1],
+      ["a2", 20],
+      ["new", 20],
+      ["new", 5],
+      ["a3", 2],
+    ],
+  );
+  assert.ok(set.every((stack) => stack.item === quivers.find((each) => each.name === stack.name)?.item));
+  assert.equal(setGameInventoryStackQuantity(quivers, "a2", 12, next, rules())[2]!.quantity, 12);
+  const relics: GameInventoryStack[] = [{ id: "z", name: "Relic", item: "kit/relic", quantity: 1 }];
+  assert.equal(
+    setGameInventoryStackQuantity(relics, "z", GAME_INVENTORY_MAX_NEW_STACKS + 2, next, rules()),
+    relics,
+    "a count that would start too many stacks changes nothing",
+  );
+  const setOps = applyGameInventoryOps(
+    quivers,
+    [
+      { op: "set", id: "a2", quantity: 45 },
+      { op: "set", id: "a1", quantity: 5000 },
+    ],
+    next,
+    rules(),
+  );
+  assert.deepEqual(
+    setOps.results.map((result) => (result.ok ? [result.count, result.now] : result.reason)),
+    [[30, 20], "refused"],
+  );
+  // Pouring fills the stack poured into up to 20 and leaves the rest.
+  assert.deepEqual(
+    mergeGameInventoryStacks(quivers, "a2", "a1", rules()).map((stack) => [stack.id, stack.quantity]),
+    [
+      ["a1", 20],
+      ["rope", 1],
+      ["a2", 13],
+      ["a3", 2],
+    ],
+  );
+  // Giving onto a receiver's stack fills it and starts a new one there for the rest.
+  const given = giveGameInventoryStack(quivers, "a2", "Bram", 15, next, rules())!;
+  assert.deepEqual(shape(given.stacks), [
+    ["Arrows", "outfitter/arrows", 18, null],
+    ["Rope", null, 1, null],
+    ["Arrows", "outfitter/arrows", 17, "Bram"],
+  ]);
+  // Past what the receiver's stack can take, the rest starts a new stack in their bag.
+  const overflowing = giveGameInventoryStack(given.stacks, "a1", "Bram", 18, next, rules())!;
+  assert.deepEqual(shape(overflowing.stacks), [
+    ["Rope", null, 1, null],
+    ["Arrows", "outfitter/arrows", 20, "Bram"],
+    ["Arrows", "outfitter/arrows", 15, "Bram"],
+  ]);
+  assert.equal(overflowing.id, "a3", "the receiver's stack it went onto first");
+  // A plain item has no such limit.
+  assert.deepEqual(shape(addToGameInventoryNamed(heldRope, "Rope", 500, next)!.stacks), [["Rope", null, 501, null]]);
+
+  // Taking and counting by name find the ruleset item by its own name; a split keeps the item.
+  assert.deepEqual(shape(takeFromGameInventory(quivers, "ARROWS", 20).stacks), [
+    ["Rope", null, 1, null],
+    ["Arrows", "outfitter/arrows", 13, null],
+    ["Arrows", "outfitter/arrows", 2, "Bram"],
+  ]);
+  assert.equal(gameInventoryCount(quivers, "arrows"), 35);
+  assert.deepEqual([...gameInventoryItemsOwnNamed([...quivers, ...plainArrows], "Arrows")].sort(), [
+    "outfitter/arrows",
+    gameInventoryPlainItemId("Arrows"),
+  ]);
+  assert.ok(splitGameInventoryStack(quivers, "a1", 5, next).every((stack) => stack.name !== "Arrows" || stack.item));
+  assert.equal(renameGameInventoryStack(quivers, "a1", "Quiver")!.stacks[0]!.item, "outfitter/arrows");
+  assert.deepEqual(gameInventoryTotals(quivers)[0], { name: "Arrows", quantity: 35, item: "outfitter/arrows" });
+  // Two inventories that differ only in which item a stack is are not the same inventory.
+  assert.equal(
+    sameGameInventory(
+      [{ id: "x", name: "Arrows", item: "outfitter/arrows", quantity: 1 }],
+      [{ id: "x", name: "Arrows", quantity: 1 }],
+    ),
+    false,
+  );
+
+  // A new session brings back a ruleset item the detailed inventory names and no stack holds as that
+  // item, under the name its entry shows, and never adds one a stack still holds.
+  assert.deepEqual(
+    shape(
+      carryGameInventory(
+        [{ id: "a1", name: "Arrows", item: "outfitter/arrows", quantity: 3 }],
+        [
+          { item: "outfitter/arrows", name: "Arrows", description: "", quantity: 3, location: "" },
+          { item: "outfitter/hand-axe", name: "Old Bitey", description: "", quantity: 1, location: "" },
+        ],
+      ),
+    ),
+    [
+      ["Arrows", "outfitter/arrows", 3, null],
+      ["Old Bitey", "outfitter/hand-axe", 1, null],
+    ],
+  );
+  // With the ruleset's items, an id the ruleset no longer has comes back by its entry's name, while one
+  // a layer hides is still that item.
+  assert.deepEqual(
+    shape(
+      carryGameInventory(
+        [],
+        [
+          { item: "outfitter/gone", name: "Old lantern", description: "", quantity: 1, location: "" },
+          { item: "kit/veiled", name: "Veiled lamp", description: "", quantity: 1, location: "" },
+        ],
+        rules(),
+      ),
+    ),
+    [
+      ["Old lantern", null, 1, null],
+      ["Veiled lamp", "kit/veiled", 1, null],
+    ],
+  );
+  // With the ruleset's items, what comes back is stacked as its item allows, and an entry written
+  // without an id whose name is one of them comes back as that item.
+  assert.deepEqual(
+    shape(
+      carryGameInventory(
+        [],
+        [
+          { item: "outfitter/arrows", name: "Arrows", description: "", quantity: 30, location: "" },
+          { name: "hand axe", description: "", quantity: 1, location: "" },
+        ],
+        rules(),
+      ),
+    ),
+    [
+      ["Arrows", "outfitter/arrows", 20, null],
+      ["Arrows", "outfitter/arrows", 10, null],
+      ["Hand axe", "outfitter/hand-axe", 1, null],
+    ],
   );
 }
 

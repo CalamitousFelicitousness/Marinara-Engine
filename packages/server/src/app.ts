@@ -65,6 +65,7 @@ import { logRateLimited } from "./lib/log-rate-limit.js";
 import { genRequestId, registerRequestLogging, RequestLogController } from "./lib/request-logging.js";
 import { startup } from "./lib/startup-timeline.js";
 import { openCodeSessionHook } from "./utils/opencode-session.js";
+import { startMessageTrashMaintenance, sweepExpiredMessageTrash } from "./services/storage/message-trash.storage.js";
 
 const isLite = process.env.MARINARA_LITE === "true" || process.env.MARINARA_LITE === "1";
 const MAX_UPLOAD_BYTES = 256 * 1024 * 1024;
@@ -141,7 +142,9 @@ export async function buildApp(https?: { cert: Buffer; key: Buffer }) {
   // ── Storage ──
   const db = await startup.phase("storage.open", () => getDB());
   app.decorate("db", db);
+  let stopMessageTrashMaintenance: (() => Promise<void>) | undefined;
   app.addHook("onClose", async () => {
+    await stopMessageTrashMaintenance?.();
     try {
       // Same concurrent stops as before, now named and bounded: a runtime
       // whose stop() hangs must not keep closeDB() from flushing before the
@@ -324,6 +327,15 @@ export async function buildApp(https?: { cert: Buffer; key: Buffer }) {
 
   // ── Server-side autonomous conversation scheduler ──
   startServerAutonomousScheduler(app);
+
+  // Expired trash in chats that are never reopened still needs to be removed.
+  // Cold trash shards load only when expired; wait for active cleanup before closing the DB.
+  const messageTrashMaintenance = startMessageTrashMaintenance(() => sweepExpiredMessageTrash(db), {
+    info: (purged) => app.log.info("Purged %d expired message trash entries", purged),
+    warn: (error) =>
+      app.log.warn({ err: error }, "Expired message trash cleanup failed; it will retry on the next sweep"),
+  });
+  stopMessageTrashMaintenance = messageTrashMaintenance.stop;
 
   // ── Sidecar bootstrap (background, skipped in lite mode) ──
   if (!isLite) {

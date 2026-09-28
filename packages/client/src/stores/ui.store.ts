@@ -808,6 +808,8 @@ interface UIState {
   confirmBeforeDelete: boolean;
   /** When true, chat exports include saved thinking/reasoning metadata. */
   includeReasoningInExports: boolean;
+  /** When true, chat exports include private message notes. */
+  includePrivateNotesInExports: boolean;
   /** Number of messages to load per page (0 = load all) */
   messagesPerPage: number;
   /** Bold quoted dialogue in chat messages; color highlighting can still remain when this is off */
@@ -1165,6 +1167,7 @@ interface UIState {
   setChatSettingsSectionExpanded: (id: string, open: boolean) => void;
   setConfirmBeforeDelete: (v: boolean) => void;
   setIncludeReasoningInExports: (v: boolean) => void;
+  setIncludePrivateNotesInExports: (v: boolean) => void;
   setMessagesPerPage: (n: number) => void;
   setBoldDialogue: (v: boolean) => void;
   setColorInlineNames: (v: boolean) => void;
@@ -1401,6 +1404,7 @@ export function pickSyncedSettings(state: UIState) {
     chatSettingsExpandedSections: state.chatSettingsExpandedSections,
     confirmBeforeDelete: state.confirmBeforeDelete,
     includeReasoningInExports: state.includeReasoningInExports,
+    includePrivateNotesInExports: state.includePrivateNotesInExports,
     messagesPerPage: state.messagesPerPage,
     boldDialogue: state.boldDialogue,
     colorInlineNames: state.colorInlineNames,
@@ -1609,6 +1613,7 @@ export function pickPersistedUIState(state: UIState) {
     chatSettingsExpandedSections: state.chatSettingsExpandedSections,
     confirmBeforeDelete: state.confirmBeforeDelete,
     includeReasoningInExports: state.includeReasoningInExports,
+    includePrivateNotesInExports: state.includePrivateNotesInExports,
     messagesPerPage: state.messagesPerPage,
     boldDialogue: state.boldDialogue,
     colorInlineNames: state.colorInlineNames,
@@ -1858,6 +1863,7 @@ export const useUIStore = create<UIState>()(
         chatSettingsExpandedSections: {},
         confirmBeforeDelete: true,
         includeReasoningInExports: false,
+        includePrivateNotesInExports: false,
         messagesPerPage: 20,
         boldDialogue: true,
         colorInlineNames: false,
@@ -2676,6 +2682,7 @@ export const useUIStore = create<UIState>()(
           })),
         setConfirmBeforeDelete: (v) => set({ confirmBeforeDelete: v }),
         setIncludeReasoningInExports: (v) => set({ includeReasoningInExports: v }),
+        setIncludePrivateNotesInExports: (v) => set({ includePrivateNotesInExports: v }),
         setMessagesPerPage: (n) => set({ messagesPerPage: n }),
         setBoldDialogue: (v) => set({ boldDialogue: v }),
         setColorInlineNames: (v) => set({ colorInlineNames: v }),
@@ -3592,6 +3599,7 @@ export const useUIStore = create<UIState>()(
         persisted.professorMariSuggestionsEnabled = persisted.professorMariSuggestionsEnabled !== false;
         persisted.professorMariNavigationEnabled = persisted.professorMariNavigationEnabled !== false;
         persisted.includeReasoningInExports = persisted.includeReasoningInExports === true;
+        persisted.includePrivateNotesInExports = persisted.includePrivateNotesInExports === true;
         persisted.roleplayReducedPaintEffects = persisted.roleplayReducedPaintEffects === true;
         persisted.showRoleplayThinkingInMessages = persisted.showRoleplayThinkingInMessages === true;
         persisted.keepRoleplayThinkingExpanded =

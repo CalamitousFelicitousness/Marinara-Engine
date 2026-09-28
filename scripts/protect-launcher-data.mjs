@@ -213,6 +213,7 @@ const SHARDED_TABLES = [
   "custom_stickers",
   "ooc_influences",
   "conversation_notes",
+  "message_trash",
   "memory_chunks",
   "advanced_memory_records",
   "chat_folders",

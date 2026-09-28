@@ -4,7 +4,29 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Message marks stay consistent during swipe changes and inactive-swipe edits, preserving the context-pin limit and each swipe's own data.
+
 - Enabling or disabling selected lorebooks includes books hidden by filters, and Undo changes only the books updated by that action.
+
+- Restore all preserves conflicts reported by completed batches when a later batch fails, even if no messages were restored.
+
+- Restore all supports more than 5,000 trashed messages in one operation, reports messages already recovered if a later batch fails, and keeps remaining entries available for retry.
+
+- Restoring several trashed messages reports an error when every write fails, while keeping failed entries available for retry and preserving successful partial restores.
+
+- Deleting a turn with saved Game state stays permanent after changing chat modes or importing it. Mixed selections recover only ordinary messages, and recovery counts reflect that.
+
+- Message marks remain visible in roleplay, private-note menus fit short mobile screens and close when their note is removed, and recovery reports partial restores accurately. Restoring several messages still updates chat memory when one entry fails; Game Mode rejects message-only recovery. Pin hints clarify the model token limit.
+
+- Per-character conversation-start edits complete without hanging, including edits that also pin a message or change its visibility.
+
+- Message recovery preserves edits that finish just before deletion, and changing a message's history-start setting no longer stalls. Bookmark menus focus their first action when opened for keyboard access.
+
+- Expired message recovery records are cleaned up at server startup and hourly, including unopened chats. Recovery ends at 30 days; newer records are preserved, and shutdown waits for active cleanup.
+
+- Message recovery notifications reflect whether the server actually retained deleted messages. Restoring pinned messages refuses to exceed the pin limit and keeps the recovery records intact.
+
+- Bookmark messages, attach private notes, and pin up to ten messages for prompt context. An optional message trash setting keeps supported deleted messages for 30 days for recovery; it is off by default, and Game Mode deletion remains permanent. Private notes stay out of model prompts and are excluded from exports unless explicitly selected. Launcher downgrade protection also preserves recoverable message records (#6698).
 
 - Bulk character tag edits continue after a rejected request and keep only failed cards selected for retry.
 - Regression commands invoked through an absolute or symlink path now execute instead of silently skipping their checks.
@@ -147,7 +169,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - **Copy Support Diagnostics** now wraps the report in a ``` code block, so it reads cleanly when pasted into Discord or GitHub (#6668).
 
-- A NanoGPT connection can show its subscription usage. An optional **Management Token** field accepts a NanoGPT token with the _Usage only_ scope, so quota readings never need your inference key, and a **Show subscription usage** toggle displays the weekly and daily input-token quotas beside the connection, in the chat connection picker, and in the chat's **Connection** settings while you play. A look up that NanoGPT cannot answer reads as unknown instead of as unused quota, and the model list marks subscription-included models — including a green `1x` at the normal rate — and the ones charged at a higher input-token multiplier.
+- A NanoGPT connection can show its subscription usage. An optional **Management Token** field accepts a NanoGPT token with the _Usage only_ scope, so quota readings never need your inference key, and a **Show subscription usage** toggle displays the weekly and daily input-token quotas beside the connection, in the chat connection picker, and in the chat's **Connection** settings while you play. A lookup that NanoGPT cannot answer reads as unknown instead of as unused quota, and the model list marks subscription-included models — including a green `1x` at the normal rate — and the ones charged at a higher input-token multiplier.
 
 - Generation now reports when a prompt that does not fit spends the reply budget instead of dropping messages. A reply budget cut to its 128-token floor is logged as a warning, so a configured Max Tokens that never reaches the provider is visible instead of silent (#6614).
 

@@ -7890,6 +7890,7 @@ function GameSurfaceComponent({
               result?.reason,
               gameInventoryStackLabel(stack),
               "ui.game.gamesurfacecomponent.failedToChangeValue1",
+              stack.holder ?? "",
             ),
           );
           return;
@@ -7974,6 +7975,16 @@ function GameSurfaceComponent({
       try {
         const [result] = await commitInventory([{ op: "merge", from: fromId, into: intoId }]);
         if (result?.ok) toast.success(localizeUi("ui.game.gamesurfacecomponent.mergedValue1", { value1: into.name }));
+        else {
+          toast.error(
+            inventoryRefusal(
+              result?.reason,
+              into.name,
+              "ui.game.gamesurfacecomponent.failedToMergeValue1",
+              into.holder ?? "",
+            ),
+          );
+        }
       } catch (error) {
         toast.error(
           error instanceof Error
@@ -7982,7 +7993,7 @@ function GameSurfaceComponent({
         );
       }
     },
-    [activeChatId, commitInventory, localizeUi],
+    [activeChatId, commitInventory, inventoryRefusal, localizeUi],
   );
 
   /** Some or all of one stack handed to another party member (the player without `to`). Resolves to

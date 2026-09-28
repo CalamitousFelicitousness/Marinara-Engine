@@ -1165,24 +1165,48 @@ export function splitGameInventoryStack(
   ];
 }
 
+/** How many of one stack pouring into another would move: what the stack poured into has room for,
+ *  and none when they cannot merge. */
+function mergeAmount(
+  from: GameInventoryStack,
+  into: GameInventoryStack,
+  rules: GameInventoryItemRules | undefined,
+): number {
+  if (from.id === into.id || gameInventoryItemId(from) !== gameInventoryItemId(into)) return 0;
+  // A worn or bound item is one item on its own.
+  if (gameInventoryStackWorn(from) || gameInventoryStackWorn(into)) return 0;
+  return Math.max(0, Math.min(from.quantity, stackLimit(gameInventoryItemId(into), rules) - into.quantity));
+}
+
+/** Whether pouring one stack into another in somebody else's bag would hand them more than they can
+ *  carry. Pouring within one bag moves nothing between bearers, so it never is. */
+export function gameInventoryMergeOverloads(
+  stacks: readonly GameInventoryStack[],
+  from: GameInventoryStack,
+  into: GameInventoryStack,
+  rules: GameInventoryItemRules | undefined,
+): boolean {
+  return (
+    !inBag(from, into) && pastLimit(stacks, into.holder, weightOf(from, rules) * mergeAmount(from, into, rules), rules)
+  );
+}
+
 /** One stack poured into another of the same item, which keeps its place, its bag and its nickname,
- *  so pouring into a stack in somebody else's bag hands it over. Only as much as the stack it is
- *  poured into can hold moves, and the rest stays where it was; into a full stack nothing does. Two
- *  different items never merge, whatever they are called, and a stack never merges into itself. */
+ *  so pouring into a stack in somebody else's bag hands it over, and like a give never past what they
+ *  can carry. Only as much as the stack it is poured into can hold moves, and the rest stays where it
+ *  was; into a full stack nothing does. Two different items never merge, whatever they are called,
+ *  and a stack never merges into itself. */
 export function mergeGameInventoryStacks(
   stacks: GameInventoryStack[],
   fromId: string,
   intoId: string,
   rules?: GameInventoryItemRules,
 ): GameInventoryStack[] {
-  if (fromId === intoId) return stacks;
   const from = stacks.find((stack) => stack.id === fromId);
   const into = stacks.find((stack) => stack.id === intoId);
-  if (!from || !into || gameInventoryItemId(from) !== gameInventoryItemId(into)) return stacks;
-  // A worn or bound item is one item on its own.
-  if (gameInventoryStackWorn(from) || gameInventoryStackWorn(into)) return stacks;
-  const moved = Math.min(from.quantity, stackLimit(gameInventoryItemId(into), rules) - into.quantity);
-  if (moved < 1) return stacks;
+  if (!from || !into) return stacks;
+  const moved = mergeAmount(from, into, rules);
+  if (moved < 1 || gameInventoryMergeOverloads(stacks, from, into, rules)) return stacks;
   return stacks.flatMap((stack) => {
     if (stack.id === intoId) return [{ ...stack, quantity: stack.quantity + moved }];
     if (stack.id !== fromId) return [stack];

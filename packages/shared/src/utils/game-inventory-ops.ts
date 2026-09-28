@@ -26,6 +26,7 @@ import {
   gameInventoryNameKey,
   gameInventoryStackLabel,
   giveGameInventoryStack,
+  gameInventoryMergeOverloads,
   mergeGameInventoryStacks,
   newGameInventoryStackId,
   renameGameInventoryStack,
@@ -274,7 +275,15 @@ export function applyGameInventoryOps(
       case "merge": {
         const next = mergeGameInventoryStacks(current, op.from, op.into, rules);
         if (next === current) {
-          refuse(stackOf(op.from) && stackOf(op.into) ? "refused" : "missing-stack");
+          const from = stackOf(op.from);
+          const into = stackOf(op.into);
+          refuse(
+            !from || !into
+              ? "missing-stack"
+              : gameInventoryMergeOverloads(current, from, into, rules)
+                ? "too-heavy"
+                : "refused",
+          );
           break;
         }
         current = next;

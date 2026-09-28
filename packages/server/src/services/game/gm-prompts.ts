@@ -1142,7 +1142,8 @@ export function buildGmFormatReminder(
     return text ? { facts: text } : {};
   };
   // How many of an item are worn and bound, in the ruleset's own word for bound.
-  const bindingLabel = normalizePromptText(ctx.ruleset?.items?.binding?.label).toLowerCase();
+  const bindingName = normalizePromptText(ctx.ruleset?.items?.binding?.label);
+  const bindingLabel = bindingName.toLowerCase();
   const itemWorn = (item: { equipped?: unknown; bound?: unknown } | undefined) => {
     const count = (value: unknown) => (typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0);
     const worn = [
@@ -1152,10 +1153,7 @@ export function buildGmFormatReminder(
     return worn ? { worn } : {};
   };
   const bearerFor = (holder: string | undefined) =>
-    bearerNote(
-      ctx.inventoryBearers?.[gameInventoryBagKey(holder)],
-      normalizePromptText(ctx.ruleset?.items?.binding?.label),
-    );
+    bearerNote(ctx.inventoryBearers?.[gameInventoryBagKey(holder)], bindingName);
   const playerInventory = Array.isArray(ctx.playerInventory)
     ? ctx.playerInventory.flatMap((item) => {
         const name = inventoryName(item);

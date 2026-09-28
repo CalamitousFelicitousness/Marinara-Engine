@@ -6,8 +6,9 @@ const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.u
 
 /**
  * Wearing and carrying a ruleset's items (#6801): an item added in the shared view goes to whoever can
- * carry it, each bag shows its load and slots, an item is put on with Equipped, and a bound cursed
- * item stays bound. Each run imports the example rulesets under ids of its own and removes them after.
+ * carry it, each bag shows its load and slots, an item is put on with Equipped, a stack dragged onto
+ * one in a full bag stays put, and a bound cursed item stays bound. Each run imports the example
+ * rulesets under ids of its own and removes them after.
  */
 function example(file: string, id: string): string {
   const doc = JSON.parse(readFileSync(new URL(`../docs/examples/rulesets/${file}.json`, import.meta.url), "utf8"));
@@ -159,6 +160,47 @@ test("a ruleset's items are placed by who can carry them, worn with Equipped, an
       .toEqual(["Hunting bow 1 player worn", "Leather coat 1 player worn", "Leather coat 1 Bram"]);
     await page.screenshot({ path: testInfo.outputPath("ruleset-wearing.png") });
     await expect(tab("Bram")).toBeVisible();
+
+    // Dragging a stack onto one in somebody else's bag hands it over, so it is held to what they can
+    // carry, like Give: Bram's coat and nine arrows are his twelve, and two more arrows are refused.
+    const row = await (await request.get(`/api/chats/${roadId}`)).json();
+    const metadata = typeof row.metadata === "string" ? JSON.parse(row.metadata) : row.metadata;
+    const arrows = { name: "Arrows", item: "outfitter/arrows" };
+    const heavier = await request.patch(`/api/chats/${roadId}/metadata`, {
+      data: {
+        gameInventory: [
+          ...metadata.gameInventory,
+          { ...arrows, id: "st-bram-arrows", quantity: 9, holder: "Bram" },
+          { ...arrows, id: "st-my-arrows", quantity: 2 },
+        ],
+      },
+    });
+    expect(heavier.ok(), await heavier.text()).toBeTruthy();
+    await page.reload();
+    await page
+      .getByRole("button", { name: /Inventory/ })
+      .filter({ visible: true })
+      .first()
+      .click({ timeout: 30000 });
+    await page.getByRole("button", { name: "All", exact: true }).click();
+    const from = await page.getByRole("button", { name: /^Arrows x2, carried by / }).boundingBox();
+    const onto = await slot("Arrows x9, carried by Bram").boundingBox();
+    expect(from && onto).toBeTruthy();
+    await page.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(from!.x + from!.width / 2 + 10, from!.y + from!.height / 2, { steps: 4 });
+    await page.mouse.move(onto!.x + onto!.width / 2, onto!.y + onto!.height / 2, { steps: 12 });
+    await page.mouse.up();
+    await expect(page.getByText("Bram cannot carry Arrows.", { exact: true })).toBeVisible();
+    await expect
+      .poll(savedInventory)
+      .toEqual([
+        "Hunting bow 1 player worn",
+        "Leather coat 1 player worn",
+        "Leather coat 1 Bram",
+        "Arrows 9 Bram",
+        "Arrows 2 player",
+      ]);
 
     // Gravewatch: the Widow's ring binds and is cursed. Bound, it says so, and the player cannot
     // unbind it. On a page of its own, so the first page's start-up script cannot reopen the first game.

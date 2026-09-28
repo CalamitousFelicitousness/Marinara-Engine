@@ -829,6 +829,42 @@ const apples = (): GameInventoryStack[] => [
   const loaded = [of("Arrow", 11, { id: "full", holder: "Bram" }), of("Coat", 1, { id: "spare-coat" })];
   assert.equal(giveGameInventoryStack(loaded, "spare-coat", "Bram", undefined, next, rules()), null);
   assert.ok(giveGameInventoryStack(loaded, "spare-coat", "Bram", undefined, next, { ...rules(), bearer: undefined }));
+  // Pouring a stack into somebody else's hands it over, so it is held to their limit like a give: the
+  // player's two arrows would take Bram's eleven to 13 of 12. Within one bag nothing changes hands,
+  // so a player at their limit still pours their own stacks together.
+  const poured = [of("Arrow", 11, { id: "bram-arrows", holder: "Bram" }), of("Arrow", 2, { id: "my-arrows" })];
+  assert.equal(mergeGameInventoryStacks(poured, "my-arrows", "bram-arrows", rules()), poured);
+  assert.deepEqual(
+    applyGameInventoryOps(poured, [{ op: "merge", from: "my-arrows", into: "bram-arrows" }], next, rules()).results,
+    [{ ok: false, reason: "too-heavy" }],
+  );
+  assert.deepEqual(
+    worn(mergeGameInventoryStacks(poured, "my-arrows", "bram-arrows", { ...rules(), bearer: undefined })),
+    ["Arrow 13 Bram"],
+  );
+  const full = [of("Arrow", 10, { id: "ten" }), of("Arrow", 2, { id: "two" })];
+  assert.deepEqual(worn(mergeGameInventoryStacks(full, "two", "ten", rules())), ["Arrow 12 player"]);
+  // Only what moves is weighed: with five arrows to a stack, one of the player's five goes into Bram's
+  // four, which takes him from 11 to 12.
+  const fives: GameInventoryItemRules = {
+    ...rules(),
+    itemOf: (item) => {
+      const found = rules().itemOf(item);
+      return found?.item === "gear/arrow" ? { ...found, stack: 5 } : found;
+    },
+  };
+  const topped = [
+    of("Arrow", 4, { id: "bram-four", holder: "Bram" }),
+    of("Coat", 1, { id: "bram-coat", holder: "Bram" }),
+    of("Axe", 4, { id: "bram-axes", holder: "Bram" }),
+    of("Arrow", 5, { id: "my-five" }),
+  ];
+  assert.deepEqual(worn(mergeGameInventoryStacks(topped, "my-five", "bram-four", fives)), [
+    "Arrow 5 Bram",
+    "Coat 1 Bram",
+    "Axe 4 Bram",
+    "Arrow 4 player",
+  ]);
   // Taking by name takes what nobody wears first.
   assert.deepEqual(worn(takeFromGameInventory(quiver, "axe", 2).stacks), ["Axe 1 player worn"]);
 

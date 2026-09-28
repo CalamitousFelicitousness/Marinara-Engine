@@ -90,6 +90,10 @@ import type {
   MariWorkspaceTraceItem,
 } from "@marinara-engine/shared";
 import { getMariDbService } from "../mari-db/mari-db.service.js";
+import {
+  listCapabilityMariActions,
+  runCapabilityMariAction,
+} from "../capability-packages/capability-mari-actions.service.js";
 import { createAppSettingsStorage } from "../storage/app-settings.storage.js";
 import { getProfessorMariWorkspaceSkillsService } from "./workspace-skills.service.js";
 import { sidecarModelService } from "../sidecar/sidecar-model.service.js";
@@ -187,6 +191,7 @@ const WORKSPACE_TOOLS: MariWorkspaceToolName[] = [
   "bash",
   "dependency",
   "app_data",
+  "package_service",
 ];
 const RUNTIME_API_KEY = "local-marinara-runtime";
 const SESSION_ID = "professor-mari-workspace";
@@ -544,6 +549,20 @@ const WORKSPACE_TOOL_DEFINITIONS: WorkspaceToolDefinition[] = [
       required: ["action"],
     },
   },
+  {
+    name: "package_service",
+    description:
+      "List or run actions that installed Agent packages offer to Professor Mari (for example Slurp: write a bio, draw a picture, steer a Creator, write a post). Call with no arguments to list every package's actions and their inputs, or with only package to list one package's actions. Add action and input to run one: the package validates input and may spend AI budget or change its data. Only run an action when the user asked for that change.",
+    parameters: {
+      type: "object",
+      properties: {
+        package: { type: "string", description: "Package id from the list, e.g. slurp2." },
+        action: { type: "string", description: "Action name from the list. Omit to list." },
+        input: { type: "object", description: "The action's inputs as named in the list." },
+        reason: { type: "string" },
+      },
+    },
+  },
 ];
 
 const WORKSPACE_TEXTUAL_TOOL_DEFINITIONS: LLMToolDefinition[] = WORKSPACE_TOOL_DEFINITIONS.map((tool) => ({
@@ -635,6 +654,7 @@ Workspace defaults:
 
 Command families:
 - \`app_data\`: no-shell structured actions for chat reads, characters, character folders, personas, lorebooks, lorebook entries, themes, Personal Extension drafts, agents, prompt presets, and safe data-only Home widgets. Prefer this before shell commands for those objects.
+- \`package_service\`: actions that installed Agent packages offer you (for example Slurp). Call it with no arguments to see which packages offer which actions and inputs; never guess an action name. Running one (\`package\`, \`action\`, \`input\`) acts inside that package and may spend its AI budget, so run it only for a change the user asked for. The package validates the input; on an error, fix the input or tell the user.
 - \`mari db\`: generic live app data and storage-backed rows, including customization tables such as \`agent_configs\` and \`custom_tools\` when no narrower helper exists.
 - \`mari themes\`: synced custom themes and active theme state.
 - \`mari images\`: image-generation connections, HITL image prompt previews, generated/edited preview assets, and assignment/deletion for avatars, personas, lorebooks, sprites, backgrounds, and galleries.
@@ -777,6 +797,9 @@ Revising a saved memory (read its full text, edit it, then write the whole new c
 {"say":"","commands":[{"name":"app_data","arguments":{"action":"agent.create","data":{"name":"Image Marker","description":"Turns IMG_PROMPT markers into image prompts.","resultType":"image_prompt","settings":{"activationKeywords":["IMG_PROMPT:"],"activationScanDepth":4,"customCapabilities":{"trigger_image_generation":true}}},"reason":"User requested a marker-triggered image agent","apply":true}}],"stop":false}
 {"say":"","commands":[{"name":"app_data","arguments":{"action":"lorebook.updateEntry","entryId":"entry-id","patch":{"content":"new content"},"reason":"Update requested by user","apply":true}}],"stop":false}
 {"say":"","commands":[{"name":"app_data","arguments":{"action":"lorebook.deleteEntry","entryId":"entry-id","reason":"User asked to delete this entry","apply":true}}],"stop":false}
+Running a package action (list the offered actions first, then run the one the user asked for):
+{"say":"","commands":[{"name":"package_service","arguments":{}}],"stop":false}
+{"say":"","commands":[{"name":"package_service","arguments":{"package":"slurp2","action":"add-idea","input":{"accountId":"creator-id","text":"A rainy-day cafe post"},"reason":"User asked me to give this Creator a post idea"}}],"stop":false}
 
 Available command schemas:
 ${toolDocs}
@@ -1301,7 +1324,7 @@ function jsonPayloadStopValue(payload: Record<string, unknown>): boolean | undef
 }
 
 const COMMAND_BLOCK_RE =
-  /<(docs_search|docs_read|read|grep|find|ls|edit|write|bash|dependency|app_data)>\s*([\s\S]*?)\s*<\/\1>/gi;
+  /<(docs_search|docs_read|read|grep|find|ls|edit|write|bash|dependency|app_data|package_service)>\s*([\s\S]*?)\s*<\/\1>/gi;
 
 function parseXmlCommandCalls(content: string): WorkspaceCommandCall[] {
   const calls: WorkspaceCommandCall[] = [];
@@ -1676,8 +1699,28 @@ function isReadOnlyWorkspaceCommand(command: WorkspaceCommandCall): boolean {
   ) {
     return true;
   }
+  if (command.name === "package_service") return !isPackageServiceRun(command);
   if (command.name !== "app_data") return false;
   return appDataActionLooksReadOnly(command.arguments.action);
+}
+
+/** A package_service call with an action runs it; without one it only lists. */
+function isPackageServiceRun(command: WorkspaceCommandCall): boolean {
+  const action = command.arguments.action;
+  return typeof action === "string" && action.trim().length > 0;
+}
+
+/** The action input: absent is {}, a JSON string is parsed (text-protocol models send one), else null. */
+function packageServiceInput(args: Record<string, unknown>): Record<string, unknown> | null {
+  const input = args.input ?? {};
+  if (typeof input === "string") {
+    try {
+      return tryParseJsonRecord(input);
+    } catch {
+      return null;
+    }
+  }
+  return isRecord(input) ? input : null;
 }
 
 function appDataActionLooksReadOnly(action: unknown): boolean {
@@ -1783,6 +1826,8 @@ export function isMutatingWorkspaceCommand(command: WorkspaceCommandCall): boole
     command.name === "dependency"
   )
     return true;
+  // The Engine cannot preview or undo a package action, so every run counts as a change.
+  if (command.name === "package_service") return isPackageServiceRun(command);
   if (command.name === "app_data") {
     // Conversation bookkeeping does not edit authored content or bypass Permissions Mode.
     if (command.arguments.action === "decision.record") return false;
@@ -2009,7 +2054,11 @@ export function resolveWorkspaceMutationVerification(
       // successful mutation ever launders the failure into a claimable round.
       if (appliedMutationReadBackMismatched(result)) mismatchKeys.add(mutationMismatchKey(result));
       else if (appliedMutationReadBackVerified(result)) mismatchKeys.delete(mutationMismatchKey(result));
-      if (inScope && !appliedMutationReadBackVerified(result)) unverifiedMutationSeen = true;
+      // A package action has no Engine read that could confirm it: the package's own ok answer is
+      // the only evidence there is, so demanding a read would only force a meaningless extra round.
+      if (inScope && !appliedMutationReadBackVerified(result) && result.name !== "package_service") {
+        unverifiedMutationSeen = true;
+      }
       continue;
     }
     if (
@@ -2207,6 +2256,9 @@ function workspaceCommandValidationIssue(command: WorkspaceCommandCall): string 
       return requireString("command");
     case "app_data":
       return requireString("action");
+    case "package_service":
+      if (packageServiceInput(args) === null) return "package_service input must be a JSON object";
+      return isPackageServiceRun(command) ? requireString("package") : null;
     case "ls":
       return null;
     default:
@@ -3584,6 +3636,8 @@ ${sections.join("\n\n")}
         return this.commandDependency(command.arguments);
       case "app_data":
         return this.commandAppData(command.arguments);
+      case "package_service":
+        return this.commandPackageService(command.arguments);
       case "bash":
         return this.commandBash(command.arguments, signal);
       default:
@@ -4214,6 +4268,26 @@ ${sections.join("\n\n")}
     );
     if (result.ok === false) throw new Error(output);
     return output;
+  }
+
+  private async commandPackageService(args: Record<string, unknown>): Promise<string> {
+    const packageId = stringArg(args, "package").trim();
+    const action = stringArg(args, "action").trim();
+    if (!action) {
+      const offered = (await listCapabilityMariActions()).filter((entry) => !packageId || entry.package === packageId);
+      if (offered.length === 0) {
+        return packageId
+          ? `Package "${packageId}" offers no Mari actions, or it is not installed and enabled.`
+          : "No installed package offers Mari actions.";
+      }
+      return stringifyOutput(offered);
+    }
+    const value = await runCapabilityMariAction(packageId, action, packageServiceInput(args));
+    // A drawn picture comes back as a data URL; megabytes of base64 would only fill Mari's context.
+    return `${packageId} ${action} succeeded.\n${stringifyOutput(value ?? null).replace(
+      /data:[\w/+.-]+;base64,[A-Za-z0-9+/=]+/gu,
+      (match) => `<data URL, ${match.length} characters, omitted>`,
+    )}`;
   }
 
   private async commandAppData(args: Record<string, unknown>): Promise<string> {

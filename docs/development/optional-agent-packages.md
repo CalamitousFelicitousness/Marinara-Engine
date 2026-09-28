@@ -1086,6 +1086,47 @@ Use the existing startup-readiness declaration independently when the world must
 be prepared before the opening turn. Declare API 1.18 as the package minimum;
 older hosts cannot interpret this setup declaration.
 
+### Capability API 1.50: Professor Mari actions
+
+A package holding the new `mari-actions` permission can offer named actions to Professor Mari. It
+registers one service under its own id; Mari's `package_service` tool lists every offered action and
+runs one when the user asks for it.
+
+```ts
+export async function activate({ api }) {
+  api.registerService("mari-actions:my-package", {
+    list: () => [
+      { name: "add-idea", summary: "Give a Creator an idea for a post.", inputs: { accountId: "The Creator.", text: "The idea." } },
+    ],
+    run: async (name, input) => {
+      const parsed = schemas[name]?.safeParse(input);
+      if (!parsed?.success) return { ok: false, status: 400, error: "Invalid input." };
+      return { ok: true, value: await doIt(name, parsed.data) };
+    },
+  });
+}
+```
+
+Rules worth knowing:
+
+- The key must be `mari-actions:<package-id>` for the registering package. Registration throws without
+  the permission or under another package's id, so an action Mari runs always belongs to the package it
+  names.
+- `list()` returns `{ name, summary?, inputs? }` entries. Names are 1 to 80 letters, digits, `.`, `_` or
+  `-`; other entries are not shown. `summary` and `inputs` are what Mari reads, so write them in plain
+  words.
+- `run(name, input)` is called only with a listed name and a plain JSON object of at most 64,000
+  characters. The input comes from a model: validate it against your own schema before doing anything.
+  Answer `{ ok: true, value }` or `{ ok: false, status?, error }`; Mari sees the error text.
+- The Engine elides data URLs in `value` before Mari reads it, and truncates long answers. Return ids
+  and short text, not files.
+- Listing is read-only. Every run counts as a change for Mari's Permissions Mode: Plan refuses it,
+  Manual holds it for the user's Accept. The Engine cannot preview or undo a package action, so no
+  Keep/Restore card is shown; offer an undo action of your own when a change is hard to take back.
+- Deactivating or removing the package removes its actions.
+
+`mari-actions` is refused on a manifest that declares a `capabilityApi` older than 1.50.
+
 ### Capability API 1.36: package achievements
 
 A package holding the new `achievements` permission can add badges to the Home **Achievements** panel,

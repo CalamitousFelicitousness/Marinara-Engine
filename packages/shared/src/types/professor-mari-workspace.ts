@@ -17,7 +17,8 @@ export type MariWorkspaceToolName =
   | "remove"
   | "bash"
   | "dependency"
-  | "app_data";
+  | "app_data"
+  | "package_service";
 
 export type MariChipEntity =
   "characters" | "lorebooks" | "personas" | "presets" | "connections" | "agents" | "settings" | "chat";

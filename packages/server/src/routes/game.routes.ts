@@ -362,6 +362,7 @@ import {
   getGameSpotifyErrorStatus,
   playGameSpotifyTrack,
 } from "../services/spotify/game-spotify-music.service.js";
+import { loadGameInventoryItemBook } from "../services/game/game-inventory.service.js";
 import {
   readIllustratorAppearance,
   readPreferredCharacterReferenceImage,
@@ -7307,7 +7308,9 @@ export async function gameRoutes(app: FastifyInstance) {
       const previousPlayerStats = parseJsonField<Record<string, unknown> | null>(previousState?.playerStats, null);
       const previousPersonaStats = parseJsonField<any[] | null>(previousState?.personaStats, null);
       const previousHiddenTrackerFields = parseTrackerHiddenFields(previousState?.hiddenTrackerFields);
-      const carriedInventory = carryGameInventory(prevMeta.gameInventory, previousPlayerStats?.inventory);
+      // The ruleset's items, so what comes back from the detailed inventory is stacked as its item allows.
+      const carryRules = await loadGameInventoryItemBook(app.db, { metadata: prevMeta }, "game-master");
+      const carriedInventory = carryGameInventory(prevMeta.gameInventory, previousPlayerStats?.inventory, carryRules);
       const {
         gameLastIllustrationTurn: _previousIllustrationTurn,
         gameLastIllustrationSessionNumber: _previousIllustrationSessionNumber,

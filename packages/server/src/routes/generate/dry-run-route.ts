@@ -94,6 +94,8 @@ import {
   resolveMacrosWithVariableSnapshot,
   resolvePromptIdleDuration,
   resolvePromptLastGenerationType,
+  decodeDeferredPresetConditionals,
+  parsePresetVariableNames,
   resolvePromptMessageMacros,
   setLorebookEntryCounts,
   type AssemblerInput,
@@ -1001,6 +1003,26 @@ export async function registerDryRunRoute(app: FastifyInstance) {
 
     const chatChoices: Record<string, string | string[]> =
       requestChoices ?? (isDifferentPresetOverride ? (presetDefaultChoices ?? {}) : chatChoicesFromMeta);
+
+    // This preset's sections, groups and choice blocks are wanted in three
+    // places: decision texts, the deferred-variable claim, and assembly. Read
+    // them once, the way the live route reuses `decisionPresetParts`.
+    const readPresetParts = async (presetId: string) => {
+      const [sections, groups, choiceBlocks] = await Promise.all([
+        presets.listSections(presetId),
+        presets.listGroups(presetId),
+        presets.listChoiceBlocksForPreset(presetId),
+      ]);
+      return { sections, groups, choiceBlocks };
+    };
+    const presetPartsCache = new Map<string, ReturnType<typeof readPresetParts>>();
+    const loadPresetParts = (presetId: string) => {
+      const cached = presetPartsCache.get(presetId);
+      if (cached) return cached;
+      const pending = readPresetParts(presetId);
+      presetPartsCache.set(presetId, pending);
+      return pending;
+    };
     const chatMacroVariables = normalizeChatMacroVariables(chatMeta.macroVariables);
     const promptMacroContext = await buildPromptMacroContext({
       db: app.db,
@@ -1117,11 +1139,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
         preset:
           // Custom prompt parts replace the preset's sections with their own text (below).
           !promptParts && effectivePresetId && effectivePreset && chatMode !== "conversation" && chatMode !== "game"
-            ? await Promise.all([
-                presets.listSections(effectivePresetId),
-                presets.listGroups(effectivePresetId),
-                presets.listChoiceBlocksForPreset(effectivePresetId),
-              ]).then(([sections, groups, choiceBlocks]) => ({ sections, groups, choiceBlocks, choices: chatChoices }))
+            ? { ...(await loadPresetParts(effectivePresetId)), choices: chatChoices }
             : undefined,
         ctx: promptMacroContext,
         extra: [
@@ -1183,6 +1201,17 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       onDropped: (statement) => decisionDropped.add(statement),
       held: heldDecisions,
     });
+    // Same claim as the live route: preset variables outrank chat variables but
+    // their values arrive with the assembler, after history is resolved.
+    // `!promptParts`: custom prompt parts replace the preset's sections and never
+    // reach the assembler, so nothing would release a claimed name there.
+    if (!promptParts && effectivePresetId && effectivePreset && chatMode !== "conversation" && chatMode !== "game") {
+      const presetVariableNames = new Set<string>(parsePresetVariableNames(effectivePreset.variableValues));
+      for (const choiceBlock of (await loadPresetParts(effectivePresetId)).choiceBlocks) {
+        presetVariableNames.add(choiceBlock.variableName);
+      }
+      if (presetVariableNames.size > 0) promptMacroContext.deferredPresetVariableNames = presetVariableNames;
+    }
     const resolveHistoryMessageMacros = <T extends { content: string; characterId?: string | null }>(
       messages: T[],
     ): T[] => resolvePromptMessageMacros(messages, promptMacroContext, historyMacroProfilesById);
@@ -1595,11 +1624,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
     } else if (effectivePresetId && effectivePreset && chatMode !== "conversation" && chatMode !== "game") {
       const preset = effectivePreset;
       wrapFormat = normalizePromptWrapFormat(preset.wrapFormat);
-      const [sections, groups, choiceBlocks] = await Promise.all([
-        presets.listSections(effectivePresetId),
-        presets.listGroups(effectivePresetId),
-        presets.listChoiceBlocksForPreset(effectivePresetId),
-      ]);
+      const { sections, groups, choiceBlocks } = await loadPresetParts(effectivePresetId);
 
       const eligibleTypes = buildRuntimeAgentSectionEligibleTypes({
         enableAgents: dryRunChatEnableAgents,
@@ -1706,6 +1731,10 @@ export async function registerDryRunRoute(app: FastifyInstance) {
 
       const assembled = await assemblePrompt(assemblerInput);
       Object.assign(promptMacroContext.variables, assembled.macroVariables);
+      // Values are in hand; deferred names resolve preset-first from here on,
+      // and conditionals encoded during history resolution are settled now.
+      delete promptMacroContext.deferredPresetVariableNames;
+      decodeDeferredPresetConditionals(mappedMessages, promptMacroContext);
       promptMacroContext.agentData = {
         ...promptMacroContext.agentData,
         ...assembled.macroAgentData,
@@ -2033,6 +2062,13 @@ export async function registerDryRunRoute(app: FastifyInstance) {
     // Mirror the live route's provider-boundary macro guard so Peek Prompt is
     // both accurate and incapable of exposing late raw identity macros (#3704).
     finalMessages = resolveHistoryMessageMacros(finalMessages);
+    // Blocks deferred for a pending preset variable are settled here as well:
+    // the history array decoded above is a copy taken before the assembler
+    // merge. Gated to the modes that can claim a name, so a Conversation
+    // relocation token its own decode deliberately preserved is never consumed.
+    if (chatMode !== "conversation" && chatMode !== "game") {
+      decodeDeferredPresetConditionals(finalMessages, promptMacroContext);
+    }
 
     if (chatMode === "roleplay") {
       const target = promptTargetCharacterId ?? (allCharacterIds.length === 1 ? allCharacterIds[0]! : null);

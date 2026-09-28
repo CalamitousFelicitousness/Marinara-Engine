@@ -71,7 +71,6 @@ import { PanelLoadMoreBar } from "./PanelLoadMoreBar";
 import { clearActiveChatResourceDrag, writeChatResourceDragPayload } from "../../lib/chat-resource-drag";
 import { ChatResourceActionButton } from "../chat/ChatResourceActionButton";
 import { CharacterBulkTagsModal } from "../characters/CharacterBulkTagsModal";
-import { CharacterDuplicatesModal } from "../characters/CharacterDuplicatesModal";
 
 type CharacterRow = CharacterCatalogEntry;
 type GroupRow = {
@@ -220,7 +219,7 @@ export function CharactersPanel() {
   const [exportingSelected, setExportingSelected] = useState(false);
   const [movingSelected, setMovingSelected] = useState(false);
   const [bulkTagsOpen, setBulkTagsOpen] = useState(false);
-  const [duplicatesOpen, setDuplicatesOpen] = useState(false);
+  const setCharacterDuplicatesOpen = useUIStore((s) => s.setCharacterDuplicatesOpen);
 
   // Parse character data and filter by search
   const parsedCharacters = useMemo(() => {
@@ -891,7 +890,8 @@ export function CharactersPanel() {
         <div className="flex items-center gap-1">
           <button
             type="button"
-            onClick={() => setDuplicatesOpen(true)}
+            data-character-duplicates-trigger
+            onClick={() => setCharacterDuplicatesOpen(true)}
             className="mari-chrome-control mari-chrome-control--small flex-1 justify-start text-[0.6875rem]"
           >
             <Search size="0.75rem" />
@@ -1826,11 +1826,6 @@ export function CharactersPanel() {
           exporting={exportingSelected}
         />
       )}
-      <CharacterDuplicatesModal
-        open={duplicatesOpen}
-        onClose={() => setDuplicatesOpen(false)}
-        onOpenCharacter={openCharacterDetailFromPanel}
-      />
       <CharacterBulkTagsModal
         open={bulkTagsOpen}
         onClose={() => setBulkTagsOpen(false)}

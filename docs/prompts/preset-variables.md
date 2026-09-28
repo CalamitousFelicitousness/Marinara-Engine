@@ -57,7 +57,7 @@ You do not have to reopen a preset from scratch to change your answers. In the c
 
 Marinara resolves many built-in macros, such as `{{user}}` and `{{char}}`. After those, any leftover placeholder in the form `{{NAME}}` (letters, numbers, and underscores only) is matched against your preset variables.
 
-If a variable with that exact name exists, the placeholder becomes the chosen value. If no variable matches, the `{{NAME}}` text is left exactly as typed. This is why an unknown placeholder shows up unchanged in the output instead of raising an error. For the full macro list, see [Prompt Macros](macros.md).
+If a variable with that exact name exists, the placeholder becomes the chosen value. If none matches, Marinara tries the chat's own variables next, the ones listed in the **Chat Variables** section of the **Chat Settings** panel. A preset variable wins when both use the same name. If neither has it, the `{{NAME}}` text is left exactly as typed. This is why an unknown placeholder shows up unchanged in the output instead of raising an error. For the full macro list, see [Prompt Macros](macros.md).
 
 ## Decision blocks in options
 

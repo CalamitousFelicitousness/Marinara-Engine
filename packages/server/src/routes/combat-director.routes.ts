@@ -2,11 +2,12 @@ import { createGameStateStorage, parseStoredRulesetLive } from "../services/stor
 import {
   normalizeGameDifficulty,
   combatWeatherSchema,
+  applyGameInventoryOps,
   gameInventoryCount,
   gameInventoryTotals,
   normalizeGameInventoryStacks,
-  takeFromGameInventory,
 } from "@marinara-engine/shared";
+import { applyGameInventoryChangeHeld } from "../services/game/game-inventory.service.js";
 import { resolveCombatWeather } from "../services/game/weather.service.js";
 import type { FastifyInstance } from "fastify";
 import { randomUUID } from "node:crypto";
@@ -553,21 +554,19 @@ export async function combatDirectorRoutes(
           .map(([name, count]) => ({ name, count: count - (previous.state.itemSpends[name] ?? 0) }))
           .filter((d) => d.count > 0);
         if (deltas.length)
-          await chats.patchMetadata(
-            chatId,
-            (meta) => {
-              // Taken by name across every stack of the item, since the fight saw one total per item.
-              let inventory = normalizeGameInventoryStacks(meta.gameInventory);
-              for (const d of deltas) {
-                if (gameInventoryCount(inventory, d.name) < d.count) {
-                  throw new Error("Inventory changed. Reload the battle.");
-                }
-                inventory = takeFromGameInventory(inventory, d.name, d.count).stacks;
-              }
-              return { gameInventory: inventory };
-            },
-            { metadataQueueHeld: true },
-          );
+          // Taken by name across every stack and bag of the item, the player's own first, since the
+          // fight saw one total per item; the detailed inventory and the journal follow with it.
+          await applyGameInventoryChangeHeld(app.db, chatId, (stacks) => {
+            for (const d of deltas) {
+              if (gameInventoryCount(stacks, d.name) < d.count)
+                throw new Error("Inventory changed. Reload the battle.");
+            }
+            const outcome = applyGameInventoryOps(
+              stacks,
+              deltas.map((d) => ({ op: "take" as const, name: d.name, count: d.count, as: "used" as const })),
+            );
+            return { stacks: outcome.stacks, journal: outcome.journal, value: null };
+          });
         if (s.style === "ruleset" && s.rulesetFight) live = await writeRulesetLive(chatId, s.anchor, s.rulesetFight);
         await store.updateStateById(rowId, JSON.stringify(s), true, chatId);
       }),

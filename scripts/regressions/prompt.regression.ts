@@ -27,6 +27,7 @@ import {
   isPatternSafe,
   normalizeChatSummaryEntries,
   normalizeChatSummaryPromptSettings,
+  normalizeSemanticSummaryRetrievalSettings,
   normalizeStoryboardAgentSettings,
   LONG_TERM_MEMORY_CHAT_SUMMARY_PROMPT_ID,
   DEFAULT_AGENT_TOOLS,
@@ -805,6 +806,7 @@ import {
   assemblePrompt,
   appendFallbackChatSummaryToSystemPrompt,
   resolveChoiceVariableValue,
+  resolveMacrosForPreview,
   resolvePromptMessageMacros,
   scopePromptMacroContextToCharacter,
   type AssemblerInput,
@@ -3023,6 +3025,53 @@ const cases: RegressionCase[] = [
         "",
         "another chat must not inherit local variables",
       );
+
+      // Chat variables: a name defined in Chat Settings, or set by an earlier
+      // message, resolves as a bare tag in the user's own typed message.
+      const typedMessageVariables: Record<string, string> = { char1: "Mary" };
+      const typedMessageContext = {
+        user: "Mari",
+        char: "Dottore",
+        characters: ["Dottore"],
+        variables: {},
+        localVariables: typedMessageVariables,
+      };
+      const resolvedTypedMessages = resolvePromptMessageMacros(
+        [
+          { id: "m1", role: "user" as const, content: "{{setvar::mood::tense}}{{char1}} walks in." },
+          { id: "m2", role: "user" as const, content: "{{char1}} looks {{getvar::mood}}." },
+        ],
+        typedMessageContext,
+      );
+      assert.equal(resolvedTypedMessages[0]!.content, "Mary walks in.");
+      assert.equal(
+        resolvedTypedMessages[1]!.content,
+        "Mary looks tense.",
+        "a value set in one message must reach a later one through the shared chat map",
+      );
+      assert.equal(typedMessageVariables.mood, "tense", "history writes must reach the persisted map");
+      assert.equal(
+        resolvePromptMessageMacros([{ id: "m3", role: "user" as const, content: "{{char1}}" }], {
+          ...typedMessageContext,
+          localVariables: {},
+        })[0]!.content,
+        "{{char1}}",
+        "another chat keeps the tag literal",
+      );
+
+      // Peek Prompt must never persist what a preview resolved.
+      const previewVariables: Record<string, string> = { char1: "Mary" };
+      assert.equal(
+        resolveMacrosForPreview("{{setvar::char1::Anna}}{{char1}}", {
+          user: "Mari",
+          char: "Dottore",
+          characters: ["Dottore"],
+          variables: {},
+          localVariables: previewVariables,
+        }),
+        "Anna",
+      );
+      assert.deepEqual(previewVariables, { char1: "Mary" }, "a preview must not write the chat's variables");
 
       const conditionalVariables = { score: "10" };
       resolveMacros("{{#if addnumvar::score::5}}unchanged{{/if}}", {
@@ -10547,6 +10596,16 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
   {
     name: "Conversation semantic summaries keep recent weeks and retrieve relevant older context",
     async run() {
+      assert.deepEqual(normalizeSemanticSummaryRetrievalSettings({}), {
+        semanticSummaryRecentCount: 2,
+        semanticSummaryOlderCount: 3,
+        semanticSummaryMinSimilarity: 0.15,
+      });
+      assert.deepEqual(
+        normalizeSemanticSummaryRetrievalSettings({ semanticSummaryRecentCount: 21 }),
+        { semanticSummaryRecentCount: 2, semanticSummaryOlderCount: 3, semanticSummaryMinSimilarity: 0.15 },
+        "out-of-range persisted summary settings must fall back to bounded defaults",
+      );
       const weekSummaries = {
         "01.06.2026": { summary: "The user hid a silver key under the observatory stairs.", keyDetails: [] },
         "08.06.2026": { summary: "They compared several tea blends in the kitchen.", keyDetails: [] },
@@ -10555,6 +10614,7 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       };
       const embeddingSource = {
         label: "semantic-summary regression embedder",
+        spaceId: "conversation-summary-regression-v1",
         async embed(texts: string[], _signal?: AbortSignal, inputType?: "document" | "query") {
           if (inputType === "query") {
             return texts.map((_, index) =>
@@ -10575,6 +10635,21 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       });
       assert.deepEqual(Object.keys(selected.weekSummaries), ["01.06.2026", "15.06.2026", "22.06.2026"]);
       assert.equal(selected.semanticApplied, true);
+
+      const limited = await selectConversationSummariesForPrompt({
+        daySummaries: {},
+        weekSummaries,
+        query: "Where did I leave the silver key?",
+        enabled: true,
+        vectorizerAvailable: true,
+        settings: {
+          semanticSummaryRecentCount: 1,
+          semanticSummaryOlderCount: 0,
+          semanticSummaryMinSimilarity: 1,
+        },
+        embeddingOptions: { embeddingSource },
+      });
+      assert.deepEqual(Object.keys(limited.weekSummaries), ["22.06.2026"]);
 
       const unavailable = await selectConversationSummariesForPrompt({
         daySummaries: {},

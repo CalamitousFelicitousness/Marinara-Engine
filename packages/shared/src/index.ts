@@ -6,6 +6,7 @@
 export * from "./types/tts.js";
 export * from "./types/chat.js";
 export * from "./types/advanced-memory.js";
+export * from "./types/semantic-summary-retrieval.js";
 export * from "./types/roleplay-command.js";
 export * from "./types/spotify.js";
 export * from "./types/character.js";
@@ -129,10 +130,15 @@ export * from "./features/tactical-combat/index.js";
 
 // Utils
 export * from "./utils/macro-engine.js";
+export * from "./utils/chat-variables.js";
 export * from "./utils/ui-locales.js";
 export * from "./utils/xml-wrapper.js";
 export * from "./utils/music-score.js";
 export * from "./utils/game-inventory-stacks.js";
+export * from "./utils/game-inventory-ops.js";
+export * from "./utils/game-inventory-tags.js";
+export * from "./utils/game-inventory-turns.js";
+export * from "./utils/inventory-command-tag.js";
 export * from "./utils/agent-cost.js";
 export * from "./utils/token-estimator.js";
 export * from "./utils/character-token-estimator.js";

@@ -1,3 +1,4 @@
+import { clickTopbarPanel } from "./topbar-navigation.js";
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { seedUIState } from "./ui-state-fixture";
@@ -22,7 +23,7 @@ test("lorebook character context is opt-in and survives save, reload and duplica
     await page.addInitScript((version) => localStorage.setItem("marinara:whats-new:seen-version", version), version);
     await page.goto("/");
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
-    await page.locator('[data-tour="panel-lorebooks"]').click();
+    await clickTopbarPanel(page, "lorebooks");
     await page.getByText(book.name, { exact: true }).click();
     const option = page.getByRole("checkbox", { name: /^Include character context/ });
     await expect(option).not.toBeChecked();
@@ -35,7 +36,7 @@ test("lorebook character context is opt-in and survives save, reload and duplica
     await page.getByText("Include character context", { exact: true }).scrollIntoViewIfNeeded();
     await page.screenshot({ path: info.outputPath("lorebook-character-context.png") });
     await page.reload();
-    await page.locator('[data-tour="panel-lorebooks"]').click();
+    await clickTopbarPanel(page, "lorebooks");
     await page.getByText(book.name, { exact: true }).click();
     await expect(option).toBeChecked();
     const duplicate = await page.evaluate(async (id) => {

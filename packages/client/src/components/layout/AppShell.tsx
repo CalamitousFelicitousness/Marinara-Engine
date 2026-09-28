@@ -310,6 +310,9 @@ export function AppShell() {
         const currentLayoutHeight = root.clientHeight || window.innerHeight;
         // Account for split-view resizing without losing an already-open
         // keyboard's height. Height-only keyboard changes retain the baseline.
+        // ponytail: with resizes-content, a keyboard change in the same sample
+        // as a width change shifts the baseline too; the page has no signal to
+        // split them. Upgrade path: keyboard geometry from the VirtualKeyboard API.
         if (window.innerWidth !== viewportWidth) {
           viewportWidth = window.innerWidth;
           largestViewportHeight += currentLayoutHeight - previousLayoutHeight;

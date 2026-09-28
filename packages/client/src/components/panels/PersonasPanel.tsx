@@ -2,6 +2,7 @@
 // Panel: User Personas
 // ──────────────────────────────────────────────
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
+import { AvatarImage } from "../characters/AvatarImage";
 import { toast } from "sonner";
 import {
   fetchAllPersonaPages,
@@ -815,6 +816,7 @@ export function PersonasPanel() {
                       onKeyDown={(e) => {
                         if (e.key === "Enter") e.currentTarget.blur();
                         if (e.key === "Escape") {
+                          e.preventDefault();
                           setEditingGroupId(null);
                           setEditGroupName("");
                         }
@@ -981,9 +983,10 @@ export function PersonasPanel() {
                           />
                           <div className="mari-avatar-placeholder mari-avatar-placeholder--persona relative flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-lg">
                             {p.avatarPath ? (
-                              <img
+                              <AvatarImage
                                 src={p.avatarPath}
                                 alt=""
+                                iconSize="0.625rem"
                                 className="h-full w-full rounded-lg object-cover"
                                 style={getAvatarCropStyle(p.avatarCrop)}
                               />
@@ -1185,9 +1188,10 @@ export function PersonasPanel() {
                     so the camera-hover overlay stays above the cropped image. */}
                 <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-xl">
                   {persona.avatarPath ? (
-                    <img
+                    <AvatarImage
                       src={persona.avatarPath}
                       alt=""
+                      iconSize="1rem"
                       loading="lazy"
                       className="h-full w-full rounded-xl object-cover"
                       style={getAvatarCropStyle(persona.avatarCrop)}

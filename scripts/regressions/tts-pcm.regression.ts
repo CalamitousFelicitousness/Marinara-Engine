@@ -213,14 +213,22 @@ try {
   missingFormat.set(new TextEncoder().encode("JUNK"), 12);
   const shortFormat = wavFixture.slice();
   new DataView(shortFormat.buffer).setUint32(16, 2, true);
-  const zeroFormatFields = [22, 24, 34].map((offset) => {
+  const invalidFormatFields = [
+    [22, 0],
+    [24, 0],
+    [28, 0],
+    [32, 0],
+    [34, 0],
+    [28, 1],
+    [32, 1],
+  ].map(([offset, value]) => {
     const body = wavFixture.slice();
     const view = new DataView(body.buffer);
-    if (offset === 24) view.setUint32(offset, 0, true);
-    else view.setUint16(offset, 0, true);
+    if (offset === 24 || offset === 28) view.setUint32(offset, value, true);
+    else view.setUint16(offset, value, true);
     return body;
   });
-  for (const body of [emptyData, overflowingData, missingFormat, shortFormat, ...zeroFormatFields]) {
+  for (const body of [emptyData, overflowingData, missingFormat, shortFormat, ...invalidFormatFields]) {
     providerMode = { contentType: "audio/pcm", body };
     const invalidWav = await speak();
     assert.equal(invalidWav.statusCode, 502, "invalid WAV subchunks are rejected despite a valid RIFF size");

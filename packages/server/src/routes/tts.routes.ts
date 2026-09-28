@@ -1745,11 +1745,18 @@ export async function ttsRoutes(app: FastifyInstance) {
               valid &&= hasFormat;
               if (valid) {
                 const formatTag = view.getUint16(payloadOffset, true);
+                const channels = view.getUint16(payloadOffset + 2, true);
+                const sampleRate = view.getUint32(payloadOffset + 4, true);
+                const blockAlign = view.getUint16(payloadOffset + 12, true);
+                const bitsPerSample = view.getUint16(payloadOffset + 14, true);
                 // Compressed WAV formats can legitimately report zero bits per sample.
                 valid =
-                  view.getUint16(payloadOffset + 2, true) > 0 &&
-                  view.getUint32(payloadOffset + 4, true) > 0 &&
-                  (formatTag !== 1 || view.getUint16(payloadOffset + 14, true) > 0);
+                  channels > 0 &&
+                  sampleRate > 0 &&
+                  (formatTag !== 1 ||
+                    (bitsPerSample > 0 &&
+                      blockAlign * 8 === channels * bitsPerSample &&
+                      view.getUint32(payloadOffset + 8, true) === sampleRate * blockAlign));
               }
             } else if (chunkId === "data") {
               hasData = size > 0;

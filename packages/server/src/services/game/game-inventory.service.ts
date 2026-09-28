@@ -6,6 +6,7 @@
 // three inside one metadata-queue slot and one transaction, so they can never disagree.
 import {
   followGameInventoryDetails,
+  normalizeCharacterLookupName,
   forgetGameInventoryTelling,
   gameInventoryForTelling,
   normalizeGameInventoryStacks,
@@ -23,6 +24,8 @@ import type { DB } from "../../db/connection.js";
 import { logger } from "../../lib/logger.js";
 import { loadRulesetCatalogEntries } from "./ruleset-catalog.service.js";
 import { loadRulesetRegistry, resolveGameRuleset, type ResolvedGameRuleset } from "./ruleset-registry.service.js";
+import { sheetCommandCards } from "./ruleset-sheet-turn.service.js";
+import { createCharactersStorage } from "../storage/characters.storage.js";
 import { createChatsStorage, withChatMetadataPatchQueue } from "../storage/chats.storage.js";
 import { createGameStateStorage } from "../storage/game-state.storage.js";
 import { resolveVisibleGameStateAnchor } from "../../routes/generate/generate-route-utils.js";
@@ -83,22 +86,36 @@ function parsePlayerStats(raw: unknown): PlayerStats | null {
 
 /**
  * The items a game's ruleset lists, for a change that needs them: which names are its items, how
- * many one stack holds, and what the Game Master is shown about each. Undefined for a game with no
- * ruleset, one this install cannot honour, or one without an `items` block. `who` is whose change it
- * is: the player's typed-in items follow the ruleset's `freeform`, and the Game Master's are always
- * allowed until the native switch arrives. A catalog that cannot be read is logged and left out.
+ * many one stack holds, what each weighs and wears, what every character carries and binds (read off
+ * their sheet), and what the Game Master is shown about each. Undefined for a game with no ruleset,
+ * one this install cannot honour, or one without an `items` block. `who` is whose change it is: the
+ * player's typed-in items follow the ruleset's `freeform` and cannot part with a bound cursed item,
+ * and the Game Master's are always allowed until the native switch arrives. A catalog that cannot be
+ * read is logged and left out.
+ *
+ * The player's sheet is the card named for their persona (`playerName`, read off the chat's persona
+ * when it is not given), or the first card when the chat says nothing about who the player is, as a
+ * check reads it.
  */
 export async function loadGameInventoryItemBook(
   db: DB,
-  source: { chatId: string } | { metadata: Record<string, unknown>; resolved?: ResolvedGameRuleset | null },
+  source:
+    | { chatId: string }
+    | { metadata: Record<string, unknown>; resolved?: ResolvedGameRuleset | null; playerName?: string | null },
   who: "player" | "game-master",
 ): Promise<RulesetItemBook | undefined> {
   let metadata: Record<string, unknown>;
+  let playerName: string | null | undefined;
+  let personaId: string | null = null;
   if ("chatId" in source) {
     const chat = await createChatsStorage(db).getById(source.chatId);
     if (!chat) return undefined;
     metadata = readMetadata(chat.metadata);
-  } else metadata = source.metadata;
+    personaId = chat.personaId ?? null;
+  } else {
+    metadata = source.metadata;
+    playerName = source.playerName;
+  }
   if (metadata.gameRuleset == null) return undefined;
   const resolved =
     ("resolved" in source ? source.resolved : null) ?? resolveGameRuleset(metadata, await loadRulesetRegistry(db));
@@ -124,9 +141,25 @@ export async function loadGameInventoryItemBook(
       logger.warn(error, "[game/inventory] Could not read item catalog %s of %s", catalog.id, definition.id);
     }
   }
+  const cards = sheetCommandCards(
+    definition,
+    Array.isArray(metadata.gameCharacterCards) ? (metadata.gameCharacterCards as Array<Record<string, unknown>>) : [],
+  );
+  if (playerName === undefined && (definition.items?.carry || definition.items?.binding)) {
+    const setup = metadata.gameSetupConfig as { personaId?: unknown } | null | undefined;
+    const id = personaId || (typeof setup?.personaId === "string" ? setup.personaId : null);
+    playerName = id ? ((await createCharactersStorage(db).getPersona(id))?.name ?? null) : null;
+  }
+  const playerKey = playerName ? normalizeCharacterLookupName(playerName) : "";
+  const player = playerKey ? cards.find((card) => normalizeCharacterLookupName(card.name) === playerKey) : cards[0];
   return rulesetItemBook(definition, entries, {
     layerOptions: Object.fromEntries(resolved.layers.map((layer) => [rulesetLayerOptionKey(layer.id), true])),
     plain: who === "player" && definition.items?.freeform === "refuse" ? "refuse" : "allow",
+    actor: who,
+    sheets: {
+      ...(player ? { player: player.build } : {}),
+      members: cards.filter((card) => card !== player),
+    },
   });
 }
 

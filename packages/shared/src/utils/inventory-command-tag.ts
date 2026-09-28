@@ -16,13 +16,28 @@ export const INVENTORY_TAG_COUNT_MAX = 9999;
 /** Longest item or character name a tag keeps. */
 const MAX_TAG_NAME_LENGTH = 120;
 
-export type InventoryTagAction = "add" | "remove" | "give";
+export type InventoryTagAction = "add" | "remove" | "give" | "equip" | "unequip" | "bind" | "unbind";
+
+const INVENTORY_TAG_ACTIONS: readonly InventoryTagAction[] = [
+  "add",
+  "remove",
+  "give",
+  "equip",
+  "unequip",
+  "bind",
+  "unbind",
+];
+
+function readAction(value: string | undefined): InventoryTagAction | undefined {
+  return INVENTORY_TAG_ACTIONS.find((action) => action === value);
+}
 
 export interface InventoryTagRequest {
   action: InventoryTagAction;
   items: string[];
   count: number;
-  /** Whose bag: the receiver of an add, the one who loses a remove, the giver of a give. */
+  /** Whose bag: the receiver of an add, the one who loses a remove, the giver of a give, the one who
+   *  puts on, takes off, binds or unbinds. */
   who?: string;
   /** Who receives a give. */
   to?: string;
@@ -48,7 +63,7 @@ function cleanName(value: string | undefined): string | undefined {
 
 /**
  * Read one tag body, leniently: attributes in any order, quoted or not, `item` or `items`, `count`,
- * `quantity` or `qty`, and a bare `add` or `remove` in place of `action=`. An unquoted item runs to
+ * `quantity` or `qty`, and a bare action word (`add`, `remove`, `equip`...) in place of `action=`. An unquoted item runs to
  * the next attribute, so `item=Bronze Key who=Bram` names the Bronze Key. Null when no item is named.
  */
 export function parseInventoryTagBody(body: string): InventoryTagRequest | null {
@@ -65,11 +80,12 @@ export function parseInventoryTagBody(body: string): InventoryTagRequest | null 
   });
 
   const actionValue = values.get("action")?.toLowerCase();
-  let action: InventoryTagAction = "add";
-  if (actionValue === "add" || actionValue === "remove" || actionValue === "give") action = actionValue;
-  else if (actionValue === undefined) {
+  let action: InventoryTagAction = readAction(actionValue) ?? "add";
+  if (actionValue === undefined) {
     // A bare word, read only before the first attribute so an item's own name never counts.
-    const bare = /\b(add|remove|give)\b/i.exec(body.slice(0, Math.min(attributes[0]?.start ?? body.length, 40)));
+    const bare = /\b(add|remove|give|equip|unequip|bind|unbind)\b/i.exec(
+      body.slice(0, Math.min(attributes[0]?.start ?? body.length, 40)),
+    );
     if (bare) action = bare[1]!.toLowerCase() as InventoryTagAction;
   }
 
@@ -145,8 +161,7 @@ export function readResolvedInventoryTagBody(body: string): ResolvedInventoryTag
   }
   const result = values.get("result")?.toLowerCase();
   if (result !== "ok" && result !== "refused") return null;
-  const actionValue = values.get("action")?.toLowerCase();
-  const action: InventoryTagAction = actionValue === "remove" || actionValue === "give" ? actionValue : "add";
+  const action: InventoryTagAction = readAction(values.get("action")?.toLowerCase()) ?? "add";
   const item = cleanName(values.get("item"));
   if (!item) return null;
   const count = Number.parseInt(values.get("count") ?? "", 10);
@@ -157,7 +172,8 @@ export function readResolvedInventoryTagBody(body: string): ResolvedInventoryTag
   return {
     action,
     item,
-    count: Number.isFinite(count) && count > 0 ? count : 1,
+    // Zero is kept: a put-on or a binding that found nothing left to change moved none.
+    count: Number.isFinite(count) && count >= 0 ? count : 1,
     ...(who ? { who } : {}),
     ...(to ? { to } : {}),
     ok: result === "ok",

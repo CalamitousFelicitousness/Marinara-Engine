@@ -13,9 +13,13 @@ import {
   type GameInventoryOpResult,
 } from "./game-inventory-ops.js";
 import {
+  gameInventoryBagKey,
   gameInventoryCountItems,
+  gameInventoryGiveRefusal,
+  gameInventoryItemId,
   gameInventoryItemsNamed,
   giveFromGameInventoryNamed,
+  wearGameInventoryStack,
   type GameInventoryBagRef,
   type GameInventoryItemRules,
   type GameInventoryStack,
@@ -103,6 +107,37 @@ export function applyGameInventoryTags(
     return outcome.results;
   };
 
+  /** Putting on, taking off, binding or unbinding up to `count` of the item a name finds in one bag,
+   *  one at a time, each on a stack not already so. `now` is how many of it that bag has so after. */
+  const wearNamed = (
+    wear: "equip" | "unequip" | "bind" | "unbind",
+    item: string,
+    count: number,
+    bag: GameInventoryBagRef,
+  ): InventoryTagOutcome => {
+    const flag = wear === "equip" || wear === "unequip" ? "equipped" : "bound";
+    const on = wear === "equip" || wear === "bind";
+    const items = gameInventoryItemsNamed(current, item, bag);
+    const mine = (stack: GameInventoryStack) =>
+      items.has(gameInventoryItemId(stack)) && gameInventoryBagKey(stack.holder) === gameInventoryBagKey(bag.holder);
+    if (!current.some(mine)) return { ok: false, reason: "none-held" };
+    let done = 0;
+    while (done < count) {
+      const stack = current.find((each) => mine(each) && Boolean(each[flag]) !== on);
+      if (!stack) break;
+      const worn = wearGameInventoryStack(current, stack.id, wear, newId, rules);
+      if (!worn) break;
+      if ("refused" in worn) {
+        if (done === 0) return { ok: false, reason: worn.refused };
+        break;
+      }
+      current = worn.stacks;
+      done += 1;
+    }
+    const now = current.reduce((total, stack) => total + (mine(stack) && stack[flag] ? stack.quantity : 0), 0);
+    return { ok: true, count: done, now };
+  };
+
   const next = content.replace(createInventoryTagRegex(), (_whole, body: string) => {
     tags += 1;
     // Past the cap a tag is answered as refused rather than left as written, so a result the Game
@@ -124,8 +159,41 @@ export function applyGameInventoryTags(
         };
         if (!who.ok) return serializeInventoryTag(shown, { ok: false, reason: who.reason });
         if (request.action === "add") {
-          const [result] = apply([{ op: "add", name: item, count: request.count, holder: who.bag?.holder, log: true }]);
-          return serializeInventoryTag(shown, outcomeOf(result));
+          // Into whose bag it was said to go; with nobody named, into the shared view, which a ruleset
+          // that says what everyone carries fills by who can carry it, the player first.
+          const [result] = apply([
+            who.bag
+              ? { op: "add", name: item, count: request.count, holder: who.bag.holder, log: true }
+              : { op: "add", name: item, count: request.count, among: ["", ...party.members], log: true },
+          ]);
+          if (!result?.ok) return serializeInventoryTag(shown, outcomeOf(result));
+          // One answer per bag it went into, saying whose when nobody was named (the player's says
+          // nobody), and one for what nobody could carry.
+          const answers = result.placed
+            ? result.placed.map((share) =>
+                serializeInventoryTag(
+                  { action: request.action, item, count: share.count, ...(share.holder ? { who: share.holder } : {}) },
+                  { ok: true, count: share.count, now: share.now },
+                ),
+              )
+            : [serializeInventoryTag(shown, outcomeOf(result))];
+          if (result.left) {
+            answers.push(
+              serializeInventoryTag(
+                { action: request.action, item, count: result.left, ...(request.who ? { who: request.who } : {}) },
+                { ok: false, reason: "too-heavy" },
+              ),
+            );
+          }
+          return answers.join(" ");
+        }
+        if (
+          request.action === "equip" ||
+          request.action === "unequip" ||
+          request.action === "bind" ||
+          request.action === "unbind"
+        ) {
+          return serializeInventoryTag(shown, wearNamed(request.action, item, request.count, who.bag ?? {}));
         }
         if (request.action === "remove") {
           const [result] = apply([
@@ -139,6 +207,15 @@ export function applyGameInventoryTags(
         if (!to || !to.ok)
           return serializeInventoryTag(shown, { ok: false, reason: to && !to.ok ? to.reason : "no-recipient" });
         if (!to.bag) return serializeInventoryTag(shown, { ok: false, reason: "no-recipient" });
+        // Nobody is handed more than they can carry.
+        const from = who.bag ?? {};
+        const first = current.find(
+          (stack) =>
+            gameInventoryItemsNamed(current, item, from).has(gameInventoryItemId(stack)) &&
+            gameInventoryBagKey(stack.holder) === gameInventoryBagKey(from.holder),
+        );
+        const heavy = first && gameInventoryGiveRefusal(current, first, to.bag.holder, request.count, rules);
+        if (heavy) return serializeInventoryTag(shown, { ok: false, reason: heavy });
         // Stack by stack, so the item stays the same item and a nickname stays on its stack.
         // The items it names are settled first, and counted by item in the receiver's bag, where the
         // name may be a nickname nothing there carries.

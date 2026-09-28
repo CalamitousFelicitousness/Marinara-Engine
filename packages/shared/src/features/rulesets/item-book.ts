@@ -11,13 +11,17 @@ import type {
   RulesetCatalogItem,
   RulesetDefinition,
   RulesetItemStat,
+  RulesetSheetBuild,
 } from "../../schemas/ruleset.schema.js";
+import { normalizeCharacterLookupName } from "../../utils/character-lookup-name.js";
 import {
   gameInventoryNameKey,
+  type GameInventoryBearer,
   type GameInventoryItemRules,
   type GameInventoryRulesetItem,
 } from "../../utils/game-inventory-stacks.js";
 import { catalogEntryHiddenByLayers, type RulesetLayerOptions } from "./layers.js";
+import { defaultRulesetSheetBuild, evaluateRulesetSheet, resolveRulesetValueRef } from "./sheet-math.js";
 
 /** One stat an item gives, in the ruleset's words. `text` is absent for a yes-or-no stat that is
  *  yes, whose label says it all. */
@@ -46,6 +50,14 @@ export interface RulesetItemBookEntry extends GameInventoryRulesetItem {
   entry: RulesetCatalogEntry;
   summary?: string;
   facts: RulesetItemFacts;
+}
+
+/** The sheets a book reads what each character carries and binds off: the player's own, and every
+ *  other party member's by the name their card and their bag have. One without a sheet reads a blank
+ *  one, as the rest of the game does. */
+export interface RulesetItemBookSheets {
+  player?: RulesetSheetBuild;
+  members?: ReadonlyArray<{ name: string; build: RulesetSheetBuild }>;
 }
 
 export interface RulesetItemBook extends GameInventoryItemRules {
@@ -97,8 +109,14 @@ export function rulesetItemFacts(definition: RulesetDefinition, item: RulesetCat
 export function rulesetItemBook(
   definition: RulesetDefinition,
   entries: Readonly<Record<string, readonly RulesetCatalogEntry[]>>,
-  options: { layerOptions?: RulesetLayerOptions | null; plain?: "allow" | "refuse" } = {},
+  options: {
+    layerOptions?: RulesetLayerOptions | null;
+    plain?: "allow" | "refuse";
+    actor?: "player" | "game-master";
+    sheets?: RulesetItemBookSheets;
+  } = {},
 ): RulesetItemBook {
+  const carryStat = definition.items?.carry?.stat;
   const all = new Map<string, RulesetItemBookEntry>();
   const visible: RulesetItemBookEntry[] = [];
   const offered = new Set<string>();
@@ -107,10 +125,14 @@ export function rulesetItemBook(
     if (catalog.holds !== "items") continue;
     for (const entry of entries[catalog.id] ?? []) {
       if (!entry.item) continue;
+      const weight = carryStat ? entry.item.stats?.[carryStat] : undefined;
       const read: RulesetItemBookEntry = {
         item: `${catalog.id}/${entry.id}`,
         name: entry.label,
         ...(entry.item.stack !== undefined ? { stack: entry.item.stack } : {}),
+        ...(typeof weight === "number" && weight > 0 ? { weight } : {}),
+        ...(entry.item.slots && Object.keys(entry.item.slots).length > 0 ? { slots: entry.item.slots } : {}),
+        ...(entry.item.binds ? { binds: { ...(entry.item.binds.cursed ? { cursed: true } : {}) } } : {}),
         catalogId: catalog.id,
         entry,
         ...(entry.summary ? { summary: entry.summary } : {}),
@@ -131,6 +153,53 @@ export function rulesetItemBook(
     offers: (item) => offered.has(item),
     itemNamed: (name) => byName.get(gameInventoryNameKey(name)),
     plain: options.plain ?? "allow",
+    ...(options.actor ? { actor: options.actor } : {}),
+    ...(definition.items?.slots?.length
+      ? { slots: definition.items.slots.map(({ id, label, count }) => ({ id, label, count })) }
+      : {}),
+    ...(definition.items?.carry || definition.items?.binding
+      ? { bearer: rulesetItemBearers(definition, options.sheets) }
+      : {}),
+  };
+}
+
+/**
+ * What each character carries and binds, read off their sheet: the ruleset's `carry` values and its
+ * binding maximum, worked out once per character. These are read without live state (the ruleset is
+ * checked for that at import), so a sheet's build is all they need.
+ */
+export function rulesetItemBearers(
+  definition: RulesetDefinition,
+  sheets: RulesetItemBookSheets = {},
+): (holder: string | undefined) => GameInventoryBearer {
+  const block = definition.items;
+  const read = new Map<string, GameInventoryBearer>();
+  const buildOf = (holder: string | undefined): RulesetSheetBuild => {
+    if (!holder) return sheets.player ?? defaultRulesetSheetBuild(definition);
+    const key = normalizeCharacterLookupName(holder);
+    return (
+      sheets.members?.find((member) => normalizeCharacterLookupName(member.name) === key)?.build ??
+      defaultRulesetSheetBuild(definition)
+    );
+  };
+  return (holder) => {
+    const key = holder ? normalizeCharacterLookupName(holder) : "";
+    const known = read.get(key);
+    if (known) return known;
+    const build = buildOf(holder);
+    const evaluated = evaluateRulesetSheet(definition, build);
+    const value = (ref: Parameters<typeof resolveRulesetValueRef>[2] | undefined) =>
+      ref ? resolveRulesetValueRef(definition, build, ref, evaluated) : undefined;
+    const encumberedAbove = value(block?.carry?.encumberedAbove);
+    const limit = value(block?.carry?.limit);
+    const bindingMax = value(block?.binding?.max);
+    const bearer: GameInventoryBearer = {
+      ...(encumberedAbove !== undefined ? { encumberedAbove } : {}),
+      ...(limit !== undefined ? { limit } : {}),
+      ...(bindingMax !== undefined ? { bindingMax: Math.max(0, Math.floor(bindingMax)) } : {}),
+    };
+    read.set(key, bearer);
+    return bearer;
   };
 }
 

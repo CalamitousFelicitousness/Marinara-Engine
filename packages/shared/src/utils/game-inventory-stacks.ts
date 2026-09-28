@@ -37,6 +37,10 @@ export interface GameInventoryStack {
   quantity: number;
   /** The party member who carries it. Absent for the player's own character. */
   holder?: string;
+  /** Worn by whoever carries it: it takes up their slots. A worn stack is always one item. */
+  equipped?: true;
+  /** Bound to whoever carries it (attuned, invested). A bound stack is always one item. */
+  bound?: true;
 }
 
 /** Whose bag: `holder` as a stack has it, so `{}` is the player's own. */
@@ -69,6 +73,23 @@ export interface GameInventoryRulesetItem {
   name: string;
   /** The most one stack of it holds, when the ruleset limits it. */
   stack?: number;
+  /** What one of it weighs: its value of the ruleset's carry stat. Absent weighs nothing. */
+  weight?: number;
+  /** The slots it takes while equipped, by slot id. Without any, it cannot be equipped. */
+  slots?: Readonly<Record<string, number>>;
+  /** It has to be bound to work; `cursed` keeps it bound. Without this, it cannot be bound. */
+  binds?: { cursed?: boolean };
+}
+
+/** What one character can carry and bind, read off their own sheet. A part the ruleset does not
+ *  declare is absent: no `carry` block, nobody is ever encumbered; no `binding`, nothing binds. */
+export interface GameInventoryBearer {
+  /** The load they carry without being encumbered. */
+  encumberedAbove?: number;
+  /** The most they can carry at all. */
+  limit?: number;
+  /** How many items they can have bound at once. */
+  bindingMax?: number;
 }
 
 /**
@@ -87,6 +108,13 @@ export interface GameInventoryItemRules {
   /** "refuse" when only the ruleset's items may be added: a player's typed-in item under
    *  `freeform: "refuse"`. */
   plain?: "allow" | "refuse";
+  /** The slots every character has, by id, when the ruleset declares slots. */
+  slots?: ReadonlyArray<{ id: string; label: string; count: number }>;
+  /** What one character can carry and bind (`holder` as a stack has it, absent for the player). */
+  bearer?(holder: string | undefined): GameInventoryBearer;
+  /** Whose change this is. The player's own leave a bound cursed item bound and where it is; the
+   *  Game Master can end a curse in the story. */
+  actor?: "player" | "game-master";
 }
 
 /** The most new stacks one change may start, so a small stack size can never flood a bag. */
@@ -159,6 +187,47 @@ function stackLimit(item: string, rules: GameInventoryItemRules | undefined): nu
   return Math.min(GAME_INVENTORY_MAX_QUANTITY, rules?.itemOf(item)?.stack ?? GAME_INVENTORY_MAX_QUANTITY);
 }
 
+/** Loads are sums of weights that may be fractions (a quarter-pound dart), so they are compared to a
+ *  character's limits with this much slack. */
+const LOAD_SLACK = 1e-9;
+
+/** What one of a stack's item weighs under the rules: nothing for a plain item. */
+function weightOf(stack: { name: string; item?: string }, rules: GameInventoryItemRules | undefined): number {
+  return stack.item ? (rules?.itemOf(stack.item)?.weight ?? 0) : 0;
+}
+
+/** What one bag weighs: every stack in it, its weight times how many. */
+export function gameInventoryLoad(
+  stacks: readonly GameInventoryStack[],
+  holder: string | undefined,
+  rules: GameInventoryItemRules | undefined,
+): number {
+  const bag = { holder };
+  return stacks.reduce((load, stack) => load + (inBag(stack, bag) ? weightOf(stack, rules) * stack.quantity : 0), 0);
+}
+
+/** Whether `weight` more would take this bag's bearer past the most they can carry. */
+function pastLimit(
+  stacks: readonly GameInventoryStack[],
+  holder: string | undefined,
+  weight: number,
+  rules: GameInventoryItemRules | undefined,
+): boolean {
+  if (weight <= 0) return false;
+  const limit = rules?.bearer?.(holder).limit;
+  return limit !== undefined && gameInventoryLoad(stacks, holder, rules) + weight > limit + LOAD_SLACK;
+}
+
+/** Whether a stack is a bound cursed item the player cannot part with. */
+function keptByCurse(stack: GameInventoryStack, rules: GameInventoryItemRules | undefined): boolean {
+  return (
+    rules?.actor === "player" &&
+    stack.bound === true &&
+    stack.item !== undefined &&
+    rules.itemOf(stack.item)?.binds?.cursed === true
+  );
+}
+
 /** A holder as it is kept: cleaned, and absent for nobody in particular. */
 export function cleanGameInventoryHolder(holder: unknown): string | undefined {
   if (typeof holder !== "string") return undefined;
@@ -191,10 +260,32 @@ function makeStack(stack: {
   item?: string;
   quantity: number;
   holder?: string;
+  equipped?: boolean;
+  bound?: boolean;
 }): GameInventoryStack {
-  const { id, name, nickname, item, quantity, holder } = stack;
+  const { id, name, nickname, item, quantity, holder, equipped, bound } = stack;
   const named = nickname && gameInventoryNameKey(nickname) !== gameInventoryNameKey(name) ? { nickname } : {};
-  return { id, name, ...named, ...(item ? { item } : {}), quantity, ...(holder ? { holder } : {}) };
+  return {
+    id,
+    name,
+    ...named,
+    ...(item ? { item } : {}),
+    quantity,
+    ...(holder ? { holder } : {}),
+    ...(equipped ? { equipped: true as const } : {}),
+    ...(bound ? { bound: true as const } : {}),
+  };
+}
+
+/** Whether a stack is worn or bound: one item, kept apart from the rest of its kind. */
+export function gameInventoryStackWorn(stack: { equipped?: boolean; bound?: boolean }): boolean {
+  return stack.equipped === true || stack.bound === true;
+}
+
+/** A stack as it is once it leaves the one who wore it: neither worn nor bound. */
+function unworn<T extends GameInventoryStack>(stack: T): T {
+  const { equipped: _equipped, bound: _bound, ...rest } = stack;
+  return rest as T;
 }
 
 function readItemRef(raw: unknown): string | undefined {
@@ -259,6 +350,9 @@ export function normalizeGameInventoryStacks(raw: unknown): GameInventoryStack[]
         name,
         nickname,
         item: readItemRef(source.item),
+        // Worn and bound are one item each, so a stack saved with more is read as a plain stack.
+        equipped: source.equipped === true && quantity === 1,
+        bound: source.bound === true && quantity === 1,
         quantity,
         stored,
         holder: cleanGameInventoryHolder(source.holder),
@@ -345,6 +439,9 @@ export interface GameInventoryTotal {
   ownName?: string;
   /** The ruleset item it is, when it is one. */
   item?: string;
+  /** How many of it are worn, and how many bound, when any are. */
+  equipped?: number;
+  bound?: number;
 }
 
 /** One line per item: every stack of an item added together, in the order the items first appear,
@@ -354,15 +451,19 @@ export function gameInventoryTotals(stacks: readonly GameInventoryStack[]): Game
   const totals = new Map<string, GameInventoryTotal>();
   for (const stack of stacks) {
     const item = gameInventoryItemId(stack);
-    const existing = totals.get(item);
-    if (existing) existing.quantity += stack.quantity;
-    else
-      totals.set(item, {
-        name: gameInventoryStackLabel(stack),
-        quantity: stack.quantity,
-        ...(stack.nickname ? { ownName: stack.name } : {}),
-        ...(stack.item ? { item: stack.item } : {}),
-      });
+    const line =
+      totals.get(item) ??
+      totals
+        .set(item, {
+          name: gameInventoryStackLabel(stack),
+          quantity: 0,
+          ...(stack.nickname ? { ownName: stack.name } : {}),
+          ...(stack.item ? { item: stack.item } : {}),
+        })
+        .get(item)!;
+    line.quantity += stack.quantity;
+    if (stack.equipped) line.equipped = (line.equipped ?? 0) + stack.quantity;
+    if (stack.bound) line.bound = (line.bound ?? 0) + stack.quantity;
   }
   return [...totals.values()];
 }
@@ -466,8 +567,8 @@ export function gameInventoryCount(
 
 /**
  * `amount` of the item `like` is into one bag: onto the bag's stacks of that item in order, each up to
- * `limit`, then as new stacks of at most `limit` at the end, called what the bag's first stack of it
- * is called (or what `like` is). So nothing added is ever lost, and one change never starts more than
+ * `limit` (never onto a worn or bound one, which stays one item), then as new stacks of at most
+ * `limit` at the end, called what the bag's first stack of it is called (or what `like` is). So nothing added is ever lost, and one change never starts more than
  * `GAME_INVENTORY_MAX_NEW_STACKS` stacks: past that it is refused (null). `id` is the stack it went
  * onto first.
  */
@@ -487,6 +588,7 @@ function addLike(
   const next = stacks.map((stack) => {
     if (gameInventoryItemId(stack) !== item || !inBag(stack, bag)) return stack;
     first ??= stack;
+    if (gameInventoryStackWorn(stack)) return stack;
     const topUp = Math.min(Math.max(0, limit - stack.quantity), left);
     if (topUp < 1) return stack;
     left -= topUp;
@@ -590,7 +692,7 @@ export function addToGameInventory(
 
 /** The stacks a name finds, in the order they are taken or given from: with `from`, only that bag's
  *  (and the name is read against that bag); without, the player's own bag first and then the rest of
- *  the party's, top to bottom. */
+ *  the party's, top to bottom, and in each bag what nobody wears before what is worn or bound. */
 function stacksNamed(
   stacks: readonly GameInventoryStack[],
   name: string,
@@ -601,7 +703,10 @@ function stacksNamed(
     .map((stack, index) => ({ stack, index }))
     .filter(({ stack }) => items.has(gameInventoryItemId(stack)) && (!from || inBag(stack, from)))
     .sort(
-      (a, b) => (from ? 0 : Number(Boolean(a.stack.holder)) - Number(Boolean(b.stack.holder))) || a.index - b.index,
+      (a, b) =>
+        (from ? 0 : Number(Boolean(a.stack.holder)) - Number(Boolean(b.stack.holder))) ||
+        Number(gameInventoryStackWorn(a.stack)) - Number(gameInventoryStackWorn(b.stack)) ||
+        a.index - b.index,
     );
 }
 
@@ -657,6 +762,10 @@ export function giveGameInventoryStack(
   if (!Number.isInteger(amount) || amount < 1 || amount > source.quantity) return null;
   const receiver = { holder: cleanGameInventoryHolder(to) };
   if (inBag(source, receiver)) return { stacks, id };
+  // A cursed item stays with whoever it is bound to, and nobody is handed more than they can carry.
+  if (keptByCurse(source, rules) || pastLimit(stacks, receiver.holder, weightOf(source, rules) * amount, rules)) {
+    return null;
+  }
   const makeId = newId ?? (() => newGameInventoryStackId(stacks));
   const item = gameInventoryItemId(source);
   const rest =
@@ -664,11 +773,12 @@ export function giveGameInventoryStack(
       ? stacks.filter((stack) => stack.id !== id)
       : stacks.map((stack) => (stack.id === id ? { ...stack, quantity: stack.quantity - amount } : stack));
   const existing = rest.find((stack) => gameInventoryItemId(stack) === item && inBag(stack, receiver));
-  // A whole stack given to somebody with none of it keeps its id, so a selection follows it.
+  // A whole stack given to somebody with none of it keeps its id, so a selection follows it. Whoever
+  // receives it is not wearing it and has not bound it.
   if (!existing && amount === source.quantity) {
     const index = stacks.findIndex((stack) => stack.id === id);
     return {
-      stacks: stacks.map((stack, i) => (i === index ? withHolder(stack, receiver.holder) : stack)),
+      stacks: stacks.map((stack, i) => (i === index ? withHolder(unworn(stack), receiver.holder) : stack)),
       id,
     };
   }
@@ -709,6 +819,263 @@ export function giveFromGameInventoryNamed(
   return given > 0 ? { stacks: current, given } : { stacks, given: 0 };
 }
 
+/** What an addition may be put into: one bag, or the shared view, which picks among these bags in
+ *  the order they are asked (the player's first, `undefined`, then the party in order). */
+export type GameInventoryDestination = { holder?: string } | { among: ReadonlyArray<string | undefined> };
+
+/** Where an addition went: how many into whose bag, and the stack it went onto first there. */
+export interface GameInventoryShare {
+  holder?: string;
+  count: number;
+  id: string;
+}
+
+/** The whole-item counts a weight fits into, with the slack loads are compared with. */
+function fits(room: number, weight: number): number {
+  return room === Infinity ? Infinity : Math.max(0, Math.floor(room / weight + LOAD_SLACK));
+}
+
+/**
+ * How many of an item go into whose bag (section 4.7 of the ruleset items plan). An item that weighs
+ * nothing, or a game whose ruleset does not say what anyone carries, goes where it is put: the bag
+ * named, or the first of `among`. Into one bag, what would take its bearer past the most they can
+ * carry is left behind. Into the shared view:
+ *   1. all of it to the first who can carry it without becoming encumbered;
+ *   2. otherwise split by the room each has left before becoming encumbered, most room first;
+ *   3. what still does not fit, one at a time to whoever would then be least over;
+ *   4. and what nobody can carry without passing their limit is left behind.
+ */
+export function placeGameInventoryAddition(
+  stacks: readonly GameInventoryStack[],
+  like: { name: string; item?: string },
+  amount: number,
+  destination: GameInventoryDestination,
+  rules?: GameInventoryItemRules,
+): { shares: Array<{ holder?: string; count: number }>; left: number } {
+  const candidates = ("among" in destination ? destination.among : [destination.holder]).map((holder) =>
+    cleanGameInventoryHolder(holder),
+  );
+  const weight = weightOf(like, rules);
+  if (candidates.length === 0) return { shares: [], left: amount };
+  if (weight <= 0 || !rules?.bearer) return { shares: [{ holder: candidates[0], count: amount }], left: 0 };
+  const bearers = candidates.map((holder) => {
+    const bearer = rules.bearer!(holder);
+    const load = gameInventoryLoad(stacks, holder, rules);
+    return {
+      holder,
+      free: fits((bearer.encumberedAbove ?? Infinity) - load, weight),
+      most: fits((bearer.limit ?? Infinity) - load, weight),
+      over: load - (bearer.encumberedAbove ?? Infinity),
+      got: 0,
+    };
+  });
+  if (!("among" in destination)) {
+    const count = Math.min(amount, bearers[0]!.most);
+    return { shares: count > 0 ? [{ holder: candidates[0], count }] : [], left: amount - count };
+  }
+  let left = amount;
+  const whole = bearers.find((bearer) => Math.min(bearer.free, bearer.most) >= amount);
+  if (whole) {
+    whole.got = amount;
+    left = 0;
+  } else {
+    for (const bearer of [...bearers].sort((a, b) => b.free - a.free)) {
+      const take = Math.min(left, bearer.free, bearer.most);
+      bearer.got += take;
+      left -= take;
+    }
+    // Past everyone's ease: each one to whoever is then least over, while it stays within their limit.
+    while (left > 0) {
+      let best: (typeof bearers)[number] | undefined;
+      let bestOver = Infinity;
+      for (const bearer of bearers) {
+        if (bearer.got >= bearer.most) continue;
+        const over = bearer.over + weight * (bearer.got + 1);
+        if (over < bestOver) {
+          best = bearer;
+          bestOver = over;
+        }
+      }
+      if (!best) break;
+      best.got += 1;
+      left -= 1;
+    }
+  }
+  const shares = bearers.flatMap((bearer) => (bearer.got > 0 ? [{ holder: bearer.holder, count: bearer.got }] : []));
+  return { shares, left };
+}
+
+/**
+ * An addition put into one bag or the shared view (`placeGameInventoryAddition`), each share onto
+ * that bag's stacks of the item as `addToGameInventoryNamed` adds. Null when a share would start too
+ * many stacks; `shares` is empty when nobody could carry any of it, and `left` says what stayed behind.
+ */
+export function addGameInventoryPlaced(
+  stacks: GameInventoryStack[],
+  like: { name: string; item?: string },
+  amount: number,
+  destination: GameInventoryDestination,
+  newId?: () => string,
+  rules?: GameInventoryItemRules,
+): { stacks: GameInventoryStack[]; shares: GameInventoryShare[]; left: number } | null {
+  const placed = placeGameInventoryAddition(stacks, like, amount, destination, rules);
+  const makeId = newId ?? (() => newGameInventoryStackId(current));
+  let current = stacks;
+  const shares: GameInventoryShare[] = [];
+  for (const share of placed.shares) {
+    const added = addLike(
+      current,
+      like,
+      share.count,
+      share.holder,
+      makeId,
+      stackLimit(gameInventoryItemId(like), rules),
+    );
+    if (!added) return null;
+    current = added.stacks;
+    shares.push({ ...(share.holder ? { holder: share.holder } : {}), count: share.count, id: added.id });
+  }
+  return { stacks: current, shares, left: placed.left };
+}
+
+/** Which slots one bag's worn items take, by slot id. */
+export function gameInventorySlotsUsed(
+  stacks: readonly GameInventoryStack[],
+  holder: string | undefined,
+  rules: GameInventoryItemRules | undefined,
+): Record<string, number> {
+  const used: Record<string, number> = {};
+  const bag = { holder };
+  for (const stack of stacks) {
+    if (!stack.equipped || !inBag(stack, bag) || !stack.item) continue;
+    for (const [slot, count] of Object.entries(rules?.itemOf(stack.item)?.slots ?? {})) {
+      used[slot] = (used[slot] ?? 0) + count * stack.quantity;
+    }
+  }
+  return used;
+}
+
+/** How many items one bag's bearer has bound. */
+export function gameInventoryBoundCount(stacks: readonly GameInventoryStack[], holder: string | undefined): number {
+  const bag = { holder };
+  return stacks.reduce((total, stack) => total + (stack.bound && inBag(stack, bag) ? stack.quantity : 0), 0);
+}
+
+/** What one character carries and wears, against what they can: for the screen and the Game Master. */
+export interface GameInventoryBearerStatus {
+  /** What their bag weighs. */
+  load: number;
+  encumberedAbove?: number;
+  limit?: number;
+  /** Carrying more than they can without being encumbered. */
+  encumbered: boolean;
+  bound: number;
+  bindingMax?: number;
+  /** Every slot the ruleset declares, with how many of it their worn items take. */
+  slots: Array<{ id: string; label: string; used: number; count: number }>;
+}
+
+/** One character's load, bound items and slots in use (`holder` absent for the player). */
+export function gameInventoryBearerStatus(
+  stacks: readonly GameInventoryStack[],
+  holder: string | undefined,
+  rules: GameInventoryItemRules | undefined,
+): GameInventoryBearerStatus {
+  const bearer = rules?.bearer?.(holder) ?? {};
+  const load = gameInventoryLoad(stacks, holder, rules);
+  const used = gameInventorySlotsUsed(stacks, holder, rules);
+  return {
+    load,
+    ...(bearer.encumberedAbove !== undefined ? { encumberedAbove: bearer.encumberedAbove } : {}),
+    ...(bearer.limit !== undefined ? { limit: bearer.limit } : {}),
+    encumbered: bearer.encumberedAbove !== undefined && load > bearer.encumberedAbove + LOAD_SLACK,
+    bound: gameInventoryBoundCount(stacks, holder),
+    ...(bearer.bindingMax !== undefined ? { bindingMax: bearer.bindingMax } : {}),
+    slots: (rules?.slots ?? []).map((slot) => ({ ...slot, used: used[slot.id] ?? 0 })),
+  };
+}
+
+/** Putting an item on or taking it off, binding or unbinding it. */
+export type GameInventoryWear = "equip" | "unequip" | "bind" | "unbind";
+
+/** Why a stack could not be worn or bound: it takes no slots, its slots are taken, it does not bind,
+ *  its bearer has bound all they can, or it is a bound cursed item the player cannot part with. */
+export type GameInventoryWearRefusal = "not-wearable" | "no-slot" | "not-bindable" | "binding-full" | "cursed";
+
+/**
+ * One stack put on, taken off, bound or unbound by whoever carries it. Only a ruleset item that takes
+ * slots can be equipped, while its bearer has those slots free, and only one that binds can be bound,
+ * while its bearer is under their binding maximum. One item of a larger stack is taken into a stack
+ * of its own right after it, which is the stack returned. Taking off or unbinding what is not worn or
+ * bound changes nothing. The player cannot take off or unbind a bound cursed item. Null when there
+ * is no such stack.
+ */
+export function wearGameInventoryStack(
+  stacks: GameInventoryStack[],
+  id: string,
+  wear: GameInventoryWear,
+  newId: () => string = () => newGameInventoryStackId(stacks),
+  rules?: GameInventoryItemRules,
+): { stacks: GameInventoryStack[]; id: string } | { refused: GameInventoryWearRefusal } | null {
+  const index = stacks.findIndex((stack) => stack.id === id);
+  if (index < 0) return null;
+  const stack = stacks[index]!;
+  const flag = wear === "equip" || wear === "unequip" ? "equipped" : "bound";
+  if (wear === "unequip" || wear === "unbind") {
+    if (!stack[flag]) return { stacks, id };
+    if (keptByCurse(stack, rules)) return { refused: "cursed" };
+    const { [flag]: _dropped, ...rest } = stack;
+    return { stacks: stacks.map((each, i) => (i === index ? rest : each)), id };
+  }
+  if (stack[flag]) return { stacks, id };
+  const known = stack.item ? rules?.itemOf(stack.item) : undefined;
+  if (flag === "equipped") {
+    const takes = Object.entries(known?.slots ?? {}).filter(([, count]) => count > 0);
+    if (takes.length === 0) return { refused: "not-wearable" };
+    const used = gameInventorySlotsUsed(stacks, stack.holder, rules);
+    for (const [slot, count] of takes) {
+      const has = rules?.slots?.find((each) => each.id === slot)?.count ?? 0;
+      if ((used[slot] ?? 0) + count > has) return { refused: "no-slot" };
+    }
+  } else {
+    if (!known?.binds) return { refused: "not-bindable" };
+    const max = rules?.bearer?.(stack.holder).bindingMax;
+    if (max !== undefined && gameInventoryBoundCount(stacks, stack.holder) + 1 > max) {
+      return { refused: "binding-full" };
+    }
+  }
+  if (stack.quantity === 1) {
+    return { stacks: stacks.map((each, i) => (i === index ? { ...each, [flag]: true as const } : each)), id };
+  }
+  const one = { ...stack, id: newId(), quantity: 1, [flag]: true as const };
+  return {
+    stacks: [...stacks.slice(0, index), { ...stack, quantity: stack.quantity - 1 }, one, ...stacks.slice(index + 1)],
+    id: one.id,
+  };
+}
+
+/** Why the player cannot hand this much of a stack to that bag: a bound cursed item stays, and nobody
+ *  is given more than they can carry. */
+export function gameInventoryGiveRefusal(
+  stacks: readonly GameInventoryStack[],
+  stack: GameInventoryStack,
+  to: string | undefined,
+  amount: number,
+  rules: GameInventoryItemRules | undefined,
+): "cursed" | "too-heavy" | undefined {
+  if (keptByCurse(stack, rules)) return "cursed";
+  if (pastLimit(stacks, cleanGameInventoryHolder(to), weightOf(stack, rules) * amount, rules)) return "too-heavy";
+  return undefined;
+}
+
+/** Whether the player's own change would part them from this stack: a bound cursed item. */
+export function gameInventoryKeptByCurse(
+  stack: GameInventoryStack,
+  rules: GameInventoryItemRules | undefined,
+): boolean {
+  return keptByCurse(stack, rules);
+}
+
 /** Two stacks trading places, wherever they are in the list. */
 export function swapGameInventoryStacks(
   stacks: GameInventoryStack[],
@@ -726,7 +1093,8 @@ export function swapGameInventoryStacks(
 /**
  * One stack set to a count. Zero removes it. A count past what one stack of the item holds fills this
  * stack and puts the rest in new stacks right after it, like it, unless that would start too many
- * stacks, which changes nothing. Nothing passes the inventory's bound.
+ * stacks, which changes nothing. A worn or bound stack holds one, so what is added beside it is
+ * neither. The player cannot take a bound cursed item away. Nothing passes the inventory's bound.
  */
 export function setGameInventoryStackQuantity(
   stacks: GameInventoryStack[],
@@ -740,13 +1108,16 @@ export function setGameInventoryStackQuantity(
   const stack = stacks[index]!;
   const next = clampQuantity(quantity);
   if (next === stack.quantity) return stacks;
+  if (next < stack.quantity && keptByCurse(stack, rules)) return stacks;
   if (next === 0) return stacks.filter((_, i) => i !== index);
-  const limit = stackLimit(gameInventoryItemId(stack), rules);
+  const worn = gameInventoryStackWorn(stack);
+  const limit = worn ? 1 : stackLimit(gameInventoryItemId(stack), rules);
   if (next <= limit) return stacks.map((each, i) => (i === index ? { ...each, quantity: next } : each));
-  if (Math.ceil((next - limit) / limit) > GAME_INVENTORY_MAX_NEW_STACKS) return stacks;
+  const beside = worn ? stackLimit(gameInventoryItemId(stack), rules) : limit;
+  if (Math.ceil((next - limit) / beside) > GAME_INVENTORY_MAX_NEW_STACKS) return stacks;
   const rest: GameInventoryStack[] = [];
-  for (let left = next - limit; left > 0; left -= limit) {
-    rest.push({ ...stack, id: newId(), quantity: Math.min(left, limit) });
+  for (let left = next - limit; left > 0; left -= beside) {
+    rest.push({ ...unworn(stack), id: newId(), quantity: Math.min(left, beside) });
   }
   return [...stacks.slice(0, index), { ...stack, quantity: limit }, ...rest, ...stacks.slice(index + 1)];
 }
@@ -788,6 +1159,8 @@ export function mergeGameInventoryStacks(
   const from = stacks.find((stack) => stack.id === fromId);
   const into = stacks.find((stack) => stack.id === intoId);
   if (!from || !into || gameInventoryItemId(from) !== gameInventoryItemId(into)) return stacks;
+  // A worn or bound item is one item on its own.
+  if (gameInventoryStackWorn(from) || gameInventoryStackWorn(into)) return stacks;
   const moved = Math.min(from.quantity, stackLimit(gameInventoryItemId(into), rules) - into.quantity);
   if (moved < 1) return stacks;
   return stacks.flatMap((stack) => {

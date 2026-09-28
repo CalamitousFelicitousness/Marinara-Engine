@@ -30,11 +30,13 @@ const { createConnectionsStorage } = await import("../../packages/server/src/ser
 const { gameRoutes } = await import("../../packages/server/src/routes/game.routes.js");
 const { createGameRulesetsStorage } =
   await import("../../packages/server/src/services/storage/game-rulesets.storage.js");
+const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
 const {
   normalizeGameInventoryStacks,
   gameInventoryCount,
   readResolvedInventoryTags,
   CHAT_PRESET_EXCLUDED_METADATA_KEYS,
+  characterDataSchema,
 } = await import("../../packages/shared/src/index.js");
 const { ClaudeSubscriptionProvider } =
   await import("../../packages/server/src/services/llm/providers/claude-subscription.provider.js");
@@ -399,6 +401,10 @@ try {
     const ember = JSON.parse(
       readFileSync(fileURLToPath(new URL("../../docs/examples/rulesets/ember-roads.json", import.meta.url)), "utf8"),
     ) as Record<string, any>;
+    // Without carrying: these checks are about which item a name is and how many one stack holds, and
+    // carrying has its own section below.
+    delete ember.items.carry;
+    for (const family of ember.items.currencies ?? []) delete family.perWeight;
     const strict = structuredClone(ember);
     strict.id = "ember-strict";
     strict.items.freeform = "refuse";
@@ -528,7 +534,7 @@ try {
       .join("\n");
     assert.match(
       prompt,
-      /PLAYER INVENTORY: Road rations ×10 \[Provisions, Common; Bulk 1\]; Arrows ×4; Lamp; Arrows ×2 \[Ammunition, Common; Bulk 1\]/,
+      /PLAYER INVENTORY \(Body 0 of 1, Hands 0 of 2\): Road rations ×10 \[Provisions, Common; Bulk 1\]; Arrows ×4; Lamp; Arrows ×2 \[Ammunition, Common; Bulk 1\]/,
     );
     assert.match(prompt, /an item named exactly as one of them becomes that item/);
 
@@ -577,6 +583,199 @@ try {
       "Arrows <outfitter/arrows> 20",
       "Arrows <outfitter/arrows> 10",
     ]);
+  }
+
+  // ── Wearing and carrying (#6801): the route and a turn read each character's sheet ──
+  {
+    const read = (name: string) =>
+      JSON.parse(
+        readFileSync(fileURLToPath(new URL(`../../docs/examples/rulesets/${name}.json`, import.meta.url)), "utf8"),
+      ) as Record<string, any>;
+    const ember = { ...read("ember-roads"), id: "ember-carry" };
+    const gravewatch = { ...read("gravewatch"), id: "gravewatch-kit" };
+    const rulesets = createGameRulesetsStorage(db);
+    await rulesets.put({
+      rulesetId: "local/ember-carry",
+      version: ember.version,
+      sourceKind: "local",
+      definition: JSON.stringify(ember),
+    });
+    await rulesets.put({
+      rulesetId: "local/gravewatch-kit",
+      version: gravewatch.version,
+      sourceKind: "local",
+      definition: JSON.stringify(gravewatch),
+    });
+    const connection = (await createConnectionsStorage(db).list())[0]!;
+    // Bram is a party member, so the Game Master's shared adds may go to him.
+    const bram = await createCharactersStorage(db).create(characterDataSchema.parse({ name: "Bram" }));
+    const game = async (id: string, version: number, cards: unknown[]) => {
+      const made = await chats.create({
+        name: `Wearing ${id}`,
+        mode: "game",
+        characterIds: [],
+        connectionId: connection.id,
+        promptPresetId: null,
+      });
+      assert.ok(made);
+      await chats.patchMetadata(made.id, {
+        enableAgents: false,
+        enableTools: false,
+        gameRuleset: { id, version, packageId: null, options: {} },
+        gameCharacterCards: cards,
+        gamePartyCharacterIds: [bram.id],
+      });
+      return made;
+    };
+    const stacksOf = async (chatId: string) => {
+      const row = await chats.getById(chatId);
+      const meta = typeof row!.metadata === "string" ? JSON.parse(row!.metadata) : row!.metadata;
+      return normalizeGameInventoryStacks(meta.gameInventory).map(
+        (stack) =>
+          `${stack.name} ${stack.quantity} ${stack.holder ?? "player"}${stack.equipped ? " worn" : ""}${stack.bound ? " bound" : ""}`,
+      );
+    };
+    const change = async (chatId: string, ops: unknown[]) => {
+      const response = await app.inject({ method: "POST", url: "/api/game/inventory", payload: { chatId, ops } });
+      assert.equal(response.statusCode, 200, response.body);
+      return response.json().results as Array<Record<string, unknown>>;
+    };
+    const turnIn = async (chatId: string, text: string) => {
+      reply = text;
+      await chats.createMessage({ chatId, role: "user", content: "We go on." });
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/generate/",
+        payload: { chatId, streaming: true },
+      });
+      assert.equal(response.statusCode, 200, response.body);
+      return readResolvedInventoryTags((await chats.listMessages(chatId)).at(-1)!.content).map(
+        (tag) => `${tag.action} ${tag.item} ${tag.who ?? "-"} ${tag.ok ? `ok ${tag.count}->${tag.now}` : tag.reason}`,
+      );
+    };
+
+    // Ember Roads: a traveller carries 6 + Brawn before the road slows them, and 12 at the most. With
+    // no persona the first card is the player's: Ada, Brawn 0 (6); Bram, Brawn 3 (9).
+    const sheet = (brawn: number) => ({
+      v: 1,
+      build: { abilities: { brawn, wits: 0, heart: 0 }, fields: {}, lists: {} },
+    });
+    const road = await game("local/ember-carry", ember.version, [
+      { name: "Ada", rulesetSheet: sheet(0) },
+      { name: "Bram", rulesetSheet: sheet(3) },
+    ]);
+    const shared = ["", "Bram"];
+    // The coat (Bulk 3) fits Ada. Five rations do not fit her any more, so they all go to Bram.
+    await change(road.id, [
+      { op: "add", name: "Leather coat", count: 1, among: shared },
+      { op: "add", name: "Road rations", count: 5, among: shared },
+    ]);
+    assert.deepEqual(await stacksOf(road.id), ["Leather coat 1 player", "Road rations 5 Bram"]);
+    // Ten arrows fit nobody whole: split by the room each has left (Bram 4, Ada 3), then one at a time
+    // to whoever is then least over. The answers say who got how many.
+    assert.deepEqual(
+      await turnIn(
+        road.id,
+        `The quartermaster hands over a bundle. [inventory: action="add" item="Arrows" count="10"]`,
+      ),
+      ["add Arrows - ok 5->5", "add Arrows Bram ok 5->5"],
+    );
+    // Four bows (Bulk 2) are more than anyone can carry at all: three go, one stays behind.
+    assert.deepEqual(await turnIn(road.id, `A rack of bows. [inventory: action="add" item="Hunting bow" count="4"]`), [
+      "add Hunting bow - ok 2->2",
+      "add Hunting bow Bram ok 1->1",
+      "add Hunting bow - too-heavy",
+    ]);
+    // Past what Bram can carry at all, the player cannot hand him more.
+    const savedStacks = async () =>
+      normalizeGameInventoryStacks(JSON.parse((await chats.getById(road.id))!.metadata as string).gameInventory);
+    const bows = (await savedStacks()).find((stack) => stack.name === "Hunting bow" && !stack.holder)!;
+    const coat = (await savedStacks()).find((stack) => stack.name === "Leather coat")!;
+    assert.deepEqual(
+      (await change(road.id, [{ op: "give", id: bows.id, to: "Bram", count: 1 }])).map((result) => result.reason),
+      ["too-heavy"],
+    );
+    // Slots: the coat takes the body and one bow both hands (taken out of the pair into its own
+    // stack), so the other bow finds no hand free.
+    assert.deepEqual(
+      (
+        await change(road.id, [
+          { op: "equip", id: coat.id },
+          { op: "equip", id: bows.id },
+        ])
+      ).map((result) => (result.ok ? "ok" : result.reason)),
+      ["ok", "ok"],
+    );
+    const spare = (await savedStacks()).find(
+      (stack) => stack.name === "Hunting bow" && !stack.holder && !stack.equipped,
+    )!;
+    assert.equal(spare.quantity, 1);
+    assert.deepEqual(
+      (await change(road.id, [{ op: "equip", id: spare.id }])).map((result) => (result.ok ? "ok" : result.reason)),
+      ["no-slot"],
+    );
+    // The next turn's prompt shows each character's load and slots, and what is worn.
+    const prompt = async () => {
+      reply = "The road is long.";
+      await chats.createMessage({ chatId: road.id, role: "user", content: "We walk." });
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/generate/",
+        payload: { chatId: road.id, streaming: true },
+      });
+      assert.equal(response.statusCode, 200, response.body);
+      return prompts
+        .at(-1)!
+        .map((message) => message.content)
+        .join("\n");
+    };
+    const text = await prompt();
+    const at = text.indexOf("PARTY INVENTORY:");
+    const block = text.slice(at, text.indexOf("\n\n", at));
+    assert.match(
+      block,
+      /- User \(load 12 of 6, most 12, encumbered; Body 1 of 1, Hands 2 of 2\): Leather coat \(1 worn\) \[[^\]]*\]; Arrows ×5 \[[^\]]*\]; Hunting bow ×2 \(1 worn\)/,
+    );
+    assert.match(block, /- Bram \(load 12 of 9, most 12, encumbered; Body 0 of 1, Hands 0 of 2\): /);
+    assert.match(text, /an add with who left out goes to whoever can carry it/);
+    assert.match(text, /\[inventory: action="equip\|unequip\|bind\|unbind"/);
+
+    // Gravewatch: binding up to the bearer's Nerve. Ada has Nerve 1, so the ring binds and the bell
+    // cannot. The ring is cursed: the player cannot unbind it, give it or throw it away, and the Game
+    // Master can end the curse in the story.
+    const watch = await game("local/gravewatch-kit", gravewatch.version, [
+      {
+        name: "Ada",
+        rulesetSheet: { v: 1, build: { abilities: { sinew: 1, nerve: 1, warmth: 1 }, fields: {}, lists: {} } },
+      },
+    ]);
+    await change(watch.id, [
+      { op: "add", name: "Widow's ring", count: 1 },
+      { op: "add", name: "Dawn bell", count: 1 },
+      { op: "add", name: "Grave spade", count: 1 },
+    ]);
+    const kit = normalizeGameInventoryStacks(
+      JSON.parse((await chats.getById(watch.id))!.metadata as string).gameInventory,
+    );
+    const id = (name: string) => kit.find((stack) => stack.name === name)!.id;
+    assert.deepEqual(
+      (
+        await change(watch.id, [
+          { op: "bind", id: id("Widow's ring") },
+          { op: "bind", id: id("Dawn bell") },
+          { op: "bind", id: id("Grave spade") },
+          { op: "unbind", id: id("Widow's ring") },
+          { op: "give", id: id("Widow's ring"), to: "Bram" },
+          { op: "set", id: id("Widow's ring"), quantity: 0 },
+        ])
+      ).map((result) => (result.ok ? "ok" : result.reason)),
+      ["ok", "binding-full", "not-bindable", "cursed", "cursed", "cursed"],
+    );
+    assert.deepEqual(
+      await turnIn(watch.id, `The priest lifts the curse. [inventory: action="unbind" item="Widow's ring"]`),
+      ["unbind Widow's ring - ok 1->0"],
+    );
+    assert.deepEqual(await stacksOf(watch.id), ["Widow's ring 1 player", "Dawn bell 1 player", "Grave spade 1 player"]);
   }
 
   console.info("game inventory turn regressions passed.");

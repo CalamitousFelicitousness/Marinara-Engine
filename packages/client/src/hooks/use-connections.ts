@@ -123,6 +123,7 @@ export function useUpdateConnection() {
       Promise.all([
         qc.invalidateQueries({ queryKey: connectionKeys.list() }),
         qc.invalidateQueries({ queryKey: connectionKeys.detail(variables.id) }),
+        qc.invalidateQueries({ queryKey: [...connectionKeys.all, "models", variables.id] }),
       ]),
   });
 }

@@ -13,26 +13,26 @@ test("character library compares duplicates and bulk tags persist across reload"
   const suffix = Date.now().toString();
   const name = `E2E Synthetic Library ${suffix}`;
   const createdIds: string[] = [];
-  for (const cardName of [name, `${name} (copy)`]) {
-    const response = await request.post("/api/characters", {
-      data: {
-        data: {
-          name: cardName,
-          description: "Synthetic test card for the character library tools.",
-          personality: "Patient and observant.",
-          scenario: "A neutral test setting.",
-          first_mes: "Hello from the test fixture.",
-          tags: ["remove-this-tag"],
-          creator: "Synthetic E2E fixture",
-          character_version: "1",
-        },
-      },
-    });
-    expect(response.ok(), await response.text()).toBeTruthy();
-    createdIds.push(((await response.json()) as { id: string }).id);
-  }
-
   try {
+    for (const cardName of [name, `${name} (copy)`]) {
+      const response = await request.post("/api/characters", {
+        data: {
+          data: {
+            name: cardName,
+            description: "Synthetic test card for the character library tools.",
+            personality: "Patient and observant.",
+            scenario: "A neutral test setting.",
+            first_mes: "Hello from the test fixture.",
+            tags: ["remove-this-tag"],
+            creator: "Synthetic E2E fixture",
+            character_version: "1",
+          },
+        },
+      });
+      expect(response.ok(), await response.text()).toBeTruthy();
+      createdIds.push(((await response.json()) as { id: string }).id);
+    }
+
     await page.route("**/api/app-settings/ui", (route) =>
       route.fulfill({ json: route.request().method() === "GET" ? { value: "" } : { success: true } }),
     );

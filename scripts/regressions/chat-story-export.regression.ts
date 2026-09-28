@@ -202,6 +202,31 @@ try {
   assert.ok(story.body.includes('<span class="name">Ayla</span>'));
   assert.ok(!story.body.includes("HIDDEN TURN") && !story.body.includes("OLD SWIPE"));
 
+  await db.insert(chats).values({
+    id: "chat-game-story",
+    name: "Game Story",
+    mode: "game",
+    characterIds: JSON.stringify(["char-a"]),
+    createdAt: at(1),
+    updatedAt: at(2),
+  });
+  await db.insert(messages).values({
+    id: "game-assistant",
+    chatId: "chat-game-story",
+    role: "assistant",
+    characterId: "char-a",
+    content: "The gate opens.",
+    createdAt: at(2),
+  });
+  const gameMarkdown = await app.inject({ method: "GET", url: "/api/chats/chat-game-story/export?format=markdown" });
+  assert.equal(gameMarkdown.statusCode, 200);
+  assert.ok(gameMarkdown.body.includes("### Narrator\n\nThe gate opens."), "Game assistant turns use the narrator");
+  const gameHtml = await app.inject({ method: "GET", url: "/api/chats/chat-game-story/export?format=html" });
+  assert.equal(gameHtml.statusCode, 200);
+  assert.ok(gameHtml.body.includes('<article class="turn narrator">'));
+  assert.ok(gameHtml.body.includes('<span class="name">Narrator</span>'));
+  assert.ok(!gameHtml.body.includes('<span class="name">Ayla</span>'));
+
   const text = await app.inject({ method: "GET", url: "/api/chats/chat-story/export?format=text" });
   assert.ok(text.body.startsWith("Chat: Moon Road"), "existing text export is unchanged");
 

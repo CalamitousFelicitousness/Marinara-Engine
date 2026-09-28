@@ -4268,11 +4268,11 @@ export async function chatsRoutes(app: FastifyInstance) {
           msg.role === "user" && isExportRecord(extra.personaSnapshot)
             ? readExportName(extra.personaSnapshot.name)
             : null;
-        const isCharacterTurn = msg.role === "assistant" && displayName !== "Narrator";
+        const isCharacterTurn = msg.role === "assistant" && chat.mode !== "game" && displayName !== "Narrator";
         entries.push({
           speakerKey:
             msg.role === "user" ? "user" : isCharacterTurn ? `character:${msg.characterId ?? "primary"}` : "narrator",
-          speaker: msg.role === "user" ? (snapshotName ?? userName) : displayName,
+          speaker: msg.role === "user" ? (snapshotName ?? userName) : isCharacterTurn ? displayName : "Narrator",
           role: isCharacterTurn || msg.role === "user" ? msg.role : "narrator",
           content,
           createdAt: msg.createdAt,

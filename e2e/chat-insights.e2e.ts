@@ -89,6 +89,13 @@ test("chat search, stats and story exports work with private content filtered", 
     await search.fill("private comet needle");
     await expect(searchDialog.getByText("No messages match.", { exact: true })).toBeVisible();
     await page.keyboard.press("Escape");
+    // Mobile projects share a server, whose minute-long overview cache may
+    // still contain the preceding project's already-deleted fixture chats.
+    const timeZone = await page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
+    const refreshedActivity = await request.get(
+      `/api/chat-insights/activity?refresh=true&tz=${encodeURIComponent(timeZone)}`,
+    );
+    expect(refreshedActivity.ok(), await refreshedActivity.text()).toBeTruthy();
     await page.getByRole("button", { name: "Activity overview", exact: true }).click();
     const activityDialog = page.getByRole("dialog", { name: "Activity", exact: true });
     await expect(activityDialog.getByRole("img", { name: /Activity heatmap/u })).toBeVisible();

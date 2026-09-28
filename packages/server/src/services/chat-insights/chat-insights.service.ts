@@ -355,8 +355,8 @@ async function summarizeChatActivity(db: DB, chat: ChatRow, generation: number):
 /**
  * Per-chat activity summaries that survive between overview builds, so a
  * rebuild only re-reads chats that may have changed. A summary is reused when
- * the chat's updatedAt/lastMessageAt are unchanged and no message was written
- * since it was computed. Residency cannot prove that a chat is unchanged:
+ * the chat's updatedAt/lastMessageAt and the entire messages table write
+ * generation are unchanged. Residency cannot prove that a chat is unchanged:
  * an edited unit can be flushed and evicted before the next overview build.
  */
 export function createChatActivitySummaryCache(db: DB, maxAgeMs = ACTIVITY_SUMMARY_MAX_AGE_MS) {

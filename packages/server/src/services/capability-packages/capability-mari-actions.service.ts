@@ -1,9 +1,17 @@
+import { withDeadline } from "./capability-prompt-context.service.js";
 import { getCapabilityService, listCapabilityServiceKeys } from "./capability-service-registry.service.js";
 
 const SERVICE_PREFIX = "mari-actions:";
 const PACKAGE_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const ACTION_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/;
 const MAX_INPUT_CHARS = 64_000;
+const MAX_ACTIONS = 50;
+const MAX_INPUTS = 40;
+const MAX_TEXT_CHARS = 300;
+const MAX_ERROR_CHARS = 2_000;
+const LIST_TIMEOUT_MS = 5_000;
+// ponytail: one fixed ceiling for every action; a per-action deadline from list() if a package needs longer.
+const RUN_TIMEOUT_MS = 300_000;
 
 /** One action a package lets Professor Mari run. `summary` and `inputs` are what Mari reads. */
 export interface CapabilityMariAction {
@@ -16,11 +24,16 @@ export type CapabilityMariActionOutcome = { ok: true; value: unknown } | { ok: f
 
 /**
  * Registered as `mari-actions:<package-id>` by a package holding the `mari-actions` permission.
- * `run` receives untrusted model input and must validate it against its own schema.
+ * `run` receives untrusted model input and must validate it against its own schema. `signal` aborts
+ * when the user stops Mari or the Engine's deadline passes.
  */
 export interface CapabilityMariActionsService {
   list(): readonly CapabilityMariAction[] | Promise<readonly CapabilityMariAction[]>;
-  run(name: string, input: Record<string, unknown>): Promise<CapabilityMariActionOutcome>;
+  run(
+    name: string,
+    input: Record<string, unknown>,
+    options: { signal: AbortSignal },
+  ): Promise<CapabilityMariActionOutcome>;
 }
 
 /** The key encodes the owner, so no package can offer Mari actions in another package's name. */
@@ -38,19 +51,42 @@ export function assertCapabilityMariActionsServiceRegistration(
   }
 }
 
+/** A data URL (a drawn picture) is megabytes of base64 that would only fill Mari's context. */
+export function elideDataUrls(text: string): string {
+  return text.replace(
+    /data:[\w/+.-]+;base64,[A-Za-z0-9+/=]+/gu,
+    (match) => `<data URL, ${match.length} characters, omitted>`,
+  );
+}
+
+function clip(value: unknown, max: number): string {
+  const text = elideDataUrls(typeof value === "string" ? value : String(value));
+  return text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
 function serviceFor(packageId: string): CapabilityMariActionsService | null {
   const service = getCapabilityService<CapabilityMariActionsService>(`${SERVICE_PREFIX}${packageId}`);
   return service && typeof service.list === "function" && typeof service.run === "function" ? service : null;
 }
 
-async function actionsOf(service: CapabilityMariActionsService): Promise<CapabilityMariAction[]> {
-  const listed = await service.list();
-  return Array.isArray(listed)
-    ? listed.filter(
-        (action): action is CapabilityMariAction =>
-          !!action && typeof action.name === "string" && ACTION_NAME_PATTERN.test(action.name),
-      )
-    : [];
+/** Package-authored text reaches Mari's prompt, so only bounded strings of well-formed actions pass. */
+async function actionsOf(packageId: string, service: CapabilityMariActionsService): Promise<CapabilityMariAction[]> {
+  const listed = await withDeadline(service.list(), `${packageId} Mari action list`, LIST_TIMEOUT_MS);
+  if (!Array.isArray(listed)) return [];
+  return listed
+    .filter((action) => !!action && typeof action.name === "string" && ACTION_NAME_PATTERN.test(action.name))
+    .slice(0, MAX_ACTIONS)
+    .map((action: CapabilityMariAction) => {
+      const inputs = Object.entries(action.inputs && typeof action.inputs === "object" ? action.inputs : {})
+        .filter((entry): entry is [string, string] => typeof entry[1] === "string")
+        .slice(0, MAX_INPUTS)
+        .map(([key, text]) => [clip(key, 80), clip(text, MAX_TEXT_CHARS)]);
+      return {
+        name: action.name,
+        ...(typeof action.summary === "string" ? { summary: clip(action.summary, MAX_TEXT_CHARS) } : {}),
+        ...(inputs.length > 0 ? { inputs: Object.fromEntries(inputs) } : {}),
+      };
+    });
 }
 
 /** Every active package that offers Mari actions, with the actions it offers. */
@@ -61,40 +97,66 @@ export async function listCapabilityMariActions(): Promise<Array<{ package: stri
     const service = serviceFor(packageId);
     if (!service) continue;
     try {
-      result.push({
-        package: packageId,
-        actions: (await actionsOf(service)).map(({ name, summary, inputs }) => ({ name, summary, inputs })),
-      });
+      result.push({ package: packageId, actions: await actionsOf(packageId, service) });
     } catch {
-      // One broken package must not hide the others.
+      // One broken or slow package must not hide the others.
     }
   }
   return result;
 }
 
-/** Runs one action of one package. Throws a message Mari can act on for anything it asked wrongly. */
-export async function runCapabilityMariAction(packageId: string, action: string, input: unknown): Promise<unknown> {
-  if (!PACKAGE_ID_PATTERN.test(packageId)) throw new Error(`"${packageId}" is not a package id`);
+/** Runs one action of one package. Throws a bounded message Mari can act on. */
+export async function runCapabilityMariAction(
+  packageId: string,
+  action: string,
+  input: unknown,
+  signal: AbortSignal,
+): Promise<unknown> {
+  if (!PACKAGE_ID_PATTERN.test(packageId)) throw new Error(`"${clip(packageId, 80)}" is not a package id`);
   const service = serviceFor(packageId);
   if (!service) {
     throw new Error(
       `Package "${packageId}" offers no Mari actions. Call package_service without a package to list the ones that do.`,
     );
   }
-  if (!(await actionsOf(service)).some((entry) => entry.name === action)) {
+  if (!(await actionsOf(packageId, service)).some((entry) => entry.name === action)) {
     throw new Error(
-      `Package "${packageId}" has no Mari action "${action}". Call package_service with only package="${packageId}" to list its actions.`,
+      `Package "${packageId}" has no Mari action "${clip(action, 80)}". Call package_service with only package="${packageId}" to list its actions.`,
     );
   }
   const payload = input ?? {};
   if (typeof payload !== "object" || Array.isArray(payload)) throw new Error("input must be a JSON object");
   const serialized = JSON.stringify(payload);
   if (serialized.length > MAX_INPUT_CHARS) throw new Error(`input is larger than ${MAX_INPUT_CHARS} characters`);
-  // A JSON round trip hands the package plain data only: no prototypes, functions or shared references.
-  const outcome = await service.run(action, JSON.parse(serialized) as Record<string, unknown>);
-  if (!outcome || typeof outcome !== "object" || typeof outcome.ok !== "boolean") {
-    throw new Error(`Package "${packageId}" returned an invalid answer for "${action}"`);
+  signal.throwIfAborted();
+  // The package sees Mari's stop and the deadline through one signal, and the Engine stops waiting on
+  // either even if the package ignores it, so a stuck action cannot hold Mari's change lane forever.
+  const controller = new AbortController();
+  const abort = () => controller.abort(signal.reason);
+  signal.addEventListener("abort", abort, { once: true });
+  const aborted = new Promise<never>((_resolve, reject) => {
+    controller.signal.addEventListener("abort", () => reject(new Error(`${packageId} ${action} was stopped`)), {
+      once: true,
+    });
+  });
+  let outcome: CapabilityMariActionOutcome;
+  try {
+    // A JSON round trip hands the package plain data only: no prototypes, functions or shared references.
+    const running = Promise.resolve(
+      service.run(action, JSON.parse(serialized) as Record<string, unknown>, { signal: controller.signal }),
+    );
+    outcome = await withDeadline(Promise.race([running, aborted]), `${packageId} ${action}`, RUN_TIMEOUT_MS);
+  } catch (err) {
+    controller.abort();
+    throw new Error(`${packageId} ${action} failed: ${clip(err instanceof Error ? err.message : err, MAX_ERROR_CHARS)}`);
+  } finally {
+    signal.removeEventListener("abort", abort);
   }
-  if (!outcome.ok) throw new Error(`${packageId} ${action} failed: ${outcome.error || "no reason given"}`);
+  if (!outcome || typeof outcome !== "object" || typeof outcome.ok !== "boolean") {
+    throw new Error(`Package "${packageId}" returned an invalid answer for "${clip(action, 80)}"`);
+  }
+  if (!outcome.ok) {
+    throw new Error(`${packageId} ${action} failed: ${clip(outcome.error || "no reason given", MAX_ERROR_CHARS)}`);
+  }
   return outcome.value;
 }

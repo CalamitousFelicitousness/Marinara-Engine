@@ -1098,10 +1098,10 @@ export async function activate({ api }) {
     list: () => [
       { name: "add-idea", summary: "Give a Creator an idea for a post.", inputs: { accountId: "The Creator.", text: "The idea." } },
     ],
-    run: async (name, input) => {
+    run: async (name, input, { signal }) => {
       const parsed = schemas[name]?.safeParse(input);
       if (!parsed?.success) return { ok: false, status: 400, error: "Invalid input." };
-      return { ok: true, value: await doIt(name, parsed.data) };
+      return { ok: true, value: await doIt(name, parsed.data, signal) };
     },
   });
 }
@@ -1114,15 +1114,19 @@ Rules worth knowing:
   names.
 - `list()` returns `{ name, summary?, inputs? }` entries. Names are 1 to 80 letters, digits, `.`, `_` or
   `-`; other entries are not shown. `summary` and `inputs` are what Mari reads, so write them in plain
-  words.
+  words. Mari sees at most 50 actions and 40 inputs per action, and each text is cut at 300 characters.
+  `list()` must answer within 5 seconds, or the package's actions are left out.
 - `run(name, input)` is called only with a listed name and a plain JSON object of at most 64,000
   characters. The input comes from a model: validate it against your own schema before doing anything.
-  Answer `{ ok: true, value }` or `{ ok: false, status?, error }`; Mari sees the error text.
+  Answer `{ ok: true, value }` or `{ ok: false, status?, error }`; Mari sees the first 2,000 characters
+  of the error text. `signal` aborts when the user stops Mari or after 5 minutes; the Engine stops
+  waiting at that point, so stop your work too.
 - The Engine elides data URLs in `value` before Mari reads it, and truncates long answers. Return ids
   and short text, not files.
 - Listing is read-only. Every run counts as a change for Mari's Permissions Mode: Plan refuses it,
   Manual holds it for the user's Accept. The Engine cannot preview or undo a package action, so no
   Keep/Restore card is shown; offer an undo action of your own when a change is hard to take back.
+  Because of this, Plan mode also refuses actions that only read.
 - Deactivating or removing the package removes its actions.
 
 `mari-actions` is refused on a manifest that declares a `capabilityApi` older than 1.50.

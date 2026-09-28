@@ -55,15 +55,31 @@ assert.throws(
 
 // ── Listing and running ─────────────────────────────────────────────────────
 resetCapabilityServices();
+const live = new AbortController().signal;
+// withDeadline unrefs its timer (right for the server); keep this script alive while it waits.
+const keepAlive = setInterval(() => undefined, 1_000);
 const received: unknown[] = [];
+let hangSignal: AbortSignal | null = null;
 const slurp: CapabilityMariActionsService = {
   list: () => [
     { name: "add-idea", summary: "Give a Creator an idea.", inputs: { accountId: "The Creator.", text: "The idea." } },
     { name: "draw-picture", summary: "Draw a picture." },
+    { name: "long", summary: "y".repeat(5000), inputs: { ok: "fine", bad: 3 as unknown as string } },
+    { name: "odd", summary: { not: "text" } as unknown as string },
+    { name: "hang" },
+    { name: "huge-error" },
     { name: "bad name with spaces" },
   ],
-  run: async (name, input) => {
+  run: async (name, input, { signal }) => {
     received.push(input);
+    if (name === "hang") {
+      // Ignores its signal on purpose: the Engine must stop waiting anyway.
+      hangSignal = signal;
+      return new Promise(() => undefined);
+    }
+    if (name === "huge-error") {
+      return { ok: false, error: `bad ${"z".repeat(10_000)} data:image/png;base64,${"B".repeat(9000)}` };
+    }
     if (name === "draw-picture") return { ok: true, value: { image: `data:image/png;base64,${"A".repeat(5000)}` } };
     if (input.text === "too many") return { ok: false, status: 409, error: "That is plenty of ideas for now." };
     return { ok: true, value: { steering: { nudges: [input.text] } } };
@@ -77,33 +93,54 @@ registerCapabilityService("mari-actions:broken", {
   run: async () => ({ ok: true, value: null }),
 });
 registerCapabilityService("mari-actions:not-a-service", { hello: true });
+const releaseSlow = registerCapabilityService("mari-actions:slow", {
+  list: () => new Promise(() => undefined),
+  run: async () => ({ ok: true, value: null }),
+});
 registerCapabilityService("slurp2:actions", slurp);
 
 const listed = await listCapabilityMariActions();
 assert.deepEqual(
   listed.map((entry) => [entry.package, entry.actions.map((action) => action.name)]),
-  [["slurp2", ["add-idea", "draw-picture"]]],
-  "only well-formed mari-actions services are listed; a throwing list hides only its own package",
+  [["slurp2", ["add-idea", "draw-picture", "long", "odd", "hang", "huge-error"]]],
+  "only well-formed mari-actions services are listed; a throwing or hanging list hides only its own package",
 );
+releaseSlow();
+const long = listed[0]!.actions.find((action) => action.name === "long")!;
+assert.ok((long.summary?.length ?? 0) <= 301, "package-authored list text is capped");
+assert.deepEqual(long.inputs, { ok: "fine" }, "only string input descriptions reach Mari");
+assert.equal(listed[0]!.actions.find((action) => action.name === "odd")!.summary, undefined);
 
 const input = { accountId: "creator-1", text: "A rainy-day cafe post" };
-assert.deepEqual(await runCapabilityMariAction("slurp2", "add-idea", input), {
+assert.deepEqual(await runCapabilityMariAction("slurp2", "add-idea", input, live), {
   steering: { nudges: ["A rainy-day cafe post"] },
 });
 assert.deepEqual(received.at(-1), input);
 assert.notEqual(received.at(-1), input, "the package receives a plain-data copy, not the caller's object");
-await assert.rejects(runCapabilityMariAction("slurp2", "add-idea", { text: "too many" }), /plenty of ideas/);
-await assert.rejects(runCapabilityMariAction("slurp2", "delete-everything", {}), /has no Mari action/);
-await assert.rejects(runCapabilityMariAction("slurp2", "bad name with spaces", {}), /has no Mari action/);
-await assert.rejects(runCapabilityMariAction("other", "add-idea", {}), /offers no Mari actions/);
-await assert.rejects(runCapabilityMariAction("../slurp2", "add-idea", {}), /is not a package id/);
-await assert.rejects(runCapabilityMariAction("slurp2", "add-idea", ["x"]), /must be a JSON object/);
+await assert.rejects(runCapabilityMariAction("slurp2", "add-idea", { text: "too many" }, live), /plenty of ideas/);
+await assert.rejects(runCapabilityMariAction("slurp2", "delete-everything", {}, live), /has no Mari action/);
+await assert.rejects(runCapabilityMariAction("slurp2", "bad name with spaces", {}, live), /has no Mari action/);
+await assert.rejects(runCapabilityMariAction("other", "add-idea", {}, live), /offers no Mari actions/);
+await assert.rejects(runCapabilityMariAction("../slurp2", "add-idea", {}, live), /is not a package id/);
+await assert.rejects(runCapabilityMariAction("slurp2", "add-idea", ["x"], live), /must be a JSON object/);
 await assert.rejects(
-  runCapabilityMariAction("slurp2", "add-idea", { text: "x".repeat(70_000) }),
+  runCapabilityMariAction("slurp2", "add-idea", { text: "x".repeat(70_000) }, live),
   /larger than 64000 characters/,
 );
+const hugeError = await runCapabilityMariAction("slurp2", "huge-error", {}, live).catch((err: Error) => err.message);
+assert.ok(String(hugeError).length < 2_200, "package error text is capped");
+assert.doesNotMatch(String(hugeError), /BBBBBBBBBB/, "a data URL in an error never reaches Mari");
+
+const stop = new AbortController();
+const hanging = runCapabilityMariAction("slurp2", "hang", {}, stop.signal);
+await new Promise((resolve) => setTimeout(resolve, 20));
+stop.abort();
+await assert.rejects(hanging, /slurp2 hang failed: slurp2 hang was stopped/, "Mari's stop ends a stuck action");
+assert.equal(hangSignal?.aborted, true, "the package is told to stop too");
+await assert.rejects(runCapabilityMariAction("slurp2", "add-idea", input, stop.signal), /abort/i);
+
 const callsBefore = received.length;
-await assert.rejects(runCapabilityMariAction("slurp2", "add-idea", "nope"), /must be a JSON object/);
+await assert.rejects(runCapabilityMariAction("slurp2", "add-idea", "nope", live), /must be a JSON object/);
 assert.equal(received.length, callsBefore, "rejected input never reaches the package");
 
 // ── Mari: protocol, permissions classification, JSON and XML fallback ───────
@@ -140,6 +177,17 @@ assert.equal(resolveWorkspaceMutationVerification([runResult(true)]), "verified"
 const doneClaim = { commands: [], stop: true, visibleText: "Done, I added the idea." };
 assert.equal(auditWorkspaceCompletionClaim(doneClaim, [runResult(true)]).issue, null);
 assert.notEqual(auditWorkspaceCompletionClaim(doneClaim, [runResult(false)]).issue, null);
+// A package list shows no store state, so it cannot pay an unverified write's debt or back a claim.
+const unverifiedWrite = {
+  id: "w",
+  name: "write" as const,
+  input: { path: "notes.md", content: "x" },
+  output: "Wrote notes.md",
+  success: true,
+};
+const listRead = { id: "l", name: "package_service" as const, input: {}, output: "[]", success: true };
+assert.equal(resolveWorkspaceMutationVerification([unverifiedWrite, listRead]), "unverified");
+assert.notEqual(auditWorkspaceCompletionClaim(doneClaim, [listRead]).issue, null);
 
 // ── Mari: running the tool end to end ───────────────────────────────────────
 const service = new ProfessorMariWorkspaceService({} as never);
@@ -186,4 +234,5 @@ assert.equal(failed.success, false);
 assert.match(failed.output, /slurp2 add-idea failed: That is plenty of ideas/);
 
 resetCapabilityServices();
+clearInterval(keepAlive);
 console.log("mari-package-service regression passed");

@@ -818,6 +818,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ### Fixed
 
+- Guided regeneration clears the direction it consumes from the chat composer and restores it after a failed attempt without replacing a newer draft.
+
 - SwarmUI video downloads reject foreign output URLs before sending the server's authentication cookie (#6158).
 
 - Storyboard planning retries explicitly local connections behind proxies once without reasoning, and reports empty final answers or exhausted output limits when planning still fails (#6165).

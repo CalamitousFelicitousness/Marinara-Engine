@@ -45,7 +45,8 @@ try {
   $deadline = [DateTime]::UtcNow.AddSeconds(25)
   do {
     Start-Sleep -Milliseconds 100
-    $output = Get-Content $outputFile -Raw -ErrorAction SilentlyContinue
+    # Keep matches scalar even when the growing redirected file is read in chunks.
+    $output = (Get-Content $outputFile -Raw -ErrorAction SilentlyContinue) -join "`n"
     if ($server.HasExited) { throw "Server exited before readiness: $output" }
   } until ($output -match 'Marinara Engine server listening' -or [DateTime]::UtcNow -gt $deadline)
   if ($output -notmatch 'Marinara Engine server listening') { throw "Server readiness timed out: $output" }
@@ -59,7 +60,7 @@ try {
   if (-not [ConsoleSignals]::GenerateConsoleCtrlEvent(0, 0)) { throw 'Native Ctrl+C delivery failed' }
   if (-not $server.WaitForExit(15000)) { throw 'Supervisor did not exit after Ctrl+C' }
   Write-Phase 'Supervisor exited after Ctrl+C'
-  $output = Get-Content $outputFile -Raw
+  $output = (Get-Content $outputFile -Raw) -join "`n"
   if ($output -notmatch 'Received SIGINT; shutting down') { throw "No SIGINT reached production shutdown: $output" }
   if ($output -notmatch 'Shutdown complete') { throw "Graceful shutdown was interrupted: $output" }
   if ($output -match 'forcing exit now') { throw "Shutdown exceeded its deadline: $output" }

@@ -659,16 +659,22 @@ try {
         .taken,
       1,
     );
-    // Each line's effect is found under its name, or the name it is shown by, or its own name, and an
-    // effect another line took by its exact name is not taken again: the item really called
-    // "Rope (Cord)" gets none, and the effect nobody took is kept as it was.
+    // Each line's effect is found by its item's own name first, so the item really called
+    // "Rope (Cord)" keeps its own effect though the cord is listed under that name, and the cord takes
+    // the effect named for it.
     const heal = { name: "rope", type: "heal" };
     const tie = { name: "Cord", type: "utility" };
     const odd = { name: "Rope (Cord)", type: "buff" };
     assert.deepEqual(gameInventoryFightEffects(lines, [heal, tie, odd]), [
-      { name: "Rope (Cord)", type: "buff" },
+      { name: "Rope (Cord)", type: "utility" },
       { name: "Rope", type: "heal" },
-      { name: "Cord", type: "utility" },
+      { name: "Rope (Cord) 2", type: "buff" },
+    ]);
+    // A line with no effect under its own name takes one under the name it is listed or shown by,
+    // unless another line took that effect by its own name.
+    assert.deepEqual(gameInventoryFightEffects(lines, [heal, odd]), [
+      { name: "Rope", type: "heal" },
+      { name: "Rope (Cord) 2", type: "buff" },
     ]);
     const elixir = gameInventoryFightLines([{ id: "p", name: "Healing Potion", nickname: "Elixir", quantity: 2 }]);
     assert.deepEqual(
@@ -680,6 +686,11 @@ try {
         { name: "Elixir", type: "heal" },
         { name: "Map", type: "utility" },
       ],
+    );
+    assert.deepEqual(
+      gameInventoryFightEffects(elixir, [{ name: "elixir", type: "heal" }]),
+      [{ name: "Elixir", type: "heal" }],
+      "an effect named by the nickname reaches it too",
     );
     // Taking by a nickname takes the item from every stack of it, whatever each one is called.
     const split = [

@@ -284,10 +284,11 @@ export function gameInventoryFightLines(stacks: readonly GameInventoryStack[]): 
 }
 
 /**
- * A fight's item effects, each under the name of the line it belongs to. An effect is found for a line
- * by the line's own name first; a line with none takes one named as the item is shown, or by its own
- * name, unless another line already took that effect by its exact name. Effects no line takes are
- * kept as they are.
+ * A fight's item effects, each under the name of the line it belongs to. Every line first takes the
+ * effect named by its item's own name, since a line's listed name may be one another item really
+ * goes by (a cord nicknamed "Potion" is listed as "Potion (Cord)" beside an item called that). A
+ * line with none then takes one named as it is listed or shown, unless another line took that effect
+ * by its own name. Effects no line takes are kept as they are.
  */
 export function gameInventoryFightEffects<T extends { name: string }>(
   lines: readonly GameInventoryFightLine[],
@@ -295,17 +296,15 @@ export function gameInventoryFightEffects<T extends { name: string }>(
 ): T[] {
   const byName = (name: string | undefined) =>
     name ? effects.find((effect) => gameInventoryNameKey(effect.name) === gameInventoryNameKey(name)) : undefined;
-  const exact = new Map(
-    lines.flatMap((line) => {
-      const effect = byName(line.name);
-      return effect ? [[line.name, effect] as const] : [];
-    }),
-  );
-  const claimed = new Set(exact.values());
-  const given = new Map<string, T>(exact);
+  const given = new Map<string, T>();
+  for (const line of lines) {
+    const effect = byName(line.ownName ?? line.shown);
+    if (effect) given.set(line.name, effect);
+  }
+  const claimed = new Set(given.values());
   for (const line of lines) {
     if (given.has(line.name)) continue;
-    const effect = [line.shown, line.ownName].map(byName).find((found) => found && !claimed.has(found));
+    const effect = [line.name, line.shown].map(byName).find((found) => found && !claimed.has(found));
     if (effect) given.set(line.name, effect);
   }
   const used = new Set(given.values());

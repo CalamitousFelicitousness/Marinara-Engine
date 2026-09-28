@@ -73,11 +73,19 @@ export async function lorebookTextRoutes(app: FastifyInstance) {
     const entries = (await storage.listEntries(req.params.id)) as LorebookEntry[];
     const folders = (await storage.listFolders(req.params.id)) as LorebookFolder[];
     const text = exportLorebookText(format, { name: String(lb.name ?? ""), entries, folders });
-    const baseName = encodeURIComponent(String(lb.name || "lorebook"));
+    const filename = `${String(lb.name || "lorebook")}.${format === "csv" ? "csv" : "md"}`;
+    const fallbackFilename = filename.replace(/[^\x20-\x7E]|["\\/:*?<>|]/g, "_");
+    const encodedFilename = encodeURIComponent(filename).replace(
+      /['()*]/g,
+      (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+    );
     return (
       reply
         .header("Content-Type", format === "csv" ? "text/csv; charset=utf-8" : "text/markdown; charset=utf-8")
-        .header("Content-Disposition", `attachment; filename="${baseName}.${format === "csv" ? "csv" : "md"}"`)
+        .header(
+          "Content-Disposition",
+          `attachment; filename="${fallbackFilename}"; filename*=UTF-8''${encodedFilename}`,
+        )
         // The BOM lets spreadsheet apps read non-English text in the CSV as UTF-8.
         .send(format === "csv" ? `﻿${text}` : text)
     );

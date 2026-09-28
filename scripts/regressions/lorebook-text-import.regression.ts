@@ -425,7 +425,10 @@ try {
   // Export, then import into a new lorebook, reproduces the entries and folders.
   const exported = await request("GET", `/api/lorebooks/${book.id}/export-text?format=csv`);
   assert.match(String(exported.headers["content-type"]), /text\/csv/);
-  assert.match(String(exported.headers["content-disposition"]), /Test%20World\.csv/);
+  assert.equal(
+    exported.headers["content-disposition"],
+    "attachment; filename=\"Test World.csv\"; filename*=UTF-8''Test%20World.csv",
+  );
   const fresh = (
     await request("POST", "/api/lorebooks/import-text", { name: "Copy", format: "csv", text: exported.body })
   ).json();
@@ -440,6 +443,24 @@ try {
 
   const md = await request("GET", `/api/lorebooks/${book.id}/export-text?format=markdown`);
   assert.ok(md.body.startsWith("# Test World\n\n## "));
+
+  for (const name of ["Test World", "Zażółć gęślą jaźń", 'A "quote"\\path\r\nX-Injected: yes \'()*']) {
+    const namedBook = (await storage.create({ name } as any)) as { id: string };
+    for (const [format, extension] of [
+      ["csv", "csv"],
+      ["markdown", "md"],
+    ]) {
+      const response = await request("GET", `/api/lorebooks/${namedBook.id}/export-text?format=${format}`);
+      const disposition = String(response.headers["content-disposition"]);
+      const filenames = disposition.match(/^attachment; filename="([^"\\]*)"; filename\*=UTF-8''([^']*)$/);
+      assert.ok(filenames, `safe quoted fallback and UTF-8 filename: ${disposition}`);
+      assert.match(filenames[1]!, /^[\x20-\x7E]+$/, "fallback contains printable ASCII only");
+      assert.ok(filenames[1]!.endsWith(`.${extension}`));
+      assert.doesNotMatch(filenames[2]!, /['()*\r\n]/, "extended filename uses safe RFC 5987 encoding");
+      assert.equal(decodeURIComponent(filenames[2]!), `${name}.${extension}`);
+      assert.equal(response.headers["x-injected"], undefined, "a lorebook name cannot inject response headers");
+    }
+  }
 
   // A failed import into a new lorebook does not leave an empty book behind.
   const before = (await storage.list()).length;

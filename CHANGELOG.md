@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Lorebook Markdown and CSV downloads preserve spaces and non-English characters in their filenames.
+
 - The native shutdown regression allows cold CI servers time to start while keeping its interrupt and shutdown deadlines unchanged.
 
 - Failed lorebook text imports leave existing entries and folders unchanged, and duplicate-key checks distinguish case-sensitive and regex matching modes.

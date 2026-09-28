@@ -9,14 +9,17 @@ test("lorebook tools lint, preview scans, and bulk-enable selected books", async
   const book = await (
     await request.post("/api/lorebooks", {
       data: { name: "Synthetic tools proof book", enabled: false },
+      failOnStatusCode: true,
     })
   ).json();
   try {
     await request.post(`/api/lorebooks/${book.id}/entries`, {
       data: { name: "Keyless sample entry", content: "A note for the synthetic proof." },
+      failOnStatusCode: true,
     });
     await request.post(`/api/lorebooks/${book.id}/entries`, {
       data: { name: "Lantern watcher", content: "A watcher near the lanterns.", keys: ["lantern"] },
+      failOnStatusCode: true,
     });
 
     await page.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: "" } }));

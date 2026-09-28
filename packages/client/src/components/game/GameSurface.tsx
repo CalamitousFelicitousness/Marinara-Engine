@@ -7635,13 +7635,16 @@ function GameSurfaceComponent({
           throw new Error(
             localizeUi("ui.game.gamesurfacecomponent.failedToAddValue1ToInventory", { value1: addedItemName }),
           );
+        // Said by the name the stack it went onto is shown by, which may be a nickname.
+        const landed = result.id ? inventoryItemsRef.current.find((stack) => stack.id === result.id) : undefined;
+        const shownName = landed ? gameInventoryStackLabel(landed) : addedItemName;
         showInventoryNotification(
           holder
-            ? localizeUi("ui.game.gamesurfacecomponent.inventoryWhoGained", { who: holder, item: addedItemName })
-            : localizeUi("ui.game.gamesurfacecomponent.inventoryYouGained", { item: addedItemName }),
+            ? localizeUi("ui.game.gamesurfacecomponent.inventoryWhoGained", { who: holder, item: shownName })
+            : localizeUi("ui.game.gamesurfacecomponent.inventoryYouGained", { item: shownName }),
           true,
         );
-        toast.success(localizeUi("ui.game.gamesurfacecomponent.addedValue1ToInventory", { value1: addedItemName }));
+        toast.success(localizeUi("ui.game.gamesurfacecomponent.addedValue1ToInventory", { value1: shownName }));
         return result.id ?? null;
       } catch (error) {
         toast.error(

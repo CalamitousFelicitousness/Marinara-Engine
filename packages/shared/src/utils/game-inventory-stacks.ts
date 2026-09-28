@@ -667,17 +667,13 @@ export function carryGameInventory(gameInventory: unknown, detailedInventory: un
     if (typeof item === "string" ? held.has(item) : gameInventoryCount(saved, entry.name) > 0) continue;
     // An entry whose name is not its item's own (a nickname) comes back as that item, its own name
     // read off the id and the entry's name kept as the nickname, rather than as whatever that name
-    // finds. An id that cannot be read back (a fingerprint) comes back by name.
-    const spelled = typeof item === "string" && item.startsWith("plain:") && !item.startsWith("plain:~");
-    if (spelled && gameInventoryPlainItemId(entry.name) !== item) {
+    // finds. Only an own name that makes that same id again is trusted: one cut short and
+    // fingerprinted cannot be read back, and comes back by name.
+    const own =
+      typeof item === "string" && item.startsWith("plain:") ? item.slice("plain:".length).replace(/-/g, " ") : "";
+    if (own && gameInventoryPlainItemId(own) === item && gameInventoryPlainItemId(entry.name) !== item) {
       const makeId = () => newGameInventoryStackId(stacks);
-      stacks = addLike(
-        stacks,
-        { name: item.slice("plain:".length).replace(/-/g, " "), nickname: entry.name },
-        entry.quantity,
-        undefined,
-        makeId,
-      ).stacks;
+      stacks = addLike(stacks, { name: own, nickname: entry.name }, entry.quantity, undefined, makeId).stacks;
       continue;
     }
     stacks = addToGameInventory(stacks, entry.name, entry.quantity);

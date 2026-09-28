@@ -338,6 +338,23 @@ const apples = (): GameInventoryStack[] => [
     ],
   );
   assert.equal(gameInventoryItemId(cordCarried[1]!), gameInventoryPlainItemId("Cord"));
+  // An id that cannot be read back into a name (a fingerprint) comes back by name, and one cut short
+  // comes back as the same item, the nickname shown over whatever own name it read back.
+  const fingerprinted = gameInventoryPlainItemId("🍎");
+  assert.deepEqual(
+    carryGameInventory(
+      [],
+      [{ item: fingerprinted, name: "Apple charm", description: "", quantity: 1, location: "" }],
+    ).map(({ name, nickname, quantity }) => [name, nickname ?? null, quantity]),
+    [["Apple charm", null, 1]],
+  );
+  const longId = gameInventoryPlainItemId(`${"a".repeat(50)}1`);
+  const [heirloom] = carryGameInventory(
+    [],
+    [{ item: longId, name: "Heirloom", description: "", quantity: 1, location: "" }],
+  );
+  assert.equal(gameInventoryItemId(heirloom!), longId);
+  assert.equal(gameInventoryStackLabel(heirloom!), "Heirloom");
   assert.deepEqual(piles(carryGameInventory(undefined, [{ name: "Map", quantity: 1 }])), [["Map", 1]]);
   assert.deepEqual(
     piles(

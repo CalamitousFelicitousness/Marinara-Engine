@@ -9546,7 +9546,8 @@ export async function generateRoutes(app: FastifyInstance) {
                   return {
                     stacks: outcome.stacks,
                     journal: outcome.journal,
-                    // What this telling left, remembered in the same write as the stacks.
+                    // What this telling left, remembered in the same write as the stacks, with any
+                    // item its tags invented, so a stack never names an item the game does not keep.
                     metadata: {
                       gameInventoryTurn: recordGameInventoryTelling(
                         pending.messageId ?? savedMsg.id,
@@ -9555,6 +9556,7 @@ export async function generateRoutes(app: FastifyInstance) {
                         swipeIndex,
                         outcome.stacks,
                       ),
+                      ...(pending.rules?.inventedChanged() ? { gameInventedItems: pending.rules.inventedItems() } : {}),
                     },
                     value: { content: outcome.content, before: stacks, plan },
                   };

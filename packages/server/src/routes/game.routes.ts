@@ -12,7 +12,7 @@ import { existsSync, readFileSync } from "fs";
 import { basename, extname, join } from "path";
 import { z } from "zod";
 import { estimateTextTokens, sliceTextToTokenBudget } from "@marinara-engine/shared";
-import { carryGameInventory } from "@marinara-engine/shared";
+import { carryGameInventory, rulesetInventedItemRef } from "@marinara-engine/shared";
 import { eq } from "../db/file-query.js";
 import { IMPORTED_GAME_ENGINE_ANCHOR_PREFIX } from "../db/file-backed-store.js";
 import { chats as chatsTable } from "../db/schema/index.js";
@@ -7355,6 +7355,15 @@ export async function gameRoutes(app: FastifyInstance) {
         gamePartyCharacterIds: carriedPartyIds,
         enableAgents: carriedSetupConfig?.enableAgents ?? prevMeta.enableAgents === true,
         ...(carriedInventory.length > 0 ? { gameInventory: carriedInventory } : {}),
+        // The items the Game Master invented come along while anyone still holds them: one nothing
+        // holds is never read again.
+        ...(carryRules
+          ? {
+              gameInventedItems: carryRules
+                .inventedItems()
+                .filter((made) => carriedInventory.some((stack) => stack.item === rulesetInventedItemRef(made.id))),
+            }
+          : {}),
       };
       await chats.updateMetadata(newChat.id, updatedNewMeta);
 

@@ -474,7 +474,7 @@
     }
   },
   "items": {
-    "$comment": "The words every item of Ember Roads is written in. Bulk is what an item weighs: a traveller carries their Load before the road slows them and twelve at the most. Coin and salt are two families: a moneychanger will not take salt, and a caravan will not take coin.",
+    "$comment": "The words every item of Ember Roads is written in. Bulk is what an item weighs: a traveller carries their Load before the road slows them and twelve at the most. Coin and salt are two families: a moneychanger will not take salt, and a caravan will not take coin. An item the Game Master invents guards at most 1 when common, 2 when uncommon and 3 when storied.",
     "categories": [
       { "id": "weapon", "label": "Weapon" },
       { "id": "armor", "label": "Armor" },
@@ -510,6 +510,11 @@
       { "id": "hands", "label": "Hands", "count": 2 }
     ],
     "carry": { "stat": "bulk", "encumberedAbove": { "derived": "load" }, "limit": { "const": 12 } },
+    "rarityCaps": [
+      { "rarity": "common", "stats": { "guard": 1 } },
+      { "rarity": "uncommon", "stats": { "guard": 2 } },
+      { "rarity": "storied", "stats": { "guard": 3 } }
+    ],
     "currencies": [
       {
         "id": "coin",

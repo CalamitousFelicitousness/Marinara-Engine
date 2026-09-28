@@ -7,7 +7,8 @@ const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.u
 /**
  * A ruleset's own items in the inventory (#6795): picked from its catalog, found by a typed name,
  * shown with what they are, and stacked no higher than the ruleset allows. A ruleset that takes only
- * its own items offers only the picker. Each run imports Ember Roads under its own id, so no other
+ * its own items offers only the picker. An item the Game Master invented (#6814) reads like one of the
+ * ruleset's own and says what was changed to fit it. Each run imports Ember Roads under its own id, so no other
  * spec's copy is touched, and removes it afterwards.
  */
 function emberRoads(id: string, edit: (doc: Record<string, any>) => void = () => {}): string {
@@ -68,7 +69,7 @@ async function openInventory(page: Page, chatId: string) {
     .click({ timeout: 30000 });
 }
 
-test("a ruleset's items are picked, found by name, shown with what they are and stacked by its size", async ({
+test("a ruleset's items are picked, found by name, shown with what they are and stacked by its size, and invented ones say so", async ({
   page,
   request,
 }, testInfo) => {
@@ -88,7 +89,8 @@ test("a ruleset's items are picked, found by name, shown with what they are and 
   try {
     const policy = await request.patch("/api/agents/import-policy", { data: { enabled: true } });
     expect(policy.ok(), await policy.text()).toBeTruthy();
-    const chatId = await seedGame(request, await importRuleset(emberRoads("ember-inventory-e2e")));
+    const emberId = await importRuleset(emberRoads("ember-inventory-e2e"));
+    const chatId = await seedGame(request, emberId);
     chats.push(chatId);
     const savedInventory = async () => {
       const row = await (await request.get(`/api/chats/${chatId}`)).json();
@@ -165,6 +167,39 @@ test("a ruleset's items are picked, found by name, shown with what they are and 
     await expect(strictPage.getByRole("button", { name: "From the ruleset", exact: true })).toBeVisible();
     await expect(strictPage.getByLabel("Name of the item to add", { exact: true })).toHaveCount(0);
     await strictPage.close();
+
+    // An item the Game Master invented (#6814) reads like one of the ruleset's own, says it was
+    // invented, and shows what the Engine changed to fit the ruleset.
+    const inventedId = await seedGame(request, emberId);
+    chats.push(inventedId);
+    const invented = await request.patch(`/api/chats/${inventedId}/metadata`, {
+      data: {
+        gameInventory: [{ id: "st-edge", name: "Mourning Edge", item: "invented:mourning-edge", quantity: 1 }],
+        gameInventedItems: [
+          {
+            id: "mourning-edge",
+            name: "Mourning Edge",
+            item: { category: "weapon", rarity: "storied", stats: { guard: 3, damage: "1d10" }, slots: { hands: 1 } },
+            summary: "Her husband's blade, still sharp.",
+            notes: ["Guard is 3 instead of 4, the most at Storied."],
+          },
+        ],
+      },
+    });
+    expect(invented.ok(), await invented.text()).toBeTruthy();
+    const inventedPage = await page.context().newPage();
+    await openInventory(inventedPage, inventedId);
+    await inventedPage.getByRole("button", { name: "Mourning Edge", exact: true }).click();
+    await expect(inventedPage.getByText("Storied", { exact: true })).toBeVisible();
+    await expect(inventedPage.getByText("Guard 3 · Damage 1d10", { exact: true })).toBeVisible();
+    await expect(inventedPage.getByText("Her husband's blade, still sharp.", { exact: true })).toBeVisible();
+    await expect(inventedPage.getByText("Invented by the Game Master.", { exact: true })).toBeVisible();
+    await inventedPage.getByText("What the Engine changed to fit the ruleset", { exact: true }).click();
+    await expect(
+      inventedPage.getByText("Guard is 3 instead of 4, the most at Storied.", { exact: true }),
+    ).toBeVisible();
+    await inventedPage.screenshot({ path: testInfo.outputPath("ruleset-invented-item.png") });
+    await inventedPage.close();
   } finally {
     for (const id of chats) await request.delete(`/api/chats/${id}`);
     for (const id of rulesets) {

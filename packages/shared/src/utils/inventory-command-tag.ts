@@ -7,6 +7,7 @@
 // naming several items becomes one tag per item, so every item carries its own outcome.
 // ──────────────────────────────────────────────
 
+import type { GameInventoryItemProposal } from "./game-inventory-stacks.js";
 import { readGmTagAttributes } from "./skill-check-tag.js";
 
 /** Longest body an inventory tag can carry, so a reply full of unclosed heads stays cheap to scan. */
@@ -15,6 +16,10 @@ const MAX_INVENTORY_TAG_BODY = 1500;
 export const INVENTORY_TAG_COUNT_MAX = 9999;
 /** Longest item or character name a tag keeps. */
 const MAX_TAG_NAME_LENGTH = 120;
+/** Longest note an answer carries: what the Engine changed about an item the Game Master invented. */
+const MAX_TAG_NOTE_LENGTH = 600;
+/** The most parts one proposed item's list (its tags, stats or slots) is read for. */
+const MAX_PROPOSAL_PARTS = 24;
 
 export type InventoryTagAction = "add" | "remove" | "give" | "equip" | "unequip" | "bind" | "unbind";
 
@@ -41,6 +46,55 @@ export interface InventoryTagRequest {
   who?: string;
   /** Who receives a give. */
   to?: string;
+  /** An add that proposes an item of the ruleset: the parts the Game Master gave it. */
+  proposal?: Omit<GameInventoryItemProposal, "name">;
+}
+
+/** "damage=1d8, bulk: 2; hands" as parts: each `key=value` or `key: value`, split only before the
+ *  next key so a value may hold a comma. A part without a value is the key alone. */
+function readParts(text: string): Array<[string, string]> {
+  return text
+    .split(/[;,]\s*(?=[\p{L}\p{N}_ -]{1,40}(?:[=:]|$|[;,]))/u)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .slice(0, MAX_PROPOSAL_PARTS)
+    .map((part): [string, string] => {
+      const at = part.search(/[=:]/);
+      return at < 0 ? [part, ""] : [part.slice(0, at).trim(), part.slice(at + 1).trim()];
+    })
+    .filter(([key]) => key.length > 0 && key.length <= 40);
+}
+
+/** The parts of an item the Game Master proposes, or undefined when an add names only its item. */
+function readProposal(values: Map<string, string>): Omit<GameInventoryItemProposal, "name"> | undefined {
+  const text = (key: string, max = 80) => {
+    const value = values.get(key)?.trim().replace(/\s+/g, " ");
+    return value ? value.slice(0, max) : undefined;
+  };
+  const like = text("like", 121);
+  const category = text("category");
+  const rarity = text("rarity");
+  const binds = text("binds", 20);
+  const summary = text("summary", 300);
+  const tags = values
+    .get("tags")
+    ?.split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean)
+    .slice(0, MAX_PROPOSAL_PARTS);
+  const stats = values.has("stats") ? Object.fromEntries(readParts(values.get("stats")!)) : undefined;
+  const slots = values.has("slots") ? Object.fromEntries(readParts(values.get("slots")!)) : undefined;
+  const proposal = {
+    ...(like ? { like } : {}),
+    ...(category ? { category } : {}),
+    ...(rarity ? { rarity } : {}),
+    ...(tags ? { tags } : {}),
+    ...(stats ? { stats } : {}),
+    ...(slots ? { slots } : {}),
+    ...(binds ? { binds } : {}),
+    ...(summary ? { summary } : {}),
+  };
+  return Object.keys(proposal).length > 0 ? proposal : undefined;
 }
 
 /** A fresh global, case-insensitive matcher over `[inventory: ...]` tags. One bounded run of anything
@@ -100,18 +154,19 @@ export function parseInventoryTagBody(body: string): InventoryTagRequest | null 
   const count = parsedCount > 0 ? Math.min(parsedCount, INVENTORY_TAG_COUNT_MAX) : 1;
   const who = cleanName(values.get("who"));
   const to = cleanName(values.get("to"));
-  return { action, items, count, ...(who ? { who } : {}), ...(to ? { to } : {}) };
+  const proposal = action === "add" ? readProposal(values) : undefined;
+  return { action, items, count, ...(who ? { who } : {}), ...(to ? { to } : {}), ...(proposal ? { proposal } : {}) };
 }
 
 /** What the Engine did with one item of a tag. `count` is how many really moved and `now` how many
  *  of it the bag holds afterwards: the receiver's for a give. */
 export type InventoryTagOutcome = { ok: true; count: number; now: number } | { ok: false; reason: string };
 
-function sanitize(value: string): string {
+function sanitize(value: string, max = MAX_TAG_NAME_LENGTH): string {
   return value
     .replace(/[\r\n]+/g, " ")
     .replace(/["[\]]/g, "")
-    .slice(0, MAX_TAG_NAME_LENGTH)
+    .slice(0, max)
     .trim();
 }
 
@@ -120,9 +175,12 @@ function sanitize(value: string): string {
 export function serializeInventoryTag(
   input: { action: InventoryTagAction; item: string; count: number; who?: string; to?: string } | { raw: string },
   outcome: InventoryTagOutcome,
+  /** What the Engine changed about an item the Game Master invented. */
+  note?: string,
 ): string {
   const parts: string[] = [];
-  const attribute = (key: string, value: string | number) => parts.push(`${key}="${sanitize(String(value))}"`);
+  const attribute = (key: string, value: string | number, max?: number) =>
+    parts.push(`${key}="${sanitize(String(value), max)}"`);
   if ("raw" in input) attribute("raw", input.raw);
   else {
     attribute("action", input.action);
@@ -138,6 +196,7 @@ export function serializeInventoryTag(
     attribute("result", "refused");
     attribute("reason", outcome.reason);
   }
+  if (note) attribute("note", note, MAX_TAG_NOTE_LENGTH);
   return `[inventory: ${parts.join(" ")}]`;
 }
 

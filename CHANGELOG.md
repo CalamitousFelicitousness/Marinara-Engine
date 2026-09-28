@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Lorebook activation statistics update after a reply is saved successfully and exclude Continue chunks.
+
 - Lorebooks gain lint checks, a scanner preview, opt-in activation statistics, bulk entry edits, selected enable/disable actions, and Markdown/CSV import and export. Chat previews explain their context limits, and text imports enforce bounded size and entry counts (#6698).
 - Lorebook Markdown export handles long whitespace runs without excessive processing time.
 - OpenAI-compatible text-to-speech can request PCM output and play it as WAV without changing the audio samples. Custom providers must supply the sample rate and channel count; malformed or incomplete PCM is rejected instead of playing distorted audio (#6709).

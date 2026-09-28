@@ -9855,13 +9855,6 @@ export async function generateRoutes(app: FastifyInstance) {
             // Cache the lorebook scan that produced the prompt so Active Context
             // reflects the last generation instead of a best-effort rescan.
             extraUpdate.lorebookScan = lorebookScanSnapshot;
-            // Activation statistics count saved replies, not Continue chunks.
-            if (!input.continueMessageId) {
-              recordLorebookActivations(app.db, {
-                entryIds: lorebookScanSnapshot.activatedEntries.map((entry) => entry.id),
-                chatId: input.chatId,
-              });
-            }
             extraUpdate.chatSummaryFingerprint = fingerprintChatSummary(chatMeta.summary);
             if (advancedMemoryReceipt) extraUpdate.advancedMemoryReceipt = advancedMemoryReceipt;
             // A continuation has its own prompt, but regenerating the whole message
@@ -9921,6 +9914,13 @@ export async function generateRoutes(app: FastifyInstance) {
                 savedSwipeIndex !== null
                   ? await chats.updateMessageExtraForSwipe(savedMsg.id, savedSwipeIndex, extraUpdate)
                   : await chats.updateMessageExtra(savedMsg.id, extraUpdate);
+            }
+            // Activation statistics count successfully saved replies, not Continue chunks.
+            if (!input.continueMessageId) {
+              recordLorebookActivations(app.db, {
+                entryIds: lorebookScanSnapshot.activatedEntries.map((entry) => entry.id),
+                chatId: input.chatId,
+              });
             }
 
             const savedMessagePayload =

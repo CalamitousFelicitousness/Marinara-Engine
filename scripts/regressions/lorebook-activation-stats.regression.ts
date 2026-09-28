@@ -110,10 +110,21 @@ try {
     new URL("../../packages/server/src/routes/generate.routes.ts", import.meta.url),
     "utf8",
   );
-  assert.match(
-    generateSource,
-    /extraUpdate\.lorebookScan = lorebookScanSnapshot;\s*\/\/[^\n]*\n\s*if \(!input\.continueMessageId\) \{\s*recordLorebookActivations\(app\.db, \{\s*entryIds: lorebookScanSnapshot\.activatedEntries\.map/,
-    "activation stats are recorded for saved replies but not Continue chunks",
+  const persistenceIndexes = [
+    generateSource.indexOf("const committed = await chats.commitRoleplayInterruption({"),
+    generateSource.indexOf("? await chats.updateMessageExtraForSwipe(savedMsg.id, savedSwipeIndex, extraUpdate)"),
+    generateSource.indexOf(": await chats.updateMessageExtra(savedMsg.id, extraUpdate);"),
+  ];
+  const activationIndex = generateSource.indexOf("recordLorebookActivations(app.db, {");
+  assert.ok(
+    persistenceIndexes.every((index) => index >= 0 && activationIndex > index),
+    "activation stats are recorded only after each message-persistence branch succeeds",
+  );
+  const activationGuardIndex = generateSource.lastIndexOf("if (!input.continueMessageId) {", activationIndex);
+  assert.ok(
+    activationGuardIndex >= 0 &&
+      generateSource.slice(activationGuardIndex, activationIndex).trim() === "if (!input.continueMessageId) {",
+    "Continue chunks do not increment activation stats",
   );
   const appSource = readFileSync(new URL("../../packages/server/src/app.ts", import.meta.url), "utf8");
   const closeHook = appSource.slice(appSource.indexOf('app.addHook("onClose"'));

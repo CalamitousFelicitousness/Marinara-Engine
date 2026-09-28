@@ -21,6 +21,8 @@ import {
   createDefaultVideoGenerationProfile,
   decisionTestTimeoutMs,
   generationParametersSchema,
+  type GenerationParameterKey,
+  type ModelParameterCapabilities,
   inferImageSource,
   inferVideoSource,
   isLocalAuthProvider,
@@ -1804,10 +1806,38 @@ interface RemoteModel {
   name: string;
   context?: number;
   maxOutput?: number;
+  capabilities?: ModelParameterCapabilities;
   /** Aggregator subscription metadata (NanoGPT `detailed=true`). */
   subscriptionIncluded?: boolean;
   /** How many input tokens this model consumes per token of quota. */
   inputTokenMultiplier?: number;
+}
+
+/** OpenRouter names each model's accepted request fields; map the ones the parameter panel controls. */
+const OPENROUTER_PARAMETER_FIELDS: Record<string, GenerationParameterKey> = {
+  temperature: "temperature",
+  top_p: "topP",
+  top_k: "topK",
+  frequency_penalty: "frequencyPenalty",
+  presence_penalty: "presencePenalty",
+  max_tokens: "maxTokens",
+  max_completion_tokens: "maxTokens",
+  reasoning: "reasoningEffort",
+  reasoning_effort: "reasoningEffort",
+  verbosity: "verbosity",
+};
+
+export function readOpenRouterModelCapabilities(
+  model: Record<string, unknown>,
+): ModelParameterCapabilities | undefined {
+  const fields = Array.isArray(model.supported_parameters) ? model.supported_parameters : [];
+  const keys = new Set<GenerationParameterKey>();
+  for (const field of fields) {
+    const key = typeof field === "string" ? OPENROUTER_PARAMETER_FIELDS[field] : undefined;
+    if (key) keys.add(key);
+  }
+  // An empty or missing list says nothing; it must not hide every control.
+  return keys.size > 0 ? { supportedParameters: [...keys] } : undefined;
 }
 
 /**
@@ -1962,12 +1992,16 @@ function normalizeModelsResponse(provider: string, json: Record<string, unknown>
       // This covers openai, mistral, openrouter, custom, nanogpt
       const data = (json.data ?? []) as Array<Record<string, unknown> & { id?: string; name?: string }>;
       return data
-        .map((m) => ({
-          id: m.id ?? "",
-          name: m.name ?? m.id ?? "",
-          ...readOpenAICompatibleModelLimits(m),
-          ...readSubscriptionMetadata(m),
-        }))
+        .map((m) => {
+          const capabilities = provider === "openrouter" ? readOpenRouterModelCapabilities(m) : undefined;
+          return {
+            id: m.id ?? "",
+            name: m.name ?? m.id ?? "",
+            ...readOpenAICompatibleModelLimits(m),
+            ...readSubscriptionMetadata(m),
+            ...(capabilities ? { capabilities } : {}),
+          };
+        })
         .filter((m) => m.id);
     }
   }

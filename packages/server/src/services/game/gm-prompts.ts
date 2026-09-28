@@ -471,6 +471,23 @@ function bearerNote(status: GameInventoryBearerStatus | undefined, bindingLabel:
   return parts.join("; ");
 }
 
+/** The tag line for wearing: only the actions this ruleset has, putting on for slots and binding for a
+ *  binding limit, so a model is never offered one the Engine would refuse every time. */
+function wearGrammarLine(slots: boolean, bindingLabel: string | undefined): string {
+  const binding = bindingLabel === undefined ? undefined : normalizePromptText(bindingLabel);
+  const actions = [...(slots ? ["equip", "unequip"] : []), ...(binding !== undefined ? ["bind", "unbind"] : [])];
+  const when = [
+    ...(slots
+      ? ["puts on, wields or readies one of the ruleset's items (equip) or takes it off or puts it away (unequip)"]
+      : []),
+    ...(binding !== undefined ? [`binds one${slots ? "" : " of the ruleset's items"} (${binding}) or unbinds it`] : []),
+  ].join(", or ");
+  const checks = [...(slots ? ["the slots"] : []), ...(binding !== undefined ? ["the binding limit"] : [])].join(
+    " and ",
+  );
+  return `- [inventory: action="${actions.join("|")}" item="Name" who="Name"] - when a character ${when}. It must be in who's own bag (the player's when who is left out); the Engine checks ${checks} shown beside each character, and refuses what does not fit.`;
+}
+
 function buildWidgetSummaryLines(widgets: HudWidget[]): string[] {
   return widgets.map((widget) => {
     const config = (widget.config ?? {}) as Record<string, any>;
@@ -1312,9 +1329,7 @@ export function buildGmFormatReminder(
               ]
             : []),
           ...(ctx.ruleset?.items?.slots?.length || ctx.ruleset?.items?.binding
-            ? [
-                `- [inventory: action="equip|unequip|bind|unbind" item="Name" who="Name"] - when a character puts one of the ruleset's items on or takes it off${ctx.ruleset.items.binding ? `, or binds it (${normalizePromptText(ctx.ruleset.items.binding.label)}) or unbinds it` : ""}. It must be in who's own bag (the player's when who is left out); the Engine checks the slots and the binding limit shown beside each character, and refuses what does not fit.`,
-              ]
+            ? [wearGrammarLine(Boolean(ctx.ruleset.items.slots?.length), ctx.ruleset.items.binding?.label)]
             : []),
         ]),
     `- [Note: contents] or [Book: contents] - when a new readable note or book is acquired and should be tracked in the journal.`,

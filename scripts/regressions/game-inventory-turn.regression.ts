@@ -738,7 +738,7 @@ try {
     );
     assert.match(block, /- Bram \(load 12 of 9, most 12, encumbered; Body 0 of 1, Hands 0 of 2\): /);
     assert.match(text, /an add with who left out goes to whoever can carry it/);
-    assert.match(text, /\[inventory: action="equip\|unequip\|bind\|unbind"/);
+    assert.match(text, /\[inventory: action="equip\|unequip" item=/);
 
     // Gravewatch: binding up to the bearer's Nerve. Ada has Nerve 1, so the ring binds and the bell
     // cannot. The ring is cursed: the player cannot unbind it, give it or throw it away, and the Game

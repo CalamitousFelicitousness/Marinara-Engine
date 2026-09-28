@@ -843,7 +843,7 @@ try {
     assert.match(party, /an add with who left out goes to whoever can carry it/);
     assert.match(
       party,
-      /\[inventory: action="equip\|unequip\|bind\|unbind" item="Name" who="Name"\] - when a character puts one of the ruleset's items on or takes it off\. /,
+      /\[inventory: action="equip\|unequip" item="Name" who="Name"\] - when a character puts on, wields or readies one of the ruleset's items \(equip\) or takes it off or puts it away \(unequip\)\. It must be in who's own bag \(the player's when who is left out\); the Engine checks the slots shown beside each character/,
     );
     const alone = buildGmFormatReminder({
       ...base,
@@ -852,7 +852,10 @@ try {
       inventoryBearers: { "": { load: 0, encumbered: false, bound: 1, bindingMax: 2, slots: [] } },
     });
     assert.match(alone, /PLAYER INVENTORY \(Bound 1 of 2\): Widow's ring \(1 worn, 1 bound\)/);
-    assert.match(alone, /or binds it \(Bound\) or unbinds it/);
+    assert.match(
+      alone,
+      /action="equip\|unequip\|bind\|unbind" item="Name" who="Name"\] - when a character puts on, wields or readies one of the ruleset's items \(equip\) or takes it off or puts it away \(unequip\), or binds one \(Bound\) or unbinds it\. .* the Engine checks the slots and the binding limit shown/,
+    );
     assert.doesNotMatch(alone, /whoever can carry it/, "no carry block, no carrying rule");
     const noWearing = buildGmFormatReminder({
       ...base,
@@ -868,6 +871,23 @@ try {
       playerInventory: [{ name: "Hand axe", quantity: 1, item: "outfitter/hand-axe" }],
     });
     assert.doesNotMatch(noWearing, /action="equip/);
+    // A ruleset that binds but has no slots is never offered equip, which it would refuse every time.
+    const bindingOnly = buildGmFormatReminder({
+      ...base,
+      ruleset: parsedOrThrow(
+        variant(gravewatchText, (doc) => {
+          delete doc.items.slots;
+          for (const entry of itemCatalog(doc).entries) delete entry.item.slots;
+        }),
+        "items nobody puts on",
+      ),
+      playerInventory: [{ name: "Widow's ring", quantity: 1, item: "kit/widows-ring" }],
+    });
+    assert.match(
+      bindingOnly,
+      /\[inventory: action="bind\|unbind" item="Name" who="Name"\] - when a character binds one of the ruleset's items \(Bound\) or unbinds it\. .* the Engine checks the binding limit shown/,
+    );
+    assert.doesNotMatch(bindingOnly, /action="equip/);
   }
 
   console.info("game ruleset item regressions passed.");

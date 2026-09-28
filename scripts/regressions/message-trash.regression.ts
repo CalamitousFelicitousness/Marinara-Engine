@@ -573,6 +573,18 @@ try {
     );
   }
 
+  // Combined story exports remain public transcripts even when note export is enabled for JSONL/text.
+  for (const format of ["markdown", "html"]) {
+    for (const includePrivateNotes of [false, true]) {
+      const storyExport = await app.inject({
+        method: "GET",
+        url: `/api/chats/chat-message-trash/export?format=${format}&includePrivateNotes=${includePrivateNotes}`,
+      });
+      assert.equal(storyExport.statusCode, 200, storyExport.body);
+      assert(!storyExport.body.includes("PRIVATE_NOTE_EXPORT_SENTINEL_6698"), `${format} never includes private notes`);
+    }
+  }
+
   const wrongChatTarget = await storage.createMessage({
     chatId: "chat-message-trash",
     role: "user",

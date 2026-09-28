@@ -758,10 +758,11 @@ export function GameInventory({
               {selectedInventoryItem && canInteract && onUseItem && (
                 <button
                   onClick={() =>
-                    // A nickname is said with the item's own name, so the Game Master knows what it is.
+                    // A nickname is said with the item's own name, in the "Nickname (Name)" form the Game
+                    // Master's inventory block uses, so it knows what it is.
                     handleUse(
                       selectedInventoryItem.nickname
-                        ? `${selectedLabel} ${localizeUi("ui.game.gameinventory.ownNameValue1", { value1: selectedInventoryItem.name })}`
+                        ? `${selectedLabel} (${selectedInventoryItem.name})`
                         : selectedLabel,
                     )
                   }

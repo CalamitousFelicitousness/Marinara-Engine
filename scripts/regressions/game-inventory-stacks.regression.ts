@@ -320,6 +320,24 @@ const apples = (): GameInventoryStack[] => [
     ),
     [{ id: "st-r", name: "Rope", nickname: "Grandpa's rope", quantity: 2 }],
   );
+  // An entry that follows an item nobody holds any more is carried, even when its name (a nickname)
+  // is another held item's own name: it comes back as its own item, not onto the rope.
+  const cordCarried = carryGameInventory(
+    [{ id: "st-r", name: "Rope", quantity: 2 }],
+    [
+      { item: gameInventoryPlainItemId("Cord"), name: "Rope", description: "", quantity: 1, location: "" },
+      { item: gameInventoryPlainItemId("Lamp"), name: "Lamp", description: "", quantity: 1, location: "" },
+    ],
+  );
+  assert.deepEqual(
+    cordCarried.map(({ name, nickname, quantity }) => [name, nickname ?? null, quantity]),
+    [
+      ["Rope", null, 2],
+      ["cord", "Rope", 1],
+      ["Lamp", null, 1],
+    ],
+  );
+  assert.equal(gameInventoryItemId(cordCarried[1]!), gameInventoryPlainItemId("Cord"));
   assert.deepEqual(piles(carryGameInventory(undefined, [{ name: "Map", quantity: 1 }])), [["Map", 1]]);
   assert.deepEqual(
     piles(

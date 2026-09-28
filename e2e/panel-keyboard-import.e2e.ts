@@ -77,6 +77,13 @@ test("chat sidebar keeps loading while initial requests retry", async ({ page })
     await expect(sidebar.getByRole("alert")).toHaveCount(0);
     finishRetry();
     await expect(sidebar.getByRole("status")).toHaveCount(0);
+    const search = sidebar.getByRole("textbox", { name: "Search conversations", exact: true });
+    await search.fill("unmatched search");
+    await search.press("Escape");
+    await expect(search).toHaveValue("");
+    await expect(sidebar).toBeVisible();
+    await search.press("Escape");
+    await expect(sidebar).not.toBeVisible();
   } finally {
     finishRetry();
   }

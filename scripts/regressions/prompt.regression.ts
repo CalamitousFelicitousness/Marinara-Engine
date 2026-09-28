@@ -806,6 +806,7 @@ import {
   assemblePrompt,
   appendFallbackChatSummaryToSystemPrompt,
   resolveChoiceVariableValue,
+  resolveMacrosForPreview,
   resolvePromptMessageMacros,
   scopePromptMacroContextToCharacter,
   type AssemblerInput,
@@ -3024,6 +3025,53 @@ const cases: RegressionCase[] = [
         "",
         "another chat must not inherit local variables",
       );
+
+      // Chat variables: a name defined in Chat Settings, or set by an earlier
+      // message, resolves as a bare tag in the user's own typed message.
+      const typedMessageVariables: Record<string, string> = { char1: "Mary" };
+      const typedMessageContext = {
+        user: "Mari",
+        char: "Dottore",
+        characters: ["Dottore"],
+        variables: {},
+        localVariables: typedMessageVariables,
+      };
+      const resolvedTypedMessages = resolvePromptMessageMacros(
+        [
+          { id: "m1", role: "user" as const, content: "{{setvar::mood::tense}}{{char1}} walks in." },
+          { id: "m2", role: "user" as const, content: "{{char1}} looks {{getvar::mood}}." },
+        ],
+        typedMessageContext,
+      );
+      assert.equal(resolvedTypedMessages[0]!.content, "Mary walks in.");
+      assert.equal(
+        resolvedTypedMessages[1]!.content,
+        "Mary looks tense.",
+        "a value set in one message must reach a later one through the shared chat map",
+      );
+      assert.equal(typedMessageVariables.mood, "tense", "history writes must reach the persisted map");
+      assert.equal(
+        resolvePromptMessageMacros([{ id: "m3", role: "user" as const, content: "{{char1}}" }], {
+          ...typedMessageContext,
+          localVariables: {},
+        })[0]!.content,
+        "{{char1}}",
+        "another chat keeps the tag literal",
+      );
+
+      // Peek Prompt must never persist what a preview resolved.
+      const previewVariables: Record<string, string> = { char1: "Mary" };
+      assert.equal(
+        resolveMacrosForPreview("{{setvar::char1::Anna}}{{char1}}", {
+          user: "Mari",
+          char: "Dottore",
+          characters: ["Dottore"],
+          variables: {},
+          localVariables: previewVariables,
+        }),
+        "Anna",
+      );
+      assert.deepEqual(previewVariables, { char1: "Mary" }, "a preview must not write the chat's variables");
 
       const conditionalVariables = { score: "10" };
       resolveMacros("{{#if addnumvar::score::5}}unchanged{{/if}}", {

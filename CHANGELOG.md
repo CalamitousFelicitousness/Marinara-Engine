@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Enabling or disabling selected lorebooks includes books hidden by filters, and Undo changes only the books updated by that action.
+
 - Restore all preserves conflicts reported by completed batches when a later batch fails, even if no messages were restored.
 
 - Restore all supports more than 5,000 trashed messages in one operation, reports messages already recovered if a later batch fails, and keeps remaining entries available for retry.

@@ -3,30 +3,19 @@
 // "Enable" and "Disable" for the selected lorebooks,
 // with an Undo on the notice (like the folder switch).
 // ──────────────────────────────────────────────
-import { useCallback, useMemo } from "react";
+import { useCallback } from "react";
 import { Power, PowerOff } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { useSetLorebooksEnabled } from "../../../hooks/use-lorebooks";
-import { planLorebookSelectionEnable } from "../../../lib/lorebook-selection";
 
 interface LorebookSelectionEnableActionsProps {
   selectedIds: ReadonlySet<string>;
-  lorebooks: ReadonlyArray<{ id: string; enabled: boolean }>;
 }
 
-export function LorebookSelectionEnableActions({ selectedIds, lorebooks }: LorebookSelectionEnableActionsProps) {
+export function LorebookSelectionEnableActions({ selectedIds }: LorebookSelectionEnableActionsProps) {
   const { t: localizeUi } = useUiTranslation();
   const setEnabled = useSetLorebooksEnabled();
-  const enabledById = useMemo(() => new Map(lorebooks.map((lorebook) => [lorebook.id, lorebook.enabled])), [lorebooks]);
-  const toEnable = useMemo(
-    () => planLorebookSelectionEnable(selectedIds, enabledById, true),
-    [enabledById, selectedIds],
-  );
-  const toDisable = useMemo(
-    () => planLorebookSelectionEnable(selectedIds, enabledById, false),
-    [enabledById, selectedIds],
-  );
 
   const showError = useCallback(
     (error: unknown) =>
@@ -73,8 +62,8 @@ export function LorebookSelectionEnableActions({ selectedIds, lorebooks }: Loreb
       <button
         type="button"
         data-lorebook-selection-enable="enable"
-        onClick={() => void apply(toEnable, true)}
-        disabled={setEnabled.isPending || toEnable.length === 0}
+        onClick={() => void apply(Array.from(selectedIds), true)}
+        disabled={setEnabled.isPending || selectedIds.size === 0}
         className="mari-chrome-control min-w-0 flex-1 px-2 py-2 text-xs"
         title={enableLabel}
         aria-label={enableLabel}
@@ -85,8 +74,8 @@ export function LorebookSelectionEnableActions({ selectedIds, lorebooks }: Loreb
       <button
         type="button"
         data-lorebook-selection-enable="disable"
-        onClick={() => void apply(toDisable, false)}
-        disabled={setEnabled.isPending || toDisable.length === 0}
+        onClick={() => void apply(Array.from(selectedIds), false)}
+        disabled={setEnabled.isPending || selectedIds.size === 0}
         className="mari-chrome-control min-w-0 flex-1 px-2 py-2 text-xs"
         title={disableLabel}
         aria-label={disableLabel}

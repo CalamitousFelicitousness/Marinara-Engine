@@ -15,7 +15,7 @@ import {
 } from "@marinara-engine/shared";
 import type { DB } from "../../db/connection.js";
 import { encodeShardKey, isLazyUnitTable } from "../../db/file-backed-store.js";
-import { and, desc, eq, gt, inArray, isNull, lt } from "../../db/file-query.js";
+import { and, desc, eq, gt, inArray, isNull, lte } from "../../db/file-query.js";
 import { chats, memoryChunks, messages, messageSwipes, messageTrash } from "../../db/schema/index.js";
 import { newId, now } from "../../utils/id-generator.js";
 import { createChatsStorage } from "./chats.storage.js";
@@ -27,6 +27,7 @@ type TrashSnapshot = { message: MessageRow; swipes: SwipeRow[] };
 
 const RETENTION_MS = MESSAGE_TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000;
 const CHUNK = 500;
+const MESSAGE_TRASH_SWEEP_INTERVAL_MS = 60 * 60 * 1000;
 
 function parseSnapshot(row: TrashRow): TrashSnapshot | null {
   try {
@@ -86,7 +87,7 @@ export function createMessageTrashStorage(db: DB) {
       const expired = await db
         .select({ id: messageTrash.id })
         .from(messageTrash)
-        .where(and(eq(messageTrash.chatId, chatId), lt(messageTrash.deletedAt, cutoff)));
+        .where(and(eq(messageTrash.chatId, chatId), lte(messageTrash.deletedAt, cutoff)));
       if (expired.length === 0) return 0;
       await db.delete(messageTrash).where(
         inArray(
@@ -308,7 +309,7 @@ function shardHasExpiredEntry(path: string, cutoff: string): boolean {
     const value = stack.pop();
     if (!value || typeof value !== "object") continue;
     for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-      if ((key === "deletedAt" || key === "deleted_at") && typeof child === "string" && child < cutoff) return true;
+      if ((key === "deletedAt" || key === "deleted_at") && typeof child === "string" && child <= cutoff) return true;
       if (child && typeof child === "object") stack.push(child);
     }
   }
@@ -319,7 +320,7 @@ function shardHasExpiredEntry(path: string, cutoff: string): boolean {
  * Purge expired trash in chats nobody has opened. Listing a chat's trash purges it too, but
  * without this sweep a never-reopened chat would keep expired entries forever. Resident chats
  * are purged in memory; for the rest only chats whose trash shard file holds an expired entry
- * are loaded, at most `maxChats` per sweep so one pass never loads the whole library.
+ * are loaded, up to `maxChats` cold trash shards per sweep.
  */
 export async function sweepExpiredMessageTrash(
   db: DB,
@@ -339,10 +340,50 @@ export async function sweepExpiredMessageTrash(
     if (lazy && !resident.has(id)) {
       if (touched >= maxChats) continue;
       const shardPath = join(shardDir, `${encodeShardKey(id)}.json`);
-      if (!existsSync(shardPath) || !shardHasExpiredEntry(shardPath, cutoff)) continue;
+      const inspectionPath = existsSync(shardPath)
+        ? shardPath
+        : existsSync(`${shardPath}.bak`)
+          ? `${shardPath}.bak`
+          : null;
+      if (!inspectionPath || !shardHasExpiredEntry(inspectionPath, cutoff)) continue;
       touched += 1;
     }
     purged += await store.purgeExpired(id, nowMs);
   }
   return { purged, chats: touched };
+}
+
+/** Run cleanup at startup and periodically, without overlapping writes or closing storage under one. */
+export function startMessageTrashMaintenance(
+  runSweep: () => Promise<{ purged: number }>,
+  logger: { info: (purged: number) => void; warn: (error: unknown) => void },
+  intervalMs = MESSAGE_TRASH_SWEEP_INTERVAL_MS,
+): { sweep: () => Promise<void>; stop: () => Promise<void> } {
+  let inFlight: Promise<void> | undefined;
+  let stopped = false;
+  const sweep = (): Promise<void> => {
+    if (stopped) return inFlight ?? Promise.resolve();
+    if (inFlight) return inFlight;
+    inFlight = Promise.resolve()
+      .then(runSweep)
+      .then(({ purged }) => {
+        if (purged > 0) logger.info(purged);
+      })
+      .catch((error: unknown) => logger.warn(error))
+      .finally(() => {
+        inFlight = undefined;
+      });
+    return inFlight;
+  };
+  const timer = setInterval(() => void sweep(), intervalMs);
+  timer.unref();
+  void sweep();
+  return {
+    sweep,
+    async stop() {
+      stopped = true;
+      clearInterval(timer);
+      await inFlight;
+    },
+  };
 }

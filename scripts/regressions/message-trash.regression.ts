@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, renameSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -19,6 +19,7 @@ type TestApp = {
   ready(): Promise<void>;
 };
 let app: TestApp | null = null;
+let closeDatabase: (() => Promise<void>) | undefined;
 const providerRequests: Array<Record<string, any>> = [];
 const provider = createServer(async (request, response) => {
   if (request.url?.endsWith("/api/extra/abort")) {
@@ -51,14 +52,66 @@ const provider = createServer(async (request, response) => {
 });
 try {
   const { buildApp } = await import("../../packages/server/src/app.js");
-  const { getDB } = await import("../../packages/server/src/db/connection.js");
+  const { closeDB, getDB } = await import("../../packages/server/src/db/connection.js");
+  closeDatabase = closeDB;
   const { eq } = await import("../../packages/server/src/db/file-query.js");
+  const { encodeShardKey } = await import("../../packages/server/src/db/file-backed-store.js");
   const { chats, messageSwipes, messageTrash } = await import("../../packages/server/src/db/schema/index.js");
   const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
   const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
   const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
   const { createPromptsStorage } = await import("../../packages/server/src/services/storage/prompts.storage.js");
-  const { characterDataSchema, MAX_PINNED_CONTEXT_MESSAGES } = await import("../../packages/shared/src/index.ts");
+  const { startMessageTrashMaintenance, sweepExpiredMessageTrash } = await import(
+    "../../packages/server/src/services/storage/message-trash.storage.js"
+  );
+  const { characterDataSchema, MAX_PINNED_CONTEXT_MESSAGES, MESSAGE_TRASH_RETENTION_DAYS } = await import(
+    "../../packages/shared/src/index.ts"
+  );
+
+  let resolveSweep!: (result: { purged: number }) => void;
+  let maintenanceCalls = 0;
+  const maintenance = startMessageTrashMaintenance(
+    () => {
+      maintenanceCalls += 1;
+      return new Promise((resolve) => {
+        resolveSweep = resolve;
+      });
+    },
+    { info: () => undefined, warn: (error) => assert.fail(`unexpected maintenance error: ${String(error)}`) },
+    60_000,
+  );
+  await Promise.resolve();
+  assert.equal(maintenanceCalls, 1, "maintenance starts a cleanup immediately");
+  const overlappingSweep = maintenance.sweep();
+  assert.equal(maintenanceCalls, 1, "a second trigger reuses the in-flight sweep");
+  let maintenanceStopped = false;
+  const stoppingMaintenance = maintenance.stop().then(() => {
+    maintenanceStopped = true;
+  });
+  await Promise.resolve();
+  assert.equal(maintenanceStopped, false, "stop waits while cleanup is still writing");
+  resolveSweep({ purged: 0 });
+  await Promise.all([overlappingSweep, stoppingMaintenance]);
+  assert.equal(maintenanceStopped, true);
+  await maintenance.sweep();
+  assert.equal(maintenanceCalls, 1, "a stopped maintenance runner cannot start new work");
+
+  let retryCalls = 0;
+  const maintenanceErrors: unknown[] = [];
+  const retryMaintenance = startMessageTrashMaintenance(
+    async () => {
+      retryCalls += 1;
+      if (retryCalls === 1) throw new Error("synthetic sweep failure");
+      return { purged: 0 };
+    },
+    { info: () => undefined, warn: (error) => maintenanceErrors.push(error) },
+    60_000,
+  );
+  await retryMaintenance.sweep();
+  await retryMaintenance.sweep();
+  assert.equal(retryCalls, 2, "a failed sweep is retried by the next trigger");
+  assert.equal(maintenanceErrors.length, 1, "sweep failures are reported and contained");
+  await retryMaintenance.stop();
 
   app = (await buildApp()) as TestApp;
   await app.ready();
@@ -374,8 +427,99 @@ try {
   assert.deepEqual(restoreAfterExpiry.json().restoredMessageIds, [], "expired trash cannot be restored directly");
   assert.equal(await storage.getMessage(expiring.id), null);
   assert.equal((await db.select().from(messageTrash).where(eq(messageTrash.id, trashRows[0]!.id))).length, 0);
+
+  // Recovery and cleanup use the same inclusive 30-day boundary.
+  const nowMs = Date.now();
+  const cutoff = new Date(nowMs - MESSAGE_TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const cleanupChatIds = [
+    "trash-cleanup-old",
+    "trash-cleanup-boundary",
+    "trash-cleanup-fresh",
+    "trash-cleanup-cold",
+    "trash-cleanup-cold-2",
+    "trash-cleanup-cold-fresh",
+  ];
+  for (const id of cleanupChatIds) {
+    await db.insert(chats).values({
+      id,
+      name: id,
+      mode: "conversation",
+      characterIds: "[]",
+      metadata: "{}",
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
+  }
+  const cleanupRows = cleanupChatIds.map((chatId, index) => ({
+    id: `trash-cleanup-entry-${index}`,
+    chatId,
+    messageId: `trash-cleanup-message-${index}`,
+    role: "user" as const,
+    characterId: null,
+    content: "synthetic expiration fixture",
+    snapshot: JSON.stringify({ message: { id: `trash-cleanup-message-${index}` }, swipes: [] }),
+    messageCreatedAt: timestamp,
+    deletedAt:
+      index === 0
+        ? new Date(Date.parse(cutoff) - 1).toISOString()
+        : index === 1
+          ? cutoff
+          : new Date(nowMs - 1).toISOString(),
+  }));
+  await db.insert(messageTrash).values(cleanupRows);
+  const residentSweep = await sweepExpiredMessageTrash(db, { nowMs });
+  assert.equal(residentSweep.purged, 2, "entries older than or exactly at 30 days are purged");
+  assert.equal(
+    (await db.select().from(messageTrash).where(eq(messageTrash.id, cleanupRows[2]!.id))).length,
+    1,
+    "entries newer than 30 days remain recoverable",
+  );
+
+  // Reopening clears resident chat units; the next sweep must find and purge the cold trash shard.
+  const coldRows = [cleanupRows[3]!, cleanupRows[4]!];
+  for (const row of coldRows) {
+    await db.update(messageTrash).set({ deletedAt: cutoff }).where(eq(messageTrash.id, row.id));
+  }
+  await app.close();
+  app = null;
+  const reopenedDb = await getDB();
+  const residentChats = reopenedDb._fileStore.getResidentChatUnits();
+  assert.equal(residentChats.has(coldRows[0]!.chatId), false, "the fixture chat is cold after storage reopens");
+  assert.equal(residentChats.has(cleanupRows[5]!.chatId), false, "the fresh backup fixture is also cold");
+  const backupOnlyShard = join(
+    reopenedDb._fileStore.rootDir,
+    "tables",
+    "message_trash",
+    `${encodeShardKey(coldRows[0]!.chatId)}.json`,
+  );
+  assert.equal(existsSync(backupOnlyShard), true, "the synthetic primary trash shard exists before simulating recovery");
+  renameSync(backupOnlyShard, `${backupOnlyShard}.bak`);
+  const freshBackupShard = join(
+    reopenedDb._fileStore.rootDir,
+    "tables",
+    "message_trash",
+    `${encodeShardKey(cleanupRows[5]!.chatId)}.json`,
+  );
+  assert.equal(existsSync(freshBackupShard), true, "the fresh synthetic primary shard exists before simulating recovery");
+  renameSync(freshBackupShard, `${freshBackupShard}.bak`);
+  const firstColdSweep = await sweepExpiredMessageTrash(reopenedDb, { nowMs, maxChats: 1 });
+  assert.equal(firstColdSweep.purged, 1, "one pass purges an expired backup-only trash shard");
+  assert.equal(firstColdSweep.chats, 1, "one pass loads only one cold trash shard");
+  const secondColdSweep = await sweepExpiredMessageTrash(reopenedDb, { nowMs, maxChats: 1 });
+  assert.equal(secondColdSweep.purged, 1, "a later pass reaches the next expired cold shard");
+  assert.equal((await reopenedDb.select().from(messageTrash).where(eq(messageTrash.id, coldRows[0]!.id))).length, 0);
+  assert.equal((await reopenedDb.select().from(messageTrash).where(eq(messageTrash.id, coldRows[1]!.id))).length, 0);
+  assert.equal(
+    (await reopenedDb.select().from(messageTrash).where(eq(messageTrash.id, cleanupRows[5]!.id))).length,
+    1,
+    "a fresh backup-only shard remains recoverable",
+  );
+  const remainingFresh = await reopenedDb.select().from(messageTrash).where(eq(messageTrash.id, cleanupRows[2]!.id));
+  assert.equal(remainingFresh.length, 1, "cold sweep preserves a fresh entry");
+  await closeDB();
 } finally {
   await app?.close();
+  await closeDatabase?.();
   if (provider.listening) {
     provider.closeAllConnections();
     await new Promise<void>((done) => provider.close(() => done()));

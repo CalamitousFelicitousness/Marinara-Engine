@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Expired message recovery records are cleaned up at server startup and hourly, including unopened chats. Recovery ends at 30 days; newer records are preserved, and shutdown waits for active cleanup.
+
 - Message recovery notifications reflect whether the server actually retained deleted messages. Restoring pinned messages refuses to exceed the pin limit and keeps the recovery records intact.
 
 - Bookmark messages, attach private notes, and pin up to ten messages for prompt context. An optional message trash setting keeps supported deleted messages for 30 days for recovery; it is off by default, and Game Mode deletion remains permanent. Private notes stay out of model prompts and are excluded from exports unless explicitly selected. Launcher downgrade protection also preserves recoverable message records (#6698).

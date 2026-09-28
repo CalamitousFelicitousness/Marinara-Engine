@@ -182,6 +182,7 @@ const SHARDED_TABLES = [
   "lorebook_persona_links",
   "lorebook_folders",
   "lorebook_entries",
+  "lorebook_entry_activation_stats",
   "prompt_presets",
   "prompt_groups",
   "prompt_sections",
@@ -226,7 +227,11 @@ const SHARDED_TABLES = [
   "mari_instructions",
   "mari_workspace_context",
 ];
-const PRIMARY_KEY_COLUMNS = { app_settings: "key", prompt_overrides: "key" };
+const PRIMARY_KEY_COLUMNS = {
+  lorebook_entry_activation_stats: "entryId",
+  app_settings: "key",
+  prompt_overrides: "key",
+};
 const UNSHARD_SENTINEL = ".unshard-in-progress";
 
 async function pathExists(path) {

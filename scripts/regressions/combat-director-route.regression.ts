@@ -220,6 +220,14 @@ try {
   );
   assert.equal(repeat.json().session.revision, s.revision);
   assert.equal(JSON.parse((await chats.getById(chat.id))!.metadata).gameInventory[0].quantity, 1);
+  // The spend goes through the same save as every other inventory change, so the journal hears of it
+  // once, the duplicated request included.
+  assert.deepEqual(
+    (JSON.parse((await chats.getById(chat.id))!.metadata).gameJournal?.inventoryLog ?? []).map(
+      (entry: { item: string; action: string; quantity: number }) => [entry.item, entry.action, entry.quantity],
+    ),
+    [["Potion", "used", 1]],
+  );
   const reload = await post("/combat/start", { ...input, party: [{ ...unit("hero", "player"), hp: 1 }] });
   assert.deepEqual(reload.json().session, s, "reopening ignores stale client combatants");
   // A checkpoint restore replaces row identity even if its revision/window happen to match.

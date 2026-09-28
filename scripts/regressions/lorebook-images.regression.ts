@@ -93,23 +93,29 @@ try {
   const filesBeforeFailedAttach = new Set(await readdir(lorebookImagesDirectory()));
   const originalTransaction = db.transaction;
   try {
-    for (const [message, status] of [
-      ["Injected image attachment failure", 500],
-      ["Maximum 4 images per entry", 400],
+    for (const [message, status, removedBeforeRollback] of [
+      ["Injected image attachment failure", 500, true],
+      ["Maximum 4 images per entry", 400, true],
+      ["Injected image attachment failure", 500, false],
     ] as const) {
       db.transaction = async () => {
         const createdFiles = (await readdir(lorebookImagesDirectory())).filter(
           (file) => !filesBeforeFailedAttach.has(file),
         );
         assert.equal(createdFiles.length, 1);
-        // Another cleanup removed the new file before the failed attachment rolls back.
-        await unlink(join(lorebookImagesDirectory(), createdFiles[0]!));
+        // Also cover another cleanup removing the file before attachment rollback.
+        if (removedBeforeRollback) await unlink(join(lorebookImagesDirectory(), createdFiles[0]!));
         throw new Error(message);
       };
       const failedAttach = await app.inject({ method: "POST", url, ...uploadPayload(png) });
       assert.equal(failedAttach.statusCode, status);
       assert.equal(failedAttach.json().error, message);
       assert.deepEqual((await storage.getEntry(entry.id))!.images, [image]);
+      assert.deepEqual(
+        new Set(await readdir(lorebookImagesDirectory())),
+        filesBeforeFailedAttach,
+        "failed attachments leave no new image file behind",
+      );
     }
   } finally {
     db.transaction = originalTransaction;

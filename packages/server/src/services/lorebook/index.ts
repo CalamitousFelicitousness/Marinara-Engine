@@ -717,6 +717,7 @@ function trySelectBudgetedLorebookEntry(
   lorebooksById: ReadonlyMap<string, Pick<Lorebook, "name" | "tokenBudget" | "entryLimit">>,
   tokenBudget: number,
   maxEntries: number,
+  includeImages = false,
 ): BudgetedLorebookEntrySelection {
   if (state.selectedIds.has(candidate.entry.id)) return { selected: false };
   if (maxEntries > 0 && state.selected.length >= maxEntries) return { selected: false };
@@ -734,7 +735,7 @@ function trySelectBudgetedLorebookEntry(
   const fitted = fitLorebookEntryToBudget(
     candidate,
     (tokens) => !exceedsLorebookBudget(tokens) && !exceedsGlobalBudget(tokens),
-    false,
+    includeImages,
   );
 
   if (!fitted) {
@@ -867,6 +868,20 @@ function selectBudgetedLorebookEntryBatch(
       }
     }
 
+    for (const candidate of [...pass.entries].sort(lorebookSelectionOrder)) {
+      if (candidate.entry.content.trim() || nextState.selectedIds.has(candidate.entry.id)) continue;
+      if (maxEntries > 0 && nextState.selected.length >= maxEntries) break;
+      const selected = trySelectBudgetedLorebookEntry(
+        { ...candidate, entry: { ...candidate.entry, content: "" } },
+        nextState,
+        lorebooksById,
+        tokenBudget,
+        maxEntries,
+        true,
+      );
+      if (selected.selected) selectedFromCandidates.push(selected.entry);
+    }
+
     selectedFromCandidates.splice(
       0,
       selectedFromCandidates.length,
@@ -903,6 +918,20 @@ function selectBudgetedLorebookEntryBatch(
     } else if (selected.skipped) {
       skippedFromCandidates.push(selected.skipped);
     }
+  }
+
+  for (const candidate of [...pass.entries].sort(lorebookSelectionOrder)) {
+    if (candidate.entry.content.trim() || nextState.selectedIds.has(candidate.entry.id)) continue;
+    if (maxEntries > 0 && nextState.selected.length >= maxEntries) break;
+    const selected = trySelectBudgetedLorebookEntry(
+      { ...candidate, entry: { ...candidate.entry, content: "" } },
+      nextState,
+      lorebooksById,
+      tokenBudget,
+      maxEntries,
+      true,
+    );
+    if (selected.selected) selectedFromCandidates.push(selected.entry);
   }
 
   selectedFromCandidates.splice(

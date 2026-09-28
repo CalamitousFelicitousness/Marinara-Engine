@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Enabling or disabling selected lorebooks includes books hidden by filters, and Undo changes only the books updated by that action.
+
 - A Game Mode ruleset's items can be worn, bound and carried. An item that takes slots has an **Equipped** button and uses its bearer's free slots; one that binds is bound up to the limit on its bearer's sheet, and a cursed one stays bound. When the ruleset says what everything weighs, each bag shows its load, an item added from **All** or by the Game Master without naming anyone goes to whoever can carry it, and nothing is given past anyone's limit. The Game Master can equip and bind items too, and sees each character's load, slots and bound items (#6801).
 
 - Restore all preserves conflicts reported by completed batches when a later batch fails, even if no messages were restored.

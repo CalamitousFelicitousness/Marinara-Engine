@@ -15,6 +15,8 @@ import {
 import { newId, now } from "../../utils/id-generator.js";
 import {
   LIMITS,
+  createLorebookEntrySchema,
+  type LorebookEntryImage,
   normalizeLorebookCategory,
   type CreateLorebookInput,
   type UpdateLorebookInput,
@@ -32,6 +34,7 @@ import {
 import {
   collectEffectivelyDisabledFolderIds,
   collectFolderSubtreeIds,
+  MAX_LOREBOOK_ENTRY_IMAGES,
   parseLorebookDecisionActivation,
 } from "@marinara-engine/shared";
 import { normalizeTimestampOverrides, type TimestampOverrides } from "../import/import-timestamps.js";
@@ -233,6 +236,7 @@ function parseEntryRow(row: Record<string, unknown>) {
     dynamicState: JSON.parse((row.dynamicState as string) || "{}"),
     activationConditions: JSON.parse((row.activationConditions as string) || "[]"),
     schedule: row.schedule ? JSON.parse(row.schedule as string) : null,
+    images: JSON.parse((row.images as string) || "[]"),
     // Unprojected selects receive the original JSON string; a projected
     // select would surface the store's packed Float64Array (#5592) — accept
     // both so no read path depends on which shape it got.
@@ -648,14 +652,14 @@ export function createLorebooksStorage(db: DB) {
     },
 
     async remove(id: string) {
-      await createChatsStorage(db).pruneLorebookChatMetadata(async () => {
-        const entries = await db
+      await createChatsStorage(db).pruneLorebookChatMetadata(async (tx) => {
+        const entries = await tx
           .select({ id: lorebookEntries.id })
           .from(lorebookEntries)
           .where(eq(lorebookEntries.lorebookId, id));
-        await db.delete(lorebookCharacterLinks).where(eq(lorebookCharacterLinks.lorebookId, id));
-        await db.delete(lorebookPersonaLinks).where(eq(lorebookPersonaLinks.lorebookId, id));
-        await db.delete(lorebooks).where(eq(lorebooks.id, id));
+        await tx.delete(lorebookCharacterLinks).where(eq(lorebookCharacterLinks.lorebookId, id));
+        await tx.delete(lorebookPersonaLinks).where(eq(lorebookPersonaLinks.lorebookId, id));
+        await tx.delete(lorebooks).where(eq(lorebooks.id, id));
         return entries.map((entry) => entry.id);
       }, id);
     },
@@ -866,7 +870,28 @@ export function createLorebooksStorage(db: DB) {
       return row ? parseEntryRow(row as Record<string, unknown>) : null;
     },
 
+    async appendEntryImage(id: string, lorebookId: string, image: LorebookEntryImage) {
+      const validated = createLorebookEntrySchema.shape.images.parse([image])[0]!;
+      const updated = await db.transaction(async (tx) => {
+        const [row] = await tx
+          .select()
+          .from(lorebookEntries)
+          .where(and(eq(lorebookEntries.id, id), eq(lorebookEntries.lorebookId, lorebookId)));
+        if (!row) return false;
+        const images = createLorebookEntrySchema.shape.images.parse(JSON.parse(row.images || "[]"));
+        if (images.length >= MAX_LOREBOOK_ENTRY_IMAGES)
+          throw new Error(`Maximum ${MAX_LOREBOOK_ENTRY_IMAGES} images per entry`);
+        await tx
+          .update(lorebookEntries)
+          .set({ images: JSON.stringify([...images, validated]), updatedAt: now() })
+          .where(eq(lorebookEntries.id, id));
+        return true;
+      });
+      return updated ? this.getEntry(id) : null;
+    },
+
     async createEntry(input: CreateLorebookEntryInput & EntryProvenanceInput) {
+      const images = createLorebookEntrySchema.shape.images.parse(input.images ?? []);
       const id = newId();
       const timestamp = now();
       const requestedFolderId = input.folderId ?? null;
@@ -917,6 +942,7 @@ export function createLorebooksStorage(db: DB) {
         excludeRecursion: String(input.excludeRecursion ?? false),
         delayUntilRecursion: String(input.delayUntilRecursion ?? false),
         excludeFromVectorization: String(input.excludeFromVectorization ?? false),
+        images: JSON.stringify(images),
         ...parseLorebookDecisionActivation(input),
         sourceAgentId: input.sourceAgentId ?? null,
         sourceMessageRefs: serializeMessageRefs(input.sourceMessageRefs),
@@ -1019,6 +1045,8 @@ export function createLorebooksStorage(db: DB) {
       if (input.delayUntilRecursion !== undefined) updates.delayUntilRecursion = String(input.delayUntilRecursion);
       if (input.excludeFromVectorization !== undefined)
         updates.excludeFromVectorization = String(input.excludeFromVectorization);
+      if (input.images !== undefined)
+        updates.images = JSON.stringify(createLorebookEntrySchema.shape.images.parse(input.images));
       if (input.decisionStatement !== undefined)
         updates.decisionStatement = parseLorebookDecisionActivation(input).decisionStatement;
       if (input.decisionMode !== undefined) updates.decisionMode = parseLorebookDecisionActivation(input).decisionMode;
@@ -1297,8 +1325,8 @@ export function createLorebooksStorage(db: DB) {
     },
 
     async removeEntry(id: string) {
-      await createChatsStorage(db).pruneLorebookChatMetadata(async () => {
-        await db.delete(lorebookEntries).where(eq(lorebookEntries.id, id));
+      await createChatsStorage(db).pruneLorebookChatMetadata(async (tx) => {
+        await tx.delete(lorebookEntries).where(eq(lorebookEntries.id, id));
         return [id];
       });
     },
@@ -1395,7 +1423,7 @@ export function createLorebooksStorage(db: DB) {
       const ownerLorebookId = folder.lorebookId as string;
       // Cascade: delete the folder, every descendant folder, and all their entries.
       if (cascade) {
-        await createChatsStorage(db).pruneLorebookChatMetadata(async () => {
+        await createChatsStorage(db).pruneLorebookChatMetadata(async (tx) => {
           const subtreeIds = collectFolderSubtreeIds(
             (await this.listFolders(ownerLorebookId)) as unknown as Array<{
               id: string;
@@ -1403,14 +1431,14 @@ export function createLorebooksStorage(db: DB) {
             }>,
             folderId,
           );
-          const removedEntries = await db
+          const removedEntries = await tx
             .select({ id: lorebookEntries.id })
             .from(lorebookEntries)
             .where(and(eq(lorebookEntries.lorebookId, ownerLorebookId), inArray(lorebookEntries.folderId, subtreeIds)));
-          await db
+          await tx
             .delete(lorebookEntries)
             .where(and(eq(lorebookEntries.lorebookId, ownerLorebookId), inArray(lorebookEntries.folderId, subtreeIds)));
-          await db
+          await tx
             .delete(lorebookFolders)
             .where(and(eq(lorebookFolders.lorebookId, ownerLorebookId), inArray(lorebookFolders.id, subtreeIds)));
           return removedEntries.map((entry) => entry.id);

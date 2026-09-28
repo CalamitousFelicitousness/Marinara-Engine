@@ -49,6 +49,7 @@ type GenerationProviderRuntimeArgs = {
   fallbackBaseUrl?: string;
   onFallback?: GenerationFallbackNotifier;
   onProviderUsed?: (origin: GenerationProviderOrigin) => void;
+  wrapProvider?: (provider: BaseLLMProvider) => BaseLLMProvider;
   chatMode: string;
   isSceneChat: boolean;
   chatParameters: unknown;
@@ -234,6 +235,7 @@ export function resolveGenerationProviderRuntime(args: GenerationProviderRuntime
   );
   const provider = withConnectionFallbackProvider({
     primary: primaryProvider,
+    wrapProvider: args.wrapProvider,
     primaryConnectionId: args.connectionId,
     fallbackConnection: args.fallbackConnection,
     fallbackBaseUrl: args.fallbackBaseUrl ?? "",

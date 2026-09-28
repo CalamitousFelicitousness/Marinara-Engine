@@ -71,7 +71,7 @@ function toCharacterBookEntry(entry: LoreEntryRow, index: number): CharacterBook
   return {
     keys: asStringArray(entry.keys),
     content: asString(entry.content),
-    extensions: {},
+    extensions: Array.isArray(entry.images) && entry.images.length ? { marinaraImages: entry.images } : {},
     enabled: asBoolean(entry.enabled),
     insertion_order: order,
     case_sensitive: asBoolean(entry.caseSensitive),

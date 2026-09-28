@@ -2000,6 +2000,22 @@ export function useGenerate() {
               break;
             }
 
+            case "lorebook_image_notice": {
+              const code = (event.data as { code?: string } | null)?.code;
+              if (isActiveChat() && (code === "unsupported" || code === "unavailable" || code === "limited")) {
+                toast.warning(
+                  translate(
+                    code === "unsupported"
+                      ? "ui.lorebooks.expandeddrawer.imagesUnsupportedModelNotice"
+                      : code === "limited"
+                        ? "ui.lorebooks.expandeddrawer.imagesLimitNotice"
+                        : "ui.lorebooks.expandeddrawer.imagesUnavailableNotice",
+                  ),
+                );
+              }
+              break;
+            }
+
             case "agent_warning": {
               showAgentWarning(event.data, params.chatId);
               break;

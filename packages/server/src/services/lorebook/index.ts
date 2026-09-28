@@ -5,7 +5,7 @@
 import type { DB } from "../../db/connection.js";
 import { inArray } from "../../db/file-query.js";
 import { messages as messagesTable } from "../../db/schema/index.js";
-import { estimateTextTokens, LIMITS } from "@marinara-engine/shared";
+import { LIMITS, estimateTextTokens } from "@marinara-engine/shared";
 import { logger } from "../../lib/logger.js";
 import { isFeatureEnabled } from "../features/feature-settings.js";
 import type {
@@ -30,13 +30,20 @@ import {
   type EntryTimingState,
   updateTimingStatesForScan,
 } from "./keyword-scanner.js";
-import { applyTokenBudget, processActivatedEntries } from "./prompt-injector.js";
+import type { LorebookImageEntry } from "../generation/lorebook-image-prompt.js";
+import {
+  applyTokenBudget,
+  estimateLorebookEntryTokens,
+  fitLorebookEntryToBudget,
+  processActivatedEntries,
+} from "./prompt-injector.js";
 
 export interface LorebookScanResult {
   worldInfoBefore: string;
   worldInfoAfter: string;
   depthEntries: Array<{ content: string; role: "system" | "user" | "assistant"; depth: number; order: number }>;
   outlets: Record<string, string>;
+  imageEntries?: LorebookImageEntry[];
   totalEntries: number;
   totalTokensEstimate: number;
   activatedEntryIds: string[];
@@ -110,6 +117,7 @@ export function scopeLorebookScanResultToCharacterContext(
   return {
     ...result,
     ...processed,
+    ...(result.imageEntries ? { imageEntries: result.imageEntries.filter((entry) => scopedIds.has(entry.id)) } : {}),
     activatedEntryIds: scopedActivatedEntries.map((entry) => entry.entry.id),
     activatedEntries: result.activatedEntries.filter((entry) => scopedIds.has(entry.id)),
     budgetSkippedEntries: scopedSkippedEntries,
@@ -510,10 +518,6 @@ function lorebookInjectionOrder(a: ActivatedEntry, b: ActivatedEntry): number {
   return a.injectionOrder - b.injectionOrder;
 }
 
-function estimateLorebookTokens(content: string): number {
-  return estimateTextTokens(content);
-}
-
 type LorebookBudgetSelectionState = {
   selected: ActivatedEntry[];
   selectedIds: Set<string>;
@@ -678,8 +682,12 @@ function applyCurrentLocationLoreBudget(
   const skipped: LorebookBudgetSkippedEntry[] = [];
   let usedTokens = 0;
   for (const candidate of [...candidates].sort(lorebookSelectionOrder)) {
-    const estimatedTokens = estimateLorebookTokens(candidate.entry.content);
-    if (tokenBudget > 0 && usedTokens + estimatedTokens > tokenBudget) {
+    const fitted = fitLorebookEntryToBudget(
+      candidate,
+      (tokens) => tokenBudget <= 0 || usedTokens + tokens <= tokenBudget,
+    );
+    if (!fitted) {
+      const estimatedTokens = estimateLorebookEntryTokens(candidate.entry);
       skipped.push({
         id: candidate.entry.id,
         name: candidate.entry.name,
@@ -697,8 +705,8 @@ function applyCurrentLocationLoreBudget(
       });
       continue;
     }
-    selected.push(candidate);
-    usedTokens += estimatedTokens;
+    selected.push(fitted.candidate);
+    usedTokens += fitted.tokens;
   }
   return { selected: selected.sort(lorebookInjectionOrder), skipped };
 }
@@ -709,6 +717,7 @@ function trySelectBudgetedLorebookEntry(
   lorebooksById: ReadonlyMap<string, Pick<Lorebook, "name" | "tokenBudget" | "entryLimit">>,
   tokenBudget: number,
   maxEntries: number,
+  includeImages = false,
 ): BudgetedLorebookEntrySelection {
   if (state.selectedIds.has(candidate.entry.id)) return { selected: false };
   if (maxEntries > 0 && state.selected.length >= maxEntries) return { selected: false };
@@ -719,13 +728,18 @@ function trySelectBudgetedLorebookEntry(
   const lorebookEntryCount = state.perLorebookEntryCounts.get(lorebookId) ?? 0;
   if (lorebookEntryCount >= lorebookEntryLimit) return { selected: false };
 
-  const entryTokens = estimateLorebookTokens(candidate.entry.content);
   const lorebookBudget = lorebook?.tokenBudget ?? 0;
   const lorebookTokens = state.perLorebookTokens.get(lorebookId) ?? 0;
-  const exceedsLorebookBudget = lorebookBudget > 0 && lorebookTokens + entryTokens > lorebookBudget;
-  const exceedsGlobalBudget = tokenBudget > 0 && state.totalTokens + entryTokens > tokenBudget;
+  const exceedsLorebookBudget = (tokens: number) => lorebookBudget > 0 && lorebookTokens + tokens > lorebookBudget;
+  const exceedsGlobalBudget = (tokens: number) => tokenBudget > 0 && state.totalTokens + tokens > tokenBudget;
+  const fitted = fitLorebookEntryToBudget(
+    candidate,
+    (tokens) => !exceedsLorebookBudget(tokens) && !exceedsGlobalBudget(tokens),
+    includeImages,
+  );
 
-  if (exceedsLorebookBudget || exceedsGlobalBudget) {
+  if (!fitted) {
+    const entryTokens = estimateTextTokens(candidate.entry.content);
     return {
       selected: false,
       skipped: {
@@ -735,18 +749,56 @@ function trySelectBudgetedLorebookEntry(
         lorebookUsedTokens: lorebookTokens,
         chatBudget: tokenBudget,
         chatUsedTokens: state.totalTokens,
-        blockedBy: getBudgetSkipReason(exceedsLorebookBudget, exceedsGlobalBudget),
+        blockedBy: getBudgetSkipReason(exceedsLorebookBudget(entryTokens), exceedsGlobalBudget(entryTokens)),
       },
     };
   }
 
-  state.selected.push(candidate);
+  const entryTokens = fitted.tokens;
+  const selectedEntry = includeImages ? fitted.candidate : candidate;
+  state.selected.push(selectedEntry);
   state.selectedIds.add(candidate.entry.id);
   state.perLorebookTokens.set(lorebookId, lorebookTokens + entryTokens);
   state.perLorebookEntryCounts.set(lorebookId, lorebookEntryCount + 1);
   state.totalTokens += entryTokens;
 
-  return { selected: true, entry: candidate };
+  return { selected: true, entry: selectedEntry };
+}
+
+function addImagesToBudgetedEntries(
+  selected: ActivatedEntry[],
+  state: LorebookBudgetSelectionState,
+  lorebooksById: ReadonlyMap<string, Pick<Lorebook, "tokenBudget">>,
+  tokenBudget: number,
+): ActivatedEntry[] {
+  return selected.map((candidate) => {
+    const current = state.selected.find((entry) => entry.entry.id === candidate.entry.id) ?? candidate;
+    const oldTokens = candidate.entry.content.trim()
+      ? estimateTextTokens(candidate.entry.content)
+      : estimateLorebookEntryTokens(candidate.entry);
+    const lorebookId = candidate.entry.lorebookId;
+    const lorebook = lorebooksById.get(lorebookId);
+    const lorebookTokens = state.perLorebookTokens.get(lorebookId) ?? 0;
+    const fitted = fitLorebookEntryToBudget(
+      candidate,
+      (tokens) => {
+        const nextLorebookTokens = lorebookTokens - oldTokens + tokens;
+        const nextGlobalTokens = state.totalTokens - oldTokens + tokens;
+        return (
+          ((lorebook?.tokenBudget ?? 0) <= 0 || nextLorebookTokens <= (lorebook?.tokenBudget ?? 0)) &&
+          (tokenBudget <= 0 || nextGlobalTokens <= tokenBudget)
+        );
+      },
+      true,
+    );
+    if (!fitted) return current;
+    const delta = fitted.tokens - oldTokens;
+    state.perLorebookTokens.set(lorebookId, lorebookTokens + delta);
+    state.totalTokens += delta;
+    const index = state.selected.findIndex((entry) => entry.entry.id === candidate.entry.id);
+    if (index >= 0) state.selected[index] = fitted.candidate;
+    return fitted.candidate;
+  });
 }
 
 function toBudgetSkippedEntries(
@@ -789,6 +841,7 @@ function selectBudgetedLorebookEntryBatch(
   tokenBudget: number,
   maxEntries: number,
   resolveContent?: LorebookFinalContentResolver,
+  includeOptionalImages = true,
 ): {
   selectedFromCandidates: ActivatedEntry[];
   state: LorebookBudgetSelectionState;
@@ -818,12 +871,28 @@ function selectBudgetedLorebookEntryBatch(
       }
     }
 
+    for (const candidate of [...pass.entries].sort(lorebookSelectionOrder)) {
+      if (candidate.entry.content.trim() || nextState.selectedIds.has(candidate.entry.id)) continue;
+      if (maxEntries > 0 && nextState.selected.length >= maxEntries) break;
+      const selected = trySelectBudgetedLorebookEntry(
+        { ...candidate, entry: { ...candidate.entry, content: "" } },
+        nextState,
+        lorebooksById,
+        tokenBudget,
+        maxEntries,
+        true,
+      );
+      if (selected.selected) selectedFromCandidates.push(selected.entry);
+    }
+
     selectedFromCandidates.sort(lorebookInjectionOrder);
 
     if (sameActivatedEntrySet(pool, selectedFromCandidates)) {
       commitLorebookResolutionPass(pass);
       return {
-        selectedFromCandidates,
+        selectedFromCandidates: includeOptionalImages
+          ? addImagesToBudgetedEntries(selectedFromCandidates, nextState, lorebooksById, tokenBudget)
+          : selectedFromCandidates,
         state: nextState,
         budgetSkippedEntries: toBudgetSkippedEntries(lastSkippedBudgetEntries, lorebooksById),
       };
@@ -851,11 +920,27 @@ function selectBudgetedLorebookEntryBatch(
     }
   }
 
+  for (const candidate of [...pass.entries].sort(lorebookSelectionOrder)) {
+    if (candidate.entry.content.trim() || nextState.selectedIds.has(candidate.entry.id)) continue;
+    if (maxEntries > 0 && nextState.selected.length >= maxEntries) break;
+    const selected = trySelectBudgetedLorebookEntry(
+      { ...candidate, entry: { ...candidate.entry, content: "" } },
+      nextState,
+      lorebooksById,
+      tokenBudget,
+      maxEntries,
+      true,
+    );
+    if (selected.selected) selectedFromCandidates.push(selected.entry);
+  }
+
   selectedFromCandidates.sort(lorebookInjectionOrder);
   if (sameActivatedEntrySet(pool, selectedFromCandidates)) {
     commitLorebookResolutionPass(pass);
     return {
-      selectedFromCandidates,
+      selectedFromCandidates: includeOptionalImages
+        ? addImagesToBudgetedEntries(selectedFromCandidates, nextState, lorebooksById, tokenBudget)
+        : selectedFromCandidates,
       state: nextState,
       budgetSkippedEntries: toBudgetSkippedEntries(lastSkippedBudgetEntries, lorebooksById),
     };
@@ -959,6 +1044,7 @@ export function resolveBudgetAndRecursivelyActivateLorebookEntriesWithDiagnostic
       tokenBudget,
       maxEntries,
       resolveContent,
+      false,
     );
     state = selectedBatch.state;
     budgetSkippedEntries.push(...selectedBatch.budgetSkippedEntries);
@@ -994,7 +1080,9 @@ export function resolveBudgetAndRecursivelyActivateLorebookEntriesWithDiagnostic
   }
 
   return {
-    selected: state.selected.sort(lorebookInjectionOrder),
+    selected: addImagesToBudgetedEntries(state.selected, state, lorebooksById, tokenBudget).sort(
+      lorebookInjectionOrder,
+    ),
     budgetSkippedEntries,
   };
 }

@@ -1,3 +1,5 @@
+import { appendLorebookImageMessages, type LorebookImageNotice } from "../services/generation/lorebook-image-prompt.js";
+import { withLorebookImageCompatibility } from "../services/llm/lorebook-image-provider.js";
 import { DECISION_SETTINGS_KEYS, resolveDecisionBackend } from "../services/decision/decision-default.js";
 import {
   DECISION_TIMERS_METADATA_KEY,
@@ -3221,9 +3223,9 @@ export async function generateRoutes(app: FastifyInstance) {
             lorebookScanSnapshot = {
               activatedEntries: assembled.lorebookActivatedEntries ?? [],
               budgetSkippedEntries: assembled.lorebookBudgetSkippedEntries ?? [],
-              totalTokensEstimate: estimateTextTokens(
-                (assembled.lorebookActivatedEntries ?? []).map((entry) => entry.content).join(""),
-              ),
+              totalTokensEstimate:
+                assembled.lorebookScanResult?.totalTokensEstimate ??
+                estimateTextTokens((assembled.lorebookActivatedEntries ?? []).map((entry) => entry.content).join("")),
               totalEntries: (assembled.lorebookActivatedEntries ?? []).length,
             };
           }
@@ -3875,7 +3877,21 @@ export async function generateRoutes(app: FastifyInstance) {
           model: conn.model,
           provider: conn.provider,
         };
+        const lorebookReferenceImages = new Set<string>();
+        const lorebookImageNotices = new Set<LorebookImageNotice>();
+        const notifyLorebookImages = (code: LorebookImageNotice) => {
+          if (lorebookImageNotices.has(code)) return;
+          lorebookImageNotices.add(code);
+          sendSseEvent(reply, { type: "lorebook_image_notice", data: { code } });
+        };
         const providerRuntime = resolveGenerationProviderRuntime({
+          wrapProvider: (provider) =>
+            withLorebookImageCompatibility(
+              provider,
+              lorebookReferenceImages,
+              () => notifyLorebookImages("unsupported"),
+              new Set(finalMessages.flatMap((message) => message.images ?? [])),
+            ),
           connectionId: connId ?? "",
           connection: conn,
           baseUrl,
@@ -7122,6 +7138,7 @@ export async function generateRoutes(app: FastifyInstance) {
           );
         }
 
+        const conversationLorebookScansByResponder = new Map<string, LorebookScanResult>();
         const prepareConversationLorebookForResponder = async (
           targetCharId: string | null,
           messages: GenerationPromptMessage[],
@@ -7129,6 +7146,7 @@ export async function generateRoutes(app: FastifyInstance) {
           if (!deferConversationLorebookScanToResponder || !targetCharId) return messages;
 
           const lorebookResult = await scanConversationLorebooks([targetCharId], { previewOnly: true });
+          conversationLorebookScansByResponder.set(targetCharId, lorebookResult);
 
           const loreContent = [lorebookResult.worldInfoBefore, lorebookResult.worldInfoAfter]
             .filter(Boolean)
@@ -7240,6 +7258,9 @@ export async function generateRoutes(app: FastifyInstance) {
           // and a merged generation that may voice several characters at once
           // stays on the hand-free spectator view.
           let gameAwareMessagesForGen = await prepareConversationLorebookForResponder(targetCharId, messagesForGen);
+          let responderLorebookScan =
+            (targetCharId ? conversationLorebookScansByResponder.get(targetCharId) : undefined) ??
+            lorebookPromptScanResult;
           if (conversationScopesAwarenessToResponder && targetCharId) {
             let responderAwarenessBlock: string | null = null;
             if (conversationCrossChatAwarenessEnabled && !input.regenerateMessageId) {
@@ -7316,6 +7337,7 @@ export async function generateRoutes(app: FastifyInstance) {
               scopedLorebookScansByCharacterId.set(targetCharId, scopedScanPromise);
             }
             const scopedLorebookScan = await scopedScanPromise;
+            responderLorebookScan = scopedLorebookScan;
             gameAwareMessagesForGen = scopeLorebookPromptMessagesForCharacter(
               gameAwareMessagesForGen,
               lorebookPromptScanResult,
@@ -7369,10 +7391,8 @@ export async function generateRoutes(app: FastifyInstance) {
                     : undefined,
                 )
               : gameAwareMessagesForGen;
-          const targetScopedMessagesForGen =
-            !promptTargetCharacterId && targetCharId
-              ? scopedMessagesForGen.map((message) => ({ ...message }))
-              : scopedMessagesForGen;
+          // Each responder owns its injections; never mutate the shared prompt array.
+          const targetScopedMessagesForGen = scopedMessagesForGen.map((message) => ({ ...message }));
           if (!deferGroupPromptRegex && !promptTargetCharacterId && targetCharId) {
             applyRegexScriptsToPromptMessages(targetScopedMessagesForGen, regexScripts, {
               ...targetRegexOptions,
@@ -7389,6 +7409,10 @@ export async function generateRoutes(app: FastifyInstance) {
               wrapFormat,
             );
           }
+          await appendLorebookImageMessages(targetScopedMessagesForGen, responderLorebookScan?.imageEntries, {
+            onNotice: notifyLorebookImages,
+            rememberImage: (dataUrl) => lorebookReferenceImages.add(dataUrl),
+          });
           const spatiallyScopedMessagesForGen = injectOwnerSpatialPrompt(
             targetScopedMessagesForGen,
             ownerSpatialProjection,

@@ -784,6 +784,13 @@ const apples = (): GameInventoryStack[] => [
   const lifted = wearGameInventoryStack(ring.stacks, "ring", "unbind", next, rules("game-master"));
   assert.ok(lifted && !("refused" in lifted));
   assert.deepEqual(worn(lifted.stacks), ["Ring 1 player", "Bell 1 player", "Axe 1 player"]);
+  // A bound item of Bram's is his: the player's binding limit counts only their own.
+  const bramsRing = [
+    ...trinkets,
+    { id: "bram-ring", name: "Ring", item: "gear/ring", quantity: 1, holder: "Bram", bound: true as const },
+  ];
+  const mineToo = wearGameInventoryStack(bramsRing, "ring", "bind", next, rules());
+  assert.ok(mineToo && !("refused" in mineToo));
   // Nor can the player give it away or throw it out, though the Game Master can.
   assert.equal(giveGameInventoryStack(ring.stacks, "ring", "Bram", undefined, next, rules()), null);
   assert.equal(setGameInventoryStackQuantity(ring.stacks, "ring", 0, next, rules()), ring.stacks);
@@ -811,6 +818,10 @@ const apples = (): GameInventoryStack[] => [
     "Axe 1 Bram",
     "Axe 2 player",
   ]);
+  // Nobody is handed more than they can carry at all.
+  const loaded = [of("Arrow", 11, { id: "full", holder: "Bram" }), of("Coat", 1, { id: "spare-coat" })];
+  assert.equal(giveGameInventoryStack(loaded, "spare-coat", "Bram", undefined, next, rules()), null);
+  assert.ok(giveGameInventoryStack(loaded, "spare-coat", "Bram", undefined, next, { ...rules(), bearer: undefined }));
   // Taking by name takes what nobody wears first.
   assert.deepEqual(worn(takeFromGameInventory(quiver, "axe", 2).stacks), ["Axe 1 player worn"]);
 
@@ -853,6 +864,15 @@ const apples = (): GameInventoryStack[] => [
   assert.deepEqual(place([], "Coat", 1), { shares: [{ holder: undefined, count: 1 }], left: 0 });
   const strained = [of("Coat"), of("Arrow", 5, { holder: "Bram" })];
   assert.deepEqual(place(strained, "Arrow", 4), { shares: [{ holder: "Bram", count: 4 }], left: 0 });
+  // Nobody has room for all five, but there is room between them: the most room first, so Bram's 4,
+  // then 1 for the player.
+  assert.deepEqual(place(strained, "Arrow", 5), {
+    shares: [
+      { holder: undefined, count: 1 },
+      { holder: "Bram", count: 4 },
+    ],
+    left: 0,
+  });
   // Nobody has room for all ten: split by the room left (Bram 4, the player 3), then one at a time to
   // whoever is then least over.
   assert.deepEqual(place(strained, "Arrow", 10), {

@@ -5,7 +5,8 @@ const TEXT_INPUT_TYPES = new Set(["", "text", "search", "email", "url", "tel", "
 
 function ownsEscape(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
-  if (target.closest('[aria-expanded="true"], [role="menu"], [role="listbox"], [role="dialog"]')) return true;
+  if (target.matches('[aria-expanded="true"]') || target.closest('[role="menu"], [role="listbox"], [role="dialog"]'))
+    return true;
   if (target instanceof HTMLTextAreaElement) return target.value.length > 0;
   if (target instanceof HTMLInputElement && TEXT_INPUT_TYPES.has(target.type)) return target.value.length > 0;
   return target.isContentEditable;

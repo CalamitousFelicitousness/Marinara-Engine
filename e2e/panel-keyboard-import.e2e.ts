@@ -4,7 +4,7 @@ import { seedUIState } from "./ui-state-fixture.js";
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 
-test("cancelling an empty folder rename leaves its panel open", async ({ page }, testInfo) => {
+test("folder rename owns Escape while nested folder actions close the panel", async ({ page }, testInfo) => {
   await page.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: null } }));
   await page.route("**/api/characters/groups/list", (route) =>
     route.fulfill({
@@ -42,6 +42,12 @@ test("cancelling an empty folder rename leaves its panel open", async ({ page },
   await expect(panel).toBeVisible();
   await expect(folder.getByText("Keep this folder", { exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("empty-folder-rename-panel-retained.png") });
+  await header.press("Enter");
+  await expect(header).toHaveAttribute("aria-expanded", "true");
+  await folder.getByRole("button", { name: "Delete folder", exact: true }).press("Escape");
+  await expect(page.locator('[data-tour="panel-characters"]')).toHaveAttribute("aria-pressed", "false");
+  await expect(panel).not.toBeInViewport();
+  await page.screenshot({ path: testInfo.outputPath("expanded-folder-escape-panel-closed.png") });
 });
 
 test("shell panel focus returns to its opener and profile import is keyboard reachable", async ({ page }, testInfo) => {

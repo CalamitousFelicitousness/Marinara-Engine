@@ -2095,6 +2095,7 @@ export const ChatInput = memo(function ChatInput({
         <textarea
           ref={textareaRef}
           data-chat-composer="true"
+          data-chat-id={activeChatId}
           onInput={handleInput}
           onKeyDown={handleKeyDown}
           onKeyUp={handleKeyUp}

@@ -331,6 +331,34 @@ try {
       { item: rope, name: "Rope", description: "Hemp", quantity: 1, location: "pack" },
     ]);
     assert.equal(followGameInventoryDetails(unmarked, before, before), unmarked, "nothing moved, nothing written");
+    // Another item's entry of the same name is never drawn from: an entry without an id is, and keeps
+    // the id from then on.
+    const cordNamedRope: InventoryItem[] = [
+      { item: gameInventoryPlainItemId("Cord"), name: "Rope", description: "Thin", quantity: 1, location: "" },
+      { name: "Rope", description: "Hemp", quantity: 2, location: "pack" },
+    ];
+    assert.deepEqual(followGameInventoryDetails(cordNamedRope, before, oneLess.stacks), [
+      cordNamedRope[0],
+      { item: rope, name: "Rope", description: "Hemp", quantity: 1, location: "pack" },
+    ]);
+    // An entry carrying the item's id is moved before one found only by name, and an entry nothing
+    // was taken from is left exactly as it was.
+    const both: InventoryItem[] = [
+      { name: "Rope", description: "Old", quantity: 1, location: "" },
+      { item: rope, name: "Rope", description: "Hemp", quantity: 2, location: "pack" },
+    ];
+    assert.deepEqual(followGameInventoryDetails(both, before, oneLess.stacks), [
+      both[0],
+      { item: rope, name: "Rope", description: "Hemp", quantity: 1, location: "pack" },
+    ]);
+    assert.deepEqual(
+      followGameInventoryDetails(
+        both,
+        before,
+        applyGameInventoryOps(before, [{ op: "set", id: "a", quantity: 3 }]).stacks,
+      ),
+      [both[0], { item: rope, name: "Rope", description: "Hemp", quantity: 3, location: "pack" }],
+    );
     const oneMore = applyGameInventoryOps(before, [{ op: "set", id: "a", quantity: 3 }]);
     assert.deepEqual(followGameInventoryDetails(unmarked, before, oneMore.stacks), [
       { item: rope, name: "Rope", description: "Hemp", quantity: 3, location: "pack" },

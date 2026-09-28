@@ -5,6 +5,7 @@ import {
   gameInventoryBagKey,
   gameInventoryFightEffects,
   gameInventoryFightLines,
+  gameInventoryNameKey,
   gameInventoryStackLabel,
   normalizeGameInventoryStacks,
   swapGameInventoryStacks,
@@ -7805,7 +7806,9 @@ function GameSurfaceComponent({
     async (itemName: string) => {
       if (!activeChatId) return;
       const normalizedItemName = normalizeInventoryName(itemName) || itemName;
-      const spentName = fightInventoryLines.find((line) => line.name === itemName)?.ownName ?? normalizedItemName;
+      const spentName =
+        fightInventoryLines.find((line) => gameInventoryNameKey(line.name) === gameInventoryNameKey(itemName))
+          ?.ownName ?? normalizedItemName;
       try {
         const [result] = await commitInventory([{ op: "take", name: spentName, count: 1, as: "used" }]);
         if (!result?.ok) {

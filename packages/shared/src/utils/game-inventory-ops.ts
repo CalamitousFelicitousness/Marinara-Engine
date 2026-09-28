@@ -291,7 +291,8 @@ export function followGameInventoryDetails(
       entry.item === item || (entry.item === undefined && names.has(gameInventoryNameKey(entry.name)));
     const shown = current?.label;
     if (difference >= 0) {
-      const index = items.findIndex(follows);
+      const carried = items.findIndex((entry) => entry.item === item);
+      const index = carried >= 0 ? carried : items.findIndex(follows);
       if (index >= 0) {
         const entry = items[index]!;
         items[index] = { ...entry, item, name: shown ?? entry.name, quantity: entry.quantity + difference };
@@ -300,11 +301,21 @@ export function followGameInventoryDetails(
       }
       continue;
     }
+    // Taken from the entries that carry the item's id first, then from ones found by name, and only
+    // the entries something was taken from change.
     let left = -difference;
-    items = items.flatMap((entry) => {
-      if (!follows(entry)) return [entry];
-      const take = Math.min(left, entry.quantity);
-      left -= take;
+    const takeAt = new Map<number, number>();
+    for (const drains of [(entry: InventoryItem) => entry.item === item, follows]) {
+      items.forEach((entry, index) => {
+        if (left < 1 || takeAt.has(index) || !drains(entry)) return;
+        const take = Math.min(left, entry.quantity);
+        left -= take;
+        takeAt.set(index, take);
+      });
+    }
+    items = items.flatMap((entry, index) => {
+      const take = takeAt.get(index);
+      if (take === undefined) return [entry];
       const rest = entry.quantity - take;
       return rest > 0 ? [{ ...entry, item, name: shown ?? entry.name, quantity: rest }] : [];
     });

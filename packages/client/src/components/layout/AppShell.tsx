@@ -551,7 +551,11 @@ export function AppShell() {
   const detailReturnRightPanel = useUIStore((s) => s.detailReturnRightPanel);
   const characterDuplicatesTriggerRef = useRef<HTMLElement | null>(null);
   const rememberCharacterDuplicatesFocusTarget = useCallback(() => {
-    for (const selector of ['[data-character-duplicates-trigger]', '[data-tour="panel-characters"]', "[data-topbar-more]"]) {
+    for (const selector of [
+      "[data-character-duplicates-trigger]",
+      '[data-tour="panel-characters"]',
+      "[data-topbar-more]",
+    ]) {
       const candidate = Array.from(document.querySelectorAll<HTMLElement>(selector)).find(
         (element) => element.isConnected && !element.hasAttribute("disabled") && element.getClientRects().length > 0,
       );

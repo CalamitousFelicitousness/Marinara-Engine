@@ -344,6 +344,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - Empty Recalled Scenes markers add no extra blank lines to the prompt (#6502).
 
 - Tapping Author's Notes again closes its panel in the mobile Roleplay toolbar (#6495).
+
+- Author’s Notes saves stay ordered within each roleplay chat, and pending edits finish saving before generation reads them (#6817).
 - Message Peek Prompt stays tied to the selected reply and swipe after images, summaries or memory settings change, preserving the character and commands actually sent to the model (#6493).
 - Advanced Memory uses enabled Chat Summaries and their character conditions even when the original messages are hidden or before a character's start flag. New and compacted constants retain character conditions; recalled scenes and raw messages keep their knowledge restrictions (#6493).
 

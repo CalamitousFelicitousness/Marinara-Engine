@@ -772,7 +772,10 @@ export async function lorebooksRoutes(app: FastifyInstance) {
         return reply.status(400).send({ error: error.message });
       throw error;
     } finally {
-      if (!attached) await discardLorebookImage(image);
+      if (!attached)
+        await discardLorebookImage(image).catch((cleanupError: unknown) =>
+          logger.warn(cleanupError, "Failed to remove an unattached lorebook image"),
+        );
     }
   });
 

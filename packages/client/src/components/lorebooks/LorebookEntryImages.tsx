@@ -23,8 +23,9 @@ export function LorebookEntryImages({
 }) {
   const { t } = useTranslation();
   const upload = useUploadLorebookEntryImage(lorebookId, entryId);
-  const uploading = useIsMutating({ mutationKey: lorebookKeys.imageUpload(lorebookId, entryId), exact: true }) > 0;
+  const changingImages = useIsMutating({ mutationKey: lorebookKeys.imageChange(lorebookId, entryId), exact: true }) > 0;
   const update = useUpdateLorebookEntry();
+  const remove = useUpdateLorebookEntry({ lorebookId, entryId });
   const [expanded, setExpanded] = useState(false);
   const panelId = useId();
   const [draft, setDraft] = useState(images);
@@ -32,7 +33,7 @@ export function LorebookEntryImages({
   const dirtyRef = useRef(false);
   const busyRef = useRef(false);
   const [saving, setSaving] = useState(false);
-  const busy = saving || uploading;
+  const busy = saving || changingImages;
   const [error, setError] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const sectionRef = useRef<HTMLElement>(null);
@@ -63,8 +64,8 @@ export function LorebookEntryImages({
     onDraftChange(next);
   }
 
-  async function save(next: LorebookEntryImage[]) {
-    const saved = await update.mutateAsync({ lorebookId, entryId, images: next });
+  async function save(next: LorebookEntryImage[], mutation = update) {
+    const saved = await mutation.mutateAsync({ lorebookId, entryId, images: next });
     setImages(saved.images ?? []);
     dirtyRef.current = false;
   }
@@ -92,7 +93,7 @@ export function LorebookEntryImages({
       setError(t("ui.lorebooks.expandeddrawer.maxImagesError"));
       return;
     }
-    if (files.some((file) => !["image/png", "image/jpeg", "image/webp"].includes(file.type))) {
+    if (files.some((file) => file.type && !["image/png", "image/jpeg", "image/webp"].includes(file.type))) {
       setError(t("ui.lorebooks.expandeddrawer.imageTypeError"));
       return;
     }
@@ -191,7 +192,12 @@ export function LorebookEntryImages({
                     aria-label={t("ui.lorebooks.expandeddrawer.removeImage")}
                     onPointerDown={(event) => event.preventDefault()}
                     onClick={() =>
-                      void run(() => save(draftRef.current.filter((current) => current.path !== image.path)))
+                      void run(() =>
+                        save(
+                          draftRef.current.filter((current) => current.path !== image.path),
+                          remove,
+                        ),
+                      )
                     }
                     className="flex min-h-11 min-w-11 items-center justify-center rounded-md text-[var(--muted-foreground)] hover:bg-[var(--accent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ring)] disabled:opacity-50"
                   >

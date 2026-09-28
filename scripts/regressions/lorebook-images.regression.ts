@@ -90,6 +90,30 @@ try {
   assert.equal(served.statusCode, 200, served.body);
   assert.equal(served.headers["content-type"], "image/png");
   assert.deepEqual(served.rawPayload, png);
+  const filesBeforeFailedAttach = new Set(await readdir(lorebookImagesDirectory()));
+  const originalTransaction = db.transaction;
+  try {
+    for (const [message, status] of [
+      ["Injected image attachment failure", 500],
+      ["Maximum 4 images per entry", 400],
+    ] as const) {
+      db.transaction = async () => {
+        const createdFiles = (await readdir(lorebookImagesDirectory())).filter(
+          (file) => !filesBeforeFailedAttach.has(file),
+        );
+        assert.equal(createdFiles.length, 1);
+        // Another cleanup removed the new file before the failed attachment rolls back.
+        await unlink(join(lorebookImagesDirectory(), createdFiles[0]!));
+        throw new Error(message);
+      };
+      const failedAttach = await app.inject({ method: "POST", url, ...uploadPayload(png) });
+      assert.equal(failedAttach.statusCode, status);
+      assert.equal(failedAttach.json().error, message);
+      assert.deepEqual((await storage.getEntry(entry.id))!.images, [image]);
+    }
+  } finally {
+    db.transaction = originalTransaction;
+  }
   const budgetBook = (await storage.create({ name: "Image budget", tokenBudget: 1000 }))!;
   const mixed = (await storage.createEntry({
     lorebookId: budgetBook.id,

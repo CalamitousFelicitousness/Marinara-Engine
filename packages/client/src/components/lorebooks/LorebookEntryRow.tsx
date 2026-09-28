@@ -280,8 +280,8 @@ export function LorebookEntryRow({
   const pendingOutletNameRef = useRef(entry.outletName);
   const upstreamImagesRef = useRef(entry.images);
   const pendingImagesRef = useRef(entry.images);
-  const uploadingImages =
-    useIsMutating({ mutationKey: lorebookKeys.imageUpload(lorebookId, entry.id), exact: true }) > 0;
+  const changingImages =
+    useIsMutating({ mutationKey: lorebookKeys.imageChange(lorebookId, entry.id), exact: true }) > 0;
 
   // Re-sync local state when the upstream entry changes (e.g. after refetch)
   // so we don't show stale values, but avoid clobbering an in-flight edit.
@@ -480,7 +480,7 @@ export function LorebookEntryRow({
     [deleteEntry, entry.id, entry.name, localizeUi, lorebookId],
   );
 
-  const duplicateDisabled = duplicateEntry.isPending || updateEntry.isPending || uploadingImages;
+  const duplicateDisabled = duplicateEntry.isPending || updateEntry.isPending || changingImages;
   const handleImagesDraftChange = useCallback((images: LorebookEntryImage[]) => {
     pendingImagesRef.current = images;
   }, []);

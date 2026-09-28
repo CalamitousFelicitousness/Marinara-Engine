@@ -168,9 +168,68 @@ test("reference uploads, captions, removal and wardrobe keyword preserve entry t
       }
     }
     await references.getByRole("textbox", { name: "Caption" }).first().fill("Saved while removing boots");
+    const removal = new Promise<void>((resolve) => {
+      releaseCaptionSave = resolve;
+    });
+    await page.route(
+      `**/api/lorebooks/${book.id}/entries/${entry.id}`,
+      async (route) => {
+        await removal;
+        await route.continue();
+      },
+      { times: 1 },
+    );
     await references.getByRole("button", { name: "Remove image" }).last().click();
+    await page.screenshot({ path: info.outputPath("duplicate-during-image-removal.png") });
+    await expect(duplicate).toBeDisabled();
+    await search.fill("no matching entry");
+    await expect(row).toHaveCount(0);
+    await search.fill("");
+    await expect(duplicate).toBeDisabled();
+    await disclosure.click();
+    await expect(references.getByRole("button", { name: "Add image", exact: true })).toBeDisabled();
+    const removalRefresh = new Promise<void>((resolve) => {
+      releaseEntryRefresh = resolve;
+    });
+    let refreshingRemoval = false;
+    await page.route(
+      `**/api/lorebooks/${book.id}/entries`,
+      async (route) => {
+        refreshingRemoval = true;
+        await removalRefresh;
+        await route.continue();
+      },
+      { times: 1 },
+    );
+    releaseCaptionSave();
+    await expect.poll(() => refreshingRemoval).toBe(true);
+    await page.screenshot({ path: info.outputPath("duplicate-awaiting-image-removal-refresh.png") });
+    await expect(duplicate).toBeDisabled();
+    releaseEntryRefresh();
     await expect(references.getByRole("img")).toHaveCount(1);
     await expect.poll(async () => (await readEntry()).images[0].caption).toBe("Saved while removing boots");
+    await expect(duplicate).toBeEnabled();
+    await duplicate.click();
+    await expect
+      .poll(async () => {
+        const saved = await (await request.get(`/api/lorebooks/${book.id}/entries`)).json();
+        return saved.find((candidate: { id: string }) => candidate.id !== entry.id && candidate.id !== copied.id)
+          ?.images;
+      })
+      .toEqual((await readEntry()).images);
+    const beforeFailedRemoval = (await readEntry()).images;
+    await page.route(
+      `**/api/lorebooks/${book.id}/entries/${entry.id}`,
+      (route) => route.fulfill({ status: 500, json: { error: "Removal failed" } }),
+      { times: 1 },
+    );
+    await references.getByRole("button", { name: "Remove image" }).last().click();
+    await expect(references.getByRole("alert")).toBeVisible();
+    await expect(duplicate).toBeEnabled();
+    await expect(references.getByRole("img")).toHaveCount(1);
+    await expect(references.getByRole("textbox", { name: "Caption" })).toHaveValue(beforeFailedRemoval[0].caption);
+    expect((await readEntry()).images).toEqual(beforeFailedRemoval);
+    await page.screenshot({ path: info.outputPath("references-failed-removal.png") });
     const failedUpload = new Promise<void>((resolve) => {
       releaseUpload = resolve;
     });
@@ -212,11 +271,30 @@ test("reference uploads, captions, removal and wardrobe keyword preserve entry t
     await expect(references.getByRole("alert")).toBeVisible();
     await page.screenshot({ path: info.outputPath("references-invalid-file.png") });
     expect((await readEntry()).images).toHaveLength(1);
+    const chooseUnknownType = (bytes: number[]) =>
+      references.locator('input[type="file"]').evaluate((input: HTMLInputElement, bytes) => {
+        const files = new DataTransfer();
+        const file = new File([new Uint8Array(bytes)], "unknown-type.png");
+        files.items.add(file);
+        input.files = files.files;
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+        return file.type;
+      }, bytes);
+    expect(await chooseUnknownType([...png])).toBe("");
+    await page.screenshot({ path: info.outputPath("references-unknown-mime.png") });
+    await expect(references.getByRole("img")).toHaveCount(2);
+    await page.screenshot({ path: info.outputPath("references-unknown-mime-accepted.png") });
+    const rejectedUnknown = page.waitForResponse((response) =>
+      response.url().endsWith(`/api/lorebooks/${book.id}/entries/${entry.id}/images`),
+    );
+    expect(await chooseUnknownType([...Buffer.from("not an image")])).toBe("");
+    expect((await rejectedUnknown).status()).toBe(400);
+    await expect(references.getByRole("alert")).toBeVisible();
+    expect((await readEntry()).images).toHaveLength(2);
+    await page.screenshot({ path: info.outputPath("references-unknown-mime-rejected.png") });
     await references
       .locator('input[type="file"]')
-      .setInputFiles(
-        [1, 2, 3].map((number) => ({ name: `reference-${number}.png`, mimeType: "image/png", buffer: png })),
-      );
+      .setInputFiles([1, 2].map((number) => ({ name: `reference-${number}.png`, mimeType: "image/png", buffer: png })));
     await expect(references.getByRole("img")).toHaveCount(4);
     await expect(references.getByRole("button", { name: "Add image", exact: true })).toBeDisabled();
     await page.screenshot({ path: info.outputPath("references-limit.png") });

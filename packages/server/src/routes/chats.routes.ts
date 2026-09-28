@@ -2386,7 +2386,10 @@ export async function chatsRoutes(app: FastifyInstance) {
   app.post<{ Params: { chatId: string } }>("/:chatId/trash/restore", async (req, reply) => {
     const body = z.object({ entryIds: z.array(z.string().min(1)).min(1).max(5000) }).safeParse(req.body);
     if (!body.success) return reply.status(400).send({ error: "entryIds array is required" });
-    if (!(await storage.getById(req.params.chatId))) return reply.status(404).send({ error: "Chat not found" });
+    const chat = await storage.getById(req.params.chatId);
+    if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    // Disabling retention leaves existing recovery entries usable, but message-only restore cannot restore Game state.
+    if (chat.mode === "game") return reply.status(409).send({ error: "Messages cannot be restored in Game Mode." });
     const active = (app as unknown as { activeGenerations?: Map<string, unknown> }).activeGenerations;
     if (active?.has(req.params.chatId))
       return reply.status(409).send({ error: "Wait for the current generation to finish before restoring messages." });

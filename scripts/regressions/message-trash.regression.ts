@@ -56,7 +56,7 @@ try {
   closeDatabase = closeDB;
   const { eq } = await import("../../packages/server/src/db/file-query.js");
   const { encodeShardKey } = await import("../../packages/server/src/db/file-backed-store.js");
-  const { chats, messageSwipes, messageTrash } = await import("../../packages/server/src/db/schema/index.js");
+  const { chats, memoryChunks, messages, messageSwipes, messageTrash } = await import("../../packages/server/src/db/schema/index.js");
   const { createChatsStorage, withMessageExtraPatchQueue } = await import("../../packages/server/src/services/storage/chats.storage.js");
   const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
   const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
@@ -333,6 +333,45 @@ try {
   assert.ok(conflictedRestore.statusCode >= 400, "a swipe ID collision fails the restore unit");
   assert.equal(await storage.getMessage(restorable.id), null, "failed restore rolls back the message insert");
   assert.equal((await db.select().from(messageTrash).where(eq(messageTrash.id, entry.id))).length, 1);
+  // A later failed restore unit must not skip reconciliation for an earlier successful one.
+  const partialMessage = await storage.createMessage({
+    chatId: "chat-message-trash",
+    role: "user",
+    content: "Restored before the swipe conflict",
+  } as never);
+  assert(partialMessage);
+  const partialCreatedAt = "2026-09-01T00:00:01.000Z";
+  await db.update(messages).set({ createdAt: partialCreatedAt }).where(eq(messages.id, partialMessage.id));
+  await app.inject({ method: "DELETE", url: `/api/chats/chat-message-trash/messages/${partialMessage.id}` });
+  const [partialEntry] = await db.select().from(messageTrash).where(eq(messageTrash.messageId, partialMessage.id));
+  assert(partialEntry);
+  await db.insert(memoryChunks).values({
+    id: "partial-restore-stale-memory",
+    chatId: "chat-message-trash",
+    content: "Memory built while the restored message was missing",
+    messageCount: 1,
+    firstMessageAt: timestamp,
+    lastMessageAt: partialCreatedAt,
+    createdAt: timestamp,
+  });
+  await db.update(chats).set({ lastMessageAt: timestamp }).where(eq(chats.id, "chat-message-trash"));
+  const partialRestore = await app.inject({
+    method: "POST",
+    url: "/api/chats/chat-message-trash/trash/restore",
+    payload: { entryIds: [entry.id, partialEntry.id] },
+  });
+  assert.equal(partialRestore.statusCode, 200, partialRestore.body);
+  assert.deepEqual(partialRestore.json(), {
+    restoredMessageIds: [partialMessage.id],
+    conflictEntryIds: [entry.id],
+  });
+  assert.equal((await storage.getMessage(partialMessage.id))?.content, partialMessage.content);
+  assert.equal(await storage.getMessage(restorable.id), null, "the failed restore unit still rolls back");
+  assert.equal((await db.select().from(messageTrash).where(eq(messageTrash.id, entry.id))).length, 1);
+  assert.equal((await db.select().from(memoryChunks).where(eq(memoryChunks.id, "partial-restore-stale-memory"))).length, 0,
+    "partial success still invalidates stale memory chunks");
+  assert.equal((await storage.getById("chat-message-trash"))?.lastMessageAt, partialCreatedAt,
+    "partial success still updates the chat's last message time");
   await db.delete(messageSwipes).where(eq(messageSwipes.id, firstSwipeId));
 
   const restored = await app.inject({
@@ -402,6 +441,32 @@ try {
   assert.deepEqual(gameDelete.json(), { trashed: false, trashedCount: 0 });
   assert.equal(await storage.getMessage(gameMessage.id), null, "Game mode retains its permanent delete behavior");
   assert.equal((await db.select().from(messageTrash).where(eq(messageTrash.chatId, "game-message-trash"))).length, 0);
+
+  const changedModeChat = await storage.create({ name: "Changed mode recovery", mode: "conversation", characterIds: [] });
+  assert(changedModeChat);
+  const changedModeMessage = await storage.createMessage({
+    chatId: changedModeChat.id, role: "user", content: "Retained before switching to Game Mode",
+  } as never);
+  assert(changedModeMessage);
+  await app.inject({ method: "DELETE", url: `/api/chats/${changedModeChat.id}/messages/${changedModeMessage.id}` });
+  const [changedModeEntry] = await db.select().from(messageTrash).where(eq(messageTrash.messageId, changedModeMessage.id));
+  assert(changedModeEntry);
+  await db.update(chats).set({ mode: "game" }).where(eq(chats.id, changedModeChat.id));
+  const gameRestore = await app.inject({
+    method: "POST", url: `/api/chats/${changedModeChat.id}/trash/restore`, payload: { entryIds: [changedModeEntry.id] },
+  });
+  assert.equal(gameRestore.statusCode, 409, "message-only recovery cannot restore Game state");
+  assert.equal(await storage.getMessage(changedModeMessage.id), null);
+  assert.equal((await db.select().from(messageTrash).where(eq(messageTrash.id, changedModeEntry.id))).length, 1);
+  await db.update(chats).set({ mode: "conversation" }).where(eq(chats.id, changedModeChat.id));
+  await app.inject({ method: "PUT", url: "/api/app-settings/features", payload: { messageTrash: false } });
+  const disabledRetentionRestore = await app.inject({
+    method: "POST", url: `/api/chats/${changedModeChat.id}/trash/restore`, payload: { entryIds: [changedModeEntry.id] },
+  });
+  assert.equal(disabledRetentionRestore.statusCode, 200, disabledRetentionRestore.body);
+  assert.deepEqual(disabledRetentionRestore.json().restoredMessageIds, [changedModeMessage.id],
+    "turning retention off does not strand existing recovery entries");
+  await app.inject({ method: "PUT", url: "/api/app-settings/features", payload: { messageTrash: true } });
 
   const pinRestoreTargets = await Promise.all(
     Array.from({ length: MAX_PINNED_CONTEXT_MESSAGES }, (_, index) =>

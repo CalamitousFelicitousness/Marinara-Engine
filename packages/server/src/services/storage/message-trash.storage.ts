@@ -17,6 +17,7 @@ import type { DB } from "../../db/connection.js";
 import { encodeShardKey, isLazyUnitTable } from "../../db/file-backed-store.js";
 import { and, desc, eq, gt, inArray, isNull, lte } from "../../db/file-query.js";
 import { chats, memoryChunks, messages, messageSwipes, messageTrash } from "../../db/schema/index.js";
+import { logger } from "../../lib/logger.js";
 import { newId, now } from "../../utils/id-generator.js";
 import { createChatsStorage } from "./chats.storage.js";
 
@@ -57,7 +58,7 @@ export function toMessageTrashEntry(row: TrashRow): MessageTrashEntry {
 
 export type RestoreTrashResult = {
   restoredMessageIds: string[];
-  /** Entries left in the trash because a message with the same id exists again. */
+  /** Entries that could not be restored; retained snapshots can be retried. */
   conflictEntryIds: string[];
 };
 
@@ -180,43 +181,48 @@ export function createMessageTrashStorage(db: DB) {
         const message = { ...snapshot.message, chatId, id: row.messageId };
         // Message, swipes and trash removal form one restore unit. A swipe ID conflict or write
         // failure must roll back the message insert so the trash entry remains retryable.
-        const inserted = await db.transaction(async (tx) => {
-          // A purge or permanent deletion may have removed the entry after the initial read.
-          const retained = await tx
-            .select({ id: messageTrash.id })
-            .from(messageTrash)
-            .where(eq(messageTrash.id, row.id));
-          if (retained.length === 0) return false;
-          const existing = await tx
-            .select({ id: messages.id })
-            .from(messages)
-            .where(and(eq(messages.id, message.id), eq(messages.chatId, chatId)));
-          if (existing.length > 0) return false;
-          await tx.insert(messages).values({
-            id: message.id,
-            chatId,
-            role: message.role,
-            characterId: message.characterId ?? null,
-            content: message.content ?? "",
-            activeSwipeIndex: message.activeSwipeIndex ?? 0,
-            extra: typeof message.extra === "string" ? message.extra : JSON.stringify(message.extra ?? {}),
-            createdAt: message.createdAt,
+        let inserted: boolean;
+        try {
+          inserted = await db.transaction(async (tx) => {
+            // A purge or permanent deletion may have removed the entry after the initial read.
+            const retained = await tx
+              .select({ id: messageTrash.id })
+              .from(messageTrash)
+              .where(eq(messageTrash.id, row.id));
+            if (retained.length === 0) return false;
+            const existing = await tx.select({ id: messages.id }).from(messages).where(eq(messages.id, message.id));
+            if (existing.length > 0) return false;
+            await tx.insert(messages).values({
+              id: message.id,
+              chatId,
+              role: message.role,
+              characterId: message.characterId ?? null,
+              content: message.content ?? "",
+              activeSwipeIndex: message.activeSwipeIndex ?? 0,
+              extra: typeof message.extra === "string" ? message.extra : JSON.stringify(message.extra ?? {}),
+              createdAt: message.createdAt,
+            });
+            if (snapshot.swipes.length > 0) {
+              await tx.insert(messageSwipes).values(
+                snapshot.swipes.map((swipe) => ({
+                  id: typeof swipe.id === "string" && swipe.id ? swipe.id : newId(),
+                  messageId: message.id,
+                  index: swipe.index,
+                  content: swipe.content ?? "",
+                  extra: typeof swipe.extra === "string" ? swipe.extra : JSON.stringify(swipe.extra ?? {}),
+                  createdAt: swipe.createdAt,
+                })),
+              );
+            }
+            await tx.delete(messageTrash).where(eq(messageTrash.id, row.id));
+            return true;
           });
-          if (snapshot.swipes.length > 0) {
-            await tx.insert(messageSwipes).values(
-              snapshot.swipes.map((swipe) => ({
-                id: typeof swipe.id === "string" && swipe.id ? swipe.id : newId(),
-                messageId: message.id,
-                index: swipe.index,
-                content: swipe.content ?? "",
-                extra: typeof swipe.extra === "string" ? swipe.extra : JSON.stringify(swipe.extra ?? {}),
-                createdAt: swipe.createdAt,
-              })),
-            );
-          }
-          await tx.delete(messageTrash).where(eq(messageTrash.id, row.id));
-          return true;
-        });
+        } catch (error) {
+          if (rows.length === 1) throw error;
+          logger.warn({ err: error, chatId, entryId: row.id }, "Could not restore a message trash entry");
+          result.conflictEntryIds.push(row.id);
+          continue;
+        }
         if (!inserted) {
           result.conflictEntryIds.push(row.id);
           continue;

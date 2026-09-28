@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Message marks remain visible in roleplay, private-note menus fit short mobile screens, and recovery reports partial restores accurately. Restoring several messages still updates chat memory when one entry fails; Game Mode rejects message-only recovery. Pin hints clarify the model token limit.
+
 - Message recovery preserves edits that finish just before deletion, and changing a message's history-start setting no longer stalls. Bookmark menus focus their first action when opened for keyboard access.
 
 - Expired message recovery records are cleaned up at server startup and hourly, including unopened chats. Recovery ends at 30 days; newer records are preserved, and shutdown waits for active cleanup.

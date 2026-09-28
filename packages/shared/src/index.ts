@@ -47,6 +47,7 @@ export * from "./types/generation-integration.js";
 export * from "./types/localization.js";
 export * from "./types/personal-extension.js";
 export * from "./types/home-feed.js";
+export * from "./types/chat-insights.js";
 
 // Schemas
 export * from "./schemas/chat.schema.js";
@@ -83,6 +84,7 @@ export * from "./constants/providers.js";
 export * from "./constants/defaults.js";
 export * from "./constants/chat-mode-agent-policy.js";
 export * from "./constants/model-lists.js"; // also exports IMAGE_GENERATION_SOURCES
+export * from "./constants/generation-parameter-relevance.js";
 export * from "./constants/agent-prompts.js";
 export * from "./constants/agent-activation.js";
 export * from "./constants/impersonate.js";
@@ -169,6 +171,8 @@ export * from "./utils/thinking-tags.js";
 export * from "./utils/rpg-stats.js";
 export * from "./utils/lorebook-folder-tree.js";
 export * from "./utils/text-matching.js";
+export * from "./utils/chat-search-query.js";
+export * from "./utils/chat-stats.js";
 export * from "./utils/character-cast.js";
 export * from "./utils/speaker-segments.js";
 export * from "./utils/sprite-labels.js";

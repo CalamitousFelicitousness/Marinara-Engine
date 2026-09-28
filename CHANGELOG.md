@@ -8,6 +8,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - Lorebooks gain lint checks, a scanner preview, opt-in activation statistics, bulk entry edits, selected enable/disable actions, and Markdown/CSV import and export. Chat previews explain their context limits, and text imports enforce bounded size and entry counts (#6698).
 - Lorebook Markdown export handles long whitespace runs without excessive processing time.
+- Game Mode items keep who they are when renamed. Renaming a stack now gives it a nickname, shown with the item's own name beside it: it stays the same item, never merges into another one, and the Game Master can name it either way. The inventory's **Add** takes the item's name first, and adding an item a bag already has tops up its stack. The detailed inventory follows items instead of names, so an entry keeps its description through renames and gifts (#6791).
+
 - OpenAI-compatible text-to-speech can request PCM output and play it as WAV without changing the audio samples. Custom providers must supply the sample rate and channel count; malformed or incomplete PCM is rejected instead of playing distorted audio (#6709).
 
 - Define per-chat variables in **Chat Settings → Chat Variables**. Set `char1` to `Mary` and use `{{char1}}` in a message: the AI reads Mary while the message keeps the tag. Changes apply to earlier turns too. Values survive restarts, include variables set by prompts, and respect preset-variable precedence. Your edits take priority over pending generation writes.

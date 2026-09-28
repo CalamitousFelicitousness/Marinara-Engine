@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Decorative missing-avatar icons stay hidden from screen readers; named character fallbacks retain their accessible labels.
+
 - Panels opened from the navigation bar support keyboard focus and return focus when closed. Profile imports are keyboard-accessible, missing library avatars have a visible fallback, and the chat sidebar shows clearer loading and retry states (#6698).
 - OpenAI-compatible text-to-speech can request PCM output and play it as WAV without changing the audio samples. Custom providers must supply the sample rate and channel count; malformed or incomplete PCM is rejected instead of playing distorted audio (#6709).
 

@@ -20,7 +20,12 @@ export function AvatarImage({
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
   if (failedSrc === src) {
     return (
-      <span className="absolute inset-0 flex items-center justify-center" role="img" aria-label={alt || undefined}>
+      <span
+        className="absolute inset-0 flex items-center justify-center"
+        role={alt ? "img" : undefined}
+        aria-label={alt || undefined}
+        aria-hidden={alt ? undefined : true}
+      >
         <User size={iconSize} aria-hidden="true" />
       </span>
     );

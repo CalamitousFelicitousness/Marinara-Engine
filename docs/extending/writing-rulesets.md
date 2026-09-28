@@ -742,7 +742,15 @@ An item carries no `mechanics`: what it does is written in its `item` block.
 
 ### What reads items
 
-Everything above is checked when the ruleset is imported, and your catalogs of items ship with it. Nothing in a game reads items yet. Game Mode's inventory, the character sheet and fights take them up in the releases that follow, and that is when `native`, `freeform`, slots, binding, carrying and money start to change a game.
+Everything above is checked when the ruleset is imported, and your catalogs of items ship with it. In a game, Game Mode's inventory reads them:
+
+- **Your items are in the bag.** A stack can be one of your items, and stays that item whatever the player calls it. The inventory's **From the ruleset** button opens a picker of every item your catalogs list, with the catalog's search and filters, and a layer that hides an entry hides it there too.
+- **Names find your items.** A name the player types, or one the Game Master writes in `[inventory: action="add"]`, that is the `label` of one of your items, in any case, adds that item. When two items share a label, the one your catalogs list first is the one a name finds.
+- **`stack`** is kept: adding, setting, merging or giving past it fills the stack and starts a new one.
+- **`freeform: "refuse"`** leaves the player only your items: the picker, and names that are your items.
+- **What an item is** shows on the selected stack: its category, rarity and tags by their labels, the stats it gives, its summary and how many one stack holds. The picker also shows its `cost`. The Game Master sees each of your items it holds with its category, rarity, tags and the stats you left `promptVisible`, such as `Hand axe [Weapon, Common, Thrown; Damage 1d6, Reach close]`.
+
+Slots, binding and carrying start to change a game in the next release, and `native`, the character sheet, fights and money after that.
 
 ## Battles: lending the sheet to Marinara's combat
 

@@ -10,11 +10,31 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import { Check, ChevronLeft, ChevronRight, Gift, Minus, Package, Plus, Scissors, Wand2, X } from "lucide-react";
-import { gameInventoryBagKey, gameInventoryItemId, gameInventoryStackLabel } from "@marinara-engine/shared";
+import {
+  BookOpen,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Gift,
+  Minus,
+  Package,
+  Plus,
+  Scissors,
+  Wand2,
+  X,
+} from "lucide-react";
+import {
+  gameInventoryBagKey,
+  gameInventoryItemId,
+  gameInventoryStackLabel,
+  type RulesetDefinition,
+  type RulesetItemBook,
+  type RulesetItemBookEntry,
+} from "@marinara-engine/shared";
 import { cn } from "../../lib/utils";
 import { defaultInventorySplitSize, parseInventoryAmount, parseInventoryCount } from "../../lib/game-inventory-amount";
 import { useTranslation as useUiTranslation } from "react-i18next";
+import { RulesetItemPicker, rulesetItemStatsLine } from "./RulesetItemPicker";
 
 /** One stack. Two stacks may hold the same item, so a stack is told apart by its id, never its name. */
 export interface InventoryItem {
@@ -23,6 +43,8 @@ export interface InventoryItem {
   name: string;
   /** What the player calls this stack instead, shown in place of the own name. */
   nickname?: string;
+  /** The ruleset item it is, "<catalog>/<entry>". Absent for a plain item. */
+  item?: string;
   quantity: number;
   /** The party member who carries it. Absent for the player's own character. */
   holder?: string;
@@ -47,6 +69,14 @@ interface GameInventoryProps {
   /** Called when the user adds an item by name, into the open tab's bag (the player's from the shared
    *  view): onto that bag's stack of the item when it has one. Resolves to the stack it went onto. */
   onAddItem?: (name: string, holder?: string) => Promise<string | null> | string | null;
+  /** The items the game's ruleset lists (`useRulesetItemBook`), with the ruleset they are read
+   *  against. With both, a stack of one shows what it is, and the Add row offers them in a picker;
+   *  a ruleset that takes only its own items (`freeform: "refuse"`) offers only the picker. */
+  itemBook?: RulesetItemBook;
+  rulesetDefinition?: RulesetDefinition;
+  /** Called with the items picked from the ruleset, one of each, into the open tab's bag. Resolves to
+   *  the stack the last one went onto. */
+  onAddRulesetItems?: (picks: RulesetItemBookEntry[], holder?: string) => Promise<string | null> | string | null;
   /** Called when the user wants to use an item during input phase */
   onUseItem?: (itemName: string) => void;
   /** Called when the user gives a stack a nickname, or its own name back. Resolves to the stack's id. */
@@ -80,6 +110,9 @@ export function GameInventory({
   open,
   onClose,
   onAddItem,
+  itemBook,
+  rulesetDefinition,
+  onAddRulesetItems,
   onUseItem,
   onRenameItem,
   onSetItemQuantity,
@@ -103,6 +136,7 @@ export function GameInventory({
   const [splitPending, setSplitPending] = useState(false);
   const [giveDraft, setGiveDraft] = useState<{ to: string; count: string } | null>(null);
   const [givePending, setGivePending] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [view, setView] = useState<InventoryView>({ kind: "all" });
   const [pageIndex, setPageIndex] = useState(0);
 
@@ -227,6 +261,26 @@ export function GameInventory({
       setAddPending(false);
     }
   }, [activeHolder, newItemName, onAddItem]);
+
+  const handleAddRulesetItems = useCallback(
+    async (picks: RulesetItemBookEntry[]) => {
+      if (!onAddRulesetItems || picks.length === 0) return;
+      setAddPending(true);
+      try {
+        const addedStackId = await onAddRulesetItems(picks, activeHolder);
+        if (addedStackId) setSelectedItem(addedStackId);
+      } finally {
+        setAddPending(false);
+      }
+    },
+    [activeHolder, onAddRulesetItems],
+  );
+  // The picker is offered only with something to offer; a ruleset that takes only its own items has
+  // no typed-in name to add.
+  const picksItems = Boolean(itemBook && rulesetDefinition && onAddRulesetItems);
+  const typesItems = Boolean(onAddItem) && itemBook?.plain !== "refuse";
+  const selectedRulesetItem =
+    selectedInventoryItem?.item && itemBook ? itemBook.itemOf(selectedInventoryItem.item) : undefined;
 
   const setQuantity = useCallback(
     async (item: InventoryItem, quantity: number) => {
@@ -486,7 +540,7 @@ export function GameInventory({
         </DndContext>
 
         {/* Action bar */}
-        {(selectedItem || onAddItem) && (
+        {(selectedItem || onAddItem || picksItems) && (
           <div className="border-t border-white/8 bg-white/[0.02] px-4 py-2.5">
             {selectedInventoryItem && (
               <div className="mb-2 whitespace-normal break-words text-[0.7rem] font-medium text-white/60 [overflow-wrap:anywhere]">
@@ -503,6 +557,7 @@ export function GameInventory({
                 )}
               </div>
             )}
+            {selectedRulesetItem && <RulesetItemDetails details={selectedRulesetItem} />}
             {onRenameItem && selectedInventoryItem && (
               <div className="mb-2.5 flex gap-1.5">
                 <input
@@ -773,36 +828,91 @@ export function GameInventory({
                 </button>
               )}
             </div>
-            {onAddItem && (
+            {(typesItems || picksItems) && (
               <div className={cn("flex gap-1.5", selectedInventoryItem && "mt-2.5")}>
-                <input
-                  value={newItemName}
-                  onChange={(e) => setNewItemName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Escape") setNewItemName("");
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      void handleAdd();
-                    }
-                  }}
-                  disabled={addPending}
-                  aria-label={localizeUi("ui.game.gameinventory.newItemName")}
-                  placeholder={localizeUi("ui.game.gameinventory.itemName")}
-                  className="min-w-0 flex-1 rounded border border-white/10 bg-black/40 px-2 py-1.5 text-[0.7rem] text-white/85 outline-none transition-colors focus:border-amber-400/40"
-                />
-                <button
-                  onClick={() => void handleAdd()}
-                  disabled={addPending || !newItemName.trim()}
-                  className="flex shrink-0 items-center justify-center gap-1 rounded border border-white/8 bg-white/[0.03] px-2 py-1.5 text-[0.7rem] text-white/70 transition-colors hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <Plus size={12} />
-                  {localizeUi("ui.characters.metadatatab.add")}
-                </button>
+                {typesItems && (
+                  <>
+                    <input
+                      value={newItemName}
+                      onChange={(e) => setNewItemName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") setNewItemName("");
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          void handleAdd();
+                        }
+                      }}
+                      disabled={addPending}
+                      aria-label={localizeUi("ui.game.gameinventory.newItemName")}
+                      placeholder={localizeUi("ui.game.gameinventory.itemName")}
+                      className="min-w-0 flex-1 rounded border border-white/10 bg-black/40 px-2 py-1.5 text-[0.7rem] text-white/85 outline-none transition-colors focus:border-amber-400/40"
+                    />
+                    <button
+                      onClick={() => void handleAdd()}
+                      disabled={addPending || !newItemName.trim()}
+                      className="flex shrink-0 items-center justify-center gap-1 rounded border border-white/8 bg-white/[0.03] px-2 py-1.5 text-[0.7rem] text-white/70 transition-colors hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <Plus size={12} />
+                      {localizeUi("ui.characters.metadatatab.add")}
+                    </button>
+                  </>
+                )}
+                {picksItems && (
+                  <button
+                    type="button"
+                    onClick={() => setPickerOpen(true)}
+                    disabled={addPending}
+                    className={cn(
+                      "flex shrink-0 items-center justify-center gap-1 rounded border border-white/8 bg-white/[0.03] px-2 py-1.5 text-[0.7rem] text-white/70 transition-colors hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-40",
+                      !typesItems && "flex-1",
+                    )}
+                    title={localizeUi("ui.game.gameinventory.fromRulesetHint")}
+                  >
+                    <BookOpen size={12} />
+                    {localizeUi("ui.game.gameinventory.fromRuleset")}
+                  </button>
+                )}
               </div>
             )}
           </div>
         )}
       </div>
+      {picksItems && pickerOpen && (
+        <RulesetItemPicker
+          open
+          onClose={() => setPickerOpen(false)}
+          definition={rulesetDefinition!}
+          book={itemBook!}
+          onAdd={(picks) => void handleAddRulesetItems(picks)}
+        />
+      )}
+    </div>
+  );
+}
+
+/** What a ruleset item is: its category, rarity and tags, its stats, what it is, and how many one
+ *  stack of it holds. */
+function RulesetItemDetails({ details }: { details: RulesetItemBookEntry }) {
+  const { t: localizeUi } = useUiTranslation();
+  const { facts } = details;
+  const kind = [facts.category, facts.rarity, ...facts.tags].filter((word): word is string => !!word);
+  const stats = rulesetItemStatsLine(facts);
+  return (
+    <div className="mb-2.5 space-y-1">
+      <div className="flex flex-wrap gap-1">
+        {kind.map((word) => (
+          <span key={word} className="rounded bg-white/8 px-1.5 py-0.5 text-[0.6rem] text-white/80">
+            {word}
+          </span>
+        ))}
+      </div>
+      {stats && <div className="text-[0.65rem] leading-tight text-white/70">{stats}</div>}
+      {details.summary && <div className="text-[0.65rem] leading-tight text-white/55">{details.summary}</div>}
+      {details.stack !== undefined && (
+        <div className="text-[0.65rem] leading-tight text-white/45">
+          {localizeUi("ui.game.gameinventory.stackHolds", { max: details.stack })}
+        </div>
+      )}
     </div>
   );
 }

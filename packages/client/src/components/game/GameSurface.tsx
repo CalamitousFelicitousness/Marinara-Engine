@@ -217,6 +217,7 @@ import { GameCharacterSheet } from "@/components/game/GameCharacterSheet";
 import type { GameCharacterSheetGameCard, GameCharacterSheetRuleset } from "@/components/game/GameCharacterSheet";
 import { describeRefusedSheetCommands } from "./GameRulesetSheet";
 import { useGameRuleset } from "../../hooks/use-game-ruleset";
+import { useRulesetItemBook } from "../../hooks/use-ruleset-item-book";
 import { useGameStatePatcher } from "../../hooks/use-game-state-patcher";
 import { GameDiceResult } from "./GameDiceResult";
 import { GameSkillCheckResult } from "./GameSkillCheckResult";
@@ -7633,7 +7634,12 @@ function GameSurfaceComponent({
         const [result] = await commitInventory([{ op: "add", name: addedItemName, count: 1, holder }]);
         if (!result?.ok)
           throw new Error(
-            localizeUi("ui.game.gamesurfacecomponent.failedToAddValue1ToInventory", { value1: addedItemName }),
+            localizeUi(
+              result?.reason === "not-ruleset-item"
+                ? "ui.game.gamesurfacecomponent.notARulesetItemValue1"
+                : "ui.game.gamesurfacecomponent.failedToAddValue1ToInventory",
+              { value1: addedItemName },
+            ),
           );
         // Said by the name the stack it went onto is shown by, which may be a nickname.
         const landed = result.id ? inventoryItemsRef.current.find((stack) => stack.id === result.id) : undefined;
@@ -7658,6 +7664,51 @@ function GameSurfaceComponent({
     [activeChatId, commitInventory, showInventoryNotification, localizeUi],
   );
 
+  /** Items picked from the ruleset, one of each, into one party member's bag (the player's without
+   *  `holder`), in one change. Resolves to the stack the last one went onto, so the screen can select
+   *  it. */
+  const handleAddRulesetItems = useCallback(
+    async (picks: ReadonlyArray<{ item: string; name: string }>, holder?: string) => {
+      if (!activeChatId || picks.length === 0) return null;
+      const names = picks.map((pick) => pick.name).join(", ");
+      try {
+        const results = await commitInventory(
+          picks.map((pick) => ({ op: "add" as const, name: pick.name, item: pick.item, count: 1, holder })),
+        );
+        const added = picks.filter((_, index) => results[index]?.ok);
+        if (added.length < picks.length) {
+          toast.error(
+            localizeUi("ui.game.gamesurfacecomponent.failedToAddValue1ToInventory", {
+              value1: picks
+                .filter((_, index) => !results[index]?.ok)
+                .map((pick) => pick.name)
+                .join(", "),
+            }),
+          );
+        }
+        if (added.length === 0) return null;
+        const shown = added.map((pick) => pick.name).join(", ");
+        showInventoryNotification(
+          holder
+            ? localizeUi("ui.game.gamesurfacecomponent.inventoryWhoGained", { who: holder, item: shown })
+            : localizeUi("ui.game.gamesurfacecomponent.inventoryYouGained", { item: shown }),
+          true,
+        );
+        toast.success(localizeUi("ui.game.gamesurfacecomponent.addedValue1ToInventory", { value1: shown }));
+        const last = [...results].reverse().find((result) => result?.ok);
+        return last?.ok ? (last.id ?? null) : null;
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : localizeUi("ui.game.gamesurfacecomponent.failedToAddValue1ToInventory", { value1: names }),
+        );
+        return null;
+      }
+    },
+    [activeChatId, commitInventory, showInventoryNotification, localizeUi],
+  );
+
   /** One stack set to a count: the +1 and -1 buttons, and whatever the player typed. Zero removes it. */
   const handleSetInventoryStackQuantity = useCallback(
     async (stackId: string, quantity: number) => {
@@ -7672,11 +7723,20 @@ function GameSurfaceComponent({
       try {
         const [result] = await commitInventory([{ op: "set", id: stackId, quantity }]);
         if (!result?.ok) {
-          toast.error(localizeUi("ui.game.gamesurfacecomponent.thatStackIsNoLongerInYourInventory"));
+          toast.error(
+            result?.reason === "refused"
+              ? localizeUi("ui.game.gamesurfacecomponent.failedToChangeValue1", {
+                  value1: gameInventoryStackLabel(stack),
+                })
+              : localizeUi("ui.game.gamesurfacecomponent.thatStackIsNoLongerInYourInventory"),
+          );
           return;
         }
         const after = result.now ?? 0;
-        const difference = after - stack.quantity;
+        // What moved, which is more than this stack's own change when a count past one stack's worth
+        // started new stacks after it.
+        const moved = result.count ?? Math.abs(after - stack.quantity);
+        const difference = quantity > stack.quantity ? moved : -moved;
         if (difference === 0) return;
         const item = inventoryLabel(gameInventoryStackLabel(stack), Math.abs(difference));
         if (difference > 0) {
@@ -8435,6 +8495,8 @@ function GameSurfaceComponent({
   // which is what the notice says out loud. A game with no ruleset, or one whose ruleset has no
   // block, never reaches any of this.
   const gameRuleset = useGameRuleset(chatMeta);
+  // The ruleset's items, which the inventory shows and offers; undefined without an items block.
+  const inventoryItemBook = useRulesetItemBook(gameRuleset);
   /** What each seeded member started this battle with, keyed the way live state is. Null while this
    *  session has not seeded a battle, which is what a battle restored after a reload looks like. */
   const rulesetBattleSeedsRef = useRef<RulesetCombatSeeds | null>(null);
@@ -13369,6 +13431,9 @@ function GameSurfaceComponent({
                 open={inventoryOpen}
                 onClose={() => setInventoryOpen(false)}
                 onAddItem={handleAddInventoryItem}
+                itemBook={inventoryItemBook}
+                rulesetDefinition={gameRuleset.status === "ok" ? gameRuleset.definition : undefined}
+                onAddRulesetItems={handleAddRulesetItems}
                 onRenameItem={handleRenameInventoryItem}
                 onSetItemQuantity={handleSetInventoryStackQuantity}
                 onSplitItem={handleSplitInventoryStack}

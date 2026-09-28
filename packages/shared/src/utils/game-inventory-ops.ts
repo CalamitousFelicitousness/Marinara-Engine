@@ -10,9 +10,12 @@ import { z } from "zod";
 import type { InventoryItem } from "../types/game-state.js";
 import {
   GAME_INVENTORY_HOLDER_MAX_LENGTH,
+  GAME_INVENTORY_ITEM_REF_PATTERN,
   GAME_INVENTORY_MAX_QUANTITY,
   GAME_INVENTORY_NAME_MAX_LENGTH,
+  addGameInventoryRulesetItem,
   addToGameInventoryNamed,
+  gameInventoryAddedItem,
   cleanGameInventoryHolder,
   gameInventoryBagKey,
   gameInventoryCountItems,
@@ -28,6 +31,7 @@ import {
   splitGameInventoryStack,
   swapGameInventoryStacks,
   takeFromGameInventory,
+  type GameInventoryItemRules,
   type GameInventoryStack,
 } from "./game-inventory-stacks.js";
 
@@ -41,11 +45,13 @@ const amount = z.number().int().min(1).max(GAME_INVENTORY_MAX_QUANTITY);
 
 export const gameInventoryOpSchema = z.discriminatedUnion("op", [
   /** Into one bag by name, onto the item that name finds (a new one when it finds none): the player's
-   *  bag when `holder` is absent. `log` writes "acquired" in the journal. */
+   *  bag when `holder` is absent. With `item`, that ruleset item instead, and `name` is only what the
+   *  journal calls it. `log` writes "acquired" in the journal. */
   z
     .object({
       op: z.literal("add"),
       name: itemName,
+      item: z.string().max(121).regex(GAME_INVENTORY_ITEM_REF_PATTERN).optional(),
       count: amount,
       holder: holder.optional(),
       log: z.boolean().optional(),
@@ -84,8 +90,9 @@ export const gameInventoryOpsRequestSchema = z
   })
   .strict();
 
-/** Why an operation changed nothing. */
-export type GameInventoryOpRefusal = "missing-stack" | "none-held" | "refused";
+/** Why an operation changed nothing. `not-ruleset-item`: an add of something that is not one of the
+ *  ruleset's items, where only those may be added. */
+export type GameInventoryOpRefusal = "missing-stack" | "none-held" | "not-ruleset-item" | "refused";
 
 export type GameInventoryOpResult =
   | {
@@ -115,11 +122,13 @@ export interface GameInventoryOpsOutcome {
 /**
  * Every operation in order, each on the stacks the one before it left. One that cannot happen is
  * refused and changes nothing, and the rest still apply, the way the Game Master's sheet commands do.
+ * `rules` are what the game's ruleset says about its items; without them every item is plain.
  */
 export function applyGameInventoryOps(
   stacks: GameInventoryStack[],
   ops: readonly GameInventoryOp[],
   newId?: () => string,
+  rules?: GameInventoryItemRules,
 ): GameInventoryOpsOutcome {
   let current = stacks;
   const results: GameInventoryOpResult[] = [];
@@ -132,9 +141,12 @@ export function applyGameInventoryOps(
     switch (op.op) {
       case "add": {
         const bag = { holder: cleanGameInventoryHolder(op.holder) };
-        const added = addToGameInventoryNamed(current, op.name, op.count, makeId, bag.holder);
+        const added = op.item
+          ? addGameInventoryRulesetItem(current, op.item, op.count, makeId, bag.holder, rules)
+          : addToGameInventoryNamed(current, op.name, op.count, makeId, bag.holder, rules);
         if (!added) {
-          refuse("refused");
+          const known = op.item ? rules?.itemOf(op.item) : gameInventoryAddedItem(current, op.name, bag.holder, rules);
+          refuse(known ? "refused" : "not-ruleset-item");
           break;
         }
         current = added.stacks;
@@ -173,16 +185,27 @@ export function applyGameInventoryOps(
           refuse("missing-stack");
           break;
         }
-        current = setGameInventoryStackQuantity(current, op.id, op.quantity);
+        const next = setGameInventoryStackQuantity(current, op.id, op.quantity, makeId, rules);
+        if (next === current && op.quantity !== stack.quantity) {
+          refuse("refused");
+          break;
+        }
+        current = next;
         const after = stackOf(op.id)?.quantity ?? 0;
+        // A count past one stack's worth fills this stack and starts new ones after it, so what moved
+        // is the whole difference, and `now` is this stack's own count.
         results.push({
           ok: true,
           ...(after > 0 ? { id: op.id } : {}),
-          count: Math.abs(after - stack.quantity),
+          count: Math.abs(op.quantity - stack.quantity),
           now: after,
         });
-        if (after < stack.quantity)
-          journal.push({ item: gameInventoryStackLabel(stack), action: "removed", quantity: stack.quantity - after });
+        if (op.quantity < stack.quantity)
+          journal.push({
+            item: gameInventoryStackLabel(stack),
+            action: "removed",
+            quantity: stack.quantity - op.quantity,
+          });
         break;
       }
       case "split": {
@@ -197,7 +220,7 @@ export function applyGameInventoryOps(
         break;
       }
       case "merge": {
-        const next = mergeGameInventoryStacks(current, op.from, op.into);
+        const next = mergeGameInventoryStacks(current, op.from, op.into, rules);
         if (next === current) {
           refuse(stackOf(op.from) && stackOf(op.into) ? "refused" : "missing-stack");
           break;
@@ -228,7 +251,7 @@ export function applyGameInventoryOps(
       }
       case "give": {
         const stack = stackOf(op.id);
-        const given = stack ? giveGameInventoryStack(current, op.id, op.to, op.count, makeId) : null;
+        const given = stack ? giveGameInventoryStack(current, op.id, op.to, op.count, makeId, rules) : null;
         if (!stack || !given) {
           refuse(stack ? "refused" : "missing-stack");
           break;

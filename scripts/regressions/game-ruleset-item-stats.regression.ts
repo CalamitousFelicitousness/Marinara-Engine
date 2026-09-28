@@ -307,6 +307,11 @@ try {
     assert.equal(read({ from: "all", pick: "count" }), 1 + 1 + 3 + 1 + 4);
     assert.equal(read({ from: "worn", pick: "count" }), 2);
     assert.equal(read({ stat: "guard", from: "all", pick: "count" }), 2);
+    // A stat written as 0 is still given, for every pick alike: counted, and the lowest.
+    const cloak: RulesetCatalogItem = { ...coat, stats: { bulk: 1, guard: 0 } };
+    const cloaked = [...held, { item: cloak, quantity: 1, worn: false }];
+    assert.equal(read({ stat: "guard", from: "all", pick: "count" }, cloaked), 3, "a guard of 0 counts");
+    assert.equal(read({ stat: "guard", from: "all", pick: "min" }, cloaked), 0, "and is the lowest");
     assert.equal(read({ stat: "damage", from: "all", pick: "count" }), 4, "a dice stat counts where it is given");
     // Filters.
     assert.equal(read({ stat: "guard", from: "all", pick: "max", slot: "body" }), 3);

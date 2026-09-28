@@ -155,7 +155,7 @@ function readItemStat(
         ? held
         : held.filter((each) => {
             const value = given(each);
-            return value !== undefined && value !== false && value !== 0 && value !== "";
+            return value !== undefined && value !== false && value !== "";
           });
     return counted.length > 0 ? counted.reduce((total, each) => total + each.quantity, 0) : (spec.default ?? 0);
   }

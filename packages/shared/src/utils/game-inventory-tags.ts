@@ -17,6 +17,7 @@ import {
   gameInventoryItemsNamed,
   giveFromGameInventoryNamed,
   type GameInventoryBagRef,
+  type GameInventoryItemRules,
   type GameInventoryStack,
 } from "./game-inventory-stacks.js";
 import {
@@ -88,13 +89,15 @@ export function applyGameInventoryTags(
   stacks: GameInventoryStack[],
   party: GameInventoryParty,
   newId?: () => string,
+  /** What the game's ruleset says about its items: a name that is one of them adds that item. */
+  rules?: GameInventoryItemRules,
 ): GameInventoryTagsOutcome {
   let current = stacks;
   const journal: GameInventoryJournalEntry[] = [];
   let tags = 0;
 
   const apply = (ops: GameInventoryOp[]): GameInventoryOpResult[] => {
-    const outcome = applyGameInventoryOps(current, ops, newId);
+    const outcome = applyGameInventoryOps(current, ops, newId, rules);
     current = outcome.stacks;
     journal.push(...outcome.journal);
     return outcome.results;
@@ -140,7 +143,15 @@ export function applyGameInventoryTags(
         // The items it names are settled first, and counted by item in the receiver's bag, where the
         // name may be a nickname nothing there carries.
         const items = gameInventoryItemsNamed(current, item, who.bag ?? {});
-        const handed = giveFromGameInventoryNamed(current, item, request.count, who.bag ?? {}, to.bag.holder, newId);
+        const handed = giveFromGameInventoryNamed(
+          current,
+          item,
+          request.count,
+          who.bag ?? {},
+          to.bag.holder,
+          newId,
+          rules,
+        );
         if (handed.given === 0) return serializeInventoryTag(shown, { ok: false, reason: "none-held" });
         current = handed.stacks;
         return serializeInventoryTag(shown, {

@@ -10,12 +10,19 @@ import {
   gameInventoryForTelling,
   normalizeGameInventoryStacks,
   readGameInventoryTurn,
+  rulesetItemBook,
+  rulesetLayerOptionKey,
   type GameInventoryJournalEntry,
   type GameInventoryStack,
   type InventoryItem,
   type PlayerStats,
+  type RulesetCatalogEntry,
+  type RulesetItemBook,
 } from "@marinara-engine/shared";
 import type { DB } from "../../db/connection.js";
+import { logger } from "../../lib/logger.js";
+import { loadRulesetCatalogEntries } from "./ruleset-catalog.service.js";
+import { loadRulesetRegistry, resolveGameRuleset, type ResolvedGameRuleset } from "./ruleset-registry.service.js";
 import { createChatsStorage, withChatMetadataPatchQueue } from "../storage/chats.storage.js";
 import { createGameStateStorage } from "../storage/game-state.storage.js";
 import { resolveVisibleGameStateAnchor } from "../../routes/generate/generate-route-utils.js";
@@ -72,6 +79,55 @@ function parsePlayerStats(raw: unknown): PlayerStats | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * The items a game's ruleset lists, for a change that needs them: which names are its items, how
+ * many one stack holds, and what the Game Master is shown about each. Undefined for a game with no
+ * ruleset, one this install cannot honour, or one without an `items` block. `who` is whose change it
+ * is: the player's typed-in items follow the ruleset's `freeform`, and the Game Master's are always
+ * allowed until the native switch arrives. A catalog that cannot be read is logged and left out.
+ */
+export async function loadGameInventoryItemBook(
+  db: DB,
+  source: { chatId: string } | { metadata: Record<string, unknown>; resolved?: ResolvedGameRuleset | null },
+  who: "player" | "game-master",
+): Promise<RulesetItemBook | undefined> {
+  let metadata: Record<string, unknown>;
+  if ("chatId" in source) {
+    const chat = await createChatsStorage(db).getById(source.chatId);
+    if (!chat) return undefined;
+    metadata = readMetadata(chat.metadata);
+  } else metadata = source.metadata;
+  if (metadata.gameRuleset == null) return undefined;
+  const resolved =
+    ("resolved" in source ? source.resolved : null) ?? resolveGameRuleset(metadata, await loadRulesetRegistry(db));
+  if (resolved.status !== "ok" || !resolved.definition.items) return undefined;
+  const { definition, packageId } = resolved;
+  const entries: Record<string, RulesetCatalogEntry[]> = {};
+  // ponytail: read on every change that needs it, like a turn's `use` catalogs. An asset catalog is
+  // re-read and re-checked each time; a cache keyed by the asset's hash is the upgrade path if an
+  // inventory with a large file ever feels slow.
+  for (const catalog of definition.catalogs ?? []) {
+    if (catalog.holds !== "items") continue;
+    try {
+      const read = await loadRulesetCatalogEntries(packageId, definition, catalog);
+      if (read.ok) entries[catalog.id] = read.entries;
+      else
+        logger.warn(
+          "[game/inventory] Item catalog %s of %s could not be read: %s",
+          catalog.id,
+          definition.id,
+          read.issues.slice(0, 3).join("; "),
+        );
+    } catch (error) {
+      logger.warn(error, "[game/inventory] Could not read item catalog %s of %s", catalog.id, definition.id);
+    }
+  }
+  return rulesetItemBook(definition, entries, {
+    layerOptions: Object.fromEntries(resolved.layers.map((layer) => [rulesetLayerOptionKey(layer.id), true])),
+    plain: who === "player" && definition.items?.freeform === "refuse" ? "refuse" : "allow",
+  });
 }
 
 /**

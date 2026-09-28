@@ -23,6 +23,7 @@ import {
   formatRulesetCheckValue,
   isRulesetItemHidden,
   rulesetSectionGroups,
+  type RulesetSheetItem,
 } from "./sheet-math.js";
 
 /** How much of one sheet value reaches the prompt. */
@@ -85,10 +86,12 @@ export function renderRulesetSheetBlock(
   card: { name: string; build: RulesetSheetBuild },
   stored: unknown,
   catalogs: RulesetCatalogEntriesById = {},
+  /** The items the character holds, which an `itemStat` reads. */
+  items?: ReadonlyArray<RulesetSheetItem>,
 ): string {
   const { sheet, gm } = definition;
   const build = card.build;
-  const live = readRulesetLive(definition, build, stored);
+  const live = { ...readRulesetLive(definition, build, stored), ...(items ? { items } : {}) };
   const evaluated = evaluateRulesetSheet(definition, build, live);
   const catalogEntries = rulesetCatalogEntriesByRef(catalogs);
   const lines: string[] = [];

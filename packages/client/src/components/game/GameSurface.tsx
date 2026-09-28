@@ -15,6 +15,8 @@ import {
   type RulesetItemBookSheets,
   type GameInventoryStack,
   type PlayerStats,
+  rulesetCardItems,
+  rulesetReadsItems,
 } from "@marinara-engine/shared";
 // ──────────────────────────────────────────────
 // Game: Main Surface (rendered by ChatArea when mode === "game")
@@ -10107,6 +10109,17 @@ function GameSurfaceComponent({
     // its place would invite a Save that overwrites it, so the block says so and offers nothing.
     const parsed = index >= 0 ? rulesetSheetEnvelopeSchema.safeParse(cards[index]?.rulesetSheet) : null;
     if (parsed && !parsed.success && cards[index]?.rulesetSheet != null) return { status: "unreadable" };
+    // What this card holds, as the server reads it for checks and fights: the player's card the
+    // player's bag, every other card its own.
+    const items =
+      inventoryItemBook && rulesetReadsItems(gameRuleset.definition)
+        ? rulesetCardItems(
+            inventoryItemBook,
+            inventoryItems,
+            cards.flatMap((card) => (typeof card.name === "string" && card.name.trim() ? [card.name.trim()] : [])),
+            inventoryPlayerName,
+          )(cardTitle)
+        : undefined;
     return {
       status: "ok",
       definition: gameRuleset.definition,
@@ -10118,6 +10131,7 @@ function GameSurfaceComponent({
       live: gameSnapshot?.rulesetLive?.[normalizeCharacterLookupName(cardTitle)],
       onLiveChange: (next) => handleRulesetLiveChange(cardTitle, next),
       onEnvelopeSave: (next) => handleSaveRulesetSheet(cardTitle, next),
+      ...(items ? { items } : {}),
     };
   }, [
     characterSheetCharId,
@@ -10126,6 +10140,9 @@ function GameSurfaceComponent({
     gameSnapshot?.rulesetLive,
     handleRulesetLiveChange,
     handleSaveRulesetSheet,
+    inventoryItemBook,
+    inventoryItems,
+    inventoryPlayerName,
     partyCards,
   ]);
 

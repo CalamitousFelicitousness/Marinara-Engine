@@ -221,13 +221,14 @@ Some systems let a player pay for a roll they are about to make: a point of will
 - `lists` are tables with your own columns, such as gear, spells, or features. A list with `pools` turns every row into a resource with its own maximum, for class features with limited uses.
 - `live` is what changes during play: `pools` (hit points, spell slots, Grit), `tracks` (a number on a scale, such as exhaustion, or a wound track of boxes you tick), `text` (short notes such as what a character is concentrating on), `conditions`, and `states` (one value out of a closed set, such as a form or a stance).
 
-Anything that reads a number names it with a value reference, which is an object with exactly one key: `const`, `field`, `derived`, `abilityScore`, `abilityMod`, `abilityModFromField`, `skillMod`, `saveMod`, `listSum`, `livePool`, or `liveTrack`. For example, a pool whose maximum is a derived value: `"max": { "derived": "grit_max" }`.
+Anything that reads a number names it with a value reference, which is an object with exactly one key: `const`, `field`, `derived`, `abilityScore`, `abilityMod`, `abilityModFromField`, `skillMod`, `saveMod`, `listSum`, `livePool`, `liveTrack`, or `itemStat`. For example, a pool whose maximum is a derived value: `"max": { "derived": "grit_max" }`.
 
 - `listSum` adds up one number column of a list: `{ "listSum": { "list": "gear", "column": "bulk", "onlyWhen": "packed" } }`. `onlyWhen` is optional and names a boolean column; only the rows where it is set count. An empty cell counts as its column's default, and a list that `hideWhen` hides adds nothing. Ember Roads works out Burden this way, from the gear a character has packed, so it can never drift from the list the way a typed-in number would. A catalog's scaled column cannot read a list sum, even through a derived value: a list may hold scaled cells, its own or ones that read it back, and the recompute would never settle.
 - `livePool` reads what is left in one of your `live.pools` (a list row's pool is not one of them). `liveTrack` reads one of your `live.tracks`, with an optional `read`: `"value"`, where it stands (the default); `"filled"`, how far above its `min`; `"remaining"`, how far below its `max`; or, on a wound track only, `"penalty"`, the penalty in force. A hidden pool or track reads 0. Gravewatch's "Harm still to take" is `{ "liveTrack": "harm", "read": "remaining" }`.
 - A live read takes the live state as it stands when a check is rolled, a fight begins, or the Game Master's sheet block is written. Where there is none yet (the sheet editor, an import review) it reads the state play starts in: a pool full or empty as it `start`s, a track at its `default`, a wound track clear.
 - Nothing worked out before there is a live state may read one: a pool's or a track's `max`, the proficiency bonus, or a catalog's scaled column or scaling. That holds through a derived value that reads one and through a skill a live value caps, and the import names the value that does.
 - These three are Capability API 1.39 for a packaged ruleset.
+- `itemStat` reads the items the character holds, such as the guard of the armor they wear, and is held to the same rule as a live read. See [Items on the sheet](#items-on-the-sheet). Capability API 1.52.
 
 **What a check does untrained.** A skill or save the character has no training in (its tier is the first one) rolls as usual unless the ruleset says otherwise, with `untrained` on the skill or save or on the section it sits in (the skill's or save's own rule wins):
 
@@ -632,7 +633,7 @@ The limits are 12 catalogs per ruleset, 2000 entries per catalog either way, and
 
 ## Items: what a party carries
 
-Armor, weapons, potions, gear, ammunition and money are items. An optional `items` block declares the words every item of your ruleset is written in, and a catalog with `holds: "items"` lists the items themselves. Both need Capability API 1.49; the block's `rarityCaps` and `propose`, which govern the items the Game Master invents, need 1.51.
+Armor, weapons, potions, gear, ammunition and money are items. An optional `items` block declares the words every item of your ruleset is written in, and a catalog with `holds: "items"` lists the items themselves. Both need Capability API 1.49; the block's `rarityCaps` and `propose`, which govern the items the Game Master invents, need 1.51, and a value that reads the items a character holds (`itemStat`) needs 1.52.
 
 ### The items block
 
@@ -764,7 +765,30 @@ Everything above is checked when the ruleset is imported, and your catalogs of i
 - **The Game Master invents items in your words.** Unless you set `propose: false`, its `[inventory: action="add"]` can describe a new item: `like=` one of your items to start from, then any of `category=`, `rarity=`, `tags=`, `stats=` (`id=value` pairs), `slots=` (`id=count`), `binds=` (`yes`, `cursed` or `no`) and `summary=`, each part by its id or label. The Engine keeps only what your block has: an unknown category, tag, stat or slot is left out, a rarity you do not have becomes your lowest, a number is held to its stat's range and then to `rarityCaps` for its rarity (the part `like` started it from as well), and a name that is one of your items is simply that item. The answer tells the Game Master what was changed (never about a stat you do not show it), and the item's details show every change to the player. The game keeps the item, so the same name is that item for the rest of the game, and a new session keeps it while anyone still holds it.
 - The Game Master can `equip` and `unequip` your items with its inventory command when you have `slots`, and `bind` and `unbind` them when you have `binding`: it is only told of the ones your ruleset has. It sees each character's load, bound items and slots, and what is worn or bound.
 
-A fight already spends one of your items the way it spends any item, unless `native` is `false`. What being encumbered does to a character, and what worn and carried items do to the sheet and to checks, come in the next release, and weapons and armor in a fight, using items by their own rules, and money after that.
+A fight already spends one of your items the way it spends any item, unless `native` is `false`, and the sheet can read them (below). What being encumbered does to a character, and what worn and carried items do to checks by their own rules, come in the next release, and weapons and armor in a fight, using items by their own rules, and money after that.
+
+### Items on the sheet
+
+A value reference can read the items a character holds, with `itemStat` (Capability API 1.52). Ember Roads adds the guard of the armor a traveller wears to their Guard, which is what a blow has to beat:
+
+```json
+{
+  "id": "guard",
+  "label": "Guard",
+  "op": "sum",
+  "of": [{ "const": 6 }, { "abilityMod": "wits" }, { "itemStat": { "stat": "guard", "from": "worn", "pick": "sum" } }]
+}
+```
+
+- `from`: `"worn"` is the items on the character: an item that takes slots while it is equipped, one that `binds` while it is bound, and one that does both while both. An item that does neither is never worn. `"carried"` is the rest of what they hold, and `"all"` is both.
+- `pick`: `"sum"` adds each item's value times how many there are, `"max"` and `"min"` read the highest or the lowest single value, and `"count"` counts the items, by how many there are.
+- `stat` names one of your item stats. `sum`, `max` and `min` need a `number` stat. `count` may leave it out to count every item, or name any stat to count only the items that give it.
+- `slot`, `category` and `tag` (each optional) keep only the items that take that slot, are of that category, or carry that tag.
+- `default` (optional, 0 when left out) is what it reads when no item is picked, or none of them gives the stat.
+
+Items change in play, so `itemStat` is held to the same rule as a live read: a pool's or a track's `max`, the proficiency bonus, `binding.max`, the `carry` numbers, and a catalog's scaled column or scaling cannot read it, even through a derived value. Anywhere else a number is read, it can: a derived value, a check's `adjust`, a skill's `cap`, a fight's defense, soak or initiative.
+
+A character's items are the ones in their own bag. The player's card (the one named for who the chat plays as, else the first) reads the player's bag, and every other card its own. Only your ruleset's items count, since a plain item has no stats to read. The sheet on screen, a check, the Game Master's sheet block, and a fight as it begins all read what each character holds right then. Outside a game, in the sheet editor or an import review, nobody holds anything and `itemStat` reads its `default`.
 
 ## Battles: lending the sheet to Marinara's combat
 

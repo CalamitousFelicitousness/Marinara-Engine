@@ -164,16 +164,23 @@ try {
       /caps or forbids the items its Game Master invents requires schemaVersion 2 and capabilityApi 1\.51/;
     const issue = (minor: number, doc: Record<string, any>) =>
       getCapabilityPackageInstallIssue(manifest(minor) as any, doc);
-    const withCaps = variant(emberText);
+    // Less the example's item read on Guard, which is 1.52's and has a lane of its own.
+    const withoutItemReads = (doc: Record<string, any>) => {
+      const guard = doc.sheet.derived.find((entry: { id: string }) => entry.id === "guard");
+      guard.of = guard.of.filter((ref: { itemStat?: unknown }) => ref.itemStat === undefined);
+    };
+    const withCaps = variant(emberText, withoutItemReads);
     assert.match(issue(50, withCaps) ?? "", inventedIssue, "rarityCaps");
     assert.equal(issue(51, withCaps), null);
     const proposeOnly = variant(emberText, (doc) => {
+      withoutItemReads(doc);
       delete doc.items.rarityCaps;
       doc.items.propose = false;
     });
     assert.match(issue(50, proposeOnly) ?? "", inventedIssue, "propose on its own");
     assert.equal(issue(51, proposeOnly), null);
     const neither = variant(emberText, (doc) => {
+      withoutItemReads(doc);
       delete doc.items.rarityCaps;
     });
     assert.equal(issue(49, neither), null, "items without either stay 1.49");

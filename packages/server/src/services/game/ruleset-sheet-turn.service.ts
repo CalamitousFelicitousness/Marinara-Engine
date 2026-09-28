@@ -20,6 +20,10 @@ import {
   type RulesetLiveStates,
   type SheetCommandCard,
   type SheetCommandOutcome,
+  rulesetCardItems,
+  rulesetReadsItems,
+  type GameInventoryStack,
+  type RulesetItemBook,
 } from "@marinara-engine/shared";
 import type { DB } from "../../db/connection.js";
 import { logger } from "../../lib/logger.js";
@@ -73,16 +77,34 @@ export function sheetCommandCards(
   });
 }
 
-/** One prompt block per party card, showing the sheet as it stands at the start of this turn. */
+/** One prompt block per party card, showing the sheet as it stands at the start of this turn, with
+ *  the items each one holds when the ruleset reads them (`itemStat`). */
 export function renderGameRulesetSheetBlocks(
   definition: RulesetDefinition,
   cards: unknown,
   live: RulesetLiveStates | null | undefined,
   catalogs: RulesetCatalogEntriesById = {},
+  items?: { book: Pick<RulesetItemBook, "itemOf">; stacks: readonly GameInventoryStack[]; playerName?: string | null },
 ): string[] {
   const party = Array.isArray(cards) ? (cards as Array<Record<string, unknown>>) : [];
-  return sheetCommandCards(definition, party).map((card) =>
-    renderRulesetSheetBlock(definition, card, live?.[normalizeCharacterLookupName(card.name)], catalogs),
+  const built = sheetCommandCards(definition, party);
+  const itemsOf =
+    items && rulesetReadsItems(definition)
+      ? rulesetCardItems(
+          items.book,
+          items.stacks,
+          built.map((card) => card.name),
+          items.playerName,
+        )
+      : undefined;
+  return built.map((card) =>
+    renderRulesetSheetBlock(
+      definition,
+      card,
+      live?.[normalizeCharacterLookupName(card.name)],
+      catalogs,
+      itemsOf?.(card.name),
+    ),
   );
 }
 

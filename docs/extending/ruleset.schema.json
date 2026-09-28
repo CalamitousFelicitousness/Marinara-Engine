@@ -269,6 +269,57 @@
                       ],
                       "additionalProperties": false
                     },
+                    "itemStat": {
+                      "type": "object",
+                      "properties": {
+                        "stat": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "from": {
+                          "type": "string",
+                          "enum": [
+                            "worn",
+                            "carried",
+                            "all"
+                          ]
+                        },
+                        "pick": {
+                          "type": "string",
+                          "enum": [
+                            "sum",
+                            "max",
+                            "min",
+                            "count"
+                          ]
+                        },
+                        "slot": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "category": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "tag": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "default": {
+                          "type": "number"
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "from",
+                        "pick"
+                      ],
+                      "additionalProperties": false
+                    },
                     "$comment": {}
                   },
                   "additionalProperties": false,
@@ -425,6 +476,57 @@
                         "required": [
                           "list",
                           "column"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "itemStat": {
+                        "type": "object",
+                        "properties": {
+                          "stat": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "from": {
+                            "type": "string",
+                            "enum": [
+                              "worn",
+                              "carried",
+                              "all"
+                            ]
+                          },
+                          "pick": {
+                            "type": "string",
+                            "enum": [
+                              "sum",
+                              "max",
+                              "min",
+                              "count"
+                            ]
+                          },
+                          "slot": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "category": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "tag": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "default": {
+                            "type": "number"
+                          },
+                          "$comment": {}
+                        },
+                        "required": [
+                          "from",
+                          "pick"
                         ],
                         "additionalProperties": false
                       },
@@ -703,6 +805,57 @@
                       ],
                       "additionalProperties": false
                     },
+                    "itemStat": {
+                      "type": "object",
+                      "properties": {
+                        "stat": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "from": {
+                          "type": "string",
+                          "enum": [
+                            "worn",
+                            "carried",
+                            "all"
+                          ]
+                        },
+                        "pick": {
+                          "type": "string",
+                          "enum": [
+                            "sum",
+                            "max",
+                            "min",
+                            "count"
+                          ]
+                        },
+                        "slot": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "category": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "tag": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "default": {
+                          "type": "number"
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "from",
+                        "pick"
+                      ],
+                      "additionalProperties": false
+                    },
                     "$comment": {}
                   },
                   "additionalProperties": false,
@@ -912,6 +1065,57 @@
                             ],
                             "additionalProperties": false
                           },
+                          "itemStat": {
+                            "type": "object",
+                            "properties": {
+                              "stat": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "from": {
+                                "type": "string",
+                                "enum": [
+                                  "worn",
+                                  "carried",
+                                  "all"
+                                ]
+                              },
+                              "pick": {
+                                "type": "string",
+                                "enum": [
+                                  "sum",
+                                  "max",
+                                  "min",
+                                  "count"
+                                ]
+                              },
+                              "slot": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "category": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "tag": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "default": {
+                                "type": "number"
+                              },
+                              "$comment": {}
+                            },
+                            "required": [
+                              "from",
+                              "pick"
+                            ],
+                            "additionalProperties": false
+                          },
                           "$comment": {}
                         },
                         "additionalProperties": false,
@@ -1047,6 +1251,57 @@
                         "required": [
                           "list",
                           "column"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "itemStat": {
+                        "type": "object",
+                        "properties": {
+                          "stat": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "from": {
+                            "type": "string",
+                            "enum": [
+                              "worn",
+                              "carried",
+                              "all"
+                            ]
+                          },
+                          "pick": {
+                            "type": "string",
+                            "enum": [
+                              "sum",
+                              "max",
+                              "min",
+                              "count"
+                            ]
+                          },
+                          "slot": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "category": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "tag": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "default": {
+                            "type": "number"
+                          },
+                          "$comment": {}
+                        },
+                        "required": [
+                          "from",
+                          "pick"
                         ],
                         "additionalProperties": false
                       },
@@ -1565,6 +1820,57 @@
                     ],
                     "additionalProperties": false
                   },
+                  "itemStat": {
+                    "type": "object",
+                    "properties": {
+                      "stat": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "from": {
+                        "type": "string",
+                        "enum": [
+                          "worn",
+                          "carried",
+                          "all"
+                        ]
+                      },
+                      "pick": {
+                        "type": "string",
+                        "enum": [
+                          "sum",
+                          "max",
+                          "min",
+                          "count"
+                        ]
+                      },
+                      "slot": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "category": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "tag": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "default": {
+                        "type": "number"
+                      },
+                      "$comment": {}
+                    },
+                    "required": [
+                      "from",
+                      "pick"
+                    ],
+                    "additionalProperties": false
+                  },
                   "$comment": {}
                 },
                 "additionalProperties": false,
@@ -1720,6 +2026,57 @@
                     "required": [
                       "list",
                       "column"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "itemStat": {
+                    "type": "object",
+                    "properties": {
+                      "stat": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "from": {
+                        "type": "string",
+                        "enum": [
+                          "worn",
+                          "carried",
+                          "all"
+                        ]
+                      },
+                      "pick": {
+                        "type": "string",
+                        "enum": [
+                          "sum",
+                          "max",
+                          "min",
+                          "count"
+                        ]
+                      },
+                      "slot": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "category": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "tag": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "default": {
+                        "type": "number"
+                      },
+                      "$comment": {}
+                    },
+                    "required": [
+                      "from",
+                      "pick"
                     ],
                     "additionalProperties": false
                   },
@@ -2752,6 +3109,57 @@
                           ],
                           "additionalProperties": false
                         },
+                        "itemStat": {
+                          "type": "object",
+                          "properties": {
+                            "stat": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "from": {
+                              "type": "string",
+                              "enum": [
+                                "worn",
+                                "carried",
+                                "all"
+                              ]
+                            },
+                            "pick": {
+                              "type": "string",
+                              "enum": [
+                                "sum",
+                                "max",
+                                "min",
+                                "count"
+                              ]
+                            },
+                            "slot": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "category": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "tag": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "default": {
+                              "type": "number"
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "from",
+                            "pick"
+                          ],
+                          "additionalProperties": false
+                        },
                         "$comment": {}
                       },
                       "additionalProperties": false,
@@ -2958,6 +3366,57 @@
                         "required": [
                           "list",
                           "column"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "itemStat": {
+                        "type": "object",
+                        "properties": {
+                          "stat": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "from": {
+                            "type": "string",
+                            "enum": [
+                              "worn",
+                              "carried",
+                              "all"
+                            ]
+                          },
+                          "pick": {
+                            "type": "string",
+                            "enum": [
+                              "sum",
+                              "max",
+                              "min",
+                              "count"
+                            ]
+                          },
+                          "slot": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "category": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "tag": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "default": {
+                            "type": "number"
+                          },
+                          "$comment": {}
+                        },
+                        "required": [
+                          "from",
+                          "pick"
                         ],
                         "additionalProperties": false
                       },
@@ -3186,6 +3645,57 @@
                         ],
                         "additionalProperties": false
                       },
+                      "itemStat": {
+                        "type": "object",
+                        "properties": {
+                          "stat": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "from": {
+                            "type": "string",
+                            "enum": [
+                              "worn",
+                              "carried",
+                              "all"
+                            ]
+                          },
+                          "pick": {
+                            "type": "string",
+                            "enum": [
+                              "sum",
+                              "max",
+                              "min",
+                              "count"
+                            ]
+                          },
+                          "slot": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "category": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "tag": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "default": {
+                            "type": "number"
+                          },
+                          "$comment": {}
+                        },
+                        "required": [
+                          "from",
+                          "pick"
+                        ],
+                        "additionalProperties": false
+                      },
                       "$comment": {}
                     },
                     "additionalProperties": false,
@@ -3407,6 +3917,57 @@
                           ],
                           "additionalProperties": false
                         },
+                        "itemStat": {
+                          "type": "object",
+                          "properties": {
+                            "stat": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "from": {
+                              "type": "string",
+                              "enum": [
+                                "worn",
+                                "carried",
+                                "all"
+                              ]
+                            },
+                            "pick": {
+                              "type": "string",
+                              "enum": [
+                                "sum",
+                                "max",
+                                "min",
+                                "count"
+                              ]
+                            },
+                            "slot": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "category": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "tag": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "default": {
+                              "type": "number"
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "from",
+                            "pick"
+                          ],
+                          "additionalProperties": false
+                        },
                         "$comment": {}
                       },
                       "additionalProperties": false,
@@ -3615,6 +4176,57 @@
                           "required": [
                             "list",
                             "column"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "itemStat": {
+                          "type": "object",
+                          "properties": {
+                            "stat": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "from": {
+                              "type": "string",
+                              "enum": [
+                                "worn",
+                                "carried",
+                                "all"
+                              ]
+                            },
+                            "pick": {
+                              "type": "string",
+                              "enum": [
+                                "sum",
+                                "max",
+                                "min",
+                                "count"
+                              ]
+                            },
+                            "slot": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "category": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "tag": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "default": {
+                              "type": "number"
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "from",
+                            "pick"
                           ],
                           "additionalProperties": false
                         },
@@ -4309,6 +4921,57 @@
                         ],
                         "additionalProperties": false
                       },
+                      "itemStat": {
+                        "type": "object",
+                        "properties": {
+                          "stat": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "from": {
+                            "type": "string",
+                            "enum": [
+                              "worn",
+                              "carried",
+                              "all"
+                            ]
+                          },
+                          "pick": {
+                            "type": "string",
+                            "enum": [
+                              "sum",
+                              "max",
+                              "min",
+                              "count"
+                            ]
+                          },
+                          "slot": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "category": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "tag": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "default": {
+                            "type": "number"
+                          },
+                          "$comment": {}
+                        },
+                        "required": [
+                          "from",
+                          "pick"
+                        ],
+                        "additionalProperties": false
+                      },
                       "$comment": {}
                     },
                     "additionalProperties": false,
@@ -4532,6 +5195,57 @@
                             "required": [
                               "list",
                               "column"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "itemStat": {
+                            "type": "object",
+                            "properties": {
+                              "stat": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "from": {
+                                "type": "string",
+                                "enum": [
+                                  "worn",
+                                  "carried",
+                                  "all"
+                                ]
+                              },
+                              "pick": {
+                                "type": "string",
+                                "enum": [
+                                  "sum",
+                                  "max",
+                                  "min",
+                                  "count"
+                                ]
+                              },
+                              "slot": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "category": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "tag": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "default": {
+                                "type": "number"
+                              },
+                              "$comment": {}
+                            },
+                            "required": [
+                              "from",
+                              "pick"
                             ],
                             "additionalProperties": false
                           },
@@ -5658,6 +6372,57 @@
                                   ],
                                   "additionalProperties": false
                                 },
+                                "itemStat": {
+                                  "type": "object",
+                                  "properties": {
+                                    "stat": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "from": {
+                                      "type": "string",
+                                      "enum": [
+                                        "worn",
+                                        "carried",
+                                        "all"
+                                      ]
+                                    },
+                                    "pick": {
+                                      "type": "string",
+                                      "enum": [
+                                        "sum",
+                                        "max",
+                                        "min",
+                                        "count"
+                                      ]
+                                    },
+                                    "slot": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "category": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "tag": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "default": {
+                                      "type": "number"
+                                    },
+                                    "$comment": {}
+                                  },
+                                  "required": [
+                                    "from",
+                                    "pick"
+                                  ],
+                                  "additionalProperties": false
+                                },
                                 "$comment": {}
                               },
                               "additionalProperties": false,
@@ -6310,6 +7075,57 @@
                               "required": [
                                 "list",
                                 "column"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "itemStat": {
+                              "type": "object",
+                              "properties": {
+                                "stat": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "from": {
+                                  "type": "string",
+                                  "enum": [
+                                    "worn",
+                                    "carried",
+                                    "all"
+                                  ]
+                                },
+                                "pick": {
+                                  "type": "string",
+                                  "enum": [
+                                    "sum",
+                                    "max",
+                                    "min",
+                                    "count"
+                                  ]
+                                },
+                                "slot": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "category": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "tag": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "default": {
+                                  "type": "number"
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "from",
+                                "pick"
                               ],
                               "additionalProperties": false
                             },
@@ -8232,6 +9048,57 @@
                   ],
                   "additionalProperties": false
                 },
+                "itemStat": {
+                  "type": "object",
+                  "properties": {
+                    "stat": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "from": {
+                      "type": "string",
+                      "enum": [
+                        "worn",
+                        "carried",
+                        "all"
+                      ]
+                    },
+                    "pick": {
+                      "type": "string",
+                      "enum": [
+                        "sum",
+                        "max",
+                        "min",
+                        "count"
+                      ]
+                    },
+                    "slot": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "category": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "tag": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "default": {
+                      "type": "number"
+                    },
+                    "$comment": {}
+                  },
+                  "required": [
+                    "from",
+                    "pick"
+                  ],
+                  "additionalProperties": false
+                },
                 "$comment": {}
               },
               "additionalProperties": false,
@@ -8343,6 +9210,57 @@
                   ],
                   "additionalProperties": false
                 },
+                "itemStat": {
+                  "type": "object",
+                  "properties": {
+                    "stat": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "from": {
+                      "type": "string",
+                      "enum": [
+                        "worn",
+                        "carried",
+                        "all"
+                      ]
+                    },
+                    "pick": {
+                      "type": "string",
+                      "enum": [
+                        "sum",
+                        "max",
+                        "min",
+                        "count"
+                      ]
+                    },
+                    "slot": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "category": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "tag": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "default": {
+                      "type": "number"
+                    },
+                    "$comment": {}
+                  },
+                  "required": [
+                    "from",
+                    "pick"
+                  ],
+                  "additionalProperties": false
+                },
                 "$comment": {}
               },
               "additionalProperties": false,
@@ -8435,6 +9353,57 @@
                   "required": [
                     "list",
                     "column"
+                  ],
+                  "additionalProperties": false
+                },
+                "itemStat": {
+                  "type": "object",
+                  "properties": {
+                    "stat": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "from": {
+                      "type": "string",
+                      "enum": [
+                        "worn",
+                        "carried",
+                        "all"
+                      ]
+                    },
+                    "pick": {
+                      "type": "string",
+                      "enum": [
+                        "sum",
+                        "max",
+                        "min",
+                        "count"
+                      ]
+                    },
+                    "slot": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "category": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "tag": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "default": {
+                      "type": "number"
+                    },
+                    "$comment": {}
+                  },
+                  "required": [
+                    "from",
+                    "pick"
                   ],
                   "additionalProperties": false
                 },
@@ -8836,6 +9805,57 @@
               ],
               "additionalProperties": false
             },
+            "itemStat": {
+              "type": "object",
+              "properties": {
+                "stat": {
+                  "type": "string",
+                  "maxLength": 40,
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "from": {
+                  "type": "string",
+                  "enum": [
+                    "worn",
+                    "carried",
+                    "all"
+                  ]
+                },
+                "pick": {
+                  "type": "string",
+                  "enum": [
+                    "sum",
+                    "max",
+                    "min",
+                    "count"
+                  ]
+                },
+                "slot": {
+                  "type": "string",
+                  "maxLength": 40,
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "category": {
+                  "type": "string",
+                  "maxLength": 40,
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "tag": {
+                  "type": "string",
+                  "maxLength": 40,
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "default": {
+                  "type": "number"
+                },
+                "$comment": {}
+              },
+              "required": [
+                "from",
+                "pick"
+              ],
+              "additionalProperties": false
+            },
             "$comment": {}
           },
           "additionalProperties": false,
@@ -8955,6 +9975,57 @@
                   ],
                   "additionalProperties": false
                 },
+                "itemStat": {
+                  "type": "object",
+                  "properties": {
+                    "stat": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "from": {
+                      "type": "string",
+                      "enum": [
+                        "worn",
+                        "carried",
+                        "all"
+                      ]
+                    },
+                    "pick": {
+                      "type": "string",
+                      "enum": [
+                        "sum",
+                        "max",
+                        "min",
+                        "count"
+                      ]
+                    },
+                    "slot": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "category": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "tag": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "default": {
+                      "type": "number"
+                    },
+                    "$comment": {}
+                  },
+                  "required": [
+                    "from",
+                    "pick"
+                  ],
+                  "additionalProperties": false
+                },
                 "$comment": {}
               },
               "additionalProperties": false,
@@ -9047,6 +10118,57 @@
                   "required": [
                     "list",
                     "column"
+                  ],
+                  "additionalProperties": false
+                },
+                "itemStat": {
+                  "type": "object",
+                  "properties": {
+                    "stat": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "from": {
+                      "type": "string",
+                      "enum": [
+                        "worn",
+                        "carried",
+                        "all"
+                      ]
+                    },
+                    "pick": {
+                      "type": "string",
+                      "enum": [
+                        "sum",
+                        "max",
+                        "min",
+                        "count"
+                      ]
+                    },
+                    "slot": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "category": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "tag": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "default": {
+                      "type": "number"
+                    },
+                    "$comment": {}
+                  },
+                  "required": [
+                    "from",
+                    "pick"
                   ],
                   "additionalProperties": false
                 },
@@ -9430,6 +10552,57 @@
                       ],
                       "additionalProperties": false
                     },
+                    "itemStat": {
+                      "type": "object",
+                      "properties": {
+                        "stat": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "from": {
+                          "type": "string",
+                          "enum": [
+                            "worn",
+                            "carried",
+                            "all"
+                          ]
+                        },
+                        "pick": {
+                          "type": "string",
+                          "enum": [
+                            "sum",
+                            "max",
+                            "min",
+                            "count"
+                          ]
+                        },
+                        "slot": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "category": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "tag": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "default": {
+                          "type": "number"
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "from",
+                        "pick"
+                      ],
+                      "additionalProperties": false
+                    },
                     "$comment": {}
                   },
                   "additionalProperties": false,
@@ -9524,6 +10697,57 @@
                         "required": [
                           "list",
                           "column"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "itemStat": {
+                        "type": "object",
+                        "properties": {
+                          "stat": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "from": {
+                            "type": "string",
+                            "enum": [
+                              "worn",
+                              "carried",
+                              "all"
+                            ]
+                          },
+                          "pick": {
+                            "type": "string",
+                            "enum": [
+                              "sum",
+                              "max",
+                              "min",
+                              "count"
+                            ]
+                          },
+                          "slot": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "category": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "tag": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "default": {
+                            "type": "number"
+                          },
+                          "$comment": {}
+                        },
+                        "required": [
+                          "from",
+                          "pick"
                         ],
                         "additionalProperties": false
                       },
@@ -9694,6 +10918,57 @@
                   "required": [
                     "list",
                     "column"
+                  ],
+                  "additionalProperties": false
+                },
+                "itemStat": {
+                  "type": "object",
+                  "properties": {
+                    "stat": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "from": {
+                      "type": "string",
+                      "enum": [
+                        "worn",
+                        "carried",
+                        "all"
+                      ]
+                    },
+                    "pick": {
+                      "type": "string",
+                      "enum": [
+                        "sum",
+                        "max",
+                        "min",
+                        "count"
+                      ]
+                    },
+                    "slot": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "category": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "tag": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "default": {
+                      "type": "number"
+                    },
+                    "$comment": {}
+                  },
+                  "required": [
+                    "from",
+                    "pick"
                   ],
                   "additionalProperties": false
                 },
@@ -10001,6 +11276,57 @@
                     "required": [
                       "list",
                       "column"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "itemStat": {
+                    "type": "object",
+                    "properties": {
+                      "stat": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "from": {
+                        "type": "string",
+                        "enum": [
+                          "worn",
+                          "carried",
+                          "all"
+                        ]
+                      },
+                      "pick": {
+                        "type": "string",
+                        "enum": [
+                          "sum",
+                          "max",
+                          "min",
+                          "count"
+                        ]
+                      },
+                      "slot": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "category": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "tag": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "default": {
+                        "type": "number"
+                      },
+                      "$comment": {}
+                    },
+                    "required": [
+                      "from",
+                      "pick"
                     ],
                     "additionalProperties": false
                   },
@@ -10314,6 +11640,57 @@
                     ],
                     "additionalProperties": false
                   },
+                  "itemStat": {
+                    "type": "object",
+                    "properties": {
+                      "stat": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "from": {
+                        "type": "string",
+                        "enum": [
+                          "worn",
+                          "carried",
+                          "all"
+                        ]
+                      },
+                      "pick": {
+                        "type": "string",
+                        "enum": [
+                          "sum",
+                          "max",
+                          "min",
+                          "count"
+                        ]
+                      },
+                      "slot": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "category": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "tag": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "default": {
+                        "type": "number"
+                      },
+                      "$comment": {}
+                    },
+                    "required": [
+                      "from",
+                      "pick"
+                    ],
+                    "additionalProperties": false
+                  },
                   "$comment": {}
                 },
                 "additionalProperties": false,
@@ -10406,6 +11783,57 @@
                     "required": [
                       "list",
                       "column"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "itemStat": {
+                    "type": "object",
+                    "properties": {
+                      "stat": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "from": {
+                        "type": "string",
+                        "enum": [
+                          "worn",
+                          "carried",
+                          "all"
+                        ]
+                      },
+                      "pick": {
+                        "type": "string",
+                        "enum": [
+                          "sum",
+                          "max",
+                          "min",
+                          "count"
+                        ]
+                      },
+                      "slot": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "category": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "tag": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "default": {
+                        "type": "number"
+                      },
+                      "$comment": {}
+                    },
+                    "required": [
+                      "from",
+                      "pick"
                     ],
                     "additionalProperties": false
                   },
@@ -11089,6 +12517,57 @@
                     ],
                     "additionalProperties": false
                   },
+                  "itemStat": {
+                    "type": "object",
+                    "properties": {
+                      "stat": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "from": {
+                        "type": "string",
+                        "enum": [
+                          "worn",
+                          "carried",
+                          "all"
+                        ]
+                      },
+                      "pick": {
+                        "type": "string",
+                        "enum": [
+                          "sum",
+                          "max",
+                          "min",
+                          "count"
+                        ]
+                      },
+                      "slot": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "category": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "tag": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "default": {
+                        "type": "number"
+                      },
+                      "$comment": {}
+                    },
+                    "required": [
+                      "from",
+                      "pick"
+                    ],
+                    "additionalProperties": false
+                  },
                   "$comment": {}
                 },
                 "additionalProperties": false,
@@ -11668,6 +13147,57 @@
                     "required": [
                       "list",
                       "column"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "itemStat": {
+                    "type": "object",
+                    "properties": {
+                      "stat": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "from": {
+                        "type": "string",
+                        "enum": [
+                          "worn",
+                          "carried",
+                          "all"
+                        ]
+                      },
+                      "pick": {
+                        "type": "string",
+                        "enum": [
+                          "sum",
+                          "max",
+                          "min",
+                          "count"
+                        ]
+                      },
+                      "slot": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "category": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "tag": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "default": {
+                        "type": "number"
+                      },
+                      "$comment": {}
+                    },
+                    "required": [
+                      "from",
+                      "pick"
                     ],
                     "additionalProperties": false
                   },

@@ -47,7 +47,7 @@ async function seedGame(
   return chat.id;
 }
 
-async function openInventory(page: Page, chatId: string) {
+async function openGame(page: Page, chatId: string) {
   await page.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: "" } }));
   await seedUIState(page, {
     hasCompletedOnboarding: true,
@@ -64,6 +64,10 @@ async function openInventory(page: Page, chatId: string) {
     { id: chatId, appVersion: version },
   );
   await page.goto("/");
+}
+
+async function openInventory(page: Page, chatId: string) {
+  await openGame(page, chatId);
   await inventoryButton(page).click({ timeout: 30000 });
 }
 
@@ -232,6 +236,86 @@ test("a ruleset's items are placed by who can carry them, worn with Equipped, an
     for (const id of rulesets) {
       await request.delete(`/api/game-rulesets?rulesetId=${encodeURIComponent(id)}&force=true`);
     }
+    if (characterId) await request.delete(`/api/characters/${characterId}`);
+    const restored = await request.patch("/api/agents/import-policy", { data: { enabled: importsWereEnabled } });
+    expect(restored.ok(), await restored.text()).toBeTruthy();
+  }
+});
+
+test("a worn item counts on the in-game sheet, and one in the pack does not", async ({ page, request }, testInfo) => {
+  test.setTimeout(120000);
+  const policyBefore = await request.get("/api/agents/import-policy");
+  expect(policyBefore.ok(), await policyBefore.text()).toBeTruthy();
+  const importsWereEnabled = (await policyBefore.json()).enabled === true;
+  let chatId: string | undefined;
+  let rulesetId: string | undefined;
+  let characterId: string | undefined;
+  try {
+    const policy = await request.patch("/api/agents/import-policy", { data: { enabled: true } });
+    expect(policy.ok(), await policy.text()).toBeTruthy();
+    const imported = await request.post("/api/game-rulesets/import", {
+      data: { definition: example("ember-roads", "ember-sheet-items-e2e") },
+    });
+    expect(imported.ok(), await imported.text()).toBeTruthy();
+    rulesetId = (await imported.json()).rulesetId as string;
+    const character = await request.post("/api/characters", { data: { data: { name: "Bram" } } });
+    expect(character.ok(), await character.text()).toBeTruthy();
+    characterId = ((await character.json()) as { id: string }).id;
+    const sheet = { v: 1, build: { abilities: { brawn: 0, wits: 0, heart: 0 }, fields: {}, lists: {} } };
+    chatId = await seedGame(
+      request,
+      rulesetId,
+      [
+        { name: "Ada", rulesetSheet: sheet },
+        { name: "Bram", rulesetSheet: sheet },
+      ],
+      [characterId],
+    );
+    // Bram carries a leather coat, rolled up in his pack. Guard on Ember Roads is 6 + Wits, and the
+    // armor worn adds its own.
+    const seeded = await request.patch(`/api/chats/${chatId}/metadata`, {
+      data: {
+        gameInventory: [
+          { id: "st-bram-coat", name: "Leather coat", quantity: 1, item: "outfitter/leather-coat", holder: "Bram" },
+        ],
+      },
+    });
+    expect(seeded.ok(), await seeded.text()).toBeTruthy();
+
+    // The sheet's summary card: its label, then its number.
+    const guard = () => page.getByText("Guard", { exact: true }).locator("xpath=following-sibling::span[1]");
+    const closeSheet = page.getByRole("button", { name: "Close character sheet", exact: true });
+    // On a desktop Bram's portrait is in the party bar; on a phone it is in the party members menu.
+    const openBramsSheet = async () => {
+      const portrait = page
+        .getByTitle("Bram - Click to open character sheet", { exact: true })
+        .filter({ visible: true });
+      const members = page.getByRole("button", { name: "Open party members", exact: true }).filter({ visible: true });
+      await expect(portrait.or(members).first()).toBeVisible({ timeout: 30000 });
+      if (await members.isVisible()) await members.click();
+      await portrait.first().click();
+      await expect(guard()).toBeVisible();
+    };
+    await openGame(page, chatId);
+    await openBramsSheet();
+    await expect(guard()).toHaveText("6");
+    await closeSheet.click();
+    await expect(guard()).toBeHidden();
+
+    // He puts it on in the inventory, and his sheet reads it.
+    await inventoryButton(page).click({ timeout: 30000 });
+    await page.getByRole("button", { name: "Bram's things", exact: true }).click();
+    await page.getByRole("button", { name: "Leather coat", exact: true }).click();
+    await page.getByRole("button", { name: "Equipped", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Leather coat, worn", exact: true })).toBeVisible();
+    // The inventory's close button is its header's only button, and shows only an icon.
+    await page.getByRole("heading", { name: "Inventory", exact: true }).locator("xpath=../../button").click();
+    await openBramsSheet();
+    await expect(guard()).toHaveText("7");
+    await page.screenshot({ path: testInfo.outputPath("ruleset-sheet-worn-guard.png") });
+  } finally {
+    if (chatId) await request.delete(`/api/chats/${chatId}`);
+    if (rulesetId) await request.delete(`/api/game-rulesets?rulesetId=${encodeURIComponent(rulesetId)}&force=true`);
     if (characterId) await request.delete(`/api/characters/${characterId}`);
     const restored = await request.patch("/api/agents/import-policy", { data: { enabled: importsWereEnabled } });
     expect(restored.ok(), await restored.text()).toBeTruthy();

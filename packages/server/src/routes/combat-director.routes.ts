@@ -28,6 +28,8 @@ import {
   combatAiHintsSchema,
   normalizeCharacterLookupName,
   rulesetBestiarySheetCatalogIds,
+  rulesetCardItems,
+  rulesetReadsItems,
   rulesetCatalogIdsForBuild,
   rulesetCellBlocked,
   rulesetSheetBuildsByName,
@@ -742,6 +744,19 @@ export async function combatDirectorRoutes(
           const persona = personaId ? await createCharactersStorage(app.db).getPersona(personaId) : null;
           const cards = meta.gameCharacterCards;
           const builds = rulesetSheetBuildsByName(cards, persona?.name ?? null);
+          const itemBook = rulesetReadsItems(definition)
+            ? await loadGameInventoryItemBook(app.db, { metadata: meta, resolved }, "player")
+            : undefined;
+          const fightItems = itemBook
+            ? rulesetCardItems(
+                itemBook,
+                normalizeGameInventoryStacks(meta.gameInventory),
+                (Array.isArray(cards) ? (cards as Array<Record<string, unknown>>) : []).flatMap((card) =>
+                  typeof card?.name === "string" && card.name.trim() ? [card.name.trim()] : [],
+                ),
+                persona?.name ?? null,
+              )
+            : undefined;
           const partyLists = new Set(
             input.party.flatMap((member) => {
               const build = builds.get(normalizeCharacterLookupName(member.name));
@@ -768,6 +783,8 @@ export async function combatDirectorRoutes(
             cards,
             playerName: persona?.name ?? null,
             live: parseStoredRulesetLive((await visibleLiveRow(input.chatId)).row?.rulesetLive),
+            // What each member holds as the fight starts, when the ruleset's sheet reads items.
+            ...(fightItems ? { items: fightItems } : {}),
             partyCatalogs: await loadFightCatalogs(resolved.packageId, definition, (c) => partyLists.has(c.id)),
             bestiary: await loadBestiary(resolved.packageId, definition, proposedSheetLists(definition, input.enemies)),
           });

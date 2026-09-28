@@ -1083,6 +1083,40 @@ No new keys, for #6822. Slice I3-2 of the ruleset items plan: `items.native: fal
   no guess and drops one) and `e2e/game-ruleset-items.e2e.ts` (a restored classic fight offers no
   item), with 13 deliberate breaks each caught and the browser check failing without the screen's part.
 
+### What items on the sheet settled
+
+Capability API 1.52, for #6826. Slice I4-1 of the ruleset items plan: the sheet reads the items a
+character holds.
+
+- **The format.** A value reference `itemStat`: `from` (`worn`, `carried` or `all`), `pick` (`sum`,
+  `max`, `min` or `count`), and optionally `stat`, `slot`, `category`, `tag` and `default`. `stat` is
+  required unless it counts; `sum`, `max` and `min` need a number stat. Every name is checked against
+  the items block, and a ruleset without one cannot read items. It is refused wherever a live read is
+  (pool and track maximums, the proficiency bonus, `binding.max`, the carry numbers, scaled columns
+  and scaling), directly or through a derived value, because items change in play. Needs 1.52 at
+  install, found by walking the ruleset file and every catalog file for the camelCase key, which no
+  sheet id can be.
+- **What it reads.** Worn is an item that takes slots while equipped, one that binds while bound,
+  one that does both while both; an item that does neither is only carried. `sum` is each value
+  times the stack's quantity, `max` and `min` a single value, `count` the quantities (only of the
+  items that give the stat, when one is named). Nothing picked reads `default`, or 0. Only the
+  ruleset's own items count, invented ones included; a plain stack has no stats.
+- **Whose.** The player's card (named for the chat's persona, else the first, the rule carrying and
+  binding already use) reads the player's bag; every other card reads the bag under its name.
+- **Where.** The items are part of the live values an evaluation takes, so every in-game evaluation
+  passes them: a check's sheets, the Game Master's sheet block, the in-game sheet (and its editor),
+  and a ruleset fight's start, whose combatants keep what they held for anything the fight works out
+  again (initiative thrown every round). A caller reads the inventory and the item catalogs only when
+  the ruleset has an `itemStat` anywhere. Outside a game nothing is held.
+- **Examples.** Ember Roads adds the Guard of worn armor to its Guard, and its Game Master summary now
+  shows Guard. Lanes that model an older Engine strip that read with the items block.
+- **Proven** by `scripts/regressions/game-ruleset-item-stats.regression.ts` (every refusal and place,
+  the 1.52 gate in the ruleset and a catalog file, every pick and filter, worn and whose, a check
+  through the real context loader, the sheet block, a fight's initiative, and a ruleset fight started
+  through the real route), `game-inventory-turn.regression.ts` (the Game Master's prompt on a real
+  turn) and `e2e/game-ruleset-wearing.e2e.ts` (the in-game sheet's Guard before and after the coat is
+  put on), with 40 deliberate breaks each caught.
+
 ## Gaps a ruleset author found
 
 The author of [Marinara-RPG-Extension](https://github.com/Kenhito/Marinara-RPG-Extension), who

@@ -469,10 +469,17 @@ try {
       ["not-ruleset-item", "ok"],
     );
     assert.deepEqual(await stacksOf(strictGame.id), ["Road rations <outfitter/road-rations> 1"]);
+    // Arrows the party carried before the game had its ruleset's items: a plain item of that name.
+    const beforeTurn = await chats.getById(strictGame.id);
+    const beforeMeta =
+      typeof beforeTurn!.metadata === "string" ? JSON.parse(beforeTurn!.metadata) : beforeTurn!.metadata;
+    await chats.patchMetadata(strictGame.id, {
+      gameInventory: [...beforeMeta.gameInventory, { id: "st-old-arrows", name: "Arrows", quantity: 4 }],
+    });
 
     // The Game Master's name is the ruleset's item too, stacked by 7, and its plain items still land
     // (untyped items are the native switch's, not freeform's).
-    reply = `You find food. [inventory: action="add" item="Road rations" count="9"] And a lamp. [inventory: action="add" item="Lamp"]`;
+    reply = `You find food. [inventory: action="add" item="Road rations" count="9"] And a lamp. [inventory: action="add" item="Lamp"] And a fresh quiver. [inventory: action="add" item="Arrows" count="2"]`;
     await chats.createMessage({ chatId: strictGame.id, role: "user", content: "I search the wagon." });
     const gmTurn = await app.inject({
       method: "POST",
@@ -483,12 +490,28 @@ try {
     const answered = readResolvedInventoryTags((await chats.listMessages(strictGame.id)).at(-1)!.content);
     assert.deepEqual(
       answered.map((tag) => `${tag.item} ${tag.ok ? `ok ${tag.count}->${tag.now}` : tag.reason}`),
-      ["Road rations ok 9->10", "Lamp ok 1->1"],
+      // The ruleset's arrows are another item than the old plain ones, so two are held of them.
+      ["Road rations ok 9->10", "Lamp ok 1->1", "Arrows ok 2->2"],
     );
+    // The answers streamed before the reply is saved already read the ruleset.
+    const streamed = gmTurn.body
+      .split("\n")
+      .filter((line) => line.startsWith("data: "))
+      .map((line) => {
+        try {
+          return JSON.parse(line.slice("data: ".length)) as { type?: string; data?: unknown };
+        } catch {
+          return null;
+        }
+      })
+      .find((event) => event?.type === "content_replace");
+    assert.match(String(streamed?.data ?? ""), /item="Arrows" count="2" result="ok" now="2"/);
     assert.deepEqual(await stacksOf(strictGame.id), [
       "Road rations <outfitter/road-rations> 7",
+      "Arrows 4",
       "Road rations <outfitter/road-rations> 3",
       "Lamp 1",
+      "Arrows <outfitter/arrows> 2",
     ]);
     // The next turn's prompt says what the ruleset's item is, and that names become its items.
     reply = "The road goes on.";
@@ -503,7 +526,10 @@ try {
       .at(-1)!
       .map((message) => message.content)
       .join("\n");
-    assert.match(prompt, /PLAYER INVENTORY: Road rations ×10 \[Provisions, Common; Bulk 1\]; Lamp/);
+    assert.match(
+      prompt,
+      /PLAYER INVENTORY: Road rations ×10 \[Provisions, Common; Bulk 1\]; Arrows ×4; Lamp; Arrows ×2 \[Ammunition, Common; Bulk 1\]/,
+    );
     assert.match(prompt, /an item named exactly as one of them becomes that item/);
   }
 

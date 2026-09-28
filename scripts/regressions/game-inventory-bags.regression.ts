@@ -373,6 +373,35 @@ try {
       { item: rope, name: "Rope", description: "Hemp", quantity: 3, location: "pack" },
       coil[1],
     ]);
+    // An entry without an id under another held item's own name is that item's: a cord nicknamed
+    // "Rope" takes the cord's entry, gained or lost, never the real rope's.
+    const cord = gameInventoryPlainItemId("Cord");
+    const ropeAndCord: GameInventoryStack[] = [
+      { id: "r", name: "Rope", quantity: 2 },
+      { id: "k", name: "Cord", quantity: 1 },
+    ];
+    const tracked: InventoryItem[] = [
+      { name: "Rope", description: "Hemp", quantity: 2, location: "pack" },
+      { name: "Cord", description: "Thin", quantity: 1, location: "" },
+    ];
+    const cordRenamed = applyGameInventoryOps(ropeAndCord, [{ op: "rename", id: "k", name: "Rope" }]).stacks;
+    assert.deepEqual(followGameInventoryDetails(tracked, ropeAndCord, cordRenamed), [
+      tracked[0],
+      { item: cord, name: "Rope", description: "Thin", quantity: 1, location: "" },
+    ]);
+    const cordGone = applyGameInventoryOps(cordRenamed, [{ op: "set", id: "k", quantity: 0 }]).stacks;
+    assert.deepEqual(followGameInventoryDetails(tracked, cordRenamed, cordGone), [tracked[0]]);
+    // A name the item went by is looked for before the name it takes now.
+    const coiled: GameInventoryStack[] = [{ id: "r", name: "Rope", nickname: "Coil", quantity: 2 }];
+    const stray: InventoryItem[] = [
+      { name: "Beacon", description: "Stray", quantity: 1, location: "" },
+      { name: "Coil", description: "Hemp", quantity: 2, location: "pack" },
+    ];
+    const toBeacon = applyGameInventoryOps(coiled, [{ op: "rename", id: "r", name: "Beacon" }]).stacks;
+    assert.deepEqual(followGameInventoryDetails(stray, coiled, toBeacon), [
+      stray[0],
+      { item: rope, name: "Beacon", description: "Hemp", quantity: 2, location: "pack" },
+    ]);
   }
 
   // ── The grammar: every old form, plus who, to and give ──

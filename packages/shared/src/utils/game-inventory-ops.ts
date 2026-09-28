@@ -278,25 +278,32 @@ export function followGameInventoryDetails(
   };
   const was = ownItems(before);
   const now = ownItems(after);
+  const ownedBy = new Map<string, string>();
+  for (const [item, line] of [...was, ...now]) ownedBy.set(gameInventoryNameKey(line.own), item);
 
   for (const item of new Set([...was.keys(), ...now.keys()])) {
     const then = was.get(item);
     const current = now.get(item);
     const difference = (current?.quantity ?? 0) - (then?.quantity ?? 0);
     if (difference === 0 && then?.label === current?.label) continue;
-    // The entries this item has: those carrying its id, or, for one written without an id, its name
-    // as the item was or is shown, or its own name.
+    // The entries this item has, in order: those carrying its id, then ones written without an id under
+    // a name the item went by (as it was shown, its own name), then the name it is shown by now. A name
+    // that is another held item's own name belongs to that item.
     const names = new Set(
-      [then?.label, then?.own, current?.label, current?.own].flatMap((name) =>
-        name ? [gameInventoryNameKey(name)] : [],
-      ),
+      [then?.label, then?.own, current?.label, current?.own].flatMap((name) => {
+        const key = name ? gameInventoryNameKey(name) : "";
+        return key && (ownedBy.get(key) ?? item) === item ? [key] : [];
+      }),
     );
-    const follows = (entry: InventoryItem) =>
-      entry.item === item || (entry.item === undefined && names.has(gameInventoryNameKey(entry.name)));
+    const finds = [
+      (entry: InventoryItem) => entry.item === item,
+      ...[...names].map(
+        (key) => (entry: InventoryItem) => entry.item === undefined && gameInventoryNameKey(entry.name) === key,
+      ),
+    ];
     const shown = current?.label;
     if (difference >= 0) {
-      const carried = items.findIndex((entry) => entry.item === item);
-      const index = carried >= 0 ? carried : items.findIndex(follows);
+      const index = finds.map((find) => items.findIndex(find)).find((found) => found >= 0) ?? -1;
       if (index >= 0) {
         const entry = items[index]!;
         items[index] = { ...entry, item, name: shown ?? entry.name, quantity: entry.quantity + difference };
@@ -305,11 +312,10 @@ export function followGameInventoryDetails(
       }
       continue;
     }
-    // Taken from the entries that carry the item's id first, then from ones found by name, and only
-    // the entries something was taken from change.
+    // Taken from the entries in that order, and only the entries something was taken from change.
     let left = -difference;
     const takeAt = new Map<number, number>();
-    for (const drains of [(entry: InventoryItem) => entry.item === item, follows]) {
+    for (const drains of finds) {
       items.forEach((entry, index) => {
         if (left < 1 || takeAt.has(index) || !drains(entry)) return;
         const take = Math.min(left, entry.quantity);

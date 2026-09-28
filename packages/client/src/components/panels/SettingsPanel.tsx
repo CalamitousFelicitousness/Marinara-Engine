@@ -8773,6 +8773,7 @@ function AdvancedSettings() {
             help={localizeUi("settings.controls.includeReasoning.help")}
           />
           <ToggleSetting
+            anchorId={getSettingsControlAnchorId("include-private-notes-in-exports")}
             label={localizeUi("settings.controls.includePrivateNotes.label")}
             checked={includePrivateNotesInExports}
             onChange={setIncludePrivateNotesInExports}

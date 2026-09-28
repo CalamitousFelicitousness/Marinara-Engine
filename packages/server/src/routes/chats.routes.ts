@@ -85,7 +85,7 @@ import {
   withChatMetadataPatchQueue,
   withChatSwipeSelectionQueue,
 } from "../services/storage/chats.storage.js";
-import { createMessageTrashStorage } from "../services/storage/message-trash.storage.js";
+import { createMessageTrashStorage, MessageTrashPinnedLimitError } from "../services/storage/message-trash.storage.js";
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
 import { createCharactersStorage } from "../services/storage/characters.storage.js";
 import { resolveChatUserIdentity } from "../services/chat-user-identity.js";
@@ -2361,7 +2361,7 @@ export async function chatsRoutes(app: FastifyInstance) {
         ? []
         : await messageTrashStore.trashMessages(req.params.chatId, [req.params.messageId]);
     if (trashed.length === 0) await storage.removeMessage(req.params.messageId);
-    return reply.status(204).send();
+    return reply.send({ trashed: trashed.length > 0, trashedCount: trashed.length });
   });
 
   // Bulk delete messages
@@ -2371,9 +2371,11 @@ export async function chatsRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: "messageIds array is required" });
     }
     const ids = messageIds.filter((id): id is string => typeof id === "string");
-    if (await chatUsesMessageTrash(req.params.chatId)) await messageTrashStore.trashMessages(req.params.chatId, ids);
-    else await storage.removeMessages(ids, req.params.chatId);
-    return reply.status(204).send();
+    const trashed = (await chatUsesMessageTrash(req.params.chatId))
+      ? await messageTrashStore.trashMessages(req.params.chatId, ids)
+      : [];
+    if (trashed.length === 0) await storage.removeMessages(ids, req.params.chatId);
+    return reply.send({ trashed: trashed.length > 0, trashedCount: trashed.length });
   });
 
   app.get<{ Params: { chatId: string } }>("/:chatId/trash", async (req, reply) => {
@@ -2388,7 +2390,14 @@ export async function chatsRoutes(app: FastifyInstance) {
     const active = (app as unknown as { activeGenerations?: Map<string, unknown> }).activeGenerations;
     if (active?.has(req.params.chatId))
       return reply.status(409).send({ error: "Wait for the current generation to finish before restoring messages." });
-    return messageTrashStore.restore(req.params.chatId, body.data.entryIds);
+    return withChatMetadataPatchQueue(req.params.chatId, async () => {
+      try {
+        return await messageTrashStore.restore(req.params.chatId, body.data.entryIds);
+      } catch (error) {
+        if (error instanceof MessageTrashPinnedLimitError) return reply.status(409).send({ error: error.message });
+        throw error;
+      }
+    });
   });
 
   app.post<{ Params: { chatId: string } }>("/:chatId/trash/delete", async (req, reply) => {
@@ -4526,6 +4535,7 @@ export async function chatsRoutes(app: FastifyInstance) {
             exportedAt: new Date().toISOString(),
             format,
             includeReasoning,
+            includePrivateNotes,
             scope,
             count: chatsToExport.length,
             chats: manifest,

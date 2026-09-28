@@ -1331,13 +1331,13 @@ export function useDeleteMessage(chatId: string | null) {
   return useMutation({
     mutationFn: (target: string | { messageId: string; skipTrash?: boolean }) => {
       const { messageId, skipTrash } = typeof target === "string" ? { messageId: target, skipTrash: false } : target;
-      return api.delete(`/chats/${chatId}/messages/${messageId}${skipTrash ? "?trash=false" : ""}`);
+      return api.delete<{ trashed: boolean; trashedCount: number }>(
+        `/chats/${chatId}/messages/${messageId}${skipTrash ? "?trash=false" : ""}`,
+      );
     },
-    onSuccess: (_data, target) => {
+    onSuccess: (result) => {
       if (chatId) {
-        const skipTrash = typeof target === "string" ? false : target.skipTrash === true;
-        const usesTrash = qc.getQueryData<Chat>(chatKeys.detail(chatId))?.mode !== "game";
-        if (!skipTrash && usesTrash) {
+        if (result.trashed) {
           qc.invalidateQueries({ queryKey: chatKeys.trash(chatId) });
           toast.success(translate("ui.chat.messagetrash.movedToTrash", { count: 1 }), {
             description: translate("ui.chat.messagetrash.movedToTrashHint"),
@@ -1357,13 +1357,13 @@ export function useDeleteMessage(chatId: string | null) {
 export function useDeleteMessages(chatId: string | null) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (messageIds: string[]) => api.post(`/chats/${chatId}/messages/bulk-delete`, { messageIds }),
-    onSuccess: (_data, messageIds) => {
+    mutationFn: (messageIds: string[]) =>
+      api.post<{ trashed: boolean; trashedCount: number }>(`/chats/${chatId}/messages/bulk-delete`, { messageIds }),
+    onSuccess: (result) => {
       if (chatId) {
-        const usesTrash = qc.getQueryData<Chat>(chatKeys.detail(chatId))?.mode !== "game";
-        if (usesTrash) {
+        if (result.trashed) {
           qc.invalidateQueries({ queryKey: chatKeys.trash(chatId) });
-          toast.success(translate("ui.chat.messagetrash.movedToTrash", { count: messageIds.length }), {
+          toast.success(translate("ui.chat.messagetrash.movedToTrash", { count: result.trashedCount }), {
             description: translate("ui.chat.messagetrash.movedToTrashHint"),
           });
         }

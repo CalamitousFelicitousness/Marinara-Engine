@@ -25,6 +25,11 @@ assert.equal(limited[3], history[9], "a pinned message already inside the retain
 assert.equal(history[1]!.content, "content m2", "pin marking must not mutate persisted history");
 const manyPins = Array.from({ length: 30 }, (_, index) => row(`p${index}`, true));
 assert.equal(applyContextMessageLimitWithPins(manyPins, 5).length, 5 + MAX_PINNED_CONTEXT_MESSAGES);
+assert.deepEqual(
+  applyContextMessageLimitWithPins(history, 0.5),
+  history,
+  "a positive fractional limit that floors to zero does not remove the entire history",
+);
 
 assert.deepEqual(normalizeMessageMarkPatch({ bookmark: true }, () => "2026-09-27T00:00:00.000Z"), {
   patch: { bookmark: { label: null, createdAt: "2026-09-27T00:00:00.000Z" } },

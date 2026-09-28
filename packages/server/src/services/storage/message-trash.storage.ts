@@ -7,7 +7,12 @@
 // createdAt, which puts them back at their original position in the timeline.
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { MESSAGE_TRASH_RETENTION_DAYS, type MessageTrashEntry } from "@marinara-engine/shared";
+import {
+  MAX_PINNED_CONTEXT_MESSAGES,
+  MESSAGE_TRASH_RETENTION_DAYS,
+  isMessagePinnedToContext,
+  type MessageTrashEntry,
+} from "@marinara-engine/shared";
 import type { DB } from "../../db/connection.js";
 import { encodeShardKey, isLazyUnitTable } from "../../db/file-backed-store.js";
 import { and, desc, eq, gt, inArray, isNull, lt } from "../../db/file-query.js";
@@ -55,6 +60,13 @@ export type RestoreTrashResult = {
   /** Entries left in the trash because a message with the same id exists again. */
   conflictEntryIds: string[];
 };
+
+export class MessageTrashPinnedLimitError extends Error {
+  constructor() {
+    super(`Restore would exceed the limit of ${MAX_PINNED_CONTEXT_MESSAGES} pinned messages. Unpin one first.`);
+    this.name = "MessageTrashPinnedLimitError";
+  }
+}
 
 export function createMessageTrashStorage(db: DB) {
   const chatsStorage = createChatsStorage(db);
@@ -167,6 +179,20 @@ export function createMessageTrashStorage(db: DB) {
       const rows = (await readTrash(chatId, [...new Set(entryIds)])).sort((a, b) =>
         a.messageCreatedAt.localeCompare(b.messageCreatedAt),
       );
+      const currentMessages = await db
+        .select({ id: messages.id, extra: messages.extra })
+        .from(messages)
+        .where(eq(messages.chatId, chatId));
+      const currentIds = new Set(currentMessages.map((message) => message.id));
+      const currentPinCount = currentMessages.filter((message) => isMessagePinnedToContext(message.extra)).length;
+      const incomingPinCount = rows.filter((row) => {
+        if (currentIds.has(row.messageId)) return false;
+        const snapshot = parseSnapshot(row);
+        return snapshot ? isMessagePinnedToContext(snapshot.message.extra) : false;
+      }).length;
+      if (currentPinCount + incomingPinCount > MAX_PINNED_CONTEXT_MESSAGES) {
+        throw new MessageTrashPinnedLimitError();
+      }
       let earliest: string | null = null;
       let latest: string | null = null;
       for (const row of rows) {

@@ -58,14 +58,18 @@ try {
   const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
   const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
   const { createPromptsStorage } = await import("../../packages/server/src/services/storage/prompts.storage.js");
-  const { characterDataSchema } = await import("../../packages/shared/dist/index.js");
+  const { characterDataSchema, MAX_PINNED_CONTEXT_MESSAGES } = await import("../../packages/shared/src/index.ts");
 
   app = (await buildApp()) as TestApp;
   await app.ready();
   const db = await getDB();
   const storage = createChatsStorage(db);
   const timestamp = "2026-09-01T00:00:00.000Z";
-  for (const [id, mode] of [["chat-message-trash", "conversation"], ["game-message-trash", "game"]] as const) {
+  for (const [id, mode] of [
+    ["chat-message-trash", "conversation"],
+    ["game-message-trash", "game"],
+    ["pin-restore-chat", "conversation"],
+  ] as const) {
     await db.insert(chats).values({
       id,
       name: id,
@@ -89,7 +93,8 @@ try {
     method: "DELETE",
     url: `/api/chats/chat-message-trash/messages/${message.id}`,
   });
-  assert.equal(defaultOffDelete.statusCode, 204);
+  assert.equal(defaultOffDelete.statusCode, 200, defaultOffDelete.body);
+  assert.deepEqual(defaultOffDelete.json(), { trashed: false, trashedCount: 0 });
   assert.equal(await storage.getMessage(message.id), null, "trash is opt-in; default delete remains permanent");
   assert.equal(
     (await db.select().from(messageTrash).where(eq(messageTrash.chatId, "chat-message-trash"))).length,
@@ -208,7 +213,8 @@ try {
   await storage.setActiveSwipe(restorable.id, 1);
 
   const deleted = await app.inject({ method: "DELETE", url: `/api/chats/chat-message-trash/messages/${restorable.id}` });
-  assert.equal(deleted.statusCode, 204);
+  assert.equal(deleted.statusCode, 200, deleted.body);
+  assert.deepEqual(deleted.json(), { trashed: true, trashedCount: 1 });
   assert.equal(await storage.getMessage(restorable.id), null, "the active transcript no longer contains the trashed message");
   const listed = await app.inject({ method: "GET", url: "/api/chats/chat-message-trash/trash" });
   assert.equal(listed.statusCode, 200);
@@ -264,6 +270,20 @@ try {
   const preservedWrongChatMessage = await storage.getMessage(wrongChatTarget.id);
   assert.equal(preservedWrongChatMessage?.chatId, "chat-message-trash");
 
+  const skipTrashMessage = await storage.createMessage({
+    chatId: "chat-message-trash",
+    role: "assistant",
+    characterId: null,
+    content: "Explicitly permanent deletion",
+  } as never);
+  assert.ok(skipTrashMessage);
+  const skippedTrash = await app.inject({
+    method: "DELETE",
+    url: `/api/chats/chat-message-trash/messages/${skipTrashMessage.id}?trash=false`,
+  });
+  assert.equal(skippedTrash.statusCode, 200, skippedTrash.body);
+  assert.deepEqual(skippedTrash.json(), { trashed: false, trashedCount: 0 });
+
   const gameMessage = await storage.createMessage({
     chatId: "game-message-trash",
     role: "assistant",
@@ -271,9 +291,69 @@ try {
     content: "Game turn",
   } as never);
   assert.ok(gameMessage);
-  await app.inject({ method: "DELETE", url: `/api/chats/game-message-trash/messages/${gameMessage.id}` });
+  const gameDelete = await app.inject({ method: "DELETE", url: `/api/chats/game-message-trash/messages/${gameMessage.id}` });
+  assert.equal(gameDelete.statusCode, 200, gameDelete.body);
+  assert.deepEqual(gameDelete.json(), { trashed: false, trashedCount: 0 });
   assert.equal(await storage.getMessage(gameMessage.id), null, "Game mode retains its permanent delete behavior");
   assert.equal((await db.select().from(messageTrash).where(eq(messageTrash.chatId, "game-message-trash"))).length, 0);
+
+  const pinRestoreTargets = await Promise.all(
+    Array.from({ length: MAX_PINNED_CONTEXT_MESSAGES }, (_, index) =>
+      storage.createMessage({
+        chatId: "pin-restore-chat",
+        role: "user",
+        content: `Pinned for restore ${index}`,
+        extra: { pinnedToContext: true },
+      } as never),
+    ),
+  );
+  const pinnedMessageToRestore = pinRestoreTargets[0]!;
+  const deletedPinnedMessage = await app.inject({
+    method: "DELETE",
+    url: `/api/chats/pin-restore-chat/messages/${pinnedMessageToRestore.id}`,
+  });
+  assert.deepEqual(deletedPinnedMessage.json(), { trashed: true, trashedCount: 1 });
+  const replacementPin = await storage.createMessage({
+    chatId: "pin-restore-chat",
+    role: "user",
+    content: "Replacement pin",
+  } as never);
+  assert.ok(replacementPin);
+  const pinReplacement = await app.inject({
+    method: "PATCH",
+    url: `/api/chats/pin-restore-chat/messages/${replacementPin.id}/extra`,
+    payload: { pinnedToContext: true },
+  });
+  assert.equal(pinReplacement.statusCode, 200, pinReplacement.body);
+  const pinnedTrashResponse = await app.inject({ method: "GET", url: "/api/chats/pin-restore-chat/trash" });
+  const [pinnedTrashEntry] = pinnedTrashResponse.json() as Array<{ id: string }>;
+  assert.ok(pinnedTrashEntry);
+  const overLimitRestore = await app.inject({
+    method: "POST",
+    url: "/api/chats/pin-restore-chat/trash/restore",
+    payload: { entryIds: [pinnedTrashEntry.id] },
+  });
+  assert.equal(overLimitRestore.statusCode, 409, overLimitRestore.body);
+  assert.match(overLimitRestore.json().error, /limit of 10 pinned messages/);
+  assert.equal(await storage.getMessage(pinnedMessageToRestore.id), null, "a rejected pinned restore leaves the message trashed");
+  assert.equal(
+    (await db.select().from(messageTrash).where(eq(messageTrash.id, pinnedTrashEntry.id))).length,
+    1,
+    "a rejected pinned restore retains its trash entry",
+  );
+
+  const bulkTrashMessages = await Promise.all(
+    ["Bulk one", "Bulk two"].map((content) =>
+      storage.createMessage({ chatId: "chat-message-trash", role: "user", content } as never),
+    ),
+  );
+  const bulkDelete = await app.inject({
+    method: "POST",
+    url: "/api/chats/chat-message-trash/messages/bulk-delete",
+    payload: { messageIds: [...bulkTrashMessages.map((row) => row!.id), "missing-message-id"] },
+  });
+  assert.equal(bulkDelete.statusCode, 200, bulkDelete.body);
+  assert.deepEqual(bulkDelete.json(), { trashed: true, trashedCount: 2 });
 
   const expiring = await storage.createMessage({
     chatId: "chat-message-trash",

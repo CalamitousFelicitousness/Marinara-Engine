@@ -4,7 +4,10 @@ import { seedUIState } from "./ui-state-fixture.js";
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 
-test("message marks stay in the chat UI and opted-in trash can restore a message", async ({ page, request }, testInfo) => {
+test("message marks stay in the chat UI and opted-in trash can restore a message", async ({
+  page,
+  request,
+}, testInfo) => {
   const originalFeaturesResponse = await request.get("/api/app-settings/features");
   expect(originalFeaturesResponse.ok()).toBeTruthy();
   const originalFeatures = await originalFeaturesResponse.json();
@@ -42,6 +45,8 @@ test("message marks stay in the chat UI and opted-in trash can restore a message
       { chatId: chat.id, appVersion: version },
     );
     await page.goto("/");
+    await page.getByRole("button", { name: "Chats" }).click();
+    if (testInfo.project.name.includes("mobile")) await page.getByRole("button", { name: "Close chats" }).click();
 
     const messageRow = page.locator(`[data-message-id="${messageId}"]`);
     await expect(messageRow).toContainText("Synthetic message for marks and restore.");
@@ -68,7 +73,8 @@ test("message marks stay in the chat UI and opted-in trash can restore a message
 
     // Use the message DELETE route as a deterministic fixture action; restore is exercised through the chat UI.
     const deleted = await request.delete(`/api/chats/${chat.id}/messages/${messageId}`);
-    expect(deleted.status()).toBe(204);
+    expect(deleted.status()).toBe(200);
+    expect(await deleted.json()).toEqual({ trashed: true, trashedCount: 1 });
     await page.reload();
     const trashedRow = page.locator(`[data-message-id="${messageId}"]`);
     await expect(trashedRow).toHaveCount(0);
@@ -80,7 +86,9 @@ test("message marks stay in the chat UI and opted-in trash can restore a message
     await searchPanel.getByRole("tab", { name: "Trash", exact: true }).click();
     await expect(searchPanel).toContainText("Synthetic message for marks and restore.");
     await searchPanel.getByRole("button", { name: "Restore", exact: true }).click();
-    await expect(page.locator(`[data-message-id="${messageId}"]`)).toContainText("Synthetic message for marks and restore.");
+    await expect(page.locator(`[data-message-id="${messageId}"]`)).toContainText(
+      "Synthetic message for marks and restore.",
+    );
   } catch (error) {
     testFailure = error;
     throw error;

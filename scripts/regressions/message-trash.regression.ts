@@ -183,7 +183,8 @@ try {
     method: "DELETE",
     url: `/api/chats/chat-message-trash/messages/${queuedEditMessage.id}`,
   });
-  // Give the delete a chance to snapshot while the older edit is still queued.
+  // ponytail: this bounded queue hold follows existing race proofs; if slow runners make it flaky,
+  // wait for an existing observable delete boundary instead of adding a production test hook.
   await new Promise((resolve) => setTimeout(resolve, 150));
   releaseEdit();
   await Promise.all([heldEdit, queuedEdit, queuedDeletion]);
@@ -572,9 +573,13 @@ try {
     await trashStorage.deleteForever("chat-message-trash", [discardedEntry.id]);
     return originalTransaction(operation);
   }) as typeof db.transaction;
-  const discardedRestore = await trashStorage.restore("chat-message-trash", [discardedEntry.id]);
-  assert.deepEqual(discardedRestore.restoredMessageIds, [], "permanently deleted trash cannot be restored from a stale read");
-  assert.equal(await storage.getMessage(discardedEntry.messageId), null);
+  try {
+    const discardedRestore = await trashStorage.restore("chat-message-trash", [discardedEntry.id]);
+    assert.deepEqual(discardedRestore.restoredMessageIds, [], "permanently deleted trash cannot be restored from a stale read");
+    assert.equal(await storage.getMessage(discardedEntry.messageId), null);
+  } finally {
+    db.transaction = originalTransaction;
+  }
 
   const expiring = await storage.createMessage({
     chatId: "chat-message-trash",

@@ -220,6 +220,9 @@ export function MessageMarkIndicators({ message, className }: { message: Markabl
   const { t: localizeUi } = useUiTranslation();
   const marks = readMessageMarks(message);
   const { open, setOpen, buttonRef, menuRef, position } = useMessageActionMenu("left");
+  useEffect(() => {
+    if (!marks.note) setOpen(false);
+  }, [marks.note, setOpen]);
   if (!marks.any) return null;
   const iconClass = "shrink-0 text-[var(--marinara-chat-chrome-highlight-text)]";
   const bookmarkTitle = marks.bookmark?.label

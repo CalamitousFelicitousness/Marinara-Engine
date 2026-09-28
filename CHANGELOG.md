@@ -4,7 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
-- A Game Mode ruleset with `native: false` now keeps Game Mode's own untyped items out of its games: the Game Master gives only the ruleset's items and the ones it invents, and is told so, and fights no longer guess what items do or offer them, until the ruleset can say what they do. The player's typed-in items and what a party carries into a new session are unchanged (#6822).
+- A Game Mode ruleset with `native: false` now keeps new untyped items out of its games: the Game Master can still add more of, remove or give an item already held, but anything new it hands out must be one of the ruleset's items or one it invents, and it is told so. Fights no longer guess what items do or offer them, until the ruleset can say what they do. The player's typed-in items and what a party carries into a new session are unchanged (#6822).
 
 - Guided regeneration clears the direction it consumes from the chat composer and restores it after a failed attempt without replacing a newer draft (#6815).
 

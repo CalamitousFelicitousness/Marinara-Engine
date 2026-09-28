@@ -7,6 +7,7 @@ import {
   MAX_LOREBOOK_ENTRY_IMAGES,
   type LorebookEntryImage,
 } from "@marinara-engine/shared";
+import { logger } from "../../lib/logger.js";
 import { getDataDir } from "../../config/runtime-config.js";
 import { isAllowedImageBuffer } from "../../utils/security.js";
 
@@ -63,7 +64,10 @@ export async function embedLorebookImages(entries: Array<Record<string, unknown>
     const images: Array<{ dataUrl: string; caption: string }> = [];
     for (const image of (entry.images ?? []) as LorebookEntryImage[]) {
       const dataUrl = await readLorebookImageDataUrl(image.path);
-      if (!dataUrl) throw new Error(`Cannot export missing reference image for ${String(entry.name)}`);
+      if (!dataUrl)
+        throw Object.assign(new Error(`Cannot export missing reference image for ${String(entry.name)}`), {
+          statusCode: 409,
+        });
       images.push({ dataUrl, caption: image.caption });
     }
     portable.push({ ...entry, images });
@@ -116,6 +120,21 @@ export async function saveDecodedLorebookImages(decoded: DecodedLorebookImage[])
     throw error;
   }
   return images;
+}
+
+/** Roll back only newly written import assets; reused local paths may have other owners. */
+export async function discardImportedLorebookImages(
+  groups: Iterable<LorebookEntryImage[]>,
+  decodedGroups: Iterable<DecodedLorebookImage[]>,
+): Promise<void> {
+  const reused = new Set<string>();
+  for (const group of decodedGroups) for (const image of group) if ("path" in image) reused.add(image.path);
+  for (const group of groups)
+    for (const image of group)
+      if (!reused.has(image.path))
+        await discardLorebookImage(image).catch((error: unknown) => {
+          logger.warn(error, "Failed to remove an unused imported lorebook image");
+        });
 }
 
 export async function restoreLorebookImages(value: unknown): Promise<LorebookEntryImage[]> {

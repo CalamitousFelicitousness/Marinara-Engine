@@ -1,3 +1,4 @@
+import { withLorebookImageCompatibility } from "../../services/llm/lorebook-image-provider.js";
 import {
   appendLorebookImageMessages,
   type LorebookImageEntry,
@@ -2182,7 +2183,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
     }
     const providerTopK = resolveProviderTopK(topK);
 
-    const provider: BaseLLMProvider =
+    const rawProvider: BaseLLMProvider =
       connId === LOCAL_SIDECAR_CONNECTION_ID
         ? withConnectionAdmissionProvider(getLocalSidecarProvider() as any, LOCAL_SIDECAR_CONNECTION_ID)
         : createLLMProvider(
@@ -2198,7 +2199,17 @@ export async function registerDryRunRoute(app: FastifyInstance) {
             connId ?? undefined,
           );
 
-    await appendLorebookImageMessages(finalMessages, lorebookImageEntries);
+    const referenceImages = new Set<string>();
+    const chatImages = new Set(finalMessages.flatMap((message) => message.images ?? []));
+    await appendLorebookImageMessages(finalMessages, lorebookImageEntries, {
+      rememberImage: (dataUrl) => referenceImages.add(dataUrl),
+    });
+    const provider = withLorebookImageCompatibility(
+      rawProvider,
+      referenceImages,
+      () => logger.warn("Dry-run model rejected lorebook reference images; retrying with text"),
+      chatImages,
+    );
 
     // ── Mirror /api/generate: normalize + fit prompt to context ──
 

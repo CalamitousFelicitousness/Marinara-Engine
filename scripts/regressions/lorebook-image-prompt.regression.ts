@@ -51,7 +51,7 @@ assert.equal(messages[1]?.role, "user");
 assert.deepEqual(messages[1]?.images, [...urls]);
 assert.match(messages[1]!.content, /outfit.*\nReference 1: Blue coat/s);
 assert.equal(messages[2]?.content, "wardrobe");
-const outletMessages: ChatMLMessage[] = [{ role: "user", content: entry.content, contextKind: "history" }];
+const outletMessages: ChatMLMessage[] = [{ role: "user", content: entry.content, contextKind: "prompt" }];
 await appendLorebookImageMessages(outletMessages, [{ ...processed.imageEntries![0]!, position: 7 }]);
 assert.equal(outletMessages.length, 1, "unused outlet does not leak images");
 await appendLorebookImageMessages(outletMessages, [

@@ -30,13 +30,7 @@ export async function appendLorebookImageMessages<T extends ChatMLMessage>(
     if (seen.has(entry.id) || !entry.images.length) continue;
     seen.add(entry.id);
     // An Outlet has no automatic placement; an unused Outlet must not leak its images.
-    if (
-      entry.position === 7 &&
-      entry.outletUsed !== true &&
-      (!entry.content.trim() || !messages.some((m) => m.contextKind !== "history" && m.content.includes(entry.content)))
-    ) {
-      continue;
-    }
+    if (entry.position === 7 && entry.outletUsed !== true) continue;
     const images: string[] = [];
     const captions: string[] = [];
     for (const [index, image] of entry.images.entries()) {

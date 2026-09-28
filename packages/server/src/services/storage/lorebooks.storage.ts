@@ -886,7 +886,7 @@ export function createLorebooksStorage(db: DB) {
     },
 
     async createEntry(input: CreateLorebookEntryInput & EntryProvenanceInput) {
-      if (input.images !== undefined) createLorebookEntrySchema.shape.images.parse(input.images);
+      const images = createLorebookEntrySchema.shape.images.parse(input.images ?? []);
       const id = newId();
       const timestamp = now();
       const requestedFolderId = input.folderId ?? null;
@@ -937,7 +937,7 @@ export function createLorebooksStorage(db: DB) {
         excludeRecursion: String(input.excludeRecursion ?? false),
         delayUntilRecursion: String(input.delayUntilRecursion ?? false),
         excludeFromVectorization: String(input.excludeFromVectorization ?? false),
-        images: JSON.stringify(input.images ?? []),
+        images: JSON.stringify(images),
         ...parseLorebookDecisionActivation(input),
         sourceAgentId: input.sourceAgentId ?? null,
         sourceMessageRefs: serializeMessageRefs(input.sourceMessageRefs),

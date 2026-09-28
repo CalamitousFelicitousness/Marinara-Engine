@@ -1,3 +1,5 @@
+import { assemblePrompt, type AssemblerInput } from "../../packages/server/src/services/prompt/assembler.js";
+import { lorebookEntries } from "../../packages/server/src/db/schema/lorebooks.js";
 import { backupRoutes } from "../../packages/server/src/routes/backup.routes.js";
 import AdmZip from "../../node_modules/adm-zip/adm-zip.js";
 import assert from "node:assert/strict";
@@ -181,6 +183,91 @@ try {
     image.path,
     "local reimport reuses files",
   );
+  const outlet = (await storage.createEntry({
+    lorebookId: book.id,
+    name: "Outlet",
+    keys: ["wardrobe"],
+    position: 7,
+    outletName: "outfit",
+    content: "stone",
+    images: [image],
+  }))!;
+  const after = (await storage.createEntry({
+    lorebookId: book.id,
+    name: "After",
+    keys: ["wardrobe"],
+    position: 1,
+    content: "stone",
+  }))!;
+  const makeSection = (
+    id: string,
+    content: string,
+    markerConfig: string | null = null,
+  ): AssemblerInput["sections"][number] => ({
+    id,
+    presetId: "fixture",
+    identifier: id,
+    name: id,
+    content,
+    role: "system",
+    enabled: "true",
+    isMarker: markerConfig ? "true" : "false",
+    groupId: null,
+    markerConfig,
+    injectionPosition: "relative",
+    injectionDepth: 0,
+    injectionOrder: 0,
+    forbidOverrides: "false",
+  });
+  const promptInput: AssemblerInput = {
+    db,
+    preset: {
+      id: "fixture",
+      name: "fixture",
+      sectionOrder: '["after","outlet"]',
+      groupOrder: "[]",
+      wrapFormat: "xml",
+      parameters: "{}",
+      variableGroups: "[]",
+      variableValues: "{}",
+    },
+    sections: [makeSection("after", "", '{"type":"world_info_after"}'), makeSection("outlet", "stone")],
+    groups: [],
+    choiceBlocks: [],
+    chatChoices: {},
+    chatId: "fixture",
+    characterIds: [],
+    personaName: "User",
+    personaDescription: "",
+    chatMessages: [{ role: "user", content: "wardrobe" }],
+    activeLorebookIds: [book.id],
+    previewOnly: true,
+  };
+  const unused = await assemblePrompt(promptInput);
+  assert.ok(
+    !unused.lorebookScanResult?.imageEntries?.some((entry) => entry.id === outlet.id),
+    "after marker and matching text never activate an unused Outlet image",
+  );
+  const replaced = await assemblePrompt({
+    ...promptInput,
+    sections: [promptInput.sections[0]!, makeSection("outlet", "{{outlet::outfit}}", '{"type":"chat_summary"}')],
+    chatSummary: "A summary",
+  });
+  assert.ok(
+    !replaced.lorebookScanResult?.imageEntries?.some((entry) => entry.id === outlet.id),
+    "marker replacement cannot claim an Outlet from discarded template text",
+  );
+  const used = await assemblePrompt({
+    ...promptInput,
+    sections: [promptInput.sections[0]!, makeSection("outlet", "{{outlet::outfit}}")],
+  });
+  assert.equal(
+    used.lorebookScanResult?.imageEntries?.find((entry) => entry.id === outlet.id)?.outletUsed,
+    true,
+    "emitted Outlet references carry their images",
+  );
+  await storage.removeEntry(outlet.id);
+  await storage.removeEntry(after.id);
   const filesBefore = await readdir(lorebookImagesDirectory());
   const booksBefore = (await storage.list()).length;
   await assert.rejects(() =>
@@ -200,6 +287,44 @@ try {
   );
   assert.deepEqual(await readdir(lorebookImagesDirectory()), filesBefore);
   assert.equal((await storage.list()).length, booksBefore);
+  // Force persistence failure after portable image files have been saved.
+  const failingDb = new Proxy(db, {
+    get(target, property) {
+      if (property === "insert")
+        return (table: unknown) => {
+          if (table === lorebookEntries)
+            return {
+              values: () => {
+                throw new Error("Forced entry write failure");
+              },
+            };
+          return target.insert(table as Parameters<typeof target.insert>[0]);
+        };
+      const value = Reflect.get(target, property);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  await assert.rejects(() => importMarinara(envelope, failingDb), /Forced entry write failure/);
+  assert.deepEqual(await readdir(lorebookImagesDirectory()), filesBefore, "failed native import removes saved assets");
+  assert.equal((await storage.list()).length, booksBefore, "failed native import removes its book");
+  const oldEntries = await storage.listEntries(book.id);
+  await assert.rejects(
+    () => importSTLorebook(compatible.json(), failingDb, { existingLorebookId: book.id }),
+    /Forced entry write failure/,
+  );
+  assert.deepEqual(
+    await readdir(lorebookImagesDirectory()),
+    filesBefore,
+    "failed compatible import removes saved assets",
+  );
+  assert.deepEqual(await storage.listEntries(book.id), oldEntries, "failed reimport preserves existing entries");
+  const defaultCaption = await storage.createEntry({
+    lorebookId: book.id,
+    name: "Caption default",
+    images: [{ path: image.path }],
+  } as any);
+  assert.equal(defaultCaption!.images[0]!.caption, "", "create stores schema defaults");
+  await storage.removeEntry(defaultCaption!.id);
   const copiedBook = (await storage.create({ name: "Copy target" }))!;
   const transferred = await app.inject({
     method: "POST",
@@ -250,6 +375,10 @@ try {
     "symlinks do not expose other files",
   );
   await unlink(join(lorebookImagesDirectory(), filename));
+  await unlink(join(lorebookImagesDirectory(), image.path.split("/").pop()!));
+  const missingExport = await app.inject("/api/backup/export-profile?format=compatible");
+  assert.equal(missingExport.statusCode, 409, missingExport.body);
+  assert.match(missingExport.json().error, /Cannot export missing reference image/);
   console.info("Lorebook image storage, routes and portable import/export regressions passed");
 } finally {
   await app.close();

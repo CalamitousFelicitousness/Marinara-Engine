@@ -597,8 +597,6 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
       }
     }
 
-    for (const match of section.content.matchAll(/\{\{\s*outlet\s*::([^{}]+)\}\}/gi))
-      usedImageOutlets.add(match[1]!.trim());
     let resolved: ResolvedSection | null;
     try {
       resolved = await resolveSection(section, {
@@ -608,6 +606,7 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
         wrapFormat,
         runtimeAgentData: input.runtimeAgentData ?? {},
         runtimeAgentTypesUsed,
+        usedImageOutlets,
       });
     } catch (err) {
       logger.warn(err, "[prompt] Skipping section %s after marker expansion failed", section.id);
@@ -778,11 +777,10 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
     markerCtx.lorebookScanResult = {
       ...markerCtx.lorebookScanResult,
       imageEntries: markerCtx.lorebookScanResult.imageEntries
-        .filter(
-          (entry) =>
-            entry.position === 2 ||
-            (entry.position === 7 && usedImageOutlets.has(entry.outletName ?? "")) ||
-            markerCtx.lorebookPositionsEmitted?.has(entry.position <= 0 ? "before" : "after"),
+        .filter((entry) =>
+          entry.position === 7
+            ? usedImageOutlets.has(entry.outletName ?? "")
+            : entry.position === 2 || markerCtx.lorebookPositionsEmitted?.has(entry.position <= 0 ? "before" : "after"),
         )
         .map((entry) => (entry.position === 7 ? { ...entry, outletUsed: true } : entry)),
     };
@@ -849,6 +847,7 @@ interface ResolveSectionCtx {
   wrapFormat: WrapFormat;
   runtimeAgentData: Record<string, string | RuntimeAgentData>;
   runtimeAgentTypesUsed: Set<string>;
+  usedImageOutlets: Set<string>;
 }
 
 // ═══════════════════════════════════════════════
@@ -945,9 +944,15 @@ async function resolveSection(
     }
   }
 
+  // Track outlets from the content actually resolved, after marker replacement.
+  const imageOutlets = contentMacrosResolved
+    ? []
+    : [...content.matchAll(/\{\{\s*outlet\s*::([^{}]+)\}\}/gi)].map((match) => match[1]!.trim());
+
   // Resolve macros
   content = contentMacrosResolved ? content : resolveMacros(content, ctx.macroCtx, macroOptions);
   if (!content.trim()) return null;
+  for (const name of imageOutlets) ctx.usedImageOutlets.add(name);
   const shouldWrapRuntimeAgentSection = Boolean(
     runtimeAgentStartToken &&
     runtimeAgentEndToken &&

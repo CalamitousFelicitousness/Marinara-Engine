@@ -330,6 +330,18 @@ try {
   const bogusZone = await app.inject({ method: "GET", url: "/api/chat-insights/activity?tzOffset=0&tz=Not%2FAZone" });
   assert.equal(bogusZone.statusCode, 200, "an unknown zone falls back to the offset");
 
+  for (const path of ["/activity", "/chats/chat-a/stats"]) {
+    for (const query of ["tz=UTC&tz=Pacific%2FKiritimati", "tzOffset=0&tzOffset=60"]) {
+      const repeated = await app.inject({ method: "GET", url: `/api/chat-insights${path}?${query}` });
+      assert.equal(repeated.statusCode, 400, `${path} rejects repeated timezone parameters: ${query}`);
+    }
+    const single = await app.inject({
+      method: "GET",
+      url: `/api/chat-insights${path}?tzOffset=0&tz=Pacific%2FKiritimati`,
+    });
+    assert.equal(single.statusCode, 200, `${path} still accepts a single timezone and offset`);
+  }
+
   await app.close();
   await db._fileStore.close();
   process.stdout.write("chat-stats-activity regression passed\n");

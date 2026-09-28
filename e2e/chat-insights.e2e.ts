@@ -1,9 +1,44 @@
 import { expect, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
+import { renderTranscriptHtml } from "../packages/server/src/services/chat-insights/transcript-document.js";
 import { seedUIState } from "./ui-state-fixture.js";
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
+
+test("standalone story avatars render offline across repeated turns and print styles", async ({ page }, testInfo) => {
+  const avatar = `data:image/png;base64,${readFileSync(new URL("../packages/client/public/icon-192.png", import.meta.url)).toString("base64")}`;
+  const html = renderTranscriptHtml({
+    title: "Moon Road",
+    entries: [
+      { speakerKey: "ayla", speaker: "Ayla", role: "assistant", content: "*smiles* We ride at dawn." },
+      { speakerKey: "alex", speaker: "Alex", role: "user", content: "Then we should rest." },
+      { speakerKey: "ayla", speaker: "Ayla", role: "assistant", content: "One last story first." },
+    ],
+    avatars: new Map([["ayla", avatar]]),
+  });
+  await page.context().setOffline(true);
+  await page.setContent(html);
+  const portraits = page.locator(".turn.assistant .avatar");
+  await expect(portraits).toHaveCount(2);
+  await expect(page.locator(".turn.user .avatar")).toHaveText("A");
+  await page.screenshot({ path: testInfo.outputPath("story-avatars.png") });
+  for (const medium of ["screen", "print"] as const) {
+    await page.emulateMedia({ media: medium });
+    for (const portrait of await portraits.all()) {
+      await expect(portrait).toBeVisible();
+      await expect(portrait).toHaveCSS("background-image", `url("${avatar}")`);
+      expect(
+        await portrait.evaluate(async (element) => {
+          const image = new Image();
+          image.src = getComputedStyle(element).backgroundImage.slice(5, -2);
+          await image.decode();
+          return image.naturalWidth;
+        }),
+      ).toBe(192);
+    }
+  }
+});
 
 test("chat search, stats and story exports work with private content filtered", async ({
   page,

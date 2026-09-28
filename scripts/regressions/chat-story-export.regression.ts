@@ -111,12 +111,20 @@ try {
   assert.ok(html.includes('<p class="range">2026-01-02 to 2026-01-05</p>'));
   assert.ok(html.includes("Hello &lt;b&gt;there&lt;/b&gt;"), "message HTML is escaped");
   assert.ok(html.includes("<p><em>smiles</em></p><p>Second paragraph<br>with a break.</p>"));
-  assert.ok(html.includes(`<img class="avatar" src="${pixel}" alt="">`), "small data URI avatars embed");
+  assert.ok(html.includes(`background-image:url("${pixel}")`), "small data URI avatars embed");
+  assert.ok(html.includes('<div class="avatar avatar-0" aria-hidden="true"></div>'));
   assert.ok(!html.includes("javascript:"), "non data-URI avatars fall back to an initial");
   assert.ok(html.includes(">A</div>"));
   assert.ok(html.includes("prefers-color-scheme:dark") && html.includes("@media print"));
   assert.ok(!/<script/iu.test(html), "the story page has no scripts");
   assert.ok(!html.includes("—"), "no em dashes in the template");
+
+  const repeatedAvatars = renderTranscriptHtml({
+    title: "Long story",
+    entries: Array.from({ length: 1000 }, (_, index) => entries[index % entries.length]!),
+    avatars: new Map(entries.map((entry) => [entry.speakerKey, pixel])),
+  });
+  assert.equal(repeatedAvatars.split(pixel).length - 1, 1, "a shared avatar embeds once regardless of turn count");
 
   // Avatar embedding reads only small files from the avatar folder.
   const avatarRoot = join(root, "avatars");

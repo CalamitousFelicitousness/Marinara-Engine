@@ -144,7 +144,7 @@ h1{font-size:2rem;line-height:1.2;margin:0 0 .35rem;font-weight:600}
 .turn{display:flex;gap:.9rem;padding:1rem 0;border-bottom:1px solid var(--line);break-inside:avoid;page-break-inside:avoid}
 .turn:last-child{border-bottom:0}
 .turn.user .text{background:var(--user);border-radius:.6rem;padding:.6rem .85rem}
-.avatar{flex:0 0 2.5rem;width:2.5rem;height:2.5rem;border-radius:50%;object-fit:cover;display:flex;align-items:center;justify-content:center;font:600 1rem/1 system-ui,sans-serif;color:#fff}
+.avatar{flex:0 0 2.5rem;width:2.5rem;height:2.5rem;border-radius:50%;background-size:cover;background-position:center;display:flex;align-items:center;justify-content:center;font:600 1rem/1 system-ui,sans-serif;color:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .body{min-width:0;flex:1}
 .meta{display:flex;flex-wrap:wrap;align-items:baseline;gap:.5rem;font:13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;margin-bottom:.3rem}
 .name{font-weight:650;color:var(--accent)}
@@ -163,13 +163,24 @@ export function renderTranscriptHtml(input: TranscriptDocumentInput): string {
   const title = input.title.trim() || "Chat";
   const formatDate = input.formatDate ?? defaultFormatDate;
   const range = describeTranscriptDateRange(input.entries);
+  // Store each raster once in CSS; repeating base64 per turn can dwarf a long story.
+  const avatarClasses = new Map<string, string>();
+  for (const entry of input.entries) {
+    const avatar = input.avatars?.get(entry.speakerKey);
+    if (avatar && !avatarClasses.has(avatar) && SAFE_AVATAR_URI.test(avatar)) {
+      avatarClasses.set(avatar, `avatar-${avatarClasses.size}`);
+    }
+  }
+  const avatarCss = [...avatarClasses]
+    .map(([avatar, className]) => `.${className}{background-image:url("${avatar}")}`)
+    .join("\n");
   const turns = input.entries
     .map((entry) => {
       const avatar = input.avatars?.get(entry.speakerKey);
-      const avatarHtml =
-        avatar && SAFE_AVATAR_URI.test(avatar)
-          ? `<img class="avatar" src="${avatar}" alt="">`
-          : `<div class="avatar" aria-hidden="true" style="background:hsl(${speakerHue(entry.speakerKey)} 45% 45%)">${escapeHtml(initialOf(entry.speaker))}</div>`;
+      const avatarClass = avatar ? avatarClasses.get(avatar) : undefined;
+      const avatarHtml = avatarClass
+        ? `<div class="avatar ${avatarClass}" aria-hidden="true"></div>`
+        : `<div class="avatar" aria-hidden="true" style="background:hsl(${speakerHue(entry.speakerKey)} 45% 45%)">${escapeHtml(initialOf(entry.speaker))}</div>`;
       const time = entry.createdAt
         ? `<time class="time" datetime="${escapeHtml(entry.createdAt)}">${escapeHtml(formatDate(entry.createdAt))}</time>`
         : "";
@@ -188,7 +199,7 @@ export function renderTranscriptHtml(input: TranscriptDocumentInput): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="generator" content="Marinara Engine">
 <title>${escapeHtml(title)}</title>
-<style>${STORY_CSS}</style>
+<style>${STORY_CSS}${avatarCss}</style>
 </head>
 <body>
 <main>

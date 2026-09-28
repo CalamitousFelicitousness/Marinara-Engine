@@ -330,7 +330,8 @@ export async function buildApp(https?: { cert: Buffer; key: Buffer }) {
   // Cold trash shards load only when expired; wait for active cleanup before closing the DB.
   const messageTrashMaintenance = startMessageTrashMaintenance(() => sweepExpiredMessageTrash(db), {
     info: (purged) => app.log.info("Purged %d expired message trash entries", purged),
-    warn: (error) => app.log.warn({ err: error }, "Expired message trash cleanup failed; it will retry on the next sweep"),
+    warn: (error) =>
+      app.log.warn({ err: error }, "Expired message trash cleanup failed; it will retry on the next sweep"),
   });
   stopMessageTrashMaintenance = messageTrashMaintenance.stop;
 

@@ -1114,9 +1114,10 @@ Rules worth knowing:
   names.
 - `list()` returns `{ name, summary?, inputs? }` entries. Names are 1 to 80 letters, digits, `.`, `_` or
   `-`; other entries are not shown. `summary` and `inputs` are what Mari reads, so write them in plain
-  words. Mari sees at most 50 actions and 40 inputs per action, and each text is cut at 300 characters.
+  words. Only the first 50 actions can be seen or run, Mari sees at most 40 inputs per action, input
+  names are cut at 80 characters and each text at 300 characters.
   `list()` must answer within 5 seconds, or the package's actions are left out.
-- `run(name, input)` is called only with a listed name and a plain JSON object of at most 64,000
+- `run(name, input, { signal })` is called only with a listed name and a plain JSON object of at most 64,000
   characters. The input comes from a model: validate it against your own schema before doing anything.
   Answer `{ ok: true, value }` or `{ ok: false, status?, error }`; Mari sees the first 2,000 characters
   of the error text. `signal` aborts when the user stops Mari or after 5 minutes; the Engine stops

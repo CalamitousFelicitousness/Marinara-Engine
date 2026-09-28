@@ -78,7 +78,7 @@ const slurp: CapabilityMariActionsService = {
       return new Promise(() => undefined);
     }
     if (name === "huge-error") {
-      return { ok: false, error: `bad ${"z".repeat(10_000)} data:image/png;base64,${"B".repeat(9000)}` };
+      return { ok: false, error: `data:image/png;charset=x;base64,${"B".repeat(9000)} bad ${"z".repeat(10_000)}` };
     }
     if (name === "draw-picture") return { ok: true, value: { image: `data:image/png;base64,${"A".repeat(5000)}` } };
     if (input.text === "too many") return { ok: false, status: 409, error: "That is plenty of ideas for now." };
@@ -93,6 +93,12 @@ registerCapabilityService("mari-actions:broken", {
   run: async () => ({ ok: true, value: null }),
 });
 registerCapabilityService("mari-actions:not-a-service", { hello: true });
+registerCapabilityService("mari-actions:sync-throw", {
+  list: () => [{ name: "boom", inputs: ["array", "inputs"] as unknown as Record<string, string> }],
+  run: () => {
+    throw new Error("thrown before any promise");
+  },
+});
 const releaseSlow = registerCapabilityService("mari-actions:slow", {
   list: () => new Promise(() => undefined),
   run: async () => ({ ok: true, value: null }),
@@ -102,7 +108,10 @@ registerCapabilityService("slurp2:actions", slurp);
 const listed = await listCapabilityMariActions();
 assert.deepEqual(
   listed.map((entry) => [entry.package, entry.actions.map((action) => action.name)]),
-  [["slurp2", ["add-idea", "draw-picture", "long", "odd", "hang", "huge-error"]]],
+  [
+    ["slurp2", ["add-idea", "draw-picture", "long", "odd", "hang", "huge-error"]],
+    ["sync-throw", ["boom"]],
+  ],
   "only well-formed mari-actions services are listed; a throwing or hanging list hides only its own package",
 );
 releaseSlow();
@@ -127,9 +136,15 @@ await assert.rejects(
   runCapabilityMariAction("slurp2", "add-idea", { text: "x".repeat(70_000) }, live),
   /larger than 64000 characters/,
 );
+assert.equal(listed[1]!.actions[0]!.inputs, undefined, "array inputs are not shown as numbered keys");
+// A plain (non-async) run that throws must fail the call, not reach the process as an unhandled rejection.
+await assert.rejects(runCapabilityMariAction("sync-throw", "boom", {}, live), /sync-throw boom failed: thrown before/);
+await new Promise((resolve) => setImmediate(resolve));
+
 const hugeError = await runCapabilityMariAction("slurp2", "huge-error", {}, live).catch((err: Error) => err.message);
 assert.ok(String(hugeError).length < 2_200, "package error text is capped");
 assert.doesNotMatch(String(hugeError), /BBBBBBBBBB/, "a data URL in an error never reaches Mari");
+assert.match(String(hugeError), /<data URL, \d+ characters, omitted> bad/);
 
 const stop = new AbortController();
 const hanging = runCapabilityMariAction("slurp2", "hang", {}, stop.signal);

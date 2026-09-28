@@ -54,7 +54,7 @@ export function assertCapabilityMariActionsServiceRegistration(
 /** A data URL (a drawn picture) is megabytes of base64 that would only fill Mari's context. */
 export function elideDataUrls(text: string): string {
   return text.replace(
-    /data:[\w/+.-]+;base64,[A-Za-z0-9+/=]+/gu,
+    /data:[\w/+.-]+(?:;[\w=.-]+)*;base64,[A-Za-z0-9+/=]+/gu,
     (match) => `<data URL, ${match.length} characters, omitted>`,
   );
 }
@@ -77,7 +77,9 @@ async function actionsOf(packageId: string, service: CapabilityMariActionsServic
     .filter((action) => !!action && typeof action.name === "string" && ACTION_NAME_PATTERN.test(action.name))
     .slice(0, MAX_ACTIONS)
     .map((action: CapabilityMariAction) => {
-      const inputs = Object.entries(action.inputs && typeof action.inputs === "object" ? action.inputs : {})
+      const inputs = Object.entries(
+        action.inputs && typeof action.inputs === "object" && !Array.isArray(action.inputs) ? action.inputs : {},
+      )
         .filter((entry): entry is [string, string] => typeof entry[1] === "string")
         .slice(0, MAX_INPUTS)
         .map(([key, text]) => [clip(key, 80), clip(text, MAX_TEXT_CHARS)]);
@@ -90,19 +92,23 @@ async function actionsOf(packageId: string, service: CapabilityMariActionsServic
 }
 
 /** Every active package that offers Mari actions, with the actions it offers. */
-export async function listCapabilityMariActions(): Promise<Array<{ package: string; actions: CapabilityMariAction[] }>> {
-  const result: Array<{ package: string; actions: CapabilityMariAction[] }> = [];
-  for (const key of listCapabilityServiceKeys(SERVICE_PREFIX)) {
-    const packageId = key.slice(SERVICE_PREFIX.length);
-    const service = serviceFor(packageId);
-    if (!service) continue;
-    try {
-      result.push({ package: packageId, actions: await actionsOf(packageId, service) });
-    } catch {
-      // One broken or slow package must not hide the others.
-    }
-  }
-  return result;
+export async function listCapabilityMariActions(): Promise<
+  Array<{ package: string; actions: CapabilityMariAction[] }>
+> {
+  // In parallel, so several slow packages cost one list deadline, not one each.
+  const listed = await Promise.all(
+    listCapabilityServiceKeys(SERVICE_PREFIX).map(async (key) => {
+      const packageId = key.slice(SERVICE_PREFIX.length);
+      const service = serviceFor(packageId);
+      if (!service) return null;
+      try {
+        return { package: packageId, actions: await actionsOf(packageId, service) };
+      } catch {
+        return null; // One broken or slow package must not hide the others.
+      }
+    }),
+  );
+  return listed.filter((entry) => entry !== null);
 }
 
 /** Runs one action of one package. Throws a bounded message Mari can act on. */
@@ -112,6 +118,7 @@ export async function runCapabilityMariAction(
   input: unknown,
   signal: AbortSignal,
 ): Promise<unknown> {
+  signal.throwIfAborted();
   if (!PACKAGE_ID_PATTERN.test(packageId)) throw new Error(`"${clip(packageId, 80)}" is not a package id`);
   const service = serviceFor(packageId);
   if (!service) {
@@ -139,6 +146,9 @@ export async function runCapabilityMariAction(
       once: true,
     });
   });
+  // Nothing listens to `aborted` until the race below; a package whose run throws before returning
+  // a promise reaches the catch first, and its abort must not become an unhandled rejection.
+  aborted.catch(() => undefined);
   let outcome: CapabilityMariActionOutcome;
   try {
     // A JSON round trip hands the package plain data only: no prototypes, functions or shared references.
@@ -148,7 +158,9 @@ export async function runCapabilityMariAction(
     outcome = await withDeadline(Promise.race([running, aborted]), `${packageId} ${action}`, RUN_TIMEOUT_MS);
   } catch (err) {
     controller.abort();
-    throw new Error(`${packageId} ${action} failed: ${clip(err instanceof Error ? err.message : err, MAX_ERROR_CHARS)}`);
+    throw new Error(
+      `${packageId} ${action} failed: ${clip(err instanceof Error ? err.message : err, MAX_ERROR_CHARS)}`,
+    );
   } finally {
     signal.removeEventListener("abort", abort);
   }

@@ -23,6 +23,14 @@ test("message marks stay in the chat UI and opted-in trash can restore a message
     expect(created.ok()).toBeTruthy();
     const chat = await created.json();
     chatId = chat.id;
+    const hiddenResponse = await request.post(`/api/chats/${chat.id}/messages`, {
+      data: {
+        role: "assistant",
+        content: "Hidden bookmarked fixture.",
+        extra: { hiddenFromUser: true, bookmark: { createdAt: new Date().toISOString() } },
+      },
+    });
+    expect(hiddenResponse.ok()).toBeTruthy();
     const messageResponse = await request.post(`/api/chats/${chat.id}/messages`, {
       data: { role: "assistant", content: "Synthetic message for marks and restore." },
     });
@@ -53,6 +61,7 @@ test("message marks stay in the chat UI and opted-in trash can restore a message
     await messageRow.focus();
     await messageRow.getByRole("button", { name: "Bookmark, pin or note" }).click();
     const marksMenu = page.getByRole("dialog", { name: "Bookmark, pin or note" });
+    await expect(marksMenu.getByRole("button", { name: "Bookmark message" })).toBeFocused();
     await marksMenu.getByRole("button", { name: "Bookmark message" }).click();
     await marksMenu.getByRole("button", { name: "Pin to context" }).click();
     await marksMenu.getByRole("textbox", { name: "Private note" }).fill("Synthetic private note.");
@@ -83,12 +92,17 @@ test("message marks stay in the chat UI and opted-in trash can restore a message
     }
     await page.getByRole("button", { name: "Search messages" }).click();
     const searchPanel = page.getByRole("dialog");
+    await searchPanel.getByRole("tab", { name: "Bookmarks", exact: true }).click();
+    await expect(searchPanel).not.toContainText("Hidden bookmarked fixture.");
     await searchPanel.getByRole("tab", { name: "Trash", exact: true }).click();
     await expect(searchPanel).toContainText("Synthetic message for marks and restore.");
     await searchPanel.getByRole("button", { name: "Restore", exact: true }).click();
     await expect(page.locator(`[data-message-id="${messageId}"]`)).toContainText(
       "Synthetic message for marks and restore.",
     );
+    await searchPanel.getByRole("tab", { name: "Bookmarks", exact: true }).click();
+    await expect(searchPanel.getByTitle("Jump to message 2")).toContainText("Synthetic message for marks and restore.");
+    await expect(searchPanel).not.toContainText("Hidden bookmarked fixture.");
   } catch (error) {
     testFailure = error;
     throw error;

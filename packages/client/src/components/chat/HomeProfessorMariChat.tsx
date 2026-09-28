@@ -5238,7 +5238,7 @@ export function HomeProfessorMariChat({
 
         messageLoadAbortRef.current?.abort();
         setMessages((current) => current.filter((message) => message.id !== messageId));
-        await api.delete(`/chats/${chatId}/messages/${messageId}`);
+        await api.delete(`/chats/${chatId}/messages/${messageId}?trash=false`);
         const { received, runId, hiddenDuringStream } = await sendWorkspaceMessage(
           { id: chatId },
           userMessage.content,

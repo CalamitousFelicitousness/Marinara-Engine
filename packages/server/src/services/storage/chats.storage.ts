@@ -2548,72 +2548,75 @@ export function createChatsStorage(db: DB) {
       partial: Record<string, unknown>,
       sharedExtra: Record<string, unknown>,
       swipeIndex?: number,
+      opts: { metadataQueueHeld?: boolean } = {},
     ) {
       const owner = await readMessage(id);
       if (!owner) return null;
-      // Caller must hold the chat metadata queue; patchMetadata below relies on it.
-      // Acquire the message queue before the transaction; do not call queue-taking writers inside it.
-      return withMessageExtraPatchQueue(id, () =>
-        db.transaction(async () => {
-          const msg = await readMessage(id);
-          if (!msg || msg.chatId !== owner.chatId) return null;
-          const swipes = await readSwipes(id);
-          if (swipeIndex !== undefined && !swipes.some((swipe) => swipe.index === swipeIndex)) return null;
-          const previousExtra = parseExtraRecord(msg.extra);
-          await db
-            .update(messages)
-            .set({
-              extra: JSON.stringify({
-                ...previousExtra,
-                ...(swipeIndex === undefined || swipeIndex === msg.activeSwipeIndex ? partial : {}),
-                ...sharedExtra,
-              }),
-            })
-            .where(eq(messages.id, id));
-          for (const swipe of swipes) {
+      // Summary hiding already takes metadata before message queues. Acquire both
+      // before the transaction, and never call a queue-taking writer inside it.
+      const apply = () =>
+        withMessageExtraPatchQueue(id, () =>
+          db.transaction(async () => {
+            const msg = await readMessage(id);
+            if (!msg || msg.chatId !== owner.chatId) return null;
+            const swipes = await readSwipes(id);
+            if (swipeIndex !== undefined && !swipes.some((swipe) => swipe.index === swipeIndex)) return null;
+            const previousExtra = parseExtraRecord(msg.extra);
             await db
-              .update(messageSwipes)
+              .update(messages)
               .set({
                 extra: JSON.stringify({
-                  ...parseExtraRecord(swipe.extra),
-                  ...(swipe.index === (swipeIndex ?? msg.activeSwipeIndex) ? partial : {}),
+                  ...previousExtra,
+                  ...(swipeIndex === undefined || swipeIndex === msg.activeSwipeIndex ? partial : {}),
                   ...sharedExtra,
                 }),
               })
-              .where(eq(messageSwipes.id, swipe.id));
-          }
-          await this.patchMetadata(
-            msg.chatId,
-            (metadata) => {
-              if (!Object.prototype.hasOwnProperty.call(partial, "isConversationStart")) return {};
-              const state = parseExtraRecord(metadata.advancedMemoryState);
-              if (!Array.isArray(state.contextStarts) || !state.contextStarts.length) return {};
-              // A new manual shared flag replaces the automatic window. Unchecking
-              // the automatic flag itself clears it through this same control.
-              const contextStarts =
-                partial.isConversationStart === true && previousExtra.isConversationStart !== true
-                  ? []
-                  : state.contextStarts.filter((raw) => {
-                      const start = parseExtraRecord(raw);
-                      return start.messageId !== id && start.sceneStartMessageId !== id;
-                    });
-              if (contextStarts.length === state.contextStarts.length) return {};
-              return {
-                advancedMemoryState: {
-                  ...state,
-                  contextStarts,
-                  contextStartRevision:
-                    (typeof state.contextStartRevision === "number" && Number.isFinite(state.contextStartRevision)
-                      ? state.contextStartRevision
-                      : 0) + 1,
-                },
-              };
-            },
-            { touchUpdatedAt: false, metadataQueueHeld: true },
-          );
-          return this.getMessage(id);
-        }),
-      );
+              .where(eq(messages.id, id));
+            for (const swipe of swipes) {
+              await db
+                .update(messageSwipes)
+                .set({
+                  extra: JSON.stringify({
+                    ...parseExtraRecord(swipe.extra),
+                    ...(swipe.index === (swipeIndex ?? msg.activeSwipeIndex) ? partial : {}),
+                    ...sharedExtra,
+                  }),
+                })
+                .where(eq(messageSwipes.id, swipe.id));
+            }
+            await this.patchMetadata(
+              msg.chatId,
+              (metadata) => {
+                if (!Object.prototype.hasOwnProperty.call(partial, "isConversationStart")) return {};
+                const state = parseExtraRecord(metadata.advancedMemoryState);
+                if (!Array.isArray(state.contextStarts) || !state.contextStarts.length) return {};
+                // A new manual shared flag replaces the automatic window. Unchecking
+                // the automatic flag itself clears it through this same control.
+                const contextStarts =
+                  partial.isConversationStart === true && previousExtra.isConversationStart !== true
+                    ? []
+                    : state.contextStarts.filter((raw) => {
+                        const start = parseExtraRecord(raw);
+                        return start.messageId !== id && start.sceneStartMessageId !== id;
+                      });
+                if (contextStarts.length === state.contextStarts.length) return {};
+                return {
+                  advancedMemoryState: {
+                    ...state,
+                    contextStarts,
+                    contextStartRevision:
+                      (typeof state.contextStartRevision === "number" && Number.isFinite(state.contextStartRevision)
+                        ? state.contextStartRevision
+                        : 0) + 1,
+                  },
+                };
+              },
+              { touchUpdatedAt: false, metadataQueueHeld: true },
+            );
+            return this.getMessage(id);
+          }),
+        );
+      return opts.metadataQueueHeld ? apply() : withChatMetadataPatchQueue(owner.chatId, apply);
     },
 
     /** Merge partial data into a message's extra JSON field. */
@@ -3067,7 +3070,7 @@ export function createChatsStorage(db: DB) {
       if (removedEntries.length > 0) await this.pruneLorebookChatMetadata(async () => removedEntries);
     },
 
-    async removeMessages(ids: string[], chatId?: string) {
+    async removeMessages(ids: string[], chatId?: string, beforeDelete?: (rows: MessageRow[]) => Promise<void>) {
       if (ids.length === 0) return;
       const earliestByChat = new Map<string, string>();
       const removedEntryIds: string[] = [];
@@ -3090,15 +3093,10 @@ export function createChatsStorage(db: DB) {
             const condition = chatId
               ? and(inArray(messages.id, chunk), eq(messages.chatId, chatId))
               : inArray(messages.id, chunk);
-            const existingRows = await db
-              .select({
-                id: messages.id,
-                chatId: messages.chatId,
-                createdAt: messages.createdAt,
-                extra: messages.extra,
-              })
-              .from(messages)
-              .where(condition);
+            const existingRows = await db.select().from(messages).where(condition);
+            // Recovery snapshots share the deletion's queues and transaction, so queued edits
+            // are captured and a failed delete cannot leave a second copy in the trash.
+            await beforeDelete?.(existingRows);
             // Undo newest effects first when a whole interrupted exchange is removed.
             for (const row of existingRows
               .filter((row) => receipts(row.extra).some((receipt) => !receipt.restored))

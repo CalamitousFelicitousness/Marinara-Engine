@@ -490,6 +490,42 @@ try {
     assert.match(refused.body, /Inventory changed/);
     assert.deepEqual(JSON.parse((await chats.getById(goneChat.id))!.metadata).gameInventory, cordOnly);
   }
+  // A ruleset's item (#6795) is spent in a fight like any other: the fight's check counts the items
+  // that have the spent name as their own, a ruleset item among them.
+  {
+    const kitChat = await chats.create({ name: "Director ruleset item proof", mode: "game", characterIds: [] });
+    const kitAnchor = await chats.createMessage({ chatId: kitChat.id, role: "assistant", content: "[state: combat]" });
+    await chats.patchMetadata(kitChat.id, {
+      gameSetupConfig: { combatDirector: true },
+      gameInventory: [{ id: "st-tonic", name: "Potion", item: "kit/warming-tonic", quantity: 2 }],
+    });
+    const started = await post("/combat/start", {
+      ...input,
+      chatId: kitChat.id,
+      anchor: kitAnchor.id,
+      enemies: [unit("rat", "enemy")],
+    });
+    assert.equal(started.statusCode, 200, started.body);
+    let k: DirectedCombatView = started.json().session;
+    const kitCmd = async (command: DirectedCommand) => {
+      const response = await post("/combat/command", {
+        chatId: kitChat.id,
+        anchor: kitAnchor.id,
+        id: k.id,
+        instanceId: k.instanceId,
+        revision: k.revision,
+        requestId: crypto.randomUUID(),
+        command,
+      });
+      assert.equal(response.statusCode, 200, response.body);
+      k = response.json().session;
+    };
+    await kitCmd({ type: "begin", unitId: "hero" });
+    await kitCmd({ type: "tactical", action: { type: "item", unitId: "hero", itemName: "Potion", targetId: "hero" } });
+    assert.deepEqual(JSON.parse((await chats.getById(kitChat.id))!.metadata).gameInventory, [
+      { id: "st-tonic", name: "Potion", item: "kit/warming-tonic", quantity: 1 },
+    ]);
+  }
   console.log(
     "Combat director route: authority, idempotency, terrain, atomic item costs, late GM output, restore identity and branch isolation passed.",
   );

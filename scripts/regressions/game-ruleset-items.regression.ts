@@ -18,6 +18,18 @@
  *   - Items are Capability API 1.49, the block and the catalog, inline and in a catalog file.
  *   - The FORMAT is not shaped around one game system: both examples carry items, one a pool
  *     system with one coin and binding, the other a summed system with carrying and two families.
+ *
+ * Slice I2b-2 (#6795), the items a game's inventory reads (`rulesetItemBook`):
+ *   - A name is one of the ruleset's items by its label, in any case; an item's id is its catalog
+ *     and entry; `stack` is how many one stack holds; `freeform: "refuse"` refuses plain items.
+ *   - What an item is reads in the ruleset's own words: category, rarity and tag labels, its stats
+ *     (an enum by its value label, a yes-or-no stat by its label alone, a no left out) and its price
+ *     in the unit's label. The Game Master is shown only the stats the ruleset makes visible.
+ *   - A layer that hides an entry takes it out of what a name finds and what the picker offers, and
+ *     an item of it already held still reads as itself.
+ *   - The Game Master's inventory shows each ruleset item's facts in brackets, and its command line
+ *     says a name that is one of the ruleset's items becomes that item, only when the ruleset has an
+ *     item catalog.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -29,6 +41,10 @@ import {
   GAME_INVENTORY_MAX_QUANTITY,
   parseRulesetCatalogFile,
   parseRulesetDefinition,
+  rulesetItemBook,
+  rulesetItemCatalogIds,
+  rulesetItemPromptFacts,
+  type RulesetCatalogEntry,
   type RulesetDefinition,
 } from "../../packages/shared/src/index.js";
 
@@ -568,6 +584,156 @@ try {
     const files = new Map<string, unknown>([["catalogs/outfitter.json", { entries: fileEntries }]]);
     assert.match(issue(48, inFile, paths, files) ?? "", itemsIssue, "an item in a catalog file");
     assert.equal(issue(49, inFile, paths, files), null);
+  }
+
+  // ── Slice I2b-2: the items a game's inventory reads ──
+  {
+    const entriesOf = (definition: RulesetDefinition): Record<string, RulesetCatalogEntry[]> =>
+      Object.fromEntries(
+        (definition.catalogs ?? []).flatMap((catalog) =>
+          catalog.holds === "items" && catalog.entries ? [[catalog.id, catalog.entries]] : [],
+        ),
+      );
+    assert.deepEqual(rulesetItemCatalogIds(ember), ["outfitter"]);
+    const book = rulesetItemBook(ember, entriesOf(ember));
+    assert.equal(book.entries.length, 6);
+    assert.equal(book.itemNamed("  hand AXE ")?.item, "outfitter/hand-axe", "a label in any case");
+    assert.equal(book.itemNamed("hand-axe"), undefined, "an entry's id is not its name");
+    assert.equal(book.itemOf("outfitter/arrows")?.stack, 20);
+    assert.equal(book.itemOf("outfitter/hand-axe")?.stack, undefined);
+    assert.equal(book.plain, "allow");
+    assert.equal(rulesetItemBook(ember, entriesOf(ember), { plain: "refuse" }).plain, "refuse");
+    const axe = book.itemOf("outfitter/hand-axe")!;
+    assert.equal(axe.name, "Hand axe");
+    assert.deepEqual(axe.facts, {
+      category: "Weapon",
+      rarity: "Common",
+      tags: ["Thrown"],
+      stats: [
+        { id: "bulk", label: "Bulk", text: "1", promptVisible: true },
+        { id: "damage", label: "Damage", text: "1d6", promptVisible: true },
+        { id: "swing", label: "Rolls with", text: "brawn", promptVisible: true },
+        { id: "reach", label: "Reach", text: "close", promptVisible: true },
+      ],
+      cost: { amount: 4, unit: "marks" },
+    });
+    assert.equal(
+      rulesetItemPromptFacts(axe.facts),
+      "Weapon, Common, Thrown; Bulk 1, Damage 1d6, Rolls with brawn, Reach close",
+    );
+    // A stat the Game Master is not shown stays on the item's card only.
+    const kit = rulesetItemBook(gravewatch, entriesOf(gravewatch));
+    const nail = kit.itemNamed("Silver coffin nail")!;
+    assert.ok(nail.facts.stats.some((stat) => stat.id === "conceal" && !stat.promptVisible));
+    assert.equal(
+      rulesetItemPromptFacts(nail.facts),
+      "Arm, Rare, Silver, Easily hidden; Target 7, Damage 1d6, Harm tearing",
+    );
+    assert.equal(nail.stack, 12);
+    // An enum reads by its value label, a yes by the stat's label alone, and a no not at all.
+    const worded = parsedOrThrow(
+      variant(emberText, (doc) => {
+        const reach = doc.items.stats.find((stat: { id: string }) => stat.id === "reach");
+        reach.valueLabels = { close: "Arm's length" };
+        doc.items.stats.push({ id: "lit", label: "Lit", type: "boolean", default: false });
+        itemEntry(doc, "waystone").item.stats = { lit: true };
+        itemEntry(doc, "arrows").item.stats = { bulk: 1, lit: false };
+      }),
+      "stats with value labels and a yes-or-no stat",
+    );
+    const wordedBook = rulesetItemBook(worded, entriesOf(worded));
+    assert.deepEqual(
+      wordedBook.itemOf("outfitter/hand-axe")!.facts.stats.find((stat) => stat.id === "reach"),
+      { id: "reach", label: "Reach", text: "Arm's length", promptVisible: true },
+    );
+    assert.deepEqual(wordedBook.itemOf("outfitter/waystone")!.facts.stats, [
+      { id: "lit", label: "Lit", promptVisible: true },
+    ]);
+    assert.equal(rulesetItemPromptFacts(wordedBook.itemOf("outfitter/waystone")!.facts), "Gear, Storied; Lit");
+    assert.ok(!wordedBook.itemOf("outfitter/arrows")!.facts.stats.some((stat) => stat.id === "lit"));
+    // A layer that hides an entry takes it out of names and the picker, not out of what is held.
+    const layered = parsedOrThrow(
+      variant(emberText, (doc) => {
+        const catalog = itemCatalog(doc);
+        catalog.filters = [{ id: "rarity", label: "Rarity", type: "text" }];
+        for (const entry of catalog.entries) entry.filters = { rarity: entry.item.rarity };
+        doc.layers = [
+          ...(doc.layers ?? []),
+          {
+            id: "plain_roads",
+            label: "Plain roads",
+            catalogs: [{ id: "outfitter", hide: { filter: "rarity", equals: "storied" } }],
+          },
+        ];
+      }),
+      "a layer hiding storied items",
+    );
+    const plainRoads = rulesetItemBook(layered, entriesOf(layered), { layerOptions: { "layer.plain_roads": true } });
+    assert.equal(plainRoads.entries.length, 5);
+    assert.equal(plainRoads.itemNamed("Waystone"), undefined);
+    assert.equal(plainRoads.itemOf("outfitter/waystone")?.name, "Waystone");
+    assert.equal(plainRoads.offers("outfitter/waystone"), false, "nor added by its id");
+    assert.equal(plainRoads.offers("outfitter/hand-axe"), true);
+    assert.equal(plainRoads.offers("outfitter/missing"), false);
+    assert.equal(rulesetItemBook(layered, entriesOf(layered)).entries.length, 6, "a layer that is off hides nothing");
+    // Two items of one name: the first the ruleset lists is the one the name finds.
+    const twice = parsedOrThrow(
+      variant(emberText, (doc) => {
+        const second = JSON.parse(JSON.stringify(itemCatalog(doc)));
+        second.id = "smithy";
+        second.label = "Smithy";
+        doc.catalogs.push(second);
+      }),
+      "two item catalogs",
+    );
+    assert.equal(rulesetItemBook(twice, entriesOf(twice)).itemNamed("Hand axe")?.item, "outfitter/hand-axe");
+    assert.equal(rulesetItemBook(twice, entriesOf(twice)).entries.length, 12);
+
+    // The Game Master sees what each ruleset item held is, and is told names become the ruleset's items.
+    const base = { hasSceneModel: true } as never as Parameters<typeof buildGmFormatReminder>[0];
+    const facts = { "outfitter/hand-axe": rulesetItemPromptFacts(axe.facts) };
+    const held = buildGmFormatReminder({
+      ...base,
+      ruleset: ember,
+      playerInventory: [
+        { name: "Hand axe", quantity: 2, item: "outfitter/hand-axe" },
+        { name: "Rope", quantity: 1 },
+      ],
+      inventoryItemFacts: facts,
+    });
+    assert.match(
+      held,
+      /PLAYER INVENTORY: Hand axe ×2 \[Weapon, Common, Thrown; Bulk 1, Damage 1d6, Rolls with brawn, Reach close\]; Rope/,
+    );
+    assert.match(held, /an item named exactly as one of them becomes that item/);
+    const party = buildGmFormatReminder({
+      ...base,
+      ruleset: ember,
+      playerName: "Ada",
+      partyInventory: [
+        { items: [{ name: "Rope", quantity: 1 }] },
+        {
+          holder: "Bram",
+          items: [{ name: "Old Bitey", ownName: "Hand axe", quantity: 1, item: "outfitter/hand-axe" }],
+        },
+      ],
+      inventoryItemFacts: facts,
+    });
+    assert.match(party, /- Bram: Old Bitey \(Hand axe\) \[Weapon, Common, Thrown;/);
+    // No item catalog, no such line; no facts, no brackets.
+    const noCatalog = parsedOrThrow(
+      variant(emberText, (doc) => {
+        doc.catalogs = doc.catalogs.filter((catalog: { holds?: string }) => catalog.holds !== "items");
+      }),
+      "items with no catalog of them",
+    );
+    const bare = buildGmFormatReminder({
+      ...base,
+      ruleset: noCatalog,
+      playerInventory: [{ name: "Hand axe", quantity: 1, item: "outfitter/hand-axe" }],
+    });
+    assert.doesNotMatch(bare, /becomes that item/);
+    assert.match(bare, /PLAYER INVENTORY: Hand axe$/m);
   }
 
   console.info("game ruleset item regressions passed.");

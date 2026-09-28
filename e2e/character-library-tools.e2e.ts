@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { seedUIState } from "./ui-state-fixture.js";
 import { clickTopbarPanel } from "./topbar-navigation.js";
+import { prepareViteFixtureDependencies } from "./vite-fixture-dependencies.js";
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 
@@ -163,4 +164,78 @@ test("character library compares duplicates and bulk tags persist across reload"
   } finally {
     for (const id of createdIds) await request.delete(`/api/characters/${id}`).catch(() => undefined);
   }
+});
+
+test("bulk tag batches keep successes and retry only rejected cards", async ({ page }) => {
+  // Exercise the real modal and hook with a large selection without creating ten thousand files.
+  // The panel's failed-ID selection callback is covered by the library test above.
+  const cards = Array.from({ length: 10001 }, (_, index) => ({
+    id: `bulk-tag-batch-${index}`,
+    name: `Batch fixture ${index}`,
+    tags: [] as string[],
+  }));
+  const batches: string[][] = [];
+  await page.route("**/api/characters/catalog?*", (route) =>
+    route.fulfill({ json: { items: cards, limit: cards.length, offset: 0, hasMore: false, catalogGeneration: 1 } }),
+  );
+  await page.route("**/api/characters/bulk-tags", (route) => {
+    const { ids, add } = route.request().postDataJSON() as { ids: string[]; add: string[] };
+    batches.push(ids);
+    if (batches.length === 2) return route.fulfill({ status: 500, json: { error: "Synthetic batch failure" } });
+    const requested = new Set(ids);
+    for (const card of cards) if (requested.has(card.id)) card.tags = add;
+    return route.fulfill({ json: { updatedIds: ids, unchangedIds: [], failedIds: [] } });
+  });
+  await page.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: "" } }));
+  await seedUIState(page, { hasCompletedOnboarding: true, sidebarOpen: false, rightPanelOpen: false });
+  await page.addInitScript(
+    (appVersion) => localStorage.setItem("marinara:whats-new:seen-version", appVersion),
+    version,
+  );
+  await page.goto("/");
+  await prepareViteFixtureDependencies(page);
+  await page.evaluate(
+    async (ids) => {
+      const { CharacterBulkTagsModal } = await import(
+        "/src/components/characters/CharacterBulkTagsModal.tsx" as string
+      );
+      const dependencyUrl = window.__viteFixtureDependencyUrl;
+      const { default: React } = await import(dependencyUrl("react"));
+      const { default: ReactDOM } = await import(dependencyUrl("react-dom_client"));
+      const { QueryClient, QueryClientProvider } = await import(dependencyUrl("@tanstack_react-query"));
+      const client = new QueryClient();
+      const container = document.createElement("div");
+      document.body.append(container);
+      const root = ReactDOM.createRoot(container);
+      const render = (selected: string[]) =>
+        root.render(
+          React.createElement(
+            QueryClientProvider,
+            { client },
+            React.createElement(CharacterBulkTagsModal, {
+              open: selected.length > 0,
+              onClose: () => render([]),
+              selectedIds: new Set(selected),
+              onApplied: render,
+            }),
+          ),
+        );
+      render(ids);
+    },
+    cards.map((card) => card.id),
+  );
+  const first = page.getByRole("dialog", { name: "Edit tags of 10001 characters" });
+  await first.getByRole("textbox", { name: "Add tags", exact: true }).fill("batch-saved");
+  await first.getByRole("button", { name: "Review changes", exact: true }).click();
+  await first.getByRole("button", { name: "Apply to 10001 characters", exact: true }).click();
+  const retry = page.getByRole("dialog", { name: "Edit tags of 5000 characters" });
+  await expect(retry).toBeVisible();
+  expect(batches.map((ids) => ids.length)).toEqual([5000, 5000, 1]);
+  await retry.getByRole("textbox", { name: "Add tags", exact: true }).fill("batch-saved");
+  await retry.getByRole("button", { name: "Review changes", exact: true }).click();
+  await retry.getByRole("button", { name: "Apply to 5000 characters", exact: true }).click();
+  await expect(retry).toBeHidden();
+  expect(batches.map((ids) => ids.length)).toEqual([5000, 5000, 1, 5000]);
+  expect(batches[3]).toEqual(batches[1]);
+  expect(cards.every((card) => card.tags.includes("batch-saved"))).toBe(true);
 });

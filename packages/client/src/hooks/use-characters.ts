@@ -1448,13 +1448,15 @@ export function useBulkEditCharacterTags() {
     }) => {
       const merged = { updatedIds: [] as string[], unchangedIds: [] as string[], failedIds: [] as string[] };
       for (let start = 0; start < input.ids.length; start += 5000) {
-        const result = await api.post<typeof merged>("/characters/bulk-tags", {
-          ...input,
-          ids: input.ids.slice(start, start + 5000),
-        });
-        merged.updatedIds.push(...result.updatedIds);
-        merged.unchangedIds.push(...result.unchangedIds);
-        merged.failedIds.push(...result.failedIds);
+        const ids = input.ids.slice(start, start + 5000);
+        try {
+          const result = await api.post<typeof merged>("/characters/bulk-tags", { ...input, ids });
+          merged.updatedIds.push(...result.updatedIds);
+          merged.unchangedIds.push(...result.unchangedIds);
+          merged.failedIds.push(...result.failedIds);
+        } catch {
+          merged.failedIds.push(...ids);
+        }
       }
       return merged;
     },

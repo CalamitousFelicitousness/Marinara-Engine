@@ -5415,11 +5415,7 @@ export function GameNarration({
                       </button>
                     )}
                     {onOpenInventory && (
-                      <button
-                        onClick={onOpenInventory}
-                        aria-label={localizeUi("ui.game.gamecharactersheet.inventory")}
-                        className={cn("relative", NARRATION_META_BTN)}
-                      >
+                      <button onClick={onOpenInventory} className={cn("relative", NARRATION_META_BTN)}>
                         <Package size={12} />
                         <span className="hidden sm:inline">{localizeUi("ui.game.gamecharactersheet.inventory")}</span>
                         {(inventoryCount ?? 0) > 0 && <span className={NARRATION_COUNT_BADGE}>{inventoryCount}</span>}
@@ -5496,11 +5492,7 @@ export function GameNarration({
                       </button>
                     )}
                     {onOpenInventory && (
-                      <button
-                        onClick={onOpenInventory}
-                        aria-label={localizeUi("ui.game.gamecharactersheet.inventory")}
-                        className={cn("relative", NARRATION_META_BTN)}
-                      >
+                      <button onClick={onOpenInventory} className={cn("relative", NARRATION_META_BTN)}>
                         <Package size={12} />
                         <span className="hidden sm:inline">{localizeUi("ui.game.gamecharactersheet.inventory")}</span>
                         {(inventoryCount ?? 0) > 0 && <span className={NARRATION_COUNT_BADGE}>{inventoryCount}</span>}

@@ -76,7 +76,7 @@ import {
   GameWidgetSetupEditor,
   normalizeGameHudWidgets,
 } from "./GameWidgetSetupEditor";
-import { useConnections } from "../../hooks/use-connections";
+import { useConnections, useModelParameterCapabilities } from "../../hooks/use-connections";
 import { useDefaultPreset, usePresets } from "../../hooks/use-presets";
 import { useCharacterGroups, usePersonas } from "../../hooks/use-characters";
 import { GameSetupRulesChooser, GameSetupRulesetSheetStatus } from "./GameSetupRulesChooser";
@@ -172,6 +172,7 @@ interface WizardConnection {
   name: string;
   model?: string;
   provider?: string;
+  baseUrl?: string | null;
   imageService?: string | null;
   videoService?: string | null;
   audioSource?: string | null;
@@ -744,6 +745,7 @@ export function GameSetupWizard({
     () => connections.find((connection) => connection.id === gmConnectionId) ?? null,
     [connections, gmConnectionId],
   );
+  const gmModelCapabilities = useModelParameterCapabilities(customizeParameters ? selectedGmConnection : null);
   const gmParameterDefaults = useMemo(
     () => getEditableGenerationParameters(ROLEPLAY_PARAMETER_DEFAULTS, selectedGmConnection?.defaultParameters),
     [selectedGmConnection?.defaultParameters],
@@ -1718,10 +1720,12 @@ export function GameSetupWizard({
                           <div className="mt-3 border-t border-[var(--border)] pt-3">
                             <GenerationParametersFields
                               value={generationParameters}
-                              showServiceTier={
-                                selectedGmConnection?.provider === "openrouter" ||
-                                selectedGmConnection?.provider === "nanogpt"
+                              provider={selectedGmConnection?.provider ?? null}
+                              model={selectedGmConnection?.model ?? null}
+                              baseUrl={
+                                typeof selectedGmConnection?.baseUrl === "string" ? selectedGmConnection.baseUrl : null
                               }
+                              modelCapabilities={gmModelCapabilities}
                               onChange={setGenerationParameters}
                             />
                           </div>

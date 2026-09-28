@@ -60,6 +60,7 @@ import { getLastFreeze } from "./lib/freeze-detector.js";
 import { buildSidecarHealthSection } from "./services/sidecar/sidecar-slot-report.js";
 import { getPreviousSessionStatus, getUncleanExitHistory } from "./lib/session-postmortem.js";
 import { followLogLevel, logger, protectTerminalLogger } from "./lib/logger.js";
+import { flushLorebookActivationStats } from "./services/lorebook/activation-stats.js";
 import { logRateLimited } from "./lib/log-rate-limit.js";
 import { genRequestId, registerRequestLogging, RequestLogController } from "./lib/request-logging.js";
 import { startup } from "./lib/startup-timeline.js";
@@ -153,6 +154,7 @@ export async function buildApp(https?: { cert: Buffer; key: Buffer }) {
         // not end them, and a Python model loader left behind keeps its GPU memory.
         { name: "decisionSidecar", run: () => decisionProcessService.stop() },
         { name: "utilitySidecar", run: () => utilitySidecarService.stop() },
+        { name: "lorebookActivationStats", run: () => flushLorebookActivationStats() },
       ]);
       for (const { name, reason, elapsedMs } of failed) {
         app.log.error(

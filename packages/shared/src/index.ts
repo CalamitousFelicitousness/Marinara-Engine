@@ -77,6 +77,7 @@ export * from "./schemas/personal-extension.schema.js";
 export * from "./schemas/folder.schema.js";
 export * from "./schemas/scene-analysis.schema.js";
 export * from "./schemas/library-folder.schema.js";
+export * from "./schemas/lorebook-enabled.schema.js";
 export * from "./schemas/home-widget.schema.js";
 
 // Constants
@@ -152,6 +153,9 @@ export * from "./utils/sheet-command-tag.js";
 export * from "./utils/agent-output.js";
 export * from "./utils/generation-guide.js";
 export * from "./utils/lorebook-keyword-matching.js";
+export * from "./utils/lorebook-lint.js";
+export * from "./utils/lorebook-bulk-edit.js";
+export * from "./utils/lorebook-text-format.js";
 export * from "./utils/regex-safety.js";
 export * from "./utils/regex-scoping.js";
 export * from "./utils/game-state-text.js";

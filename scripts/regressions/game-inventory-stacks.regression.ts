@@ -889,6 +889,11 @@ const apples = (): GameInventoryStack[] => [
     ],
     left: 0,
   });
+  // A bag named twice is asked once: Bram (room 7 to his limit) is never counted twice.
+  assert.deepEqual(place(strained, "Arrow", 20, { among: ["Bram", "bram", "BRAM"] }), {
+    shares: [{ holder: "Bram", count: 7 }],
+    left: 13,
+  });
   // Past everyone's limit, the rest is left behind.
   const heavy = [of("Coat"), of("Arrow", 5), of("Arrow", 10, { holder: "Bram" })];
   assert.deepEqual(place(heavy, "Bow", 4), {

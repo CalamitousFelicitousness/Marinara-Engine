@@ -855,9 +855,16 @@ export function placeGameInventoryAddition(
   destination: GameInventoryDestination,
   rules?: GameInventoryItemRules,
 ): { shares: Array<{ holder?: string; count: number }>; left: number } {
-  const candidates = ("among" in destination ? destination.among : [destination.holder]).map((holder) =>
-    cleanGameInventoryHolder(holder),
-  );
+  // Each bag once, however often it is named: a bag asked twice would have its room counted twice.
+  const seen = new Set<string>();
+  const candidates = ("among" in destination ? destination.among : [destination.holder])
+    .map((holder) => cleanGameInventoryHolder(holder))
+    .filter((holder) => {
+      const key = gameInventoryBagKey(holder);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   const weight = weightOf(like, rules);
   if (candidates.length === 0) return { shares: [], left: amount };
   if (weight <= 0 || !rules?.bearer) return { shares: [{ holder: candidates[0], count: amount }], left: 0 };

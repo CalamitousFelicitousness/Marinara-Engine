@@ -197,6 +197,8 @@ export function createMessageTrashStorage(db: DB) {
       }
       let earliest: string | null = null;
       let latest: string | null = null;
+      let restoreFailed = false;
+      let firstRestoreError: unknown;
       for (const row of rows) {
         const snapshot = parseSnapshot(row);
         if (!snapshot) {
@@ -244,6 +246,8 @@ export function createMessageTrashStorage(db: DB) {
           });
         } catch (error) {
           if (rows.length === 1) throw error;
+          if (!restoreFailed) firstRestoreError = error;
+          restoreFailed = true;
           logger.warn({ err: error, chatId, entryId: row.id }, "Could not restore a message trash entry");
           result.conflictEntryIds.push(row.id);
           continue;
@@ -290,6 +294,7 @@ export function createMessageTrashStorage(db: DB) {
           }
         }
       }
+      if (result.restoredMessageIds.length === 0 && restoreFailed) throw firstRestoreError;
       return result;
     },
 

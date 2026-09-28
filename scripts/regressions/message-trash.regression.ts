@@ -32,7 +32,8 @@ const provider = createServer(async (request, response) => {
   providerRequests.push(body);
   assert(request.url?.endsWith("/messages"), "the prompt proof uses the mock Anthropic endpoint");
   response.writeHead(200, { "content-type": "text/event-stream" });
-  const send = (type: string, value: object) => response.write(`event: ${type}\ndata: ${JSON.stringify({ type, ...value })}\n\n`);
+  const send = (type: string, value: object) =>
+    response.write(`event: ${type}\ndata: ${JSON.stringify({ type, ...value })}\n\n`);
   send("message_start", {
     message: {
       id: "fixture",
@@ -56,17 +57,18 @@ try {
   closeDatabase = closeDB;
   const { eq } = await import("../../packages/server/src/db/file-query.js");
   const { encodeShardKey } = await import("../../packages/server/src/db/file-backed-store.js");
-  const { chats, gameStateSnapshots, memoryChunks, messages, messageSwipes, messageTrash } = await import("../../packages/server/src/db/schema/index.js");
-  const { createChatsStorage, withMessageExtraPatchQueue } = await import("../../packages/server/src/services/storage/chats.storage.js");
-  const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
+  const { chats, gameStateSnapshots, memoryChunks, messages, messageSwipes, messageTrash } =
+    await import("../../packages/server/src/db/schema/index.js");
+  const { createChatsStorage, withMessageExtraPatchQueue } =
+    await import("../../packages/server/src/services/storage/chats.storage.js");
+  const { createConnectionsStorage } =
+    await import("../../packages/server/src/services/storage/connections.storage.js");
   const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
   const { createPromptsStorage } = await import("../../packages/server/src/services/storage/prompts.storage.js");
-  const { createMessageTrashStorage, startMessageTrashMaintenance, sweepExpiredMessageTrash } = await import(
-    "../../packages/server/src/services/storage/message-trash.storage.js"
-  );
-  const { characterDataSchema, MAX_PINNED_CONTEXT_MESSAGES, MESSAGE_TRASH_RETENTION_DAYS } = await import(
-    "../../packages/shared/src/index.ts"
-  );
+  const { createMessageTrashStorage, startMessageTrashMaintenance, sweepExpiredMessageTrash } =
+    await import("../../packages/server/src/services/storage/message-trash.storage.js");
+  const { characterDataSchema, MAX_PINNED_CONTEXT_MESSAGES, MESSAGE_TRASH_RETENTION_DAYS } =
+    await import("../../packages/shared/src/index.ts");
 
   let resolveSweep!: (result: { purged: number }) => void;
   let maintenanceCalls = 0;
@@ -243,7 +245,11 @@ try {
     promptPresetId: preset.id,
   });
   assert(promptChat);
-  await storage.patchMetadata(promptChat.id, { enableAgents: false, enableMemoryRecall: false, contextMessageLimit: 1 });
+  await storage.patchMetadata(promptChat.id, {
+    enableAgents: false,
+    enableMemoryRecall: false,
+    contextMessageLimit: 1,
+  });
   const oldPinnedMessage = await storage.createMessage({
     chatId: promptChat.id,
     role: "user",
@@ -251,7 +257,11 @@ try {
     extra: { pinnedToContext: true, privateNote: "PRIVATE_NOTE_MUST_NOT_REACH_PROMPT_6698" },
   } as never);
   assert(oldPinnedMessage);
-  await storage.createMessage({ chatId: promptChat.id, role: "user", content: "LATEST_CONTEXT_SENTINEL_6698" } as never);
+  await storage.createMessage({
+    chatId: promptChat.id,
+    role: "user",
+    content: "LATEST_CONTEXT_SENTINEL_6698",
+  } as never);
   const generated = await app.inject({
     method: "POST",
     url: "/api/generate/",
@@ -303,19 +313,24 @@ try {
   await storage.addSwipe(restorable.id, "Alternate text");
   await storage.setActiveSwipe(restorable.id, 1);
 
-  const deleted = await app.inject({ method: "DELETE", url: `/api/chats/chat-message-trash/messages/${restorable.id}` });
+  const deleted = await app.inject({
+    method: "DELETE",
+    url: `/api/chats/chat-message-trash/messages/${restorable.id}`,
+  });
   assert.equal(deleted.statusCode, 200, deleted.body);
   assert.deepEqual(deleted.json(), { trashed: true, trashedCount: 1 });
-  assert.equal(await storage.getMessage(restorable.id), null, "the active transcript no longer contains the trashed message");
+  assert.equal(
+    await storage.getMessage(restorable.id),
+    null,
+    "the active transcript no longer contains the trashed message",
+  );
   const listed = await app.inject({ method: "GET", url: "/api/chats/chat-message-trash/trash" });
   assert.equal(listed.statusCode, 200);
   const [entry] = listed.json();
   assert.equal(entry.messageId, restorable.id);
   assert.equal(entry.swipeCount, 2);
 
-  const trashSnapshot = (
-    await db.select().from(messageTrash).where(eq(messageTrash.id, entry.id))
-  )[0]!;
+  const trashSnapshot = (await db.select().from(messageTrash).where(eq(messageTrash.id, entry.id)))[0]!;
   const firstSwipeId = (JSON.parse(trashSnapshot.snapshot) as { swipes: Array<{ id: string }> }).swipes[0]!.id;
   await db.insert(messageSwipes).values({
     id: firstSwipeId,
@@ -368,10 +383,16 @@ try {
   assert.equal((await storage.getMessage(partialMessage.id))?.content, partialMessage.content);
   assert.equal(await storage.getMessage(restorable.id), null, "the failed restore unit still rolls back");
   assert.equal((await db.select().from(messageTrash).where(eq(messageTrash.id, entry.id))).length, 1);
-  assert.equal((await db.select().from(memoryChunks).where(eq(memoryChunks.id, "partial-restore-stale-memory"))).length, 0,
-    "partial success still invalidates stale memory chunks");
-  assert.equal((await storage.getById("chat-message-trash"))?.lastMessageAt, partialCreatedAt,
-    "partial success still updates the chat's last message time");
+  assert.equal(
+    (await db.select().from(memoryChunks).where(eq(memoryChunks.id, "partial-restore-stale-memory"))).length,
+    0,
+    "partial success still invalidates stale memory chunks",
+  );
+  assert.equal(
+    (await storage.getById("chat-message-trash"))?.lastMessageAt,
+    partialCreatedAt,
+    "partial success still updates the chat's last message time",
+  );
   await db.delete(messageSwipes).where(eq(messageSwipes.id, firstSwipeId));
 
   const restored = await app.inject({
@@ -386,19 +407,169 @@ try {
   assert.equal(JSON.parse(restoredMessage!.extra).privateNote, "PRIVATE_NOTE_EXPORT_SENTINEL_6698");
   assert.equal((await storage.getSwipes(restorable.id)).length, 2, "restore brings back the alternate swipes");
 
+  const createRestoreBatch = async (prefix: string, firstCreatedAt: string) => {
+    const first = await storage.createMessage({
+      chatId: "chat-message-trash",
+      role: "user",
+      content: `${prefix} first message`,
+    } as never);
+    const second = await storage.createMessage({
+      chatId: "chat-message-trash",
+      role: "user",
+      content: `${prefix} second message`,
+    } as never);
+    assert(first && second);
+    await storage.addSwipe(first.id, `${prefix} first swipe`);
+    await storage.addSwipe(second.id, `${prefix} second swipe`);
+    const secondCreatedAt = new Date(Date.parse(firstCreatedAt) + 1000).toISOString();
+    await db.update(messages).set({ createdAt: firstCreatedAt }).where(eq(messages.id, first.id));
+    await db.update(messages).set({ createdAt: secondCreatedAt }).where(eq(messages.id, second.id));
+    for (const message of [first, second]) {
+      const deleted = await app!.inject({
+        method: "DELETE",
+        url: `/api/chats/chat-message-trash/messages/${message.id}`,
+      });
+      assert.deepEqual(deleted.json(), { trashed: true, trashedCount: 1 });
+    }
+    const [firstEntry] = await db.select().from(messageTrash).where(eq(messageTrash.messageId, first.id));
+    const [secondEntry] = await db.select().from(messageTrash).where(eq(messageTrash.messageId, second.id));
+    assert(firstEntry && secondEntry);
+    return { first, second, firstEntry, secondEntry, secondCreatedAt };
+  };
+
+  const laterFailureBatch = await createRestoreBatch("later-restore-failure", "2026-09-01T00:00:01.000Z");
+  await db.update(chats).set({ lastMessageAt: timestamp }).where(eq(chats.id, "chat-message-trash"));
+  await db.insert(memoryChunks).values({
+    id: "later-restore-failure-stale-memory",
+    chatId: "chat-message-trash",
+    content: "Memory built while both restored turns were missing",
+    messageCount: 2,
+    firstMessageAt: laterFailureBatch.firstEntry.messageCreatedAt,
+    lastMessageAt: laterFailureBatch.secondEntry.messageCreatedAt,
+    createdAt: timestamp,
+  });
+  const originalInsert = db.insert.bind(db);
+  let swipeInsertCount = 0;
+  db.insert = ((table: Parameters<typeof db.insert>[0]) => {
+    if (table === messageSwipes && ++swipeInsertCount === 2) throw new Error("Injected second-row swipe failure");
+    return originalInsert(table);
+  }) as typeof db.insert;
+  let laterFailureRestore: { statusCode: number; json(): any; body: string };
+  try {
+    laterFailureRestore = await app!.inject({
+      method: "POST",
+      url: "/api/chats/chat-message-trash/trash/restore",
+      payload: { entryIds: [laterFailureBatch.firstEntry.id, laterFailureBatch.secondEntry.id] },
+    });
+  } finally {
+    db.insert = originalInsert as typeof db.insert;
+  }
+  assert.equal(laterFailureRestore.statusCode, 200, laterFailureRestore.body);
+  assert.deepEqual(laterFailureRestore.json().restoredMessageIds, [laterFailureBatch.first.id]);
+  assert.deepEqual(laterFailureRestore.json().conflictEntryIds, [laterFailureBatch.secondEntry.id]);
+  assert.equal((await storage.getMessage(laterFailureBatch.first.id))?.content, "later-restore-failure first swipe");
+  assert.equal(
+    await storage.getMessage(laterFailureBatch.second.id),
+    null,
+    "the failed row transaction rolls back its message",
+  );
+  assert.equal(
+    (await db.select().from(messageTrash).where(eq(messageTrash.id, laterFailureBatch.firstEntry.id))).length,
+    0,
+  );
+  assert.equal(
+    (await db.select().from(messageTrash).where(eq(messageTrash.id, laterFailureBatch.secondEntry.id))).length,
+    1,
+  );
+  assert.equal(
+    (await db.select().from(memoryChunks).where(eq(memoryChunks.id, "later-restore-failure-stale-memory"))).length,
+    0,
+    "a later transaction failure still reconciles memory for earlier commits",
+  );
+  assert.equal(
+    (await storage.getById("chat-message-trash"))?.lastMessageAt,
+    laterFailureBatch.firstEntry.messageCreatedAt,
+  );
+  assert.deepEqual(
+    (await storage.getSwipes(laterFailureBatch.first.id)).map((swipe) => swipe.content),
+    ["later-restore-failure first message", "later-restore-failure first swipe"],
+  );
+  const laterFailureRetry = await app!.inject({
+    method: "POST",
+    url: "/api/chats/chat-message-trash/trash/restore",
+    payload: { entryIds: [laterFailureBatch.secondEntry.id] },
+  });
+  assert.equal(laterFailureRetry.statusCode, 200, laterFailureRetry.body);
+  assert.deepEqual(laterFailureRetry.json().restoredMessageIds, [laterFailureBatch.second.id]);
+  assert.equal((await storage.getMessage(laterFailureBatch.second.id))?.content, "later-restore-failure second swipe");
+  assert.deepEqual(
+    (await storage.getSwipes(laterFailureBatch.second.id)).map((swipe) => swipe.content),
+    ["later-restore-failure second message", "later-restore-failure second swipe"],
+  );
+  const laterFailureMessageIds = (await storage.listMessages("chat-message-trash"))
+    .filter((message) => [laterFailureBatch.first.id, laterFailureBatch.second.id].includes(message.id))
+    .map((message) => message.id);
+  assert.deepEqual(laterFailureMessageIds, [laterFailureBatch.first.id, laterFailureBatch.second.id]);
+
+  const allFailureBatch = await createRestoreBatch("all-restore-failures", "2026-09-02T00:00:01.000Z");
+  db.insert = ((table: Parameters<typeof db.insert>[0]) => {
+    if (table === messageSwipes) throw new Error("Injected all-row swipe failure");
+    return originalInsert(table);
+  }) as typeof db.insert;
+  let allFailureRestore: { statusCode: number; json(): any; body: string };
+  try {
+    allFailureRestore = await app!.inject({
+      method: "POST",
+      url: "/api/chats/chat-message-trash/trash/restore",
+      payload: { entryIds: [allFailureBatch.firstEntry.id, allFailureBatch.secondEntry.id] },
+    });
+  } finally {
+    db.insert = originalInsert as typeof db.insert;
+  }
+  assert.ok(allFailureRestore.statusCode >= 400, "a multi-row restore with no successful writes remains non-2xx");
+  assert.equal(await storage.getMessage(allFailureBatch.first.id), null);
+  assert.equal(await storage.getMessage(allFailureBatch.second.id), null);
+  assert.equal(
+    (await db.select().from(messageTrash).where(eq(messageTrash.id, allFailureBatch.firstEntry.id))).length,
+    1,
+  );
+  assert.equal(
+    (await db.select().from(messageTrash).where(eq(messageTrash.id, allFailureBatch.secondEntry.id))).length,
+    1,
+  );
+  assert.equal(JSON.parse(allFailureBatch.firstEntry.snapshot).swipes.length, 2);
+  assert.equal(JSON.parse(allFailureBatch.secondEntry.snapshot).swipes.length, 2);
+  const allFailureRetry = await app!.inject({
+    method: "POST",
+    url: "/api/chats/chat-message-trash/trash/restore",
+    payload: { entryIds: [allFailureBatch.firstEntry.id, allFailureBatch.secondEntry.id] },
+  });
+  assert.equal(allFailureRetry.statusCode, 200, allFailureRetry.body);
+  assert.deepEqual(allFailureRetry.json().restoredMessageIds, [allFailureBatch.first.id, allFailureBatch.second.id]);
+  const retryMessageIds = (await storage.listMessages("chat-message-trash"))
+    .filter((message) => [allFailureBatch.first.id, allFailureBatch.second.id].includes(message.id))
+    .map((message) => message.id);
+  assert.deepEqual(retryMessageIds, [allFailureBatch.first.id, allFailureBatch.second.id]);
+
   for (const format of ["jsonl", "text"]) {
     const defaultExport = await app.inject({
       method: "GET",
       url: `/api/chats/chat-message-trash/export?format=${format}`,
     });
     assert.equal(defaultExport.statusCode, 200, defaultExport.body);
-    assert(!defaultExport.body.includes("PRIVATE_NOTE_EXPORT_SENTINEL_6698"), `${format} excludes private notes by default`);
+    assert(
+      !defaultExport.body.includes("PRIVATE_NOTE_EXPORT_SENTINEL_6698"),
+      `${format} excludes private notes by default`,
+    );
     const optedInExport = await app.inject({
       method: "GET",
       url: `/api/chats/chat-message-trash/export?format=${format}&includePrivateNotes=true`,
     });
     assert.equal(optedInExport.statusCode, 200, optedInExport.body);
-    assert(optedInExport.body.includes("PRIVATE_NOTE_EXPORT_SENTINEL_6698"), `${format} exports notes only after opt-in`);
+    assert(
+      optedInExport.body.includes("PRIVATE_NOTE_EXPORT_SENTINEL_6698"),
+      `${format} exports notes only after opt-in`,
+    );
   }
 
   const wrongChatTarget = await storage.createMessage({
@@ -436,7 +607,10 @@ try {
     content: "Game turn",
   } as never);
   assert.ok(gameMessage);
-  const gameDelete = await app.inject({ method: "DELETE", url: `/api/chats/game-message-trash/messages/${gameMessage.id}` });
+  const gameDelete = await app.inject({
+    method: "DELETE",
+    url: `/api/chats/game-message-trash/messages/${gameMessage.id}`,
+  });
   assert.equal(gameDelete.statusCode, 200, gameDelete.body);
   assert.deepEqual(gameDelete.json(), { trashed: false, trashedCount: 0 });
   assert.equal(await storage.getMessage(gameMessage.id), null, "Game mode retains its permanent delete behavior");
@@ -446,50 +620,88 @@ try {
   for (const bulk of [false, true]) {
     const formerGame = await storage.create({ name: `Former Game ${bulk}`, mode: "game", characterIds: [] });
     assert(formerGame);
-    const gameTurn = await storage.createMessage({ chatId: formerGame.id, role: "assistant", content: "Turn with Game state" } as never);
+    const gameTurn = await storage.createMessage({
+      chatId: formerGame.id,
+      role: "assistant",
+      content: "Turn with Game state",
+    } as never);
     assert(gameTurn);
     await db.insert(gameStateSnapshots).values({
-      id: `former-game-snapshot-${bulk}`, chatId: formerGame.id, messageId: gameTurn.id, createdAt: timestamp,
+      id: `former-game-snapshot-${bulk}`,
+      chatId: formerGame.id,
+      messageId: gameTurn.id,
+      createdAt: timestamp,
     });
     await db.update(chats).set({ mode: "conversation" }).where(eq(chats.id, formerGame.id));
     const plainTurn = bulk
-      ? await storage.createMessage({ chatId: formerGame.id, role: "user", content: "Ordinary conversation turn" } as never)
+      ? await storage.createMessage({
+          chatId: formerGame.id,
+          role: "user",
+          content: "Ordinary conversation turn",
+        } as never)
       : null;
-    const deleteFormerGame = await app.inject(bulk ? {
-      method: "POST", url: `/api/chats/${formerGame.id}/messages/bulk-delete`,
-      payload: { messageIds: [gameTurn.id, plainTurn!.id] },
-    } : { method: "DELETE", url: `/api/chats/${formerGame.id}/messages/${gameTurn.id}` });
+    const deleteFormerGame = await app.inject(
+      bulk
+        ? {
+            method: "POST",
+            url: `/api/chats/${formerGame.id}/messages/bulk-delete`,
+            payload: { messageIds: [gameTurn.id, plainTurn!.id] },
+          }
+        : { method: "DELETE", url: `/api/chats/${formerGame.id}/messages/${gameTurn.id}` },
+    );
     assert.equal(deleteFormerGame.statusCode, 200, deleteFormerGame.body);
-    assert.deepEqual(deleteFormerGame.json(), { trashed: bulk, trashedCount: bulk ? 1 : 0 },
-      "Game snapshot rows stay permanent even in a conversation chat");
+    assert.deepEqual(
+      deleteFormerGame.json(),
+      { trashed: bulk, trashedCount: bulk ? 1 : 0 },
+      "Game snapshot rows stay permanent even in a conversation chat",
+    );
     assert.equal(await storage.getMessage(gameTurn.id), null);
-    assert.equal((await db.select().from(gameStateSnapshots).where(eq(gameStateSnapshots.messageId, gameTurn.id))).length, 0,
-      "normal deletion still removes the Game snapshot");
+    assert.equal(
+      (await db.select().from(gameStateSnapshots).where(eq(gameStateSnapshots.messageId, gameTurn.id))).length,
+      0,
+      "normal deletion still removes the Game snapshot",
+    );
     const retained = await db.select().from(messageTrash).where(eq(messageTrash.chatId, formerGame.id));
-    assert.deepEqual(retained.map((row) => row.messageId), plainTurn ? [plainTurn.id] : [],
-      "mixed bulk deletion retains only the recoverable conversation turn");
+    assert.deepEqual(
+      retained.map((row) => row.messageId),
+      plainTurn ? [plainTurn.id] : [],
+      "mixed bulk deletion retains only the recoverable conversation turn",
+    );
     if (plainTurn) {
       assert.equal(await storage.getMessage(plainTurn.id), null);
       const restoredPlainTurn = await app.inject({
-        method: "POST", url: `/api/chats/${formerGame.id}/trash/restore`, payload: { entryIds: retained.map((row) => row.id) },
+        method: "POST",
+        url: `/api/chats/${formerGame.id}/trash/restore`,
+        payload: { entryIds: retained.map((row) => row.id) },
       });
       assert.equal(restoredPlainTurn.statusCode, 200, restoredPlainTurn.body);
       assert.deepEqual(restoredPlainTurn.json().restoredMessageIds, [plainTurn.id]);
     }
   }
 
-  const changedModeChat = await storage.create({ name: "Changed mode recovery", mode: "conversation", characterIds: [] });
+  const changedModeChat = await storage.create({
+    name: "Changed mode recovery",
+    mode: "conversation",
+    characterIds: [],
+  });
   assert(changedModeChat);
   const changedModeMessage = await storage.createMessage({
-    chatId: changedModeChat.id, role: "user", content: "Retained before switching to Game Mode",
+    chatId: changedModeChat.id,
+    role: "user",
+    content: "Retained before switching to Game Mode",
   } as never);
   assert(changedModeMessage);
   await app.inject({ method: "DELETE", url: `/api/chats/${changedModeChat.id}/messages/${changedModeMessage.id}` });
-  const [changedModeEntry] = await db.select().from(messageTrash).where(eq(messageTrash.messageId, changedModeMessage.id));
+  const [changedModeEntry] = await db
+    .select()
+    .from(messageTrash)
+    .where(eq(messageTrash.messageId, changedModeMessage.id));
   assert(changedModeEntry);
   await db.update(chats).set({ mode: "game" }).where(eq(chats.id, changedModeChat.id));
   const gameRestore = await app.inject({
-    method: "POST", url: `/api/chats/${changedModeChat.id}/trash/restore`, payload: { entryIds: [changedModeEntry.id] },
+    method: "POST",
+    url: `/api/chats/${changedModeChat.id}/trash/restore`,
+    payload: { entryIds: [changedModeEntry.id] },
   });
   assert.equal(gameRestore.statusCode, 409, "message-only recovery cannot restore Game state");
   assert.equal(await storage.getMessage(changedModeMessage.id), null);
@@ -497,11 +709,16 @@ try {
   await db.update(chats).set({ mode: "conversation" }).where(eq(chats.id, changedModeChat.id));
   await app.inject({ method: "PUT", url: "/api/app-settings/features", payload: { messageTrash: false } });
   const disabledRetentionRestore = await app.inject({
-    method: "POST", url: `/api/chats/${changedModeChat.id}/trash/restore`, payload: { entryIds: [changedModeEntry.id] },
+    method: "POST",
+    url: `/api/chats/${changedModeChat.id}/trash/restore`,
+    payload: { entryIds: [changedModeEntry.id] },
   });
   assert.equal(disabledRetentionRestore.statusCode, 200, disabledRetentionRestore.body);
-  assert.deepEqual(disabledRetentionRestore.json().restoredMessageIds, [changedModeMessage.id],
-    "turning retention off does not strand existing recovery entries");
+  assert.deepEqual(
+    disabledRetentionRestore.json().restoredMessageIds,
+    [changedModeMessage.id],
+    "turning retention off does not strand existing recovery entries",
+  );
   await app.inject({ method: "PUT", url: "/api/app-settings/features", payload: { messageTrash: true } });
 
   const pinRestoreTargets = await Promise.all(
@@ -542,7 +759,11 @@ try {
   });
   assert.equal(overLimitRestore.statusCode, 409, overLimitRestore.body);
   assert.match(overLimitRestore.json().error, /limit of 10 pinned messages/);
-  assert.equal(await storage.getMessage(pinnedMessageToRestore.id), null, "a rejected pinned restore leaves the message trashed");
+  assert.equal(
+    await storage.getMessage(pinnedMessageToRestore.id),
+    null,
+    "a rejected pinned restore leaves the message trashed",
+  );
   assert.equal(
     (await db.select().from(messageTrash).where(eq(messageTrash.id, pinnedTrashEntry.id))).length,
     1,
@@ -573,7 +794,11 @@ try {
     return originalTransaction(operation);
   }) as typeof db.transaction;
   const discardedRestore = await trashStorage.restore("chat-message-trash", [discardedEntry.id]);
-  assert.deepEqual(discardedRestore.restoredMessageIds, [], "permanently deleted trash cannot be restored from a stale read");
+  assert.deepEqual(
+    discardedRestore.restoredMessageIds,
+    [],
+    "permanently deleted trash cannot be restored from a stale read",
+  );
   assert.equal(await storage.getMessage(discardedEntry.messageId), null);
 
   const expiring = await storage.createMessage({
@@ -585,7 +810,10 @@ try {
   await app.inject({ method: "DELETE", url: `/api/chats/chat-message-trash/messages/${expiring.id}` });
   const trashRows = await db.select().from(messageTrash).where(eq(messageTrash.messageId, expiring.id));
   assert.equal(trashRows.length, 1);
-  await db.update(messageTrash).set({ deletedAt: "2026-07-01T00:00:00.000Z" }).where(eq(messageTrash.id, trashRows[0]!.id));
+  await db
+    .update(messageTrash)
+    .set({ deletedAt: "2026-07-01T00:00:00.000Z" })
+    .where(eq(messageTrash.id, trashRows[0]!.id));
   const restoreAfterExpiry = await app.inject({
     method: "POST",
     url: "/api/chats/chat-message-trash/trash/restore",
@@ -660,7 +888,11 @@ try {
     "message_trash",
     `${encodeShardKey(coldRows[0]!.chatId)}.json`,
   );
-  assert.equal(existsSync(backupOnlyShard), true, "the synthetic primary trash shard exists before simulating recovery");
+  assert.equal(
+    existsSync(backupOnlyShard),
+    true,
+    "the synthetic primary trash shard exists before simulating recovery",
+  );
   renameSync(backupOnlyShard, `${backupOnlyShard}.bak`);
   const freshBackupShard = join(
     reopenedDb._fileStore.rootDir,
@@ -668,7 +900,11 @@ try {
     "message_trash",
     `${encodeShardKey(cleanupRows[5]!.chatId)}.json`,
   );
-  assert.equal(existsSync(freshBackupShard), true, "the fresh synthetic primary shard exists before simulating recovery");
+  assert.equal(
+    existsSync(freshBackupShard),
+    true,
+    "the fresh synthetic primary shard exists before simulating recovery",
+  );
   renameSync(freshBackupShard, `${freshBackupShard}.bak`);
   const firstColdSweep = await sweepExpiredMessageTrash(reopenedDb, { nowMs, maxChats: 1 });
   assert.equal(firstColdSweep.purged, 1, "one pass purges an expired backup-only trash shard");

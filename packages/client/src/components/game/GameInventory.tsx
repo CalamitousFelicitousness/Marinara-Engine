@@ -11,7 +11,7 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { Check, ChevronLeft, ChevronRight, Gift, Minus, Package, Plus, Scissors, Wand2, X } from "lucide-react";
-import { gameInventoryBagKey, gameInventoryNameKey } from "@marinara-engine/shared";
+import { gameInventoryBagKey, gameInventoryItemId, gameInventoryStackLabel } from "@marinara-engine/shared";
 import { cn } from "../../lib/utils";
 import { defaultInventorySplitSize, parseInventoryAmount, parseInventoryCount } from "../../lib/game-inventory-amount";
 import { useTranslation as useUiTranslation } from "react-i18next";
@@ -19,7 +19,10 @@ import { useTranslation as useUiTranslation } from "react-i18next";
 /** One stack. Two stacks may hold the same item, so a stack is told apart by its id, never its name. */
 export interface InventoryItem {
   id: string;
+  /** The item's own name; which item a stack is follows it, never the nickname. */
   name: string;
+  /** What the player calls this stack instead, shown in place of the own name. */
+  nickname?: string;
   quantity: number;
   /** The party member who carries it. Absent for the player's own character. */
   holder?: string;
@@ -41,12 +44,12 @@ interface GameInventoryProps {
   bags?: InventoryBag[];
   open: boolean;
   onClose: () => void;
-  /** Called when the user wants to add a new item, into the open tab's bag (the player's from the
-   *  shared view). Resolves to the new stack's id. */
-  onAddItem?: (holder?: string) => Promise<string | null> | string | null;
+  /** Called when the user adds an item by name, into the open tab's bag (the player's from the shared
+   *  view): onto that bag's stack of the item when it has one. Resolves to the stack it went onto. */
+  onAddItem?: (name: string, holder?: string) => Promise<string | null> | string | null;
   /** Called when the user wants to use an item during input phase */
   onUseItem?: (itemName: string) => void;
-  /** Called when the user renames a stack. Resolves to the id of the stack holding the result. */
+  /** Called when the user gives a stack a nickname, or its own name back. Resolves to the stack's id. */
   onRenameItem?: (stackId: string, nextName: string) => Promise<string | null> | string | null;
   /** Called when the user sets a stack's count: the +1 and -1 buttons, or a typed amount. 0 removes it. */
   onSetItemQuantity?: (stackId: string, quantity: number) => void | Promise<void>;
@@ -92,6 +95,7 @@ export function GameInventory({
   const [renameTyped, setRenameTyped] = useState<{ key: string; text: string } | null>(null);
   const [renamePending, setRenamePending] = useState(false);
   const [addPending, setAddPending] = useState(false);
+  const [newItemName, setNewItemName] = useState("");
   const [amountPending, setAmountPending] = useState(false);
   // What was typed into the amount field, kept with the stack and count it was typed for.
   const [amountTyped, setAmountTyped] = useState<{ key: string; text: string } | null>(null);
@@ -152,9 +156,9 @@ export function GameInventory({
 
   // Worked out while rendering, like the amount below, so a name typed right after picking a stack
   // is never overwritten by the pick catching up.
-  const renameKey = selectedInventoryItem ? `${selectedInventoryItem.id}:${selectedInventoryItem.name}` : "";
-  const renameDraft =
-    renameTyped && renameTyped.key === renameKey ? renameTyped.text : (selectedInventoryItem?.name ?? "");
+  const selectedLabel = selectedInventoryItem ? gameInventoryStackLabel(selectedInventoryItem) : "";
+  const renameKey = selectedInventoryItem ? `${selectedInventoryItem.id}:${selectedLabel}` : "";
+  const renameDraft = renameTyped && renameTyped.key === renameKey ? renameTyped.text : selectedLabel;
   const setRenameDraft = useCallback((text: string) => setRenameTyped({ key: renameKey, text }), [renameKey]);
 
   // The amount field shows the stack as it stands whenever it changes or another stack is picked, and
@@ -192,7 +196,7 @@ export function GameInventory({
       if (!onRenameItem) return;
 
       const nextName = renameDraft.trim().replace(/\s+/g, " ");
-      if (!nextName || nextName === item.name.trim()) return;
+      if (!nextName || nextName === gameInventoryStackLabel(item)) return;
 
       setRenamePending(true);
       try {
@@ -209,19 +213,20 @@ export function GameInventory({
 
   const activeHolder = activeBag?.holder;
   const handleAdd = useCallback(async () => {
-    if (!onAddItem) return;
+    const name = newItemName.trim().replace(/\s+/g, " ");
+    if (!onAddItem || !name) return;
 
     setAddPending(true);
     try {
-      const addedStackId = await onAddItem(activeHolder);
+      const addedStackId = await onAddItem(name, activeHolder);
       if (addedStackId) {
+        setNewItemName("");
         setSelectedItem(addedStackId);
-        setPageIndex(Math.floor(visibleItems.length / ITEMS_PER_PAGE));
       }
     } finally {
       setAddPending(false);
     }
-  }, [activeHolder, visibleItems.length, onAddItem]);
+  }, [activeHolder, newItemName, onAddItem]);
 
   const setQuantity = useCallback(
     async (item: InventoryItem, quantity: number) => {
@@ -255,7 +260,10 @@ export function GameInventory({
           next === 0 &&
           item.quantity > 1 &&
           !window.confirm(
-            localizeUi("ui.game.gameinventory.removeAllValue1Confirm", { count: item.quantity, value1: item.name }),
+            localizeUi("ui.game.gameinventory.removeAllValue1Confirm", {
+              count: item.quantity,
+              value1: gameInventoryStackLabel(item),
+            }),
           )
         ) {
           setAmountDraft(String(item.quantity));
@@ -330,7 +338,7 @@ export function GameInventory({
       // Onto another stack of the same item, the two become one; onto anything else, they swap places.
       const to = visibleItems.find((item) => item.id === toId);
       if (!to) return;
-      if (onMergeItems && gameInventoryNameKey(from.name) === gameInventoryNameKey(to.name)) {
+      if (onMergeItems && gameInventoryItemId(from) === gameInventoryItemId(to)) {
         settle(onMergeItems(from.id, to.id));
         return;
       }
@@ -480,18 +488,19 @@ export function GameInventory({
         {/* Action bar */}
         {(selectedItem || onAddItem) && (
           <div className="border-t border-white/8 bg-white/[0.02] px-4 py-2.5">
-            {selectedInventoryItem ? (
+            {selectedInventoryItem && (
               <div className="mb-2 whitespace-normal break-words text-[0.7rem] font-medium text-white/60 [overflow-wrap:anywhere]">
-                {selectedInventoryItem.name}
+                {selectedLabel}
+                {selectedInventoryItem.nickname && (
+                  <span className="ml-1.5 font-normal text-white/40">
+                    {localizeUi("ui.game.gameinventory.ownNameValue1", { value1: selectedInventoryItem.name })}
+                  </span>
+                )}
                 {showBags && (
                   <span className="ml-1.5 font-normal text-white/40">
                     {localizeUi("ui.game.gameinventory.carriedBy", { value1: bagName(selectedInventoryItem.holder) })}
                   </span>
                 )}
-              </div>
-            ) : (
-              <div className="mb-2 text-[0.7rem] font-medium text-white/45">
-                {localizeUi("ui.game.gameinventory.addANewItemThenRenameIt")}
               </div>
             )}
             {onRenameItem && selectedInventoryItem && (
@@ -501,7 +510,7 @@ export function GameInventory({
                   onChange={(e) => setRenameDraft(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Escape") {
-                      setRenameDraft(selectedInventoryItem.name);
+                      setRenameDraft(selectedLabel);
                     }
                     if (e.key === "Enter") {
                       e.preventDefault();
@@ -510,13 +519,15 @@ export function GameInventory({
                   }}
                   disabled={renamePending}
                   className="min-w-0 flex-1 rounded border border-white/10 bg-black/40 px-2 py-1.5 text-[0.7rem] text-white/85 outline-none transition-colors focus:border-amber-400/40"
-                  placeholder={localizeUi("ui.game.gameinventory.itemName")}
+                  aria-label={localizeUi("ui.game.gameinventory.nicknameValue1", {
+                    value1: selectedInventoryItem.name,
+                  })}
+                  title={localizeUi("ui.game.gameinventory.nicknameHint")}
+                  placeholder={selectedInventoryItem.name}
                 />
                 <button
                   onClick={() => void handleRename(selectedInventoryItem)}
-                  disabled={
-                    renamePending || !renameDraft.trim() || renameDraft.trim() === selectedInventoryItem.name.trim()
-                  }
+                  disabled={renamePending || !renameDraft.trim() || renameDraft.trim() === selectedLabel}
                   className="flex shrink-0 items-center justify-center gap-1 rounded border border-amber-500/20 bg-amber-500/10 px-2 py-1.5 text-[0.7rem] font-semibold text-amber-300 transition-colors hover:bg-amber-500/15 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <Check size={12} />
@@ -644,21 +655,11 @@ export function GameInventory({
               </div>
             )}
             <div className="flex flex-wrap gap-1.5">
-              {onAddItem && (
-                <button
-                  onClick={() => void handleAdd()}
-                  disabled={addPending}
-                  className="flex flex-1 items-center justify-center gap-1 rounded border border-white/8 bg-white/[0.03] py-1.5 text-[0.7rem] text-white/70 transition-colors hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <Plus size={12} />
-                  {localizeUi("ui.characters.metadatatab.add")}
-                </button>
-              )}
               {selectedInventoryItem && onSetItemQuantity && (
                 <div
                   className="flex h-7 shrink-0 items-center overflow-hidden rounded border border-white/8 bg-white/[0.03]"
                   aria-label={localizeUi("ui.game.gameinventory.value1AmountControls", {
-                    value1: selectedInventoryItem.name,
+                    value1: selectedLabel,
                   })}
                 >
                   <button
@@ -669,9 +670,9 @@ export function GameInventory({
                     aria-label={
                       selectedInventoryItem.quantity > 1
                         ? localizeUi("ui.game.gameinventory.decreaseValue1Amount", {
-                            value1: selectedInventoryItem.name,
+                            value1: selectedLabel,
                           })
-                        : localizeUi("ui.game.gameinventory.deleteValue1", { value1: selectedInventoryItem.name })
+                        : localizeUi("ui.game.gameinventory.deleteValue1", { value1: selectedLabel })
                     }
                     title={
                       selectedInventoryItem.quantity > 1
@@ -697,7 +698,7 @@ export function GameInventory({
                     }}
                     disabled={amountPending}
                     aria-label={localizeUi("ui.game.gameinventory.value1Amount", {
-                      value1: selectedInventoryItem.name,
+                      value1: selectedLabel,
                     })}
                     title={localizeUi("ui.game.gameinventory.amountHint")}
                     className="h-full w-14 border-x border-white/8 bg-transparent px-1 text-center text-[0.7rem] font-semibold tabular-nums text-white/80 outline-none focus:bg-white/[0.05]"
@@ -708,7 +709,7 @@ export function GameInventory({
                     disabled={amountPending}
                     className="flex h-full w-7 items-center justify-center text-white/65 transition-colors hover:bg-white/[0.07] hover:text-white/90 disabled:cursor-not-allowed disabled:opacity-40"
                     aria-label={localizeUi("ui.game.gameinventory.increaseValue1Amount", {
-                      value1: selectedInventoryItem.name,
+                      value1: selectedLabel,
                     })}
                     title={localizeUi("ui.game.gameinventory.increaseAmount")}
                   >
@@ -724,7 +725,7 @@ export function GameInventory({
                     setSplitDraft(String(defaultInventorySplitSize(selectedInventoryItem.quantity)));
                   }}
                   className="flex h-7 shrink-0 items-center justify-center gap-1 rounded border border-white/8 bg-white/[0.03] px-2 text-[0.7rem] text-white/70 transition-colors hover:bg-white/[0.06]"
-                  aria-label={localizeUi("ui.game.gameinventory.splitValue1", { value1: selectedInventoryItem.name })}
+                  aria-label={localizeUi("ui.game.gameinventory.splitValue1", { value1: selectedLabel })}
                   title={localizeUi("ui.game.gameinventory.splitStack")}
                 >
                   <Scissors size={12} />
@@ -747,8 +748,8 @@ export function GameInventory({
                     }
                   }}
                   className="flex h-7 shrink-0 items-center justify-center gap-1 rounded border border-white/8 bg-white/[0.03] px-2 text-[0.7rem] text-white/70 transition-colors hover:bg-white/[0.06]"
-                  aria-label={localizeUi("ui.game.gameinventory.giveValue1", { value1: selectedInventoryItem.name })}
-                  title={localizeUi("ui.game.gameinventory.giveValue1", { value1: selectedInventoryItem.name })}
+                  aria-label={localizeUi("ui.game.gameinventory.giveValue1", { value1: selectedLabel })}
+                  title={localizeUi("ui.game.gameinventory.giveValue1", { value1: selectedLabel })}
                 >
                   <Gift size={12} />
                   {localizeUi("ui.game.gameinventory.give")}
@@ -756,7 +757,15 @@ export function GameInventory({
               )}
               {selectedInventoryItem && canInteract && onUseItem && (
                 <button
-                  onClick={() => handleUse(selectedInventoryItem.name)}
+                  onClick={() =>
+                    // A nickname is said with the item's own name, in the "Nickname (Name)" form the Game
+                    // Master's inventory block uses, so it knows what it is.
+                    handleUse(
+                      selectedInventoryItem.nickname
+                        ? `${selectedLabel} (${selectedInventoryItem.name})`
+                        : selectedLabel,
+                    )
+                  }
                   className="flex flex-1 items-center justify-center gap-1 rounded border border-amber-500/20 bg-amber-500/10 py-1.5 text-[0.7rem] font-semibold text-amber-400 transition-colors hover:bg-amber-500/15"
                 >
                   <Wand2 size={12} />
@@ -764,6 +773,33 @@ export function GameInventory({
                 </button>
               )}
             </div>
+            {onAddItem && (
+              <div className={cn("flex gap-1.5", selectedInventoryItem && "mt-2.5")}>
+                <input
+                  value={newItemName}
+                  onChange={(e) => setNewItemName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") setNewItemName("");
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void handleAdd();
+                    }
+                  }}
+                  disabled={addPending}
+                  aria-label={localizeUi("ui.game.gameinventory.newItemName")}
+                  placeholder={localizeUi("ui.game.gameinventory.itemName")}
+                  className="min-w-0 flex-1 rounded border border-white/10 bg-black/40 px-2 py-1.5 text-[0.7rem] text-white/85 outline-none transition-colors focus:border-amber-400/40"
+                />
+                <button
+                  onClick={() => void handleAdd()}
+                  disabled={addPending || !newItemName.trim()}
+                  className="flex shrink-0 items-center justify-center gap-1 rounded border border-white/8 bg-white/[0.03] px-2 py-1.5 text-[0.7rem] text-white/70 transition-colors hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Plus size={12} />
+                  {localizeUi("ui.characters.metadatatab.add")}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -822,6 +858,7 @@ interface InventorySlotProps {
 
 function InventorySlot({ item, globalIndex, holderName, selected, reorderEnabled, onClick }: InventorySlotProps) {
   const { t: localizeUi } = useUiTranslation();
+  const label = item ? gameInventoryStackLabel(item) : "";
   const enabled = reorderEnabled && Boolean(item);
   const slotData = { id: item?.id };
   const {
@@ -854,8 +891,8 @@ function InventorySlot({ item, globalIndex, holderName, selected, reorderEnabled
         item
           ? [
               item.quantity > 1
-                ? localizeUi("ui.game.inventoryslot.value1Value2", { value1: item.name, value2: item.quantity })
-                : item.name,
+                ? localizeUi("ui.game.inventoryslot.value1Value2", { value1: label, value2: item.quantity })
+                : label,
               holderName ? localizeUi("ui.game.gameinventory.carriedBy", { value1: holderName }) : null,
             ]
               .filter(Boolean)
@@ -866,8 +903,8 @@ function InventorySlot({ item, globalIndex, holderName, selected, reorderEnabled
         item
           ? [
               item.quantity > 1
-                ? localizeUi("ui.game.inventoryslot.value1XValue2", { value1: item.name, value2: item.quantity })
-                : item.name,
+                ? localizeUi("ui.game.inventoryslot.value1XValue2", { value1: label, value2: item.quantity })
+                : label,
               holderName ? localizeUi("ui.game.gameinventory.carriedBy", { value1: holderName }) : null,
             ]
               .filter(Boolean)
@@ -901,12 +938,12 @@ function InventorySlot({ item, globalIndex, holderName, selected, reorderEnabled
       {item && (
         <>
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-gradient-to-b from-white/8 to-white/[0.02] text-sm font-bold text-amber-400/80 ring-1 ring-white/8">
-            {item.name.charAt(0).toUpperCase()}
+            {label.charAt(0).toUpperCase()}
           </div>
           <div className="mt-1 flex min-h-0 w-full min-w-0 flex-1 flex-col items-center justify-center px-1">
             <div className="flex max-h-full min-h-0 w-full min-w-0 flex-col items-center gap-0.5 overflow-hidden max-md:overflow-y-auto max-md:overscroll-contain max-md:touch-pan-y">
               <span className="block w-full whitespace-normal break-words text-center text-[0.58rem] font-medium leading-tight text-white/80 [overflow-wrap:anywhere]">
-                {item.name}
+                {label}
               </span>
               {item.quantity > 1 && (
                 <span className="shrink-0 rounded bg-white/15 px-1.5 py-0.5 text-[0.55rem] font-semibold tabular-nums text-white">

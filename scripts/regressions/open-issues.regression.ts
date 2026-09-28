@@ -289,6 +289,7 @@ import {
   buildReferencedPersonaContext,
   extractPersonaReferenceIds,
   MAX_REFERENCED_CHARACTERS,
+  mergeGeneratedChatMacroVariables,
   normalizeChatMacroVariables,
   setLorebookEntryCounts,
 } from "../../packages/server/src/services/prompt/macro-context.js";
@@ -10718,10 +10719,19 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
     500,
     "persisted chat-local macro variables remain capped",
   );
+  const fullMacroVariables = Object.fromEntries(Array.from({ length: 500 }, (_, i) => [`v${i}`, "x"]));
+  assert.deepEqual(
+    mergeGeneratedChatMacroVariables(fullMacroVariables, fullMacroVariables, {
+      ...fullMacroVariables,
+      overflow: "generated",
+    }),
+    fullMacroVariables,
+    "generation writes reapply the macro-variable cap after merging request changes",
+  );
   assert.match(
     generateRouteSource,
-    /macroVariables: normalizeChatMacroVariables\(\{[\s\S]{0,200}normalizeChatMacroVariables\(current\.macroVariables\)[\s\S]{0,120}requestChanges/u,
-    "generation writes reapply the macro-variable cap after merging request changes",
+    /macroVariables: mergeGeneratedChatMacroVariables\(\s*current\.macroVariables,\s*persistedMacroVariableSnapshot,\s*chatMacroVariables,/u,
+    "generation persists macro variables through the bounded merge helper",
   );
 
   const perfDiagnosticsSource = readFileSync(

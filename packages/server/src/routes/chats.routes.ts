@@ -10,6 +10,10 @@ import {
   DECISION_PROMPT_QUESTION_LIMIT_SETTINGS_KEY,
   parseDecisionPromptQuestionLimit,
   PROFESSOR_MARI_ID,
+  CHAT_VARIABLE_STORED_NAME_RE,
+  MAX_CHAT_VARIABLES,
+  MAX_CHAT_VARIABLE_VALUE_LENGTH,
+  validateChatVariableName,
   createChatSchema,
   createMessageSchema,
   appendChatSummaryEntryToMetadata,
@@ -1313,6 +1317,72 @@ export async function chatsRoutes(app: FastifyInstance) {
         return reply.status(400).send({ error: "excludedLorebookIds must be an array of strings" });
       }
       incoming.excludedLorebookIds = Array.from(new Set(incoming.excludedLorebookIds as string[]));
+    }
+    if (Object.prototype.hasOwnProperty.call(incoming, "macroVariables")) {
+      // Chat variables are merged, never replaced: a generation running right
+      // now persists its own {{setvar}} writes into this same map, and metadata
+      // patches replace top-level keys, so sending the whole map would drop
+      // whatever that generation just saved. A null value means "remove this
+      // name" — an absent name is simply untouched.
+      const rawVariables = incoming.macroVariables;
+      if (!rawVariables || typeof rawVariables !== "object" || Array.isArray(rawVariables)) {
+        return reply.status(400).send({ error: "macroVariables must be an object" });
+      }
+      // This branch answers on its own, so it must not swallow the handling the
+      // keys below would have received.
+      if (Object.keys(incoming).length > 1) {
+        return reply.status(400).send({ error: "macroVariables must be patched on its own" });
+      }
+      const removedNames = new Set<string>();
+      // Null-prototype: assigning a string to a plain object's "__proto__" key
+      // hits the prototype setter and is silently dropped, so an existing
+      // variable of that name (only {{setvar}} can create one) would never
+      // update. Spreading this later copies the key as an own property.
+      const changedValues: Record<string, string> = Object.create(null) as Record<string, string>;
+      for (const [name, value] of Object.entries(rawVariables as Record<string, unknown>)) {
+        if (!CHAT_VARIABLE_STORED_NAME_RE.test(name)) {
+          return reply.status(400).send({ error: `Invalid chat variable name: ${name}` });
+        }
+        if (value === null) {
+          removedNames.add(name);
+          continue;
+        }
+        if (typeof value !== "string") {
+          return reply.status(400).send({ error: `Chat variable ${name} must be a string or null` });
+        }
+        if (value.length > MAX_CHAT_VARIABLE_VALUE_LENGTH) {
+          return reply.status(400).send({ error: `Chat variable ${name} is too long` });
+        }
+        changedValues[name] = value;
+      }
+      const { normalizeChatMacroVariables } = await import("../services/prompt/index.js");
+      let overflowed = false;
+      let invalidName: string | undefined;
+      const updated = await storage.patchMetadata(req.params.id, (freshMeta) => {
+        const saved = normalizeChatMacroVariables(freshMeta.macroVariables);
+        // Only names that still exist may use legacy setvar spelling.
+        invalidName = Object.keys(changedValues).find(
+          (name) => !Object.hasOwn(saved, name) && validateChatVariableName(name) !== null,
+        );
+        if (invalidName !== undefined) return {};
+        const merged = { ...saved, ...changedValues };
+        for (const name of removedNames) delete merged[name];
+        // normalizeChatMacroVariables keeps only the first MAX_CHAT_VARIABLES
+        // entries, so without this a name past the cap would be dropped while
+        // the request reported success.
+        if (Object.keys(merged).length > MAX_CHAT_VARIABLES) {
+          overflowed = true;
+          return {}; // change nothing; `incoming` still holds the unvalidated map
+        }
+        return { macroVariables: normalizeChatMacroVariables(merged) };
+      });
+      if (invalidName !== undefined) {
+        return reply.status(400).send({ error: `Invalid chat variable name: ${invalidName}` });
+      }
+      if (overflowed) {
+        return reply.status(400).send({ error: `A chat cannot hold more than ${MAX_CHAT_VARIABLES} variables` });
+      }
+      return updated ? normalizeChatForResponse(updated) : updated;
     }
     if (incoming.conversationSchedulesEnabled === false) {
       // Chat-scoped only: drop this chat's cached copy, but leave the character
@@ -4131,7 +4201,8 @@ export async function chatsRoutes(app: FastifyInstance) {
       collectExportJournalNpcNames(metadata, charNameMap),
     );
     const persona = await buildPersonaSnapshotForChat(app, chat);
-    const { buildPromptMacroContext, resolvePromptMessageMacros } = await import("../services/prompt/index.js");
+    const { buildPromptMacroContext, resolvePromptMessageMacros, normalizeChatMacroVariables } =
+      await import("../services/prompt/index.js");
     const exportCharacterIds = resolveActiveCharacterIds(charIds, metadata, {
       mode: (chat.mode as string | undefined) ?? "roleplay",
       allowEmpty: true,
@@ -4153,6 +4224,9 @@ export async function chatsRoutes(app: FastifyInstance) {
           : null,
       lastInput: [...msgs].reverse().find((msg) => msg.role === "user")?.content,
       chatId: chat.id,
+      // Without the chat's own variables an exported transcript would print a
+      // raw {{char1}} where the model was sent "Mary".
+      localVariables: normalizeChatMacroVariables(metadata.macroVariables),
       lastGenerationType: "export",
       macroSources: msgs.map((message) => message.content),
     });

@@ -431,7 +431,10 @@ export async function importSTLorebook(
       createdLorebook = Boolean(lorebook);
     }
 
-    if (!lorebook) throw new Error("Failed to create lorebook");
+    if (!lorebook) {
+      await discardImportedLorebookImages(restoredImages.values(), decodedImages.values());
+      return { error: "Failed to create lorebook" };
+    }
 
     const lorebookId = lorebook.id as string;
     const lorebookName = lbName;
@@ -511,8 +514,9 @@ export async function importSTLorebook(
         ...parseLorebookDecisionActivation(entry),
       };
 
-      const created = await storage.createEntry(input);
-      if (created) createdEntryIds.push(created.id);
+      const created = (await storage.createEntry(input)) as Record<string, unknown> | null;
+      if (typeof created?.id !== "string") throw new Error("Failed to create lorebook entry");
+      createdEntryIds.push(created.id);
       imported++;
     }
 

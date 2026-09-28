@@ -428,7 +428,9 @@ export function parseLorebookCsv(text: string): ParsedLorebookText {
     };
     row.cells.forEach((cell, index) => {
       const column = columns[index];
-      if (column) fields[column] = cell;
+      if (column) {
+        fields[column] = cell.startsWith("'") && csvNeedsTextPrefix(cell.slice(1)) ? cell.slice(1) : cell;
+      }
     });
     const result = buildEntry(fields);
     if (row.cells.length > header.cells.length && row.cells.slice(header.cells.length).some((cell) => cell.trim())) {
@@ -537,10 +539,13 @@ export function exportLorebookToMarkdown(input: LorebookTextExportInput): string
   return `${blocks.join("\n\n")}\n`;
 }
 
+/** Escape literal apostrophes too, so imports can undo one spreadsheet-safety prefix without losing them. */
+function csvNeedsTextPrefix(value: string): boolean {
+  return value.startsWith("'") || /^[\u0000-\u0020]*[=+\-@]/u.test(value) || /^[\t\r\n]/u.test(value);
+}
+
 function csvCell(value: string): string {
-  // Prefix formula-leading cells so spreadsheet apps treat exported data as text.
-  const formulaLeading = /^[\u0000-\u0020]*[=+\-@]/u.test(value) || /^[\t\r\n]/u.test(value);
-  const safeValue = formulaLeading ? `'${value}` : value;
+  const safeValue = csvNeedsTextPrefix(value) ? `'${value}` : value;
   return /[",\r\n]/.test(safeValue) || safeValue !== safeValue.trim()
     ? `"${safeValue.replace(/"/g, '""')}"`
     : safeValue;

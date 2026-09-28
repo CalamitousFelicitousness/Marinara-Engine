@@ -194,6 +194,41 @@ assert.equal(detectLorebookTextFormat("## Entry\n"), "markdown");
   });
   assert.ok(formulaCsv.includes("'=1+1,'=2+2,'@SUM(A1:A2)"), "formula-leading cells are exported as text");
   assert.ok(formulaCsv.includes("'  =3+3"), "leading whitespace before a formula is neutralized too");
+  const formulaEntries = parseLorebookCsv(formulaCsv).entries;
+  assert.equal(formulaEntries[0]!.name, "=1+1", "import removes the export-added formula prefix");
+  assert.deepEqual(formulaEntries[0]!.keys, ["=2+2"]);
+  assert.equal(formulaEntries[0]!.content, "@SUM(A1:A2)");
+  assert.equal(formulaEntries[1]!.name, "=3+3");
+  const csvContents = [
+    "=1+1",
+    "+1",
+    "-1",
+    "@SUM(A1:A2)",
+    "  =1+1",
+    "\u0000=1+1",
+    "\tplain",
+    "\nplain",
+    "'plain",
+    "''plain",
+    "'=1+1",
+    "''=1+1",
+    "'\tplain",
+    "'",
+    '\'"quoted",\nnext line',
+  ];
+  for (const content of csvContents) {
+    const original = [{ name: "Round trip", keys: ["key"], content }];
+    const exported = exportLorebookToCsv({ entries: original });
+    assert.equal(readCsvRows(exported).rows[1]!.cells[2]![0], "'", "spreadsheet formula triggers stay neutralized");
+    const imported = parseLorebookCsv(exported).entries[0]!;
+    assert.equal(
+      imported.content,
+      content,
+      `CSV preserves formula-like text and literal apostrophes: ${JSON.stringify(content)}`,
+    );
+    assert.equal(exportLorebookToCsv({ entries: [imported] }), exported, "re-export does not accumulate prefixes");
+  }
+  assert.equal(parseLorebookCsv("name,keys,content\nLiteral,key,'plain").entries[0]!.content, "'plain");
   const oversizedCsv = [
     "name,keys,content",
     ...Array.from({ length: LOREBOOK_TEXT_MAX_ENTRIES + 1 }, (_, index) => `Entry ${index},key${index},content`),

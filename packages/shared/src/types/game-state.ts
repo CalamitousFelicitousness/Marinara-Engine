@@ -155,6 +155,9 @@ export interface RPGAttributes {
 
 /** An item in the player's inventory. */
 export interface InventoryItem {
+  /** Which item of Game Mode's inventory this entry follows (see `gameInventoryItemId`), stamped the
+   *  first time the Engine moves it. Entries written without one are matched by name. */
+  item?: string;
   name: string;
   description: string;
   quantity: number;

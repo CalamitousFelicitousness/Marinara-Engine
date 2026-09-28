@@ -195,7 +195,9 @@ export interface DirectedCombatView {
   actorId?: string;
   party: Combatant[];
   enemies: Combatant[];
-  inventory: Array<{ name: string; quantity: number; description?: string }>;
+  /** One line per item, shown by `name`. `ownName` is the item's own name when `name` is a nickname:
+   *  what a spend is taken by, so a nickname never spends another item. */
+  inventory: Array<{ name: string; quantity: number; description?: string; ownName?: string }>;
   tactical?: TacticalCombatState;
   /** Present exactly when the style is `ruleset`. */
   ruleset?: DirectedRulesetView;

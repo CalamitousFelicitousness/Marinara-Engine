@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Restore all preserves conflicts reported by completed batches when a later batch fails, even if no messages were restored.
+
 - Restore all supports more than 5,000 trashed messages in one operation, reports messages already recovered if a later batch fails, and keeps remaining entries available for retry.
 
 - Restoring several trashed messages reports an error when every write fails, while keeping failed entries available for retry and preserving successful partial restores.

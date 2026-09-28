@@ -1417,7 +1417,7 @@ export function useRestoreTrashedMessages(chatId: string | null) {
           result.restoredMessageIds.push(...batch.restoredMessageIds);
           result.conflictEntryIds.push(...batch.conflictEntryIds);
         } catch (error) {
-          if (result.restoredMessageIds.length === 0) throw error;
+          if (offset === 0) throw error;
           result.error = error instanceof Error ? error.message : translate("ui.chat.messagetrash.restoreFailed");
           break;
         }

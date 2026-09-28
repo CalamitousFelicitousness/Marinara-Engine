@@ -370,6 +370,8 @@ const CSV_COLUMN_ALIASES: Record<string, keyof RawEntryFields> = {
   constant: "constant",
   probability: "probability",
 };
+const CSV_ESCAPE_COLUMN = "marinara_csv_escape";
+const CSV_ESCAPE_VERSION = "apostrophe-v1";
 
 export function parseLorebookCsv(text: string): ParsedLorebookText {
   if (text.length > LOREBOOK_TEXT_MAX_CHARS) {
@@ -392,9 +394,12 @@ export function parseLorebookCsv(text: string): ParsedLorebookText {
   const header = rows.shift();
   if (!header) return finish("csv", null, [], fileIssues);
 
-  const columns = header.cells.map((cell) => CSV_COLUMN_ALIASES[cell.trim().toLowerCase()] ?? null);
+  const columnNames = header.cells.map((cell) => cell.trim().toLowerCase());
+  const columns = columnNames.map((name) => CSV_COLUMN_ALIASES[name] ?? null);
+  const escapeIndex = columnNames.indexOf(CSV_ESCAPE_COLUMN);
+  const uniqueEscapeColumn = escapeIndex >= 0 && escapeIndex === columnNames.lastIndexOf(CSV_ESCAPE_COLUMN);
   header.cells.forEach((cell, index) => {
-    if (!columns[index] && cell.trim()) {
+    if (!columns[index] && cell.trim() && columnNames[index] !== CSV_ESCAPE_COLUMN) {
       fileIssues.push({
         severity: "warning",
         code: "unknown_column",
@@ -417,6 +422,8 @@ export function parseLorebookCsv(text: string): ParsedLorebookText {
   }
 
   const built = rows.map((row) => {
+    // External CSV data stays literal unless this row explicitly declares our escaping format.
+    const escaped = uniqueEscapeColumn && row.cells[escapeIndex] === CSV_ESCAPE_VERSION;
     const fields: RawEntryFields = {
       name: "",
       keys: "",
@@ -429,7 +436,7 @@ export function parseLorebookCsv(text: string): ParsedLorebookText {
     row.cells.forEach((cell, index) => {
       const column = columns[index];
       if (column) {
-        fields[column] = cell.startsWith("'") && csvNeedsTextPrefix(cell.slice(1)) ? cell.slice(1) : cell;
+        fields[column] = escaped && cell.startsWith("'") && csvNeedsTextPrefix(cell.slice(1)) ? cell.slice(1) : cell;
       }
     });
     const result = buildEntry(fields);
@@ -559,6 +566,7 @@ export const LOREBOOK_CSV_COLUMNS = [
   "enabled",
   "constant",
   "probability",
+  CSV_ESCAPE_COLUMN,
 ] as const;
 
 export function exportLorebookToCsv(input: LorebookTextExportInput): string {
@@ -574,6 +582,7 @@ export function exportLorebookToCsv(input: LorebookTextExportInput): string {
         entry.enabled === false ? "false" : "true",
         entry.constant ? "true" : "false",
         entry.probability === null || entry.probability === undefined ? "" : String(entry.probability),
+        CSV_ESCAPE_VERSION,
       ]
         .map(csvCell)
         .join(","),

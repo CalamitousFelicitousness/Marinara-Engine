@@ -11,7 +11,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - Lorebooks gain lint checks, a scanner preview, opt-in activation statistics, bulk entry edits, selected enable/disable actions, and Markdown/CSV import and export. Chat previews explain their context limits, and text imports enforce bounded size and entry counts (#6698).
 - Lorebook Markdown export handles long whitespace runs without excessive processing time.
-- Lorebook CSV exports keep spreadsheet formulas inactive and restore their original text, including literal leading apostrophes, when imported again.
+- Lorebook CSV exports keep spreadsheet formulas inactive and mark their escaping format so imports restore the original text without altering apostrophes in independently authored CSV files.
 
 - Professor Mari discards pending package-action discovery when a package is disabled, removed or replaced, so an older activation cannot start a new action.
 

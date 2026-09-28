@@ -229,6 +229,28 @@ assert.equal(detectLorebookTextFormat("## Entry\n"), "markdown");
     assert.equal(exportLorebookToCsv({ entries: [imported] }), exported, "re-export does not accumulate prefixes");
   }
   assert.equal(parseLorebookCsv("name,keys,content\nLiteral,key,'plain").entries[0]!.content, "'plain");
+  for (const content of ["'=foo", "''foo", "''=foo", "'  =foo", "'\tfoo"]) {
+    const raw = parseLorebookCsv(`name,keys,content\n'=Name,''key,${content}`).entries[0]!;
+    assert.equal(raw.name, "'=Name", "unmarked CSV names are literal");
+    assert.deepEqual(raw.keys, ["''key"], "unmarked CSV keys are literal");
+    assert.equal(raw.content, content, "unmarked CSV apostrophes are literal");
+  }
+  const markerHeader = "name,keys,content,marinara_csv_escape";
+  for (const marker of ["", "apostrophe-v2", "apostrophe-v1 "]) {
+    const raw = parseLorebookCsv(`${markerHeader}\nRaw,key,'=foo,${marker}`);
+    assert.equal(raw.entries[0]!.content, "'=foo", "unknown or empty markers never remove apostrophes");
+    assert.ok(!raw.issues.some((issue) => issue.code === "unknown_column"), "metadata column is recognized");
+  }
+  const mixed = parseLorebookCsv(`${markerHeader}\nEngine,key,'=foo,apostrophe-v1\nRaw,key,'=foo`);
+  assert.deepEqual(
+    mixed.entries.map((entry) => entry.content),
+    ["=foo", "'=foo"],
+    "escaping is marked per row",
+  );
+  const duplicateMarker = parseLorebookCsv(
+    `${markerHeader},marinara_csv_escape\nRaw,key,'=foo,apostrophe-v1,apostrophe-v1`,
+  );
+  assert.equal(duplicateMarker.entries[0]!.content, "'=foo", "ambiguous duplicate markers preserve literal data");
   const oversizedCsv = [
     "name,keys,content",
     ...Array.from({ length: LOREBOOK_TEXT_MAX_ENTRIES + 1 }, (_, index) => `Entry ${index},key${index},content`),

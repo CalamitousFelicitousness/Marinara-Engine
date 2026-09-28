@@ -288,6 +288,7 @@ export function AppShell() {
     let focusTimers: number[] = [];
     let orientationTimers: number[] = [];
     let largestViewportHeight = 0;
+    let viewportWidth = window.innerWidth;
     const supportsVirtualKeyboard = navigator.maxTouchPoints > 0 || window.matchMedia("(any-pointer: coarse)").matches;
     const isIosWebKit = isIosWebKitBrowser(navigator.userAgent, navigator.platform, navigator.maxTouchPoints);
     root.toggleAttribute("data-mari-ios-webkit", isIosWebKit);
@@ -305,6 +306,12 @@ export function AppShell() {
           root.clientHeight,
         ].filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value > 0);
         const unzoomedHeight = heightCandidates.length > 0 ? Math.min(...heightCandidates) : window.innerHeight;
+        // Split-view/window resizing establishes a new baseline. A software
+        // keyboard changes height alone, so it must retain the previous one.
+        if (window.innerWidth !== viewportWidth) {
+          viewportWidth = window.innerWidth;
+          largestViewportHeight = 0;
+        }
         largestViewportHeight = Math.max(largestViewportHeight, unzoomedHeight);
         const keyboardOpen = supportsVirtualKeyboard && largestViewportHeight - unzoomedHeight >= 80;
         // Preserve normal pinch magnification, but fit the visible area while

@@ -21464,6 +21464,19 @@ test("zoomed mobile chat keeps the composer above the keyboard and restores on d
       await expect.poll(async () => (await shell.boundingBox())?.y).toBe(original!.y);
       await textarea.blur();
     }
+    // Split-view changes width as well as height; it must establish a new
+    // keyboard baseline, including while pinch zoom is still active.
+    await page.setViewportSize({ width: 320, height: 600 });
+    await setViewport(300, 0, 2);
+    await expect(page.locator("html")).not.toHaveAttribute("data-mari-software-keyboard-open");
+    await expect.poll(async () => (await shell.boundingBox())?.height).toBe(600);
+    await textarea.focus();
+    await setViewport(160, 0, 2);
+    await expect(page.locator("html")).toHaveAttribute("data-mari-software-keyboard-open", "");
+    await expect.poll(async () => (await shell.boundingBox())?.height).toBe(160);
+    await setViewport(300, 0, 2);
+    await expect(page.locator("html")).not.toHaveAttribute("data-mari-software-keyboard-open");
+    await expect.poll(async () => (await shell.boundingBox())?.height).toBe(600);
   } finally {
     await page.request.delete(`/api/chats/${chat.id}?force=true`);
   }

@@ -291,7 +291,13 @@ const apples = (): GameInventoryStack[] => [
     gameInventoryPlainItemId("\u304b\u3099"),
     "however the name was typed: composed or not",
   );
-  assert.match(gameInventoryPlainItemId("🍎"), /^plain:~[0-9a-z]+$/, "no letters at all: a fingerprint");
+  assert.notEqual(gameInventoryPlainItemId("Sword +1"), gameInventoryPlainItemId("Sword -1"), "a sign is kept");
+  assert.notEqual(gameInventoryPlainItemId("Sword +1"), gameInventoryPlainItemId("Sword 1"));
+  assert.equal(gameInventoryPlainItemId("Sword+1"), gameInventoryPlainItemId("Sword +1"), "spaced or not");
+  assert.equal(gameInventoryPlainItemId("Sword \u22121"), gameInventoryPlainItemId("Sword -1"), "a real minus too");
+  assert.equal(gameInventoryPlainItemId("-1 Sword"), gameInventoryPlainItemId("\u22121 sword"), "at the start too");
+  assert.equal(gameInventoryPlainItemId("Mk-2 Lamp"), gameInventoryPlainItemId("Mk 2 Lamp"), "a hyphen is a dash");
+  assert.equal(gameInventoryPlainItemId("Rope + Hook"), gameInventoryPlainItemId("Rope Hook"), "no number, no sign");
   assert.notEqual(gameInventoryPlainItemId("🍎"), gameInventoryPlainItemId("🍐"));
   const long = `${"a".repeat(50)}1`;
   assert.notEqual(gameInventoryPlainItemId(long), gameInventoryPlainItemId(`${"a".repeat(50)}2`), "not cut into one");
@@ -349,6 +355,13 @@ const apples = (): GameInventoryStack[] => [
     ],
   );
   assert.equal(gameInventoryItemId(cordCarried[1]!), gameInventoryPlainItemId("Cord"));
+  // A signed name reads back off its id, so a nicknamed "Sword -1" comes back as that very item.
+  const [cursed] = carryGameInventory(
+    [],
+    [{ item: gameInventoryPlainItemId("Sword -1"), name: "Old Bitey", description: "", quantity: 1, location: "" }],
+  );
+  assert.equal(gameInventoryItemId(cursed!), gameInventoryPlainItemId("Sword -1"));
+  assert.equal(gameInventoryStackLabel(cursed!), "Old Bitey");
   // An id that cannot be read back into a name (a fingerprint) comes back by name, and one cut short
   // comes back as the same item, the nickname shown over whatever own name it read back.
   const fingerprinted = gameInventoryPlainItemId("🍎");

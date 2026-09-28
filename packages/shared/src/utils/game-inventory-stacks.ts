@@ -84,7 +84,13 @@ export function gameInventoryPlainItemId(name: string): string {
     .normalize("NFKD")
     .replace(/([\p{Script=Latin}\p{Script=Greek}\p{Script=Cyrillic}])\p{M}+/gu, "$1")
     .normalize("NFC");
-  const dashed = key.replace(/[^\p{L}\p{N}\p{M}]+/gu, "-");
+  // A sign in front of a number is part of the name, so "Sword +1" and "Sword -1" stay two items; a
+  // dash right after a letter or digit is only a hyphen. Every other mark between words is a dash.
+  const dashed = key
+    .replace(/(\+)(?=\p{N})|(?<![\p{L}\p{N}\p{M}])([-\u2212])(?=\p{N})|[^\p{L}\p{N}\p{M}]/gu, (_, plus, minus) =>
+      plus ? "-+" : minus ? "-\u2212" : "-",
+    )
+    .replace(/-+/g, "-");
   // Leading and trailing dashes are trimmed by walking in from each end, not by an anchored pattern,
   // which could backtrack over a long run of dashes in a name the player typed.
   let start = 0;

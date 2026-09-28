@@ -7638,7 +7638,7 @@
   "ui.lorebooks.expandeddrawer.imageCaption": "Caption",
   "ui.lorebooks.expandeddrawer.imageCaptionPlaceholder": "Optional caption for this image",
   "ui.lorebooks.expandeddrawer.images": "Reference images",
-  "ui.lorebooks.expandeddrawer.imagesHelp": "Images sent to the model whenever this entry activates. Up to 4 images, 5 MB each. PNG, JPEG, or WebP.",
+  "ui.lorebooks.expandeddrawer.imagesHelp": "Reference images may be sent when this entry activates, subject to model support and request limits. Up to 4 images, 5 MB each. PNG, JPEG, or WebP.",
   "ui.lorebooks.expandeddrawer.imagesLimitNotice": "Some lorebook reference images were skipped to keep this request within its image limit. Entry text was still sent.",
   "ui.lorebooks.expandeddrawer.imagesUnavailableNotice": "Some lorebook reference images could not be loaded. Entry text and captions were still sent.",
   "ui.lorebooks.expandeddrawer.imagesUnsupportedModelNotice": "Lorebook reference images were skipped because this model does not accept images. Entry text and captions were still sent.",

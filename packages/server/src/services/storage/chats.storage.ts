@@ -1921,16 +1921,16 @@ export function createChatsStorage(db: DB) {
       );
     },
 
-    async pruneLorebookChatMetadata(remove: () => Promise<string[]>, lorebookId?: string) {
+    async pruneLorebookChatMetadata(remove: (tx: DB) => Promise<string[]>, lorebookId?: string) {
       // Match the existing queue-before-transaction order. Deletion and metadata cleanup roll back together.
       for (;;) {
         const lockedIds = new Set((await db.select({ id: chats.id }).from(chats)).map((chat) => chat.id));
         const complete = await withPatchQueues(metadataPatchQueues, [...lockedIds], () =>
-          db.transaction(async () => {
+          db.transaction(async (tx) => {
             const allChats = await db.select().from(chats);
             // A chat created while waiting may also reference this book; reacquire all queues before deleting.
             if (allChats.some((chat) => !lockedIds.has(chat.id))) return false;
-            const removedEntryIds = new Set(await remove());
+            const removedEntryIds = new Set(await remove(tx));
             for (const chat of allChats) {
               const metadata = parseMetadata(chat.metadata);
               const hasBook =

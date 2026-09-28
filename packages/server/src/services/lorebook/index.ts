@@ -5,7 +5,7 @@
 import type { DB } from "../../db/connection.js";
 import { inArray } from "../../db/file-query.js";
 import { messages as messagesTable } from "../../db/schema/index.js";
-import { LIMITS } from "@marinara-engine/shared";
+import { LIMITS, estimateTextTokens } from "@marinara-engine/shared";
 import { logger } from "../../lib/logger.js";
 import { isFeatureEnabled } from "../features/feature-settings.js";
 import type {
@@ -734,6 +734,7 @@ function trySelectBudgetedLorebookEntry(
   const fitted = fitLorebookEntryToBudget(
     candidate,
     (tokens) => !exceedsLorebookBudget(tokens) && !exceedsGlobalBudget(tokens),
+    false,
   );
 
   if (!fitted) {
@@ -760,6 +761,41 @@ function trySelectBudgetedLorebookEntry(
   state.totalTokens += entryTokens;
 
   return { selected: true, entry: fitted.candidate };
+}
+
+function addImagesToBudgetedEntries(
+  selected: ActivatedEntry[],
+  state: LorebookBudgetSelectionState,
+  lorebooksById: ReadonlyMap<string, Pick<Lorebook, "tokenBudget">>,
+  tokenBudget: number,
+): ActivatedEntry[] {
+  return selected.map((candidate) => {
+    const current = state.selected.find((entry) => entry.entry.id === candidate.entry.id) ?? candidate;
+    const textTokens = estimateTextTokens(candidate.entry.content);
+    const oldTokens = textTokens;
+    const lorebookId = candidate.entry.lorebookId;
+    const lorebook = lorebooksById.get(lorebookId);
+    const lorebookTokens = state.perLorebookTokens.get(lorebookId) ?? 0;
+    const fitted = fitLorebookEntryToBudget(
+      candidate,
+      (tokens) => {
+        const nextLorebookTokens = lorebookTokens - oldTokens + tokens;
+        const nextGlobalTokens = state.totalTokens - oldTokens + tokens;
+        return (
+          ((lorebook?.tokenBudget ?? 0) <= 0 || nextLorebookTokens <= (lorebook?.tokenBudget ?? 0)) &&
+          (tokenBudget <= 0 || nextGlobalTokens <= tokenBudget)
+        );
+      },
+      true,
+    );
+    if (!fitted) return current;
+    const delta = fitted.tokens - oldTokens;
+    state.perLorebookTokens.set(lorebookId, lorebookTokens + delta);
+    state.totalTokens += delta;
+    const index = state.selected.findIndex((entry) => entry.entry.id === candidate.entry.id);
+    if (index >= 0) state.selected[index] = fitted.candidate;
+    return fitted.candidate;
+  });
 }
 
 function toBudgetSkippedEntries(
@@ -831,6 +867,11 @@ function selectBudgetedLorebookEntryBatch(
       }
     }
 
+    selectedFromCandidates.splice(
+      0,
+      selectedFromCandidates.length,
+      ...addImagesToBudgetedEntries(selectedFromCandidates, nextState, lorebooksById, tokenBudget),
+    );
     selectedFromCandidates.sort(lorebookInjectionOrder);
 
     if (sameActivatedEntrySet(pool, selectedFromCandidates)) {
@@ -864,6 +905,11 @@ function selectBudgetedLorebookEntryBatch(
     }
   }
 
+  selectedFromCandidates.splice(
+    0,
+    selectedFromCandidates.length,
+    ...addImagesToBudgetedEntries(selectedFromCandidates, nextState, lorebooksById, tokenBudget),
+  );
   selectedFromCandidates.sort(lorebookInjectionOrder);
   if (sameActivatedEntrySet(pool, selectedFromCandidates)) {
     commitLorebookResolutionPass(pass);

@@ -92,10 +92,11 @@ export interface GmPromptContext {
   /** Available sprite expressions per character (name → expressions + custom fullBody aliases) */
   characterSprites?: CharacterSpriteInfo[];
   /** Player's current inventory items (for GM context) */
-  playerInventory?: Array<{ name: string; quantity: number }>;
+  /** `ownName` is the item's own name when `name` is a nickname the player gave it. */
+  playerInventory?: Array<{ name: string; quantity: number; ownName?: string }>;
   /** Each bag's totals, the player's first (no `holder`). Read instead of `playerInventory` once
    *  anybody but the player carries something, so the Game Master knows who holds what. */
-  partyInventory?: Array<{ holder?: string; items: Array<{ name: string; quantity: number }> }>;
+  partyInventory?: Array<{ holder?: string; items: Array<{ name: string; quantity: number; ownName?: string }> }>;
   /** Language for all narration and dialogue */
   language?: string;
   /** User-overridable GM instruction body. Wrapped in <instructions> before sending. */
@@ -1053,9 +1054,15 @@ export function buildGmFormatReminder(
   // An experience that tracks items itself owns the whole loop, so asking the GM for [inventory:] here
   // would only produce commands nothing consumes.
   const experienceOwnsInventory = ctx.experienceProvidedSystems?.inventory === true;
+  // A nicknamed item is shown with its own name too, which is how the Game Master can also name it.
+  const inventoryName = (item: { name?: unknown; ownName?: unknown } | undefined) => {
+    const name = normalizePromptText(item?.name);
+    const own = normalizePromptText(item?.ownName);
+    return name && own && own.toLowerCase() !== name.toLowerCase() ? `${name} (${own})` : name;
+  };
   const playerInventory = Array.isArray(ctx.playerInventory)
     ? ctx.playerInventory.flatMap((item) => {
-        const name = normalizePromptText(item?.name);
+        const name = inventoryName(item);
         if (!name) return [];
         const quantity =
           typeof item?.quantity === "number" && Number.isFinite(item.quantity) ? Math.max(1, item.quantity) : 1;
@@ -1066,7 +1073,7 @@ export function buildGmFormatReminder(
   const partyBags = (Array.isArray(ctx.partyInventory) ? ctx.partyInventory : []).flatMap((bag) => {
     const holder = bag.holder ? normalizePromptText(bag.holder) : "";
     const items = (Array.isArray(bag.items) ? bag.items : []).flatMap((item) => {
-      const name = normalizePromptText(item?.name);
+      const name = inventoryName(item);
       if (!name) return [];
       const quantity =
         typeof item?.quantity === "number" && Number.isFinite(item.quantity) ? Math.max(1, item.quantity) : 1;
@@ -1214,7 +1221,7 @@ export function buildGmFormatReminder(
     ...(experienceOwnsInventory
       ? []
       : [
-          `- [inventory: action="add|remove|give" item="Item A, Item B" count="3" who="Name" to="Name"] - every real item gain or loss, keep names short and use count/quantity for stacked items. Everyone in the party carries their own things: who is whose bag an item goes into or comes out of, and leaving it out means the player (a remove without who then takes from the rest of the party once the player has none). A give hands items from who to to. Never write result, reason or now yourself: the Engine adds them, and a refused one did not happen.`,
+          `- [inventory: action="add|remove|give" item="Item A, Item B" count="3" who="Name" to="Name"] - every real item gain or loss, keep names short and use count/quantity for stacked items. Everyone in the party carries their own things: who is whose bag an item goes into or comes out of, and leaving it out means the player (a remove without who then takes from the rest of the party once the player has none). A give hands items from who to to. An item listed as "Nickname (Name)" is one item: write either name in item, never both. Never write result, reason or now yourself: the Engine adds them, and a refused one did not happen.`,
         ]),
     `- [Note: contents] or [Book: contents] - when a new readable note or book is acquired and should be tracked in the journal.`,
     `- [state: exploration|dialogue|combat|travel_rest] - only on actual mode transitions. If you're planning to use [state: combat], this one ALWAYS has to be at the end of the turn, as it initiates a new combat generation and UI.`,

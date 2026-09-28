@@ -27,6 +27,8 @@ import {
   createLorebookEntrySchema,
   updateLorebookEntrySchema,
   bulkUpdateLorebookEntriesSchema,
+  lorebookBulkEditSchema,
+  lorebookBulkDeleteSchema,
   createLorebookFolderSchema,
   updateLorebookFolderSchema,
   LOCAL_SIDECAR_CONNECTION_ID,
@@ -40,6 +42,7 @@ import {
   type LorebookFolder,
 } from "@marinara-engine/shared";
 import type { ExportEnvelope } from "@marinara-engine/shared";
+import { setLorebooksEnabledSchema, type SetLorebooksEnabledResult } from "@marinara-engine/shared";
 import { createLorebooksStorage } from "../services/storage/lorebooks.storage.js";
 import { createChatsStorage } from "../services/storage/chats.storage.js";
 import { createCharactersStorage } from "../services/storage/characters.storage.js";
@@ -47,6 +50,8 @@ import { resolveChatUserIdentity } from "../services/chat-user-identity.js";
 import { createGameStateStorage } from "../services/storage/game-state.storage.js";
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
 import { filterRelevantLorebooks, processLorebooks } from "../services/lorebook/index.js";
+import { runLorebookTestScan } from "../services/lorebook/test-scan.js";
+import { listLorebookActivationStats } from "../services/lorebook/activation-stats.js";
 import {
   buildLorebookEntryEmbeddingText,
   buildLorebookSemanticEmbeddingsById,
@@ -79,9 +84,14 @@ import { DATA_DIR } from "../utils/data-dir.js";
 import { assertInsideDir, extensionFromImageMime, isAllowedImageBuffer } from "../utils/security.js";
 import { parseLibraryPageQuery } from "../utils/list-pagination.js";
 import { createSeededRandom } from "../services/lorebook/seeded-random.js";
+import { lorebookTextRoutes } from "./lorebook-text.routes.js";
 import AdmZip from "adm-zip";
 
 const LOREBOOK_IMAGES_DIR = join(DATA_DIR, "lorebooks", "images");
+/** Pasted test text is capped; the scanner only looks at recent context anyway. */
+const LOREBOOK_TEST_MAX_TEXT = 200_000;
+/** Request cap for the test route: room for the capped text in any encoding, far below the upload limit. */
+const LOREBOOK_TEST_BODY_LIMIT = 1024 * 1024;
 
 function parseCsvQuery(value: unknown) {
   if (typeof value !== "string" || !value.trim()) return [];
@@ -407,6 +417,9 @@ function buildTransferredEntryInput(
 export async function lorebooksRoutes(app: FastifyInstance) {
   const storage = createLorebooksStorage(app.db);
 
+  // Markdown / CSV import and export (/import-text, /:id/import-text, /:id/export-text).
+  await app.register(lorebookTextRoutes);
+
   // ── Lorebooks CRUD ──
 
   app.get("/", async (req) => {
@@ -486,6 +499,34 @@ export async function lorebooksRoutes(app: FastifyInstance) {
     if (!updated) return reply.status(404).send({ error: "Lorebook not found" });
     await syncCharacterBookFromLorebook(app.db, req.params.id);
     return updated;
+  });
+
+  app.post("/bulk-enabled", async (req, reply) => {
+    const parsed = setLorebooksEnabledSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: parsed.error.issues[0]?.message ?? "Invalid request" });
+    }
+    const { ids, enabled } = parsed.data;
+    const result: SetLorebooksEnabledResult = { changedIds: [], unchangedIds: [], missingIds: [] };
+    for (const id of ids) {
+      const lorebook = await storage.getById(id);
+      if (!lorebook) {
+        result.missingIds.push(id);
+        continue;
+      }
+      if (lorebook.enabled === enabled) {
+        result.unchangedIds.push(id);
+        continue;
+      }
+      const updated = await storage.update(id, { enabled });
+      if (!updated) {
+        result.missingIds.push(id);
+        continue;
+      }
+      await syncCharacterBookFromLorebook(app.db, id);
+      result.changedIds.push(id);
+    }
+    return result;
   });
 
   app.post<{ Params: { id: string } }>("/:id/image", async (req, reply) => {
@@ -756,6 +797,37 @@ export async function lorebooksRoutes(app: FastifyInstance) {
       }
       throw err;
     }
+  });
+
+  /** Bulk editor: field changes plus key add/remove across many entries, all or nothing. */
+  app.post<{ Params: { id: string } }>("/:id/entries/bulk-edit", async (req, reply) => {
+    const parsed = lorebookBulkEditSchema.safeParse(req.body);
+    if (!parsed.success) return reply.status(400).send({ error: parsed.error.issues[0]?.message ?? "Invalid request" });
+    if (!(await storage.getById(req.params.id))) return reply.status(404).send({ error: "Lorebook not found" });
+    try {
+      const result = await storage.bulkEditEntries(req.params.id, parsed.data);
+      if (result.updated > 0) await syncCharacterBookFromLorebook(app.db, req.params.id);
+      return result;
+    } catch (err) {
+      if (
+        err instanceof Error &&
+        (err.message === "One or more selected entries do not belong to this lorebook" ||
+          err.message === "folderId does not belong to this lorebook")
+      ) {
+        return reply.status(400).send({ error: err.message });
+      }
+      throw err;
+    }
+  });
+
+  /** Bulk editor: delete many entries of this lorebook in one pass. Unknown ids are ignored. */
+  app.post<{ Params: { id: string } }>("/:id/entries/bulk-delete", async (req, reply) => {
+    const parsed = lorebookBulkDeleteSchema.safeParse(req.body);
+    if (!parsed.success) return reply.status(400).send({ error: parsed.error.issues[0]?.message ?? "Invalid request" });
+    if (!(await storage.getById(req.params.id))) return reply.status(404).send({ error: "Lorebook not found" });
+    const result = await storage.bulkRemoveEntries(req.params.id, parsed.data.entryIds);
+    if (result.deleted > 0) await syncCharacterBookFromLorebook(app.db, req.params.id);
+    return result;
   });
 
   app.post<{ Params: { id: string } }>("/:id/entries/transfer", async (req, reply) => {
@@ -1244,6 +1316,68 @@ export async function lorebooksRoutes(app: FastifyInstance) {
       totalEntries: result.totalEntries,
       budgetSkippedEntries: result.budgetSkippedEntries,
     };
+  });
+
+  // ── Test tool: which entries of this lorebook would fire on some text, and why ──
+
+  app.post<{ Params: { id: string }; Body: { text?: unknown; chatId?: unknown } }>(
+    "/:id/test",
+    { bodyLimit: LOREBOOK_TEST_BODY_LIMIT },
+    async (req, reply) => {
+      const lorebook = (await storage.getById(req.params.id)) as unknown as Lorebook | null;
+      if (!lorebook) return reply.status(404).send({ error: "Lorebook not found" });
+      const chatId = typeof req.body?.chatId === "string" && req.body.chatId.trim() ? req.body.chatId.trim() : null;
+      const text = typeof req.body?.text === "string" ? req.body.text.slice(0, LOREBOOK_TEST_MAX_TEXT) : "";
+
+      let messages: Array<{ role: string; content: string }> = [];
+      let activeCharacterIds: string[] = [];
+      let activeCharacterTags: string[] = [];
+      let generationTriggers = ["chat"];
+      if (chatId) {
+        const chatsStorage = createChatsStorage(app.db);
+        const chat = await chatsStorage.getById(chatId);
+        if (!chat) return reply.status(404).send({ error: "Chat not found" });
+        messages = (await chatsStorage.listMessages(chatId)).map((message) => ({
+          role: message.role === "narrator" ? "system" : String(message.role),
+          content: typeof message.content === "string" ? message.content : "",
+        }));
+        activeCharacterIds = asStringArray(chat.characterIds);
+        const characterRows = await createCharactersStorage(app.db).getByIds(activeCharacterIds);
+        activeCharacterTags = characterRows.flatMap((row) => {
+          const data = parseRecord(row.data);
+          return Array.isArray(data.tags) ? data.tags.filter((tag): tag is string => typeof tag === "string") : [];
+        });
+        generationTriggers = resolveScanGenerationTriggers(chat.mode).filter((trigger) => trigger !== "test_scan");
+      } else if (text.trim()) {
+        messages = [{ role: "user", content: text }];
+      }
+
+      const [entries, folders] = await Promise.all([
+        storage.listEntries(lorebook.id),
+        storage.listFolders(lorebook.id),
+      ]);
+      return runLorebookTestScan({
+        lorebook,
+        entries: entries as unknown as LorebookEntry[],
+        folders: folders as unknown as LorebookFolder[],
+        messages,
+        activeCharacterIds,
+        activeCharacterTags,
+        generationTriggers,
+      });
+    },
+  );
+
+  // ── Activation statistics (counted during real generations) ──
+
+  app.get<{ Params: { id: string } }>("/:id/activation-stats", async (req, reply) => {
+    const lorebook = await storage.getById(req.params.id);
+    if (!lorebook) return reply.status(404).send({ error: "Lorebook not found" });
+    const entries = (await storage.listEntries(req.params.id)) as unknown as Array<{ id: string }>;
+    return listLorebookActivationStats(
+      app.db,
+      entries.map((entry) => entry.id),
+    );
   });
 
   // ── Vectorize: generate embeddings for all entries in a lorebook ──

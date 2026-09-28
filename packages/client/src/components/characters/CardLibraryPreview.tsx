@@ -3,6 +3,7 @@ import type { AvatarCrop } from "@marinara-engine/shared";
 import { useTranslation } from "react-i18next";
 import { cn, getAvatarCropStyle, isLegacyAvatarCrop } from "../../lib/utils";
 import { formatEstimatedTokens } from "../../lib/character-token-count";
+import { AvatarImage } from "./AvatarImage";
 
 export type LibraryPreviewCard = {
   id: string;
@@ -36,10 +37,11 @@ export function CardLibraryPreview({
   const placeholderClass =
     kind === "personas" ? "mari-avatar-placeholder--persona" : "mari-avatar-placeholder--character";
   const portrait = card.avatarPath ? (
-    <img
+    <AvatarImage
       src={card.avatarPath}
       alt={card.name}
       loading="lazy"
+      iconSize="1.5rem"
       className="h-full w-full object-cover"
       style={getAvatarCropStyle(card.avatarCrop)}
     />

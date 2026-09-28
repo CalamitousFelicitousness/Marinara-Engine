@@ -3064,7 +3064,7 @@ export function createChatsStorage(db: DB) {
         return [];
       });
       forgetDeletedLorebookScanKeep([id]);
-      if (removedEntries.length > 0) await this.pruneLorebookChatMetadata(async () => removedEntries);
+      if (removedEntries.length > 0) await this.pruneLorebookChatMetadata(async (_tx) => removedEntries);
     },
 
     async removeMessages(ids: string[], chatId?: string) {
@@ -3073,7 +3073,7 @@ export function createChatsStorage(db: DB) {
       const removedEntryIds: string[] = [];
       const finishDeletion = async () => {
         forgetDeletedLorebookScanKeep(ids);
-        if (removedEntryIds.length > 0) await this.pruneLorebookChatMetadata(async () => removedEntryIds);
+        if (removedEntryIds.length > 0) await this.pruneLorebookChatMetadata(async (_tx) => removedEntryIds);
         for (const [affectedChatId, createdAt] of earliestByChat) {
           await invalidateMemoryChunksFrom(db, affectedChatId, createdAt);
           await refreshChatLastMessageAt(affectedChatId);

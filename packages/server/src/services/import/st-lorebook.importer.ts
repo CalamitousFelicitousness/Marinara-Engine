@@ -521,12 +521,16 @@ export async function importSTLorebook(
       imported++;
     }
 
+    if (existingLorebookId && !createdLorebook) {
+      await db.transaction(async (tx) => {
+        const transactionalStorage = createLorebooksStorage(tx);
+        const updated = await transactionalStorage.update(existingLorebookId, lorebookInput);
+        if (!updated) throw new Error("Failed to update lorebook");
+        for (const id of existingEntryIds) await transactionalStorage.removeEntry(id);
+      });
+    }
     // Past this point the new entries own their images; rolling them back would lose both old and new entries.
     committed = true;
-    if (existingLorebookId && !createdLorebook) {
-      await storage.update(existingLorebookId, lorebookInput);
-      for (const id of existingEntryIds) await storage.removeEntry(id);
-    }
 
     return {
       success: true,

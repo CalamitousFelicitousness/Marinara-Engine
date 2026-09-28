@@ -446,6 +446,50 @@ try {
       { id: "st-potion", name: "Potion", quantity: 1 },
     ]);
   }
+  // Once the real potion is gone mid-fight, a cord nicknamed "Potion" never stands in for it: the
+  // spend is refused and the cord stays.
+  {
+    const goneChat = await chats.create({ name: "Director gone item proof", mode: "game", characterIds: [] });
+    const goneAnchor = await chats.createMessage({
+      chatId: goneChat.id,
+      role: "assistant",
+      content: "[state: combat]",
+    });
+    await chats.patchMetadata(goneChat.id, {
+      gameSetupConfig: { combatDirector: true },
+      gameInventory: [{ id: "st-potion", name: "Potion", quantity: 1 }],
+    });
+    const started = await post("/combat/start", {
+      ...input,
+      chatId: goneChat.id,
+      anchor: goneAnchor.id,
+      enemies: [unit("rat", "enemy")],
+    });
+    assert.equal(started.statusCode, 200, started.body);
+    let g: DirectedCombatView = started.json().session;
+    const goneCmd = (command: DirectedCommand) =>
+      post("/combat/command", {
+        chatId: goneChat.id,
+        anchor: goneAnchor.id,
+        id: g.id,
+        instanceId: g.instanceId,
+        revision: g.revision,
+        requestId: crypto.randomUUID(),
+        command,
+      });
+    const begun = await goneCmd({ type: "begin", unitId: "hero" });
+    assert.equal(begun.statusCode, 200, begun.body);
+    g = begun.json().session;
+    const cordOnly = [{ id: "st-cord", name: "Cord", nickname: "Potion", quantity: 1 }];
+    await chats.patchMetadata(goneChat.id, { gameInventory: cordOnly });
+    const refused = await goneCmd({
+      type: "tactical",
+      action: { type: "item", unitId: "hero", itemName: "Potion", targetId: "hero" },
+    });
+    assert.equal(refused.statusCode, 400, refused.body);
+    assert.match(refused.body, /Inventory changed/);
+    assert.deepEqual(JSON.parse((await chats.getById(goneChat.id))!.metadata).gameInventory, cordOnly);
+  }
   console.log(
     "Combat director route: authority, idempotency, terrain, atomic item costs, late GM output, restore identity and branch isolation passed.",
   );

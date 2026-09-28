@@ -78,10 +78,13 @@ function fingerprint(text: string): string {
  * keeps its start and a fingerprint of the whole, so two names never share an id by being cut short.
  */
 export function gameInventoryPlainItemId(name: string): string {
+  // Accents come off Latin, Greek and Cyrillic letters only ("Épée" is "epee"); in other scripts a mark
+  // is part of the letter (a Japanese dakuten, a Devanagari vowel sign), so it stays.
   const key = gameInventoryNameKey(name)
     .normalize("NFKD")
-    .replace(/\p{M}+/gu, "");
-  const dashed = key.replace(/[^\p{L}\p{N}]+/gu, "-");
+    .replace(/([\p{Script=Latin}\p{Script=Greek}\p{Script=Cyrillic}])\p{M}+/gu, "$1")
+    .normalize("NFC");
+  const dashed = key.replace(/[^\p{L}\p{N}\p{M}]+/gu, "-");
   // Leading and trailing dashes are trimmed by walking in from each end, not by an anchored pattern,
   // which could backtrack over a long run of dashes in a name the player typed.
   let start = 0;

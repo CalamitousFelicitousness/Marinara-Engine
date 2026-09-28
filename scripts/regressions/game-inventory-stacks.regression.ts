@@ -280,6 +280,17 @@ const apples = (): GameInventoryStack[] => [
   assert.equal(gameInventoryPlainItemId("Épée"), "plain:epee", "accents aside");
   assert.equal(gameInventoryPlainItemId("Меч"), "plain:меч", "every script keeps its letters");
   assert.notEqual(gameInventoryPlainItemId("Меч"), gameInventoryPlainItemId("Щит"), "so two such items stay two");
+  assert.notEqual(
+    gameInventoryPlainItemId("がく"),
+    gameInventoryPlainItemId("かく"),
+    "a dakuten is part of the letter",
+  );
+  assert.notEqual(gameInventoryPlainItemId("किताब"), gameInventoryPlainItemId("कताब"), "and so is a vowel sign");
+  assert.equal(
+    gameInventoryPlainItemId("\u304c"),
+    gameInventoryPlainItemId("\u304b\u3099"),
+    "however the name was typed: composed or not",
+  );
   assert.match(gameInventoryPlainItemId("🍎"), /^plain:~[0-9a-z]+$/, "no letters at all: a fingerprint");
   assert.notEqual(gameInventoryPlainItemId("🍎"), gameInventoryPlainItemId("🍐"));
   const long = `${"a".repeat(50)}1`;

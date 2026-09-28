@@ -133,6 +133,12 @@ test("each party member carries their own bag, and stacks are given between them
     await expect
       .poll(savedInventory)
       .toEqual(["Rope 1 player", "Arrow 20 player", 'Rope "Climbing rope" 3 Bram', "Lantern 1 Bram"]);
+    // Typing the item's own name back clears the nickname.
+    await slot("Climbing rope x3").click();
+    await page.getByLabel("Nickname for Rope", { exact: true }).fill("rope");
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(slot("Rope x3")).toBeVisible();
+    await expect.poll(savedInventory).toEqual(["Rope 1 player", "Arrow 20 player", "Rope 3 Bram", "Lantern 1 Bram"]);
     await page.screenshot({ path: testInfo.outputPath("inventory-bags.png") });
   } finally {
     await request.delete(`/api/chats/${chatId}`);

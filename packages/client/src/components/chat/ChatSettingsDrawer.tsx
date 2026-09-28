@@ -78,6 +78,7 @@ import { ChatSettingsSection as Section } from "../../features/chat-settings/Cha
 import { ActiveChatBackgroundPicker } from "../panels/settings/BackgroundPicker";
 import { AdvancedParametersSection } from "../../features/chat-settings/sections/AdvancedParametersSection";
 import { ChatNameSection } from "../../features/chat-settings/sections/ChatNameSection";
+import { ChatVariablesSection } from "../../features/chat-settings/sections/ChatVariablesSection";
 import { CombatStyleSection } from "../../features/chat-settings/sections/CombatStyleSection";
 import { useGameRuleset } from "../../hooks/use-game-ruleset";
 import { isRulesetCombatFight } from "../../lib/ruleset-combat-bridge";
@@ -98,6 +99,7 @@ import {
   DEFAULT_GAME_DICE_POOL_WINDOW as DEFAULT_DICE_POOL_WINDOW,
   estimateTextTokens,
   isRoleplayCommandEnabled,
+  normalizeSemanticSummaryRetrievalSettings,
   resolveScopedRegexMode,
 } from "@marinara-engine/shared";
 import { cn, getAvatarCropStyle } from "../../lib/utils";
@@ -133,6 +135,10 @@ import { AdvancedMemoryInspector } from "./AdvancedMemoryInspector";
 import { useAdvancedMemoryStatus } from "../../hooks/use-advanced-memory";
 import { AgentSuiteModal } from "./AgentSuiteModal";
 import { ConversationTimeZoneSelect } from "./ConversationTimeZoneSelect";
+import {
+  SemanticSummaryRetrievalControls,
+  type SemanticSummaryRetrievalControlField,
+} from "./SemanticSummaryRetrievalControls";
 import { RoleplayMessagePreview } from "./ChatMessage";
 import { resolveChatContextBudget } from "../../lib/professor-mari-context-budget";
 import { CHAT_SETTINGS_SURFACES } from "./chat-settings-surfaces";
@@ -630,6 +636,7 @@ const CHAT_SETTINGS_ORDER = {
   cardTheming: -850,
   groupChat: -800,
   scopedRegex: -750,
+  chatVariables: -740,
   connectedChat: -700,
   connectedNotes: -690,
   lorebooks: -600,
@@ -963,9 +970,21 @@ export function ChatSettingsDrawer({
     () => (typeof chat.metadata === "string" ? JSON.parse(chat.metadata) : (chat.metadata ?? {})),
     [chat.metadata],
   );
+  const summaryRetrievalSettings = normalizeSemanticSummaryRetrievalSettings(metadata);
   // Package integrations only show while their package is installed and usable.
   const noodleInstalled = isCapabilityPackageAvailable(installedCapabilities, "noodle");
   const slurp2Installed = isCapabilityPackageAvailable(installedCapabilities, "slurp2");
+  // Chat variables live in the same map {{setvar}} writes, so a value a prompt
+  // or lorebook set shows up here as an editable row.
+  const chatMacroVariables = useMemo<Record<string, string>>(() => {
+    const stored: unknown = metadata.macroVariables;
+    if (!stored || typeof stored !== "object" || Array.isArray(stored)) return {};
+    return Object.fromEntries(
+      Object.entries(stored as Record<string, unknown>).filter(
+        (entry): entry is [string, string] => typeof entry[1] === "string",
+      ),
+    );
+  }, [metadata.macroVariables]);
   const noodleTimelineContextEnabled = metadata.noodleTimelineContextEnabled === true;
   const slurp2ActivityContextEnabled = metadata.slurp2ActivityContextEnabled === true;
   const renderPackageContextToggles = () => (
@@ -6193,6 +6212,14 @@ export function ChatSettingsDrawer({
             </Section>
           )}
 
+          <ChatVariablesSection
+            key={chat.id}
+            sectionId={`${chatMode}-chat-variables`}
+            order={CHAT_SETTINGS_ORDER.chatVariables}
+            chatId={chat.id}
+            variables={chatMacroVariables}
+          />
+
           {/* Every existing and new multi-character chat gets this section. Missing mode metadata means Grouped. */}
           {chatCharIds.length > 1 && modeSettingsSurfaces.showGroupChatControls && (
             <Section
@@ -9349,6 +9376,20 @@ export function ChatSettingsDrawer({
                         : cn(AGENT_SETTINGS_SURFACE_CLASS, "hover:bg-[var(--accent)]"),
                     )}
                     labelClassName="text-xs font-medium"
+                  />
+                )}
+                {import.meta.env.VITE_MARINARA_LITE !== "true" && (
+                  <SemanticSummaryRetrievalControls
+                    enabled={metadata.semanticSummaryRetrievalEnabled === true}
+                    recentCount={summaryRetrievalSettings.semanticSummaryRecentCount}
+                    olderCount={summaryRetrievalSettings.semanticSummaryOlderCount}
+                    minSimilarity={summaryRetrievalSettings.semanticSummaryMinSimilarity}
+                    recentLabel={localizeUi("ui.chat.chatsettingsdrawer.recentWeeks")}
+                    olderLabel={localizeUi("ui.chat.chatsettingsdrawer.olderWeeks")}
+                    thresholdLabel={localizeUi("ui.chat.chatsettingsdrawer.summaryRelevanceThreshold")}
+                    onChange={(field: SemanticSummaryRetrievalControlField, value) =>
+                      updateMeta.mutate({ id: chat.id, [field]: value })
+                    }
                   />
                 )}
 

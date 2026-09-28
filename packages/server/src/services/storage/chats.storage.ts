@@ -210,6 +210,14 @@ export async function withMessageExtraPatchQueue<T>(messageId: string, operation
   return withPatchQueue(messageExtraPatchQueues, messageId, operation);
 }
 
+/** One swipe selection per chat at a time: which telling is shown and the inventory that follows it
+ *  are read and changed together. Taken before every other lock (setActiveSwipe's own queue, then the
+ *  metadata queue) and by nothing else, so it cannot close a cycle. */
+const swipeSelectionQueues = new Map<string, Promise<void>>();
+export async function withChatSwipeSelectionQueue<T>(chatId: string, operation: () => Promise<T>): Promise<T> {
+  return withPatchQueue(swipeSelectionQueues, chatId, operation);
+}
+
 function parseMetadata(raw: unknown): MetadataPatch {
   if (!raw) return {};
   if (typeof raw === "string") {

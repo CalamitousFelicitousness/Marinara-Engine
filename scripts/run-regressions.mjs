@@ -145,8 +145,12 @@ function regressionEnvironment(scratchDir) {
 
 function runRegression(relativePath) {
   const { args, command, cwd } = commandFor(relativePath);
-  // Cold native runners need time for the real server's first boot and restart.
-  const timeoutMs = relativePath === 'scripts/regressions/restart-supervisor.regression.ts' ? 90_000 : FILE_TIMEOUT_MS;
+  // Cold native runners need time for repeated real-server boots in restart and terminal-shutdown checks.
+  const timeoutMs =
+    relativePath === 'scripts/regressions/restart-supervisor.regression.ts' ||
+    relativePath === 'scripts/regressions/server-signal-shutdown.regression.ts'
+      ? 90_000
+      : FILE_TIMEOUT_MS;
   const startedAt = Date.now();
   process.stdout.write(`[${relativePath}] START\n`);
   const scratchDir = fs.mkdtempSync(path.join(os.tmpdir(), 'marinara-regression-'));

@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Shutdown regression checks allow time for repeated server startups on slower CI workers while keeping individual shutdown deadlines unchanged.
+
 - Bulk character tag edits keep failed cards selected so you can retry them without selecting successful cards again.
 
 - Windows shutdown regression checks normalize captured server output before matching readiness and shutdown messages, avoiding false timeouts when the redirected log is read in chunks.

@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- The terminal-shutdown regression now has enough total runner time for its six bounded server boots, without relaxing its per-case shutdown assertions or other regression limits.
+
 - Shutdown regression checks allow time for repeated server startups on slower CI workers while keeping individual shutdown deadlines unchanged.
 
 - Bulk character tag edits keep failed cards selected so you can retry them without selecting successful cards again.

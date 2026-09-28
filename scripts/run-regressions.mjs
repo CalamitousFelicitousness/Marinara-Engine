@@ -22,6 +22,15 @@ function repositoryRelative(file) {
   return path.relative(repositoryRoot, file).split(path.sep).join('/');
 }
 
+export function regressionTimeoutMs(relativePath) {
+  if (relativePath === 'scripts/regressions/server-signal-shutdown.regression.ts') {
+    // 20s main-server phase + six sequential 40s PTY bounds + 10s setup/cleanup margin.
+    return 270_000;
+  }
+  if (relativePath === 'scripts/regressions/restart-supervisor.regression.ts') return 90_000;
+  return FILE_TIMEOUT_MS;
+}
+
 function discoverRegressions(directory = regressionsRoot) {
   const files = [];
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
@@ -111,10 +120,6 @@ function handleRunnerSignal(signal) {
   terminateActiveChild();
 }
 
-for (const signal of process.platform === 'win32' ? ['SIGINT', 'SIGTERM', 'SIGBREAK'] : ['SIGINT', 'SIGTERM']) {
-  process.on(signal, () => handleRunnerSignal(signal));
-}
-
 function commandFor(relativePath) {
   if (relativePath.endsWith('.regression.ts')) {
     return {
@@ -145,12 +150,7 @@ function regressionEnvironment(scratchDir) {
 
 function runRegression(relativePath) {
   const { args, command, cwd } = commandFor(relativePath);
-  // Cold native runners need time for repeated real-server boots in restart and terminal-shutdown checks.
-  const timeoutMs =
-    relativePath === 'scripts/regressions/restart-supervisor.regression.ts' ||
-    relativePath === 'scripts/regressions/server-signal-shutdown.regression.ts'
-      ? 90_000
-      : FILE_TIMEOUT_MS;
+  const timeoutMs = regressionTimeoutMs(relativePath);
   const startedAt = Date.now();
   process.stdout.write(`[${relativePath}] START\n`);
   const scratchDir = fs.mkdtempSync(path.join(os.tmpdir(), 'marinara-regression-'));
@@ -202,6 +202,9 @@ function runRegression(relativePath) {
 }
 
 async function main() {
+  for (const signal of process.platform === 'win32' ? ['SIGINT', 'SIGTERM', 'SIGBREAK'] : ['SIGINT', 'SIGTERM']) {
+    process.on(signal, () => handleRunnerSignal(signal));
+  }
   const { filter, list } = parseArguments(process.argv.slice(2));
   const discovered = discoverRegressions();
   if (discovered.length === 0) throw new Error('No regression files were discovered.');
@@ -234,7 +237,9 @@ async function main() {
   if (failed.length > 0) process.exitCode = 1;
 }
 
-main().catch((error) => {
-  process.stderr.write(`[runner] ${error.message}\n`);
-  process.exitCode = 1;
-});
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    process.stderr.write(`[runner] ${error.message}\n`);
+    process.exitCode = 1;
+  });
+}

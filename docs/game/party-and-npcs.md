@@ -89,7 +89,7 @@ Everyone in the party carries their own things. The inventory opens on **All**, 
 - **Give.** Click **Give**, pick who gets it and how many, and click **Give** again. To hand over a whole stack, you can also drag it onto that person's tab.
 - **Add.** Type the item's name and click **Add**. It goes into the bag of the tab that is open, and into your own bag from **All**. Adding an item that bag already has adds one to its first stack of it.
 - **Merge or reorder.** Drag a stack onto another stack of the same item to merge them, whatever each is called. The merged stack stays with whoever carried the stack you dropped it on. Drag a stack onto a different item to swap the two.
-- **Nickname.** Type a new name for the stack and click **Save**. It is only what you call that stack: it stays the same item, the Game Master can still name it by its own name, and it never merges into anything. The item's own name is shown beside the nickname. Type the own name back to clear it.
+- **Nickname.** Type a new name for the stack and click **Save**. It is only what you call that stack: it stays the same item, the Game Master can still name it by its own name, and giving it a nickname never merges it into another stack. The item's own name is shown beside the nickname. Type the own name back to clear it.
 
 A party member's character sheet lists what they carry.
 

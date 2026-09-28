@@ -1388,23 +1388,44 @@ export function useMessageTrash(chatId: string | null, enabled = true) {
 }
 
 function invalidateAfterTrashChange(qc: QueryClient, chatId: string) {
-  qc.invalidateQueries({ queryKey: chatKeys.trash(chatId) });
-  qc.invalidateQueries({ queryKey: chatKeys.messages(chatId) });
-  qc.invalidateQueries({ queryKey: chatKeys.messagePeek(chatId) });
-  qc.invalidateQueries({ queryKey: chatKeys.messageCount(chatId) });
-  qc.invalidateQueries({ queryKey: chatKeys.list() });
-  qc.invalidateQueries({ queryKey: ["chat-message-search", chatId] });
+  return Promise.all([
+    qc.invalidateQueries({ queryKey: chatKeys.trash(chatId) }),
+    qc.invalidateQueries({ queryKey: chatKeys.messages(chatId) }),
+    qc.invalidateQueries({ queryKey: chatKeys.messagePeek(chatId) }),
+    qc.invalidateQueries({ queryKey: chatKeys.messageCount(chatId) }),
+    qc.invalidateQueries({ queryKey: chatKeys.list() }),
+    qc.invalidateQueries({ queryKey: ["chat-message-search", chatId] }),
+  ]);
 }
 
 export function useRestoreTrashedMessages(chatId: string | null) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (entryIds: string[]) =>
-      api.post<{ restoredMessageIds: string[]; conflictEntryIds: string[] }>(`/chats/${chatId}/trash/restore`, {
-        entryIds,
-      }),
-    onSuccess: () => {
-      if (chatId) invalidateAfterTrashChange(qc, chatId);
+    mutationFn: async (entryIds: string[]) => {
+      const result: { restoredMessageIds: string[]; conflictEntryIds: string[]; error: string | null } = {
+        restoredMessageIds: [],
+        conflictEntryIds: [],
+        error: null,
+      };
+      // The route accepts at most 5,000 IDs; keep every batch under one pending mutation.
+      for (let offset = 0; offset < entryIds.length; offset += 5000) {
+        try {
+          const batch = await api.post<{ restoredMessageIds: string[]; conflictEntryIds: string[] }>(
+            `/chats/${chatId}/trash/restore`,
+            { entryIds: entryIds.slice(offset, offset + 5000) },
+          );
+          result.restoredMessageIds.push(...batch.restoredMessageIds);
+          result.conflictEntryIds.push(...batch.conflictEntryIds);
+        } catch (error) {
+          if (result.restoredMessageIds.length === 0) throw error;
+          result.error = error instanceof Error ? error.message : translate("ui.chat.messagetrash.restoreFailed");
+          break;
+        }
+      }
+      return result;
+    },
+    onSettled: () => {
+      if (chatId) return invalidateAfterTrashChange(qc, chatId);
     },
   });
 }

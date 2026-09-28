@@ -221,6 +221,7 @@ export function TopBar({ mobileTopbarNavigation }: { mobileTopbarNavigation: boo
     {
       key: "characters",
       icon: <Users size={16} />,
+      iconClassName: "mari-panel-gradient--characters text-[var(--mari-panel-gradient-start)]",
       label: localize("Characters"),
       active: isCharactersPanelActive,
       onSelect: () => handleRightPanelClick("characters"),
@@ -246,6 +247,7 @@ export function TopBar({ mobileTopbarNavigation }: { mobileTopbarNavigation: boo
     {
       key: "settings",
       icon: <Settings size={16} />,
+      iconClassName: "mari-panel-gradient--settings text-[var(--mari-panel-gradient-start)]",
       label: localize("Settings"),
       active: rightPanelOpen && rightPanel === "settings",
       onSelect: () => handleRightPanelClick("settings"),

@@ -21434,6 +21434,16 @@ test("zoomed mobile chat keeps the composer above the keyboard and restores on d
         { height, top, scale, layoutHeight: page.viewportSize()?.height ?? layoutHeight },
       );
 
+    const expectTextareaInViewport = async (top: number, height: number) => {
+      await expect.poll(async () => (await textarea.boundingBox())?.y ?? -Infinity).toBeGreaterThanOrEqual(top - 1);
+      await expect
+        .poll(async () => {
+          const box = await textarea.boundingBox();
+          return box ? box.y + box.height : Infinity;
+        })
+        .toBeLessThanOrEqual(top + Math.round(height) + 1);
+    };
+
     for (const scale of [1.05, 1.25, 2]) {
       await setViewport(layoutHeight / scale, 0, scale);
       await expect(page.locator("html")).not.toHaveAttribute("data-mari-software-keyboard-open");
@@ -21451,6 +21461,7 @@ test("zoomed mobile chat keeps the composer above the keyboard and restores on d
           return box ? box.y + box.height : Infinity;
         })
         .toBeLessThanOrEqual(top + Math.round(visibleHeight) + 1);
+      await expectTextareaInViewport(top, visibleHeight);
       await expect(textarea).toHaveValue("Keep this draft visible above the keyboard.");
       await testInfo.attach(`zoomed-keyboard-${scale}.png`, {
         body: await page.screenshot({ animations: "disabled" }),
@@ -21473,11 +21484,13 @@ test("zoomed mobile chat keeps the composer above the keyboard and restores on d
     await setViewport(160, 0, 2);
     await expect(page.locator("html")).toHaveAttribute("data-mari-software-keyboard-open", "");
     await expect.poll(async () => (await shell.boundingBox())?.height).toBe(160);
+    await expectTextareaInViewport(0, 160);
     // Keep tracking if split-view is resized with the keyboard already open.
     await page.setViewportSize({ width: 360, height: 700 });
     await setViewport(210, 0, 2);
     await expect.poll(async () => (await shell.boundingBox())?.height).toBe(210);
     await expect(page.locator("html")).toHaveAttribute("data-mari-software-keyboard-open", "");
+    await expectTextareaInViewport(0, 210);
     await setViewport(350, 0, 2);
     await expect.poll(async () => (await shell.boundingBox())?.height).toBe(700);
     await expect(page.locator("html")).not.toHaveAttribute("data-mari-software-keyboard-open");
@@ -21487,10 +21500,12 @@ test("zoomed mobile chat keeps the composer above the keyboard and restores on d
     await setViewport(210, 0, 2);
     await expect.poll(async () => (await shell.boundingBox())?.height).toBe(210);
     await expect(page.locator("html")).toHaveAttribute("data-mari-software-keyboard-open", "");
+    await expectTextareaInViewport(0, 210);
     await page.setViewportSize({ width: 320, height: 360 });
     await setViewport(180, 0, 2);
     await expect.poll(async () => (await shell.boundingBox())?.height).toBe(180);
     await expect(page.locator("html")).toHaveAttribute("data-mari-software-keyboard-open", "");
+    await expectTextareaInViewport(0, 180);
     await page.setViewportSize({ width: 320, height: 640 });
     await setViewport(320, 0, 2);
     await expect.poll(async () => (await shell.boundingBox())?.height).toBe(640);

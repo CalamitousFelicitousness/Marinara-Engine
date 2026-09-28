@@ -669,6 +669,8 @@ interface UIState {
   noodleNavigation: NoodleNavigationState;
   /** When true, the main area shows the full-page character library */
   characterLibraryOpen: boolean;
+  /** Runtime-only flag to restore duplicate review after closing a character detail editor. */
+  characterDuplicatesOpen: boolean;
   /** Which resource collection the shared full-page card library displays */
   cardLibraryKind: CardLibraryKind;
   /** When true, the main area shows the full-page downloadable agent catalog */
@@ -1098,6 +1100,7 @@ interface UIState {
   openCharacterLibrary: (characterId?: string) => void;
   openPersonaLibrary: () => void;
   closeCharacterLibrary: () => void;
+  setCharacterDuplicatesOpen: (open: boolean) => void;
   openAgentCatalog: (packageId?: string) => void;
   closeAgentCatalog: () => void;
   openBotBrowser: () => void;
@@ -1779,6 +1782,7 @@ export const useUIStore = create<UIState>()(
         noodleSelectedPersonaId: null,
         noodleNavigation: { mode: "public", view: "home" },
         characterLibraryOpen: false,
+        characterDuplicatesOpen: false,
         cardLibraryKind: "characters" as CardLibraryKind,
         agentCatalogOpen: false,
         agentCatalogInitialPackageId: null,
@@ -2431,6 +2435,7 @@ export const useUIStore = create<UIState>()(
             rightPanelOpen: isMobileShellViewport() ? false : state.rightPanelOpen,
           })),
         closeCharacterLibrary: () => set({ characterLibraryOpen: false, characterLibraryInitialId: null }),
+        setCharacterDuplicatesOpen: (open) => set({ characterDuplicatesOpen: open }),
         openAgentCatalog: (packageId) =>
           set((state) => ({
             agentCatalogOpen: true,

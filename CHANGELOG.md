@@ -24,6 +24,41 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - Bookmark messages, attach private notes, and pin up to ten messages for prompt context. An optional message trash setting keeps supported deleted messages for 30 days for recovery; it is off by default, and Game Mode deletion remains permanent. Private notes stay out of model prompts and are excluded from exports unless explicitly selected. Launcher downgrade protection also preserves recoverable message records (#6698).
 
+- Bulk character tag edits continue after a rejected request and keep only failed cards selected for retry.
+- Regression commands invoked through an absolute or symlink path now execute instead of silently skipping their checks.
+
+- The terminal-shutdown regression now has enough total runner time for its six bounded server boots, without relaxing its per-case shutdown assertions or other regression limits.
+
+- Shutdown regression checks allow time for repeated server startups on slower CI workers while keeping individual shutdown deadlines unchanged.
+
+- Bulk character tag edits keep failed cards selected so you can retry them without selecting successful cards again.
+
+- Bulk character tag edits include selected cards hidden by library search or pagination. Failed saves report the affected cards, preserve their tags and version history, and allow the remaining selection to finish.
+
+- Duplicate-character comparisons return after closing the character editor on phones and desktops, and dismiss when navigating away from Characters.
+
+- The character library can compare possible duplicate cards without deleting them and preview adding or removing tags across selected cards (#6698).
+
+- Lorebook Markdown and CSV downloads preserve spaces and non-English characters in their filenames.
+
+- The native shutdown regression allows cold CI servers time to start while keeping its interrupt and shutdown deadlines unchanged.
+
+- Failed lorebook text imports leave existing entries and folders unchanged, and duplicate-key checks distinguish case-sensitive and regex matching modes.
+- Windows shutdown validation reads redirected output as one string, avoiding false readiness failures while the server is writing its startup log.
+
+- Lorebook activation statistics update after a reply is saved successfully and exclude Continue chunks.
+
+- Lorebooks gain lint checks, a scanner preview, opt-in activation statistics, bulk entry edits, selected enable/disable actions, and Markdown/CSV import and export. Chat previews explain their context limits, and text imports enforce bounded size and entry counts (#6698).
+- Lorebook Markdown export handles long whitespace runs without excessive processing time.
+- Lorebook CSV exports keep spreadsheet formulas inactive and mark their escaping format so imports restore the original text without altering apostrophes in independently authored CSV files.
+- Escape closes a panel from actions inside an expanded folder header, while active fields and menus keep their own Escape behavior.
+
+- Decorative missing-avatar icons stay hidden from screen readers; named character fallbacks retain their accessible labels.
+
+- Panels opened from the navigation bar support keyboard focus and return focus when closed. Cancelling a folder rename or leaving the activity field with Escape keeps its panel open. Profile imports are keyboard-accessible, missing library avatars have a visible fallback, and the chat sidebar shows clearer loading and retry states (#6698).
+
+- Generation settings show controls supported by the selected provider and model, reducing settings that would be ignored. Preset editing keeps its full set of reusable controls (#6698).
+
 - Printed HTML chat exports show included reasoning once, even if its Thinking section is collapsed on screen.
 
 - The native restart regression gives replacement servers time to rebuild routes on slower CI runners while retaining its process-ownership and shutdown checks.

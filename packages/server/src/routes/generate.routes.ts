@@ -487,6 +487,7 @@ import {
   toLorebookScanSnapshot,
   type LorebookScanSnapshot,
 } from "./generate/lorebook-scan-snapshot.js";
+import { recordLorebookActivations } from "../services/lorebook/activation-stats.js";
 import {
   buildAvailableSpriteCharacter,
   completeRequiredSpriteExpressionEntries,
@@ -9949,6 +9950,13 @@ export async function generateRoutes(app: FastifyInstance) {
                 savedSwipeIndex !== null
                   ? await chats.updateMessageExtraForSwipe(savedMsg.id, savedSwipeIndex, extraUpdate)
                   : await chats.updateMessageExtra(savedMsg.id, extraUpdate);
+            }
+            // Activation statistics count successfully saved replies, not Continue chunks.
+            if (!input.continueMessageId) {
+              recordLorebookActivations(app.db, {
+                entryIds: lorebookScanSnapshot.activatedEntries.map((entry) => entry.id),
+                chatId: input.chatId,
+              });
             }
 
             const savedMessagePayload =

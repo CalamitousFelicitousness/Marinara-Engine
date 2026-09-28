@@ -7230,6 +7230,7 @@ function ImportSettings() {
     return () => window.clearInterval(timer);
   }, [profileImportBusy]);
 
+  const profileImportInputRef = useRef<HTMLInputElement>(null);
   const handleProfileImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -7486,12 +7487,11 @@ function ImportSettings() {
         {...getSettingsSectionAnchorProps("profile-marinara")}
       >
         <div className="flex flex-col gap-2.5">
-          <label
-            className={cn(
-              SETTINGS_PRIMARY_BUTTON_CLASS,
-              "w-full cursor-pointer gap-2",
-              profileImportBusy && "pointer-events-none opacity-75",
-            )}
+          <button
+            type="button"
+            onClick={() => profileImportInputRef.current?.click()}
+            disabled={profileImportBusy}
+            className={cn(SETTINGS_PRIMARY_BUTTON_CLASS, "w-full gap-2")}
           >
             {profileImportBusy ? <Loader2 size="1rem" className="animate-spin" /> : <Download size="1rem" />}
             {profileImportBusy
@@ -7499,14 +7499,17 @@ function ImportSettings() {
                 ? localizeUi("ui.panels.importsettings.scanningProfile")
                 : localizeUi("ui.panels.importsettings.importingProfile")
               : localizeUi("ui.panels.importsettings.importProfileJsonZip")}
-            <input
-              type="file"
-              accept=".json,.zip,application/json,application/zip"
-              onChange={handleProfileImport}
-              disabled={profileImportBusy}
-              className="hidden"
-            />
-          </label>
+          </button>
+          <input
+            ref={profileImportInputRef}
+            type="file"
+            accept=".json,.zip,application/json,application/zip"
+            onChange={handleProfileImport}
+            disabled={profileImportBusy}
+            className="hidden"
+            tabIndex={-1}
+            aria-hidden="true"
+          />
 
           {profileImportProgress && (
             <div

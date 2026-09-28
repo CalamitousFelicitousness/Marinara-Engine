@@ -31,7 +31,12 @@ try {
   const { isFeatureEnabled, resetFeatureSettingsForTests, onFeatureSettingsChange } = features;
 
   // ── the registry: exactly these switches, every one off by default ──
-  assert.deepEqual([...FEATURE_SWITCH_NAMES].sort(), ["messageTrash", "providerRetry", "stableLorebookGroupPicks"]);
+  assert.deepEqual([...FEATURE_SWITCH_NAMES].sort(), [
+    "messageTrash",
+    "providerRetry",
+    "stableLorebookGroupPicks",
+    "usageAndActivationStats",
+  ]);
   for (const name of FEATURE_SWITCH_NAMES) assert.equal(FEATURE_SWITCH_DEFAULTS[name], false, `${name} defaults off`);
 
   // ── shared normalization: bad values fall back to the default ──
@@ -46,6 +51,7 @@ try {
   // ── absent = OFF ──
   resetFeatureSettingsForTests();
   for (const name of FEATURE_SWITCH_NAMES) assert.equal(isFeatureEnabled(name), false, `${name} is off by default`);
+  assert.equal(isFeatureEnabled("usageAndActivationStats"), false, "lorebook activation collection is opt-in");
 
   // ── env precedence: set wins both ways, unset or blank falls through ──
   resetFeatureSettingsForTests({ stableLorebookGroupPicks: false, providerRetry: true });

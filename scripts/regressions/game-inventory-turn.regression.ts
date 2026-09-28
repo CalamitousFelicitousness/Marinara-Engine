@@ -906,6 +906,39 @@ try {
       normalizeGameInventoryStacks(next.gameInventory).map((stack) => stack.item),
       ["invented:mourning-edge"],
     );
+    // A game whose ruleset cannot be read any more keeps them as saved, by the same rule, and
+    // anything that is not an invented item at all is dropped.
+    const unread = await chats.create({
+      name: "Invented items, no ruleset",
+      mode: "game",
+      characterIds: [],
+      groupId: "invented-items-unread",
+    });
+    assert.ok(unread);
+    await chats.patchMetadata(unread.id, {
+      gameId: "invented-items-unread",
+      gameSessionStatus: "concluded",
+      gameSessionNumber: 1,
+      gameInventory: retold.gameInventory,
+      gameInventedItems: [
+        ...retold.gameInventedItems,
+        { id: "lost-charm", name: "Lost Charm", item: { category: "gear" } },
+        "junk",
+        { name: "No id" },
+      ],
+    });
+    await chats.createMessage({ chatId: unread.id, role: "assistant", content: "The road ends here." });
+    const unreadNext = await app.inject({
+      method: "POST",
+      url: "/api/game/session/start",
+      payload: { gameId: "invented-items-unread" },
+    });
+    assert.equal(unreadNext.statusCode, 200, unreadNext.body);
+    assert.deepEqual(
+      (await metaOf(unreadNext.json().sessionChat.id)).gameInventedItems,
+      retold.gameInventedItems,
+      "kept as saved while held, the rest dropped",
+    );
     assert.ok(CHAT_PRESET_EXCLUDED_METADATA_KEYS.includes("gameInventedItems"));
   }
 

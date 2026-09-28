@@ -7356,12 +7356,21 @@ export async function gameRoutes(app: FastifyInstance) {
         enableAgents: carriedSetupConfig?.enableAgents ?? prevMeta.enableAgents === true,
         ...(carriedInventory.length > 0 ? { gameInventory: carriedInventory } : {}),
         // The items the Game Master invented come along while anyone still holds them: one nothing
-        // holds is never read again.
-        ...(carryRules
+        // holds is never read again. Without the ruleset to read them they are kept as saved, by the
+        // same rule.
+        ...(carryRules || prevMeta.gameInventedItems !== undefined
           ? {
-              gameInventedItems: carryRules
-                .inventedItems()
-                .filter((made) => carriedInventory.some((stack) => stack.item === rulesetInventedItemRef(made.id))),
+              gameInventedItems: (carryRules
+                ? carryRules.inventedItems()
+                : Array.isArray(prevMeta.gameInventedItems)
+                  ? (prevMeta.gameInventedItems as unknown[])
+                  : []
+              ).filter((made) => {
+                const id = made && typeof made === "object" ? (made as { id?: unknown }).id : undefined;
+                return (
+                  typeof id === "string" && carriedInventory.some((stack) => stack.item === rulesetInventedItemRef(id))
+                );
+              }),
             }
           : {}),
       };

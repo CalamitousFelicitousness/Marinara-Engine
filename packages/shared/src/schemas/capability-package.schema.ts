@@ -14,6 +14,7 @@ export const capabilityPermissionSchema = z.enum([
   "chat-read",
   "chat-write",
   "conversation-actions",
+  "mari-actions",
   "network",
   "prompt-context",
   "routes",
@@ -465,7 +466,10 @@ const capabilityPackageManifestBaseSchema = z
 //        `holds: "items"`, whose entries carry an `item`. Not a soft seam, for the same reason as 1.20
 //        through 1.48: an Engine that cannot read these refuses the whole ruleset or catalog file, so
 //        a package that ships any of them declares 1.49. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 49 } as const);
+// 1.50: Professor Mari actions. A package holding the `mari-actions` permission may register
+//        `api.registerService("mari-actions:<package-id>", { list, run })`, and Professor Mari's
+//        `package_service` tool can list and run those actions. Requires the `mari-actions` permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 50 } as const);
 
 const capabilityApiVersionSchema = z
   .object({
@@ -537,6 +541,17 @@ export const capabilityPackageManifestSchema = z
           code: z.ZodIssueCode.custom,
           path: ["permissions"],
           message: 'The "achievements" permission requires schemaVersion 2 and capabilityApi 1.36 or newer',
+        });
+      }
+    }
+    // Same reason as `tools`: the `mari-actions:` service is only read by an Engine this new.
+    if (manifest.permissions.includes("mari-actions")) {
+      const api = manifest.schemaVersion === 2 ? manifest.capabilityApi : null;
+      if (!api || api.major < 1 || (api.major === 1 && api.minor < 50)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["permissions"],
+          message: 'The "mari-actions" permission requires schemaVersion 2 and capabilityApi 1.50 or newer',
         });
       }
     }

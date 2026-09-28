@@ -846,22 +846,41 @@ try {
     );
 
     // Told again with another proposal: the telling starts from before the blade, so nobody holds it,
-    // and the retelling's blade is the one the game keeps.
+    // and the retelling's blade is an item of its own, since the first telling still holds the first.
     await turnIn(
       `The widow gives you the blade. [inventory: action="add" item="Mourning Edge" category="weapon" rarity="uncommon" stats="damage=2d6"]`,
       { regenerateMessageId: told.id },
     );
     const retold = await metaOf(made.id);
-    assert.equal(retold.gameInventedItems.length, 1);
-    assert.deepEqual(retold.gameInventedItems[0].item, {
-      category: "weapon",
-      rarity: "uncommon",
-      stats: { damage: "2d6" },
-    });
     assert.deepEqual(
-      normalizeGameInventoryStacks(retold.gameInventory).map((stack) => [stack.item, stack.quantity]),
-      [["invented:mourning-edge", 1]],
+      retold.gameInventedItems.map((item: { id: string; item: { rarity: string; stats: { damage: string } } }) => [
+        item.id,
+        item.item.rarity,
+        item.item.stats.damage,
+      ]),
+      [
+        ["mourning-edge", "storied", "1d10"],
+        ["mourning-edge-2", "uncommon", "2d6"],
+      ],
     );
+    const stacksNow = async () =>
+      normalizeGameInventoryStacks((await metaOf(made.id)).gameInventory).map((stack) => [stack.item, stack.quantity]);
+    assert.deepEqual(await stacksNow(), [["invented:mourning-edge-2", 1]]);
+    // Switched back to the first telling, the stacks hold the first blade, which is still itself; and
+    // forward again.
+    const showTelling = async (index: number) => {
+      const response = await app.inject({
+        method: "PUT",
+        url: `/api/chats/${made.id}/messages/${told.id}/active-swipe`,
+        payload: { index },
+      });
+      assert.equal(response.statusCode, 200, response.body);
+    };
+    await showTelling(0);
+    assert.deepEqual(await stacksNow(), [["invented:mourning-edge", 1]]);
+    assert.equal((await metaOf(made.id)).gameInventedItems[0].item.stats.damage, "1d10");
+    await showTelling(1);
+    assert.deepEqual(await stacksNow(), [["invented:mourning-edge-2", 1]]);
 
     // The next turn's prompt reads the invented item like one of the ruleset's own, and shows the
     // proposal form with the ruleset's caps.
@@ -900,11 +919,11 @@ try {
     const next = await metaOf(carried.json().sessionChat.id);
     assert.deepEqual(
       next.gameInventedItems.map((item: { id: string }) => item.id),
-      ["mourning-edge"],
+      ["mourning-edge-2"],
     );
     assert.deepEqual(
       normalizeGameInventoryStacks(next.gameInventory).map((stack) => stack.item),
-      ["invented:mourning-edge"],
+      ["invented:mourning-edge-2"],
     );
     // A game whose ruleset cannot be read any more keeps them as saved, by the same rule, and
     // anything that is not an invented item at all is dropped.
@@ -936,7 +955,7 @@ try {
     assert.equal(unreadNext.statusCode, 200, unreadNext.body);
     assert.deepEqual(
       (await metaOf(unreadNext.json().sessionChat.id)).gameInventedItems,
-      retold.gameInventedItems,
+      [retold.gameInventedItems[1]],
       "kept as saved while held, the rest dropped",
     );
     assert.ok(CHAT_PRESET_EXCLUDED_METADATA_KEYS.includes("gameInventedItems"));

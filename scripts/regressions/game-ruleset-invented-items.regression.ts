@@ -2,19 +2,20 @@
  * Items the Game Master invents (#6814, Capability API 1.51).
  *
  *   - `items.rarityCaps` and `items.propose` are read and checked at import: a cap names a rarity the
- *     ruleset has, once, and only number stats, inside each stat's own range. The install gate asks
- *     for 1.51 for either.
+ *     ruleset has, once, and only number stats, inside each stat's own range and in whole numbers
+ *     for a stat that takes them. The install gate asks for 1.51 for either.
  *   - A proposal is read against the ruleset's own words (ids or labels, in any case): what the
  *     ruleset does not have is left out, a rarity it does not have becomes its lowest, a number stat
  *     is held to its range and then to its rarity's cap (the part `like` started it from as well),
  *     and every change is said.
  *   - The Game Master's book invents: a catalog item's name is that item, `propose: false` refuses,
- *     a name still held is that item, one nobody holds is made anew under the same id, and ids never
- *     collide. The player's book cannot invent. Saved invented items are read back only while the
+ *     a name still held is that item, one this book made is found again, one nobody holds is an item
+ *     of its own under a new id (an older telling may hold the first), and ids never collide. The player's book cannot invent. Saved invented items are read back only while the
  *     ruleset can still read them.
  *   - The inventory tag reads a proposal's parts, the answer says what was changed, and a game
  *     without a ruleset adds the name as it always did.
- *   - The Game Master is shown the proposal form and the ruleset's words only when it may invent.
+ *   - The Game Master is shown the proposal form and the ruleset's words only when it may invent, and
+ *     never a stat it is not shown: not in the words, not in the caps, not in what was changed.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -29,6 +30,7 @@ import {
   parseRulesetDefinition,
   readRulesetInventedItems,
   rulesetInventedItemId,
+  rulesetInventedItemsHeld,
   rulesetItemBook,
   RULESET_INVENTED_ITEMS_MAX,
   type GameInventoryStack,
@@ -180,6 +182,14 @@ try {
   // ── A proposal, read against the ruleset's words ──
   {
     // Labels and ids alike, in any case; an unknown tag left out; a number held to its rarity's cap.
+    // Whole numbers only, for a stat that takes them.
+    const fraction = parseRulesetDefinition(
+      variant(emberText, (doc) => {
+        doc.items.rarityCaps[0].stats = { guard: 1.5 };
+      }),
+    );
+    assert.ok(!fraction.ok && fraction.issues.some((issue) => /Item stat "guard" takes whole numbers/.test(issue)));
+
     const blade = inventRulesetItem(ember, {
       category: "Weapon",
       rarity: "UNCOMMON",
@@ -245,6 +255,10 @@ try {
       inventRulesetItem(ember, { category: "gear", rarity: "common", slots: { wings: "2", hands: "3" } })!.notes,
       ['No slot "wings", so it was left out.', "A character has 2 Hands, so it takes 2."],
     );
+    assert.deepEqual(
+      inventRulesetItem(ember, { category: "gear", rarity: "common", slots: { hands: "0", body: "a lot" } })!.notes,
+      ["Hands takes a count of 1 or more, so it takes 1.", "Body takes a count of 1 or more, so it takes 1."],
+    );
     const bare = inventRulesetItem(ember, {})!;
     assert.deepEqual(bare.item, { category: "weapon", rarity: "common" });
     assert.deepEqual(bare.notes, [
@@ -262,6 +276,38 @@ try {
       undefined,
     );
     assert.equal(inventRulesetItem({ ...ember, items: undefined }, {}), null, "no items block, nothing to invent");
+
+    // A stat the Game Master is not shown: a change to it is kept for the player, never said to it.
+    const concealed = inventRulesetItem(
+      gravewatch,
+      { stats: { conceal: "sleeve", damage: "big" } },
+      itemOf(gravewatch, "widows-ring"),
+    )!;
+    assert.deepEqual(concealed.notes, [
+      'Hidden in takes one of pocket, coat, none, so "sleeve" was left out.',
+      'Damage takes dice such as 1d8, so "big" was left out.',
+    ]);
+    assert.deepEqual(concealed.promptNotes, ['Damage takes dice such as 1d8, so "big" was left out.']);
+    const secretGuard = parsedOrThrow(
+      variant(emberText, (doc) => {
+        doc.items.stats.find((stat: { id: string }) => stat.id === "guard").promptVisible = false;
+      }),
+      "a hidden guard",
+    );
+    const capped = inventRulesetItem(secretGuard, { category: "armor", rarity: "common", stats: { guard: "4" } })!;
+    assert.deepEqual(capped.notes, ["Guard is 1 instead of 4, the most at Common."]);
+    assert.deepEqual(capped.promptNotes, []);
+    const secretBook = rulesetItemBook(secretGuard, entriesOf(secretGuard), { actor: "game-master" });
+    assert.deepEqual(
+      secretBook.invent!({ name: "Iron Vest", category: "armor", rarity: "common", stats: { guard: "4" } }, []),
+      {
+        item: "invented:iron-vest",
+        notes: [],
+      },
+    );
+    assert.deepEqual(secretBook.itemOf("invented:iron-vest")?.invented, {
+      notes: ["Guard is 1 instead of 4, the most at Common."],
+    });
   }
 
   // ── The Game Master's book ──
@@ -297,10 +343,32 @@ try {
       notes: [],
     });
     assert.equal(gm.itemOf("invented:mourning-edge")?.entry.item?.stats?.damage, "1d10");
-    // Nobody holds it (the turn that made it was told again): made anew, under the same id.
-    gm.invent!({ name: "Mourning Edge", category: "weapon", rarity: "storied", stats: { damage: "2d6" } }, []);
-    assert.equal(gm.itemOf("invented:mourning-edge")?.entry.item?.stats?.damage, "2d6");
+    // The book that made it finds it again: the reply read a second time gives the same answer.
+    assert.deepEqual(gm.invent!({ name: "Mourning Edge", stats: { damage: "2d6" } }, []), {
+      item: "invented:mourning-edge",
+      notes: [],
+    });
     assert.equal(gm.inventedItems().length, 1);
+    // Told again (a new book, from what the game kept), a proposal nobody holds is an item of its own:
+    // the first telling may still hold the first, and a switch back to it must find it unchanged.
+    const retold = book(ember, gm.inventedItems());
+    assert.deepEqual(
+      retold.invent!({ name: "Mourning Edge", category: "weapon", rarity: "storied", stats: { damage: "2d6" } }, []),
+      { item: "invented:mourning-edge-2", notes: [] },
+    );
+    assert.equal(retold.itemOf("invented:mourning-edge")?.entry.item?.stats?.damage, "1d10");
+    assert.equal(retold.itemOf("invented:mourning-edge-2")?.entry.item?.stats?.damage, "2d6");
+    assert.equal(retold.itemNamed("Mourning Edge")?.item, "invented:mourning-edge-2", "a name finds the newest");
+    assert.deepEqual(
+      retold.invent!({ name: "Mourning Edge", stats: { damage: "3d6" } }, held),
+      { item: "invented:mourning-edge", notes: [] },
+      "held, the older one is still that item",
+    );
+    // Only the ones still held are kept.
+    assert.deepEqual(
+      rulesetInventedItemsHeld(retold.inventedItems(), held).map((made) => made.id),
+      ["mourning-edge"],
+    );
     // Another name spelled the same way gets an id of its own.
     assert.equal(
       (gm.invent!({ name: "Mourning-Edge!", category: "gear" }, []) as { item: string }).item,
@@ -455,6 +523,15 @@ try {
     );
     assert.doesNotMatch(buildGmFormatReminder({ ...base, ruleset: closed }), /invent one of its items/);
     assert.doesNotMatch(buildGmFormatReminder(base), /invent one of its items/, "no ruleset, no proposal form");
+    const secretGuard = parsedOrThrow(
+      variant(emberText, (doc) => {
+        doc.items.stats.find((stat: { id: string }) => stat.id === "guard").promptVisible = false;
+      }),
+      "a hidden guard",
+    );
+    const secret = buildGmFormatReminder({ ...base, ruleset: secretGuard });
+    assert.match(secret, /invent one of its items/);
+    assert.doesNotMatch(secret, /guard/, "a stat it is not shown is never named, its cap included");
   }
 
   console.info("game ruleset invented item regressions passed.");

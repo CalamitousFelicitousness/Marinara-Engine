@@ -80,10 +80,9 @@ export interface RulesetItemBook extends GameInventoryItemRules {
    *  Game Master invented. */
   itemOf(item: string): RulesetItemBookEntry | undefined;
   itemNamed(name: string): RulesetItemBookEntry | undefined;
-  /** The game's invented items, as they are to be saved: the ones it was built with, and any `invent`
-   *  has made or replaced since. */
+  /** The game's invented items: the ones it was built with, and any `invent` has made since. */
   inventedItems(): RulesetInventedItem[];
-  /** Whether `invent` has made or replaced an item since the book was built. */
+  /** Whether `invent` has made an item since the book was built. */
   inventedChanged(): boolean;
 }
 
@@ -175,15 +174,18 @@ export function rulesetItemBook(
       if (!byName.has(key)) byName.set(key, read);
     }
   }
-  // The items the Game Master invented, found by name after the ruleset's own.
+  // The items the Game Master invented, found by name after the ruleset's own. One name may have
+  // several: each telling of a turn that proposed it made its own, and a switch back to an older
+  // telling must still find the one it holds. A name finds the newest.
   const invented = new Map<string, RulesetInventedItem>();
-  const inventedByName = new Map<string, RulesetInventedItem>();
-  let changed = false;
+  const inventedByName = new Map<string, RulesetInventedItem[]>();
+  // What this book made, by id, with what the Game Master was told: the same reply read again (its
+  // answers before the save, then its change after) finds the same item.
+  const madeHere = new Map<string, string[]>();
   const keep = (made: RulesetInventedItem) => {
-    const previous = invented.get(made.id);
-    if (previous) inventedByName.delete(gameInventoryNameKey(previous.name));
     invented.set(made.id, made);
-    inventedByName.set(gameInventoryNameKey(made.name), made);
+    const key = gameInventoryNameKey(made.name);
+    inventedByName.set(key, [...(inventedByName.get(key) ?? []), made]);
     const ref = rulesetInventedItemRef(made.id);
     all.set(ref, {
       ...bookEntry(ref, "", {
@@ -202,7 +204,7 @@ export function rulesetItemBook(
   }
   const itemNamed = (name: string): RulesetItemBookEntry | undefined => {
     const key = gameInventoryNameKey(name);
-    const made = inventedByName.get(key);
+    const made = inventedByName.get(key)?.at(-1);
     return byName.get(key) ?? (made ? all.get(rulesetInventedItemRef(made.id)) : undefined);
   };
   const invent: GameInventoryItemRules["invent"] = (proposal, stacks) => {
@@ -212,22 +214,25 @@ export function rulesetItemBook(
     const own = byName.get(key);
     if (own) return { item: own.item, notes: [`${own.name} is one of this ruleset's own items, so it is that item.`] };
     if (definition.items?.propose === false) return { refused: "no-invention" };
-    // One of that name the game still holds is that item: a proposal never changes it. One nobody
-    // holds any more (the turn that made it was told again) is made anew.
-    const known = inventedByName.get(key);
-    if (known && stacks.some((stack) => stack.item === rulesetInventedItemRef(known.id))) {
-      return { item: rulesetInventedItemRef(known.id), notes: [] };
-    }
-    if (!known && invented.size >= RULESET_INVENTED_ITEMS_MAX) return { refused: "too-many" };
+    // One of that name the game holds is that item: a proposal never changes it. So is one this
+    // book made. Otherwise the proposal is an item of its own, even when an older one has the name
+    // (another telling of the turn may still hold that one), and saving keeps only what is held.
+    const named = inventedByName.get(key) ?? [];
+    const held = named.find((made) => stacks.some((stack) => stack.item === rulesetInventedItemRef(made.id)));
+    if (held) return { item: rulesetInventedItemRef(held.id), notes: [] };
+    const again = named.find((made) => madeHere.has(made.id));
+    if (again) return { item: rulesetInventedItemRef(again.id), notes: madeHere.get(again.id)! };
+    if (invented.size >= RULESET_INVENTED_ITEMS_MAX) return { refused: "too-many" };
     const likeText = proposal.like?.trim();
     const like = likeText ? (offered.has(likeText) ? all.get(likeText) : itemNamed(likeText)) : undefined;
     const made = inventRulesetItem(definition, proposal, like?.entry.item);
     if (!made || rulesetItemIssues(definition, made.item).length > 0) return { refused: "unreadable" };
-    const notes = [...(likeText && !like ? [`No item "${likeText.slice(0, 60)}" to start from.`] : []), ...made.notes];
-    const id = known?.id ?? rulesetInventedItemId(text.name, (taken) => invented.has(taken));
+    const missed = likeText && !like ? [`No item "${likeText.slice(0, 60)}" to start from.`] : [];
+    const notes = [...missed, ...made.notes];
+    const id = rulesetInventedItemId(text.name, (taken) => invented.has(taken));
     keep({ id, ...text, item: made.item, ...(notes.length ? { notes } : {}) });
-    changed = true;
-    return { item: rulesetInventedItemRef(id), notes };
+    madeHere.set(id, [...missed, ...made.promptNotes]);
+    return { item: rulesetInventedItemRef(id), notes: madeHere.get(id)! };
   };
   return {
     entries: visible,
@@ -235,7 +240,7 @@ export function rulesetItemBook(
     offers: (item) => offered.has(item),
     itemNamed,
     inventedItems: () => [...invented.values()],
-    inventedChanged: () => changed,
+    inventedChanged: () => madeHere.size > 0,
     ...(options.actor === "game-master" && definition.items ? { invent } : {}),
     plain: options.plain ?? "allow",
     ...(options.actor ? { actor: options.actor } : {}),

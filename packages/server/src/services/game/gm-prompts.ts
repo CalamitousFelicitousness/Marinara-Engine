@@ -512,14 +512,12 @@ function inventGrammarLines(
     .filter((stat) => stat.promptVisible)
     .map((stat) => `${stat.id} (${statKind(stat)})`)
     .join(", ");
+  // Only the stats it is shown: a hidden stat's cap would tell it the stat is there.
+  const shown = new Set((items.stats ?? []).filter((stat) => stat.promptVisible).map((stat) => stat.id));
   const caps = (items.rarityCaps ?? [])
-    .filter((cap) => cap.stats && Object.keys(cap.stats).length > 0)
-    .map(
-      (cap) =>
-        `${cap.rarity} ${Object.entries(cap.stats!)
-          .map(([id, most]) => `${id} ${most}`)
-          .join(", ")}`,
-    )
+    .map((cap) => ({ rarity: cap.rarity, most: Object.entries(cap.stats ?? {}).filter(([id]) => shown.has(id)) }))
+    .filter((cap) => cap.most.length > 0)
+    .map((cap) => `${cap.rarity} ${cap.most.map(([id, most]) => `${id} ${most}`).join(", ")}`)
     .join("; ");
   const words = [
     `categories ${ids(items.categories)}`,

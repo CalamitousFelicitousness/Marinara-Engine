@@ -47,6 +47,16 @@ export function rulesetInventedItemRef(id: string): string {
   return `${RULESET_INVENTED_ITEM_PREFIX}${id}`;
 }
 
+/** The invented items any of these lists of stacks still holds. The rest can never be read again: a
+ *  game keeps an item only while a stack, or a remembered telling's stacks, name it. */
+export function rulesetInventedItemsHeld<T extends { id: string }>(
+  items: readonly T[],
+  ...lists: ReadonlyArray<ReadonlyArray<{ item?: string }>>
+): T[] {
+  const held = new Set(lists.flatMap((stacks) => stacks.map((stack) => stack.item)));
+  return items.filter((made) => held.has(rulesetInventedItemRef(made.id)));
+}
+
 /** Any text as one plain line: no line breaks, control characters or square brackets. */
 function plainLine(text: string, max: number): string {
   return text
@@ -133,29 +143,34 @@ function readStat(stat: RulesetItemStat, text: string): { value: string | number
 /**
  * An item made from the Game Master's proposal, read against the ruleset's `items` block. `like` is
  * the catalog item it starts from, already found by the caller: anything the proposal gives replaces
- * that part. Null when the ruleset has no items block to write an item in.
+ * that part. Null when the ruleset has no items block to write an item in. `notes` are every change,
+ * for the item's details; `promptNotes` leave out the ones about a stat the Game Master is not shown.
  */
 export function inventRulesetItem(
   definition: RulesetDefinition,
   proposal: Omit<GameInventoryItemProposal, "name">,
   like?: RulesetCatalogItem,
-): { item: RulesetCatalogItem; notes: string[] } | null {
+): { item: RulesetCatalogItem; notes: string[]; promptNotes: string[] } | null {
   const block = definition.items;
   if (!block) return null;
-  const notes: string[] = [];
+  const said: Array<{ text: string; hidden: boolean }> = [];
+  // Every change as it is said, and whether it is about a stat the Game Master is not shown.
+  const say = (text: string) => said.push({ text, hidden: false });
+  const sayOf = (stat: RulesetItemStat | undefined, text: string) =>
+    said.push({ text, hidden: stat?.promptVisible === false });
 
   const named = proposal.category !== undefined ? wordNamed(block.categories, proposal.category) : undefined;
   let category = named?.id ?? like?.category;
   if (!category) {
     const first = block.categories[0]!;
     category = first.id;
-    notes.push(
+    say(
       proposal.category !== undefined
         ? `No category "${plainLine(proposal.category, 40)}", so it is in ${first.label}.`
         : `No category was given, so it is in ${first.label}.`,
     );
   } else if (proposal.category !== undefined && !named) {
-    notes.push(
+    say(
       `No category "${plainLine(proposal.category, 40)}", so it stays in ${wordNamed(block.categories, category)?.label ?? category}.`,
     );
   }
@@ -167,7 +182,7 @@ export function inventRulesetItem(
     rarity = namedRarity?.id ?? (proposal.rarity === undefined ? like?.rarity : undefined);
     if (!rarity) {
       rarity = lowest.id;
-      notes.push(
+      say(
         proposal.rarity !== undefined
           ? `No rarity "${plainLine(proposal.rarity, 40)}", so it is ${lowest.label}.`
           : `No rarity was given, so it is ${lowest.label}.`,
@@ -180,7 +195,7 @@ export function inventRulesetItem(
     tags = [];
     for (const given of proposal.tags) {
       const tag = wordNamed(block.tags, given);
-      if (!tag) notes.push(`No tag "${plainLine(given, 40)}", so it was left out.`);
+      if (!tag) say(`No tag "${plainLine(given, 40)}", so it was left out.`);
       else if (!tags.includes(tag.id)) tags.push(tag.id);
     }
   }
@@ -189,20 +204,20 @@ export function inventRulesetItem(
   for (const [given, text] of Object.entries(proposal.stats ?? {})) {
     const stat = wordNamed(block.stats, given);
     if (!stat) {
-      notes.push(`No stat "${plainLine(given, 40)}", so it was left out.`);
+      say(`No stat "${plainLine(given, 40)}", so it was left out.`);
       continue;
     }
     const read = readStat(stat, text);
     if ("wrong" in read) {
-      notes.push(`${stat.label} takes ${read.wrong}, so "${plainLine(text, 40)}" was left out.`);
+      sayOf(stat, `${stat.label} takes ${read.wrong}, so "${plainLine(text, 40)}" was left out.`);
       continue;
     }
     let value = read.value;
     if (stat.type === "number" && typeof value === "number") {
       const whole = stat.integer ? Math.round(value) : value;
-      if (whole !== value) notes.push(`${stat.label} takes whole numbers, so it is ${whole}.`);
+      if (whole !== value) sayOf(stat, `${stat.label} takes whole numbers, so it is ${whole}.`);
       const held = Math.min(stat.max, Math.max(stat.min, whole));
-      if (held !== whole) notes.push(`${stat.label} runs from ${stat.min} to ${stat.max}, so it is ${held}.`);
+      if (held !== whole) sayOf(stat, `${stat.label} runs from ${stat.min} to ${stat.max}, so it is ${held}.`);
       value = held;
     }
     stats[stat.id] = value;
@@ -213,8 +228,8 @@ export function inventRulesetItem(
   for (const [id, most] of Object.entries(caps)) {
     const value = stats[id];
     if (typeof value !== "number" || value <= most) continue;
-    const label = block.stats?.find((stat) => stat.id === id)?.label ?? id;
-    notes.push(`${label} is ${most} instead of ${value}, the most at ${rarityLabel}.`);
+    const stat = block.stats?.find((each) => each.id === id);
+    sayOf(stat, `${stat?.label ?? id} is ${most} instead of ${value}, the most at ${rarityLabel}.`);
     stats[id] = most;
   }
 
@@ -224,12 +239,14 @@ export function inventRulesetItem(
     for (const [given, text] of Object.entries(proposal.slots)) {
       const slot = wordNamed(block.slots, given);
       if (!slot) {
-        notes.push(`No slot "${plainLine(given, 40)}", so it was left out.`);
+        say(`No slot "${plainLine(given, 40)}", so it was left out.`);
         continue;
       }
       const count = Number.parseInt(text.trim() || "1", 10);
-      const taken = Number.isFinite(count) && count >= 1 ? Math.min(count, slot.count) : 1;
-      if (taken !== count) notes.push(`A character has ${slot.count} ${slot.label}, so it takes ${taken}.`);
+      const counted = Number.isFinite(count) && count >= 1;
+      const taken = counted ? Math.min(count, slot.count) : 1;
+      if (!counted) say(`${slot.label} takes a count of 1 or more, so it takes 1.`);
+      else if (taken !== count) say(`A character has ${slot.count} ${slot.label}, so it takes ${taken}.`);
       slots[slot.id] = taken;
     }
   }
@@ -238,7 +255,7 @@ export function inventRulesetItem(
   if (proposal.binds !== undefined) {
     const word = proposal.binds.trim().toLowerCase();
     const wanted = ["no", "false", "0", "none"].includes(word) ? undefined : word === "cursed" ? { cursed: true } : {};
-    if (wanted && !block.binding) notes.push("This ruleset binds nothing, so it does not bind.");
+    if (wanted && !block.binding) say("This ruleset binds nothing, so it does not bind.");
     binds = wanted && block.binding ? wanted : undefined;
   }
 
@@ -253,7 +270,12 @@ export function inventRulesetItem(
       ? { binds: { ...(like?.binds?.restriction ? { restriction: like.binds.restriction } : {}), ...binds } }
       : {}),
   };
-  return { item, notes: notes.slice(0, NOTES_MAX).map((note) => plainLine(note, NOTE_MAX_LENGTH)) };
+  const kept = said.slice(0, NOTES_MAX).map((note) => ({ ...note, text: plainLine(note.text, NOTE_MAX_LENGTH) }));
+  return {
+    item,
+    notes: kept.map((note) => note.text),
+    promptNotes: kept.filter((note) => !note.hidden).map((note) => note.text),
+  };
 }
 
 /** A proposal's name and summary as the invented item keeps them. */

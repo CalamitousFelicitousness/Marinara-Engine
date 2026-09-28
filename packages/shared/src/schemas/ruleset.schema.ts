@@ -3623,6 +3623,8 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           issue(at("rarityCaps", index, "stats", id), `Item stat "${id}" is not a number`);
         else if (most < stat.min || most > stat.max) {
           issue(at("rarityCaps", index, "stats", id), `Item stat "${id}" runs from ${stat.min} to ${stat.max}`);
+        } else if (stat.integer && !Number.isInteger(most)) {
+          issue(at("rarityCaps", index, "stats", id), `Item stat "${id}" takes whole numbers`);
         }
       }
     });

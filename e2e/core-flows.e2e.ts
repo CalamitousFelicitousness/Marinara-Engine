@@ -1,3 +1,4 @@
+import { clickTopbarPanel } from "./topbar-navigation.js";
 import {
   expect,
   test,
@@ -412,7 +413,7 @@ test("turning off the custom mouse pointer persists immediately and after reload
   test.skip(!testInfo.project.name.includes("desktop"), "Appearance preference persistence is covered on desktop.");
 
   await page.goto("/");
-  await page.locator('[data-tour="panel-settings"]').click();
+  await clickTopbarPanel(page, "settings");
   await page.getByRole("tab", { name: "Appearance" }).click();
 
   const cursorToggle = page.getByLabel("Custom Mouse Pointer");
@@ -438,7 +439,7 @@ test("turning off the custom mouse pointer persists immediately and after reload
 
 test("Settings switches share one centered track and thumb geometry", async ({ page }) => {
   await page.goto("/");
-  await page.locator('[data-tour="panel-settings"]').click();
+  await clickTopbarPanel(page, "settings");
 
   const rootFontSize = await page.evaluate(() =>
     Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
@@ -500,7 +501,7 @@ test("Appearance distinguishes the square avatar-shape preview from the circular
   test.skip(!testInfo.project.name.includes("desktop"), "One visual shape proof is sufficient.");
 
   await page.goto("/");
-  await page.locator('[data-tour="panel-settings"]').click();
+  await clickTopbarPanel(page, "settings");
   await page.getByRole("tab", { name: "Appearance" }).click();
 
   const circle = page.locator('[data-avatar-shape-preview="circle"]');
@@ -522,7 +523,7 @@ test("Appearance distinguishes the square avatar-shape preview from the circular
 
 test("Art scale sliders stay interactive at the largest display size", async ({ page }) => {
   await page.goto("/");
-  await page.locator('[data-tour="panel-settings"]').click();
+  await clickTopbarPanel(page, "settings");
   await page.getByRole("tab", { name: "Appearance" }).click();
 
   const exerciseSlider = async (controlId: string) => {
@@ -580,7 +581,7 @@ test("Art scale sliders stay interactive at the largest display size", async ({ 
 
 test("custom theme live preview batches stylesheet updates while typing", async ({ page }) => {
   await page.goto("/");
-  await page.locator('[data-tour="panel-settings"]').click();
+  await clickTopbarPanel(page, "settings");
   await page.getByRole("tab", { name: "Addons" }).click();
   await page.getByRole("button", { name: "Create Theme" }).click();
 
@@ -634,7 +635,7 @@ test("gradient Accent Pulse keeps animating while Appearance settings are open",
   test.skip(!testInfo.project.name.includes("desktop"), "Accent Pulse preview is covered on desktop.");
 
   await page.goto("/");
-  await page.locator('[data-tour="panel-settings"]').click();
+  await clickTopbarPanel(page, "settings");
   await page.getByRole("tab", { name: "Appearance" }).click();
   const accentColorControl = page.locator("#settings-control-app-accent-color");
   await accentColorControl.getByRole("button", { name: /Default/ }).click();
@@ -673,7 +674,7 @@ test("Android status bar setting reads and updates the native bridge", async ({ 
   });
 
   await page.goto("/");
-  await page.locator('[data-tour="panel-settings"]').click();
+  await clickTopbarPanel(page, "settings");
 
   const statusBarToggle = page.getByLabel("Show Android status bar");
   await expect(statusBarToggle).toBeChecked();
@@ -766,7 +767,7 @@ test("default dialogue color fills only cards without their own dialogue color",
     await expect(uncoloredDialogue).toBeVisible();
     await expect(coloredDialogue).toHaveCSS("color", "rgb(34, 197, 94)");
 
-    await page.locator('[data-tour="panel-settings"]').click();
+    await clickTopbarPanel(page, "settings");
     await page.getByRole("tab", { name: "Appearance" }).click();
     const dialogueColorControl = page.locator("#settings-control-default-dialogue-color");
     await dialogueColorControl.scrollIntoViewIfNeeded();
@@ -2800,12 +2801,12 @@ test("resource panel sort fields share the canonical width", async ({ page }, te
   await page.goto("/");
   const rightPanel = page.locator('[data-component="RightPanelDesktop"]');
 
-  await page.locator('[data-tour="panel-lorebooks"]').click();
+  await clickTopbarPanel(page, "lorebooks");
   const lorebookSort = rightPanel.locator("select.mari-chrome-sort-field:visible");
   await expect(lorebookSort).toBeVisible();
   const lorebookWidth = await lorebookSort.evaluate((element) => element.getBoundingClientRect().width);
 
-  await page.locator('[data-tour="panel-personas"]').click();
+  await clickTopbarPanel(page, "personas");
   const personaSort = rightPanel.locator("select.mari-chrome-sort-field:visible");
   await expect(personaSort).toBeVisible();
   const personaWidth = await personaSort.evaluate((element) => element.getBoundingClientRect().width);
@@ -2985,7 +2986,7 @@ test("connection model fetch errors inherit the configured editor accent", async
       document.documentElement.style.setProperty("--destructive", "rgb(255, 0, 0)");
     });
 
-    await page.locator('[data-tour="panel-connections"]').click();
+    await clickTopbarPanel(page, "connections");
     const rightPanel = page.locator('[data-component="RightPanelDesktop"]');
     await rightPanel
       .getByText("Connection Fetch Error Chroma", { exact: true })
@@ -3063,7 +3064,7 @@ test("connection test-message errors inherit the configured editor accent", asyn
       document.documentElement.style.setProperty("--destructive", "rgb(255, 0, 0)");
     });
 
-    await page.locator('[data-tour="panel-connections"]').click();
+    await clickTopbarPanel(page, "connections");
     const rightPanel = page.locator('[data-component="RightPanelDesktop"]');
     await rightPanel
       .getByText("Connection Message Error Chroma", { exact: true })
@@ -3106,7 +3107,7 @@ test("NovelAI style plate upload keeps the connection editor mounted", async ({ 
     connectionId = connection.id;
 
     await page.goto("/");
-    await page.locator('[data-tour="panel-connections"]').click();
+    await clickTopbarPanel(page, "connections");
     const rightPanel = page.locator('[data-component="RightPanelDesktop"]');
     await rightPanel
       .getByText("NovelAI Style Plate Upload", { exact: true })
@@ -3183,7 +3184,7 @@ test("NovelAI generation defaults survive save and editor navigation", async ({ 
     personaId = ((await personaResponse.json()) as { id: string }).id;
 
     await page.goto("/");
-    await page.locator('[data-tour="panel-connections"]').click();
+    await clickTopbarPanel(page, "connections");
     const rightPanel = page.locator('[data-component="RightPanelDesktop"]');
     await rightPanel
       .getByText(connectionName, { exact: true })
@@ -3222,7 +3223,7 @@ test("NovelAI generation defaults survive save and editor navigation", async ({ 
     };
     expect(exported.connections?.[0]?.defaultParameters?.imageGeneration?.seed).toBe(50);
 
-    await page.locator('[data-tour="panel-personas"]').click();
+    await clickTopbarPanel(page, "personas");
     await rightPanel
       .getByText(personaName, { exact: true })
       .first()
@@ -3236,7 +3237,7 @@ test("NovelAI generation defaults survive save and editor navigation", async ({ 
       )
       .toBe(personaId);
 
-    await page.locator('[data-tour="panel-connections"]').click();
+    await clickTopbarPanel(page, "connections");
     await rightPanel
       .getByText(connectionName, { exact: true })
       .first()
@@ -3261,7 +3262,7 @@ test("NovelAI generation defaults survive connection import", async ({ page, req
 
   try {
     await page.goto("/");
-    await page.locator('[data-tour="panel-connections"]').click();
+    await clickTopbarPanel(page, "connections");
     const rightPanel = page.locator('[data-component="RightPanelDesktop"]');
     await rightPanel.getByRole("button", { name: "Import connection" }).click();
     const importDialog = page.getByRole("dialog", { name: "Import Connections" });
@@ -3371,7 +3372,7 @@ test("Connection image captioning defaults persist with a dedicated captioning c
     expect(invalidDefaultsResponse.status()).toBe(400);
 
     await page.goto("/");
-    await page.locator('[data-tour="panel-connections"]').click();
+    await clickTopbarPanel(page, "connections");
     const rightPanel = page.locator('[data-component="RightPanelDesktop"]');
     await rightPanel
       .getByText(chatConnectionName, { exact: true })
@@ -3445,7 +3446,7 @@ test("Connection Discard uses the configured editor accent", async ({ page }, te
       document.documentElement.style.setProperty("--destructive", "rgb(255, 0, 0)");
     });
 
-    await page.locator('[data-tour="panel-connections"]').click();
+    await clickTopbarPanel(page, "connections");
     const rightPanel = page.locator('[data-component="RightPanelDesktop"]');
     await rightPanel
       .getByText("Connection Discard Accent", { exact: true })
@@ -3496,7 +3497,7 @@ test("mobile connection drag previews preserve configured Chroma text", async ({
       ui.setAppAccentColor("#ff1493");
       ui.setChatChromeTextColor("#14b8a6");
     });
-    await page.locator('[data-tour="panel-connections"]').click();
+    await clickTopbarPanel(page, "connections");
 
     const panel = page.locator('[data-component="RightPanelMobile"]');
     const source = panel.locator(`[data-touch-drag-card="connection"][data-connection-id="${connection.id}"]`);
@@ -3555,7 +3556,7 @@ test("Character favorite tags and stars inherit the configured accent color", as
     await page.goto("/");
     await setAppAccentColor(page, "#1256aa");
 
-    await page.locator('[data-tour="panel-characters"]').click();
+    await clickTopbarPanel(page, "characters");
     const rightPanel = page.locator('[data-component="RightPanelDesktop"]');
     const characterRow = rightPanel.locator('[data-touch-drag-card="character"]').filter({ hasText: characterName });
     await expect(characterRow).toBeVisible();
@@ -3615,7 +3616,7 @@ test("Characters can be dragged from the right panel into the active chat", asyn
     const dropSurface = page.locator("[data-chat-resource-drop-surface]");
     await expect(dropSurface).toBeVisible();
 
-    await page.locator('[data-tour="panel-characters"]').click();
+    await clickTopbarPanel(page, "characters");
     const rightPanel = page.locator('[data-component="RightPanelDesktop"]');
     const characterRow = rightPanel.locator('[data-touch-drag-card="character"]').filter({ hasText: characterName });
     await expect(characterRow).toBeVisible();
@@ -3661,7 +3662,7 @@ test("Character row actions can add a resource to the active chat without draggi
       module.useChatStore.getState().setActiveChatId(chatId);
     }, chat.id);
     await expect(page.locator("[data-chat-resource-drop-surface]")).toBeVisible();
-    await page.locator('[data-tour="panel-characters"]').click();
+    await clickTopbarPanel(page, "characters");
 
     // This action proof needs one character, not the shard's accumulated catalog.
     await page.getByRole("textbox", { name: "Search characters", exact: true }).fill(characterName);
@@ -3735,7 +3736,7 @@ test("Dropping a persona confirms before replacing the active chat persona", asy
       module.useChatStore.getState().setActiveChatId(chatId);
     }, chat.id);
     await expect(page.locator("[data-chat-resource-drop-surface]")).toBeVisible();
-    await page.locator('[data-tour="panel-personas"]').click();
+    await clickTopbarPanel(page, "personas");
     const personaRow = page.locator('[data-touch-drag-card="persona"]').filter({ hasText: nextPersona.name });
     const dropSurface = page.locator("[data-chat-resource-drop-surface]");
     await expect(personaRow).toBeVisible();
@@ -3830,7 +3831,7 @@ test("Character Chat actions reuse mode selection and seed the chosen setup wiza
   const ensureCharacterPanelOpen = async () => {
     const charactersButton = page.locator('[data-tour="panel-characters"]');
     if ((await charactersButton.getAttribute("aria-pressed")) !== "true") {
-      await charactersButton.click();
+      await clickTopbarPanel(page, "characters");
     }
     await expect(charactersButton).toHaveAttribute("aria-pressed", "true");
     await expect(rightPanel).toBeVisible();
@@ -4129,7 +4130,7 @@ for (const { panel, endpoint, sections } of [
     const resource = (await response.json()) as { id: string };
     try {
       await page.goto("/");
-      await page.locator(`[data-tour="panel-${panel}"]`).click();
+      await clickTopbarPanel(page, panel);
       if (panel === "presets") {
         await page
           .locator('[data-touch-drag-card="preset"]')
@@ -4244,7 +4245,7 @@ test("Character and Persona avatar actions stay separated and visually balanced"
     creator: string,
     version: string,
   ) => {
-    await page.locator(`[data-tour="panel-${panel}"]`).click();
+    await clickTopbarPanel(page, panel);
     await page
       .getByText(resourceName, { exact: true })
       .first()
@@ -4978,7 +4979,7 @@ test("Character and persona sheets persist an explicit reference choice and fall
     expect(personaUpdateResponse.ok()).toBeTruthy();
 
     await page.goto("/");
-    await page.locator('[data-tour="panel-characters"]').click();
+    await clickTopbarPanel(page, "characters");
     await page
       .getByText(characterName, { exact: true })
       .first()
@@ -5037,7 +5038,7 @@ test("Character and persona sheets persist an explicit reference choice and fall
       .first()
       .evaluate((button: HTMLButtonElement) => button.click());
     await expect(editor).toHaveCount(0);
-    await page.locator('[data-tour="panel-personas"]').click();
+    await clickTopbarPanel(page, "personas");
     await page
       .getByText(personaName, { exact: true })
       .first()
@@ -5260,7 +5261,7 @@ test("Matched full-body sprites approve a neutral anchor before sending each exp
 
   try {
     await page.goto("/");
-    await page.locator('[data-tour="panel-characters"]').click();
+    await clickTopbarPanel(page, "characters");
     const rightPanel = page.locator('[data-component="RightPanelDesktop"]');
     await rightPanel.locator('[data-touch-drag-card="character"]').filter({ hasText: characterName }).click();
 
@@ -5345,7 +5346,7 @@ test("expanded character editors keep native keyboard and quote caret behavior",
   try {
     await seedUIState(page, { hasCompletedOnboarding: true, quoteFormat: "typographic" }, "merge");
     await page.goto("/");
-    await page.locator('[data-tour="panel-characters"]').click();
+    await clickTopbarPanel(page, "characters");
     await page.getByText(characterName, { exact: true }).first().click();
 
     const editor = page.locator(".mari-editor-shell");
@@ -6528,7 +6529,7 @@ for (const mode of ["conversation", "roleplay"] as const) {
         return JSON.parse(value || "{}") as Record<string, unknown>;
       };
       const openAppearance = async () => {
-        await page.locator('[data-tour="panel-settings"]').click();
+        await clickTopbarPanel(page, "settings");
         await page.getByRole("tab", { name: "Appearance", exact: true }).click();
         await page
           .getByRole("group", { name: "Appearance by chat mode" })
@@ -7447,7 +7448,7 @@ test("Roleplay can show streaming reasoning inline and control automatic collaps
       };
       useUIStore.getState().setChatChromeTextColor("#14b8a6");
     });
-    await page.locator('[data-tour="panel-settings"]').click();
+    await clickTopbarPanel(page, "settings");
     await page.getByRole("tab", { name: "Appearance" }).click();
 
     const showControl = page.locator("#settings-control-show-roleplay-thinking-in-messages");
@@ -8332,7 +8333,7 @@ test("legacy browser records are cleaned while extension imports stay locked", a
     ),
   ).toBeUndefined();
 
-  await page.locator('[data-tour="panel-settings"]').click();
+  await clickTopbarPanel(page, "settings");
   await page.getByRole("tab", { name: "Addons" }).click();
   await expect(page.getByText("Personal Extensions", { exact: true }).first()).toBeVisible();
   await expect(
@@ -8357,7 +8358,7 @@ test("legacy browser records are cleaned while extension imports stay locked", a
 
 test("Personal Extensions default to the Professor Mari-only locked workflow", async ({ page }) => {
   await page.goto("/");
-  await page.locator('[data-tour="panel-settings"]').click();
+  await clickTopbarPanel(page, "settings");
   await page.getByRole("tab", { name: "Addons" }).click();
 
   await expect(page.getByText("Personal Extensions", { exact: true }).first()).toBeVisible();
@@ -8459,7 +8460,7 @@ test("external Agent imports require the Danger Zone gate and explicit capabilit
     expect(blockedImport.status()).toBe(403);
 
     await page.goto("/");
-    await page.locator('[data-tour="panel-agents"]').click();
+    await clickTopbarPanel(page, "agents");
     const disabledHelp = 'Enable "Allow custom Agent imports" in Advanced Settings → Danger Zone first.';
     const lockedImportButton = page.getByTitle(disabledHelp).first();
     await expect(lockedImportButton).toHaveAttribute("aria-disabled", "true");
@@ -8469,7 +8470,7 @@ test("external Agent imports require the Danger Zone gate and explicit capabilit
     await disabledToast.getByRole("button", { name: "Close toast" }).click();
     await expect(disabledToast).toBeHidden();
 
-    await page.locator('[data-tour="panel-settings"]').click();
+    await clickTopbarPanel(page, "settings");
     await page.getByRole("tab", { name: "Advanced" }).click();
     const agentImportToggle = page.getByLabel("Allow custom Agent imports");
     await expect(agentImportToggle).toBeEnabled();
@@ -8490,7 +8491,7 @@ test("external Agent imports require the Danger Zone gate and explicit capabilit
     const enabledPolicy = await request.patch("/api/agents/import-policy", { data: { enabled: true } });
     expect(enabledPolicy.ok()).toBeTruthy();
     await page.reload();
-    await page.locator('[data-tour="panel-agents"]').click();
+    await clickTopbarPanel(page, "agents");
     const importAgents = page.getByTitle("Import agents");
     await expect(importAgents).toHaveCount(1);
     await expect(importAgents).toHaveAttribute("aria-disabled", "false");
@@ -9876,8 +9877,7 @@ test("chat Help can be hidden permanently from the overlay or App Behavior", asy
     await expect(overlay).toHaveCount(0);
     await expect(page.locator('[data-chat-mode="conversation"] [data-chat-help="help"]')).toHaveCount(0);
 
-    const settingsButton = page.locator('[data-tour="panel-settings"]');
-    await settingsButton.click();
+    await clickTopbarPanel(page, "settings");
     const settingRow = page.locator("#settings-control-hide-chat-help-button");
     await expect(settingRow).toBeVisible();
     const settingToggle = settingRow.locator('input[type="checkbox"]');
@@ -10226,7 +10226,7 @@ test("selected prompt indicators escape the avatar clipping frame", async ({ pag
   try {
     await page.addInitScript((chatId) => localStorage.setItem("marinara-active-chat-id", chatId), chat.id);
     await page.goto("/");
-    await page.locator('[data-tour="panel-presets"]').click();
+    await clickTopbarPanel(page, "presets");
     const presetRow = page.locator('[data-touch-drag-card="preset"]').filter({ hasText: presetName });
     const pictureButton = presetRow.getByRole("button", { name: "Upload preset picture" });
     const indicator = presetRow.locator("[data-preset-selected-indicator]");
@@ -10281,7 +10281,7 @@ test("preset pictures can be uploaded from the panel and replaced in the Overvie
 
   try {
     await page.goto("/");
-    await page.locator('[data-tour="panel-presets"]').click();
+    await clickTopbarPanel(page, "presets");
 
     const presetRow = page.locator('[data-touch-drag-card="preset"]').filter({ hasText: presetName });
     await expect(presetRow).toBeVisible();
@@ -10384,7 +10384,7 @@ test("preset token counters stay localized and editable with malformed marker se
     await seedUIState(page, { language: "ja", theme }, "merge");
     await page.goto("/");
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
-    await page.locator('[data-tour="panel-presets"]').click();
+    await clickTopbarPanel(page, "presets");
     const presetRow = page.locator('[data-touch-drag-card="preset"]').filter({ hasText: presetName });
     await presetRow.locator("[data-preset-open-action]").click({ position: { x: 8, y: 8 } });
     const editor = page.locator(".mari-editor-shell");
@@ -11673,7 +11673,7 @@ test("PocketTTS discovers server voices and uses its speech endpoint", async ({ 
     });
 
     await page.goto("/");
-    await page.locator('[data-tour="panel-connections"]').click();
+    await clickTopbarPanel(page, "connections");
     const rightPanel = page.locator('[data-component="RightPanel"]');
     await expect(rightPanel).toBeVisible();
     const ttsLabel = rightPanel.getByText("Text to Speech", { exact: true });
@@ -11817,7 +11817,7 @@ test("OpenAI-compatible TTS accepts and persists a custom Kokoro voice mix", asy
   });
 
   await page.goto("/");
-  await page.locator('[data-tour="panel-connections"]').click();
+  await clickTopbarPanel(page, "connections");
   const rightPanel = page.locator('[data-component="RightPanel"]');
   await expect(rightPanel).toBeVisible();
   const ttsCard = rightPanel.getByText("Text to Speech", { exact: true }).locator("xpath=../../..");
@@ -11931,7 +11931,7 @@ test("ElevenLabs keeps models visible and exposes scrollable account voices in e
     });
 
     await page.goto("/");
-    await page.locator('[data-tour="panel-connections"]').click();
+    await clickTopbarPanel(page, "connections");
     const rightPanel = page.locator('[data-component="RightPanel"]');
     const ttsLabel = rightPanel.getByText("Text to Speech", { exact: true });
     const ttsCard = ttsLabel.locator("xpath=../../..");
@@ -12237,6 +12237,7 @@ test("home shell and primary topbar panels open without client errors", { tag: "
     const iconCenters = await page.locator('[data-component="TopBar"] .mari-topbar-action').evaluateAll((buttons) =>
       buttons
         .map((button) => {
+          if (button.getBoundingClientRect().width === 0) return null;
           const icon = button.querySelector("svg");
           const box = icon?.getBoundingClientRect();
           return box ? box.x + box.width / 2 : null;
@@ -12245,7 +12246,7 @@ test("home shell and primary topbar panels open without client errors", { tag: "
     );
     const spacings = iconCenters.slice(1).map((center, index) => center - iconCenters[index]!);
     expect(iconCenters.length).toBeGreaterThan(2);
-    expect(Math.max(...spacings) - Math.min(...spacings)).toBeLessThanOrEqual(2);
+    expect(spacings.every((spacing) => spacing >= 36)).toBe(true);
   }
 
   for (const selector of [
@@ -12258,7 +12259,9 @@ test("home shell and primary topbar panels open without client errors", { tag: "
     '[data-tour="panel-agents"]',
     '[data-tour="panel-settings"]',
   ]) {
-    await page.locator(selector).click();
+    const panel = selector.match(/panel-([a-z]+)/)?.[1];
+    if (panel) await clickTopbarPanel(page, panel);
+    else await page.locator(selector).click();
     await expect(page.locator('[data-component="TopBar"]')).toBeVisible();
     if (selector === '[data-tour="panel-characters"]') {
       await expect(page.locator('[data-component="RightPanelHeaderIcon"]')).toHaveClass(
@@ -13011,7 +13014,7 @@ test("settings search divider stays aligned with editor headers across text scal
   });
   await expect(page.locator(".mari-editor-header")).toBeVisible();
 
-  await page.locator('[data-tour="panel-settings"]').click();
+  await clickTopbarPanel(page, "settings");
   await expect(page.locator(".mari-settings-search-header")).toBeVisible();
 
   for (const fontSize of [15, 17, 22]) {
@@ -13296,7 +13299,7 @@ test("Storyboard Agent settings stay organized and contained at phone widths", a
 
 test("Backup & Export identifies the automatic backup location", async ({ page }) => {
   await page.goto("/");
-  await page.locator('[data-tour="panel-settings"]').click();
+  await clickTopbarPanel(page, "settings");
   await page.getByPlaceholder("Search settings").fill("automatic backups");
   await page.locator(".mari-settings-search-header button").filter({ hasText: "Automatic backups" }).first().click();
 
@@ -13342,7 +13345,7 @@ test("custom generation parameters become reusable chat controls", async ({ page
 
   try {
     await page.goto("/");
-    await page.locator('[data-tour="panel-settings"]').click();
+    await clickTopbarPanel(page, "settings");
     await page.getByPlaceholder("Search settings").fill("custom generation parameters");
     await page
       .locator(".mari-settings-search-header button")
@@ -13754,7 +13757,7 @@ test("UI language selection downloads packs on demand and persists across reload
       return persisted.state?.rightPanelOpen === true;
     });
     if (!(await languageSelect.isVisible()) && !persistedPanelOpen) {
-      await page.locator('[data-tour="panel-settings"]').click();
+      await clickTopbarPanel(page, "settings");
     }
     await expect(languageSelect).toBeVisible({ timeout: 30_000 });
   };
@@ -14033,7 +14036,7 @@ test("Character and Persona panels launch card downloads and their local librari
   };
 
   await expect(page.locator('[data-tour="panel-bot-browser"]')).toHaveCount(0);
-  await page.locator('[data-tour="panel-characters"]').click();
+  await clickTopbarPanel(page, "characters");
   const characterActions = page.locator('[data-component="CharacterLibraryActions"]');
   await expect(characterActions.getByRole("button", { name: "Download", exact: true })).toBeVisible();
   await expect(characterActions.getByRole("button", { name: "Open Library", exact: true })).toBeVisible();
@@ -14079,7 +14082,7 @@ test("Character and Persona panels launch card downloads and their local librari
 
   const openCharacterLibrary = characterActions.getByRole("button", { name: "Open Library", exact: true });
   if (!(await openCharacterLibrary.isVisible())) {
-    await page.locator('[data-tour="panel-characters"]').click();
+    await clickTopbarPanel(page, "characters");
   }
   await openCharacterLibrary.click();
   const characterLibrary = page.locator('[data-component="CharacterLibraryView"]');
@@ -14102,7 +14105,7 @@ test("Character and Persona panels launch card downloads and their local librari
   });
   await characterLibrary.getByTitle("Close library").click();
 
-  await page.locator('[data-tour="panel-personas"]').click();
+  await clickTopbarPanel(page, "personas");
   const personaActions = page.locator('[data-component="PersonaLibraryActions"]');
   await expect(personaActions.getByRole("button", { name: "Download", exact: true })).toBeVisible();
   const openPersonaLibrary = personaActions.getByRole("button", { name: "Open Library", exact: true });
@@ -14194,7 +14197,7 @@ test("Downloaded cards use Marinara destination and lorebook choices", async ({ 
   });
 
   await page.goto("/");
-  await page.locator('[data-tour="panel-characters"]').click();
+  await clickTopbarPanel(page, "characters");
   await page
     .locator('[data-component="CharacterLibraryActions"]')
     .getByRole("button", { name: "Download", exact: true })
@@ -14319,7 +14322,7 @@ test("Chub NSFW search uses filtered totals and spaced pagination", async ({ pag
   });
 
   await page.goto("/");
-  await page.locator('[data-tour="panel-characters"]').click();
+  await clickTopbarPanel(page, "characters");
   await page
     .locator('[data-component="CharacterLibraryActions"]')
     .getByRole("button", { name: "Download", exact: true })
@@ -14377,14 +14380,14 @@ test("Character and Persona sidebars find cards by creator", async ({ page, requ
   try {
     await page.goto("/");
 
-    await page.locator('[data-tour="panel-characters"]').click();
+    await clickTopbarPanel(page, "characters");
     await expect(rightPanel).toBeVisible();
     await rightPanel.getByPlaceholder("Search characters").fill(characterCreator);
     await expect(
       rightPanel.locator(`[data-touch-drag-card="character"][data-character-id="${character.id}"]`),
     ).toContainText(characterName);
 
-    await page.locator('[data-tour="panel-personas"]').click();
+    await clickTopbarPanel(page, "personas");
     await expect(rightPanel).toBeVisible();
     await rightPanel.getByPlaceholder("Search personas").fill(personaCreator);
     await expect(rightPanel.locator('[data-touch-drag-card="persona"]').filter({ hasText: personaName })).toBeVisible();
@@ -14426,7 +14429,7 @@ test("right-panel controls keep their width with and without a scrollbar", async
 
     await page.goto("/");
     const rightPanel = page.locator('[data-component="RightPanelDesktop"]');
-    await page.locator('[data-tour="panel-characters"]').click();
+    await clickTopbarPanel(page, "characters");
     const characterScroll = rightPanel.locator('[data-component="CharactersPanelScroll"]');
     await expect
       .poll(() => characterScroll.evaluate((element) => element.scrollHeight > element.clientHeight))
@@ -14436,7 +14439,7 @@ test("right-panel controls keep their width with and without a scrollbar", async
     expect(characterButtonBox).not.toBeNull();
     await expect(characterScroll).toHaveCSS("scrollbar-gutter", /stable/u);
 
-    await page.locator('[data-tour="panel-personas"]').click();
+    await clickTopbarPanel(page, "personas");
     await rightPanel.getByPlaceholder("Search personas").fill(personaName);
     const personaScroll = rightPanel.locator('[data-panel-key="personas"]');
     await expect
@@ -14583,7 +14586,7 @@ test("downloadable agent catalog is usable on desktop and mobile", async ({ page
     });
   });
   await page.goto("/");
-  await page.locator('[data-tour="panel-agents"]').click();
+  await clickTopbarPanel(page, "agents");
   await expect(page.getByText("No Agents installed yet, click Download Agents to add them!")).toBeVisible();
   await page.getByLabel("Agents").getByRole("button", { name: "Download Agents", exact: true }).click();
 
@@ -14806,7 +14809,7 @@ test("Agent updates share one dismissible prompt and remain available after Not 
   expect([...declinedUpdateIds].sort()).toEqual(["prose-guardian", "world-builder"]);
   await expect(updateDialog).toBeHidden();
 
-  await page.locator('[data-tour="panel-agents"]').click();
+  await clickTopbarPanel(page, "agents");
   await page.getByLabel("Agents").getByRole("button", { name: "Download Agents", exact: true }).click();
   const catalogView = page.locator('[data-component="AgentCatalogView"]');
   await expect(catalogView.getByRole("heading", { name: "Download Agents" })).toBeVisible();
@@ -14836,7 +14839,7 @@ test("agent catalog reports API failures without diagnosing an internet outage",
   });
 
   await page.goto("/");
-  await page.locator('[data-tour="panel-agents"]').click();
+  await clickTopbarPanel(page, "agents");
   await page.getByLabel("Agents").getByRole("button", { name: "Download Agents", exact: true }).click();
 
   const catalogView = page.locator('[data-component="AgentCatalogView"]');
@@ -14927,7 +14930,7 @@ test("Music Player stays unavailable until Music DJ is installed", async ({ page
     const row = page.locator("#settings-control-music-player");
     const settingsButton = page.locator('[data-tour="panel-settings"]');
     await expect(settingsButton).toHaveAttribute("aria-pressed", /true|false/u);
-    if ((await settingsButton.getAttribute("aria-pressed")) !== "true") await settingsButton.click();
+    if ((await settingsButton.getAttribute("aria-pressed")) !== "true") await clickTopbarPanel(page, "settings");
     await expect(row).toBeVisible();
     return row;
   };
@@ -14946,7 +14949,7 @@ test("Music Player stays unavailable until Music DJ is installed", async ({ page
   await musicPlayerRow.getByRole("button", { name: "Show help" }).click();
   await expect(page.getByText("Download the Music DJ agent to use the Music Player.")).toBeVisible();
 
-  await page.locator('[data-tour="panel-agents"]').click();
+  await clickTopbarPanel(page, "agents");
   await page.getByLabel("Agents").getByRole("button", { name: "Download Agents", exact: true }).click();
   const catalogView = page.locator('[data-component="AgentCatalogView"]');
   await expect(catalogView).toBeVisible();
@@ -15064,8 +15067,7 @@ test("Connections exposes Local Whisper only while Conversation Calls is install
   const openExpandedLocalModel = async () => {
     const rightPanel = page.locator('[data-component="RightPanel"]');
     const connectionsButton = page.locator('[data-tour="panel-connections"]');
-    await expect(connectionsButton).toBeVisible();
-    if ((await connectionsButton.getAttribute("aria-pressed")) !== "true") await connectionsButton.click();
+    if ((await connectionsButton.getAttribute("aria-pressed")) !== "true") await clickTopbarPanel(page, "connections");
     await expect(rightPanel).toBeVisible();
     const localModelLabel = rightPanel.getByText("Local Model", { exact: true });
     await localModelLabel.evaluate((element) => element.parentElement?.parentElement?.click());
@@ -15204,7 +15206,7 @@ test("agent catalog can install and uninstall every package", async ({ page }, t
   });
 
   await page.goto("/");
-  await page.locator('[data-tour="panel-agents"]').click();
+  await clickTopbarPanel(page, "agents");
   await page.getByRole("button", { name: "Download Agents" }).click();
 
   const catalogView = page.locator('[data-component="AgentCatalogView"]');
@@ -15344,7 +15346,7 @@ test("installed package artwork appears in the sidebar and clears immediately on
   });
 
   await page.goto("/");
-  await page.locator('[data-tour="panel-agents"]').click();
+  await clickTopbarPanel(page, "agents");
   const agentsSidebar = page.locator('[data-component="RightPanelDesktop"]');
   const proseGuardianCard = agentsSidebar.locator('[data-agent-name="Prose Guardian"]');
   await expect(proseGuardianCard).toBeVisible();
@@ -17269,7 +17271,7 @@ test("World Maps stays in Agents and Chat Settings", async ({ page, request }, t
     await expect(page.locator('[data-tour="world-maps"]')).toHaveCount(0);
     await expect(page.locator('[data-component="ChatSidebar"] button[aria-label="World Maps"]')).toHaveCount(0);
 
-    await page.locator('[data-tour="panel-agents"]').click();
+    await clickTopbarPanel(page, "agents");
     await expect(page.locator('[data-tour="panel-agents"]')).toHaveClass(/mari-topbar-panel-icon--active/);
 
     const agentsPanel = page.locator('[data-component="RightPanelDesktop"]');
@@ -17584,7 +17586,7 @@ test("desktop resource editors open beside their source sidebars", async ({ page
     await expect(chatSidebar).toBeVisible();
 
     for (const resource of resources) {
-      await page.locator(`[data-tour="panel-${resource.panel}"]`).click();
+      await clickTopbarPanel(page, resource.panel);
       await expect(resourceSidebar).toBeVisible();
       await expect(centerContent).toHaveAttribute("data-center-compact", "true");
       const resourceRow = resourceSidebar.getByText(resource.name, { exact: true }).first();
@@ -17684,7 +17686,7 @@ test("desktop Connections and Lorebooks folders expand without a React hook erro
   try {
     await page.goto("/");
 
-    await page.locator('[data-tour="panel-connections"]').click();
+    await clickTopbarPanel(page, "connections");
     const resourceSidebar = page.locator('[data-component="RightPanelDesktop"]');
     const connectionFolderToggle = resourceSidebar.locator(
       `[data-connection-folder-id="${connectionFolder.id}"] > [role="button"]`,
@@ -17694,7 +17696,7 @@ test("desktop Connections and Lorebooks folders expand without a React hook erro
     await expect(connectionFolderToggle).toHaveAttribute("aria-expanded", "true");
     await expect(resourceSidebar.getByText(connectionName, { exact: true })).toBeVisible();
 
-    await page.locator('[data-tour="panel-lorebooks"]').click();
+    await clickTopbarPanel(page, "lorebooks");
     const lorebookFolderToggle = resourceSidebar.locator(
       '[data-lorebook-folder-id="folder-expansion-regression"] > [role="button"]',
     );
@@ -18521,7 +18523,7 @@ test("Lorebook vectorization saves pending eligibility settings first", async ({
     });
 
     await page.goto("/");
-    await page.locator('[data-tour="panel-lorebooks"]').click();
+    await clickTopbarPanel(page, "lorebooks");
     await page.getByText(lorebookName, { exact: true }).click();
     await page.getByRole("checkbox", { name: "Enable lorebook vectors" }).evaluate((element) => {
       (element as HTMLInputElement).click();
@@ -18607,7 +18609,7 @@ test("Lorebook Save keeps Overview stable while the updated detail cache settles
 
   try {
     await page.goto("/");
-    await page.locator('[data-tour="panel-lorebooks"]').click();
+    await clickTopbarPanel(page, "lorebooks");
     await page.getByText(name, { exact: true }).click();
     await expect(page.getByRole("heading", { name })).toBeVisible();
 
@@ -18660,7 +18662,7 @@ test("Lorebook and entry IDs are visible and copyable", async ({ page }) => {
 
   try {
     await page.goto("/");
-    await page.locator('[data-tour="panel-lorebooks"]').click();
+    await clickTopbarPanel(page, "lorebooks");
     await page.getByText(name, { exact: true }).click();
 
     await expect(page.getByText(lorebook.id, { exact: true })).toBeVisible();
@@ -18697,7 +18699,7 @@ test("Lorebook entry type descriptions inherit editor chrome text", async ({ pag
 
   try {
     await page.goto("/");
-    await page.locator('[data-tour="panel-lorebooks"]').click();
+    await clickTopbarPanel(page, "lorebooks");
     await page.getByText(name, { exact: true }).click();
     await openEditorSection(page.locator(".mari-editor-shell"), "Entries");
     const row = page.locator(`[data-lorebook-entry-row-id="${entry.id}"]`);
@@ -18750,7 +18752,7 @@ test("selected Lorebook entries mirror safe edits and choose a move destination 
     }
 
     await page.goto("/");
-    await page.locator('[data-tour="panel-lorebooks"]').click();
+    await clickTopbarPanel(page, "lorebooks");
     await page.getByText(name, { exact: true }).click();
     await openEditorSection(page.locator(".mari-editor-shell"), "Entries");
     await expect(
@@ -18920,7 +18922,7 @@ test("Lorebook context filter chips expose installed package triggers and keep c
   const chips = filterArea.locator("button.mari-editor-chip");
   const openFilters = async () => {
     await page.goto("/");
-    await page.locator('[data-tour="panel-lorebooks"]').click();
+    await clickTopbarPanel(page, "lorebooks");
     // Reload restores the open editor; its library row is then hidden and shares the title.
     const editorHeading = page.getByRole("heading", { name: lorebookName, exact: true });
     const libraryEntry = page.getByLabel("Lorebooks", { exact: true }).getByText(lorebookName, { exact: true });
@@ -19169,7 +19171,7 @@ test("Settings profile import reuses its preview upload and skips one invalid as
 
   try {
     await page.goto("/");
-    await page.locator('[data-tour="panel-settings"]').click();
+    await clickTopbarPanel(page, "settings");
     await page.getByRole("tab", { name: "Imports", exact: true }).click();
     await page.locator('input[type="file"][accept*="application/zip"]').setInputFiles({
       name: `profile-import-${suffix}.json`,
@@ -19687,7 +19689,7 @@ test("Home achievements preview the latest unlock and nearest measurable goal", 
   await expect(achievementsDialog).toBeVisible();
   await page.keyboard.press("Escape");
 
-  await page.locator('[data-tour="panel-settings"]').click();
+  await clickTopbarPanel(page, "settings");
   const achievementsToggle = page.getByRole("checkbox", { name: "Achievements", exact: true });
   await expect(achievementsToggle).toBeChecked();
   const achievementsToggleId = await achievementsToggle.getAttribute("id");
@@ -19696,7 +19698,7 @@ test("Home achievements preview the latest unlock and nearest measurable goal", 
   await expect(achievementsToggle).not.toBeChecked();
   await expect(bookmarks.getByRole("button", { name: "Achievements", exact: true })).toHaveCount(0);
   await expect(achievementsWidget).toHaveCount(0);
-  await page.locator('[data-tour="panel-settings"]').click();
+  await clickTopbarPanel(page, "settings");
   await bookmarks.getByRole("button", { name: "Widgets", exact: true }).click();
   const widgetManager = page.getByRole("dialog", { name: "Home Widgets" });
   await expect(widgetManager.getByText("Achievements", { exact: true })).toHaveCount(0);
@@ -20059,7 +20061,7 @@ test("home browser hub scales cleanly and opens FAQ as a bookmark window", async
       const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
       module.useUIStore.getState().setReduceAmbientEffects(false);
     });
-    await page.locator('[data-tour="panel-settings"]').click();
+    await clickTopbarPanel(page, "settings");
     const suggestionsToggle = page.getByRole("checkbox", { name: "Professor Mari suggestions" });
     const navigationToggle = page.getByRole("checkbox", { name: "Professor Mari navigation" });
     await expect(suggestionsToggle).toBeVisible();
@@ -20080,7 +20082,7 @@ test("home browser hub scales cleanly and opens FAQ as a bookmark window", async
         settingsSearchBounds!.y + settingsSearchBounds!.height - (addressRowBounds!.y + addressRowBounds!.height / 2),
       ),
     ).toBeLessThanOrEqual(0.5);
-    await page.locator('[data-tour="panel-settings"]').click();
+    await clickTopbarPanel(page, "settings");
     const feed = page.locator('[data-component="HomeBrowserHub.Feed"]');
     await expect(feed).toBeVisible();
     // The settings panel just closed, which resizes the hub content and
@@ -20989,7 +20991,7 @@ test("Roleplay reduced paint effects preserve semantic and custom styling", asyn
     await expect(bubble).toBeVisible();
     await expect(page.locator(".rpg-vignette")).not.toHaveCSS("display", "none");
 
-    await page.locator('[data-tour="panel-settings"]').click();
+    await clickTopbarPanel(page, "settings");
     await page.getByRole("tab", { name: "Appearance" }).click();
     const reducedPaintToggle = page.getByLabel("Reduced paint effects");
     await page
@@ -22615,33 +22617,10 @@ test("mobile topbar remains reachable while sidebars switch", async ({ page }, t
   const chatsBounds = await chatsButton.boundingBox();
   expect(homeBounds).not.toBeNull();
   expect(chatsBounds).not.toBeNull();
-  const mobileActionOrder = [
-    "home",
-    "chats",
-    "characters",
-    "personas",
-    "lorebooks",
-    "presets",
-    "connections",
-    "agents",
-    "settings",
-  ];
-  const mobileActionOffsets = await Promise.all(
-    mobileActionOrder.map(async (key) =>
-      Math.round((await topbar.locator(`[data-topbar-hover-key="${key}"]`).boundingBox())?.x ?? -1),
-    ),
-  );
-  expect(mobileActionOffsets.every((offset) => offset >= 0)).toBe(true);
-  expect(new Set(mobileActionOffsets).size).toBe(mobileActionOrder.length);
-  expect(mobileActionOffsets).toEqual([...mobileActionOffsets].sort((left, right) => left - right));
-  const mobileDomActionOrder = await topbar
-    .locator("[data-topbar-hover-key]")
-    .evaluateAll((elements) =>
-      elements
-        .map((element) => (element as HTMLElement).dataset.topbarHoverKey)
-        .filter((key): key is string => Boolean(key)),
-    );
-  expect(mobileDomActionOrder.slice(0, mobileActionOrder.length)).toEqual(mobileActionOrder);
+  const visibleActions = topbar.locator("[data-topbar-hover-key]:visible");
+  await expect(visibleActions).toHaveCount(2);
+  expect(await visibleActions.evaluateAll((elements) => elements.map((element) => (element as HTMLElement).dataset.topbarHoverKey))).toEqual(["home", "chats"]);
+  await expect(topbar.getByRole("button", { name: "More", exact: true })).toBeVisible();
   const homeIconBounds = await homeButton.locator("svg").boundingBox();
   const chatsIconBounds = await chatsButton.locator("svg").boundingBox();
   expect(homeIconBounds).not.toBeNull();
@@ -22726,20 +22705,14 @@ test("mobile topbar remains reachable while sidebars switch", async ({ page }, t
   await expect.poll(async () => (await mobileChatSidebar.boundingBox())?.x ?? Number.POSITIVE_INFINITY).toBeLessThan(1);
   await mobileChatSidebar.evaluate((element) => element.setAttribute("data-e2e-mobile-shell", "preserved"));
 
-  await page.locator('[data-tour="panel-characters"]').click();
+  await clickTopbarPanel(page, "characters");
   const swappedRightPanel = page.locator('[data-component="RightPanelMobile"]');
   await expect(swappedRightPanel).toBeVisible();
   await expect(swappedRightPanel).toHaveAttribute("data-e2e-mobile-shell", "preserved");
   await expect(homeButton).toHaveAttribute("aria-pressed", "false");
-  const charactersUnderline = topbar.locator('[data-component="CharactersTopbarUnderline"]');
-  await expect(charactersUnderline).toBeVisible();
-  await expect
-    .poll(() =>
-      charactersUnderline.evaluate((element) =>
-        getComputedStyle(element).getPropertyValue("--mari-panel-gradient-start").trim(),
-      ),
-    )
-    .toBe("#f472b6");
+  await topbar.getByRole("button", { name: "More", exact: true }).click();
+  await expect(page.locator('[role="menuitem"][data-topbar-panel="characters"]')).toHaveAttribute("aria-current", "true");
+  await page.keyboard.press("Escape");
 
   await chatsButton.click();
   await expect(mobileChatSidebar).toBeVisible();
@@ -22756,7 +22729,7 @@ test("mobile topbar remains reachable while sidebars switch", async ({ page }, t
   await expect(homeButton).toHaveAttribute("aria-pressed", "true");
 
   for (const panel of ["characters", "personas", "lorebooks", "presets", "connections", "agents", "settings"]) {
-    await page.locator(`[data-tour="panel-${panel}"]`).click();
+    await clickTopbarPanel(page, panel);
     await expect(page.locator('[data-component="TopBar"]')).toBeVisible();
     await expect(page.locator('[data-component="RightPanelMobile"]')).toBeVisible();
     await expect(homeButton).toHaveAttribute("aria-pressed", "false");
@@ -22773,7 +22746,7 @@ for (const theme of ["dark", "light"] as const) {
     await seedUIState(page, { theme }, "merge");
     await page.goto("/");
     await setAppAccentColor(page, "#1e90ff");
-    await page.locator('[data-tour="panel-characters"]').click();
+    await clickTopbarPanel(page, "characters");
 
     const panel = page.locator('[data-component="RightPanel"]');
     const newButton = panel.getByTitle("New", { exact: true });
@@ -22799,7 +22772,7 @@ test("Updates shows the installed channel before checks and after a failed check
     route.fulfill({ status: 502, json: { error: "Offline fixture" } }),
   );
   await page.goto("/");
-  await page.locator('[data-tour="panel-settings"]').click();
+  await clickTopbarPanel(page, "settings");
   await page.getByRole("tab", { name: "Advanced" }).click();
   const channel = page.getByLabel("Release Channel");
   await expect(channel).toHaveValue("staging");
@@ -22896,7 +22869,7 @@ test("mobile Docker update checks offer the selected staging image", async ({ pa
   );
 
   await page.goto("/");
-  await page.locator('[data-tour="panel-settings"]').click();
+  await clickTopbarPanel(page, "settings");
   await page.getByRole("tab", { name: "Advanced" }).click();
   await page.getByLabel("Release Channel").selectOption("staging");
   await page.getByRole("button", { name: "Check for Updates" }).click();
@@ -23370,7 +23343,7 @@ test("Background cards keep names readable and load thumbnails", async ({ page }
   });
 
   await page.goto("/");
-  await page.locator('[data-tour="panel-settings"]').click();
+  await clickTopbarPanel(page, "settings");
   await page.getByRole("tab", { name: "Appearance" }).click();
   await page.getByPlaceholder("Search settings").fill("Backgrounds");
   await page.getByRole("button", { name: /Backgrounds Section/ }).click();
@@ -23470,7 +23443,7 @@ test("Roleplay displays a selected background when its file route is GET-only", 
     }, chat.id);
     await page.goto("/");
 
-    await page.locator('[data-tour="panel-settings"]').click();
+    await clickTopbarPanel(page, "settings");
     await page.getByPlaceholder("Search settings").fill("Backgrounds");
     await page.getByRole("button", { name: /Backgrounds Section/ }).click();
     await page.getByRole("button", { name: "Clear selection" }).click();
@@ -23528,9 +23501,9 @@ test("Roleplay displays a selected background when its file route is GET-only", 
     };
 
     await expectBackgroundToFitRoleplaySurface();
-    await page.locator('[data-tour="panel-settings"]').click();
+    await clickTopbarPanel(page, "settings");
     await expectBackgroundToFitRoleplaySurface();
-    await page.locator('[data-tour="panel-settings"]').click();
+    await clickTopbarPanel(page, "settings");
     await expectBackgroundToFitRoleplaySurface();
     await page.locator('[data-tour="sidebar-toggle"]').click();
     await expectBackgroundToFitRoleplaySurface();
@@ -23569,7 +23542,7 @@ test("Background library organization works with desktop drag and touch drag", a
     expect(tagResponse.ok()).toBeTruthy();
 
     await page.goto("/");
-    await page.locator('[data-tour="panel-settings"]').click();
+    await clickTopbarPanel(page, "settings");
     await page.getByRole("tab", { name: "Appearance" }).click();
     await page.getByPlaceholder("Search settings").fill("Backgrounds");
     await page.getByRole("button", { name: /Backgrounds Section/ }).click();
@@ -23812,7 +23785,7 @@ test("character editor preserves unsaved fields across responsive layout changes
 
   try {
     await page.goto("/");
-    await page.locator('[data-tour="panel-characters"]').click();
+    await clickTopbarPanel(page, "characters");
     await page.locator(`[data-touch-drag-card="character"][data-character-id="${character.id}"]`).click();
 
     const desktopEditor = page.locator('[data-component="DetailEditor"]');
@@ -23852,7 +23825,7 @@ test("character card fields can preview Markdown without changing their source",
 
   try {
     await page.goto("/");
-    await page.locator('[data-tour="panel-characters"]').click();
+    await clickTopbarPanel(page, "characters");
     await page.locator(`[data-touch-drag-card="character"][data-character-id="${character.id}"]`).click();
 
     const editor = page.locator('[data-component="DetailEditor"]');
@@ -23891,7 +23864,7 @@ test("persona editor preserves unsaved fields across responsive layout changes",
 
   try {
     await page.goto("/");
-    await page.locator('[data-tour="panel-personas"]').click();
+    await clickTopbarPanel(page, "personas");
     await page.locator('[data-touch-drag-card="persona"]').filter({ hasText: personaName }).click();
 
     const desktopEditor = page.locator('[data-component="DetailEditor"]');

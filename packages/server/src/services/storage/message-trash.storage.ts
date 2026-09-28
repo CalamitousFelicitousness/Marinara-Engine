@@ -26,7 +26,6 @@ type TrashRow = typeof messageTrash.$inferSelect;
 type TrashSnapshot = { message: MessageRow; swipes: SwipeRow[] };
 
 const RETENTION_MS = MESSAGE_TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000;
-const CHUNK = 500;
 const MESSAGE_TRASH_SWEEP_INTERVAL_MS = 60 * 60 * 1000;
 
 function parseSnapshot(row: TrashRow): TrashSnapshot | null {
@@ -120,57 +119,33 @@ export function createMessageTrashStorage(db: DB) {
       const uniqueIds = [...new Set(messageIds)];
       if (uniqueIds.length === 0) return [];
       await this.purgeExpired(chatId);
-      const rows: MessageRow[] = [];
-      for (let i = 0; i < uniqueIds.length; i += CHUNK) {
-        rows.push(
-          ...(await db
-            .select()
-            .from(messages)
-            .where(and(eq(messages.chatId, chatId), inArray(messages.id, uniqueIds.slice(i, i + CHUNK))))),
-        );
-      }
-      if (rows.length === 0) return [];
-      const ids = rows.map((row) => row.id);
-      const swipesByMessage = new Map<string, SwipeRow[]>();
-      for (const swipe of await chatsStorage.listSwipesByMessageIds(ids)) {
-        const list = swipesByMessage.get(swipe.messageId) ?? [];
-        list.push(swipe);
-        swipesByMessage.set(swipe.messageId, list);
-      }
-      const deletedAt = now();
-      const entries = rows.map((row) => ({
-        id: newId(),
-        chatId,
-        messageId: row.id,
-        role: row.role,
-        characterId: row.characterId ?? null,
-        content: row.content,
-        snapshot: JSON.stringify({
-          message: row,
-          swipes: (swipesByMessage.get(row.id) ?? []).sort((a, b) => a.index - b.index),
-        } satisfies TrashSnapshot),
-        messageCreatedAt: row.createdAt,
-        deletedAt,
-      }));
-      for (let i = 0; i < entries.length; i += CHUNK) {
-        await db.insert(messageTrash).values(entries.slice(i, i + CHUNK));
-      }
-      try {
-        await chatsStorage.removeMessages(ids, chatId);
-      } finally {
-        // A partially failed delete must not leave trash copies of messages that still exist.
-        const survivors = new Set(
-          (
-            await db
-              .select({ id: messages.id })
-              .from(messages)
-              .where(and(eq(messages.chatId, chatId), inArray(messages.id, ids)))
-          ).map((row) => row.id),
-        );
-        const orphaned = entries.filter((entry) => survivors.has(entry.messageId)).map((entry) => entry.id);
-        if (orphaned.length > 0) await db.delete(messageTrash).where(inArray(messageTrash.id, orphaned));
-      }
-      return ids;
+      const trashedIds: string[] = [];
+      await chatsStorage.removeMessages(uniqueIds, chatId, async (rows) => {
+        const swipesByMessage = new Map<string, SwipeRow[]>();
+        for (const swipe of await chatsStorage.listSwipesByMessageIds(rows.map((row) => row.id))) {
+          const list = swipesByMessage.get(swipe.messageId) ?? [];
+          list.push(swipe);
+          swipesByMessage.set(swipe.messageId, list);
+        }
+        const deletedAt = now();
+        const entries = rows.map((row) => ({
+          id: newId(),
+          chatId,
+          messageId: row.id,
+          role: row.role,
+          characterId: row.characterId ?? null,
+          content: row.content,
+          snapshot: JSON.stringify({
+            message: row,
+            swipes: (swipesByMessage.get(row.id) ?? []).sort((a, b) => a.index - b.index),
+          } satisfies TrashSnapshot),
+          messageCreatedAt: row.createdAt,
+          deletedAt,
+        }));
+        if (entries.length > 0) await db.insert(messageTrash).values(entries);
+        trashedIds.push(...rows.map((row) => row.id));
+      });
+      return trashedIds;
     },
 
     /** Put trashed messages back at their original position (same id, createdAt, swipes and extra). */
@@ -206,6 +181,12 @@ export function createMessageTrashStorage(db: DB) {
         // Message, swipes and trash removal form one restore unit. A swipe ID conflict or write
         // failure must roll back the message insert so the trash entry remains retryable.
         const inserted = await db.transaction(async (tx) => {
+          // A purge or permanent deletion may have removed the entry after the initial read.
+          const retained = await tx
+            .select({ id: messageTrash.id })
+            .from(messageTrash)
+            .where(eq(messageTrash.id, row.id));
+          if (retained.length === 0) return false;
           const existing = await tx
             .select({ id: messages.id })
             .from(messages)

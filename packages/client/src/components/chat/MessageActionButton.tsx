@@ -82,6 +82,7 @@ export function useMessageActionMenu(align: "left" | "right") {
   }, [align, open]);
   useEffect(() => {
     if (!open) return;
+    menuRef.current?.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true });
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target as Node;
       if (!buttonRef.current?.contains(target) && !menuRef.current?.contains(target)) setOpen(false);

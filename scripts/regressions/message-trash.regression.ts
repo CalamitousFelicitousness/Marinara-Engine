@@ -57,11 +57,11 @@ try {
   const { eq } = await import("../../packages/server/src/db/file-query.js");
   const { encodeShardKey } = await import("../../packages/server/src/db/file-backed-store.js");
   const { chats, messageSwipes, messageTrash } = await import("../../packages/server/src/db/schema/index.js");
-  const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
+  const { createChatsStorage, withMessageExtraPatchQueue } = await import("../../packages/server/src/services/storage/chats.storage.js");
   const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
   const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
   const { createPromptsStorage } = await import("../../packages/server/src/services/storage/prompts.storage.js");
-  const { startMessageTrashMaintenance, sweepExpiredMessageTrash } = await import(
+  const { createMessageTrashStorage, startMessageTrashMaintenance, sweepExpiredMessageTrash } = await import(
     "../../packages/server/src/services/storage/message-trash.storage.js"
   );
   const { characterDataSchema, MAX_PINNED_CONTEXT_MESSAGES, MESSAGE_TRASH_RETENTION_DAYS } = await import(
@@ -139,7 +139,7 @@ try {
     role: "assistant",
     characterId: null,
     content: "Restorable message",
-    extra: { bookmark: { label: "Keep", createdAt: timestamp }, privateNote: "private" },
+    extra: { bookmark: { label: "Keep", createdAt: timestamp }, privateNote: "PRIVATE_NOTE_EXPORT_SENTINEL_6698" },
   } as never);
   assert.ok(message);
   const defaultOffDelete = await app.inject({
@@ -161,6 +161,44 @@ try {
     payload: { messageTrash: true },
   });
   assert.equal(enabled.statusCode, 200, enabled.body);
+
+  // An edit already queued when Delete is tapped must be included in the recovery snapshot.
+  const queuedEditMessage = await storage.createMessage({
+    chatId: "chat-message-trash",
+    role: "assistant",
+    content: "Before the queued edit",
+  } as never);
+  assert(queuedEditMessage);
+  let releaseEdit!: () => void;
+  const heldEdit = withMessageExtraPatchQueue(
+    queuedEditMessage.id,
+    () =>
+      new Promise<void>((resolve) => {
+        releaseEdit = resolve;
+      }),
+  );
+  await Promise.resolve();
+  const queuedEdit = storage.updateMessageContent(queuedEditMessage.id, "Saved immediately before deletion");
+  const queuedDeletion = app.inject({
+    method: "DELETE",
+    url: `/api/chats/chat-message-trash/messages/${queuedEditMessage.id}`,
+  });
+  // Give the delete a chance to snapshot while the older edit is still queued.
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  releaseEdit();
+  await Promise.all([heldEdit, queuedEdit, queuedDeletion]);
+  const queuedTrash = (await app.inject({ method: "GET", url: "/api/chats/chat-message-trash/trash" })).json();
+  const queuedEntry = queuedTrash.find((row: { messageId: string }) => row.messageId === queuedEditMessage.id);
+  assert(queuedEntry);
+  assert.equal(queuedEntry.content, "Saved immediately before deletion", "trash captures the final queued edit");
+  const queuedRestore = await app.inject({
+    method: "POST",
+    url: "/api/chats/chat-message-trash/trash/restore",
+    payload: { entryIds: [queuedEntry.id] },
+  });
+  assert.equal(queuedRestore.statusCode, 200, queuedRestore.body);
+  assert.equal((await storage.getMessage(queuedEditMessage.id))?.content, "Saved immediately before deletion");
+  assert.equal((await storage.getSwipes(queuedEditMessage.id))[0]?.content, "Saved immediately before deletion");
 
   await new Promise<void>((done) => provider.listen(0, "127.0.0.1", done));
   const providerAddress = provider.address();
@@ -259,7 +297,7 @@ try {
     role: "assistant",
     characterId: null,
     content: "Restorable message",
-    extra: { bookmark: { label: "Keep", createdAt: timestamp }, privateNote: "private" },
+    extra: { bookmark: { label: "Keep", createdAt: timestamp }, privateNote: "PRIVATE_NOTE_EXPORT_SENTINEL_6698" },
   } as never);
   assert.ok(restorable);
   await storage.addSwipe(restorable.id, "Alternate text");
@@ -306,8 +344,23 @@ try {
   assert.deepEqual(restored.json().restoredMessageIds, [restorable.id]);
   const restoredMessage = await storage.getMessage(restorable.id);
   assert.equal(restoredMessage?.content, "Alternate text");
-  assert.equal(JSON.parse(restoredMessage!.extra).privateNote, "private");
+  assert.equal(JSON.parse(restoredMessage!.extra).privateNote, "PRIVATE_NOTE_EXPORT_SENTINEL_6698");
   assert.equal((await storage.getSwipes(restorable.id)).length, 2, "restore brings back the alternate swipes");
+
+  for (const format of ["jsonl", "text"]) {
+    const defaultExport = await app.inject({
+      method: "GET",
+      url: `/api/chats/chat-message-trash/export?format=${format}`,
+    });
+    assert.equal(defaultExport.statusCode, 200, defaultExport.body);
+    assert(!defaultExport.body.includes("PRIVATE_NOTE_EXPORT_SENTINEL_6698"), `${format} excludes private notes by default`);
+    const optedInExport = await app.inject({
+      method: "GET",
+      url: `/api/chats/chat-message-trash/export?format=${format}&includePrivateNotes=true`,
+    });
+    assert.equal(optedInExport.statusCode, 200, optedInExport.body);
+    assert(optedInExport.body.includes("PRIVATE_NOTE_EXPORT_SENTINEL_6698"), `${format} exports notes only after opt-in`);
+  }
 
   const wrongChatTarget = await storage.createMessage({
     chatId: "chat-message-trash",
@@ -407,6 +460,20 @@ try {
   });
   assert.equal(bulkDelete.statusCode, 200, bulkDelete.body);
   assert.deepEqual(bulkDelete.json(), { trashed: true, trashedCount: 2 });
+
+  // A permanent delete that wins before restore's transaction must not resurrect a stale snapshot.
+  const trashStorage = createMessageTrashStorage(db);
+  const discardedEntry = (await trashStorage.list("chat-message-trash"))[0]!;
+  assert(discardedEntry);
+  const originalTransaction = db.transaction.bind(db);
+  db.transaction = (async (operation) => {
+    db.transaction = originalTransaction;
+    await trashStorage.deleteForever("chat-message-trash", [discardedEntry.id]);
+    return originalTransaction(operation);
+  }) as typeof db.transaction;
+  const discardedRestore = await trashStorage.restore("chat-message-trash", [discardedEntry.id]);
+  assert.deepEqual(discardedRestore.restoredMessageIds, [], "permanently deleted trash cannot be restored from a stale read");
+  assert.equal(await storage.getMessage(discardedEntry.messageId), null);
 
   const expiring = await storage.createMessage({
     chatId: "chat-message-trash",

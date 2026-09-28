@@ -31,7 +31,7 @@ try {
   const { isFeatureEnabled, resetFeatureSettingsForTests, onFeatureSettingsChange } = features;
 
   // ── the registry: exactly these switches, every one off by default ──
-  assert.deepEqual([...FEATURE_SWITCH_NAMES].sort(), ["providerRetry", "stableLorebookGroupPicks"]);
+  assert.deepEqual([...FEATURE_SWITCH_NAMES].sort(), ["messageTrash", "providerRetry", "stableLorebookGroupPicks"]);
   for (const name of FEATURE_SWITCH_NAMES) assert.equal(FEATURE_SWITCH_DEFAULTS[name], false, `${name} defaults off`);
 
   // ── shared normalization: bad values fall back to the default ──

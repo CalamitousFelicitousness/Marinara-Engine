@@ -53,6 +53,7 @@ test("message marks stay in the chat UI and opted-in trash can restore a message
     await messageRow.focus();
     await messageRow.getByRole("button", { name: "Bookmark, pin or note" }).click();
     const marksMenu = page.getByRole("dialog", { name: "Bookmark, pin or note" });
+    await expect(marksMenu.getByRole("button", { name: "Bookmark message" })).toBeFocused();
     await marksMenu.getByRole("button", { name: "Bookmark message" }).click();
     await marksMenu.getByRole("button", { name: "Pin to context" }).click();
     await marksMenu.getByRole("textbox", { name: "Private note" }).fill("Synthetic private note.");

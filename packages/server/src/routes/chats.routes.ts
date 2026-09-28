@@ -2509,6 +2509,7 @@ export async function chatsRoutes(app: FastifyInstance) {
               partial,
               syncAllSwipeExtra,
               swipeIndex,
+              { metadataQueueHeld: true },
             )
           : swipeIndex === undefined
             ? await storage.updateMessageExtra(req.params.messageId, partial)

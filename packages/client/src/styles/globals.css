@@ -7802,3 +7802,27 @@ strong {
     background: #151a22;
   }
 }
+
+/* Short landscape screens need the chat list to share the sidebar's scroll. */
+@media (max-height: 500px) and (orientation: landscape) {
+  .mari-chat-sidebar {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .mari-chat-sidebar > * {
+    flex-shrink: 0;
+  }
+
+  .mari-chat-sidebar > .mari-sidebar-header {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+  }
+
+  .mari-chat-sidebar > [data-chat-root-drop-zone] {
+    flex: 1 0 auto;
+    min-height: 12rem;
+    overflow-y: visible;
+  }
+}

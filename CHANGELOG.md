@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Enabling or disabling selected lorebooks includes books hidden by filters, and Undo changes only the books updated by that action.
+
 - Lorebook Markdown and CSV downloads preserve spaces and non-English characters in their filenames.
 
 - The native shutdown regression allows cold CI servers time to start while keeping its interrupt and shutdown deadlines unchanged.

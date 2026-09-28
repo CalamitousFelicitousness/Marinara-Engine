@@ -1207,7 +1207,7 @@ export function LorebooksPanel() {
         <SelectionActionBar
           placement="panel"
           selectedCount={selectedLorebookIds.size}
-          extraAction={<LorebookSelectionEnableActions selectedIds={selectedLorebookIds} lorebooks={lorebooks} />}
+          extraAction={<LorebookSelectionEnableActions selectedIds={selectedLorebookIds} />}
           onExport={() => void handleExportSelected()}
           onDelete={handleDeleteSelected}
           exporting={exportingSelected}

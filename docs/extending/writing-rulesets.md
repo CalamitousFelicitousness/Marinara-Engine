@@ -750,7 +750,12 @@ Everything above is checked when the ruleset is imported, and your catalogs of i
 - **`freeform: "refuse"`** leaves the player only your items: the picker, and names that are your items.
 - **What an item is** shows on the selected stack: its category, rarity and tags by their labels, the stats it gives, its summary and how many one stack holds. The picker also shows its `cost`. The Game Master sees each of your items it holds with its category, rarity, tags and the stats you left `promptVisible`, such as `Hand axe [Weapon, Common, Thrown; Damage 1d6, Reach close]`.
 
-A fight already spends one of your items the way it spends any item. Slots, binding and carrying start to change a game in the next release, and `native`, the character sheet, weapons and armor in a fight, using items by their own rules, and money after that.
+- **`slots`**: an item that takes slots can be equipped by whoever carries it, while they have those slots free, and one item of a larger stack is taken into its own stack to be worn. The inventory shows each slot in use per character.
+- **`binding`**: an item that `binds` can be bound, up to `binding.max` read off its bearer's own sheet (a character without a sheet reads a blank one). A `cursed` item, once bound, stays bound: the player cannot unbind it, take it off, give it away or remove it, and only the Game Master can end the curse.
+- **`carry`**: an item weighs its value of `carry.stat` (an item without one weighs nothing), and a character's load is what their bag weighs, against `encumberedAbove` and `limit` read off their own sheet. An item added into the inventory's shared view, by the player or by the Game Master without a `who=`, goes to whoever can carry it without becoming encumbered (the player first, then the party in order), shared out by the room each has left when nobody can take all of it. Nothing goes past anyone's `limit`: what nobody can carry is left behind and the Game Master is told. Give a weight stat `"integer": false` for weights such as a quarter of a pound.
+- The Game Master can `equip`, `unequip`, `bind` and `unbind` your items with its inventory command, and sees each character's load, bound items and slots, and what is worn or bound.
+
+A fight already spends one of your items the way it spends any item. What being encumbered does to a character, and what worn and carried items do to the sheet and to checks, come in the next release, and `native`, weapons and armor in a fight, using items by their own rules, and money after that.
 
 ## Battles: lending the sheet to Marinara's combat
 

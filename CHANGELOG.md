@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Author’s Notes stay with their roleplay chat while switching sessions, and pending edits finish saving before generation reads them (#6817).
+
 - Lorebook references retain affordable images without displacing text, including recursively activated text, and image-only entries count their image budget once.
 - Duplicating a lorebook entry waits for reference-image uploads and removals, and reimporting an embedded lorebook preserves its character links. Valid reference images also upload when the browser cannot identify their file type.
 - Failed reference-image uploads keep the original error if cleaning up the unused image also fails.

@@ -1,3 +1,4 @@
+import { embedCharacterBookImages, LOREBOOK_EXPORT_IMAGE_MAX_BYTES } from "../services/lorebook/lorebook-images.js";
 // ──────────────────────────────────────────────
 // Routes: Characters, Personas & Groups
 // ──────────────────────────────────────────────
@@ -88,6 +89,7 @@ import {
   clearEmbeddedLorebookFromCharacter,
   embedLorebookIntoCharacter,
   getEmbeddedLorebookId,
+  syncCharacterBookFromLorebook,
 } from "../services/lorebook/character-book-sync.js";
 import AdmZip from "adm-zip";
 import { extname } from "path";
@@ -2092,7 +2094,7 @@ export async function charactersRoutes(app: FastifyInstance) {
   app.get<{ Params: { id: string }; Querystring: { format?: ExportFormat } }>("/:id/export", async (req, reply) => {
     const char = await storage.getById(req.params.id);
     if (!char) return reply.status(404).send({ error: "Character not found" });
-    const charData = JSON.parse(char.data);
+    const charData = await embedCharacterBookImages(JSON.parse(char.data));
     const compatible = req.query.format === "compatible";
     const payload = compatible
       ? buildCompatibleCharacterExport(charData)
@@ -2112,11 +2114,12 @@ export async function charactersRoutes(app: FastifyInstance) {
     }
 
     const zip = new AdmZip();
+    const exportBudget = { remainingBytes: LOREBOOK_EXPORT_IMAGE_MAX_BYTES };
     let exportedCount = 0;
     for (const id of ids) {
       const char = await storage.getById(id);
       if (!char) continue;
-      const charData = JSON.parse(char.data);
+      const charData = await embedCharacterBookImages(JSON.parse(char.data), exportBudget);
       const payload =
         format === "compatible"
           ? buildCompatibleCharacterExport(charData)
@@ -2174,6 +2177,7 @@ export async function charactersRoutes(app: FastifyInstance) {
       app.db,
       {
         characterId: req.params.id,
+        allowLocalImagePaths: true,
         namePrefix: String(charData.name ?? "Character"),
         existingLorebookId:
           typeof embeddedLorebookMetadata.lorebookId === "string" ? embeddedLorebookMetadata.lorebookId : null,
@@ -2197,6 +2201,7 @@ export async function charactersRoutes(app: FastifyInstance) {
       extensions: extensions as any,
     });
 
+    await syncCharacterBookFromLorebook(app.db, result.lorebookId);
     return {
       success: true,
       lorebookId: result.lorebookId,
@@ -2294,7 +2299,7 @@ export async function charactersRoutes(app: FastifyInstance) {
     const char = await storage.getById(req.params.id);
     if (!char) return reply.status(404).send({ error: "Character not found" });
 
-    const charData = JSON.parse(char.data);
+    const charData = await embedCharacterBookImages(JSON.parse(char.data));
     const sprites = await readSpritesForId(char.id, true);
     if (!sprites) {
       return reply.status(413).send({ error: "Sprite collection exceeds compatible PNG export limits" });

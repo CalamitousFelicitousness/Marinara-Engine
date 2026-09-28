@@ -61,6 +61,7 @@ import {
   type MariDbValidationIssue,
   type MariDbValidationResult,
   MARI_PERMISSIONS_MODE_SETTINGS_KEY,
+  createLorebookEntrySchema,
   lorebookDecisionModeSchema,
   parseLorebookDecisionActivation,
 } from "@marinara-engine/shared";
@@ -387,6 +388,7 @@ const JSON_COLUMNS: Record<string, readonly string[]> = {
   library_folders: ["itemIds"],
   lorebook_entries: [
     "keys",
+    "images",
     "secondaryKeys",
     "characterFilterIds",
     "characterTagFilters",
@@ -1180,6 +1182,10 @@ export function buildLorebookEntryCreateRow(
   timestamp: string,
   defaultOrder = 100,
 ): Row {
+  const rawImages = data.images;
+  const parsedImages = createLorebookEntrySchema.shape.images.parse(
+    typeof rawImages === "string" ? JSON.parse(rawImages) : (rawImages ?? []),
+  );
   return {
     id,
     lorebookId,
@@ -1203,6 +1209,7 @@ export function buildLorebookEntryCreateRow(
     generationTriggerFilterMode: "any",
     generationTriggerFilters: [],
     additionalMatchingSources: [],
+    images: parsedImages,
     position: firstNumber(data, ["position"]) ?? 0,
     outletName: firstString(data, ["outletName", "outlet_name"]) ?? "",
     depth: firstNumber(data, ["depth"]) ?? 4,

@@ -1923,16 +1923,16 @@ export function createChatsStorage(db: DB) {
       );
     },
 
-    async pruneLorebookChatMetadata(remove: () => Promise<string[]>, lorebookId?: string) {
+    async pruneLorebookChatMetadata(remove: (tx: DB) => Promise<string[]>, lorebookId?: string) {
       // Match the existing queue-before-transaction order. Deletion and metadata cleanup roll back together.
       for (;;) {
         const lockedIds = new Set((await db.select({ id: chats.id }).from(chats)).map((chat) => chat.id));
         const complete = await withPatchQueues(metadataPatchQueues, [...lockedIds], () =>
-          db.transaction(async () => {
+          db.transaction(async (tx) => {
             const allChats = await db.select().from(chats);
             // A chat created while waiting may also reference this book; reacquire all queues before deleting.
             if (allChats.some((chat) => !lockedIds.has(chat.id))) return false;
-            const removedEntryIds = new Set(await remove());
+            const removedEntryIds = new Set(await remove(tx));
             for (const chat of allChats) {
               const metadata = parseMetadata(chat.metadata);
               const hasBook =
@@ -3069,7 +3069,7 @@ export function createChatsStorage(db: DB) {
         return [];
       });
       forgetDeletedLorebookScanKeep([id]);
-      if (removedEntries.length > 0) await this.pruneLorebookChatMetadata(async () => removedEntries);
+      if (removedEntries.length > 0) await this.pruneLorebookChatMetadata(async (_tx) => removedEntries);
     },
 
     async removeMessages(ids: string[], chatId?: string, beforeDelete?: (rows: MessageRow[]) => Promise<void>) {
@@ -3078,7 +3078,7 @@ export function createChatsStorage(db: DB) {
       const removedEntryIds: string[] = [];
       const finishDeletion = async () => {
         forgetDeletedLorebookScanKeep(ids);
-        if (removedEntryIds.length > 0) await this.pruneLorebookChatMetadata(async () => removedEntryIds);
+        if (removedEntryIds.length > 0) await this.pruneLorebookChatMetadata(async (_tx) => removedEntryIds);
         for (const [affectedChatId, createdAt] of earliestByChat) {
           await invalidateMemoryChunksFrom(db, affectedChatId, createdAt);
           await refreshChatLastMessageAt(affectedChatId);

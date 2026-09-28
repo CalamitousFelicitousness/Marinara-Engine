@@ -7,9 +7,10 @@ import {
   gameInventoryFightEffects,
   gameInventoryFightLines,
   gameInventoryItemsOwnNamed,
+  gameInventoryKeptByCurse,
   normalizeGameInventoryStacks,
 } from "@marinara-engine/shared";
-import { applyGameInventoryChangeHeld } from "../services/game/game-inventory.service.js";
+import { applyGameInventoryChangeHeld, loadGameInventoryItemBook } from "../services/game/game-inventory.service.js";
 import { resolveCombatWeather } from "../services/game/weather.service.js";
 import type { FastifyInstance } from "fastify";
 import { randomUUID } from "node:crypto";
@@ -554,6 +555,10 @@ export async function combatDirectorRoutes(
     s.revision++;
     combatDirectorView(s);
     let live: RulesetLiveStates | undefined;
+    // The ruleset's items as the player uses them, read before the chat's queue is held and only once
+    // the fight has spent something: a bound cursed item is one the player cannot use up.
+    const rules =
+      Object.keys(s.itemSpends).length > 0 ? await loadGameInventoryItemBook(app.db, { chatId }, "player") : undefined;
     await withChatMetadataPatchQueue(chatId, () =>
       app.db.transaction(async () => {
         const previous = await load(chatId, s.anchor);
@@ -573,13 +578,22 @@ export async function combatDirectorRoutes(
           await applyGameInventoryChangeHeld(app.db, chatId, (stacks) => {
             for (const d of deltas) {
               // Counted as the items of that own name, so another item's nickname can never make up the count.
-              if (gameInventoryCountItems(stacks, gameInventoryItemsOwnNamed(stacks, d.name)) < d.count)
+              const items = gameInventoryItemsOwnNamed(stacks, d.name);
+              if (gameInventoryCountItems(stacks, items) < d.count)
                 throw new Error("Inventory changed. Reload the battle.");
+              const free = stacks.filter((stack) => !gameInventoryKeptByCurse(stack, rules));
+              if (gameInventoryCountItems(free, items) < d.count)
+                throw new Error(`${d.name} is cursed and stays with whoever it is bound to, so it cannot be used.`);
             }
             const outcome = applyGameInventoryOps(
               stacks,
               deltas.map((d) => ({ op: "take" as const, name: d.name, count: d.count, as: "used" as const })),
+              undefined,
+              rules,
             );
+            // The step counted on every item it spends: one taken short throws, and the whole step with it.
+            if (outcome.results.some((result, i) => !result.ok || result.count !== deltas[i]!.count))
+              throw new Error("Inventory changed. Reload the battle.");
             return { stacks: outcome.stacks, journal: outcome.journal, value: null };
           });
         if (s.style === "ruleset" && s.rulesetFight) live = await writeRulesetLive(chatId, s.anchor, s.rulesetFight);

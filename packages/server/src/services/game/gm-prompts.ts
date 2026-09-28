@@ -10,7 +10,12 @@ import type {
   SessionSummary,
   HudWidget,
 } from "@marinara-engine/shared";
-import { DEFAULT_GAME_SYSTEM_PROMPT, wrapGameInstructions } from "@marinara-engine/shared";
+import {
+  DEFAULT_GAME_SYSTEM_PROMPT,
+  gameInventoryBagKey,
+  wrapGameInstructions,
+  type GameInventoryBearerStatus,
+} from "@marinara-engine/shared";
 import type { CharacterSpriteInfo } from "./sprite.service.js";
 
 /**
@@ -94,15 +99,32 @@ export interface GmPromptContext {
   /** Player's current inventory items (for GM context) */
   /** `ownName` is the item's own name when `name` is a nickname the player gave it; `item` is the
    *  ruleset item it is, when it is one. */
-  playerInventory?: Array<{ name: string; quantity: number; ownName?: string; item?: string }>;
+  playerInventory?: Array<{
+    name: string;
+    quantity: number;
+    ownName?: string;
+    item?: string;
+    equipped?: number;
+    bound?: number;
+  }>;
   /** Each bag's totals, the player's first (no `holder`). Read instead of `playerInventory` once
    *  anybody but the player carries something, so the Game Master knows who holds what. */
   partyInventory?: Array<{
     holder?: string;
-    items: Array<{ name: string; quantity: number; ownName?: string; item?: string }>;
+    items: Array<{
+      name: string;
+      quantity: number;
+      ownName?: string;
+      item?: string;
+      equipped?: number;
+      bound?: number;
+    }>;
   }>;
   /** What each ruleset item held is, by item id, as one line (`rulesetItemPromptFacts`). */
   inventoryItemFacts?: Record<string, string>;
+  /** What each character carries, binds and wears against what they can, by bag key
+   *  (`gameInventoryBagKey`, the player's is ""), in a game whose ruleset says so. */
+  inventoryBearers?: Record<string, GameInventoryBearerStatus>;
   /** Language for all narration and dialogue */
   language?: string;
   /** User-overridable GM instruction body. Wrapped in <instructions> before sending. */
@@ -417,12 +439,53 @@ function buildCampaignPlanLines(plan?: GameCampaignPlan | null): string[] {
   return lines;
 }
 
-function buildCompactInventoryLine(items: Array<{ name: string; quantity: number; facts?: string }>): string {
+function buildCompactInventoryLine(
+  items: Array<{ name: string; quantity: number; facts?: string; worn?: string }>,
+): string {
   return items
     .map(
-      (item) => `${item.name}${item.quantity > 1 ? ` ×${item.quantity}` : ""}${item.facts ? ` [${item.facts}]` : ""}`,
+      (item) =>
+        `${item.name}${item.quantity > 1 ? ` ×${item.quantity}` : ""}${item.worn ? ` (${item.worn})` : ""}${item.facts ? ` [${item.facts}]` : ""}`,
     )
     .join("; ");
+}
+
+/** What one character carries and wears against what they can, as the Game Master reads it:
+ *  "load 7 of 8, most 12, encumbered; Attuned 1 of 3; Hands 1 of 2, Body 0 of 1". */
+function bearerNote(status: GameInventoryBearerStatus | undefined, bindingLabel: string | undefined): string {
+  if (!status) return "";
+  const round = (value: number) => String(Math.round(value * 100) / 100);
+  const parts: string[] = [];
+  if (status.encumberedAbove !== undefined || status.limit !== undefined) {
+    parts.push(
+      [
+        `load ${round(status.load)}${status.encumberedAbove !== undefined ? ` of ${round(status.encumberedAbove)}` : ""}`,
+        ...(status.limit !== undefined ? [`most ${round(status.limit)}`] : []),
+        ...(status.encumbered ? ["encumbered"] : []),
+      ].join(", "),
+    );
+  }
+  if (status.bindingMax !== undefined) parts.push(`${bindingLabel || "Bound"} ${status.bound} of ${status.bindingMax}`);
+  if (status.slots.length > 0)
+    parts.push(status.slots.map((slot) => `${slot.label} ${slot.used} of ${slot.count}`).join(", "));
+  return parts.join("; ");
+}
+
+/** The tag line for wearing: only the actions this ruleset has, putting on for slots and binding for a
+ *  binding limit, so a model is never offered one the Engine would refuse every time. */
+function wearGrammarLine(slots: boolean, bindingLabel: string | undefined): string {
+  const binding = bindingLabel === undefined ? undefined : normalizePromptText(bindingLabel);
+  const actions = [...(slots ? ["equip", "unequip"] : []), ...(binding !== undefined ? ["bind", "unbind"] : [])];
+  const when = [
+    ...(slots
+      ? ["puts on, wields or readies one of the ruleset's items (equip) or takes it off or puts it away (unequip)"]
+      : []),
+    ...(binding !== undefined ? [`binds one${slots ? "" : " of the ruleset's items"} (${binding}) or unbinds it`] : []),
+  ].join(", or ");
+  const checks = [...(slots ? ["the slots"] : []), ...(binding !== undefined ? ["the binding limit"] : [])].join(
+    " and ",
+  );
+  return `- [inventory: action="${actions.join("|")}" item="Name" who="Name"] - when a character ${when}. It must be in who's own bag (the player's when who is left out); the Engine checks ${checks} shown beside each character, and refuses what does not fit.`;
 }
 
 function buildWidgetSummaryLines(widgets: HudWidget[]): string[] {
@@ -988,6 +1051,7 @@ export function buildGmFormatReminder(
     | "playerInventory"
     | "partyInventory"
     | "inventoryItemFacts"
+    | "inventoryBearers"
     | "language"
     | "rating"
     | "enableQuickTimeEvents"
@@ -1077,13 +1141,26 @@ export function buildGmFormatReminder(
     const text = normalizePromptText(facts);
     return text ? { facts: text } : {};
   };
+  // How many of an item are worn and bound, in the ruleset's own word for bound.
+  const bindingName = normalizePromptText(ctx.ruleset?.items?.binding?.label);
+  const bindingLabel = bindingName.toLowerCase();
+  const itemWorn = (item: { equipped?: unknown; bound?: unknown } | undefined) => {
+    const count = (value: unknown) => (typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0);
+    const worn = [
+      ...(count(item?.equipped) ? [`${count(item?.equipped)} worn`] : []),
+      ...(count(item?.bound) ? [`${count(item?.bound)} ${bindingLabel || "bound"}`] : []),
+    ].join(", ");
+    return worn ? { worn } : {};
+  };
+  const bearerFor = (holder: string | undefined) =>
+    bearerNote(ctx.inventoryBearers?.[gameInventoryBagKey(holder)], bindingName);
   const playerInventory = Array.isArray(ctx.playerInventory)
     ? ctx.playerInventory.flatMap((item) => {
         const name = inventoryName(item);
         if (!name) return [];
         const quantity =
           typeof item?.quantity === "number" && Number.isFinite(item.quantity) ? Math.max(1, item.quantity) : 1;
-        return [{ name, quantity, ...itemFacts(item) }];
+        return [{ name, quantity, ...itemWorn(item), ...itemFacts(item) }];
       })
     : [];
   // Bags other than the player's, each with a name to show; only these make the block per member.
@@ -1094,9 +1171,9 @@ export function buildGmFormatReminder(
       if (!name) return [];
       const quantity =
         typeof item?.quantity === "number" && Number.isFinite(item.quantity) ? Math.max(1, item.quantity) : 1;
-      return [{ name, quantity, ...itemFacts(item) }];
+      return [{ name, quantity, ...itemWorn(item), ...itemFacts(item) }];
     });
-    return items.length > 0 ? [{ holder, items }] : [];
+    return items.length > 0 ? [{ holder, items, note: bearerFor(bag.holder) }] : [];
   });
   const carriedByOthers = partyBags.some((bag) => bag.holder);
 
@@ -1244,6 +1321,14 @@ export function buildGmFormatReminder(
                 `  This game's ruleset has its own items: an item named exactly as one of them becomes that item, and what an item of the ruleset is shows in [brackets] after it in the inventory below (never write the brackets in item).`,
               ]
             : []),
+          ...(ctx.ruleset?.items?.carry
+            ? [
+                `  Everyone carries only so much: an add with who left out goes to whoever can carry it (the player first), and the answer says who got it; what nobody can carry is refused as too-heavy and stays behind.`,
+              ]
+            : []),
+          ...(ctx.ruleset?.items?.slots?.length || ctx.ruleset?.items?.binding
+            ? [wearGrammarLine(Boolean(ctx.ruleset.items.slots?.length), ctx.ruleset.items.binding?.label)]
+            : []),
         ]),
     `- [Note: contents] or [Book: contents] - when a new readable note or book is acquired and should be tracked in the journal.`,
     `- [state: exploration|dialogue|combat|travel_rest] - only on actual mode transitions. If you're planning to use [state: combat], this one ALWAYS has to be at the end of the turn, as it initiates a new combat generation and UI.`,
@@ -1379,10 +1464,14 @@ export function buildGmFormatReminder(
     lines.push(
       ``,
       `PARTY INVENTORY:`,
-      ...partyBags.map((bag) => `- ${bag.holder || playerLabel}: ${buildCompactInventoryLine(bag.items)}`),
+      ...partyBags.map(
+        (bag) =>
+          `- ${bag.holder || playerLabel}${bag.note ? ` (${bag.note})` : ""}: ${buildCompactInventoryLine(bag.items)}`,
+      ),
     );
   } else if (!experienceOwnsInventory && playerInventory.length > 0) {
-    lines.push(``, `PLAYER INVENTORY: ${buildCompactInventoryLine(playerInventory)}`);
+    const note = bearerFor(undefined);
+    lines.push(``, `PLAYER INVENTORY${note ? ` (${note})` : ""}: ${buildCompactInventoryLine(playerInventory)}`);
   }
 
   const specialInstructions = normalizePromptText(ctx.gameSpecialInstructions);

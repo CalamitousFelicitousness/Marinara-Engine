@@ -1,0 +1,246 @@
+import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import { seedUIState } from "./ui-state-fixture.js";
+
+const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
+
+/**
+ * Wearing and carrying a ruleset's items (#6801): an item added in the shared view goes to whoever can
+ * carry it, each bag shows its load and slots, an item is put on with Equipped, a stack dragged onto
+ * one in a full bag stays put, and a bound cursed item stays bound. Each run imports the example
+ * rulesets under ids of its own and removes them after.
+ */
+function example(file: string, id: string): string {
+  const doc = JSON.parse(readFileSync(new URL(`../docs/examples/rulesets/${file}.json`, import.meta.url), "utf8"));
+  doc.id = id;
+  return JSON.stringify(doc);
+}
+
+async function seedGame(
+  request: APIRequestContext,
+  rulesetId: string,
+  cards: unknown[],
+  partyCharacterIds: string[],
+): Promise<string> {
+  const created = await request.post("/api/chats", {
+    data: { name: "Wearing and carrying", mode: "game", characterIds: partyCharacterIds },
+  });
+  expect(created.ok()).toBeTruthy();
+  const chat = (await created.json()) as { id: string };
+  const meta = await request.patch(`/api/chats/${chat.id}/metadata`, {
+    data: {
+      gameId: `ruleset-wearing-${rulesetId}`,
+      gameSessionStatus: "active",
+      gameIntroPresented: true,
+      gameRuleset: { id: rulesetId, version: 1, packageId: null, options: {} },
+      gamePartyCharacterIds: partyCharacterIds,
+      gameCharacterCards: cards,
+      gameInventory: [],
+    },
+  });
+  expect(meta.ok(), await meta.text()).toBeTruthy();
+  const saved = await request.post(`/api/chats/${chat.id}/messages`, {
+    data: { role: "assistant", content: "The caravan waits at the outfitter's stall." },
+  });
+  expect(saved.ok()).toBeTruthy();
+  return chat.id;
+}
+
+async function openInventory(page: Page, chatId: string) {
+  await page.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: "" } }));
+  await seedUIState(page, {
+    hasCompletedOnboarding: true,
+    rightPanelOpen: false,
+    sidebarOpen: false,
+    chatHelpSeenModes: ["conversation", "roleplay", "game"],
+    gameInstantTextReveal: true,
+  });
+  await page.addInitScript(
+    ({ id, appVersion }) => {
+      localStorage.setItem("marinara-active-chat-id", id);
+      localStorage.setItem("marinara:whats-new:seen-version", appVersion);
+    },
+    { id: chatId, appVersion: version },
+  );
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: /Inventory/ })
+    .filter({ visible: true })
+    .first()
+    .click({ timeout: 30000 });
+}
+
+async function pick(page: Page, names: string[]) {
+  await page.getByRole("button", { name: "From the ruleset", exact: true }).click();
+  const picker = page.getByRole("dialog", { name: "Add items from the ruleset" });
+  for (const name of names) await picker.getByRole("checkbox", { name, exact: true }).check();
+  await picker.getByRole("button", { name: names.length === 1 ? "Add 1 item" : `Add ${names.length} items` }).click();
+  await expect(picker).toBeHidden();
+}
+
+test("a ruleset's items are placed by who can carry them, worn with Equipped, and a cursed one stays bound", async ({
+  page,
+  request,
+}, testInfo) => {
+  test.setTimeout(120000);
+  const policyBefore = await request.get("/api/agents/import-policy");
+  expect(policyBefore.ok(), await policyBefore.text()).toBeTruthy();
+  const importsWereEnabled = (await policyBefore.json()).enabled === true;
+  const chats: string[] = [];
+  const rulesets: string[] = [];
+  let characterId: string | undefined;
+  const importRuleset = async (definition: string) => {
+    const imported = await request.post("/api/game-rulesets/import", { data: { definition } });
+    expect(imported.ok(), await imported.text()).toBeTruthy();
+    const rulesetId = (await imported.json()).rulesetId as string;
+    rulesets.push(rulesetId);
+    return rulesetId;
+  };
+  try {
+    const policy = await request.patch("/api/agents/import-policy", { data: { enabled: true } });
+    expect(policy.ok(), await policy.text()).toBeTruthy();
+    const character = await request.post("/api/characters", { data: { data: { name: "Bram" } } });
+    expect(character.ok(), await character.text()).toBeTruthy();
+    characterId = ((await character.json()) as { id: string }).id;
+
+    // Ember Roads: a traveller carries 6 + Brawn before the road slows them, 12 at most. The first card
+    // is the player's (Brawn 0, so 6); Bram's Brawn is 3 (9).
+    const sheet = (brawn: number) => ({
+      v: 1,
+      build: { abilities: { brawn, wits: 0, heart: 0 }, fields: {}, lists: {} },
+    });
+    const roadId = await seedGame(
+      request,
+      await importRuleset(example("ember-roads", "ember-wearing-e2e")),
+      [
+        { name: "Ada", rulesetSheet: sheet(0) },
+        { name: "Bram", rulesetSheet: sheet(3) },
+      ],
+      [characterId],
+    );
+    chats.push(roadId);
+    const savedInventory = async () => {
+      const row = await (await request.get(`/api/chats/${roadId}`)).json();
+      const metadata = typeof row.metadata === "string" ? JSON.parse(row.metadata) : row.metadata;
+      return (
+        metadata.gameInventory as Array<{ name: string; quantity: number; holder?: string; equipped?: boolean }>
+      ).map((stack) => `${stack.name} ${stack.quantity} ${stack.holder ?? "player"}${stack.equipped ? " worn" : ""}`);
+    };
+    await openInventory(page, roadId);
+    const slot = (label: string) => page.getByRole("button", { name: label, exact: true });
+    const tab = (name: string) => page.getByRole("button", { name: `${name}'s things`, exact: true });
+
+    // The shared view shows each bag's load against what its bearer carries without strain.
+    await expect(page.getByText("Bram: 0/9", { exact: true })).toBeVisible();
+    // The bow and the coat fit the player (Bulk 2 + 3 of 6), added in the catalog's order...
+    await pick(page, ["Leather coat", "Hunting bow"]);
+    await expect.poll(savedInventory).toEqual(["Hunting bow 1 player", "Leather coat 1 player"]);
+    // ...and a second coat does not, so it goes to Bram.
+    await pick(page, ["Leather coat"]);
+    await expect.poll(savedInventory).toEqual(["Hunting bow 1 player", "Leather coat 1 player", "Leather coat 1 Bram"]);
+    await expect(page.getByText("Bram gained Leather coat!", { exact: true })).toBeVisible();
+    await expect(page.getByText("Bram: 3/9", { exact: true })).toBeVisible();
+
+    // In the player's own bag: its load and slots, and Equipped puts an item on.
+    await page.getByRole("button", { name: "All", exact: true }).click();
+    const playerTab = page.getByRole("button", { name: /'s things$/ }).first();
+    await playerTab.click();
+    await expect(page.getByText("Load 5/6, at most 12", { exact: true })).toBeVisible();
+    await expect(page.getByText("Body 0/1", { exact: true })).toBeVisible();
+    await slot("Leather coat").click();
+    await page.getByRole("button", { name: "Equipped", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Equipped", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(slot("Leather coat, worn")).toBeVisible();
+    await expect(page.getByText("Body 1/1", { exact: true })).toBeVisible();
+    await slot("Hunting bow").click();
+    await page.getByRole("button", { name: "Equipped", exact: true }).click();
+    await expect(page.getByText("Hands 2/2", { exact: true })).toBeVisible();
+    await expect
+      .poll(savedInventory)
+      .toEqual(["Hunting bow 1 player worn", "Leather coat 1 player worn", "Leather coat 1 Bram"]);
+    await page.screenshot({ path: testInfo.outputPath("ruleset-wearing.png") });
+    await expect(tab("Bram")).toBeVisible();
+
+    // Dragging a stack onto one in somebody else's bag hands it over, so it is held to what they can
+    // carry, like Give: Bram's coat and nine arrows are his twelve, and two more arrows are refused.
+    const row = await (await request.get(`/api/chats/${roadId}`)).json();
+    const metadata = typeof row.metadata === "string" ? JSON.parse(row.metadata) : row.metadata;
+    const arrows = { name: "Arrows", item: "outfitter/arrows" };
+    const heavier = await request.patch(`/api/chats/${roadId}/metadata`, {
+      data: {
+        gameInventory: [
+          ...metadata.gameInventory,
+          { ...arrows, id: "st-bram-arrows", quantity: 9, holder: "Bram" },
+          { ...arrows, id: "st-my-arrows", quantity: 2 },
+        ],
+      },
+    });
+    expect(heavier.ok(), await heavier.text()).toBeTruthy();
+    await page.reload();
+    await page
+      .getByRole("button", { name: /Inventory/ })
+      .filter({ visible: true })
+      .first()
+      .click({ timeout: 30000 });
+    await page.getByRole("button", { name: "All", exact: true }).click();
+    const from = await page.getByRole("button", { name: /^Arrows x2, carried by / }).boundingBox();
+    const onto = await slot("Arrows x9, carried by Bram").boundingBox();
+    expect(from && onto).toBeTruthy();
+    await page.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(from!.x + from!.width / 2 + 10, from!.y + from!.height / 2, { steps: 4 });
+    await page.mouse.move(onto!.x + onto!.width / 2, onto!.y + onto!.height / 2, { steps: 12 });
+    await page.mouse.up();
+    await expect(page.getByText("Bram cannot carry Arrows.", { exact: true })).toBeVisible();
+    await expect
+      .poll(savedInventory)
+      .toEqual([
+        "Hunting bow 1 player worn",
+        "Leather coat 1 player worn",
+        "Leather coat 1 Bram",
+        "Arrows 9 Bram",
+        "Arrows 2 player",
+      ]);
+
+    // Gravewatch: the Widow's ring binds and is cursed. Bound, it says so, and the player cannot
+    // unbind it. On a page of its own, so the first page's start-up script cannot reopen the first game.
+    const watchId = await seedGame(
+      request,
+      await importRuleset(example("gravewatch", "gravewatch-wearing-e2e")),
+      [
+        {
+          name: "Ada",
+          rulesetSheet: { v: 1, build: { abilities: { sinew: 1, nerve: 1, warmth: 1 }, fields: {}, lists: {} } },
+        },
+      ],
+      [],
+    );
+    chats.push(watchId);
+    const watchPage = await page.context().newPage();
+    await openInventory(watchPage, watchId);
+    await watchPage.getByLabel("Name of the item to add", { exact: true }).fill("Widow's ring");
+    await watchPage.getByRole("button", { name: "Add", exact: true }).click();
+    const bound = watchPage.getByRole("button", { name: "Bound", exact: true });
+    await bound.click();
+    await expect(bound).toHaveAttribute("aria-pressed", "true");
+    await expect(watchPage.getByRole("button", { name: "Widow's ring, Bound", exact: true })).toBeVisible();
+    await expect(watchPage.getByText("Cursed: it stays bound.", { exact: true })).toBeVisible();
+    // Ada's Nerve is 1: the screen reads the same sheet for the player as the server does.
+    await expect(watchPage.getByText("Bound 1/1", { exact: true })).toBeVisible();
+    await bound.click();
+    await expect(
+      watchPage.getByText("Widow's ring is cursed and stays with whoever it is bound to.", { exact: true }),
+    ).toBeVisible();
+    await expect(bound).toHaveAttribute("aria-pressed", "true");
+    await watchPage.screenshot({ path: testInfo.outputPath("ruleset-binding.png") });
+    await watchPage.close();
+  } finally {
+    for (const id of chats) await request.delete(`/api/chats/${id}`);
+    for (const id of rulesets) {
+      await request.delete(`/api/game-rulesets?rulesetId=${encodeURIComponent(id)}&force=true`);
+    }
+    if (characterId) await request.delete(`/api/characters/${characterId}`);
+    const restored = await request.patch("/api/agents/import-policy", { data: { enabled: importsWereEnabled } });
+    expect(restored.ok(), await restored.text()).toBeTruthy();
+  }
+});

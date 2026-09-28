@@ -30,6 +30,14 @@
  *   - The Game Master's inventory shows each ruleset item's facts in brackets, and its command line
  *     says a name that is one of the ruleset's items becomes that item, only when the ruleset has an
  *     item catalog.
+ *
+ * Slice I2b-3 (#6801), wearing and carrying:
+ *   - The book gives each item its weight (its value of the carry stat), its slots and whether it
+ *     binds (and is cursed), and the ruleset's slots; each character's carrying and binding limits
+ *     are read off their own sheet, a character without one reading a blank sheet.
+ *   - The Game Master is shown what is worn and bound beside each item, each character's load, bound
+ *     items and slots, the carrying rule only with `carry`, and the equip and bind command only with
+ *     slots or binding.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -41,6 +49,7 @@ import {
   GAME_INVENTORY_MAX_QUANTITY,
   parseRulesetCatalogFile,
   parseRulesetDefinition,
+  rulesetItemBearers,
   rulesetItemBook,
   rulesetItemCatalogIds,
   rulesetItemPromptFacts,
@@ -734,6 +743,151 @@ try {
     });
     assert.doesNotMatch(bare, /becomes that item/);
     assert.match(bare, /PLAYER INVENTORY: Hand axe$/m);
+  }
+
+  // ── Slice I2b-3: wearing and carrying ──
+  {
+    const entriesOf = (definition: RulesetDefinition): Record<string, RulesetCatalogEntry[]> =>
+      Object.fromEntries(
+        (definition.catalogs ?? []).flatMap((catalog) =>
+          catalog.holds === "items" && catalog.entries ? [[catalog.id, catalog.entries]] : [],
+        ),
+      );
+    const build = (abilities: Record<string, number>) => ({ abilities, fields: {}, lists: {} }) as never;
+    const road = rulesetItemBook(ember, entriesOf(ember), {
+      actor: "player",
+      sheets: {
+        player: build({ brawn: 0, wits: 0, heart: 0 }),
+        members: [{ name: "Bram", build: build({ brawn: 3, wits: 0, heart: 0 }) }],
+      },
+    });
+    // Weight is the carry stat (Bulk); slots and binding come from the entry.
+    assert.equal(road.itemOf("outfitter/leather-coat")?.weight, 3);
+    assert.deepEqual(road.itemOf("outfitter/leather-coat")?.slots, { body: 1 });
+    assert.deepEqual(road.itemOf("outfitter/hunting-bow")?.slots, { hands: 2 });
+    assert.equal(road.itemOf("outfitter/waystone")?.weight, undefined, "no Bulk, no weight");
+    assert.equal(road.itemOf("outfitter/hand-axe")?.binds, undefined);
+    assert.deepEqual(road.slots, [
+      { id: "body", label: "Body", count: 1 },
+      { id: "hands", label: "Hands", count: 2 },
+    ]);
+    assert.equal(road.actor, "player");
+    // A traveller carries 6 + Brawn before the road slows them, and 12 at most, each off their sheet.
+    assert.deepEqual(road.bearer?.(undefined), { encumberedAbove: 6, limit: 12 });
+    assert.deepEqual(road.bearer?.("bram"), { encumberedAbove: 9, limit: 12 }, "any case");
+    assert.deepEqual(road.bearer?.("Stranger"), { encumberedAbove: 6, limit: 12 }, "no sheet, a blank one");
+    // Gravewatch binds up to the bearer's Nerve, and the Widow's ring is cursed.
+    const kit = rulesetItemBook(gravewatch, entriesOf(gravewatch), {
+      sheets: { player: build({ sinew: 1, nerve: 2, warmth: 1 }) },
+    });
+    assert.deepEqual(kit.itemOf("kit/widows-ring")?.binds, { cursed: true });
+    assert.deepEqual(kit.itemOf("kit/dawn-bell")?.binds, {});
+    assert.equal(kit.bearer?.(undefined).bindingMax, 2);
+    assert.equal(kit.bearer?.(undefined).encumberedAbove, undefined, "no carry block");
+    assert.equal(
+      rulesetItemBearers(gravewatch, { player: build({ sinew: 1, nerve: 3, warmth: 1 }) })(undefined).bindingMax,
+      3,
+    );
+    // Neither carry nor binding: nothing to read off a sheet.
+    const plainRoad = parsedOrThrow(
+      variant(emberText, (doc) => {
+        delete doc.items.carry;
+        for (const family of doc.items.currencies ?? []) delete family.perWeight;
+      }),
+      "items without carrying",
+    );
+    assert.equal(rulesetItemBook(plainRoad, entriesOf(plainRoad)).bearer, undefined);
+    assert.equal(rulesetItemBook(plainRoad, entriesOf(plainRoad)).itemOf("outfitter/leather-coat")?.weight, undefined);
+
+    // What the Game Master is shown.
+    const base = { hasSceneModel: true } as never as Parameters<typeof buildGmFormatReminder>[0];
+    const bearers = {
+      "": {
+        load: 8,
+        encumberedAbove: 6,
+        limit: 12,
+        encumbered: true,
+        bound: 0,
+        slots: [
+          { id: "body", label: "Body", count: 1, used: 1 },
+          { id: "hands", label: "Hands", count: 2, used: 0 },
+        ],
+      },
+      bram: {
+        load: 3,
+        encumberedAbove: 9,
+        limit: 12,
+        encumbered: false,
+        bound: 0,
+        slots: [
+          { id: "body", label: "Body", count: 1, used: 0 },
+          { id: "hands", label: "Hands", count: 2, used: 2 },
+        ],
+      },
+    };
+    const party = buildGmFormatReminder({
+      ...base,
+      ruleset: ember,
+      playerName: "Ada",
+      partyInventory: [
+        { items: [{ name: "Leather coat", quantity: 1, item: "outfitter/leather-coat", equipped: 1 }] },
+        { holder: "Bram", items: [{ name: "Hunting bow", quantity: 2, item: "outfitter/hunting-bow", equipped: 1 }] },
+      ],
+      inventoryBearers: bearers,
+    });
+    assert.match(
+      party,
+      /- Ada \(load 8 of 6, most 12, encumbered; Body 1 of 1, Hands 0 of 2\): Leather coat \(1 worn\)/,
+    );
+    assert.match(party, /- Bram \(load 3 of 9, most 12; Body 0 of 1, Hands 2 of 2\): Hunting bow ×2 \(1 worn\)/);
+    assert.match(party, /an add with who left out goes to whoever can carry it/);
+    assert.match(
+      party,
+      /\[inventory: action="equip\|unequip" item="Name" who="Name"\] - when a character puts on, wields or readies one of the ruleset's items \(equip\) or takes it off or puts it away \(unequip\)\. It must be in who's own bag \(the player's when who is left out\); the Engine checks the slots shown beside each character/,
+    );
+    const alone = buildGmFormatReminder({
+      ...base,
+      ruleset: gravewatch,
+      playerInventory: [{ name: "Widow's ring", quantity: 1, item: "kit/widows-ring", bound: 1, equipped: 1 }],
+      inventoryBearers: { "": { load: 0, encumbered: false, bound: 1, bindingMax: 2, slots: [] } },
+    });
+    assert.match(alone, /PLAYER INVENTORY \(Bound 1 of 2\): Widow's ring \(1 worn, 1 bound\)/);
+    assert.match(
+      alone,
+      /action="equip\|unequip\|bind\|unbind" item="Name" who="Name"\] - when a character puts on, wields or readies one of the ruleset's items \(equip\) or takes it off or puts it away \(unequip\), or binds one \(Bound\) or unbinds it\. .* the Engine checks the slots and the binding limit shown/,
+    );
+    assert.doesNotMatch(alone, /whoever can carry it/, "no carry block, no carrying rule");
+    const noWearing = buildGmFormatReminder({
+      ...base,
+      ruleset: parsedOrThrow(
+        variant(emberText, (doc) => {
+          delete doc.items.carry;
+          delete doc.items.slots;
+          for (const family of doc.items.currencies ?? []) delete family.perWeight;
+          for (const entry of itemCatalog(doc).entries) delete entry.item.slots;
+        }),
+        "items nobody wears",
+      ),
+      playerInventory: [{ name: "Hand axe", quantity: 1, item: "outfitter/hand-axe" }],
+    });
+    assert.doesNotMatch(noWearing, /action="equip/);
+    // A ruleset that binds but has no slots is never offered equip, which it would refuse every time.
+    const bindingOnly = buildGmFormatReminder({
+      ...base,
+      ruleset: parsedOrThrow(
+        variant(gravewatchText, (doc) => {
+          delete doc.items.slots;
+          for (const entry of itemCatalog(doc).entries) delete entry.item.slots;
+        }),
+        "items nobody puts on",
+      ),
+      playerInventory: [{ name: "Widow's ring", quantity: 1, item: "kit/widows-ring" }],
+    });
+    assert.match(
+      bindingOnly,
+      /\[inventory: action="bind\|unbind" item="Name" who="Name"\] - when a character binds one of the ruleset's items \(Bound\) or unbinds it\. .* the Engine checks the binding limit shown/,
+    );
+    assert.doesNotMatch(bindingOnly, /action="equip/);
   }
 
   console.info("game ruleset item regressions passed.");

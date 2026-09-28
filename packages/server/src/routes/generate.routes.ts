@@ -175,6 +175,8 @@ import {
   refuseGameInventoryTags,
   replaceTrailingInventoryTags,
   gameInventoryTotals,
+  gameInventoryBagKey,
+  gameInventoryBearerStatus,
   normalizeGameInventoryStacks,
   rulesetItemPromptFacts,
   type RoleplayCommandActivity,
@@ -4454,8 +4456,21 @@ export async function generateRoutes(app: FastifyInstance) {
             pinnedGameRuleset?.status === "ok" && promptInventoryStacks.some((stack) => stack.item)
               ? await loadGameInventoryItemBook(
                   app.db,
-                  { metadata: chatMeta, resolved: pinnedGameRuleset },
+                  { metadata: chatMeta, resolved: pinnedGameRuleset, playerName: personaName || null },
                   "game-master",
+                )
+              : undefined;
+          // What each character carries, binds and wears against what they can, when the ruleset says.
+          const promptBearers =
+            promptItemBook?.bearer || promptItemBook?.slots
+              ? Object.fromEntries(
+                  [
+                    undefined,
+                    ...new Set(promptInventoryStacks.flatMap((stack) => (stack.holder ? [stack.holder] : []))),
+                  ].map((holder) => [
+                    gameInventoryBagKey(holder),
+                    gameInventoryBearerStatus(promptInventoryStacks, holder, promptItemBook),
+                  ]),
                 )
               : undefined;
           const promptItemFacts = promptItemBook
@@ -4532,6 +4547,7 @@ export async function generateRoutes(app: FastifyInstance) {
               })(),
               partyInventory: gameInventoryBags(promptInventoryStacks),
               ...(promptItemFacts ? { inventoryItemFacts: promptItemFacts } : {}),
+              ...(promptBearers ? { inventoryBearers: promptBearers } : {}),
             }),
           );
           finalMessages.push({ role: "user" as const, content: formatReminder });
@@ -9147,7 +9163,7 @@ export async function generateRoutes(app: FastifyInstance) {
               const rules = tellsInventory
                 ? await loadGameInventoryItemBook(
                     app.db,
-                    { metadata: currentMeta, resolved: turnGameRuleset },
+                    { metadata: currentMeta, resolved: turnGameRuleset, playerName: personaName || null },
                     "game-master",
                   )
                 : undefined;

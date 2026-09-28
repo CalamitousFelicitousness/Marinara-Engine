@@ -13,6 +13,10 @@ const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.u
 function emberRoads(id: string, edit: (doc: Record<string, any>) => void = () => {}): string {
   const doc = JSON.parse(readFileSync(new URL("../docs/examples/rulesets/ember-roads.json", import.meta.url), "utf8"));
   doc.id = id;
+  // This test is about which item a name is and how many one stack holds; carrying is tested in
+  // game-ruleset-wearing.e2e.ts.
+  delete doc.items.carry;
+  for (const family of doc.items.currencies ?? []) delete family.perWeight;
   edit(doc);
   return JSON.stringify(doc);
 }

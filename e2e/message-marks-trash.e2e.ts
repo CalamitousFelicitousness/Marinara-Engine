@@ -126,6 +126,24 @@ for (const mode of ["conversation", "roleplay"] as const) {
           privateNote: "Synthetic private note.",
         });
 
+      if (!mobile) {
+        // Keyboard activation does not send an outside pointerdown to dismiss the note viewer.
+        const noteIndicator = messageRow.getByRole("button", { name: "Show private note", exact: true });
+        const marksAction = messageRow.getByRole("button", { name: "Bookmark, pin or note" });
+        await noteIndicator.press("Enter");
+        await expect(page.getByRole("note")).toContainText("Synthetic private note.");
+        await marksAction.press("Enter");
+        await marksMenu.getByRole("textbox", { name: "Private note" }).fill("");
+        await marksMenu.getByRole("button", { name: "Save note" }).press("Enter");
+        await expect(noteIndicator).toHaveCount(0);
+        await expect(page.getByRole("note")).toHaveCount(0);
+        await marksMenu.getByRole("textbox", { name: "Private note" }).fill("Synthetic private note.");
+        await marksMenu.getByRole("button", { name: "Save note" }).press("Enter");
+        await expect(noteIndicator).toHaveAttribute("aria-expanded", "false");
+        await expect(page.getByRole("note")).toHaveCount(0);
+        await page.keyboard.press("Escape");
+      }
+
       // Use the message DELETE route as a deterministic fixture action; restore is exercised through the chat UI.
       const deleted = await request.delete(`/api/chats/${chat.id}/messages/${messageId}`);
       expect(deleted.status()).toBe(200);

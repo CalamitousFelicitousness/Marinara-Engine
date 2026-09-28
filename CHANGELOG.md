@@ -8,7 +8,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - Deleting a turn with saved Game state stays permanent after changing chat modes or importing it. Mixed selections recover only ordinary messages, and recovery counts reflect that.
 
-- Message marks remain visible in roleplay, private-note menus fit short mobile screens, and recovery reports partial restores accurately. Restoring several messages still updates chat memory when one entry fails; Game Mode rejects message-only recovery. Pin hints clarify the model token limit.
+- Message marks remain visible in roleplay, private-note menus fit short mobile screens and close when their note is removed, and recovery reports partial restores accurately. Restoring several messages still updates chat memory when one entry fails; Game Mode rejects message-only recovery. Pin hints clarify the model token limit.
 
 - Per-character conversation-start edits complete without hanging, including edits that also pin a message or change its visibility.
 

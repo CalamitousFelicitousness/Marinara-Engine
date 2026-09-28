@@ -961,8 +961,9 @@ async function resolveSection(
 
   // Resolve macros
   content = contentMacrosResolved ? content : resolveMacros(content, macroCtx, macroOptions);
-  if (!content.trim()) return null;
+  // An image-only Outlet resolves to empty text but still claims its images.
   for (const name of imageOutlets) ctx.usedImageOutlets.add(name);
+  if (!content.trim()) return null;
   const shouldWrapRuntimeAgentSection = Boolean(
     runtimeAgentStartToken &&
     runtimeAgentEndToken &&

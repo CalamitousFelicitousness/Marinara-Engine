@@ -3287,7 +3287,9 @@ function sendBackupRouteError(reply: FastifyReply, err: unknown, operation: stri
   const message = getBackupErrorMessage(err, `${operation} failed. Check the server logs for details.`);
   const logError = err instanceof Error ? err : new Error(message);
   logger.error(logError, "[backup] %s failed", operation);
-  return reply.status(500).send({
+  const statusCode =
+    err && typeof err === "object" && "statusCode" in err && typeof err.statusCode === "number" ? err.statusCode : 500;
+  return reply.status(statusCode).send({
     error: `${operation} failed`,
     message,
   });

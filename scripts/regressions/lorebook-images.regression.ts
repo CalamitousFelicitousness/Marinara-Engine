@@ -277,6 +277,25 @@ try {
     true,
     "emitted Outlet references carry their images",
   );
+  const portrait = (await storage.createEntry({
+    lorebookId: book.id,
+    name: "Portrait",
+    constant: true,
+    position: 7,
+    outletName: "portrait",
+    content: "",
+    images: [image],
+  }))!;
+  const imageOnly = await assemblePrompt({
+    ...promptInput,
+    sections: [promptInput.sections[0]!, makeSection("outlet", "{{outlet::portrait}}")],
+  });
+  assert.equal(
+    imageOnly.lorebookScanResult?.imageEntries?.find((entry) => entry.id === portrait.id)?.outletUsed,
+    true,
+    "an explicitly used image-only Outlet keeps its images",
+  );
+  await storage.removeEntry(portrait.id);
   await storage.removeEntry(outlet.id);
   await storage.removeEntry(after.id);
   const filesBefore = await readdir(lorebookImagesDirectory());

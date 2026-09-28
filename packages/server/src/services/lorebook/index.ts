@@ -737,7 +737,7 @@ function trySelectBudgetedLorebookEntry(
   );
 
   if (!fitted) {
-    const entryTokens = estimateLorebookEntryTokens(candidate.entry);
+    const entryTokens = estimateTextTokens(candidate.entry.content);
     return {
       selected: false,
       skipped: {

@@ -21,13 +21,26 @@ export function estimateLorebookEntryTokens(entry: { content: string; images?: A
 export function fitLorebookEntryToBudget(
   candidate: ActivatedEntry,
   fits: (tokens: number) => boolean,
+  includeImages = true,
 ): { candidate: ActivatedEntry; tokens: number } | null {
-  const tokens = estimateLorebookEntryTokens(candidate.entry);
-  if (fits(tokens)) return { candidate, tokens };
-  if (!candidate.entry.images?.length) return null;
   const textTokens = estimateTextTokens(candidate.entry.content);
-  if (!fits(textTokens)) return null;
-  return { candidate: { ...candidate, entry: { ...candidate.entry, images: [] } }, tokens: textTokens };
+  if (!candidate.entry.content.trim() && !candidate.entry.images?.length) return null;
+  if (candidate.entry.content.trim() && !fits(textTokens)) return null;
+  const images = [] as NonNullable<ActivatedEntry["entry"]["images"]>;
+  let tokens = candidate.entry.content.trim() ? textTokens : 0;
+  for (const image of includeImages ? (candidate.entry.images ?? []) : []) {
+    const imageTokens = estimateLorebookImageTokens([image]);
+    if (!fits(tokens + imageTokens)) continue;
+    images.push(image);
+    tokens += imageTokens;
+  }
+  return {
+    candidate:
+      images.length === (candidate.entry.images?.length ?? 0)
+        ? candidate
+        : { ...candidate, entry: { ...candidate.entry, images } },
+    tokens,
+  };
 }
 
 /** A prompt message ready for injection. */
@@ -168,13 +181,21 @@ export function applyTokenBudget(activatedEntries: ActivatedEntry[], tokenBudget
   });
 
   for (const entry of sorted) {
-    const fitted = fitLorebookEntryToBudget(entry, (tokens) => totalTokens + tokens <= tokenBudget);
-    if (!fitted) {
-      // Budget exhausted — skip remaining entries
-      break;
-    }
+    const fitted = fitLorebookEntryToBudget(entry, (tokens) => totalTokens + tokens <= tokenBudget, false);
+    if (!fitted) continue;
     totalTokens += fitted.tokens;
     result.push(fitted.candidate);
+  }
+
+  for (const [index, entry] of result.entries()) {
+    const original = sorted.find((candidate) => candidate.entry.id === entry.entry.id) ?? entry;
+    const fitted = fitLorebookEntryToBudget(
+      original,
+      (tokens) => totalTokens - estimateTextTokens(entry.entry.content) + tokens <= tokenBudget,
+    );
+    if (!fitted) continue;
+    totalTokens += fitted.tokens - estimateTextTokens(entry.entry.content);
+    result[index] = fitted.candidate;
   }
 
   return result;

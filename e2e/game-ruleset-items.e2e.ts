@@ -105,7 +105,7 @@ test("a ruleset's items are picked, found by name, shown with what they are and 
     await expect(
       picker.getByText("Bulk 1 · Damage 1d6 · Rolls with brawn · Reach close", { exact: true }),
     ).toBeVisible();
-    await expect(picker.getByText("Costs 4 marks", { exact: true })).toBeVisible();
+    await expect(picker.getByText("Price in marks: 4", { exact: true })).toBeVisible();
     await picker.getByRole("checkbox", { name: "Hand axe", exact: true }).check();
     await picker.getByRole("searchbox").fill("");
     await picker.getByRole("checkbox", { name: "Arrows", exact: true }).check();

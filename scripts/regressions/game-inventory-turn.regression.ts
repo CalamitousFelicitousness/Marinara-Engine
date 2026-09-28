@@ -531,6 +531,52 @@ try {
       /PLAYER INVENTORY: Road rations ×10 \[Provisions, Common; Bulk 1\]; Arrows ×4; Lamp; Arrows ×2 \[Ammunition, Common; Bulk 1\]/,
     );
     assert.match(prompt, /an item named exactly as one of them becomes that item/);
+
+    // A new session brings back what only the detailed inventory still names, stacked as its item
+    // allows: thirty arrows are a stack of twenty and one of ten.
+    const gameId = "ruleset-items-sessions";
+    const ended = await chats.create({
+      name: "Ruleset items — Session 1",
+      mode: "game",
+      characterIds: [],
+      groupId: gameId,
+    });
+    assert.ok(ended);
+    await chats.patchMetadata(ended.id, {
+      gameId,
+      gameSessionStatus: "concluded",
+      gameSessionNumber: 1,
+      gameRuleset: { id: "local/ember-roads", version: ember.version, packageId: null, options: {} },
+      gameInventory: [],
+    });
+    const last = await chats.createMessage({ chatId: ended.id, role: "assistant", content: "The road ends here." });
+    await createGameStateStorage(db).create({
+      chatId: ended.id,
+      messageId: last.id,
+      swipeIndex: 0,
+      date: null,
+      time: null,
+      location: null,
+      weather: null,
+      temperature: null,
+      presentCharacters: [],
+      recentEvents: [],
+      playerStats: {
+        stats: [],
+        attributes: null,
+        skills: {},
+        inventory: [{ item: "outfitter/arrows", name: "Arrows", description: "", quantity: 30, location: "on_person" }],
+        activeQuests: [],
+        status: "",
+      } as never,
+      personaStats: null,
+    });
+    const carried = await app.inject({ method: "POST", url: "/api/game/session/start", payload: { gameId } });
+    assert.equal(carried.statusCode, 200, carried.body);
+    assert.deepEqual(await stacksOf(carried.json().sessionChat.id), [
+      "Arrows <outfitter/arrows> 20",
+      "Arrows <outfitter/arrows> 10",
+    ]);
   }
 
   console.info("game inventory turn regressions passed.");

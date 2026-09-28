@@ -815,9 +815,14 @@ export function renameGameInventoryStack(
 /**
  * The inventory a new session starts with: every stack the last one ended with, ids, splits, bags and
  * nicknames kept, plus anything the detailed inventory on its last game state names that no stack
- * holds, which goes to the player.
+ * holds, which goes to the player. `rules` are the game's ruleset's items: what comes back that way is
+ * stacked no higher than its item allows, and a name that is one of them comes back as that item.
  */
-export function carryGameInventory(gameInventory: unknown, detailedInventory: unknown): GameInventoryStack[] {
+export function carryGameInventory(
+  gameInventory: unknown,
+  detailedInventory: unknown,
+  rules?: GameInventoryItemRules,
+): GameInventoryStack[] {
   let stacks = normalizeGameInventoryStacks(gameInventory);
   // Read against the stacks as saved, so two detailed entries of an item no stack holds both count.
   const saved = stacks;
@@ -833,7 +838,9 @@ export function carryGameInventory(gameInventory: unknown, detailedInventory: un
     const typed = readItemRef(item);
     if (typed) {
       const makeId = () => newGameInventoryStackId(stacks);
-      stacks = addLike(stacks, { name: entry.name, item: typed }, entry.quantity, undefined, makeId)?.stacks ?? stacks;
+      stacks =
+        addLike(stacks, { name: entry.name, item: typed }, entry.quantity, undefined, makeId, stackLimit(typed, rules))
+          ?.stacks ?? stacks;
       continue;
     }
     // An entry whose name is not its item's own (a nickname) comes back as that item, its own name
@@ -848,7 +855,7 @@ export function carryGameInventory(gameInventory: unknown, detailedInventory: un
         addLike(stacks, { name: own, nickname: entry.name }, entry.quantity, undefined, makeId)?.stacks ?? stacks;
       continue;
     }
-    stacks = addToGameInventory(stacks, entry.name, entry.quantity);
+    stacks = addToGameInventory(stacks, entry.name, entry.quantity, undefined, undefined, rules);
   }
   return stacks;
 }

@@ -1380,7 +1380,7 @@
   "game.ruleset.items.catalog": "Catalog",
   "game.ruleset.items.confirm_one": "Add {{count}} item",
   "game.ruleset.items.confirm_other": "Add {{count}} items",
-  "game.ruleset.items.cost": "Costs {{amount}} {{unit}}",
+  "game.ruleset.items.cost": "Price in {{unit}}: {{amount}}",
   "game.ruleset.items.empty": "This ruleset lists no items here.",
   "game.ruleset.items.pickerTitle": "Add items from the ruleset",
   "game.ruleset.items.searchPlaceholder": "Search by name or description",

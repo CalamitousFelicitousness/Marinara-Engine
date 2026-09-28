@@ -632,6 +632,25 @@ const apples = (): GameInventoryStack[] => [
       ["Old Bitey", "outfitter/hand-axe", 1, null],
     ],
   );
+  // With the ruleset's items, what comes back is stacked as its item allows, and an entry written
+  // without an id whose name is one of them comes back as that item.
+  assert.deepEqual(
+    shape(
+      carryGameInventory(
+        [],
+        [
+          { item: "outfitter/arrows", name: "Arrows", description: "", quantity: 30, location: "" },
+          { name: "hand axe", description: "", quantity: 1, location: "" },
+        ],
+        rules(),
+      ),
+    ),
+    [
+      ["Arrows", "outfitter/arrows", 20, null],
+      ["Arrows", "outfitter/arrows", 10, null],
+      ["Hand axe", "outfitter/hand-axe", 1, null],
+    ],
+  );
 }
 
 // ── The amount field ──

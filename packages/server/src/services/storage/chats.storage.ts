@@ -2555,8 +2555,8 @@ export function createChatsStorage(db: DB) {
       // Summary hiding already takes metadata before message queues. Acquire both
       // before the transaction, and never call a queue-taking writer inside it.
       const apply = () =>
-        withMessageExtraPatchQueue(id, () =>
-          db.transaction(async () => {
+        withMessageExtraPatchQueue(id, async () => {
+          const updated = await db.transaction(async () => {
             const msg = await readMessage(id);
             if (!msg || msg.chatId !== owner.chatId) return null;
             const swipes = await readSwipes(id);
@@ -2614,8 +2614,10 @@ export function createChatsStorage(db: DB) {
               { touchUpdatedAt: false, metadataQueueHeld: true },
             );
             return this.getMessage(id);
-          }),
-        );
+          });
+          if (updated) noteLorebookScanSaved(updated.chatId, id, updated.role, updated.createdAt, partial.lorebookScan);
+          return updated;
+        });
       return opts.metadataQueueHeld ? apply() : withChatMetadataPatchQueue(owner.chatId, apply);
     },
 

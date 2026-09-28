@@ -1,0 +1,257 @@
+import { backupRoutes } from "../../packages/server/src/routes/backup.routes.js";
+import AdmZip from "../../node_modules/adm-zip/adm-zip.js";
+import assert from "node:assert/strict";
+import { mkdir, symlink, writeFile, unlink, readFile, readdir } from "node:fs/promises";
+import { join } from "node:path";
+import { getDB, closeDB } from "../../packages/server/src/db/connection.js";
+import { createCharactersStorage } from "../../packages/server/src/services/storage/characters.storage.js";
+import { embedLorebookIntoCharacter } from "../../packages/server/src/services/lorebook/character-book-sync.js";
+import { createLorebooksStorage } from "../../packages/server/src/services/storage/lorebooks.storage.js";
+import { lorebooksRoutes } from "../../packages/server/src/routes/lorebooks.routes.js";
+import { importMarinara } from "../../packages/server/src/services/import/marinara.importer.js";
+import { importSTLorebook } from "../../packages/server/src/services/import/st-lorebook.importer.js";
+import {
+  readLorebookImageDataUrl,
+  saveLorebookImage,
+  restoreLorebookImages,
+  lorebookImagesDirectory,
+  embedCharacterBookImages,
+} from "../../packages/server/src/services/lorebook/lorebook-images.js";
+import { ZodError } from "../../packages/server/node_modules/zod/index.js";
+import { characterDataSchema, createLorebookEntrySchema } from "../../packages/shared/dist/index.js";
+import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
+import multipart from "../../packages/server/node_modules/@fastify/multipart/index.js";
+
+const png = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2jX8AAAAASUVORK5CYII=",
+  "base64",
+);
+const db = await getDB();
+const storage = createLorebooksStorage(db);
+const app = Fastify();
+app.decorate("db", db);
+app.setErrorHandler((error, _request, reply) =>
+  reply.status(error instanceof ZodError ? 400 : (error.statusCode ?? 500)).send({ error: error.message }),
+);
+await app.register(multipart);
+await app.register(lorebooksRoutes, { prefix: "/api/lorebooks" });
+await app.register(backupRoutes, { prefix: "/api/backup" });
+function uploadPayload(buffer: Buffer, filename = "ref.png") {
+  const boundary = "marinara-lorebook-image-regression";
+  return {
+    headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
+    payload: Buffer.concat([
+      Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: image/png\r\n\r\n`,
+      ),
+      buffer,
+      Buffer.from(`\r\n--${boundary}--\r\n`),
+    ]),
+  };
+}
+try {
+  const book = (await storage.create({ name: "Wardrobe references" }))!;
+  const entry = (await storage.createEntry({
+    lorebookId: book.id,
+    name: "Coat",
+    content: "The coat is blue.",
+    keys: ["wardrobe"],
+  }))!;
+  assert.deepEqual(entry.images, [], "legacy entries default to no images");
+  for (const [asset, mime] of [
+    ["../../packages/server/src/assets/default-backgrounds/winter_mountains.jpg", "image/jpeg"],
+    ["../../packages/client/public/illustrations/professor-mari-whats-new.webp", "image/webp"],
+  ]) {
+    const bytes = await readFile(new URL(asset!, import.meta.url));
+    const formatEntry = (await storage.createEntry({ lorebookId: book.id, name: mime!, content: "Format reference" }))!;
+    const uploadedFormat = await app.inject({
+      method: "POST",
+      url: `/api/lorebooks/${book.id}/entries/${formatEntry.id}/images`,
+      ...uploadPayload(bytes),
+    });
+    assert.equal(uploadedFormat.statusCode, 200, uploadedFormat.body);
+    const servedFormat = await app.inject(uploadedFormat.json().images[0].path);
+    assert.equal(servedFormat.headers["content-type"], mime, "actual file signature determines image type");
+    assert.deepEqual(servedFormat.rawPayload, bytes);
+    await storage.removeEntry(formatEntry.id);
+  }
+  await assert.rejects(() => storage.appendEntryImage(entry.id, book.id, { path: "/etc/passwd", caption: "bad" }));
+  assert.deepEqual((await storage.getEntry(entry.id))!.images, []);
+  const url = `/api/lorebooks/${book.id}/entries/${entry.id}/images`;
+  const uploaded = await app.inject({ method: "POST", url, ...uploadPayload(png) });
+  assert.equal(uploaded.statusCode, 200, uploaded.body);
+  const image = uploaded.json().images[0];
+  assert.match(image.path, /^\/api\/lorebooks\/entry-images\//);
+  const served = await app.inject(image.path);
+  assert.equal(served.statusCode, 200, served.body);
+  assert.equal(served.headers["content-type"], "image/png");
+  assert.deepEqual(served.rawPayload, png);
+  assert.equal(
+    (await app.inject({ method: "POST", url, ...uploadPayload(Buffer.from("<svg/>"), "fake.png") })).statusCode,
+    400,
+  );
+  assert.equal(
+    (
+      await app.inject({
+        method: "POST",
+        url: `/api/lorebooks/not-this-book/entries/${entry.id}/images`,
+        ...uploadPayload(png),
+      })
+    ).statusCode,
+    404,
+  );
+  assert.equal(
+    (
+      await app.inject({
+        method: "PATCH",
+        url: `/api/lorebooks/${book.id}/entries/${entry.id}`,
+        payload: { images: [{ path: "/etc/passwd", caption: "" }] },
+      })
+    ).statusCode,
+    400,
+  );
+  const patched = await app.inject({
+    method: "PATCH",
+    url: `/api/lorebooks/${book.id}/entries/${entry.id}`,
+    payload: { images: [{ ...image, caption: "Blue coat" }] },
+  });
+  assert.equal(patched.statusCode, 200, patched.body);
+  assert.equal(patched.json().content, entry.content, "image editing preserves text");
+  const native = await app.inject(`/api/lorebooks/${book.id}/export`);
+  assert.equal(native.statusCode, 200, native.body);
+  const envelope = native.json();
+  assert.equal(envelope.data.entries[0].images[0].path, undefined, "portable export carries no foreign local paths");
+  const dataUrl = envelope.data.entries[0].images[0].dataUrl;
+  assert.equal(dataUrl, await readLorebookImageDataUrl(image.path));
+  const imported = await importMarinara(envelope, db);
+  assert.equal(imported.success, true);
+  const restored = (await storage.listEntries(imported.id!))[0]!;
+  assert.equal(restored.images[0]?.caption, "Blue coat");
+  assert.notEqual(restored.images[0]?.path, image.path);
+  assert.equal(await readLorebookImageDataUrl(restored.images[0]!.path), dataUrl);
+  const compatible = await app.inject(`/api/lorebooks/${book.id}/export?format=compatible`);
+  const importedCompatible = await importSTLorebook(compatible.json(), db);
+  assert.equal(importedCompatible.success, true);
+  const compatibleEntry = (await storage.listEntries(importedCompatible.lorebookId!))[0]!;
+  assert.equal(await readLorebookImageDataUrl(compatibleEntry.images[0]!.path), dataUrl);
+  const character = (await createCharactersStorage(db).create(characterDataSchema.parse({ name: "Tailor" })))!;
+  const embedded = await embedLorebookIntoCharacter(db, character.id, book.id);
+  assert.equal(
+    embedded.characterBook.entries[0]!.extensions.marinaraImages[0].path,
+    image.path,
+    "embedded books mirror small local references",
+  );
+  assert.equal(
+    lorebookImagesDirectory(),
+    join(process.env.DATA_DIR!, "lorebooks", "images", "entries"),
+    "assets live in the profile-backed-up image tree",
+  );
+  const portableCharacter = await embedCharacterBookImages({ character_book: embedded.characterBook });
+  assert.equal(portableCharacter.character_book.entries[0]!.extensions.marinaraImages[0].dataUrl, dataUrl);
+  const profileResponse = await app.inject("/api/backup/export-profile");
+  assert.equal(profileResponse.statusCode, 200, profileResponse.body);
+  const profile = profileResponse.json();
+  const assetPath = `lorebooks/images/entries/${image.path.split("/").at(-1)}`;
+  assert.equal(
+    profile.data.fileStorage.files.find((asset: { path: string }) => asset.path === assetPath)?.data,
+    png.toString("base64"),
+  );
+  const compatibleProfileResponse = await app.inject("/api/backup/export-profile?format=compatible");
+  assert.equal(compatibleProfileResponse.statusCode, 200, compatibleProfileResponse.body);
+  const profileZip = new AdmZip(compatibleProfileResponse.rawPayload);
+  const exportedCharacter = JSON.parse(
+    profileZip
+      .getEntries()
+      .find((entry) => entry.entryName.startsWith("characters/"))!
+      .getData()
+      .toString(),
+  );
+  assert.equal(exportedCharacter.data.character_book.entries[0].extensions.marinaraImages[0].dataUrl, dataUrl);
+  const exportedBook = profileZip
+    .getEntries()
+    .filter((entry) => entry.entryName.startsWith("lorebooks/"))
+    .map((entry) => JSON.parse(entry.getData().toString()))
+    .find((book) => book.name === "Wardrobe references");
+  assert.equal(exportedBook.entries["0"].extensions.marinaraImages[0].dataUrl, dataUrl);
+  const reimport = await importSTLorebook(embedded.characterBook, db, { allowLocalImagePaths: true });
+  assert.equal(reimport.success, true);
+  assert.equal((await storage.listEntries(reimport.lorebookId!))[0]!.images[0]!.caption, "Blue coat");
+  assert.equal(
+    (await storage.listEntries(reimport.lorebookId!))[0]!.images[0]!.path,
+    image.path,
+    "local reimport reuses files",
+  );
+  const filesBefore = await readdir(lorebookImagesDirectory());
+  const booksBefore = (await storage.list()).length;
+  await assert.rejects(() =>
+    importMarinara(
+      {
+        ...envelope,
+        data: {
+          lorebook: { name: "Invalid later image" },
+          entries: [
+            { name: "Valid first", images: [{ dataUrl, caption: "valid" }] },
+            { name: "Invalid second", images: [{ dataUrl: "bad", caption: "invalid" }] },
+          ],
+        },
+      },
+      db,
+    ),
+  );
+  assert.deepEqual(await readdir(lorebookImagesDirectory()), filesBefore);
+  assert.equal((await storage.list()).length, booksBefore);
+  const copiedBook = (await storage.create({ name: "Copy target" }))!;
+  const transferred = await app.inject({
+    method: "POST",
+    url: `/api/lorebooks/${book.id}/entries/transfer`,
+    payload: { entryIds: [entry.id], targetLorebookId: copiedBook.id, operation: "copy" },
+  });
+  assert.equal(transferred.statusCode, 200, transferred.body);
+  assert.deepEqual(transferred.json().created[0].images, [{ ...image, caption: "Blue coat" }]);
+  await assert.rejects(() =>
+    importSTLorebook(
+      {
+        name: "Invalid re-import",
+        entries: [{ keys: ["wardrobe"], content: "bad", extensions: { marinaraImages: [{ path: image.path }] } }],
+      },
+      db,
+      { existingLorebookId: book.id },
+    ),
+  );
+  assert.equal(
+    (await storage.listEntries(book.id))[0]?.content,
+    entry.content,
+    "invalid attachment import never destroys existing entries",
+  );
+  const appendResults = await Promise.all(
+    [saveLorebookImage(png), saveLorebookImage(png)].map(async (saved) =>
+      storage.appendEntryImage(entry.id, book.id, await saved),
+    ),
+  );
+  assert.equal(appendResults.length, 2);
+  assert.equal((await storage.getEntry(entry.id))!.images.length, 3, "concurrent uploads append atomically");
+  await storage.appendEntryImage(entry.id, book.id, await saveLorebookImage(png));
+  assert.equal((await app.inject({ method: "POST", url, ...uploadPayload(png) })).statusCode, 400);
+  assert.equal((await storage.getEntry(entry.id))!.images.length, 4);
+  assert.throws(() =>
+    createLorebookEntrySchema.parse({ lorebookId: book.id, name: "bad", images: [image, image, image, image, image] }),
+  );
+  await assert.rejects(() => restoreLorebookImages([{ path: image.path, caption: "foreign" }]));
+  assert.equal(await readLorebookImageDataUrl("https://example.com/ref.png"), null);
+  assert.equal(await readLorebookImageDataUrl("/api/lorebooks/entry-images/../../secret.png"), null);
+  await mkdir(lorebookImagesDirectory(), { recursive: true });
+  const filename = "00000000-0000-0000-0000-000000000000.png";
+  const outside = join(process.env.DATA_DIR!, "not-an-image.png");
+  await writeFile(outside, png);
+  await symlink(outside, join(lorebookImagesDirectory(), filename));
+  assert.equal(
+    await readLorebookImageDataUrl(`/api/lorebooks/entry-images/${filename}`),
+    null,
+    "symlinks do not expose other files",
+  );
+  await unlink(join(lorebookImagesDirectory(), filename));
+  console.info("Lorebook image storage, routes and portable import/export regressions passed");
+} finally {
+  await app.close();
+  await closeDB();
+}

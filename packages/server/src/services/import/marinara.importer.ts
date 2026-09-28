@@ -1,3 +1,4 @@
+import { decodeLorebookImages, saveDecodedLorebookImages } from "../lorebook/lorebook-images.js";
 // ──────────────────────────────────────────────
 // Import: Marinara Engine native format (.marinara.json)
 // ──────────────────────────────────────────────
@@ -707,6 +708,8 @@ async function importLorebookPayload(data: unknown, db: DB) {
   if (!d?.lorebook) {
     return { success: false, type: "marinara_lorebook" as const, error: "Invalid lorebook data" };
   }
+  const decodedImages = new Map<Record<string, unknown>, Awaited<ReturnType<typeof decodeLorebookImages>>>();
+  for (const entry of d.entries ?? []) decodedImages.set(entry, await decodeLorebookImages(entry.images));
   const lb = d.lorebook;
   const newLb = (await storage.create(
     {
@@ -793,12 +796,14 @@ async function importLorebookPayload(data: unknown, db: DB) {
   }
 
   if (newLb && Array.isArray(d.entries) && d.entries.length > 0) {
-    const entries = d.entries.map((e) => {
+    const entries = [];
+    for (const e of d.entries) {
       const oldFolderId = typeof e.folderId === "string" ? e.folderId : null;
       const newFolderId = oldFolderId ? (folderIdRemap.get(oldFolderId) ?? null) : null;
-      return {
+      entries.push({
         name: String(e.name ?? ""),
         content: String(e.content ?? ""),
+        images: await saveDecodedLorebookImages(decodedImages.get(e) ?? []),
         // CodeRabbit-flagged: description, ephemeral, locked, and recursion flags
         // were absent from the previous map, so an exported lorebook would lose
         // these fields on re-import. Knowledge-router matching uses description,
@@ -849,8 +854,8 @@ async function importLorebookPayload(data: unknown, db: DB) {
         activationConditions: (e.activationConditions as any) ?? [],
         schedule: (e.schedule as any) ?? null,
         ...parseLorebookDecisionActivation(e),
-      };
-    });
+      });
+    }
     await storage.bulkCreateEntries(newLb.id as string, entries);
   }
 

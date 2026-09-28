@@ -5,7 +5,7 @@
 import type { DB } from "../../db/connection.js";
 import { inArray } from "../../db/file-query.js";
 import { messages as messagesTable } from "../../db/schema/index.js";
-import { estimateTextTokens, LIMITS } from "@marinara-engine/shared";
+import { LIMITS } from "@marinara-engine/shared";
 import { logger } from "../../lib/logger.js";
 import { isFeatureEnabled } from "../features/feature-settings.js";
 import type {
@@ -30,13 +30,15 @@ import {
   type EntryTimingState,
   updateTimingStatesForScan,
 } from "./keyword-scanner.js";
-import { applyTokenBudget, processActivatedEntries } from "./prompt-injector.js";
+import type { LorebookImageEntry } from "../generation/lorebook-image-prompt.js";
+import { applyTokenBudget, estimateLorebookEntryTokens, processActivatedEntries } from "./prompt-injector.js";
 
 export interface LorebookScanResult {
   worldInfoBefore: string;
   worldInfoAfter: string;
   depthEntries: Array<{ content: string; role: "system" | "user" | "assistant"; depth: number; order: number }>;
   outlets: Record<string, string>;
+  imageEntries?: LorebookImageEntry[];
   totalEntries: number;
   totalTokensEstimate: number;
   activatedEntryIds: string[];
@@ -110,6 +112,7 @@ export function scopeLorebookScanResultToCharacterContext(
   return {
     ...result,
     ...processed,
+    ...(result.imageEntries ? { imageEntries: result.imageEntries.filter((entry) => scopedIds.has(entry.id)) } : {}),
     activatedEntryIds: scopedActivatedEntries.map((entry) => entry.entry.id),
     activatedEntries: result.activatedEntries.filter((entry) => scopedIds.has(entry.id)),
     budgetSkippedEntries: scopedSkippedEntries,
@@ -510,10 +513,6 @@ function lorebookInjectionOrder(a: ActivatedEntry, b: ActivatedEntry): number {
   return a.injectionOrder - b.injectionOrder;
 }
 
-function estimateLorebookTokens(content: string): number {
-  return estimateTextTokens(content);
-}
-
 type LorebookBudgetSelectionState = {
   selected: ActivatedEntry[];
   selectedIds: Set<string>;
@@ -678,7 +677,7 @@ function applyCurrentLocationLoreBudget(
   const skipped: LorebookBudgetSkippedEntry[] = [];
   let usedTokens = 0;
   for (const candidate of [...candidates].sort(lorebookSelectionOrder)) {
-    const estimatedTokens = estimateLorebookTokens(candidate.entry.content);
+    const estimatedTokens = estimateLorebookEntryTokens(candidate.entry);
     if (tokenBudget > 0 && usedTokens + estimatedTokens > tokenBudget) {
       skipped.push({
         id: candidate.entry.id,
@@ -719,7 +718,7 @@ function trySelectBudgetedLorebookEntry(
   const lorebookEntryCount = state.perLorebookEntryCounts.get(lorebookId) ?? 0;
   if (lorebookEntryCount >= lorebookEntryLimit) return { selected: false };
 
-  const entryTokens = estimateLorebookTokens(candidate.entry.content);
+  const entryTokens = estimateLorebookEntryTokens(candidate.entry);
   const lorebookBudget = lorebook?.tokenBudget ?? 0;
   const lorebookTokens = state.perLorebookTokens.get(lorebookId) ?? 0;
   const exceedsLorebookBudget = lorebookBudget > 0 && lorebookTokens + entryTokens > lorebookBudget;

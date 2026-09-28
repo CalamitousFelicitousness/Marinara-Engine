@@ -464,6 +464,11 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
       ...entry,
       content: resolveReferenceMacros(entry.content),
     }));
+    if (result.imageEntries)
+      result.imageEntries = result.imageEntries.map((entry) => ({
+        ...entry,
+        content: resolveReferenceMacros(entry.content),
+      }));
     result.outlets = Object.fromEntries(
       Object.entries(result.outlets).map(([name, content]) => [name, resolveReferenceMacros(content)]),
     );
@@ -525,6 +530,7 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
   let lorebookDepthEntriesCount = 0;
   let hasChatSummaryMarker = false;
   let outletScanAttempted = false;
+  const usedImageOutlets = new Set<string>();
   let idMacroCardMarkerSection: ResolvedSection | null = null;
   const runtimeAgentTypesUsed = new Set<string>();
 
@@ -591,6 +597,8 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
       }
     }
 
+    for (const match of section.content.matchAll(/\{\{\s*outlet\s*::([^{}]+)\}\}/gi))
+      usedImageOutlets.add(match[1]!.trim());
     let resolved: ResolvedSection | null;
     try {
       resolved = await resolveSection(section, {
@@ -764,6 +772,20 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
       macroCtx,
       deferAllMacroOptions,
     );
+  }
+
+  if (markerCtx.lorebookScanResult?.imageEntries) {
+    markerCtx.lorebookScanResult = {
+      ...markerCtx.lorebookScanResult,
+      imageEntries: markerCtx.lorebookScanResult.imageEntries
+        .filter(
+          (entry) =>
+            entry.position === 2 ||
+            (entry.position === 7 && usedImageOutlets.has(entry.outletName ?? "")) ||
+            markerCtx.lorebookPositionsEmitted?.has(entry.position <= 0 ? "before" : "after"),
+        )
+        .map((entry) => (entry.position === 7 ? { ...entry, outletUsed: true } : entry)),
+    };
   }
 
   // ── Phase 8: Single user message mode ──

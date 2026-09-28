@@ -564,3 +564,19 @@ export function useActiveLorebookEntries(chatId: string | null, enabled = false)
     staleTime: 30_000,
   });
 }
+
+/** Uploads only the image field; entry text and keyword drafts keep their own autosave. */
+export function useUploadLorebookEntryImage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ lorebookId, entryId, file }: { lorebookId: string; entryId: string; file: File }) => {
+      const form = new FormData();
+      form.append("file", file);
+      return api.upload<LorebookEntry>(`/lorebooks/${lorebookId}/entries/${entryId}/images`, form);
+    },
+    onSuccess: (_entry, variables) => {
+      qc.invalidateQueries({ queryKey: lorebookKeys.entries(variables.lorebookId) });
+      qc.invalidateQueries({ queryKey: lorebookKeys.active() });
+    },
+  });
+}

@@ -1,3 +1,7 @@
+import {
+  appendLorebookImageMessages,
+  type LorebookImageEntry,
+} from "../../services/generation/lorebook-image-prompt.js";
 import { withLatestMessageReply } from "../../services/generation/message-reply.js";
 import type { FastifyInstance } from "fastify";
 import {
@@ -827,6 +831,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
 
     // Build prompt messages
     let finalMessages: DryRunPromptMessage[] = [];
+    let lorebookImageEntries: LorebookImageEntry[] = [];
     const trackerSectionTokens = new Map<string, RuntimeAgentSectionTokens>();
     const runtimeAgentSectionTypes = new Set<string>();
     let wrapFormat: WrapFormat = "xml";
@@ -1467,6 +1472,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
               resolveContent: resolvePromptMacrosForLorebook,
               resolveDecisions: lorebookDecisions,
             });
+            lorebookImageEntries = lorebookResult.imageEntries ?? [];
             const loreContent = [lorebookResult.worldInfoBefore, lorebookResult.worldInfoAfter]
               .filter((content): content is string => typeof content === "string" && content.length > 0)
               .join("\n");
@@ -1740,6 +1746,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
         ...assembled.macroAgentData,
       };
       finalMessages = assembled.messages;
+      lorebookImageEntries = assembled.lorebookScanResult?.imageEntries ?? [];
       advancedMemoryPlacements = assembled.advancedMemoryPlacements ?? [];
       temperature = assembled.parameters.temperature;
       maxTokens = assembled.parameters.maxTokens;
@@ -1909,6 +1916,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
         resolveContent: resolvePromptMacrosForLorebook,
         resolveDecisions: lorebookDecisions,
       });
+      lorebookImageEntries = lorebookResult.imageEntries ?? [];
       const loreContent = [lorebookResult.worldInfoBefore, lorebookResult.worldInfoAfter]
         .filter((content): content is string => typeof content === "string" && content.length > 0)
         .join("\n");
@@ -2189,6 +2197,8 @@ export async function registerDryRunRoute(app: FastifyInstance) {
             conn.defaultParameters,
             connId ?? undefined,
           );
+
+    await appendLorebookImageMessages(finalMessages, lorebookImageEntries);
 
     // ── Mirror /api/generate: normalize + fit prompt to context ──
 

@@ -1,3 +1,5 @@
+import { LorebookEntryImages } from "./LorebookEntryImages";
+import { appendLorebookActivationKeys } from "../../lib/lorebook-keys";
 // ──────────────────────────────────────────────
 // Lorebook Entry Row
 // Compact one-line row with inline controls + expandable drawer.
@@ -47,6 +49,7 @@ import { DecisionStatementNote } from "../ui/DecisionStatementNote";
 import { SettingsSwitch } from "../panels/settings/SettingControls";
 import type {
   LorebookEntry,
+  LorebookEntryImage,
   LorebookFilterMode,
   LorebookFolder,
   LorebookMatchingSource,
@@ -265,6 +268,8 @@ export function LorebookEntryRow({
   const statusMenuRef = useRef<HTMLDivElement>(null);
   const upstreamOutletNameRef = useRef(entry.outletName);
   const pendingOutletNameRef = useRef(entry.outletName);
+  const upstreamImagesRef = useRef(entry.images);
+  const pendingImagesRef = useRef(entry.images);
 
   // Re-sync local state when the upstream entry changes (e.g. after refetch)
   // so we don't show stale values, but avoid clobbering an in-flight edit.
@@ -277,6 +282,9 @@ export function LorebookEntryRow({
     if (pendingOutletNameRef.current === previousOutletName) {
       pendingOutletNameRef.current = entry.outletName;
     }
+    const previousImages = upstreamImagesRef.current;
+    upstreamImagesRef.current = entry.images;
+    if (pendingImagesRef.current === previousImages) pendingImagesRef.current = entry.images;
     setLocalStatus(deriveStatus(entry));
     setLocalPosition(entry.position);
     setLocalDepth(entry.depth);
@@ -461,6 +469,9 @@ export function LorebookEntryRow({
   );
 
   const duplicateDisabled = duplicateEntry.isPending || updateEntry.isPending;
+  const handleImagesDraftChange = useCallback((images: LorebookEntryImage[]) => {
+    pendingImagesRef.current = images;
+  }, []);
   const handleOutletNameDraftChange = useCallback((outletName: string) => {
     pendingOutletNameRef.current = outletName;
   }, []);
@@ -487,6 +498,7 @@ export function LorebookEntryRow({
           probability: localProbability === 100 ? null : localProbability,
           useRegex: localUseRegex,
           outletName: pendingOutletNameRef.current,
+          images: pendingImagesRef.current ?? [],
         },
       });
     },
@@ -1069,6 +1081,7 @@ export function LorebookEntryRow({
           compact={compact}
           onUpdateEntry={onUpdateEntry}
           onOutletNameDraftChange={handleOutletNameDraftChange}
+          onImagesDraftChange={handleImagesDraftChange}
         />
       )}
     </div>
@@ -1380,6 +1393,7 @@ function ExpandedDrawer({
   compact,
   onUpdateEntry,
   onOutletNameDraftChange,
+  onImagesDraftChange,
 }: {
   entry: LorebookEntry;
   position: number;
@@ -1389,6 +1403,7 @@ function ExpandedDrawer({
   compact: boolean;
   onUpdateEntry?: LorebookEntryUpdateHandler;
   onOutletNameDraftChange: (outletName: string) => void;
+  onImagesDraftChange: (images: LorebookEntryImage[]) => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
   const { mutate: mutateEntry, mutateAsync: mutateEntryAsync } = useUpdateLorebookEntry();
@@ -1821,6 +1836,17 @@ function ExpandedDrawer({
           placeholder={localizeUi("ui.lorebooks.expandeddrawer.theContentThatWillBeInjectedIntoThePrompt")}
           title={localizeUi("ui.lorebooks.expandeddrawer.editContent")}
           showMacroReference
+        />
+        <LorebookEntryImages
+          key={entry.id}
+          lorebookId={lorebookId}
+          entryId={entry.id}
+          images={entry.images ?? []}
+          onDraftChange={onImagesDraftChange}
+          hasWardrobeKey={(form.keys ?? []).some((key) => key.toLowerCase() === "wardrobe")}
+          onAddWardrobeKey={() =>
+            update({ keys: appendLorebookActivationKeys(formRef.current.keys ?? [], "wardrobe") })
+          }
         />
         <p className="mt-1 flex items-center gap-1 text-[0.625rem] text-[var(--muted-foreground)]">
           <Hash size="0.5625rem" />~{estimateTokens(form.content ?? "").toLocaleString()}{" "}

@@ -1,3 +1,4 @@
+import { decodeLorebookImages, saveDecodedLorebookImages } from "../lorebook/lorebook-images.js";
 // ──────────────────────────────────────────────
 // Importer: SillyTavern World Info / Lorebook
 // ──────────────────────────────────────────────
@@ -372,12 +373,21 @@ export async function importSTLorebook(
     fallbackName?: string;
     timestampOverrides?: TimestampOverrides | null;
     existingLorebookId?: string | null;
+    allowLocalImagePaths?: boolean;
   },
 ) {
   const storage = createLorebooksStorage(db);
   const wi = raw as unknown as STWorldInfo;
 
   const entryList = asEntryList(wi.entries);
+  const decodedImages = new Map<(typeof entryList)[number], Awaited<ReturnType<typeof decodeLorebookImages>>>();
+  for (const entry of entryList)
+    decodedImages.set(
+      entry,
+      await decodeLorebookImages(entry.extensions?.marinaraImages, options?.allowLocalImagePaths),
+    );
+  const restoredImages = new Map<(typeof entryList)[number], Awaited<ReturnType<typeof saveDecodedLorebookImages>>>();
+  for (const entry of entryList) restoredImages.set(entry, await saveDecodedLorebookImages(decodedImages.get(entry)!));
   const detectedCategory = detectCategory(entryList, wi.name);
 
   const lbName = options?.namePrefix
@@ -455,6 +465,7 @@ export async function importSTLorebook(
       lorebookId: lorebookId,
       name: resolvedName,
       content: sanitizedContent,
+      images: restoredImages.get(entry) ?? [],
       description: sanitizedDescription,
       keys: resolvedKeys,
       secondaryKeys: resolvedSecondaryKeys,

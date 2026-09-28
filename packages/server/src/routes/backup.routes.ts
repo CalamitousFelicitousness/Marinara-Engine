@@ -1,3 +1,4 @@
+import { embedCharacterBookImages, embedLorebookImages } from "../services/lorebook/lorebook-images.js";
 // ──────────────────────────────────────────────
 // Routes: Backup
 // ──────────────────────────────────────────────
@@ -493,6 +494,7 @@ function buildCompatibleLorebookExport(lb: Record<string, any>) {
       preventRecursion: entry.preventRecursion === true,
       excludeRecursion: entry.excludeRecursion === true,
       delayUntilRecursion: entry.delayUntilRecursion === true,
+      extensions: { marinaraImages: entry.images ?? [] },
       ...parseLorebookDecisionActivation(entry),
     };
   });
@@ -521,7 +523,9 @@ async function buildCompatibleProfileZip(app: FastifyInstance) {
   const zip = new AdmZip();
 
   for (const [index, character] of (Array.isArray(data.characters) ? data.characters : []).entries()) {
-    const charData = typeof character.data === "string" ? JSON.parse(character.data) : character.data;
+    const charData = await embedCharacterBookImages(
+      typeof character.data === "string" ? JSON.parse(character.data) : character.data,
+    );
     zip.addFile(
       `characters/${toSafeExportName(String(charData?.name ?? "character"), `character-${index + 1}`)}.json`,
       Buffer.from(JSON.stringify({ spec: "chara_card_v2", spec_version: "2.0", data: charData }, null, 2), "utf8"),
@@ -547,7 +551,14 @@ async function buildCompatibleProfileZip(app: FastifyInstance) {
   for (const [index, lorebook] of (Array.isArray(data.lorebooks) ? data.lorebooks : []).entries()) {
     zip.addFile(
       `lorebooks/${toSafeExportName(String(lorebook.name ?? "lorebook"), `lorebook-${index + 1}`)}.json`,
-      Buffer.from(JSON.stringify(buildCompatibleLorebookExport(lorebook), null, 2), "utf8"),
+      Buffer.from(
+        JSON.stringify(
+          buildCompatibleLorebookExport({ ...lorebook, entries: await embedLorebookImages(lorebook.entries ?? []) }),
+          null,
+          2,
+        ),
+        "utf8",
+      ),
     );
   }
 

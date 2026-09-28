@@ -21443,11 +21443,6 @@ test("zoomed mobile chat keeps the composer above the keyboard and restores on d
       const visibleHeight = 420 / scale;
       const top = 36;
       await setViewport(visibleHeight, top, scale);
-      // Attach the actual layout even when the regression fails on the old guard.
-      await testInfo.attach(`zoomed-keyboard-${scale}.png`, {
-        body: await page.screenshot(),
-        contentType: "image/png",
-      });
       await expect(page.locator("html")).toHaveAttribute("data-mari-software-keyboard-open", "");
       await expect.poll(async () => (await shell.boundingBox())?.height).toBe(Math.round(visibleHeight));
       await expect
@@ -21457,6 +21452,10 @@ test("zoomed mobile chat keeps the composer above the keyboard and restores on d
         })
         .toBeLessThanOrEqual(top + Math.round(visibleHeight) + 1);
       await expect(textarea).toHaveValue("Keep this draft visible above the keyboard.");
+      await testInfo.attach(`zoomed-keyboard-${scale}.png`, {
+        body: await page.screenshot({ animations: "disabled" }),
+        contentType: "image/png",
+      });
       // The OS keyboard can close while the textarea remains focused and zoom stays active.
       await setViewport(layoutHeight / scale, 0, scale);
       await expect(page.locator("html")).not.toHaveAttribute("data-mari-software-keyboard-open");

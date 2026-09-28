@@ -6,12 +6,18 @@ import { seedUIState } from "./ui-state-fixture.js";
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 
-test("standalone story avatars render offline across repeated turns and print styles", async ({ page }, testInfo) => {
+test("standalone stories render avatars and included reasoning offline in print", async ({ page }, testInfo) => {
   const avatar = `data:image/png;base64,${readFileSync(new URL("../packages/client/public/icon-192.png", import.meta.url)).toString("base64")}`;
   const html = renderTranscriptHtml({
     title: "Moon Road",
     entries: [
-      { speakerKey: "ayla", speaker: "Ayla", role: "assistant", content: "*smiles* We ride at dawn." },
+      {
+        speakerKey: "ayla",
+        speaker: "Ayla",
+        role: "assistant",
+        content: "*smiles* We ride at dawn.",
+        thinking: "The road is safest in daylight.\n\nWe should rest before the journey.",
+      },
       { speakerKey: "alex", speaker: "Alex", role: "user", content: "Then we should rest." },
       { speakerKey: "ayla", speaker: "Ayla", role: "assistant", content: "One last story first." },
     ],
@@ -19,12 +25,28 @@ test("standalone story avatars render offline across repeated turns and print st
   });
   await page.context().setOffline(true);
   await page.setContent(html);
+  await expect(page.locator("script")).toHaveCount(0);
+  const details = page.locator("details");
+  const reasoning = details.locator("p");
+  await expect(details).toHaveJSProperty("open", false);
+  await expect(reasoning.first()).toBeHidden();
+  await details.locator("summary").click();
+  await expect(reasoning.first()).toBeVisible();
+  await details.locator("summary").click();
+  await expect(reasoning.first()).toBeHidden();
   const portraits = page.locator(".turn.assistant .avatar");
   await expect(portraits).toHaveCount(2);
   await expect(page.locator(".turn.user .avatar")).toHaveText("A");
   await page.screenshot({ path: testInfo.outputPath("story-avatars.png") });
   for (const medium of ["screen", "print"] as const) {
     await page.emulateMedia({ media: medium });
+    await page.screenshot({ path: testInfo.outputPath(`story-reasoning-${medium}.png`) });
+    await expect(details).toHaveJSProperty("open", false);
+    for (const paragraph of await reasoning.all()) {
+      // WebKit's Playwright visibility helper treats closed details as hidden
+      // even when its contents paint in print; use the browser's visibility API.
+      await expect.poll(() => paragraph.evaluate((element) => element.checkVisibility())).toBe(medium === "print");
+    }
     for (const portrait of await portraits.all()) {
       await expect(portrait).toBeVisible();
       await expect(portrait).toHaveCSS("background-image", `url("${avatar}")`);
@@ -38,6 +60,8 @@ test("standalone story avatars render offline across repeated turns and print st
       ).toBe(192);
     }
   }
+  await page.emulateMedia({ media: "screen" });
+  await expect(reasoning.first()).toBeHidden();
 });
 
 test("chat search, stats and story exports work with private content filtered", async ({

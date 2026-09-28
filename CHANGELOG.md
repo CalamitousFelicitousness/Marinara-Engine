@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Enabling or disabling selected lorebooks includes books hidden by filters, and Undo changes only the books updated by that action.
+
 - Bulk character tag edits continue after a rejected request and keep only failed cards selected for retry.
 - Regression commands invoked through an absolute or symlink path now execute instead of silently skipping their checks.
 

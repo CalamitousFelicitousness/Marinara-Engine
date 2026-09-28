@@ -12,6 +12,12 @@ test("lorebook tools lint, preview scans, and bulk-enable selected books", async
       failOnStatusCode: true,
     })
   ).json();
+  const visibleBook = await (
+    await request.post("/api/lorebooks", {
+      data: { name: "Visible selected lorebook", enabled: true },
+      failOnStatusCode: true,
+    })
+  ).json();
   try {
     await request.post(`/api/lorebooks/${book.id}/entries`, {
       data: { name: "Keyless sample entry", content: "A note for the synthetic proof." },
@@ -32,10 +38,40 @@ test("lorebook tools lint, preview scans, and bulk-enable selected books", async
     await clickTopbarPanel(page, "lorebooks");
 
     await page.getByRole("button", { name: "Select", exact: true }).click();
+    await page.getByRole("button", { name: "Select lorebook", exact: true }).first().click();
     await page.getByRole("button", { name: "Select lorebook", exact: true }).click();
+    const search = page.getByPlaceholder("Search lorebooks", { exact: true });
+    await search.fill(visibleBook.name);
+    await expect(page.getByText(book.name, { exact: true })).not.toBeVisible();
+    await expect(page.getByText(visibleBook.name, { exact: true })).toBeVisible();
+    const enable = page.getByRole("button", { name: "Enable the selected lorebooks", exact: true });
+    await expect(enable).toBeEnabled();
+    const enabledResponse = page.waitForResponse("**/api/lorebooks/bulk-enabled");
+    await enable.click();
+    const enabled = await enabledResponse;
+    expect(enabled.request().postDataJSON().ids.sort()).toEqual([book.id, visibleBook.id].sort());
+    expect(await enabled.json()).toEqual({ changedIds: [book.id], unchangedIds: [visibleBook.id], missingIds: [] });
+    await expect.poll(async () => (await (await request.get(`/api/lorebooks/${book.id}`)).json()).enabled).toBe(true);
+
+    const undoResponse = page.waitForResponse("**/api/lorebooks/bulk-enabled");
+    await page
+      .locator("[data-sonner-toast]")
+      .filter({ hasText: "Enabled 1 lorebook" })
+      .getByRole("button", { name: "Undo", exact: true })
+      .click();
+    expect((await undoResponse).request().postDataJSON()).toEqual({ ids: [book.id], enabled: false });
+    await expect.poll(async () => (await (await request.get(`/api/lorebooks/${book.id}`)).json()).enabled).toBe(false);
+    expect((await (await request.get(`/api/lorebooks/${visibleBook.id}`)).json()).enabled).toBe(true);
+
+    const disabledResponse = page.waitForResponse("**/api/lorebooks/bulk-enabled");
+    await page.getByRole("button", { name: "Disable the selected lorebooks", exact: true }).click();
+    const disabled = await disabledResponse;
+    expect(disabled.request().postDataJSON().ids.sort()).toEqual([book.id, visibleBook.id].sort());
+    expect(await disabled.json()).toEqual({ changedIds: [visibleBook.id], unchangedIds: [book.id], missingIds: [] });
     await page.getByRole("button", { name: "Enable the selected lorebooks", exact: true }).click();
     await expect.poll(async () => (await (await request.get(`/api/lorebooks/${book.id}`)).json()).enabled).toBe(true);
 
+    await search.fill("");
     await page.getByRole("button", { name: "Select", exact: true }).click();
     await page.getByText(book.name, { exact: true }).click();
     await page.getByRole("button", { name: "Check lorebook", exact: true }).click();
@@ -72,5 +108,6 @@ test("lorebook tools lint, preview scans, and bulk-enable selected books", async
   } finally {
     await page.close();
     await request.delete(`/api/lorebooks/${book.id}`).catch(() => undefined);
+    await request.delete(`/api/lorebooks/${visibleBook.id}`).catch(() => undefined);
   }
 });

@@ -5,7 +5,10 @@ import { clickTopbarPanel } from "./topbar-navigation.js";
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 
-test("character library compares duplicates and bulk tags persist across reload", async ({ page, request }, testInfo) => {
+test("character library compares duplicates and bulk tags persist across reload", async ({
+  page,
+  request,
+}, testInfo) => {
   const suffix = Date.now().toString();
   const name = `E2E Synthetic Library ${suffix}`;
   const createdIds: string[] = [];
@@ -83,7 +86,11 @@ test("character library compares duplicates and bulk tags persist across reload"
     }
 
     await page.getByRole("button", { name: "Select", exact: true }).click();
-    for (const id of createdIds) {
+    for (const [index, id] of createdIds.entries()) {
+      if (index === 1) {
+        await page.getByPlaceholder("Search characters", { exact: true }).fill(`${name} (copy)`);
+        await expect(page.locator(`[data-character-id="${createdIds[0]}"]`)).toBeHidden();
+      }
       await page
         .locator(`[data-character-id="${id}"]`)
         .getByRole("button", { name: "Select character", exact: true })
@@ -91,10 +98,12 @@ test("character library compares duplicates and bulk tags persist across reload"
     }
     await page.getByRole("button", { name: "Tags", exact: true }).click();
     const tagDialog = page.getByRole("dialog", { name: "Edit tags of 2 characters" });
+    await expect(tagDialog).toBeVisible();
     await tagDialog.getByRole("textbox", { name: "Add tags", exact: true }).fill("keep-after-reload");
     await tagDialog.getByRole("button", { name: "Review changes", exact: true }).click();
     await tagDialog.getByRole("button", { name: "Apply to 2 characters", exact: true }).click();
     await expect(tagDialog).toBeHidden();
+    await page.getByPlaceholder("Search characters", { exact: true }).fill("");
 
     for (const id of createdIds) {
       await expect

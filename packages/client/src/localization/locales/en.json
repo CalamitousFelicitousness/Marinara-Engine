@@ -107,6 +107,8 @@
   "characters.bulkTags.back": "Back",
   "characters.bulkTags.cancel": "Cancel",
   "characters.bulkTags.failure": "Bulk tag edit failed.",
+  "characters.bulkTags.loadFailed": "Could not load the selected characters. Try again.",
+  "characters.bulkTags.loading": "Loading selected characters…",
   "characters.bulkTags.noChanges": "None of the selected characters would change.",
   "characters.bulkTags.partialFailure_one": "{{count}} character could not be updated.",
   "characters.bulkTags.partialFailure_other": "{{count}} characters could not be updated.",

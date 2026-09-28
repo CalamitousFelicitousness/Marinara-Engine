@@ -1829,10 +1829,7 @@ export function CharactersPanel() {
       <CharacterBulkTagsModal
         open={bulkTagsOpen}
         onClose={() => setBulkTagsOpen(false)}
-        characters={[...selectedCharacterIds].flatMap((id) => {
-          const character = parsedCharacters.find((entry) => entry.id === id);
-          return character ? [{ id, tags: getCharacterTags(character) }] : [];
-        })}
+        selectedIds={selectedCharacterIds}
         onApplied={() => {
           setBulkTagsOpen(false);
           exitSelectionMode();

@@ -1042,19 +1042,28 @@ export async function charactersRoutes(app: FastifyInstance) {
         result.failedIds.push(id);
         continue;
       }
-      const outcome = await enqueueUpdate(characterUpdateQueues, id, async () => {
-        const current = await storage.getById(id);
-        if (!current) return "missing" as const;
-        const data = parseCharacterDataRecord(current.data) as Partial<CharacterData>;
-        const tags = Array.isArray(data.tags) ? data.tags.filter((tag): tag is string => typeof tag === "string") : [];
-        const nextTags = applyCharacterTagEdit(tags, edit);
-        if (tags.length === nextTags.length && tags.every((tag, index) => tag === nextTags[index]))
-          return "unchanged" as const;
-        return (await storage.update(id, { tags: nextTags })) ? ("updated" as const) : ("missing" as const);
-      });
-      if (outcome === "updated") result.updatedIds.push(id);
-      else if (outcome === "unchanged") result.unchangedIds.push(id);
-      else result.failedIds.push(id);
+      try {
+        const outcome = await enqueueUpdate(characterUpdateQueues, id, () =>
+          app.db.transaction(async () => {
+            const current = await storage.getById(id);
+            if (!current) return "missing" as const;
+            const data = parseCharacterDataRecord(current.data) as Partial<CharacterData>;
+            const tags = Array.isArray(data.tags)
+              ? data.tags.filter((tag): tag is string => typeof tag === "string")
+              : [];
+            const nextTags = applyCharacterTagEdit(tags, edit);
+            if (tags.length === nextTags.length && tags.every((tag, index) => tag === nextTags[index]))
+              return "unchanged" as const;
+            return (await storage.update(id, { tags: nextTags })) ? ("updated" as const) : ("missing" as const);
+          }),
+        );
+        if (outcome === "updated") result.updatedIds.push(id);
+        else if (outcome === "unchanged") result.unchangedIds.push(id);
+        else result.failedIds.push(id);
+      } catch (error) {
+        req.log.error(error, "Failed to edit tags for character %s", id);
+        result.failedIds.push(id);
+      }
     }
     return result;
   });

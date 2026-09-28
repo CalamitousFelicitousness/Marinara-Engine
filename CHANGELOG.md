@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Bulk character tag edits include selected cards hidden by library search or pagination. Failed saves report the affected cards, preserve their tags and version history, and allow the remaining selection to finish.
+
 - Duplicate-character comparisons return after closing the character editor on phones and desktops, and dismiss when navigating away from Characters.
 
 - The character library can compare possible duplicate cards without deleting them and preview adding or removing tags across selected cards (#6698).

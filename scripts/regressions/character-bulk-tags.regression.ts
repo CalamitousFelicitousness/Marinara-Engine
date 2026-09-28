@@ -77,7 +77,8 @@ try {
   ]);
   app = await buildApp();
   await app.ready();
-  const storage = createCharactersStorage(await getDB());
+  const db = await getDB();
+  const storage = createCharactersStorage(db);
 
   const card = (name: string, tags: string[]) =>
     ({
@@ -135,6 +136,33 @@ try {
   });
   assert.deepEqual(again.json().unchangedIds, [alpha.id], "re-adding an existing tag (any case) changes nothing");
   assert.equal((await storage.listVersions(alpha.id)).length, versionsAfter.length, "no version for a no-op");
+
+  // A single failed save reports that card and still processes the rest of the selection.
+  const gamma = await storage.create(card("Gamma", []));
+  assert.ok(gamma);
+  const betaVersionsBeforeFailure = await storage.listVersions(beta.id);
+  const { characters } = await import("../../packages/server/src/db/schema/index.js");
+  const originalUpdate = db.update;
+  let characterWrites = 0;
+  db.update = (table) => {
+    if (table === characters && ++characterWrites === 2) throw new Error("Injected bulk tag save failure");
+    return originalUpdate(table);
+  };
+  try {
+    const partial = await app.inject({
+      method: "POST",
+      url: "/api/characters/bulk-tags",
+      payload: { ids: [alpha.id, beta.id, gamma.id], add: ["Saved during partial failure"] },
+    });
+    assert.equal(partial.statusCode, 200, "partial saves return the per-card result");
+    assert.deepEqual(partial.json().updatedIds, [alpha.id, gamma.id]);
+    assert.deepEqual(partial.json().failedIds, [beta.id]);
+    assert.deepEqual(JSON.parse((await storage.getById(beta.id))!.data).tags, ["Noble"]);
+    assert.deepEqual(await storage.listVersions(beta.id), betaVersionsBeforeFailure, "failed saves add no version");
+    assert.ok(JSON.parse((await storage.getById(gamma.id))!.data).tags.includes("Saved during partial failure"));
+  } finally {
+    db.update = originalUpdate;
+  }
 
   // Duplicate finder route: read-only grouping with side-by-side basics.
   await storage.create(card("Alpha (copy)", []));

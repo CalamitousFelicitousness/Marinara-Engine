@@ -8653,8 +8653,8 @@ function GameSurfaceComponent({
   const gameRuleset = useGameRuleset(chatMeta);
   // The ruleset's items, which the inventory shows and offers; undefined without an items block.
   // The party's sheets, which what each character carries and binds is read off, as the server reads
-  // them: the player's is the card named for their persona (the first card when nobody is named), the
-  // rest by the name their bag has, and a card with no readable sheet reads a blank one.
+  // them: the player's is the card named for who the chat plays as (the first card when no card has
+  // that name), the rest by the name their bag has, and a card with no readable sheet reads a blank one.
   const inventorySheets = useMemo<RulesetItemBookSheets | undefined>(() => {
     if (gameRuleset.status !== "ok" || !gameRuleset.definition.items) return undefined;
     const cards = (Array.isArray(chatMeta.gameCharacterCards) ? chatMeta.gameCharacterCards : []) as Array<
@@ -8666,7 +8666,8 @@ function GameSurfaceComponent({
     });
     const playerName = partyMembers.find((member) => member.id.startsWith("persona:"))?.name;
     const playerKey = playerName ? gameInventoryBagKey(playerName) : "";
-    const player = playerKey ? named.find((entry) => gameInventoryBagKey(entry.name) === playerKey) : named[0];
+    const player =
+      (playerKey ? named.find((entry) => gameInventoryBagKey(entry.name) === playerKey) : undefined) ?? named[0];
     const buildOf = (card: Record<string, unknown>) => {
       const parsed = rulesetSheetEnvelopeSchema.safeParse(card.rulesetSheet);
       return parsed.success ? parsed.data.build : undefined;

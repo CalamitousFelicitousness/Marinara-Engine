@@ -17,6 +17,7 @@ import {
   gameInventoryAddedItem,
   gameInventoryGiveRefusal,
   gameInventoryKeptByCurse,
+  gameInventoryOverloads,
   cleanGameInventoryHolder,
   gameInventoryBagKey,
   gameInventoryCountItems,
@@ -219,6 +220,14 @@ export function applyGameInventoryOps(
         const stack = stackOf(op.id);
         if (!stack) {
           refuse("missing-stack");
+          break;
+        }
+        // A raised count is more to carry, held to its bearer's limit like any addition.
+        if (
+          op.quantity > stack.quantity &&
+          gameInventoryOverloads(current, stack, op.quantity - stack.quantity, rules)
+        ) {
+          refuse("too-heavy");
           break;
         }
         const next = setGameInventoryStackQuantity(current, op.id, op.quantity, makeId, rules);

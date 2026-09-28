@@ -121,9 +121,15 @@ export function applyGameInventoryTags(
     const mine = (stack: GameInventoryStack) =>
       items.has(gameInventoryItemId(stack)) && gameInventoryBagKey(stack.holder) === gameInventoryBagKey(bag.holder);
     if (!current.some(mine)) return { ok: false, reason: "none-held" };
+    // What goes together is kept together: putting on prefers the item already bound, binding the
+    // one already worn; taking off and unbinding leave the other state alone where they can.
+    const other = flag === "equipped" ? "bound" : "equipped";
+    const rank = (stack: GameInventoryStack) => (Boolean(stack[other]) === on ? 0 : 1);
     let done = 0;
     while (done < count) {
-      const stack = current.find((each) => mine(each) && Boolean(each[flag]) !== on);
+      const stack = current
+        .filter((each) => mine(each) && Boolean(each[flag]) !== on)
+        .sort((a, b) => rank(a) - rank(b))[0];
       if (!stack) break;
       const worn = wearGameInventoryStack(current, stack.id, wear, newId, rules);
       if (!worn) break;

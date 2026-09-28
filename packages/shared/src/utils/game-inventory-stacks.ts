@@ -1068,6 +1068,16 @@ export function gameInventoryGiveRefusal(
   return undefined;
 }
 
+/** Whether `amount` more of a stack's item would take its bearer past the most they can carry. */
+export function gameInventoryOverloads(
+  stacks: readonly GameInventoryStack[],
+  stack: GameInventoryStack,
+  amount: number,
+  rules: GameInventoryItemRules | undefined,
+): boolean {
+  return pastLimit(stacks, stack.holder, weightOf(stack, rules) * amount, rules);
+}
+
 /** Whether the player's own change would part them from this stack: a bound cursed item. */
 export function gameInventoryKeptByCurse(
   stack: GameInventoryStack,

@@ -106,6 +106,16 @@ try {
     }) as never,
   });
 
+  const requireRequestCapture = (captured: string | null, provider: string, model: string): string => {
+    assert.ok(captured, `${provider}/${model} did not produce a request body`);
+    return captured;
+  };
+  assert.throws(
+    () => requireRequestCapture(null, "capture-fixture", "no-request"),
+    /capture-fixture\/no-request did not produce a request body/,
+    "a provider probe without a captured body must fail instead of comparing a sentinel",
+  );
+
   type Values = {
     temperature: number;
     maxTokens: number;
@@ -184,8 +194,18 @@ try {
         // The stub rejects every request; only the request body matters.
       }
     })();
-    await Promise.race([run, new Promise((resolve) => setTimeout(resolve, 5000))]);
-    return (sdk ? sdkOptions : firstBody) ?? "<no request>";
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        run,
+        new Promise<never>((_, reject) => {
+          timeout = setTimeout(() => reject(new Error(`${provider}/${model} request capture timed out`)), 5000);
+        }),
+      ]);
+    } finally {
+      if (timeout) clearTimeout(timeout);
+    }
+    return requireRequestCapture(sdk ? sdkOptions : firstBody, provider, model);
   };
 
   const registry = (id: string, url: string) => () => createLLMProvider(id, url, "test");

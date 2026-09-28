@@ -58,9 +58,10 @@ export const GAME_INVENTORY_NAME_MAX_LENGTH = 120;
  *  through every sum a screen or a prompt makes of it. */
 export const GAME_INVENTORY_MAX_QUANTITY = 999_999;
 
-/** What a stack's `item` looks like: a catalog id and one of its entries' ids. A colon never appears
- *  in either, so no ruleset item can share an id with a plain one. */
-export const GAME_INVENTORY_ITEM_REF_PATTERN = /^[a-z][a-z0-9_]{0,39}\/[a-z0-9]+(?:-[a-z0-9]+)*$/;
+/** What a stack's `item` looks like: a catalog id and one of its entries' ids, or `invented:` and the
+ *  id of an item the Game Master invented. No catalog id has a colon, so neither can share an id with
+ *  the other, nor with a plain item's `plain:` one. */
+export const GAME_INVENTORY_ITEM_REF_PATTERN = /^(?:[a-z][a-z0-9_]{0,39}\/|invented:)[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 /** The longest `item` kept: the longest catalog id, a slash and the longest entry id. */
 const GAME_INVENTORY_ITEM_REF_MAX_LENGTH = 121;
@@ -79,6 +80,23 @@ export interface GameInventoryRulesetItem {
   slots?: Readonly<Record<string, number>>;
   /** It has to be bound to work; `cursed` keeps it bound. Without this, it cannot be bound. */
   binds?: { cursed?: boolean };
+}
+
+/** An item the Game Master proposes, as its inventory tag gives it: every part optional, each in the
+ *  ruleset's own words (an id or a label). `like` names one of the ruleset's items to start from. */
+export interface GameInventoryItemProposal {
+  name: string;
+  like?: string;
+  category?: string;
+  rarity?: string;
+  tags?: string[];
+  /** By stat, the value as written: "1d8", "2", "yes". */
+  stats?: Record<string, string>;
+  /** By slot, how many it takes, as written. */
+  slots?: Record<string, string>;
+  /** "yes", "cursed" or "no". */
+  binds?: string;
+  summary?: string;
 }
 
 /** What one character can carry and bind, read off their own sheet. A part the ruleset does not
@@ -115,6 +133,12 @@ export interface GameInventoryItemRules {
   /** Whose change this is. The player's own leave a bound cursed item bound and where it is; the
    *  Game Master can end a curse in the story. */
   actor?: "player" | "game-master";
+  /** The item a Game Master's proposal makes (or the one of that name it made before, while any of it
+   *  is held), with what the Engine changed. Absent where the ruleset has no items to invent. */
+  invent?(
+    proposal: GameInventoryItemProposal,
+    stacks: readonly GameInventoryStack[],
+  ): { item: string; notes: string[] } | { refused: "no-invention" | "unreadable" | "too-many" };
 }
 
 /** The most new stacks one change may start, so a small stack size can never flood a bag. */

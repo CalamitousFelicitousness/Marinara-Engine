@@ -830,6 +830,16 @@ function entriesCarryConditionEndings(entries: unknown): boolean {
 
 const ITEMS_ISSUE = "A ruleset that describes items requires schemaVersion 2 and capabilityApi 1.49 or newer";
 
+const INVENTED_ITEMS_ISSUE =
+  "A ruleset that caps or forbids the items its Game Master invents requires schemaVersion 2 and capabilityApi 1.51 or newer";
+
+/** `rarityCaps` and `propose`, which are 1.51: new keys on the strict items block, read structurally
+ *  for the same reason the others are. */
+function rulesetCarriesInventedItem151Keys(ruleset: { items?: unknown } | undefined): boolean {
+  const items = plainRecord(ruleset?.items);
+  return items?.rarityCaps !== undefined || items?.propose !== undefined;
+}
+
 /** An item in place of rows or a creature, which is 1.49: a new key on the strict entry, read
  *  structurally for the same reason the others are. */
 function entriesCarryItems(entries: unknown): boolean {
@@ -1155,6 +1165,8 @@ export function getCapabilityPackageInstallIssue(
   }
   // The items block, which is 1.49's. Same file, same reason.
   if (!declaresApi(49) && ruleset?.items !== undefined) return ITEMS_ISSUE;
+  // What the Game Master may invent, which is 1.51's. Same file, same reason.
+  if (!declaresApi(51) && rulesetCarriesInventedItem151Keys(ruleset)) return INVENTED_ITEMS_ISSUE;
   // Initiative thrown as a pool, and a number attacks move, which are 1.48's. Same file, same reason.
   if (!declaresApi(48) && rulesetCarriesMovingInitiative148Keys(ruleset)) return MOVING_INITIATIVE_ISSUE;
   // A fight thrown in pools, and what either kind may now throw every round or cap per turn, which

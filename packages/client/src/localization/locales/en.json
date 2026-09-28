@@ -6978,6 +6978,8 @@
   "ui.game.gameinventory.giveValue1": "Give {{value1}} to someone",
   "ui.game.gameinventory.increaseAmount": "Increase amount",
   "ui.game.gameinventory.increaseValue1Amount": "Increase {{value1}} amount",
+  "ui.game.gameinventory.invented": "Invented by the Game Master.",
+  "ui.game.gameinventory.inventedChanges": "What the Engine changed to fit the ruleset",
   "ui.game.gameinventory.inventoryEmpty": "Inventory empty",
   "ui.game.gameinventory.item": "item",
   "ui.game.gameinventory.itemName": "Item name",

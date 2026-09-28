@@ -176,7 +176,9 @@ import {
   replaceTrailingInventoryTags,
   gameInventoryTotals,
   normalizeGameInventoryStacks,
+  rulesetItemPromptFacts,
   type RoleplayCommandActivity,
+  type RulesetItemBook,
   type RulesetLiveStates,
 } from "@marinara-engine/shared";
 import { prepareRoleplayRoll } from "../services/generation/roleplay-rolls.js";
@@ -204,7 +206,11 @@ import {
   sheetCommandCards,
   type GameRulesetSheetTurn,
 } from "../services/game/ruleset-sheet-turn.service.js";
-import { commitGameInventoryChange, followGameInventoryOnRow } from "../services/game/game-inventory.service.js";
+import {
+  commitGameInventoryChange,
+  followGameInventoryOnRow,
+  loadGameInventoryItemBook,
+} from "../services/game/game-inventory.service.js";
 import { createCustomToolsStorage } from "../services/storage/custom-tools.storage.js";
 import { createLorebooksStorage } from "../services/storage/lorebooks.storage.js";
 import { createRegexScriptsStorage } from "../services/storage/regex-scripts.storage.js";
@@ -4442,6 +4448,23 @@ export async function generateRoutes(app: FastifyInstance) {
                   },
                 ).start
               : normalizeGameInventoryStacks(chatMeta.gameInventory);
+          // What each ruleset item the party holds is, for the Game Master: only read when one is held.
+          const promptItemBook =
+            pinnedGameRuleset?.status === "ok" && promptInventoryStacks.some((stack) => stack.item)
+              ? await loadGameInventoryItemBook(
+                  app.db,
+                  { metadata: chatMeta, resolved: pinnedGameRuleset },
+                  "game-master",
+                )
+              : undefined;
+          const promptItemFacts = promptItemBook
+            ? Object.fromEntries(
+                promptInventoryStacks.flatMap((stack) => {
+                  const known = stack.item ? promptItemBook.itemOf(stack.item) : undefined;
+                  return known ? [[known.item, rulesetItemPromptFacts(known.facts)]] : [];
+                }),
+              )
+            : undefined;
           const formatReminder = resolvePromptMacros(
             buildGmFormatReminder({
               hasSceneModel,
@@ -4507,6 +4530,7 @@ export async function generateRoutes(app: FastifyInstance) {
                 return inv.length > 0 ? inv : undefined;
               })(),
               partyInventory: gameInventoryBags(promptInventoryStacks),
+              ...(promptItemFacts ? { inventoryItemFacts: promptItemFacts } : {}),
             }),
           );
           finalMessages.push({ role: "user" as const, content: formatReminder });
@@ -9085,6 +9109,8 @@ export async function generateRoutes(app: FastifyInstance) {
             telling: Parameters<typeof gameInventoryTellingStart>[2];
             party: { player?: string; members: string[] };
             tellsInventory: boolean;
+            /** The ruleset's items, which a name the Game Master writes may be. */
+            rules?: RulesetItemBook;
             messageId: string | null;
             /** The swipe a regenerated or continued telling replaced or added to. */
             replaced: number | null;
@@ -9117,7 +9143,16 @@ export async function generateRoutes(app: FastifyInstance) {
                 telling,
               );
               const requested = fullResponse;
-              const preview = tellsInventory ? applyGameInventoryTags(requested, plan.start, party).content : requested;
+              const rules = tellsInventory
+                ? await loadGameInventoryItemBook(
+                    app.db,
+                    { metadata: currentMeta, resolved: turnGameRuleset },
+                    "game-master",
+                  )
+                : undefined;
+              const preview = tellsInventory
+                ? applyGameInventoryTags(requested, plan.start, party, undefined, rules).content
+                : requested;
               if (preview !== fullResponse) {
                 fullResponse = preview;
                 contentReplaced = true;
@@ -9128,6 +9163,7 @@ export async function generateRoutes(app: FastifyInstance) {
                 telling,
                 party,
                 tellsInventory,
+                ...(rules ? { rules } : {}),
                 messageId: retold?.id ?? null,
                 replaced: retold ? (retold.activeSwipeIndex ?? 0) : null,
               };
@@ -9488,7 +9524,7 @@ export async function generateRoutes(app: FastifyInstance) {
                     pending.telling,
                   );
                   const outcome = pending.tellsInventory
-                    ? applyGameInventoryTags(pending.requested, plan.start, pending.party)
+                    ? applyGameInventoryTags(pending.requested, plan.start, pending.party, undefined, pending.rules)
                     : { content: pending.requested, stacks: plan.start, journal: [] };
                   return {
                     stacks: outcome.stacks,

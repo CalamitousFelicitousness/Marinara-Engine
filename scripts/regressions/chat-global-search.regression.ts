@@ -195,6 +195,13 @@ try {
     ["cv-2"],
   );
   assert.equal((await app.inject({ method: "GET", url: "/api/chat-insights/search?q=%20" })).statusCode, 400);
+  for (const field of ["characterId", "from", "to"]) {
+    const repeated = await app.inject({
+      method: "GET",
+      url: `/api/chat-insights/search?q=moon&${field}=one&${field}=two`,
+    });
+    assert.equal(repeated.statusCode, 400, `duplicate ${field} values are rejected instead of causing a server error`);
+  }
 
   await app.close();
   await db._fileStore.close();

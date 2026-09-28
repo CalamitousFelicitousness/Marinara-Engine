@@ -281,6 +281,21 @@ try {
   await db.update(messages).set({ content: "side note with more words" }).where(eq(messages.id, "b1"));
   const edited = await cache.get(0, { refresh: true });
   assert.equal(edited.totalWords, again.totalWords + 3, "edited resident chat is re-read");
+  // A flushed edit remains relevant after the store evicts that chat unit.
+  await db.update(messages).set({ content: "side note with even more extra words" }).where(eq(messages.id, "b1"));
+  await db.select().from(messages).where(eq(messages.chatId, "chat-a"));
+  await db.select().from(messages).where(eq(messages.chatId, "chat-mari"));
+  const previousResidentCap = process.env.MARINARA_MAX_RESIDENT_CHATS;
+  try {
+    process.env.MARINARA_MAX_RESIDENT_CHATS = "2";
+    await db._fileStore.flush();
+    assert.equal(db._fileStore.getResidentChatUnits().has("chat-b"), false, "edited chat was evicted");
+    const evicted = await cache.get(0, { refresh: true });
+    assert.equal(evicted.totalWords, edited.totalWords + 2, "edited non-resident chat is re-read");
+  } finally {
+    if (previousResidentCap === undefined) delete process.env.MARINARA_MAX_RESIDENT_CHATS;
+    else process.env.MARINARA_MAX_RESIDENT_CHATS = previousResidentCap;
+  }
   // Deleted chats drop out of the overview and the summary cache.
   await db.delete(messages).where(eq(messages.chatId, "chat-b"));
   await db.delete(chats).where(eq(chats.id, "chat-b"));

@@ -331,7 +331,6 @@ interface ChatActivitySummary {
 
 type ActivityStoreProbe = {
   getTableWriteGeneration?: (table: string) => number;
-  getResidentChatUnits?: () => ReadonlySet<string>;
 };
 
 function chatSummaryKey(chat: ChatRow): string {
@@ -356,10 +355,9 @@ async function summarizeChatActivity(db: DB, chat: ChatRow, generation: number):
 /**
  * Per-chat activity summaries that survive between overview builds, so a
  * rebuild only re-reads chats that may have changed. A summary is reused when
- * the chat's updatedAt/lastMessageAt are unchanged and either no message was
- * written anywhere since it was computed, or the chat's unit is not resident
- * (message edits, hides and deletes load the unit, so a cold chat was not
- * touched). New messages always move lastMessageAt.
+ * the chat's updatedAt/lastMessageAt are unchanged and no message was written
+ * since it was computed. Residency cannot prove that a chat is unchanged:
+ * an edited unit can be flushed and evicted before the next overview build.
  */
 export function createChatActivitySummaryCache(db: DB, maxAgeMs = ACTIVITY_SUMMARY_MAX_AGE_MS) {
   const entries = new Map<string, ChatActivitySummary>();
@@ -369,7 +367,6 @@ export function createChatActivitySummaryCache(db: DB, maxAgeMs = ACTIVITY_SUMMA
     stats,
     async collect(chatRows: readonly ChatRow[]): Promise<Map<string, ChatActivitySummary>> {
       const generation = store?.getTableWriteGeneration?.("messages") ?? -1;
-      const resident = store?.getResidentChatUnits?.() ?? null;
       const now = Date.now();
       const result = new Map<string, ChatActivitySummary>();
       for (const chat of chatRows) {
@@ -379,7 +376,7 @@ export function createChatActivitySummaryCache(db: DB, maxAgeMs = ACTIVITY_SUMMA
           generation >= 0 &&
           cached.key === chatSummaryKey(chat) &&
           now - cached.computedAt < maxAgeMs &&
-          (cached.generation === generation || (resident !== null && !resident.has(chat.id)));
+          cached.generation === generation;
         if (reusable) {
           stats.reused += 1;
           result.set(chat.id, cached);

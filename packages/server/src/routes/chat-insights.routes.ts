@@ -28,6 +28,9 @@ export async function chatInsightsRoutes(app: FastifyInstance) {
       limit?: string;
     };
   }>("/search", async (req, reply) => {
+    if (Object.values(req.query).some((value) => typeof value !== "string")) {
+      return reply.status(400).send({ error: "Search parameters must each have a single text value" });
+    }
     const query = typeof req.query.q === "string" ? req.query.q.slice(0, 500) : "";
     if (!query.trim()) return reply.status(400).send({ error: "Search query is required" });
     return searchAllChats(app.db, {

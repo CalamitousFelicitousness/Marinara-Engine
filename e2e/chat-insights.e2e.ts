@@ -80,8 +80,20 @@ test("chat search, stats and story exports work with private content filtered", 
     await search.fill("visible comet phrase");
     await expect(searchDialog.getByText(/1 match/u)).toBeVisible();
     await expect(searchDialog.getByText("Visible comet phrase for insights search.", { exact: false })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("search-results.png") });
+    await search.fill("");
+    await expect(searchDialog.getByText("Visible comet phrase for insights search.", { exact: false })).toBeHidden();
+    await search.press("Enter");
+    await expect(searchDialog).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("search-cleared.png") });
     await search.fill("private comet needle");
     await expect(searchDialog.getByText("No messages match.", { exact: true })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Activity overview", exact: true }).click();
+    const activityDialog = page.getByRole("dialog", { name: "Activity", exact: true });
+    await expect(activityDialog.getByRole("img", { name: /Activity heatmap/u })).toBeVisible();
+    await expect(activityDialog.getByRole("button", { name: chatName }).first()).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("activity-overview.png") });
     await page.keyboard.press("Escape");
     if (testInfo.project.name.includes("mobile")) {
       await page.getByRole("button", { name: "Close chats", exact: true }).click();
@@ -100,6 +112,7 @@ test("chat search, stats and story exports work with private content filtered", 
     await page.getByRole("button", { name: "Stats", exact: true }).click();
     await expect(page.getByRole("dialog")).toContainText(chatName);
     await expect(page.getByText("Messages", { exact: true })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("chat-stats.png") });
     await page.keyboard.press("Escape");
 
     await openChatMenu();
@@ -123,7 +136,7 @@ test("chat search, stats and story exports work with private content filtered", 
     const gameSearchDialog = page.getByRole("dialog", { name: "Search all chats" });
     const gameSearch = page.getByRole("searchbox", { name: "Search messages in all chats" });
     await gameSearch.fill("game mode jump fixture phrase");
-    await gameSearchDialog.getByRole("button", { name: new RegExp(`${chatName} Game`, "u") }).click();
+    await gameSearchDialog.getByRole("button", { name: `${chatName} Game` }).click();
     await expect(
       page.getByText("Jumping to a message is not available in Game mode. Open the game log to read earlier turns.", {
         exact: true,

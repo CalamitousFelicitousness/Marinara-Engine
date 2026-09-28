@@ -1020,6 +1020,44 @@ words a ruleset declares for its items. No runtime reads it yet.
   of the block and of an item, a catalog file, the published schema, the `use` line and the 1.49
   gate inline and in a file), with 39 deliberate breaks each caught.
 
+### What invented items settled
+
+Capability API 1.51, for #6814. Slice I3-1 of the ruleset items plan: the Game Master invents items
+of the ruleset, and the ruleset bounds what it may invent.
+
+- **The format.** `items.rarityCaps` (one per rarity at most, each naming a rarity the block declares)
+  caps number stats only, inside each stat's own range and in whole numbers for an integer stat; the cap on worn and carried modifiers waits
+  for those modifiers (I4). `items.propose` (default `true`) forbids invention when `false`. Either key
+  needs 1.51 at install, read structurally from the raw file as the other gates are.
+- **A proposal** is the Game Master's add tag with parts (`like`, `category`, `rarity`, `tags`,
+  `stats`, `slots`, `binds`, `summary`), each word by id or label in any case. Read against the
+  block: an unknown category, tag, stat or slot is left out, a rarity the ruleset lacks becomes its
+  lowest, a value its stat cannot hold is left out, a number is rounded, held to its range and then
+  to its rarity's cap (the part `like` started it from as well), and a cost is never invented. Every
+  change is one plain sentence, at most eight, kept on the item; the answer's `note` leaves out the ones about a stat the Game Master is not shown.
+- **Identity.** An invented item is `invented:<id>` on a stack, with the id spelled from its name
+  (`mourning-edge`) or a fingerprint, numbered on collision. A name that is one of the ruleset's own
+  items is that item. A name still held is that item and a proposal never changes it, and the book
+  that made one finds it again (a reply is read before and after its save). Otherwise a proposal is
+  an item of its own under a new id, even for a name an older item has: a retold turn's item never
+  overwrites the first telling's, so switching back finds the item that telling holds.
+  At most 200 per game.
+- **Where it lives.** Chat metadata `gameInventedItems`, written in the same save as the turn's
+  stacks and kept only while the stacks or the turn's remembered tellings hold it, read back only while every part is still one of the ruleset's words, excluded from chat
+  profiles, and carried into a new session only while a carried stack holds it. The item book reads
+  invented items after the ruleset's own (catalog names win) and never lists them in the picker;
+  only the Game Master's book can invent.
+- **What the Game Master is told.** The proposal form and the ruleset's words (categories, rarities
+  lowest first, tags, the stats it is shown with their kinds, slots, and the caps), only when the
+  ruleset has items and allows invention, and never a stat the Game Master is not shown, nor its cap.
+  An invented item reads in its inventory like the ruleset's own, with its facts in brackets.
+- **Examples.** Ember Roads caps Guard at 1, 2 and 3 by rarity.
+- **Proven** by `scripts/regressions/game-ruleset-invented-items.regression.ts` (the format, every
+  refusal and the 1.51 gate, every change a proposal can meet, the book, the tag and the prompt) and
+  the real routes in `scripts/regressions/game-inventory-turn.regression.ts` (a turn invents, a retold
+  turn replaces, the next prompt reads it, a new session keeps only what is held), with 48
+  deliberate breaks each caught.
+
 ## Gaps a ruleset author found
 
 The author of [Marinara-RPG-Extension](https://github.com/Kenhito/Marinara-RPG-Extension), who

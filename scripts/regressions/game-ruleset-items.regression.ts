@@ -550,23 +550,29 @@ try {
       permissions: [],
       restartRequired: false,
     });
+    // The 1.49 keys alone: the example's rarity caps are 1.51's and have a lane of their own.
+    const older = (text: string, edit: (doc: Record<string, any>) => void = () => {}) =>
+      variant(text, (doc) => {
+        delete doc.items?.rarityCaps;
+        edit(doc);
+      });
     const itemsIssue = /A ruleset that describes items requires schemaVersion 2 and capabilityApi 1\.49 or newer/;
     const issue = (minor: number, doc: Record<string, any>, paths?: string[], files?: Map<string, unknown>) =>
       getCapabilityPackageInstallIssue(manifest(minor, paths) as any, doc, files);
 
-    const whole = variant(emberText);
+    const whole = older(emberText);
     assert.match(issue(48, whole) ?? "", itemsIssue);
     assert.equal(issue(49, whole), null);
 
     // The block alone, with no catalog written in it.
-    const blockOnly = variant(emberText, (doc) => {
+    const blockOnly = older(emberText, (doc) => {
       doc.catalogs = doc.catalogs.filter((catalog: { holds?: string }) => catalog.holds !== "items");
     });
     assert.match(issue(48, blockOnly) ?? "", itemsIssue, "the block is read wherever it is");
     assert.equal(issue(49, blockOnly), null);
 
     // The catalog's header is enough on its own, even before its entries are read.
-    const headerOnly = variant(emberText, (doc) => {
+    const headerOnly = older(emberText, (doc) => {
       delete doc.items;
       itemCatalog(doc).entries = [];
     });
@@ -574,7 +580,7 @@ try {
     assert.equal(issue(49, headerOnly), null);
 
     // Entries that carry an item inline, under a header an older Engine would read as rows.
-    const inlineUnderRows = variant(emberText, (doc) => {
+    const inlineUnderRows = older(emberText, (doc) => {
       delete doc.items;
       delete itemCatalog(doc).holds;
     });
@@ -582,7 +588,7 @@ try {
 
     // Entries that carry an item, in a catalog file under a header an older Engine would read.
     const fileEntries = itemCatalog(JSON.parse(emberText)).entries;
-    const inFile = variant(emberText, (doc) => {
+    const inFile = older(emberText, (doc) => {
       delete doc.items;
       const catalog = itemCatalog(doc);
       delete catalog.holds;

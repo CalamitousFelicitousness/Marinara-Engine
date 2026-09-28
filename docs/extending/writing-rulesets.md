@@ -632,7 +632,7 @@ The limits are 12 catalogs per ruleset, 2000 entries per catalog either way, and
 
 ## Items: what a party carries
 
-Armor, weapons, potions, gear, ammunition and money are items. An optional `items` block declares the words every item of your ruleset is written in, and a catalog with `holds: "items"` lists the items themselves. Both need Capability API 1.49.
+Armor, weapons, potions, gear, ammunition and money are items. An optional `items` block declares the words every item of your ruleset is written in, and a catalog with `holds: "items"` lists the items themselves. Both need Capability API 1.49; the block's `rarityCaps` and `propose`, which govern the items the Game Master invents, need 1.51.
 
 ### The items block
 
@@ -656,6 +656,7 @@ The block goes in `items` at the top level of the file. This is Ember Roads', a 
   ],
   "stats": [
     { "id": "bulk", "label": "Bulk", "type": "number", "min": 0, "max": 10, "default": 0 },
+    { "id": "guard", "label": "Guard", "type": "number", "min": 0, "max": 4, "default": 0 },
     { "id": "damage", "label": "Damage", "type": "dice", "example": "1d6" },
     { "id": "swing", "label": "Rolls with", "type": "enum", "values": ["brawn", "wits", "heart"], "default": "brawn" },
     { "id": "reach", "label": "Reach", "type": "enum", "values": ["close", "near", "far"], "default": "close" }
@@ -665,6 +666,10 @@ The block goes in `items` at the top level of the file. This is Ember Roads', a 
     { "id": "hands", "label": "Hands", "count": 2 }
   ],
   "carry": { "stat": "bulk", "encumberedAbove": { "derived": "load" }, "limit": { "const": 12 } },
+  "rarityCaps": [
+    { "rarity": "common", "stats": { "guard": 1 } },
+    { "rarity": "storied", "stats": { "guard": 3 } }
+  ],
   "currencies": [
     {
       "id": "coin",
@@ -701,6 +706,8 @@ The block goes in `items` at the top level of the file. This is Ember Roads', a 
   - Two families never change into each other. A second nation's coin, or a setting's favours, is a family of its own.
   - A coin's id is unique across every family, because an item's cost names the coin alone.
   - `perWeight` (optional, and only beside `carry`) is how many of the family's coins weigh one unit of the carry stat.
+- `rarityCaps`: optional, one per rarity at most. The most an item the Game Master invents may give at that rarity: the largest value of each number stat named in `stats`, inside that stat's own range, and a whole number for a stat that takes whole numbers. An invented item is held to it; the items your catalogs list are yours and never capped.
+- `propose`: `true` by default. `false` forbids the Game Master to invent items of your ruleset.
 - `native`: `true` by default. `false` turns off Game Mode's own untyped items in your ruleset's games. The Game Master can still invent items, written in your ruleset's words.
 - `freeform`: what an item the player types in becomes. `"plain"` (the default) keeps it as an item with no rules, as today. `"refuse"` allows only items of your ruleset.
 
@@ -753,6 +760,7 @@ Everything above is checked when the ruleset is imported, and your catalogs of i
 - **`slots`**: an item that takes slots can be equipped by whoever carries it, while they have those slots free, and one item of a larger stack is taken into its own stack to be worn. The inventory shows each slot in use per character.
 - **`binding`**: an item that `binds` can be bound, up to `binding.max` read off its bearer's own sheet (a character without a sheet reads a blank one). A `cursed` item, once bound, stays bound: the player cannot unbind it, take it off, give it away or remove it, and only the Game Master can end the curse.
 - **`carry`**: an item weighs its value of `carry.stat` (an item without one weighs nothing), and a character's load is what their bag weighs, against `encumberedAbove` and `limit` read off their own sheet. An item added into the inventory's shared view, by the player or by the Game Master without a `who=`, goes to whoever can carry it without becoming encumbered (the player first, then the party in order), shared out by the room each has left when nobody can take all of it. Nothing goes past anyone's `limit`: what nobody can carry is left behind and the Game Master is told. Give a weight stat `"integer": false` for weights such as a quarter of a pound.
+- **The Game Master invents items in your words.** Unless you set `propose: false`, its `[inventory: action="add"]` can describe a new item: `like=` one of your items to start from, then any of `category=`, `rarity=`, `tags=`, `stats=` (`id=value` pairs), `slots=` (`id=count`), `binds=` (`yes`, `cursed` or `no`) and `summary=`, each part by its id or label. The Engine keeps only what your block has: an unknown category, tag, stat or slot is left out, a rarity you do not have becomes your lowest, a number is held to its stat's range and then to `rarityCaps` for its rarity (the part `like` started it from as well), and a name that is one of your items is simply that item. The answer tells the Game Master what was changed (never about a stat you do not show it), and the item's details show every change to the player. The game keeps the item, so the same name is that item for the rest of the game, and a new session keeps it while anyone still holds it.
 - The Game Master can `equip` and `unequip` your items with its inventory command when you have `slots`, and `bind` and `unbind` them when you have `binding`: it is only told of the ones your ruleset has. It sees each character's load, bound items and slots, and what is worn or bound.
 
 A fight already spends one of your items the way it spends any item. What being encumbered does to a character, and what worn and carried items do to the sheet and to checks, come in the next release, and `native`, weapons and armor in a fight, using items by their own rules, and money after that.

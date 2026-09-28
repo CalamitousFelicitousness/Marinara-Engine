@@ -488,6 +488,50 @@ function wearGrammarLine(slots: boolean, bindingLabel: string | undefined): stri
   return `- [inventory: action="${actions.join("|")}" item="Name" who="Name"] - when a character ${when}. It must be in who's own bag (the player's when who is left out); the Engine checks ${checks} shown beside each character, and refuses what does not fit.`;
 }
 
+/** How the Game Master invents an item of the ruleset: the proposal form, and the ruleset's own words
+ *  for every part of it (stats it is not shown are left out). */
+function inventGrammarLines(
+  items: NonNullable<import("@marinara-engine/shared").RulesetDefinition["items"]>,
+): string[] {
+  const ids = (words: ReadonlyArray<{ id: string }> | undefined) => (words ?? []).map((word) => word.id).join(", ");
+  const statKind = (stat: NonNullable<typeof items.stats>[number]): string => {
+    switch (stat.type) {
+      case "number":
+        return `number ${stat.min} to ${stat.max}`;
+      case "dice":
+        return "dice";
+      case "boolean":
+        return "yes or no";
+      case "enum":
+        return `one of ${stat.values.map((value) => normalizePromptText(value)).join(", ")}`;
+      case "text":
+        return "text";
+    }
+  };
+  const stats = (items.stats ?? [])
+    .filter((stat) => stat.promptVisible)
+    .map((stat) => `${stat.id} (${statKind(stat)})`)
+    .join(", ");
+  // Only the stats it is shown: a hidden stat's cap would tell it the stat is there.
+  const shown = new Set((items.stats ?? []).filter((stat) => stat.promptVisible).map((stat) => stat.id));
+  const caps = (items.rarityCaps ?? [])
+    .map((cap) => ({ rarity: cap.rarity, most: Object.entries(cap.stats ?? {}).filter(([id]) => shown.has(id)) }))
+    .filter((cap) => cap.most.length > 0)
+    .map((cap) => `${cap.rarity} ${cap.most.map(([id, most]) => `${id} ${most}`).join(", ")}`)
+    .join("; ");
+  const words = [
+    `categories ${ids(items.categories)}`,
+    ...(items.rarities?.length ? [`rarities ${ids(items.rarities)} (lowest first)`] : []),
+    ...(items.tags?.length ? [`tags ${ids(items.tags)}`] : []),
+    ...(stats ? [`stats ${stats}`] : []),
+    ...(items.slots?.length ? [`slots ${items.slots.map((slot) => `${slot.id} (${slot.count})`).join(", ")}`] : []),
+  ].join("; ");
+  return [
+    `  To give an item this ruleset does not list, invent one of its items in the add: [inventory: action="add" item="New name" category="..." rarity="..." tags="a, b" stats="id=value, id=value" slots="id=count"${items.binding ? ` binds="yes|cursed"` : ""} summary="one line"]. Every part but item is optional. To start from one of the ruleset's own items, add like="that item's exact name" (leave like out otherwise); what else you give replaces its parts. The Engine keeps only what this ruleset has${caps ? " and holds each number to the most its rarity allows" : ""}; the answer's note says what it changed, and from then on that name is that item.`,
+    `  Its words: ${words}.${caps ? ` The most at each rarity: ${caps}.` : ""}`,
+  ];
+}
+
 function buildWidgetSummaryLines(widgets: HudWidget[]): string[] {
   return widgets.map((widget) => {
     const config = (widget.config ?? {}) as Record<string, any>;
@@ -1321,6 +1365,7 @@ export function buildGmFormatReminder(
                 `  This game's ruleset has its own items: an item named exactly as one of them becomes that item, and what an item of the ruleset is shows in [brackets] after it in the inventory below (never write the brackets in item).`,
               ]
             : []),
+          ...(ctx.ruleset?.items && ctx.ruleset.items.propose !== false ? inventGrammarLines(ctx.ruleset.items) : []),
           ...(ctx.ruleset?.items?.carry
             ? [
                 `  Everyone carries only so much: an add with who left out goes to whoever can carry it (the player first), and the answer says who got it; what nobody can carry is refused as too-heavy and stays behind.`,

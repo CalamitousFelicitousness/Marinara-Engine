@@ -165,24 +165,35 @@ export function applyGameInventoryTags(
         };
         if (!who.ok) return serializeInventoryTag(shown, { ok: false, reason: who.reason });
         if (request.action === "add") {
+          // A proposal first makes the item of the ruleset it describes, or finds the one of that name
+          // already made, and the answer says what the Engine changed. Without a ruleset to invent in,
+          // its parts are ignored and the name is added as it always was.
+          const invented =
+            request.proposal && rules?.invent ? rules.invent({ name: item, ...request.proposal }, current) : undefined;
+          if (invented && "refused" in invented) {
+            return serializeInventoryTag(shown, { ok: false, reason: invented.refused });
+          }
+          const note = invented?.notes.join(" ") || undefined;
+          const ref = invented ? { item: invented.item } : {};
           // Into whose bag it was said to go; with nobody named, into the shared view, which a ruleset
           // that says what everyone carries fills by who can carry it, the player first.
           const [result] = apply([
             who.bag
-              ? { op: "add", name: item, count: request.count, holder: who.bag.holder, log: true }
-              : { op: "add", name: item, count: request.count, among: ["", ...party.members], log: true },
+              ? { op: "add", name: item, ...ref, count: request.count, holder: who.bag.holder, log: true }
+              : { op: "add", name: item, ...ref, count: request.count, among: ["", ...party.members], log: true },
           ]);
-          if (!result?.ok) return serializeInventoryTag(shown, outcomeOf(result));
+          if (!result?.ok) return serializeInventoryTag(shown, outcomeOf(result), note);
           // One answer per bag it went into, saying whose when nobody was named (the player's says
-          // nobody), and one for what nobody could carry.
+          // nobody), and one for what nobody could carry. The first carries what was changed.
           const answers = result.placed
-            ? result.placed.map((share) =>
+            ? result.placed.map((share, index) =>
                 serializeInventoryTag(
                   { action: request.action, item, count: share.count, ...(share.holder ? { who: share.holder } : {}) },
                   { ok: true, count: share.count, now: share.now },
+                  index === 0 ? note : undefined,
                 ),
               )
-            : [serializeInventoryTag(shown, outcomeOf(result))];
+            : [serializeInventoryTag(shown, outcomeOf(result), note)];
           if (result.left) {
             answers.push(
               serializeInventoryTag(

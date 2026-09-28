@@ -784,6 +784,183 @@ try {
     assert.deepEqual(await stacksOf(firstOnly.id), ["Road rations 7 Bram", "Road rations 1 Bram"]);
   }
 
+  // ── Invented items (#6814): a turn invents, the game keeps it, the next prompt and session read it ──
+  {
+    const ember = JSON.parse(
+      readFileSync(fileURLToPath(new URL("../../docs/examples/rulesets/ember-roads.json", import.meta.url)), "utf8"),
+    ) as Record<string, any>;
+    const pin = { id: "local/ember-carry", version: ember.version, packageId: null, options: {} };
+    const connection = (await createConnectionsStorage(db).list())[0]!;
+    const made = await chats.create({
+      name: "Invented items",
+      mode: "game",
+      characterIds: [],
+      connectionId: connection.id,
+      promptPresetId: null,
+    });
+    assert.ok(made);
+    await chats.patchMetadata(made.id, { enableAgents: false, enableTools: false, gameRuleset: pin });
+    const metaOf = async (chatId: string) => {
+      const row = await chats.getById(chatId);
+      return (typeof row!.metadata === "string" ? JSON.parse(row!.metadata) : row!.metadata) as Record<string, any>;
+    };
+    const turnIn = async (text: string, payload: Record<string, unknown> = {}) => {
+      reply = text;
+      if (!payload.regenerateMessageId) {
+        await chats.createMessage({ chatId: made.id, role: "user", content: "I take what she offers." });
+      }
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/generate/",
+        payload: { chatId: made.id, streaming: true, ...payload },
+      });
+      assert.equal(response.statusCode, 200, response.body);
+      return (await chats.listMessages(made.id)).at(-1)!;
+    };
+
+    const told = await turnIn(
+      `The widow gives you the blade. [inventory: action="add" item="Mourning Edge" like="outfitter/hand-axe" rarity="storied" stats="guard=4, damage=1d10"]`,
+    );
+    assert.match(
+      told.content,
+      /\[inventory: action="add" item="Mourning Edge" count="1" result="ok" now="1" note="Guard is 3 instead of 4, the most at Storied\."\]/,
+    );
+    const kept = await metaOf(made.id);
+    assert.deepEqual(kept.gameInventedItems, [
+      {
+        id: "mourning-edge",
+        name: "Mourning Edge",
+        item: {
+          category: "weapon",
+          rarity: "storied",
+          tags: ["thrown"],
+          stats: { bulk: 1, damage: "1d10", swing: "brawn", reach: "close", guard: 3 },
+          slots: { hands: 1 },
+        },
+        notes: ["Guard is 3 instead of 4, the most at Storied."],
+      },
+    ]);
+    assert.deepEqual(
+      normalizeGameInventoryStacks(kept.gameInventory).map((stack) => [stack.name, stack.item, stack.quantity]),
+      [["Mourning Edge", "invented:mourning-edge", 1]],
+    );
+
+    // Told again with another proposal: the telling starts from before the blade, so nobody holds it,
+    // and the retelling's blade is an item of its own, since the first telling still holds the first.
+    await turnIn(
+      `The widow gives you the blade. [inventory: action="add" item="Mourning Edge" category="weapon" rarity="uncommon" stats="damage=2d6"]`,
+      { regenerateMessageId: told.id },
+    );
+    const retold = await metaOf(made.id);
+    assert.deepEqual(
+      retold.gameInventedItems.map((item: { id: string; item: { rarity: string; stats: { damage: string } } }) => [
+        item.id,
+        item.item.rarity,
+        item.item.stats.damage,
+      ]),
+      [
+        ["mourning-edge", "storied", "1d10"],
+        ["mourning-edge-2", "uncommon", "2d6"],
+      ],
+    );
+    const stacksNow = async () =>
+      normalizeGameInventoryStacks((await metaOf(made.id)).gameInventory).map((stack) => [stack.item, stack.quantity]);
+    assert.deepEqual(await stacksNow(), [["invented:mourning-edge-2", 1]]);
+    // Switched back to the first telling, the stacks hold the first blade, which is still itself; and
+    // forward again.
+    const showTelling = async (index: number) => {
+      const response = await app.inject({
+        method: "PUT",
+        url: `/api/chats/${made.id}/messages/${told.id}/active-swipe`,
+        payload: { index },
+      });
+      assert.equal(response.statusCode, 200, response.body);
+    };
+    await showTelling(0);
+    assert.deepEqual(await stacksNow(), [["invented:mourning-edge", 1]]);
+    assert.equal((await metaOf(made.id)).gameInventedItems[0].item.stats.damage, "1d10");
+    await showTelling(1);
+    assert.deepEqual(await stacksNow(), [["invented:mourning-edge-2", 1]]);
+
+    // The next turn's prompt reads the invented item like one of the ruleset's own, and shows the
+    // proposal form with the ruleset's caps.
+    await turnIn("The road goes on.");
+    const prompt = prompts
+      .at(-1)!
+      .map((message) => message.content)
+      .join("\n");
+    assert.match(prompt, /PLAYER INVENTORY \([^)]*\): Mourning Edge \[Weapon, Uncommon; Damage 2d6\]/);
+    assert.match(prompt, /invent one of its items in the add/);
+    assert.match(prompt, /The most at each rarity: common guard 1; uncommon guard 2; storied guard 3\./);
+
+    // A new session keeps the invented items still held and drops the ones nobody holds.
+    const gameId = "invented-items-sessions";
+    const ended = await chats.create({
+      name: "Invented items, Session 1",
+      mode: "game",
+      characterIds: [],
+      groupId: gameId,
+    });
+    assert.ok(ended);
+    await chats.patchMetadata(ended.id, {
+      gameId,
+      gameSessionStatus: "concluded",
+      gameSessionNumber: 1,
+      gameRuleset: pin,
+      gameInventory: retold.gameInventory,
+      gameInventedItems: [
+        ...retold.gameInventedItems,
+        { id: "lost-charm", name: "Lost Charm", item: { category: "gear", rarity: "common" } },
+      ],
+    });
+    await chats.createMessage({ chatId: ended.id, role: "assistant", content: "The road ends here." });
+    const carried = await app.inject({ method: "POST", url: "/api/game/session/start", payload: { gameId } });
+    assert.equal(carried.statusCode, 200, carried.body);
+    const next = await metaOf(carried.json().sessionChat.id);
+    assert.deepEqual(
+      next.gameInventedItems.map((item: { id: string }) => item.id),
+      ["mourning-edge-2"],
+    );
+    assert.deepEqual(
+      normalizeGameInventoryStacks(next.gameInventory).map((stack) => stack.item),
+      ["invented:mourning-edge-2"],
+    );
+    // A game whose ruleset cannot be read any more keeps them as saved, by the same rule, and
+    // anything that is not an invented item at all is dropped.
+    const unread = await chats.create({
+      name: "Invented items, no ruleset",
+      mode: "game",
+      characterIds: [],
+      groupId: "invented-items-unread",
+    });
+    assert.ok(unread);
+    await chats.patchMetadata(unread.id, {
+      gameId: "invented-items-unread",
+      gameSessionStatus: "concluded",
+      gameSessionNumber: 1,
+      gameInventory: retold.gameInventory,
+      gameInventedItems: [
+        ...retold.gameInventedItems,
+        { id: "lost-charm", name: "Lost Charm", item: { category: "gear" } },
+        "junk",
+        { name: "No id" },
+      ],
+    });
+    await chats.createMessage({ chatId: unread.id, role: "assistant", content: "The road ends here." });
+    const unreadNext = await app.inject({
+      method: "POST",
+      url: "/api/game/session/start",
+      payload: { gameId: "invented-items-unread" },
+    });
+    assert.equal(unreadNext.statusCode, 200, unreadNext.body);
+    assert.deepEqual(
+      (await metaOf(unreadNext.json().sessionChat.id)).gameInventedItems,
+      [retold.gameInventedItems[1]],
+      "kept as saved while held, the rest dropped",
+    );
+    assert.ok(CHAT_PRESET_EXCLUDED_METADATA_KEYS.includes("gameInventedItems"));
+  }
+
   console.info("game inventory turn regressions passed.");
 } finally {
   ClaudeSubscriptionProvider.prototype.chat = originalChat;

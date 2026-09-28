@@ -1875,6 +1875,14 @@ const itemsSchema = z
       .strict()
       .optional(),
     currencies: z.array(currencyFamilySchema).max(6).optional(),
+    /** The most an item the Game Master invents may give at each rarity: the largest value of each
+     *  number stat. The ruleset's own catalog items are its author's and are never capped. */
+    rarityCaps: z
+      .array(z.object({ rarity: sheetId, stats: z.record(z.number().finite()).optional() }).strict())
+      .max(12)
+      .optional(),
+    /** False forbids the Game Master to invent items of this ruleset. */
+    propose: z.boolean().default(true),
     /** False turns Game Mode's own untyped items off in this ruleset's games. */
     native: z.boolean().default(true),
     /** What an item the player types in becomes: a plain item, or nothing at all. */
@@ -3598,6 +3606,28 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       if (items.carry.limit) checkRef(items.carry.limit, at("carry", "limit"), derivedIds, false);
     }
     unique(items.currencies ?? [], at("currencies"), "currency");
+    const rarities = new Set((items.rarities ?? []).map((rarity) => rarity.id));
+    const capped = new Set<string>();
+    items.rarityCaps?.forEach((cap, index) => {
+      if (!rarities.has(cap.rarity)) {
+        issue(
+          at("rarityCaps", index, "rarity"),
+          rarities.size ? `Unknown rarity "${cap.rarity}"` : "This ruleset declares no rarities",
+        );
+      } else if (capped.has(cap.rarity)) issue(at("rarityCaps", index, "rarity"), `Duplicate rarity "${cap.rarity}"`);
+      capped.add(cap.rarity);
+      for (const [id, most] of Object.entries(cap.stats ?? {})) {
+        const stat = items.stats?.find((each) => each.id === id);
+        if (!stat) issue(at("rarityCaps", index, "stats", id), `Unknown item stat "${id}"`);
+        else if (stat.type !== "number")
+          issue(at("rarityCaps", index, "stats", id), `Item stat "${id}" is not a number`);
+        else if (most < stat.min || most > stat.max) {
+          issue(at("rarityCaps", index, "stats", id), `Item stat "${id}" runs from ${stat.min} to ${stat.max}`);
+        } else if (stat.integer && !Number.isInteger(most)) {
+          issue(at("rarityCaps", index, "stats", id), `Item stat "${id}" takes whole numbers`);
+        }
+      }
+    });
     // An item's cost names a unit alone, so a unit id means one coin across every family.
     const units = new Set<string>();
     items.currencies?.forEach((family, familyIndex) => {
@@ -4462,6 +4492,8 @@ export function parseRulesetDefinition(input: unknown): RulesetParseResult {
 export type RulesetCatalogHeader = z.infer<typeof catalogSchema>;
 export type RulesetCatalogEntry = z.infer<typeof catalogEntrySchema>;
 export type RulesetCatalogItem = z.infer<typeof catalogItemSchema>;
+/** One item as a catalog entry writes it, for reading an invented item back off a game. */
+export const rulesetCatalogItemSchema = catalogItemSchema;
 export type RulesetItems = z.infer<typeof itemsSchema>;
 export type RulesetItemStat = z.infer<typeof rulesetItemStatSchema>;
 export type RulesetCurrencyFamily = z.infer<typeof currencyFamilySchema>;
@@ -4860,6 +4892,14 @@ function itemIssues(
     );
   }
   if (item.binds && !items.binding) add([...at, "binds"], "This ruleset declares no binding, so nothing is bound");
+}
+
+/** What is wrong with one item against the ruleset's `items` block, as plain lines. An item the Game
+ *  Master invented is read back through this, exactly as a catalog entry is checked. */
+export function rulesetItemIssues(definition: RulesetDefinition, item: RulesetCatalogItem): string[] {
+  const found: string[] = [];
+  itemIssues(definition, item, [], (_path, message) => found.push(message));
+  return found;
 }
 
 export function rulesetCatalogEntryIssues(

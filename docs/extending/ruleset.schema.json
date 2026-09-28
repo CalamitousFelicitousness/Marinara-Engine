@@ -8517,6 +8517,38 @@
           },
           "maxItems": 6
         },
+        "rarityCaps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "rarity": {
+                "type": "string",
+                "maxLength": 40,
+                "pattern": "^[a-z][a-z0-9_]*$"
+              },
+              "stats": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "properties": {
+                  "$comment": {}
+                }
+              },
+              "$comment": {}
+            },
+            "required": [
+              "rarity"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 12
+        },
+        "propose": {
+          "type": "boolean",
+          "default": true
+        },
         "native": {
           "type": "boolean",
           "default": true

@@ -213,6 +213,16 @@ try {
   missingFormat.set(new TextEncoder().encode("JUNK"), 12);
   const shortFormat = wavFixture.slice();
   new DataView(shortFormat.buffer).setUint32(16, 2, true);
+  const partialFrame = wav.slice(0, 46);
+  new DataView(partialFrame.buffer).setUint32(4, partialFrame.length - 8, true);
+  new DataView(partialFrame.buffer).setUint32(40, 2, true);
+  const invalidFloatFields = [32, 34].map((offset) => {
+    const body = wavFixture.slice();
+    const view = new DataView(body.buffer);
+    view.setUint16(20, 3, true);
+    view.setUint16(offset, 0, true);
+    return body;
+  });
   const invalidFormatFields = [
     [22, 0],
     [24, 0],
@@ -228,12 +238,30 @@ try {
     else view.setUint16(offset, value, true);
     return body;
   });
-  for (const body of [emptyData, overflowingData, missingFormat, shortFormat, ...invalidFormatFields]) {
+  for (const body of [
+    emptyData,
+    overflowingData,
+    missingFormat,
+    shortFormat,
+    partialFrame,
+    ...invalidFormatFields,
+    ...invalidFloatFields,
+  ]) {
     providerMode = { contentType: "audio/pcm", body };
     const invalidWav = await speak();
     assert.equal(invalidWav.statusCode, 502, "invalid WAV subchunks are rejected despite a valid RIFF size");
     assert.match(invalidWav.json<{ detail: string }>().detail, /malformed WAV/u);
   }
+  const floatWav = wrapTTSPcm16AsWav(new Uint8Array(8), { sampleRate: 24_000, channels: 1 });
+  const floatView = new DataView(floatWav.buffer);
+  floatView.setUint16(20, 3, true);
+  floatView.setUint32(28, 96_000, true);
+  floatView.setUint16(32, 4, true);
+  floatView.setUint16(34, 32, true);
+  providerMode = { contentType: "audio/pcm", body: floatWav };
+  const floatResponse = await speak();
+  assert.equal(floatResponse.statusCode, 200);
+  assert.deepEqual([...floatResponse.rawPayload], [...floatWav], "complete float WAV frames pass through unchanged");
   // A padded odd-sized metadata chunk is valid and must be passed through.
   const withMetadata = new Uint8Array(wavFixture.length + 10);
   withMetadata.set(wavFixture.subarray(0, 12));

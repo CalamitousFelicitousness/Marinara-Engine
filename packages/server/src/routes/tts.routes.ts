@@ -1729,7 +1729,9 @@ export async function ttsRoutes(app: FastifyInstance) {
           let valid = view.getUint32(4, true) + 8 === providerAudio.byteLength;
           let hasFormat = false;
           let hasData = false;
+          let frameAlignment = 0;
           let offset = 12;
+          // ponytail: check container bounds and fixed-frame layouts here; codec-specific validation stays with the browser decoder.
           while (valid && offset < providerAudio.byteLength) {
             if (offset + 8 > providerAudio.byteLength) {
               valid = false;
@@ -1741,6 +1743,7 @@ export async function ttsRoutes(app: FastifyInstance) {
             offset = payloadOffset + size + (size % 2);
             valid = offset <= providerAudio.byteLength;
             if (chunkId === "fmt ") {
+              valid &&= !hasFormat;
               hasFormat = size >= 16;
               valid &&= hasFormat;
               if (valid) {
@@ -1749,18 +1752,19 @@ export async function ttsRoutes(app: FastifyInstance) {
                 const sampleRate = view.getUint32(payloadOffset + 4, true);
                 const blockAlign = view.getUint16(payloadOffset + 12, true);
                 const bitsPerSample = view.getUint16(payloadOffset + 14, true);
+                if (formatTag === 1 || formatTag === 3) frameAlignment = blockAlign;
                 // Compressed WAV formats can legitimately report zero bits per sample.
                 valid =
                   channels > 0 &&
                   sampleRate > 0 &&
-                  (formatTag !== 1 ||
+                  ((formatTag !== 1 && formatTag !== 3) ||
                     (bitsPerSample > 0 &&
                       blockAlign * 8 === channels * bitsPerSample &&
                       view.getUint32(payloadOffset + 8, true) === sampleRate * blockAlign));
               }
             } else if (chunkId === "data") {
               hasData = size > 0;
-              valid &&= hasData;
+              valid &&= hasData && hasFormat && (frameAlignment === 0 || size % frameAlignment === 0);
             }
           }
           if (!valid || !hasFormat || !hasData) {

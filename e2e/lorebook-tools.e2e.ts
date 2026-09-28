@@ -42,6 +42,30 @@ test("lorebook tools lint, preview scans, and bulk-enable selected books", async
     await page.getByPlaceholder("Paste a paragraph or sample messages here…", { exact: true }).fill("A lantern glows.");
     await page.getByRole("button", { name: "Run scanner", exact: true }).click();
     await expect(page.getByText("Lantern watcher", { exact: true })).toBeVisible();
+
+    await page.getByRole("button", { name: "Import entries from Markdown or CSV", exact: true }).click();
+    const importDialog = page.getByRole("dialog", { name: "Import entries", exact: true });
+    await importDialog
+      .getByRole("textbox", { name: "Markdown or CSV text", exact: true })
+      .fill("## River sentinel\nKeys: river\nFolder: Places\n\nGuards the river.");
+    await expect(importDialog.getByText("River sentinel", { exact: true })).toBeVisible();
+    await importDialog.getByRole("button", { name: "Import 1 entry", exact: true }).click();
+    await expect(importDialog).not.toBeVisible();
+    await expect
+      .poll(async () => (await (await request.get(`/api/lorebooks/${book.id}/entries`)).json()).length)
+      .toBe(3);
+
+    const entrySection = page.locator('[data-editor-section="entries"]');
+    await entrySection.getByRole("button", { name: "Select", exact: true }).click();
+    await entrySection.getByRole("button", { name: "Select all", exact: true }).click();
+    await page.getByRole("button", { name: "Bulk edit 3 entries", exact: true }).click();
+    await page.getByRole("button", { name: "Constant on", exact: true }).click();
+    await expect
+      .poll(async () => {
+        const entries = await (await request.get(`/api/lorebooks/${book.id}/entries`)).json();
+        return entries.every((entry: { constant: boolean }) => entry.constant);
+      })
+      .toBe(true);
   } finally {
     await page.close();
     await request.delete(`/api/lorebooks/${book.id}`).catch(() => undefined);

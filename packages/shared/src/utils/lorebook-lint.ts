@@ -124,9 +124,11 @@ export function lintLorebookEntries(
 
     const seenInEntry = new Set<string>();
     for (const key of keys) {
-      const normalized = normalizeKey(key, entry.caseSensitive);
-      // Regex and literal keys that share text are still the same trigger.
-      const ownerKey = `${entry.useRegex ? "re" : "lit"}:${normalized}`;
+      // Regex escapes are case-sensitive syntax even for case-insensitive matching (\D is not \d).
+      const normalized = normalizeKey(key, entry.caseSensitive || entry.useRegex);
+      // Only identical matching modes are duplicates. Regex/literal and
+      // case-sensitive/insensitive keys may overlap without being equivalent.
+      const ownerKey = `${entry.useRegex ? "re" : "lit"}:${entry.caseSensitive ? "case" : "nocase"}:${normalized}`;
       if (!seenInEntry.has(ownerKey)) {
         seenInEntry.add(ownerKey);
         const owner = keyOwners.get(ownerKey);

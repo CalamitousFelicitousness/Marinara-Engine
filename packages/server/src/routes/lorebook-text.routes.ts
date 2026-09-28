@@ -30,9 +30,11 @@ export async function lorebookTextRoutes(app: FastifyInstance) {
     if (!lorebook) return reply.status(404).send({ error: "Lorebook not found" });
     try {
       const request = readLorebookTextImportRequest(req.body);
-      const result = await importLorebookText(storage, req.params.id, request);
-      await syncCharacterBookFromLorebook(app.db, req.params.id);
-      return result;
+      return await app.db.transaction(async (tx) => {
+        const result = await importLorebookText(createLorebooksStorage(tx), req.params.id, request);
+        await syncCharacterBookFromLorebook(tx, req.params.id);
+        return result;
+      });
     } catch (err) {
       if (err instanceof LorebookTextImportError) return reply.status(400).send({ error: err.message });
       throw err;
@@ -51,12 +53,14 @@ export async function lorebookTextRoutes(app: FastifyInstance) {
     }
     const name =
       typeof body.name === "string" && body.name.trim() ? body.name.trim().slice(0, 200) : "Imported lorebook";
-    const created = (await storage.create(createLorebookSchema.parse({ name }))) as { id: string } | null;
-    if (!created) return reply.status(500).send({ error: "Failed to create lorebook" });
     try {
-      return await importLorebookText(storage, created.id, request);
+      return await app.db.transaction(async (tx) => {
+        const importStorage = createLorebooksStorage(tx);
+        const created = (await importStorage.create(createLorebookSchema.parse({ name }))) as { id: string } | null;
+        if (!created) throw new Error("Failed to create lorebook");
+        return importLorebookText(importStorage, created.id, request);
+      });
     } catch (err) {
-      await storage.remove(created.id).catch(() => undefined);
       if (err instanceof LorebookTextImportError) return reply.status(400).send({ error: err.message });
       throw err;
     }

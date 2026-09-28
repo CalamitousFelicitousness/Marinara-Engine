@@ -255,6 +255,9 @@ const previous = {
 };
 type Response = { statusCode: number; body: string; headers: Record<string, unknown>; json(): any };
 let app: { close(): Promise<void>; inject(options: Record<string, unknown>): Promise<Response> } | null = null;
+let db: Awaited<
+  ReturnType<typeof import("../../packages/server/src/db/file-backed-store.js").createFileNativeDB>
+> | null = null;
 
 try {
   const fileStorageDir = join(dataDir, "file-storage");
@@ -268,7 +271,7 @@ try {
     import("../../packages/server/src/routes/lorebook-text.routes.js"),
     import("../../packages/server/src/services/storage/lorebooks.storage.js"),
   ]);
-  const db = await createFileNativeDB();
+  db = await createFileNativeDB();
   const Fastify = createRequire(new URL("../../packages/server/package.json", import.meta.url))("fastify");
   const server = Fastify({ bodyLimit: 256 * 1024 * 1024 });
   server.decorate("db", db);
@@ -317,6 +320,47 @@ try {
   assert.equal(harbor.folderId, coast.id);
   assert.equal(folders.find((folder) => folder.id === coast.parentFolderId)?.name, "Places");
 
+  // A later write failure must undo earlier overwrites and newly created folders.
+  const { lorebookEntries } = await import("../../packages/server/src/db/schema/index.js");
+  const originalInsert = db.insert;
+  let failedEntryWrite = false;
+  db.insert = (table) => {
+    if (table === lorebookEntries) {
+      failedEntryWrite = true;
+      throw new Error("Injected text import failure");
+    }
+    return originalInsert(table);
+  };
+  try {
+    await request(
+      "POST",
+      `/api/lorebooks/${book.id}/import-text`,
+      {
+        format: "markdown",
+        duplicateMode: "overwrite",
+        text: "## Harbor\n\nMust roll back.\n\n## New entry\nFolder: Failed folder\n\nCannot save.",
+      },
+      500,
+    );
+    const booksBeforeFailure = await storage.list();
+    await request(
+      "POST",
+      "/api/lorebooks/import-text",
+      {
+        name: "Failed new book",
+        format: "markdown",
+        text: "## New entry\nFolder: Failed folder\n\nCannot save.",
+      },
+      500,
+    );
+    assert.deepEqual(await storage.list(), booksBeforeFailure, "failed imports also roll back the new lorebook");
+  } finally {
+    db.insert = originalInsert;
+  }
+  assert.equal(failedEntryWrite, true, "the failure occurs after the first overwrite");
+  assert.deepEqual(await storage.listEntries(book.id), entries, "failed imports preserve existing entries");
+  assert.deepEqual(await storage.listFolders(book.id), folders, "failed imports remove newly created folders");
+
   await request("POST", `/api/lorebooks/${book.id}/import-text`, { format: "csv", text: "name,content\nA,b" }, 400);
   await request("POST", `/api/lorebooks/${book.id}/import-text`, { format: "xml", text: "x" }, 400);
   await request("POST", "/api/lorebooks/missing/import-text", { format: "csv", text: "name,keys,content\nA,a,b" }, 404);
@@ -350,6 +394,7 @@ try {
   console.log("lorebook-text-import regression passed");
 } finally {
   await app?.close();
+  await db?._fileStore.close();
   for (const [key, value] of Object.entries(previous)) {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;

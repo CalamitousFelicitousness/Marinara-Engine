@@ -17,6 +17,9 @@ let app: {
   close(): Promise<void>;
   inject(options: Record<string, unknown>): Promise<Response>;
 } | null = null;
+let db: Awaited<
+  ReturnType<typeof import("../../packages/server/src/db/file-backed-store.js").createFileNativeDB>
+> | null = null;
 
 try {
   const fileStorageDir = join(dataDir, "file-storage");
@@ -32,7 +35,7 @@ try {
       import("../../packages/server/src/services/storage/characters.storage.js"),
       import("../../packages/server/src/services/storage/chats.storage.js"),
     ]);
-  const db = await createFileNativeDB();
+  db = await createFileNativeDB();
   const Fastify = createRequire(new URL("../../packages/server/package.json", import.meta.url))("fastify");
   // Same general body limit as the real app, so the route's own cap is what is tested.
   const server = Fastify({ bodyLimit: 256 * 1024 * 1024 });
@@ -156,6 +159,7 @@ try {
   assert.ok(chatResult.scannedMessages >= 1);
 } finally {
   await app?.close();
+  await db?._fileStore.close();
   for (const [key, value] of Object.entries(previous)) {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;

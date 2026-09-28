@@ -18,6 +18,9 @@ let app: {
   close(): Promise<void>;
   inject(options: Record<string, unknown>): Promise<Response>;
 } | null = null;
+let db: Awaited<
+  ReturnType<typeof import("../../packages/server/src/db/file-backed-store.js").createFileNativeDB>
+> | null = null;
 
 try {
   const fileStorageDir = join(dataDir, "file-storage");
@@ -32,7 +35,7 @@ try {
     import("../../packages/server/src/services/lorebook/activation-stats.js"),
     import("../../packages/server/src/services/features/feature-settings.js"),
   ]);
-  const db = await createFileNativeDB();
+  db = await createFileNativeDB();
   const Fastify = createRequire(new URL("../../packages/server/package.json", import.meta.url))("fastify");
   const server = Fastify();
   server.decorate("db", db);
@@ -147,6 +150,7 @@ try {
   );
 } finally {
   await app?.close();
+  await db?._fileStore.close();
   for (const [key, value] of Object.entries(previous)) {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;

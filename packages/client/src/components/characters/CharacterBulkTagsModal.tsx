@@ -23,7 +23,7 @@ interface Props {
   open: boolean;
   onClose: () => void;
   selectedIds: ReadonlySet<string>;
-  onApplied: () => void;
+  onApplied: (failedIds: string[]) => void;
 }
 
 const splitTags = (value: string) =>
@@ -80,7 +80,7 @@ export function CharacterBulkTagsModal({ open, onClose, selectedIds, onApplied }
         toast.success(t("characters.bulkTags.success", { count: result.updatedIds.length }));
       }
       reset();
-      onApplied();
+      onApplied(result.failedIds);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t("characters.bulkTags.failure"));
     }

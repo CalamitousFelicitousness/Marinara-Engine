@@ -101,8 +101,31 @@ test("character library compares duplicates and bulk tags persist across reload"
     await expect(tagDialog).toBeVisible();
     await tagDialog.getByRole("textbox", { name: "Add tags", exact: true }).fill("keep-after-reload");
     await tagDialog.getByRole("button", { name: "Review changes", exact: true }).click();
+    await page.route(
+      "**/api/characters/bulk-tags",
+      async (route) => {
+        // Save one card for real and return the other as failed, matching a partial server result.
+        const response = await route.fetch({ postData: { ...route.request().postDataJSON(), ids: [createdIds[0]] } });
+        await route.fulfill({ response, json: { ...(await response.json()), failedIds: [createdIds[1]] } });
+      },
+      { times: 1 },
+    );
     await tagDialog.getByRole("button", { name: "Apply to 2 characters", exact: true }).click();
     await expect(tagDialog).toBeHidden();
+    await expect(
+      page
+        .locator(`[data-character-id="${createdIds[1]}"]`)
+        .getByRole("button", { name: "Deselect character", exact: true }),
+    ).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("partial-tag-failure-selection-retained.png") });
+    await page.getByRole("button", { name: "Tags", exact: true }).click();
+    const retryDialog = page.getByRole("dialog", { name: "Edit tags of 1 character" });
+    await retryDialog.getByRole("textbox", { name: "Add tags", exact: true }).fill("keep-after-reload");
+    await retryDialog.getByRole("button", { name: "Review changes", exact: true }).click();
+    const retryRequest = page.waitForRequest((request) => request.url().endsWith("/api/characters/bulk-tags"));
+    await retryDialog.getByRole("button", { name: "Apply to 1 character", exact: true }).click();
+    expect((await retryRequest).postDataJSON().ids).toEqual([createdIds[1]]);
+    await expect(retryDialog).toBeHidden();
     await page.getByPlaceholder("Search characters", { exact: true }).fill("");
 
     for (const id of createdIds) {

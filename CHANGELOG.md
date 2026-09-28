@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Bulk character tag edits keep failed cards selected so you can retry them without selecting successful cards again.
+
 - Windows shutdown regression checks normalize captured server output before matching readiness and shutdown messages, avoiding false timeouts when the redirected log is read in chunks.
 
 - Bulk character tag edits include selected cards hidden by library search or pagination. Failed saves report the affected cards, preserve their tags and version history, and allow the remaining selection to finish.

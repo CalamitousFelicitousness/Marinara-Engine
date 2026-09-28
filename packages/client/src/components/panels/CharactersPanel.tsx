@@ -1830,8 +1830,12 @@ export function CharactersPanel() {
         open={bulkTagsOpen}
         onClose={() => setBulkTagsOpen(false)}
         selectedIds={selectedCharacterIds}
-        onApplied={() => {
+        onApplied={(failedIds) => {
           setBulkTagsOpen(false);
+          if (failedIds.length > 0) {
+            setSelectedCharacterIds(new Set(failedIds));
+            return;
+          }
           exitSelectionMode();
         }}
       />

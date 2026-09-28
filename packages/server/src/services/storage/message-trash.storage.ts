@@ -16,7 +16,14 @@ import {
 import type { DB } from "../../db/connection.js";
 import { encodeShardKey, isLazyUnitTable } from "../../db/file-backed-store.js";
 import { and, desc, eq, gt, inArray, isNull, lte } from "../../db/file-query.js";
-import { chats, memoryChunks, messages, messageSwipes, messageTrash } from "../../db/schema/index.js";
+import {
+  chats,
+  gameStateSnapshots,
+  memoryChunks,
+  messages,
+  messageSwipes,
+  messageTrash,
+} from "../../db/schema/index.js";
 import { logger } from "../../lib/logger.js";
 import { newId, now } from "../../utils/id-generator.js";
 import { createChatsStorage } from "./chats.storage.js";
@@ -122,14 +129,32 @@ export function createMessageTrashStorage(db: DB) {
       await this.purgeExpired(chatId);
       const trashedIds: string[] = [];
       await chatsStorage.removeMessages(uniqueIds, chatId, async (rows) => {
+        if (rows.length === 0) return;
+        // A mode change or import can leave Game state attached to a non-Game chat.
+        // Message-only recovery cannot restore that state, so those turns stay permanent.
+        const gameSnapshots = await db
+          .select({ messageId: gameStateSnapshots.messageId })
+          .from(gameStateSnapshots)
+          .where(
+            and(
+              eq(gameStateSnapshots.chatId, chatId),
+              inArray(
+                gameStateSnapshots.messageId,
+                rows.map((row) => row.id),
+              ),
+            ),
+          );
+        const permanentIds = new Set(gameSnapshots.map((snapshot) => snapshot.messageId));
+        const recoverableRows = rows.filter((row) => !permanentIds.has(row.id));
+        if (recoverableRows.length === 0) return;
         const swipesByMessage = new Map<string, SwipeRow[]>();
-        for (const swipe of await chatsStorage.listSwipesByMessageIds(rows.map((row) => row.id))) {
+        for (const swipe of await chatsStorage.listSwipesByMessageIds(recoverableRows.map((row) => row.id))) {
           const list = swipesByMessage.get(swipe.messageId) ?? [];
           list.push(swipe);
           swipesByMessage.set(swipe.messageId, list);
         }
         const deletedAt = now();
-        const entries = rows.map((row) => ({
+        const entries = recoverableRows.map((row) => ({
           id: newId(),
           chatId,
           messageId: row.id,
@@ -144,7 +169,7 @@ export function createMessageTrashStorage(db: DB) {
           deletedAt,
         }));
         if (entries.length > 0) await db.insert(messageTrash).values(entries);
-        trashedIds.push(...rows.map((row) => row.id));
+        trashedIds.push(...recoverableRows.map((row) => row.id));
       });
       return trashedIds;
     },

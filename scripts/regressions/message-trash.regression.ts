@@ -56,7 +56,7 @@ try {
   closeDatabase = closeDB;
   const { eq } = await import("../../packages/server/src/db/file-query.js");
   const { encodeShardKey } = await import("../../packages/server/src/db/file-backed-store.js");
-  const { chats, memoryChunks, messages, messageSwipes, messageTrash } = await import("../../packages/server/src/db/schema/index.js");
+  const { chats, gameStateSnapshots, memoryChunks, messages, messageSwipes, messageTrash } = await import("../../packages/server/src/db/schema/index.js");
   const { createChatsStorage, withMessageExtraPatchQueue } = await import("../../packages/server/src/services/storage/chats.storage.js");
   const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
   const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
@@ -441,6 +441,42 @@ try {
   assert.deepEqual(gameDelete.json(), { trashed: false, trashedCount: 0 });
   assert.equal(await storage.getMessage(gameMessage.id), null, "Game mode retains its permanent delete behavior");
   assert.equal((await db.select().from(messageTrash).where(eq(messageTrash.chatId, "game-message-trash"))).length, 0);
+
+  // Imported or mode-switched chats can keep Game snapshots after their mode changes.
+  for (const bulk of [false, true]) {
+    const formerGame = await storage.create({ name: `Former Game ${bulk}`, mode: "game", characterIds: [] });
+    assert(formerGame);
+    const gameTurn = await storage.createMessage({ chatId: formerGame.id, role: "assistant", content: "Turn with Game state" } as never);
+    assert(gameTurn);
+    await db.insert(gameStateSnapshots).values({
+      id: `former-game-snapshot-${bulk}`, chatId: formerGame.id, messageId: gameTurn.id, createdAt: timestamp,
+    });
+    await db.update(chats).set({ mode: "conversation" }).where(eq(chats.id, formerGame.id));
+    const plainTurn = bulk
+      ? await storage.createMessage({ chatId: formerGame.id, role: "user", content: "Ordinary conversation turn" } as never)
+      : null;
+    const deleteFormerGame = await app.inject(bulk ? {
+      method: "POST", url: `/api/chats/${formerGame.id}/messages/bulk-delete`,
+      payload: { messageIds: [gameTurn.id, plainTurn!.id] },
+    } : { method: "DELETE", url: `/api/chats/${formerGame.id}/messages/${gameTurn.id}` });
+    assert.equal(deleteFormerGame.statusCode, 200, deleteFormerGame.body);
+    assert.deepEqual(deleteFormerGame.json(), { trashed: bulk, trashedCount: bulk ? 1 : 0 },
+      "Game snapshot rows stay permanent even in a conversation chat");
+    assert.equal(await storage.getMessage(gameTurn.id), null);
+    assert.equal((await db.select().from(gameStateSnapshots).where(eq(gameStateSnapshots.messageId, gameTurn.id))).length, 0,
+      "normal deletion still removes the Game snapshot");
+    const retained = await db.select().from(messageTrash).where(eq(messageTrash.chatId, formerGame.id));
+    assert.deepEqual(retained.map((row) => row.messageId), plainTurn ? [plainTurn.id] : [],
+      "mixed bulk deletion retains only the recoverable conversation turn");
+    if (plainTurn) {
+      assert.equal(await storage.getMessage(plainTurn.id), null);
+      const restoredPlainTurn = await app.inject({
+        method: "POST", url: `/api/chats/${formerGame.id}/trash/restore`, payload: { entryIds: retained.map((row) => row.id) },
+      });
+      assert.equal(restoredPlainTurn.statusCode, 200, restoredPlainTurn.body);
+      assert.deepEqual(restoredPlainTurn.json().restoredMessageIds, [plainTurn.id]);
+    }
+  }
 
   const changedModeChat = await storage.create({ name: "Changed mode recovery", mode: "conversation", characterIds: [] });
   assert(changedModeChat);

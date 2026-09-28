@@ -92,8 +92,8 @@ function parsePlayerStats(raw: unknown): PlayerStats | null {
  * their sheet), and what the Game Master is shown about each. Undefined for a game with no ruleset,
  * one this install cannot honour, or one without an `items` block. `who` is whose change it is: the
  * player's typed-in items follow the ruleset's `freeform` and cannot part with a bound cursed item,
- * and the Game Master's are always allowed until the native switch arrives. A catalog that cannot be
- * read is logged and left out.
+ * and the Game Master's untyped ones follow `native`. A catalog that cannot be read is logged and left
+ * out.
  *
  * The player's sheet is the card named for who the chat plays as (`playerName`, read off the chat's
  * identity when it is not given, as a turn reads it), or the first card when no card has that name,
@@ -160,7 +160,11 @@ export async function loadGameInventoryItemBook(
     (playerKey ? cards.find((card) => normalizeCharacterLookupName(card.name) === playerKey) : undefined) ?? cards[0];
   return rulesetItemBook(definition, entries, {
     layerOptions: Object.fromEntries(resolved.layers.map((layer) => [rulesetLayerOptionKey(layer.id), true])),
-    plain: who === "player" && definition.items?.freeform === "refuse" ? "refuse" : "allow",
+    // The player's typed-in items follow the ruleset's `freeform`; the Game Master's untyped ones follow
+    // `native`, which leaves it the ruleset's items and the ones it invents.
+    plain: (who === "player" ? definition.items?.freeform === "refuse" : definition.items?.native === false)
+      ? "refuse"
+      : "allow",
     actor: who,
     // The items the Game Master has invented in this game, which every change reads like the
     // ruleset's own.
@@ -172,6 +176,17 @@ export async function loadGameInventoryItemBook(
       members: cards,
     },
   });
+}
+
+/**
+ * Whether a game's ruleset turns Game Mode's own items off (`items.native: false`). Then a fight asks
+ * no model what the items do and offers none: they have no fight effect until the ruleset says what
+ * they do. A game whose ruleset cannot be read keeps Game Mode's own.
+ */
+export async function gameRulesetTurnsNativeItemsOff(db: DB, metadata: Record<string, unknown>): Promise<boolean> {
+  if (metadata.gameRuleset == null) return false;
+  const resolved = resolveGameRuleset(metadata, await loadRulesetRegistry(db));
+  return resolved.status === "ok" && resolved.definition.items?.native === false;
 }
 
 /**

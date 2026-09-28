@@ -961,6 +961,135 @@ try {
     assert.ok(CHAT_PRESET_EXCLUDED_METADATA_KEYS.includes("gameInventedItems"));
   }
 
+  // ── The native switch (#6822): a ruleset without Game Mode's own items ──
+  {
+    const ember = JSON.parse(
+      readFileSync(fileURLToPath(new URL("../../docs/examples/rulesets/ember-roads.json", import.meta.url)), "utf8"),
+    ) as Record<string, any>;
+    const closed = { ...ember, id: "ember-native" };
+    closed.items = { ...ember.items, native: false };
+    delete closed.items.carry;
+    for (const family of closed.items.currencies ?? []) delete family.perWeight;
+    await createGameRulesetsStorage(db).put({
+      rulesetId: "local/ember-native",
+      version: closed.version,
+      sourceKind: "local",
+      definition: JSON.stringify(closed),
+    });
+    const pin = { id: "local/ember-native", version: closed.version, packageId: null, options: {} };
+    const connection = (await createConnectionsStorage(db).list())[0]!;
+    const made = await chats.create({
+      name: "No untyped items",
+      mode: "game",
+      characterIds: [],
+      connectionId: connection.id,
+      promptPresetId: null,
+    });
+    assert.ok(made);
+    await chats.patchMetadata(made.id, {
+      enableAgents: false,
+      enableTools: false,
+      gameRuleset: pin,
+      gameInventory: [{ id: "st-rope", name: "Rope", quantity: 1 }],
+    });
+    const stacksOf = async (chatId: string) => {
+      const row = await chats.getById(chatId);
+      const meta = typeof row!.metadata === "string" ? JSON.parse(row!.metadata) : row!.metadata;
+      return normalizeGameInventoryStacks(meta.gameInventory).map(
+        (stack) => `${stack.name}${stack.item ? ` <${stack.item}>` : ""} ${stack.quantity}`,
+      );
+    };
+
+    // The Game Master: a new untyped name is refused; more of what is held, the ruleset's own items and
+    // an item it invents all land.
+    reply = `The pedlar's cart. [inventory: action="add" item="Lamp"] [inventory: action="add" item="Rope"] [inventory: action="add" item="Hand axe"] [inventory: action="add" item="Moon Charm" category="gear" rarity="common"]`;
+    await chats.createMessage({ chatId: made.id, role: "user", content: "I look over the cart." });
+    const turn = await app.inject({
+      method: "POST",
+      url: "/api/generate/",
+      payload: { chatId: made.id, streaming: true },
+    });
+    assert.equal(turn.statusCode, 200, turn.body);
+    assert.deepEqual(
+      readResolvedInventoryTags((await chats.listMessages(made.id)).at(-1)!.content).map(
+        (tag) => `${tag.item} ${tag.ok ? `ok ${tag.count}->${tag.now}` : tag.reason}`,
+      ),
+      ["Lamp not-ruleset-item", "Rope ok 1->2", "Hand axe ok 1->1", "Moon Charm ok 1->1"],
+    );
+    // The player's typed-in items still follow freeform, which keeps plain items.
+    const typed = await app.inject({
+      method: "POST",
+      url: "/api/game/inventory",
+      payload: { chatId: made.id, ops: [{ op: "add", name: "Candle", count: 1 }] },
+    });
+    assert.equal(typed.statusCode, 200, typed.body);
+    assert.deepEqual(await stacksOf(made.id), [
+      "Rope 2",
+      "Hand axe <outfitter/hand-axe> 1",
+      "Moon Charm <invented:moon-charm> 1",
+      "Candle 1",
+    ]);
+    // And the next turn tells the Game Master so.
+    reply = "The road goes on.";
+    await chats.createMessage({ chatId: made.id, role: "user", content: "We walk on." });
+    const next = await app.inject({
+      method: "POST",
+      url: "/api/generate/",
+      payload: { chatId: made.id, streaming: true },
+    });
+    assert.equal(next.statusCode, 200, next.body);
+    assert.match(
+      prompts
+        .at(-1)!
+        .map((message) => message.content)
+        .join("\n"),
+      /This ruleset has no untyped items: an add must name one of its items or invent one of its items as below/,
+    );
+
+    // A new session brings back a plain item only the detailed inventory still names: the switch is
+    // about what the Game Master adds, not about what the party carried.
+    const gameId = "native-switch-sessions";
+    const ended = await chats.create({
+      name: "No untyped items, Session 1",
+      mode: "game",
+      characterIds: [],
+      groupId: gameId,
+    });
+    assert.ok(ended);
+    await chats.patchMetadata(ended.id, {
+      gameId,
+      gameSessionStatus: "concluded",
+      gameSessionNumber: 1,
+      gameRuleset: pin,
+      gameInventory: [],
+    });
+    const last = await chats.createMessage({ chatId: ended.id, role: "assistant", content: "The road ends here." });
+    await createGameStateStorage(db).create({
+      chatId: ended.id,
+      messageId: last.id,
+      swipeIndex: 0,
+      date: null,
+      time: null,
+      location: null,
+      weather: null,
+      temperature: null,
+      presentCharacters: [],
+      recentEvents: [],
+      playerStats: {
+        stats: [],
+        attributes: null,
+        skills: {},
+        inventory: [{ name: "Old Map", description: "", quantity: 1, location: "on_person" }],
+        activeQuests: [],
+        status: "",
+      } as never,
+      personaStats: null,
+    });
+    const carried = await app.inject({ method: "POST", url: "/api/game/session/start", payload: { gameId } });
+    assert.equal(carried.statusCode, 200, carried.body);
+    assert.deepEqual(await stacksOf(carried.json().sessionChat.id), ["Old Map 1"]);
+  }
+
   console.info("game inventory turn regressions passed.");
 } finally {
   ClaudeSubscriptionProvider.prototype.chat = originalChat;

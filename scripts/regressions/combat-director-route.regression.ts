@@ -594,6 +594,63 @@ try {
     assert.equal(spent.statusCode, 200, spent.body);
     assert.deepEqual(JSON.parse((await chats.getById(ringChat.id))!.metadata).gameInventory, bound);
   }
+  // A ruleset that turns Game Mode's own items off (#6822): the fight offers no item and uses none of
+  // what a model guessed, and the inventory stays as it was.
+  {
+    const ember = {
+      ...JSON.parse(readFileSync(new URL("../../docs/examples/rulesets/ember-roads.json", import.meta.url), "utf8")),
+      id: "ember-fight-no-items",
+    };
+    ember.items = { ...ember.items, native: false };
+    await createGameRulesetsStorage(db).put({
+      rulesetId: "local/ember-fight-no-items",
+      version: ember.version,
+      sourceKind: "local",
+      definition: JSON.stringify(ember),
+    });
+    const noItemsChat = await chats.create({ name: "Director without items", mode: "game", characterIds: [] });
+    const noItemsAnchor = await chats.createMessage({
+      chatId: noItemsChat.id,
+      role: "assistant",
+      content: "[state: combat]",
+    });
+    const potions = [{ id: "st-potion", name: "Potion", quantity: 2 }];
+    await chats.patchMetadata(noItemsChat.id, {
+      gameSetupConfig: { combatDirector: true },
+      gameRuleset: { id: "local/ember-fight-no-items", version: ember.version, packageId: null, options: {} },
+      gameInventory: potions,
+    });
+    const started = await post("/combat/start", {
+      ...input,
+      chatId: noItemsChat.id,
+      anchor: noItemsAnchor.id,
+      enemies: [unit("rat", "enemy")],
+    });
+    assert.equal(started.statusCode, 200, started.body);
+    let n: DirectedCombatView = started.json().session;
+    assert.deepEqual(n.inventory, [], "no item is offered");
+    const saved = (await store.getByChatAndMessage(noItemsChat.id, noItemsAnchor.id, 0, COMBAT_DIRECTOR_NAMESPACE))!;
+    assert.deepEqual(JSON.parse(saved.state).itemEffects, [], "nor is a guessed effect kept");
+    const noItemsCmd = (command: DirectedCommand) =>
+      post("/combat/command", {
+        chatId: noItemsChat.id,
+        anchor: noItemsAnchor.id,
+        id: n.id,
+        instanceId: n.instanceId,
+        revision: n.revision,
+        requestId: crypto.randomUUID(),
+        command,
+      });
+    const begun = await noItemsCmd({ type: "begin", unitId: "hero" });
+    assert.equal(begun.statusCode, 200, begun.body);
+    n = begun.json().session;
+    const refusedPotion = await noItemsCmd({
+      type: "tactical",
+      action: { type: "item", unitId: "hero", itemName: "Potion", targetId: "hero" },
+    });
+    assert.equal(refusedPotion.statusCode, 400, refusedPotion.body);
+    assert.deepEqual(JSON.parse((await chats.getById(noItemsChat.id))!.metadata).gameInventory, potions);
+  }
   console.log(
     "Combat director route: authority, idempotency, terrain, atomic item costs, late GM output, restore identity and branch isolation passed.",
   );

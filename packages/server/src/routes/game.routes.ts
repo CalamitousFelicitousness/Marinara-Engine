@@ -362,7 +362,7 @@ import {
   getGameSpotifyErrorStatus,
   playGameSpotifyTrack,
 } from "../services/spotify/game-spotify-music.service.js";
-import { loadGameInventoryItemBook } from "../services/game/game-inventory.service.js";
+import { gameRulesetTurnsNativeItemsOff, loadGameInventoryItemBook } from "../services/game/game-inventory.service.js";
 import {
   readIllustratorAppearance,
   readPreferredCharacterReferenceImage,
@@ -5852,6 +5852,9 @@ async function serializeGameTurnStoryboard(args: {
   };
 }
 
+/** Why an item is refused in a fight of a game whose ruleset turns Game Mode's own items off. */
+const ITEMS_OUT_OF_FIGHTS = "This game's ruleset keeps its items out of fights for now.";
+
 export async function gameRoutes(app: FastifyInstance) {
   registerSequentialGameTasks(app, [
     "/setup",
@@ -7310,7 +7313,13 @@ export async function gameRoutes(app: FastifyInstance) {
       const previousHiddenTrackerFields = parseTrackerHiddenFields(previousState?.hiddenTrackerFields);
       // The ruleset's items, so what comes back from the detailed inventory is stacked as its item allows.
       const carryRules = await loadGameInventoryItemBook(app.db, { metadata: prevMeta }, "game-master");
-      const carriedInventory = carryGameInventory(prevMeta.gameInventory, previousPlayerStats?.inventory, carryRules);
+      // What the party carried comes back whatever the ruleset lets the Game Master add: a plain item
+      // held before `native` was switched off is still held.
+      const carriedInventory = carryGameInventory(
+        prevMeta.gameInventory,
+        previousPlayerStats?.inventory,
+        carryRules && { ...carryRules, plain: "allow" },
+      );
       const {
         gameLastIllustrationTurn: _previousIllustrationTurn,
         gameLastIllustrationSessionNumber: _previousIllustrationSessionNumber,
@@ -9793,6 +9802,13 @@ export async function gameRoutes(app: FastifyInstance) {
     if (!chat) throw new Error("Chat not found");
 
     const meta = parseMeta(chat.metadata);
+    // A ruleset that turns Game Mode's own items off keeps them out of fights: no item does anything in
+    // one until the ruleset says what it does.
+    const usesItem =
+      playerAction?.type === "item" || Object.values(partyActions ?? {}).some((action) => action.type === "item");
+    if (usesItem && (await gameRulesetTurnsNativeItemsOff(app.db, meta))) {
+      return reply.code(400).send({ error: ITEMS_OUT_OF_FIGHTS });
+    }
     const difficulty = normalizeGameDifficulty((meta.gameSetupConfig as Record<string, unknown>)?.difficulty);
     const elementPreset = ((meta.gameSetupConfig as Record<string, unknown>)?.elementPreset as string) ?? "default";
     const result = resolveCombatRound(
@@ -10033,6 +10049,9 @@ export async function gameRoutes(app: FastifyInstance) {
     const chats = createChatsStorage(app.db);
     const chat = await chats.getById(chatId);
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    if (action.type === "item" && (await gameRulesetTurnsNativeItemsOff(app.db, parseMeta(chat.metadata)))) {
+      return reply.status(400).send({ error: ITEMS_OUT_OF_FIGHTS });
+    }
 
     // The schema only validates the envelope; the engine assumes further
     // internal invariants that a hand-crafted round-tripped state could still

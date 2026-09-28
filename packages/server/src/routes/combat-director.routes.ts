@@ -10,7 +10,11 @@ import {
   gameInventoryKeptByCurse,
   normalizeGameInventoryStacks,
 } from "@marinara-engine/shared";
-import { applyGameInventoryChangeHeld, loadGameInventoryItemBook } from "../services/game/game-inventory.service.js";
+import {
+  applyGameInventoryChangeHeld,
+  gameRulesetTurnsNativeItemsOff,
+  loadGameInventoryItemBook,
+} from "../services/game/game-inventory.service.js";
 import { resolveCombatWeather } from "../services/game/weather.service.js";
 import type { FastifyInstance } from "fastify";
 import { randomUUID } from "node:crypto";
@@ -702,7 +706,10 @@ export async function combatDirectorRoutes(
         // One line per item: a fight neither knows nor cares how the player split their stacks. Each is
         // shown under a name no other line has, and spent by the item's own name; its effect is found
         // under that line's name, or the name it was shown by, or its own name.
-        const fightLines = gameInventoryFightLines(normalizeGameInventoryStacks(meta.gameInventory));
+        // A ruleset that turns Game Mode's own items off keeps them out of the fight: none is offered, so
+        // nothing a model guessed can be used, until the ruleset says what they do.
+        const itemsOff = await gameRulesetTurnsNativeItemsOff(app.db, meta);
+        const fightLines = itemsOff ? [] : gameInventoryFightLines(normalizeGameInventoryStacks(meta.gameInventory));
         const state = createCombatDirector({
           ...input,
           inventory: fightLines.map(({ name, quantity, ownName }) => ({
@@ -710,7 +717,8 @@ export async function combatDirectorRoutes(
             quantity,
             ...(ownName ? { ownName } : {}),
           })),
-          itemEffects: gameInventoryFightEffects(fightLines, input.itemEffects),
+          // Nor is what a model guessed for them kept: the ruleset says they do nothing here.
+          itemEffects: itemsOff ? [] : gameInventoryFightEffects(fightLines, input.itemEffects),
           party: input.party as Combatant[],
           // What the fight is RESOLVED by is read below and never stored on the Engine's own units.
           enemies: input.enemies.map(({ creature: _c, tier: _t, proposed: _p, ...unit }) => unit) as Combatant[],

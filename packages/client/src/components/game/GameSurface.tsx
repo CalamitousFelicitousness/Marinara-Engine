@@ -11,6 +11,8 @@ import {
   swapGameInventoryStacks,
   type GameInventoryOp,
   type GameInventoryOpResult,
+  type GameInventoryWear,
+  type RulesetItemBookSheets,
   type GameInventoryStack,
   type PlayerStats,
 } from "@marinara-engine/shared";
@@ -3464,13 +3466,30 @@ function GameSurfaceComponent({
             ? localizeUi("ui.game.gamesurfacecomponent.inventoryWhoLost", { who: update.who, item })
             : localizeUi("ui.game.gamesurfacecomponent.inventoryYouLost", { item });
         }
+        if (
+          update.action === "equip" ||
+          update.action === "unequip" ||
+          update.action === "bind" ||
+          update.action === "unbind"
+        ) {
+          const key = { equip: "Equipped", unequip: "Unequipped", bind: "Bound", unbind: "Unbound" }[update.action];
+          return update.who
+            ? localizeUi(`ui.game.gamesurfacecomponent.inventoryWho${key}`, { who: update.who, item })
+            : localizeUi(`ui.game.gamesurfacecomponent.inventoryYou${key}`, { item });
+        }
         return update.who
           ? localizeUi("ui.game.gamesurfacecomponent.inventoryWhoGained", { who: update.who, item })
           : localizeUi("ui.game.gamesurfacecomponent.inventoryYouGained", { item });
       };
+      // Putting something on or binding it is shown like a gain; nothing is lost by either.
       const notifications = updates.flatMap((update) =>
-        update.ok
-          ? [{ gain: update.action === "add", text: describe(update, inventoryLabel(update.item, update.count)) }]
+        update.ok && update.count > 0
+          ? [
+              {
+                gain: update.action === "add" || update.action === "equip" || update.action === "bind",
+                text: describe(update, inventoryLabel(update.item, update.count)),
+              },
+            ]
           : [],
       );
       if (notifications.length > 0) {
@@ -7625,31 +7644,95 @@ function GameSurfaceComponent({
     notificationTimerRef.current = setTimeout(() => setInventoryNotifications([]), 4000);
   }, []);
 
+  /** What a refused inventory change says, by why it was refused. `who` is the bag a weight was too
+   *  much for: a name, "" for the player's own, or absent when the whole party was asked. */
+  const inventoryRefusal = useCallback(
+    (reason: string | undefined, value1: string, fallbackKey: string, who?: string) => {
+      switch (reason) {
+        case "not-ruleset-item":
+          return localizeUi("ui.game.gamesurfacecomponent.notARulesetItemValue1", { value1 });
+        case "too-heavy":
+          return who === undefined
+            ? localizeUi("ui.game.gamesurfacecomponent.nobodyCanCarryValue1", { value1 })
+            : who
+              ? localizeUi("ui.game.gamesurfacecomponent.whoCannotCarryValue1", { who, value1 })
+              : localizeUi("ui.game.gamesurfacecomponent.youCannotCarryValue1", { value1 });
+        case "cursed":
+          return localizeUi("ui.game.gamesurfacecomponent.cursedValue1", { value1 });
+        case "no-slot":
+          return localizeUi("ui.game.gamesurfacecomponent.noSlotValue1", { value1 });
+        case "not-wearable":
+          return localizeUi("ui.game.gamesurfacecomponent.notWearableValue1", { value1 });
+        case "not-bindable":
+          return localizeUi("ui.game.gamesurfacecomponent.notBindableValue1", { value1 });
+        case "binding-full":
+          return localizeUi("ui.game.gamesurfacecomponent.bindingFullValue1", { value1 });
+        case "missing-stack":
+          return localizeUi("ui.game.gamesurfacecomponent.thatStackIsNoLongerInYourInventory");
+        default:
+          return localizeUi(fallbackKey, { value1 });
+      }
+    },
+    [localizeUi],
+  );
+
+  /** Who additions went to, one line per bag each went into (a ruleset that says what everyone
+   *  carries may have shared them out), and in one message, what nobody could carry. */
+  const announceAdditions = useCallback(
+    (
+      additions: ReadonlyArray<{
+        name: string;
+        result: { count?: number; placed?: Array<{ holder?: string; count: number }>; left?: number };
+      }>,
+      holder?: string,
+    ) => {
+      setInventoryNotifications(
+        additions.flatMap(({ name, result }) =>
+          (result.placed ?? [{ ...(holder ? { holder } : {}), count: result.count ?? 1 }]).map((share) => {
+            const item = inventoryLabel(name, share.count);
+            return {
+              gain: true,
+              text: share.holder
+                ? localizeUi("ui.game.gamesurfacecomponent.inventoryWhoGained", { who: share.holder, item })
+                : localizeUi("ui.game.gamesurfacecomponent.inventoryYouGained", { item }),
+            };
+          }),
+        ),
+      );
+      if (notificationTimerRef.current) clearTimeout(notificationTimerRef.current);
+      notificationTimerRef.current = setTimeout(() => setInventoryNotifications([]), 4000);
+      const left = additions.flatMap(({ name, result }) => (result.left ? [inventoryLabel(name, result.left)] : []));
+      if (left.length > 0) {
+        toast.error(localizeUi("ui.game.gamesurfacecomponent.leftBehindValue1", { value1: left.join(", ") }));
+      }
+    },
+    [inventoryLabel, localizeUi],
+  );
+
   /** An item added by name into one party member's bag (the player's without `holder`): onto that
    *  bag's stack of it, or a new stack. Resolves to the stack's id, so the screen can select it. */
   const handleAddInventoryItem = useCallback(
-    async (addedItemName: string, holder?: string) => {
+    async (addedItemName: string, holder?: string, among?: readonly string[]) => {
       if (!activeChatId) return null;
       try {
-        const [result] = await commitInventory([{ op: "add", name: addedItemName, count: 1, holder }]);
+        const [result] = await commitInventory([
+          among
+            ? { op: "add", name: addedItemName, count: 1, among: [...among] }
+            : { op: "add", name: addedItemName, count: 1, holder },
+        ]);
         if (!result?.ok)
           throw new Error(
-            localizeUi(
-              result?.reason === "not-ruleset-item"
-                ? "ui.game.gamesurfacecomponent.notARulesetItemValue1"
-                : "ui.game.gamesurfacecomponent.failedToAddValue1ToInventory",
-              { value1: addedItemName },
+            inventoryRefusal(
+              result?.reason,
+              addedItemName,
+              "ui.game.gamesurfacecomponent.failedToAddValue1ToInventory",
+              among ? undefined : (holder ?? ""),
             ),
           );
         // Said by the name the stack it went onto is shown by, which may be a nickname.
         const landed = result.id ? inventoryItemsRef.current.find((stack) => stack.id === result.id) : undefined;
         const shownName = landed ? gameInventoryStackLabel(landed) : addedItemName;
-        showInventoryNotification(
-          holder
-            ? localizeUi("ui.game.gamesurfacecomponent.inventoryWhoGained", { who: holder, item: shownName })
-            : localizeUi("ui.game.gamesurfacecomponent.inventoryYouGained", { item: shownName }),
-          true,
-        );
+        announceAdditions([{ name: shownName, result }], holder);
         toast.success(localizeUi("ui.game.gamesurfacecomponent.addedValue1ToInventory", { value1: shownName }));
         return result.id ?? null;
       } catch (error) {
@@ -7661,19 +7744,23 @@ function GameSurfaceComponent({
         return null;
       }
     },
-    [activeChatId, commitInventory, showInventoryNotification, localizeUi],
+    [activeChatId, announceAdditions, commitInventory, inventoryRefusal, localizeUi],
   );
 
   /** Items picked from the ruleset, one of each, into one party member's bag (the player's without
    *  `holder`), in one change. Resolves to the stack the last one went onto, so the screen can select
    *  it. */
   const handleAddRulesetItems = useCallback(
-    async (picks: ReadonlyArray<{ item: string; name: string }>, holder?: string) => {
+    async (picks: ReadonlyArray<{ item: string; name: string }>, holder?: string, among?: readonly string[]) => {
       if (!activeChatId || picks.length === 0) return null;
       const names = picks.map((pick) => pick.name).join(", ");
       try {
         const results = await commitInventory(
-          picks.map((pick) => ({ op: "add" as const, name: pick.name, item: pick.item, count: 1, holder })),
+          picks.map((pick) =>
+            among
+              ? { op: "add" as const, name: pick.name, item: pick.item, count: 1, among: [...among] }
+              : { op: "add" as const, name: pick.name, item: pick.item, count: 1, holder },
+          ),
         );
         const added = picks.filter((_, index) => results[index]?.ok);
         // A pick the ruleset no longer offers (a layer hides it, or its catalog changed since the
@@ -7690,16 +7777,48 @@ function GameSurfaceComponent({
         const failed = failedFor(false);
         if (unoffered)
           toast.error(localizeUi("ui.game.gamesurfacecomponent.noLongerRulesetItemValue1", { value1: unoffered }));
-        if (failed)
-          toast.error(localizeUi("ui.game.gamesurfacecomponent.failedToAddValue1ToInventory", { value1: failed }));
+        if (failed) {
+          // One refusal says why when every other pick went in; several are named together.
+          const refusedAt = results.findIndex((result) => result && !result.ok && result.reason !== "not-ruleset-item");
+          const only = results.filter((result) => result && !result.ok && result.reason !== "not-ruleset-item");
+          const refused = results[refusedAt];
+          toast.error(
+            only.length === 1 && refused && !refused.ok
+              ? inventoryRefusal(
+                  refused.reason,
+                  failed,
+                  "ui.game.gamesurfacecomponent.failedToAddValue1ToInventory",
+                  among ? undefined : (holder ?? ""),
+                )
+              : localizeUi("ui.game.gamesurfacecomponent.failedToAddValue1ToInventory", { value1: failed }),
+          );
+        }
         if (added.length === 0) return null;
         const shown = added.map((pick) => pick.name).join(", ");
-        showInventoryNotification(
-          holder
-            ? localizeUi("ui.game.gamesurfacecomponent.inventoryWhoGained", { who: holder, item: shown })
-            : localizeUi("ui.game.gamesurfacecomponent.inventoryYouGained", { item: shown }),
-          true,
-        );
+        // Each pick said where it went, when the party shared them out.
+        const landed = picks.flatMap((pick, index) => {
+          const result = results[index];
+          return result?.ok ? [{ pick, result }] : [];
+        });
+        if (
+          landed.some(
+            ({ result }) =>
+              result.placed &&
+              result.placed.some((share) => gameInventoryBagKey(share.holder) !== gameInventoryBagKey(holder)),
+          )
+        ) {
+          announceAdditions(
+            landed.map(({ pick, result }) => ({ name: pick.name, result })),
+            holder,
+          );
+        } else {
+          showInventoryNotification(
+            holder
+              ? localizeUi("ui.game.gamesurfacecomponent.inventoryWhoGained", { who: holder, item: shown })
+              : localizeUi("ui.game.gamesurfacecomponent.inventoryYouGained", { item: shown }),
+            true,
+          );
+        }
         toast.success(localizeUi("ui.game.gamesurfacecomponent.addedValue1ToInventory", { value1: shown }));
         const last = [...results].reverse().find((result) => result?.ok);
         return last?.ok ? (last.id ?? null) : null;
@@ -7712,7 +7831,44 @@ function GameSurfaceComponent({
         return null;
       }
     },
-    [activeChatId, commitInventory, showInventoryNotification, localizeUi],
+    [activeChatId, announceAdditions, commitInventory, inventoryRefusal, showInventoryNotification, localizeUi],
+  );
+
+  /** One stack put on or taken off, bound or unbound, by whoever carries it. Resolves to the stack it
+   *  is in afterwards, which is a new one when one item of a larger stack was taken into its own. */
+  const handleWearInventoryStack = useCallback(
+    async (stackId: string, wear: GameInventoryWear) => {
+      if (!activeChatId) return null;
+      const stack = inventoryItemsRef.current.find((entry) => entry.id === stackId);
+      if (!stack) {
+        toast.error(localizeUi("ui.game.gamesurfacecomponent.thatStackIsNoLongerInYourInventory"));
+        return null;
+      }
+      try {
+        const [result] = await commitInventory([{ op: wear, id: stackId }]);
+        if (!result?.ok) {
+          toast.error(
+            inventoryRefusal(
+              result?.reason,
+              gameInventoryStackLabel(stack),
+              "ui.game.gamesurfacecomponent.failedToChangeValue1",
+            ),
+          );
+          return null;
+        }
+        return result.id ?? stackId;
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : localizeUi("ui.game.gamesurfacecomponent.failedToChangeValue1", {
+                value1: gameInventoryStackLabel(stack),
+              }),
+        );
+        return null;
+      }
+    },
+    [activeChatId, commitInventory, inventoryRefusal, localizeUi],
   );
 
   /** One stack set to a count: the +1 and -1 buttons, and whatever the player typed. Zero removes it. */
@@ -7730,11 +7886,12 @@ function GameSurfaceComponent({
         const [result] = await commitInventory([{ op: "set", id: stackId, quantity }]);
         if (!result?.ok) {
           toast.error(
-            result?.reason === "refused"
-              ? localizeUi("ui.game.gamesurfacecomponent.failedToChangeValue1", {
-                  value1: gameInventoryStackLabel(stack),
-                })
-              : localizeUi("ui.game.gamesurfacecomponent.thatStackIsNoLongerInYourInventory"),
+            inventoryRefusal(
+              result?.reason,
+              gameInventoryStackLabel(stack),
+              "ui.game.gamesurfacecomponent.failedToChangeValue1",
+              stack.holder ?? "",
+            ),
           );
           return;
         }
@@ -7818,6 +7975,16 @@ function GameSurfaceComponent({
       try {
         const [result] = await commitInventory([{ op: "merge", from: fromId, into: intoId }]);
         if (result?.ok) toast.success(localizeUi("ui.game.gamesurfacecomponent.mergedValue1", { value1: into.name }));
+        else {
+          toast.error(
+            inventoryRefusal(
+              result?.reason,
+              into.name,
+              "ui.game.gamesurfacecomponent.failedToMergeValue1",
+              into.holder ?? "",
+            ),
+          );
+        }
       } catch (error) {
         toast.error(
           error instanceof Error
@@ -7826,7 +7993,7 @@ function GameSurfaceComponent({
         );
       }
     },
-    [activeChatId, commitInventory, localizeUi],
+    [activeChatId, commitInventory, inventoryRefusal, localizeUi],
   );
 
   /** Some or all of one stack handed to another party member (the player without `to`). Resolves to
@@ -7845,7 +8012,12 @@ function GameSurfaceComponent({
         ]);
         if (!result?.ok) {
           toast.error(
-            localizeUi("ui.game.gamesurfacecomponent.failedToGiveValue1", { value1: gameInventoryStackLabel(stack) }),
+            inventoryRefusal(
+              result?.reason,
+              gameInventoryStackLabel(stack),
+              "ui.game.gamesurfacecomponent.failedToGiveValue1",
+              to ?? "",
+            ),
           );
           return null;
         }
@@ -8502,7 +8674,43 @@ function GameSurfaceComponent({
   // block, never reaches any of this.
   const gameRuleset = useGameRuleset(chatMeta);
   // The ruleset's items, which the inventory shows and offers; undefined without an items block.
-  const inventoryItemBook = useRulesetItemBook(gameRuleset);
+  // The party's sheets, which what each character carries and binds is read off, as the server reads
+  // them: the player's is the card named for who the chat plays as (the first card when no card has
+  // that name), the rest by the name their bag has, and a card with no readable sheet reads a blank one.
+  const inventoryPlayerName = partyMembers.find((member) => member.id.startsWith("persona:"))?.name;
+  const inventorySheets = useMemo<RulesetItemBookSheets | undefined>(() => {
+    if (gameRuleset.status !== "ok" || !gameRuleset.definition.items) return undefined;
+    const cards = (Array.isArray(chatMeta.gameCharacterCards) ? chatMeta.gameCharacterCards : []) as Array<
+      Record<string, unknown>
+    >;
+    const named = cards.flatMap((card) => {
+      const name = typeof card.name === "string" ? card.name.trim() : "";
+      return name ? [{ name, card }] : [];
+    });
+    const playerKey = inventoryPlayerName ? gameInventoryBagKey(inventoryPlayerName) : "";
+    const player =
+      (playerKey ? named.find((entry) => gameInventoryBagKey(entry.name) === playerKey) : undefined) ?? named[0];
+    const buildOf = (card: Record<string, unknown>) => {
+      const parsed = rulesetSheetEnvelopeSchema.safeParse(card.rulesetSheet);
+      return parsed.success ? parsed.data.build : undefined;
+    };
+    const playerBuild = player ? buildOf(player.card) : undefined;
+    return {
+      ...(playerBuild ? { player: playerBuild } : {}),
+      // Every card by its name, as the server keeps them: the first card read for the player may also
+      // be a companion's own.
+      members: named.flatMap((entry) => {
+        const build = buildOf(entry.card);
+        return build ? [{ name: entry.name, build }] : [];
+      }),
+    };
+  }, [chatMeta.gameCharacterCards, gameRuleset, inventoryPlayerName]);
+  const inventoryItemBook = useRulesetItemBook(gameRuleset, inventorySheets);
+  // Who an item added in the shared view may go to, in order: the player, then the party.
+  const inventoryPlaceAmong = useMemo(
+    () => ["", ...partyMembers.filter((member) => !member.id.startsWith("persona:")).map((member) => member.name)],
+    [partyMembers],
+  );
   /** What each seeded member started this battle with, keyed the way live state is. Null while this
    *  session has not seeded a battle, which is what a battle restored after a reload looks like. */
   const rulesetBattleSeedsRef = useRef<RulesetCombatSeeds | null>(null);
@@ -13440,6 +13648,8 @@ function GameSurfaceComponent({
                 itemBook={inventoryItemBook}
                 rulesetDefinition={gameRuleset.status === "ok" ? gameRuleset.definition : undefined}
                 onAddRulesetItems={handleAddRulesetItems}
+                placeAmong={inventoryPlaceAmong}
+                onWearItem={handleWearInventoryStack}
                 onRenameItem={handleRenameInventoryItem}
                 onSetItemQuantity={handleSetInventoryStackQuantity}
                 onSplitItem={handleSplitInventoryStack}

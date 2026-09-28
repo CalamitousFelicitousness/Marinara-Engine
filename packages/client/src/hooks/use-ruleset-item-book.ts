@@ -8,13 +8,18 @@ import {
   rulesetItemCatalogIds,
   type RulesetCatalogEntry,
   type RulesetItemBook,
+  type RulesetItemBookSheets,
 } from "@marinara-engine/shared";
 import { rulesetCatalogQuery } from "./use-capability-packages";
 import type { ResolvedGameRulesetClient } from "./use-game-ruleset";
 
 /** The book for the player's own changes: undefined while the game has no ruleset with an `items`
- *  block. A catalog still loading, or one that failed, is simply not in it yet. */
-export function useRulesetItemBook(ruleset: ResolvedGameRulesetClient): RulesetItemBook | undefined {
+ *  block. A catalog still loading, or one that failed, is simply not in it yet. `sheets` are the
+ *  party's, which what each character carries and binds is read off; keep the object stable. */
+export function useRulesetItemBook(
+  ruleset: ResolvedGameRulesetClient,
+  sheets?: RulesetItemBookSheets,
+): RulesetItemBook | undefined {
   const definition = ruleset.status === "ok" && ruleset.definition.items ? ruleset.definition : undefined;
   const layerOptions = ruleset.status === "ok" ? ruleset.layerOptions : undefined;
   const catalogIds = useMemo(() => (definition ? rulesetItemCatalogIds(definition) : []), [definition]);
@@ -40,8 +45,10 @@ export function useRulesetItemBook(ruleset: ResolvedGameRulesetClient): RulesetI
         ? rulesetItemBook(definition, entries, {
             layerOptions,
             plain: definition.items?.freeform === "refuse" ? "refuse" : "allow",
+            actor: "player",
+            ...(sheets ? { sheets } : {}),
           })
         : undefined,
-    [definition, entries, layerOptions],
+    [definition, entries, layerOptions, sheets],
   );
 }

@@ -17,6 +17,7 @@ const SERVER_SWITCHES: ReadonlyArray<FeatureSwitchName> = [
   "stableLorebookGroupPicks",
   "providerRetry",
   "usageAndActivationStats",
+  "messageTrash",
 ];
 
 /**

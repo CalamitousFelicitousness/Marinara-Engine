@@ -174,6 +174,8 @@ export * from "./utils/game-art-style.js";
 export * from "./utils/thinking-tags.js";
 export * from "./utils/rpg-stats.js";
 export * from "./utils/lorebook-folder-tree.js";
+export * from "./utils/character-duplicates.js";
+export * from "./utils/character-tag-edits.js";
 export * from "./utils/text-matching.js";
 export * from "./utils/chat-search-query.js";
 export * from "./utils/chat-stats.js";
@@ -217,3 +219,4 @@ export * from "./features/ruleset-combat/index.js";
 export * from "./constants/request-timeouts.js";
 
 export * from "./utils/game-narration-text.js";
+export * from "./utils/message-marks.js";

@@ -177,6 +177,8 @@ import {
   refuseGameInventoryTags,
   replaceTrailingInventoryTags,
   gameInventoryTotals,
+  gameInventoryBagKey,
+  gameInventoryBearerStatus,
   normalizeGameInventoryStacks,
   rulesetItemPromptFacts,
   type RoleplayCommandActivity,
@@ -564,7 +566,7 @@ import {
 } from "../services/generation/director-secret-plot-runtime.js";
 import { applyPromptPatchOperations } from "../services/generation/prompt-patch-runtime.js";
 import { resolveGenerationProviderRuntime } from "../services/generation/provider-generation-runtime.js";
-import { supportsNativeToolCalls } from "@marinara-engine/shared";
+import { applyContextMessageLimitWithPins, supportsNativeToolCalls } from "@marinara-engine/shared";
 import { planGameToolCalls } from "../services/generation/game-tool-planning.js";
 import {
   countProfessorMariCommands,
@@ -1774,7 +1776,7 @@ export async function generateRoutes(app: FastifyInstance) {
         contextMessageLimit > 0 &&
         chatMessages.length > contextMessageLimit
       ) {
-        chatMessages = chatMessages.slice(-contextMessageLimit);
+        chatMessages = applyContextMessageLimitWithPins(chatMessages, contextMessageLimit);
       }
       const pastReasoning = collectPastReasoningMetadata(
         chatMessages,
@@ -4470,8 +4472,21 @@ export async function generateRoutes(app: FastifyInstance) {
             pinnedGameRuleset?.status === "ok" && promptInventoryStacks.some((stack) => stack.item)
               ? await loadGameInventoryItemBook(
                   app.db,
-                  { metadata: chatMeta, resolved: pinnedGameRuleset },
+                  { metadata: chatMeta, resolved: pinnedGameRuleset, playerName: personaName || null },
                   "game-master",
+                )
+              : undefined;
+          // What each character carries, binds and wears against what they can, when the ruleset says.
+          const promptBearers =
+            promptItemBook?.bearer || promptItemBook?.slots
+              ? Object.fromEntries(
+                  [
+                    undefined,
+                    ...new Set(promptInventoryStacks.flatMap((stack) => (stack.holder ? [stack.holder] : []))),
+                  ].map((holder) => [
+                    gameInventoryBagKey(holder),
+                    gameInventoryBearerStatus(promptInventoryStacks, holder, promptItemBook),
+                  ]),
                 )
               : undefined;
           const promptItemFacts = promptItemBook
@@ -4548,6 +4563,7 @@ export async function generateRoutes(app: FastifyInstance) {
               })(),
               partyInventory: gameInventoryBags(promptInventoryStacks),
               ...(promptItemFacts ? { inventoryItemFacts: promptItemFacts } : {}),
+              ...(promptBearers ? { inventoryBearers: promptBearers } : {}),
             }),
           );
           finalMessages.push({ role: "user" as const, content: formatReminder });
@@ -9171,7 +9187,7 @@ export async function generateRoutes(app: FastifyInstance) {
               const rules = tellsInventory
                 ? await loadGameInventoryItemBook(
                     app.db,
-                    { metadata: currentMeta, resolved: turnGameRuleset },
+                    { metadata: currentMeta, resolved: turnGameRuleset, playerName: personaName || null },
                     "game-master",
                   )
                 : undefined;

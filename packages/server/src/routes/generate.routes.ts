@@ -173,6 +173,7 @@ import {
   gameInventoryBags,
   gameInventoryTellingStart,
   readGameInventoryTurn,
+  rulesetInventedItemsHeld,
   recordGameInventoryTelling,
   refuseGameInventoryTags,
   replaceTrailingInventoryTags,
@@ -9567,18 +9568,32 @@ export async function generateRoutes(app: FastifyInstance) {
                   const outcome = pending.tellsInventory
                     ? applyGameInventoryTags(pending.requested, plan.start, pending.party, undefined, pending.rules)
                     : { content: pending.requested, stacks: plan.start, journal: [] };
+                  const turnRecord = recordGameInventoryTelling(
+                    pending.messageId ?? savedMsg.id,
+                    plan.before,
+                    plan.swipes,
+                    swipeIndex,
+                    outcome.stacks,
+                  );
                   return {
                     stacks: outcome.stacks,
                     journal: outcome.journal,
-                    // What this telling left, remembered in the same write as the stacks.
+                    // What this telling left, remembered in the same write as the stacks, with any
+                    // item its tags invented, so a stack never names an item the game does not keep.
+                    // Only what the stacks or a remembered telling still hold is kept: a switch back
+                    // to another telling finds the item it holds.
                     metadata: {
-                      gameInventoryTurn: recordGameInventoryTelling(
-                        pending.messageId ?? savedMsg.id,
-                        plan.before,
-                        plan.swipes,
-                        swipeIndex,
-                        outcome.stacks,
-                      ),
+                      gameInventoryTurn: turnRecord,
+                      ...(pending.rules?.inventedChanged()
+                        ? {
+                            gameInventedItems: rulesetInventedItemsHeld(
+                              pending.rules.inventedItems(),
+                              outcome.stacks,
+                              turnRecord.before,
+                              ...Object.values(turnRecord.swipes),
+                            ),
+                          }
+                        : {}),
                     },
                     value: { content: outcome.content, before: stacks, plan },
                   };

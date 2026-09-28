@@ -7933,7 +7933,7 @@ function GameSurfaceComponent({
         );
       }
     },
-    [activeChatId, commitInventory, showInventoryNotification, inventoryLabel, localizeUi],
+    [activeChatId, commitInventory, showInventoryNotification, inventoryLabel, inventoryRefusal, localizeUi],
   );
 
   /** Part of a stack into a new stack beside it. Nothing about the item changes, only how it is piled. */
@@ -8037,7 +8037,7 @@ function GameSurfaceComponent({
         return null;
       }
     },
-    [activeChatId, commitInventory, inventoryLabel, localizeUi],
+    [activeChatId, commitInventory, inventoryLabel, inventoryRefusal, localizeUi],
   );
 
   /** A fight used one of an item: taken by name, the player's own bag first, since a fight sees one
@@ -8705,7 +8705,7 @@ function GameSurfaceComponent({
       }),
     };
   }, [chatMeta.gameCharacterCards, gameRuleset, inventoryPlayerName]);
-  const inventoryItemBook = useRulesetItemBook(gameRuleset, inventorySheets);
+  const inventoryItemBook = useRulesetItemBook(gameRuleset, inventorySheets, chatMeta.gameInventedItems);
   // Who an item added in the shared view may go to, in order: the player, then the party.
   const inventoryPlaceAmong = useMemo(
     () => ["", ...partyMembers.filter((member) => !member.id.startsWith("persona:")).map((member) => member.name)],

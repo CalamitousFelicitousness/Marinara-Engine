@@ -469,7 +469,12 @@ const capabilityPackageManifestBaseSchema = z
 // 1.50: Professor Mari actions. A package holding the `mari-actions` permission may register
 //        `api.registerService("mari-actions:<package-id>", { list, run })`, and Professor Mari's
 //        `package_service` tool can list and run those actions. Requires the `mari-actions` permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 50 } as const);
+// 1.51: items the Game Master invents. A ruleset's `items` block may carry `rarityCaps` (the largest
+//        value of each number stat an invented item of a rarity may give) and `propose` (false forbids
+//        invention). Not a soft seam, for the same reason as 1.20 through 1.49: an Engine that cannot
+//        read these refuses the whole ruleset file, so a package that ships either declares 1.51. No
+//        permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 51 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

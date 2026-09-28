@@ -11,6 +11,7 @@ import {
   gameInventoryForTelling,
   normalizeGameInventoryStacks,
   readGameInventoryTurn,
+  readRulesetInventedItems,
   rulesetItemBook,
   rulesetLayerOptionKey,
   type GameInventoryJournalEntry,
@@ -161,6 +162,9 @@ export async function loadGameInventoryItemBook(
     layerOptions: Object.fromEntries(resolved.layers.map((layer) => [rulesetLayerOptionKey(layer.id), true])),
     plain: who === "player" && definition.items?.freeform === "refuse" ? "refuse" : "allow",
     actor: who,
+    // The items the Game Master has invented in this game, which every change reads like the
+    // ruleset's own.
+    invented: readRulesetInventedItems(definition, metadata.gameInventedItems),
     sheets: {
       ...(player ? { player: player.build } : {}),
       // Every card by its name, the player's too: a bag is found by its holder's name, and the first

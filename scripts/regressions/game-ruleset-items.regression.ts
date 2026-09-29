@@ -87,6 +87,11 @@ try {
   };
   const itemCatalog = (doc: Record<string, any>) =>
     doc.catalogs.find((catalog: { holds?: string }) => catalog.holds === "items");
+  /** The example less its 1.52 item read on Guard. */
+  const withoutItemReads = (doc: Record<string, any>) => {
+    const guard = doc.sheet.derived.find((entry: { id: string }) => entry.id === "guard");
+    guard.of = guard.of.filter((ref: { itemStat?: unknown }) => ref.itemStat === undefined);
+  };
   const itemEntry = (doc: Record<string, any>, id: string) =>
     itemCatalog(doc).entries.find((entry: { id: string }) => entry.id === id);
   /** The file is refused, and one of its issues matches. */
@@ -311,6 +316,7 @@ try {
       variant(emberText, (doc) => {
         delete doc.items;
         doc.catalogs = doc.catalogs.filter((catalog: { holds?: string }) => catalog.holds !== "items");
+        withoutItemReads(doc);
       }),
       "the example without items",
     );
@@ -550,10 +556,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    // The 1.49 keys alone: the example's rarity caps are 1.51's and have a lane of their own.
+    // The 1.49 keys alone: the example's rarity caps are 1.51's and its item read on Guard 1.52's,
+    // and each has a lane of its own.
     const older = (text: string, edit: (doc: Record<string, any>) => void = () => {}) =>
       variant(text, (doc) => {
         delete doc.items?.rarityCaps;
+        withoutItemReads(doc);
         edit(doc);
       });
     const itemsIssue = /A ruleset that describes items requires schemaVersion 2 and capabilityApi 1\.49 or newer/;

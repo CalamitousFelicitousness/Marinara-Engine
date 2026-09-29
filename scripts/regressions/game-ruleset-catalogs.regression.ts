@@ -58,9 +58,13 @@ function withoutSheetCreatures(doc: Record<string, any>): void {
  *  case about catalogs is not answered by the gate that came after them. */
 function withoutLaterGates(doc: Record<string, any>): void {
   delete doc.layers;
-  // 1.49's items block, with the catalog written in it.
+  // 1.49's items block, with the catalog written in it, and 1.52's reads of the items held.
   delete doc.items;
   doc.catalogs = (doc.catalogs ?? []).filter((catalog: Record<string, any>) => catalog.holds !== "items");
+  for (const entry of doc.sheet?.derived ?? []) {
+    if (Array.isArray(entry.of))
+      entry.of = entry.of.filter((ref: { itemStat?: unknown }) => ref.itemStat === undefined);
+  }
   // The 1.37 sheet keys: a track always shown and a summary list's columns.
   for (const track of doc.sheet?.live?.tracks ?? []) delete track.alwaysShow;
   for (const list of doc.gm?.sheetSummary?.lists ?? []) delete list.columns;
@@ -499,13 +503,14 @@ const installedPackages = packages.map((fixture) => {
   ];
   const manifest = {
     schemaVersion: 2,
-    // 1.49, because the example ruleset carries the combat bridge's battle block, a scaled catalog
+    // 1.52, because the example ruleset carries the combat bridge's battle block, a scaled catalog
     // row, a layer, a combat block, catalog mechanics a fight reads, a catalog of creatures, the
     // keys that give that fight a board, the ones that say what one turn of it can do, a creature
     // written in the ruleset's own terms, a track always shown, a summary list's columns, a
     // modifier off the sheet, a list added up, a track of numbered boxes, an untrained rule, a live
-    // state, contests, conditions that change numbers, and items with rarity caps.
-    capabilityApi: { major: 1, minor: 51 },
+    // state, contests, conditions that change numbers, items with rarity caps, and a Guard that
+    // reads the armor worn.
+    capabilityApi: { major: 1, minor: 52 },
     builtAgainst: { engineVersion: "2.4.6", engineCommit: "0".repeat(40) },
     id: packageId,
     name: fixture.id,

@@ -474,7 +474,12 @@ const capabilityPackageManifestBaseSchema = z
 //        invention). Not a soft seam, for the same reason as 1.20 through 1.49: an Engine that cannot
 //        read these refuses the whole ruleset file, so a package that ships either declares 1.51. No
 //        permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 51 } as const);
+// 1.52: a value may read the items someone holds (`itemStat`: a stat over their worn, carried or
+//        all items, by sum, highest, lowest or count, optionally only one slot, category or tag).
+//        Not a soft seam, for the same reason as 1.20 through 1.51: an Engine that cannot read it
+//        refuses the whole ruleset or catalog file, so a package that ships one declares 1.52. No
+//        permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 52 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

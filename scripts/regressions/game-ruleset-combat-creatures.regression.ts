@@ -84,6 +84,9 @@ const emberText = (() => {
   // And 1.43's contests and the checks they read.
   delete doc.combat.checks;
   delete doc.combat.contests;
+  // And 1.52's item read on Guard, which has no items to read without the block.
+  const guard = doc.sheet.derived.find((entry: { id: string }) => entry.id === "guard");
+  guard.of = guard.of.filter((ref: { itemStat?: unknown }) => ref.itemStat === undefined);
   // And 1.49's items block, with the catalog written in it.
   delete doc.items;
   doc.catalogs = doc.catalogs.filter((catalog: { holds?: string }) => catalog.holds !== "items");

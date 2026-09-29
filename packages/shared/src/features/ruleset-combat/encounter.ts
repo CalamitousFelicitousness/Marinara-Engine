@@ -35,6 +35,7 @@ import {
   resolveRulesetValueRef,
   rulesetCheckModifier,
   type EvaluatedRulesetSheet,
+  type RulesetSheetItem,
 } from "../rulesets/sheet-math.js";
 import { findRulesetCreatureEntry, isRulesetPlainStatBlock, rulesetCreatureBlock } from "./creatures.js";
 import { parseRulesetCombatDice, rollRulesetDice, rulesetCombatRoller, sumOf } from "./dice.js";
@@ -918,12 +919,14 @@ function sheetCombatant(
     live: RulesetLiveState;
     catalogs: RulesetCatalogEntriesById;
     perCell: number | undefined;
+    items?: ReadonlyArray<RulesetSheetItem>;
   },
 ): RulesetCombatant {
   const { build, perCell } = input;
   // Against the fighter's live state as the fight found it, so a value that reads a track or a pool
-  // (a speed an injury slows) is the one this fight uses.
-  const evaluated = evaluateRulesetSheetLive(definition, build, input.live);
+  // (a speed an injury slows) is the one this fight uses; and against what they hold, for a value
+  // that reads their items (a defense their armor gives).
+  const evaluated = evaluateRulesetSheetLive(definition, build, input.live, input.items);
   const catalogs = narrowCatalogs(build, input.catalogs);
   const modifier = combat.initiative.modifier
     ? resolveRulesetValueRef(definition, build, combat.initiative.modifier, evaluated)
@@ -1007,7 +1010,7 @@ function sheetCombatant(
     ...(soak ? { soak } : {}),
     ...(limits ? { limits } : {}),
     speed: combat.economy.movement ? resolveRulesetValueRef(definition, build, combat.economy.movement, evaluated) : 0,
-    sheet: { build, live: input.live, catalogs },
+    sheet: { build, live: input.live, catalogs, ...(input.items ? { items: input.items } : {}) },
   };
 }
 
@@ -1297,6 +1300,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
       live: readStoredLive(entry.live),
       catalogs: entry.catalogs ?? {},
       perCell,
+      ...(entry.items ? { items: entry.items } : {}),
     });
     // A member who walked in at zero is already down, which is the honest reading of their sheet.
     const health = rulesetCombatHealth(definition, combat, combatant);
@@ -1405,7 +1409,12 @@ export function rulesetInitiativeModifierNow(
   if (!combatant.sheet) return combatant.initiativeModifier;
   const ref = combat.initiative.pool ?? combat.initiative.modifier;
   if (!ref) return 0;
-  const evaluated = evaluateRulesetSheetLive(definition, combatant.sheet.build, combatant.sheet.live);
+  const evaluated = evaluateRulesetSheetLive(
+    definition,
+    combatant.sheet.build,
+    combatant.sheet.live,
+    combatant.sheet.items,
+  );
   return resolveRulesetValueRef(definition, combatant.sheet.build, ref, evaluated);
 }
 

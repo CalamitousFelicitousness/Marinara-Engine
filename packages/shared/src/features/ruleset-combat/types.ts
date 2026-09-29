@@ -6,6 +6,7 @@
 
 import type { RulesetCatalogEntriesById, RulesetSheetBuild } from "../../schemas/ruleset.schema.js";
 import type { RulesetLiveState } from "../rulesets/live-state.js";
+import type { RulesetSheetItem } from "../rulesets/sheet-math.js";
 import type { TacticalBattlefieldProvenance, TacticalGrid } from "../tactical-combat/types.js";
 
 /** A die roller: one call, one die, a face from 1 to `sides`. Every random number a fight needs
@@ -255,6 +256,8 @@ export type RulesetCombatantInput =
       live?: unknown;
       /** The catalogs this member's own rows came from, so the fight knows what an ability costs. */
       catalogs?: RulesetCatalogEntriesById;
+      /** The items they hold as the fight starts, which an `itemStat` on their sheet reads. */
+      items?: ReadonlyArray<RulesetSheetItem>;
     }
   | { id: string; name: string; side: "enemy"; block: RulesetStatBlock }
   /** An opponent out of a bestiary, looked up in the catalogs the encounter was handed. */
@@ -436,7 +439,13 @@ export interface RulesetCombatant {
   limits?: Record<string, { max: number; per: "turn" | "round"; spent: number }>;
   speed: number;
   /** A party member's sheet, which is where their health and conditions really live. */
-  sheet?: { build: RulesetSheetBuild; live: RulesetLiveState; catalogs: RulesetCatalogEntriesById };
+  sheet?: {
+    build: RulesetSheetBuild;
+    live: RulesetLiveState;
+    catalogs: RulesetCatalogEntriesById;
+    /** The items they held as the fight started. */
+    items?: ReadonlyArray<RulesetSheetItem>;
+  };
   /** An opponent's block, and the health the encounter keeps for it. */
   block?: RulesetStatBlock;
   health?: { value: number; max: number; temp: number };

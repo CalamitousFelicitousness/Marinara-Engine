@@ -840,6 +840,19 @@ function rulesetCarriesInventedItem151Keys(ruleset: { items?: unknown } | undefi
   return items?.rarityCaps !== undefined || items?.propose !== undefined;
 }
 
+const ITEM_STAT_ISSUE =
+  "A ruleset whose values read the items someone holds requires schemaVersion 2 and capabilityApi 1.52 or newer";
+
+/** An `itemStat` reference, which is 1.52. Its name is camelCase, which no sheet id can be, so
+ *  walking the whole document finds exactly it (and a catalog file is walked the same way). */
+function carriesItemStat152(value: unknown, depth = 0): boolean {
+  if (!value || typeof value !== "object" || depth > 64) return false;
+  if (Array.isArray(value)) return value.some((entry) => carriesItemStat152(entry, depth + 1));
+  const record = value as Record<string, unknown>;
+  if (record.itemStat !== undefined) return true;
+  return Object.values(record).some((entry) => carriesItemStat152(entry, depth + 1));
+}
+
 /** An item in place of rows or a creature, which is 1.49: a new key on the strict entry, read
  *  structurally for the same reason the others are. */
 function entriesCarryItems(entries: unknown): boolean {
@@ -1167,6 +1180,15 @@ export function getCapabilityPackageInstallIssue(
   if (!declaresApi(49) && ruleset?.items !== undefined) return ITEMS_ISSUE;
   // What the Game Master may invent, which is 1.51's. Same file, same reason.
   if (!declaresApi(51) && rulesetCarriesInventedItem151Keys(ruleset)) return INVENTED_ITEMS_ISSUE;
+  // Values that read the items someone holds, which are 1.52's. Same file (and the same catalog
+  // files), same reason.
+  if (
+    !declaresApi(52) &&
+    (carriesItemStat152(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesItemStat152(document)))
+  ) {
+    return ITEM_STAT_ISSUE;
+  }
   // Initiative thrown as a pool, and a number attacks move, which are 1.48's. Same file, same reason.
   if (!declaresApi(48) && rulesetCarriesMovingInitiative148Keys(ruleset)) return MOVING_INITIATIVE_ISSUE;
   // A fight thrown in pools, and what either kind may now throw every round or cap per turn, which

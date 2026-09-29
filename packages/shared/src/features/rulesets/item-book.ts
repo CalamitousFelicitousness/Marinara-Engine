@@ -16,7 +16,9 @@ import {
 } from "../../schemas/ruleset.schema.js";
 import { normalizeCharacterLookupName } from "../../utils/character-lookup-name.js";
 import {
+  gameInventoryBagKey,
   gameInventoryNameKey,
+  type GameInventoryStack,
   type GameInventoryBearer,
   type GameInventoryItemRules,
   type GameInventoryRulesetItem,
@@ -30,7 +32,12 @@ import {
   type RulesetInventedItem,
 } from "./invented-items.js";
 import { catalogEntryHiddenByLayers, type RulesetLayerOptions } from "./layers.js";
-import { defaultRulesetSheetBuild, evaluateRulesetSheet, resolveRulesetValueRef } from "./sheet-math.js";
+import {
+  defaultRulesetSheetBuild,
+  evaluateRulesetSheet,
+  resolveRulesetValueRef,
+  type RulesetSheetItem,
+} from "./sheet-math.js";
 
 /** One stat an item gives, in the ruleset's words. `text` is absent for a yes-or-no stat that is
  *  yes, whose label says it all. */
@@ -291,6 +298,44 @@ export function rulesetItemBearers(
     read.set(key, bearer);
     return bearer;
   };
+}
+
+/**
+ * The items one bag holds, as a sheet reads them (`itemStat`): each stack of one of the ruleset's
+ * items in it, with whether it is worn. An item that takes slots is worn while equipped, one that
+ * binds while bound, one that does both while both, and one that does neither never. A plain item is
+ * none of the ruleset's and is left out. `holder` is as a stack has it, absent for the player.
+ */
+export function rulesetSheetItems(
+  book: Pick<RulesetItemBook, "itemOf">,
+  stacks: readonly GameInventoryStack[],
+  holder: string | undefined,
+): RulesetSheetItem[] {
+  const bag = gameInventoryBagKey(holder);
+  return stacks.flatMap((stack) => {
+    if (!stack.item || gameInventoryBagKey(stack.holder) !== bag) return [];
+    const item = book.itemOf(stack.item)?.entry.item;
+    if (!item) return [];
+    const takesSlots = Object.values(item.slots ?? {}).some((count) => count > 0);
+    const binds = !!item.binds;
+    const worn = (takesSlots || binds) && (!takesSlots || stack.equipped === true) && (!binds || stack.bound === true);
+    return [{ item, quantity: stack.quantity, worn }];
+  });
+}
+
+/** Each party card's items, as its sheet reads them: the card read for the player (the one named
+ *  for who the chat plays as, else the first) reads the player's bag, and every other card its own,
+ *  by its name, as the inventory keeps them. */
+export function rulesetCardItems(
+  book: Pick<RulesetItemBook, "itemOf">,
+  stacks: readonly GameInventoryStack[],
+  cardNames: readonly string[],
+  playerName?: string | null,
+): (cardName: string) => RulesetSheetItem[] {
+  const key = normalizeCharacterLookupName;
+  const player = (playerName ? cardNames.find((name) => key(name) === key(playerName)) : undefined) ?? cardNames[0];
+  return (cardName) =>
+    rulesetSheetItems(book, stacks, player !== undefined && key(cardName) === key(player) ? undefined : cardName);
 }
 
 /** The item catalogs a ruleset declares: the ones the book is built from. */

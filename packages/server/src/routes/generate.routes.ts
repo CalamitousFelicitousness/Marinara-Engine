@@ -4535,6 +4535,13 @@ export async function generateRoutes(app: FastifyInstance) {
                             chatMeta.gameCharacterCards,
                             parseStoredRulesetLive((await selectedGameStateSnapshotPromise)?.rulesetLive),
                             promptRulesetCatalogs,
+                            promptItemBook
+                              ? {
+                                  book: promptItemBook,
+                                  stacks: promptInventoryStacks,
+                                  playerName: personaName || null,
+                                }
+                              : undefined,
                           ),
                         }
                       : {}),

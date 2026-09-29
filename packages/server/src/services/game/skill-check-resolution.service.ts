@@ -51,7 +51,12 @@ import {
   type RulesetValueRef,
   type SkillCheckResult,
   type SkillCheckTag,
+  normalizeGameInventoryStacks,
+  rulesetCardItems,
+  rulesetReadsItems,
+  type RulesetSheetItem,
 } from "@marinara-engine/shared";
+import { loadGameInventoryItemBook } from "./game-inventory.service.js";
 import type { DB } from "../../db/connection.js";
 import { logger } from "../../lib/logger.js";
 // Type-only, deliberately: the pool service imports this module for the resolver and the
@@ -304,6 +309,19 @@ export async function loadSkillCheckModifierContext(
     const pinned = resolveGameRuleset(meta, await loadRulesetRegistry());
     if (pinned.status === "ok") {
       const playerCard = await findPlayerCharacterCard(db, cards, chat?.personaId, meta, chatId);
+      // What each card holds, when the ruleset's sheet reads items at all: the player's card the
+      // player's bag, every other card its own.
+      const book = rulesetReadsItems(pinned.definition)
+        ? await loadGameInventoryItemBook(db, { metadata: meta, resolved: pinned }, "player")
+        : undefined;
+      const itemsOf = book
+        ? rulesetCardItems(
+            book,
+            normalizeGameInventoryStacks(meta.gameInventory),
+            cards.map((card) => readTrimmedString(card.name)),
+            playerCard ? readTrimmedString(playerCard.name) : null,
+          )
+        : undefined;
       return {
         skills: null,
         attributes: null,
@@ -316,6 +334,8 @@ export async function loadSkillCheckModifierContext(
           cards,
           playerCard,
           turnStartLive === undefined ? parseStoredRulesetLive(snapshot?.rulesetLive) : turnStartLive,
+          undefined,
+          itemsOf,
         ),
       };
     }
@@ -343,6 +363,8 @@ export function buildSkillCheckRulesetContext(
   live?: RulesetLiveStates | null,
   /** The ruleset's catalog entries, for a check that names one with `use=`. */
   catalogs?: RulesetCatalogEntriesById | null,
+  /** The items each card holds, by the card's name, which an `itemStat` reads. */
+  itemsOf?: (cardName: string) => RulesetSheetItem[],
 ): SkillCheckRulesetContext {
   const blankBuild = defaultRulesetSheetBuild(definition);
   const sheets = new Map<string, EvaluatedRulesetSheet>();
@@ -378,7 +400,10 @@ export function buildSkillCheckRulesetContext(
     const cardBuild = envelope.success ? envelope.data.build : blankBuild;
     // Worked out against this character's live state as it stands, so a value that reads a track
     // or a pool rolls with the snapshot the turn began from.
-    sheets.set(key, evaluateRulesetSheetLive(definition, cardBuild, live?.[key]));
+    sheets.set(
+      key,
+      evaluateRulesetSheetLive(definition, cardBuild, live?.[key], itemsOf?.(readTrimmedString(card.name))),
+    );
     builds.set(key, cardBuild);
     if (penaltyTrack) {
       const penalty = readRulesetWoundPenalty(definition, cardBuild, live?.[key], penaltyTrack);

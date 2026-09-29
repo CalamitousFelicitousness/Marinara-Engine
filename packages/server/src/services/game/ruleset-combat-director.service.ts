@@ -84,6 +84,7 @@ import {
   type TacticalBattlefieldBrief,
   type TacticalGrid,
   type CombatTactics,
+  type RulesetSheetItem,
 } from "@marinara-engine/shared";
 import { logger } from "../../lib/logger.js";
 import { combatDirectorView, type CombatDirectorState } from "./combat-director.service.js";
@@ -181,6 +182,8 @@ export interface RulesetFightSeed {
   playerName: string | null;
   /** The stored live sheet state of the whole game. */
   live: RulesetLiveStates | null;
+  /** What each party member holds, by name, when the ruleset's sheet reads items. */
+  items?: (name: string) => RulesetSheetItem[];
   /** The catalogs the party's own rows came from, so the fight knows what an ability costs. */
   partyCatalogs: RulesetCatalogEntriesById;
   /** Every catalog of this ruleset that holds creatures. */
@@ -219,6 +222,7 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
       build,
       live: input.live?.[key],
       catalogs: input.partyCatalogs,
+      ...(input.items ? { items: input.items(member.name) } : {}),
     });
   }
 

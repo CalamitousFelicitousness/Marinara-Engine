@@ -9,6 +9,7 @@
 import {
   RULESET_POOL_MAX_DICE,
   rulesetSheetEnvelopeSchema,
+  type RulesetCatalogItem,
   type RulesetDefinition,
   type RulesetDifficultyLadderStep,
   type RulesetHideWhen,
@@ -107,6 +108,64 @@ export interface RulesetSheetLiveValues {
   pools: ReadonlyArray<{ key: string; value: number }>;
   tracks: ReadonlyArray<{ id: string; min: number; max: number; value: number; wound?: { penalty: number } }>;
   states?: ReadonlyArray<{ id: string; value: string }>;
+  /** The items the character holds, which an `itemStat` reads. None outside a game. */
+  items?: ReadonlyArray<RulesetSheetItem>;
+}
+
+/** One stack of the ruleset's items a character holds, as the sheet reads it: what the item is, how
+ *  many, and whether it is worn (on, and bound where it must be). */
+export interface RulesetSheetItem {
+  item: RulesetCatalogItem;
+  quantity: number;
+  worn: boolean;
+}
+
+const readsItems = new WeakMap<RulesetDefinition, boolean>();
+
+/** Whether anything in the ruleset reads the items a character holds (an `itemStat` anywhere), so a
+ *  caller can skip reading the inventory and the item catalogs when nothing needs them. */
+export function rulesetReadsItems(definition: RulesetDefinition): boolean {
+  let known = readsItems.get(definition);
+  if (known === undefined) {
+    known = JSON.stringify(definition).includes('"itemStat"');
+    readsItems.set(definition, known);
+  }
+  return known;
+}
+
+/** A stat over the items a character holds (`itemStat`). The items are picked by where they are and
+ *  by slot, category and tag; `sum` adds each one's value times how many, `max` and `min` read one
+ *  value, and `count` counts the items (only the ones that give the stat, when one is named). An item
+ *  that does not give the stat is left out, and none at all reads the default. */
+function readItemStat(
+  items: ReadonlyArray<RulesetSheetItem> | undefined,
+  spec: NonNullable<RulesetValueRef["itemStat"]>,
+): number {
+  const held = (items ?? []).filter(
+    (each) =>
+      (spec.from === "all" || (spec.from === "worn") === each.worn) &&
+      (spec.slot === undefined || (each.item.slots?.[spec.slot] ?? 0) > 0) &&
+      (spec.category === undefined || each.item.category === spec.category) &&
+      (spec.tag === undefined || (each.item.tags ?? []).includes(spec.tag)),
+  );
+  const given = (each: RulesetSheetItem) => (spec.stat === undefined ? undefined : each.item.stats?.[spec.stat]);
+  if (spec.pick === "count") {
+    const counted =
+      spec.stat === undefined
+        ? held
+        : held.filter((each) => {
+            const value = given(each);
+            return value !== undefined && value !== false && value !== "";
+          });
+    return counted.length > 0 ? counted.reduce((total, each) => total + each.quantity, 0) : (spec.default ?? 0);
+  }
+  const numbers = held.flatMap((each) => {
+    const value = given(each);
+    return typeof value === "number" && Number.isFinite(value) ? [{ value, quantity: each.quantity }] : [];
+  });
+  if (numbers.length === 0) return spec.default ?? 0;
+  if (spec.pick === "sum") return numbers.reduce((total, each) => total + each.value * each.quantity, 0);
+  return (spec.pick === "max" ? Math.max : Math.min)(...numbers.map((each) => each.value));
 }
 
 export function rulesetAbilityModifier(definition: RulesetDefinition, score: number): number {
@@ -193,6 +252,7 @@ function resolveValueRef(
   if (ref.liveTrack !== undefined) return readLiveTrack(tables.live, ref.liveTrack, ref.read ?? "value");
   if (ref.livePool !== undefined) return tables.live?.pools.find((pool) => pool.key === ref.livePool)?.value ?? 0;
   if (ref.listSum !== undefined) return sumListColumn(definition, build, ref.listSum);
+  if (ref.itemStat !== undefined) return readItemStat(tables.live?.items, ref.itemStat);
   return 0;
 }
 

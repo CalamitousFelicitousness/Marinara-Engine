@@ -737,6 +737,9 @@ try {
       /- User \(load 12 of 6, most 12, encumbered; Body 1 of 1, Hands 2 of 2\): Leather coat \(1 worn\) \[[^\]]*\]; Arrows ×5 \[[^\]]*\]; Hunting bow ×2 \(1 worn\)/,
     );
     assert.match(block, /- Bram \(load 12 of 9, most 12, encumbered; Body 0 of 1, Hands 0 of 2\): /);
+    // And each sheet reads what its character wears (#6826): Guard is 6 + Wits, and Ada's coat adds 1.
+    assert.match(text, /\nAda\nBRN \+0, WIT \+0, HRT \+0\nGrit maximum 6, Guard 7\n/);
+    assert.match(text, /\nBram\nBRN \+3, WIT \+0, HRT \+0\nGrit maximum \d+, Guard 6\n/);
     assert.match(text, /an add with who left out goes to whoever can carry it/);
     assert.match(text, /\[inventory: action="equip\|unequip" item=/);
 

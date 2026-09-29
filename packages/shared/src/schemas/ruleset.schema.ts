@@ -129,7 +129,18 @@ const VALUE_REF_KEYS = [
   "liveTrack",
   "livePool",
   "listSum",
+  "itemStat",
 ] as const;
+
+/** Which of a character's items an `itemStat` reads: the ones `worn` (on, and bound where they must
+ *  be: an item that takes slots while equipped, one that binds while bound, one that does both while
+ *  both; an item that does neither is never worn), the ones only `carried`, or `all` of them. */
+export const RULESET_ITEM_STAT_FROM = Object.freeze(["worn", "carried", "all"] as const);
+
+/** How an `itemStat` makes one number of them: the `sum` of each item's value times how many there
+ *  are, the highest or lowest one value (`max`, `min`), or the `count` of items (only those that give
+ *  the stat, when one is named). An item that does not give the stat is left out of the other three. */
+export const RULESET_ITEM_STAT_PICKS = Object.freeze(["sum", "max", "min", "count"] as const);
 
 /** Which number a `liveTrack` reference reads: where the track stands, how far it is from its
  *  floor, how far from its top, or on a wound track the penalty in force. */
@@ -140,7 +151,8 @@ export const RULESET_TRACK_READS = Object.freeze(["value", "filled", "remaining"
  *  and `livePool` read the character's live state, so nothing worked out without one (a maximum,
  *  the proficiency bonus, a catalog's scaling) may read them; `read` goes only beside `liveTrack`.
  *  `listSum` adds up one number column of a list's rows, only the rows a boolean column marks where
- *  `onlyWhen` names one. */
+ *  `onlyWhen` names one. `itemStat` reads a stat over the items the character holds (see
+ *  `RULESET_ITEM_STAT_FROM`); items change in play, so it is held to the same rule as a live read. */
 export const rulesetValueRefSchema = z
   .object({
     const: z.number().finite().optional(),
@@ -155,6 +167,18 @@ export const rulesetValueRefSchema = z
     read: z.enum(RULESET_TRACK_READS).optional(),
     livePool: sheetId.optional(),
     listSum: z.object({ list: sheetId, column: sheetId, onlyWhen: sheetId.optional() }).strict().optional(),
+    itemStat: z
+      .object({
+        stat: sheetId.optional(),
+        from: z.enum(RULESET_ITEM_STAT_FROM),
+        pick: z.enum(RULESET_ITEM_STAT_PICKS),
+        slot: sheetId.optional(),
+        category: sheetId.optional(),
+        tag: sheetId.optional(),
+        default: z.number().finite().optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine((ref, ctx) => {
@@ -167,6 +191,13 @@ export const rulesetValueRefSchema = z
     }
     if (ref.read !== undefined && ref.liveTrack === undefined) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["read"], message: "read goes only beside liveTrack" });
+    }
+    if (ref.itemStat && ref.itemStat.pick !== "count" && ref.itemStat.stat === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["itemStat", "stat"],
+        message: "An itemStat names the stat it reads, unless it only counts items",
+      });
     }
   });
 
@@ -2794,6 +2825,13 @@ interface RulesetSheetNames {
   lists: ReadonlyMap<string, RulesetSheetSchema["lists"][number]>;
   /** What reads the live state, directly or through something else on the sheet. */
   live: RulesetLiveReaders;
+  /** The ruleset's item words, which an `itemStat` names; absent without an items block. */
+  items?: {
+    stats: ReadonlyMap<string, { type: string }>;
+    slots: ReadonlySet<string>;
+    categories: ReadonlySet<string>;
+    tags: ReadonlySet<string>;
+  };
 }
 
 /** The values a derived value reads, in the one place that knows where each op keeps them. An enum
@@ -2824,6 +2862,7 @@ function rulesetLiveReaders(sheet: RulesetSheetSchema): RulesetLiveReaders {
     return (
       ref.liveTrack !== undefined ||
       ref.livePool !== undefined ||
+      ref.itemStat !== undefined ||
       (ref.derived !== undefined && derived.has(ref.derived)) ||
       (ref.skillMod !== undefined && capReadsLive(sheet.skills, ref.skillMod)) ||
       (ref.saveMod !== undefined && capReadsLive(sheet.saves, ref.saveMod))
@@ -2868,8 +2907,26 @@ function refReadsListSum(
   return (!!trained.cap && next(trained.cap)) || (!!bonus && next(bonus));
 }
 
-function rulesetSheetNames(sheet: RulesetSheetSchema): RulesetSheetNames {
+function rulesetSheetNames(
+  sheet: RulesetSheetSchema,
+  items?: {
+    categories: ReadonlyArray<{ id: string }>;
+    tags?: ReadonlyArray<{ id: string }>;
+    stats?: ReadonlyArray<{ id: string; type: string }>;
+    slots?: ReadonlyArray<{ id: string }>;
+  },
+): RulesetSheetNames {
   return {
+    ...(items
+      ? {
+          items: {
+            stats: new Map((items.stats ?? []).map((stat) => [stat.id, stat])),
+            slots: new Set((items.slots ?? []).map((slot) => slot.id)),
+            categories: new Set(items.categories.map((category) => category.id)),
+            tags: new Set((items.tags ?? []).map((tag) => tag.id)),
+          },
+        }
+      : {}),
     fields: new Map(sheet.fields.map((field) => [field.id, field])),
     abilities: new Set(sheet.abilities.map((ability) => ability.id)),
     skills: new Set(sheet.skills.map((skill) => skill.id)),
@@ -2939,6 +2996,26 @@ function rulesetValueRefIssues(
   if (ref.livePool !== undefined) {
     if (!names.pools.has(ref.livePool)) add("livePool", `Unknown pool "${ref.livePool}"`);
     else if (!live) add("livePool", noLive);
+  }
+  if (ref.itemStat !== undefined) {
+    const { stat: statId, pick, slot, category, tag } = ref.itemStat;
+    const items = names.items;
+    if (!items) add("itemStat", "This ruleset has no items block, so there are no items to read");
+    else {
+      const stat = statId === undefined ? undefined : items.stats.get(statId);
+      if (statId !== undefined && !stat) add("itemStat", `Unknown item stat "${statId}"`);
+      else if (stat && pick !== "count" && stat.type !== "number") {
+        add("itemStat", `Item stat "${statId}" is not a number`);
+      }
+      if (slot !== undefined && !items.slots.has(slot)) add("itemStat", `Unknown slot "${slot}"`);
+      if (category !== undefined && !items.categories.has(category)) {
+        add("itemStat", `Unknown item category "${category}"`);
+      }
+      if (tag !== undefined && !items.tags.has(tag)) add("itemStat", `Unknown item tag "${tag}"`);
+    }
+    if (!live) {
+      add("itemStat", "This value is worked out without the live state, so it cannot read the items anyone holds");
+    }
   }
   if (ref.listSum !== undefined) {
     const { list: listId, column: columnId, onlyWhen } = ref.listSum;
@@ -3235,7 +3312,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
   // A value reference may read a derived value only when it is declared ABOVE the reader, which
   // makes a cycle unrepresentable and lets evaluation run once, top to bottom.
   const names: RulesetSheetNames = {
-    ...rulesetSheetNames(sheet),
+    ...rulesetSheetNames(sheet, def.items),
     fields: fieldById,
     abilities,
     skills,
@@ -4912,7 +4989,7 @@ export function rulesetCatalogEntryIssues(
   const issues: RulesetCatalogEntryIssue[] = [];
   const add = (path: (string | number)[], message: string) => issues.push({ path, message });
   const listById = new Map(definition.sheet.lists.map((list) => [list.id, list]));
-  const names = rulesetSheetNames(definition.sheet);
+  const names = rulesetSheetNames(definition.sheet, definition.items);
   const feeds = new Set(catalog.feeds ?? []);
   const filterById = new Map((catalog.filters ?? []).map((filter) => [filter.id, filter]));
   const saves = new Set(definition.sheet.saves.map((save) => save.id));

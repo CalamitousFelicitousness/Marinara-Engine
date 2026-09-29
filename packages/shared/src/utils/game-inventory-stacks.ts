@@ -96,6 +96,9 @@ export interface GameInventoryItemProposal {
   slots?: Record<string, string>;
   /** "yes", "cursed" or "no". */
   binds?: string;
+  /** What it does while worn, and while only carried, as written: "+1 Sneak; disadvantage on saves". */
+  worn?: string;
+  carried?: string;
   summary?: string;
 }
 

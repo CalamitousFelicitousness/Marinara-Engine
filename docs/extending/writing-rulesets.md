@@ -633,7 +633,7 @@ The limits are 12 catalogs per ruleset, 2000 entries per catalog either way, and
 
 ## Items: what a party carries
 
-Armor, weapons, potions, gear, ammunition and money are items. An optional `items` block declares the words every item of your ruleset is written in, and a catalog with `holds: "items"` lists the items themselves. Both need Capability API 1.49; the block's `rarityCaps` and `propose`, which govern the items the Game Master invents, need 1.51, and a value that reads the items a character holds (`itemStat`) needs 1.52.
+Armor, weapons, potions, gear, ammunition and money are items. An optional `items` block declares the words every item of your ruleset is written in, and a catalog with `holds: "items"` lists the items themselves. Both need Capability API 1.49; the block's `rarityCaps` and `propose`, which govern the items the Game Master invents, need 1.51, a value that reads the items a character holds (`itemStat`) needs 1.52, and what an item does to checks while worn or carried, with the block's `bonus` caps, needs 1.53.
 
 ### The items block
 
@@ -668,8 +668,8 @@ The block goes in `items` at the top level of the file. This is Ember Roads', a 
   ],
   "carry": { "stat": "bulk", "encumberedAbove": { "derived": "load" }, "limit": { "const": 12 } },
   "rarityCaps": [
-    { "rarity": "common", "stats": { "guard": 1 } },
-    { "rarity": "storied", "stats": { "guard": 3 } }
+    { "rarity": "common", "stats": { "guard": 1 }, "bonus": 1 },
+    { "rarity": "storied", "stats": { "guard": 3 }, "bonus": 2 }
   ],
   "currencies": [
     {
@@ -707,7 +707,7 @@ The block goes in `items` at the top level of the file. This is Ember Roads', a 
   - Two families never change into each other. A second nation's coin, or a setting's favours, is a family of its own.
   - A coin's id is unique across every family, because an item's cost names the coin alone.
   - `perWeight` (optional, and only beside `carry`) is how many of the family's coins weigh one unit of the carry stat.
-- `rarityCaps`: optional, one per rarity at most. The most an item the Game Master invents may give at that rarity: the largest value of each number stat named in `stats`, inside that stat's own range, and a whole number for a stat that takes whole numbers. An invented item is held to it; the items your catalogs list are yours and never capped.
+- `rarityCaps`: optional, one per rarity at most. The most an item the Game Master invents may give at that rarity: the largest value of each number stat named in `stats`, inside that stat's own range, and a whole number for a stat that takes whole numbers, and `bonus` (Capability API 1.53), the largest flat bonus one of its worn or carried modifiers may add. At a rarity with a `bonus`, a bonus in dice is left out, since dice cannot be held to a number; a penalty is never capped. An invented item is held to it; the items your catalogs list are yours and never capped.
 - `propose`: `true` by default. `false` forbids the Game Master to invent items of your ruleset.
 - `native`: `true` by default. `false` turns off Game Mode's own untyped items in your ruleset's games (see **What reads items**). The Game Master can still invent items, written in your ruleset's words.
 - `freeform`: what an item the player types in becomes. `"plain"` (the default) keeps it as an item with no rules, as today. `"refuse"` allows only items of your ruleset.
@@ -745,6 +745,7 @@ Each entry carries an `item` instead of `rows` or a `creature`:
 - `stack`: the most one stack holds, from 1 to 999,999. Without it, a stack holds as many as any Game Mode stack.
 - `cost`: a whole `amount` of one coin, named by its `unit` id.
 - `binds`: the item has to be bound before it does anything while worn. `restriction` (optional) says in words who may bind it, and `cursed: true` marks one that will not let go. Only a ruleset with `binding` can have items that bind.
+- `worn` and `carried` (optional, Capability API 1.53): what the item does to its holder's checks and saves while it is worn, and while it is only carried. See [Checks outside a fight](#checks-outside-a-fight).
 
 An item carries no `mechanics`: what it does is written in its `item` block.
 
@@ -762,10 +763,12 @@ Everything above is checked when the ruleset is imported, and your catalogs of i
 - **`slots`**: an item that takes slots can be equipped by whoever carries it, while they have those slots free, and one item of a larger stack is taken into its own stack to be worn. The inventory shows each slot in use per character.
 - **`binding`**: an item that `binds` can be bound, up to `binding.max` read off its bearer's own sheet (a character without a sheet reads a blank one). A `cursed` item, once bound, stays bound: the player cannot unbind it, take it off, give it away or remove it, and only the Game Master can end the curse.
 - **`carry`**: an item weighs its value of `carry.stat` (an item without one weighs nothing), and a character's load is what their bag weighs, against `encumberedAbove` and `limit` read off their own sheet. An item added into the inventory's shared view, by the player or by the Game Master without a `who=`, goes to whoever can carry it without becoming encumbered (the player first, then the party in order), shared out by the room each has left when nobody can take all of it. Nothing goes past anyone's `limit`: what nobody can carry is left behind and the Game Master is told. Give a weight stat `"integer": false` for weights such as a quarter of a pound.
-- **The Game Master invents items in your words.** Unless you set `propose: false`, its `[inventory: action="add"]` can describe a new item: `like=` one of your items to start from, then any of `category=`, `rarity=`, `tags=`, `stats=` (`id=value` pairs), `slots=` (`id=count`), `binds=` (`yes`, `cursed` or `no`) and `summary=`, each part by its id or label. The Engine keeps only what your block has: an unknown category, tag, stat or slot is left out, a rarity you do not have becomes your lowest, a number is held to its stat's range and then to `rarityCaps` for its rarity (the part `like` started it from as well), and a name that is one of your items is simply that item. The answer tells the Game Master what was changed (never about a stat you do not show it), and the item's details show every change to the player. The game keeps the item, so the same name is that item for the rest of the game, and a new session keeps it while anyone still holds it.
+- **The Game Master invents items in your words.** Unless you set `propose: false`, its `[inventory: action="add"]` can describe a new item: `like=` one of your items to start from, then any of `category=`, `rarity=`, `tags=`, `stats=` (`id=value` pairs), `slots=` (`id=count`), `binds=` (`yes`, `cursed` or `no`), `worn=` and `carried=` (changes split by `;`, each `+N`, `-N`, `advantage`, `disadvantage` or `fails` for saves, on skills or saves by name, or on `checks` or `saves` for all of them: `worn="+1 Sneak; disadvantage on Sway checks"`, or `none`) and `summary=`, each part by its id or label. The Engine keeps only what your block has: an unknown category, tag, stat, slot, skill or save is left out, a rarity you do not have becomes your lowest, a number is held to its stat's range and then to `rarityCaps` for its rarity, a worn or carried bonus to its rarity's `bonus` (the part `like` started it from as well), and a name that is one of your items is simply that item. The answer tells the Game Master what was changed (never about a stat you do not show it), and the item's details show every change to the player. The game keeps the item, so the same name is that item for the rest of the game, and a new session keeps it while anyone still holds it.
 - The Game Master can `equip` and `unequip` your items with its inventory command when you have `slots`, and `bind` and `unbind` them when you have `binding`: it is only told of the ones your ruleset has. It sees each character's load, bound items and slots, and what is worn or bound.
 
-A fight already spends one of your items the way it spends any item, unless `native` is `false`, and the sheet can read them (below). What being encumbered does to a character, and what worn and carried items do to checks by their own rules, come in the next release, and weapons and armor in a fight, using items by their own rules, and money after that.
+- **What an item does while worn or carried** shows on the selected stack and in the picker ("While worn: -1 on checks (Sneak)"), and the Game Master sees it beside the item (`worn: -1 on checks (Sneak)`). Checks outside a fight apply it (see Checks outside a fight, below).
+
+A fight already spends one of your items the way it spends any item, unless `native` is `false`, and the sheet can read them (below). What being encumbered does to a character, requirements, and an item that sets or raises an ability come in the next release, and weapons and armor in a fight, using items by their own rules, and money after that.
 
 ### Items on the sheet
 
@@ -789,6 +792,39 @@ A value reference can read the items a character holds, with `itemStat` (Capabil
 Items change in play, so `itemStat` is held to the same rule as a live read: a pool's or a track's `max`, the proficiency bonus, `binding.max`, the `carry` numbers, and a catalog's scaled column or scaling cannot read it, even through a derived value. Anywhere else a number is read, it can: a derived value, a check's `adjust`, a skill's `cap`, a fight's defense, soak or initiative.
 
 A character's items are the ones in their own bag. The player's card (the one named for who the chat plays as, else the first) reads the player's bag, and every other card its own. Only your ruleset's items count, since a plain item has no stats to read. The sheet on screen, a check, the Game Master's sheet block, and a fight as it begins all read what each character holds right then. Outside a game, in the sheet editor or an import review, nobody holds anything and `itemStat` reads its `default`.
+
+
+### Checks outside a fight
+
+A check or save the Game Master calls for outside a fight reads more than the sheet: the character's own active conditions, the levels their tracks have reached, and what their items do while worn or carried. It is the same vocabulary a fight's conditions use (Capability API 1.53 for the item keys and the narrowing).
+
+An item says what it does with `worn`, which applies while it is on (and bound, where it binds), and `carried`, which applies while it is only carried. Ember Roads' leather coat creaks when you creep, and a waystone makes caravan folk trust you:
+
+```json
+"worn": { "modifiers": [{ "to": "checks", "skills": ["sneak"], "flat": -1 }] }
+```
+
+```json
+"carried": { "modifiers": [{ "to": "checks", "skills": ["sway"], "flat": 1 }] }
+```
+
+Each takes the parts of a condition that a check reads:
+
+- `effects`: `own-checks-advantage`, `own-checks-disadvantage`, `own-saves-advantage` and `own-saves-disadvantage`.
+- `modifiers`: changes `to` checks or saves, with `flat`, `dice` (and `minus`), `mode`, and their own `skills` or `saves`, exactly as a condition's.
+- `failsSaves`: saves its holder fails without a roll.
+- `skills` and `saves`: which skills or saves the effects and the modifiers that name none of their own are about.
+
+What an item does in a fight (defense, attacks, speed, the other effects) comes with weapons and armor in a fight, so those are refused here for now. One item applies once however many stacks of it someone holds.
+
+On a check:
+
+- Every modifier that is about it adds its number, and its dice are rolled: a flat number on a summed check, dice on a pool. An ability check, and a check the ruleset cannot name, read only what is narrowed to nothing, and a save reads only what is about saves.
+- Advantage and disadvantage from every source, the Game Master's `mode=` among them, cancel out: any of each and the check is rolled once. Only a ruleset that rolls twice at all (`resolution.advantage`) leans.
+- A save that a condition or item fails is failed without a roll, and nothing is spent on it.
+- The record says what changed it: `effects="-1"` for the number, `from="Leather coat"` for whatever changed it, and `automatic="true"` for a save failed without a roll. The dice card shows the same, and the Game Master reads it next turn. It is told the Engine applies these, so it does not add them again.
+
+Gravewatch shows the same on a pool: the bound Dawn bell adds a die to Ward, and Rattled takes one off Soothe and Barter.
 
 ## Battles: lending the sheet to Marinara's combat
 
@@ -1045,6 +1081,11 @@ same keys for a d20 system:
   - `modifiers`: the numbers it changes while it holds. See Numbers a condition changes, below.
   - `saves`: which of your saves the two save effects, and any modifier to saves, are about. All of
     them when it is left out, and naming it with neither beside it is refused.
+  - `skills`: which of your skills the two check effects, and any modifier to checks that names no
+    skills of its own, are about. All of them when it is left out, and naming it with neither beside
+    it is refused. A fight's contests roll the fight's own checks, not skills, so something narrowed
+    to skills never reaches one; a check outside a fight on one of those skills reads it (see Checks
+    outside a fight, below). Capability API 1.53.
   - `whileSourceInSight`: what counts only while whoever applied it is in the holder's line of
     sight. `true` gates the whole condition; a list of its own effects gates only those and leaves
     the rest standing, which is what a fright that stops you walking any nearer whether or not you
@@ -1054,7 +1095,8 @@ same keys for a d20 system:
 
   `own-saves-advantage` and its opposite roll the save twice and keep one, exactly as an attack is
   rolled, and they cancel each other out. `own-checks-advantage` and its opposite do the same to the
-  holder's side of a contest, which is where a fight makes its ability checks. `resist-all` halves every kind of harm on top of whatever
+  holder's side of a contest, which is where a fight makes its ability checks, and to their checks
+  outside a fight. `resist-all` halves every kind of harm on top of whatever
   the target's own hide said, and cancels against a vulnerability the same way.
   `cannot-target-source` keeps the holder from pointing anything at whoever put it on them, and
   `cannot-approach-source` keeps them from walking any nearer to that somebody than the cell they
@@ -1074,6 +1116,16 @@ same keys for a d20 system:
   - `speed`: how far the holder walks, in your own distance unit (`flat`), or `times` 0.5 or 2 for
     half or double, applied after every flat change. Read only on a board, as `speed-zero` is.
 
+  A modifier to `checks` may name its own `skills`, and one to `saves` its own `saves`, which narrow
+  it in place of the condition's. Either may roll twice with `mode: "advantage"` or
+  `"disadvantage"`, counted with the effects of the same name and cancelling as they do, with or
+  without a number beside it; so one condition can make Sneak harder and Climb easier at once. These
+  three keys need Capability API 1.53.
+
+  ```json
+  { "condition": "muddy", "modifiers": [{ "to": "checks", "skills": ["sneak"], "mode": "disadvantage" }] }
+  ```
+
   A flat number carries its own sign, and 0 is refused. Every modifier shows in the log beside the
   roll it changed, with the condition's name ("12 + 5 + 3 (Blessed) = 20"), and the menu's chance to
   hit and chance to win count it. Conditions stack with each other; the same condition twice is still
@@ -1090,7 +1142,7 @@ same keys for a d20 system:
 - `levels`: optional. Levels of a live track that count as conditions while the track is high
   enough, which is how a condition that gets worse in steps, such as exhaustion, is said. Each entry
   names a plain `track` (not a wound track), the level `at` which it starts, and what it does, with
-  the same `effects`, `modifiers`, `failsSaves` and `saves` a condition has. Every level the track has
+  the same `effects`, `modifiers`, `failsSaves`, `saves` and `skills` a condition has. Every level the track has
   reached counts, so they add up as it climbs. A level has no source and ends only when the track
   goes down, so `half-move-to-stand`, `ends-on-damage`, `cannot-target-source` and
   `cannot-approach-source` are refused on one. Only a combatant with a sheet has tracks. The log names

@@ -92,6 +92,16 @@ try {
     const guard = doc.sheet.derived.find((entry: { id: string }) => entry.id === "guard");
     guard.of = guard.of.filter((ref: { itemStat?: unknown }) => ref.itemStat === undefined);
   };
+  /** And less what its items do to checks and its bonus caps, which are 1.53's. */
+  const withoutCheckEffects = (doc: Record<string, any>) => {
+    for (const cap of doc.items?.rarityCaps ?? []) delete cap.bonus;
+    for (const catalog of doc.catalogs ?? []) {
+      for (const entry of catalog.entries ?? []) {
+        delete entry.item?.worn;
+        delete entry.item?.carried;
+      }
+    }
+  };
   const itemEntry = (doc: Record<string, any>, id: string) =>
     itemCatalog(doc).entries.find((entry: { id: string }) => entry.id === id);
   /** The file is refused, and one of its issues matches. */
@@ -556,12 +566,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    // The 1.49 keys alone: the example's rarity caps are 1.51's and its item read on Guard 1.52's,
-    // and each has a lane of its own.
+    // The 1.49 keys alone: the example's rarity caps are 1.51's, its item read on Guard 1.52's and
+    // what its items do to checks 1.53's, and each has a lane of its own.
     const older = (text: string, edit: (doc: Record<string, any>) => void = () => {}) =>
       variant(text, (doc) => {
         delete doc.items?.rarityCaps;
         withoutItemReads(doc);
+        withoutCheckEffects(doc);
         edit(doc);
       });
     const itemsIssue = /A ruleset that describes items requires schemaVersion 2 and capabilityApi 1\.49 or newer/;
@@ -595,7 +606,7 @@ try {
     assert.match(issue(48, inlineUnderRows) ?? "", itemsIssue, "an item written inline");
 
     // Entries that carry an item, in a catalog file under a header an older Engine would read.
-    const fileEntries = itemCatalog(JSON.parse(emberText)).entries;
+    const fileEntries = itemCatalog(older(emberText)).entries;
     const inFile = older(emberText, (doc) => {
       delete doc.items;
       const catalog = itemCatalog(doc);
@@ -672,7 +683,10 @@ try {
     assert.deepEqual(wordedBook.itemOf("outfitter/waystone")!.facts.stats, [
       { id: "lit", label: "Lit", promptVisible: true },
     ]);
-    assert.equal(rulesetItemPromptFacts(wordedBook.itemOf("outfitter/waystone")!.facts), "Gear, Storied; Lit");
+    assert.equal(
+      rulesetItemPromptFacts(wordedBook.itemOf("outfitter/waystone")!.facts),
+      "Gear, Storied; Lit; carried: +1 on checks (Sway)",
+    );
     assert.ok(!wordedBook.itemOf("outfitter/arrows")!.facts.stats.some((stat) => stat.id === "lit"));
     // A layer that hides an entry takes it out of names and the picker, not out of what is held.
     const layered = parsedOrThrow(

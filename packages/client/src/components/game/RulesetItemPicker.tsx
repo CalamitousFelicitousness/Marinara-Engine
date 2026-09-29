@@ -7,11 +7,13 @@
 import { useMemo, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { useTranslation as useUiTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import {
   defaultRulesetSheetBuild,
   type RulesetDefinition,
   type RulesetItemBook,
   type RulesetItemBookEntry,
+  type RulesetItemEffectFact,
   type RulesetItemFacts,
 } from "@marinara-engine/shared";
 import { useRulesetCatalog } from "../../hooks/use-capability-packages";
@@ -32,6 +34,40 @@ const chipClass =
 /** An item's stats as one line: "Damage 1d6 · Reach close". A yes-or-no stat that is yes is its label. */
 export function rulesetItemStatsLine(facts: RulesetItemFacts): string {
   return facts.stats.map((stat) => (stat.text !== undefined ? `${stat.label} ${stat.text}` : stat.label)).join(" · ");
+}
+
+/** What an item does while worn, and while only carried, one line each: "While worn: -1 on Sneak
+ *  checks". Empty when it does nothing either way. */
+export function rulesetItemEffectLines(facts: RulesetItemFacts, t: TFunction): string[] {
+  const phrase = (fact: RulesetItemEffectFact) => {
+    const names = fact.names.join(", ");
+    if ("fails" in fact.change) return t("ui.game.gameinventory.effectFailsSaves", { names });
+    const change =
+      "mode" in fact.change
+        ? t(
+            fact.change.mode === "advantage"
+              ? "ui.game.gameinventory.effectAdvantage"
+              : "ui.game.gameinventory.effectDisadvantage",
+          )
+        : fact.change.value;
+    if (fact.to === "checks") {
+      return names
+        ? t("ui.game.gameinventory.effectOnNamedChecks", { change, names })
+        : t("ui.game.gameinventory.effectOnChecks", { change });
+    }
+    return names
+      ? t("ui.game.gameinventory.effectOnNamedSaves", { change, names })
+      : t("ui.game.gameinventory.effectOnSaves", { change });
+  };
+  return (["worn", "carried"] as const).flatMap((when) =>
+    facts[when]?.length
+      ? [
+          t(when === "worn" ? "ui.game.gameinventory.whileWorn" : "ui.game.gameinventory.whileCarried", {
+            effects: facts[when]!.map(phrase).join("; "),
+          }),
+        ]
+      : [],
+  );
 }
 
 export function RulesetItemPicker({
@@ -199,6 +235,11 @@ export function RulesetItemPicker({
                       <span className="block text-[0.6875rem] text-[var(--muted-foreground)]">{each.summary}</span>
                     )}
                     {stats && <span className="block text-[0.6875rem] text-[var(--foreground)]">{stats}</span>}
+                    {rulesetItemEffectLines(facts, t).map((line) => (
+                      <span key={line} className="block text-[0.6875rem] text-[var(--foreground)]">
+                        {line}
+                      </span>
+                    ))}
                     {(facts.cost || each.stack) && (
                       <span className="block text-[0.6875rem] text-[var(--muted-foreground)]">
                         {[

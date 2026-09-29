@@ -1117,6 +1117,51 @@ character holds.
   turn) and `e2e/game-ruleset-wearing.e2e.ts` (the in-game sheet's Guard before and after the coat is
   put on), with 40 deliberate breaks each caught.
 
+### What worn effects on checks settled
+
+Capability API 1.53, for #6832. Slice I4-2 of the ruleset items plan: conditions and worn or carried
+items change checks outside a fight.
+
+- **The format.** An item's `worn` and `carried` blocks take the parts of a condition a check reads:
+  the four check and save effects, modifiers to checks or saves, `failsSaves`, and `skills` and
+  `saves` narrowing; what an item does in a fight waits for I5, so the rest is refused. A condition or
+  a level gains `skills` (narrowing its check effects and its modifiers to checks), and a modifier
+  gains its own `skills` (to checks), `saves` (to saves) and `mode`, so one source can lean one skill
+  and add to another. A modifier may be a mode alone. `rarityCaps[].bonus` holds an invented item's
+  worn or carried flat bonus; at a capped rarity a bonus in dice is left out, and a penalty is never
+  capped. Every skill and save named is checked against the sheet. Needs 1.53 at install, read
+  structurally from the ruleset file and every catalog file.
+- **A check outside a fight** reads the roller's active sheet conditions (gates on a source read as
+  in sight, as a fight with no board does), the levels their tracks have reached, and their items'
+  `worn` effects while worn and `carried` ones while only carried, each item once. A modifier's own
+  narrowing wins over its source's; an ability check or an unknown one reads only what is narrowed to
+  nothing, and a save only what is about saves. Numbers are rolled and added like `resolution.adjust`
+  (dice on a pool, a number on a sum); leans cancel with the Game Master's `mode=`, only where the
+  ruleset rolls twice; a failed save rolls nothing and buys nothing. The record carries `effects=`,
+  `from=` (what changed it) and `automatic="true"`, and reads them back. A Game Master's complete
+  record for a check anything changes is never vouched for, and the sighted pool spends a second d20
+  when the effects lean the roll. The effects' own dice never come out of that pool.
+- **Fights** keep anything narrowed to skills out of contests (they roll the fight's own checks),
+  count a modifier's mode like the effect, narrow save modifiers by their own saves, and leave a
+  mode-only modifier out of the numbers.
+- **Seen and said.** Item facts carry worn and carried facts: the item details and the picker show
+  them in localized words, and the Game Master's inventory line appends them. The check line tells
+  the Game Master the Engine applies conditions and worn or carried items, where the ruleset has
+  either. The Game Master can give an invented item `worn=` and `carried=` (changes split by `;`),
+  read against the sheet's skills and saves, copied from `like=` otherwise, and held to `bonus`.
+- **Found along the way.** The general dice resolver rolled every non-d20 ruleset check again after
+  the ruleset's own pass (#6835), which lost the sheet in every 2d6 and pool game; fixed on its own,
+  and carried here.
+- **Examples.** Ember Roads' leather coat costs Sneak 1 while worn, a carried waystone helps Sway, and
+  its rarities cap an invented bonus at 1, 1 and 2; Gravewatch's bound Dawn bell adds a die to Ward,
+  and Rattled takes one off Soothe and Barter.
+- **Proven** by `scripts/regressions/game-ruleset-check-effects.regression.ts` (every refusal and the
+  1.53 gate in the ruleset and a catalog file, sources and narrowing, checks and saves through the
+  turn's resolver on the 5e example, Ember Roads and Gravewatch, the record read back, vouching,
+  fights, item facts, invented items and the Game Master's line), `game-inventory-turn.regression.ts`
+  (a real turn saves the Sneak check with the coat) and `e2e/game-ruleset-check-effects.e2e.ts` (the
+  coat's details and the dice card of a real turn), with 60 deliberate breaks each caught.
+
 ## Gaps a ruleset author found
 
 The author of [Marinara-RPG-Extension](https://github.com/Kenhito/Marinara-RPG-Extension), who

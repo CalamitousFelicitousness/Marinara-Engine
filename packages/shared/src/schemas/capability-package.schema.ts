@@ -479,7 +479,14 @@ const capabilityPackageManifestBaseSchema = z
 //        Not a soft seam, for the same reason as 1.20 through 1.51: an Engine that cannot read it
 //        refuses the whole ruleset or catalog file, so a package that ships one declares 1.52. No
 //        permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 52 } as const);
+// 1.53: conditions and items change checks outside a fight. An item may say what it does while
+//        `worn` and while only `carried` (advantage or disadvantage, modifiers to checks and saves,
+//        saves it fails), a condition or a level may narrow its check effects to some `skills`, a
+//        modifier may name its own `skills` or `saves` and roll twice (`mode`), and a rarity cap may
+//        hold a worn or carried `bonus`. Not a soft seam, for the same reason as 1.20 through 1.52: an
+//        Engine that cannot read these refuses the whole ruleset or catalog file, so a package that
+//        ships any of them declares 1.53. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 53 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

@@ -492,6 +492,7 @@ function wearGrammarLine(slots: boolean, bindingLabel: string | undefined): stri
  *  for every part of it (stats it is not shown are left out). */
 function inventGrammarLines(
   items: NonNullable<import("@marinara-engine/shared").RulesetDefinition["items"]>,
+  sheet: import("@marinara-engine/shared").RulesetDefinition["sheet"],
 ): string[] {
   const ids = (words: ReadonlyArray<{ id: string }> | undefined) => (words ?? []).map((word) => word.id).join(", ");
   const statKind = (stat: NonNullable<typeof items.stats>[number]): string => {
@@ -514,20 +515,32 @@ function inventGrammarLines(
     .join(", ");
   // Only the stats it is shown: a hidden stat's cap would tell it the stat is there.
   const shown = new Set((items.stats ?? []).filter((stat) => stat.promptVisible).map((stat) => stat.id));
+  // And the most a worn or carried bonus may add, beside the stats.
   const caps = (items.rarityCaps ?? [])
-    .map((cap) => ({ rarity: cap.rarity, most: Object.entries(cap.stats ?? {}).filter(([id]) => shown.has(id)) }))
+    .map((cap) => ({
+      rarity: cap.rarity,
+      most: [
+        ...Object.entries(cap.stats ?? {}).filter(([id]) => shown.has(id)),
+        ...(cap.bonus !== undefined ? [["worn or carried bonus", cap.bonus] as [string, number]] : []),
+      ],
+    }))
     .filter((cap) => cap.most.length > 0)
     .map((cap) => `${cap.rarity} ${cap.most.map(([id, most]) => `${id} ${most}`).join(", ")}`)
     .join("; ");
+  // What a worn or carried effect is on: the sheet's skills and saves, by name, since that is how the
+  // Game Master writes them.
+  const labels = (entries: ReadonlyArray<{ label: string }>) => entries.map((entry) => entry.label).join(", ");
   const words = [
     `categories ${ids(items.categories)}`,
     ...(items.rarities?.length ? [`rarities ${ids(items.rarities)} (lowest first)`] : []),
     ...(items.tags?.length ? [`tags ${ids(items.tags)}`] : []),
     ...(stats ? [`stats ${stats}`] : []),
     ...(items.slots?.length ? [`slots ${items.slots.map((slot) => `${slot.id} (${slot.count})`).join(", ")}`] : []),
+    ...(sheet.skills.length ? [`skills ${labels(sheet.skills)}`] : []),
+    ...(sheet.saves.length ? [`saves ${labels(sheet.saves)}`] : []),
   ].join("; ");
   return [
-    `  To give an item this ruleset does not list, invent one of its items in the add: [inventory: action="add" item="New name" category="..." rarity="..." tags="a, b" stats="id=value, id=value" slots="id=count"${items.binding ? ` binds="yes|cursed"` : ""} summary="one line"]. Every part but item is optional. To start from one of the ruleset's own items, add like="that item's exact name" (leave like out otherwise); what else you give replaces its parts. The Engine keeps only what this ruleset has${caps ? " and holds each number to the most its rarity allows" : ""}; the answer's note says what it changed, and from then on that name is that item.`,
+    `  To give an item this ruleset does not list, invent one of its items in the add: [inventory: action="add" item="New name" category="..." rarity="..." tags="a, b" stats="id=value, id=value" slots="id=count"${items.binding ? ` binds="yes|cursed"` : ""} worn="+1 Skill" summary="one line"]. Every part but item is optional. worn is what it does while worn, and carried="..." what it does while only carried: changes split by ";", each +N, -N, advantage, disadvantage, or fails (saves only), on skills or saves by name, or on checks or saves for all of them. A bonus or penalty to a skill or save always goes in worn or carried, never in stats. To start from one of the ruleset's own items, add like="that item's exact name" (leave like out otherwise); what else you give replaces its parts. The Engine keeps only what this ruleset has${caps ? " and holds each number to the most its rarity allows" : ""}; the answer's note says what it changed, and from then on that name is that item.`,
     `  Its words: ${words}.${caps ? ` The most at each rarity: ${caps}.` : ""}`,
   ];
 }
@@ -841,6 +854,30 @@ function renderRulesetSkillCheckLine(
   const refusesAny =
     ruleset.sheet.sections.some((section) => section.untrained === "refuse") ||
     [...ruleset.sheet.skills, ...ruleset.sheet.saves].some((entry) => entry.untrained === "refuse");
+  // What the engine brings to a check on its own (#6832): the character's conditions and what they wear
+  // or carry. Taught where the ruleset has either, so the Game Master does not count them twice.
+  const effectSources = [...(ruleset.combat?.conditions ?? []), ...(ruleset.combat?.levels ?? [])];
+  const conditionsChange = effectSources.some(
+    (entry) =>
+      entry.effects.some((effect) => effect.startsWith("own-checks") || effect.startsWith("own-saves")) ||
+      (entry.modifiers ?? []).some((modifier) => modifier.to === "checks" || modifier.to === "saves") ||
+      !!entry.failsSaves?.length,
+  );
+  const failsAny = !!ruleset.items || effectSources.some((entry) => !!entry.failsSaves?.length);
+  const changedBy =
+    conditionsChange && ruleset.items
+      ? "conditions and what they wear or carry"
+      : conditionsChange
+        ? "conditions"
+        : "worn and carried items";
+  const effectsClause =
+    conditionsChange || ruleset.items
+      ? [
+          `The engine applies each character's own ${changedBy} to their checks and saves; do not add those yourself. A check marked from="..." says what changed it${
+            failsAny ? `, and automatic="true" a save that failed without a roll` : ""
+          }.`,
+        ]
+      : [];
   const untrainedClause =
     untrainedItems.length > 0
       ? [
@@ -939,6 +976,7 @@ function renderRulesetSkillCheckLine(
       ...faceClause("double", double, "count twice"),
       ...withClause,
       ...untrainedClause,
+      ...effectsClause,
       // Named with this ruleset's own first two abilities, so the example is never another game's.
       ...(pool.abilityPlusAbility && firstAbility && secondAbility
         ? [
@@ -966,6 +1004,7 @@ function renderRulesetSkillCheckLine(
     ...(advantage ? [`Add mode="advantage" or mode="disadvantage" when the rules grant one.`] : []),
     ...withClause,
     ...untrainedClause,
+    ...effectsClause,
     playerDie
       ? `Use the player's exact die. Do NOT write modifier, total or result: the engine applies the character sheet.`
       : `Do NOT write rolls, modifier, total or result: the engine rolls ${dice.count}d${dice.sides} and applies the character sheet.`,
@@ -1370,7 +1409,9 @@ export function buildGmFormatReminder(
                 `  This ruleset has no untyped items: an add must name one of its items${ctx.ruleset.items.propose !== false ? " or invent one of its items as below" : ""}, and any other name is refused as not-ruleset-item. More of something already held can still be added.`,
               ]
             : []),
-          ...(ctx.ruleset?.items && ctx.ruleset.items.propose !== false ? inventGrammarLines(ctx.ruleset.items) : []),
+          ...(ctx.ruleset?.items && ctx.ruleset.items.propose !== false
+            ? inventGrammarLines(ctx.ruleset.items, ctx.ruleset.sheet)
+            : []),
           ...(ctx.ruleset?.items?.carry
             ? [
                 `  Everyone carries only so much: an add with who left out goes to whoever can carry it (the player first), and the answer says who got it; what nobody can carry is refused as too-heavy and stays behind.`,

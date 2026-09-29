@@ -75,6 +75,8 @@ function readProposal(values: Map<string, string>): Omit<GameInventoryItemPropos
   const category = text("category");
   const rarity = text("rarity");
   const binds = text("binds", 20);
+  const worn = text("worn", 300);
+  const carried = text("carried", 300);
   const summary = text("summary", 300);
   const tags = values
     .get("tags")
@@ -92,6 +94,8 @@ function readProposal(values: Map<string, string>): Omit<GameInventoryItemPropos
     ...(stats ? { stats } : {}),
     ...(slots ? { slots } : {}),
     ...(binds ? { binds } : {}),
+    ...(worn ? { worn } : {}),
+    ...(carried ? { carried } : {}),
     ...(summary ? { summary } : {}),
   };
   return Object.keys(proposal).length > 0 ? proposal : undefined;

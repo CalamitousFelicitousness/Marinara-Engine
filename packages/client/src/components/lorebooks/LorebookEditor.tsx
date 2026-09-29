@@ -884,8 +884,13 @@ export function LorebookEditor() {
     toast.success(t("lorebook.editor.links.copied"));
   };
 
+  const canPasteLinks =
+    !!linkClipboard &&
+    (linkClipboard.characterIds.length === 0 || !!rawCharacters) &&
+    (linkClipboard.personaIds.length === 0 || !!rawPersonas);
+
   const handlePasteLinks = () => {
-    if (!linkClipboard || !rawCharacters || !rawPersonas) return;
+    if (!linkClipboard || !canPasteLinks) return;
     const characterIds = linkClipboard.characterIds.filter((id) => characters.some((character) => character.id === id));
     const personaIds = linkClipboard.personaIds.filter((id) => personas.some((persona) => persona.id === id));
     if (characterIds.length === 0 && personaIds.length === 0) {
@@ -2318,7 +2323,7 @@ export function LorebookEditor() {
                       <button
                         type="button"
                         onClick={handlePasteLinks}
-                        disabled={!linkClipboard || !rawCharacters || !rawPersonas}
+                        disabled={!canPasteLinks}
                         title={t("lorebook.editor.links.pasteHint")}
                         className="mari-editor-action inline-flex items-center gap-1.5 disabled:opacity-50"
                       >

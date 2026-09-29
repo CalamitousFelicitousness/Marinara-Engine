@@ -69,3 +69,52 @@ test("lorebook links copy across editors, merge without duplicates, and save nor
     for (const path of resources.reverse()) await request.delete(path).catch(() => undefined);
   }
 });
+
+for (const kind of ["character", "persona"] as const) {
+  test(`${kind} links paste when the unrelated resource query fails`, async ({ page, request }, info) => {
+    test.skip(!info.project.name.includes("desktop"), "Query independence uses the same path on every viewport.");
+    const path = kind === "character" ? "characters" : "characters/personas";
+    const field = kind === "character" ? "characterIds" : "personaIds";
+    const resource = await (
+      await request.post(`/api/${path}`, {
+        data: kind === "character" ? { data: { name: "Available character" } } : { name: "Available persona" },
+        failOnStatusCode: true,
+      })
+    ).json();
+    const source = await (
+      await request.post("/api/lorebooks", {
+        data: { name: "Available links", [field]: [resource.id] },
+        failOnStatusCode: true,
+      })
+    ).json();
+    const target = await (
+      await request.post("/api/lorebooks", { data: { name: "Empty links" }, failOnStatusCode: true })
+    ).json();
+    try {
+      await page.route(kind === "character" ? "**/api/characters/personas/list" : "**/api/characters", (route) =>
+        route.fulfill({ status: 503, json: { error: "Unrelated library unavailable" } }),
+      );
+      await page.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: "" } }));
+      await seedUIState(page, { hasCompletedOnboarding: true, sidebarOpen: false, rightPanelOpen: false });
+      await page.addInitScript((value) => localStorage.setItem("marinara:whats-new:seen-version", value), version);
+      await page.goto("/");
+      await clickTopbarPanel(page, "lorebooks");
+      await page.getByText(source.name, { exact: true }).click();
+      await page.getByRole("button", { name: "Copy links", exact: true }).click();
+      await page.getByRole("button", { name: "Back", exact: true }).click();
+      await page.getByText(target.name, { exact: true }).click();
+      const paste = page.getByRole("button", { name: "Paste links", exact: true });
+      await expect(paste).toBeEnabled();
+      await paste.click();
+      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await expect
+        .poll(async () => (await (await request.get(`/api/lorebooks/${target.id}`)).json())[field])
+        .toEqual([resource.id]);
+    } finally {
+      await page.close();
+      for (const url of [`/api/lorebooks/${source.id}`, `/api/lorebooks/${target.id}`, `/api/${path}/${resource.id}`]) {
+        await request.delete(url).catch(() => undefined);
+      }
+    }
+  });
+}

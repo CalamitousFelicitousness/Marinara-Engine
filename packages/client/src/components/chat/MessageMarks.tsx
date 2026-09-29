@@ -30,6 +30,9 @@ const FIELD_CLASS =
   "w-full rounded-md border border-[var(--marinara-chat-chrome-input-border)] bg-[var(--marinara-chat-chrome-input-bg)] px-2 py-1 text-xs text-[var(--marinara-chat-chrome-panel-text)] outline-none placeholder:text-[var(--marinara-chat-chrome-panel-muted)] focus:border-[var(--marinara-chat-chrome-input-border-focus)] focus:ring-2 focus:ring-[var(--marinara-chat-chrome-focus-ring)]";
 const ACTIVE_ICON_CLASS =
   "text-[var(--marinara-chat-chrome-button-text-active)] hover:text-[var(--marinara-chat-chrome-button-text-hover)]";
+// Darken even very bright accents on light panels while retaining their hue.
+const ACTIVE_MENU_ICON_CLASS =
+  "text-[color-mix(in_srgb,var(--marinara-chat-chrome-accent)_50%,black)] dark:text-[var(--marinara-chat-chrome-accent)]";
 
 export function readMessageMarks(message: { extra?: unknown }) {
   const bookmark = readMessageBookmark(message.extra);
@@ -120,7 +123,7 @@ export function MessageMarksAction({
             >
               <Bookmark
                 size="0.875rem"
-                className={cn("mt-px shrink-0", marks.bookmark && "text-[var(--marinara-chat-chrome-accent)]")}
+                className={cn("mt-px shrink-0", marks.bookmark && ACTIVE_MENU_ICON_CLASS)}
                 fill={marks.bookmark ? "currentColor" : "none"}
               />
               <span>
@@ -158,10 +161,7 @@ export function MessageMarksAction({
               aria-pressed={marks.pinned}
               onClick={() => save({ pinnedToContext: !marks.pinned })}
             >
-              <Pin
-                size="0.875rem"
-                className={cn("mt-px shrink-0", marks.pinned && "text-[var(--marinara-chat-chrome-accent)]")}
-              />
+              <Pin size="0.875rem" className={cn("mt-px shrink-0", marks.pinned && ACTIVE_MENU_ICON_CLASS)} />
               <span className="flex min-w-0 flex-col">
                 <span>
                   {marks.pinned
@@ -176,10 +176,7 @@ export function MessageMarksAction({
 
             <div className="mt-1 border-t border-[var(--marinara-chat-chrome-panel-divider)] px-2 pt-2">
               <label htmlFor={noteId} className="mb-1 flex items-center gap-1.5 text-xs">
-                <StickyNote
-                  size="0.875rem"
-                  className={cn("shrink-0", marks.note && "text-[var(--marinara-chat-chrome-accent)]")}
-                />
+                <StickyNote size="0.875rem" className={cn("shrink-0", marks.note && ACTIVE_MENU_ICON_CLASS)} />
                 {localizeUi("ui.chat.messagemarks.privateNote")}
               </label>
               <textarea

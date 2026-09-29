@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- In a Game Mode game whose ruleset rolls something other than one d20 (such as 2d6 or a dice pool), a check the Engine rolls during a turn is no longer rolled a second time as if nobody's sheet were read. The saved result keeps the sheet's numbers, who rolled, and any wound penalty or modifier the ruleset applied.
+
 - A Game Mode ruleset's sheet can now read the items a character holds, with a new `itemStat` value: a stat over what they wear, what they only carry, or both, added up, the highest, the lowest or counted, optionally only one slot, category or tag. The sheet on screen, checks, the Game Master's sheet summary and the start of a fight all read it. In the Ember Roads example, a worn leather coat now adds to Guard. Rulesets that use it need Capability API 1.52 (#6826).
 
 - A Game Mode ruleset with `native: false` now keeps new untyped items out of its games: the Game Master can still add more of, remove or give an item already held, but anything new it hands out must be one of the ruleset's items or one it invents, and it is told so. Fights no longer guess what items do or offer them, until the ruleset can say what they do. The player's typed-in items and what a party carries into a new session are unchanged (#6822).

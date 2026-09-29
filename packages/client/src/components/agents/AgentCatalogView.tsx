@@ -30,6 +30,7 @@ import { isAgentCatalogKindBadgeVisible } from "../../lib/agent-catalog-kind-bad
 import { AgentVersionHistory } from "./AgentVersionHistory";
 import { showConfirmDialog } from "../../lib/app-dialogs";
 import { cn } from "../../lib/utils";
+import { notifyDecisionImport } from "../../lib/decision-import-notice";
 import { useUIStore } from "../../stores/ui.store";
 import { AgentArtwork } from "./AgentArtwork";
 import { AgentModeFilter, type AgentModeFilterValue } from "./AgentModeFilter";
@@ -56,6 +57,8 @@ const OFFICIAL_PACKAGE_MODES: Readonly<Record<string, readonly CatalogMode[]>> =
   "character-tracker": ["roleplay"],
   "custom-tracker": ["roleplay"],
   "inventory-tracker": ["roleplay"],
+  quartermaster: ["roleplay"],
+  "relationship-tracker": ["roleplay"],
   "memory-nag": ["roleplay"],
   "long-term-memory": ["conversation", "roleplay", "game"],
   expression: ["roleplay"],
@@ -80,6 +83,7 @@ const OFFICIAL_PACKAGE_MODES: Readonly<Record<string, readonly CatalogMode[]>> =
   spotify: ["conversation", "roleplay", "game"],
   poker: ["conversation"],
   "rock-paper-scissors": ["conversation"],
+  "ruleset-5e-2014": ["game"],
   "tic-tac-toe": ["conversation"],
   uno: ["conversation"],
 });
@@ -128,6 +132,7 @@ function kindLabel(kind: CapabilityCatalogPackage["manifest"]["kind"][number]) {
   if (kind === "conversation-calls") return "Calls";
   if (kind === "turn-game") return "Conversation Game";
   if (kind === "maps") return "Maps";
+  if (kind === "ruleset") return "Rules";
   return "Agent";
 }
 
@@ -242,6 +247,7 @@ export function AgentCatalogView() {
         expectedVersion: entry.manifest.version,
         expectedArtifactSha256: entry.artifact.sha256,
       });
+      void notifyDecisionImport(result.usesDecisions ?? false, localizeUi);
       toast.success(
         result.status === "restart-required"
           ? localizeUi(
@@ -295,6 +301,7 @@ export function AgentCatalogView() {
         packages: (catalog.data?.packages ?? []).filter((entry) => installablePackageIds.includes(entry.manifest.id)),
         onProgress: (completed) => setBulkProgress({ action: "install", completed, total }),
       });
+      void notifyDecisionImport(result.usesDecisions, localizeUi);
       if (result.failures.length === 0) {
         toast.success(
           result.restartRequired

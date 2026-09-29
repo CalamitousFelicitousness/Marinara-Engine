@@ -75,6 +75,7 @@ import { formatCardVersionTimestamp, getCardVersionTitle } from "../../lib/card-
 import { dataImageUrlToFile } from "../../lib/data-image-file";
 import { extractColorsFromImage } from "../../lib/avatar-color-extraction";
 import { HelpTooltip } from "../ui/HelpTooltip";
+import { RulesetSheetsSection } from "../rulesets/RulesetSheetsSection";
 import { ColorPicker } from "../ui/ColorPicker";
 import { StatIconPicker } from "../ui/StatIconPicker";
 import { MacroTextarea } from "../ui/MacroTextarea";
@@ -83,7 +84,9 @@ import { CustomEmojiTagButton } from "../ui/CustomEmojiTagButton";
 import { CallClipGenerationModal } from "../ui/CallClipGenerationModal";
 import { api, formatFirstApiValidationIssue } from "../../lib/api-client";
 import { downloadSpriteFile } from "../../lib/sprite-download";
-import { downloadUrlToDevice } from "../../lib/file-download";
+import { downloadUrlToDevice, shouldUseIosImageShare } from "../../lib/file-download";
+import { ImageDownloadButton } from "../ui/ImageDownloadButton";
+import { useDialogFocusScope } from "../../hooks/use-dialog-focus-scope";
 import { parseTrackerCardColorConfig, serializeTrackerCardColorConfig } from "../../lib/tracker-card-colors";
 import {
   getStatNameOccurrence,
@@ -408,6 +411,10 @@ function PersonaGalleryTab({
   const remove = useDeletePersonaGalleryImage(personaId);
   const tag = useTagPersonaGalleryImage(personaId);
   const [lightbox, setLightbox] = useState<PersonaGalleryImage | null>(null);
+  const lightboxRef = useRef<HTMLDivElement>(null);
+  const lightboxCloseRef = useRef<HTMLButtonElement>(null);
+  // Nested confirmations own focus while retaining the preview's original return target.
+  useDialogFocusScope(!!lightbox, lightboxRef, lightboxCloseRef, undefined, '[data-component="Modal"]');
   const [selectingImages, setSelectingImages] = useState(false);
   const [selectedImageIds, setSelectedImageIds] = useState<Set<string>>(() => new Set());
   const selectedImages = useMemo(
@@ -468,6 +475,18 @@ function PersonaGalleryTab({
     },
     [lightbox?.id, remove, localizeUi],
   );
+
+  const handleDownloadImage = async (image: PersonaGalleryImage) => {
+    if (shouldUseIosImageShare()) {
+      setLightbox(image);
+      return;
+    }
+    try {
+      await downloadUrlToDevice(image.url, image.filePath.split(/[\\/]/).pop() || `gallery-${image.id}.png`);
+    } catch {
+      toast.error(localizeUi("ui.chat.chatgallery.downloadFailed"));
+    }
+  };
 
   const handleBatchDownload = useCallback(async () => {
     if (selectedImages.length === 0) return;
@@ -706,15 +725,17 @@ function PersonaGalleryTab({
                           <Download size="0.75rem" />
                         </button>
                       ) : (
-                        <a
-                          href={image.url}
-                          download
+                        <button
+                          type="button"
                           className="rounded-lg bg-white/15 p-1.5 text-white transition-colors hover:bg-white/25"
                           title={localizeUi("ui.personas.personagallerytab.download")}
-                          onClick={(e) => e.stopPropagation()}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void handleDownloadImage(image);
+                          }}
                         >
                           <Download size="0.75rem" />
-                        </a>
+                        </button>
                       )}
                       <button
                         type="button"
@@ -752,6 +773,17 @@ function PersonaGalleryTab({
       {lightbox && (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 max-md:pt-[env(safe-area-inset-top)]"
+          ref={lightboxRef}
+          tabIndex={-1}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.stopPropagation();
+              setLightbox(null);
+            }
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-label={localizeUi("ui.chat.chatimagelightbox.imagePreview")}
           onClick={() => setLightbox(null)}
         >
           <div className="relative max-h-[90vh] max-w-[90vw] w-[min(90vw,90vh)]" onClick={(e) => e.stopPropagation()}>
@@ -770,13 +802,10 @@ function PersonaGalleryTab({
               >
                 {galleryAvatarPending ? <Loader2 size="0.875rem" className="animate-spin" /> : <User size="0.875rem" />}
               </button>
-              <a
-                href={lightbox.url}
-                download
-                className="rounded-lg bg-black/60 p-2 text-white transition-colors hover:bg-black/80"
-              >
-                <Download size="0.875rem" />
-              </a>
+              <ImageDownloadButton
+                url={lightbox.url}
+                filename={lightbox.filePath.split(/[\\/]/).pop() || `gallery-${lightbox.id}.png`}
+              />
               <button
                 type="button"
                 onClick={() => void handleDelete(lightbox)}
@@ -788,7 +817,9 @@ function PersonaGalleryTab({
               </button>
               <button
                 type="button"
+                ref={lightboxCloseRef}
                 onClick={() => setLightbox(null)}
+                aria-label={localizeUi("ui.chat.chatimagelightbox.closeImage")}
                 className="rounded-lg bg-black/60 p-2 text-white transition-colors hover:bg-black/80"
               >
                 <X size="0.875rem" />
@@ -1293,6 +1324,7 @@ export function PersonaEditor() {
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [avatarGeneratorOpen, setAvatarGeneratorOpen] = useState(false);
   const [characterSheetGeneratorOpen, setCharacterSheetGeneratorOpen] = useState(false);
+  const { data: characterSheetSprites } = useCharacterSprites(characterSheetGeneratorOpen ? personaId : null);
   const loadedPersonaIdRef = useRef<string | null>(null);
   /** Authoritative avatar path last reconciled into the editor. */
   const authoritativeAvatarPathRef = useRef<string | null>(null);
@@ -1946,6 +1978,7 @@ export function PersonaEditor() {
         entityName={formData.name || localizeUi("ui.characters.charactersheet.characterFallback")}
         defaultAppearance={formData.appearance || formData.description || formData.personality}
         defaultAvatarUrl={avatarPreview}
+        neutralFullBodyReferenceUrl={characterSheetSprites?.find((sprite) => sprite.expression === "full_neutral")?.url}
         onClose={() => setCharacterSheetGeneratorOpen(false)}
         onUseAvatar={handleGeneratedCharacterSheet}
       />
@@ -3453,6 +3486,14 @@ function PersonaStatsTab({
           </>
         )}
       </div>
+
+      <RulesetSheetsSection
+        sheets={parsed.rulesetSheets}
+        onChange={(rulesetSheets) => {
+          const { rulesetSheets: _previous, ...rest } = parsed;
+          save(rulesetSheets ? { ...rest, rulesetSheets } : rest);
+        }}
+      />
     </div>
   );
 }

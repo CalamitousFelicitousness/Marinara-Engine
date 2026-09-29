@@ -1119,6 +1119,7 @@ export async function galleryRoutes(app: FastifyInstance) {
       comfyWorkflow,
       comfyLoras,
       comfyFps,
+      atlasModelOptions,
     } = videoRuntime;
 
     const galleryImagePath = resolveGalleryImagePath(galleryImage);
@@ -1160,6 +1161,7 @@ export async function galleryRoutes(app: FastifyInstance) {
         comfyWorkflow,
         comfyLoras,
         fps: comfyFps,
+        atlasModelOptions,
         referenceImage,
         publicReferenceUpload,
         queue: input.queueMediaGenerationRequests,
@@ -1487,6 +1489,7 @@ export async function galleryRoutes(app: FastifyInstance) {
         });
         if (!image) throw new Error("Generated selfie metadata could not be saved");
         await persistGeneratedImageToEntityGalleries({
+          enabled: imageSettings.autoSaveToGalleries,
           sourceFilePath: filePath,
           sourceChatImageId: image.id,
           characterIds: [character.id],

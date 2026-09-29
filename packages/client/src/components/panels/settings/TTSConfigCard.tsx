@@ -185,7 +185,8 @@ function isTTSLanguageConnectionOption(value: unknown): value is TTSLanguageConn
     typeof connection.model === "string" &&
     connection.provider !== "image_generation" &&
     connection.provider !== "video_generation" &&
-    connection.provider !== "audio"
+    connection.provider !== "audio" &&
+    connection.provider !== "decision"
   );
 }
 
@@ -2013,6 +2014,7 @@ export function TTSConfigCard() {
               >
                 <option value="mp3">{localizeUi("ui.panels.ttsconfigcard.mp3")}</option>
                 <option value="wav">{localizeUi("ui.panels.ttsconfigcard.wav")}</option>
+                <option value="pcm">{localizeUi("ui.panels.ttsconfigcard.pcm")}</option>
               </select>
             </FieldRow>
           )}

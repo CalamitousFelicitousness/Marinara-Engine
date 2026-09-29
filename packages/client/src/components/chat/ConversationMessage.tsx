@@ -1,3 +1,4 @@
+import { ConversationSceneInvitation } from "./ConversationSceneInvitation";
 import { useMessagePresetVariables } from "../../hooks/use-message-preset-variables";
 // ──────────────────────────────────────────────
 // Chat: Conversation message shell
@@ -37,6 +38,7 @@ import {
 } from "./ConversationMessageShared";
 import { MessageReplyPreview } from "./MessageReplyPreview";
 import { ConversationMessageActions } from "./ConversationMessageActions";
+import { MessageMarkIndicators } from "./MessageMarks";
 import { ConversationMessageGrouped } from "./ConversationMessageGrouped";
 import { ConversationMessageBubble } from "./ConversationMessageBubble";
 import { ConversationMessageLine } from "./ConversationMessageLine";
@@ -1102,11 +1104,17 @@ export const ConversationMessage = memo(function ConversationMessage({
     );
   }
 
+  const sceneInvitation =
+    !isUser && !isStreaming && !editing && !isHiddenCollapsed && extra.sceneRequest ? (
+      <ConversationSceneInvitation chatId={message.chatId} request={extra.sceneRequest} />
+    ) : null;
+
   // ── Grouped multi-speaker layout ──
   if (groupedLayoutActive) {
     return (
       <>
         <ConversationMessageGrouped ctx={ctx} msgRef={msgRef} reactionRow={reactionRow} />
+        {sceneInvitation}
         {modals}
       </>
     );
@@ -1149,9 +1157,11 @@ export const ConversationMessage = memo(function ConversationMessage({
             {isBubbleStyle ? <ConversationMessageBubble ctx={ctx} /> : <ConversationMessageLine ctx={ctx} />}
           </div>
 
+          {sceneInvitation}
           <ConversationMessageSwipes ctx={ctx} />
         </div>
         <div className="px-4">
+          <MessageMarkIndicators message={message} className="px-1" />
           {reactionRow}
           {(!hideActions || (hasReasoning && !isUser)) && (
             <ConversationMessageActions

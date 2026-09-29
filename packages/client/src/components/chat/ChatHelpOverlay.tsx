@@ -2,16 +2,17 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSPrope
 import { createPortal } from "react-dom";
 import type { ChatMode } from "@marinara-engine/shared";
 import {
+  Bookmark,
   Brain,
   ChevronsLeftRight,
   CircleHelp,
   Copy,
+  Headphones,
   EyeOff,
   Flag,
   GitBranch,
   Languages,
   Pencil,
-  Play,
   RefreshCw,
   Reply,
   ScrollText,
@@ -19,7 +20,6 @@ import {
   Shield,
   SmilePlus,
   Trash2,
-  Volume2,
   type LucideIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -287,7 +287,9 @@ const PADDED_TARGET_IDS = new Set<HelpTargetId>([
 
 const ACTIONS_BY_MODE: Record<ChatMode, HelpActionDefinition[]> = {
   conversation: [
+    { icon: Headphones, labelKey: "ui.chat.chatmessage.voiceControls" },
     { icon: Copy, labelKey: "chat.help.actions.copy" },
+    { icon: Bookmark, labelKey: "chat.help.actions.bookmark" },
     { icon: Reply, labelKey: "chat.help.actions.reply" },
     { icon: SmilePlus, labelKey: "chat.help.actions.react" },
     { icon: Languages, labelKey: "chat.help.actions.translate" },
@@ -303,6 +305,7 @@ const ACTIONS_BY_MODE: Record<ChatMode, HelpActionDefinition[]> = {
   ],
   roleplay: [
     { icon: Copy, labelKey: "chat.help.actions.copy" },
+    { icon: Bookmark, labelKey: "chat.help.actions.bookmark" },
     { icon: Languages, labelKey: "chat.help.actions.translate" },
     { icon: Pencil, labelKey: "chat.help.actions.edit" },
     { icon: Shield, labelKey: "chat.help.actions.rewrite" },
@@ -315,8 +318,7 @@ const ACTIONS_BY_MODE: Record<ChatMode, HelpActionDefinition[]> = {
     { icon: Brain, labelKey: "chat.help.actions.thinking" },
     { icon: GitBranch, labelKey: "chat.help.actions.branchOrClone" },
     { icon: Trash2, labelKey: "chat.help.actions.delete" },
-    { icon: Volume2, labelKey: "chat.help.actions.voice" },
-    { icon: Play, labelKey: "chat.help.actions.voicePlayback" },
+    { icon: Headphones, labelKey: "ui.chat.chatmessage.voiceControls" },
   ],
   game: [
     { icon: Copy, labelKey: "chat.help.actions.copyLog" },
@@ -325,7 +327,7 @@ const ACTIONS_BY_MODE: Record<ChatMode, HelpActionDefinition[]> = {
     { icon: Search, labelKey: "chat.help.actions.prompt" },
     { icon: GitBranch, labelKey: "chat.help.actions.branchLog" },
     { icon: Trash2, labelKey: "chat.help.actions.deleteLog" },
-    { icon: Volume2, labelKey: "chat.help.actions.voice" },
+    { icon: Headphones, labelKey: "ui.chat.chatmessage.voiceControls" },
   ],
 };
 

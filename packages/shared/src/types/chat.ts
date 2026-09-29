@@ -286,6 +286,9 @@ export interface ChatMetadata {
   automaticSummaryEnabled?: boolean;
   /** Keep recent automatic summaries in context while retrieving relevant older Conversation weeks or Roleplay entries. */
   semanticSummaryRetrievalEnabled?: boolean;
+  semanticSummaryRecentCount?: number;
+  semanticSummaryOlderCount?: number;
+  semanticSummaryMinSimilarity?: number;
   /** Last assistant message ID processed by the automatic Roleplay summary updater. */
   lastAutomaticSummaryMessageId?: string | null;
   /** Chat-scoped manual summary prompt templates. Missing or empty uses the built-in default. */
@@ -389,6 +392,8 @@ export interface ChatMetadata {
   spriteCharacterIds?: string[];
   /** Which sprite file families the roleplay Expression Engine may display. */
   spriteDisplayModes?: Array<"expressions" | "full-body">;
+  /** Only show roleplay sprites returned by the latest completed Expression Engine result. Off by default. */
+  expressionOnlyActiveSprites?: boolean;
   /** Preferred sidebar / default layout side for chat sprites. */
   spritePosition?: SpriteSide;
   /**
@@ -490,6 +495,7 @@ export interface ChatMetadata {
   roleplayRollAudience?: RoleplayCommandAudience;
   roleplayCombatAudience?: RoleplayCommandAudience;
   roleplayDocumentAudience?: RoleplayCommandAudience;
+  roleplayWhisperAudience?: RoleplayCommandAudience;
   roleplaySoundConnectionId?: string | null;
   /** Chat-scoped Intiface Central WebSocket URL for haptic manual and auto-connect. */
   hapticIntifaceUrl?: string | null;
@@ -604,6 +610,9 @@ export interface ChatMetadata {
   gameCombatStyle?: import("./game.js").GameCombatStyle;
   /** Live tactical (grid) battle snapshot — restored on page refresh while a tactical fight is in progress. */
   gameTacticalCombatSnapshot?: import("../features/tactical-combat/types.js").TacticalCombatState | null;
+  /** The ruleset this game was created on, pinned for the game's lifetime. Absent means
+   *  `engine-legacy`: the Engine's own rules, exactly as before rulesets existed. */
+  gameRuleset?: import("../schemas/ruleset.schema.js").RulesetRef;
   /** User's initial game setup preferences */
   gameSetupConfig?: import("./game.js").GameSetupConfig | null;
   /** Immutable creation-time setup retained for viewing and sharing after the campaign changes. */
@@ -822,6 +831,16 @@ export interface MessageReply {
   content: string;
 }
 
+/** A character's scene invitation, retained with the response that proposed it. */
+export interface ConversationSceneRequest {
+  prompt: string;
+  background?: string | null;
+  planHint?: string | null;
+  initiatorCharId?: string | null;
+  initiatorCharName?: string | null;
+  connectionId?: string | null;
+}
+
 /** Additional data attached to a message. */
 export interface MessageExtra {
   /** Quoted snapshot shown in the transcript and included only for the latest user turn in prompts. */
@@ -862,6 +881,7 @@ export interface MessageExtra {
    * like [selfie] remain part of the model-visible transcript.
    */
   conversationCommandContent?: string | null;
+  sceneRequest?: ConversationSceneRequest | null;
   /** Private actions for this swipe, never replayed into shared prompt history. */
   roleplayPrivateCommands?: RoleplayPrivateCommand[] | null;
   /** Provider reasoning from a private turn must not be replayed into shared history. */
@@ -877,6 +897,8 @@ export interface MessageExtra {
   mariDeferredMutations?: boolean | null;
   /** Per-swipe sprite expressions from the Expression Engine agent */
   spriteExpressions?: Record<string, string> | null;
+  /** All sprite owners in the completed expression result, including the persona. Empty means none. */
+  expressionSpriteIds?: string[];
   /** Per-swipe CYOA choices from the CYOA Choices agent */
   cyoaChoices?: Array<{ label: string; text: string }> | null;
   /** Presentation-only Game Mode cues retained so completed turns can be replayed without rerunning scene analysis. */
@@ -904,6 +926,12 @@ export interface MessageExtra {
   hiddenFromUser?: boolean;
   /** When true, the visible message is excluded from future AI prompt context */
   hiddenFromAI?: boolean;
+  /** User bookmark shown in chat tools. Never sent to the model. */
+  bookmark?: import("../utils/message-marks.js").MessageBookmark | null;
+  /** Keep this message in prompt context when the message limit would otherwise drop it. */
+  pinnedToContext?: boolean;
+  /** User-only note attached to this message. Never sent to the model. */
+  privateNote?: string | null;
   /** Character IDs whose generation context excludes this message. Global hiddenFromAI takes precedence. */
   hiddenFromAICharacterIds?: string[];
   /** When true, Roleplay renders this generated assistant turn as a fresh bubble instead of grouping with the previous assistant turn. */
@@ -993,6 +1021,8 @@ export interface GenerationInfo {
   temperature: number | null;
   tokensPrompt: number | null;
   tokensCompletion: number | null;
+  /** Input tokens in the latest completed model request, including cache but excluding output. */
+  tokensLastRequestInput?: number | null;
   /** Occupied tokens in the latest completed model request, including cache and output; null when unreported. */
   tokensContext?: number | null;
   /** Completed main-model requests in this turn; agent and separate Game planner calls are excluded. */

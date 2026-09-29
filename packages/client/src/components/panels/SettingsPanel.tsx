@@ -78,6 +78,7 @@ import {
   type ImageStyleProfile,
   type ImageStyleProfileSettings,
   type QuoteFormat,
+  type SidecarHealthSection,
   type Theme,
   type VideoGenerationUserSettings,
 } from "@marinara-engine/shared";
@@ -136,6 +137,7 @@ import {
   HardDrive,
   LifeBuoy,
   SlidersHorizontal,
+  ToggleRight,
 } from "lucide-react";
 import {
   useChat,
@@ -167,6 +169,8 @@ import {
 import { TrackerCardColorSettings } from "./settings/TrackerCardColorSettings";
 import { PromptOverridesEditor } from "./settings/PromptOverridesEditor";
 import { BackgroundPicker } from "./settings/BackgroundPicker";
+import { RequestTimeoutSettings } from "./settings/RequestTimeoutSettings";
+import { FEATURE_SWITCHES_CONTROL_ID, FeatureSwitchesSettings } from "./settings/FeatureSwitchesSettings";
 import { CustomGenerationParametersSettings } from "./settings/CustomGenerationParametersSettings";
 import { ExternalExtensionsSettings, PersonalExtensionsSettings } from "./settings/PersonalExtensionsSettings";
 import { usePersonalExtensionPolicy, useSetExternalExtensionsEnabled } from "../../hooks/use-personal-extensions";
@@ -276,8 +280,10 @@ type SettingsSectionId =
   | "profile-marinara"
   | "sillytavern-import"
   | "admin-access"
+  | "features"
   | "updates"
   | "support-diagnostics"
+  | "request-timeouts"
   | "parameters"
   | "message-tools"
   | "backup-export"
@@ -386,7 +392,7 @@ const SETTINGS_SECTIONS: readonly SettingsSectionMeta[] = [
   },
   {
     id: "game-assets",
-    tab: "generations",
+    tab: "import",
     label: "Game Assets",
     description: "Asset folders for music, ambience, sprites, and backgrounds.",
     aliases: ["assets", "music", "ambient", "sfx", "sprites", "backgrounds", "folder"],
@@ -507,6 +513,13 @@ const SETTINGS_SECTIONS: readonly SettingsSectionMeta[] = [
     aliases: ["admin", "secret", "access", "authorization"],
   },
   {
+    id: "features",
+    tab: "advanced",
+    label: "Features",
+    description: "Optional server behaviours, all off by default.",
+    aliases: ["features", "switches", "optional", "provider retry", "lorebook groups"],
+  },
+  {
     id: "updates",
     tab: "advanced",
     label: "Updates",
@@ -519,6 +532,13 @@ const SETTINGS_SECTIONS: readonly SettingsSectionMeta[] = [
     label: "Support Diagnostics",
     description: "Copy technical details for support tickets.",
     aliases: ["support", "diagnostics", "system info", "gpu", "model", "ticket", "bug report"],
+  },
+  {
+    id: "request-timeouts",
+    tab: "advanced",
+    label: "Request timeouts",
+    description: "Adjust how long text, agents and media wait for a slow backend.",
+    aliases: ["timeout", "slow", "koboldcpp", "images", "video", "seconds", "backend"],
   },
   {
     id: "parameters",
@@ -1212,6 +1232,22 @@ const SETTINGS_SEARCHABLE_CONTROLS: readonly SettingsSearchableControlMeta[] = [
     kind: "Toggle",
   },
   {
+    id: "roleplay-vn-autoplay",
+    sectionId: "roleplay-messages",
+    label: "Auto-play VN paragraphs",
+    description: "Advance Roleplay Visual Novel paragraphs automatically, waiting for speech when it is playing.",
+    aliases: ["roleplay", "vn", "autoplay", "tts", "speech", "reading"],
+    kind: "Toggle",
+  },
+  {
+    id: "roleplay-vn-autoplay-delay",
+    sectionId: "roleplay-messages",
+    label: "Paragraph delay",
+    description: "Set the time between Roleplay Visual Novel paragraphs when auto-play is enabled.",
+    aliases: ["roleplay", "vn", "autoplay", "delay", "reading"],
+    kind: "Slider",
+  },
+  {
     id: "roleplay-vn-portrait-scale",
     sectionId: "roleplay-messages",
     label: "Dialogue portrait scale",
@@ -1433,6 +1469,14 @@ const SETTINGS_SEARCHABLE_CONTROLS: readonly SettingsSearchableControlMeta[] = [
     label: "Include reasoning in exports",
     description: "Include hidden thinking metadata in chat exports.",
     aliases: ["reasoning", "thinking", "exports"],
+    kind: "Toggle",
+  },
+  {
+    id: "include-private-notes-in-exports",
+    sectionId: "message-tools",
+    label: "Include private notes in exports",
+    description: "Include your private message notes in chat exports.",
+    aliases: ["notes", "private", "exports"],
     kind: "Toggle",
   },
   {
@@ -4053,6 +4097,8 @@ function OverallGenerationSettings() {
 
 function ImageGenerationSettings() {
   const { t: localizeUi } = useUiTranslation();
+  const autoSaveToGalleries = useUIStore((s) => s.autoSaveGeneratedImagesToGalleries);
+  const setAutoSaveToGalleries = useUIStore((s) => s.setAutoSaveGeneratedImagesToGalleries);
   const imageBackgroundWidth = useUIStore((s) => s.imageBackgroundWidth);
   const imageBackgroundHeight = useUIStore((s) => s.imageBackgroundHeight);
   const setImageBackgroundDimensions = useUIStore((s) => s.setImageBackgroundDimensions);
@@ -4082,6 +4128,12 @@ function ImageGenerationSettings() {
       {...getSettingsSectionAnchorProps("image-generation")}
     >
       <div className="flex flex-col gap-2.5">
+        <ToggleSetting
+          label={localizeUi("settings.controls.autoSaveGeneratedImagesToGalleries.label")}
+          help={localizeUi("settings.controls.autoSaveGeneratedImagesToGalleries.help")}
+          checked={autoSaveToGalleries}
+          onChange={setAutoSaveToGalleries}
+        />
         <ImageDimensionRow
           controlId="image-background-size"
           label={localizeUi("settings.controls.backgroundGeneration.label")}
@@ -4615,6 +4667,8 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
   const setDefaultRoleplayBackground = useUIStore((s) => s.setDefaultRoleplayBackground);
   const chatBackgroundBlur = useUIStore((s) => s.chatBackgroundBlur);
   const setChatBackgroundBlur = useUIStore((s) => s.setChatBackgroundBlur);
+  const conversationBackgroundImageOpacity = useUIStore((s) => s.conversationBackgroundImageOpacity);
+  const setConversationBackgroundImageOpacity = useUIStore((s) => s.setConversationBackgroundImageOpacity);
   const resetAppearanceSettings = useUIStore((s) => s.resetAppearanceSettings);
   const activeChatId = useChatStore((s) => s.activeChatId);
   const { data: appearanceChat } = useChat(activeChatId);
@@ -4822,6 +4876,10 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
   const setRoleplayVnPortraitScale = useUIStore((s) => s.setRoleplayVnPortraitScale);
   const roleplayVnSpriteScale = useUIStore((s) => s.roleplayVnSpriteScale);
   const setRoleplayVnSpriteScale = useUIStore((s) => s.setRoleplayVnSpriteScale);
+  const roleplayVnAutoPlay = useUIStore((s) => s.roleplayVnAutoPlay);
+  const setRoleplayVnAutoPlay = useUIStore((s) => s.setRoleplayVnAutoPlay);
+  const roleplayVnAutoPlayDelay = useUIStore((s) => s.roleplayVnAutoPlayDelay);
+  const setRoleplayVnAutoPlayDelay = useUIStore((s) => s.setRoleplayVnAutoPlayDelay);
   const activeRoleplayStyle =
     appearanceChat?.mode === "roleplay"
       ? (parseChatMetadata(appearanceChat.metadata).roleplayDisplayStyle ?? roleplayDisplayStyle)
@@ -5409,6 +5467,27 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                     </span>
                   </div>
                 </label>
+                <label className="flex flex-col gap-1 rounded-lg bg-[var(--secondary)]/45 p-3 ring-1 ring-[var(--border)]/70">
+                  <span className="inline-flex items-center gap-1 text-[0.6875rem] font-medium">
+                    {localizeUi("settings.controls.conversationBackgroundImageOpacity.label")}
+                    <HelpTooltip text={localizeUi("settings.controls.conversationBackgroundImageOpacity.help")} />
+                  </span>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="range"
+                      aria-label={localizeUi("settings.controls.conversationBackgroundImageOpacity.label")}
+                      min={0}
+                      max={100}
+                      step={5}
+                      value={conversationBackgroundImageOpacity}
+                      onChange={(event) => setConversationBackgroundImageOpacity(Number(event.target.value))}
+                      className="min-w-0 flex-1 accent-[var(--primary)]"
+                    />
+                    <span className="w-12 text-right text-xs tabular-nums text-[var(--muted-foreground)]">
+                      {conversationBackgroundImageOpacity}%
+                    </span>
+                  </div>
+                </label>
                 <label className="flex items-center gap-2">
                   <span className="inline-flex shrink-0 items-center gap-1 text-[0.6875rem] font-medium">
                     {localizeUi("ui.panels.appearancesettings.chatListBackgrounds")}
@@ -5745,6 +5824,32 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                 }}
               />
               <p className="text-xs text-[var(--muted-foreground)]">{localizeUi("settings.roleplayVn.scope")}</p>
+              <ToggleSetting
+                anchorId={getSettingsControlAnchorId("roleplay-vn-autoplay")}
+                label={localizeUi("settings.roleplayVn.autoPlay")}
+                help={localizeUi("settings.roleplayVn.autoPlayHelp")}
+                checked={roleplayVnAutoPlay}
+                onChange={setRoleplayVnAutoPlay}
+              />
+              <label
+                id={getSettingsControlAnchorId("roleplay-vn-autoplay-delay")}
+                className="flex scroll-mt-3 flex-col gap-2 text-xs"
+              >
+                <span>
+                  {localizeUi("settings.roleplayVn.autoPlayDelay")}{" "}
+                  {localizeUi("settings.units.secondsShort", { value: roleplayVnAutoPlayDelay / 1000 })}
+                </span>
+                <input
+                  type="range"
+                  min={200}
+                  max={10000}
+                  step={100}
+                  value={roleplayVnAutoPlayDelay}
+                  disabled={!roleplayVnAutoPlay}
+                  onChange={(event) => setRoleplayVnAutoPlayDelay(Number(event.target.value))}
+                  className="w-full accent-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-50"
+                />
+              </label>
               <div className="grid gap-3 rounded-lg border border-[var(--border)] p-3 sm:grid-cols-2">
                 <label
                   id={getSettingsControlAnchorId("roleplay-vn-portrait-scale")}
@@ -7125,6 +7230,7 @@ function ImportSettings() {
     return () => window.clearInterval(timer);
   }, [profileImportBusy]);
 
+  const profileImportInputRef = useRef<HTMLInputElement>(null);
   const handleProfileImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -7381,12 +7487,11 @@ function ImportSettings() {
         {...getSettingsSectionAnchorProps("profile-marinara")}
       >
         <div className="flex flex-col gap-2.5">
-          <label
-            className={cn(
-              SETTINGS_PRIMARY_BUTTON_CLASS,
-              "w-full cursor-pointer gap-2",
-              profileImportBusy && "pointer-events-none opacity-75",
-            )}
+          <button
+            type="button"
+            onClick={() => profileImportInputRef.current?.click()}
+            disabled={profileImportBusy}
+            className={cn(SETTINGS_PRIMARY_BUTTON_CLASS, "w-full gap-2")}
           >
             {profileImportBusy ? <Loader2 size="1rem" className="animate-spin" /> : <Download size="1rem" />}
             {profileImportBusy
@@ -7394,14 +7499,17 @@ function ImportSettings() {
                 ? localizeUi("ui.panels.importsettings.scanningProfile")
                 : localizeUi("ui.panels.importsettings.importingProfile")
               : localizeUi("ui.panels.importsettings.importProfileJsonZip")}
-            <input
-              type="file"
-              accept=".json,.zip,application/json,application/zip"
-              onChange={handleProfileImport}
-              disabled={profileImportBusy}
-              className="hidden"
-            />
-          </label>
+          </button>
+          <input
+            ref={profileImportInputRef}
+            type="file"
+            accept=".json,.zip,application/json,application/zip"
+            onChange={handleProfileImport}
+            disabled={profileImportBusy}
+            className="hidden"
+            tabIndex={-1}
+            aria-hidden="true"
+          />
 
           {profileImportProgress && (
             <div
@@ -7695,6 +7803,8 @@ function AdvancedSettings() {
   const setGuideGenerations = useUIStore((s) => s.setGuideGenerations);
   const includeReasoningInExports = useUIStore((s) => s.includeReasoningInExports);
   const setIncludeReasoningInExports = useUIStore((s) => s.setIncludeReasoningInExports);
+  const includePrivateNotesInExports = useUIStore((s) => s.includePrivateNotesInExports);
+  const setIncludePrivateNotesInExports = useUIStore((s) => s.setIncludePrivateNotesInExports);
   const debugMode = useUIStore((s) => s.debugMode);
   const setDebugMode = useUIStore((s) => s.setDebugMode);
   const clearAllData = useClearAllData();
@@ -8011,6 +8121,7 @@ function AdvancedSettings() {
           };
         };
     uncleanExitCount?: number;
+    sidecars?: SidecarHealthSection;
   }>({
     queryKey: ["health"],
     // Against a frozen host this fetch would otherwise pend forever, leaving
@@ -8042,32 +8153,40 @@ function AdvancedSettings() {
       }>("/professor-mari/workspace/status", { signal: requestTimeoutSignal(5_000) })
       .then((status) => status.latestUnderstoodRequest ?? null)
       .catch(() => undefined);
+    const report = formatSupportDiagnostics({
+      clientRuntime: getClientRuntimeDiagnostics(),
+      mariActingOn,
+      // Distinguish "the server never answered" (frozen host) from ordinary
+      // missing fields so support reports carry the signal (#5657): the
+      // formatter renders every server telemetry line as unreachable.
+      serverUnreachable: isRequestTimeoutError(health.error),
+      version: health.data?.version ?? APP_VERSION,
+      build: health.data?.build ?? APP_VERSION,
+      commit: health.data?.commit ?? null,
+      serverOs: health.data?.serverOs ?? "",
+      serverMemory: health.data?.memory,
+      wakeLock: health.data?.wakeLock ?? null,
+      lastFreeze: health.data?.lastFreeze ?? null,
+      // undefined (fetch failed) stays undefined so the report says
+      // Unavailable instead of asserting a fate it never observed.
+      previousSession: health.data?.previousSession,
+      uncleanExitCount: health.data?.uncleanExitCount,
+      // The server's own GPU and local model slots. Useful on its own for
+      // "my local model won't load" reports, whether or not the user has
+      // ever touched an activation question.
+      sidecars: health.data?.sidecars,
+      clientOs: resolveClientOs(navigator.userAgent, navigator.platform, navigator.maxTouchPoints),
+      browser: navigator.userAgent,
+      gpu: detectBrowserGpu(),
+      connectionName: activeConnection?.name ?? null,
+      connectionProvider: activeConnection?.provider ?? null,
+      model: activeConnection?.model ?? null,
+    });
+    // Fenced so Discord and GitHub render the report as a code block (#6668). Discord only knows
+    // ``` fences, so a backtick run inside the report (a connection name, Mari's phrase) is split
+    // with a zero-width space instead of lengthening the fence.
     const copied = await copyToClipboard(
-      formatSupportDiagnostics({
-        clientRuntime: getClientRuntimeDiagnostics(),
-        mariActingOn,
-        // Distinguish "the server never answered" (frozen host) from ordinary
-        // missing fields so support reports carry the signal (#5657): the
-        // formatter renders every server telemetry line as unreachable.
-        serverUnreachable: isRequestTimeoutError(health.error),
-        version: health.data?.version ?? APP_VERSION,
-        build: health.data?.build ?? APP_VERSION,
-        commit: health.data?.commit ?? null,
-        serverOs: health.data?.serverOs ?? "",
-        serverMemory: health.data?.memory,
-        wakeLock: health.data?.wakeLock ?? null,
-        lastFreeze: health.data?.lastFreeze ?? null,
-        // undefined (fetch failed) stays undefined so the report says
-        // Unavailable instead of asserting a fate it never observed.
-        previousSession: health.data?.previousSession,
-        uncleanExitCount: health.data?.uncleanExitCount,
-        clientOs: resolveClientOs(navigator.userAgent, navigator.platform, navigator.maxTouchPoints),
-        browser: navigator.userAgent,
-        gpu: detectBrowserGpu(),
-        connectionName: activeConnection?.name ?? null,
-        connectionProvider: activeConnection?.provider ?? null,
-        model: activeConnection?.model ?? null,
-      }),
+      `\`\`\`\n${report.replace(/``+/gu, (run) => run.split("").join("\u200b"))}\n\`\`\``,
     );
     if (copied) {
       toast.success(localizeUi("ui.panels.advancedsettings.supportDiagnosticsCopied"));
@@ -8146,12 +8265,7 @@ function AdvancedSettings() {
     channelSwitch?: boolean;
     updatesApplyEnabled?: boolean;
     applyUnavailableReason?:
-      | "disabled"
-      | "hard-disabled"
-      | "dev-branch"
-      | "unsupported-install"
-      | "container-install"
-      | null;
+      "disabled" | "hard-disabled" | "dev-branch" | "unsupported-install" | "container-install" | null;
     manualUpdateCommand?: string | null;
     manualUpdateHint?: string | null;
   }>({
@@ -8315,6 +8429,15 @@ function AdvancedSettings() {
             </p>
           </SearchableSettingTarget>
         </div>
+      </SettingsSection>
+
+      <SettingsSection
+        title={localizeUi("settings.sections.features.title")}
+        description={localizeUi("settings.sections.features.description")}
+        icon={<ToggleRight size="0.875rem" />}
+        {...getSettingsSectionAnchorProps("features")}
+      >
+        <FeatureSwitchesSettings anchorId={getSettingsControlAnchorId(FEATURE_SWITCHES_CONTROL_ID)} />
       </SettingsSection>
 
       <SettingsSection
@@ -8570,6 +8693,14 @@ function AdvancedSettings() {
       </SettingsSection>
 
       <SettingsSection
+        title={localizeUi("settings.timeouts.title")}
+        icon={<Gauge size="0.875rem" />}
+        {...getSettingsSectionAnchorProps("request-timeouts")}
+      >
+        <RequestTimeoutSettings />
+      </SettingsSection>
+
+      <SettingsSection
         title={localizeUi("settings.customGenerationParameters.title")}
         description={localizeUi("settings.customGenerationParameters.sectionDescription")}
         help={localizeUi("settings.customGenerationParameters.help")}
@@ -8643,6 +8774,13 @@ function AdvancedSettings() {
             checked={includeReasoningInExports}
             onChange={setIncludeReasoningInExports}
             help={localizeUi("settings.controls.includeReasoning.help")}
+          />
+          <ToggleSetting
+            anchorId={getSettingsControlAnchorId("include-private-notes-in-exports")}
+            label={localizeUi("settings.controls.includePrivateNotes.label")}
+            checked={includePrivateNotesInExports}
+            onChange={setIncludePrivateNotesInExports}
+            help={localizeUi("settings.controls.includePrivateNotes.help")}
           />
           <ToggleSetting
             anchorId={getSettingsControlAnchorId("debug-mode")}

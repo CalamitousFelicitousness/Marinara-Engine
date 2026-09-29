@@ -1,3 +1,4 @@
+import { notifyRoleplayTTSParagraph, withRoleplayTTSParagraphs } from "../../lib/roleplay-vn-tts";
 // ──────────────────────────────────────────────
 // Chat: Main chat area — mode-aware rendering
 // ──────────────────────────────────────────────
@@ -48,6 +49,7 @@ import { usePageActivity } from "../../hooks/use-page-activity";
 import { useRenderTimer, useWhyRender } from "../../lib/perf-diagnostics";
 import { usePresenceClock } from "../../hooks/use-presence-clock";
 import { useKeepLatestChatMessageVisible } from "../../hooks/use-visual-viewport-chat-bottom";
+import { useChatOpeningScroll } from "../../hooks/use-chat-opening-scroll";
 import { api, ApiError, isRequestTimeoutError } from "../../lib/api-client";
 import { getChatDisplayName, getConnectedChatDisplayName, parseChatMetadata } from "../../lib/chat-display";
 import { getChatCharacterIds } from "../../lib/chat-macros";
@@ -56,7 +58,11 @@ import { parseCharacterDisplayData } from "../../lib/character-display";
 import { showConfirmDialog } from "../../lib/app-dialogs";
 import { parseMessageExtraRecord } from "../../lib/chat-message-extra";
 import { trimInactiveMessagePageCaches } from "../../lib/message-page-cache";
-import { normalizeSpriteExpressionMap, resolveSpriteExpressionState } from "../../lib/sprite-expression-state";
+import {
+  normalizeSpriteExpressionMap,
+  resolveLatestSpriteExpressionTurn,
+  resolveSpriteExpressionState,
+} from "../../lib/sprite-expression-state";
 import { chatBackgroundMetadataToUrl, chatBackgroundUrlToMetadata } from "../../lib/backgrounds";
 import { useGameStateStore } from "../../stores/game-state.store";
 import { useGalleryStore } from "../../stores/gallery.store";
@@ -82,7 +88,7 @@ import { useEncounter } from "../../hooks/use-encounter";
 import { useScene } from "../../hooks/use-scene";
 import { useEncounterStore } from "../../stores/encounter.store";
 import { useTranslationStore } from "../../stores/translation.store";
-import { getChatTranslationConfig } from "../../hooks/use-translate";
+import { getChatTranslationConfig } from "@marinara-engine/shared";
 import { ttsService } from "../../lib/tts-service";
 import { useTTSConfig } from "../../hooks/use-tts";
 import {
@@ -333,6 +339,7 @@ type AgentInjectionReviewRequest = {
 
 type IllustratorPromptReviewRequest = {
   chatId: string;
+  illustratorMessageRange?: [string, string];
   subjectOnly?: boolean;
   item: ImagePromptReviewItem;
   resultData: Record<string, unknown>;
@@ -793,6 +800,7 @@ export const ChatArea = memo(function ChatArea() {
       if (!override?.prompt.trim()) return;
       setIllustratorPromptReviewSubmitting(true);
       const success = await retryAgents(illustratorPromptReview.chatId, ["illustrator"], {
+        illustratorMessageRange: illustratorPromptReview.illustratorMessageRange,
         illustratorPromptReviewOverride: {
           resultData: illustratorPromptReview.resultData,
           ...(illustratorPromptReview.subjectOnly ? { subjectOnly: true } : {}),
@@ -813,13 +821,14 @@ export const ChatArea = memo(function ChatArea() {
   }, [illustratorPromptReviewSubmitting]);
 
   const handleIllustrate = useCallback(
-    (prompt?: string) => {
+    (prompt?: string, messageRange?: [string, string]) => {
       if (!activeChatId) return;
       const resultData = { prompt, characters: [] };
       if (prompt && useUIStore.getState().reviewImagePromptsBeforeSend) {
         setIllustratorPromptReview({
           chatId: activeChatId,
           subjectOnly: true,
+          illustratorMessageRange: messageRange,
           resultData,
           item: {
             id: "roleplay-scene-illustration",
@@ -832,6 +841,7 @@ export const ChatArea = memo(function ChatArea() {
       }
       return retryAgents(activeChatId, ["illustrator"], {
         illustratorRetryTargets: ["illustration"],
+        illustratorMessageRange: messageRange,
         ...(prompt ? { illustratorPromptReviewOverride: { prompt, subjectOnly: true, resultData } } : {}),
       }).then(() => undefined);
     },
@@ -921,8 +931,7 @@ export const ChatArea = memo(function ChatArea() {
     // generate. Prefer the live override/schedule-derived status (matching the presence pill, via
     // the shared resolver) over the generation-time snapshot, which only refreshes on generation.
     const chatStatuses = convoMeta.conversationCharacterStatuses as
-      | Record<string, { status?: string; activity?: string }>
-      | undefined;
+      Record<string, { status?: string; activity?: string }> | undefined;
     const presenceIds = new Set<string>([
       ...Object.keys(chatStatuses ?? {}),
       ...Object.keys((convoMeta.conversationStatusOverrides as Record<string, unknown> | undefined) ?? {}),
@@ -1181,6 +1190,28 @@ export const ChatArea = memo(function ChatArea() {
     () => resolveSpriteExpressionState(messages, chatMeta.spriteExpressions),
     [messages, chatMeta.spriteExpressions],
   );
+  // Keep each scene across chat switches and temporary Roleplay surface unmounts while a chat loads.
+  const completedExpressionTurn = useMemo(() => resolveLatestSpriteExpressionTurn(messages), [messages]);
+  const [retainedExpressionSprites, setRetainedExpressionSprites] = useState<
+    Map<string, ReturnType<typeof resolveLatestSpriteExpressionTurn>>
+  >(() => new Map());
+  const retainedExpressionTurn = activeChatId ? retainedExpressionSprites.get(activeChatId) : undefined;
+  const retainedExpressionIndex =
+    messages?.findIndex((message) => message.id === retainedExpressionTurn?.messageId) ?? -1;
+  // Regeneration can replace the current swipe before its expressions finish. Don't rewind to an older scene.
+  const visibleExpressionTurn =
+    retainedExpressionTurn && (!messages || retainedExpressionIndex > (completedExpressionTurn?.messageIndex ?? -1))
+      ? retainedExpressionTurn
+      : completedExpressionTurn;
+  useEffect(() => {
+    if (!activeChatId || !messages) return;
+    setRetainedExpressionSprites((previous) => {
+      if (previous.get(activeChatId) === visibleExpressionTurn) return previous;
+      const next = new Map(previous);
+      next.set(activeChatId, visibleExpressionTurn);
+      return next;
+    });
+  }, [activeChatId, messages, visibleExpressionTurn]);
   const groupChatMode: string | undefined = chatCharIds.length > 1 ? (chatMeta.groupChatMode ?? "merged") : undefined;
 
   const updateMeta = useUpdateChatMetadata();
@@ -2005,12 +2036,29 @@ export const ChatArea = memo(function ChatArea() {
       ) {
         return;
       }
+      // The confirmation can outlive this chat. Never consume another chat's draft.
+      if (useChatStore.getState().activeChatId !== activeChatId) return;
+      const composer = document.querySelector<HTMLTextAreaElement>("textarea[data-chat-composer]");
+      const currentInput = composer?.dataset.chatId === activeChatId ? composer.value : getCurrentInputSnapshot();
+      const isGuided = guideGenerations && currentInput.trim().length > 0;
+      const replaceGuidanceDraft = (expected: string, text: string) => {
+        const state = useChatStore.getState();
+        const input = document.querySelector<HTMLTextAreaElement>("textarea[data-chat-composer]");
+        if (state.activeChatId === activeChatId && input?.dataset.chatId === activeChatId) {
+          if (input.value !== expected) return;
+          input.value = text;
+          // Reuse each uncontrolled composer's draft debounce, sizing and input-state handling.
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+        } else if ((state.inputDrafts.get(activeChatId) ?? "") !== expected) {
+          return;
+        }
+        state.setInputDraft(activeChatId, text);
+      };
+      if (isGuided) replaceGuidanceDraft(currentInput, "");
       try {
         // Regenerate as a new swipe on the existing message
-        const currentInput = getCurrentInputSnapshot();
-        const hasInput = currentInput ? currentInput.trim().length > 0 : false;
-        await generate(
-          guideGenerations && hasInput
+        const consumed = await generate(
+          isGuided
             ? {
                 chatId: activeChatId,
                 connectionId: null,
@@ -2020,7 +2068,9 @@ export const ChatArea = memo(function ChatArea() {
               }
             : { chatId: activeChatId, connectionId: null, regenerateMessageId: messageId },
         );
+        if (isGuided && !consumed) replaceGuidanceDraft("", currentInput);
       } catch {
+        if (isGuided) replaceGuidanceDraft("", currentInput);
         // Error toast is shown by the generate hook
       }
     },
@@ -2207,7 +2257,7 @@ export const ChatArea = memo(function ChatArea() {
     (messageId?: string) => {
       if (!activeChatId) return;
       peekPrompt.mutate(messageId ? { chatId: activeChatId, messageId } : activeChatId, {
-        onSuccess: (data) => setPeekPromptData(data),
+        onSuccess: (data) => setPeekPromptData({ ...data, chatId: activeChatId }),
         onError: (error) => {
           const message =
             error instanceof ApiError
@@ -2464,6 +2514,7 @@ export const ChatArea = memo(function ChatArea() {
   const userScrolledAtRef = useRef(0);
   const forcedBottomScrollRef = useRef<{ requestedAt: number; behavior: ScrollBehavior } | null>(null);
   const openedAtBottomChatIdRef = useRef<string | null>(null);
+  const gotoRequest = useChatStore((s) => s.gotoRequest);
   const streamScrollFrameRef = useRef(0);
   const scrollToMessagesBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
     if (hasActiveTextSelection()) return;
@@ -2502,6 +2553,14 @@ export const ChatArea = memo(function ChatArea() {
     [scrollToMessagesBottom],
   );
   useKeepLatestChatMessageVisible(scrollRef, scrollToMessagesBottom);
+  const followOpeningScroll = useChatOpeningScroll(
+    isRoleplay && gotoRequest?.chatId !== activeChatId ? activeChatId : null,
+    scrollRef,
+    scrollToMessagesBottom,
+  );
+  useEffect(() => {
+    openedAtBottomChatIdRef.current = null;
+  }, [activeChatId]);
   useEffect(() => {
     const handleScrollRequest = (event: Event) => {
       const detail = (event as CustomEvent<ChatScrollToBottomDetail>).detail;
@@ -2519,9 +2578,9 @@ export const ChatArea = memo(function ChatArea() {
   }, [activeChatId, scheduleScrollToMessagesBottom]);
 
   useEffect(() => {
-    if (!activeChatId || isFetchingNextPage || isLoadingMoreRef.current) return;
+    if (!activeChatId || !isRoleplay || isFetchingNextPage || isLoadingMoreRef.current) return;
     if (openedAtBottomChatIdRef.current === activeChatId) return;
-    if (isLoading && loadedMessageCount === 0) return;
+    if (!messages || (isLoading && loadedMessageCount === 0) || gotoRequest?.chatId === activeChatId) return;
 
     let frame = 0;
     const scrollWhenSurfaceIsReady = () => {
@@ -2536,7 +2595,7 @@ export const ChatArea = memo(function ChatArea() {
       openedAtBottomChatIdRef.current = activeChatId;
       userScrolledAwayRef.current = false;
       isNearBottomRef.current = true;
-      scheduleScrollToMessagesBottom("auto");
+      followOpeningScroll();
     };
 
     document.addEventListener("selectionchange", scrollWhenSurfaceIsReady);
@@ -2545,7 +2604,16 @@ export const ChatArea = memo(function ChatArea() {
       cancelAnimationFrame(frame);
       document.removeEventListener("selectionchange", scrollWhenSurfaceIsReady);
     };
-  }, [activeChatId, isFetchingNextPage, isLoading, loadedMessageCount, scheduleScrollToMessagesBottom]);
+  }, [
+    activeChatId,
+    isRoleplay,
+    isFetchingNextPage,
+    isLoading,
+    loadedMessageCount,
+    messages,
+    gotoRequest,
+    followOpeningScroll,
+  ]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -2694,12 +2762,28 @@ export const ChatArea = memo(function ChatArea() {
         return;
       if (ttsRequests.length === 0) return;
 
+      if (
+        mode === "roleplay" &&
+        (chatMeta.roleplayDisplayStyle ?? useUIStore.getState().roleplayDisplayStyle) === "visual-novel"
+      ) {
+        ttsRequests = withRoleplayTTSParagraphs(ttsRequests, lastMsg.content, cfg);
+      }
+
       await ttsService.speakSequence(withTTSVoiceRequestCacheKeys(ttsRequests, cfg, lastMsg.id), lastMsg.id, {
         progressive: cfg.progressivePlayback,
         volume: ttsLineVolume / 100,
+        onChunkStart: (_request, index) => notifyRoleplayTTSParagraph(targetChatId, lastMsg.id, ttsRequests, index),
       });
     },
-    [characterMap, characterNames, chat, personaInfo?.name, resolveTTSCharacterId, ttsLineVolume],
+    [
+      characterMap,
+      characterNames,
+      chat,
+      chatMeta.roleplayDisplayStyle,
+      personaInfo?.name,
+      resolveTTSCharacterId,
+      ttsLineVolume,
+    ],
   );
   useEffect(() => {
     const handleMessageReady = (event: Event) => {
@@ -2816,9 +2900,20 @@ export const ChatArea = memo(function ChatArea() {
   }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
 
   // ── /goto command: paginate older pages until target message is loaded, then scroll to it
-  const gotoRequest = useChatStore((s) => s.gotoRequest);
   useEffect(() => {
     if (!gotoRequest || gotoRequest.chatId !== activeChatId) return;
+    // A message jump may switch chats while this surface still has the prior
+    // chat detail cached. Wait until the selected chat's own detail is loaded
+    // before choosing the game-specific behavior.
+    if (!chatDetailFetched || !chat || chat.id !== activeChatId) return;
+    if (chat.mode === "game") {
+      // The Game surface shows one narration beat at a time and has no
+      // per-message anchors, so paging the whole history in would only end in
+      // a silent no-op. Open the game and say where earlier turns live.
+      toast.info(localizeUi("chatInsights.gotoUnavailableInGame"));
+      useChatStore.getState().clearGotoRequest();
+      return;
+    }
     if (!messages) return;
 
     const targetNumber = gotoRequest.messageNumber;
@@ -2844,6 +2939,7 @@ export const ChatArea = memo(function ChatArea() {
       const raf = requestAnimationFrame(() => {
         const el = document.querySelector(`[data-message-id="${CSS.escape(targetId)}"]`);
         if (el instanceof HTMLElement) {
+          openedAtBottomChatIdRef.current = activeChatId;
           el.scrollIntoView({ behavior: "smooth", block: "center" });
           userScrolledAwayRef.current = true; // suppress auto-scroll-to-bottom hijacking the jump
         }
@@ -2876,6 +2972,8 @@ export const ChatArea = memo(function ChatArea() {
     isFetchingNextPage,
     fetchNextPage,
     localizeUi,
+    chat,
+    chatDetailFetched,
   ]);
 
   // ═══════════════════════════════════════════════
@@ -3266,6 +3364,9 @@ export const ChatArea = memo(function ChatArea() {
           spriteCharacterIds={spriteCharacterIds}
           spriteDisplayModes={visibleSpriteDisplayModes}
           spriteExpressions={spriteExpressions}
+          visibleExpressionSpriteIds={
+            chatMeta.expressionOnlyActiveSprites === true ? visibleExpressionTurn?.characterIds : undefined
+          }
           expressionAvatarResolver={expressionAvatarResolver}
           spritePlacements={spritePlacements}
           spriteScale={spriteScale}

@@ -25,10 +25,11 @@ import {
   DEFAULT_AGENT_MAX_TOKENS,
   DEFAULT_CUSTOM_AGENT_CONTEXT_SOURCES,
   isTrackerFieldHidden,
+  isTrackerRowsUpdate,
   MIN_AGENT_MAX_TOKENS,
   normalizeTrackerHiddenFields,
   normalizeCustomAgentCapabilities,
-  normalizeCustomAgentContextSources,
+  getAgentContextSources,
   previousAgentOutputText,
   publicAgentOutput,
   getDefaultAgentPrompt,
@@ -36,10 +37,12 @@ import {
   normalizeRpgStatPools,
   resolveMacros,
   extractLeadingThinkingBlocks,
+  findInvalidInventoryTrackerRow,
   type CustomAgentContextSources,
 } from "@marinara-engine/shared";
 import { getAgentCallTimeoutMs, getMaxToolRounds, isDebugAgentsEnabled } from "../../config/runtime-config.js";
 import { logger, logDebugOverride } from "../../lib/logger.js";
+import { failureLevel } from "../../lib/log-context.js";
 import { repairJsonText } from "../../lib/json-repair.js";
 import { LOCAL_SIDECAR_MODEL } from "../llm/local-sidecar.js";
 import { normalizeGemma4Delimiters } from "../llm/textual-tool-call-parser.js";
@@ -68,8 +71,6 @@ const MAX_AGENT_CONTEXT_MESSAGES = 200;
 const EXPRESSION_AGENT_RECENT_CONTEXT_MESSAGES = 2;
 const EXPRESSION_AGENT_CONTEXT_CHAR_LIMIT = 1200;
 const EXPRESSION_AGENT_RESPONSE_CHAR_LIMIT = 6000;
-const CHARACTER_LORE_DESCRIPTION_LIMIT = 2000;
-const CHARACTER_LORE_FIELD_LIMIT = 1200;
 const DEFAULT_AGENT_TEMPERATURE = 0.7;
 const ILLUSTRATOR_AGENT_CALL_TIMEOUT_MS = 30 * 60_000;
 const AGENT_BATCH_FALLBACK_MAX_CONCURRENT = 4;
@@ -117,25 +118,7 @@ export interface AgentExecConfig {
   isCustomAgent: boolean;
 }
 
-const ALL_AGENT_CONTEXT_SOURCES: CustomAgentContextSources = {
-  chatHistory: true,
-  characters: true,
-  persona: true,
-  activatedLorebookEntries: true,
-  chatSummary: true,
-  authorNotes: true,
-  trackerData: true,
-  recalledMemories: true,
-  previousOutput: false,
-};
-
-function getAgentContextSources(
-  config: Pick<AgentExecConfig, "isCustomAgent" | "settings">,
-): CustomAgentContextSources {
-  return config.isCustomAgent || isRecord(config.settings.contextSources)
-    ? normalizeCustomAgentContextSources(config.settings)
-    : ALL_AGENT_CONTEXT_SOURCES;
-}
+const ALL_AGENT_CONTEXT_SOURCES = getAgentContextSources({ settings: {} });
 
 function getBatchContextSources(configs: Array<Pick<AgentExecConfig, "isCustomAgent" | "settings">>) {
   const combined: CustomAgentContextSources = {
@@ -198,6 +181,13 @@ function getDefaultPromptForAgent(config: Pick<AgentExecConfig, "type" | "settin
   if (musicDjUsesYoutube(config)) return getDefaultAgentPrompt("youtube");
   if (musicDjUsesCustom(config)) return getDefaultAgentPrompt("local-music");
   return getDefaultAgentPrompt(config.type);
+}
+
+/** The template an agent is actually run with: its own, or its default when empty. */
+export function effectiveAgentPromptTemplate(
+  config: Pick<AgentExecConfig, "type" | "settings"> & { promptTemplate?: string | null },
+): string {
+  return config.promptTemplate || getDefaultPromptForAgent(config);
 }
 
 function stringifyAgentSettingMacroValue(value: unknown): string {
@@ -296,6 +286,7 @@ export function buildAgentPromptMacroContext(
         }
       : undefined,
     lorebookEntryCounts: context.lorebookEntryCounts,
+    decisions: context.decisions,
   };
 }
 
@@ -643,7 +634,7 @@ function applyProviderMaxTokensOverride(provider: BaseLLMProvider, maxTokens: nu
   return provider.maxTokensOverrideValue !== null ? Math.min(maxTokens, provider.maxTokensOverrideValue) : maxTokens;
 }
 
-function applyAgentMaxTokensCaps(provider: BaseLLMProvider, maxTokens: number, modelMaxOutput: unknown): number {
+export function applyAgentMaxTokensCaps(provider: BaseLLMProvider, maxTokens: number, modelMaxOutput: unknown): number {
   const cappedByConnection = applyProviderMaxTokensOverride(provider, maxTokens);
   if (typeof modelMaxOutput !== "number" || !Number.isFinite(modelMaxOutput) || modelMaxOutput <= 0) {
     return cappedByConnection;
@@ -760,7 +751,7 @@ export async function executeAgent(
   const startTime = Date.now();
 
   try {
-    if (config.isCustomAgent && getAgentContextSources(config).previousOutput) {
+    if (getAgentContextSources(config).previousOutput) {
       const data = await context.loadPreviousOutput?.(config.id);
       context = { ...context, previousOutput: { agentType: config.type, text: previousAgentOutputText(data) } };
     }
@@ -972,6 +963,8 @@ export async function executeAgent(
       durationMs: Date.now() - startTime,
       error: extractErrorMessage(err),
     });
+    // The one server line for this failure: providers and tool calls rethrow without logging.
+    logger[failureLevel(err, "warn")](err, "[agent] %s failed", config.type);
     return makeError(config, extractErrorMessage(err), startTime);
   }
 }
@@ -1266,7 +1259,8 @@ async function executeAgentWithTools(
       try {
         toolResult = await toolContext.executeToolCall(tc);
       } catch (err) {
-        logger.error(err, "[agent-tools] %s %s failed", config.type, tc.function.name);
+        // executeAgent logs the failure once; this only names the tool for debugging.
+        logger.debug({ err }, "[agent-tools] %s %s failed", config.type, tc.function.name);
         throw err;
       }
       logger.info("[agent-tools] %s %s completed", config.type, tc.function.name);
@@ -1612,7 +1606,11 @@ export async function executeAgentBatch(
           retries.push(entry.value);
         } else {
           // Individual retry also failed — produce error result
-          logger.error(entry.reason, "[agent-batch] Individual retry FAILED for %s", failed[i]!.type);
+          logger[failureLevel(entry.reason)](
+            entry.reason,
+            "[agent-batch] Individual retry FAILED for %s",
+            failed[i]!.type,
+          );
           retries.push(
             makeError(failed[i]!, entry.reason instanceof Error ? entry.reason.message : "Retry failed", startTime),
           );
@@ -1639,7 +1637,7 @@ export async function executeAgentBatch(
       error: errMsg,
       batchedAgentTypes: configs.map((config) => config.type),
     });
-    logger.error(err, "[agent-batch] Batch call FAILED: %s", errMsg);
+    logger[failureLevel(err)](err, "[agent-batch] Batch call FAILED: %s", errMsg);
     return configs.map((c) => makeError(c, errMsg, startTime));
   }
 }
@@ -1763,7 +1761,8 @@ function parseBatchResponse(
 
 function extractBatchJsonResults(configs: AgentExecConfig[], responseText: string): Map<string, string> | null {
   try {
-    const parsed = JSON.parse(extractJson(responseText)) as unknown;
+    const allowRepair = !configs.some((config) => resolveAgentResultType(config) === "inventory_tracker_update");
+    const parsed = JSON.parse(extractJson(responseText, allowRepair)) as unknown;
     const container = isRecord(parsed) && isRecord(parsed.results) ? parsed.results : parsed;
     if (!isRecord(container)) return null;
 
@@ -1959,7 +1958,7 @@ function shouldRunAgentIndividually(config: Pick<AgentExecConfig, "type" | "sett
   return (
     config.type === "illustrator" ||
     config.type === "beholder" ||
-    normalizeCustomAgentContextSources(config.settings).previousOutput ||
+    getAgentContextSources(config).previousOutput ||
     config.settings.jsonContextOutput === true ||
     customAgentHasCapability(config.settings, "trigger_image_generation") ||
     config.type === "lorebook-keeper" ||
@@ -2861,11 +2860,11 @@ function buildLoreBlock(context: AgentContext, sources: CustomAgentContextSource
     parts.push(`<characters>`);
     for (const char of context.characters) {
       parts.push(`<character id="${char.id}" name="${char.name}">`);
-      pushLoreField(parts, "Description", char.description, CHARACTER_LORE_DESCRIPTION_LIMIT);
-      pushLoreField(parts, "Personality", char.personality, CHARACTER_LORE_FIELD_LIMIT);
-      pushLoreField(parts, "Backstory", char.backstory, CHARACTER_LORE_FIELD_LIMIT);
-      pushLoreField(parts, "Appearance", char.appearance, CHARACTER_LORE_FIELD_LIMIT);
-      pushLoreField(parts, "Scenario", char.scenario, CHARACTER_LORE_FIELD_LIMIT);
+      pushLoreField(parts, "Description", char.description);
+      pushLoreField(parts, "Personality", char.personality);
+      pushLoreField(parts, "Backstory", char.backstory);
+      pushLoreField(parts, "Appearance", char.appearance);
+      pushLoreField(parts, "Scenario", char.scenario);
       if (char.rpgStats?.enabled) {
         const pools = normalizeRpgStatPools(char.rpgStats);
         if (pools.length > 0) {
@@ -2889,7 +2888,7 @@ function buildLoreBlock(context: AgentContext, sources: CustomAgentContextSource
   if (sources.persona && context.persona) {
     parts.push(`<user_persona>`);
     parts.push(`Name: ${context.persona.name}`);
-    if (context.persona.description) parts.push(`Description: ${context.persona.description.slice(0, 2000)}`);
+    if (context.persona.description) parts.push(`Description: ${context.persona.description}`);
     if (context.persona.personality) parts.push(`Personality: ${context.persona.personality}`);
     if (context.persona.backstory) parts.push(`Backstory: ${context.persona.backstory}`);
     if (context.persona.appearance) parts.push(`Appearance: ${context.persona.appearance}`);
@@ -2926,10 +2925,10 @@ function buildLoreBlock(context: AgentContext, sources: CustomAgentContextSource
   return parts.join("\n");
 }
 
-function pushLoreField(parts: string[], label: string, value: string | undefined, limit: number): void {
+function pushLoreField(parts: string[], label: string, value: string | undefined): void {
   const text = value?.trim();
   if (!text) return;
-  parts.push(`${label}: ${text.slice(0, limit)}`);
+  parts.push(`${label}: ${text}`);
 }
 
 function buildAvailableSpritesBlock(context: AgentContext): string {
@@ -3507,12 +3506,33 @@ function parseAgentResponse(
 
   if (agentResponseIsJson(config)) {
     try {
-      const jsonStr = extractJson(responseText);
+      // Repairing a cut-off inventory array turns missing rows into deletions.
+      // Require complete JSON before any saved inventory can be replaced.
+      const jsonStr = extractJson(responseText, resultType !== "inventory_tracker_update");
       const parsedData: unknown = JSON.parse(jsonStr);
       if (!parsedData || typeof parsedData !== "object" || Array.isArray(parsedData)) {
         throw new Error("Structured agent response must be a JSON object");
       }
-      const data = config.type === "cyoa" ? normalizeCyoaChoiceOutput(parsedData) : parsedData;
+      if (resultType === "inventory_tracker_update") {
+        for (const group of ["currencies", "equipped", "inventory"] as const) {
+          if (!(group in parsedData)) continue;
+          const value = (parsedData as Record<string, unknown>)[group];
+          const incremental = isTrackerRowsUpdate(value);
+          if (
+            findInvalidInventoryTrackerRow(incremental ? (value.updates ?? []) : value) ||
+            (incremental && value.removed?.some((name) => typeof name !== "string" || !name.trim()))
+          ) {
+            throw new Error(`Invalid inventory tracker group: ${group}`);
+          }
+        }
+      }
+      let data = config.type === "cyoa" ? normalizeCyoaChoiceOutput(parsedData) : parsedData;
+      // Custom Tracker has one row group; tolerate the incremental envelope at
+      // the root as well as under fields, then use the usual merge/lock path.
+      if (resultType === "custom_tracker_update" && isTrackerRowsUpdate(data) && !("fields" in data)) {
+        const { updates, removed } = data;
+        data = { ...data, fields: { updates, removed } };
+      }
       if (config.settings.jsonContextOutput === true && resultType === "context_injection") {
         const output = data as Record<string, unknown>;
         if (typeof output.text !== "string") throw new Error("JSON context output requires a text field");
@@ -3530,7 +3550,7 @@ function parseAgentResponse(
 }
 
 /** Extract JSON from a response that may contain markdown fences. */
-function extractJson(text: string): string {
+function extractJson(text: string, allowRepair = true): string {
   // Strip leading thinking blocks BEFORE the fence match: with
   // reasoning_format "none" a local runtime leaves thinking inline in content,
   // and a fenced block inside the thinking region would win the fence regex
@@ -3550,5 +3570,5 @@ function extractJson(text: string): string {
     if (starts.length > 0) text = text.slice(Math.min(...starts));
   }
 
-  return repairJsonText(text) ?? text;
+  return allowRepair ? (repairJsonText(text) ?? text) : text;
 }

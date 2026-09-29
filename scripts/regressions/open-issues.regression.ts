@@ -289,6 +289,7 @@ import {
   buildReferencedPersonaContext,
   extractPersonaReferenceIds,
   MAX_REFERENCED_CHARACTERS,
+  mergeGeneratedChatMacroVariables,
   normalizeChatMacroVariables,
   setLorebookEntryCounts,
 } from "../../packages/server/src/services/prompt/macro-context.js";
@@ -303,7 +304,10 @@ import {
   buildInitialAgentAddSetupState,
 } from "../../packages/client/src/components/chat/AgentAddSetupFields.js";
 import { resolveSpriteTransition } from "../../packages/client/src/lib/sprite-transition.js";
-import { resolveSpriteExpressionState } from "../../packages/client/src/lib/sprite-expression-state.js";
+import {
+  resolveLatestSpriteExpressionTurn,
+  resolveSpriteExpressionState,
+} from "../../packages/client/src/lib/sprite-expression-state.js";
 import {
   parseIllustratorPromptReviewOverride,
   resolveIllustratorPromptSubmission,
@@ -1096,6 +1100,54 @@ assert.deepEqual(
   { "character-a": "neutral" },
 );
 assert.deepEqual(findMissingComfyReferenceSlots(comfyReferenceWorkflow, "reference_image", 1), [1]);
+const completedExpressionMessages = [
+  { id: "completed", role: "assistant", extra: { expressionSpriteIds: ["character-a", "persona"] } },
+  { id: "user", role: "user", extra: {} },
+  { id: "pending", role: "assistant", extra: {} },
+];
+assert.deepEqual(resolveLatestSpriteExpressionTurn(completedExpressionMessages), {
+  characterIds: ["character-a", "persona"],
+  messageId: "completed",
+  messageIndex: 0,
+});
+assert.deepEqual(
+  resolveLatestSpriteExpressionTurn([
+    ...completedExpressionMessages,
+    {
+      id: "empty",
+      role: "assistant",
+      extra: JSON.stringify({ expressionSpriteIds: [], spriteExpressions: { "character-a": "happy" } }),
+    },
+  ]),
+  { characterIds: [], messageId: "empty", messageIndex: 3 },
+  "a completed empty result is distinct from a pending or failed expression turn",
+);
+assert.deepEqual(
+  resolveLatestSpriteExpressionTurn([
+    { id: "legacy-persona", role: "user", extra: { spriteExpressions: { persona: "happy" } } },
+    { id: "legacy", role: "assistant", extra: { spriteExpressions: { "character-b": "neutral" } } },
+  ]),
+  { characterIds: ["character-b", "persona"], messageId: "legacy", messageIndex: 1 },
+  "legacy expression turns retain both character and persona owners",
+);
+assert.equal(resolveLatestSpriteExpressionTurn([{ id: "pending", role: "assistant", extra: {} }]), undefined);
+assert.deepEqual(
+  resolveLatestSpriteExpressionTurn([
+    completedExpressionMessages[0]!,
+    { id: "user", role: "user", extra: { spriteExpressions: { persona: "happy" } } },
+    { id: "regenerating", role: "assistant", extra: {} },
+  ]),
+  { characterIds: ["character-a", "persona"], messageId: "completed", messageIndex: 0 },
+  "a retained persona appearance alone does not prove the pending assistant's expressions completed",
+);
+assert.deepEqual(
+  resolveLatestSpriteExpressionTurn([
+    { id: "persona-only", role: "assistant", extra: { expressionSpriteIds: ["persona"] } },
+  ]),
+  { characterIds: ["persona"], messageId: "persona-only", messageIndex: 0 },
+  "the completion marker identifies persona-only turns without relying on retained user appearances",
+);
+assert.equal(resolveLatestSpriteExpressionTurn(undefined), undefined);
 assert.deepEqual(findMissingComfyReferenceSlots(comfyReferenceWorkflow, "reference_image_name", 1), [2]);
 assert.equal(numberedComfyReferencePlaceholder("reference_image_name", 2), "%reference_image_name_03%");
 
@@ -5176,6 +5228,16 @@ assert.equal(
   "per-character safety limits should still be able to lower a numeric chat ceiling",
 );
 const autonomousChatId = "regression-autonomous-candidates";
+assert.equal(
+  dailyCapForCharacter(autonomousSchedule(90, 1000)),
+  1000,
+  "custom character limits are not capped at eight",
+);
+assert.equal(
+  dailyCapForCharacter(autonomousSchedule(90, 1000), { autonomousDailyCapOverride: 75 }),
+  75,
+  "the chat-wide safety cap still limits a larger custom character cap",
+);
 initializeActivityFromMessages(autonomousChatId, [
   { role: "user", createdAt: new Date(Date.now() - 5 * 60_000).toISOString() },
 ]);
@@ -5283,16 +5345,29 @@ assert.match(
   /has_explicit_node_heap_limit\(\)[\s\S]*NODE_OPTIONS_VALUE[\s\S]*const heapOption = \/\^--max[\s\S]*resolve_default_node_heap_mb\(\)[\s\S]*heap_mb=1024[\s\S]*heap_mb=1536[\s\S]*if ! has_explicit_node_heap_limit; then[\s\S]*--max-old-space-size=\$\{MARINARA_TERMUX_HEAP_MB\}/u,
   "Termux must parse complete heap-option tokens before applying its bounded profile-aware default",
 );
-for (const buildEntry of [
-  "packages/shared/dist/constants/defaults.js",
-  "packages/server/dist/index.js",
-  "packages/client/dist/index.html",
-]) {
+for (const buildEntry of ["packages/shared/dist/constants/defaults.js", "packages/server/dist/index.js"]) {
   assert.ok(
     termuxLauncher.includes(`if [ ! -f "${buildEntry}" ]; then`),
     `Termux must rebuild when ${buildEntry} is missing`,
   );
 }
+const termuxClientBuildBlock = termuxLauncher
+  .split("if ! node scripts/check-client-build.mjs; then\n")[1]
+  ?.split("\nfi")[0];
+assert.ok(termuxClientBuildBlock, "Termux must handle an incomplete client build");
+assert.equal(
+  termuxClientBuildBlock.match(/build_termux_client/gu)?.length,
+  2,
+  "Initial build and retry must use the bounded build heap",
+);
+const termuxClientBuildHelper = termuxLauncher.split("build_termux_client() (")[1]?.split("\n)")[0];
+assert.ok(termuxClientBuildHelper, "Termux must define the isolated client build helper");
+assert.match(termuxClientBuildHelper, /SKIP_PWA=1 run_pnpm --filter @marinara-engine\/client exec vite build/u);
+assert.match(
+  termuxClientBuildBlock,
+  /    node scripts\/check-client-build\.mjs$/u,
+  "Termux must rebuild and recheck incomplete client assets, including a missing index",
+);
 
 const trafficExtensionId = "open-issues-extension-traffic";
 const trafficNow = 180_000;
@@ -10644,10 +10719,19 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
     500,
     "persisted chat-local macro variables remain capped",
   );
+  const fullMacroVariables = Object.fromEntries(Array.from({ length: 500 }, (_, i) => [`v${i}`, "x"]));
+  assert.deepEqual(
+    mergeGeneratedChatMacroVariables(fullMacroVariables, fullMacroVariables, {
+      ...fullMacroVariables,
+      overflow: "generated",
+    }),
+    fullMacroVariables,
+    "generation writes reapply the macro-variable cap after merging request changes",
+  );
   assert.match(
     generateRouteSource,
-    /macroVariables: normalizeChatMacroVariables\(\{[\s\S]{0,200}normalizeChatMacroVariables\(current\.macroVariables\)[\s\S]{0,120}requestChanges/u,
-    "generation writes reapply the macro-variable cap after merging request changes",
+    /macroVariables: mergeGeneratedChatMacroVariables\(\s*current\.macroVariables,\s*persistedMacroVariableSnapshot,\s*chatMacroVariables,/u,
+    "generation persists macro variables through the bounded merge helper",
   );
 
   const perfDiagnosticsSource = readFileSync(

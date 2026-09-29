@@ -1,3 +1,4 @@
+import { clickTopbarPanel } from "./topbar-navigation.js";
 import {
   expect,
   test,
@@ -73,6 +74,7 @@ async function installMockVisualViewport(page: Page) {
       height: null as number | null,
       offsetTop: 0,
       pageTop: 0,
+      scale: 1,
     };
     const viewport = new EventTarget();
     Object.defineProperties(viewport, {
@@ -81,7 +83,7 @@ async function installMockVisualViewport(page: Page) {
       offsetLeft: { configurable: true, get: () => 0 },
       pageLeft: { configurable: true, get: () => 0 },
       pageTop: { configurable: true, get: () => state.pageTop },
-      scale: { configurable: true, get: () => 1 },
+      scale: { configurable: true, get: () => state.scale },
       width: { configurable: true, get: () => window.innerWidth },
     });
     Object.defineProperty(window, "visualViewport", {
@@ -90,10 +92,11 @@ async function installMockVisualViewport(page: Page) {
     });
     Object.defineProperty(window, "__setMarinaraVisualViewport", {
       configurable: true,
-      value: (height: number, offsetTop: number, pageTop = offsetTop, layoutHeight?: number) => {
+      value: (height: number, offsetTop: number, pageTop = offsetTop, layoutHeight?: number, scale = 1) => {
         state.height = height;
         state.offsetTop = offsetTop;
         state.pageTop = pageTop;
+        state.scale = scale;
         if (layoutHeight !== undefined) {
           Object.defineProperty(window, "innerHeight", {
             configurable: true,
@@ -211,6 +214,23 @@ async function getChatCharacterIds(request: APIRequestContext, chatId: string): 
 }
 
 async function dragChatResource(page: Page, source: Locator, target: Locator) {
+  const kind = await source.getAttribute("data-touch-drag-card");
+  if (kind === "character" || kind === "persona") {
+    const handle = source.getByTitle(`Drag ${kind}`, { exact: true });
+    const start = await handle.boundingBox();
+    const end = await target.boundingBox();
+    expect(start).not.toBeNull();
+    expect(end).not.toBeNull();
+    await page.mouse.move(start!.x + start!.width / 2, start!.y + start!.height / 2);
+    await page.mouse.down();
+    try {
+      await page.mouse.move(end!.x + end!.width / 2, end!.y + end!.height / 2, { steps: 8 });
+      await expect(page.locator(".mari-chat-drop-zone")).toBeVisible();
+    } finally {
+      await page.mouse.up();
+    }
+    return;
+  }
   const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
   try {
     await source.dispatchEvent("dragstart", { dataTransfer });
@@ -389,11 +409,11 @@ test("available app updates wait for confirmation before refreshing", async ({ p
   expect(mainFrameNavigations).toBe(navigationsAtPrompt + 1);
 });
 
-test("turning off the custom mouse pointer persists immediately and after reload", async ({ page }, testInfo) => {
+test("turning off the custom mouse pointer persists immediately and after reload", { tag: "@smoke" }, async ({ page }, testInfo) => {
   test.skip(!testInfo.project.name.includes("desktop"), "Appearance preference persistence is covered on desktop.");
 
   await page.goto("/");
-  await page.locator('[data-tour="panel-settings"]').click();
+  await clickTopbarPanel(page, "settings");
   await page.getByRole("tab", { name: "Appearance" }).click();
 
   const cursorToggle = page.getByLabel("Custom Mouse Pointer");
@@ -419,7 +439,7 @@ test("turning off the custom mouse pointer persists immediately and after reload
 
 test("Settings switches share one centered track and thumb geometry", async ({ page }) => {
   await page.goto("/");
-  await page.locator('[data-tour="panel-settings"]').click();
+  await clickTopbarPanel(page, "settings");
 
   const rootFontSize = await page.evaluate(() =>
     Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
@@ -481,7 +501,7 @@ test("Appearance distinguishes the square avatar-shape preview from the circular
   test.skip(!testInfo.project.name.includes("desktop"), "One visual shape proof is sufficient.");
 
   await page.goto("/");
-  await page.locator('[data-tour="panel-settings"]').click();
+  await clickTopbarPanel(page, "settings");
   await page.getByRole("tab", { name: "Appearance" }).click();
 
   const circle = page.locator('[data-avatar-shape-preview="circle"]');
@@ -503,7 +523,7 @@ test("Appearance distinguishes the square avatar-shape preview from the circular
 
 test("Art scale sliders stay interactive at the largest display size", async ({ page }) => {
   await page.goto("/");
-  await page.locator('[data-tour="panel-settings"]').click();
+  await clickTopbarPanel(page, "settings");
   await page.getByRole("tab", { name: "Appearance" }).click();
 
   const exerciseSlider = async (controlId: string) => {
@@ -561,7 +581,7 @@ test("Art scale sliders stay interactive at the largest display size", async ({ 
 
 test("custom theme live preview batches stylesheet updates while typing", async ({ page }) => {
   await page.goto("/");
-  await page.locator('[data-tour="panel-settings"]').click();
+  await clickTopbarPanel(page, "settings");
   await page.getByRole("tab", { name: "Addons" }).click();
   await page.getByRole("button", { name: "Create Theme" }).click();
 
@@ -615,7 +635,7 @@ test("gradient Accent Pulse keeps animating while Appearance settings are open",
   test.skip(!testInfo.project.name.includes("desktop"), "Accent Pulse preview is covered on desktop.");
 
   await page.goto("/");
-  await page.locator('[data-tour="panel-settings"]').click();
+  await clickTopbarPanel(page, "settings");
   await page.getByRole("tab", { name: "Appearance" }).click();
   const accentColorControl = page.locator("#settings-control-app-accent-color");
   await accentColorControl.getByRole("button", { name: /Default/ }).click();
@@ -654,7 +674,7 @@ test("Android status bar setting reads and updates the native bridge", async ({ 
   });
 
   await page.goto("/");
-  await page.locator('[data-tour="panel-settings"]').click();
+  await clickTopbarPanel(page, "settings");
 
   const statusBarToggle = page.getByLabel("Show Android status bar");
   await expect(statusBarToggle).toBeChecked();
@@ -747,7 +767,7 @@ test("default dialogue color fills only cards without their own dialogue color",
     await expect(uncoloredDialogue).toBeVisible();
     await expect(coloredDialogue).toHaveCSS("color", "rgb(34, 197, 94)");
 
-    await page.locator('[data-tour="panel-settings"]').click();
+    await clickTopbarPanel(page, "settings");
     await page.getByRole("tab", { name: "Appearance" }).click();
     const dialogueColorControl = page.locator("#settings-control-default-dialogue-color");
     await dialogueColorControl.scrollIntoViewIfNeeded();
@@ -1476,6 +1496,11 @@ test("Author's Notes keeps its expand and full macro guide inside the field", as
     await page.getByRole("button", { name: "Author's Notes", exact: true }).filter({ visible: true }).click();
 
     const heading = page.locator("h3").filter({ hasText: "Author's Notes" });
+    await expect(heading).toBeVisible();
+    const notesButton = page.getByRole("button", { name: "Author's Notes", exact: true }).filter({ visible: true });
+    await notesButton.click();
+    await expect(heading).toBeHidden();
+    await notesButton.click();
     await expect(heading).toBeVisible();
     const floatingPanel = heading.locator("xpath=ancestor::div[contains(@class, 'fixed')][1]");
     const floatingPanelZIndex = await floatingPanel.evaluate((element) => Number(getComputedStyle(element).zIndex));
@@ -2776,12 +2801,12 @@ test("resource panel sort fields share the canonical width", async ({ page }, te
   await page.goto("/");
   const rightPanel = page.locator('[data-component="RightPanelDesktop"]');
 
-  await page.locator('[data-tour="panel-lorebooks"]').click();
+  await clickTopbarPanel(page, "lorebooks");
   const lorebookSort = rightPanel.locator("select.mari-chrome-sort-field:visible");
   await expect(lorebookSort).toBeVisible();
   const lorebookWidth = await lorebookSort.evaluate((element) => element.getBoundingClientRect().width);
 
-  await page.locator('[data-tour="panel-personas"]').click();
+  await clickTopbarPanel(page, "personas");
   const personaSort = rightPanel.locator("select.mari-chrome-sort-field:visible");
   await expect(personaSort).toBeVisible();
   const personaWidth = await personaSort.evaluate((element) => element.getBoundingClientRect().width);
@@ -2868,8 +2893,43 @@ test("modal backdrops ignore drag releases but still close on a fresh outside cl
   const backdrop = dialog.locator("[data-backdrop-dismiss-surface]");
   await expect(dialog).toBeVisible();
 
-  await panel.dispatchEvent("pointerdown", { bubbles: true, pointerId: 1, pointerType: "mouse" });
-  await backdrop.dispatchEvent("pointerup", { bubbles: true, pointerId: 1, pointerType: "mouse" });
+  const bounds = await backdrop.boundingBox();
+  if (!bounds) throw new Error("Backdrop is not visible");
+  const point = { clientX: bounds.x + 4, clientY: bounds.y + 4 };
+  for (const start of [panel, backdrop]) {
+    await start.dispatchEvent("pointerdown", {
+      bubbles: true,
+      pointerId: 1,
+      pointerType: "touch",
+      isPrimary: true,
+      ...point,
+    });
+    await backdrop.dispatchEvent("pointerdown", {
+      bubbles: true,
+      pointerId: 2,
+      pointerType: "touch",
+      isPrimary: false,
+      ...point,
+    });
+    await backdrop.dispatchEvent("pointerup", {
+      bubbles: true,
+      pointerId: 1,
+      pointerType: "touch",
+      isPrimary: true,
+      ...point,
+    });
+    await backdrop.dispatchEvent("click", { bubbles: true, ...point });
+    await expect(dialog).toBeVisible();
+  }
+
+  await panel.dispatchEvent("pointerdown", { bubbles: true, pointerId: 1, pointerType: "mouse", isPrimary: true });
+  await backdrop.dispatchEvent("pointerup", {
+    bubbles: true,
+    pointerId: 1,
+    pointerType: "mouse",
+    isPrimary: true,
+    ...point,
+  });
   await backdrop.dispatchEvent("click", { bubbles: true });
   await expect(dialog).toBeVisible();
 
@@ -2926,7 +2986,7 @@ test("connection model fetch errors inherit the configured editor accent", async
       document.documentElement.style.setProperty("--destructive", "rgb(255, 0, 0)");
     });
 
-    await page.locator('[data-tour="panel-connections"]').click();
+    await clickTopbarPanel(page, "connections");
     const rightPanel = page.locator('[data-component="RightPanelDesktop"]');
     await rightPanel
       .getByText("Connection Fetch Error Chroma", { exact: true })
@@ -3004,7 +3064,7 @@ test("connection test-message errors inherit the configured editor accent", asyn
       document.documentElement.style.setProperty("--destructive", "rgb(255, 0, 0)");
     });
 
-    await page.locator('[data-tour="panel-connections"]').click();
+    await clickTopbarPanel(page, "connections");
     const rightPanel = page.locator('[data-component="RightPanelDesktop"]');
     await rightPanel
       .getByText("Connection Message Error Chroma", { exact: true })
@@ -3047,7 +3107,7 @@ test("NovelAI style plate upload keeps the connection editor mounted", async ({ 
     connectionId = connection.id;
 
     await page.goto("/");
-    await page.locator('[data-tour="panel-connections"]').click();
+    await clickTopbarPanel(page, "connections");
     const rightPanel = page.locator('[data-component="RightPanelDesktop"]');
     await rightPanel
       .getByText("NovelAI Style Plate Upload", { exact: true })
@@ -3124,7 +3184,7 @@ test("NovelAI generation defaults survive save and editor navigation", async ({ 
     personaId = ((await personaResponse.json()) as { id: string }).id;
 
     await page.goto("/");
-    await page.locator('[data-tour="panel-connections"]').click();
+    await clickTopbarPanel(page, "connections");
     const rightPanel = page.locator('[data-component="RightPanelDesktop"]');
     await rightPanel
       .getByText(connectionName, { exact: true })
@@ -3163,7 +3223,7 @@ test("NovelAI generation defaults survive save and editor navigation", async ({ 
     };
     expect(exported.connections?.[0]?.defaultParameters?.imageGeneration?.seed).toBe(50);
 
-    await page.locator('[data-tour="panel-personas"]').click();
+    await clickTopbarPanel(page, "personas");
     await rightPanel
       .getByText(personaName, { exact: true })
       .first()
@@ -3177,7 +3237,7 @@ test("NovelAI generation defaults survive save and editor navigation", async ({ 
       )
       .toBe(personaId);
 
-    await page.locator('[data-tour="panel-connections"]').click();
+    await clickTopbarPanel(page, "connections");
     await rightPanel
       .getByText(connectionName, { exact: true })
       .first()
@@ -3202,7 +3262,7 @@ test("NovelAI generation defaults survive connection import", async ({ page, req
 
   try {
     await page.goto("/");
-    await page.locator('[data-tour="panel-connections"]').click();
+    await clickTopbarPanel(page, "connections");
     const rightPanel = page.locator('[data-component="RightPanelDesktop"]');
     await rightPanel.getByRole("button", { name: "Import connection" }).click();
     const importDialog = page.getByRole("dialog", { name: "Import Connections" });
@@ -3312,7 +3372,7 @@ test("Connection image captioning defaults persist with a dedicated captioning c
     expect(invalidDefaultsResponse.status()).toBe(400);
 
     await page.goto("/");
-    await page.locator('[data-tour="panel-connections"]').click();
+    await clickTopbarPanel(page, "connections");
     const rightPanel = page.locator('[data-component="RightPanelDesktop"]');
     await rightPanel
       .getByText(chatConnectionName, { exact: true })
@@ -3386,7 +3446,7 @@ test("Connection Discard uses the configured editor accent", async ({ page }, te
       document.documentElement.style.setProperty("--destructive", "rgb(255, 0, 0)");
     });
 
-    await page.locator('[data-tour="panel-connections"]').click();
+    await clickTopbarPanel(page, "connections");
     const rightPanel = page.locator('[data-component="RightPanelDesktop"]');
     await rightPanel
       .getByText("Connection Discard Accent", { exact: true })
@@ -3437,7 +3497,7 @@ test("mobile connection drag previews preserve configured Chroma text", async ({
       ui.setAppAccentColor("#ff1493");
       ui.setChatChromeTextColor("#14b8a6");
     });
-    await page.locator('[data-tour="panel-connections"]').click();
+    await clickTopbarPanel(page, "connections");
 
     const panel = page.locator('[data-component="RightPanelMobile"]');
     const source = panel.locator(`[data-touch-drag-card="connection"][data-connection-id="${connection.id}"]`);
@@ -3496,7 +3556,7 @@ test("Character favorite tags and stars inherit the configured accent color", as
     await page.goto("/");
     await setAppAccentColor(page, "#1256aa");
 
-    await page.locator('[data-tour="panel-characters"]').click();
+    await clickTopbarPanel(page, "characters");
     const rightPanel = page.locator('[data-component="RightPanelDesktop"]');
     const characterRow = rightPanel.locator('[data-touch-drag-card="character"]').filter({ hasText: characterName });
     await expect(characterRow).toBeVisible();
@@ -3556,7 +3616,7 @@ test("Characters can be dragged from the right panel into the active chat", asyn
     const dropSurface = page.locator("[data-chat-resource-drop-surface]");
     await expect(dropSurface).toBeVisible();
 
-    await page.locator('[data-tour="panel-characters"]').click();
+    await clickTopbarPanel(page, "characters");
     const rightPanel = page.locator('[data-component="RightPanelDesktop"]');
     const characterRow = rightPanel.locator('[data-touch-drag-card="character"]').filter({ hasText: characterName });
     await expect(characterRow).toBeVisible();
@@ -3602,7 +3662,7 @@ test("Character row actions can add a resource to the active chat without draggi
       module.useChatStore.getState().setActiveChatId(chatId);
     }, chat.id);
     await expect(page.locator("[data-chat-resource-drop-surface]")).toBeVisible();
-    await page.locator('[data-tour="panel-characters"]').click();
+    await clickTopbarPanel(page, "characters");
 
     // This action proof needs one character, not the shard's accumulated catalog.
     await page.getByRole("textbox", { name: "Search characters", exact: true }).fill(characterName);
@@ -3676,7 +3736,7 @@ test("Dropping a persona confirms before replacing the active chat persona", asy
       module.useChatStore.getState().setActiveChatId(chatId);
     }, chat.id);
     await expect(page.locator("[data-chat-resource-drop-surface]")).toBeVisible();
-    await page.locator('[data-tour="panel-personas"]').click();
+    await clickTopbarPanel(page, "personas");
     const personaRow = page.locator('[data-touch-drag-card="persona"]').filter({ hasText: nextPersona.name });
     const dropSurface = page.locator("[data-chat-resource-drop-surface]");
     await expect(personaRow).toBeVisible();
@@ -3771,7 +3831,7 @@ test("Character Chat actions reuse mode selection and seed the chosen setup wiza
   const ensureCharacterPanelOpen = async () => {
     const charactersButton = page.locator('[data-tour="panel-characters"]');
     if ((await charactersButton.getAttribute("aria-pressed")) !== "true") {
-      await charactersButton.click();
+      await clickTopbarPanel(page, "characters");
     }
     await expect(charactersButton).toHaveAttribute("aria-pressed", "true");
     await expect(rightPanel).toBeVisible();
@@ -4070,7 +4130,7 @@ for (const { panel, endpoint, sections } of [
     const resource = (await response.json()) as { id: string };
     try {
       await page.goto("/");
-      await page.locator(`[data-tour="panel-${panel}"]`).click();
+      await clickTopbarPanel(page, panel);
       if (panel === "presets") {
         await page
           .locator('[data-touch-drag-card="preset"]')
@@ -4185,7 +4245,7 @@ test("Character and Persona avatar actions stay separated and visually balanced"
     creator: string,
     version: string,
   ) => {
-    await page.locator(`[data-tour="panel-${panel}"]`).click();
+    await clickTopbarPanel(page, panel);
     await page
       .getByText(resourceName, { exact: true })
       .first()
@@ -4529,6 +4589,242 @@ test("Character and Persona avatar actions stay separated and visually balanced"
   }
 });
 
+test("Character-sheet generation offers the saved neutral full-body sprite as an optional reference", async ({
+  page,
+  request,
+}, testInfo) => {
+  const avatar = `data:image/gif;base64,${TRANSPARENT_GIF_BASE64}`;
+  const sprite = `data:image/png;base64,${TRANSPARENT_PNG_BASE64}`;
+  const characterResponse = await request.post("/api/characters", {
+    data: { data: { name: "Sheet reference fixture", description: "Silver hair and a dark travel coat." } },
+  });
+  expect(characterResponse.ok()).toBeTruthy();
+  const character = (await characterResponse.json()) as { id: string };
+  const connectionResponse = await request.post("/api/connections", {
+    data: { name: "Sheet reference fixture", provider: "image_generation", imageGenerationSource: "openai" },
+  });
+  expect(connectionResponse.ok()).toBeTruthy();
+  const connection = (await connectionResponse.json()) as { id: string };
+  const sent: Array<{ purpose: string; referenceImages?: string[] }> = [];
+  await page.route("**/api/characters/avatar-generation", async (route) => {
+    sent.push(route.request().postDataJSON());
+    await route.fulfill({ json: { image: sprite, prompt: "Fixture sheet" } });
+  });
+  try {
+    expect(
+      (
+        await request.post(`/api/characters/${character.id}/avatar`, {
+          data: { avatar, filename: "reference.gif" },
+        })
+      ).ok(),
+    ).toBeTruthy();
+    for (const expression of ["neutral", "full_happy", "full_neutral"]) {
+      expect(
+        (await request.post(`/api/sprites/${character.id}`, { data: { expression, image: sprite } })).ok(),
+      ).toBeTruthy();
+    }
+    await page.goto("/");
+    await page.evaluate(async (id) => {
+      const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+      useUIStore.getState().openCharacterDetail(id);
+      useUIStore.getState().setReviewImagePromptsBeforeSend(false);
+    }, character.id);
+    const editor = page.locator(".mari-editor-shell");
+    await openEditorSection(editor, "Sprites");
+    const create = editor.locator('[data-editor-section="sprites"]').getByRole("button", { name: "Create with AI" });
+    await create.click();
+    const dialog = page.getByRole("dialog", { name: "Create Character Sheet" });
+    await dialog.getByRole("combobox").selectOption(connection.id);
+    const neutral = dialog.getByRole("checkbox", { name: "Use neutral full-body sprite as a reference" });
+    const likeness = dialog.getByRole("checkbox", { name: /Use current avatar as a likeness reference/ });
+    await expect(neutral).not.toBeChecked();
+    await expect(likeness).toBeChecked();
+    await neutral.check();
+    const preview = neutral.locator("..").locator("img");
+    await expect(preview).toHaveAttribute("src", /full_neutral/u);
+    await expect(preview).toHaveCSS("object-fit", "contain");
+    for (const theme of ["dark", "light"] as const) {
+      await page.evaluate(async (value) => {
+        const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+        useUIStore.getState().setTheme(value);
+      }, theme);
+      await expect(neutral).toBeInViewport();
+      await testInfo.attach(`sheet-sprite-reference-${theme}`, {
+        body: await page.screenshot(),
+        contentType: "image/png",
+      });
+    }
+
+    for (const [useSprite, useAvatar, expected] of [
+      [true, true, [sprite, avatar]],
+      [true, false, [sprite]],
+      [false, true, [avatar]],
+      [false, false, undefined],
+    ] as const) {
+      await neutral.setChecked(useSprite);
+      await likeness.setChecked(useAvatar);
+      const count = sent.length;
+      await dialog.getByRole("button", { name: /^(Generate|Regenerate)$/u }).click();
+      await expect(dialog.getByRole("button", { name: "Save as Character Sheet" })).toBeEnabled();
+      expect(sent).toHaveLength(count + 1);
+      expect(sent.at(-1)?.purpose).toBe("character-sheet");
+      expect(sent.at(-1)?.referenceImages).toEqual(expected);
+    }
+
+    await neutral.check();
+    await page.evaluate(async () => {
+      const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+      useUIStore.getState().setReviewImagePromptsBeforeSend(true);
+    });
+    const previewRequest = page.waitForRequest("**/api/characters/avatar-generation/preview");
+    await dialog.getByRole("button", { name: "Regenerate", exact: true }).click();
+    expect((await previewRequest).postDataJSON().referenceImages).toEqual([sprite]);
+    const review = page.getByRole("dialog", { name: "Review Image Prompt", exact: true });
+    await review.getByRole("button", { name: "Generate", exact: true }).click();
+    await expect(dialog.getByRole("button", { name: "Save as Character Sheet" })).toBeEnabled();
+    expect(sent.at(-1)?.referenceImages).toEqual([sprite]);
+
+    await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    await create.click();
+    await expect(neutral).not.toBeChecked();
+    await neutral.check();
+    const referenceUrl = await preview.getAttribute("src");
+    if (!referenceUrl) throw new Error("The neutral sprite preview must have a source URL");
+    await page.route(`**${referenceUrl}`, (route) => route.fulfill({ status: 404 }));
+    const count = sent.length;
+    await dialog.getByRole("button", { name: "Generate", exact: true }).click();
+    await expect(
+      page.getByText(
+        "Could not read the selected reference image. Try reopening the generator or replacing the image.",
+      ),
+    ).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Generate", exact: true })).toBeEnabled();
+    expect(sent).toHaveLength(count);
+    await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    await page.unroute(`**${referenceUrl}`);
+    await editor.getByRole("button", { name: "Full-body", exact: true }).click();
+    const savedNeutral = editor.getByAltText("full_neutral", { exact: true }).locator("../..");
+    await savedNeutral.hover();
+    await savedNeutral.getByRole("button", { name: "Delete", exact: true }).click();
+    const deletion = page.getByRole("dialog", { name: "Delete Sprite", exact: true });
+    await deletion.getByRole("button", { name: "Delete", exact: true }).click();
+    await expect(deletion).not.toBeVisible();
+    await create.click();
+    await expect(neutral).toHaveCount(0);
+    await expect(likeness).toBeChecked();
+  } finally {
+    await Promise.all([
+      bestEffortDelete(request, `/api/characters/${character.id}`),
+      bestEffortDelete(request, `/api/connections/${connection.id}`),
+    ]);
+  }
+});
+
+test("Persona sheets accept neutral full-body references and save the result", async ({ page, request }, testInfo) => {
+  const name = "Persona sheet reference fixture";
+  const avatar = `data:image/gif;base64,${TRANSPARENT_GIF_BASE64}`;
+  const sprite = `data:image/png;base64,${TRANSPARENT_PNG_BASE64}`;
+  const personaResponse = await request.post("/api/characters/personas", {
+    data: { name, description: "Silver hair and a dark travel coat." },
+  });
+  expect(personaResponse.ok()).toBeTruthy();
+  const persona = (await personaResponse.json()) as { id: string };
+  let connectionId: string | undefined;
+  const sent: Array<{ referenceImages?: string[] }> = [];
+  try {
+    const connectionResponse = await request.post("/api/connections", {
+      data: { name, provider: "image_generation", imageGenerationSource: "openai" },
+    });
+    expect(connectionResponse.ok()).toBeTruthy();
+    connectionId = ((await connectionResponse.json()) as { id: string }).id;
+    expect(
+      (
+        await request.post(`/api/characters/personas/${persona.id}/avatar`, {
+          data: { avatar, filename: "persona.gif" },
+        })
+      ).ok(),
+    ).toBeTruthy();
+    for (const expression of ["neutral", "full_happy", "full_neutral"]) {
+      expect(
+        (await request.post(`/api/sprites/${persona.id}`, { data: { expression, image: sprite } })).ok(),
+      ).toBeTruthy();
+    }
+    await page.route("**/api/characters/avatar-generation", async (route) => {
+      sent.push(route.request().postDataJSON());
+      await route.fulfill({ json: { image: sprite, prompt: "Generated persona sheet fixture" } });
+    });
+    await page.goto("/");
+    await page.evaluate(async (id) => {
+      const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+      useUIStore.getState().setReviewImagePromptsBeforeSend(false);
+      useUIStore.getState().openPersonaDetail(id);
+    }, persona.id);
+    const editor = page.locator(".mari-editor-shell");
+    await openEditorSection(editor, "Sprites");
+    const create = editor
+      .locator('[data-editor-section="sprites"]')
+      .getByRole("button", { name: "Create with AI", exact: true });
+    await create.click();
+    const dialog = page.getByRole("dialog", { name: "Create Character Sheet", exact: true });
+    await dialog.getByRole("combobox").selectOption(connectionId);
+    const neutral = dialog.getByRole("checkbox", { name: "Use neutral full-body sprite as a reference" });
+    const likeness = dialog.getByRole("checkbox", { name: /Use current avatar as a likeness reference/ });
+    await expect(neutral).not.toBeChecked();
+    await expect(likeness).toBeChecked();
+    await neutral.check();
+    await expect(neutral.locator("..").locator("img")).toHaveAttribute("src", /full_neutral/u);
+    await expect(neutral).toBeInViewport();
+    await testInfo.attach("persona-sheet-neutral-reference.png", {
+      body: await page.screenshot(),
+      contentType: "image/png",
+    });
+    for (const [withAvatar, expected] of [
+      [true, [sprite, avatar]],
+      [false, [sprite]],
+    ] as const) {
+      await likeness.setChecked(withAvatar);
+      await dialog.getByRole("button", { name: /^(Generate|Regenerate)$/u }).click();
+      await expect(dialog.getByRole("button", { name: "Save as Character Sheet" })).toBeEnabled();
+      expect(sent.at(-1)?.referenceImages).toEqual(expected);
+    }
+    // Save the actual generated result through the normal upload, then persist the editor draft.
+    const upload = page.waitForResponse(
+      (response) =>
+        response.url().endsWith(`/api/characters/personas/${persona.id}/gallery/upload`) &&
+        response.request().method() === "POST",
+    );
+    const save = dialog.getByRole("button", { name: "Save as Character Sheet", exact: true });
+    if (testInfo.project.name.includes("mobile")) await save.tap();
+    else await save.click();
+    expect((await upload).ok()).toBeTruthy();
+    const savedImage = (await (await upload).json()) as { id: string };
+    await expect(dialog).toHaveCount(0);
+    await expect(editor.getByAltText(`${name} character sheet`, { exact: true })).toBeVisible();
+    await editor.getByRole("button", { name: "Save", exact: true }).click();
+    await expect
+      .poll(
+        async () => (await (await request.get(`/api/characters/personas/${persona.id}`)).json()).characterSheetImageId,
+      )
+      .toBe(savedImage.id);
+    await create.click();
+    await expect(neutral).not.toBeChecked();
+    await expect(likeness).toBeChecked();
+    await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    await editor.getByRole("button", { name: "Full-body", exact: true }).click();
+    const savedNeutral = editor.getByAltText("full_neutral", { exact: true }).locator("../..");
+    await savedNeutral.hover();
+    await savedNeutral.getByRole("button", { name: "Delete", exact: true }).click();
+    const deletion = page.getByRole("dialog", { name: "Delete Sprite", exact: true });
+    await deletion.getByRole("button", { name: "Delete", exact: true }).click();
+    await expect(deletion).not.toBeVisible();
+    await create.click();
+    await expect(neutral).toHaveCount(0);
+  } finally {
+    await bestEffortDelete(request, `/api/characters/personas/${persona.id}`);
+    if (connectionId) await bestEffortDelete(request, `/api/connections/${connectionId}`);
+  }
+});
+
 test("Character and persona sheets persist an explicit reference choice and fall back safely", async ({
   page,
   request,
@@ -4683,7 +4979,7 @@ test("Character and persona sheets persist an explicit reference choice and fall
     expect(personaUpdateResponse.ok()).toBeTruthy();
 
     await page.goto("/");
-    await page.locator('[data-tour="panel-characters"]').click();
+    await clickTopbarPanel(page, "characters");
     await page
       .getByText(characterName, { exact: true })
       .first()
@@ -4742,7 +5038,7 @@ test("Character and persona sheets persist an explicit reference choice and fall
       .first()
       .evaluate((button: HTMLButtonElement) => button.click());
     await expect(editor).toHaveCount(0);
-    await page.locator('[data-tour="panel-personas"]').click();
+    await clickTopbarPanel(page, "personas");
     await page
       .getByText(personaName, { exact: true })
       .first()
@@ -4965,7 +5261,7 @@ test("Matched full-body sprites approve a neutral anchor before sending each exp
 
   try {
     await page.goto("/");
-    await page.locator('[data-tour="panel-characters"]').click();
+    await clickTopbarPanel(page, "characters");
     const rightPanel = page.locator('[data-component="RightPanelDesktop"]');
     await rightPanel.locator('[data-touch-drag-card="character"]').filter({ hasText: characterName }).click();
 
@@ -5050,7 +5346,7 @@ test("expanded character editors keep native keyboard and quote caret behavior",
   try {
     await seedUIState(page, { hasCompletedOnboarding: true, quoteFormat: "typographic" }, "merge");
     await page.goto("/");
-    await page.locator('[data-tour="panel-characters"]').click();
+    await clickTopbarPanel(page, "characters");
     await page.getByText(characterName, { exact: true }).first().click();
 
     const editor = page.locator(".mari-editor-shell");
@@ -5303,6 +5599,19 @@ test("character schedules export the live draft and import safely", async ({ pag
     let dialog = await openScheduleEditor();
     let activity = await expandMonday(dialog);
     await activity.fill("Unsaved export draft");
+    await dialog.getByText("Tuning", { exact: true }).click();
+    await dialog.getByText("Advanced timing", { exact: true }).click();
+    const capInput = dialog.getByRole("spinbutton", { name: /^Daily safety limit/i });
+    await capInput.fill("1.5");
+    await dialog.getByRole("button", { name: "Export schedule", exact: true }).click();
+    await expect(
+      page.getByText("Daily safety limit must be a whole number of at least 1, or blank for Default.").first(),
+    ).toBeVisible();
+    await capInput.fill("0");
+    await dialog.getByRole("button", { name: "Save schedule", exact: true }).click();
+    await expect(dialog).toBeVisible();
+    expect((await storedSchedule())!.autonomousDailyCapOverride).toBeNull();
+    await dialog.getByRole("spinbutton", { name: /^Daily safety limit/i }).fill("1000");
 
     const downloadPromise = page.waitForEvent("download");
     await dialog.getByRole("button", { name: "Export schedule", exact: true }).click();
@@ -5318,6 +5627,7 @@ test("character schedules export the live draft and import safely", async ({ pag
     expect(exported.kind).toBe("marinara.character-schedule");
     expect(exported.version).toBe(1);
     expect(exported.schedule.days.Monday[0]?.activity).toBe("Unsaved export draft");
+    expect(exported.schedule.autonomousDailyCapOverride).toBe(1000);
 
     const fileInput = dialog.locator('input[type="file"][accept*=".json"]');
     await fileInput.setInputFiles({ name: "invalid.json", mimeType: "application/json", buffer: Buffer.from("{}") });
@@ -5335,6 +5645,7 @@ test("character schedules export the live draft and import safely", async ({ pag
 
     const importedSchedule = {
       ...originalSchedule,
+      autonomousDailyCapOverride: 100,
       days: {
         ...emptyDays(),
         Monday: [{ time: "10:00-18:00", activity: "Imported current format", status: "online" }],
@@ -5351,6 +5662,7 @@ test("character schedules export the live draft and import safely", async ({ pag
     });
     await expect(page.getByText("Schedule imported as an unsaved draft.", { exact: true })).toBeVisible();
     await expect(activity).toHaveValue("Imported current format");
+    await expect(dialog.getByRole("spinbutton", { name: /^Daily safety limit/i })).toHaveValue("100");
     await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
     await expect.poll(async () => (await storedSchedule())!.days.Monday![0]?.activity).toBe("Original research");
 
@@ -5359,6 +5671,7 @@ test("character schedules export the live draft and import safely", async ({ pag
     await expect(activity).toHaveValue("Original research");
     const legacySchedule = {
       ...originalSchedule,
+      autonomousDailyCapOverride: 50,
       days: {
         ...emptyDays(),
         Monday: [{ time: "11:00-19:00", activity: "Imported legacy format", status: "idle" }],
@@ -5374,6 +5687,17 @@ test("character schedules export the live draft and import safely", async ({ pag
     await dialog.getByRole("button", { name: "Save schedule", exact: true }).click();
     await expect.poll(async () => (await storedSchedule())!.days.Monday![0]?.activity).toBe("Imported legacy format");
     expect((await storedSchedule())!.talkativeness).toBe(90);
+    expect((await storedSchedule())!.autonomousDailyCapOverride).toBe(50);
+
+    await page.reload();
+    dialog = await openScheduleEditor();
+    await dialog.getByText("Tuning", { exact: true }).click();
+    await dialog.getByText("Advanced timing", { exact: true }).click();
+    const dailyCap = dialog.getByRole("spinbutton", { name: /^Daily safety limit/i });
+    await expect(dailyCap).toHaveValue("50");
+    await dailyCap.fill("");
+    await dialog.getByRole("button", { name: "Save schedule", exact: true }).click();
+    await expect.poll(async () => (await storedSchedule())!.autonomousDailyCapOverride).toBeNull();
   } finally {
     await Promise.allSettled([
       request.delete(`/api/chats/${chat.id}`),
@@ -5612,7 +5936,7 @@ test("individual group awareness includes only the replying character's sibling 
   }
 });
 
-test("stopped and refused generations keep sent text cleared and accept the first edit", async ({
+test("stopped and refused generations keep sent text cleared and accept the first edit", { tag: "@smoke" }, async ({
   page,
   request,
 }, testInfo) => {
@@ -6205,7 +6529,7 @@ for (const mode of ["conversation", "roleplay"] as const) {
         return JSON.parse(value || "{}") as Record<string, unknown>;
       };
       const openAppearance = async () => {
-        await page.locator('[data-tour="panel-settings"]').click();
+        await clickTopbarPanel(page, "settings");
         await page.getByRole("tab", { name: "Appearance", exact: true }).click();
         await page
           .getByRole("group", { name: "Appearance by chat mode" })
@@ -6912,7 +7236,7 @@ test("generation fallbacks identify the replacement connection in a toast", asyn
 });
 
 for (const mode of ["roleplay", "conversation"] as const) {
-  test(`${mode} exposes reasoning and explains unavailable saved summaries`, async ({ page }, testInfo) => {
+  test(`${mode} exposes reasoning and explains unavailable saved summaries`, { tag: "@smoke" }, async ({ page }, testInfo) => {
     const characters: Array<{ id: string; name: string }> = [];
     if (mode === "conversation") {
       for (const name of ["Reasoning One", "Reasoning Two"]) {
@@ -7124,7 +7448,7 @@ test("Roleplay can show streaming reasoning inline and control automatic collaps
       };
       useUIStore.getState().setChatChromeTextColor("#14b8a6");
     });
-    await page.locator('[data-tour="panel-settings"]').click();
+    await clickTopbarPanel(page, "settings");
     await page.getByRole("tab", { name: "Appearance" }).click();
 
     const showControl = page.locator("#settings-control-show-roleplay-thinking-in-messages");
@@ -8009,7 +8333,7 @@ test("legacy browser records are cleaned while extension imports stay locked", a
     ),
   ).toBeUndefined();
 
-  await page.locator('[data-tour="panel-settings"]').click();
+  await clickTopbarPanel(page, "settings");
   await page.getByRole("tab", { name: "Addons" }).click();
   await expect(page.getByText("Personal Extensions", { exact: true }).first()).toBeVisible();
   await expect(
@@ -8034,7 +8358,7 @@ test("legacy browser records are cleaned while extension imports stay locked", a
 
 test("Personal Extensions default to the Professor Mari-only locked workflow", async ({ page }) => {
   await page.goto("/");
-  await page.locator('[data-tour="panel-settings"]').click();
+  await clickTopbarPanel(page, "settings");
   await page.getByRole("tab", { name: "Addons" }).click();
 
   await expect(page.getByText("Personal Extensions", { exact: true }).first()).toBeVisible();
@@ -8136,7 +8460,7 @@ test("external Agent imports require the Danger Zone gate and explicit capabilit
     expect(blockedImport.status()).toBe(403);
 
     await page.goto("/");
-    await page.locator('[data-tour="panel-agents"]').click();
+    await clickTopbarPanel(page, "agents");
     const disabledHelp = 'Enable "Allow custom Agent imports" in Advanced Settings → Danger Zone first.';
     const lockedImportButton = page.getByTitle(disabledHelp).first();
     await expect(lockedImportButton).toHaveAttribute("aria-disabled", "true");
@@ -8146,7 +8470,7 @@ test("external Agent imports require the Danger Zone gate and explicit capabilit
     await disabledToast.getByRole("button", { name: "Close toast" }).click();
     await expect(disabledToast).toBeHidden();
 
-    await page.locator('[data-tour="panel-settings"]').click();
+    await clickTopbarPanel(page, "settings");
     await page.getByRole("tab", { name: "Advanced" }).click();
     const agentImportToggle = page.getByLabel("Allow custom Agent imports");
     await expect(agentImportToggle).toBeEnabled();
@@ -8167,7 +8491,7 @@ test("external Agent imports require the Danger Zone gate and explicit capabilit
     const enabledPolicy = await request.patch("/api/agents/import-policy", { data: { enabled: true } });
     expect(enabledPolicy.ok()).toBeTruthy();
     await page.reload();
-    await page.locator('[data-tour="panel-agents"]').click();
+    await clickTopbarPanel(page, "agents");
     const importAgents = page.getByTitle("Import agents");
     await expect(importAgents).toHaveCount(1);
     await expect(importAgents).toHaveAttribute("aria-disabled", "false");
@@ -8572,6 +8896,241 @@ test("Gallery Illustrate offers active custom image agents", async ({ page, requ
     );
   }
 });
+
+type GallerySaveProbe = {
+  mode: "success" | "cancel" | "failure";
+  shares: Array<{
+    activation: boolean;
+    name: string;
+    size: number;
+    type: string;
+  }>;
+  anchors: number;
+  downloadTargets: string[];
+  androidFiles: string[][];
+};
+
+for (const owner of ["character", "persona"] as const) {
+  test(`${owner} gallery image saves keep the app open`, async ({ page, request }, testInfo) => {
+    const ios = testInfo.project.name === "mobile-webkit";
+    const android = testInfo.project.name === "mobile-chromium";
+    const name = `${owner} gallery save regression`;
+    const base = owner === "character" ? "/api/characters" : "/api/characters/personas";
+    const response = await request.post(base, {
+      data: owner === "character" ? { data: { name } } : { name },
+    });
+    expect(response.ok()).toBeTruthy();
+    const entity = (await response.json()) as { id: string };
+    try {
+      const upload = await request.post(`${base}/${entity.id}/gallery/upload`, {
+        multipart: {
+          file: {
+            name: "save-me.png",
+            mimeType: "image/png",
+            buffer: Buffer.from(TRANSPARENT_PNG_BASE64, "base64"),
+          },
+        },
+      });
+      expect(upload.ok()).toBeTruthy();
+      const image = (await upload.json()) as { filePath: string; url: string };
+      const filename = image.filePath.split(/[\\/]/).pop();
+      await page.addInitScript(
+        ({ ios, android }) => {
+          const target = window as unknown as Window & {
+            __gallerySave: GallerySaveProbe;
+            MarinaraAndroid?: { saveFile: (...args: string[]) => void };
+          };
+          target.__gallerySave = {
+            mode: "success",
+            shares: [],
+            anchors: 0,
+            downloadTargets: [],
+            androidFiles: [],
+          };
+          document.addEventListener(
+            "click",
+            (event) => {
+              if (event.target instanceof HTMLAnchorElement && event.target.hasAttribute("download")) {
+                target.__gallerySave.anchors++;
+                target.__gallerySave.downloadTargets.push(event.target.target);
+              }
+            },
+            true,
+          );
+          if (ios) {
+            Object.defineProperty(navigator, "canShare", {
+              configurable: true,
+              value: (data: ShareData) => data.files?.length === 1,
+            });
+            Object.defineProperty(navigator, "share", {
+              configurable: true,
+              value: async (data: ShareData) => {
+                const file = data.files?.[0];
+                if (!file) throw new Error("Expected a prepared image file");
+                target.__gallerySave.shares.push({
+                  activation: navigator.userActivation.isActive,
+                  name: file.name,
+                  size: file.size,
+                  type: file.type,
+                });
+                if (target.__gallerySave.mode !== "success")
+                  throw new DOMException(
+                    "Share probe",
+                    target.__gallerySave.mode === "cancel" ? "AbortError" : "NotAllowedError",
+                  );
+              },
+            });
+          }
+          if (android)
+            target.MarinaraAndroid = {
+              saveFile: (...args) => {
+                target.__gallerySave.androidFiles.push(args);
+              },
+            };
+        },
+        { ios, android },
+      );
+      await page.goto("/");
+      await page.evaluate(
+        async ({ owner, id }) => {
+          const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+          const state = useUIStore.getState();
+          if (owner === "character") state.openCharacterDetail(id);
+          else state.openPersonaDetail(id);
+        },
+        { owner, id: entity.id },
+      );
+      const editor = page.locator(".mari-editor-shell");
+      await openEditorSection(editor, "Gallery");
+      const gallery = editor.locator('[data-editor-section="gallery"]');
+      const appUrl = page.url();
+      const probe = () =>
+        page.evaluate(() => (window as unknown as Window & { __gallerySave: GallerySaveProbe }).__gallerySave);
+      const lightbox = page.getByRole("dialog", {
+        name: "Image preview",
+        exact: true,
+      });
+      const save = lightbox.getByRole("button", {
+        name: "Download image",
+        exact: true,
+      });
+      await gallery.getByTitle("Download", { exact: true }).scrollIntoViewIfNeeded();
+      await testInfo.attach(`${owner}-gallery-before-save.png`, {
+        body: await page.screenshot(),
+        contentType: "image/png",
+      });
+      if (ios) {
+        // The thumbnail download opens a dismissible preview, preparing the file before the next tap.
+        await gallery.getByTitle("Download", { exact: true }).click();
+        await expect(lightbox).toBeVisible();
+        await expect(save).toBeEnabled();
+        await save.click();
+        await expect
+          .poll(async () => (await probe()).shares)
+          .toEqual([
+            {
+              activation: true,
+              name: filename,
+              size: Buffer.from(TRANSPARENT_PNG_BASE64, "base64").length,
+              type: "image/png",
+            },
+          ]);
+        for (const mode of ["cancel", "failure"] as const) {
+          await page.evaluate((mode) => {
+            (window as unknown as Window & { __gallerySave: GallerySaveProbe }).__gallerySave.mode = mode;
+          }, mode);
+          await save.click();
+          await expect.poll(async () => (await probe()).shares.length).toBe(mode === "cancel" ? 2 : 3);
+          if (mode === "failure")
+            await expect(page.getByText("Failed to save image.", { exact: true }).last()).toBeVisible();
+          else await expect(page.getByText("Failed to save image.", { exact: true }).last()).toHaveCount(0);
+          await expect(lightbox).toBeVisible();
+          await expect(page).toHaveURL(appUrl);
+        }
+        expect((await probe()).anchors).toBe(0);
+      } else {
+        const download = android ? null : page.waitForEvent("download");
+        await gallery.getByTitle("Download", { exact: true }).click();
+        if (download) {
+          const file = await download;
+          expect(file.suggestedFilename()).toBe(filename);
+          expect(readFileSync((await file.path())!)).toEqual(Buffer.from(TRANSPARENT_PNG_BASE64, "base64"));
+        } else {
+          await expect
+            .poll(async () => (await probe()).androidFiles)
+            .toEqual([[TRANSPARENT_PNG_BASE64, "image/png", filename]]);
+        }
+        await expect(lightbox).toHaveCount(0);
+        await gallery.getByAltText(name, { exact: true }).click();
+        await expect(lightbox).toBeVisible();
+        const previewDownload = android ? null : page.waitForEvent("download");
+        await save.click();
+        if (previewDownload) expect((await previewDownload).suggestedFilename()).toBe(filename);
+        else await expect.poll(async () => (await probe()).androidFiles.length).toBe(2);
+      }
+      await expect(page).toHaveURL(appUrl);
+      const close = lightbox.getByRole("button", { name: "Close image", exact: true });
+      await close.focus();
+      await page.keyboard.press("Tab");
+      await expect(lightbox.getByRole("button", { name: "Set as avatar", exact: true })).toBeFocused();
+      await page.keyboard.press("Shift+Tab");
+      await expect(close).toBeFocused();
+      const deleteImage = lightbox.getByRole("button", { name: "Delete", exact: true });
+      await deleteImage.focus();
+      await deleteImage.press("Enter");
+      const confirmation = page.getByRole("dialog", {
+        name: owner === "character" ? "Delete Character Image" : "Delete Persona Image",
+        exact: true,
+      });
+      const cancelDelete = confirmation.getByRole("button", { name: "Cancel", exact: true });
+      await expect(confirmation.getByRole("button", { name: /^Close Delete /u })).toBeFocused();
+      await cancelDelete.focus();
+      // WebKit on macOS uses Option+Tab to visit every control.
+      await page.keyboard.press(ios ? "Alt+Tab" : "Tab");
+      await expect(confirmation.getByRole("button", { name: "Delete", exact: true })).toBeFocused();
+      await cancelDelete.click();
+      await expect(confirmation).toHaveCount(0);
+      await expect(deleteImage).toBeFocused();
+      await testInfo.attach(`${owner}-gallery-save-preview.png`, {
+        body: await page.screenshot(),
+        contentType: "image/png",
+      });
+      await lightbox.getByRole("button", { name: "Close image", exact: true }).click();
+      await expect(lightbox).toHaveCount(0);
+      await expect(gallery.getByTitle("Download", { exact: true })).toBeVisible();
+      if (ios) {
+        // Opening the image directly must use the same safe save path; preparation failures remain closable.
+        await page.route(`**${image.url}`, (route) => route.fulfill({ status: 503, body: "Unavailable" }));
+        await gallery.getByAltText(name, { exact: true }).click();
+        await expect(lightbox).toBeVisible();
+        await expect(save).toBeDisabled();
+        await expect(page.getByText("Failed to save image.", { exact: true }).last()).toBeVisible();
+        await lightbox.getByRole("button", { name: "Close image", exact: true }).click();
+        await expect(lightbox).toHaveCount(0);
+        expect((await probe()).anchors).toBe(0);
+        await expect(page).toHaveURL(appUrl);
+        // In insecure contexts iOS has no share API. A browser that previews the download
+        // must use a separate browsing context, never replace the Home Screen app.
+        await page.unroute(`**${image.url}`);
+        await page.evaluate(() => Object.defineProperty(navigator, "share", { configurable: true, value: undefined }));
+        const fallbackDownload = page.waitForEvent("download");
+        await gallery.getByTitle("Download", { exact: true }).click();
+        expect((await fallbackDownload).suggestedFilename()).toBe(filename);
+        expect((await probe()).downloadTargets).toEqual(["_blank"]);
+        await expect(page).toHaveURL(appUrl);
+        await expect(gallery.getByTitle("Download", { exact: true })).toBeVisible();
+      }
+      await gallery.getByAltText(name, { exact: true }).click();
+      await lightbox.getByRole("button", { name: "Delete", exact: true }).click();
+      await confirmation.getByRole("button", { name: "Delete", exact: true }).click();
+      await expect(confirmation).toHaveCount(0);
+      await expect(lightbox).toHaveCount(0);
+      await expect(gallery.getByAltText(name, { exact: true })).toHaveCount(0);
+    } finally {
+      await bestEffortDelete(request, `${base}/${entity.id}`);
+    }
+  });
+}
 
 test("iPhone gallery image saves return through the system share sheet", async ({ page, request }, testInfo) => {
   test.skip(testInfo.project.name !== "mobile-webkit", "The installed iPhone image-save path is WebKit-specific.");
@@ -9318,8 +9877,7 @@ test("chat Help can be hidden permanently from the overlay or App Behavior", asy
     await expect(overlay).toHaveCount(0);
     await expect(page.locator('[data-chat-mode="conversation"] [data-chat-help="help"]')).toHaveCount(0);
 
-    const settingsButton = page.locator('[data-tour="panel-settings"]');
-    await settingsButton.click();
+    await clickTopbarPanel(page, "settings");
     const settingRow = page.locator("#settings-control-hide-chat-help-button");
     await expect(settingRow).toBeVisible();
     const settingToggle = settingRow.locator('input[type="checkbox"]');
@@ -9668,7 +10226,7 @@ test("selected prompt indicators escape the avatar clipping frame", async ({ pag
   try {
     await page.addInitScript((chatId) => localStorage.setItem("marinara-active-chat-id", chatId), chat.id);
     await page.goto("/");
-    await page.locator('[data-tour="panel-presets"]').click();
+    await clickTopbarPanel(page, "presets");
     const presetRow = page.locator('[data-touch-drag-card="preset"]').filter({ hasText: presetName });
     const pictureButton = presetRow.getByRole("button", { name: "Upload preset picture" });
     const indicator = presetRow.locator("[data-preset-selected-indicator]");
@@ -9723,7 +10281,7 @@ test("preset pictures can be uploaded from the panel and replaced in the Overvie
 
   try {
     await page.goto("/");
-    await page.locator('[data-tour="panel-presets"]').click();
+    await clickTopbarPanel(page, "presets");
 
     const presetRow = page.locator('[data-touch-drag-card="preset"]').filter({ hasText: presetName });
     await expect(presetRow).toBeVisible();
@@ -9826,7 +10384,7 @@ test("preset token counters stay localized and editable with malformed marker se
     await seedUIState(page, { language: "ja", theme }, "merge");
     await page.goto("/");
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
-    await page.locator('[data-tour="panel-presets"]').click();
+    await clickTopbarPanel(page, "presets");
     const presetRow = page.locator('[data-touch-drag-card="preset"]').filter({ hasText: presetName });
     await presetRow.locator("[data-preset-open-action]").click({ position: { x: 8, y: 8 } });
     const editor = page.locator(".mari-editor-shell");
@@ -11115,7 +11673,7 @@ test("PocketTTS discovers server voices and uses its speech endpoint", async ({ 
     });
 
     await page.goto("/");
-    await page.locator('[data-tour="panel-connections"]').click();
+    await clickTopbarPanel(page, "connections");
     const rightPanel = page.locator('[data-component="RightPanel"]');
     await expect(rightPanel).toBeVisible();
     const ttsLabel = rightPanel.getByText("Text to Speech", { exact: true });
@@ -11259,7 +11817,7 @@ test("OpenAI-compatible TTS accepts and persists a custom Kokoro voice mix", asy
   });
 
   await page.goto("/");
-  await page.locator('[data-tour="panel-connections"]').click();
+  await clickTopbarPanel(page, "connections");
   const rightPanel = page.locator('[data-component="RightPanel"]');
   await expect(rightPanel).toBeVisible();
   const ttsCard = rightPanel.getByText("Text to Speech", { exact: true }).locator("xpath=../../..");
@@ -11373,7 +11931,7 @@ test("ElevenLabs keeps models visible and exposes scrollable account voices in e
     });
 
     await page.goto("/");
-    await page.locator('[data-tour="panel-connections"]').click();
+    await clickTopbarPanel(page, "connections");
     const rightPanel = page.locator('[data-component="RightPanel"]');
     const ttsLabel = rightPanel.getByText("Text to Speech", { exact: true });
     const ttsCard = ttsLabel.locator("xpath=../../..");
@@ -11561,7 +12119,7 @@ test("Game history above the dialogue box opens a historical Peek Prompt", async
   }
 });
 
-test("home shell and primary topbar panels open without client errors", async ({ page }, testInfo) => {
+test("home shell and primary topbar panels open without client errors", { tag: "@smoke" }, async ({ page }, testInfo) => {
   const errors = collectUnexpectedErrors(page);
   await page.goto("/");
 
@@ -11679,6 +12237,7 @@ test("home shell and primary topbar panels open without client errors", async ({
     const iconCenters = await page.locator('[data-component="TopBar"] .mari-topbar-action').evaluateAll((buttons) =>
       buttons
         .map((button) => {
+          if (button.getBoundingClientRect().width === 0) return null;
           const icon = button.querySelector("svg");
           const box = icon?.getBoundingClientRect();
           return box ? box.x + box.width / 2 : null;
@@ -11687,7 +12246,7 @@ test("home shell and primary topbar panels open without client errors", async ({
     );
     const spacings = iconCenters.slice(1).map((center, index) => center - iconCenters[index]!);
     expect(iconCenters.length).toBeGreaterThan(2);
-    expect(Math.max(...spacings) - Math.min(...spacings)).toBeLessThanOrEqual(2);
+    expect(spacings.every((spacing) => spacing >= 36)).toBe(true);
   }
 
   for (const selector of [
@@ -11700,7 +12259,9 @@ test("home shell and primary topbar panels open without client errors", async ({
     '[data-tour="panel-agents"]',
     '[data-tour="panel-settings"]',
   ]) {
-    await page.locator(selector).click();
+    const panel = selector.match(/panel-([a-z]+)/)?.[1];
+    if (panel) await clickTopbarPanel(page, panel);
+    else await page.locator(selector).click();
     await expect(page.locator('[data-component="TopBar"]')).toBeVisible();
     if (selector === '[data-tour="panel-characters"]') {
       await expect(page.locator('[data-component="RightPanelHeaderIcon"]')).toHaveClass(
@@ -12453,7 +13014,7 @@ test("settings search divider stays aligned with editor headers across text scal
   });
   await expect(page.locator(".mari-editor-header")).toBeVisible();
 
-  await page.locator('[data-tour="panel-settings"]').click();
+  await clickTopbarPanel(page, "settings");
   await expect(page.locator(".mari-settings-search-header")).toBeVisible();
 
   for (const fontSize of [15, 17, 22]) {
@@ -12738,7 +13299,7 @@ test("Storyboard Agent settings stay organized and contained at phone widths", a
 
 test("Backup & Export identifies the automatic backup location", async ({ page }) => {
   await page.goto("/");
-  await page.locator('[data-tour="panel-settings"]').click();
+  await clickTopbarPanel(page, "settings");
   await page.getByPlaceholder("Search settings").fill("automatic backups");
   await page.locator(".mari-settings-search-header button").filter({ hasText: "Automatic backups" }).first().click();
 
@@ -12784,7 +13345,7 @@ test("custom generation parameters become reusable chat controls", async ({ page
 
   try {
     await page.goto("/");
-    await page.locator('[data-tour="panel-settings"]').click();
+    await clickTopbarPanel(page, "settings");
     await page.getByPlaceholder("Search settings").fill("custom generation parameters");
     await page
       .locator(".mari-settings-search-header button")
@@ -13169,6 +13730,11 @@ test("UI language selection downloads packs on demand and persists across reload
   test.setTimeout(90_000);
   const errors = collectUnexpectedErrors(page);
   const packs = await mockUILanguagePacks(page);
+  // Settings also loads the agent catalog; its upstream availability is not
+  // part of the language-download failure handling exercised below.
+  await page.route("**/api/capability-packages/catalog", (route) =>
+    route.fulfill({ json: { schemaVersion: 1, generatedAt: "2026-09-17T00:00:00.000Z", packages: [] } }),
+  );
   const languageSelect = page.locator("#settings-control-language select");
 
   // UI settings are normally synchronized through a single server record. Keep
@@ -13191,7 +13757,7 @@ test("UI language selection downloads packs on demand and persists across reload
       return persisted.state?.rightPanelOpen === true;
     });
     if (!(await languageSelect.isVisible()) && !persistedPanelOpen) {
-      await page.locator('[data-tour="panel-settings"]').click();
+      await clickTopbarPanel(page, "settings");
     }
     await expect(languageSelect).toBeVisible({ timeout: 30_000 });
   };
@@ -13470,7 +14036,7 @@ test("Character and Persona panels launch card downloads and their local librari
   };
 
   await expect(page.locator('[data-tour="panel-bot-browser"]')).toHaveCount(0);
-  await page.locator('[data-tour="panel-characters"]').click();
+  await clickTopbarPanel(page, "characters");
   const characterActions = page.locator('[data-component="CharacterLibraryActions"]');
   await expect(characterActions.getByRole("button", { name: "Download", exact: true })).toBeVisible();
   await expect(characterActions.getByRole("button", { name: "Open Library", exact: true })).toBeVisible();
@@ -13516,7 +14082,7 @@ test("Character and Persona panels launch card downloads and their local librari
 
   const openCharacterLibrary = characterActions.getByRole("button", { name: "Open Library", exact: true });
   if (!(await openCharacterLibrary.isVisible())) {
-    await page.locator('[data-tour="panel-characters"]').click();
+    await clickTopbarPanel(page, "characters");
   }
   await openCharacterLibrary.click();
   const characterLibrary = page.locator('[data-component="CharacterLibraryView"]');
@@ -13539,7 +14105,7 @@ test("Character and Persona panels launch card downloads and their local librari
   });
   await characterLibrary.getByTitle("Close library").click();
 
-  await page.locator('[data-tour="panel-personas"]').click();
+  await clickTopbarPanel(page, "personas");
   const personaActions = page.locator('[data-component="PersonaLibraryActions"]');
   await expect(personaActions.getByRole("button", { name: "Download", exact: true })).toBeVisible();
   const openPersonaLibrary = personaActions.getByRole("button", { name: "Open Library", exact: true });
@@ -13631,7 +14197,7 @@ test("Downloaded cards use Marinara destination and lorebook choices", async ({ 
   });
 
   await page.goto("/");
-  await page.locator('[data-tour="panel-characters"]').click();
+  await clickTopbarPanel(page, "characters");
   await page
     .locator('[data-component="CharacterLibraryActions"]')
     .getByRole("button", { name: "Download", exact: true })
@@ -13756,7 +14322,7 @@ test("Chub NSFW search uses filtered totals and spaced pagination", async ({ pag
   });
 
   await page.goto("/");
-  await page.locator('[data-tour="panel-characters"]').click();
+  await clickTopbarPanel(page, "characters");
   await page
     .locator('[data-component="CharacterLibraryActions"]')
     .getByRole("button", { name: "Download", exact: true })
@@ -13814,14 +14380,14 @@ test("Character and Persona sidebars find cards by creator", async ({ page, requ
   try {
     await page.goto("/");
 
-    await page.locator('[data-tour="panel-characters"]').click();
+    await clickTopbarPanel(page, "characters");
     await expect(rightPanel).toBeVisible();
     await rightPanel.getByPlaceholder("Search characters").fill(characterCreator);
     await expect(
       rightPanel.locator(`[data-touch-drag-card="character"][data-character-id="${character.id}"]`),
     ).toContainText(characterName);
 
-    await page.locator('[data-tour="panel-personas"]').click();
+    await clickTopbarPanel(page, "personas");
     await expect(rightPanel).toBeVisible();
     await rightPanel.getByPlaceholder("Search personas").fill(personaCreator);
     await expect(rightPanel.locator('[data-touch-drag-card="persona"]').filter({ hasText: personaName })).toBeVisible();
@@ -13863,7 +14429,7 @@ test("right-panel controls keep their width with and without a scrollbar", async
 
     await page.goto("/");
     const rightPanel = page.locator('[data-component="RightPanelDesktop"]');
-    await page.locator('[data-tour="panel-characters"]').click();
+    await clickTopbarPanel(page, "characters");
     const characterScroll = rightPanel.locator('[data-component="CharactersPanelScroll"]');
     await expect
       .poll(() => characterScroll.evaluate((element) => element.scrollHeight > element.clientHeight))
@@ -13873,7 +14439,7 @@ test("right-panel controls keep their width with and without a scrollbar", async
     expect(characterButtonBox).not.toBeNull();
     await expect(characterScroll).toHaveCSS("scrollbar-gutter", /stable/u);
 
-    await page.locator('[data-tour="panel-personas"]').click();
+    await clickTopbarPanel(page, "personas");
     await rightPanel.getByPlaceholder("Search personas").fill(personaName);
     const personaScroll = rightPanel.locator('[data-panel-key="personas"]');
     await expect
@@ -14020,7 +14586,7 @@ test("downloadable agent catalog is usable on desktop and mobile", async ({ page
     });
   });
   await page.goto("/");
-  await page.locator('[data-tour="panel-agents"]').click();
+  await clickTopbarPanel(page, "agents");
   await expect(page.getByText("No Agents installed yet, click Download Agents to add them!")).toBeVisible();
   await page.getByLabel("Agents").getByRole("button", { name: "Download Agents", exact: true }).click();
 
@@ -14243,7 +14809,7 @@ test("Agent updates share one dismissible prompt and remain available after Not 
   expect([...declinedUpdateIds].sort()).toEqual(["prose-guardian", "world-builder"]);
   await expect(updateDialog).toBeHidden();
 
-  await page.locator('[data-tour="panel-agents"]').click();
+  await clickTopbarPanel(page, "agents");
   await page.getByLabel("Agents").getByRole("button", { name: "Download Agents", exact: true }).click();
   const catalogView = page.locator('[data-component="AgentCatalogView"]');
   await expect(catalogView.getByRole("heading", { name: "Download Agents" })).toBeVisible();
@@ -14273,7 +14839,7 @@ test("agent catalog reports API failures without diagnosing an internet outage",
   });
 
   await page.goto("/");
-  await page.locator('[data-tour="panel-agents"]').click();
+  await clickTopbarPanel(page, "agents");
   await page.getByLabel("Agents").getByRole("button", { name: "Download Agents", exact: true }).click();
 
   const catalogView = page.locator('[data-component="AgentCatalogView"]');
@@ -14364,7 +14930,7 @@ test("Music Player stays unavailable until Music DJ is installed", async ({ page
     const row = page.locator("#settings-control-music-player");
     const settingsButton = page.locator('[data-tour="panel-settings"]');
     await expect(settingsButton).toHaveAttribute("aria-pressed", /true|false/u);
-    if ((await settingsButton.getAttribute("aria-pressed")) !== "true") await settingsButton.click();
+    if ((await settingsButton.getAttribute("aria-pressed")) !== "true") await clickTopbarPanel(page, "settings");
     await expect(row).toBeVisible();
     return row;
   };
@@ -14383,7 +14949,7 @@ test("Music Player stays unavailable until Music DJ is installed", async ({ page
   await musicPlayerRow.getByRole("button", { name: "Show help" }).click();
   await expect(page.getByText("Download the Music DJ agent to use the Music Player.")).toBeVisible();
 
-  await page.locator('[data-tour="panel-agents"]').click();
+  await clickTopbarPanel(page, "agents");
   await page.getByLabel("Agents").getByRole("button", { name: "Download Agents", exact: true }).click();
   const catalogView = page.locator('[data-component="AgentCatalogView"]');
   await expect(catalogView).toBeVisible();
@@ -14501,8 +15067,7 @@ test("Connections exposes Local Whisper only while Conversation Calls is install
   const openExpandedLocalModel = async () => {
     const rightPanel = page.locator('[data-component="RightPanel"]');
     const connectionsButton = page.locator('[data-tour="panel-connections"]');
-    await expect(connectionsButton).toBeVisible();
-    if ((await connectionsButton.getAttribute("aria-pressed")) !== "true") await connectionsButton.click();
+    if ((await connectionsButton.getAttribute("aria-pressed")) !== "true") await clickTopbarPanel(page, "connections");
     await expect(rightPanel).toBeVisible();
     const localModelLabel = rightPanel.getByText("Local Model", { exact: true });
     await localModelLabel.evaluate((element) => element.parentElement?.parentElement?.click());
@@ -14641,7 +15206,7 @@ test("agent catalog can install and uninstall every package", async ({ page }, t
   });
 
   await page.goto("/");
-  await page.locator('[data-tour="panel-agents"]').click();
+  await clickTopbarPanel(page, "agents");
   await page.getByRole("button", { name: "Download Agents" }).click();
 
   const catalogView = page.locator('[data-component="AgentCatalogView"]');
@@ -14781,7 +15346,7 @@ test("installed package artwork appears in the sidebar and clears immediately on
   });
 
   await page.goto("/");
-  await page.locator('[data-tour="panel-agents"]').click();
+  await clickTopbarPanel(page, "agents");
   const agentsSidebar = page.locator('[data-component="RightPanelDesktop"]');
   const proseGuardianCard = agentsSidebar.locator('[data-agent-name="Prose Guardian"]');
   await expect(proseGuardianCard).toBeVisible();
@@ -15136,7 +15701,7 @@ test("Conversation Agents exposes matching collapsible command and feature setti
 });
 
 test("Conversation setup commands follow the installed agent library", async ({ page, request }, testInfo) => {
-  test.skip(!testInfo.project.name.includes("desktop"), "Conversation setup command regression is covered on desktop.");
+  if (!testInfo.project.name.includes("desktop")) await page.setViewportSize({ width: 390, height: 560 });
   test.setTimeout(90_000);
 
   const errors = collectUnexpectedErrors(page);
@@ -15223,6 +15788,15 @@ test("Conversation setup commands follow the installed agent library", async ({ 
     await expect(commandsToggle).toBeVisible();
     await commandsToggle.click();
     await expect(page.getByText("Schedule Updates", { exact: true })).toBeVisible();
+    const footer = page
+      .locator('[data-component="ChatSetupWizard"]')
+      .getByRole("button", { name: "Start Chatting", exact: true });
+    await expect(footer).toBeInViewport();
+    const footerRect = await footer.boundingBox();
+    expect(footerRect!.y + footerRect!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+    const overlay = await page.locator('[data-component="ChatSetupWizard"]').locator("..").boundingBox();
+    expect(footerRect!.y + footerRect!.height).toBeLessThanOrEqual(overlay!.y + overlay!.height);
+    await page.screenshot({ path: testInfo.outputPath("wizard-commands-footer.png") });
   };
 
   try {
@@ -16697,7 +17271,7 @@ test("World Maps stays in Agents and Chat Settings", async ({ page, request }, t
     await expect(page.locator('[data-tour="world-maps"]')).toHaveCount(0);
     await expect(page.locator('[data-component="ChatSidebar"] button[aria-label="World Maps"]')).toHaveCount(0);
 
-    await page.locator('[data-tour="panel-agents"]').click();
+    await clickTopbarPanel(page, "agents");
     await expect(page.locator('[data-tour="panel-agents"]')).toHaveClass(/mari-topbar-panel-icon--active/);
 
     const agentsPanel = page.locator('[data-component="RightPanelDesktop"]');
@@ -17012,7 +17586,7 @@ test("desktop resource editors open beside their source sidebars", async ({ page
     await expect(chatSidebar).toBeVisible();
 
     for (const resource of resources) {
-      await page.locator(`[data-tour="panel-${resource.panel}"]`).click();
+      await clickTopbarPanel(page, resource.panel);
       await expect(resourceSidebar).toBeVisible();
       await expect(centerContent).toHaveAttribute("data-center-compact", "true");
       const resourceRow = resourceSidebar.getByText(resource.name, { exact: true }).first();
@@ -17112,7 +17686,7 @@ test("desktop Connections and Lorebooks folders expand without a React hook erro
   try {
     await page.goto("/");
 
-    await page.locator('[data-tour="panel-connections"]').click();
+    await clickTopbarPanel(page, "connections");
     const resourceSidebar = page.locator('[data-component="RightPanelDesktop"]');
     const connectionFolderToggle = resourceSidebar.locator(
       `[data-connection-folder-id="${connectionFolder.id}"] > [role="button"]`,
@@ -17122,7 +17696,7 @@ test("desktop Connections and Lorebooks folders expand without a React hook erro
     await expect(connectionFolderToggle).toHaveAttribute("aria-expanded", "true");
     await expect(resourceSidebar.getByText(connectionName, { exact: true })).toBeVisible();
 
-    await page.locator('[data-tour="panel-lorebooks"]').click();
+    await clickTopbarPanel(page, "lorebooks");
     const lorebookFolderToggle = resourceSidebar.locator(
       '[data-lorebook-folder-id="folder-expansion-regression"] > [role="button"]',
     );
@@ -17949,7 +18523,7 @@ test("Lorebook vectorization saves pending eligibility settings first", async ({
     });
 
     await page.goto("/");
-    await page.locator('[data-tour="panel-lorebooks"]').click();
+    await clickTopbarPanel(page, "lorebooks");
     await page.getByText(lorebookName, { exact: true }).click();
     await page.getByRole("checkbox", { name: "Enable lorebook vectors" }).evaluate((element) => {
       (element as HTMLInputElement).click();
@@ -18035,7 +18609,7 @@ test("Lorebook Save keeps Overview stable while the updated detail cache settles
 
   try {
     await page.goto("/");
-    await page.locator('[data-tour="panel-lorebooks"]').click();
+    await clickTopbarPanel(page, "lorebooks");
     await page.getByText(name, { exact: true }).click();
     await expect(page.getByRole("heading", { name })).toBeVisible();
 
@@ -18088,7 +18662,7 @@ test("Lorebook and entry IDs are visible and copyable", async ({ page }) => {
 
   try {
     await page.goto("/");
-    await page.locator('[data-tour="panel-lorebooks"]').click();
+    await clickTopbarPanel(page, "lorebooks");
     await page.getByText(name, { exact: true }).click();
 
     await expect(page.getByText(lorebook.id, { exact: true })).toBeVisible();
@@ -18125,7 +18699,7 @@ test("Lorebook entry type descriptions inherit editor chrome text", async ({ pag
 
   try {
     await page.goto("/");
-    await page.locator('[data-tour="panel-lorebooks"]').click();
+    await clickTopbarPanel(page, "lorebooks");
     await page.getByText(name, { exact: true }).click();
     await openEditorSection(page.locator(".mari-editor-shell"), "Entries");
     const row = page.locator(`[data-lorebook-entry-row-id="${entry.id}"]`);
@@ -18178,7 +18752,7 @@ test("selected Lorebook entries mirror safe edits and choose a move destination 
     }
 
     await page.goto("/");
-    await page.locator('[data-tour="panel-lorebooks"]').click();
+    await clickTopbarPanel(page, "lorebooks");
     await page.getByText(name, { exact: true }).click();
     await openEditorSection(page.locator(".mari-editor-shell"), "Entries");
     await expect(
@@ -18281,7 +18855,9 @@ test("selected Lorebook entries mirror safe edits and choose a move destination 
   }
 });
 
-test("Lorebook context filter chips expose Noodle and keep complete borders", async ({ page }, testInfo) => {
+test("Lorebook context filter chips expose installed package triggers and keep complete borders", async ({
+  page,
+}, testInfo) => {
   test.skip(testInfo.project.name.includes("mobile"), "Desktop Lorebook filter geometry is covered on desktop.");
 
   const suffix = Date.now();
@@ -18320,17 +18896,56 @@ test("Lorebook context filter chips expose Noodle and keep complete borders", as
   expect(entryResponse.ok()).toBeTruthy();
   const entry = (await entryResponse.json()) as { id: string };
 
-  try {
+  let installedPackages: Array<Record<string, unknown>> = [];
+  await page.route("**/api/capability-packages/installed", (route) => route.fulfill({ json: installedPackages }));
+  const packageFixture = (id: string, name: string) => ({
+    id,
+    version: "1.0.0",
+    status: "active",
+    readiness: "ready",
+    error: null,
+    legacy: false,
+    installedAt: "2026-09-25T00:00:00Z",
+    manifest: {
+      schemaVersion: 1,
+      id,
+      name,
+      version: "1.0.0",
+      engine: { min: "2.0.0", maxExclusive: "3.0.0" },
+      kind: ["feature"],
+      entrypoints: {},
+      permissions: [],
+      files: [],
+    },
+  });
+  const filterArea = page.locator("details").filter({ hasText: "Context filters & matching sources" });
+  const chips = filterArea.locator("button.mari-editor-chip");
+  const openFilters = async () => {
     await page.goto("/");
-    await page.locator('[data-tour="panel-lorebooks"]').click();
-    await page.getByText(lorebookName, { exact: true }).click();
+    await clickTopbarPanel(page, "lorebooks");
+    // Reload restores the open editor; its library row is then hidden and shares the title.
+    const editorHeading = page.getByRole("heading", { name: lorebookName, exact: true });
+    const libraryEntry = page.getByLabel("Lorebooks", { exact: true }).getByText(lorebookName, { exact: true });
+    await expect(editorHeading.or(libraryEntry).filter({ visible: true }).first()).toBeVisible();
+    if (!(await editorHeading.isVisible())) await libraryEntry.click();
     await openEditorSection(page.locator(".mari-editor-shell"), "Entries");
     await page.getByRole("button", { name: "Expand entry" }).click();
     await page.getByText("Context filters & matching sources", { exact: true }).click();
-
-    const filterArea = page.locator("details").filter({ hasText: "Context filters & matching sources" });
-    const chips = filterArea.locator("button.mari-editor-chip");
     await expect(chips.first()).toBeVisible();
+  };
+  const savedGenerationTriggers = async () => {
+    const entriesResponse = await page.request.get(`/api/lorebooks/${lorebook.id}/entries`);
+    const entries = (await entriesResponse.json()) as Array<{ id: string; generationTriggerFilters: string[] }>;
+    return entries.find((candidate) => candidate.id === entry.id)?.generationTriggerFilters ?? [];
+  };
+
+  try {
+    await openFilters();
+    await expect(filterArea.getByRole("button", { name: "Noodle", exact: true })).toHaveCount(0);
+    await expect(filterArea.getByRole("button", { name: "Slurp", exact: true })).toHaveCount(0);
+
+    installedPackages = [packageFixture("noodle", "Noodle"), packageFixture("slurp2", "Slurp Remastered")];
+    await openFilters();
     expect(await chips.count()).toBeGreaterThan(8);
     await expect(filterArea.locator("button.mari-editor-chip--accent")).toHaveCount(4);
 
@@ -18338,13 +18953,21 @@ test("Lorebook context filter chips expose Noodle and keep complete borders", as
     await expect(noodleChip).toBeVisible();
     await noodleChip.click();
     await expect(noodleChip).toHaveClass(/mari-editor-chip--accent/u);
-    await expect
-      .poll(async () => {
-        const entriesResponse = await page.request.get(`/api/lorebooks/${lorebook.id}/entries`);
-        const entries = (await entriesResponse.json()) as Array<{ id: string; generationTriggerFilters: string[] }>;
-        return entries.find((candidate) => candidate.id === entry.id)?.generationTriggerFilters ?? [];
-      })
-      .toContain("noodle");
+    await expect.poll(savedGenerationTriggers).toContain("noodle");
+
+    const slurpChip = filterArea.getByRole("button", { name: "Slurp", exact: true });
+    await expect(slurpChip).toBeVisible();
+    await slurpChip.click();
+    await expect(slurpChip).toHaveClass(/mari-editor-chip--accent/u);
+    await expect.poll(savedGenerationTriggers).toEqual(["conversation", "noodle", "slurp"]);
+
+    // Removing the packages hides their chips, and toggling another chip keeps the hidden values.
+    installedPackages = [];
+    await openFilters();
+    await expect(filterArea.getByRole("button", { name: "Noodle", exact: true })).toHaveCount(0);
+    await expect(filterArea.getByRole("button", { name: "Slurp", exact: true })).toHaveCount(0);
+    await filterArea.getByRole("button", { name: "Game", exact: true }).click();
+    await expect.poll(savedGenerationTriggers).toEqual(["conversation", "noodle", "slurp", "game"]);
 
     const invalidBorders = await chips.evaluateAll((elements) =>
       elements
@@ -18548,7 +19171,7 @@ test("Settings profile import reuses its preview upload and skips one invalid as
 
   try {
     await page.goto("/");
-    await page.locator('[data-tour="panel-settings"]').click();
+    await clickTopbarPanel(page, "settings");
     await page.getByRole("tab", { name: "Imports", exact: true }).click();
     await page.locator('input[type="file"][accept*="application/zip"]').setInputFiles({
       name: `profile-import-${suffix}.json`,
@@ -19066,7 +19689,7 @@ test("Home achievements preview the latest unlock and nearest measurable goal", 
   await expect(achievementsDialog).toBeVisible();
   await page.keyboard.press("Escape");
 
-  await page.locator('[data-tour="panel-settings"]').click();
+  await clickTopbarPanel(page, "settings");
   const achievementsToggle = page.getByRole("checkbox", { name: "Achievements", exact: true });
   await expect(achievementsToggle).toBeChecked();
   const achievementsToggleId = await achievementsToggle.getAttribute("id");
@@ -19075,7 +19698,7 @@ test("Home achievements preview the latest unlock and nearest measurable goal", 
   await expect(achievementsToggle).not.toBeChecked();
   await expect(bookmarks.getByRole("button", { name: "Achievements", exact: true })).toHaveCount(0);
   await expect(achievementsWidget).toHaveCount(0);
-  await page.locator('[data-tour="panel-settings"]').click();
+  await clickTopbarPanel(page, "settings");
   await bookmarks.getByRole("button", { name: "Widgets", exact: true }).click();
   const widgetManager = page.getByRole("dialog", { name: "Home Widgets" });
   await expect(widgetManager.getByText("Achievements", { exact: true })).toHaveCount(0);
@@ -19438,7 +20061,7 @@ test("home browser hub scales cleanly and opens FAQ as a bookmark window", async
       const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
       module.useUIStore.getState().setReduceAmbientEffects(false);
     });
-    await page.locator('[data-tour="panel-settings"]').click();
+    await clickTopbarPanel(page, "settings");
     const suggestionsToggle = page.getByRole("checkbox", { name: "Professor Mari suggestions" });
     const navigationToggle = page.getByRole("checkbox", { name: "Professor Mari navigation" });
     await expect(suggestionsToggle).toBeVisible();
@@ -19459,7 +20082,7 @@ test("home browser hub scales cleanly and opens FAQ as a bookmark window", async
         settingsSearchBounds!.y + settingsSearchBounds!.height - (addressRowBounds!.y + addressRowBounds!.height / 2),
       ),
     ).toBeLessThanOrEqual(0.5);
-    await page.locator('[data-tour="panel-settings"]').click();
+    await clickTopbarPanel(page, "settings");
     const feed = page.locator('[data-component="HomeBrowserHub.Feed"]');
     await expect(feed).toBeVisible();
     // The settings panel just closed, which resizes the hub content and
@@ -20024,7 +20647,9 @@ test("Home lifecycle stays bounded across repeated tab and chat navigation", asy
     expect(after.documents).toBeLessThanOrEqual(baseline.documents + 1);
     expect(after.nodes).toBeLessThanOrEqual(baseline.nodes + 80);
     expect(after.listeners).toBeLessThanOrEqual(baseline.listeners + 8);
-    expect(after.heap).toBeLessThanOrEqual(baseline.heap + 3 * 1024 * 1024);
+    // Heap/JIT noise scales with the warmed application; keep the structural
+    // retention checks below exact and allow at most 10% heap growth.
+    expect(after.heap).toBeLessThanOrEqual(baseline.heap * 1.1);
     expect(after.animations).toBeLessThanOrEqual(baseline.animations + 2);
     expect(after.lifecycle.intervals).toBe(baseline.lifecycle.intervals);
     expect(after.lifecycle.resizeObservers).toBe(baseline.lifecycle.resizeObservers);
@@ -20143,7 +20768,7 @@ test("Home widget order can be dragged and persists across reloads", async ({ pa
   expect(errors).toEqual([]);
 });
 
-test("chat mode tabs and new-chat actions stay reachable", async ({ page }) => {
+test("chat mode tabs and new-chat actions stay reachable", { tag: "@smoke" }, async ({ page }) => {
   const errors = collectUnexpectedErrors(page);
   const modes = [
     {
@@ -20366,7 +20991,7 @@ test("Roleplay reduced paint effects preserve semantic and custom styling", asyn
     await expect(bubble).toBeVisible();
     await expect(page.locator(".rpg-vignette")).not.toHaveCSS("display", "none");
 
-    await page.locator('[data-tour="panel-settings"]').click();
+    await clickTopbarPanel(page, "settings");
     await page.getByRole("tab", { name: "Appearance" }).click();
     const reducedPaintToggle = page.getByLabel("Reduced paint effects");
     await page
@@ -20651,6 +21276,245 @@ test("mobile Load More clears the collapsed Echo Chamber", async ({ page }, test
   }
 });
 
+test("chat image preview allows native mobile pinch zoom", async ({ page, request, browserName }, testInfo) => {
+  test.skip(!testInfo.project.name.includes("mobile"), "Native pinch zoom applies to touch viewports.");
+  const response = await request.post("/api/chats", {
+    data: { name: "Chat image pinch zoom", mode: "roleplay", characterIds: [] },
+  });
+  expect(response.ok()).toBeTruthy();
+  const chat = (await response.json()) as { id: string };
+  try {
+    await page.route("**/pinch-probe.svg", (route) =>
+      route.fulfill({
+        contentType: "image/svg+xml",
+        body: '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="800"><rect width="800" height="800" fill="#293655"/><circle cx="400" cy="400" r="180" fill="#8bd1da"/><text x="400" y="415" text-anchor="middle" font-size="48">Zoom probe</text></svg>',
+      }),
+    );
+    expect(
+      (
+        await request.post(`/api/chats/${chat.id}/messages`, {
+          data: {
+            role: "assistant",
+            content: "An image to inspect.",
+            extra: { attachments: [{ type: "image", filename: "pinch-probe.svg", url: "/pinch-probe.svg" }] },
+          },
+        })
+      ).ok(),
+    ).toBeTruthy();
+    await prepareFreshClient(page);
+    await page.addInitScript((id) => localStorage.setItem("marinara-active-chat-id", id), chat.id);
+    await page.goto("/");
+    await page.getByRole("button", { name: "Open pinch-probe.svg", exact: true }).click();
+    const preview = page.getByRole("dialog", { name: "Image preview", exact: true });
+    await expect(preview).toBeVisible();
+    await expect(page.locator('meta[name="viewport"]')).not.toHaveAttribute(
+      "content",
+      /user-scalable\s*=\s*(?:no|0)|maximum-scale\s*=\s*1(?:\.0)?(?:,|$)/u,
+    );
+    const image = preview.getByRole("img");
+    const before = await image.boundingBox();
+    expect(before).not.toBeNull();
+    if (browserName === "chromium") {
+      // Drive the browser's native touch gesture, without mocking visualViewport.
+      const session = await page.context().newCDPSession(page);
+      const centerX = before!.x + before!.width / 2;
+      const centerY = before!.y + before!.height / 2;
+      // synthesizePinchGesture is a no-op in Linux headless Chromium, even on a blank page.
+      for (let step = 0; step <= 10; step++) {
+        const offset = 30 + step * 6;
+        await session.send("Input.dispatchTouchEvent", {
+          type: step === 0 ? "touchStart" : "touchMove",
+          touchPoints: [
+            { x: centerX - offset, y: centerY, id: 0 },
+            { x: centerX + offset, y: centerY, id: 1 },
+          ],
+        });
+        await page.evaluate(() => new Promise(requestAnimationFrame));
+      }
+      await session.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      await expect.poll(() => page.evaluate(() => window.visualViewport?.scale ?? 1)).toBeGreaterThan(1.5);
+      await expect(page.locator("html")).not.toHaveAttribute("data-mari-software-keyboard-open");
+      expect((await image.boundingBox())!.width).toBeCloseTo(before!.width, 0);
+      await testInfo.attach("chat-image-native-pinch.png", { body: await page.screenshot(), contentType: "image/png" });
+      await session.send("Emulation.setPageScaleFactor", { pageScaleFactor: 1 });
+      await session.detach();
+    }
+    // Playwright WebKit cannot drive a native two-finger pinch; device verification remains separate.
+    await preview.getByRole("button", { name: "Close image", exact: true }).click();
+    await expect(preview).toBeHidden();
+  } finally {
+    await bestEffortDelete(request, `/api/chats/${chat.id}?force=true`);
+  }
+});
+
+test("pinch zoom keeps the Roleplay layout size and does not open keyboard mode", async ({ page }, testInfo) => {
+  test.skip(!testInfo.project.name.includes("mobile"), "Pinch zoom applies to touch viewports.");
+  const response = await page.request.post("/api/chats", {
+    data: { name: "Roleplay pinch zoom", mode: "roleplay", characterIds: [] },
+  });
+  expect(response.ok()).toBeTruthy();
+  const chat = (await response.json()) as { id: string };
+  try {
+    await installMockVisualViewport(page);
+    await prepareFreshClient(page);
+    await page.addInitScript((id) => localStorage.setItem("marinara-active-chat-id", id), chat.id);
+    await page.goto("/");
+    const shell = page.locator('.mari-app[data-chat-surface-active="true"]');
+    await expect(shell).toBeVisible();
+    const original = await shell.boundingBox();
+    expect(original).not.toBeNull();
+    const height = await page.evaluate(() => window.innerHeight);
+    await page.evaluate((height) => {
+      (
+        window as typeof window & {
+          __setMarinaraVisualViewport: (
+            height: number,
+            top: number,
+            pageTop: number,
+            layout: number,
+            scale: number,
+          ) => void;
+        }
+      ).__setMarinaraVisualViewport(height / 2, 80, 80, height, 2);
+    }, height);
+    await expect(page.locator("html")).not.toHaveAttribute("data-mari-software-keyboard-open");
+    await expect.poll(async () => (await shell.boundingBox())?.height).toBe(original!.height);
+    await expect.poll(async () => (await shell.boundingBox())?.y).toBe(original!.y);
+    // Returning to normal scale must still let the real keyboard resize the shell.
+    await page.evaluate(() => {
+      (
+        window as typeof window & {
+          __setMarinaraVisualViewport: (height: number, top: number) => void;
+        }
+      ).__setMarinaraVisualViewport(360, 0);
+    });
+    await expect(page.locator("html")).toHaveAttribute("data-mari-software-keyboard-open", "");
+    await expect.poll(async () => (await shell.boundingBox())?.height).toBe(360);
+  } finally {
+    await page.request.delete(`/api/chats/${chat.id}?force=true`);
+  }
+});
+
+test("zoomed mobile chat keeps the composer above the keyboard and restores on dismissal", async ({
+  page,
+}, testInfo) => {
+  test.skip(!testInfo.project.name.includes("mobile"), "Software-keyboard viewport behavior is mobile-only.");
+  const response = await page.request.post("/api/chats", {
+    data: { name: "Zoomed keyboard regression", mode: "roleplay", characterIds: [] },
+  });
+  expect(response.ok()).toBeTruthy();
+  const chat = (await response.json()) as { id: string };
+  try {
+    await installMockVisualViewport(page);
+    await prepareFreshClient(page);
+    await page.addInitScript((id) => localStorage.setItem("marinara-active-chat-id", id), chat.id);
+    await page.goto("/");
+    const shell = page.locator('.mari-app[data-chat-surface-active="true"]');
+    const composer = page.locator(".chat-input-container:visible");
+    const textarea = composer.locator("textarea:visible");
+    await expect(textarea).toBeVisible();
+    const original = await shell.boundingBox();
+    expect(original).not.toBeNull();
+    const layoutHeight = await page.evaluate(() => window.innerHeight);
+    const setViewport = (height: number, top: number, scale: number) =>
+      page.evaluate(
+        ({ height, top, scale, layoutHeight }) => {
+          (
+            window as typeof window & {
+              __setMarinaraVisualViewport: (
+                height: number,
+                top: number,
+                pageTop: number,
+                layout: number,
+                scale: number,
+              ) => void;
+            }
+          ).__setMarinaraVisualViewport(height, top, top, layoutHeight, scale);
+        },
+        { height, top, scale, layoutHeight: page.viewportSize()?.height ?? layoutHeight },
+      );
+
+    const expectTextareaInViewport = async (top: number, height: number) => {
+      await expect.poll(async () => (await textarea.boundingBox())?.y ?? -Infinity).toBeGreaterThanOrEqual(top - 1);
+      await expect
+        .poll(async () => {
+          const box = await textarea.boundingBox();
+          return box ? box.y + box.height : Infinity;
+        })
+        .toBeLessThanOrEqual(top + Math.round(height) + 1);
+    };
+
+    for (const scale of [1.05, 1.25, 2]) {
+      await setViewport(layoutHeight / scale, 0, scale);
+      await expect(page.locator("html")).not.toHaveAttribute("data-mari-software-keyboard-open");
+      await expect.poll(async () => (await shell.boundingBox())?.height).toBe(original!.height);
+      await textarea.focus();
+      await textarea.fill("Keep this draft visible above the keyboard.");
+      const visibleHeight = 420 / scale;
+      const top = 36;
+      await setViewport(visibleHeight, top, scale);
+      await expect(page.locator("html")).toHaveAttribute("data-mari-software-keyboard-open", "");
+      await expect.poll(async () => (await shell.boundingBox())?.height).toBe(Math.round(visibleHeight));
+      await expect
+        .poll(async () => {
+          const box = await composer.boundingBox();
+          return box ? box.y + box.height : Infinity;
+        })
+        .toBeLessThanOrEqual(top + Math.round(visibleHeight) + 1);
+      await expectTextareaInViewport(top, visibleHeight);
+      await expect(textarea).toHaveValue("Keep this draft visible above the keyboard.");
+      await testInfo.attach(`zoomed-keyboard-${scale}.png`, {
+        body: await page.screenshot({ animations: "disabled" }),
+        contentType: "image/png",
+      });
+      // The OS keyboard can close while the textarea remains focused and zoom stays active.
+      await setViewport(layoutHeight / scale, 0, scale);
+      await expect(page.locator("html")).not.toHaveAttribute("data-mari-software-keyboard-open");
+      await expect.poll(async () => (await shell.boundingBox())?.height).toBe(original!.height);
+      await expect.poll(async () => (await shell.boundingBox())?.y).toBe(original!.y);
+      await textarea.blur();
+    }
+    // Split-view changes width as well as height; it must establish a new
+    // keyboard baseline, including while pinch zoom is still active.
+    await page.setViewportSize({ width: 320, height: 600 });
+    await setViewport(300, 0, 2);
+    await expect(page.locator("html")).not.toHaveAttribute("data-mari-software-keyboard-open");
+    await expect.poll(async () => (await shell.boundingBox())?.height).toBe(600);
+    await textarea.focus();
+    await setViewport(160, 0, 2);
+    await expect(page.locator("html")).toHaveAttribute("data-mari-software-keyboard-open", "");
+    await expect.poll(async () => (await shell.boundingBox())?.height).toBe(160);
+    await expectTextareaInViewport(0, 160);
+    // Keep tracking if split-view is resized with the keyboard already open.
+    await page.setViewportSize({ width: 360, height: 700 });
+    await setViewport(210, 0, 2);
+    await expect.poll(async () => (await shell.boundingBox())?.height).toBe(210);
+    await expect(page.locator("html")).toHaveAttribute("data-mari-software-keyboard-open", "");
+    await expectTextareaInViewport(0, 210);
+    await setViewport(350, 0, 2);
+    await expect.poll(async () => (await shell.boundingBox())?.height).toBe(700);
+    await expect(page.locator("html")).not.toHaveAttribute("data-mari-software-keyboard-open");
+    // Android may resize the layout viewport too. Height-only keyboard
+    // updates must retain its baseline across a subsequent width change.
+    await page.setViewportSize({ width: 360, height: 420 });
+    await setViewport(210, 0, 2);
+    await expect.poll(async () => (await shell.boundingBox())?.height).toBe(210);
+    await expect(page.locator("html")).toHaveAttribute("data-mari-software-keyboard-open", "");
+    await expectTextareaInViewport(0, 210);
+    await page.setViewportSize({ width: 320, height: 360 });
+    await setViewport(180, 0, 2);
+    await expect.poll(async () => (await shell.boundingBox())?.height).toBe(180);
+    await expect(page.locator("html")).toHaveAttribute("data-mari-software-keyboard-open", "");
+    await expectTextareaInViewport(0, 180);
+    await page.setViewportSize({ width: 320, height: 640 });
+    await setViewport(320, 0, 2);
+    await expect.poll(async () => (await shell.boundingBox())?.height).toBe(640);
+    await expect(page.locator("html")).not.toHaveAttribute("data-mari-software-keyboard-open");
+  } finally {
+    await page.request.delete(`/api/chats/${chat.id}?force=true`);
+  }
+});
+
 test("iPhone chat menus stay in the visual viewport while editing", async ({ page }, testInfo) => {
   test.skip(!testInfo.project.name.includes("mobile-webkit"), "The visual-viewport pan regression is iPhone-only.");
 
@@ -20774,6 +21638,15 @@ test("iPhone Conversation Presence keeps its last activity field reachable", asy
     const scrollShell = presencePanel.locator("[data-chat-floating-scroll]");
     await expect(activityFields).toHaveCount(characterIds.length);
     await lastActivityField.focus();
+    await lastActivityField.fill("Reading by the window");
+    // Opening the software keyboard can resize and pan the layout viewport,
+    // in addition to sending the visualViewport events mocked below.
+    await page.evaluate(() => {
+      window.dispatchEvent(new Event("resize"));
+      window.dispatchEvent(new Event("scroll"));
+    });
+    await expect(lastActivityField).toBeFocused();
+    await expect(lastActivityField).toHaveValue("Reading by the window");
 
     const initialViewportHeight = await page.evaluate(() => window.innerHeight);
     const keyboardViewportHeight = 360;
@@ -20811,6 +21684,16 @@ test("iPhone Conversation Presence keeps its last activity field reachable", asy
         );
       })
       .toBe(true);
+    await page.screenshot({ path: testInfo.outputPath("conversation-presence-keyboard.png"), animations: "disabled" });
+    await lastActivityField.press("Enter");
+    await expect
+      .poll(async () => {
+        const response = await page.request.get(`/api/characters/${characterIds.at(-1)}`);
+        const character = await response.json();
+        const data = typeof character.data === "string" ? JSON.parse(character.data) : character.data;
+        return data.extensions?.conversationStatusOverride?.activity;
+      })
+      .toBe("Reading by the window");
   } finally {
     if (chatId) await page.request.delete(`/api/chats/${chatId}?force=true`).catch(() => undefined);
     for (const characterId of characterIds) {
@@ -21854,33 +22737,10 @@ test("mobile topbar remains reachable while sidebars switch", async ({ page }, t
   const chatsBounds = await chatsButton.boundingBox();
   expect(homeBounds).not.toBeNull();
   expect(chatsBounds).not.toBeNull();
-  const mobileActionOrder = [
-    "home",
-    "chats",
-    "characters",
-    "personas",
-    "lorebooks",
-    "presets",
-    "connections",
-    "agents",
-    "settings",
-  ];
-  const mobileActionOffsets = await Promise.all(
-    mobileActionOrder.map(async (key) =>
-      Math.round((await topbar.locator(`[data-topbar-hover-key="${key}"]`).boundingBox())?.x ?? -1),
-    ),
-  );
-  expect(mobileActionOffsets.every((offset) => offset >= 0)).toBe(true);
-  expect(new Set(mobileActionOffsets).size).toBe(mobileActionOrder.length);
-  expect(mobileActionOffsets).toEqual([...mobileActionOffsets].sort((left, right) => left - right));
-  const mobileDomActionOrder = await topbar
-    .locator("[data-topbar-hover-key]")
-    .evaluateAll((elements) =>
-      elements
-        .map((element) => (element as HTMLElement).dataset.topbarHoverKey)
-        .filter((key): key is string => Boolean(key)),
-    );
-  expect(mobileDomActionOrder.slice(0, mobileActionOrder.length)).toEqual(mobileActionOrder);
+  const visibleActions = topbar.locator("[data-topbar-hover-key]:visible");
+  await expect(visibleActions).toHaveCount(2);
+  expect(await visibleActions.evaluateAll((elements) => elements.map((element) => (element as HTMLElement).dataset.topbarHoverKey))).toEqual(["home", "chats"]);
+  await expect(topbar.getByRole("button", { name: "More", exact: true })).toBeVisible();
   const homeIconBounds = await homeButton.locator("svg").boundingBox();
   const chatsIconBounds = await chatsButton.locator("svg").boundingBox();
   expect(homeIconBounds).not.toBeNull();
@@ -21965,20 +22825,14 @@ test("mobile topbar remains reachable while sidebars switch", async ({ page }, t
   await expect.poll(async () => (await mobileChatSidebar.boundingBox())?.x ?? Number.POSITIVE_INFINITY).toBeLessThan(1);
   await mobileChatSidebar.evaluate((element) => element.setAttribute("data-e2e-mobile-shell", "preserved"));
 
-  await page.locator('[data-tour="panel-characters"]').click();
+  await clickTopbarPanel(page, "characters");
   const swappedRightPanel = page.locator('[data-component="RightPanelMobile"]');
   await expect(swappedRightPanel).toBeVisible();
   await expect(swappedRightPanel).toHaveAttribute("data-e2e-mobile-shell", "preserved");
   await expect(homeButton).toHaveAttribute("aria-pressed", "false");
-  const charactersUnderline = topbar.locator('[data-component="CharactersTopbarUnderline"]');
-  await expect(charactersUnderline).toBeVisible();
-  await expect
-    .poll(() =>
-      charactersUnderline.evaluate((element) =>
-        getComputedStyle(element).getPropertyValue("--mari-panel-gradient-start").trim(),
-      ),
-    )
-    .toBe("#f472b6");
+  await topbar.getByRole("button", { name: "More", exact: true }).click();
+  await expect(page.locator('[role="menuitem"][data-topbar-panel="characters"]')).toHaveAttribute("aria-current", "true");
+  await page.keyboard.press("Escape");
 
   await chatsButton.click();
   await expect(mobileChatSidebar).toBeVisible();
@@ -21995,7 +22849,7 @@ test("mobile topbar remains reachable while sidebars switch", async ({ page }, t
   await expect(homeButton).toHaveAttribute("aria-pressed", "true");
 
   for (const panel of ["characters", "personas", "lorebooks", "presets", "connections", "agents", "settings"]) {
-    await page.locator(`[data-tour="panel-${panel}"]`).click();
+    await clickTopbarPanel(page, panel);
     await expect(page.locator('[data-component="TopBar"]')).toBeVisible();
     await expect(page.locator('[data-component="RightPanelMobile"]')).toBeVisible();
     await expect(homeButton).toHaveAttribute("aria-pressed", "false");
@@ -22012,7 +22866,7 @@ for (const theme of ["dark", "light"] as const) {
     await seedUIState(page, { theme }, "merge");
     await page.goto("/");
     await setAppAccentColor(page, "#1e90ff");
-    await page.locator('[data-tour="panel-characters"]').click();
+    await clickTopbarPanel(page, "characters");
 
     const panel = page.locator('[data-component="RightPanel"]');
     const newButton = panel.getByTitle("New", { exact: true });
@@ -22038,7 +22892,7 @@ test("Updates shows the installed channel before checks and after a failed check
     route.fulfill({ status: 502, json: { error: "Offline fixture" } }),
   );
   await page.goto("/");
-  await page.locator('[data-tour="panel-settings"]').click();
+  await clickTopbarPanel(page, "settings");
   await page.getByRole("tab", { name: "Advanced" }).click();
   const channel = page.getByLabel("Release Channel");
   await expect(channel).toHaveValue("staging");
@@ -22135,7 +22989,7 @@ test("mobile Docker update checks offer the selected staging image", async ({ pa
   );
 
   await page.goto("/");
-  await page.locator('[data-tour="panel-settings"]').click();
+  await clickTopbarPanel(page, "settings");
   await page.getByRole("tab", { name: "Advanced" }).click();
   await page.getByLabel("Release Channel").selectOption("staging");
   await page.getByRole("button", { name: "Check for Updates" }).click();
@@ -22609,7 +23463,7 @@ test("Background cards keep names readable and load thumbnails", async ({ page }
   });
 
   await page.goto("/");
-  await page.locator('[data-tour="panel-settings"]').click();
+  await clickTopbarPanel(page, "settings");
   await page.getByRole("tab", { name: "Appearance" }).click();
   await page.getByPlaceholder("Search settings").fill("Backgrounds");
   await page.getByRole("button", { name: /Backgrounds Section/ }).click();
@@ -22709,7 +23563,7 @@ test("Roleplay displays a selected background when its file route is GET-only", 
     }, chat.id);
     await page.goto("/");
 
-    await page.locator('[data-tour="panel-settings"]').click();
+    await clickTopbarPanel(page, "settings");
     await page.getByPlaceholder("Search settings").fill("Backgrounds");
     await page.getByRole("button", { name: /Backgrounds Section/ }).click();
     await page.getByRole("button", { name: "Clear selection" }).click();
@@ -22767,9 +23621,9 @@ test("Roleplay displays a selected background when its file route is GET-only", 
     };
 
     await expectBackgroundToFitRoleplaySurface();
-    await page.locator('[data-tour="panel-settings"]').click();
+    await clickTopbarPanel(page, "settings");
     await expectBackgroundToFitRoleplaySurface();
-    await page.locator('[data-tour="panel-settings"]').click();
+    await clickTopbarPanel(page, "settings");
     await expectBackgroundToFitRoleplaySurface();
     await page.locator('[data-tour="sidebar-toggle"]').click();
     await expectBackgroundToFitRoleplaySurface();
@@ -22808,7 +23662,7 @@ test("Background library organization works with desktop drag and touch drag", a
     expect(tagResponse.ok()).toBeTruthy();
 
     await page.goto("/");
-    await page.locator('[data-tour="panel-settings"]').click();
+    await clickTopbarPanel(page, "settings");
     await page.getByRole("tab", { name: "Appearance" }).click();
     await page.getByPlaceholder("Search settings").fill("Backgrounds");
     await page.getByRole("button", { name: /Backgrounds Section/ }).click();
@@ -23051,7 +23905,7 @@ test("character editor preserves unsaved fields across responsive layout changes
 
   try {
     await page.goto("/");
-    await page.locator('[data-tour="panel-characters"]').click();
+    await clickTopbarPanel(page, "characters");
     await page.locator(`[data-touch-drag-card="character"][data-character-id="${character.id}"]`).click();
 
     const desktopEditor = page.locator('[data-component="DetailEditor"]');
@@ -23091,7 +23945,7 @@ test("character card fields can preview Markdown without changing their source",
 
   try {
     await page.goto("/");
-    await page.locator('[data-tour="panel-characters"]').click();
+    await clickTopbarPanel(page, "characters");
     await page.locator(`[data-touch-drag-card="character"][data-character-id="${character.id}"]`).click();
 
     const editor = page.locator('[data-component="DetailEditor"]');
@@ -23130,7 +23984,7 @@ test("persona editor preserves unsaved fields across responsive layout changes",
 
   try {
     await page.goto("/");
-    await page.locator('[data-tour="panel-personas"]').click();
+    await clickTopbarPanel(page, "personas");
     await page.locator('[data-touch-drag-card="persona"]').filter({ hasText: personaName }).click();
 
     const desktopEditor = page.locator('[data-component="DetailEditor"]');

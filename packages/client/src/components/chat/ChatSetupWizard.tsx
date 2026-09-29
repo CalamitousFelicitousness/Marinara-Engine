@@ -27,7 +27,7 @@ import {
   Folder,
 } from "lucide-react";
 import { cn, getAvatarCropStyle } from "../../lib/utils";
-import { useConnections } from "../../hooks/use-connections";
+import { useConnections, useModelParameterCapabilities } from "../../hooks/use-connections";
 import { usePresets, usePresetFull, useDefaultPreset } from "../../hooks/use-presets";
 import { useCharacterGroups, useCharacters, usePersonas } from "../../hooks/use-characters";
 import { useLorebooks } from "../../hooks/use-lorebooks";
@@ -262,7 +262,7 @@ type AgentAddPreview = {
 
 const WIZARD_PANEL_CLASS = cn(
   NEUTRAL_PANEL_SHELL,
-  "mari-chat-setup-wizard pointer-events-auto flex max-h-[calc(100dvh-1.5rem)] w-full max-w-lg flex-col overflow-hidden sm:max-h-[min(90dvh,44rem)]",
+  "mari-chat-setup-wizard pointer-events-auto flex max-h-full w-full max-w-lg flex-col overflow-hidden sm:max-h-[min(100%,44rem)]",
 );
 
 const WIZARD_FIELD_LABEL = "text-[0.6875rem] font-medium uppercase tracking-wider text-[var(--muted-foreground)]";
@@ -823,17 +823,19 @@ function PersonaPicker({
 function SetupGenerationParametersPanel({
   enabled,
   value,
-  showServiceTier,
+  connection,
   onEnabledChange,
   onChange,
 }: {
   enabled: boolean;
   value: EditableGenerationParameters;
-  showServiceTier: boolean;
+  /** The selected connection; its provider and model decide which settings are offered. */
+  connection: { id?: string | null; provider?: string | null; model?: string | null; baseUrl?: unknown } | null;
   onEnabledChange: (enabled: boolean) => void;
   onChange: (next: EditableGenerationParameters) => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
+  const modelCapabilities = useModelParameterCapabilities(enabled ? connection : null);
   return (
     <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-3">
       <button
@@ -860,7 +862,14 @@ function SetupGenerationParametersPanel({
       </button>
       {enabled && (
         <div className="mt-3 border-t border-[var(--border)] pt-3">
-          <GenerationParametersFields value={value} showServiceTier={showServiceTier} onChange={onChange} />
+          <GenerationParametersFields
+            value={value}
+            provider={connection?.provider ?? null}
+            model={connection?.model ?? null}
+            baseUrl={typeof connection?.baseUrl === "string" ? connection.baseUrl : null}
+            modelCapabilities={modelCapabilities}
+            onChange={onChange}
+          />
         </div>
       )}
     </div>
@@ -890,8 +899,16 @@ function SavedChatSetupWizard({ chat, onFinish }: ChatSetupWizardProps) {
   const queryClient = useQueryClient();
   const apply = useCallback(
     async (defaults: ChatWizardDefaults, reset = false) => {
-      const { metadata, ...fields } = defaults;
-      await updateChat.mutateAsync({ id: chat.id, ...fields });
+      const { metadata, connectionId, promptPresetId, personaId, personaCharacterId, characterIds } = defaults;
+      // Older saved templates still contain a name. Apply only reusable setup fields.
+      await updateChat.mutateAsync({
+        id: chat.id,
+        connectionId,
+        promptPresetId,
+        personaId,
+        personaCharacterId,
+        characterIds,
+      });
       const latest = queryClient.getQueryData<Chat>(chatKeys.detail(chat.id)) ?? chat;
       await updateMeta.mutateAsync({
         id: chat.id,
@@ -909,7 +926,11 @@ function SavedChatSetupWizard({ chat, onFinish }: ChatSetupWizardProps) {
       return;
     }
     let active = true;
-    pendingApply.current ??= apply(saved);
+    pendingApply.current ??= apply({
+      ...saved,
+      // A card launch is an explicit participant choice, ahead of saved defaults.
+      characterIds: initial.characterIds.length ? initial.characterIds : saved.characterIds,
+    });
     void pendingApply.current
       .then(() => {
         if (!active) return;
@@ -927,7 +948,7 @@ function SavedChatSetupWizard({ chat, onFinish }: ChatSetupWizardProps) {
     return () => {
       active = false;
     };
-  }, [apply, saved, settingsSyncReady, t]);
+  }, [apply, initial.characterIds, saved, settingsSyncReady, t]);
 
   const defaultsAction = (metadata: Record<string, unknown>) => (
     <button
@@ -1399,7 +1420,7 @@ function ConversationQuickSetup({ chat, onFinish, defaultsApplied, defaultsActio
     await updateMeta.mutateAsync({
       id: chat.id,
       autonomousMessages: autonomousEnabled,
-      conversationSchedulesEnabled: autonomousEnabled && generateSchedule,
+      conversationSchedulesEnabled: generateSchedule,
       characterCommands: hasConversationCommands && commandsEnabled,
       conversationCommandToggles: selfieSetup.conversationCommandToggles,
       conversationSetupComplete: true,
@@ -1498,7 +1519,7 @@ function ConversationQuickSetup({ chat, onFinish, defaultsApplied, defaultsActio
         <SetupGenerationParametersPanel
           enabled={customizeParameters}
           value={generationParameters}
-          showServiceTier={selectedConnection?.provider === "openrouter" || selectedConnection?.provider === "nanogpt"}
+          connection={selectedConnection}
           onEnabledChange={setCustomizeParameters}
           onChange={setGenerationParameters}
         />
@@ -2758,7 +2779,7 @@ function RoleplaySetupWizard({ chat, onFinish, defaultsApplied, defaultsAction }
         <SetupGenerationParametersPanel
           enabled={customizeParameters}
           value={generationParameters}
-          showServiceTier={selectedConnection?.provider === "openrouter" || selectedConnection?.provider === "nanogpt"}
+          connection={selectedConnection}
           onEnabledChange={setCustomizeParameters}
           onChange={setGenerationParameters}
         />

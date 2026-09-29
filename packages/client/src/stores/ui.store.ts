@@ -93,6 +93,13 @@ export type GameDialogueDisplayMode = "classic" | "stacked";
 export type ChatListBackgroundMode = "hover" | "always" | "off";
 export type SummaryPopoverSourceMode = "last" | "range";
 export const DEFAULT_ROLEPLAY_BACKGROUND_URL = "/api/backgrounds/file/Black.jpg";
+const DEFAULT_CONVERSATION_BACKGROUND_IMAGE_OPACITY = 45;
+
+export function normalizeConversationBackgroundImageOpacity(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.max(0, Math.min(100, Math.round(value)))
+    : DEFAULT_CONVERSATION_BACKGROUND_IMAGE_OPACITY;
+}
 export interface FloatingWidgetPosition {
   x: number;
   y: number;
@@ -614,10 +621,14 @@ interface UIState {
   defaultRoleplayBackground: string;
   /** Native blur applied to selected chat/game background images, in px. */
   chatBackgroundBlur: number;
+  /** Persisted opacity applied to conversation background images, as a percentage. */
+  conversationBackgroundImageOpacity: number;
   /** When set, the main area shows the full-page character editor instead of chat */
   characterDetailId: string | null;
   /** When set, the main area shows the full-page lorebook editor instead of chat */
   lorebookDetailId: string | null;
+  /** In-app clipboard, intentionally not persisted or synced between devices. */
+  lorebookLinkClipboard: { characterIds: string[]; personaIds: string[] } | null;
   /** When set, the main area shows the full-page preset editor instead of chat */
   presetDetailId: string | null;
   /** One-shot tab the preset editor should open to. */
@@ -660,6 +671,8 @@ interface UIState {
   noodleNavigation: NoodleNavigationState;
   /** When true, the main area shows the full-page character library */
   characterLibraryOpen: boolean;
+  /** Runtime-only flag to restore duplicate review after closing a character detail editor. */
+  characterDuplicatesOpen: boolean;
   /** Which resource collection the shared full-page card library displays */
   cardLibraryKind: CardLibraryKind;
   /** When true, the main area shows the full-page downloadable agent catalog */
@@ -759,6 +772,7 @@ interface UIState {
   queueImageGenerationRequests: boolean;
   /** When true, generated image prompts are shown for review before supported provider calls are sent. */
   reviewImagePromptsBeforeSend: boolean;
+  autoSaveGeneratedImagesToGalleries: boolean;
   imageBackgroundWidth: number;
   imageBackgroundHeight: number;
   imageIllustrationWidth: number;
@@ -796,6 +810,8 @@ interface UIState {
   confirmBeforeDelete: boolean;
   /** When true, chat exports include saved thinking/reasoning metadata. */
   includeReasoningInExports: boolean;
+  /** When true, chat exports include private message notes. */
+  includePrivateNotesInExports: boolean;
   /** Number of messages to load per page (0 = load all) */
   messagesPerPage: number;
   /** Bold quoted dialogue in chat messages; color highlighting can still remain when this is off */
@@ -882,6 +898,8 @@ interface UIState {
   roleplaySpriteScale: number;
   /** Default presentation for Roleplay chats without a saved choice. */
   roleplayDisplayStyle: "classic" | "visual-novel";
+  roleplayVnAutoPlay: boolean;
+  roleplayVnAutoPlayDelay: number;
   roleplayVnPortraitScale: number;
   roleplayVnSpriteScale: number;
   /** Scale multiplier for Game mode VN dialogue portraits. */
@@ -1032,6 +1050,7 @@ interface UIState {
   setChatBackground: (url: string | null) => void;
   setDefaultRoleplayBackground: (url: string) => void;
   setChatBackgroundBlur: (v: number) => void;
+  setConversationBackgroundImageOpacity: (v: number) => void;
   setCharacterLibrarySelectedId: (id: string | null) => void;
   setPersonaLibrarySelectedId: (id: string | null) => void;
   setCharacterLibrarySort: (sort: CharacterLibrarySort) => void;
@@ -1057,6 +1076,7 @@ interface UIState {
   closeCharacterDetail: () => void;
   openLorebookDetail: (id: string, options?: { initialTab?: string }) => void;
   closeLorebookDetail: () => void;
+  setLorebookLinkClipboard: (links: NonNullable<UIState["lorebookLinkClipboard"]>) => void;
   openPresetDetail: (id: string, options?: { initialTab?: string }) => void;
   closePresetDetail: () => void;
   openConnectionDetail: (id: string) => void;
@@ -1083,6 +1103,7 @@ interface UIState {
   openCharacterLibrary: (characterId?: string) => void;
   openPersonaLibrary: () => void;
   closeCharacterLibrary: () => void;
+  setCharacterDuplicatesOpen: (open: boolean) => void;
   openAgentCatalog: (packageId?: string) => void;
   closeAgentCatalog: () => void;
   openBotBrowser: () => void;
@@ -1119,6 +1140,7 @@ interface UIState {
   setGameAutoPlayDelay: (v: number) => void;
   setQueueImageGenerationRequests: (v: boolean) => void;
   setReviewImagePromptsBeforeSend: (v: boolean) => void;
+  setAutoSaveGeneratedImagesToGalleries: (v: boolean) => void;
   setImageBackgroundDimensions: (width: number, height: number) => void;
   setImageIllustrationDimensions: (width: number, height: number) => void;
   setImageGameDimensions: (width: number, height: number) => void;
@@ -1148,6 +1170,7 @@ interface UIState {
   setChatSettingsSectionExpanded: (id: string, open: boolean) => void;
   setConfirmBeforeDelete: (v: boolean) => void;
   setIncludeReasoningInExports: (v: boolean) => void;
+  setIncludePrivateNotesInExports: (v: boolean) => void;
   setMessagesPerPage: (n: number) => void;
   setBoldDialogue: (v: boolean) => void;
   setColorInlineNames: (v: boolean) => void;
@@ -1190,6 +1213,8 @@ interface UIState {
   setRoleplayNarratorAvatarCycling: (v: boolean) => void;
   setRoleplaySpriteScale: (v: number) => void;
   setRoleplayDisplayStyle: (v: "classic" | "visual-novel") => void;
+  setRoleplayVnAutoPlay: (v: boolean) => void;
+  setRoleplayVnAutoPlayDelay: (v: number) => void;
   setRoleplayVnPortraitScale: (v: number) => void;
   setRoleplayVnSpriteScale: (v: number) => void;
   setGameAvatarScale: (v: number) => void;
@@ -1333,6 +1358,7 @@ export function pickSyncedSettings(state: UIState) {
     chatBackground: state.chatBackground,
     defaultRoleplayBackground: state.defaultRoleplayBackground,
     chatBackgroundBlur: state.chatBackgroundBlur,
+    conversationBackgroundImageOpacity: state.conversationBackgroundImageOpacity,
     language: state.language,
     fontFamily: state.fontFamily,
     enableStreaming: state.enableStreaming,
@@ -1347,6 +1373,7 @@ export function pickSyncedSettings(state: UIState) {
     gameAutoPlayDelay: state.gameAutoPlayDelay,
     queueImageGenerationRequests: state.queueImageGenerationRequests,
     reviewImagePromptsBeforeSend: state.reviewImagePromptsBeforeSend,
+    autoSaveGeneratedImagesToGalleries: state.autoSaveGeneratedImagesToGalleries,
     imageBackgroundWidth: state.imageBackgroundWidth,
     imageBackgroundHeight: state.imageBackgroundHeight,
     imageIllustrationWidth: state.imageIllustrationWidth,
@@ -1380,6 +1407,7 @@ export function pickSyncedSettings(state: UIState) {
     chatSettingsExpandedSections: state.chatSettingsExpandedSections,
     confirmBeforeDelete: state.confirmBeforeDelete,
     includeReasoningInExports: state.includeReasoningInExports,
+    includePrivateNotesInExports: state.includePrivateNotesInExports,
     messagesPerPage: state.messagesPerPage,
     boldDialogue: state.boldDialogue,
     colorInlineNames: state.colorInlineNames,
@@ -1421,6 +1449,8 @@ export function pickSyncedSettings(state: UIState) {
     roleplayNarratorAvatarCycling: state.roleplayNarratorAvatarCycling,
     roleplaySpriteScale: state.roleplaySpriteScale,
     roleplayDisplayStyle: state.roleplayDisplayStyle,
+    roleplayVnAutoPlay: state.roleplayVnAutoPlay,
+    roleplayVnAutoPlayDelay: state.roleplayVnAutoPlayDelay,
     roleplayVnPortraitScale: state.roleplayVnPortraitScale,
     roleplayVnSpriteScale: state.roleplayVnSpriteScale,
     gameAvatarScale: state.gameAvatarScale,
@@ -1534,6 +1564,7 @@ export function pickPersistedUIState(state: UIState) {
     chatBackground: state.chatBackground,
     defaultRoleplayBackground: state.defaultRoleplayBackground,
     chatBackgroundBlur: state.chatBackgroundBlur,
+    conversationBackgroundImageOpacity: state.conversationBackgroundImageOpacity,
     fontSize: state.fontSize,
     language: state.language,
     chatFontSize: state.chatFontSize,
@@ -1551,6 +1582,7 @@ export function pickPersistedUIState(state: UIState) {
     gameAutoPlayDelay: state.gameAutoPlayDelay,
     queueImageGenerationRequests: state.queueImageGenerationRequests,
     reviewImagePromptsBeforeSend: state.reviewImagePromptsBeforeSend,
+    autoSaveGeneratedImagesToGalleries: state.autoSaveGeneratedImagesToGalleries,
     imageBackgroundWidth: state.imageBackgroundWidth,
     imageBackgroundHeight: state.imageBackgroundHeight,
     imageIllustrationWidth: state.imageIllustrationWidth,
@@ -1584,6 +1616,7 @@ export function pickPersistedUIState(state: UIState) {
     chatSettingsExpandedSections: state.chatSettingsExpandedSections,
     confirmBeforeDelete: state.confirmBeforeDelete,
     includeReasoningInExports: state.includeReasoningInExports,
+    includePrivateNotesInExports: state.includePrivateNotesInExports,
     messagesPerPage: state.messagesPerPage,
     boldDialogue: state.boldDialogue,
     colorInlineNames: state.colorInlineNames,
@@ -1626,6 +1659,8 @@ export function pickPersistedUIState(state: UIState) {
     roleplayNarratorAvatarCycling: state.roleplayNarratorAvatarCycling,
     roleplaySpriteScale: state.roleplaySpriteScale,
     roleplayDisplayStyle: state.roleplayDisplayStyle,
+    roleplayVnAutoPlay: state.roleplayVnAutoPlay,
+    roleplayVnAutoPlayDelay: state.roleplayVnAutoPlayDelay,
     roleplayVnPortraitScale: state.roleplayVnPortraitScale,
     roleplayVnSpriteScale: state.roleplayVnSpriteScale,
     gameAvatarScale: state.gameAvatarScale,
@@ -1726,8 +1761,10 @@ export const useUIStore = create<UIState>()(
         chatBackground: null,
         defaultRoleplayBackground: DEFAULT_ROLEPLAY_BACKGROUND_URL,
         chatBackgroundBlur: 0,
+        conversationBackgroundImageOpacity: DEFAULT_CONVERSATION_BACKGROUND_IMAGE_OPACITY,
         characterDetailId: null,
         lorebookDetailId: null,
+        lorebookLinkClipboard: null,
         presetDetailId: null,
         presetDetailInitialTab: null,
         connectionDetailId: null,
@@ -1749,6 +1786,7 @@ export const useUIStore = create<UIState>()(
         noodleSelectedPersonaId: null,
         noodleNavigation: { mode: "public", view: "home" },
         characterLibraryOpen: false,
+        characterDuplicatesOpen: false,
         cardLibraryKind: "characters" as CardLibraryKind,
         agentCatalogOpen: false,
         agentCatalogInitialPackageId: null,
@@ -1795,6 +1833,7 @@ export const useUIStore = create<UIState>()(
         gameAutoPlayDelay: 3000,
         queueImageGenerationRequests: true,
         reviewImagePromptsBeforeSend: false,
+        autoSaveGeneratedImagesToGalleries: true,
         imageBackgroundWidth: 1280,
         imageBackgroundHeight: 720,
         imageIllustrationWidth: 896,
@@ -1828,6 +1867,7 @@ export const useUIStore = create<UIState>()(
         chatSettingsExpandedSections: {},
         confirmBeforeDelete: true,
         includeReasoningInExports: false,
+        includePrivateNotesInExports: false,
         messagesPerPage: 20,
         boldDialogue: true,
         colorInlineNames: false,
@@ -1870,6 +1910,8 @@ export const useUIStore = create<UIState>()(
         roleplayNarratorAvatarCycling: true,
         roleplaySpriteScale: 1,
         roleplayDisplayStyle: "classic",
+        roleplayVnAutoPlay: false,
+        roleplayVnAutoPlayDelay: 3000,
         roleplayVnPortraitScale: 1,
         roleplayVnSpriteScale: 1.35,
         gameAvatarScale: 1,
@@ -2051,6 +2093,8 @@ export const useUIStore = create<UIState>()(
         setDefaultRoleplayBackground: (url) =>
           set({ defaultRoleplayBackground: normalizeDefaultRoleplayBackground(url) }),
         setChatBackgroundBlur: (v) => set({ chatBackgroundBlur: Math.max(0, Math.min(24, Math.round(v))) }),
+        setConversationBackgroundImageOpacity: (v) =>
+          set({ conversationBackgroundImageOpacity: normalizeConversationBackgroundImageOpacity(v) }),
         setCharacterLibrarySelectedId: (id) => set({ characterLibrarySelectedId: id }),
         setPersonaLibrarySelectedId: (id) => set({ personaLibrarySelectedId: id }),
         setCharacterLibrarySort: (sort) => set({ characterLibrarySort: normalizeCharacterLibrarySort(sort) }),
@@ -2104,6 +2148,7 @@ export const useUIStore = create<UIState>()(
             editorDirty: false,
             ...restoreMobileDetailReturnPanel(s.detailReturnRightPanel),
           })),
+        setLorebookLinkClipboard: (links) => set({ lorebookLinkClipboard: links }),
         openLorebookDetail: (id, options) =>
           set((s) => ({
             lorebookDetailId: id,
@@ -2395,6 +2440,7 @@ export const useUIStore = create<UIState>()(
             rightPanelOpen: isMobileShellViewport() ? false : state.rightPanelOpen,
           })),
         closeCharacterLibrary: () => set({ characterLibraryOpen: false, characterLibraryInitialId: null }),
+        setCharacterDuplicatesOpen: (open) => set({ characterDuplicatesOpen: open }),
         openAgentCatalog: (packageId) =>
           set((state) => ({
             agentCatalogOpen: true,
@@ -2565,6 +2611,7 @@ export const useUIStore = create<UIState>()(
         setGameAutoPlayDelay: (v) => set({ gameAutoPlayDelay: Math.max(200, Math.min(10000, Math.round(v))) }),
         setQueueImageGenerationRequests: (v) => set({ queueImageGenerationRequests: v }),
         setReviewImagePromptsBeforeSend: (v) => set({ reviewImagePromptsBeforeSend: v }),
+        setAutoSaveGeneratedImagesToGalleries: (v) => set({ autoSaveGeneratedImagesToGalleries: v }),
         setImageBackgroundDimensions: (width, height) =>
           set({
             imageBackgroundWidth: clampImageDimension(width),
@@ -2640,6 +2687,7 @@ export const useUIStore = create<UIState>()(
           })),
         setConfirmBeforeDelete: (v) => set({ confirmBeforeDelete: v }),
         setIncludeReasoningInExports: (v) => set({ includeReasoningInExports: v }),
+        setIncludePrivateNotesInExports: (v) => set({ includePrivateNotesInExports: v }),
         setMessagesPerPage: (n) => set({ messagesPerPage: n }),
         setBoldDialogue: (v) => set({ boldDialogue: v }),
         setColorInlineNames: (v) => set({ colorInlineNames: v }),
@@ -2721,6 +2769,9 @@ export const useUIStore = create<UIState>()(
           set({ roleplaySpriteScale: Math.max(ROLEPLAY_SPRITE_SCALE_MIN, Math.min(ROLEPLAY_SPRITE_SCALE_MAX, v)) }),
         setGameAvatarScale: (v) => set({ gameAvatarScale: Math.max(0.75, Math.min(1.75, v)) }),
         setRoleplayDisplayStyle: (v) => set({ roleplayDisplayStyle: v }),
+        setRoleplayVnAutoPlay: (v) => set({ roleplayVnAutoPlay: v }),
+        setRoleplayVnAutoPlayDelay: (v) =>
+          set({ roleplayVnAutoPlayDelay: Math.max(200, Math.min(10000, Math.round(v))) }),
         setRoleplayVnPortraitScale: (v) =>
           set({ roleplayVnPortraitScale: Number.isFinite(v) ? Math.max(0.75, Math.min(1.75, v)) : 1 }),
         setRoleplayVnSpriteScale: (v) =>
@@ -2766,6 +2817,7 @@ export const useUIStore = create<UIState>()(
             chatBackground: null,
             defaultRoleplayBackground: DEFAULT_ROLEPLAY_BACKGROUND_URL,
             chatBackgroundBlur: 0,
+            conversationBackgroundImageOpacity: DEFAULT_CONVERSATION_BACKGROUND_IMAGE_OPACITY,
             fontSize: 17 as FontSize,
             chatFontSize: 16,
             fontFamily: "",
@@ -2785,6 +2837,8 @@ export const useUIStore = create<UIState>()(
             roleplayNarratorAvatarCycling: true,
             roleplaySpriteScale: 1,
             roleplayDisplayStyle: "classic",
+            roleplayVnAutoPlay: false,
+            roleplayVnAutoPlayDelay: 3000,
             roleplayVnPortraitScale: 1,
             roleplayVnSpriteScale: 1.35,
             gameDialogueDisplayMode: "classic" as GameDialogueDisplayMode,
@@ -3232,6 +3286,12 @@ export const useUIStore = create<UIState>()(
         if (version <= 31 && persisted.chatBackgroundBlur === undefined) {
           persisted.chatBackgroundBlur = 0;
         }
+        if (persisted.conversationBackgroundImageOpacity === undefined) {
+          persisted.conversationBackgroundImageOpacity = DEFAULT_CONVERSATION_BACKGROUND_IMAGE_OPACITY;
+        }
+        persisted.conversationBackgroundImageOpacity = normalizeConversationBackgroundImageOpacity(
+          persisted.conversationBackgroundImageOpacity,
+        );
         persisted.trackerPanelThoughtBubbleDisplay = normalizeTrackerThoughtBubbleDisplay(
           persisted.trackerPanelThoughtBubbleDisplay,
         );
@@ -3544,6 +3604,7 @@ export const useUIStore = create<UIState>()(
         persisted.professorMariSuggestionsEnabled = persisted.professorMariSuggestionsEnabled !== false;
         persisted.professorMariNavigationEnabled = persisted.professorMariNavigationEnabled !== false;
         persisted.includeReasoningInExports = persisted.includeReasoningInExports === true;
+        persisted.includePrivateNotesInExports = persisted.includePrivateNotesInExports === true;
         persisted.roleplayReducedPaintEffects = persisted.roleplayReducedPaintEffects === true;
         persisted.showRoleplayThinkingInMessages = persisted.showRoleplayThinkingInMessages === true;
         persisted.keepRoleplayThinkingExpanded =
@@ -3556,6 +3617,17 @@ export const useUIStore = create<UIState>()(
         persisted.defaultRoleplayBackground = normalizeDefaultRoleplayBackground(persisted.defaultRoleplayBackground);
         delete persisted.trackerPanelWidth;
         return persisted;
+      },
+      merge: (persistedState: unknown, currentState) => {
+        const persisted =
+          persistedState && typeof persistedState === "object" ? (persistedState as Record<string, unknown>) : {};
+        return {
+          ...currentState,
+          ...persisted,
+          conversationBackgroundImageOpacity: normalizeConversationBackgroundImageOpacity(
+            persisted.conversationBackgroundImageOpacity,
+          ),
+        };
       },
       partialize: pickPersistedUIState,
     },

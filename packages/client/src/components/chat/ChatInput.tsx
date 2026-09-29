@@ -201,7 +201,7 @@ interface ChatInputProps {
     options?: { immediate?: boolean },
   ) => void | Promise<void>;
   onPeekPrompt?: () => void;
-  onIllustrate?: (prompt?: string) => void | Promise<void>;
+  onIllustrate?: (prompt?: string, messageRange?: [string, string]) => void | Promise<void>;
   combatAgentEnabled?: boolean;
   onStartEncounter?: () => void;
   interactionsLocked?: boolean;
@@ -1328,7 +1328,7 @@ export const ChatInput = memo(function ChatInput({
       let rollbackFailed = false;
       if (createdMessageId) {
         try {
-          await deleteMessage.mutateAsync(createdMessageId);
+          await deleteMessage.mutateAsync({ messageId: createdMessageId, skipTrash: true });
         } catch {
           rollbackFailed = true;
         }
@@ -2095,6 +2095,7 @@ export const ChatInput = memo(function ChatInput({
         <textarea
           ref={textareaRef}
           data-chat-composer="true"
+          data-chat-id={activeChatId}
           onInput={handleInput}
           onKeyDown={handleKeyDown}
           onKeyUp={handleKeyUp}
@@ -2110,6 +2111,10 @@ export const ChatInput = memo(function ChatInput({
           autoCorrect="on"
           className="mari-chat-input-textarea max-h-[12.5rem] min-w-0 flex-1 resize-none bg-transparent py-0 text-sm leading-normal text-foreground/90 placeholder:text-foreground/30 outline-none disabled:cursor-not-allowed disabled:opacity-40"
         />
+
+        {showQuickRepliesMenu && quickReplyActions.length > 0 && (
+          <QuickReplyMenu actions={quickReplyActions} disabled={!activeChatId || isInputBusy || isReadingAttachments} />
+        )}
 
         {/* Emoji picker */}
         <div className="relative hidden shrink-0 sm:block">
@@ -2183,10 +2188,6 @@ export const ChatInput = memo(function ChatInput({
             className="rounded-full"
             iconSize={16}
           />
-        )}
-
-        {showQuickRepliesMenu && quickReplyActions.length > 0 && (
-          <QuickReplyMenu actions={quickReplyActions} disabled={!activeChatId || isInputBusy || isReadingAttachments} />
         )}
 
         {/* Send / Stop button */}

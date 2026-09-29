@@ -62,7 +62,8 @@ import { CharacterScheduleEditorModal } from "../chat/CharacterScheduleEditorMod
 import { useUIStore } from "../../stores/ui.store";
 import { lorebookKeys, useLorebook, useUpdateLorebook } from "../../hooks/use-lorebooks";
 import { useConnections } from "../../hooks/use-connections";
-import { useInstalledCapabilityPackages } from "../../hooks/use-capability-packages";
+import { isCapabilityPackageAvailable, useInstalledCapabilityPackages } from "../../hooks/use-capability-packages";
+import { RulesetSheetsSection } from "../rulesets/RulesetSheetsSection";
 import { showConfirmDialog, showPromptDialog } from "../../lib/app-dialogs";
 import { formatCardVersionTimestamp, getCardVersionTitle } from "../../lib/card-version-history";
 import { dataImageUrlToFile } from "../../lib/data-image-file";
@@ -124,7 +125,9 @@ import { buildCardAssetMarkdown } from "../../lib/card-asset-links";
 import { HelpTooltip } from "../ui/HelpTooltip";
 import { api } from "../../lib/api-client";
 import { downloadSpriteFile } from "../../lib/sprite-download";
-import { downloadUrlToDevice } from "../../lib/file-download";
+import { downloadUrlToDevice, shouldUseIosImageShare } from "../../lib/file-download";
+import { ImageDownloadButton } from "../ui/ImageDownloadButton";
+import { useDialogFocusScope } from "../../hooks/use-dialog-focus-scope";
 import { ColorPicker } from "../ui/ColorPicker";
 import { StatIconPicker } from "../ui/StatIconPicker";
 import { MacroTextarea } from "../ui/MacroTextarea";
@@ -355,6 +358,7 @@ export function CharacterEditor() {
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [avatarGeneratorOpen, setAvatarGeneratorOpen] = useState(false);
   const [characterSheetGeneratorOpen, setCharacterSheetGeneratorOpen] = useState(false);
+  const { data: characterSheetSprites } = useCharacterSprites(characterSheetGeneratorOpen ? characterId : null);
   const [newTag, setNewTag] = useState("");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1038,6 +1042,7 @@ export function CharacterEditor() {
           ((formData.extensions.appearance as string | undefined) || formData.description || formData.personality) ?? ""
         }
         defaultAvatarUrl={avatarPreview}
+        neutralFullBodyReferenceUrl={characterSheetSprites?.find((sprite) => sprite.expression === "full_neutral")?.url}
         onClose={() => setCharacterSheetGeneratorOpen(false)}
         onUseAvatar={handleGeneratedCharacterSheet}
       />
@@ -1223,7 +1228,7 @@ export function CharacterEditor() {
               <ColorsTab formData={formData} updateExtension={updateExtension} avatarUrl={avatarPreview} />
             </section>
             <section data-editor-section="stats">
-              <StatsTab formData={formData} updateExtension={updateExtension} />
+              <StatsTab formData={formData} updateExtension={updateExtension} onDraftChange={markDirty} />
             </section>
             <section data-editor-section="advanced">
               <AdvancedTab
@@ -1508,9 +1513,7 @@ function ConvoTab({
   const { t: localizeUi } = useUiTranslation();
   const generateCharacterConvoProfile = useGenerateCharacterConvoProfile();
   const { data: installedCapabilities = [] } = useInstalledCapabilityPackages(kind === "character");
-  const noodleInstalled = installedCapabilities.some(
-    (capability) => capability.id === "noodle" && capability.status === "active",
-  );
+  const noodleInstalled = isCapabilityPackageAvailable(installedCapabilities, "noodle");
   const currentCharacterIdRef = useRef(characterId);
   currentCharacterIdRef.current = characterId;
   const currentConvoProfileDraft = {
@@ -2845,6 +2848,10 @@ function CharacterGalleryTab({
   const setAvatar = useSetCharacterGalleryImageAsAvatar(characterId);
   const tag = useTagCharacterGalleryImage(characterId);
   const [lightbox, setLightbox] = useState<CharacterGalleryImage | null>(null);
+  const lightboxRef = useRef<HTMLDivElement>(null);
+  const lightboxCloseRef = useRef<HTMLButtonElement>(null);
+  // Nested confirmations own focus while retaining the preview's original return target.
+  useDialogFocusScope(!!lightbox, lightboxRef, lightboxCloseRef, undefined, '[data-component="Modal"]');
   const [selectingImages, setSelectingImages] = useState(false);
   const [selectedImageIds, setSelectedImageIds] = useState<Set<string>>(() => new Set());
   const selectedImages = useMemo(
@@ -2923,6 +2930,18 @@ function CharacterGalleryTab({
     },
     [setAvatar, localizeUi],
   );
+
+  const handleDownloadImage = async (image: CharacterGalleryImage) => {
+    if (shouldUseIosImageShare()) {
+      setLightbox(image);
+      return;
+    }
+    try {
+      await downloadUrlToDevice(image.url, image.filePath.split(/[\\/]/).pop() || `gallery-${image.id}.png`);
+    } catch {
+      toast.error(localizeUi("ui.chat.chatgallery.downloadFailed"));
+    }
+  };
 
   const handleBatchDownload = useCallback(async () => {
     if (selectedImages.length === 0) return;
@@ -3187,15 +3206,17 @@ function CharacterGalleryTab({
                           <Download size="0.75rem" />
                         </button>
                       ) : (
-                        <a
-                          href={image.url}
-                          download
+                        <button
+                          type="button"
                           className="rounded-lg bg-white/15 p-1.5 text-white transition-colors hover:bg-white/25"
                           title={localizeUi("ui.characters.charactergallerytab.download")}
-                          onClick={(e) => e.stopPropagation()}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void handleDownloadImage(image);
+                          }}
                         >
                           <Download size="0.75rem" />
-                        </a>
+                        </button>
                       )}
                       <button
                         type="button"
@@ -3234,6 +3255,17 @@ function CharacterGalleryTab({
       {lightbox && (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 max-md:pt-[env(safe-area-inset-top)]"
+          ref={lightboxRef}
+          tabIndex={-1}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.stopPropagation();
+              setLightbox(null);
+            }
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-label={localizeUi("ui.chat.chatimagelightbox.imagePreview")}
           onClick={() => setLightbox(null)}
         >
           <div className="relative max-h-[90vh] max-w-[90vw] w-[min(90vw,90vh)]" onClick={(e) => e.stopPropagation()}>
@@ -3252,13 +3284,10 @@ function CharacterGalleryTab({
               >
                 {setAvatar.isPending ? <Loader2 size="0.875rem" className="animate-spin" /> : <User size="0.875rem" />}
               </button>
-              <a
-                href={lightbox.url}
-                download
-                className="rounded-lg bg-black/60 p-2 text-white transition-colors hover:bg-black/80"
-              >
-                <Download size="0.875rem" />
-              </a>
+              <ImageDownloadButton
+                url={lightbox.url}
+                filename={lightbox.filePath.split(/[\\/]/).pop() || `gallery-${lightbox.id}.png`}
+              />
               <button
                 type="button"
                 onClick={() => void handleDelete(lightbox)}
@@ -3270,7 +3299,9 @@ function CharacterGalleryTab({
               </button>
               <button
                 type="button"
+                ref={lightboxCloseRef}
                 onClick={() => setLightbox(null)}
+                aria-label={localizeUi("ui.chat.chatimagelightbox.closeImage")}
                 className="rounded-lg bg-black/60 p-2 text-white transition-colors hover:bg-black/80"
               >
                 <X size="0.875rem" />
@@ -5020,9 +5051,11 @@ function createNewRpgPool(existing: readonly RPGStatPool[]): RPGStatPool {
 function StatsTab({
   formData,
   updateExtension,
+  onDraftChange,
 }: {
   formData: CharacterData;
   updateExtension: (key: string, value: unknown) => void;
+  onDraftChange: () => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
   const stats: RPGStatsConfig = (formData.extensions.rpgStats as RPGStatsConfig) ?? DEFAULT_RPG_STATS;
@@ -5155,8 +5188,14 @@ function StatsTab({
                     }
                   />
                   <input
-                    value={pool.name}
-                    onChange={(e) => updatePool(i, { name: e.target.value })}
+                    key={pool.name}
+                    defaultValue={pool.name}
+                    onChange={onDraftChange}
+                    onBlur={(e) => {
+                      const name = e.currentTarget.value.trim() || pool.name;
+                      e.currentTarget.value = name;
+                      if (name !== pool.name) updatePool(i, { name });
+                    }}
                     className="min-w-0 rounded-lg border border-[var(--border)] bg-[var(--input)] px-2 py-1 text-xs font-medium"
                     placeholder={localizeUi("ui.characters.metadatatab.name")}
                   />
@@ -5305,6 +5344,11 @@ function StatsTab({
           </div>
         )}
       </div>
+
+      <RulesetSheetsSection
+        sheets={formData.extensions.rulesetSheets as Record<string, unknown> | undefined}
+        onChange={(sheets) => updateExtension("rulesetSheets", sheets)}
+      />
     </div>
   );
 }

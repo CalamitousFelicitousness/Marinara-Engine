@@ -78,8 +78,11 @@ import { ChatSettingsSection as Section } from "../../features/chat-settings/Cha
 import { ActiveChatBackgroundPicker } from "../panels/settings/BackgroundPicker";
 import { AdvancedParametersSection } from "../../features/chat-settings/sections/AdvancedParametersSection";
 import { ChatNameSection } from "../../features/chat-settings/sections/ChatNameSection";
+import { ChatVariablesSection } from "../../features/chat-settings/sections/ChatVariablesSection";
 import { CombatStyleSection } from "../../features/chat-settings/sections/CombatStyleSection";
-import { ConnectionSection } from "../../features/chat-settings/sections/ConnectionSection";
+import { useGameRuleset } from "../../hooks/use-game-ruleset";
+import { isRulesetCombatFight } from "../../lib/ruleset-combat-bridge";
+import { ConnectionSection, type ChatConnectionOption } from "../../features/chat-settings/sections/ConnectionSection";
 import { ConversationPromptSection } from "../../features/chat-settings/sections/ConversationPromptSection";
 import { DiscordMirrorControls } from "../../features/chat-settings/sections/DiscordMirrorSection";
 import { FunctionCallingSection } from "../../features/chat-settings/sections/FunctionCallingSection";
@@ -96,6 +99,7 @@ import {
   DEFAULT_GAME_DICE_POOL_WINDOW as DEFAULT_DICE_POOL_WINDOW,
   estimateTextTokens,
   isRoleplayCommandEnabled,
+  normalizeSemanticSummaryRetrievalSettings,
   resolveScopedRegexMode,
 } from "@marinara-engine/shared";
 import { cn, getAvatarCropStyle } from "../../lib/utils";
@@ -131,6 +135,10 @@ import { AdvancedMemoryInspector } from "./AdvancedMemoryInspector";
 import { useAdvancedMemoryStatus } from "../../hooks/use-advanced-memory";
 import { AgentSuiteModal } from "./AgentSuiteModal";
 import { ConversationTimeZoneSelect } from "./ConversationTimeZoneSelect";
+import {
+  SemanticSummaryRetrievalControls,
+  type SemanticSummaryRetrievalControlField,
+} from "./SemanticSummaryRetrievalControls";
 import { RoleplayMessagePreview } from "./ChatMessage";
 import { resolveChatContextBudget } from "../../lib/professor-mari-context-budget";
 import { CHAT_SETTINGS_SURFACES } from "./chat-settings-surfaces";
@@ -140,7 +148,11 @@ import { useDefaultPreset, usePresetFull, usePresets } from "../../hooks/use-pre
 import { useConnections } from "../../hooks/use-connections";
 import { useKnowledgeSources, useUploadKnowledgeSource } from "../../hooks/use-knowledge-sources";
 import { useGenerate } from "../../hooks/use-generate";
-import { useCapabilityAgentRegistry, useInstalledCapabilityPackages } from "../../hooks/use-capability-packages";
+import {
+  isCapabilityPackageAvailable,
+  useCapabilityAgentRegistry,
+  useInstalledCapabilityPackages,
+} from "../../hooks/use-capability-packages";
 import {
   useUpdateChat,
   useUpdateChatMetadata,
@@ -624,6 +636,7 @@ const CHAT_SETTINGS_ORDER = {
   cardTheming: -850,
   groupChat: -800,
   scopedRegex: -750,
+  chatVariables: -740,
   connectedChat: -700,
   connectedNotes: -690,
   lorebooks: -600,
@@ -957,13 +970,21 @@ export function ChatSettingsDrawer({
     () => (typeof chat.metadata === "string" ? JSON.parse(chat.metadata) : (chat.metadata ?? {})),
     [chat.metadata],
   );
-  // Package integrations only show while their package is installed and active.
-  const noodleInstalled = installedCapabilities.some(
-    (capability) => capability.id === "noodle" && capability.status === "active",
-  );
-  const slurp2Installed = installedCapabilities.some(
-    (capability) => capability.id === "slurp2" && capability.status === "active",
-  );
+  const summaryRetrievalSettings = normalizeSemanticSummaryRetrievalSettings(metadata);
+  // Package integrations only show while their package is installed and usable.
+  const noodleInstalled = isCapabilityPackageAvailable(installedCapabilities, "noodle");
+  const slurp2Installed = isCapabilityPackageAvailable(installedCapabilities, "slurp2");
+  // Chat variables live in the same map {{setvar}} writes, so a value a prompt
+  // or lorebook set shows up here as an editable row.
+  const chatMacroVariables = useMemo<Record<string, string>>(() => {
+    const stored: unknown = metadata.macroVariables;
+    if (!stored || typeof stored !== "object" || Array.isArray(stored)) return {};
+    return Object.fromEntries(
+      Object.entries(stored as Record<string, unknown>).filter(
+        (entry): entry is [string, string] => typeof entry[1] === "string",
+      ),
+    );
+  }, [metadata.macroVariables]);
   const noodleTimelineContextEnabled = metadata.noodleTimelineContextEnabled === true;
   const slurp2ActivityContextEnabled = metadata.slurp2ActivityContextEnabled === true;
   const renderPackageContextToggles = () => (
@@ -1036,27 +1057,18 @@ export function ChatSettingsDrawer({
     );
   }, [effectiveModePromptPresetId, fallbackPromptPreset, promptPresetOptions]);
   const { data: connections } = useConnections();
+  // The chat Connection section reads `showUsageWidget` to gate the NanoGPT
+  // usage meter, so keep these rows typed instead of casting fields away.
+  const connectionRows = useMemo(() => (connections as ChatConnectionOption[] | undefined) ?? [], [connections]);
   const imageConnectionsList = useMemo(
-    () =>
-      ((connections as Array<{ id: string; name: string; model?: string; provider?: string }>) ?? []).filter(
-        (c) => c.provider === "image_generation",
-      ),
-    [connections],
+    () => connectionRows.filter((c) => c.provider === "image_generation"),
+    [connectionRows],
   );
   const videoConnectionsList = useMemo(
-    () =>
-      ((connections as Array<{ id: string; name: string; model?: string; provider?: string }>) ?? []).filter(
-        (c) => c.provider === "video_generation",
-      ),
-    [connections],
+    () => connectionRows.filter((c) => c.provider === "video_generation"),
+    [connectionRows],
   );
-  const textConnectionsList = useMemo(
-    () =>
-      filterLanguageGenerationConnections(
-        (connections as Array<{ id: string; name: string; model?: string; provider?: string }>) ?? [],
-      ),
-    [connections],
-  );
+  const textConnectionsList = useMemo(() => filterLanguageGenerationConnections(connectionRows), [connectionRows]);
   const sidecarModelDownloaded = useSidecarStore((state) => state.modelDownloaded);
   const sidecarModelDisplayName = useSidecarStore((state) => state.modelDisplayName);
   const sidecarMaxContext = useSidecarStore((state) => state.config.contextSize);
@@ -1884,6 +1896,23 @@ export function ChatSettingsDrawer({
     (metadata.gameCombatStyle as GameCombatStyle | undefined) ??
     (metadata.gameSetupConfig?.combatStyle as GameCombatStyle | undefined) ??
     "classic";
+  // Whether this game's battles are the ruleset's own. Read from the block the file declares and
+  // from the director being on, never from the coverage flag the file claims.
+  const gameRuleset = useGameRuleset(isGame ? metadata : null);
+  const rulesetResolvesFights =
+    gameRuleset.status === "ok" &&
+    isRulesetCombatFight({
+      combatDirector: (metadata.gameSetupConfig as Record<string, unknown> | undefined)?.combatDirector === true,
+      definition: gameRuleset.definition,
+      // The preference is settled before any fight, so there is no anchor to read here: what this
+      // line says is what will happen the next time a battle starts.
+      anchor: "settings",
+    });
+  // And whether that ruleset says what one cell of a board is worth, which is what turns the
+  // preference below from a kept-and-unused choice into the one that decides whether the fight has
+  // positions.
+  const rulesetHasPositions =
+    rulesetResolvesFights && gameRuleset.status === "ok" && !!gameRuleset.definition.combat?.distance;
   const gameSceneVideosEnabled =
     metadata.gameSceneVideosEnabled === true ||
     (metadata.gameSceneVideosEnabled !== false &&
@@ -3575,6 +3604,8 @@ export function ChatSettingsDrawer({
   // Synchronous lock to close the re-entry gap: React state commits are async, so two
   // fast clicks can both pass the `isRegeneratingSchedules` check before the state updates.
   const isRegeneratingSchedulesRef = useRef(false);
+  const scheduleGenerationAbortRef = useRef<AbortController | null>(null);
+  useEffect(() => () => scheduleGenerationAbortRef.current?.abort(), [chat.id, open]);
   type ScheduleGenerationResult = { status: string; schedule?: Record<string, unknown> };
   type ScheduleGenerationResponse = {
     results?: Record<string, ScheduleGenerationResult>;
@@ -3585,16 +3616,23 @@ export function ChatSettingsDrawer({
       if (isRegeneratingSchedulesRef.current) return;
       isRegeneratingSchedulesRef.current = true;
       setIsRegeneratingSchedules(true);
+      const controller = new AbortController();
+      scheduleGenerationAbortRef.current = controller;
       try {
         const scheduleGenerationPreferences = useUIStore.getState().scheduleGenerationPreferences;
         const conversationTimeZone = useUIStore.getState().conversationTimeZone;
-        const result = await api.post<ScheduleGenerationResponse>("/conversation/schedule/generate", {
-          chatId: chat.id,
-          characterIds: chatCharIds,
-          forceRefresh,
-          scheduleGenerationPreferences,
-          timeZone: conversationTimeZone,
-        });
+        const result = await api.post<ScheduleGenerationResponse>(
+          "/conversation/schedule/generate",
+          {
+            chatId: chat.id,
+            characterIds: chatCharIds,
+            forceRefresh,
+            scheduleGenerationPreferences,
+            timeZone: conversationTimeZone,
+          },
+          { signal: controller.signal },
+        );
+        if (controller.signal.aborted) return;
         await qc.refetchQueries({ queryKey: chatKeys.detail(chat.id) });
         await qc.invalidateQueries({ queryKey: chatKeys.list() });
         await qc.invalidateQueries({ queryKey: ["conversation-status", chat.id] });
@@ -3655,10 +3693,12 @@ export function ChatSettingsDrawer({
           toast.info(localizeUi("ui.chat.chatsettingsdrawer.noSchedulesWereNeededForTheSelectedCharacters"));
         }
       } catch (error) {
+        if (controller.signal.aborted) return;
         toast.error(
           error instanceof Error ? error.message : localizeUi("ui.chat.chatsettingsdrawer.failedToGenerateSchedules"),
         );
       } finally {
+        scheduleGenerationAbortRef.current = null;
         isRegeneratingSchedulesRef.current = false;
         setIsRegeneratingSchedules(false);
       }
@@ -4404,6 +4444,7 @@ export function ChatSettingsDrawer({
         {advancedMemoryEnabled && memoryView === "advanced" && (
           <AdvancedMemoryInspector
             chatId={chat.id}
+            individual={metadata.groupChatMode === "individual"}
             characters={chatCharIds.map((id) => ({ id, name: charNameMap.get(id) ?? id }))}
           />
         )}
@@ -5096,6 +5137,8 @@ export function ChatSettingsDrawer({
             <CombatStyleSection
               style={{ order: CHAT_SETTINGS_ORDER.combatStyle }}
               combatStyle={effectiveCombatStyle}
+              rulesetResolvesFights={rulesetResolvesFights}
+              rulesetHasPositions={rulesetHasPositions}
               onCombatStyleChange={(gameCombatStyle) => updateMeta.mutate({ id: chat.id, gameCombatStyle })}
             />
           )}
@@ -6169,6 +6212,14 @@ export function ChatSettingsDrawer({
             </Section>
           )}
 
+          <ChatVariablesSection
+            key={chat.id}
+            sectionId={`${chatMode}-chat-variables`}
+            order={CHAT_SETTINGS_ORDER.chatVariables}
+            chatId={chat.id}
+            variables={chatMacroVariables}
+          />
+
           {/* Every existing and new multi-character chat gets this section. Missing mode metadata means Grouped. */}
           {chatCharIds.length > 1 && modeSettingsSurfaces.showGroupChatControls && (
             <Section
@@ -6491,17 +6542,9 @@ export function ChatSettingsDrawer({
                     "ui.chat.chatsettingsdrawer.optionalCharacterRoutinesForAvailabilityAndDelays",
                   )}
                   checked={conversationSchedulesEnabled}
-                  onChange={(nextEnabled) => {
-                    if (nextEnabled && !hasGeneratedConversationSchedules) {
-                      if (chatCharIds.length === 0) {
-                        updateMeta.mutate({ id: chat.id, conversationSchedulesEnabled: nextEnabled });
-                        return;
-                      }
-                      void generateConversationSchedules(false);
-                      return;
-                    }
-                    updateMeta.mutate({ id: chat.id, conversationSchedulesEnabled: nextEnabled });
-                  }}
+                  onChange={(nextEnabled) =>
+                    updateMeta.mutate({ id: chat.id, conversationSchedulesEnabled: nextEnabled })
+                  }
                   labelPosition="start"
                   className={cn(
                     "justify-between rounded-md px-3 py-2.5 text-left",
@@ -6529,7 +6572,7 @@ export function ChatSettingsDrawer({
                       </span>
                       <p className="text-[0.59375rem] mt-0.5 text-[var(--muted-foreground)]/60">
                         {conversationSchedulesEnabled
-                          ? localizeUi("ui.chat.chatsettingsdrawer.schedulesRefreshOnlyAfterYouEnableOrRegenerateThem")
+                          ? localizeUi("schedule.sharedRoutines.help")
                           : localizeUi("ui.chat.chatsettingsdrawer.turnSchedulesOnIfYouWantAvailabilityAndBusy")}
                       </p>
                     </div>
@@ -8137,6 +8180,16 @@ export function ChatSettingsDrawer({
                             chatId={chat.id}
                             displayModes={spriteDisplayModes}
                             onToggleDisplayMode={toggleSpriteDisplayMode}
+                            onlyActiveSprites={metadata.expressionOnlyActiveSprites === true}
+                            onToggleOnlyActiveSprites={
+                              isRoleplayMode
+                                ? () =>
+                                    updateMeta.mutate({
+                                      id: chat.id,
+                                      expressionOnlyActiveSprites: metadata.expressionOnlyActiveSprites !== true,
+                                    })
+                                : undefined
+                            }
                             expressionAvatarsEnabled={expressionAvatarsEnabled}
                             onToggleExpressionAvatars={() => {
                               const nextEnabled = !expressionAvatarsEnabled;
@@ -9323,6 +9376,20 @@ export function ChatSettingsDrawer({
                         : cn(AGENT_SETTINGS_SURFACE_CLASS, "hover:bg-[var(--accent)]"),
                     )}
                     labelClassName="text-xs font-medium"
+                  />
+                )}
+                {import.meta.env.VITE_MARINARA_LITE !== "true" && (
+                  <SemanticSummaryRetrievalControls
+                    enabled={metadata.semanticSummaryRetrievalEnabled === true}
+                    recentCount={summaryRetrievalSettings.semanticSummaryRecentCount}
+                    olderCount={summaryRetrievalSettings.semanticSummaryOlderCount}
+                    minSimilarity={summaryRetrievalSettings.semanticSummaryMinSimilarity}
+                    recentLabel={localizeUi("ui.chat.chatsettingsdrawer.recentWeeks")}
+                    olderLabel={localizeUi("ui.chat.chatsettingsdrawer.olderWeeks")}
+                    thresholdLabel={localizeUi("ui.chat.chatsettingsdrawer.summaryRelevanceThreshold")}
+                    onChange={(field: SemanticSummaryRetrievalControlField, value) =>
+                      updateMeta.mutate({ id: chat.id, [field]: value })
+                    }
                   />
                 )}
 

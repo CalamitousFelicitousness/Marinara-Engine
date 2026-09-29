@@ -318,7 +318,13 @@
       { "list": "charms", "budget": "act", "toHit": { "skillMod": "ward" }, "saveDifficulty": { "const": 2 } }
     ],
     "conditions": [
-      { "condition": "rattled", "modifiers": [{ "to": "attacks", "flat": -1 }] },
+      {
+        "condition": "rattled",
+        "modifiers": [
+          { "to": "attacks", "flat": -1 },
+          { "to": "checks", "skills": ["soothe", "barter"], "flat": -1 }
+        ]
+      },
       { "condition": "marked", "effects": ["attacks-against-advantage"] }
     ],
     "spendLimits": [{ "pool": "resolve", "max": { "const": 1 }, "per": "turn" }],
@@ -609,7 +615,8 @@
             "tags": ["hidden"],
             "stats": { "conceal": "pocket" },
             "slots": { "worn": 1 },
-            "binds": { "restriction": "Only a warden of the dawn watch can bind it." }
+            "binds": { "restriction": "Only a warden of the dawn watch can bind it." },
+            "worn": { "modifiers": [{ "to": "checks", "skills": ["ward"], "flat": 1 }] }
           }
         },
         {

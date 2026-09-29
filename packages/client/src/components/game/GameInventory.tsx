@@ -39,7 +39,7 @@ import {
 import { cn } from "../../lib/utils";
 import { defaultInventorySplitSize, parseInventoryAmount, parseInventoryCount } from "../../lib/game-inventory-amount";
 import { useTranslation as useUiTranslation } from "react-i18next";
-import { RulesetItemPicker, rulesetItemStatsLine } from "./RulesetItemPicker";
+import { RulesetItemPicker, rulesetItemEffectLines, rulesetItemStatsLine } from "./RulesetItemPicker";
 
 /** One stack. Two stacks may hold the same item, so a stack is told apart by its id, never its name. */
 export interface InventoryItem {
@@ -1066,6 +1066,11 @@ function RulesetItemDetails({ details, bound }: { details: RulesetItemBookEntry;
         ))}
       </div>
       {stats && <div className="text-[0.65rem] leading-tight text-white/70">{stats}</div>}
+      {rulesetItemEffectLines(facts, localizeUi).map((line) => (
+        <div key={line} className="text-[0.65rem] leading-tight text-white/70">
+          {line}
+        </div>
+      ))}
       {details.summary && <div className="text-[0.65rem] leading-tight text-white/55">{details.summary}</div>}
       {details.invented && (
         <div className="text-[0.65rem] leading-tight text-white/45">

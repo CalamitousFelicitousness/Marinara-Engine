@@ -53,7 +53,12 @@ import {
   type SkillCheckTag,
   normalizeGameInventoryStacks,
   rulesetCardItems,
-  rulesetReadsItems,
+  rulesetCheckEffects,
+  rulesetCheckRollMode,
+  rulesetCheckSources,
+  rollRulesetCheckModifiers,
+  type RulesetCheckEffects,
+  type RulesetCheckTarget,
   type RulesetSheetItem,
 } from "@marinara-engine/shared";
 import { loadGameInventoryItemBook } from "./game-inventory.service.js";
@@ -142,6 +147,8 @@ export interface SkillCheckRulesetContext {
    *  card name. Always negative or 0, worked out once per turn like the sheets beside it. Empty for
    *  a ruleset that names no penalty track, which is every ruleset written before they existed. */
   penalties: Map<string, number>;
+  /** What each card holds, keyed the same way, for what their worn and carried items do to a check. */
+  items: Map<string, RulesetSheetItem[]>;
   /** The ruleset's blank default build, for a party member (or a player) who has no sheet yet.
    *  It is what setup would have copied for them. A `who=` that names NOBODY in the party does
    *  not get this: it rolls with no modifier at all, because a ruleset's defaults are not neutral
@@ -309,9 +316,10 @@ export async function loadSkillCheckModifierContext(
     const pinned = resolveGameRuleset(meta, await loadRulesetRegistry());
     if (pinned.status === "ok") {
       const playerCard = await findPlayerCharacterCard(db, cards, chat?.personaId, meta, chatId);
-      // What each card holds, when the ruleset's sheet reads items at all: the player's card the
-      // player's bag, every other card its own.
-      const book = rulesetReadsItems(pinned.definition)
+      // What each card holds, when the ruleset has items at all: its sheet may read them, and what one
+      // does while worn or carried changes a check. The player's card the player's bag, every other
+      // card its own.
+      const book = pinned.definition.items
         ? await loadGameInventoryItemBook(db, { metadata: meta, resolved: pinned }, "player")
         : undefined;
       const itemsOf = book
@@ -370,6 +378,7 @@ export function buildSkillCheckRulesetContext(
   const sheets = new Map<string, EvaluatedRulesetSheet>();
   const builds = new Map<string, RulesetSheetBuild>();
   const penalties = new Map<string, number>();
+  const items = new Map<string, RulesetSheetItem[]>();
   const penaltyTrack = definition.resolution.penaltyFrom;
   const playerKeyForCards = playerCard ? normalizeCharacterLookupName(readTrimmedString(playerCard.name)) : "";
   // Two cards that normalize to one name: `who=` cannot say which, so neither sheet answers it and
@@ -388,6 +397,7 @@ export function buildSkillCheckRulesetContext(
         sheets.delete(key);
         builds.delete(key);
         penalties.delete(key);
+        items.delete(key);
         ambiguous.add(key);
         logger.warn("[game/skill-check] Two party cards are named %s; checks for that name roll unmodified", key);
         continue;
@@ -400,11 +410,10 @@ export function buildSkillCheckRulesetContext(
     const cardBuild = envelope.success ? envelope.data.build : blankBuild;
     // Worked out against this character's live state as it stands, so a value that reads a track
     // or a pool rolls with the snapshot the turn began from.
-    sheets.set(
-      key,
-      evaluateRulesetSheetLive(definition, cardBuild, live?.[key], itemsOf?.(readTrimmedString(card.name))),
-    );
+    const held = itemsOf?.(readTrimmedString(card.name));
+    sheets.set(key, evaluateRulesetSheetLive(definition, cardBuild, live?.[key], held));
     builds.set(key, cardBuild);
+    if (held?.length) items.set(key, held);
     if (penaltyTrack) {
       const penalty = readRulesetWoundPenalty(definition, cardBuild, live?.[key], penaltyTrack);
       if (penalty !== 0) penalties.set(key, penalty);
@@ -418,6 +427,7 @@ export function buildSkillCheckRulesetContext(
     live: live ?? {},
     catalogs: catalogs ?? {},
     penalties,
+    items,
     blank: evaluateRulesetSheetLive(definition, blankBuild),
   };
 }
@@ -681,6 +691,30 @@ export function rulesetCheckAdjustFor(
   return rulesetCheckAdjust(definition, build, evaluated, target);
 }
 
+/** What `who`'s (or the player's) active conditions, reached levels and worn or carried items do to
+ *  this check. A stranger has no sheet and a player with no card no conditions or bag, so neither has
+ *  anything. */
+export function rulesetCheckEffectsFor(
+  ruleset: SkillCheckRulesetContext,
+  target: RulesetCheckTarget | null,
+  who?: string,
+): RulesetCheckEffects {
+  const key = who ? normalizeCharacterLookupName(who) : ruleset.playerKey;
+  const build = key ? ruleset.builds.get(key) : undefined;
+  if (!key || !build) return { modifiers: [], advantage: [], disadvantage: [], fails: [] };
+  const sources = rulesetCheckSources(ruleset.definition, build, ruleset.live[key], ruleset.items.get(key));
+  return rulesetCheckEffects(sources, target);
+}
+
+/** Whether a check is thrown twice once what changes it is counted: the Game Master's `mode=` and the
+ *  character's own conditions and items, cancelling out. Only where the ruleset rolls twice at all. */
+export function rulesetCheckThrowsTwice(ruleset: SkillCheckRulesetContext, request: SkillCheckRequest): boolean {
+  const resolution = ruleset.definition.resolution;
+  if (resolution.kind !== "dice-sum" || !resolution.advantage) return false;
+  const target = matchRulesetCheckTarget(ruleset.definition, request.skill, request.withAbility);
+  return rulesetCheckRollMode(request, rulesetCheckEffectsFor(ruleset, target, request.who)) !== "normal";
+}
+
 /** The untrained rule a check falls under: null for an ability check, for a trained skill or save,
  *  and for a stranger, who has no sheet to say what they were trained in. */
 export function rulesetUntrainedFor(
@@ -777,6 +811,33 @@ function resolveRulesetSkillCheck(
   // And what the sheet itself adds or takes on this check, applied in the same place for the same
   // reason, and said beside the wound penalty on the record.
   const adjust = rulesetCheckAdjustFor(ruleset, request.skill, request.who, request.withAbility);
+  // And what the character's conditions and worn or carried items do to it (#6832): a number, a lean
+  // one way or the other, or a save failed without a roll.
+  const effects = rulesetCheckEffectsFor(ruleset, target, request.who);
+  const isSave = target?.type === "save";
+  const who = request.who ? { who: request.who } : {};
+  if (isSave && effects.fails.length > 0) {
+    // Nothing is thrown and nothing is bought: a spend would pay for a roll that never happens. The
+    // record has no dice, as a fight's automatic failure has none.
+    const pool = resolution.kind === "dice-pool";
+    return {
+      skill: request.skill,
+      dc: pool ? Math.min(rulesetPoolMaxSuccesses(resolution), Math.max(1, Math.round(askedDc))) : askedDc,
+      rolls: [],
+      usedRoll: 0,
+      modifier: 0,
+      total: 0,
+      success: false,
+      criticalSuccess: false,
+      criticalFailure: false,
+      rollMode: "normal",
+      resolution: pool ? "successes" : "sum",
+      dice: pool ? `0d${resolution.die.sides}` : `0d${resolution.dice.sides}`,
+      automatic: true,
+      from: effects.fails,
+      ...who,
+    };
+  }
   // What the check buys, worked out and PAID before the dice are thrown, so a roll can never be
   // changed by something that turned out to be unaffordable. A caller that cannot persist the cost
   // buys nothing: the roll is then the one it would have been without the tag's `spend=`.
@@ -818,7 +879,20 @@ function resolveRulesetSkillCheck(
   };
   // The injected d20 (tests, the sighted pool) stands in only where a d20 is what is rolled.
   const rollDie = (sides: number) => (sides === 20 && rollD20 ? rollD20() : rollDieSecurely(sides));
-  const isSave = target?.type === "save";
+  // The effects' own dice are never the check's: the sighted pool spent its d20s for the check alone.
+  const boost = rollRulesetCheckModifiers(effects.modifiers, rollDieSecurely).total;
+  // Named when it changed anything this ruleset reads: a number, or a lean where it rolls twice.
+  const leans = resolution.kind === "dice-sum" && resolution.advantage;
+  const from = [
+    ...new Set([
+      ...effects.modifiers.map((entry) => entry.from),
+      ...(leans ? [...effects.advantage, ...effects.disadvantage] : []),
+    ]),
+  ];
+  const effected = {
+    ...(boost !== 0 ? { effects: boost } : {}),
+    ...(from.length > 0 ? { from } : {}),
+  };
 
   if (resolution.kind === "dice-pool") {
     // The DC is a count of successes, so its ceiling is what the largest roll could count. Clamped
@@ -840,7 +914,7 @@ function resolveRulesetSkillCheck(
       {
         // Dice off the pool. The roller clamps into `pool`, so a large penalty stops at `pool.min`
         // rather than at no dice at all, which is the ruleset's own floor for an empty pool.
-        modifier: modifier + penalty + adjust,
+        modifier: modifier + penalty + adjust + boost,
         required: dc,
         isSave,
         threshold:
@@ -873,22 +947,25 @@ function resolveRulesetSkillCheck(
       // Named only when it was the standing one that was thrown, and it actually threw something.
       reroll: standing && reroll === standing && rolled.rerolled > 0 ? standing.id : undefined,
       ...applied,
-      ...(request.who ? { who: request.who } : {}),
+      ...effected,
+      ...who,
     };
   }
 
   const { sides, count } = resolution.dice;
   // A flat modifier on the roll, which is what a penalty IS in a summed system, so it belongs in
   // the number the record adds up rather than beside it.
-  const summed = modifier + penalty + adjust;
+  const summed = modifier + penalty + adjust + boost;
+  // The Game Master's `mode=` and what leans the character's own roll, cancelling out together.
+  const mode = rulesetCheckRollMode(request, effects);
   const rolled = rollDiceSumCheck(
     definition,
     {
       modifier: summed,
       dc: askedDc,
       isSave,
-      advantage: request.advantage,
-      disadvantage: request.disadvantage,
+      advantage: mode === "advantage",
+      disadvantage: mode === "disadvantage",
       preRolled: sides === 20 && count === 1 ? request.preRolledD20 : undefined,
     },
     rollDie,
@@ -900,7 +977,8 @@ function resolveRulesetSkillCheck(
     resolution: "sum",
     ...rolled,
     ...applied,
-    ...(request.who ? { who: request.who } : {}),
+    ...effected,
+    ...who,
   };
 }
 
@@ -934,6 +1012,16 @@ function rulesetVouchesFor(ruleset: SkillCheckRulesetContext, tag: SkillCheckTag
   if (resolution.kind === "dice-pool") return false;
   const result = tag.resolvedResult;
   if (!result || result.resolution !== "sum") return false;
+  // A check the character's conditions or items change is always the Engine's own: the Game Master
+  // cannot have counted what it is not shown, and a bonus in dice has no one right number.
+  const changed = rulesetCheckEffectsFor(
+    ruleset,
+    matchRulesetCheckTarget(ruleset.definition, tag.skill, tag.withAbility),
+    tag.who,
+  );
+  if (changed.modifiers.length || changed.advantage.length || changed.disadvantage.length || changed.fails.length) {
+    return false;
+  }
   const { count, sides } = resolution.dice;
   if (result.rollMode !== "normal" && !resolution.advantage) return false;
   const sets = result.rollMode === "normal" ? 1 : 2;
@@ -1286,6 +1374,21 @@ export async function resolveSkillCheckTagsInContent(
         deferred.push({ start: match.index, end: match.index + match[0].length, tag });
         continue;
       }
+      // Only a ruleset's own condition or item fails a save without a roll, and this game pins none,
+      // so a record that says so is the model's claim: the ask survives, the claimed outcome does not.
+      // (A ruleset game decides it again from the sheet, which never vouches for a record with no dice.)
+      if (tag.resolvedResult?.automatic) {
+        stripped.push({
+          start: match.index,
+          end: match.index + match[0].length,
+          replacement: serializeSparseSkillCheckTag(
+            { skill: tag.skill, dc: tag.dc, advantage: tag.advantage, disadvantage: tag.disadvantage },
+            askExtras(tag),
+          ),
+        });
+        left += 1;
+        continue;
+      }
       if (tag.resolvedResult) {
         trusted += 1;
         left += 1;
@@ -1363,15 +1466,19 @@ export async function resolveSkillCheckTagsInContent(
       for (const entry of deferred) {
         const { tag } = entry;
         const request = toRequest(tag, ruleset?.definition);
+        // A record claiming a save failed without a roll carries no dice to vouch for and a label no
+        // ruleset throws, so it is always the Engine's to decide again from the sheet.
+        const claimsNoRoll = !!tag.resolvedResult?.automatic;
         const owesRoll = ruleset
-          ? !rulesetVouchesFor(ruleset, tag) && isRulesetRollableSkillCheckTag(tag, ruleset.definition)
+          ? claimsNoRoll ||
+            (!rulesetVouchesFor(ruleset, tag) && isRulesetRollableSkillCheckTag(tag, ruleset.definition))
           : !tag.resolvedResult && isEngineRollableSkillCheckTag(tag);
         // A check the character cannot attempt untrained is refused below whatever it carries: no
         // numbers, dice or difficulty the Game Master wrote on it gets it past the sheet.
         const refused = !!ruleset && rulesetRefusesUntrained(ruleset, request);
         if (refused || (owesRoll && isResolvableSkillCheckRequest(request, ruleset?.definition))) {
           pending.push({ start: entry.start, end: entry.end, request, tag });
-        } else if (owesRoll && tag.resolvedResult) {
+        } else if ((owesRoll || claimsNoRoll) && tag.resolvedResult) {
           // This ruleset's own kind of check, carrying numbers the sheet does not vouch for, that
           // cannot be rolled either (an out-of-bounds DC, say). The ask survives; the claimed
           // outcome does not, exactly as a roll that could not happen is saved.
@@ -1384,7 +1491,8 @@ export async function resolveSkillCheckTagsInContent(
                 dc: tag.dc,
                 advantage: tag.advantage,
                 disadvantage: tag.disadvantage,
-                declaredDice: tag.declaredDice,
+                // The "0dN" of a record that claims no roll labels no dice anybody would throw.
+                declaredDice: claimsNoRoll ? undefined : tag.declaredDice,
               },
               askExtras(tag),
             ),
@@ -1645,7 +1753,13 @@ export function resolvePoolCheckTag(
   body: string,
   tagIndex: number,
 ): { result: SkillCheckResult; record: string } | null {
-  const needed = request.advantage !== request.disadvantage && (request.advantage || request.disadvantage) ? 2 : 1;
+  // Two under advantage or disadvantage. Where a ruleset rolls twice, that is counted once the
+  // character's conditions and items are counted with the Game Master's `mode=`: a lean they cancel
+  // throws one, and one they add throws two.
+  const asked = request.advantage !== request.disadvantage && (request.advantage || request.disadvantage);
+  const resolution = context.ruleset?.definition.resolution;
+  const leans = resolution?.kind === "dice-sum" && resolution.advantage;
+  const needed = (leans ? rulesetCheckThrowsTwice(context.ruleset!, request) : asked) ? 2 : 1;
   const spent = pool.spend("d20", needed, tagIndex);
   if (!spent) {
     pool.recordOverflow("no d20 value left", `${tag.skill} dc=${request.dc}`);

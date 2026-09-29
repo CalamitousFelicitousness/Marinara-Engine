@@ -13,6 +13,7 @@ import {
   rulesetItemIssues,
   type RulesetCatalogItem,
   type RulesetDefinition,
+  type RulesetItemEffect,
   type RulesetItemStat,
 } from "../../schemas/ruleset.schema.js";
 import type { GameInventoryItemProposal } from "../../utils/game-inventory-stacks.js";
@@ -110,6 +111,122 @@ function wordNamed<T extends { id: string; label: string }>(
       .replace(/[\s_-]+/g, "_");
   const wanted = key(text);
   return words?.find((word) => key(word.id) === wanted) ?? words?.find((word) => key(word.label) === wanted);
+}
+
+/** The most modifiers one worn or carried effect holds, as the format allows. */
+const EFFECT_MODIFIERS_MAX = 6;
+type EffectModifier = NonNullable<RulesetItemEffect["modifiers"]>[number];
+
+/**
+ * A worn or carried effect as the Game Master writes it: parts split by `;` or `,`, each a change (+N,
+ * -N, +NdM, advantage, disadvantage or fails) and what it is on, by skill or save names (split by `/`
+ * or "and"), or `checks` or `saves` for all of them: "+1 Sneak", "disadvantage on Sneak checks",
+ * "+1 saves", "fails Steel saves". A name the ruleset does not have is left out, and so is a part with
+ * nothing left to be on. Undefined when nothing is left, or when the text says `none`.
+ */
+function readEffect(
+  definition: RulesetDefinition,
+  text: string,
+  say: (text: string) => void,
+): RulesetItemEffect | undefined {
+  if (/^\s*(?:none|no|nothing)\s*$/i.test(text)) return undefined;
+  const modifiers: EffectModifier[] = [];
+  const fails: string[] = [];
+  const add = (modifier: EffectModifier, part: string) => {
+    if (modifiers.length >= EFFECT_MODIFIERS_MAX)
+      say(`An item does at most ${EFFECT_MODIFIERS_MAX} things this way, so "${part}" was left out.`);
+    else modifiers.push(modifier);
+  };
+  for (const raw of text
+    .split(/[;,]/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .slice(0, 12)) {
+    const part = plainLine(raw, 60);
+    const read =
+      /^(advantage|disadvantage|fails?|[+-]\s*\d{1,2}d\d{1,3}|[+-]\s*\d{1,3})\s+(?:(?:on|to)\s+)?(.*)$/i.exec(part);
+    if (!read) {
+      say(`"${part}" is not a change such as +1, -1, advantage or fails, so it was left out.`);
+      continue;
+    }
+    const change = read[1]!.replace(/\s+/g, "").toLowerCase();
+    let target = read[2]!.trim();
+    let kind: "checks" | "saves" | undefined;
+    const suffix = /(?:^|\s)(checks?|saves?|saving throws?)$/i.exec(target);
+    if (suffix) {
+      kind = /^check/i.test(suffix[1]!) ? "checks" : "saves";
+      target = target.slice(0, suffix.index).trim();
+    }
+    const skills: string[] = [];
+    const saves: string[] = [];
+    for (const name of target.split(/\s*(?:\/|&|\band\b)\s*/i).filter(Boolean)) {
+      const skill = kind !== "saves" ? wordNamed(definition.sheet.skills, name) : undefined;
+      const save = !skill && kind !== "checks" ? wordNamed(definition.sheet.saves, name) : undefined;
+      if (skill) skills.push(skill.id);
+      else if (save) saves.push(save.id);
+      else
+        say(
+          `No ${kind === "saves" ? "save" : kind === "checks" ? "skill" : "skill or save"} "${plainLine(name, 40)}", so it was left out of "${part}".`,
+        );
+    }
+    const named = target !== "";
+    if (!named && !kind) {
+      say(`"${part}" does not say what it is on, so it was left out.`);
+      continue;
+    }
+    if (named && skills.length === 0 && saves.length === 0) continue;
+    const onChecks = !named ? kind === "checks" : skills.length > 0;
+    const onSaves = !named ? kind === "saves" : saves.length > 0;
+    if (change.startsWith("fail")) {
+      if (onChecks) say(`A check cannot fail on its own, so "${part}" is only about saves.`);
+      if (onSaves) fails.push(...(named ? saves : definition.sheet.saves.map((each) => each.id)));
+      continue;
+    }
+    const how: Partial<EffectModifier> =
+      change === "advantage" || change === "disadvantage"
+        ? { mode: change }
+        : change.includes("d")
+          ? { dice: change.slice(1), ...(change.startsWith("-") ? { minus: true as const } : {}) }
+          : { flat: Math.max(-100, Math.min(100, Number(change))) };
+    if (how.flat === 0) {
+      say(`"${part}" changes nothing, so it was left out.`);
+      continue;
+    }
+    if (onChecks) add({ to: "checks", ...how, ...(named ? { skills } : {}) } as EffectModifier, part);
+    if (onSaves) add({ to: "saves", ...how, ...(named ? { saves } : {}) } as EffectModifier, part);
+  }
+  const failsSaves = [...new Set(fails)].slice(0, 12);
+  if (!modifiers.length && !failsSaves.length) return undefined;
+  return { ...(modifiers.length ? { modifiers } : {}), ...(failsSaves.length ? { failsSaves } : {}) };
+}
+
+/** One worn or carried effect held to its rarity's `bonus`: a flat bonus past it pulled back to it, and
+ *  a bonus in dice left out, since dice cannot be held to a number. A penalty is never capped. */
+function capEffect(
+  effect: RulesetItemEffect | undefined,
+  most: number,
+  rarityLabel: string,
+  when: "worn" | "carried",
+  say: (text: string) => void,
+): RulesetItemEffect | undefined {
+  if (!effect?.modifiers) return effect;
+  const modifiers = effect.modifiers.flatMap((modifier): EffectModifier[] => {
+    const next: EffectModifier = { ...modifier };
+    if (next.dice !== undefined && !next.minus) {
+      say(`A bonus in dice cannot be held to ${rarityLabel}'s most, so +${next.dice} while ${when} was left out.`);
+      delete next.dice;
+    }
+    if (next.flat !== undefined && next.flat > most) {
+      say(`A bonus while ${when} is +${most} instead of +${next.flat}, the most at ${rarityLabel}.`);
+      if (most > 0) next.flat = most;
+      else delete next.flat;
+    }
+    return next.flat !== undefined || next.dice !== undefined || next.mode !== undefined ? [next] : [];
+  });
+  const capped: RulesetItemEffect = { ...effect };
+  if (modifiers.length) capped.modifiers = modifiers;
+  else delete capped.modifiers;
+  return capped.effects || capped.modifiers || capped.failsSaves ? capped : undefined;
 }
 
 /** A stat's value as its type reads it, or why it cannot be. */
@@ -251,6 +368,17 @@ export function inventRulesetItem(
     }
   }
 
+  // What it does while worn and while only carried: what the proposal says, else what it started from,
+  // and either way held to its rarity's bonus.
+  const bonus = block.rarityCaps?.find((cap) => cap.rarity === rarity)?.bonus;
+  const effectOf = (when: "worn" | "carried") => {
+    const given = proposal[when];
+    const read = given !== undefined ? readEffect(definition, given, say) : like?.[when];
+    return bonus === undefined ? read : capEffect(read, bonus, rarityLabel ?? "", when, say);
+  };
+  const worn = effectOf("worn");
+  const carried = effectOf("carried");
+
   let binds = like?.binds;
   if (proposal.binds !== undefined) {
     const word = proposal.binds.trim().toLowerCase();
@@ -269,6 +397,8 @@ export function inventRulesetItem(
     ...(binds
       ? { binds: { ...(like?.binds?.restriction ? { restriction: like.binds.restriction } : {}), ...binds } }
       : {}),
+    ...(worn ? { worn } : {}),
+    ...(carried ? { carried } : {}),
   };
   const kept = said.slice(0, NOTES_MAX).map((note) => ({ ...note, text: plainLine(note.text, NOTE_MAX_LENGTH) }));
   return {

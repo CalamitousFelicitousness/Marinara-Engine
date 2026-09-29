@@ -11,6 +11,7 @@ import {
   type RulesetCatalogEntry,
   type RulesetCatalogItem,
   type RulesetDefinition,
+  type RulesetItemEffect,
   type RulesetItemStat,
   type RulesetSheetBuild,
 } from "../../schemas/ruleset.schema.js";
@@ -49,6 +50,15 @@ export interface RulesetItemStatFact {
   promptVisible: boolean;
 }
 
+/** One thing an item does while worn or carried: on checks or saves (the labels of the skills or
+ *  saves it is narrowed to, none for all of them), a lean, a number (`value`, signed, dice and all), or
+ *  saves it makes fail. */
+export interface RulesetItemEffectFact {
+  to: "checks" | "saves";
+  names: string[];
+  change: { mode: "advantage" | "disadvantage" } | { value: string } | { fails: true };
+}
+
 /** What an item is, as labels: what the screen and the Game Master show. */
 export interface RulesetItemFacts {
   category: string;
@@ -58,6 +68,46 @@ export interface RulesetItemFacts {
   stats: RulesetItemStatFact[];
   /** What it costs, in the unit's own label ("8", "shillings"). */
   cost?: { amount: number; unit: string };
+  /** What it does while worn, and while only carried. */
+  worn?: RulesetItemEffectFact[];
+  carried?: RulesetItemEffectFact[];
+}
+
+/** One worn or carried effect as facts: each lean, each number and each set of saves it fails. */
+export function rulesetItemEffectFacts(
+  definition: RulesetDefinition,
+  effect: RulesetItemEffect,
+): RulesetItemEffectFact[] {
+  const skillLabel = (id: string) => definition.sheet.skills.find((skill) => skill.id === id)?.label ?? id;
+  const saveLabel = (id: string) => definition.sheet.saves.find((save) => save.id === id)?.label ?? id;
+  const names = (to: "checks" | "saves", ids: readonly string[] | undefined) =>
+    (ids ?? []).map(to === "checks" ? skillLabel : saveLabel);
+  const facts: RulesetItemEffectFact[] = [];
+  for (const one of effect.effects ?? []) {
+    const to = one.startsWith("own-checks") ? "checks" : "saves";
+    const mode = one.endsWith("-disadvantage") ? "disadvantage" : "advantage";
+    facts.push({ to, names: names(to, to === "checks" ? effect.skills : effect.saves), change: { mode } });
+  }
+  for (const modifier of effect.modifiers ?? []) {
+    if (modifier.to !== "checks" && modifier.to !== "saves") continue;
+    const to = modifier.to;
+    const narrowed = names(to, to === "checks" ? (modifier.skills ?? effect.skills) : (modifier.saves ?? effect.saves));
+    const dice = modifier.dice ? `${modifier.minus ? "-" : "+"}${modifier.dice}` : "";
+    const flat = modifier.flat ? `${modifier.flat > 0 ? "+" : ""}${modifier.flat}` : "";
+    if (dice || flat) facts.push({ to, names: narrowed, change: { value: `${dice}${flat}` } });
+    if (modifier.mode) facts.push({ to, names: narrowed, change: { mode: modifier.mode } });
+  }
+  if (effect.failsSaves?.length) {
+    facts.push({ to: "saves", names: names("saves", effect.failsSaves), change: { fails: true } });
+  }
+  return facts;
+}
+
+/** One effect fact in plain words, as the Game Master reads it: "-1 on checks (Sneak)". */
+export function rulesetItemEffectText(fact: RulesetItemEffectFact): string {
+  const which = `${fact.to}${fact.names.length ? ` (${fact.names.join(", ")})` : ""}`;
+  if ("fails" in fact.change) return `fails ${which}`;
+  return `${"mode" in fact.change ? fact.change.mode : fact.change.value} on ${which}`;
 }
 
 export interface RulesetItemBookEntry extends GameInventoryRulesetItem {
@@ -115,12 +165,16 @@ export function rulesetItemFacts(definition: RulesetDefinition, item: RulesetCat
   const unit = item.cost
     ? block?.currencies?.flatMap((family) => family.units).find((each) => each.id === item.cost!.unit)
     : undefined;
+  const worn = item.worn ? rulesetItemEffectFacts(definition, item.worn) : [];
+  const carried = item.carried ? rulesetItemEffectFacts(definition, item.carried) : [];
   return {
     category: labelOf(block?.categories, item.category),
     ...(item.rarity ? { rarity: labelOf(block?.rarities, item.rarity) } : {}),
     tags: (item.tags ?? []).map((tag) => labelOf(block?.tags, tag)),
     stats,
     ...(item.cost ? { cost: { amount: item.cost.amount, unit: unit?.label ?? item.cost.unit } } : {}),
+    ...(worn.length ? { worn } : {}),
+    ...(carried.length ? { carried } : {}),
   };
 }
 
@@ -319,7 +373,7 @@ export function rulesetSheetItems(
     const takesSlots = Object.values(item.slots ?? {}).some((count) => count > 0);
     const binds = !!item.binds;
     const worn = (takesSlots || binds) && (!takesSlots || stack.equipped === true) && (!binds || stack.bound === true);
-    return [{ item, quantity: stack.quantity, worn }];
+    return [{ item, quantity: stack.quantity, worn, name: stack.name }];
   });
 }
 
@@ -351,5 +405,8 @@ export function rulesetItemPromptFacts(facts: RulesetItemFacts): string {
     .filter((stat) => stat.promptVisible)
     .map((stat) => (stat.text !== undefined ? `${stat.label} ${stat.text}` : stat.label))
     .join(", ");
-  return stats ? `${kind}; ${stats}` : kind;
+  const effects = (["worn", "carried"] as const).flatMap((when) =>
+    facts[when]?.length ? [`${when}: ${facts[when]!.map(rulesetItemEffectText).join(", ")}`] : [],
+  );
+  return [kind, stats, ...effects].filter(Boolean).join("; ");
 }

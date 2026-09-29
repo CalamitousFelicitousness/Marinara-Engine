@@ -8,9 +8,11 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import {
+  RULESET_CHECK_SCOPED_EFFECTS,
   RULESET_COMBAT_CONDITION_EFFECTS,
   RULESET_CREATURE_PLAIN_NEEDS,
   RULESET_CREATURE_SHEET_REPLACES,
+  RULESET_ITEM_MODIFIER_TARGETS,
   RULESET_LEVEL_REFUSED_EFFECTS,
   RULESET_ROLLED_MODIFIER_TARGETS,
   RULESET_SAVE_SCOPED_EFFECTS,
@@ -212,21 +214,26 @@ function cancelOnlyWhenAimed(node) {
 }
 
 // A condition's modifier changes its number by something: a flat amount that is not 0, dice (only on
-// a number that is rolled, and `minus` only with dice), or `times` (only on speed). Refinements, so
-// the editor is told here. The node is found by its shape: `to` beside `flat`, `dice` and `times`.
+// a number that is rolled, and `minus` only with dice), `times` (only on speed), or a `mode` (only on
+// checks and saves). Its own `skills` narrow a change to checks and its own `saves` one to saves.
+// Refinements, so the editor is told here. The node is found by its shape: `to` beside `flat`, `dice`
+// and `times`.
 function modifierSaysSomething(node) {
   if (Array.isArray(node)) return node.forEach(modifierSaysSomething);
   if (!node || typeof node !== "object") return;
   Object.values(node).forEach(modifierSaysSomething);
   const properties = node.properties;
   if (node.type !== "object" || !properties?.to || !properties.flat || !properties.dice || !properties.times) return;
-  requireAnyOf(node, ["flat", "dice", "times"]);
+  requireAnyOf(node, ["flat", "dice", "times", "mode"]);
   properties.flat = { ...properties.flat, not: { const: 0 } };
   node.allOf = [
     ...(node.allOf ?? []),
     { if: { required: ["dice"] }, then: { properties: { to: { enum: [...RULESET_ROLLED_MODIFIER_TARGETS] } } } },
     { if: { required: ["times"] }, then: { properties: { to: { const: "speed" } } } },
     { if: { required: ["minus"] }, then: { required: ["dice"] } },
+    { if: { required: ["mode"] }, then: { properties: { to: { enum: ["checks", "saves"] } } } },
+    { if: { required: ["skills"] }, then: { properties: { to: { const: "checks" } } } },
+    { if: { required: ["saves"] }, then: { properties: { to: { const: "saves" } } } },
   ];
 }
 
@@ -240,21 +247,33 @@ function conditionSavesAndLevels(node) {
   Object.values(node).forEach(conditionSavesAndLevels);
   const properties = node.properties;
   if (node.type !== "object" || !properties?.saves || !properties.effects || !properties.modifiers) return;
+  // And `skills` narrows the check effects and the modifiers to checks, so it needs one of those.
+  const narrows = (key, effects, to) => ({
+    if: { required: [key] },
+    then: {
+      anyOf: [
+        { required: ["effects"], properties: { effects: { contains: { enum: [...effects] } } } },
+        { required: ["modifiers"], properties: { modifiers: { contains: { properties: { to: { const: to } } } } } },
+      ],
+    },
+  });
   node.allOf = [
     ...(node.allOf ?? []),
-    {
-      if: { required: ["saves"] },
-      then: {
-        anyOf: [
-          { required: ["effects"], properties: { effects: { contains: { enum: [...RULESET_SAVE_SCOPED_EFFECTS] } } } },
-          {
-            required: ["modifiers"],
-            properties: { modifiers: { contains: { properties: { to: { const: "saves" } } } } },
-          },
-        ],
-      },
-    },
+    narrows("saves", RULESET_SAVE_SCOPED_EFFECTS, "saves"),
+    ...(properties.skills ? [narrows("skills", RULESET_CHECK_SCOPED_EFFECTS, "checks")] : []),
   ];
+  // An item's worn or carried effect (no `condition`, no `track`) does something, and changes only
+  // checks and saves: what an item does in a fight comes later.
+  if (!properties.condition && !properties.track) {
+    node.allOf.push({ anyOf: [{ required: ["effects"] }, { required: ["modifiers"] }, { required: ["failsSaves"] }] });
+    properties.modifiers = {
+      ...properties.modifiers,
+      items: {
+        allOf: [properties.modifiers.items, { properties: { to: { enum: [...RULESET_ITEM_MODIFIER_TARGETS] } } }],
+      },
+    };
+    return;
+  }
   if (!properties.track) return;
   const refused = new Set(RULESET_LEVEL_REFUSED_EFFECTS);
   properties.effects = {

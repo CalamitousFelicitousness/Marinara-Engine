@@ -10,7 +10,38 @@
 
 import type { GameInventoryJournalEntry } from "../../utils/game-inventory-ops.js";
 import { GAME_INVENTORY_MAX_QUANTITY, type GameInventoryStack } from "../../utils/game-inventory-stacks.js";
+import type { RulesetDefinition } from "../../schemas/ruleset.schema.js";
 import type { RulesetCombatAction, RulesetCombatant, RulesetCombatEvent, RulesetEncounterState } from "./types.js";
+
+/** How many one attack shoots: what its mode says, else what its ammunition says, else one. */
+function shotsPer(action: RulesetCombatAction): number {
+  return action.shots ?? action.ammo?.per ?? 1;
+}
+
+/**
+ * An attack made in one of its weapon's modes: named for it, adding what the mode adds to hit (dice
+ * in a pool fight), moving a pool fight's per-die target (from the weapon's own, else the pool's),
+ * aimed at as many as the mode says, and shooting what one attack in it shoots. Null for a mode the
+ * weapon does not have.
+ */
+export function rulesetModedAction(
+  definition: RulesetDefinition,
+  action: RulesetCombatAction,
+  modeId: string,
+): RulesetCombatAction | null {
+  const mode = action.modes?.find((entry) => entry.id === modeId);
+  if (!mode) return null;
+  const poolTarget = definition.resolution.kind === "dice-pool" ? definition.resolution.target.default : undefined;
+  const base = action.target ?? poolTarget;
+  return {
+    ...action,
+    label: `${action.label} (${mode.label})`,
+    ...(mode.toHit !== undefined && action.toHit !== undefined ? { toHit: action.toHit + mode.toHit } : {}),
+    ...(mode.target !== undefined && base !== undefined ? { target: base + mode.target } : {}),
+    ...(mode.targets !== undefined ? { targets: { ...action.targets, count: mode.targets } } : {}),
+    ...(mode.ammo !== undefined ? { shots: mode.ammo } : {}),
+  };
+}
 
 /** How many of the items with this tag the fighter still carries. */
 export function rulesetAmmoLeft(actor: RulesetCombatant, tag: string): number {
@@ -35,7 +66,7 @@ export function rulesetShotsAvailable(actor: RulesetCombatant, action: RulesetCo
     if (!action.clip || rulesetLoaded(actor, action.clip) >= action.clip.max) return false;
     return !action.ammo || rulesetAmmoLeft(actor, action.ammo.tag) > 0;
   }
-  const per = action.ammo?.per ?? 1;
+  const per = shotsPer(action);
   if (action.clip) return rulesetLoaded(actor, action.clip) >= per;
   if (action.ammo) return rulesetAmmoLeft(actor, action.ammo.tag) >= per;
   return true;
@@ -65,7 +96,7 @@ function draw(actor: RulesetCombatant, tag: string, count: number, recover?: num
 export function spendRulesetShots(actor: RulesetCombatant, action: RulesetCombatAction): RulesetCombatEvent | null {
   if (action.kind === "reload") return null;
   const said = { type: "shot" as const, actorId: actor.id, optionId: action.id, label: action.label };
-  const per = action.ammo?.per ?? 1;
+  const per = shotsPer(action);
   if (action.clip) {
     const left = Math.max(0, rulesetLoaded(actor, action.clip) - per);
     (actor.loaded ??= {})[action.clip.item] = left;

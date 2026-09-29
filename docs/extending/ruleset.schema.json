@@ -10862,6 +10862,111 @@
                           ],
                           "additionalProperties": false
                         },
+                        "modes": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "label": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 40
+                              },
+                              "ammo": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 100
+                              },
+                              "toHit": {
+                                "type": "integer",
+                                "minimum": -20,
+                                "maximum": 20
+                              },
+                              "target": {
+                                "type": "integer",
+                                "minimum": -10,
+                                "maximum": 10
+                              },
+                              "targets": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 20
+                              },
+                              "$comment": {}
+                            },
+                            "required": [
+                              "id",
+                              "label"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "minItems": 1,
+                          "maxItems": 6
+                        },
+                        "offHand": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "floor": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 100
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "stat": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "stat"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
+                        },
+                        "onHit": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "condition": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "atLeast": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 100
+                              },
+                              "rounds": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 100
+                              },
+                              "$comment": {}
+                            },
+                            "required": [
+                              "condition",
+                              "atLeast"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "minItems": 1,
+                          "maxItems": 4
+                        },
                         "$comment": {}
                       },
                       "required": [
@@ -13546,6 +13651,29 @@
               "type": "string",
               "maxLength": 40,
               "pattern": "^[a-z][a-z0-9_]*$"
+            },
+            "$comment": {}
+          },
+          "required": [
+            "budget"
+          ],
+          "additionalProperties": false
+        },
+        "offHand": {
+          "type": "object",
+          "properties": {
+            "budget": {
+              "type": "string",
+              "maxLength": 40,
+              "pattern": "^[a-z][a-z0-9_]*$"
+            },
+            "ability": {
+              "type": "string",
+              "enum": [
+                "full",
+                "penalty-only"
+              ],
+              "default": "full"
             },
             "$comment": {}
           },

@@ -757,7 +757,24 @@ function itemAttackActions(
         ...(ammo ? { ammo } : {}),
       });
     }
-    actions.push({
+    const floorRead = read(attack.floor);
+    const floor = typeof floorRead === "number" && Number.isFinite(floorRead) && floorRead >= 1 ? floorRead : 0;
+    // A damage ability read as the off hand reads it where the ruleset says so: added only when it
+    // takes something away.
+    const damageOf = (ability: number) => ({
+      ...(pooled
+        ? {
+            count: Math.max(0, dice.count + ability),
+            sides: rulesetPoolDie(definition),
+            flat: Math.max(0, dice.flat + bonus),
+          }
+        : { count: dice.count, sides: dice.sides, flat: dice.flat + ability + bonus }),
+      ...(type ? { type } : {}),
+      ...(item.tags?.length ? { qualities: [...item.tags] } : {}),
+      ...(floor ? { floor: Math.trunc(floor) } : {}),
+    });
+    const offHand = attack.offHand && combat.offHand ? combat.offHand : undefined;
+    const weapon: RulesetCombatAction = {
       id: `item:${index}`,
       kind: "attack",
       label,
@@ -768,20 +785,25 @@ function itemAttackActions(
       ...(normal !== undefined ? { range: { normal, ...(long !== undefined && long > normal ? { long } : {}) } } : {}),
       toHit: toHitBase + (proficient ? evaluated.proficiencyBonus : 0) + number(read(attack.toHit.bonus)),
       ...(pooled && typeof target === "number" && Number.isFinite(target) ? { target } : {}),
-      damage: {
-        ...(pooled
-          ? {
-              count: Math.max(0, dice.count + damageAbility),
-              sides: rulesetPoolDie(definition),
-              flat: Math.max(0, dice.flat + bonus),
-            }
-          : { count: dice.count, sides: dice.sides, flat: dice.flat + damageAbility + bonus }),
-        ...(type ? { type } : {}),
-        ...(item.tags?.length ? { qualities: [...item.tags] } : {}),
-      },
+      damage: damageOf(damageAbility),
       ...(ammo ? { ammo } : {}),
       ...(clip ? { clip } : {}),
-    });
+      ...(attack.modes?.length ? { modes: attack.modes.map((mode) => ({ ...mode })) } : {}),
+      ...(attack.onHit?.length ? { onHit: attack.onHit.map((entry) => ({ ...entry })) } : {}),
+    };
+    actions.push(offHand ? { ...weapon, pairs: index } : weapon);
+    if (offHand) {
+      // The same weapon, struck with again on the off-hand budget: one blow, whatever strikes its
+      // main attack buys, and with the damage ability the ruleset lets an off hand keep.
+      const { strikes: _strikes, ...single } = weapon;
+      actions.push({
+        ...single,
+        id: `offhand:${index}`,
+        budget: offHand.budget,
+        damage: damageOf(offHand.ability === "penalty-only" ? Math.min(0, damageAbility) : damageAbility),
+        offHandOf: index,
+      });
+    }
   });
   return actions;
 }

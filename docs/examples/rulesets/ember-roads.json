@@ -1188,7 +1188,17 @@
                 "$comment": "One arrow a shot, drawn from whatever its archer carries tagged as arrows, and half of what was shot picked up again after a fight the party wins.",
                 "tag": "arrow",
                 "recover": 0.5
-              }
+              },
+              "modes": [
+                {
+                  "$comment": "Two arrows loosed together at up to two marks, each a little wilder.",
+                  "id": "volley",
+                  "label": "Volley",
+                  "ammo": 2,
+                  "toHit": -2,
+                  "targets": 2
+                }
+              ]
             }
           }
         },

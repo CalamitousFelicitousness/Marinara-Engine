@@ -1358,6 +1358,54 @@ writes to the inventory ships on its own.
   `e2e/game-ruleset-ammo.e2e.ts`, with 61 deliberate breaks each caught (one of them, the director's
   write, by the e2e).
 
+### What modes, off-hand attacks, a floor and conditions on a hit settled
+
+Capability API 1.58, for #6875. Slice I5-4 of the ruleset items plan: the rest of section 4.4.
+
+- **Modes.** A weapon's `attack.modes` (up to six) each carry an `id`, a `label` and what they
+  change: `ammo` (one attack's shots, so the weapon has `ammo` or a `clip`, and no more than a
+  written clip holds), `toHit`, `target` (a pool fight whose target can move) and `targets`.
+  `rulesetModedAction` (ammo.ts) derives the attack in a mode: the label gains the mode's in
+  brackets, `toHit` adds, a pool target moves from the weapon's own or else the pool's default, the
+  target count is the mode's, and `shots` replaces its ammunition's per-attack count. The menu lists
+  on the option the modes its holder has the shots for, each with its own forecast, and none in a
+  window. A choice's `mode` (and a held attack's `resume.mode`) makes the attack in that mode; one
+  the option does not offer is refused as `unknown-mode`. The mode travels like an initiative
+  style: the command schema, the director's command and GM-candidate paths, the client's menu step
+  (after the style step), the board and `DirectedCombatUI`.
+- **The Engine's picker weighs modes** (`modedWays` beside `styledWays`) only when aimed at one
+  target: it aims every candidate at one, and a mode for several would pay for shots it never takes
+  (a `ponytail:` note; a candidate per group of targets is the upgrade).
+- **Off hand.** `combat.offHand` (`budget`, `ability` `full` or `penalty-only`) and an item's
+  `attack.offHand`. A worn off-hand weapon's main attack carries `pairs` (its item index), and a
+  second action `offhand:<index>` on the off-hand budget carries `offHandOf`, one blow (no
+  `strikes`) with the damage ability the ruleset allows. Taking a `pairs` attack on a turn sets
+  `flags.offHand`, cleared with the other flags as the next turn begins, and `rulesetActionAvailable`
+  offers an off-hand attack only after another weapon's. `rulesetOpportunityAttack` never picks one.
+  The option says `offHand`, and the client names it "<weapon>, off hand".
+- **Floor.** `attack.floor` (a number or a number stat) is `damage.floor` on the action. The first
+  amount of a pool blow's harm after soak, or of a summed blow's damage, is raised to it before a
+  save halves it and before a resistance does; the damage event carries `floor` when it raised it,
+  and the log says so. A spending blow's path never reads it.
+- **On a hit.** `attack.onHit` entries (`condition`, `atLeast`, `rounds`) are applied through
+  `applyConditionId` after the blow, when the harm dealt (after soak and resistances) reached
+  `atLeast`, for `rounds` or with no clock; immunity is read as for any condition.
+- **Seen and said.** Item facts gain `modes`, `offHand` (the budget's label), `floor` and `onHit`
+  (the condition's label); the Game Master's line ends with `modes Volley (2 shots, -2 to hit, up to
+  2 targets)`, `off hand (Quick)`, `at least 1 on a hit` or `Marked on a hit of 2 or more for 2
+  rounds`, and the item details say the same in localized lines.
+- **Examples.** Ember Roads' hunting bow gains a volley. Gravewatch gains `combat.offHand` on its
+  quick budget; its silver coffin nail is an off-hand weapon that marks what it harms twice or more
+  for two rounds, and its grave spade never deals less than one on a hit.
+- **Proven** by `scripts/regressions/game-ruleset-weapon-modes.regression.ts` (import and the gate,
+  a volley at two and at one, a mode refused or not offered, a pool mode's target, the off hand after
+  another weapon and not after a spade or alone, never in passing, `penalty-only`, a floor in a pool
+  and a summed fight and under a resistance, conditions on a hit at and below the number, lasting
+  and resisted, the director's command, the Engine's picker choosing a mode, facts and the log),
+  lanes that pin older gates, the examples or the Game Master's lines, and
+  `e2e/game-ruleset-weapon-modes.e2e.ts`, with 58 deliberate breaks each caught (two of them, in the
+  client's mode step and its command, by the e2e).
+
 ## Gaps a ruleset author found
 
 The author of [Marinara-RPG-Extension](https://github.com/Kenhito/Marinara-RPG-Extension), who

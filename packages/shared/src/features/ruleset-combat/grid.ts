@@ -233,8 +233,9 @@ export function rulesetOpportunityAttack(combatant: RulesetCombatant): RulesetCo
     // menu's own module reads this one.)
     if (action.uses && (combatant.uses[action.id] ?? 0) < 1) continue;
     if (combatant.spent.includes(action.id)) continue;
-    // Nor is a weapon with nothing loaded or nothing to shoot.
-    if (!rulesetShotsAvailable(combatant, action)) continue;
+    // Nor is a weapon with nothing loaded or nothing to shoot, nor a second blow in the off hand,
+    // which follows the holder's own attack on their own turn.
+    if (!rulesetShotsAvailable(combatant, action) || action.offHandOf !== undefined) continue;
     const average = action.damage.count * ((action.damage.sides + 1) / 2) + action.damage.flat;
     if (average > most) {
       most = average;

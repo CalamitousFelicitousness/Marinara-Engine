@@ -510,7 +510,12 @@ const capabilityPackageManifestBaseSchema = z
 //        inventory. Not a soft seam, for the same reason as 1.20 through 1.56: an Engine that cannot
 //        read these refuses the whole ruleset or catalog file, so a package that ships any of them
 //        declares 1.57. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 57 } as const);
+// 1.58: a weapon's attack may have other `modes` of making it, be an `offHand` weapon (with the
+//        combat block's `offHand` budget), deal at least a `floor` on a hit, and put conditions on a
+//        target `onHit`. Not a soft seam, for the same reason as 1.20 through 1.57: an Engine that
+//        cannot read these refuses the whole ruleset or catalog file, so a package that ships any of
+//        them declares 1.58. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 58 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

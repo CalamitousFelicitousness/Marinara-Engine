@@ -89,7 +89,38 @@ function rulesetItemAttackLines(facts: RulesetItemFacts, t: TFunction): string[]
       : "",
     attack.clip ? t("ui.game.gameinventory.attackClip", { max: attack.clip.max, budget: attack.clip.reload }) : "",
   ].filter(Boolean);
-  return [first, ...(second.length ? [second.join(", ")] : []), ...(third.length ? [third.join(", ")] : [])];
+  const signed = (value: number) => (value > 0 ? `+${value}` : String(value));
+  const modes = (attack.modes ?? []).map((mode) => {
+    const parts = [
+      mode.ammo !== undefined ? t("ui.game.gameinventory.modeShots", { count: mode.ammo }) : "",
+      mode.toHit !== undefined ? t("ui.game.gameinventory.modeToHit", { change: signed(mode.toHit) }) : "",
+      mode.target !== undefined ? t("ui.game.gameinventory.modeTarget", { change: signed(mode.target) }) : "",
+      mode.targets !== undefined ? t("ui.game.gameinventory.modeTargets", { count: mode.targets }) : "",
+    ].filter(Boolean);
+    return parts.length
+      ? t("ui.game.gameinventory.modeWith", { label: mode.label, parts: parts.join(", ") })
+      : mode.label;
+  });
+  const fourth = [
+    attack.offHand ? t("ui.game.gameinventory.attackOffHand", { budget: attack.offHand.budget }) : "",
+    attack.floor !== undefined ? t("ui.game.gameinventory.attackFloor", { floor: attack.floor }) : "",
+    ...(attack.onHit ?? []).map((entry) =>
+      entry.rounds !== undefined
+        ? t("ui.game.gameinventory.attackOnHitRounds", {
+            condition: entry.condition,
+            atLeast: entry.atLeast,
+            rounds: entry.rounds,
+          })
+        : t("ui.game.gameinventory.attackOnHit", { condition: entry.condition, atLeast: entry.atLeast }),
+    ),
+  ].filter(Boolean);
+  return [
+    first,
+    ...(second.length ? [second.join(", ")] : []),
+    ...(third.length ? [third.join(", ")] : []),
+    ...(modes.length ? [t("ui.game.gameinventory.attackModes", { modes: modes.join(", ") })] : []),
+    ...(fourth.length ? [fourth.join(", ")] : []),
+  ];
 }
 
 /** What an item does while worn, and while only carried, one line each: "While worn: -1 on Sneak

@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- A Game Mode ruleset's weapons can now be used more than one way: a bow can loose a two-arrow volley at two targets, a gun can fire a burst, and the fight menu asks which way with what each is expected to do. A character with a light weapon in each hand gets a second strike with the other on the ruleset's off-hand budget, a weapon can promise a least harm on every hit, and one driven in hard enough can leave a condition on its target. Rulesets that use the new keys need Capability API 1.58 (#6875).
+
 - A Game Mode ruleset's weapons can now use up what they shoot: a bow is offered in a ruleset fight only while its archer carries arrows, each shot takes one out of the bag, and half of them can be picked up after a won fight. A pistol keeps a loaded count between fights and has to be reloaded from the fight menu. What a fight shoots and loads is saved to the inventory as it happens. Rulesets that use the new keys need Capability API 1.57 (#6871).
 
 - Anthropic and Claude (Subscription) connections can select **Claude Sonnet 5.5** (`claude-sonnet-5-5`), with a 1M-token context window, 128K output and reasoning effort from low to max. Turning reasoning Off skips up-front thinking on Anthropic connections. On Claude (Subscription), OpenRouter and other compatible gateways, which cannot express that setting, it runs at low effort instead. Forced tool calls use automatic tool choice, and samplers are not sent (#6869).

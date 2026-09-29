@@ -136,6 +136,14 @@ export interface RulesetItemAttackFact {
   ammo?: { what: string; per: number; recover?: number };
   /** How many it holds loaded, and the budget a reload spends, by its label. */
   clip?: { max: number; reload: string };
+  /** Its other ways to attack, each by its label with what it changes. */
+  modes?: Array<{ label: string; ammo?: number; toHit?: number; target?: number; targets?: number }>;
+  /** A weapon for the off hand, and the budget its second attack spends, by its label. */
+  offHand?: { budget: string };
+  /** The least a hit with it deals. */
+  floor?: number;
+  /** The conditions it puts on a target, by their labels, when a hit deals enough. */
+  onHit?: Array<{ condition: string; atLeast: number; rounds?: number }>;
 }
 
 /** The item stats a weapon's attack reads (`{ "stat": id }` anywhere in it). */
@@ -154,6 +162,7 @@ export function rulesetItemAttackStats(attack: RulesetItemAttack): string[] {
     attack.range?.long,
     attack.versatile?.dice,
     attack.clip?.max,
+    attack.floor,
   ];
   const ids = reads.flatMap((value) =>
     value && typeof value === "object" && !Array.isArray(value) && "stat" in value ? [value.stat] : [],
@@ -219,6 +228,7 @@ function rulesetItemAttackFacts(
   const unit = definition.combat?.distance?.label;
   const budgets = definition.combat?.economy.budgets ?? [];
   const clipMax = attack.clip ? number(attack.clip.max) : 0;
+  const floor = attack.floor !== undefined ? number(attack.floor) : 0;
   return {
     budget: labelOf(budgets, attack.budget),
     toHit: factSum([
@@ -244,6 +254,30 @@ function rulesetItemAttackFacts(
         }
       : {}),
     ...(attack.clip && clipMax >= 1 ? { clip: { max: clipMax, reload: labelOf(budgets, attack.clip.reload) } } : {}),
+    ...(attack.modes?.length
+      ? {
+          modes: attack.modes.map((mode) => ({
+            label: mode.label,
+            ...(mode.ammo !== undefined ? { ammo: mode.ammo } : {}),
+            ...(mode.toHit !== undefined ? { toHit: mode.toHit } : {}),
+            ...(mode.target !== undefined ? { target: mode.target } : {}),
+            ...(mode.targets !== undefined ? { targets: mode.targets } : {}),
+          })),
+        }
+      : {}),
+    ...(attack.offHand && definition.combat?.offHand
+      ? { offHand: { budget: labelOf(budgets, definition.combat.offHand.budget) } }
+      : {}),
+    ...(floor >= 1 ? { floor } : {}),
+    ...(attack.onHit?.length
+      ? {
+          onHit: attack.onHit.map((entry) => ({
+            condition: labelOf(definition.sheet.live.conditions, entry.condition),
+            atLeast: entry.atLeast,
+            ...(entry.rounds !== undefined ? { rounds: entry.rounds } : {}),
+          })),
+        }
+      : {}),
   };
 }
 
@@ -750,6 +784,18 @@ export function rulesetItemPromptFacts(facts: RulesetItemFacts): string {
 
 /** A weapon's attack in the Game Master's words: "attack (Act): Brawn + 1 to hit, 1d6 + Brawn cut,
  *  reach 2 paces, range 10 to 20 paces, 1d8 with a hand free". */
+/** One of a weapon's modes for the Game Master: its label, and what it changes. */
+function rulesetItemModeText(mode: NonNullable<RulesetItemAttackFact["modes"]>[number]): string {
+  const signed = (value: number) => (value > 0 ? `+${value}` : String(value));
+  const parts = [
+    mode.ammo !== undefined ? `${mode.ammo} shots` : "",
+    mode.toHit !== undefined ? `${signed(mode.toHit)} to hit` : "",
+    mode.target !== undefined ? `target ${signed(mode.target)}` : "",
+    mode.targets !== undefined ? `up to ${mode.targets} targets` : "",
+  ].filter(Boolean);
+  return parts.length ? `${mode.label} (${parts.join(", ")})` : mode.label;
+}
+
 export function rulesetItemAttackText(attack: RulesetItemAttackFact): string {
   const unit = attack.unit ? ` ${attack.unit}` : "";
   const toHit = `${attack.toHit}${attack.proficiency ? " + proficiency" : ""} to hit${
@@ -770,6 +816,13 @@ export function rulesetItemAttackText(attack: RulesetItemAttackFact): string {
         })`
       : "",
     attack.clip ? `holds ${attack.clip.max}, reload (${attack.clip.reload})` : "",
+    attack.modes?.length ? `modes ${attack.modes.map(rulesetItemModeText).join(", ")}` : "",
+    attack.offHand ? `off hand (${attack.offHand.budget})` : "",
+    attack.floor !== undefined ? `at least ${attack.floor} on a hit` : "",
+    ...(attack.onHit ?? []).map(
+      (entry) =>
+        `${entry.condition} on a hit of ${entry.atLeast} or more${entry.rounds !== undefined ? ` for ${entry.rounds} rounds` : ""}`,
+    ),
   ]
     .filter(Boolean)
     .join(", ")}`;

@@ -741,6 +741,20 @@ try {
     assert.match(text, /\nAda\nBRN \+0, WIT \+0, HRT \+0\nGrit maximum 6, Guard 7\n/);
     assert.match(text, /\nBram\nBRN \+3, WIT \+0, HRT \+0\nGrit maximum \d+, Guard 6\n/);
     assert.match(text, /an add with who left out goes to whoever can carry it/);
+    // A check the ruleset rolled with its own dice is saved as it rolled it: Bram's Scrap with his
+    // Brawn of 3 and his name, never rolled a second time as if nobody's sheet were read.
+    reply = `Bram heaves the cart free. [skill_check: skill="Scrap" dc="8" who="Bram"]`;
+    await chats.createMessage({ chatId: road.id, role: "user", content: "Bram pushes." });
+    const heaved = await app.inject({
+      method: "POST",
+      url: "/api/generate/",
+      payload: { chatId: road.id, streaming: true },
+    });
+    assert.equal(heaved.statusCode, 200, heaved.body);
+    assert.match(
+      (await chats.listMessages(road.id)).at(-1)!.content,
+      /\[skill_check: skill="Scrap" dc="8" rolls="\d+\|\d+" used="\d+" modifier="3" [^\]]*who="Bram"\]/,
+    );
     assert.match(text, /\[inventory: action="equip\|unequip" item=/);
 
     // Gravewatch: binding up to the bearer's Nerve. Ada has Nerve 1, so the ring binds and the bell

@@ -9002,6 +9002,8 @@ export async function generateRoutes(app: FastifyInstance) {
               toolDiceRollResults,
               undefined,
               dicePoolSession ?? undefined,
+              // A ruleset game's checks were the pass above's alone, on the same terms as its pin.
+              chatMeta.gameRuleset != null,
             );
             if (generalRolls.content !== fullResponse) {
               fullResponse = generalRolls.content;

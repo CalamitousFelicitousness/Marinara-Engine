@@ -18,6 +18,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  applyRulesetCombatChoice,
   createRulesetEncounter,
   defaultRulesetSheetBuild,
   evaluateRulesetSheetLive,
@@ -27,11 +28,14 @@ import {
   rulesetCheckEffects,
   rulesetCheckSources,
   rulesetCombatant,
+  rulesetCombatOptions,
   rulesetConditionModifiers,
+  rulesetDefenseAgainst,
   rulesetItemBook,
   rulesetItemFacts,
   rulesetItemPromptFacts,
   rulesetProposalParts,
+  rulesetValueRefLabel,
   type RulesetCatalogEntry,
   type RulesetCatalogItem,
   type RulesetDefinition,
@@ -44,12 +48,15 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-ruleset-requirements-"));
 process.env.DATA_DIR = dataDir;
 process.env.FILE_STORAGE_DIR = join(dataDir, "storage");
 
-const [{ getCapabilityPackageInstallIssue }, { renderGameRulesetSheetBlocks }, { rulesetCombatNames }] =
-  await Promise.all([
-    import("../../packages/server/src/services/capability-packages/package-manager.service.js"),
-    import("../../packages/server/src/services/game/ruleset-sheet-turn.service.js"),
-    import("../../packages/client/src/lib/ruleset-combat-log.js"),
-  ]);
+const [
+  { getCapabilityPackageInstallIssue },
+  { renderGameRulesetSheetBlocks },
+  { rulesetCombatEventLine, rulesetCombatNames },
+] = await Promise.all([
+  import("../../packages/server/src/services/capability-packages/package-manager.service.js"),
+  import("../../packages/server/src/services/game/ruleset-sheet-turn.service.js"),
+  import("../../packages/client/src/lib/ruleset-combat-log.js"),
+]);
 
 try {
   const read = (path: string) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8");
@@ -167,6 +174,15 @@ try {
       level({ derived: "bulk_carried", at: 10, effects: ["cannot-act"] }),
       /Level 10 of "bulk_carried" is given twice/,
       "twice",
+    );
+    // A derived value may share a track's id; a level on each at the same point is two levels.
+    parsedOrThrow(
+      variant(emberText, (doc) => {
+        const bulk = doc.sheet.derived.find((entry: { id: string }) => entry.id === "bulk_carried");
+        doc.sheet.derived.push({ ...bulk, id: "heat", label: "Heat carried" });
+        doc.combat.levels.push({ derived: "heat", at: 3, modifiers: [{ to: "speed", flat: -1 }] });
+      }),
+      "a track's level and a derived value's of the same id",
     );
     refused(
       emberText,
@@ -382,13 +398,72 @@ try {
           "juno",
         )!,
         "speed",
-      ).map((entry) => [entry.condition, entry.level, entry.modifier.flat]);
-    assert.deepEqual(slowed(12), [["bulk_carried", 10, -2]], "a fight reads the level too");
+      ).map((entry) => [entry.condition, entry.level, entry.derived, entry.modifier.flat]);
+    assert.deepEqual(slowed(12), [["bulk_carried", 10, true, -2]], "a fight reads the level too");
     assert.deepEqual(slowed(9), []);
-    // And its log names the level by the derived value's label, as it names a track's.
-    const names = rulesetCombatNames(ember, { combatants: [] } as never, ((key: string) => key) as never);
-    assert.equal(names.track("bulk_carried"), "Bulk carried");
+
+    // A derived value may share a track's id (Heat), so a level says which it reads, from the fight's
+    // modifiers to the roll it changed and the log line that names it.
+    const hot = parsedOrThrow(
+      variant(emberText, (doc) => {
+        const bulk = doc.sheet.derived.find((entry: { id: string }) => entry.id === "bulk_carried");
+        doc.sheet.derived.push({ ...bulk, id: "heat", label: "Heat carried" });
+        doc.combat.levels.push({
+          derived: "heat",
+          at: 3,
+          modifiers: [
+            { to: "attacks", flat: -1 },
+            { to: "defense", flat: -1 },
+          ],
+        });
+      }),
+      "a derived value named like a track",
+    );
+    const axe = { name: "Road axe", swing: "brawn", damage: "1d6", harm: "cut" };
+    const fight = createRulesetEncounter({
+      definition: hot,
+      seed: 5,
+      roller: () => 3,
+      combatants: [
+        {
+          id: "juno",
+          name: "Juno",
+          side: "party",
+          build: { ...build(hot, { brawn: 2 }), lists: { gear: [axe] } },
+          items: pack(12),
+        },
+        {
+          id: "hound",
+          name: "Hound",
+          side: "enemy",
+          block: { health: 20, defense: 6, initiativeModifier: -5, actions: [] },
+        },
+      ],
+    });
+    assert.deepEqual(
+      rulesetDefenseAgainst(hot, hot.combat!, fight, rulesetCombatant(fight, "juno")!).guards,
+      [{ condition: "heat", level: 3, derived: true, value: -1 }],
+      "her defense",
+    );
+    const swing = rulesetCombatOptions(hot, fight, "juno").find((option) => option.label === "Road axe");
+    assert.ok(swing, "Juno swings the axe");
+    const struck = applyRulesetCombatChoice(
+      hot,
+      fight,
+      { actorId: "juno", optionId: swing.id, targetIds: ["hound"] },
+      () => 3,
+    );
+    const attack = struck.events.find((event) => event.type === "attack");
+    assert.ok(attack && attack.type === "attack");
+    assert.deepEqual(attack.bonuses, [{ condition: "heat", level: 3, derived: true, value: -1 }], "her attack");
+    const t = ((key: string, params?: Record<string, unknown>) =>
+      [key, ...Object.values(params ?? {}).map(String)].join("|")) as never;
+    const names = rulesetCombatNames(hot, { combatants: fight.combatants } as never, t);
     assert.equal(names.track("heat"), "Heat");
+    assert.equal(names.derived("heat"), "Heat carried");
+    assert.match(rulesetCombatEventLine(attack, names, t)!, /roll\.level\|Heat carried\|3/);
+    const fromTrack = { ...attack, bonuses: [{ condition: "heat", level: 3, value: -1 }] };
+    assert.match(rulesetCombatEventLine(fromTrack, names, t)!, /roll\.level\|Heat\|3/);
   }
 
   // ── What an item says ──
@@ -401,6 +476,39 @@ try {
       { what: "Sinew", atLeast: 3, otherwise: [{ to: "checks", names: ["Dig"], change: { value: "-1" } }] },
     ]);
     assert.match(rulesetItemPromptFacts(spadeFacts), /; needs Sinew 3, otherwise -1 on checks \(Dig\)$/);
+    // Every kind of value a requirement may read has a label, and a modifier or a count of items says so.
+    const labels = (
+      [
+        [{ abilityScore: "sinew" }, { what: "Sinew" }],
+        [{ abilityMod: "sinew" }, { what: "Sinew", of: "modifier" }],
+        [{ abilityModFromField: "watch" }, { what: "Watch", of: "modifier" }],
+        [{ field: "lantern" }, { what: "Lantern oil" }],
+        [{ derived: "harm_left" }, { what: gravewatch.sheet.derived.find((e) => e.id === "harm_left")!.label }],
+        [{ listSum: { list: "scars", column: "levels" } }, { what: "Levels (Scars)" }],
+        [{ liveTrack: "harm", read: "remaining" }, { what: "Harm" }],
+        [{ itemStat: { from: "carried", pick: "count", tag: "silver" } }, { what: "Silver", of: "items" }],
+        [{ itemStat: { from: "all", pick: "count" } }, { what: "", of: "items" }],
+        [{ const: 2 }, { what: "2" }],
+      ] as const
+    ).map(([value, expected]) => {
+      assert.deepEqual(rulesetValueRefLabel(gravewatch, value), expected, JSON.stringify(value));
+      return rulesetItemPromptFacts(
+        rulesetItemFacts(gravewatch, { ...spade, requires: [{ ...spade.requires![0], value }] }),
+      ).replace(/^.*; needs (.*) 3, otherwise.*$/, "$1");
+    });
+    assert.deepEqual(labels, [
+      "Sinew",
+      "Sinew modifier",
+      "Watch modifier",
+      "Lantern oil",
+      labels[4],
+      "Levels (Scars)",
+      "Harm",
+      "Silver items",
+      "items",
+      "2",
+    ]);
+    assert.ok(labels.every(Boolean), "no requirement reads as nothing");
     const charmFacts = rulesetItemFacts(ember, {
       category: "gear",
       carried: { abilities: { heart: { add: 1 } } },

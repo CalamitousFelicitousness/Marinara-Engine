@@ -63,9 +63,11 @@ export interface RulesetItemEffectFact {
 }
 
 /** What an item asks of whoever wears it, in the ruleset's words: the value's label, the least it may
- *  be, and what applies while they fall short. */
+ *  be, and what applies while they fall short. `of` says the value is a modifier rather than a score,
+ *  or a count of items (`what` then names the kind counted, or is empty for any item). */
 export interface RulesetItemRequirementFact {
   what: string;
+  of?: "modifier" | "items";
   atLeast: number;
   otherwise: RulesetItemEffectFact[];
 }
@@ -85,22 +87,47 @@ export interface RulesetItemFacts {
   requires?: RulesetItemRequirementFact[];
 }
 
-/** A value off the sheet by the ruleset's own label: an ability, a skill, a derived value. */
-export function rulesetValueRefLabel(definition: RulesetDefinition, ref: RulesetValueRef): string {
+/** A value off the sheet by the ruleset's own label: an ability, a skill, a derived value. An ability's
+ *  modifier (named directly or by a field) says so with `of`, a list's column is named with its list
+ *  ("Weight (Gear)"), and a count of items names what it counts. An id stands in for a missing label. */
+export function rulesetValueRefLabel(
+  definition: RulesetDefinition,
+  ref: RulesetValueRef,
+): Pick<RulesetItemRequirementFact, "what" | "of"> {
   const sheet = definition.sheet;
-  const find = (entries: ReadonlyArray<{ id: string; label: string }>, id: string) =>
-    entries.find((entry) => entry.id === id)?.label ?? id;
-  if (ref.const !== undefined) return String(ref.const);
-  if (ref.abilityScore !== undefined) return find(sheet.abilities, ref.abilityScore);
-  if (ref.abilityMod !== undefined) return find(sheet.abilities, ref.abilityMod);
-  if (ref.derived !== undefined) return find(sheet.derived, ref.derived);
-  if (ref.field !== undefined) return find(sheet.fields, ref.field);
-  if (ref.skillMod !== undefined) return find(sheet.skills, ref.skillMod);
-  if (ref.saveMod !== undefined) return find(sheet.saves, ref.saveMod);
-  if (ref.liveTrack !== undefined) return find(sheet.live.tracks, ref.liveTrack);
-  if (ref.livePool !== undefined) return find(sheet.live.pools, ref.livePool);
-  if (ref.itemStat?.stat !== undefined) return find(definition.items?.stats ?? [], ref.itemStat.stat);
-  return "";
+  const find = (entries: ReadonlyArray<{ id: string; label: string }> | undefined, id: string) =>
+    entries?.find((entry) => entry.id === id)?.label ?? id;
+  if (ref.const !== undefined) return { what: String(ref.const) };
+  if (ref.abilityScore !== undefined) return { what: find(sheet.abilities, ref.abilityScore) };
+  if (ref.abilityMod !== undefined) return { what: find(sheet.abilities, ref.abilityMod), of: "modifier" };
+  if (ref.abilityModFromField !== undefined)
+    return { what: find(sheet.fields, ref.abilityModFromField), of: "modifier" };
+  if (ref.derived !== undefined) return { what: find(sheet.derived, ref.derived) };
+  if (ref.field !== undefined) return { what: find(sheet.fields, ref.field) };
+  if (ref.skillMod !== undefined) return { what: find(sheet.skills, ref.skillMod) };
+  if (ref.saveMod !== undefined) return { what: find(sheet.saves, ref.saveMod) };
+  if (ref.liveTrack !== undefined) return { what: find(sheet.live.tracks, ref.liveTrack) };
+  if (ref.livePool !== undefined) return { what: find(sheet.live.pools, ref.livePool) };
+  if (ref.listSum) {
+    const list = sheet.lists.find((entry) => entry.id === ref.listSum!.list);
+    return { what: `${find(list?.columns, ref.listSum.column)} (${list?.label ?? ref.listSum.list})` };
+  }
+  const items = definition.items;
+  const stat = ref.itemStat!;
+  if (stat.stat !== undefined) return { what: find(items?.stats, stat.stat) };
+  const kinds = [
+    stat.tag !== undefined ? find(items?.tags, stat.tag) : undefined,
+    stat.category !== undefined ? find(items?.categories, stat.category) : undefined,
+    stat.slot !== undefined ? find(items?.slots, stat.slot) : undefined,
+  ];
+  return { what: kinds.filter(Boolean).join(" "), of: "items" };
+}
+
+/** A requirement's value as the Game Master reads it: "Sinew", "Sinew modifier", "Heavy items". */
+function requirementValueText(need: Pick<RulesetItemRequirementFact, "what" | "of">): string {
+  if (need.of === "modifier") return `${need.what} modifier`;
+  if (need.of === "items") return need.what ? `${need.what} items` : "items";
+  return need.what;
 }
 
 /** One worn or carried effect as facts: each lean, each number and each set of saves it fails. */
@@ -213,7 +240,7 @@ export function rulesetItemFacts(definition: RulesetDefinition, item: RulesetCat
   const worn = item.worn ? rulesetItemEffectFacts(definition, item.worn) : [];
   const carried = item.carried ? rulesetItemEffectFacts(definition, item.carried) : [];
   const requires = (item.requires ?? []).map((requirement) => ({
-    what: rulesetValueRefLabel(definition, requirement.value),
+    ...rulesetValueRefLabel(definition, requirement.value),
     atLeast: requirement.atLeast,
     otherwise: rulesetItemEffectFacts(definition, requirement.otherwise),
   }));
@@ -461,7 +488,8 @@ export function rulesetItemPromptFacts(facts: RulesetItemFacts): string {
     facts[when]?.length ? [`${when}: ${facts[when]!.map(rulesetItemEffectText).join(", ")}`] : [],
   );
   const needs = (facts.requires ?? []).map(
-    (need) => `needs ${need.what} ${need.atLeast}, otherwise ${need.otherwise.map(rulesetItemEffectText).join(", ")}`,
+    (need) =>
+      `needs ${requirementValueText(need)} ${need.atLeast}, otherwise ${need.otherwise.map(rulesetItemEffectText).join(", ")}`,
   );
   return [kind, stats, ...effects, ...needs].filter(Boolean).join("; ");
 }

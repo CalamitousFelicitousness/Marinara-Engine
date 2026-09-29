@@ -1182,10 +1182,13 @@ Capability API 1.54, for #6846. Slice I4-3 of the ruleset items plan, the last o
   for I5.
 - **Derived levels.** A level reads a `track` or a `derived` value, exactly one; the derived value is
   worked out with the live state and items, on checks outside a fight and in a fight (from what the
-  fighter held as it began). The fight log names it by the derived value's label.
+  fighter held as it began). A derived value may share a track's id, so a derived level is marked
+  `derived` on its way to a roll's bonuses and guards, is counted apart from the track's at import,
+  and the fight log names it by the derived value's label.
 - **Seen and said.** Item facts carry ability changes ("Brawn at least 2", "+1 Heart") and
   requirements ("needs Sinew 3, otherwise -1 on checks (Dig)"), on the screen in localized words and
-  in the Game Master's inventory line. Invented items take an ability's name in `worn=`/`carried=` as
+  in the Game Master's inventory line. Every value a requirement may read has a label: a modifier and
+  a count of items say so ("Sinew modifier", "Silver items"), and a list's column names its list. Invented items take an ability's name in `worn=`/`carried=` as
   an addition, held to the rarity's `bonus`; a `set` copied from `like=` is left out at a capped rarity,
   and `like=` brings its requirements. A real small model (Gemma 4 E4B) wrote the bonus as `Brawn +1`,
   inside `stats=` or beside `tags="none"`, so a proposal reads a number after the name, `worn=`,
@@ -1200,7 +1203,7 @@ Capability API 1.54, for #6846. Slice I4-3 of the ruleset items plan, the last o
   requirements on checks including one met by an item, derived levels on checks and in a fight, item
   facts, invented items and a proposal's slips), `game-inventory-turn.regression.ts` (a real turn's
   Sneak check carries the bulk level beside the coat) and `e2e/game-ruleset-wearing.e2e.ts` (Brawn +2
-  on the in-game sheet, and both kinds of item details), with 41 deliberate breaks each caught.
+  on the in-game sheet, and both kinds of item details), with 57 deliberate breaks each caught.
 
 ## Gaps a ruleset author found
 

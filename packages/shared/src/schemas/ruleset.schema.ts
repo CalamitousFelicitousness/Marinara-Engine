@@ -4361,7 +4361,8 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           issue([...path, "at"], `"${read}" goes up to ${top}, so level ${entry.at} is never reached`);
         }
       }
-      const key = `${read}@${entry.at}`;
+      // A track and a derived value may share an id; their levels are not the same level.
+      const key = `${entry.derived !== undefined ? "derived" : "track"}:${read}@${entry.at}`;
       if (levelled.has(key)) issue([...path, "at"], `Level ${entry.at} of "${read}" is given twice`);
       levelled.add(key);
       effectNameIssues(entry, skills, saves, path, issue);

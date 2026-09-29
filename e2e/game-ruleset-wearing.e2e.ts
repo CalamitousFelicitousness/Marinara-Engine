@@ -11,9 +11,10 @@ const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.u
  * one in a full bag stays put, and a bound cursed item stays bound. Each run imports the example
  * rulesets under ids of its own and removes them after.
  */
-function example(file: string, id: string): string {
+function example(file: string, id: string, edit: (doc: Record<string, any>) => void = () => {}): string {
   const doc = JSON.parse(readFileSync(new URL(`../docs/examples/rulesets/${file}.json`, import.meta.url), "utf8"));
   doc.id = id;
+  edit(doc);
   return JSON.stringify(doc);
 }
 
@@ -388,10 +389,23 @@ test("an item that sets an ability changes the sheet, and an item's details say 
     await page.getByRole("button", { name: "Ox-hide gauntlets, worn", exact: true }).click();
     await expect(page.getByText("While worn: Brawn at least 2", { exact: true })).toBeVisible();
 
-    // Gravewatch: the grave spade asks for Sinew 3, and its details say what falling short costs.
+    // Gravewatch: the grave spade asks for Sinew 3, and its details say what falling short costs. This
+    // copy also asks for a Sinew modifier and for items carried, which are named as such.
+    const otherwise = { modifiers: [{ to: "checks", skills: ["dig"], flat: -1 }] };
     const watchId = await seedGame(
       request,
-      await importRuleset(example("gravewatch", "gravewatch-requires-e2e")),
+      await importRuleset(
+        example("gravewatch", "gravewatch-requires-e2e", (doc) => {
+          const spade = doc.catalogs
+            .find((catalog: { holds?: string }) => catalog.holds === "items")
+            .entries.find((entry: { id: string }) => entry.id === "grave-spade");
+          spade.item.requires.push(
+            { value: { abilityMod: "sinew" }, atLeast: 1, otherwise },
+            { value: { itemStat: { from: "carried", pick: "count", tag: "silver" } }, atLeast: 1, otherwise },
+            { value: { itemStat: { from: "all", pick: "count" } }, atLeast: 2, otherwise },
+          );
+        }),
+      ),
       [
         {
           name: "Ada",
@@ -405,7 +419,14 @@ test("an item that sets an ability changes the sheet, and an item's details say 
     await openInventory(watchPage, watchId);
     await watchPage.getByLabel("Name of the item to add", { exact: true }).fill("Grave spade");
     await watchPage.getByRole("button", { name: "Add", exact: true }).click();
-    await expect(watchPage.getByText("Needs Sinew 3, otherwise: -1 on checks (Dig)", { exact: true })).toBeVisible();
+    for (const line of [
+      "Needs Sinew 3, otherwise: -1 on checks (Dig)",
+      "Needs Sinew modifier 1, otherwise: -1 on checks (Dig)",
+      "Needs Silver items 1, otherwise: -1 on checks (Dig)",
+      "Needs items 2, otherwise: -1 on checks (Dig)",
+    ]) {
+      await expect(watchPage.getByText(line, { exact: true })).toBeVisible();
+    }
     await watchPage.close();
   } finally {
     for (const id of chats) await request.delete(`/api/chats/${id}`);

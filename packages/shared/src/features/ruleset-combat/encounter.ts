@@ -212,9 +212,10 @@ export function rulesetActiveConditions(
 }
 
 /** A condition entry that is on somebody right now: one of the fight's own conditions, or a level of a
- *  live track, which reads exactly like one. `level` is set only on a level, whose `condition` is then
- *  the track's id. */
-export type RulesetActiveCondition = RulesetCombatCondition & { level?: number };
+ *  live track or a derived value, which reads exactly like one. `level` is set only on a level, whose
+ *  `condition` is then the track's id, or the derived value's where `derived` is set (the two may
+ *  share an id). */
+export type RulesetActiveCondition = RulesetCombatCondition & { level?: number; derived?: true };
 
 /** The levels of the holder's own tracks, and of their derived values, that are reached. Only a sheet
  *  has either, so a combatant written in plain numbers has none. A derived value is worked out with
@@ -238,6 +239,7 @@ function activeLevels(
       {
         condition: level.track ?? level.derived!,
         level: level.at,
+        ...(level.derived !== undefined ? { derived: true as const } : {}),
         effects: level.effects,
         ...(level.modifiers ? { modifiers: level.modifiers } : {}),
         ...(level.failsSaves ? { failsSaves: level.failsSaves } : {}),
@@ -252,6 +254,7 @@ function activeLevels(
 export interface RulesetConditionModifier {
   condition: string;
   level?: number;
+  derived?: true;
   modifier: NonNullable<RulesetCombatCondition["modifiers"]>[number];
 }
 
@@ -284,6 +287,7 @@ export function rulesetConditionModifiers(
       .map((modifier) => ({
         condition: entry.condition,
         ...(entry.level !== undefined ? { level: entry.level } : {}),
+        ...(entry.derived ? { derived: entry.derived } : {}),
         modifier,
       }));
   });

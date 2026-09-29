@@ -77,7 +77,14 @@ export function rulesetItemEffectLines(facts: RulesetItemFacts, t: TFunction): s
     ),
     ...(facts.requires ?? []).map((need) =>
       t("ui.game.gameinventory.requires", {
-        what: need.what,
+        what:
+          need.of === "modifier"
+            ? t("ui.game.gameinventory.requiresModifier", { name: need.what })
+            : need.of === "items"
+              ? need.what
+                ? t("ui.game.gameinventory.requiresItemsOf", { name: need.what })
+                : t("ui.game.gameinventory.requiresItems")
+              : need.what,
         atLeast: need.atLeast,
         effects: need.otherwise.map(phrase).join("; "),
       }),

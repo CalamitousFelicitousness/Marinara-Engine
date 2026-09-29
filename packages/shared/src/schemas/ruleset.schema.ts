@@ -1993,6 +1993,23 @@ export const rulesetItemAttackSchema = z
       .strict()
       .optional(),
     strikes: rulesetValueRefSchema.optional(),
+    /** What it shoots: `perAttack` of a carried item with this tag goes with each attack (one when it
+     *  says nothing), and after a fight the party wins, `recover` of what was shot comes back, a share
+     *  rounded down. */
+    ammo: z
+      .object({
+        tag: sheetId,
+        perAttack: z.number().int().min(1).max(100).optional(),
+        recover: z.number().min(0).max(1).optional(),
+      })
+      .strict()
+      .optional(),
+    /** A loaded count kept on the weapon itself: attacks spend what is loaded, and a reload on the
+     *  `reload` budget fills it to `max`, out of what it shoots where it shoots anything. */
+    clip: z
+      .object({ max: orItemStat(z.number().int().min(1).max(1000)), reload: sheetId })
+      .strict()
+      .optional(),
   })
   .strict();
 export type RulesetItemAttack = z.infer<typeof rulesetItemAttackSchema>;
@@ -5450,6 +5467,26 @@ function attackIssues(
   }
   if (attack.versatile && !takesSlots) {
     add([...at, "versatile"], "Versatile dice are for a hand free beside the weapon, so it takes a slot");
+  }
+  if (attack.ammo && !(definition.items?.tags ?? []).some((tag) => tag.id === attack.ammo!.tag)) {
+    add([...at, "ammo", "tag"], `Unknown item tag "${attack.ammo.tag}"`);
+  }
+  if (attack.clip) {
+    value(attack.clip.max, "number", [...at, "clip", "max"]);
+    if (!combat.economy.budgets.some((budget) => budget.id === attack.clip!.reload)) {
+      add([...at, "clip", "reload"], `Unknown budget "${attack.clip.reload}"`);
+    }
+    // What was loaded and fired is not picked up again: a share comes back only of what was shot
+    // straight out of the bag.
+    if (attack.ammo?.recover !== undefined) {
+      add(
+        [...at, "ammo", "recover"],
+        "A clip's rounds are not picked up after a fight, so recover is for a weapon without one",
+      );
+    }
+    if (typeof attack.clip.max === "number" && (attack.ammo?.perAttack ?? 1) > attack.clip.max) {
+      add([...at, "ammo", "perAttack"], "One attack would shoot more than the clip holds");
+    }
   }
 }
 

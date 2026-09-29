@@ -534,7 +534,7 @@ try {
       .join("\n");
     assert.match(
       prompt,
-      /PLAYER INVENTORY \(Body 0 of 1, Hands 0 of 2\): Road rations ×10 \[Provisions, Common; Bulk 1\]; Arrows ×4; Lamp; Arrows ×2 \[Ammunition, Common; Bulk 1\]/,
+      /PLAYER INVENTORY \(Body 0 of 1, Hands 0 of 2\): Road rations ×10 \[Provisions, Common; Bulk 1\]; Arrows ×4; Lamp; Arrows ×2 \[Ammunition, Common, Arrow; Bulk 1\]/,
     );
     assert.match(prompt, /an item named exactly as one of them becomes that item/);
 

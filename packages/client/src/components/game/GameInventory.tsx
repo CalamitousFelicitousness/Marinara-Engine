@@ -57,6 +57,8 @@ export interface InventoryItem {
   equipped?: true;
   /** Bound to whoever carries it; a bound stack is one item. */
   bound?: true;
+  /** What a weapon with a clip has loaded, as a fight left it. Absent reads as full. */
+  loaded?: number;
 }
 
 /** One party member's bag: `holder` as a stack has it (absent for the player), and the name shown. */
@@ -630,7 +632,11 @@ export function GameInventory({
               </div>
             )}
             {selectedRulesetItem && (
-              <RulesetItemDetails details={selectedRulesetItem} bound={selectedInventoryItem?.bound === true} />
+              <RulesetItemDetails
+                details={selectedRulesetItem}
+                bound={selectedInventoryItem?.bound === true}
+                loaded={selectedInventoryItem?.loaded}
+              />
             )}
             {onRenameItem && selectedInventoryItem && (
               <div className="mb-2.5 flex gap-1.5">
@@ -1050,9 +1056,18 @@ function BearerStatusLine({ status, bindingLabel }: { status: GameInventoryBeare
 
 /** What a ruleset item is: its category, rarity and tags, its stats, what it is, and how many one
  *  stack of it holds. One that binds says who may bind it, and once bound, whether it is cursed. */
-function RulesetItemDetails({ details, bound }: { details: RulesetItemBookEntry; bound: boolean }) {
+function RulesetItemDetails({
+  details,
+  bound,
+  loaded,
+}: {
+  details: RulesetItemBookEntry;
+  bound: boolean;
+  loaded?: number;
+}) {
   const { t: localizeUi } = useUiTranslation();
   const { facts } = details;
+  const clip = facts.attack?.clip;
   const binds = details.entry.item?.binds;
   const kind = [facts.category, facts.rarity, ...facts.tags].filter((word): word is string => !!word);
   const stats = rulesetItemStatsLine(facts);
@@ -1071,6 +1086,11 @@ function RulesetItemDetails({ details, bound }: { details: RulesetItemBookEntry;
           {line}
         </div>
       ))}
+      {clip && (
+        <div className="text-[0.65rem] leading-tight text-white/70">
+          {localizeUi("ui.game.gameinventory.loaded", { now: Math.min(loaded ?? clip.max, clip.max), max: clip.max })}
+        </div>
+      )}
       {details.summary && <div className="text-[0.65rem] leading-tight text-white/55">{details.summary}</div>}
       {details.invented && (
         <div className="text-[0.65rem] leading-tight text-white/45">

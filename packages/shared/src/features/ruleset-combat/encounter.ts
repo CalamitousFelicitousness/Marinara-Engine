@@ -731,10 +731,32 @@ function itemAttackActions(
     const reach = cells(read(attack.reach));
     const normal = attack.range ? cells(read(attack.range.normal)) : undefined;
     const long = attack.range?.long !== undefined ? cells(read(attack.range.long)) : undefined;
+    // A clip holds a number of rounds, so one its stat does not give is a weapon that never fires.
+    const clipMax = attack.clip ? read(attack.clip.max) : undefined;
+    if (attack.clip && !(typeof clipMax === "number" && Number.isFinite(clipMax) && clipMax >= 1)) return;
+    const clip = attack.clip ? { item: index, max: Math.trunc(clipMax as number) } : undefined;
+    const ammo = attack.ammo
+      ? {
+          tag: attack.ammo.tag,
+          per: attack.ammo.perAttack ?? 1,
+          ...(attack.ammo.recover ? { recover: attack.ammo.recover } : {}),
+        }
+      : undefined;
     const label =
       held.name ??
       definition.items?.categories.find((category) => category.id === item.category)?.label ??
       item.category;
+    if (clip && attack.clip) {
+      actions.push({
+        id: `reload:${index}`,
+        kind: "reload",
+        label,
+        budget: attack.clip.reload,
+        targets: { side: "self", count: 0 },
+        clip,
+        ...(ammo ? { ammo } : {}),
+      });
+    }
     actions.push({
       id: `item:${index}`,
       kind: "attack",
@@ -757,6 +779,8 @@ function itemAttackActions(
         ...(type ? { type } : {}),
         ...(item.tags?.length ? { qualities: [...item.tags] } : {}),
       },
+      ...(ammo ? { ammo } : {}),
+      ...(clip ? { clip } : {}),
     });
   });
   return actions;

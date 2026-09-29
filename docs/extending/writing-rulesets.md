@@ -634,7 +634,7 @@ The limits are 12 catalogs per ruleset, 2000 entries per catalog either way, and
 
 ## Items: what a party carries
 
-Armor, weapons, potions, gear, ammunition and money are items. An optional `items` block declares the words every item of your ruleset is written in, and a catalog with `holds: "items"` lists the items themselves. Both need Capability API 1.49; the block's `rarityCaps` and `propose`, which govern the items the Game Master invents, need 1.51, a value that reads the items a character holds (`itemStat`) needs 1.52, what an item does to checks while worn or carried, with the block's `bonus` caps, needs 1.53, what an item asks of its wearer and the abilities it changes need 1.54, a weapon's `attack` needs 1.55, and what an item does in a fight needs 1.56.
+Armor, weapons, potions, gear, ammunition and money are items. An optional `items` block declares the words every item of your ruleset is written in, and a catalog with `holds: "items"` lists the items themselves. Both need Capability API 1.49; the block's `rarityCaps` and `propose`, which govern the items the Game Master invents, need 1.51, a value that reads the items a character holds (`itemStat`) needs 1.52, what an item does to checks while worn or carried, with the block's `bonus` caps, needs 1.53, what an item asks of its wearer and the abilities it changes need 1.54, a weapon's `attack` needs 1.55, what an item does in a fight needs 1.56, and what a weapon shoots and holds loaded needs 1.57.
 
 ### The items block
 
@@ -654,7 +654,8 @@ The block goes in `items` at the top level of the file. This is Ember Roads', a 
   "tags": [
     { "id": "thrown", "label": "Thrown" },
     { "id": "ranged", "label": "Ranged" },
-    { "id": "two_handed", "label": "Two-handed" }
+    { "id": "two_handed", "label": "Two-handed" },
+    { "id": "arrow", "label": "Arrow" }
   ],
   "stats": [
     { "id": "bulk", "label": "Bulk", "type": "number", "min": 0, "max": 10, "default": 0 },
@@ -748,7 +749,7 @@ Each entry carries an `item` instead of `rows` or a `creature`:
 - `binds`: the item has to be bound before it does anything while worn. `restriction` (optional) says in words who may bind it, and `cursed: true` marks one that will not let go. Only a ruleset with `binding` can have items that bind.
 - `worn` and `carried` (optional, Capability API 1.53): what the item does to its holder's checks and saves while it is worn, and while it is only carried, (1.54) the abilities it sets or raises, and (1.56) what it does in a fight. See [Checks outside a fight](#checks-outside-a-fight) and [Armor and worn effects in a fight](#armor-and-worn-effects-in-a-fight).
 - `requires` (optional, Capability API 1.54): what the item asks of whoever wears it, and what applies while they fall short. See [Checks outside a fight](#checks-outside-a-fight).
-- `attack` (optional, Capability API 1.55): what the item does as a weapon in a fight, while it is worn. See [Weapons in a fight](#weapons-in-a-fight).
+- `attack` (optional, Capability API 1.55): what the item does as a weapon in a fight, while it is worn, and (1.57) what it shoots and holds loaded. See [Weapons in a fight](#weapons-in-a-fight) and [Ammunition and reloading](#ammunition-and-reloading).
 
 An item carries no `mechanics`: what it does is written in its `item` block.
 
@@ -772,7 +773,7 @@ Everything above is checked when the ruleset is imported, and your catalogs of i
 - **What an item does while worn or carried** shows on the selected stack and in the picker ("While worn: -1 on checks (Sneak)"), and the Game Master sees it beside the item (`worn: -1 on checks (Sneak)`). Checks outside a fight apply it (see Checks outside a fight, below).
 - **What a weapon does** shows the same way ("Attack (Action): Brawn to hit, 1d6 + Brawn cut damage"), and a fight offers it while it is held (see Weapons in a fight, below).
 
-A fight already spends one of your items the way it spends any item, unless `native` is `false`. Whatever `native` says, the sheet can read your items (below), a held weapon is an attack in a ruleset fight, and what an item does while worn or carried counts in one (see Armor and worn effects in a fight, below). Using items by their own rules comes in a later release, and money after that.
+A fight already spends one of your items the way it spends any item, unless `native` is `false`. Whatever `native` says, the sheet can read your items (below), a held weapon is an attack in a ruleset fight, shooting what it draws from the bag, and what an item does while worn or carried counts in one (see Armor and worn effects in a fight, below). Using items by their own rules comes in a later release, and money after that.
 
 ### Items on the sheet
 
@@ -878,7 +879,25 @@ A weapon's tags are what its blows carry. A creature's `resist` or `immune` entr
 
 The weapon's details and the Game Master's line say what it does: `attack (Action): Brawn to hit, 1d6 + Brawn cut, reach 2 paces, range 10 to 20 paces`, with `1d8 with a hand free` for Ember Roads' boar spear and `at 6` beside Gravewatch's spade.
 
-Ammunition, loading and reloading, ways to fire, a second weapon in the off hand, a floor to the damage and a condition on a strong hit come in a later release.
+Ways to fire, a second weapon in the off hand, a floor to the damage and a condition on a strong hit come in a later release.
+
+#### Ammunition and reloading
+
+A weapon may shoot something, and may keep a loaded count of its own (Capability API 1.57). Ember Roads' hunting bow shoots arrows, and Gravewatch's watch pistol holds one ball, loaded out of the warden's shot and powder:
+
+```json
+"ammo": { "tag": "arrow", "recover": 0.5 }
+```
+
+```json
+"ammo": { "tag": "shot" },
+"clip": { "max": 1, "reload": "act" }
+```
+
+- `ammo`: what the weapon shoots, by one of your item `tags`. Each attack takes `perAttack` (1 when it says nothing) of the items with that tag its holder carries, worn or not, out of the first such stack in their bag, then the next. The weapon is offered only while they carry enough, and the fight menu says how many are left. After a fight the party wins, `recover` (from 0 to 1) of what each of them shot comes back to the stack it came from: the share is added up over the whole fight and rounded down once for each stack, so half of five arrows shot out of one quiver is two. A fight that is lost or fled gives nothing back.
+- `clip`: a loaded count the weapon keeps on itself. `max` is how many it holds, written down or read off a number stat of the item, and `reload` is the budget a reload spends. An attack spends what is loaded instead of taking from the bag, and the weapon is offered only while it holds enough for one. A **Reload** option on the fight menu spends `reload` and fills it: out of the bag where it has `ammo` (as much as the bag still holds when that is less), and in full where it has none. The count is kept on the weapon's inventory stack, so a pistol emptied in one fight is still empty in the next. A weapon nobody has fired yet is loaded, and so is one a player pours into a stack of several of it, since a loaded count is one weapon's. A clip's rounds are not picked up after a fight, so `recover` is for a weapon without one.
+
+What a fight shoots, loads and picks up is written to the inventory as each step is taken, the way the party's health is, and the journal says what was used. A step whose stack is gone, or holds fewer than the fight counted on, is refused, as a spent item the fight cannot find is. The fight log says every shot, reload and pickup ("Hunting bow: 2 left to shoot.", "Ada loads 1 into Watch pistol: 1 of 1 loaded."), and the item's details and the Game Master's line say what the weapon shoots and holds: `ammunition Arrow (1 an attack, 50% picked up after a won fight)` and `holds 1, reload (Act)`.
 
 ### Armor and worn effects in a fight
 

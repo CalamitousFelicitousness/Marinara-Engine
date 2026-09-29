@@ -81,7 +81,8 @@ export function rulesetCombatNames(
     budget: lookup(definition.combat?.economy.budgets),
     save: lookup(definition.sheet.saves),
     check: lookup(definition.combat?.checks),
-    track: lookup(definition.sheet.live.tracks),
+    // A level is named by what it reads: a live track, or a derived value.
+    track: lookup([...definition.sheet.live.tracks, ...definition.sheet.derived]),
     tier: lookup(definition.combat?.threat?.tiers),
     style: lookup(definition.combat?.initiative.resource?.styles),
     defense: rulesetValueLabel(definition, definition.combat?.defense),

@@ -13,6 +13,7 @@ import {
   type RulesetDefinition,
   type RulesetItemEffect,
   type RulesetItemStat,
+  type RulesetValueRef,
   type RulesetSheetBuild,
 } from "../../schemas/ruleset.schema.js";
 import { normalizeCharacterLookupName } from "../../utils/character-lookup-name.js";
@@ -29,6 +30,7 @@ import {
   rulesetInventedItemId,
   rulesetInventedItemRef,
   rulesetInventedItemText,
+  rulesetProposalParts,
   RULESET_INVENTED_ITEMS_MAX,
   type RulesetInventedItem,
 } from "./invented-items.js";
@@ -54,9 +56,18 @@ export interface RulesetItemStatFact {
  *  saves it is narrowed to, none for all of them), a lean, a number (`value`, signed, dice and all), or
  *  saves it makes fail. */
 export interface RulesetItemEffectFact {
-  to: "checks" | "saves";
+  /** Checks, saves, or one ability (its label in `names`). */
+  to: "checks" | "saves" | "ability";
   names: string[];
-  change: { mode: "advantage" | "disadvantage" } | { value: string } | { fails: true };
+  change: { mode: "advantage" | "disadvantage" } | { value: string } | { fails: true } | { atLeast: number };
+}
+
+/** What an item asks of whoever wears it, in the ruleset's words: the value's label, the least it may
+ *  be, and what applies while they fall short. */
+export interface RulesetItemRequirementFact {
+  what: string;
+  atLeast: number;
+  otherwise: RulesetItemEffectFact[];
 }
 
 /** What an item is, as labels: what the screen and the Game Master show. */
@@ -71,6 +82,25 @@ export interface RulesetItemFacts {
   /** What it does while worn, and while only carried. */
   worn?: RulesetItemEffectFact[];
   carried?: RulesetItemEffectFact[];
+  requires?: RulesetItemRequirementFact[];
+}
+
+/** A value off the sheet by the ruleset's own label: an ability, a skill, a derived value. */
+export function rulesetValueRefLabel(definition: RulesetDefinition, ref: RulesetValueRef): string {
+  const sheet = definition.sheet;
+  const find = (entries: ReadonlyArray<{ id: string; label: string }>, id: string) =>
+    entries.find((entry) => entry.id === id)?.label ?? id;
+  if (ref.const !== undefined) return String(ref.const);
+  if (ref.abilityScore !== undefined) return find(sheet.abilities, ref.abilityScore);
+  if (ref.abilityMod !== undefined) return find(sheet.abilities, ref.abilityMod);
+  if (ref.derived !== undefined) return find(sheet.derived, ref.derived);
+  if (ref.field !== undefined) return find(sheet.fields, ref.field);
+  if (ref.skillMod !== undefined) return find(sheet.skills, ref.skillMod);
+  if (ref.saveMod !== undefined) return find(sheet.saves, ref.saveMod);
+  if (ref.liveTrack !== undefined) return find(sheet.live.tracks, ref.liveTrack);
+  if (ref.livePool !== undefined) return find(sheet.live.pools, ref.livePool);
+  if (ref.itemStat?.stat !== undefined) return find(definition.items?.stats ?? [], ref.itemStat.stat);
+  return "";
 }
 
 /** One worn or carried effect as facts: each lean, each number and each set of saves it fails. */
@@ -100,14 +130,29 @@ export function rulesetItemEffectFacts(
   if (effect.failsSaves?.length) {
     facts.push({ to: "saves", names: names("saves", effect.failsSaves), change: { fails: true } });
   }
+  for (const [id, change] of Object.entries(effect.abilities ?? {})) {
+    const label = definition.sheet.abilities.find((ability) => ability.id === id)?.label ?? id;
+    facts.push({
+      to: "ability",
+      names: [label],
+      change: "set" in change ? { atLeast: change.set } : { value: `${change.add > 0 ? "+" : ""}${change.add}` },
+    });
+  }
   return facts;
 }
 
-/** One effect fact in plain words, as the Game Master reads it: "-1 on checks (Sneak)". */
+/** One effect fact in plain words, as the Game Master reads it: "-1 on checks (Sneak)", "+1 Brawn". */
 export function rulesetItemEffectText(fact: RulesetItemEffectFact): string {
+  if (fact.to === "ability") {
+    const ability = fact.names.join(", ");
+    return "atLeast" in fact.change
+      ? `${ability} at least ${fact.change.atLeast}`
+      : `${"value" in fact.change ? fact.change.value : ""} ${ability}`;
+  }
   const which = `${fact.to}${fact.names.length ? ` (${fact.names.join(", ")})` : ""}`;
-  if ("fails" in fact.change) return `fails ${which}`;
-  return `${"mode" in fact.change ? fact.change.mode : fact.change.value} on ${which}`;
+  const change = fact.change;
+  if ("fails" in change) return `fails ${which}`;
+  return `${"mode" in change ? change.mode : "value" in change ? change.value : ""} on ${which}`;
 }
 
 export interface RulesetItemBookEntry extends GameInventoryRulesetItem {
@@ -167,6 +212,11 @@ export function rulesetItemFacts(definition: RulesetDefinition, item: RulesetCat
     : undefined;
   const worn = item.worn ? rulesetItemEffectFacts(definition, item.worn) : [];
   const carried = item.carried ? rulesetItemEffectFacts(definition, item.carried) : [];
+  const requires = (item.requires ?? []).map((requirement) => ({
+    what: rulesetValueRefLabel(definition, requirement.value),
+    atLeast: requirement.atLeast,
+    otherwise: rulesetItemEffectFacts(definition, requirement.otherwise),
+  }));
   return {
     category: labelOf(block?.categories, item.category),
     ...(item.rarity ? { rarity: labelOf(block?.rarities, item.rarity) } : {}),
@@ -175,6 +225,7 @@ export function rulesetItemFacts(definition: RulesetDefinition, item: RulesetCat
     ...(item.cost ? { cost: { amount: item.cost.amount, unit: unit?.label ?? item.cost.unit } } : {}),
     ...(worn.length ? { worn } : {}),
     ...(carried.length ? { carried } : {}),
+    ...(requires.length ? { requires } : {}),
   };
 }
 
@@ -268,7 +319,8 @@ export function rulesetItemBook(
     const made = inventedByName.get(key)?.at(-1);
     return byName.get(key) ?? (made ? all.get(rulesetInventedItemRef(made.id)) : undefined);
   };
-  const invent: GameInventoryItemRules["invent"] = (proposal, stacks) => {
+  const invent: GameInventoryItemRules["invent"] = (written, stacks) => {
+    const proposal = rulesetProposalParts(definition, written);
     const text = rulesetInventedItemText(proposal);
     if (!text.name) return { refused: "unreadable" };
     const key = gameInventoryNameKey(text.name);
@@ -408,5 +460,8 @@ export function rulesetItemPromptFacts(facts: RulesetItemFacts): string {
   const effects = (["worn", "carried"] as const).flatMap((when) =>
     facts[when]?.length ? [`${when}: ${facts[when]!.map(rulesetItemEffectText).join(", ")}`] : [],
   );
-  return [kind, stats, ...effects].filter(Boolean).join("; ");
+  const needs = (facts.requires ?? []).map(
+    (need) => `needs ${need.what} ${need.atLeast}, otherwise ${need.otherwise.map(rulesetItemEffectText).join(", ")}`,
+  );
+  return [kind, stats, ...effects, ...needs].filter(Boolean).join("; ");
 }

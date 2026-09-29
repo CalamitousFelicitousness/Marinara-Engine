@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- A Game Mode ruleset's items can now ask something of whoever wears them, such as a grave spade that needs Sinew 3 and costs a die on Dig until then, and can set or raise an ability while worn or carried, such as gauntlets that make Brawn at least 2. The sheet, checks, the Game Master and fights all read the changed ability. A condition level can also follow a value worked out from the sheet, so carrying too much can slow a character without anyone ticking a track. An item's details say what it asks and what it changes, and the Game Master can give invented items an ability bonus. Rulesets that use these need Capability API 1.54 (#6846).
+
 - Review cards for edits to Professor Mari's own card, saved before she was stopped from making them, now clear on the next start instead of staying in every Mari chat; they could never be restored (#6842).
 
 - Professor Mari's review cards belong to the chat she made the change in: a new chat starts clean, and deleting a chat keeps its changes and removes its cards. She can no longer edit her own built-in card, which Marinara resets on every start, an edit that changes nothing makes no card, a refused Restore explains that Keep dismisses the card, and a failed Keep or Restore says why (#6842).

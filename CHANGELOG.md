@@ -4,6 +4,10 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Lorebook editors can copy linked characters and personas to another lorebook without repeating each selection (#6840).
+- Default muted text uses neutral colors, message marks follow chat chroma, and chat Help explains bookmarks, context pins, and private notes (#6839).
+- Lorebook vectorization uses batches of ten entries to reduce timeouts with local embedding providers (#6837).
+
 - In a Game Mode game with a ruleset, a check or save outside a fight now counts the character's conditions and what they wear or carry: a poisoned or frightened character rolls with the disadvantage the ruleset gives them, a paralyzed one fails the saves it fails without a roll, and an item can say what it does while worn or only carried, such as a creaking coat that makes Sneak harder. Advantage and disadvantage cancel out with the Game Master's own, the dice card and the saved record say what changed the check, and an item's details say what it does. The Game Master can give invented items these effects, held to what each rarity allows. Rulesets that use them need Capability API 1.53 (#6832).
 
 - In a Game Mode game whose ruleset rolls something other than one d20 (such as 2d6 or a dice pool), a check the Engine rolls during a turn is no longer rolled a second time as if nobody's sheet were read. The saved result keeps the sheet's numbers, who rolled, and any wound penalty or modifier the ruleset applied.

@@ -1484,8 +1484,8 @@ export async function lorebooksRoutes(app: FastifyInstance) {
       });
     }
 
-    // Batch embed (most APIs support multiple texts per call)
-    const BATCH_SIZE = 50;
+    // Keep requests small enough for local embedding providers.
+    const BATCH_SIZE = 10;
     let vectorized = 0;
     for (let i = 0; i < texts.length; i += BATCH_SIZE) {
       const batchTexts = texts.slice(i, i + BATCH_SIZE);

@@ -8,6 +8,7 @@
 
 import type { RulesetCombat, RulesetCreatureHideEntry, RulesetDefinition } from "../../schemas/ruleset.schema.js";
 import { readRulesetLive, type RulesetSheetOp } from "../rulesets/live-state.js";
+import { recoverRulesetAmmo, reloadRulesetClip, spendRulesetShots } from "./ammo.js";
 import { parseRulesetCombatDice, rollRulesetDice, sumOf } from "./dice.js";
 import {
   rulesetCombatIsPool,
@@ -964,6 +965,8 @@ function pickTargets(
 /** What using an action costs the actor in its own bookkeeping: one of its uses, and, for an action
  *  that recharges, its availability until the dice bring it back. */
 function spendAvailability(ctx: RulesetCombatContext, actor: RulesetCombatant, action: RulesetCombatAction): void {
+  const shot = spendRulesetShots(actor, action);
+  if (shot) ctx.events.push(shot);
   if (action.uses) {
     const left = Math.max(0, (actor.uses[action.id] ?? 0) - 1);
     actor.uses[action.id] = left;
@@ -1123,6 +1126,14 @@ export function applyRulesetCombatChoice(
       spendAvailability(ctx, working, granted.action);
     }
     resolveStandard(ctx, working, rulesetStandardName(option.id), workingTargets[0]);
+    return finish();
+  }
+
+  // A reload fills the clip and does nothing else: no target, no roll, no window.
+  if (option.kind === "reload") {
+    const reloading = working.actions.find((entry) => entry.id === option.id);
+    const reloaded = reloading ? reloadRulesetClip(working, reloading) : null;
+    if (reloaded) ctx.events.push(reloaded);
     return finish();
   }
 
@@ -1328,6 +1339,8 @@ function noteOutcome(ctx: RulesetCombatContext): void {
  *  through here, so none of them leaves anybody crashed. */
 function pushOutcome(ctx: RulesetCombatContext, outcome: Exclude<RulesetEncounterOutcome, "ongoing">): void {
   ctx.events.push(...liftRulesetCrashes(ctx.definition, ctx.state));
+  // Only a party that won holds the field long enough to pick up what it shot.
+  if (outcome === "victory") ctx.events.push(...recoverRulesetAmmo(ctx.state));
   ctx.events.push({ type: "outcome", outcome });
 }
 

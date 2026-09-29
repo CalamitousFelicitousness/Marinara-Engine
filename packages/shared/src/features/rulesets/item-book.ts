@@ -131,6 +131,11 @@ export interface RulesetItemAttackFact {
   unit?: string;
   /** What it deals instead with a hand free beside it. */
   versatile?: string;
+  /** What it shoots, by the tag's label: how many an attack, and the share picked up after a won
+   *  fight. */
+  ammo?: { what: string; per: number; recover?: number };
+  /** How many it holds loaded, and the budget a reload spends, by its label. */
+  clip?: { max: number; reload: string };
 }
 
 /** The item stats a weapon's attack reads (`{ "stat": id }` anywhere in it). */
@@ -148,6 +153,7 @@ export function rulesetItemAttackStats(attack: RulesetItemAttack): string[] {
     attack.range?.normal,
     attack.range?.long,
     attack.versatile?.dice,
+    attack.clip?.max,
   ];
   const ids = reads.flatMap((value) =>
     value && typeof value === "object" && !Array.isArray(value) && "stat" in value ? [value.stat] : [],
@@ -211,8 +217,10 @@ function rulesetItemAttackFacts(
   const long = attack.range?.long !== undefined ? number(attack.range.long) : 0;
   const versatile = attack.versatile ? dice(attack.versatile.dice) : "";
   const unit = definition.combat?.distance?.label;
+  const budgets = definition.combat?.economy.budgets ?? [];
+  const clipMax = attack.clip ? number(attack.clip.max) : 0;
   return {
-    budget: labelOf(definition.combat?.economy.budgets ?? [], attack.budget),
+    budget: labelOf(budgets, attack.budget),
     toHit: factSum([
       abilities(attack.toHit.abilities),
       typeof skill === "string" ? labelOf(definition.sheet.skills, skill) : "",
@@ -226,6 +234,16 @@ function rulesetItemAttackFacts(
     ...(normal > 0 ? { range: { normal, ...(long > normal ? { long } : {}) } } : {}),
     ...((reach > 0 || normal > 0) && unit ? { unit } : {}),
     ...(versatile ? { versatile } : {}),
+    ...(attack.ammo
+      ? {
+          ammo: {
+            what: labelOf(definition.items?.tags ?? [], attack.ammo.tag),
+            per: attack.ammo.perAttack ?? 1,
+            ...(attack.ammo.recover ? { recover: attack.ammo.recover } : {}),
+          },
+        }
+      : {}),
+    ...(attack.clip && clipMax >= 1 ? { clip: { max: clipMax, reload: labelOf(budgets, attack.clip.reload) } } : {}),
   };
 }
 
@@ -677,7 +695,16 @@ export function rulesetSheetItems(
     const takesSlots = Object.values(item.slots ?? {}).some((count) => count > 0);
     const binds = !!item.binds;
     const worn = (takesSlots || binds) && (!takesSlots || stack.equipped === true) && (!binds || stack.bound === true);
-    return [{ item, quantity: stack.quantity, worn, name: stack.name }];
+    return [
+      {
+        item,
+        quantity: stack.quantity,
+        worn,
+        name: stack.name,
+        stack: { id: stack.id, ref: stack.item, ...(stack.holder !== undefined ? { holder: stack.holder } : {}) },
+        ...(stack.loaded !== undefined ? { loaded: stack.loaded } : {}),
+      },
+    ];
   });
 }
 
@@ -737,6 +764,12 @@ export function rulesetItemAttackText(attack: RulesetItemAttackFact): string {
     attack.reach !== undefined ? `reach ${attack.reach}${unit}` : "",
     range,
     attack.versatile ? `${attack.versatile} with a hand free` : "",
+    attack.ammo
+      ? `ammunition ${attack.ammo.what} (${attack.ammo.per} an attack${
+          attack.ammo.recover ? `, ${Math.round(attack.ammo.recover * 100)}% picked up after a won fight` : ""
+        })`
+      : "",
+    attack.clip ? `holds ${attack.clip.max}, reload (${attack.clip.reload})` : "",
   ]
     .filter(Boolean)
     .join(", ")}`;

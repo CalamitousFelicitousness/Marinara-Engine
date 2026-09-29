@@ -3,12 +3,14 @@ import {
   normalizeGameDifficulty,
   combatWeatherSchema,
   applyGameInventoryOps,
+  applyRulesetFightItemChanges,
   gameInventoryCountItems,
   gameInventoryFightEffects,
   gameInventoryFightLines,
   gameInventoryItemsOwnNamed,
   gameInventoryKeptByCurse,
   normalizeGameInventoryStacks,
+  rulesetFightItemChanges,
 } from "@marinara-engine/shared";
 import {
   applyGameInventoryChangeHeld,
@@ -601,6 +603,18 @@ export async function combatDirectorRoutes(
             if (outcome.results.some((result, i) => !result.ok || result.count !== deltas[i]!.count))
               throw new Error("Inventory changed. Reload the battle.");
             return { stacks: outcome.stacks, journal: outcome.journal, value: null };
+          });
+        // What a ruleset fight shot, loaded and won back since the last step, onto those very stacks,
+        // with the party's sheets: a step either changes both or changes neither.
+        const fightItems =
+          s.style === "ruleset" && s.rulesetFight
+            ? rulesetFightItemChanges(previous.state.rulesetFight?.encounter, s.rulesetFight.encounter)
+            : [];
+        if (fightItems.length > 0)
+          await applyGameInventoryChangeHeld(app.db, chatId, (stacks) => {
+            const applied = applyRulesetFightItemChanges(stacks, fightItems);
+            if (!applied) throw new Error("Inventory changed. Reload the battle.");
+            return { stacks: applied.stacks, journal: applied.journal, value: null };
           });
         if (s.style === "ruleset" && s.rulesetFight) live = await writeRulesetLive(chatId, s.anchor, s.rulesetFight);
         await store.updateStateById(rowId, JSON.stringify(s), true, chatId);

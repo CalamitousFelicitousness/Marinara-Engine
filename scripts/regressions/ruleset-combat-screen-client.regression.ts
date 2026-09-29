@@ -711,6 +711,12 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
       }),
     ],
     ["shift", say({ type: "shift", actorId: "brenna", amount: 3, total: 9, reason: "gained", sourceId: "lurker" })],
+    ["shot", say({ type: "shot", actorId: "brenna", optionId: "item:0", label: "Longbow", left: 11 })],
+    [
+      "reload",
+      say({ type: "reload", actorId: "brenna", optionId: "reload:1", label: "Pistol", loaded: 6, of: 6, drew: 2 }),
+    ],
+    ["recovered", say({ type: "recovered", actorId: "brenna", label: "Arrows", count: 3 })],
   ];
   const printed = new Map(table);
   for (const [type, text] of table) {
@@ -724,6 +730,17 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     printed.get("hardness"),
     "Brenna's Longsword lands on Thorn Lurker with 4 dice, below a hardness of 6, and does nothing.",
   );
+  assert.equal(printed.get("shot"), "Longbow: 11 left to shoot.");
+  assert.equal(
+    line(fiveE, state, { type: "shot", actorId: "brenna", optionId: "item:1", label: "Pistol", left: 5, of: 6 }),
+    "Pistol: 5 of 6 loaded.",
+  );
+  assert.equal(printed.get("reload"), "Brenna loads 2 into Pistol: 6 of 6 loaded.");
+  assert.equal(
+    line(fiveE, state, { type: "reload", actorId: "brenna", optionId: "reload:1", label: "Pistol", loaded: 6, of: 6 }),
+    "Brenna reloads Pistol: 6 of 6 loaded.",
+  );
+  assert.equal(printed.get("recovered"), "Brenna picks up 3 of their Arrows after the fight.");
   assert.equal(
     line(fiveE, state, {
       type: "window",
@@ -930,6 +947,18 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(
     rulesetOptionCostText({ ...sword, budget: undefined, strikes: 1 }, budgetLabel, t),
     "Free, 1 strike left",
+  );
+  // A weapon says what it has loaded and what its holder carries to shoot, and a reload is named for
+  // the weapon it fills and says what there is to load.
+  assert.equal(
+    rulesetOptionCostText({ ...sword, loaded: { now: 4, max: 6 }, ammo: 12 }, budgetLabel, t),
+    "Spends Action · 4 of 6 loaded · 12 to shoot",
+  );
+  const reload = { ...sword, id: "reload:0", kind: "reload" as const, targets: { side: "self" as const, count: 0 } };
+  assert.equal(rulesetOptionLabel(reload, t), "Reload Longsword");
+  assert.equal(
+    rulesetOptionCostText({ ...reload, loaded: { now: 0, max: 6 }, ammo: 3 }, budgetLabel, t),
+    "Spends Action · 0 of 6 loaded · 3 to load",
   );
   const forecast = rulesetOptionForecastText(sword, t);
   assert.match(forecast, /^\d+% to hit, about \d+ damage$/u, `the forecast reads oddly: ${forecast}`);
@@ -1423,7 +1452,10 @@ function drawn(...rows: string[]): TacticalGrid {
 
 // ── The menu groups, the movement group first ──
 {
-  assert.deepEqual([...RULESET_MENU_KINDS], ["move", "attack", "ability", "block", "contest", "standard", "end-turn"]);
+  assert.deepEqual(
+    [...RULESET_MENU_KINDS],
+    ["move", "attack", "reload", "ability", "block", "contest", "standard", "end-turn"],
+  );
   const grid = drawn(".....", ".....");
   const state = createRulesetEncounter({
     definition: fiveE,

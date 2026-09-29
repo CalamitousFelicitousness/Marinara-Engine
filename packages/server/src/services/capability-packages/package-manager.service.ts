@@ -942,6 +942,20 @@ function entriesCarryArmor(entries: unknown): boolean {
   );
 }
 
+const AMMO_ISSUE =
+  "A ruleset whose weapons shoot ammunition or keep a loaded count requires schemaVersion 2 and capabilityApi 1.57 or newer";
+
+/** A weapon's `ammo` or `clip`, which are 1.57: new keys on the strict attack. */
+function entriesCarryAmmo(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) &&
+    entries.some((entry) => {
+      const attack = plainRecord(plainRecord(plainRecord(entry)?.item)?.attack);
+      return attack?.ammo !== undefined || attack?.clip !== undefined;
+    })
+  );
+}
+
 /** A level that reads a derived value, which is 1.54: a new key on the strict level. */
 function rulesetCarriesDerivedLevels154(ruleset: { combat?: unknown } | undefined): boolean {
   const levels = plainRecord(ruleset?.combat)?.levels;
@@ -1183,6 +1197,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryRequirements(header.entries) && !declaresApi(54)) return REQUIREMENTS_ISSUE;
       if (entriesCarryWeapons(header.entries) && !declaresApi(55)) return WEAPONS_ISSUE;
       if (entriesCarryArmor(header.entries) && !declaresApi(56)) return ARMOR_ISSUE;
+      if (entriesCarryAmmo(header.entries) && !declaresApi(57)) return AMMO_ISSUE;
       const asset = header.asset;
       if (typeof asset !== "string") continue;
       // A path that does not normalize is never a declared one, whatever else failed to normalize.
@@ -1212,6 +1227,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryRequirements(fileEntries) && !declaresApi(54)) return REQUIREMENTS_ISSUE;
       if (entriesCarryWeapons(fileEntries) && !declaresApi(55)) return WEAPONS_ISSUE;
       if (entriesCarryArmor(fileEntries) && !declaresApi(56)) return ARMOR_ISSUE;
+      if (entriesCarryAmmo(fileEntries) && !declaresApi(57)) return AMMO_ISSUE;
     }
   }
   // The battle block lives inside the ruleset file too, so it is read the same way and for the same

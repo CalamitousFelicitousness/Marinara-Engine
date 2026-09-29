@@ -1306,6 +1306,58 @@ Capability API 1.56, for #6857. Slice I5-2 of the ruleset items plan.
   that pin older gates, the examples or the proposal form, and `e2e/game-ruleset-armor.e2e.ts`, with
   62 deliberate breaks each caught.
 
+### What ammunition and reloading settled
+
+Capability API 1.57, for #6871. Slice I5-3 of the ruleset items plan, split from the rest of section
+4.4 (fire modes, off-hand attacks, a damage floor and conditions on a hit, now I5-4) so the part that
+writes to the inventory ships on its own.
+
+- **The keys.** A weapon's `attack` gains `ammo` (`tag`, one of the items block's tags; `perAttack`,
+  1 by default; `recover`, a share from 0 to 1) and `clip` (`max`, a number or a number stat of the
+  item; `reload`, a budget). A clip's rounds are not picked up, so `recover` beside a `clip` is
+  refused, and so is an attack that would shoot more than a written-down clip holds. A ruleset with
+  no combat block reads neither, as it reads no other part of an attack.
+- **Counted on the fighter.** `sheet.items` is what the fighter held as the fight began and is
+  never changed; `itemsUsed`, `loaded` and `recoverable` on the combatant, keyed by the item's place
+  in that list, are what the fight did (`ammo.ts`). Ammunition is drawn first stack first from
+  every carried stack with the tag, worn or not. `rulesetActionAvailable` asks
+  `rulesetShotsAvailable`, so the menu, windows, sequences and strikes at somebody walking away all
+  see an empty weapon the same way, and `spendAvailability` spends the shots wherever an action is
+  taken.
+- **Reload.** A weapon with a clip adds a second action, `reload:<index>`, of a new kind `reload`
+  (targets nobody, no roll, no window), offered while the clip has room and, where it draws `ammo`,
+  while the bag holds some. It fills to `max` out of the bag, or in full without `ammo`. The combat
+  AI weighs it as any action that targets nobody (setup), and since an empty weapon is off the menu,
+  a party member the Engine plays reloads it and then fires it.
+- **Loaded, on the stack.** `GameInventoryStack.loaded` is kept on a stack of one item only (a worn
+  stack always is), read into `RulesetSheetItem.loaded`, and a weapon without one is loaded full.
+  Pouring stacks together forgets it (a `ponytail:` ceiling on the stack type).
+- **Recovery.** `pushOutcome` recovers on `victory` only: a fled fight never reaches it (the director
+  ends that one), and a lost one holds no field. The share is summed per stack as it is shot and
+  rounded down once, with a hair of tolerance for a sum of fractions.
+- **Written back.** `RulesetSheetItem.stack` carries the inventory stack's id, item ref and holder.
+  The director's `save()` diffs the fight against the stored state (`rulesetFightItemChanges`) and
+  writes the changes by stack id (`applyRulesetFightItemChanges`) through
+  `applyGameInventoryChangeHeld`, in the same transaction as the party's live sheets, with journal
+  entries ("used", and "acquired" for what came back). A stack a won fight gives back to after it
+  was emptied is made again with its own id; a stack gone, short, or holding another item under that
+  id refuses the step, as the classic spend does.
+- **Seen and said.** Item facts gain `ammo` (the tag's label, per attack, recover) and `clip` (max,
+  the reload budget's label); the Game Master's line ends with `ammunition Arrow (1 an attack, 50%
+  picked up after a won fight)` or `holds 1, reload (Act)`. The menu says `3 to shoot` or `0 of 1 loaded`
+  beside an option, a Reload group names the weapon, and the log prints `shot`, `reload` and
+  `recovered`.
+- **Examples.** Ember Roads' arrows carry a new `arrow` tag and its hunting bow shoots them, half
+  picked up. Gravewatch gains a `shot` tag, a `powder` category, a watch pistol (a clip of one,
+  reloaded with the act) and shot and powder.
+- **Proven** by `scripts/regressions/game-ruleset-ammo.regression.ts` (import and the gate, shooting
+  from one stack and from two, an empty weapon off the menu and refused, recovery after a won fight
+  and not a lost one, a clip spent, reloaded from the bag or for free, a clip read off a stat, the
+  write-back by stack id with removal and a stack made again, the loaded count on a stack of one,
+  facts and the log), lanes that pin older gates or the examples, and
+  `e2e/game-ruleset-ammo.e2e.ts`, with 59 deliberate breaks each caught (one of them, the director's
+  write, by the e2e).
+
 ## Gaps a ruleset author found
 
 The author of [Marinara-RPG-Extension](https://github.com/Kenhito/Marinara-RPG-Extension), who

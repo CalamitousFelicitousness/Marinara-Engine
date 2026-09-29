@@ -357,7 +357,8 @@
       { "id": "arm", "label": "Arm" },
       { "id": "coat", "label": "Coat" },
       { "id": "tonic", "label": "Tonic" },
-      { "id": "token", "label": "Token" }
+      { "id": "token", "label": "Token" },
+      { "id": "powder", "label": "Shot and powder" }
     ],
     "rarities": [
       { "id": "common", "label": "Common" },
@@ -366,7 +367,8 @@
     ],
     "tags": [
       { "id": "silver", "label": "Silver" },
-      { "id": "hidden", "label": "Easily hidden" }
+      { "id": "hidden", "label": "Easily hidden" },
+      { "id": "shot", "label": "Shot" }
     ],
     "stats": [
       {
@@ -643,6 +645,38 @@
               "toHit": { "abilities": ["nerve"], "skill": "wrestle", "target": { "stat": "target" } },
               "damage": { "dice": { "stat": "damage" }, "type": { "stat": "harm" } }
             }
+          }
+        },
+        {
+          "id": "watch-pistol",
+          "label": "Watch pistol",
+          "summary": "A single-shot flintlock, loaded at dusk and fired once, and the long night after it.",
+          "item": {
+            "category": "arm",
+            "rarity": "rare",
+            "stats": { "target": 7, "damage": "2d10", "harm": "tearing", "conceal": "coat" },
+            "slots": { "hands": 1 },
+            "cost": { "amount": 3, "unit": "crown" },
+            "attack": {
+              "$comment": "One ball loaded at a time: it fires what it holds, and loading the next out of the warden's shot and powder takes the warden's whole action.",
+              "budget": "act",
+              "toHit": { "abilities": ["nerve"], "target": { "stat": "target" } },
+              "damage": { "dice": { "stat": "damage" }, "type": { "stat": "harm" } },
+              "ammo": { "tag": "shot" },
+              "clip": { "max": 1, "reload": "act" }
+            }
+          }
+        },
+        {
+          "id": "shot-and-powder",
+          "label": "Shot and powder",
+          "summary": "Lead balls and a horn of powder, enough for one load each.",
+          "item": {
+            "category": "powder",
+            "rarity": "common",
+            "tags": ["shot"],
+            "stack": 20,
+            "cost": { "amount": 1, "unit": "penny" }
           }
         },
         {

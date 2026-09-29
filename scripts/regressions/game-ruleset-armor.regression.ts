@@ -277,6 +277,13 @@ try {
     const issue = (minor: number, doc: Record<string, any>, paths?: string[], files?: Map<string, unknown>) =>
       getCapabilityPackageInstallIssue(manifest(minor, paths) as any, doc, files);
     /** The examples less what their items do in a fight. */
+    /** Less what the examples' weapons shoot and load, which is 1.57's and has a lane of its own. */
+    const withoutAmmo = (doc: Record<string, any>) => {
+      for (const entry of itemCatalogOf(doc).entries) {
+        delete entry.item.attack?.ammo;
+        delete entry.item.attack?.clip;
+      }
+    };
     const withoutArmor = (doc: Record<string, any>) => {
       for (const entry of itemCatalogOf(doc).entries) {
         for (const when of ["worn", "carried"]) {
@@ -290,13 +297,14 @@ try {
         }
       }
     };
-    for (const text of [emberText, gravewatchText]) {
+    for (const text of [emberText, gravewatchText].map((each) => JSON.stringify(variant(each, withoutAmmo)))) {
       assert.match(issue(55, variant(text)) ?? "", gateIssue);
       assert.equal(issue(56, variant(text)), null);
       assert.equal(issue(55, variant(text, withoutArmor)), null, "the rest of the example stays 1.55");
     }
     const bare = (edit: (doc: Record<string, any>) => void) =>
       variant(emberText, (doc) => {
+        withoutAmmo(doc);
         withoutArmor(doc);
         edit(doc);
       });
@@ -327,6 +335,7 @@ try {
     // Hardness, on the fighters and on a creature.
     const hardText = JSON.stringify(
       variant(gravewatchText, (doc) => {
+        withoutAmmo(doc);
         withoutArmor(doc);
         moveInitiative(doc);
       }),
@@ -344,7 +353,7 @@ try {
       delete catalog.entries;
       catalog.asset = "catalogs/outfitter.json";
     });
-    const entries = itemCatalogOf(variant(emberText)).entries;
+    const entries = itemCatalogOf(variant(emberText, withoutAmmo)).entries;
     const paths = ["ruleset.json", "catalogs/outfitter.json"];
     const files = new Map<string, unknown>([["catalogs/outfitter.json", { entries }]]);
     assert.match(issue(55, inFile, paths, files) ?? "", gateIssue, "a catalog file");

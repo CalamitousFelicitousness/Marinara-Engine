@@ -13,7 +13,16 @@ import { rulesetDistanceText, type RulesetBoardDistance } from "./ruleset-combat
  *  do, the contests it may start, the moves the kind implements, and finally ending the turn.
  *  Walking comes first because a turn on a board usually starts with it, and it may be taken again
  *  after an action. */
-export const RULESET_MENU_KINDS = ["move", "attack", "ability", "block", "contest", "standard", "end-turn"] as const;
+export const RULESET_MENU_KINDS = [
+  "move",
+  "attack",
+  "reload",
+  "ability",
+  "block",
+  "contest",
+  "standard",
+  "end-turn",
+] as const;
 
 export type RulesetMenuKind = (typeof RULESET_MENU_KINDS)[number];
 
@@ -75,6 +84,8 @@ export function rulesetOptionLabel(option: DirectedRulesetOption, t: TFunction):
     const word = MOVE_OPTION_WORDS[option.id];
     return word ? t(`game.combat.ruleset.board.${word}`, { defaultValue: option.label }) : option.label;
   }
+  // A reload is the Engine's own move made with the weapon the ruleset named.
+  if (option.kind === "reload") return t("game.combat.ruleset.menu.reload", { weapon: option.label });
   if (option.kind !== "standard") return option.label;
   return t(`game.combat.ruleset.standard.${option.label}`, { defaultValue: option.label });
 }
@@ -112,6 +123,14 @@ export function rulesetOptionCostText(
     );
   }
   if (typeof option.left === "number") parts.push(t("game.combat.ruleset.option.left", { left: option.left }));
+  // What a weapon has loaded, and what its holder carries of what it shoots.
+  if (option.loaded) {
+    parts.push(t("game.combat.ruleset.option.loaded", { now: option.loaded.now, max: option.loaded.max }));
+  }
+  if (typeof option.ammo === "number") {
+    const key = option.kind === "reload" ? "game.combat.ruleset.option.ammoToLoad" : "game.combat.ruleset.option.ammo";
+    parts.push(t(key, { count: option.ammo }));
+  }
   return parts.join(" · ");
 }
 

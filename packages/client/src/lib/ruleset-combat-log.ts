@@ -532,6 +532,27 @@ export function rulesetCombatEventLine(
       });
     case "cover":
       return key("cover", { target: names.combatant(event.targetId), bonus: event.bonus, defense: event.defense });
+    case "shot":
+      return event.of !== undefined
+        ? key("shotLoaded", { label: event.label, left: event.left, of: event.of })
+        : key("shot", { label: event.label, left: event.left });
+    case "reload":
+      return event.drew !== undefined
+        ? key("reloadDrew", {
+            actor: names.combatant(event.actorId),
+            label: event.label,
+            loaded: event.loaded,
+            of: event.of,
+            drew: event.drew,
+          })
+        : key("reload", {
+            actor: names.combatant(event.actorId),
+            label: event.label,
+            loaded: event.loaded,
+            of: event.of,
+          });
+    case "recovered":
+      return key("recovered", { actor: names.combatant(event.actorId), label: event.label, count: event.count });
     case "hardness":
       return key("hardness", {
         actor: names.combatant(event.sourceId),

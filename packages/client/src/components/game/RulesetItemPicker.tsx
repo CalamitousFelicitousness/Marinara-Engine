@@ -79,7 +79,17 @@ function rulesetItemAttackLines(facts: RulesetItemFacts, t: TFunction): string[]
       : "",
     attack.versatile ? t("ui.game.gameinventory.attackVersatile", { dice: attack.versatile }) : "",
   ].filter(Boolean);
-  return [first, ...(second.length ? [second.join(", ")] : [])];
+  const third = [
+    attack.ammo
+      ? t(attack.ammo.recover ? "ui.game.gameinventory.attackAmmoRecover" : "ui.game.gameinventory.attackAmmo", {
+          count: attack.ammo.per,
+          what: attack.ammo.what,
+          percent: Math.round((attack.ammo.recover ?? 0) * 100),
+        })
+      : "",
+    attack.clip ? t("ui.game.gameinventory.attackClip", { max: attack.clip.max, budget: attack.clip.reload }) : "",
+  ].filter(Boolean);
+  return [first, ...(second.length ? [second.join(", ")] : []), ...(third.length ? [third.join(", ")] : [])];
 }
 
 /** What an item does while worn, and while only carried, one line each: "While worn: -1 on Sneak

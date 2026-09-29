@@ -9,6 +9,7 @@ import {
   type RulesetLiveState,
   type RulesetSheetOp,
 } from "../rulesets/live-state.js";
+import { rulesetAmmoLeft, rulesetLoaded, rulesetShotsAvailable } from "./ammo.js";
 import { parseRulesetCombatDice, rulesetAverageDamage } from "./dice.js";
 import {
   rulesetCombatAdvantage,
@@ -799,6 +800,8 @@ function firstAreaTarget(state: RulesetEncounterState, actor: RulesetCombatant, 
  *  the sheet instead. */
 export function rulesetActionAvailable(actor: RulesetCombatant, action: RulesetCombatAction): boolean {
   if (action.uses && (actor.uses[action.id] ?? 0) < 1) return false;
+  // A weapon with nothing loaded or nothing to shoot, and a clip that is full or has nothing to load.
+  if (!rulesetShotsAvailable(actor, action)) return false;
   return !actor.spent.includes(action.id);
 }
 
@@ -956,6 +959,8 @@ function optionFrom(
   };
   if (paid.cost.length > 0) option.cost = paid.cost;
   if (action.uses) option.left = actor.uses[action.id] ?? 0;
+  if (action.ammo) option.ammo = rulesetAmmoLeft(actor, action.ammo.tag);
+  if (action.clip) option.loaded = { now: rulesetLoaded(actor, action.clip), max: action.clip.max };
   // A shape, in cells, so a screen can draw the template before the choice is made and a picker can
   // weigh it. Only in a positioned fight: without a board an area is still resolved by target ids.
   if (action.area && positioned(state)) {

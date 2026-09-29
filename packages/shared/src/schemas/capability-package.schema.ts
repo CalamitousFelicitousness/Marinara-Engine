@@ -504,7 +504,13 @@ const capabilityPackageManifestBaseSchema = z
 //        fighter's hardness, and a creature may have `hardness`. Not a soft seam, for the same reason
 //        as 1.20 through 1.55: an Engine that cannot read these refuses the whole ruleset or catalog
 //        file, so a package that ships any of them declares 1.56. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 56 } as const);
+// 1.57: a weapon's attack may shoot something (`ammo`: a carried item's tag, how many an attack, the
+//        share picked up after a won fight) and keep a loaded count (`clip`: how many it holds and
+//        the budget a reload spends), and a ruleset fight writes what it shot and loaded to the
+//        inventory. Not a soft seam, for the same reason as 1.20 through 1.56: an Engine that cannot
+//        read these refuses the whole ruleset or catalog file, so a package that ships any of them
+//        declares 1.57. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 57 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

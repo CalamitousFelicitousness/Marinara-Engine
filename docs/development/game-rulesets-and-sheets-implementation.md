@@ -1139,8 +1139,9 @@ items change checks outside a fight.
   (dice on a pool, a number on a sum); leans cancel with the Game Master's `mode=`, only where the
   ruleset rolls twice; a failed save rolls nothing and buys nothing. The record carries `effects=`,
   `from=` (what changed it) and `automatic="true"`, and reads them back. A Game Master's complete
-  record for a check anything changes is never vouched for, and the sighted pool spends a second d20
-  when the effects lean the roll. The effects' own dice never come out of that pool.
+  record for a check anything changes is never vouched for, a record claiming a save failed without
+  a roll is never taken from it (a ruleset game decides the save again; a game with no ruleset keeps
+  only the ask), and the sighted pool spends a second d20 when the effects lean the roll. The effects' own dice never come out of that pool.
 - **Fights** keep anything narrowed to skills out of contests (they roll the fight's own checks),
   count a modifier's mode like the effect, narrow save modifiers by their own saves, and leave a
   mode-only modifier out of the numbers.
@@ -1160,7 +1161,7 @@ items change checks outside a fight.
   turn's resolver on the 5e example, Ember Roads and Gravewatch, the record read back, vouching,
   fights, item facts, invented items and the Game Master's line), `game-inventory-turn.regression.ts`
   (a real turn saves the Sneak check with the coat) and `e2e/game-ruleset-check-effects.e2e.ts` (the
-  coat's details and the dice card of a real turn), with 60 deliberate breaks each caught.
+  coat's details and the dice card of a real turn), with 65 deliberate breaks each caught. The published JSON schema mirrors the new refinements, pinned by `game-ruleset-json-schema.regression.ts`.
 
 ## Gaps a ruleset author found
 

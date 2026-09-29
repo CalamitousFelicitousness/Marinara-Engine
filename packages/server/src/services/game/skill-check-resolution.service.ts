@@ -1374,6 +1374,21 @@ export async function resolveSkillCheckTagsInContent(
         deferred.push({ start: match.index, end: match.index + match[0].length, tag });
         continue;
       }
+      // Only a ruleset's own condition or item fails a save without a roll, and this game pins none,
+      // so a record that says so is the model's claim: the ask survives, the claimed outcome does not.
+      // (A ruleset game decides it again from the sheet, which never vouches for a record with no dice.)
+      if (tag.resolvedResult?.automatic) {
+        stripped.push({
+          start: match.index,
+          end: match.index + match[0].length,
+          replacement: serializeSparseSkillCheckTag(
+            { skill: tag.skill, dc: tag.dc, advantage: tag.advantage, disadvantage: tag.disadvantage },
+            askExtras(tag),
+          ),
+        });
+        left += 1;
+        continue;
+      }
       if (tag.resolvedResult) {
         trusted += 1;
         left += 1;
@@ -1451,15 +1466,19 @@ export async function resolveSkillCheckTagsInContent(
       for (const entry of deferred) {
         const { tag } = entry;
         const request = toRequest(tag, ruleset?.definition);
+        // A record claiming a save failed without a roll carries no dice to vouch for and a label no
+        // ruleset throws, so it is always the Engine's to decide again from the sheet.
+        const claimsNoRoll = !!tag.resolvedResult?.automatic;
         const owesRoll = ruleset
-          ? !rulesetVouchesFor(ruleset, tag) && isRulesetRollableSkillCheckTag(tag, ruleset.definition)
+          ? claimsNoRoll ||
+            (!rulesetVouchesFor(ruleset, tag) && isRulesetRollableSkillCheckTag(tag, ruleset.definition))
           : !tag.resolvedResult && isEngineRollableSkillCheckTag(tag);
         // A check the character cannot attempt untrained is refused below whatever it carries: no
         // numbers, dice or difficulty the Game Master wrote on it gets it past the sheet.
         const refused = !!ruleset && rulesetRefusesUntrained(ruleset, request);
         if (refused || (owesRoll && isResolvableSkillCheckRequest(request, ruleset?.definition))) {
           pending.push({ start: entry.start, end: entry.end, request, tag });
-        } else if (owesRoll && tag.resolvedResult) {
+        } else if ((owesRoll || claimsNoRoll) && tag.resolvedResult) {
           // This ruleset's own kind of check, carrying numbers the sheet does not vouch for, that
           // cannot be rolled either (an out-of-bounds DC, say). The ask survives; the claimed
           // outcome does not, exactly as a roll that could not happen is saved.
@@ -1472,7 +1491,8 @@ export async function resolveSkillCheckTagsInContent(
                 dc: tag.dc,
                 advantage: tag.advantage,
                 disadvantage: tag.disadvantage,
-                declaredDice: tag.declaredDice,
+                // The "0dN" of a record that claims no roll labels no dice anybody would throw.
+                declaredDice: claimsNoRoll ? undefined : tag.declaredDice,
               },
               askExtras(tag),
             ),

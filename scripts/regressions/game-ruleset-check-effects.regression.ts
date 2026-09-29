@@ -444,6 +444,16 @@ try {
       [false, true, [], ["Paralyzed"]],
       "an automatic failure survives a reload",
     );
+    // A record claiming such a failure is never taken from the Game Master: a ruleset game decides the
+    // save again from the sheet, and a game with no ruleset keeps only the ask.
+    const claimedFailure = `[skill_check: skill="Dexterity save" dc="12" rolls="" used="0" modifier="0" total="0" result="failure" mode="normal" resolution="sum" dice="0d20" from="Paralyzed" automatic="true"]`;
+    const redecided = only(await resolve(contextFor(fiveE), claimedFailure));
+    assert.deepEqual([redecided.automatic, redecided.rolls.length], [undefined, 1], "rolled, since nothing fails it");
+    const unpinned = await resolveSkillCheckTagsInContent(claimedFailure, {
+      loadContext: async () => ({ skills: null, attributes: null, sheetAttributes: {} }),
+    });
+    assert.equal(unpinned.trusted, 0);
+    assert.equal(unpinned.content, `[skill_check: skill="Dexterity save" dc="12"]`, "only the ask is kept");
     const wisdom = only(await resolve(paralyzed, `[skill_check: skill="Wisdom save" dc="12"]`));
     assert.equal(wisdom.automatic, undefined, "a save it does not fail is rolled");
     assert.equal(wisdom.rolls.length, 1);

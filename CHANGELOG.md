@@ -6,7 +6,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - Lorebook editors can copy linked characters and personas to another lorebook without repeating each selection (#6840).
 - Default muted text uses neutral colors, message marks follow chat chroma, and chat Help explains bookmarks, context pins, and private notes (#6839).
-- Lorebook vectorization sends at most ten entries per embedding request, including client-selected batches (#6837).
+- Lorebook vectorization uses batches of ten entries to reduce timeouts with local embedding providers (#6837).
 
 - In a Game Mode game whose ruleset rolls something other than one d20 (such as 2d6 or a dice pool), a check the Engine rolls during a turn is no longer rolled a second time as if nobody's sheet were read. The saved result keeps the sheet's numbers, who rolled, and any wound penalty or modifier the ruleset applied.
 

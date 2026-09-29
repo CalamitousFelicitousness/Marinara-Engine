@@ -1907,9 +1907,18 @@ const itemsSchema = z
       .optional(),
     currencies: z.array(currencyFamilySchema).max(6).optional(),
     /** The most an item the Game Master invents may give at each rarity: the largest value of each
-     *  number stat. The ruleset's own catalog items are its author's and are never capped. */
+     *  number stat, and the largest flat bonus one of its worn or carried modifiers may add (`bonus`).
+     *  The ruleset's own catalog items are its author's and are never capped. */
     rarityCaps: z
-      .array(z.object({ rarity: sheetId, stats: z.record(z.number().finite()).optional() }).strict())
+      .array(
+        z
+          .object({
+            rarity: sheetId,
+            stats: z.record(z.number().finite()).optional(),
+            bonus: z.number().int().min(0).max(100).optional(),
+          })
+          .strict(),
+      )
       .max(12)
       .optional(),
     /** False forbids the Game Master to invent items of this ruleset. */
@@ -1942,6 +1951,10 @@ const catalogItemSchema = z
       .object({ restriction: catalogText(200).optional(), cursed: z.boolean().optional() })
       .strict()
       .optional(),
+    /** What it does while worn: on, and bound where it binds. */
+    worn: z.lazy(() => rulesetItemEffectSchema).optional(),
+    /** What it does while it is only carried. */
+    carried: z.lazy(() => rulesetItemEffectSchema).optional(),
   })
   .strict();
 
@@ -2260,9 +2273,13 @@ export const RULESET_COMBAT_MODIFIER_TARGETS = ["defense", "attacks", "saves", "
 /** The ones that are ROLLED, so dice may be added to them and are rolled every time. */
 export const RULESET_ROLLED_MODIFIER_TARGETS: readonly string[] = ["attacks", "saves", "checks"];
 
+/** Whether a roll is thrown twice with the better or the worse kept. */
+export const RULESET_ROLL_MODES = ["advantage", "disadvantage"] as const;
+
 /** One number a condition changes, and by how much: a flat number (with its own sign), dice rolled
  *  each time the number is used (`minus` takes them away instead), or, for speed only, `times` half or
- *  double, applied after any flat change. */
+ *  double, applied after any flat change. A change to checks may name the `skills` it is about, and
+ *  one to saves the `saves`; either may roll twice (`mode`) where the ruleset rolls twice at all. */
 const combatModifierSchema = z
   .object({
     to: z.enum(RULESET_COMBAT_MODIFIER_TARGETS),
@@ -2270,12 +2287,28 @@ const combatModifierSchema = z
     dice: catalogDice.optional(),
     minus: z.literal(true).optional(),
     times: z.union([z.literal(0.5), z.literal(2)]).optional(),
+    skills: z.array(sheetId).min(1).max(24).optional(),
+    saves: z.array(sheetId).min(1).max(12).optional(),
+    mode: z.enum(RULESET_ROLL_MODES).optional(),
   })
   .strict()
   .superRefine((modifier, ctx) => {
     const add = (path: string, message: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
-    if (modifier.flat === undefined && modifier.dice === undefined && modifier.times === undefined) {
-      add("to", "A modifier changes its number by a flat amount, by dice or, for speed, by times");
+    if (
+      modifier.flat === undefined &&
+      modifier.dice === undefined &&
+      modifier.times === undefined &&
+      modifier.mode === undefined
+    ) {
+      add(
+        "to",
+        "A modifier changes its number by a flat amount, by dice, for speed by times, or for checks and saves by a mode",
+      );
+    }
+    if (modifier.skills !== undefined && modifier.to !== "checks") add("skills", '"skills" narrows a change to checks');
+    if (modifier.saves !== undefined && modifier.to !== "saves") add("saves", '"saves" narrows a change to saves');
+    if (modifier.mode !== undefined && modifier.to !== "checks" && modifier.to !== "saves") {
+      add("mode", '"mode" rolls checks or saves twice, so it changes nothing else');
     }
     if (modifier.flat === 0) add("flat", "A flat change of 0 changes nothing");
     if (modifier.dice !== undefined && !RULESET_ROLLED_MODIFIER_TARGETS.includes(modifier.to)) {
@@ -2288,17 +2321,37 @@ const combatModifierSchema = z
 /** What a condition does to saves has to be about saves: `saves` narrows the save effects and the
  *  modifiers to saves, and nothing else reads it. */
 function savesNeedSomethingToNarrow(
-  entry: { saves?: string[]; effects: string[]; modifiers?: Array<{ to: string }> },
+  entry: { saves?: string[]; effects?: string[]; modifiers?: Array<{ to: string }> },
   ctx: z.RefinementCtx,
 ): void {
   if (!entry.saves) return;
-  const effect = entry.effects.some((one) => (RULESET_SAVE_SCOPED_EFFECTS as readonly string[]).includes(one));
+  const effect = (entry.effects ?? []).some((one) => (RULESET_SAVE_SCOPED_EFFECTS as readonly string[]).includes(one));
   const modifier = entry.modifiers?.some((one) => one.to === "saves") ?? false;
   if (!effect && !modifier) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["saves"],
       message: `"saves" narrows ${RULESET_SAVE_SCOPED_EFFECTS.join(" and ")} and modifiers to saves, so it needs one of them beside it`,
+    });
+  }
+}
+
+/** The two effects `skills` narrows. */
+export const RULESET_CHECK_SCOPED_EFFECTS = ["own-checks-advantage", "own-checks-disadvantage"] as const;
+
+/** And `skills` narrows the check effects and the modifiers to checks, so it needs one beside it. */
+function skillsNeedSomethingToNarrow(
+  entry: { skills?: string[]; effects?: string[]; modifiers?: Array<{ to: string }> },
+  ctx: z.RefinementCtx,
+): void {
+  if (!entry.skills) return;
+  const effect = (entry.effects ?? []).some((one) => (RULESET_CHECK_SCOPED_EFFECTS as readonly string[]).includes(one));
+  const modifier = entry.modifiers?.some((one) => one.to === "checks") ?? false;
+  if (!effect && !modifier) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["skills"],
+      message: `"skills" narrows ${RULESET_CHECK_SCOPED_EFFECTS.join(" and ")} and modifiers to checks, so it needs one of them beside it`,
     });
   }
 }
@@ -2326,6 +2379,7 @@ const combatLevelSchema = z
     modifiers: z.array(combatModifierSchema).min(1).max(6).optional(),
     failsSaves: z.array(sheetId).min(1).max(12).optional(),
     saves: z.array(sheetId).min(1).max(12).optional(),
+    skills: z.array(sheetId).min(1).max(24).optional(),
   })
   .strict()
   .superRefine((entry, ctx) => {
@@ -2346,6 +2400,7 @@ const combatLevelSchema = z
       });
     }
     savesNeedSomethingToNarrow(entry, ctx);
+    skillsNeedSomethingToNarrow(entry, ctx);
   });
 
 const combatConditionSchema = z
@@ -2358,6 +2413,9 @@ const combatConditionSchema = z
     failsSaves: z.array(sheetId).min(1).max(12).optional(),
     /** Which saves the save effects above are about. All of them when this is left out. */
     saves: z.array(sheetId).min(1).max(12).optional(),
+    /** Which skills the check effects and the modifiers to checks are about, where a modifier names
+     *  none of its own. Every check when this is left out; a fight's contests only then. */
+    skills: z.array(sheetId).min(1).max(24).optional(),
     /**
      * Only while whoever applied this is in sight. `true` gates the whole condition; a list gates
      * only the effects it names and leaves the rest standing, which is what a fright that stops you
@@ -2369,7 +2427,51 @@ const combatConditionSchema = z
     endsWhenSourceDown: z.boolean().optional(),
   })
   .strict()
-  .superRefine(savesNeedSomethingToNarrow);
+  .superRefine((entry, ctx) => {
+    savesNeedSomethingToNarrow(entry, ctx);
+    skillsNeedSomethingToNarrow(entry, ctx);
+  });
+
+/** The effects an item may have while worn or carried: the ones a check outside a fight reads. */
+export const RULESET_ITEM_EFFECTS = [...RULESET_CHECK_SCOPED_EFFECTS, ...RULESET_SAVE_SCOPED_EFFECTS] as const;
+/** And the numbers it may change. */
+export const RULESET_ITEM_MODIFIER_TARGETS = ["checks", "saves"] as const;
+
+/**
+ * What an item does while worn (`worn`) or while it is only carried (`carried`), in the condition
+ * vocabulary: advantage or disadvantage on its holder's checks and saves, modifiers to them, and saves
+ * it makes them fail, narrowed by `skills` and `saves` as a condition's are.
+ */
+export const rulesetItemEffectSchema = z
+  .object({
+    effects: z.array(z.enum(RULESET_ITEM_EFFECTS)).min(1).max(4).optional(),
+    modifiers: z.array(combatModifierSchema).min(1).max(6).optional(),
+    failsSaves: z.array(sheetId).min(1).max(12).optional(),
+    saves: z.array(sheetId).min(1).max(12).optional(),
+    skills: z.array(sheetId).min(1).max(24).optional(),
+  })
+  .strict()
+  .superRefine((entry, ctx) => {
+    if (!entry.effects && !entry.modifiers && !entry.failsSaves) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["effects"],
+        message: "An item's effect does something: effects, modifiers or saves it fails",
+      });
+    }
+    entry.modifiers?.forEach((modifier, index) => {
+      if (!(RULESET_ITEM_MODIFIER_TARGETS as readonly string[]).includes(modifier.to)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["modifiers", index, "to"],
+          message: `An item changes ${RULESET_ITEM_MODIFIER_TARGETS.join(" and ")}; what it does in a fight comes with weapons and armor in a fight`,
+        });
+      }
+    });
+    savesNeedSomethingToNarrow(entry, ctx);
+    skillsNeedSomethingToNarrow(entry, ctx);
+  });
+export type RulesetItemEffect = z.infer<typeof rulesetItemEffectSchema>;
 
 /** A number a contest reads for whoever takes part in it: a value off the sheet, read once when the
  *  fight begins, the way a defense or a save is. A creature written in plain numbers gives its own. */
@@ -4168,11 +4270,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       if (!conditions.has(entry.condition)) issue([...path, "condition"], `Unknown condition "${entry.condition}"`);
       if (mapped.has(entry.condition)) issue([...path, "condition"], `Duplicate condition "${entry.condition}"`);
       mapped.add(entry.condition);
-      for (const key of ["failsSaves", "saves"] as const) {
-        entry[key]?.forEach((save, saveIndex) => {
-          if (!saves.has(save)) issue([...path, key, saveIndex], `Unknown save "${save}"`);
-        });
-      }
+      effectNameIssues(entry, skills, saves, path, issue);
       // Gating an effect this condition does not have says nothing, and is nearly always a typo for
       // one it does.
       if (Array.isArray(entry.whileSourceInSight)) {
@@ -4205,11 +4303,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       const key = `${entry.track}@${entry.at}`;
       if (levelled.has(key)) issue([...path, "at"], `Level ${entry.at} of "${entry.track}" is given twice`);
       levelled.add(key);
-      for (const saveKey of ["failsSaves", "saves"] as const) {
-        entry[saveKey]?.forEach((save, saveIndex) => {
-          if (!saves.has(save)) issue([...path, saveKey, saveIndex], `Unknown save "${save}"`);
-        });
-      }
+      effectNameIssues(entry, skills, saves, path, issue);
     });
 
     if (combat.concentration) {
@@ -4923,6 +5017,33 @@ function creatureIssues(
   });
 }
 
+/** The skills and saves a condition, a level or an item's effect names, each one the sheet declares:
+ *  its own `skills`, `saves` and `failsSaves`, and each modifier's `skills` and `saves`. */
+function effectNameIssues(
+  entry: {
+    skills?: string[];
+    saves?: string[];
+    failsSaves?: string[];
+    modifiers?: Array<{ skills?: string[]; saves?: string[] }>;
+  },
+  skills: ReadonlySet<string>,
+  saves: ReadonlySet<string>,
+  at: (string | number)[],
+  add: (path: (string | number)[], message: string) => void,
+): void {
+  const each = (ids: string[] | undefined, known: ReadonlySet<string>, path: (string | number)[], what: string) =>
+    ids?.forEach((id, index) => {
+      if (!known.has(id)) add([...path, index], `Unknown ${what} "${id}"`);
+    });
+  each(entry.skills, skills, [...at, "skills"], "skill");
+  each(entry.saves, saves, [...at, "saves"], "save");
+  each(entry.failsSaves, saves, [...at, "failsSaves"], "save");
+  entry.modifiers?.forEach((modifier, index) => {
+    each(modifier.skills, skills, [...at, "modifiers", index, "skills"], "skill");
+    each(modifier.saves, saves, [...at, "modifiers", index, "saves"], "save");
+  });
+}
+
 /** Everything an entry must satisfy against the ruleset that declares it. */
 /** An item against the ruleset's `items` block: every name it uses is one the block declares, and
  *  every stat value is one that stat could hold. */
@@ -4969,6 +5090,12 @@ function itemIssues(
     );
   }
   if (item.binds && !items.binding) add([...at, "binds"], "This ruleset declares no binding, so nothing is bound");
+  const skills = new Set(definition.sheet.skills.map((skill) => skill.id));
+  const saves = new Set(definition.sheet.saves.map((save) => save.id));
+  for (const key of ["worn", "carried"] as const) {
+    const effect = item[key];
+    if (effect) effectNameIssues(effect, skills, saves, [...at, key], add);
+  }
 }
 
 /** What is wrong with one item against the ruleset's `items` block, as plain lines. An item the Game

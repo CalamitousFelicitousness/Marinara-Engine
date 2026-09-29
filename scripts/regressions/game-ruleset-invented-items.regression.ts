@@ -87,7 +87,7 @@ try {
 
   // ── The format: rarityCaps and propose ──
   {
-    assert.deepEqual(ember.items?.rarityCaps?.[2], { rarity: "storied", stats: { guard: 3 } });
+    assert.deepEqual(ember.items?.rarityCaps?.[2], { rarity: "storied", stats: { guard: 3 }, bonus: 2 });
     assert.equal(ember.items?.propose, true, "invention is allowed unless a ruleset says otherwise");
     const closed = parsedOrThrow(
       variant(emberText, (doc) => {
@@ -164,10 +164,18 @@ try {
       /caps or forbids the items its Game Master invents requires schemaVersion 2 and capabilityApi 1\.51/;
     const issue = (minor: number, doc: Record<string, any>) =>
       getCapabilityPackageInstallIssue(manifest(minor) as any, doc);
-    // Less the example's item read on Guard, which is 1.52's and has a lane of its own.
+    // Less the example's item read on Guard, which is 1.52's, and what its items do to checks and
+    // its bonus caps, which are 1.53's; each has a lane of its own.
     const withoutItemReads = (doc: Record<string, any>) => {
       const guard = doc.sheet.derived.find((entry: { id: string }) => entry.id === "guard");
       guard.of = guard.of.filter((ref: { itemStat?: unknown }) => ref.itemStat === undefined);
+      for (const cap of doc.items.rarityCaps ?? []) delete cap.bonus;
+      for (const catalog of doc.catalogs) {
+        for (const entry of catalog.entries ?? []) {
+          delete entry.item?.worn;
+          delete entry.item?.carried;
+        }
+      }
     };
     const withCaps = variant(emberText, withoutItemReads);
     assert.match(issue(50, withCaps) ?? "", inventedIssue, "rarityCaps");
@@ -225,6 +233,8 @@ try {
       rarity: "storied",
       stats: { bulk: 3, guard: 3 },
       slots: { body: 1 },
+      // What it does while worn comes along too; a penalty is never capped.
+      worn: { modifiers: [{ to: "checks", skills: ["sneak"], flat: -1 }] },
     });
     assert.deepEqual(storied.notes, ["Guard is 3 instead of 4, the most at Storied."]);
     const plainCoat = inventRulesetItem(ember, { summary: "Patched at the elbows." }, coat)!;
@@ -513,16 +523,16 @@ try {
     const told = buildGmFormatReminder({ ...base, ruleset: ember });
     assert.match(
       told,
-      /invent one of its items in the add: \[inventory: action="add" item="New name" category="\.\.\." rarity="\.\.\." tags="a, b" stats="id=value, id=value" slots="id=count" summary="one line"\]\. Every part but item is optional\. To start from one of the ruleset's own items, add like="that item's exact name" \(leave like out otherwise\)/,
+      /invent one of its items in the add: \[inventory: action="add" item="New name" category="\.\.\." rarity="\.\.\." tags="a, b" stats="id=value, id=value" slots="id=count" worn="\+1 Skill" summary="one line"\]\. Every part but item is optional\. worn is what it does while worn, and carried="\.\.\." what it does while only carried: changes split by ";", each \+N, -N, advantage, disadvantage, or fails \(saves only\), on skills or saves by name, or on checks or saves for all of them\. A bonus or penalty to a skill or save always goes in worn or carried, never in stats\. To start from one of the ruleset's own items, add like="that item's exact name" \(leave like out otherwise\)/,
     );
     assert.match(told, /and holds each number to the most its rarity allows/);
     assert.match(
       told,
-      /Its words: categories weapon, armor, ammunition, provisions, gear; rarities common, uncommon, storied \(lowest first\); tags thrown, ranged, two_handed; stats bulk \(number 0 to 10\), guard \(number 0 to 4\), damage \(dice\), swing \(one of brawn, wits, heart\), reach \(one of close, near, far\); slots body \(1\), hands \(2\)\. The most at each rarity: common guard 1; uncommon guard 2; storied guard 3\./,
+      /Its words: categories weapon, armor, ammunition, provisions, gear; rarities common, uncommon, storied \(lowest first\); tags thrown, ranged, two_handed; stats bulk \(number 0 to 10\), guard \(number 0 to 4\), damage \(dice\), swing \(one of brawn, wits, heart\), reach \(one of close, near, far\); slots body \(1\), hands \(2\); skills Scrap, Sneak, Tinker, Sway\. The most at each rarity: common guard 1, worn or carried bonus 1; uncommon guard 2, worn or carried bonus 1; storied guard 3, worn or carried bonus 2\./,
     );
     assert.match(
       buildGmFormatReminder({ ...base, ruleset: gravewatch }),
-      /slots="id=count" binds="yes\|cursed" summary=/,
+      /slots="id=count" binds="yes\|cursed" worn="\+1 Skill" summary=/,
     );
     const closed = parsedOrThrow(
       variant(emberText, (doc) => (doc.items.propose = false)),

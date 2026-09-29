@@ -236,6 +236,7 @@ function activeLevels(
         ...(level.modifiers ? { modifiers: level.modifiers } : {}),
         ...(level.failsSaves ? { failsSaves: level.failsSaves } : {}),
         ...(level.saves ? { saves: level.saves } : {}),
+        ...(level.skills ? { skills: level.skills } : {}),
       },
     ];
   });
@@ -249,8 +250,10 @@ export interface RulesetConditionModifier {
 }
 
 /**
- * Everything this combatant's conditions (and levels) do to one number. For a save, a condition that
- * names its saves changes only those; everything else it changes whatever the roll is for.
+ * Everything this combatant's conditions (and levels) do to one number. For a save, a change that
+ * names its saves (its own, else its condition's) changes only those; everything else it changes
+ * whatever the roll is for. A change to checks narrowed to some skills never reaches a fight, whose
+ * contests roll the fight's own checks, and a change that only rolls twice adds nothing here.
  */
 export function rulesetConditionModifiers(
   definition: RulesetDefinition,
@@ -264,9 +267,14 @@ export function rulesetConditionModifiers(
     return [];
   }
   return rulesetActiveConditions(definition, combat, combatant, state).flatMap((entry) => {
-    if (to === "saves" && save !== undefined && entry.saves && !entry.saves.includes(save)) return [];
     return (entry.modifiers ?? [])
-      .filter((modifier) => modifier.to === to)
+      .filter((modifier) => {
+        if (modifier.to !== to) return false;
+        if (modifier.flat === undefined && modifier.dice === undefined && modifier.times === undefined) return false;
+        if (to === "checks" && (modifier.skills ?? entry.skills)) return false;
+        const saves = modifier.saves ?? entry.saves;
+        return !(to === "saves" && save !== undefined && saves && !saves.includes(save));
+      })
       .map((modifier) => ({
         condition: entry.condition,
         ...(entry.level !== undefined ? { level: entry.level } : {}),
@@ -316,6 +324,13 @@ export function rulesetSaveMode(
   let advantage = false;
   let disadvantage = false;
   for (const entry of rulesetActiveConditions(definition, combat, combatant, state)) {
+    // A change to saves that rolls twice counts like the effect, narrowed by its own saves first.
+    for (const modifier of entry.modifiers ?? []) {
+      const saves = modifier.saves ?? entry.saves;
+      if (modifier.to !== "saves" || !modifier.mode || (saves && !saves.includes(save))) continue;
+      if (modifier.mode === "advantage") advantage = true;
+      else disadvantage = true;
+    }
     if (entry.saves && !entry.saves.includes(save)) continue;
     if (entry.effects.includes("own-saves-advantage")) advantage = true;
     if (entry.effects.includes("own-saves-disadvantage")) disadvantage = true;
@@ -327,9 +342,10 @@ export function rulesetSaveMode(
   return advantage ? "advantage" : "disadvantage";
 }
 
-/** How this combatant's own side of a contest is thrown: the check effects of their conditions,
- *  cancelling each other out as they do on an attack. A ruleset that never rolls twice keeps its
- *  single throw. */
+/** How this combatant's own side of a contest is thrown: the check effects of their conditions and
+ *  their changes to checks that roll twice, cancelling each other out as they do on an attack. What is
+ *  narrowed to some skills stays out, since a contest rolls the fight's own checks. A ruleset that never
+ *  rolls twice keeps its single throw. */
 export function rulesetCheckMode(
   definition: RulesetDefinition,
   combat: RulesetCombat,
@@ -337,9 +353,18 @@ export function rulesetCheckMode(
   state?: RulesetEncounterState,
 ): "normal" | "advantage" | "disadvantage" {
   if (!rulesetCombatAdvantage(combat)) return "normal";
-  const effects = rulesetCombatEffects(definition, combat, combatant, state);
-  const advantage = effects.has("own-checks-advantage");
-  const disadvantage = effects.has("own-checks-disadvantage");
+  let advantage = false;
+  let disadvantage = false;
+  for (const entry of rulesetActiveConditions(definition, combat, combatant, state)) {
+    for (const modifier of entry.modifiers ?? []) {
+      if (modifier.to !== "checks" || !modifier.mode || (modifier.skills ?? entry.skills)) continue;
+      if (modifier.mode === "advantage") advantage = true;
+      else disadvantage = true;
+    }
+    if (entry.skills) continue;
+    if (entry.effects.includes("own-checks-advantage")) advantage = true;
+    if (entry.effects.includes("own-checks-disadvantage")) disadvantage = true;
+  }
   if (advantage === disadvantage) return "normal";
   return advantage ? "advantage" : "disadvantage";
 }

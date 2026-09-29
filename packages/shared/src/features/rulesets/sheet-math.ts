@@ -118,6 +118,8 @@ export interface RulesetSheetItem {
   item: RulesetCatalogItem;
   quantity: number;
   worn: boolean;
+  /** What the stack is called, for a record of what an item did. */
+  name?: string;
 }
 
 const readsItems = new WeakMap<RulesetDefinition, boolean>();

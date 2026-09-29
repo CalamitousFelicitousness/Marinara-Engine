@@ -249,15 +249,28 @@ try {
     const itemStatIssue = /values read the items someone holds requires schemaVersion 2 and capabilityApi 1\.52/;
     const issue = (minor: number, doc: Record<string, any>, paths?: string[], files?: Map<string, unknown>) =>
       getCapabilityPackageInstallIssue(manifest(minor, paths) as any, doc, files);
-    const whole = variant(emberText);
+    // Less what the example's items do to checks and its bonus caps, which are 1.53's and have a lane
+    // of their own.
+    const upTo152 = (edit: (doc: Record<string, any>) => void = () => {}) =>
+      variant(emberText, (doc) => {
+        for (const cap of doc.items.rarityCaps) delete cap.bonus;
+        for (const catalog of doc.catalogs) {
+          for (const entry of catalog.entries ?? []) {
+            delete entry.item?.worn;
+            delete entry.item?.carried;
+          }
+        }
+        edit(doc);
+      });
+    const whole = upTo152();
     assert.match(issue(51, whole) ?? "", itemStatIssue);
     assert.equal(issue(52, whole), null);
-    const withoutRead = variant(emberText, (doc) => {
+    const withoutRead = upTo152((doc) => {
       derivedOf(doc, "guard").of = derivedOf(doc, "guard").of.slice(0, 2);
     });
     assert.equal(issue(51, withoutRead), null, "the rest of the example stays 1.51");
     // Anywhere it sits: a check's modifier, a catalog file.
-    const inAdjust = variant(emberText, (doc) => {
+    const inAdjust = upTo152((doc) => {
       derivedOf(doc, "guard").of = derivedOf(doc, "guard").of.slice(0, 2);
       doc.resolution.adjust.push({ value: { itemStat: { from: "worn", pick: "count" } } });
     });

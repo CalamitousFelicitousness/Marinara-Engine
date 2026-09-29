@@ -740,6 +740,20 @@ try {
     // And each sheet reads what its character wears (#6826): Guard is 6 + Wits, and Ada's coat adds 1.
     assert.match(text, /\nAda\nBRN \+0, WIT \+0, HRT \+0\nGrit maximum 6, Guard 7\n/);
     assert.match(text, /\nBram\nBRN \+3, WIT \+0, HRT \+0\nGrit maximum \d+, Guard 6\n/);
+    // And a check reads it (#6832): the coat Ada wears costs her Sneak 1, and the saved record says so.
+    reply = `Ada creeps past the guards. [skill_check: skill="Sneak" dc="8"]`;
+    await chats.createMessage({ chatId: road.id, role: "user", content: "I sneak." });
+    const sneaked = await app.inject({
+      method: "POST",
+      url: "/api/generate/",
+      payload: { chatId: road.id, streaming: true },
+    });
+    assert.equal(sneaked.statusCode, 200, sneaked.body);
+    const checked = (await chats.listMessages(road.id)).at(-1)!.content;
+    assert.match(
+      checked,
+      /\[skill_check: skill="Sneak" dc="8" rolls="\d+\|\d+"[^\]]* effects="-1" from="Leather coat"\]/,
+    );
     assert.match(text, /an add with who left out goes to whoever can carry it/);
     // A check the ruleset rolled with its own dice is saved as it rolled it: Bram's Scrap with his
     // Brawn of 3 and his name, never rolled a second time as if nobody's sheet were read.
@@ -908,7 +922,10 @@ try {
       .join("\n");
     assert.match(prompt, /PLAYER INVENTORY \([^)]*\): Mourning Edge \[Weapon, Uncommon; Damage 2d6\]/);
     assert.match(prompt, /invent one of its items in the add/);
-    assert.match(prompt, /The most at each rarity: common guard 1; uncommon guard 2; storied guard 3\./);
+    assert.match(
+      prompt,
+      /The most at each rarity: common guard 1, worn or carried bonus 1; uncommon guard 2, worn or carried bonus 1; storied guard 3, worn or carried bonus 2\./,
+    );
 
     // A new session keeps the invented items still held and drops the ones nobody holds.
     const gameId = "invented-items-sessions";

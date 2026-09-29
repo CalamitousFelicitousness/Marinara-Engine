@@ -859,6 +859,41 @@ function entriesCarryItems(entries: unknown): boolean {
   return Array.isArray(entries) && entries.some((entry) => plainRecord(entry)?.item !== undefined);
 }
 
+const CHECK_EFFECTS_ISSUE =
+  "A ruleset whose items change checks while worn or carried, whose conditions or levels name skills, whose modifiers name skills, saves or a mode, or whose rarity caps hold a bonus requires schemaVersion 2 and capabilityApi 1.53 or newer";
+
+/** What an item does while worn or carried, which is 1.53: new keys on the strict item. */
+function entriesCarryItemEffects(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) &&
+    entries.some((entry) => {
+      const item = plainRecord(plainRecord(entry)?.item);
+      return item?.worn !== undefined || item?.carried !== undefined;
+    })
+  );
+}
+
+/** The 1.53 keys in the ruleset file itself: `skills` on a condition or a level, `skills`, `saves` and
+ *  `mode` on one of their modifiers, and a rarity cap's `bonus`. Ordinary words, so only those places
+ *  are read. */
+function rulesetCarriesCheckEffects153Keys(ruleset: { combat?: unknown; items?: unknown } | undefined): boolean {
+  const combat = plainRecord(ruleset?.combat);
+  const entries = [combat?.conditions, combat?.levels].flatMap((list) => (Array.isArray(list) ? list : []));
+  const named = entries.some((raw) => {
+    const entry = plainRecord(raw);
+    if (!entry) return false;
+    if (entry.skills !== undefined) return true;
+    const modifiers = Array.isArray(entry.modifiers) ? entry.modifiers : [];
+    return modifiers.some((one) => {
+      const modifier = plainRecord(one);
+      return modifier?.skills !== undefined || modifier?.saves !== undefined || modifier?.mode !== undefined;
+    });
+  });
+  if (named) return true;
+  const caps = plainRecord(ruleset?.items)?.rarityCaps;
+  return Array.isArray(caps) && caps.some((cap) => plainRecord(cap)?.bonus !== undefined);
+}
+
 const MOVING_INITIATIVE_ISSUE =
   "A ruleset whose fights throw initiative as a pool or let attacks move it requires schemaVersion 2 and capabilityApi 1.48 or newer";
 
@@ -1058,6 +1093,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryConditionEndings(header.entries) && !declaresApi(45)) return CONDITION_NUMBERS_ISSUE;
       if (entriesCarryHitMoments(header.entries) && !declaresApi(46)) return HIT_MOMENTS_ISSUE;
       if (entriesCarryCreatureSoak(header.entries) && !declaresApi(47)) return POOL_FIGHT_ISSUE;
+      if (entriesCarryItemEffects(header.entries) && !declaresApi(53)) return CHECK_EFFECTS_ISSUE;
       const asset = header.asset;
       if (typeof asset !== "string") continue;
       // A path that does not normalize is never a declared one, whatever else failed to normalize.
@@ -1083,6 +1119,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryHitMoments(fileEntries) && !declaresApi(46)) return HIT_MOMENTS_ISSUE;
       if (entriesCarryCreatureSoak(fileEntries) && !declaresApi(47)) return POOL_FIGHT_ISSUE;
       if (entriesCarryItems(fileEntries) && !declaresApi(49)) return ITEMS_ISSUE;
+      if (entriesCarryItemEffects(fileEntries) && !declaresApi(53)) return CHECK_EFFECTS_ISSUE;
     }
   }
   // The battle block lives inside the ruleset file too, so it is read the same way and for the same
@@ -1180,6 +1217,9 @@ export function getCapabilityPackageInstallIssue(
   if (!declaresApi(49) && ruleset?.items !== undefined) return ITEMS_ISSUE;
   // What the Game Master may invent, which is 1.51's. Same file, same reason.
   if (!declaresApi(51) && rulesetCarriesInventedItem151Keys(ruleset)) return INVENTED_ITEMS_ISSUE;
+  // What items, conditions and levels do to checks outside a fight, which are 1.53's. Same file, same
+  // reason; the items themselves are read with the catalogs above.
+  if (!declaresApi(53) && rulesetCarriesCheckEffects153Keys(ruleset)) return CHECK_EFFECTS_ISSUE;
   // Values that read the items someone holds, which are 1.52's. Same file (and the same catalog
   // files), same reason.
   if (

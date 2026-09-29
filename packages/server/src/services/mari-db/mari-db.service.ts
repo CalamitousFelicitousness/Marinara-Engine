@@ -19,6 +19,7 @@ import { getFileTableConfig, isFileTable, type AnyFileColumn, type AnyFileTable 
 import * as schema from "../../db/schema/index.js";
 import { getFileStorageDir, getMonorepoRoot, isCustomToolScriptEnabled } from "../../config/runtime-config.js";
 import { logger } from "../../lib/logger.js";
+import { chatIdForMariSession } from "../professor-mari/mari-session.js";
 import { createCharactersStorage } from "../storage/characters.storage.js";
 import {
   clearCharacterEmbeddedLorebook,
@@ -470,6 +471,28 @@ function isRecord(value: unknown): value is Row {
 function clone<T>(value: T): T {
   if (value === undefined) return value;
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+/**
+ * An update that leaves the row as it was, apart from its timestamp (#6842). A field that is
+ * null on one side and absent on the other is empty either way: a replace row omits columns
+ * such as `embedding` that the stored row holds as null.
+ */
+function isUnchangedRow(change: PlanChange): boolean {
+  if (change.action !== "update" && change.action !== "replace") return false;
+  if (!change.before || !change.after) return false;
+  const withoutEmpty = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(withoutEmpty);
+    if (!isRecord(value)) return value;
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, field]) => field !== null && field !== undefined)
+        .map(([key, field]) => [key, withoutEmpty(field)]),
+    );
+  };
+  const { updatedAt: _beforeStamp, ...before } = change.before;
+  const { updatedAt: _afterStamp, ...after } = change.after;
+  return stableJson(withoutEmpty(before)) === stableJson(withoutEmpty(after));
 }
 
 function stableJson(value: unknown): string {
@@ -5112,6 +5135,28 @@ export class MariDbService {
     return history;
   }
 
+  /**
+   * Keep every pending review made in a Mari chat, when that chat is deleted (#6842). The
+   * changes stay applied and their undo goes with the chat, instead of the cards following
+   * the user into every other chat. Returns how many were kept; one that cannot be retired
+   * stays pending, as Keep always leaves it.
+   */
+  async keepReviewsForChat(chatId: string): Promise<number> {
+    this.ensurePendingHydrated();
+    const owned = Array.from(this.pending.values()).filter(
+      (record) => chatIdForMariSession(record.sessionId) === chatId,
+    );
+    let kept = 0;
+    for (const record of owned) {
+      try {
+        if (await this.keepAppliedReview(record.id)) kept += 1;
+      } catch (err) {
+        logger.warn(err, "[mari-db] could not keep review %s of deleted chat %s", record.id, chatId);
+      }
+    }
+    return kept;
+  }
+
   async restoreAppliedReview(
     id: string,
   ): Promise<
@@ -5147,7 +5192,7 @@ export class MariDbService {
           approval,
           outcome: "state_changed",
           error:
-            "This data changed after Professor Mari staged it; a newer edit would be overwritten. Review a fresh proposal instead.",
+            "This data changed after Professor Mari made the change, so restoring would overwrite the newer version. Press Keep to dismiss this card; the current data stays as it is.",
         };
       }
       if (err instanceof HomeWidgetCatalogConflictError) {
@@ -5309,7 +5354,7 @@ export class MariDbService {
         return {
           outcome: "state_changed",
           error:
-            "This data changed after Professor Mari staged it; a newer edit would be overwritten. Review a fresh proposal instead.",
+            "This data changed after Professor Mari made the change, so restoring would overwrite the newer version. Press Keep to dismiss this card; the current data stays as it is.",
         };
       }
       this.pending.delete(id);
@@ -7306,6 +7351,20 @@ export class MariDbService {
       };
     }
 
+    // #6842: a write that leaves every row exactly as it was, bar its timestamp, changes nothing.
+    // It is not applied and gets no Keep/Restore card: an empty "No field changes" card can only
+    // pile up. No summary, so Mari reads the plain message rather than "Applied and saved".
+    if (plan.changes.length > 0 && plan.changes.every(isUnchangedRow)) {
+      return {
+        ok: true,
+        mode: "apply",
+        command,
+        output: "No changes: every row already has these values, so nothing was written and no review card was made.",
+        validation: plan.validation,
+        approval: { status: "not_required", operationHash: plan.operationHash },
+      };
+    }
+
     try {
       await guardMariDecisionWrites(plan.changes);
       await this.captureDeletedLorebookEmbeddings(plan.changes);
@@ -7437,6 +7496,18 @@ export class MariDbService {
         table: "app_settings",
         id: MARI_PERMISSIONS_MODE_SETTINGS_KEY,
         message: "The Permissions Mode can only be changed by the user, from the Mari panel or Settings.",
+      });
+    }
+    // #6842: Professor Mari's own built-in card is Engine data. Startup rewrites it to the
+    // shipped card, so an edit would vanish at the next start and its review could never be
+    // restored. Change-level, like the floor above, so raw db commands are covered too.
+    if (changes.some((change) => change.table === "characters" && change.id === PROFESSOR_MARI_ID)) {
+      issues.push({
+        level: "error",
+        table: "characters",
+        id: PROFESSOR_MARI_ID,
+        message:
+          "Professor Mari's own built-in card is managed by Marinara and reset on every start, so it cannot be edited or deleted.",
       });
     }
     // Same floor for the per-chat override: a chats-row write whose metadata

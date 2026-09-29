@@ -4,7 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
-- A Game Mode ruleset's items now count in a fight too: a ring of protection, boots that slow nobody, a cloak that makes attacks against its wearer harder, or a ring of fire resistance applies while worn or carried, and armor too heavy for its wearer can cost them speed. Ruleset fights now add the sheet's own roll modifiers (`resolution.adjust`) the way checks do, and where initiative is spent as damage, hardness from armor or a creature's stat block stops a blow below it. Rulesets that use the new item keys or hardness need Capability API 1.56 (#6857).
+- A Game Mode ruleset's items now count in a fight too: a ring of protection, boots that slow nobody, a cloak that makes attacks against its wearer harder, or a ring of fire resistance applies while worn or carried, and armor too heavy for its wearer can cost them speed. Ruleset fights now add the sheet's own roll modifiers (`resolution.adjust`) the way checks do, and where initiative is spent as damage, a blow below the hardness of armor or a creature's stat block still lands but does no damage. Rulesets that use the new item keys or hardness need Capability API 1.56 (#6857).
 
 - OpenAI connections can select **GPT-6.1 Sol** (`gpt-6.1-sol`). It has a 1.05M-token context window and 128K output, and reasoning effort from low to max. Reasoning cannot be turned off for this model: Off is sent as low, and temperature and top-p are never sent (#6867).
 

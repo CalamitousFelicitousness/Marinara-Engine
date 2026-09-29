@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Updated the server's HTTP/WebSocket client to Undici 7.29.1 to pick up upstream security fixes.
+
 - Lorebook editors can copy linked characters and personas to another lorebook without repeating each selection (#6840).
 - Default muted text uses neutral colors, message marks follow chat chroma, and chat Help explains bookmarks, context pins, and private notes (#6839).
 - Lorebook vectorization uses batches of ten entries to reduce timeouts with local embedding providers (#6837).

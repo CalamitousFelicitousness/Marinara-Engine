@@ -299,6 +299,7 @@ function blockFromCreature(creature: RulesetCreature, budgets: ReadonlySet<strin
     ...(creature.vulnerable ? { vulnerable: [...creature.vulnerable] } : {}),
     ...(creature.immune ? { immune: [...creature.immune] } : {}),
     ...(creature.conditionImmunities ? { conditionImmunities: [...creature.conditionImmunities] } : {}),
+    ...(creature.hardness !== undefined ? { hardness: creature.hardness } : {}),
     ...(creature.soak
       ? {
           soak: {

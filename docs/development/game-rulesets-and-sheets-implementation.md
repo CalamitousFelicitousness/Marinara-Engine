@@ -1321,9 +1321,9 @@ writes to the inventory ships on its own.
   never changed; `itemsUsed`, `loaded` and `recoverable` on the combatant, keyed by the item's place
   in that list, are what the fight did (`ammo.ts`). Ammunition is drawn first stack first from
   every carried stack with the tag, worn or not. `rulesetActionAvailable` asks
-  `rulesetShotsAvailable`, so the menu, windows, sequences and strikes at somebody walking away all
-  see an empty weapon the same way, and `spendAvailability` spends the shots wherever an action is
-  taken.
+  `rulesetShotsAvailable`, so the menu, windows and sequences see an empty weapon the same way, and
+  so does `rulesetOpportunityAttack`, which keeps its own copy of that bookkeeping (the menu's module
+  reads it); `spendAvailability` spends the shots wherever an action is taken.
 - **Reload.** A weapon with a clip adds a second action, `reload:<index>`, of a new kind `reload`
   (targets nobody, no roll, no window), offered while the clip has room and, where it draws `ammo`,
   while the bag holds some. It fills to `max` out of the bag, or in full without `ammo`. The combat
@@ -1355,7 +1355,7 @@ writes to the inventory ships on its own.
   and not a lost one, a clip spent, reloaded from the bag or for free, a clip read off a stat, the
   write-back by stack id with removal and a stack made again, the loaded count on a stack of one,
   facts and the log), lanes that pin older gates or the examples, and
-  `e2e/game-ruleset-ammo.e2e.ts`, with 59 deliberate breaks each caught (one of them, the director's
+  `e2e/game-ruleset-ammo.e2e.ts`, with 61 deliberate breaks each caught (one of them, the director's
   write, by the e2e).
 
 ## Gaps a ruleset author found

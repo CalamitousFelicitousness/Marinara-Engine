@@ -31,6 +31,7 @@ import {
   rulesetItemBook,
   rulesetItemFacts,
   rulesetItemPromptFacts,
+  rulesetOpportunityAttack,
   rulesetSheetItems,
   type GameInventoryStack,
   type RulesetCatalogEntry,
@@ -546,6 +547,9 @@ try {
     // Reloading spent the act, so it cannot also be fired this turn, and it is loaded next turn.
     assert.equal(optionOf(gravewatch, reloaded.state, "item:0"), undefined);
     assert.deepEqual(optionOf(gravewatch, nextTurn(gravewatch, reloaded.state), "item:0")?.loaded, { now: 1, max: 1 });
+    // A strike at somebody walking away is made with a loaded weapon only.
+    assert.equal(rulesetOpportunityAttack(ada(start))?.id, "item:0");
+    assert.equal(rulesetOpportunityAttack(ada(empty)), null, "an empty pistol strikes nobody in passing");
     // Nothing to load: no reload.
     const dry = fight(gravewatch, [held(pistol, "Watch pistol")]);
     assert.ok(optionOf(gravewatch, dry, "item:0"), "loaded, it fires without any shot in the bag");
@@ -684,6 +688,11 @@ try {
       applyRulesetFightItemChanges([{ ...stacks[1]!, item: "outfitter/road-rations" }], changes),
       null,
       "another item under the stack's id",
+    );
+    assert.equal(
+      applyRulesetFightItemChanges([{ ...stacks[1]!, holder: "Juno" }], changes),
+      null,
+      "the stack given to somebody else",
     );
     assert.equal(
       applyRulesetFightItemChanges([{ ...stacks[1]!, quantity: 0 + 1 }], [{ ...changes[0]!, taken: 2 }]),

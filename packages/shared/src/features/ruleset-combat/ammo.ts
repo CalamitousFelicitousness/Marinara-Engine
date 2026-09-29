@@ -164,8 +164,9 @@ export function rulesetFightItemChanges(
  * A fight's changes written onto the inventory, by stack id: each stack takes what was shot or loaded
  * out of it (and is gone at none), a weapon keeps what it has loaded, and what a won fight gives back
  * to a stack it had emptied makes that stack again, where it was. Null when the inventory no longer
- * holds what the fight counted on (a stack gone, another item under its id, or fewer in it than were
- * shot), which the caller refuses the step for, as it does a spent item it cannot find.
+ * holds what the fight counted on (a stack gone, another item or another bag under its id, or fewer
+ * in it than were shot), which the caller refuses the step for, as it does a spent item it cannot
+ * find.
  */
 export function applyRulesetFightItemChanges(
   stacks: readonly GameInventoryStack[],
@@ -190,7 +191,8 @@ export function applyRulesetFightItemChanges(
       continue;
     }
     const stack = next[at]!;
-    if (stack.item !== change.stack.ref) return null;
+    // Given to somebody else keeps a stack's id, and one fighter's shots never come out of another's bag.
+    if (stack.item !== change.stack.ref || stack.holder !== change.stack.holder) return null;
     const quantity = Math.min(GAME_INVENTORY_MAX_QUANTITY, stack.quantity - change.taken);
     if (quantity < 0) return null;
     if (quantity === 0) {

@@ -6,6 +6,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - Updated Undici, fast-uri, and ip-address dependencies to pick up upstream network and URL-handling security fixes.
 
+- Professor Mari's review cards belong to the chat she made the change in: a new chat starts clean, and deleting a chat keeps its changes and removes its cards. She can no longer edit her own built-in card, which Marinara resets on every start, an edit that changes nothing makes no card, a refused Restore explains that Keep dismisses the card, and a failed Keep or Restore says why (#6842).
+
 - Lorebook editors can copy linked characters and personas to another lorebook without repeating each selection (#6840).
 - Default muted text uses neutral colors, message marks follow chat chroma, and chat Help explains bookmarks, context pins, and private notes (#6839).
 - Lorebook vectorization uses batches of ten entries to reduce timeouts with local embedding providers (#6837).

@@ -5,6 +5,7 @@ import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
 import AdmZip from "adm-zip";
 import { logger } from "../lib/logger.js";
+import { getMariDbService } from "../services/mari-db/mari-db.service.js";
 import { cardPromptText } from "../services/prompt/card-text.js";
 import {
   DECISION_PROMPT_QUESTION_LIMIT_SETTINGS_KEY,
@@ -1036,6 +1037,8 @@ export async function chatsRoutes(app: FastifyInstance) {
     if (!target) return reply.status(404).send({ error: "Professor Mari chat not found" });
     const wasActive = isActiveHomeProfessorMariChat(target);
     await storage.remove(target.id);
+    // #6842: the chat's Keep/Restore cards go with it. Its changes stay applied.
+    await getMariDbService(app.db).keepReviewsForChat(target.id);
     if (wasActive) {
       const remaining = sortProfessorMariChats((await storage.list()).filter(isHomeProfessorMariChat));
       const next = remaining[0];

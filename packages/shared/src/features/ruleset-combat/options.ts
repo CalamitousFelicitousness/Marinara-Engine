@@ -980,8 +980,9 @@ function optionFrom(
   // Not in a window: what is taken at its moment is made in the first style, so there is no choice.
   const styles = atItsMoment ? [] : rulesetAttackStyles(combat, actor, action);
   if (styles.length > 0) {
-    // A spending blow below the first target's hardness does nothing to them.
-    const aimed = firstTarget(definition, state, actor, action);
+    // A spending blow below the first target's hardness does nothing to them. An area names nobody,
+    // so it is the first combatant any legal aim would catch, as the forecast reads.
+    const aimed = firstTarget(definition, state, actor, action) ?? firstAreaTarget(state, actor, action);
     const turned = aimed?.hardness !== undefined && actor.initiative < aimed.hardness;
     option.styles = styles.map((style) => {
       const hit = forecast?.hitChance !== undefined ? { hitChance: forecast.hitChance } : {};

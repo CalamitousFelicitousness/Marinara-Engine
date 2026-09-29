@@ -1565,7 +1565,7 @@ is filed under one of your own tiers.
 
 The numbers below are the plain way to write a creature. One written in your ruleset's own terms,
 as a `sheet`, takes `health`, `defense`, `initiativeModifier`, `speed`, `abilities`, `saves`,
-`checks` and `soak` from that sheet instead (see "A creature written in your ruleset's own terms", below).
+`checks`, `soak` and `hardness` from that sheet instead (see "A creature written in your ruleset's own terms", below).
 
 - `health`: a number, or `{ "dice": "3d6", "flat": 2 }` thrown once when the fight is created. A
   forecast reads the average, so a menu never promises a die nobody has thrown.
@@ -2171,8 +2171,8 @@ Said plainly, because a ruleset should not claim what the Engine does not do:
   of turns however deep it went; and an attack made
   in a window (a strike at somebody breaking away, a reaction, a signature move) is made in the
   first style.
-- **An invented opponent soaks nothing.** A creature the Game Master makes up for one fight is held
-  to your threat scale, which says nothing about soak, so it has none.
+- **An invented opponent soaks nothing and has no hardness.** A creature the Game Master makes up for
+  one fight is held to your threat scale, which says nothing about soak or hardness, so it has neither.
 
 ## Layers: variants of your own ruleset
 

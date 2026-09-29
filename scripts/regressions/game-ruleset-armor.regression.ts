@@ -21,6 +21,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   applyRulesetCombatChoice,
+  clampRulesetStatBlock,
   createRulesetEncounter,
   defaultRulesetSheetBuild,
   inventRulesetItem,
@@ -38,6 +39,7 @@ import {
   rulesetItemPromptFacts,
   rulesetItemStatsRead,
   rulesetMovementAllowance,
+  rulesetProposedStatBlock,
   rowsFromCatalogEntry,
   type RulesetCatalogEntry,
   type RulesetCatalogItem,
@@ -167,6 +169,19 @@ try {
       (doc) => (itemEntry(doc, "lantern-coat").item.worn = { modifiers: [{ to: "attacks", dice: "1d4" }] }),
       /worn\.modifiers\.0\.dice: A "dice-pool" fight adds dice to a pool, so a modifier gives a flat number of dice/,
       "dice on attacks in a pool",
+    );
+    // Dice on checks and saves were a pool ruleset's before 1.56, and a fight adds what they roll as
+    // dice, as a pool check outside one does, so they still import.
+    parsedOrThrow(
+      variant(gravewatchText, (doc) => {
+        itemEntry(doc, "lantern-coat").item.worn = {
+          modifiers: [
+            { to: "saves", dice: "1d4" },
+            { to: "checks", dice: "1d4" },
+          ],
+        };
+      }),
+      "dice on checks and saves in a pool",
     );
     // What an unmet requirement costs may be a fight's too.
     parsedOrThrow(
@@ -862,6 +877,72 @@ try {
       ],
     });
     assert.equal(rulesetCombatant(bestiary, "warden")!.hardness, 4);
+    // One the Game Master invents has none: no tier bounds it, as none bounds soak.
+    const invented = clampRulesetStatBlock(
+      hard,
+      rulesetProposedStatBlock(hard, {
+        tier: hard.combat!.threat!.tiers[0]!.id,
+        health: 3,
+        defense: 1,
+        initiativeModifier: 1,
+        hardness: 9,
+        actions: [{ id: "bite", name: "Bite", budget: "act", toHit: 2, damage: { dice: "1d10" } }],
+      } as never)!,
+      hard.combat!.threat!.tiers[0]!.id,
+    );
+    assert.equal(invented.block.hardness, undefined);
+    assert.ok(invented.adjusted.some((line) => /has no hardness/.test(line)));
+    // An area names nobody, so its spending forecast reads the first combatant any legal aim catches.
+    const boarded = parsedOrThrow(
+      variant(gravewatchText, (doc) => {
+        moveInitiative(doc);
+        doc.combat.initiative.plus = 0;
+        doc.combat.distance = { label: "paces", perCell: 2 };
+      }),
+      "Gravewatch with hardness and a board",
+    );
+    const sweeping = (sinew: number) =>
+      rulesetCombatOptions(
+        boarded,
+        createRulesetEncounter({
+          definition: boarded,
+          seed: 5,
+          roller: () => 8,
+          board: {
+            grid: { width: 5, height: 1, tiles: [Array.from({ length: 5 }, () => "plains" as const)] },
+            placements: { ada: { x: 0, y: 0 }, wight: { x: 2, y: 0 } },
+          },
+          combatants: [
+            { id: "ada", name: "Ada", side: "party", build: build(boarded, { sinew, nerve: 1 }) },
+            {
+              id: "wight",
+              name: "Wight",
+              side: "enemy",
+              block: {
+                health: 30,
+                defense: 1,
+                initiativeModifier: 2,
+                actions: [
+                  {
+                    id: "sweep",
+                    name: "Sweep",
+                    budget: "act",
+                    toHit: 2,
+                    damage: { count: 1, sides: 10, flat: 0 },
+                    area: { shape: "burst", size: 4, friendlyFire: false },
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+        "wight",
+      )
+        .find((option) => option.id === "sweep")!
+        .styles!.find((style) => style.id === "telling")!.forecast!.averageDamage;
+    // The wight's number is 2: Ada's hardness of 3 turns it, and one of 2 does not.
+    assert.equal(sweeping(3), 0);
+    assert.ok(sweeping(2)! > 0);
   }
 
   // ── What an item says ──

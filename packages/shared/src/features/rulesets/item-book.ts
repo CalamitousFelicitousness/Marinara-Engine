@@ -80,7 +80,7 @@ const FIGHT_EFFECT_TEXT: Record<string, string> = {
   "attacks-against-disadvantage": "attacks against them have disadvantage",
   "attacks-against-adjacent-advantage": "attacks against them from next to them have advantage",
   "attacks-against-far-disadvantage": "attacks against them from afar have disadvantage",
-  "attacks-from-adjacent-critical": "a hit from next to them is critical",
+  "attacks-from-adjacent-critical": "a hit on them from next to them is critical",
   "cannot-act": "cannot act",
   "cannot-react": "cannot react",
   "speed-zero": "cannot move",

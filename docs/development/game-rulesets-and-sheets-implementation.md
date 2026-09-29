@@ -1275,9 +1275,10 @@ Capability API 1.56, for #6857. Slice I5-2 of the ruleset items plan.
   since both of their entries read a live state at its default.
 - **Hardness.** `combat.pool.hardness` (a value off the sheet, read like soak) and a creature's
   `hardness` are refused unless a style spends initiative, and a creature written as a sheet takes it
-  from the sheet. A spending blow whose dice are below it lands (the number goes back to the base)
+  from the sheet. One the Game Master invents has none: the clamp drops it, as it drops soak, since no
+  tier bounds it. A spending blow whose dice are below it lands (the number goes back to the base)
   and records a `hardness` event instead of damage; the spending style's forecast is 0 against the
-  first target it would stop. This is Exalted's hardness, against decisive (spending) blows. The
+  first target it would stop (for an area, the first one any legal aim catches). This is Exalted's hardness, against decisive (spending) blows. The
   Storyteller record's "Not built" note about a taking blow against a sturdy target was loosely put:
   a taking blow already meets soak, and the author guide's "Not yet" line now says so.
 - **Seen and said.** Item facts gain fight kinds: attacks, defense (named by the ruleset's own
@@ -1285,6 +1286,9 @@ Capability API 1.56, for #6857. Slice I5-2 of the ruleset items plan.
   conditions kept off, with localized lines on the screen and English ones for the Game Master. A
   defense written as a number has no name, so it reads "defense". In a pool ruleset an item's
   modifier to attacks is a flat number of dice, as a condition's is, at import and when invented.
+  Its modifiers to checks and saves may still be dice, as they could before 1.56: a fight adds what
+  they roll as dice, exactly as a pool check outside a fight does, so refusing them now would only
+  refuse rulesets that installed on 1.54.
   Invented items read `+N`/`-N`/advantage or disadvantage on attacks and `+N`/`-N` on defense (or its
   word), held to the rarity's bonus; a copied speed change is not capped (it is a distance, not a
   bonus), and a copied effect whose only part left is what it keeps off is kept. Gemma 4 E4B wrote
@@ -1300,7 +1304,7 @@ Capability API 1.56, for #6857. Slice I5-2 of the ruleset items plan.
   condition and a crash's kept off, requirements, the log's names, `resolution.adjust` on every kind
   of roll, hardness on the blow, the forecast and a bestiary creature, facts, invented items), lanes
   that pin older gates, the examples or the proposal form, and `e2e/game-ruleset-armor.e2e.ts`, with
-  59 deliberate breaks each caught.
+  62 deliberate breaks each caught.
 
 ## Gaps a ruleset author found
 

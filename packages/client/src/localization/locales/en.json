@@ -7174,7 +7174,7 @@
   "ui.game.gameinventory.effectAttacksAgainstAdvantage": "attacks against them have advantage",
   "ui.game.gameinventory.effectAttacksAgainstDisadvantage": "attacks against them have disadvantage",
   "ui.game.gameinventory.effectAttacksAgainstFarDisadvantage": "attacks against them from afar have disadvantage",
-  "ui.game.gameinventory.effectAttacksFromAdjacentCritical": "a hit from next to them is critical",
+  "ui.game.gameinventory.effectAttacksFromAdjacentCritical": "a hit on them from next to them is critical",
   "ui.game.gameinventory.effectCannotAct": "cannot act",
   "ui.game.gameinventory.effectCannotReact": "cannot react",
   "ui.game.gameinventory.effectDefense": "{{change}} defense",

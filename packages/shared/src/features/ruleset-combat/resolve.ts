@@ -2562,7 +2562,9 @@ function resolveAction(
         if (event.type === "damage" && event.targetId === target.id) event.health = remaining;
       }
     }
-    // A blow that dealt enough harm puts the weapon's conditions on the one it hit.
+    if (before) afterBlow(ctx, target, dealt, critical);
+    // A blow that dealt enough harm puts the weapon's conditions on the one it hit, after what the
+    // blow itself ended, as an action's own conditions are, so one that ends on damage stays on.
     for (const entry of action.onHit ?? []) {
       if (dealt < entry.atLeast) continue;
       applyConditionId(
@@ -2573,7 +2575,6 @@ function resolveAction(
         { sourceId: actor.id },
       );
     }
-    if (before) afterBlow(ctx, target, dealt, critical);
     // What a taking blow took goes to its maker, with what landing one is worth on top; and taking
     // somebody down to the line crashes them, which is worth the crash's own bonus.
     if (takes) {

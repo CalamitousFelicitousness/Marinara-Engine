@@ -131,7 +131,7 @@ test("a nail in the other hand strikes on the quick budget after the first", asy
     await inventoryButton(page).click({ timeout: 30_000 });
     await page.getByRole("button", { name: /^Left nail/ }).click();
     await expect(
-      page.getByText("Off hand (Quick), Marked for 2 rounds on a hit of 2 or more", { exact: true }),
+      page.getByText("Off hand (Quick), Marked for 2 rounds when a hit deals 2 or more", { exact: true }),
     ).toBeVisible();
 
     await startFight(request, seeded, "Ada", { id: "rats", name: "Grave-rat swarm", creature: "night/grave-rats" });

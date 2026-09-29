@@ -1392,8 +1392,8 @@ Capability API 1.58, for #6875. Slice I5-4 of the ruleset items plan: the rest o
   `atLeast`, for `rounds` or with no clock; immunity is read as for any condition.
 - **Seen and said.** Item facts gain `modes`, `offHand` (the budget's label), `floor` and `onHit`
   (the condition's label); the Game Master's line ends with `modes Volley (2 shots, -2 to hit, up to
-  2 targets)`, `off hand (Quick)`, `at least 1 on a hit` or `Marked on a hit of 2 or more for 2
-  rounds`, and the item details say the same in localized lines.
+  2 targets)`, `off hand (Quick)`, `at least 1 on a hit before resistance` or `Marked for 2
+  rounds when a hit deals 2 or more`, and the item details say the same in localized lines.
 - **Examples.** Ember Roads' hunting bow gains a volley. Gravewatch gains `combat.offHand` on its
   quick budget; its silver coffin nail is an off-hand weapon that marks what it harms twice or more
   for two rounds, and its grave spade never deals less than one on a hit.
@@ -1403,7 +1403,7 @@ Capability API 1.58, for #6875. Slice I5-4 of the ruleset items plan: the rest o
   and a summed fight and under a resistance, conditions on a hit at and below the number, lasting
   and resisted, the director's command, the Engine's picker choosing a mode, facts and the log),
   lanes that pin older gates, the examples or the Game Master's lines, and
-  `e2e/game-ruleset-weapon-modes.e2e.ts`, with 58 deliberate breaks each caught (two of them, in the
+  `e2e/game-ruleset-weapon-modes.e2e.ts`, with 60 deliberate breaks each caught (two of them, in the
   client's mode step and its command, by the e2e).
 
 ## Gaps a ruleset author found

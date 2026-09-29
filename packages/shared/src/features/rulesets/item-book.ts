@@ -818,10 +818,10 @@ export function rulesetItemAttackText(attack: RulesetItemAttackFact): string {
     attack.clip ? `holds ${attack.clip.max}, reload (${attack.clip.reload})` : "",
     attack.modes?.length ? `modes ${attack.modes.map(rulesetItemModeText).join(", ")}` : "",
     attack.offHand ? `off hand (${attack.offHand.budget})` : "",
-    attack.floor !== undefined ? `at least ${attack.floor} on a hit` : "",
+    attack.floor !== undefined ? `at least ${attack.floor} on a hit before resistance` : "",
     ...(attack.onHit ?? []).map(
       (entry) =>
-        `${entry.condition} on a hit of ${entry.atLeast} or more${entry.rounds !== undefined ? ` for ${entry.rounds} rounds` : ""}`,
+        `${entry.condition}${entry.rounds !== undefined ? ` for ${entry.rounds} rounds` : ""} when a hit deals ${entry.atLeast} or more`,
     ),
   ]
     .filter(Boolean)

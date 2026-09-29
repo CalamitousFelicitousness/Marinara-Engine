@@ -818,7 +818,7 @@ interface PricedOption {
  * than one of a lower: without that the bigger version reads as free and nothing would ever cast
  * the small one.
  */
-function priced(
+export function priced(
   definition: RulesetDefinition,
   encounter: RulesetEncounterState,
   actor: RulesetCombatant,
@@ -828,7 +828,8 @@ function priced(
   for (const option of menu ?? rulesetCombatOptions(definition, encounter, actor.id)) {
     const base = (option.cost ?? []).reduce((total, entry) => total + entry.amount, 0) + (option.signature?.cost ?? 0);
     const ways: PricedOption[] = [{ option, price: base }, ...biggerWays(definition, actor, option)];
-    out.push(...ways.flatMap((way) => styledWays(definition, way)).flatMap(modedWays));
+    // Modes first, so each mode is then made in every style, forecast as that style does.
+    out.push(...ways.flatMap(modedWays).flatMap((way) => styledWays(definition, way)));
   }
   return out;
 }

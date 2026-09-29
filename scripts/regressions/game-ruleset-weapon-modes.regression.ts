@@ -50,7 +50,7 @@ const [
   { rulesetCombatEventLine, rulesetCombatNames },
   { rulesetModeText, rulesetOptionLabel },
   { createCombatDirector },
-  { commandRulesetCombatDirector, createRulesetFight, rulesetDirectorStage, syncRulesetCombatants },
+  { commandRulesetCombatDirector, createRulesetFight, priced, rulesetDirectorStage, syncRulesetCombatants },
 ] = await Promise.all([
   import("../../packages/server/src/services/capability-packages/package-manager.service.js"),
   import("../../packages/client/src/lib/ruleset-combat-log.js"),
@@ -441,6 +441,40 @@ try {
     assert.deepEqual(ada(passed.state).itemsUsed, { 1: 2 }, "and it was paid for once, as a volley");
   }
 
+  // ── The Engine's picker makes each mode in every initiative style ──
+  {
+    const both = parsedOrThrow(
+      variant(gravewatchText, (doc) => {
+        doc.combat.initiative = {
+          pool: { abilityMod: "nerve" },
+          plus: 3,
+          resource: {
+            base: 3,
+            styles: [
+              { id: "press", label: "Press", takes: { gain: 1 } },
+              { id: "telling", label: "Telling blow", spends: { onMiss: [[0, 1]] } },
+            ],
+          },
+        };
+        itemEntry(doc, "grave-spade").item.attack.modes = [{ id: "heave", label: "Heave", toHit: -1 }];
+      }),
+      "a spade that heaves where initiative moves",
+    );
+    const state = fight(both, [held(itemOf(both, "kit/grave-spade"), "Grave spade")], {
+      face: 8,
+      abilities: { sinew: 3, nerve: 3 },
+    });
+    const ways = priced(both, state, ada(state)).filter((way) => way.option.id === "item:0");
+    const heaveMenu = optionOf(both, state, "item:0")!.modes!.find((mode) => mode.id === "heave")!;
+    const pressed = ways.find((way) => way.mode === "heave" && way.style === "press")!;
+    assert.ok(pressed, "the heave is made in the style that takes");
+    assert.equal(pressed.option.forecast?.averageDamage, 0, "a taking blow does no harm");
+    assert.equal(pressed.takes?.shift, heaveMenu.forecast!.averageDamage, "it takes what a heave would deal");
+    assert.equal(pressed.option.label, "Grave spade (Heave), Press");
+    assert.ok(ways.some((way) => way.mode === "heave" && way.style === "telling"));
+    assert.ok(ways.some((way) => way.mode === undefined && way.style === "press"));
+  }
+
   // ── A pool mode moves the per-die target ──
   {
     const heaving = parsedOrThrow(
@@ -625,6 +659,30 @@ try {
     };
     assert.equal(at(dealt), 1);
     assert.equal(at(dealt + 1), 0);
+    // A condition that ends when its bearer is harmed is put on after the blow's harm, so the blow
+    // that marks does not also take the mark off.
+    const fragile = parsedOrThrow(
+      variant(gravewatchText, (doc) => {
+        const marked = doc.combat.conditions.find((entry: { condition: string }) => entry.condition === "marked");
+        marked.effects = [...(marked.effects ?? []), "ends-on-damage"];
+      }),
+      "a mark the next harm takes off",
+    );
+    const staying = taken(
+      choose(
+        fragile,
+        fight(fragile, [held(itemOf(fragile, "kit/silver-nail"), "Nail")], { face: 8, abilities: { nerve: 3 } }),
+        {
+          optionId: "item:0",
+        },
+        8,
+      ),
+      "a fragile mark",
+    );
+    assert.deepEqual(
+      rulesetCombatant(staying.state, "foe")!.tracked.map((entry) => entry.condition),
+      ["marked"],
+    );
     // Without rounds it lasts until something takes it off, and a creature immune to it is not marked.
     const lasting = parsedOrThrow(
       variant(gravewatchText, (doc) => delete itemEntry(doc, "silver-nail").item.attack.onHit[0].rounds),
@@ -772,9 +830,12 @@ try {
     );
     assert.match(
       rulesetItemPromptFacts(rulesetItemFacts(gravewatch, nail)),
-      /, off hand \(Quick\), Marked on a hit of 2 or more for 2 rounds$/,
+      /, off hand \(Quick\), Marked for 2 rounds when a hit deals 2 or more$/,
     );
-    assert.match(rulesetItemPromptFacts(rulesetItemFacts(gravewatch, spade)), /, at least 1 on a hit$/);
+    assert.match(
+      rulesetItemPromptFacts(rulesetItemFacts(gravewatch, spade)),
+      /, at least 1 on a hit before resistance$/,
+    );
     // A floor read off a stat is a stat the attack reads, and says what the stat gives.
     const statFloor = { ...spade, attack: { ...spade.attack!, floor: { stat: "target" } } };
     const soakFloor = { ...spade.attack!, floor: { stat: "soak_blunt" } };

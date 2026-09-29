@@ -6,7 +6,7 @@
 //   - a refused Restore tells the user Keep dismisses the card,
 //   - a failed Keep reports why instead of a bare "Internal Server Error".
 import assert from "node:assert/strict";
-import fs, { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import fs, { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -191,6 +191,40 @@ try {
     assert.match(message, /data folder/u, "the user is told where to look");
     assert.doesNotMatch(message, /Internal Server Error/u);
     await mari.keepAppliedReview(reviewId);
+  }
+
+  // ── Reviews of Mari's own card saved before the fix are retired on load ──
+  {
+    // Such a review can no longer be made, so build one from an ordinary review's file,
+    // the way an install that ran the old build has them on disk.
+    const ordinary = await mari.executeAction({
+      action: "character.create",
+      characterId: "older-review",
+      data: { name: "Older Review" },
+      apply: true,
+    });
+    const ordinaryId = ordinary.approval!.id!;
+    const pendingDir = join(dir, "journal", "pending");
+    const record = JSON.parse(readFileSync(join(pendingDir, `${ordinaryId}.json`), "utf8")) as {
+      id: string;
+      sessionId: string;
+      plan: { changes: Array<{ table: string; id: string }> };
+    };
+    const legacyId = "legacyMariCardReview";
+    record.id = legacyId;
+    record.sessionId = "professor-mari-workspace";
+    for (const change of record.plan.changes) {
+      change.table = "characters";
+      change.id = PROFESSOR_MARI_ID;
+    }
+    writeFileSync(join(pendingDir, `${legacyId}.json`), JSON.stringify(record));
+
+    const restarted = new MariDbService(db);
+    const loadedIds = new Set(restarted.getPendingApprovals().map((review) => review.id));
+    assert.equal(loadedIds.has(legacyId), false, "an old review of Mari's own card is retired on load");
+    assert.equal(existsSync(join(pendingDir, `${legacyId}.json`)), false, "its file is gone");
+    assert.ok(loadedIds.has(ordinaryId), "an ordinary review is still there to Keep or Restore");
+    await restarted.keepAppliedReview(ordinaryId);
   }
 
   // ── Wiring: Mari's commands name their chat, status filters, deletion keeps ──

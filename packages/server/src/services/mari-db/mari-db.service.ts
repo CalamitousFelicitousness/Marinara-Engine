@@ -495,6 +495,14 @@ function isUnchangedRow(change: PlanChange): boolean {
   return stableJson(withoutEmpty(before)) === stableJson(withoutEmpty(after));
 }
 
+/** A review whose every change is to Professor Mari's own built-in card (#6842). */
+function onlyEditsBuiltInMariCard(record: { plan: Plan }): boolean {
+  const changes = record.plan.changes;
+  return (
+    changes.length > 0 && changes.every((change) => change.table === "characters" && change.id === PROFESSOR_MARI_ID)
+  );
+}
+
 function stableJson(value: unknown): string {
   return JSON.stringify(sortForHash(value));
 }
@@ -8788,11 +8796,30 @@ export class MariDbService {
       // Oldest first so the in-memory Map stays insertion-ordered oldest->newest. Hydrate every
       // valid review first, then retire overflow sidecars before dropping their memory entries.
       loaded.sort((a, b) => Date.parse(a.requestedAt) - Date.parse(b.requestedAt));
-      const dropCount = Math.max(0, loaded.length - PENDING_REVIEW_LIMIT);
       loaded.forEach((record) => this.pending.set(record.id, record));
       for (const path of stale) this.safeRm(path);
+      // #6842: a review that only edited Professor Mari's own built-in card can never be
+      // restored, because startup rewrites that card, and she can no longer make one. Ones
+      // saved before that fix named no chat, so they followed the user into every chat.
+      let retiredBuiltIn = 0;
+      for (const record of loaded) {
+        if (!onlyEditsBuiltInMariCard(record)) continue;
+        try {
+          const retiredPath = this.retirePendingSidecar(record.id);
+          this.pending.delete(record.id);
+          this.discardRetiredPendingSidecar(retiredPath);
+          retiredBuiltIn += 1;
+        } catch {
+          // A sidecar that cannot be retired keeps its card, and Keep reports why.
+        }
+      }
+      if (retiredBuiltIn > 0) {
+        logger.info("[mari-db] retired %d review(s) of Professor Mari's built-in card on load", retiredBuiltIn);
+      }
+      const remaining = loaded.filter((record) => this.pending.has(record.id));
+      const dropCount = Math.max(0, remaining.length - PENDING_REVIEW_LIMIT);
       let dropped = 0;
-      for (const record of loaded.slice(0, dropCount)) {
+      for (const record of remaining.slice(0, dropCount)) {
         try {
           const retiredPath = this.retirePendingSidecar(record.id);
           this.pending.delete(record.id);

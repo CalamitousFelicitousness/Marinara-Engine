@@ -361,7 +361,7 @@ try {
     assert.ok(levelNode.properties.effects.items.enum.includes("own-checks-disadvantage"));
     const modifierNode = published.properties.combat.properties.conditions.items.properties.modifiers.items;
     assert.deepEqual(modifierNode.allOf[0], {
-      anyOf: [{ required: ["flat"] }, { required: ["dice"] }, { required: ["times"] }],
+      anyOf: [{ required: ["flat"] }, { required: ["dice"] }, { required: ["times"] }, { required: ["mode"] }],
     });
     assert.deepEqual(modifierNode.properties.flat.not, { const: 0 });
   }

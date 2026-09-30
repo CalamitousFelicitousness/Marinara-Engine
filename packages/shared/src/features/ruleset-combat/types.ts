@@ -52,6 +52,10 @@ export interface RulesetCombatDamage extends RulesetCombatAmount {
   /** More amounts on the same blow. Each is rolled, typed and saved against on its own; the blow
    *  they make together is ONE check against concentration and one check for going down. */
   plus?: RulesetCombatDamageClause[];
+  /** The least the first amount deals on a hit, before a resistance halves it: a pool fight's harm
+   *  after soak, a summed fight's damage. A spending blow throws its maker's number and is never
+   *  raised to it. */
+  floor?: number;
 }
 
 /** A condition a hit or a failed save puts on its target. */
@@ -345,6 +349,29 @@ export interface RulesetCombatAction {
   /** The loaded count a weapon keeps on itself: which of the holder's items it is (its place in
    *  `sheet.items`) and how many it holds. An attack spends what is loaded; a `reload` fills it. */
   clip?: { item: number; max: number };
+  /** Other ways to make this attack, chosen with it like an initiative style. */
+  modes?: RulesetCombatMode[];
+  /** How many one attack shoots when a mode says so, in place of its ammunition's own. */
+  shots?: number;
+  /** An off-hand weapon's own attack: attacking with it this turn lets another off-hand weapon strike
+   *  on the off-hand budget. The item's place in `sheet.items`. */
+  pairs?: number;
+  /** The second attack, on the off-hand budget, made with the weapon at this place in `sheet.items`
+   *  after its holder attacked with another off-hand weapon this turn. */
+  offHandOf?: number;
+  /** Conditions the target takes when the harm this blow dealt reached a number. */
+  onHit?: Array<{ condition: string; atLeast: number; rounds?: number }>;
+}
+
+/** One other way to make an attack: how many it shoots, what it adds to hit (dice in a pool fight),
+ *  how far it moves a pool fight's per-die target, and how many it may be aimed at. */
+export interface RulesetCombatMode {
+  id: string;
+  label: string;
+  ammo?: number;
+  toHit?: number;
+  target?: number;
+  targets?: number;
 }
 
 /** A contest as the fight resolves it: the check each side adds, who takes a tie, and what winning
@@ -440,6 +467,9 @@ export interface RulesetCombatant {
     hidden?: boolean;
     ready?: boolean;
     helped?: boolean;
+    /** The off-hand weapon (its place in `sheet.items`) this turn's attack was made with, which
+     *  another off-hand weapon may follow on the off-hand budget. */
+    offHand?: number;
   };
   /** At zero and out of the fight. `dying` is a party member a ruleset with a dying rule still
    *  rolls for; `stable` is one that has stopped rolling; `defeated` is one the fight is over for. */
@@ -587,6 +617,8 @@ export interface RulesetActionResume {
   payWith?: string;
   /** The initiative style it was made in, so a held attack picks up in the same one. */
   style?: string;
+  /** The weapon's mode it was made in, so a held attack picks up in the same one. */
+  mode?: string;
   /** What a spending blow throws: its maker's number as they made it. */
   spend?: number;
   /** An answer stopped it. What it cost is still spent: it was paid for before the asking. */
@@ -670,7 +702,9 @@ export type RulesetCombatRefusal =
   /** An area aimed at a cell it may not be aimed at. */
   | "bad-cell"
   /** An initiative style this attack is not offered in. */
-  | "unknown-style";
+  | "unknown-style"
+  /** A way of using a weapon that the option does not offer, or cannot now. */
+  | "unknown-mode";
 
 export type RulesetCombatAttackOutcome = "hit" | "miss" | "critical";
 export type RulesetCombatRollMode = "normal" | "advantage" | "disadvantage";
@@ -752,6 +786,8 @@ export type RulesetCombatEvent =
         successes: number;
         soak?: { value: number; rolls?: number[]; taken: number };
       };
+      /** The weapon's floor, when the blow was raised to it. */
+      floor?: number;
     }
   | {
       type: "heal";
@@ -963,6 +999,8 @@ export interface RulesetCombatOption {
   ammo?: number;
   /** What a weapon with a clip has loaded, on its attack and on its reload. */
   loaded?: { now: number; max: number };
+  /** A second attack with a weapon in the off hand, on the ruleset's off-hand budget. */
+  offHand?: true;
   /** Whether the amount below is health GIVEN BACK rather than taken off. Without it a menu and an
    *  opponent's own choices cannot tell a heal from a blow, because both are an amount. */
   heals?: boolean;
@@ -978,6 +1016,14 @@ export interface RulesetCombatOption {
     id: string;
     label: string;
     forecast?: { hitChance?: number; averageDamage?: number; shift?: number };
+  }>;
+  /** Other ways a weapon may be used for this attack, each with what it is expected to do. Only the
+   *  ones its holder has the shots for. */
+  modes?: Array<{
+    id: string;
+    label: string;
+    targets: number;
+    forecast?: { hitChance?: number; averageDamage?: number };
   }>;
   /** Where the `move` option may go, with what each cell costs of the allowance and who a path to
    *  it would be struck at by. */
@@ -1008,6 +1054,9 @@ export interface RulesetCombatChoice {
   /** Which of the ruleset's initiative styles an attack is made in, where initiative is a number
    *  attacks move. The first style when left out; one the option does not offer is refused. */
   style?: string;
+  /** Which of a weapon's modes it is used in. The attack as it is when left out; one the option does
+   *  not offer is refused. */
+  mode?: string;
 }
 
 export interface RulesetCombatStep {

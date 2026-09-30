@@ -326,15 +326,17 @@ try {
 
   // ── Install gate: 1.55, in the ruleset file and in a catalog file ──
   {
-    /** Less what the examples' items do in a fight and what their weapons shoot and load, which are
-     *  1.56's and 1.57's and have lanes of their own. */
+    /** Less what the examples' items do in a fight, what their weapons shoot and load and the other
+     *  ways they fight, which are 1.56's, 1.57's and 1.58's and have lanes of their own. */
     const withoutArmor = (text: string) =>
       JSON.stringify(
         variant(text, (doc) => {
+          delete doc.combat?.offHand;
           for (const catalog of doc.catalogs) {
             for (const entry of catalog.entries ?? []) {
-              delete entry.item?.attack?.ammo;
-              delete entry.item?.attack?.clip;
+              for (const key of ["ammo", "clip", "modes", "offHand", "floor", "onHit"]) {
+                delete entry.item?.attack?.[key];
+              }
               for (const when of ["worn", "carried"]) {
                 const effect = entry.item?.[when];
                 if (!effect) continue;
@@ -664,10 +666,11 @@ try {
       target: 6,
       damage: "1d10",
       type: "blunt",
+      floor: 1,
     });
     assert.match(
       rulesetItemPromptFacts(rulesetItemFacts(ember, bow)),
-      /; attack \(Action\): Wits to hit, 1d8 \+ Wits cut, range 30 to 60 paces, ammunition Arrow \(1 an attack, 50% picked up after a won fight\)$/,
+      /; attack \(Action\): Wits to hit, 1d8 \+ Wits cut, range 30 to 60 paces, ammunition Arrow \(1 an attack, 50% picked up after a won fight\), modes Volley \(2 shots, -2 to hit, up to 2 targets\)$/,
     );
     const fancy = {
       ...axe,

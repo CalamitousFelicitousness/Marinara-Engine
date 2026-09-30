@@ -327,6 +327,7 @@ export function rulesetCombatEventLine(
         }),
       );
       if (event.critical) lines.push(key("damageCritical"));
+      if (event.floor !== undefined) lines.push(key("damageFloor", { floor: event.floor }));
       if (event.adjust !== "none") lines.push(key(`damage${event.adjust[0]!.toUpperCase()}${event.adjust.slice(1)}`));
       if (event.saved) lines.push(key("damageSaved"));
       if (event.toTemp > 0) lines.push(key("damageTemporary", { amount: event.toTemp }));

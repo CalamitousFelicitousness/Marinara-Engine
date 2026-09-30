@@ -634,7 +634,7 @@ The limits are 12 catalogs per ruleset, 2000 entries per catalog either way, and
 
 ## Items: what a party carries
 
-Armor, weapons, potions, gear, ammunition and money are items. An optional `items` block declares the words every item of your ruleset is written in, and a catalog with `holds: "items"` lists the items themselves. Both need Capability API 1.49; the block's `rarityCaps` and `propose`, which govern the items the Game Master invents, need 1.51, a value that reads the items a character holds (`itemStat`) needs 1.52, what an item does to checks while worn or carried, with the block's `bonus` caps, needs 1.53, what an item asks of its wearer and the abilities it changes need 1.54, a weapon's `attack` needs 1.55, what an item does in a fight needs 1.56, and what a weapon shoots and holds loaded needs 1.57.
+Armor, weapons, potions, gear, ammunition and money are items. An optional `items` block declares the words every item of your ruleset is written in, and a catalog with `holds: "items"` lists the items themselves. Both need Capability API 1.49; the block's `rarityCaps` and `propose`, which govern the items the Game Master invents, need 1.51, a value that reads the items a character holds (`itemStat`) needs 1.52, what an item does to checks while worn or carried, with the block's `bonus` caps, needs 1.53, what an item asks of its wearer and the abilities it changes need 1.54, a weapon's `attack` needs 1.55, what an item does in a fight needs 1.56, what a weapon shoots and holds loaded needs 1.57, and a weapon's modes, off-hand attack, floor and conditions on a hit need 1.58.
 
 ### The items block
 
@@ -749,7 +749,7 @@ Each entry carries an `item` instead of `rows` or a `creature`:
 - `binds`: the item has to be bound before it does anything while worn. `restriction` (optional) says in words who may bind it, and `cursed: true` marks one that will not let go. Only a ruleset with `binding` can have items that bind.
 - `worn` and `carried` (optional, Capability API 1.53): what the item does to its holder's checks and saves while it is worn, and while it is only carried, (1.54) the abilities it sets or raises, and (1.56) what it does in a fight. See [Checks outside a fight](#checks-outside-a-fight) and [Armor and worn effects in a fight](#armor-and-worn-effects-in-a-fight).
 - `requires` (optional, Capability API 1.54): what the item asks of whoever wears it, and what applies while they fall short. See [Checks outside a fight](#checks-outside-a-fight).
-- `attack` (optional, Capability API 1.55): what the item does as a weapon in a fight, while it is worn, and (1.57) what it shoots and holds loaded. See [Weapons in a fight](#weapons-in-a-fight) and [Ammunition and reloading](#ammunition-and-reloading).
+- `attack` (optional, Capability API 1.55): what the item does as a weapon in a fight, while it is worn, (1.57) what it shoots and holds loaded, and (1.58) its other modes, an off-hand attack, a floor to its harm and the conditions it puts on a hit. See [Weapons in a fight](#weapons-in-a-fight), [Ammunition and reloading](#ammunition-and-reloading) and [Modes, a second weapon, a floor and conditions on a hit](#modes-a-second-weapon-a-floor-and-conditions-on-a-hit).
 
 An item carries no `mechanics`: what it does is written in its `item` block.
 
@@ -879,8 +879,6 @@ A weapon's tags are what its blows carry. A creature's `resist` or `immune` entr
 
 The weapon's details and the Game Master's line say what it does: `attack (Action): Brawn to hit, 1d6 + Brawn cut, reach 2 paces, range 10 to 20 paces`, with `1d8 with a hand free` for Ember Roads' boar spear and `at 6` beside Gravewatch's spade.
 
-Ways to fire, a second weapon in the off hand, a floor to the damage and a condition on a strong hit come in a later release.
-
 #### Ammunition and reloading
 
 A weapon may shoot something, and may keep a loaded count of its own (Capability API 1.57). Ember Roads' hunting bow shoots arrows, and Gravewatch's watch pistol holds one ball, loaded out of the warden's shot and powder:
@@ -898,6 +896,32 @@ A weapon may shoot something, and may keep a loaded count of its own (Capability
 - `clip`: a loaded count the weapon keeps on itself. `max` is how many it holds, written down or read off a number stat of the item, and `reload` is the budget a reload spends. An attack spends what is loaded instead of taking from the bag, and the weapon is offered only while it holds enough for one. A **Reload** option on the fight menu spends `reload` and fills it: out of the bag where it has `ammo` (as much as the bag still holds when that is less), and in full where it has none. The count is kept on the weapon's inventory stack, so a pistol emptied in one fight is still empty in the next. A weapon nobody has fired yet is loaded, and so is one a player pours into a stack of several of it, since a loaded count is one weapon's. A clip's rounds are not picked up after a fight, so `recover` is for a weapon without one.
 
 What a fight shoots, loads and picks up is written to the inventory as each step is taken, the way the party's health is, and the journal says what was used. A step whose stack is gone, or holds fewer than the fight counted on, is refused, as a spent item the fight cannot find is. The fight log says every shot, reload and pickup ("Hunting bow: 2 left to shoot.", "Ada loads 1 into Watch pistol: 1 of 1 loaded."), and the item's details and the Game Master's line say what the weapon shoots and holds: `ammunition Arrow (1 an attack, 50% picked up after a won fight)` and `holds 1, reload (Act)`.
+
+#### Modes, a second weapon, a floor and conditions on a hit
+
+A weapon may have other ways to make its attack, a partner in the off hand, a least harm it deals and conditions it puts on what it hits (Capability API 1.58). Ember Roads' hunting bow can loose a volley, and Gravewatch's silver coffin nail may be held in each hand and marks what it bites deep:
+
+```json
+"modes": [{ "id": "volley", "label": "Volley", "ammo": 2, "toHit": -2, "targets": 2 }]
+```
+
+```json
+"offHand": true,
+"onHit": [{ "condition": "marked", "atLeast": 2, "rounds": 2 }]
+```
+
+- `modes`: up to six other ways to make the attack, each with an `id`, a `label` and what it changes. `ammo` is how many one attack in it shoots, so the weapon has `ammo` or a `clip` to shoot from. `toHit` is what it adds to hit, dice in a pool fight and a number in a summed one. `target` moves a pool fight's per-die target by this much (from the weapon's own, else the pool's; `+1` is harder), where the pool's target can move. `targets` is how many it may be aimed at, each its own attack roll. The fight menu asks which way once the attack is picked (after its initiative style, where there are styles), each with what it is expected to do, and offers only the modes its holder has the shots for. A party member the Engine plays weighs every mode aimed at one target, and leaves a mode for several to a player. In a window, an attack is made as it is.
+- `offHand`: a weapon for the off hand. The combat block names the budget a second attack spends, and whether its damage keeps a positive ability:
+
+  ```json
+  "offHand": { "budget": "quick", "ability": "full" }
+  ```
+
+  Once its holder has attacked this turn with one weapon marked `offHand`, each other such weapon they wear offers a second attack on that budget, named "Silver coffin nail, off hand" on the menu. `ability` is `full` (the default) or `penalty-only`, which adds the damage ability only when it takes something away, as 5e's two-weapon fighting does. An off-hand attack is one blow, whatever strikes the main attack buys, and never a strike at somebody walking away. A weapon marked `offHand` needs the combat block's `offHand`.
+- `floor`: the least a hit deals, written down or read off a number stat of the item. A pool fight's harm after soak, or a summed fight's damage, is raised to it before a resistance halves it, and the log says so. A spending blow throws its maker's number and is never raised.
+- `onHit`: up to four of your conditions the target takes when the harm the blow dealt reached `atLeast`, for `rounds` of their own turns or, without it, until something takes it off. The harm is what reached them after soak and their resistances; a taking blow takes initiative rather than harm, so it puts none on.
+
+The weapon's details and the Game Master's line say all of it: `modes Volley (2 shots, -2 to hit, up to 2 targets)`, `off hand (Quick)`, `at least 1 on a hit before resistance` and `Marked for 2 rounds when a hit deals 2 or more`.
 
 ### Armor and worn effects in a fight
 
@@ -2185,7 +2209,7 @@ Said plainly, because a ruleset should not claim what the Engine does not do:
 - **A rider fires by itself.** `on` has one value, `hit`, so the first qualifying hit of the period
   takes it, and there is no moment at which you are asked whether to spend one.
 - **A number attacks move is plain.** A spending blow throws the number and nothing else, so no
-  weapon changes it and there is no floor of dice (a sturdy target soaks a taking blow, and its
+  weapon changes it, its `floor` included (a sturdy target soaks a taking blow, and its
   hardness stops a spending one, but nothing else shrinks either); a crash lifts after a fixed count
   of turns however deep it went; and an attack made
   in a window (a strike at somebody breaking away, a reaction, a signature move) is made in the

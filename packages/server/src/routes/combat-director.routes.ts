@@ -194,6 +194,8 @@ const command = z.discriminatedUnion("type", [
     targetIds: z.array(key).max(20),
     payWith: key.optional(),
     style: key.optional(),
+    /** The weapon's mode, checked against the menu by the resolver. */
+    mode: key.optional(),
     /** Where the `move` option walks to, and the cell a shape is aimed at. Both are checked against
      *  the menu by the resolver; this only bounds them to a board's own size. */
     to: coord.optional(),

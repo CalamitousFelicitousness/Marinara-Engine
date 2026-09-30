@@ -2010,6 +2010,46 @@ export const rulesetItemAttackSchema = z
       .object({ max: orItemStat(z.number().int().min(1).max(1000)), reload: sheetId })
       .strict()
       .optional(),
+    /** Other ways to make this attack, offered beside it: how many one shoots (`ammo`), what it adds
+     *  to hit (dice in a pool fight), a pool fight's per-die `target` moved by this much, and how
+     *  many it may be aimed at. */
+    modes: z
+      .array(
+        z
+          .object({
+            id: sheetId,
+            label: promptSafeText(40),
+            ammo: z.number().int().min(1).max(100).optional(),
+            toHit: z.number().int().min(-20).max(20).optional(),
+            target: z.number().int().min(-10).max(10).optional(),
+            targets: z.number().int().min(1).max(20).optional(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(6)
+      .optional(),
+    /** Held beside another weapon marked so, it may strike again on the ruleset's off-hand budget
+     *  once its holder has attacked with the other this turn. */
+    offHand: z.literal(true).optional(),
+    /** The least a hit deals, before a resistance halves it: a pool fight's harm after soak, a summed
+     *  fight's damage. */
+    floor: orItemStat(z.number().int().min(1).max(100)).optional(),
+    /** A condition the target takes when the harm the blow dealt reaches `atLeast`, for `rounds` of
+     *  their own turns or until something takes it off. */
+    onHit: z
+      .array(
+        z
+          .object({
+            condition: sheetId,
+            atLeast: z.number().int().min(1).max(100),
+            rounds: z.number().int().min(1).max(100).optional(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(4)
+      .optional(),
   })
   .strict();
 export type RulesetItemAttack = z.infer<typeof rulesetItemAttackSchema>;
@@ -2881,6 +2921,13 @@ const combatSchema = z
     /** The budget a strike at somebody leaving one's reach is paid out of. A ruleset that declares
      *  none has no such strikes. */
     opportunity: z.object({ budget: sheetId }).strict().optional(),
+    /** The budget a second attack with a weapon in the other hand is paid out of, and whether its
+     *  damage keeps a positive ability (`penalty-only` adds the ability only when it takes away, as
+     *  5e's two-weapon fighting does). A ruleset that declares none has no off-hand attacks. */
+    offHand: z
+      .object({ budget: sheetId, ability: z.enum(["full", "penalty-only"]).default("full") })
+      .strict()
+      .optional(),
     attacks: z.array(combatAttackSourceSchema).max(8).optional(),
     abilities: z.array(combatAbilitySourceSchema).max(8).optional(),
     standard: z.array(combatStandardActionSchema).max(6).optional(),
@@ -4308,6 +4355,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       });
     }
     if (combat.opportunity) checkBudget(combat.opportunity.budget, at("opportunity", "budget"));
+    if (combat.offHand) checkBudget(combat.offHand.budget, at("offHand", "budget"));
 
     // Contests: the checks they read, the budget they spend and the conditions they touch all exist,
     // and what they measure in distance needs a cell to measure it in.
@@ -5488,6 +5536,34 @@ function attackIssues(
       add([...at, "ammo", "perAttack"], "One attack would shoot more than the clip holds");
     }
   }
+  const modeIds = new Set<string>();
+  attack.modes?.forEach((mode, index) => {
+    const where = [...at, "modes", index];
+    if (modeIds.has(mode.id)) add([...where, "id"], `The mode "${mode.id}" is listed twice`);
+    modeIds.add(mode.id);
+    if (mode.ammo !== undefined) {
+      if (!attack.ammo && !attack.clip) {
+        add([...where, "ammo"], "A mode's ammo is what one attack in it shoots, so the weapon shoots something");
+      } else if (typeof attack.clip?.max === "number" && mode.ammo > attack.clip.max) {
+        add([...where, "ammo"], "One attack in this mode would shoot more than the clip holds");
+      }
+    }
+    if (mode.target !== undefined) {
+      const target = definition.resolution.kind === "dice-pool" ? definition.resolution.target : undefined;
+      if (!target || target.min >= target.max) {
+        add([...where, "target"], "A mode's target moves a pool fight's own, so the pool's target can move");
+      }
+    }
+  });
+  if (attack.offHand && !combat.offHand) {
+    add([...at, "offHand"], "An off-hand attack spends combat.offHand's budget, so the combat block declares one");
+  }
+  value(attack.floor, "number", [...at, "floor"]);
+  const conditions = new Set(definition.sheet.live.conditions.map((condition) => condition.id));
+  attack.onHit?.forEach((entry, index) => {
+    if (!conditions.has(entry.condition))
+      add([...at, "onHit", index, "condition"], `Unknown condition "${entry.condition}"`);
+  });
 }
 
 /** What is wrong with one item against the ruleset's `items` block, as plain lines. An item the Game

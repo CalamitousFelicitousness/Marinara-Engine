@@ -689,7 +689,7 @@ try {
     assert.ok(nail.facts.stats.some((stat) => stat.id === "conceal" && !stat.promptVisible));
     assert.equal(
       rulesetItemPromptFacts(nail.facts),
-      "Arm, Rare, Silver, Easily hidden; Target 7, Damage 1d6, Harm tearing; attack (Act): Nerve + Wrestle to hit at 7, 1d6 tearing",
+      "Arm, Rare, Silver, Easily hidden; Target 7, Damage 1d6, Harm tearing; attack (Act): Nerve + Wrestle to hit at 7, 1d6 tearing, off hand (Quick), Marked for 2 rounds when a hit deals 2 or more",
     );
     assert.equal(nail.stack, 12);
     // An enum reads by its value label, a yes by the stat's label alone, and a no not at all.

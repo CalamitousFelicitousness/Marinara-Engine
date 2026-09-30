@@ -9,7 +9,7 @@ import {
   type RulesetLiveState,
   type RulesetSheetOp,
 } from "../rulesets/live-state.js";
-import { rulesetAmmoLeft, rulesetLoaded, rulesetShotsAvailable } from "./ammo.js";
+import { rulesetAmmoLeft, rulesetLoaded, rulesetModedAction, rulesetShotsAvailable } from "./ammo.js";
 import { parseRulesetCombatDice, rulesetAverageDamage } from "./dice.js";
 import {
   rulesetCombatAdvantage,
@@ -802,6 +802,8 @@ export function rulesetActionAvailable(actor: RulesetCombatant, action: RulesetC
   if (action.uses && (actor.uses[action.id] ?? 0) < 1) return false;
   // A weapon with nothing loaded or nothing to shoot, and a clip that is full or has nothing to load.
   if (!rulesetShotsAvailable(actor, action)) return false;
+  // A weapon in the off hand follows an attack made this turn with another off-hand weapon.
+  if (action.offHandOf !== undefined && (actor.flags.offHand ?? action.offHandOf) === action.offHandOf) return false;
   return !actor.spent.includes(action.id);
 }
 
@@ -961,6 +963,7 @@ function optionFrom(
   if (action.uses) option.left = actor.uses[action.id] ?? 0;
   if (action.ammo) option.ammo = rulesetAmmoLeft(actor, action.ammo.tag);
   if (action.clip) option.loaded = { now: rulesetLoaded(actor, action.clip), max: action.clip.max };
+  if (action.offHandOf !== undefined) option.offHand = true;
   // A shape, in cells, so a screen can draw the template before the choice is made and a picker can
   // weigh it. Only in a positioned fight: without a board an area is still resolved by target ids.
   if (action.area && positioned(state)) {
@@ -979,6 +982,20 @@ function optionFrom(
   }
   const forecast = forecastFor(definition, combat, state, actor, action);
   if (forecast) option.forecast = forecast;
+  // The weapon's other ways to make this attack, each only while its holder has the shots for it,
+  // and each with what it is expected to do. Not in a window: what is taken at its moment is made
+  // as it is.
+  if (action.modes?.length && !atItsMoment) {
+    const modes = action.modes.flatMap((mode) => {
+      const moded = rulesetModedAction(definition, action, mode.id);
+      if (!moded || !rulesetShotsAvailable(actor, moded)) return [];
+      const expected = forecastFor(definition, combat, state, actor, moded);
+      return [
+        { id: mode.id, label: mode.label, targets: moded.targets.count, ...(expected ? { forecast: expected } : {}) },
+      ];
+    });
+    if (modes.length > 0) option.modes = modes;
+  }
   // Where initiative is a number attacks move, the ways this attack may be made, each with what it
   // would do: a style that takes would take what its damage dice are worth off the target's number,
   // one that spends throws the actor's own number at their health.

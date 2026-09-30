@@ -38,10 +38,12 @@ const MOVE_OPTION_WORDS: Record<string, "walk" | "stand"> = {
 };
 
 export interface RulesetMenuStep {
-  stage: "style" | "pay" | "move" | "target" | "aim";
+  stage: "style" | "mode" | "pay" | "move" | "target" | "aim";
   option: DirectedRulesetOption;
   /** The initiative style an attack is made in, where initiative is a number attacks move. */
   style?: string;
+  /** The weapon's mode it is made in. */
+  mode?: string;
   payWith?: string;
   targets: string[];
 }
@@ -84,8 +86,10 @@ export function rulesetOptionLabel(option: DirectedRulesetOption, t: TFunction):
     const word = MOVE_OPTION_WORDS[option.id];
     return word ? t(`game.combat.ruleset.board.${word}`, { defaultValue: option.label }) : option.label;
   }
-  // A reload is the Engine's own move made with the weapon the ruleset named.
+  // A reload is the Engine's own move made with the weapon the ruleset named, and so is a second
+  // blow with a weapon in the off hand.
   if (option.kind === "reload") return t("game.combat.ruleset.menu.reload", { weapon: option.label });
+  if (option.offHand) return t("game.combat.ruleset.menu.offHand", { weapon: option.label });
   if (option.kind !== "standard") return option.label;
   return t(`game.combat.ruleset.standard.${option.label}`, { defaultValue: option.label });
 }
@@ -132,6 +136,17 @@ export function rulesetOptionCostText(
     parts.push(t(key, { count: option.ammo }));
   }
   return parts.join(" · ");
+}
+
+/** What one of a weapon's modes is expected to do, in words, and how many it may be aimed at. */
+export function rulesetModeText(
+  option: DirectedRulesetOption,
+  mode: NonNullable<DirectedRulesetOption["modes"]>[number],
+  t: TFunction,
+): string {
+  const expected = rulesetOptionForecastText({ ...option, forecast: mode.forecast }, t);
+  const aimed = mode.targets > 1 ? t("game.combat.ruleset.mode.targets", { count: mode.targets }) : "";
+  return [expected, aimed].filter(Boolean).join(" · ");
 }
 
 /** What the option is expected to do, in words. The server computed both numbers; a screen that

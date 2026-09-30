@@ -305,6 +305,10 @@
         { "id": "quick", "label": "Quick", "per": "turn", "count": 1 }
       ]
     },
+    "offHand": {
+      "$comment": "A warden with a nail in each hand may drive the second in with a quick movement, once the first has been used this turn.",
+      "budget": "quick"
+    },
     "attacks": [
       {
         "list": "arms",
@@ -624,7 +628,8 @@
               "$comment": "Swung with Sinew and the digger's trade, each die counting from its own target of 6 rather than the pool's 7, and a hit adds the spade's own die to the harm.",
               "budget": "act",
               "toHit": { "abilities": ["sinew"], "skill": "dig", "target": { "stat": "target" } },
-              "damage": { "dice": { "stat": "damage" }, "type": { "stat": "harm" } }
+              "damage": { "dice": { "stat": "damage" }, "type": { "stat": "harm" } },
+              "floor": 1
             }
           }
         },
@@ -643,7 +648,16 @@
             "attack": {
               "budget": "act",
               "toHit": { "abilities": ["nerve"], "skill": "wrestle", "target": { "stat": "target" } },
-              "damage": { "dice": { "stat": "damage" }, "type": { "stat": "harm" } }
+              "damage": { "dice": { "stat": "damage" }, "type": { "stat": "harm" } },
+              "offHand": true,
+              "onHit": [
+                {
+                  "$comment": "Driven in deep enough to do two harm, the silver shines in the wound for two turns, and everything else on the watch finds it easier to strike.",
+                  "condition": "marked",
+                  "atLeast": 2,
+                  "rounds": 2
+                }
+              ]
             }
           }
         },

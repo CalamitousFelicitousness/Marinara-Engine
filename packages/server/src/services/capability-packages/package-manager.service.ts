@@ -956,6 +956,20 @@ function entriesCarryAmmo(entries: unknown): boolean {
   );
 }
 
+const WEAPON_WAYS_ISSUE =
+  "A ruleset whose weapons have modes, an off-hand attack, a floor or conditions on a hit, or whose combat block names an off-hand budget, requires schemaVersion 2 and capabilityApi 1.58 or newer";
+
+/** A weapon's `modes`, `offHand`, `floor` or `onHit`, which are 1.58: new keys on the strict attack. */
+function entriesCarryWeaponWays(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) &&
+    entries.some((entry) => {
+      const attack = plainRecord(plainRecord(plainRecord(entry)?.item)?.attack);
+      return ["modes", "offHand", "floor", "onHit"].some((key) => attack?.[key] !== undefined);
+    })
+  );
+}
+
 /** A level that reads a derived value, which is 1.54: a new key on the strict level. */
 function rulesetCarriesDerivedLevels154(ruleset: { combat?: unknown } | undefined): boolean {
   const levels = plainRecord(ruleset?.combat)?.levels;
@@ -1198,6 +1212,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryWeapons(header.entries) && !declaresApi(55)) return WEAPONS_ISSUE;
       if (entriesCarryArmor(header.entries) && !declaresApi(56)) return ARMOR_ISSUE;
       if (entriesCarryAmmo(header.entries) && !declaresApi(57)) return AMMO_ISSUE;
+      if (entriesCarryWeaponWays(header.entries) && !declaresApi(58)) return WEAPON_WAYS_ISSUE;
       const asset = header.asset;
       if (typeof asset !== "string") continue;
       // A path that does not normalize is never a declared one, whatever else failed to normalize.
@@ -1228,6 +1243,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryWeapons(fileEntries) && !declaresApi(55)) return WEAPONS_ISSUE;
       if (entriesCarryArmor(fileEntries) && !declaresApi(56)) return ARMOR_ISSUE;
       if (entriesCarryAmmo(fileEntries) && !declaresApi(57)) return AMMO_ISSUE;
+      if (entriesCarryWeaponWays(fileEntries) && !declaresApi(58)) return WEAPON_WAYS_ISSUE;
     }
   }
   // The battle block lives inside the ruleset file too, so it is read the same way and for the same
@@ -1333,6 +1349,7 @@ export function getCapabilityPackageInstallIssue(
   if (!declaresApi(56) && plainRecord(plainRecord(plainRecord(ruleset?.combat)?.pool))?.hardness !== undefined) {
     return ARMOR_ISSUE;
   }
+  if (!declaresApi(58) && plainRecord(ruleset?.combat)?.offHand !== undefined) return WEAPON_WAYS_ISSUE;
   // Values that read the items someone holds, which are 1.52's. Same file (and the same catalog
   // files), same reason.
   if (

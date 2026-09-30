@@ -178,6 +178,23 @@ export function recoverRulesetAmmo(state: RulesetEncounterState): RulesetCombatE
   return events;
 }
 
+/** An item whose use just spent its last charge rolls its `breaksOn` die, and at or under `atMost` it
+ *  breaks: taken off its stack of one, so the fight's write-back removes it. Null when it holds on. */
+export function breakRulesetItem(
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  roll: (sides: number) => number,
+): RulesetCombatEvent | null {
+  const use = action.itemUse;
+  const breaks = use?.charges?.breaksOn;
+  if (!use || !breaks || rulesetItemUseLeft(actor, use) > 0 || actor.broken?.[use.item]) return null;
+  const face = roll(breaks.die);
+  if (face > breaks.atMost) return null;
+  (actor.itemsUsed ??= {})[use.item] = (actor.itemsUsed?.[use.item] ?? 0) + 1;
+  (actor.broken ??= {})[use.item] = true;
+  return { type: "broke", actorId: actor.id, optionId: action.id, label: action.label, roll: face };
+}
+
 /** What one step of a fight did to one of the party's inventory stacks: how many it took out of it
  *  (fewer than none when a won fight gave some back) and what a weapon has loaded now. */
 export interface RulesetFightItemChange {
@@ -188,6 +205,8 @@ export interface RulesetFightItemChange {
   loaded?: number;
   /** What an item with charges holds now. */
   charges?: number;
+  /** It broke when its last charge was spent: what was taken is lost, not used. */
+  broke?: true;
 }
 
 /**
@@ -220,6 +239,7 @@ export function rulesetFightItemChanges(
         taken,
         ...(reloaded ? { loaded } : {}),
         ...(spent ? { charges } : {}),
+        ...(combatant.broken?.[index] && !earlier?.broken?.[index] ? { broke: true as const } : {}),
       });
     });
   }
@@ -242,7 +262,9 @@ export function applyRulesetFightItemChanges(
   const journal: GameInventoryJournalEntry[] = [];
   for (const change of changes) {
     const at = next.findIndex((stack) => stack.id === change.stack.id);
-    if (change.taken > 0) journal.push({ item: change.name, action: "used", quantity: change.taken });
+    if (change.taken > 0) {
+      journal.push({ item: change.name, action: change.broke ? "lost" : "used", quantity: change.taken });
+    }
     if (change.taken < 0) journal.push({ item: change.name, action: "acquired", quantity: -change.taken });
     if (at < 0) {
       // Only what came back may land where nothing is left: a shot or a load needed the stack.

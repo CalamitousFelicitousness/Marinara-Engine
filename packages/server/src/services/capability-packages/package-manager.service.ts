@@ -995,6 +995,20 @@ function entriesCarryItemRestore(entries: unknown): boolean {
   );
 }
 
+const CHARGES_OVER_TIME_ISSUE =
+  "A ruleset whose items regain charges on a rest or break when emptied requires schemaVersion 2 and capabilityApi 1.61 or newer";
+
+/** An item's `charges.recharge` or `charges.breaksOn`, which are 1.61: new keys on the strict charges. */
+function entriesCarryChargesOverTime(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) &&
+    entries.some((entry) => {
+      const charges = plainRecord(plainRecord(plainRecord(entry)?.item)?.charges);
+      return charges?.recharge !== undefined || charges?.breaksOn !== undefined;
+    })
+  );
+}
+
 /** A level that reads a derived value, which is 1.54: a new key on the strict level. */
 function rulesetCarriesDerivedLevels154(ruleset: { combat?: unknown } | undefined): boolean {
   const levels = plainRecord(ruleset?.combat)?.levels;
@@ -1240,6 +1254,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryWeaponWays(header.entries) && !declaresApi(58)) return WEAPON_WAYS_ISSUE;
       if (entriesCarryItemUse(header.entries) && !declaresApi(59)) return ITEM_USE_ISSUE;
       if (entriesCarryItemRestore(header.entries) && !declaresApi(60)) return ITEM_RESTORE_ISSUE;
+      if (entriesCarryChargesOverTime(header.entries) && !declaresApi(61)) return CHARGES_OVER_TIME_ISSUE;
       const asset = header.asset;
       if (typeof asset !== "string") continue;
       // A path that does not normalize is never a declared one, whatever else failed to normalize.
@@ -1273,6 +1288,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryWeaponWays(fileEntries) && !declaresApi(58)) return WEAPON_WAYS_ISSUE;
       if (entriesCarryItemUse(fileEntries) && !declaresApi(59)) return ITEM_USE_ISSUE;
       if (entriesCarryItemRestore(fileEntries) && !declaresApi(60)) return ITEM_RESTORE_ISSUE;
+      if (entriesCarryChargesOverTime(fileEntries) && !declaresApi(61)) return CHARGES_OVER_TIME_ISSUE;
     }
   }
   // The battle block lives inside the ruleset file too, so it is read the same way and for the same

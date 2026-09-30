@@ -1223,6 +1223,79 @@ try {
     assert.ok(retold !== undefined && retold >= 2 && retold <= 5, `the retelling healed from 0, not ${retold}`);
   }
 
+  // ── A rest (#6888): the Game Master's rest refills what the rested carry, once per turn ──
+  {
+    const grave = {
+      ...(JSON.parse(
+        readFileSync(fileURLToPath(new URL("../../docs/examples/rulesets/gravewatch.json", import.meta.url)), "utf8"),
+      ) as Record<string, any>),
+      id: "gravewatch-rest-turn",
+    };
+    // One charge back a rest, so a turn told twice would show two.
+    const bellItem = grave.catalogs
+      .find((catalog: { holds?: string }) => catalog.holds === "items")
+      .entries.find((entry: { id: string }) => entry.id === "dawn-bell").item;
+    bellItem.charges.recharge = { rests: ["vigil"], amount: { flat: 1 } };
+    await createGameRulesetsStorage(db).put({
+      rulesetId: "local/gravewatch-rest-turn",
+      version: grave.version,
+      sourceKind: "local",
+      definition: JSON.stringify(grave),
+    });
+    const connection = (await createConnectionsStorage(db).list())[0]!;
+    const rested = await chats.create({
+      name: "Resting",
+      mode: "game",
+      characterIds: [],
+      connectionId: connection.id,
+      promptPresetId: null,
+    });
+    assert.ok(rested);
+    await chats.patchMetadata(rested.id, {
+      enableAgents: false,
+      enableTools: false,
+      gameRuleset: { id: "local/gravewatch-rest-turn", version: grave.version, packageId: null, options: {} },
+      gameCharacterCards: [{ name: "Ada" }],
+      gameInventory: [
+        {
+          id: "st-bell",
+          name: "Dawn bell",
+          quantity: 1,
+          item: "kit/dawn-bell",
+          equipped: true,
+          bound: true,
+          charges: 0,
+        },
+      ],
+    });
+    const bellCharges = async () =>
+      normalizeGameInventoryStacks(JSON.parse((await chats.getById(rested.id))!.metadata as string).gameInventory).find(
+        (stack) => stack.id === "st-bell",
+      )?.charges;
+    reply = `The watch stands down at dawn. [sheet: who="Ada" op="rest" rest="vigil"]`;
+    await chats.createMessage({ chatId: rested.id, role: "user", content: "We rest." });
+    const told = await app.inject({
+      method: "POST",
+      url: "/api/generate/",
+      payload: { chatId: rested.id, streaming: true },
+    });
+    assert.equal(told.statusCode, 200, told.body);
+    assert.equal(await bellCharges(), 1, "one charge back");
+    const saved = (await chats.listMessages(rested.id)).at(-1)!;
+    // Told again, it starts from where the turn began: still one, not two.
+    await app.inject({
+      method: "POST",
+      url: "/api/generate/",
+      payload: { chatId: rested.id, streaming: true, regenerateMessageId: saved.id },
+    });
+    assert.equal(await bellCharges(), 1, "a retelling recharges once");
+    // And the next turn's prompt shows the Game Master what the bell has left.
+    reply = "Morning.";
+    await chats.createMessage({ chatId: rested.id, role: "user", content: "We go on." });
+    await app.inject({ method: "POST", url: "/api/generate/", payload: { chatId: rested.id, streaming: true } });
+    assert.match(JSON.stringify(prompts.at(-1)), /Dawn bell \(1 worn, 1 bound, 1 of 3 charges left\)/);
+  }
+
   console.info("game inventory turn regressions passed.");
 } finally {
   ClaudeSubscriptionProvider.prototype.chat = originalChat;

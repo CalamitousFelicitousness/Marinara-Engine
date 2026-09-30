@@ -108,6 +108,7 @@ export interface GmPromptContext {
     item?: string;
     equipped?: number;
     bound?: number;
+    charges?: Array<{ now: number; max: number }>;
   }>;
   /** Each bag's totals, the player's first (no `holder`). Read instead of `playerInventory` once
    *  anybody but the player carries something, so the Game Master knows who holds what. */
@@ -120,6 +121,7 @@ export interface GmPromptContext {
       item?: string;
       equipped?: number;
       bound?: number;
+      charges?: Array<{ now: number; max: number }>;
     }>;
   }>;
   /** What each ruleset item held is, by item id, as one line (`rulesetItemPromptFacts`). */
@@ -1233,11 +1235,18 @@ export function buildGmFormatReminder(
   // How many of an item are worn and bound, in the ruleset's own word for bound.
   const bindingName = normalizePromptText(ctx.ruleset?.items?.binding?.label);
   const bindingLabel = bindingName.toLowerCase();
-  const itemWorn = (item: { equipped?: unknown; bound?: unknown } | undefined) => {
+  const itemWorn = (
+    item: { equipped?: unknown; bound?: unknown; charges?: Array<{ now: number; max: number }> } | undefined,
+  ) => {
     const count = (value: unknown) => (typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0);
+    // What an item that holds charges has left, each stack's: "2 of 3 charges left".
+    const charges = Array.isArray(item?.charges)
+      ? item.charges.filter((entry) => Number.isFinite(entry?.now) && Number.isFinite(entry?.max))
+      : [];
     const worn = [
       ...(count(item?.equipped) ? [`${count(item?.equipped)} worn`] : []),
       ...(count(item?.bound) ? [`${count(item?.bound)} ${bindingLabel || "bound"}`] : []),
+      ...(charges.length ? [`${charges.map((entry) => `${entry.now} of ${entry.max}`).join(", ")} charges left`] : []),
     ].join(", ");
     return worn ? { worn } : {};
   };

@@ -166,6 +166,22 @@ function rulesetItemUseLine(facts: RulesetItemFacts, t: TFunction): string {
       : "",
     use.consumes ? t("ui.game.gameinventory.useConsumes") : "",
     use.charges ? t("ui.game.gameinventory.useCharges", { cost: use.charges.cost, max: use.charges.max }) : "",
+    use.charges?.recharge
+      ? use.charges.recharge.amount === "max"
+        ? t("ui.game.gameinventory.useRechargeAll", { rests: use.charges.recharge.rests.join(", ") })
+        : t("ui.game.gameinventory.useRecharge", {
+            amount: use.charges.recharge.amount,
+            rests: use.charges.recharge.rests.join(", "),
+          })
+      : "",
+    use.charges?.breaksOn
+      ? t(
+          use.charges.breaksOn.atMost === 1
+            ? "ui.game.gameinventory.useBreaksOnOne"
+            : "ui.game.gameinventory.useBreaksOnFaces",
+          { die: use.charges.breaksOn.die, atMost: use.charges.breaksOn.atMost },
+        )
+      : "",
   ].filter(Boolean);
   return use.budget
     ? t("ui.game.gameinventory.use", { budget: use.budget, does: parts.join(", ") })

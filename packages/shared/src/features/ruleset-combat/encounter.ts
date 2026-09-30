@@ -749,7 +749,15 @@ function itemUseActions(
     action.itemUse = {
       item: index,
       ...(use.consumes ? { consumes: true as const } : {}),
-      ...(use.charges !== undefined && max !== undefined ? { charges: { cost: use.charges, max } } : {}),
+      ...(use.charges !== undefined && max !== undefined
+        ? {
+            charges: {
+              cost: use.charges,
+              max,
+              ...(item.charges?.breaksOn ? { breaksOn: { ...item.charges.breaksOn } } : {}),
+            },
+          }
+        : {}),
     };
     actions.push(action);
   });

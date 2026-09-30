@@ -8,7 +8,13 @@
 
 import type { RulesetCombat, RulesetCreatureHideEntry, RulesetDefinition } from "../../schemas/ruleset.schema.js";
 import { readRulesetLive, type RulesetSheetOp } from "../rulesets/live-state.js";
-import { recoverRulesetAmmo, reloadRulesetClip, rulesetModedAction, spendRulesetShots } from "./ammo.js";
+import {
+  breakRulesetItem,
+  recoverRulesetAmmo,
+  reloadRulesetClip,
+  rulesetModedAction,
+  spendRulesetShots,
+} from "./ammo.js";
 import { parseRulesetCombatDice, rollRulesetDice, sumOf } from "./dice.js";
 import {
   rulesetCombatIsPool,
@@ -997,6 +1003,9 @@ function pickTargets(
 function spendAvailability(ctx: RulesetCombatContext, actor: RulesetCombatant, action: RulesetCombatAction): void {
   const shot = spendRulesetShots(actor, action);
   if (shot) ctx.events.push(shot);
+  // The last charge spent: an item that may break rolls for it now.
+  const broke = shot?.type === "uses" ? breakRulesetItem(actor, action, ctx.roll) : null;
+  if (broke) ctx.events.push(broke);
   if (action.uses) {
     const left = Math.max(0, (actor.uses[action.id] ?? 0) - 1);
     actor.uses[action.id] = left;

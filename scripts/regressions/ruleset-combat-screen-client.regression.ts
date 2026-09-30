@@ -583,6 +583,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["spend", say({ type: "spend", actorId: "corwin", pool: "slots_1", label: "1st-level slots", amount: 1 })],
     ["budget", say({ type: "budget", actorId: "brenna", budget: "bonus", left: 0 })],
     ["uses", say({ type: "uses", actorId: "lurker", optionId: "thorns", label: "Thorns", left: 1, of: 3 })],
+    ["broke", say({ type: "broke", actorId: "corwin", optionId: "use:0", label: "Wand of sparks", roll: 1 })],
     [
       "recharge",
       say({
@@ -730,6 +731,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   // The exact strings, so rewording one is a decision rather than an accident.
   assert.equal(printed.get("window"), "Brenna breaks away, and Thorn Lurker may strike.");
   assert.equal(printed.get("restored"), "Corwin gets back 2 Ki, and is on 5 of 7.");
+  assert.equal(printed.get("broke"), "Wand of sparks breaks (a 1 on its die).");
   assert.equal(printed.get("cancelled"), "Thorn Lurker stops Brenna: Fireball never happens.");
   assert.equal(
     printed.get("hardness"),

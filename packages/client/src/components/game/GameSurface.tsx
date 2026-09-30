@@ -10188,6 +10188,39 @@ function GameSurfaceComponent({
     [activeChatId, localizeUi, patchGameStateField],
   );
 
+  /** A rest from the in-game sheet, in a game whose ruleset has items: the server takes it, so the
+   *  charges it brings back to what the character carries are written with the sheet. Answers with
+   *  what the sheet shows after it, or null when it was not taken. */
+  const handleRulesetRest = useCallback(
+    async (cardTitle: string, rest: string): Promise<string | null> => {
+      if (!activeChatId) return null;
+      try {
+        // A sheet edit still waiting to be saved lands first, so the rest starts from it.
+        await flushGameStatePatch(activeChatId);
+        const rested = await sendInventory((chatId) =>
+          api.post<{
+            inventory: GameInventoryStack[];
+            rulesetLive: RulesetLiveStates;
+            now: string;
+            recharged: Array<{ item: string; now: number; max: number }>;
+            playerStats?: PlayerStats;
+          }>("/game/inventory/rest", { chatId, character: cardTitle, rest }),
+        );
+        if (!rested) return null;
+        return [
+          rested.now,
+          ...rested.recharged.map((entry) =>
+            localizeUi("game.ruleset.sheet.restRecharged", { item: entry.item, now: entry.now, max: entry.max }),
+          ),
+        ].join("; ");
+      } catch {
+        toast.error(localizeUi("game.ruleset.sheet.restFailed"));
+        return null;
+      }
+    },
+    [activeChatId, localizeUi, sendInventory],
+  );
+
   const characterSheetRuleset = useMemo<GameCharacterSheetRuleset | undefined>(() => {
     if (gameRuleset.status === "none" || gameRuleset.status === "loading") return undefined;
     if (gameRuleset.status === "unavailable") return { status: "unavailable" };
@@ -10219,6 +10252,8 @@ function GameSurfaceComponent({
       envelope: parsed?.success ? parsed.data : undefined,
       live: gameSnapshot?.rulesetLive?.[normalizeCharacterLookupName(cardTitle)],
       onLiveChange: (next) => handleRulesetLiveChange(cardTitle, next),
+      // Where the ruleset has items, a rest may bring charges back to what is carried.
+      ...(inventoryItemBook ? { onRest: (rest: string) => handleRulesetRest(cardTitle, rest) } : {}),
       onEnvelopeSave: (next) => handleSaveRulesetSheet(cardTitle, next),
       ...(items ? { items } : {}),
     };
@@ -10228,6 +10263,7 @@ function GameSurfaceComponent({
     gameRuleset,
     gameSnapshot?.rulesetLive,
     handleRulesetLiveChange,
+    handleRulesetRest,
     handleSaveRulesetSheet,
     inventoryItemBook,
     inventoryItems,

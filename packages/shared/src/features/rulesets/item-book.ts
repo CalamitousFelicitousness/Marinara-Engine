@@ -135,8 +135,14 @@ export interface RulesetItemUseFact {
   /** The ruleset's own distance unit, beside a range or an area. */
   unit?: string;
   consumes?: true;
-  /** What one use spends of the charges the item holds at most. */
-  charges?: { cost: number; max: number };
+  /** What one use spends of the charges the item holds at most, the rests (by label) that bring them
+   *  back and how many (`"max"` or a sum), and the die it rolls to break when emptied. */
+  charges?: {
+    cost: number;
+    max: number;
+    recharge?: { rests: string[]; amount: "max" | string };
+    breaksOn?: { die: number; atMost: number };
+  };
   /** A pool it gives back some of, by the pool's label. */
   restore?: { pool: string; amount: string };
 }
@@ -270,7 +276,24 @@ function rulesetItemUseFacts(
       ? { unit: definition.combat.distance.label }
       : {}),
     ...(use.consumes ? { consumes: true as const } : {}),
-    ...(use.charges !== undefined && max !== undefined ? { charges: { cost: use.charges, max } } : {}),
+    ...(use.charges !== undefined && max !== undefined
+      ? {
+          charges: {
+            cost: use.charges,
+            max,
+            ...(item.charges?.recharge
+              ? {
+                  recharge: {
+                    rests: item.charges.recharge.rests.map((rest) => labelOf(definition.rests, rest)),
+                    amount:
+                      item.charges.recharge.amount === "max" ? ("max" as const) : amount(item.charges.recharge.amount),
+                  },
+                }
+              : {}),
+            ...(item.charges?.breaksOn ? { breaksOn: { ...item.charges.breaksOn } } : {}),
+          },
+        }
+      : {}),
     ...(use.restore
       ? {
           restore: {
@@ -908,7 +931,13 @@ export function rulesetItemUseText(use: RulesetItemUseFact): string {
   return `use (${use.budget ?? "free"}): ${[
     ...rulesetItemUseDoes(use),
     use.consumes ? "used up" : "",
-    use.charges ? `${use.charges.cost} of ${use.charges.max} charges` : "",
+    use.charges ? `spends ${use.charges.cost} of ${use.charges.max} charges` : "",
+    use.charges?.recharge
+      ? `regains ${use.charges.recharge.amount === "max" ? "all" : use.charges.recharge.amount} on ${use.charges.recharge.rests.join(" or ")}`
+      : "",
+    use.charges?.breaksOn
+      ? `breaks on ${rulesetBreakFaces(use.charges.breaksOn)} on a d${use.charges.breaksOn.die} when emptied`
+      : "",
   ]
     .filter(Boolean)
     .join(", ")}`;
@@ -970,4 +999,9 @@ export function rulesetItemAttackText(attack: RulesetItemAttackFact): string {
   ]
     .filter(Boolean)
     .join(", ")}`;
+}
+
+/** The faces an item breaks on when its last charge is spent: "a 1", or "1 to 3". */
+export function rulesetBreakFaces(breaks: { atMost: number }): string {
+  return breaks.atMost === 1 ? "a 1" : `1 to ${breaks.atMost}`;
 }

@@ -59,7 +59,7 @@ In a game that uses a ruleset (see [Games that use a ruleset](dice-and-skill-che
 - **Notes**, such as what a character is concentrating on, are short text boxes.
 - **Conditions** are buttons you switch on and off.
 - **States**, such as a form or a stance, are one value out of a list at a time. Pick the value from the list. A state can change the numbers that follow it, such as the dice a stance adds to your rolls, and a rest may put it back where it started.
-- **Rest buttons** apply one of the ruleset's rests. What a rest restores is defined by the ruleset. Under 5e (SRD 5.1), a long rest restores hit points and spell slots and brings back half of the character's hit dice, with a minimum of one.
+- **Rest buttons** apply one of the ruleset's rests. What a rest restores is defined by the ruleset, and a rest can also bring back the charges of items the character carries, such as a wand's; the line under the buttons then says what came back. Under 5e (SRD 5.1), a long rest restores hit points and spell slots and brings back half of the character's hit dice, with a minimum of one.
 - Below that is a short summary of the build: ability modifiers, trained skills and saves, and a few values the ruleset picks, such as armor class.
 
 The Game Master keeps the same sheet up to date while it narrates. When a character spends a resource, takes damage, heals, gains or loses a condition, changes a state, or rests, it records the change, and the Engine checks it against the sheet. A change that is not possible, such as a spell cast with no slot left, is refused: nothing changes and a notice tells you so.

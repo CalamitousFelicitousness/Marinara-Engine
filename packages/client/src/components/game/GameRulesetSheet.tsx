@@ -295,6 +295,9 @@ export interface GameRulesetSheetProps {
   readOnly?: boolean;
   /** What the character holds, which a value reading their items (`itemStat`) shows. */
   items?: ReadonlyArray<RulesetSheetItem>;
+  /** A rest taken by the game rather than here: the sheet and what the character carries change
+   *  together, and it answers with the rest's own words, or null when it was not taken. */
+  onRest?: (rest: string) => Promise<string | null>;
 }
 
 export function GameRulesetSheet({
@@ -308,6 +311,7 @@ export function GameRulesetSheet({
   onEnvelopeSave,
   readOnly = false,
   items,
+  onRest,
 }: GameRulesetSheetProps) {
   const { t: localizeUi } = useUiTranslation();
   const [draft, setDraft] = useState<RulesetSheetEnvelope | null>(null);
@@ -647,7 +651,13 @@ export function GameRulesetSheet({
                     key={rest.id}
                     type="button"
                     disabled={readOnly}
-                    onClick={() => apply({ op: "rest", rest: rest.id })}
+                    onClick={() => {
+                      if (readOnly) return;
+                      if (!onRest) return apply({ op: "rest", rest: rest.id });
+                      void onRest(rest.id).then((now) => {
+                        if (now !== null) setRestNotice(now);
+                      });
+                    }}
                     aria-label={localizeUi("game.ruleset.sheet.restAria", { name: rest.label, who: cardName })}
                     className={`${chipClass} border-[var(--border)] text-[var(--foreground)] hover:bg-[var(--accent)]`}
                   >

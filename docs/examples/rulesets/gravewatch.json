@@ -740,7 +740,12 @@
               "applies": [{ "condition": "rattled", "duration": { "rounds": 2 } }],
               "charges": 1
             },
-            "charges": { "max": 3 }
+            "charges": {
+              "$comment": "Standing down from the vigil rings it full again, and rung empty it may crack: a 1 on a d20 and it is gone.",
+              "max": 3,
+              "recharge": { "rests": ["vigil"], "amount": "max" },
+              "breaksOn": { "die": 20, "atMost": 1 }
+            }
           }
         },
         {

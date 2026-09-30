@@ -123,7 +123,7 @@ try {
       amount: { dice: "1d4", flat: 1 },
       consumes: true,
     });
-    assert.deepEqual(bell.charges, { max: 3 });
+    assert.equal(bell.charges?.max, 3);
     assert.equal(bell.use?.charges, 1);
     const tonicUse = (edit: (use: Record<string, any>) => void) => (doc: Record<string, any>) =>
       edit(itemEntry(doc, "warming-tonic").item.use);
@@ -339,9 +339,15 @@ try {
         delete entry.item.charges;
       }
     };
-    /** Less what a use restores, which is 1.60's and has a lane of its own. */
+    /** Less what a use restores and what brings charges back or breaks an item, which are 1.60's and
+     *  1.61's and have lanes of their own. */
     const withoutRestore = (doc: Record<string, any>) => {
-      for (const entry of itemCatalogOf(doc).entries) delete entry.item.use?.restore;
+      for (const entry of itemCatalogOf(doc).entries) {
+        delete entry.item.use?.restore;
+        // And its charges' recharge and break, which are 1.61's.
+        delete entry.item.charges?.recharge;
+        delete entry.item.charges?.breaksOn;
+      }
     };
     for (const text of [emberText, gravewatchText].map((each) => JSON.stringify(variant(each, withoutRestore)))) {
       assert.match(issue(58, variant(text)) ?? "", gateIssue);
@@ -598,7 +604,8 @@ try {
     // A stat is held to the most charges a written count may be, so the stack never keeps more.
     const loud = { ...statBell, stats: { ...statBell.stats, peals: 500 } };
     assert.equal(optionOf(byStat, fight(byStat, [held(loud, "Bell", true)]), "use:0")?.left, 100);
-    assert.deepEqual(rulesetItemFacts(byStat, loud).use?.charges, { cost: 1, max: 100 });
+    const loudCharges = rulesetItemFacts(byStat, loud).use?.charges;
+    assert.deepEqual([loudCharges?.cost, loudCharges?.max], [1, 100]);
     const statless = { ...statBell, stats: { conceal: "pocket" } };
     assert.equal(optionOf(byStat, fight(byStat, [held(statless, "Bell", true)]), "use:0"), undefined);
     // A use that rolls to hit adds its own to-hit, as a weapon's does, and a pool fight's its target.
@@ -826,7 +833,12 @@ try {
       kind: "debuff",
       save: { save: "Steel", difficulty: 7, onSuccess: "negates" },
       applies: ["Rattled"],
-      charges: { cost: 1, max: 3 },
+      charges: {
+        cost: 1,
+        max: 3,
+        recharge: { rests: ["Stand down from the vigil"], amount: "max" },
+        breaksOn: { die: 20, atMost: 1 },
+      },
     });
     assert.match(
       rulesetItemPromptFacts(rulesetItemFacts(ember, poultice)),
@@ -838,7 +850,7 @@ try {
     );
     assert.match(
       rulesetItemPromptFacts(rulesetItemFacts(gravewatch, bell)),
-      /; use \(Act\): Steel 7 save negates it, Rattled, 1 of 3 charges$/,
+      /; use \(Act\): Steel 7 save negates it, Rattled, spends 1 of 3 charges, regains all on Stand down from the vigil, breaks on a 1 on a d20 when emptied$/,
     );
     // A free use, a typed blow that rolls to hit and asks a save for half, and temporary points.
     const thrown = parsedOrThrow(
@@ -877,7 +889,7 @@ try {
     );
     assert.ok("item" in chime, "the chime is made");
     const made = kitGm.itemOf(chime.item)!.entry.item!;
-    assert.deepEqual([made.use?.kind, made.use?.charges, made.charges, made.stack], ["debuff", 1, { max: 3 }, 1]);
+    assert.deepEqual([made.use?.kind, made.use?.charges, made.charges, made.stack], ["debuff", 1, bell.charges, 1]);
     const tonicGm = kitGm.invent!({ name: "Hot cordial", category: "tonic", like: "Warming tonic" }, []);
     assert.ok("item" in tonicGm, "the cordial is made");
     assert.equal(kitGm.itemOf(tonicGm.item)!.entry.item!.use?.consumes, true);

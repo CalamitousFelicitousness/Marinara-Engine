@@ -195,6 +195,8 @@ import {
   gameInventoryBearerStatus,
   normalizeGameInventoryStacks,
   rulesetItemPromptFacts,
+  rulesetLayerOptionKey,
+  rulesetPurseText,
   type RoleplayCommandActivity,
   type RulesetDefinition,
   type RulesetItemBook,
@@ -4594,6 +4596,18 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   ]),
                 )
               : undefined;
+          // What each bag's coins are worth, family by family, where the ruleset has coins.
+          const promptPurses = promptItemBook?.coins.length
+            ? Object.fromEntries(
+                [
+                  undefined,
+                  ...new Set(promptInventoryStacks.flatMap((stack) => (stack.holder ? [stack.holder] : []))),
+                ].map((holder) => [
+                  gameInventoryBagKey(holder),
+                  rulesetPurseText(promptItemBook, promptInventoryStacks, holder),
+                ]),
+              )
+            : undefined;
           const promptItemFacts = promptItemBook
             ? Object.fromEntries(
                 promptInventoryStacks.flatMap((stack) => {
@@ -4683,6 +4697,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               partyInventory: gameInventoryBags(promptInventoryStacks, promptCharges),
               ...(promptItemFacts ? { inventoryItemFacts: promptItemFacts } : {}),
               ...(promptBearers ? { inventoryBearers: promptBearers } : {}),
+              ...(promptPurses ? { inventoryPurses: promptPurses } : {}),
+              ...(pinnedGameRuleset?.status === "ok" && pinnedGameRuleset.layers.length > 0
+                ? {
+                    rulesetLayerOptions: Object.fromEntries(
+                      pinnedGameRuleset.layers.map((layer) => [rulesetLayerOptionKey(layer.id), true]),
+                    ),
+                  }
+                : {}),
             }),
           );
           finalMessages.push({ role: "user" as const, content: formatReminder });

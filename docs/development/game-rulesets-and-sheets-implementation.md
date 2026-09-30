@@ -1592,6 +1592,45 @@ the combat guide always promised.
   through the routes among it), the `[loot:]` turn in `game-inventory-turn.regression.ts`, and
   `e2e/game-ruleset-loot.e2e.ts`, with 40 deliberate breaks each caught.
 
+### What money settled
+
+Capability API 1.64, for #6901. Slice I7-2 of the ruleset items plan, after loot (I7-1).
+
+- **Coins are stacks.** A coin is an inventory stack whose `item` is `coin:<unit id>`
+  (`GAME_INVENTORY_ITEM_REF_PATTERN`), named by the unit's label, so it gets everything a stack
+  already has: bags, giving, splitting, merging, carry-over, a turn's restart and branching. The item
+  book (`rulesetItemBook`) answers a book entry for each coin, weighing `1 / perWeight` of the carry
+  stat, and `coinNamed` finds a coin by id or label, singular or plural. No new storage.
+- **Paying and earning.** `[inventory: action="pay" amount="3 shillings" who="..."]` and
+  `action="earn"`. A payment is `payGameInventoryCoins` (game-inventory-coins.ts): one bag, one
+  family, largest coins first, then the smallest coin that covers the rest is broken and the change
+  given greedily in smaller coins; refused `cannot-afford`, `unknown-coin` or `no-currencies`. The
+  journal lists what was spent and what came back. An earning is an add of the coin, placed by the
+  carrying rule.
+- **Said.** The purse line above the inventory's stacks (`ui.game.gameinventory.purse`), the picker's
+  Coins list, a notification per payment and earning, and for the Game Master each bag's worth per
+  family (`rulesetPurseText`), an item's cost in its facts, and the pay and earn line only where the
+  ruleset has coins.
+- **Layers hide coins, never rewrite them.** A layer's `currencies` (`removeUnits`,
+  `removeFamilies`; a family's smallest coin only with its family) is read by
+  `rulesetLayeredCurrencies`, the way `catalogEntryHiddenByLayers` hides catalog entries: the effective
+  definition keeps every coin, so an item priced in a coin that is gone still validates, and its price
+  is said at the same worth in the largest coin left that pays it exactly. Taking the coins out of the
+  effective definition instead failed the layered definition's validation (Gravewatch prices two items
+  in crowns), which silently dropped the whole layer.
+- **Loot drops coins.** A loot line may name `coins` (a unit id) instead of an item or a filter.
+- **The browser keeps a layer over loot tables.** Since I7-1 a loot line's item was checked against
+  its catalog's inline entries in the layered definition too, and the browser's listing sends catalogs
+  without their entries, so the check failed there and the client dropped every layer of a ruleset with
+  loot tables while the server kept it. A layered definition (`layersApplied`) now skips that check:
+  the file was checked at import.
+- **The install gate** asks for 1.64 for a layer's `currencies` or a loot line's `coins`, after the
+  1.63 check.
+- **Examples.** Gravewatch's grave goods drop a few shillings, and its long night takes the crown out.
+- **Proven** by `scripts/regressions/game-ruleset-money.regression.ts` and
+  `e2e/game-ruleset-money.e2e.ts`, with 55 deliberate breaks each caught. Two more found conditions
+  in the payment that could never change its result, which were deleted.
+
 ## Gaps a ruleset author found
 
 The author of [Marinara-RPG-Extension](https://github.com/Kenhito/Marinara-RPG-Extension), who

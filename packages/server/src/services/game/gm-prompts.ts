@@ -15,8 +15,10 @@ import {
   gameInventoryBagKey,
   rulesetDefenseLabel,
   rulesetItemStatsRead,
+  rulesetLayeredCurrencies,
   wrapGameInstructions,
   type GameInventoryBearerStatus,
+  type RulesetLayerOptions,
 } from "@marinara-engine/shared";
 import type { CharacterSpriteInfo } from "./sprite.service.js";
 
@@ -129,6 +131,11 @@ export interface GmPromptContext {
   /** What each character carries, binds and wears against what they can, by bag key
    *  (`gameInventoryBagKey`, the player's is ""), in a game whose ruleset says so. */
   inventoryBearers?: Record<string, GameInventoryBearerStatus>;
+  /** What each bag's coins are worth ("Coin worth 432 bits"), by bag key, where the ruleset has coins. */
+  inventoryPurses?: Record<string, string>;
+  /** The layers the game's ruleset really plays with, for what a layer hides without rewriting the
+   *  ruleset (its coins). */
+  rulesetLayerOptions?: RulesetLayerOptions;
   /** Language for all narration and dialogue */
   language?: string;
   /** User-overridable GM instruction body. Wrapped in <instructions> before sending. */
@@ -477,6 +484,22 @@ function bearerNote(status: GameInventoryBearerStatus | undefined, bindingLabel:
 
 /** The tag line for wearing: only the actions this ruleset has, putting on for slots and binding for a
  *  binding limit, so a model is never offered one the Engine would refuse every time. */
+/** The ruleset's coins, family by family, largest first: "Coin: sovereigns, marks, bits; Salt: cakes,
+ *  pinches". */
+function promptCoins(
+  families: ReadonlyArray<{ label: string; units: ReadonlyArray<{ label: string; value: number }> }>,
+): string {
+  return families
+    .map(
+      (family) =>
+        `${normalizePromptText(family.label)}: ${[...family.units]
+          .sort((a, b) => b.value - a.value)
+          .map((unit) => normalizePromptText(unit.label))
+          .join(", ")}`,
+    )
+    .join("; ");
+}
+
 /** The ruleset's loot tables as the Game Master names them: "grave_goods (Grave goods)". */
 function promptLootTables(tables: ReadonlyArray<{ id: string; label: string }>): string {
   return tables.map((table) => `${table.id} (${normalizePromptText(table.label)})`).join(", ");
@@ -1148,6 +1171,8 @@ export function buildGmFormatReminder(
     | "partyInventory"
     | "inventoryItemFacts"
     | "inventoryBearers"
+    | "inventoryPurses"
+    | "rulesetLayerOptions"
     | "language"
     | "rating"
     | "enableQuickTimeEvents"
@@ -1255,8 +1280,14 @@ export function buildGmFormatReminder(
     ].join(", ");
     return worn ? { worn } : {};
   };
+  const coins = ctx.ruleset ? rulesetLayeredCurrencies(ctx.ruleset, ctx.rulesetLayerOptions) : [];
   const bearerFor = (holder: string | undefined) =>
-    bearerNote(ctx.inventoryBearers?.[gameInventoryBagKey(holder)], bindingName);
+    [
+      bearerNote(ctx.inventoryBearers?.[gameInventoryBagKey(holder)], bindingName),
+      normalizePromptText(ctx.inventoryPurses?.[gameInventoryBagKey(holder)]),
+    ]
+      .filter(Boolean)
+      .join("; ");
   const playerInventory = Array.isArray(ctx.playerInventory)
     ? ctx.playerInventory.flatMap((item) => {
         const name = inventoryName(item);
@@ -1455,6 +1486,11 @@ export function buildGmFormatReminder(
           ...(ctx.ruleset?.catalogs?.some((catalog) => catalog.holds === "items")
             ? [
                 `- [inventory: action="use" item="Name" who="Name"] - when a character uses one of the ruleset's items whose [brackets] say "use (...)". The Engine rolls what it does to whoever uses it, writes that on their sheet and spends the item, and the answer says what happened: narrate that, and what it does to anybody else. A player's message may end with an [item_used] block: the Engine already used that item the same way, so narrate it and never use or remove it again.`,
+              ]
+            : []),
+          ...(coins.length
+            ? [
+                `- [inventory: action="pay" amount="5 ${coins[0]!.units.at(-1)!.label}" who="Name"] and [inventory: action="earn" amount="12 ${coins[0]!.units[0]!.label}" who="Name"] - when a character pays for something or is paid, in the ruleset's coins (${promptCoins(coins)}). Coins are items in each character's purse: a payment comes out of that character's purse (the player's with who left out), inside the coin's own family, with change in its smaller coins, and one they cannot afford is refused; an earning goes into the bags as an add does. The answer says what was paid and what is left: narrate exactly that. Buying is a payment and then an add; never add or remove coins any other way.`,
               ]
             : []),
           ...(ctx.ruleset?.items?.lootTables?.length

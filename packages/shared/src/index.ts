@@ -140,6 +140,7 @@ export * from "./utils/ui-locales.js";
 export * from "./utils/xml-wrapper.js";
 export * from "./utils/music-score.js";
 export * from "./utils/game-inventory-stacks.js";
+export * from "./utils/game-inventory-coins.js";
 export * from "./utils/game-inventory-ops.js";
 export * from "./utils/game-inventory-tags.js";
 export * from "./utils/game-inventory-turns.js";

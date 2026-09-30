@@ -24,6 +24,7 @@ import {
   type GameInventoryItemRules,
   type GameInventoryStack,
 } from "./game-inventory-stacks.js";
+import { payGameInventoryCoins, type GameInventoryPayment } from "./game-inventory-coins.js";
 import {
   createInventoryTagRegex,
   createLootTagRegex,
@@ -137,18 +138,19 @@ export function applyGameInventoryTags(
     named: string | undefined,
     bag: GameInventoryBagRef | undefined,
     note?: string,
+    action: "add" | "earn" = "add",
   ): string => {
     const [result] = apply([
       bag
         ? { op: "add", name: item, ...ref, count, holder: bag.holder, log: true }
         : { op: "add", name: item, ...ref, count, among: ["", ...party.members], log: true },
     ]);
-    const shown = { action: "add" as const, item, count, ...(named ? { who: named } : {}) };
+    const shown = { action, item, count, ...(named ? { who: named } : {}) };
     if (!result?.ok) return serializeInventoryTag(shown, outcomeOf(result), note);
     const answers = result.placed
       ? result.placed.map((share, index) =>
           serializeInventoryTag(
-            { action: "add", item, count: share.count, ...(share.holder ? { who: share.holder } : {}) },
+            { action, item, count: share.count, ...(share.holder ? { who: share.holder } : {}) },
             { ok: true, count: share.count, now: share.now },
             index === 0 ? note : undefined,
           ),
@@ -157,7 +159,7 @@ export function applyGameInventoryTags(
     if (result.left) {
       answers.push(
         serializeInventoryTag(
-          { action: "add", item, count: result.left, ...(named ? { who: named } : {}) },
+          { action, item, count: result.left, ...(named ? { who: named } : {}) },
           { ok: false, reason: "too-heavy" },
         ),
       );
@@ -275,6 +277,38 @@ export function applyGameInventoryTags(
             { ok: true, count: lines.length, now: gameInventoryCountItems(current, items, who.bag ?? {}) },
             lines.join(" "),
           );
+        }
+        if (request.action === "pay" || request.action === "earn") {
+          // Money is the ruleset's coins, a stack of each per bag. An earning is an add of that coin;
+          // a payment comes out of one bag inside the coin's own family, with change.
+          const named = rules?.coinNamed?.(item);
+          if (!rules?.coinNamed) return serializeInventoryTag(shown, { ok: false, reason: "no-currencies" });
+          if (!named) return serializeInventoryTag(shown, { ok: false, reason: "unknown-coin" });
+          const coin = named.coin;
+          if (request.action === "earn") {
+            return addAnswered(coin.name, { item: coin.item }, request.count, request.who, who.bag, undefined, "earn");
+          }
+          const holder = who.bag?.holder;
+          const paid = payGameInventoryCoins(current, holder, named.family, request.count * coin.value);
+          const answered = { ...shown, item: coin.name };
+          if (!paid.ok) return serializeInventoryTag(answered, { ok: false, reason: paid.reason });
+          current = paid.stacks;
+          // The journal says what was spent and what came back as change.
+          journal.push(
+            ...paid.paid.map((each) => ({ item: each.name, action: "used" as const, quantity: each.count })),
+            ...paid.change.map((each) => ({ item: each.name, action: "acquired" as const, quantity: each.count })),
+          );
+          const now = current
+            .filter(
+              (stack) => stack.item === coin.item && gameInventoryBagKey(stack.holder) === gameInventoryBagKey(holder),
+            )
+            .reduce((sum, stack) => sum + stack.quantity, 0);
+          const listed = (coins: GameInventoryPayment["paid"]) => {
+            const each = coins.map((coin) => `${coin.name} ×${coin.count}`);
+            return each.length > 1 ? `${each.slice(0, -1).join(", ")} and ${each.at(-1)}` : each.join("");
+          };
+          const note = `Paid with ${listed(paid.paid)}${paid.change.length ? `; ${listed(paid.change)} back` : ""}.`;
+          return serializeInventoryTag(answered, { ok: true, count: request.count, now }, note);
         }
         if (request.action === "remove") {
           const [result] = apply([

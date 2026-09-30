@@ -13147,6 +13147,11 @@
                       },
                       "additionalProperties": false
                     },
+                    "coins": {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
                     "weight": {
                       "type": "integer",
                       "minimum": 1,
@@ -17658,6 +17663,33 @@
               "additionalProperties": false
             },
             "maxItems": 24
+          },
+          "currencies": {
+            "type": "object",
+            "properties": {
+              "removeUnits": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 40,
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "minItems": 1,
+                "maxItems": 60
+              },
+              "removeFamilies": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 40,
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "minItems": 1,
+                "maxItems": 6
+              },
+              "$comment": {}
+            },
+            "additionalProperties": false
           },
           "$comment": {}
         },

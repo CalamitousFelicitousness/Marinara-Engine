@@ -22,9 +22,11 @@ import {
 import { normalizeCharacterLookupName } from "../../utils/character-lookup-name.js";
 import {
   gameInventoryBagKey,
+  gameInventoryCoinRef,
   gameInventoryNameKey,
   type GameInventoryStack,
   type GameInventoryBearer,
+  type GameInventoryCoin,
   type GameInventoryItemRules,
   type GameInventoryRulesetItem,
 } from "../../utils/game-inventory-stacks.js";
@@ -38,7 +40,7 @@ import {
   RULESET_INVENTED_ITEMS_MAX,
   type RulesetInventedItem,
 } from "./invented-items.js";
-import { catalogEntryHiddenByLayers, type RulesetLayerOptions } from "./layers.js";
+import { catalogEntryHiddenByLayers, rulesetLayeredCurrencies, type RulesetLayerOptions } from "./layers.js";
 import {
   defaultRulesetSheetBuild,
   evaluateRulesetSheet,
@@ -439,6 +441,32 @@ export function rulesetItemGateDifficulty(
     : undefined;
 }
 
+/** What one bag's coins are worth, family by family, in each family's smallest coin, for the Game
+ *  Master: "Coin worth 432 bits". Empty when the bag holds no coins. */
+export function rulesetPurseText(
+  book: Pick<RulesetItemBook, "coins">,
+  stacks: readonly GameInventoryStack[],
+  holder: string | undefined,
+): string {
+  const bag = gameInventoryBagKey(holder);
+  const families = new Map<string, { label: string; worth: number; smallest: string }>();
+  for (const coin of book.coins) {
+    const family = coin.coin!.family;
+    const known = families.get(family) ?? { label: coin.facts.category, worth: 0, smallest: coin.name };
+    if (coin.coin!.value === 1) known.smallest = coin.name;
+    known.worth +=
+      coin.coin!.value *
+      stacks
+        .filter((stack) => stack.item === coin.item && gameInventoryBagKey(stack.holder) === bag)
+        .reduce((sum, stack) => sum + stack.quantity, 0);
+    families.set(family, known);
+  }
+  return [...families.values()]
+    .filter((family) => family.worth > 0)
+    .map((family) => `${family.label} worth ${family.worth} ${family.smallest}`)
+    .join(", ");
+}
+
 /** What a use's gate rolls, in the ruleset's own words: a skill's or an ability's label, or the value
  *  off the sheet it reads ("Wits modifier"). */
 export function rulesetItemGateLabel(definition: RulesetDefinition, gate: NonNullable<RulesetItemUse["gate"]>): string {
@@ -589,6 +617,8 @@ export interface RulesetItemBookEntry extends GameInventoryRulesetItem {
   facts: RulesetItemFacts;
   /** Set on an item the Game Master invented, with what the Engine changed from its proposal. */
   invented?: { notes: string[] };
+  /** Set on one of the ruleset's coins: its family, and what it is worth in the family's smallest. */
+  coin?: { family: string; value: number };
 }
 
 /** The sheets a book reads what each character carries and binds off: the player's own, and every
@@ -607,10 +637,29 @@ export interface RulesetItemBook extends GameInventoryItemRules {
    *  Game Master invented. */
   itemOf(item: string): RulesetItemBookEntry | undefined;
   itemNamed(name: string): RulesetItemBookEntry | undefined;
+  /** The ruleset's coins, a book entry each, family by family. */
+  coins: readonly RulesetItemBookEntry[];
   /** The game's invented items: the ones it was built with, and any `invent` has made since. */
   inventedItems(): RulesetInventedItem[];
   /** Whether `invent` has made an item since the book was built. */
   inventedChanged(): boolean;
+}
+
+function itemPrice(
+  definition: RulesetDefinition,
+  cost: { amount: number; unit: string },
+  layerOptions: RulesetLayerOptions | null | undefined,
+): { amount: number; unit: string } | undefined {
+  const family = definition.items?.currencies?.find((each) => each.units.some((unit) => unit.id === cost.unit));
+  const named = family?.units.find((unit) => unit.id === cost.unit);
+  if (!family || !named) return cost;
+  const left = rulesetLayeredCurrencies(definition, layerOptions).find((each) => each.id === family.id);
+  if (!left) return undefined;
+  if (left.units.some((unit) => unit.id === named.id)) return { amount: cost.amount, unit: named.label };
+  // The family's smallest coin, worth 1, is always left, so some coin pays the worth exactly.
+  const worth = cost.amount * named.value;
+  const unit = [...left.units].sort((a, b) => b.value - a.value).find((each) => worth % each.value === 0)!;
+  return { amount: worth / unit.value, unit: unit.label };
 }
 
 function statText(stat: RulesetItemStat, value: string | number | boolean): string | undefined {
@@ -619,8 +668,14 @@ function statText(stat: RulesetItemStat, value: string | number | boolean): stri
   return String(value);
 }
 
-/** An item's labels and stats, read against the ruleset's `items` block. */
-export function rulesetItemFacts(definition: RulesetDefinition, item: RulesetCatalogItem): RulesetItemFacts {
+/** An item's labels and stats, read against the ruleset's `items` block. A price named in a coin the
+ *  game's layers took out is said at the same worth in the largest coin left that pays it exactly, and
+ *  an item whose whole family of coins is gone has no price. */
+export function rulesetItemFacts(
+  definition: RulesetDefinition,
+  item: RulesetCatalogItem,
+  layerOptions?: RulesetLayerOptions | null,
+): RulesetItemFacts {
   const block = definition.items;
   const labelOf = (words: ReadonlyArray<{ id: string; label: string }> | undefined, id: string) =>
     words?.find((word) => word.id === id)?.label ?? id;
@@ -632,9 +687,7 @@ export function rulesetItemFacts(definition: RulesetDefinition, item: RulesetCat
       { id: stat.id, label: stat.label, ...(text !== undefined ? { text } : {}), promptVisible: stat.promptVisible },
     ];
   });
-  const unit = item.cost
-    ? block?.currencies?.flatMap((family) => family.units).find((each) => each.id === item.cost!.unit)
-    : undefined;
+  const cost = item.cost ? itemPrice(definition, item.cost, layerOptions) : undefined;
   const worn = item.worn ? rulesetItemEffectFacts(definition, item.worn) : [];
   const carried = item.carried ? rulesetItemEffectFacts(definition, item.carried) : [];
   const requires = (item.requires ?? []).map((requirement) => ({
@@ -647,7 +700,7 @@ export function rulesetItemFacts(definition: RulesetDefinition, item: RulesetCat
     ...(item.rarity ? { rarity: labelOf(block?.rarities, item.rarity) } : {}),
     tags: (item.tags ?? []).map((tag) => labelOf(block?.tags, tag)),
     stats,
-    ...(item.cost ? { cost: { amount: item.cost.amount, unit: unit?.label ?? item.cost.unit } } : {}),
+    ...(cost ? { cost } : {}),
     ...(worn.length ? { worn } : {}),
     ...(carried.length ? { carried } : {}),
     ...(requires.length ? { requires } : {}),
@@ -692,7 +745,7 @@ export function rulesetItemBook(
       catalogId,
       entry,
       ...(entry.summary ? { summary: entry.summary } : {}),
-      facts: rulesetItemFacts(definition, entry.item),
+      facts: rulesetItemFacts(definition, entry.item, options.layerOptions),
     };
   };
   const all = new Map<string, RulesetItemBookEntry>();
@@ -741,10 +794,54 @@ export function rulesetItemBook(
     if (invented.size >= RULESET_INVENTED_ITEMS_MAX) break;
     if (!invented.has(made.id)) keep(made);
   }
+  // The ruleset's coins, a book entry each, so a stack of them weighs what its family says (one of
+  // the carry stat for every `perWeight` of them), is placed by the carrying rule, and reads as itself.
+  // They are no catalog's, so no picker list and no loot filter ever finds one among the items. A coin
+  // a layer took out still reads as itself where it is held, and is otherwise never offered, paid,
+  // earned or dropped.
+  const coins: RulesetItemBookEntry[] = [];
+  const families = new Map<string, GameInventoryCoin[]>();
+  const left = new Set(
+    rulesetLayeredCurrencies(definition, options.layerOptions).flatMap((family) => family.units.map((unit) => unit.id)),
+  );
+  for (const family of definition.items?.currencies ?? []) {
+    const members = family.units
+      .filter((unit) => left.has(unit.id))
+      .map((unit) => ({ item: gameInventoryCoinRef(unit.id), name: unit.label, value: unit.value }))
+      .sort((a, b) => b.value - a.value);
+    for (const unit of family.units) {
+      const read: RulesetItemBookEntry = {
+        item: gameInventoryCoinRef(unit.id),
+        name: unit.label,
+        ...(family.perWeight ? { weight: 1 / family.perWeight } : {}),
+        catalogId: "",
+        entry: { id: unit.id, label: unit.label },
+        facts: { category: family.label, tags: [], stats: [] },
+        coin: { family: family.id, value: unit.value },
+      };
+      all.set(read.item, read);
+      if (!left.has(unit.id)) continue;
+      offered.add(read.item);
+      coins.push(read);
+      families.set(read.item, members);
+    }
+  }
+  /** The coin a name is: its id or label, one of it or many ("penny", "pennies"), any case. */
+  const coinNamed = (name: string) => {
+    const one = (text: string) => gameInventoryNameKey(text).replace(/ies$/, "y").replace(/s$/, "");
+    const wanted = one(name);
+    const found = coins.find((coin) => one(coin.entry.id) === wanted || one(coin.name) === wanted);
+    return found
+      ? { coin: { item: found.item, name: found.name, value: found.coin!.value }, family: families.get(found.item)! }
+      : undefined;
+  };
   const itemNamed = (name: string): RulesetItemBookEntry | undefined => {
     const key = gameInventoryNameKey(name);
     const made = inventedByName.get(key)?.at(-1);
-    return byName.get(key) ?? (made ? all.get(rulesetInventedItemRef(made.id)) : undefined);
+    const coin = coinNamed(name);
+    return (
+      byName.get(key) ?? (made ? all.get(rulesetInventedItemRef(made.id)) : coin ? all.get(coin.coin.item) : undefined)
+    );
   };
   /** The ruleset's own weapon of this category whose name shares the most words with `name` (a word
    *  counts where either holds the other, "crossbow" and "bow"), or the first of them. */
@@ -824,6 +921,8 @@ export function rulesetItemBook(
   };
   return {
     entries: visible,
+    coins,
+    ...(coins.length > 0 ? { coinNamed } : {}),
     itemOf: (item) => all.get(item),
     offers: (item) => offered.has(item),
     itemNamed,
@@ -952,6 +1051,7 @@ export function rulesetItemPromptFacts(facts: RulesetItemFacts): string {
   return [
     kind,
     stats,
+    facts.cost ? `costs ${facts.cost.amount} ${facts.cost.unit}` : "",
     ...effects,
     ...needs,
     facts.attack ? rulesetItemAttackText(facts.attack) : "",

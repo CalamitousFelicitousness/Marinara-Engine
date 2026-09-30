@@ -286,6 +286,9 @@ export function rulesetItemEffectLines(facts: RulesetItemFacts, t: TFunction): s
   ];
 }
 
+/** The picker's list of the ruleset's coins, beside its catalogs. */
+const COINS_LIST = ":coins";
+
 export function RulesetItemPicker({
   open,
   onClose,
@@ -309,7 +312,13 @@ export function RulesetItemPicker({
     [definition.catalogs],
   );
   const [catalogId, setCatalogId] = useState(catalogs[0]?.id ?? "");
-  const catalog = catalogs.find((each) => each.id === catalogId) ?? catalogs[0];
+  // The ruleset's coins are offered beside its catalogs, as one more list: no catalog id has a colon.
+  const coinsChosen = catalogId === COINS_LIST && book.coins.length > 0;
+  const catalog = coinsChosen ? undefined : (catalogs.find((each) => each.id === catalogId) ?? catalogs[0]);
+  const lists = [
+    ...catalogs.map((each) => ({ id: each.id, label: each.label })),
+    ...(book.coins.length > 0 ? [{ id: COINS_LIST, label: t("game.ruleset.items.coins") }] : []),
+  ];
   const [search, setSearch] = useState("");
   // Null until the user touches a filter, like the sheet editor's picker.
   const [chosen, setChosen] = useState<Record<string, string> | null>(null);
@@ -317,7 +326,10 @@ export function RulesetItemPicker({
 
   // The same cached query the book was built from: only its loading and failure are read here.
   const query = useRulesetCatalog(definition.id, catalog?.id ?? "", definition.version, open && Boolean(catalog));
-  const items = useMemo(() => book.entries.filter((each) => each.catalogId === catalog?.id), [book, catalog]);
+  const items = useMemo(
+    () => (coinsChosen ? [...book.coins] : book.entries.filter((each) => each.catalogId === catalog?.id)),
+    [book, catalog, coinsChosen],
+  );
   const entries = useMemo(() => items.map((each) => each.entry), [items]);
   const build = useMemo(() => defaultRulesetSheetBuild(definition), [definition]);
   const views = useMemo(
@@ -338,7 +350,7 @@ export function RulesetItemPicker({
       if (!next.delete(item)) next.add(item);
       return next;
     });
-  const picks = book.entries.filter((each) => selected.has(each.item));
+  const picks = [...book.entries, ...book.coins].filter((each) => selected.has(each.item));
 
   return (
     <Modal
@@ -363,18 +375,18 @@ export function RulesetItemPicker({
               className={inputClass}
             />
           </label>
-          {catalogs.length > 1 && (
+          {lists.length > 1 && (
             <label className="flex min-w-0 basis-36 flex-col gap-1">
               <span className={labelClass}>{t("game.ruleset.items.catalog")}</span>
               <select
-                value={catalog?.id ?? ""}
+                value={coinsChosen ? COINS_LIST : (catalog?.id ?? "")}
                 onChange={(event) => {
                   setCatalogId(event.target.value);
                   setChosen(null);
                 }}
                 className={inputClass}
               >
-                {catalogs.map((each) => (
+                {lists.map((each) => (
                   <option key={each.id} value={each.id}>
                     {each.label}
                   </option>

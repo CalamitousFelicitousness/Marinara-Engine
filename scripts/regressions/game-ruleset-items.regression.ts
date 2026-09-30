@@ -688,7 +688,7 @@ try {
     });
     assert.equal(
       rulesetItemPromptFacts(axe.facts),
-      "Weapon, Common, Thrown; Bulk 1, Damage 1d6, Rolls with brawn, Reach close; attack (Action): Brawn to hit, 1d6 + Brawn cut, reach 2 paces, range 10 to 20 paces",
+      "Weapon, Common, Thrown; Bulk 1, Damage 1d6, Rolls with brawn, Reach close; costs 4 marks; attack (Action): Brawn to hit, 1d6 + Brawn cut, reach 2 paces, range 10 to 20 paces",
     );
     // A stat the Game Master is not shown stays on the item's card only.
     const kit = rulesetItemBook(gravewatch, entriesOf(gravewatch));
@@ -696,7 +696,7 @@ try {
     assert.ok(nail.facts.stats.some((stat) => stat.id === "conceal" && !stat.promptVisible));
     assert.equal(
       rulesetItemPromptFacts(nail.facts),
-      "Arm, Rare, Silver, Easily hidden; Target 7, Damage 1d6, Harm tearing; attack (Act): Nerve + Wrestle to hit at 7, 1d6 tearing, off hand (Quick), Marked for 2 rounds when a hit deals 2 or more",
+      "Arm, Rare, Silver, Easily hidden; Target 7, Damage 1d6, Harm tearing; costs 2 crowns; attack (Act): Nerve + Wrestle to hit at 7, 1d6 tearing, off hand (Quick), Marked for 2 rounds when a hit deals 2 or more",
     );
     assert.equal(nail.stack, 12);
     // An enum reads by its value label, a yes by the stat's label alone, and a no not at all.
@@ -720,7 +720,7 @@ try {
     ]);
     assert.equal(
       rulesetItemPromptFacts(wordedBook.itemOf("outfitter/waystone")!.facts),
-      "Gear, Storied; Lit; carried: +1 on checks (Sway), resists burn",
+      "Gear, Storied; Lit; costs 2 cakes; carried: +1 on checks (Sway), resists burn",
     );
     assert.ok(!wordedBook.itemOf("outfitter/arrows")!.facts.stats.some((stat) => stat.id === "lit"));
     // A layer that hides an entry takes it out of names and the picker, not out of what is held.
@@ -775,7 +775,7 @@ try {
     });
     assert.match(
       held,
-      /PLAYER INVENTORY: Hand axe ×2 \[Weapon, Common, Thrown; Bulk 1, Damage 1d6, Rolls with brawn, Reach close; attack \(Action\): Brawn to hit, 1d6 \+ Brawn cut, reach 2 paces, range 10 to 20 paces\]; Rope/,
+      /PLAYER INVENTORY: Hand axe ×2 \[Weapon, Common, Thrown; Bulk 1, Damage 1d6, Rolls with brawn, Reach close; costs 4 marks; attack \(Action\): Brawn to hit, 1d6 \+ Brawn cut, reach 2 paces, range 10 to 20 paces\]; Rope/,
     );
     assert.match(held, /an item named exactly as one of them becomes that item/);
     const party = buildGmFormatReminder({

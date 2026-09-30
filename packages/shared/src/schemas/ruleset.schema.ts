@@ -1916,13 +1916,18 @@ const lootEntrySchema = z
       .object({ rarity: sheetId.optional(), category: sheetId.optional(), tag: sheetId.optional() })
       .strict()
       .optional(),
+    /** One of the ruleset's coins, by its id: a purse's worth rather than an item. */
+    coins: sheetId.optional(),
     weight: z.number().int().min(1).max(1000).default(1),
     count: z.union([z.number().int().min(1).max(999), catalogDice]).default(1),
   })
   .strict()
   .superRefine((entry, ctx) => {
-    if ((entry.item === undefined) === (entry.filter === undefined)) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "A loot line names an item or a filter, one of the two" });
+    if ([entry.item, entry.filter, entry.coins].filter((kind) => kind !== undefined).length !== 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "A loot line names an item, a filter or coins, one of them",
+      });
     }
     if (entry.filter && Object.keys(entry.filter).length === 0) {
       ctx.addIssue({
@@ -3216,6 +3221,18 @@ const rulesetLayerSchema = z
     difficultyLadder: rulesetDifficultyLadderSchema.optional(),
     /** Several rules may name one catalog, so a layer can hide by level and by school at once. */
     catalogs: z.array(layerCatalogSchema).max(24).optional(),
+    /** Coins this layer takes out of the ruleset's currencies: single coins, or whole families, as a
+     *  setting without electrum does. A family's smallest coin goes only with its family. */
+    currencies: z
+      .object({
+        removeUnits: z.array(sheetId).min(1).max(60).optional(),
+        removeFamilies: z.array(sheetId).min(1).max(6).optional(),
+      })
+      .strict()
+      .refine((currencies) => currencies.removeUnits || currencies.removeFamilies, {
+        message: "A layer's currencies take out coins (removeUnits) or families (removeFamilies)",
+      })
+      .optional(),
   })
   .strict();
 
@@ -4208,7 +4225,8 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       }
     });
     // A loot line names one of the ruleset's items, or the words its filter picks them by. An item
-    // of a catalog kept in its own file is checked when that file is read.
+    // of a catalog kept in its own file is checked when that file is read. A layered definition may be
+    // the browser's listing, whose catalogs come without their entries: its items were checked at import.
     unique(items.lootTables ?? [], at("lootTables"), "loot table");
     const words = { rarity: items.rarities ?? [], category: items.categories, tag: items.tags ?? [] };
     items.lootTables?.forEach((table, tableIndex) => {
@@ -4218,9 +4236,16 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           const [catalogId, entryId] = entry.item.split("/") as [string, string];
           const catalog = def.catalogs?.find((each) => each.id === catalogId);
           if (!catalog || catalog.holds !== "items") issue([...path, "item"], `No item catalog "${catalogId}"`);
-          else if (catalog.entries && !catalog.entries.some((each) => each.id === entryId && each.item)) {
+          else if (
+            !layersApplied &&
+            catalog.entries &&
+            !catalog.entries.some((each) => each.id === entryId && each.item)
+          ) {
             issue([...path, "item"], `No item "${entryId}" in catalog "${catalogId}"`);
           }
+        }
+        if (entry.coins && !items.currencies?.some((family) => family.units.some((unit) => unit.id === entry.coins))) {
+          issue([...path, "coins"], `Unknown currency unit "${entry.coins}"`);
         }
         for (const key of ["rarity", "category", "tag"] as const) {
           const id = entry.filter?.[key];
@@ -4896,6 +4921,25 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
     }
 
     if (layer.difficultyLadder) checkDifficultyLadder(layer.difficultyLadder, [...path, "difficultyLadder"]);
+
+    if (layer.currencies) {
+      const families = def.items?.currencies ?? [];
+      const gone = new Set(layer.currencies.removeFamilies ?? []);
+      layer.currencies.removeFamilies?.forEach((id, familyIndex) => {
+        if (!families.some((family) => family.id === id)) {
+          issue([...path, "currencies", "removeFamilies", familyIndex], `Unknown currency "${id}"`);
+        }
+      });
+      layer.currencies.removeUnits?.forEach((id, unitIndex) => {
+        const at = [...path, "currencies", "removeUnits", unitIndex];
+        const family = families.find((each) => each.units.some((unit) => unit.id === id));
+        if (!family) return issue(at, `Unknown currency unit "${id}"`);
+        // Every coin's value counts the smallest, so without it nothing could be paid or given in change.
+        if (family.units.find((unit) => unit.id === id)!.value === 1 && !gone.has(family.id)) {
+          issue(at, `"${id}" is the smallest coin of "${family.id}", which goes only with its whole family`);
+        }
+      });
+    }
 
     layer.catalogs?.forEach((entry, catalogIndex) => {
       const at = [...path, "catalogs", catalogIndex];

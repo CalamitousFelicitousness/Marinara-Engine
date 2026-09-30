@@ -177,6 +177,7 @@ try {
       delete itemEntry(doc, "litany-page").item.use.gate;
       delete doc.items?.lootTables;
       for (const catalog of doc.catalogs) for (const entry of catalog.entries ?? []) delete entry.creature?.loot;
+      for (const layer of doc.layers ?? []) delete layer.currencies;
     };
     assert.match(issue(60, variant(gravewatchText, ungated)) ?? "", gateIssue);
     assert.equal(issue(61, variant(gravewatchText, ungated)), null);

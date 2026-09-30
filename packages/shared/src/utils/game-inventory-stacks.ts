@@ -67,10 +67,28 @@ export const GAME_INVENTORY_NAME_MAX_LENGTH = 120;
  *  through every sum a screen or a prompt makes of it. */
 export const GAME_INVENTORY_MAX_QUANTITY = 999_999;
 
-/** What a stack's `item` looks like: a catalog id and one of its entries' ids, or `invented:` and the
- *  id of an item the Game Master invented. No catalog id has a colon, so neither can share an id with
- *  the other, nor with a plain item's `plain:` one. */
-export const GAME_INVENTORY_ITEM_REF_PATTERN = /^(?:[a-z][a-z0-9_]{0,39}\/|invented:)[a-z0-9]+(?:-[a-z0-9]+)*$/;
+/** What a stack's `item` looks like: a catalog id and one of its entries' ids, `invented:` and the id
+ *  of an item the Game Master invented, or `coin:` and the id of one of the ruleset's coins. No catalog
+ *  id has a colon, so none can share an id with another, nor with a plain item's `plain:` one. */
+export const GAME_INVENTORY_ITEM_REF_PATTERN =
+  /^(?:(?:[a-z][a-z0-9_]{0,39}\/|invented:)[a-z0-9]+(?:-[a-z0-9]+)*|coin:[a-z][a-z0-9_]{0,39})$/;
+
+/** A stack of one of the ruleset's coins is held as this `item`: coins are stacks, so a purse is the
+ *  coins in one bag. */
+export const GAME_INVENTORY_COIN_PREFIX = "coin:";
+
+/** The `item` of a coin, by its unit's id. */
+export function gameInventoryCoinRef(unit: string): string {
+  return `${GAME_INVENTORY_COIN_PREFIX}${unit}`;
+}
+
+/** One of a ruleset's coins as the inventory pays with it: its `item`, its name, and what it is worth
+ *  in its family's smallest coin. */
+export interface GameInventoryCoin {
+  item: string;
+  name: string;
+  value: number;
+}
 
 /** The longest `item` kept: the longest catalog id, a slash and the longest entry id. */
 const GAME_INVENTORY_ITEM_REF_MAX_LENGTH = 121;
@@ -151,6 +169,9 @@ export interface GameInventoryItemRules {
     proposal: GameInventoryItemProposal,
     stacks: readonly GameInventoryStack[],
   ): { item: string; notes: string[] } | { refused: "no-invention" | "unreadable" | "too-many" };
+  /** The coin a name is (its id or label, one or many of it, any case), with every coin of its family,
+   *  largest first. Absent where the ruleset has no currencies. */
+  coinNamed?(name: string): { coin: GameInventoryCoin; family: readonly GameInventoryCoin[] } | undefined;
 }
 
 /** The most new stacks one change may start, so a small stack size can never flood a bag. */

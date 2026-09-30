@@ -1020,6 +1020,23 @@ function entriesCarryItemGate(entries: unknown): boolean {
   );
 }
 
+const MONEY_ISSUE =
+  "A ruleset whose layers remove coins, or whose loot tables drop coins, requires schemaVersion 2 and capabilityApi 1.64 or newer";
+
+/** A layer's `currencies`, or a loot line's `coins`, which are 1.64: new keys on the strict layer and line. */
+function rulesetCarriesMoney164(ruleset: { layers?: unknown; items?: unknown } | undefined): boolean {
+  const layers = Array.isArray(ruleset?.layers) ? ruleset.layers : [];
+  const tables = plainRecord(ruleset?.items)?.lootTables;
+  return (
+    layers.some((layer) => plainRecord(layer)?.currencies !== undefined) ||
+    (Array.isArray(tables) &&
+      tables.some((table) => {
+        const entries = plainRecord(table)?.entries;
+        return Array.isArray(entries) && entries.some((entry) => plainRecord(entry)?.coins !== undefined);
+      }))
+  );
+}
+
 const LOOT_ISSUE =
   "A ruleset with loot tables, or creatures that carry loot, requires schemaVersion 2 and capabilityApi 1.63 or newer";
 
@@ -1518,6 +1535,7 @@ export function getCapabilityPackageInstallIssue(
   // Loot tables in the items block and a creature's loot, which are 1.63's. Same files, same reason;
   // asked last, so a package that declares an older minor hears first about what that minor lacks.
   if (!declaresApi(63) && (carriesLoot || plainRecord(ruleset?.items)?.lootTables !== undefined)) return LOOT_ISSUE;
+  if (!declaresApi(64) && rulesetCarriesMoney164(ruleset)) return MONEY_ISSUE;
   return null;
 }
 

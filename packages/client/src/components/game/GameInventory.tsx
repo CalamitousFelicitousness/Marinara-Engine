@@ -323,6 +323,39 @@ export function GameInventory({
   const statusOf = (holder: string | undefined) =>
     itemBook && (itemBook.bearer || itemBook.slots) ? gameInventoryBearerStatus(items, holder, itemBook) : undefined;
   const bagStatus = activeBag ? statusOf(activeBag.holder) : !showBags ? statusOf(undefined) : undefined;
+  /** The coins in view, family by family, largest first, with their worth in the family's smallest. */
+  const purse = useMemo(() => {
+    const families = new Map<
+      string,
+      {
+        id: string;
+        label: string;
+        worth: number;
+        smallest: string;
+        coins: Array<{ name: string; count: number; value: number }>;
+      }
+    >();
+    for (const coin of itemBook?.coins ?? []) {
+      const family = coin.coin!.family;
+      const known = families.get(family) ?? {
+        id: family,
+        label: coin.facts.category,
+        worth: 0,
+        smallest: coin.name,
+        coins: [],
+      };
+      if (coin.coin!.value === 1) known.smallest = coin.name;
+      const count = visibleItems
+        .filter((item) => item.item === coin.item)
+        .reduce((sum, item) => sum + item.quantity, 0);
+      if (count > 0) known.coins.push({ name: coin.name, count, value: coin.coin!.value });
+      known.worth += count * coin.coin!.value;
+      families.set(family, known);
+    }
+    return [...families.values()]
+      .filter((family) => family.coins.length > 0)
+      .map((family) => ({ ...family, coins: family.coins.sort((a, b) => b.value - a.value) }));
+  }, [itemBook, visibleItems]);
   // The picker is offered only with something to offer; a ruleset that takes only its own items has
   // no typed-in name to add.
   const picksItems = Boolean(itemBook && rulesetDefinition && onAddRulesetItems);
@@ -546,6 +579,28 @@ export function GameInventory({
                   </span>
                 );
               })}
+            </div>
+          )}
+
+          {/* The coins in view, family by family, and what they are worth: the purse of the bag in view,
+              or the whole party's in the shared view. */}
+          {purse.length > 0 && (
+            <div className="flex flex-wrap gap-1 border-b border-white/8 px-3 py-1.5">
+              {purse.map((family) => (
+                <span
+                  key={family.id}
+                  className="rounded bg-white/8 px-1.5 py-0.5 text-[0.6rem] tabular-nums text-white/70"
+                >
+                  {localizeUi("ui.game.gameinventory.purse", {
+                    family: family.label,
+                    coins: family.coins
+                      .map((coin) => `${coin.name} ${localizeUi("ui.panels.imagedimensionrow.x")}${coin.count}`)
+                      .join(", "),
+                    worth: family.worth,
+                    smallest: family.smallest,
+                  })}
+                </span>
+              ))}
             </div>
           )}
 

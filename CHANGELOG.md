@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Select a word or short phrase in a chat message to get an **Add to lorebook** button, on desktop and mobile. Pick a lorebook and it opens on a new entry named after the selection, with the selection as its keyword, ready for you to write the content (#6899).
 - Echo Chamber and other agents now see who said what in group chats: turns in individual group mode are labeled with the speaker's name, and merged replies keep their speaker tags. Reactions no longer credit one character's line to another (#6906).
 - On mobile, Echo Chamber stays scrolled to its newest reaction after you finish typing or editing, instead of showing an empty box until you scroll back up (#6906).
 

@@ -2,8 +2,9 @@
 // Per-message user marks: bookmarks, context pins and private notes
 // ──────────────────────────────────────────────
 // All three live in the message's `extra` JSON (message-level, mirrored to every swipe).
-// Bookmarks and notes are reader-only: they never enter prompts. Pins only change which
-// history rows survive the chat's context message limit.
+// Bookmarks are reader-only. A note enters no prompt unless the user shares it with one
+// character, who then sees it with that message. Pins only change which history rows
+// survive the chat's context message limit.
 
 /** Most messages one chat may pin into its prompt context. */
 export const MAX_PINNED_CONTEXT_MESSAGES = 10;
@@ -21,7 +22,12 @@ export interface MessageBookmark {
 }
 
 /** Extra keys that belong to the whole message, not one swipe. */
-export const MESSAGE_MARK_EXTRA_KEYS = ["bookmark", "pinnedToContext", "privateNote"] as const;
+export const MESSAGE_MARK_EXTRA_KEYS = [
+  "bookmark",
+  "pinnedToContext",
+  "privateNote",
+  "privateNoteRecipientId",
+] as const;
 
 function readExtraRecord(extra: unknown): Record<string, unknown> {
   if (!extra) return {};
@@ -52,6 +58,12 @@ export function isMessagePinnedToContext(extra: unknown): boolean {
 export function readMessagePrivateNote(extra: unknown): string | null {
   const value = readExtraRecord(extra).privateNote;
   return typeof value === "string" && value.trim() ? value : null;
+}
+
+/** The one character the user shared this message's note with, or null while it stays private. */
+export function readMessagePrivateNoteRecipientId(extra: unknown): string | null {
+  const value = readExtraRecord(extra).privateNoteRecipientId;
+  return typeof value === "string" && value ? value : null;
 }
 
 /**
@@ -91,13 +103,22 @@ export function normalizeMessageMarkPatch(
       return { error: `privateNote must be at most ${MAX_PRIVATE_NOTE_LENGTH} characters` };
     patch.privateNote = trimmed || null;
   }
+  if (Object.prototype.hasOwnProperty.call(patch, "privateNoteRecipientId")) {
+    const value = patch.privateNoteRecipientId;
+    if (value !== null && (typeof value !== "string" || !value || value.length > 200))
+      return { error: "privateNoteRecipientId must be a character ID or null" };
+  }
   return { patch };
 }
 
 /** Remove the private note from an extra record (exports, copies shared with others). */
 export function stripPrivateMessageNote<T extends Record<string, unknown>>(extra: T): T {
-  if (!Object.prototype.hasOwnProperty.call(extra, "privateNote")) return extra;
-  const { privateNote: _privateNote, ...rest } = extra;
+  if (
+    !Object.prototype.hasOwnProperty.call(extra, "privateNote") &&
+    !Object.prototype.hasOwnProperty.call(extra, "privateNoteRecipientId")
+  )
+    return extra;
+  const { privateNote: _privateNote, privateNoteRecipientId: _recipient, ...rest } = extra;
   return rest as T;
 }
 

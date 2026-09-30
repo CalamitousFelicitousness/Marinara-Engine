@@ -8,6 +8,8 @@ import {
   getRoleplayCommandContentOffset,
   ROLEPLAY_COMMAND_KEYS,
   normalizeChatSummaryEntries,
+  readMessagePrivateNote,
+  readMessagePrivateNoteRecipientId,
   type RoleplayCommandKey,
   type RoleplayCommand,
   type RoleplayCommandActivity,
@@ -374,6 +376,26 @@ export function appendRoleplayWhispers(
       const fragment = `\n\n[Private whisper to ${command.character} (known only to this recipient and the appointed narrator)]\n${command.text}\n[End of private whisper]\n\n`;
       message.content = message.content.slice(0, offset) + fragment + message.content.slice(offset);
     }
+    added = true;
+  }
+  return added;
+}
+
+/** Attach a message's private note for the one character the user shared it with. */
+export function appendRoleplayMessageNotes(
+  prompt: Array<{ id?: string | null; contextKind?: string; content: string }>,
+  history: readonly HistoryMessage[],
+  viewer: RoleplayWhisperRecipient | null,
+): boolean {
+  if (viewer?.kind !== "character") return false;
+  const sources = new Map(history.map((message) => [message.id, message]));
+  let added = false;
+  for (const message of prompt) {
+    if (!message.id || message.contextKind !== "history") continue;
+    const source = sources.get(message.id);
+    const note = readMessagePrivateNote(source?.extra);
+    if (!note || readMessagePrivateNoteRecipientId(source?.extra) !== viewer.id) continue;
+    message.content += `\n\n[The user's private note on this message, shown only to you]\n${note}\n[End of private note]`;
     added = true;
   }
   return added;

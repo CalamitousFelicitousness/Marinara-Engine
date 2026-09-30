@@ -121,7 +121,7 @@ import { SwipeJumpControl } from "./SwipeJumpControl";
 import { toast } from "sonner";
 import { MessageThinkingModal } from "./MessageThinkingModal";
 import { MESSAGE_ACTION_ICON_SIZE, MessageActionButton } from "./MessageActionButton";
-import { MessageMarkIndicators, MessageMarksAction } from "./MessageMarks";
+import { MessageMarkIndicators, MessageMarksAction, type MessageNoteSharing } from "./MessageMarks";
 import { RoleplayStoryboardMessageMedia } from "./RoleplayStoryboardMessageMedia";
 
 const MESSAGE_DOUBLE_TAP_MS = 320;
@@ -2555,6 +2555,16 @@ export const ChatMessage = memo(function ChatMessage({
   const activeChatMetadata = useChatStore((s) => s.activeChat?.metadata);
   const presetVariables = useMessagePresetVariables(`${message.id}:${message.activeSwipeIndex ?? 0}`);
   const scopedRegexMode = useMemo(() => parseChatMetadata(activeChatMetadata).scopedRegexMode, [activeChatMetadata]);
+  // Roleplay can show a private note to one character; it stays private only when each character replies alone.
+  const noteSharing = useMemo<MessageNoteSharing | undefined>(() => {
+    if (!isRoleplay || !chatCharacterIds?.length) return undefined;
+    const narratorId = parseChatMetadata(activeChatMetadata).roleplayCommandNarratorId;
+    return {
+      characters: chatCharacterIds.map((id) => ({ id, name: characterMap?.get(id)?.name ?? id })),
+      narratorId: typeof narratorId === "string" && chatCharacterIds.includes(narratorId) ? narratorId : null,
+      available: chatCharacterIds.length === 1 || groupChatMode === "individual",
+    };
+  }, [activeChatMetadata, characterMap, chatCharacterIds, groupChatMode, isRoleplay]);
 
   const scopedCharacterMap = useMemo(() => {
     if (!characterMap) return null;
@@ -4085,7 +4095,7 @@ export const ChatMessage = memo(function ChatMessage({
                 />
               )}
               <GuidedRegenerateActionBtn onClick={() => onRegenerate?.(message.id)} />
-              <MessageMarksAction message={message} align={isUser ? "right" : "left"} />
+              <MessageMarksAction message={message} align={isUser ? "right" : "left"} noteSharing={noteSharing} />
               {onToggleConversationStart && (
                 <ConversationStartAction
                   messageId={message.id}
@@ -4515,7 +4525,7 @@ export const ChatMessage = memo(function ChatMessage({
               />
             )}
             <GuidedRegenerateActionBtn onClick={() => onRegenerate?.(message.id)} />
-            <MessageMarksAction message={message} align={isUser ? "right" : "left"} />
+            <MessageMarksAction message={message} align={isUser ? "right" : "left"} noteSharing={noteSharing} />
             {onToggleConversationStart && (
               <ConversationStartAction
                 messageId={message.id}

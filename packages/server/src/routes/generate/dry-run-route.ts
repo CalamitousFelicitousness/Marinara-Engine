@@ -27,6 +27,7 @@ import {
   type AdvancedMemoryDecisionDiagnostics,
 } from "@marinara-engine/shared";
 import {
+  appendRoleplayMessageNotes,
   appendRoleplayPromptTail,
   appendRoleplayWhispers,
   buildRoleplayCommandsReminder,
@@ -2112,6 +2113,15 @@ export async function registerDryRunRoute(app: FastifyInstance) {
           ? (chatMeta.roleplayCommandNarratorId as string)
           : null,
       );
+      if (!impersonate) {
+        appendRoleplayMessageNotes(
+          finalMessages,
+          chatMessages,
+          target && (allCharacterIds.length === 1 || dryRunGroupChatMode === "individual")
+            ? { id: target, kind: "character" }
+            : null,
+        );
+      }
     }
 
     if (chatMode === "roleplay" && !impersonate) {

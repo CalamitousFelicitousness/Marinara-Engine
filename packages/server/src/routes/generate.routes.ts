@@ -201,6 +201,7 @@ import {
 } from "@marinara-engine/shared";
 import { prepareRoleplayRoll } from "../services/generation/roleplay-rolls.js";
 import {
+  appendRoleplayMessageNotes,
   appendRoleplayPromptTail,
   appendRoleplayWhispers,
   buildRoleplayCommandsReminder,
@@ -7642,6 +7643,15 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 ? (chatMeta.roleplayCommandNarratorId as string)
                 : null,
             );
+          // A note the user shared with the replying character is private context, like a whisper.
+          const roleplayNoteContext =
+            chatMode === "roleplay" &&
+            !input.impersonate &&
+            appendRoleplayMessageNotes(
+              preparedMessagesForGen,
+              roleplayTimeline,
+              roleplayCallerId ? { id: roleplayCallerId, kind: "character" } : null,
+            );
           const latestRoleplayMessage = roleplayTimeline.at(-1);
           const roleplayInterruptionTarget =
             chatMode === "roleplay" &&
@@ -10110,6 +10120,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               extraUpdate.roleplayPrivateContext = Boolean(
                 roleplayPersonalContext ||
                 roleplayWhisperContext ||
+                roleplayNoteContext ||
                 roleplayHadCommands ||
                 previousExtra.roleplayPrivateContext,
               );

@@ -16,6 +16,7 @@ import {
   readRulesetInventedItems,
   rulesetItemBook,
   rulesetLayerOptionKey,
+  type RulesetLayerOptions,
   type CombatItemEffect,
   type GameInventoryFightLine,
   type GameInventoryJournalEntry,
@@ -104,6 +105,12 @@ function parsePlayerStats(raw: unknown): PlayerStats | null {
  * identity when it is not given, as a turn reads it), or the first card when no card has that name,
  * as a check falls back to it. The inventory screen reads it the same way.
  */
+/** The layers a game turned on, as the ruleset's layer options: what its item book and market read
+ *  their coins and items by. */
+export function gameRulesetLayerOptions(resolved: Extract<ResolvedGameRuleset, { status: "ok" }>): RulesetLayerOptions {
+  return Object.fromEntries(resolved.layers.map((layer) => [rulesetLayerOptionKey(layer.id), true]));
+}
+
 export async function loadGameInventoryItemBook(
   db: DB,
   source:
@@ -167,7 +174,7 @@ export async function loadGameInventoryItemBook(
   const player =
     (playerKey ? cards.find((card) => normalizeCharacterLookupName(card.name) === playerKey) : undefined) ?? cards[0];
   return rulesetItemBook(definition, entries, {
-    layerOptions: Object.fromEntries(resolved.layers.map((layer) => [rulesetLayerOptionKey(layer.id), true])),
+    layerOptions: gameRulesetLayerOptions(resolved),
     // The player's typed-in items follow the ruleset's `freeform`; the Game Master's untyped ones follow
     // `native`, which leaves it the ruleset's items and the ones it invents.
     plain: (who === "player" ? definition.items?.freeform === "refuse" : definition.items?.native === false)

@@ -216,10 +216,18 @@ try {
       restartRequired: false,
     });
     const gateIssue = /loot tables, or creatures that carry loot.*capabilityApi 1\.63/;
-    // Gravewatch without the coins of 1.64 (its money lane gates those).
+    // Gravewatch without the coins of 1.64 and the market of 1.65 (their own lanes gate those).
     const lootText = JSON.stringify(
       variant(gravewatchText, (doc) => {
         delete doc.layers[0].currencies;
+        // And the market, which is 1.65's.
+        delete doc.items.market;
+        for (const catalog of doc.catalogs) {
+          for (const entry of catalog.entries ?? []) {
+            delete entry.item?.sold;
+            delete entry.item?.service;
+          }
+        }
         doc.items.lootTables[0].entries = doc.items.lootTables[0].entries.filter(
           (entry: { coins?: string }) => !entry.coins,
         );

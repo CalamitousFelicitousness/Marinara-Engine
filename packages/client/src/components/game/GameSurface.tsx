@@ -3493,6 +3493,12 @@ function GameSurfaceComponent({
             ? localizeUi("ui.game.gamesurfacecomponent.inventoryWhoPaid", { who: update.who, item })
             : localizeUi("ui.game.gamesurfacecomponent.inventoryYouPaid", { item });
         }
+        if (update.action === "buy") {
+          const price = update.price ?? "";
+          return update.who
+            ? localizeUi("ui.game.gamesurfacecomponent.inventoryWhoBought", { who: update.who, item, price })
+            : localizeUi("ui.game.gamesurfacecomponent.inventoryYouBought", { item, price });
+        }
         if (
           update.action === "equip" ||
           update.action === "unequip" ||
@@ -3516,6 +3522,7 @@ function GameSurfaceComponent({
                 gain:
                   update.action === "add" ||
                   update.action === "earn" ||
+                  update.action === "buy" ||
                   update.action === "equip" ||
                   update.action === "bind",
                 text: describe(update, inventoryLabel(update.item, update.count)),

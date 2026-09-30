@@ -100,6 +100,7 @@ export const RESERVED_GM_TAG_NAMES = Object.freeze([
   "party-turn",
   "party_add",
   "party_change",
+  "place",
   "qte",
   "qte_bonus",
   "qte_result",

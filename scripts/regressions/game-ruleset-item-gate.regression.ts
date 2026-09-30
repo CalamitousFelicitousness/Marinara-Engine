@@ -177,6 +177,14 @@ const withNerve = (nerve: number): RulesetSheetBuild => {
     delete doc.items?.lootTables;
     for (const catalog of doc.catalogs) for (const entry of catalog.entries ?? []) delete entry.creature?.loot;
     for (const layer of doc.layers ?? []) delete layer.currencies;
+    // And the market, which is 1.65's.
+    delete doc.items?.market;
+    for (const catalog of doc.catalogs ?? []) {
+      for (const entry of catalog.entries ?? []) {
+        delete entry.item?.sold;
+        delete entry.item?.service;
+      }
+    }
   };
   assert.match(issue(61, variant(gravewatchText, noLoot)) ?? "", gateIssue);
   assert.equal(issue(62, variant(gravewatchText, noLoot)), null);
@@ -193,7 +201,7 @@ const withNerve = (nerve: number): RulesetSheetBuild => {
   });
   const paths = ["ruleset.json", "catalogs/kit.json"];
   const files = new Map<string, unknown>([
-    ["catalogs/kit.json", { entries: itemCatalogOf(variant(gravewatchText)).entries }],
+    ["catalogs/kit.json", { entries: itemCatalogOf(variant(gravewatchText, noLoot)).entries }],
   ]);
   assert.match(issue(61, inFile, paths, files) ?? "", gateIssue, "a catalog file");
   assert.equal(issue(62, inFile, paths, files), null);

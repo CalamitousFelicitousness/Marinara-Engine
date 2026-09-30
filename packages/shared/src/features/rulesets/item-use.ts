@@ -9,7 +9,7 @@
 
 import type { GameInventoryJournalEntry } from "../../utils/game-inventory-ops.js";
 import { gameInventoryBagKey, type GameInventoryStack } from "../../utils/game-inventory-stacks.js";
-import type { RulesetDefinition, RulesetSheetBuild } from "../../schemas/ruleset.schema.js";
+import type { RulesetCatalogItem, RulesetDefinition, RulesetSheetBuild } from "../../schemas/ruleset.schema.js";
 import { applyRulesetFightItemChanges } from "../ruleset-combat/ammo.js";
 import { parseRulesetCombatDice } from "../ruleset-combat/dice.js";
 import { rulesetPoolMaxSuccesses } from "../../schemas/ruleset.schema.js";
@@ -115,15 +115,8 @@ export function useRulesetItemOutsideFight(input: {
   // Its gate first, as a fight rolls it once the item is spent: failed, the item is spent below and
   // nothing it does happens. A difficulty read off a stat the item does not give is a use the Engine
   // cannot make, as a fight leaves it off the menu.
-  let gate: RulesetItemUseSaid["gate"];
-  if (use.gate) {
-    const difficulty = rulesetItemGateDifficulty(item, use.gate);
-    if (difficulty === undefined) return { ok: false, reason: "no-use" };
-    const held = rulesetSheetItems({ itemOf: input.itemOf }, stacks, stack.holder);
-    const evaluated = evaluateRulesetSheetLive(definition, user.build, user.live, held);
-    const ask = rulesetItemGateCheck(definition, user.build, evaluated, use.gate, difficulty);
-    if (ask) gate = { check: facts?.gate?.check ?? "", ...rollGateOutsideFight(definition, user, held, ask, roll) };
-  }
+  const gate = rollRulesetItemGate({ ...input, holder: stack.holder, item });
+  if (gate === undefined) return { ok: false, reason: "no-use" };
   const works = gate?.success !== false;
 
   // What it does to its user: a heal or a buff not aimed at the other side. Anything else is for
@@ -239,6 +232,35 @@ export function useRulesetItemOutsideFight(input: {
           : { count: use.consumes ? stack.quantity - 1 : stack.quantity },
     },
   };
+}
+
+/**
+ * The check one of the ruleset's items asks before it works (`gate`), rolled for its user as a check
+ * is outside a fight: from the Use button, and when the item is used in the Engine's own Classic and
+ * Tactical battles (#6909), which have no dice of the ruleset's own. Null when the item asks none, or
+ * its `unless` holds; undefined when its difficulty is read off a stat the item does not give, a use
+ * the Engine cannot make. `holder` is the bag whose worn items count toward the check.
+ */
+export function rollRulesetItemGate(input: {
+  definition: RulesetDefinition;
+  itemOf: (ref: string) => RulesetItemBookEntry | undefined;
+  stacks: readonly GameInventoryStack[];
+  holder: string | undefined;
+  item: RulesetCatalogItem;
+  user: { build: RulesetSheetBuild; live: unknown };
+  roll: (sides: number) => number;
+}): RulesetItemUseSaid["gate"] | null | undefined {
+  const { definition, item, user } = input;
+  const gate = item.use?.gate;
+  if (!gate) return null;
+  const difficulty = rulesetItemGateDifficulty(item, gate);
+  if (difficulty === undefined) return undefined;
+  const held = rulesetSheetItems({ itemOf: input.itemOf }, input.stacks, input.holder);
+  const evaluated = evaluateRulesetSheetLive(definition, user.build, user.live, held);
+  const ask = rulesetItemGateCheck(definition, user.build, evaluated, gate, difficulty);
+  if (!ask) return null;
+  const check = rulesetItemFacts(definition, item).use?.gate?.check ?? "";
+  return { check, ...rollGateOutsideFight(definition, user, held, ask, input.roll) };
 }
 
 /** A gate rolled as a check is outside a fight: the ruleset's own dice with the sheet's number, the

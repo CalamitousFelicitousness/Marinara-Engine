@@ -6,7 +6,9 @@ import {
   applyRulesetSheetOp,
   defaultRulesetSheetBuild,
   normalizeCharacterLookupName,
+  normalizeGameInventoryStacks,
   rechargeRulesetItems,
+  rollRulesetItemGate,
   rulesetCombatRoller,
   rulesetItemUseLine,
   useRulesetItemOutsideFight,
@@ -24,7 +26,7 @@ import { resolveVisibleGameStateAnchor } from "../../routes/generate/generate-ro
 import { createChatsStorage, withChatMetadataPatchQueue } from "../storage/chats.storage.js";
 import { createGameStateStorage, parseStoredRulesetLive } from "../storage/game-state.storage.js";
 import { rollDieSecurely } from "./dice-rng.js";
-import { applyGameInventoryChangeHeld, loadGameInventoryItemBook } from "./game-inventory.service.js";
+import { applyGameInventoryChangeHeld, loadGameInventoryItemBook, readMetadata } from "./game-inventory.service.js";
 import { loadGameRulesetSheetContext, type GameRulesetSheetContext } from "./ruleset-sheet-turn.service.js";
 
 export type GameItemUseResult =
@@ -152,6 +154,52 @@ export function gameInventoryItemUser(
     },
     live: () => live,
     used: () => used,
+  };
+}
+
+/**
+ * The check one of the ruleset's items asks before it works (`gate`), rolled as a party member uses it
+ * in one of the Engine's own Classic or Tactical fights (#6909), which roll none of the ruleset's own
+ * dice: for the card of that member's name (the player's card when no card has it), with the sheet as
+ * the player sees it and the worn items in that card's bag, as the Use button rolls it. Null when the
+ * item asks no check, or its `unless` holds; otherwise whether it passed, and the fight log's line.
+ */
+export async function rollGameFightItemGate(
+  db: DB,
+  chatId: string,
+  who: string,
+  item: string,
+  roll: (sides: number) => number = rollDieSecurely,
+): Promise<{ success: boolean; line: string } | null> {
+  const context = await loadGameRulesetSheetContext(db, chatId);
+  const book = context ? await loadGameInventoryItemBook(db, { chatId }, "player") : undefined;
+  const read = book?.itemOf(item);
+  if (!context || !book || !read?.entry.item?.use?.gate) return null;
+  const named = (name: string) =>
+    context.cards.find((each) => normalizeCharacterLookupName(each.name) === normalizeCharacterLookupName(name));
+  const player = (context.playerName ? named(context.playerName) : undefined) ?? context.cards[0];
+  const card = named(who) ?? player;
+  const chats = createChatsStorage(db);
+  const chat = await chats.getById(chatId);
+  const metadata = readMetadata(chat?.metadata);
+  const visibleAnchor = resolveVisibleGameStateAnchor(await chats.listMessages(chatId));
+  const row = await createGameStateStorage(db).getForGeneration(chatId, { preferLatestVisible: true, visibleAnchor });
+  const live = (parseStoredRulesetLive(row?.rulesetLive) ?? {})[normalizeCharacterLookupName(card?.name ?? who)];
+  const gate = rollRulesetItemGate({
+    definition: context.definition,
+    itemOf: book.itemOf,
+    stacks: normalizeGameInventoryStacks(metadata.gameInventory),
+    holder: card && card !== player ? card.name : undefined,
+    item: read.entry.item,
+    user: { build: card?.build ?? defaultRulesetSheetBuild(context.definition), live },
+    roll,
+  });
+  if (!gate) return null;
+  return {
+    success: gate.success,
+    line: `${who} rolls ${gate.check} to use ${read.name}: ${gate.total} against ${gate.difficulty}, ${
+      gate.success ? "passed" : "failed, and it is used up for nothing"
+    }.`,
   };
 }
 

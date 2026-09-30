@@ -7602,7 +7602,7 @@ function GameSurfaceComponent({
    * operation; throws when the request itself fails, and then nothing changed.
    */
   const sendInventory = useCallback(
-    async <T extends { inventory: GameInventoryStack[]; playerStats?: PlayerStats }>(
+    async <T extends { inventory: GameInventoryStack[]; playerStats?: PlayerStats; rulesetLive?: RulesetLiveStates }>(
       send: (chatId: string) => Promise<T>,
     ): Promise<T | null> => {
       if (!activeChatId) return null;
@@ -7645,9 +7645,15 @@ function GameSurfaceComponent({
       setInventoryItems(inventory);
       await queryClient.cancelQueries({ queryKey: chatKeys.detail(activeChatId) });
       syncInventoryToChatCache(inventory);
+      // The sheet a route wrote with the bag (a use) catches up here too, so an older answer never
+      // puts back what a newer one changed.
       const currentGameState = useGameStateStore.getState().current;
-      if (response.playerStats && currentGameState?.chatId === activeChatId) {
-        useGameStateStore.getState().setGameState({ ...currentGameState, playerStats: response.playerStats });
+      if ((response.playerStats || response.rulesetLive) && currentGameState?.chatId === activeChatId) {
+        useGameStateStore.getState().setGameState({
+          ...currentGameState,
+          ...(response.playerStats ? { playerStats: response.playerStats } : {}),
+          ...(response.rulesetLive ? { rulesetLive: response.rulesetLive } : {}),
+        });
       }
       settle();
       return response;
@@ -8786,9 +8792,6 @@ function GameSurfaceComponent({
         return;
       }
       if (!used) return;
-      // The server already wrote the sheet with the bag; the store catches up, as after a fight step.
-      const store = useGameStateStore.getState();
-      if (store.current?.chatId === usedIn) store.setGameState({ ...store.current, rulesetLive: used.rulesetLive });
       // The item is used either way. When the Game Master cannot be told (the player moved to another
       // chat meanwhile, or the message did not go), the player is, so it is never spent in silence.
       const sent =

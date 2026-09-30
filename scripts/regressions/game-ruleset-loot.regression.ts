@@ -480,6 +480,11 @@ try {
       skills: [],
     });
     const strong = { ...defaultRulesetSheetBuild(emberLoot), abilities: { brawn: 14, wits: 12, heart: 12 } };
+    // A sheet's attacks are the weapons it holds: an axe in each pair of hands.
+    const carried: GameInventoryStack[] = [
+      { id: "st-axe-juno", name: "Hand axe", quantity: 1, item: "outfitter/hand-axe", equipped: true },
+      { id: "st-axe-bram", name: "Hand axe", quantity: 1, item: "outfitter/hand-axe", holder: "Bram", equipped: true },
+    ];
     let won: { chatId: string; session: DirectedCombatView } | null = null;
     for (let attempt = 0; attempt < 6 && !won; attempt++) {
       const game = await newGame({
@@ -488,18 +493,7 @@ try {
           { name: "Juno", rulesetSheet: { v: 1, build: strong } },
           { name: "Bram", rulesetSheet: { v: 1, build: strong } },
         ],
-        // A sheet's attacks are the weapons it holds: an axe in each pair of hands.
-        gameInventory: [
-          { id: "st-axe-juno", name: "Hand axe", quantity: 1, item: "outfitter/hand-axe", equipped: true },
-          {
-            id: "st-axe-bram",
-            name: "Hand axe",
-            quantity: 1,
-            item: "outfitter/hand-axe",
-            holder: "Bram",
-            equipped: true,
-          },
-        ],
+        gameInventory: carried,
       });
       const start = await app.inject({
         method: "POST",
@@ -542,9 +536,11 @@ try {
     assert.ok(Array.isArray(dropped), `a won fight says what it dropped: ${JSON.stringify(session.summary)}`);
     assert.ok(dropped!.length >= 1, "the moth's table always picks something");
     const bags = (await saved(chatId)).gameInventory;
+    // Counted past what the party carried in, since the table may drop another hand axe.
+    const count = (stacks: GameInventoryStack[], name: string) =>
+      stacks.filter((stack) => stack.name === name).reduce((sum, stack) => sum + stack.quantity, 0);
     for (const drop of dropped!) {
-      const held = bags.filter((stack) => stack.name === drop.name).reduce((sum, stack) => sum + stack.quantity, 0);
-      assert.equal(held, drop.quantity, `${drop.name} is in the bags`);
+      assert.equal(count(bags, drop.name) - count(carried, drop.name), drop.quantity, `${drop.name} is in the bags`);
       assert.ok(bags.find((stack) => stack.name === drop.name)?.item?.startsWith("outfitter/"), "a ruleset item");
     }
     // Read again, it still says so, and nothing drops twice.

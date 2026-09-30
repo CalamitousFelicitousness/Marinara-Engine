@@ -1093,8 +1093,10 @@ try {
         chatId: directed.chatId,
         anchor: directed.anchor,
         style: "classic",
-        party: [unit("ada", "Ada", "player")],
-        enemies: [unit("rat", "Rat", "enemy")],
+        // Neither side can end the battle before Ada's turns come round: initiative is rolled again
+        // every round, so the rat may act twice between them, and the bell may hit hard.
+        party: [{ ...unit("ada", "Ada", "player"), hp: 300, maxHp: 300 }],
+        enemies: [{ ...unit("rat", "Rat", "enemy"), hp: 300, maxHp: 300, attack: 0 }],
       },
     });
     assert.equal(started.statusCode, 200, started.body);

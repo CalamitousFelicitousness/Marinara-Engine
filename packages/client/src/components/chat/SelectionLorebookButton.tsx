@@ -88,6 +88,8 @@ export function SelectionLorebookButton() {
       label: lorebook.name,
       icon: <BookOpen size="0.8125rem" />,
       onSelect: () => {
+        // A slow create leaves the button up; a second pick must not add a duplicate entry.
+        if (createEntry.isPending) return;
         createEntry
           .mutateAsync({
             lorebookId: lorebook.id,

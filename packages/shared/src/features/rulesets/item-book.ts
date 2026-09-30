@@ -12,6 +12,7 @@ import {
   type RulesetCatalogItem,
   type RulesetDefinition,
   type RulesetItemAttack,
+  type RulesetItemUse,
   type RulesetItemEffect,
   type RulesetItemStat,
   type RulesetValueRef,
@@ -111,6 +112,28 @@ export interface RulesetItemFacts {
   carried?: RulesetItemEffectFact[];
   requires?: RulesetItemRequirementFact[];
   attack?: RulesetItemAttackFact;
+  use?: RulesetItemUseFact;
+}
+
+/** What using an item does, as labels and numbers: the budget it spends (none when free), what it
+ *  heals or deals, what it adds to hit where it rolls, the save it asks, the conditions it applies,
+ *  its temporary points, how far it reaches, and what using it spends of it. */
+export interface RulesetItemUseFact {
+  budget?: string;
+  kind: "attack" | "heal" | "buff" | "debuff";
+  amount?: string;
+  type?: string;
+  toHit?: string;
+  save?: { save: string; difficulty?: number; onSuccess: "none" | "half" | "negates" };
+  applies?: string[];
+  temporary?: string;
+  range?: number;
+  area?: { shape: "burst" | "cone" | "line"; size: number };
+  /** The ruleset's own distance unit, beside a range or an area. */
+  unit?: string;
+  consumes?: true;
+  /** What one use spends of the charges the item holds at most. */
+  charges?: { cost: number; max: number };
 }
 
 /** A weapon's attack as labels and numbers: the budget it spends, what it adds to hit and deals, and
@@ -182,6 +205,63 @@ function factSum(parts: ReadonlyArray<string | number>): string {
       return part < 0 ? `- ${-part}` : `+ ${part}`;
     })
     .join(" ");
+}
+
+/** An item's use as facts, each number read off the item's stat where it says so. */
+function rulesetItemUseFacts(
+  definition: RulesetDefinition,
+  item: RulesetCatalogItem,
+  use: RulesetItemUse,
+): RulesetItemUseFact {
+  const labelOf = (words: ReadonlyArray<{ id: string; label: string }>, id: string) =>
+    words.find((word) => word.id === id)?.label ?? id;
+  const read = (value: unknown): unknown => {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) return value;
+    const stat = (value as { stat?: unknown }).stat;
+    return typeof stat === "string" ? item.stats?.[stat] : undefined;
+  };
+  const number = (value: unknown) => {
+    const found = read(value);
+    return typeof found === "number" && Number.isFinite(found) ? found : undefined;
+  };
+  const amount = (value: { dice?: string; flat?: number } | undefined) =>
+    value ? factSum([value.dice ?? "", value.flat ?? 0]) : "";
+  const attackFact = use.toHit
+    ? rulesetItemAttackFacts(definition, item, { budget: "", toHit: use.toHit, damage: {} })
+    : undefined;
+  const difficulty = number(use.saveDifficulty);
+  const max = item.charges ? number(item.charges.max) : undefined;
+  const dealt = amount(use.amount);
+  const temporary = amount(use.temporary);
+  return {
+    ...(!use.free && use.budget ? { budget: labelOf(definition.combat?.economy.budgets ?? [], use.budget) } : {}),
+    kind: use.kind,
+    ...(dealt ? { amount: dealt } : {}),
+    ...(use.damageType ? { type: use.damageType } : {}),
+    ...(use.attackRoll && attackFact
+      ? { toHit: attackFact.toHit + (attackFact.proficiency ? " + proficiency" : "") }
+      : {}),
+    ...(use.save
+      ? {
+          save: {
+            save: labelOf(definition.sheet.saves, use.save.save),
+            ...(difficulty !== undefined ? { difficulty } : {}),
+            onSuccess: use.save.onSuccess,
+          },
+        }
+      : {}),
+    ...(use.applies?.length
+      ? { applies: use.applies.map((entry) => labelOf(definition.sheet.live.conditions, entry.condition)) }
+      : {}),
+    ...(temporary ? { temporary } : {}),
+    ...(use.range !== undefined ? { range: use.range } : {}),
+    ...(use.area ? { area: { shape: use.area.shape, size: use.area.size } } : {}),
+    ...((use.range !== undefined || use.area) && definition.combat?.distance?.label
+      ? { unit: definition.combat.distance.label }
+      : {}),
+    ...(use.consumes ? { consumes: true as const } : {}),
+    ...(use.charges !== undefined && max !== undefined ? { charges: { cost: use.charges, max } } : {}),
+  };
 }
 
 /** A weapon's attack as facts, each value read off the item's stat where it says so. */
@@ -482,6 +562,7 @@ export function rulesetItemFacts(definition: RulesetDefinition, item: RulesetCat
     ...(carried.length ? { carried } : {}),
     ...(requires.length ? { requires } : {}),
     ...(item.attack ? { attack: rulesetItemAttackFacts(definition, item, item.attack) } : {}),
+    ...(item.use ? { use: rulesetItemUseFacts(definition, item, item.use) } : {}),
   };
 }
 
@@ -737,6 +818,7 @@ export function rulesetSheetItems(
         name: stack.name,
         stack: { id: stack.id, ref: stack.item, ...(stack.holder !== undefined ? { holder: stack.holder } : {}) },
         ...(stack.loaded !== undefined ? { loaded: stack.loaded } : {}),
+        ...(stack.charges !== undefined ? { charges: stack.charges } : {}),
       },
     ];
   });
@@ -777,7 +859,14 @@ export function rulesetItemPromptFacts(facts: RulesetItemFacts): string {
     (need) =>
       `needs ${requirementValueText(need)} ${need.atLeast}, otherwise ${need.otherwise.map(rulesetItemEffectText).join(", ")}`,
   );
-  return [kind, stats, ...effects, ...needs, facts.attack ? rulesetItemAttackText(facts.attack) : ""]
+  return [
+    kind,
+    stats,
+    ...effects,
+    ...needs,
+    facts.attack ? rulesetItemAttackText(facts.attack) : "",
+    facts.use ? rulesetItemUseText(facts.use) : "",
+  ]
     .filter(Boolean)
     .join("; ");
 }
@@ -794,6 +883,35 @@ function rulesetItemModeText(mode: NonNullable<RulesetItemAttackFact["modes"]>[n
     mode.targets !== undefined ? `up to ${mode.targets} targets` : "",
   ].filter(Boolean);
   return parts.length ? `${mode.label} (${parts.join(", ")})` : mode.label;
+}
+
+/** An item's use for the Game Master: what it spends, what it does, and what using it costs of it. */
+export function rulesetItemUseText(use: RulesetItemUseFact): string {
+  const does =
+    use.kind === "heal"
+      ? use.amount
+        ? `heals ${use.amount}`
+        : "heals"
+      : use.amount
+        ? [use.amount, use.type].filter(Boolean).join(" ")
+        : "";
+  return `use (${use.budget ?? "free"}): ${[
+    does,
+    use.toHit ? `${use.toHit} to hit` : "",
+    use.save
+      ? `${use.save.save}${use.save.difficulty !== undefined ? ` ${use.save.difficulty}` : ""} save${
+          use.save.onSuccess === "half" ? " for half" : use.save.onSuccess === "negates" ? " negates it" : ""
+        }`
+      : "",
+    ...(use.applies ?? []),
+    use.temporary ? `${use.temporary} temporary` : "",
+    use.range !== undefined ? `range ${use.range}${use.unit ? ` ${use.unit}` : ""}` : "",
+    use.area ? `${use.area.shape} ${use.area.size}${use.unit ? ` ${use.unit}` : ""}` : "",
+    use.consumes ? "used up" : "",
+    use.charges ? `${use.charges.cost} of ${use.charges.max} charges` : "",
+  ]
+    .filter(Boolean)
+    .join(", ")}`;
 }
 
 export function rulesetItemAttackText(attack: RulesetItemAttackFact): string {

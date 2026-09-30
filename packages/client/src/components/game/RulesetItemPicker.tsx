@@ -148,7 +148,11 @@ function rulesetItemUseLine(facts: RulesetItemFacts, t: TFunction): string {
         ? t("ui.game.gameinventory.useDamageTyped", { amount: use.amount, type: use.type })
         : t("ui.game.gameinventory.useDamage", { amount: use.amount })
       : "",
-    use.toHit ? t("ui.game.gameinventory.useToHit", { toHit: use.toHit }) : "",
+    use.toHit
+      ? use.target !== undefined
+        ? t("ui.game.gameinventory.useToHitAt", { toHit: use.toHit, target: use.target })
+        : t("ui.game.gameinventory.useToHit", { toHit: use.toHit })
+      : "",
     use.save ? rulesetItemUseSaveText(use.save, t) : "",
     use.applies?.length ? t("ui.game.gameinventory.useApplies", { conditions: use.applies.join(", ") }) : "",
     use.temporary ? t("ui.game.gameinventory.useTemporary", { amount: use.temporary }) : "",

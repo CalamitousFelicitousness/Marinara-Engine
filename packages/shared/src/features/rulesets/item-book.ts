@@ -124,6 +124,8 @@ export interface RulesetItemUseFact {
   amount?: string;
   type?: string;
   toHit?: string;
+  /** A pool fight's per-die target for its roll to hit, as a weapon's. */
+  target?: number;
   save?: { save: string; difficulty?: number; onSuccess: "none" | "half" | "negates" };
   applies?: string[];
   temporary?: string;
@@ -239,7 +241,10 @@ function rulesetItemUseFacts(
     ...(dealt ? { amount: dealt } : {}),
     ...(use.damageType ? { type: use.damageType } : {}),
     ...(use.attackRoll && attackFact
-      ? { toHit: attackFact.toHit + (attackFact.proficiency ? " + proficiency" : "") }
+      ? {
+          toHit: attackFact.toHit + (attackFact.proficiency ? " + proficiency" : ""),
+          ...(attackFact.target !== undefined ? { target: attackFact.target } : {}),
+        }
       : {}),
     ...(use.save
       ? {
@@ -897,7 +902,7 @@ export function rulesetItemUseText(use: RulesetItemUseFact): string {
         : "";
   return `use (${use.budget ?? "free"}): ${[
     does,
-    use.toHit ? `${use.toHit} to hit` : "",
+    use.toHit ? `${use.toHit} to hit${use.target !== undefined ? ` at ${use.target}` : ""}` : "",
     use.save
       ? `${use.save.save}${use.save.difficulty !== undefined ? ` ${use.save.difficulty}` : ""} save${
           use.save.onSuccess === "half" ? " for half" : use.save.onSuccess === "negates" ? " negates it" : ""

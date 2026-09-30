@@ -7282,6 +7282,7 @@
   "ui.game.gameinventory.useSaveOf": "{{save}} save of {{difficulty}}",
   "ui.game.gameinventory.useTemporary": "{{amount}} temporary",
   "ui.game.gameinventory.useToHit": "{{toHit}} to hit",
+  "ui.game.gameinventory.useToHitAt": "{{toHit}} to hit at {{target}}",
   "ui.game.gameinventory.value1Amount": "{{value1}} amount",
   "ui.game.gameinventory.value1AmountControls": "{{value1}} amount controls",
   "ui.game.gameinventory.whileCarried": "While carried: {{effects}}",

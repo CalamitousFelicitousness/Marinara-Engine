@@ -626,6 +626,10 @@ try {
       "a tonic flung",
     );
     assert.equal(actionOf(flung, [held(itemOf(flung, "kit/warming-tonic"), "Tonic")])?.target, 8);
+    // And the facts and the Game Master's line say that target, as a weapon's do.
+    const flungFacts = rulesetItemFacts(flung, itemOf(flung, "kit/warming-tonic"));
+    assert.equal(flungFacts.use?.target, 8);
+    assert.match(rulesetItemPromptFacts(flungFacts), /; use \(Quick\): 1d10, Nerve to hit at 8, used up$/);
     // So is a save whose number is read off a stat the item does not give; one it gives is the number.
     const saveByStat = parsedOrThrow(
       variant(gravewatchText, (doc) => (itemEntry(doc, "dawn-bell").item.use.saveDifficulty = { stat: "target" })),

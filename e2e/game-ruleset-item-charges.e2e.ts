@@ -86,8 +86,13 @@ test("a rest on the sheet brings a bell's charges back", async ({ page, request 
       await expect(portrait.or(members).first()).toBeVisible({ timeout: 30_000 });
       if (await members.isVisible()) await members.click();
       await portrait.first().click();
+      let rests = 0;
+      page.on("request", (r) => {
+        if (r.url().endsWith("/api/game/inventory/rest")) rests += 1;
+      });
       const rested = page.waitForResponse((r) => r.url().endsWith("/api/game/inventory/rest"));
-      await page.getByRole("button", { name: "Stand down from the vigil for Bram", exact: true }).click();
+      // A double click is one rest: the buttons wait for the Engine's answer.
+      await page.getByRole("button", { name: "Stand down from the vigil for Bram", exact: true }).dblclick();
       const answer = await rested;
       expect(answer.ok(), await answer.text()).toBeTruthy();
       await expect(page.getByRole("status").filter({ hasText: "Dawn bell 3/3 charges" })).toBeVisible();
@@ -98,6 +103,7 @@ test("a rest on the sheet brings a bell's charges back", async ({ page, request 
           return bell ? (bell.charges ?? "full") : "gone";
         })
         .toBe("full");
+      expect(rests).toBe(1);
     } finally {
       await request.delete(`/api/characters/${characterId}`);
     }

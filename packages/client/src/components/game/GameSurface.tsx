@@ -7632,7 +7632,7 @@ function GameSurfaceComponent({
           void queryClient.invalidateQueries({ queryKey: chatKeys.detail(activeChatId) });
         }
       };
-      // The sheet a route wrote with the bag (a use) is ordered on its own: an answer older than one
+      // The sheet a route wrote with the bag (a use, a rest) is ordered on its own: an answer older than one
       // whose sheet is already shown never puts that sheet back, while one overtaken only by a plain
       // inventory save, which carries no sheet, still has the newest.
       if (response.rulesetLive && seq > inventoryCommitSeq.current.sheetApplied) {

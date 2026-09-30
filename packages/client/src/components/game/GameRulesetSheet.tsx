@@ -317,6 +317,8 @@ export function GameRulesetSheet({
   const [draft, setDraft] = useState<RulesetSheetEnvelope | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [restNotice, setRestNotice] = useState<string | null>(null);
+  // A rest the Engine takes is one at a time: a second click would rest (and roll recharges) again.
+  const [resting, setResting] = useState(false);
 
   const layerNames = layers?.map((layer) => layer.label).join(", ") || null;
 
@@ -650,13 +652,17 @@ export function GameRulesetSheet({
                   <button
                     key={rest.id}
                     type="button"
-                    disabled={readOnly}
+                    disabled={readOnly || resting}
                     onClick={() => {
-                      if (readOnly) return;
+                      if (readOnly || resting) return;
                       if (!onRest) return apply({ op: "rest", rest: rest.id });
-                      void onRest(rest.id).then((now) => {
-                        if (now !== null) setRestNotice(now);
-                      });
+                      setResting(true);
+                      void onRest(rest.id)
+                        .then((now) => {
+                          if (now !== null) setRestNotice(now);
+                        })
+                        .catch(() => undefined)
+                        .finally(() => setResting(false));
                     }}
                     aria-label={localizeUi("game.ruleset.sheet.restAria", { name: rest.label, who: cardName })}
                     className={`${chipClass} border-[var(--border)] text-[var(--foreground)] hover:bg-[var(--accent)]`}

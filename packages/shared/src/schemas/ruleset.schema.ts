@@ -5430,6 +5430,12 @@ function itemIssues(
     }
     // Charges are one item's, so a stack of several would hold none of its own.
     if (item.stack !== 1) add([...at, "stack"], "An item that holds charges is one to a stack, so its stack is 1");
+    // Read off a stat, the item's own number is what it holds: fewer than one is an item never used.
+    const max = item.charges.max;
+    const given = typeof max === "object" ? item.stats?.[max.stat] : undefined;
+    if (typeof given === "number" && given < 1) {
+      add([...at, "stats", (max as { stat: string }).stat], "An item that holds charges holds at least one");
+    }
   }
 }
 

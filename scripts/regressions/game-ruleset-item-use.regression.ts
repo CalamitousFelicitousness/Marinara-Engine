@@ -182,6 +182,16 @@ try {
     );
     refused(
       gravewatchText,
+      (doc) => {
+        doc.items.stats.push({ id: "peals", label: "Peals", type: "number", min: 0, max: 9 });
+        Object.assign(itemEntry(doc, "dawn-bell").item, { charges: { max: { stat: "peals" } } });
+        itemEntry(doc, "dawn-bell").item.stats.peals = 0;
+      },
+      /stats\.peals: An item that holds charges holds at least one/,
+      "charges read off a stat the item gives as none",
+    );
+    refused(
+      gravewatchText,
       bellItem((item) => (item.use.saveDifficulty = { stat: "conceal" })),
       /saveDifficulty\.stat: Item stat "conceal" must be number/,
       "a save's number read off a stat that is no number",

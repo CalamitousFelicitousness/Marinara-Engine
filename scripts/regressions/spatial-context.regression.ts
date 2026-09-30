@@ -14,6 +14,7 @@ import {
   resolveSpatialBreadcrumb,
   resolveSpatialDestinations,
   resolveSpatialRoute,
+  SPATIAL_CONTEXT_LIMITS,
   spatialContextDefinitionSchema,
   spatialContextSnapshotSchema,
   pendingSpatialTransitionSchema,
@@ -955,6 +956,18 @@ const tooManyLinks = definition([
 ]);
 assert.ok(issueCodes(tooManyLinks).includes("too_many_links"));
 assert.equal(spatialContextDefinitionSchema.safeParse(tooManyLinks).success, false);
+
+// Whole-world maps with floors and rooms outgrew 500 locations (Marinara-Agents#1132).
+const locationsAtLimit = Array.from({ length: SPATIAL_CONTEXT_LIMITS.maxLocations }, (_, index) =>
+  location(`place_${index}`, `Place ${index}`),
+);
+assert.equal(SPATIAL_CONTEXT_LIMITS.maxLocations, 5_000);
+assert.equal(spatialContextDefinitionSchema.safeParse(definition(locationsAtLimit)).success, true);
+assert.ok(
+  issueCodes(definition([...locationsAtLimit, location("one_too_many", "One Too Many")])).includes(
+    "too_many_locations",
+  ),
+);
 
 assert.equal(
   spatialContextDefinitionSchema.safeParse({

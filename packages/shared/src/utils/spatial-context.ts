@@ -12,7 +12,7 @@ import type {
 } from "../types/spatial-context.js";
 
 export const SPATIAL_CONTEXT_LIMITS = {
-  maxLocations: 500,
+  maxLocations: 5_000,
   maxDepth: 20,
   maxLinksPerLocation: 50,
   maxNameLength: 200,

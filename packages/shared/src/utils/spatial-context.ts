@@ -276,7 +276,8 @@ export function validateSpatialContextDefinition(
       }
       seen.add(current.id);
       depth += 1;
-      if (current.parentId === null) break;
+      // Past maxDepth the location is already invalid, so a long chain costs at most maxDepth steps.
+      if (current.parentId === null || depth > SPATIAL_CONTEXT_LIMITS.maxDepth) break;
       current = byId.get(current.parentId);
     }
 

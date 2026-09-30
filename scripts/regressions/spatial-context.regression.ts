@@ -915,6 +915,11 @@ const deepLocations = Array.from({ length: 21 }, (_, index) =>
   }),
 );
 assert.ok(issueCodes(definition(deepLocations)).includes("maximum_depth_exceeded"));
+// A chain as long as the location limit is still reported, with the walk bounded at maxDepth.
+const locationLimitChain = Array.from({ length: SPATIAL_CONTEXT_LIMITS.maxLocations }, (_, index) =>
+  location(`chain_${index}`, `Chain ${index}`, { parentId: index === 0 ? null : `chain_${index - 1}` }),
+);
+assert.ok(issueCodes(definition(locationLimitChain)).includes("maximum_depth_exceeded"));
 
 const invalidLayers = definition(
   [

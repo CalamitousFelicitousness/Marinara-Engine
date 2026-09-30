@@ -533,7 +533,12 @@ const capabilityPackageManifestBaseSchema = z
 //        on their sheet is high enough; a failed check uses the item up for nothing. Not a soft seam,
 //        for the same reason as 1.20 through 1.61: an Engine that cannot read `gate` refuses the whole
 //        ruleset or catalog file, so a package that ships it declares 1.62. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 62 } as const);
+// 1.63: the items block may declare `lootTables`, and a bestiary creature may name the `loot` table a
+//        won fight rolls for it; a ruleset with loot tables drops its own items instead of Game Mode's
+//        native loot. Not a soft seam, for the same reason as 1.20 through 1.62: an Engine that cannot
+//        read these refuses the whole ruleset or catalog file, so a package that ships either declares
+//        1.63. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 63 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

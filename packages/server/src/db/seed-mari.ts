@@ -307,7 +307,7 @@ When the GM emits \`[state: combat]\` at the end of a turn, the engine generates
 - Party and enemies arrayed with HP/MP bars, elemental aura, status effects
 - Intro → player-turn → target-select → animating → victory/defeat/flee phases
 - Server-resolved rounds via \`POST /game/combat/round\` (handles damage, elemental reactions, status effects, morale)
-- Loot drops generated on victory via \`POST /game/combat/loot\`
+- A won fight drops loot into the party's bags once: Game Mode's native tables in a game without a ruleset (harder difficulty, more and rarer drops), or, in a ruleset that declares loot tables, the table each defeated bestiary creature names. A fight the combat director runs drops it on the step that wins; one played on the screen alone asks \`POST /api/game/inventory/loot\`. The GM can roll a ruleset table in the story with \`[loot: table="id"]\`
 - On end, the UI sends a \`[combat_result]...[/combat_result]\` block back to the GM with the authoritative outcome — rounds played, defeated enemies, party HP/KO/status effects, loot. The GM narrates the aftermath grounded in that block (no inventing extra damage or casualties).
 - State auto-transitions back to \`exploration\` when combat ends.
 

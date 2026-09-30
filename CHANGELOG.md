@@ -7,6 +7,9 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - A message's **Private note** (under **Bookmark, pin or note**) can be shown to one Roleplay character with **Show the note to the narrator character**. That character receives it next to the message, and nobody else does. Notes stay private by default (#6895).
 
 - The Roleplay **Whisper** command description now shows the format for whispering to another character (#6895).
+
+- A won fight in Game Mode now drops loot straight into the party's bags, as the combat guide always said it did: Game Mode's own treasure without a ruleset, and a ruleset's own items where it declares loot tables and says what its creatures carry. The Game Master is told what dropped, and can roll a ruleset's table in the story with `[loot:]`. Rulesets that use loot tables need Capability API 1.63 (#6894, #6758).
+
 - A Game Mode ruleset's items can now ask a check before they work, as a 5e scroll of a spell above the reader's level does: the Engine rolls it when the item is used, in a fight or from the Use button, skips it when the user's sheet is high enough, and a failed check uses the item up for nothing. Rulesets that use this need Capability API 1.62 (#6892).
 
 - A Game Mode ruleset's items can now get their charges back on a rest: a wand or a bell refills when its holder takes the rest the ruleset names, from the sheet's Rest button or the Game Master's rest, and an item can break when its last charge is spent, as a 5e wand crumbles on a 1. The Game Master sees how many charges each item has left. Rulesets that use these need Capability API 1.61 (#6888).

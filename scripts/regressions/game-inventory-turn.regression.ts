@@ -1296,6 +1296,78 @@ try {
     assert.match(JSON.stringify(prompts.at(-1)), /Dawn bell \(1 worn, 1 bound, 1 of 3 charges left\)/);
   }
 
+  // ── Loot (#6894): the Game Master's [loot:] rolls a table into the bags, once per telling ──
+  {
+    const grave = {
+      ...(JSON.parse(
+        readFileSync(fileURLToPath(new URL("../../docs/examples/rulesets/gravewatch.json", import.meta.url)), "utf8"),
+      ) as Record<string, any>),
+      id: "gravewatch-loot-turn",
+    };
+    await createGameRulesetsStorage(db).put({
+      rulesetId: "local/gravewatch-loot-turn",
+      version: grave.version,
+      sourceKind: "local",
+      definition: JSON.stringify(grave),
+    });
+    const connection = (await createConnectionsStorage(db).list())[0]!;
+    const looting = await chats.create({
+      name: "Looting",
+      mode: "game",
+      characterIds: [],
+      connectionId: connection.id,
+      promptPresetId: null,
+    });
+    assert.ok(looting);
+    await chats.patchMetadata(looting.id, {
+      enableAgents: false,
+      enableTools: false,
+      gameRuleset: { id: "local/gravewatch-loot-turn", version: grave.version, packageId: null, options: {} },
+      gameCharacterCards: [{ name: "Ada" }],
+      gameInventory: [],
+    });
+    const held = async () =>
+      normalizeGameInventoryStacks(JSON.parse((await chats.getById(looting.id))!.metadata as string).gameInventory);
+    /** How many the saved reply says it added: what the bags must hold. */
+    const said = async () => {
+      const last = (await chats.listMessages(looting.id)).at(-1)!;
+      const text = typeof last.content === "string" ? last.content : "";
+      assert.doesNotMatch(text, /\[loot:/, "every drop answered as an add");
+      return [...text.matchAll(/\[inventory: action="add"[^\]]*count="(\d+)" result="ok"/g)].reduce(
+        (sum, match) => sum + Number(match[1]),
+        0,
+      );
+    };
+    const total = (stacks: Awaited<ReturnType<typeof held>>) => stacks.reduce((sum, stack) => sum + stack.quantity, 0);
+    reply = `The wight falls apart. [loot: table="grave_goods"]`;
+    await chats.createMessage({ chatId: looting.id, role: "user", content: "We search it." });
+    const told = await app.inject({
+      method: "POST",
+      url: "/api/generate/",
+      payload: { chatId: looting.id, streaming: true },
+    });
+    assert.equal(told.statusCode, 200, told.body);
+    assert.match(
+      JSON.stringify(prompts.at(-1)),
+      /\[loot: table=\\"id\\" who=\\"Name\\"\].*grave_goods \(Grave goods\)/,
+    );
+    const first = await said();
+    assert.ok(first >= 1, "the table dropped something");
+    assert.equal(total(await held()), first, "the bags hold what the saved reply says");
+    assert.ok(
+      (await held()).every((stack) => stack.item?.startsWith("kit/")),
+      "the ruleset's own items",
+    );
+    // Told again, it starts from where the turn began: only the new telling's drop is held.
+    const saved = (await chats.listMessages(looting.id)).at(-1)!;
+    await app.inject({
+      method: "POST",
+      url: "/api/generate/",
+      payload: { chatId: looting.id, streaming: true, regenerateMessageId: saved.id },
+    });
+    assert.equal(total(await held()), await said(), "a retelling drops its own loot, not both");
+  }
+
   console.info("game inventory turn regressions passed.");
 } finally {
   ClaudeSubscriptionProvider.prototype.chat = originalChat;

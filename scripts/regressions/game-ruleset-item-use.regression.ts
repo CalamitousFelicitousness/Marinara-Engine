@@ -342,6 +342,9 @@ try {
     /** Less what a use restores, what brings charges back or breaks an item, and a use's gate, which
      *  are 1.60's, 1.61's and 1.62's and have lanes of their own. */
     const withoutRestore = (doc: Record<string, any>) => {
+      // And the loot, which is 1.63's.
+      delete doc.items?.lootTables;
+      for (const catalog of doc.catalogs) for (const entry of catalog.entries ?? []) delete entry.creature?.loot;
       for (const entry of itemCatalogOf(doc).entries) {
         delete entry.item.use?.restore;
         delete entry.item.use?.gate;

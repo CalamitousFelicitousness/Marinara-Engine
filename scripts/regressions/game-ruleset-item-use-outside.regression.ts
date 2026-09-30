@@ -187,6 +187,9 @@ try {
         itemEntry(doc, "dawn-bell").item.charges = { max: 3 };
         const catalog = itemCatalogOf(doc);
         catalog.entries = catalog.entries.filter((entry: { id: string }) => entry.id !== "litany-page");
+        // And the loot, which is 1.63's.
+        delete doc.items?.lootTables;
+        for (const catalog of doc.catalogs) for (const entry of catalog.entries ?? []) delete entry.creature?.loot;
       }),
     );
     assert.match(issue(59, variant(gravewatchAt160)) ?? "", gateIssue);

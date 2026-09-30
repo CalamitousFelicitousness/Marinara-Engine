@@ -1020,6 +1020,16 @@ function entriesCarryItemGate(entries: unknown): boolean {
   );
 }
 
+const LOOT_ISSUE =
+  "A ruleset with loot tables, or creatures that carry loot, requires schemaVersion 2 and capabilityApi 1.63 or newer";
+
+/** A bestiary creature's `loot`, which is 1.63: a new key on the strict creature. */
+function entriesCarryCreatureLoot(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) && entries.some((entry) => plainRecord(plainRecord(entry)?.creature)?.loot !== undefined)
+  );
+}
+
 /** A level that reads a derived value, which is 1.54: a new key on the strict level. */
 function rulesetCarriesDerivedLevels154(ruleset: { combat?: unknown } | undefined): boolean {
   const levels = plainRecord(ruleset?.combat)?.levels;
@@ -1196,6 +1206,8 @@ export function getCapabilityPackageInstallIssue(
       : undefined;
   const api = manifest.schemaVersion === 2 ? manifest.capabilityApi : null;
   const declaresApi = (minor: number) => !!api && (api.major > 1 || (api.major === 1 && api.minor >= minor));
+  /** Whether a catalog, inline or in its own file, gives a creature its loot: 1.63, asked last. */
+  let carriesLoot = false;
   const catalogs = ruleset?.catalogs;
   if (Array.isArray(catalogs) && catalogs.length > 0) {
     if (!declaresApi(21)) {
@@ -1267,6 +1279,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryItemRestore(header.entries) && !declaresApi(60)) return ITEM_RESTORE_ISSUE;
       if (entriesCarryChargesOverTime(header.entries) && !declaresApi(61)) return CHARGES_OVER_TIME_ISSUE;
       if (entriesCarryItemGate(header.entries) && !declaresApi(62)) return ITEM_GATE_ISSUE;
+      if (entriesCarryCreatureLoot(header.entries)) carriesLoot = true;
       const asset = header.asset;
       if (typeof asset !== "string") continue;
       // A path that does not normalize is never a declared one, whatever else failed to normalize.
@@ -1302,6 +1315,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryItemRestore(fileEntries) && !declaresApi(60)) return ITEM_RESTORE_ISSUE;
       if (entriesCarryChargesOverTime(fileEntries) && !declaresApi(61)) return CHARGES_OVER_TIME_ISSUE;
       if (entriesCarryItemGate(fileEntries) && !declaresApi(62)) return ITEM_GATE_ISSUE;
+      if (entriesCarryCreatureLoot(fileEntries)) carriesLoot = true;
     }
   }
   // The battle block lives inside the ruleset file too, so it is read the same way and for the same
@@ -1501,6 +1515,9 @@ export function getCapabilityPackageInstallIssue(
       return "A ruleset that lets a check spend a resource requires schemaVersion 2 and capabilityApi 1.30 or newer";
     }
   }
+  // Loot tables in the items block and a creature's loot, which are 1.63's. Same files, same reason;
+  // asked last, so a package that declares an older minor hears first about what that minor lacks.
+  if (!declaresApi(63) && (carriesLoot || plainRecord(ruleset?.items)?.lootTables !== undefined)) return LOOT_ISSUE;
   return null;
 }
 

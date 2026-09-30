@@ -1552,6 +1552,46 @@ charges over time.
 - **Proven** by `scripts/regressions/game-ruleset-item-gate.regression.ts` and
   `e2e/game-ruleset-item-gate.e2e.ts`, with 36 deliberate breaks each caught.
 
+### What loot settled
+
+Capability API 1.63, for #6894 and the loot drift of #6758. Slice I7-1 of the ruleset items plan,
+split from money (I7-2). The user ruled on 2026-09-30 that games without a ruleset get the native drops
+the combat guide always promised.
+
+- **The keys.** `items.lootTables` (`rolls` a number or dice, `entries` of an `item` ref or a
+  `filter` by rarity, category and tag, each with a `weight` and a `count`), and a bestiary creature's
+  `loot` naming a table. Unknown catalogs, items of inline catalogs, words and tables are refused at
+  import. The install gate asks for 1.63 last, after every older check, so a package declaring an
+  older minor hears first about what that minor lacks.
+- **One source rule.** `planGameVictoryLoot` (game-loot.service.ts): a ruleset with loot tables rolls
+  the tables of the defeated (`rollRulesetLootTable`, features/rulesets/loot.ts), into the shared view
+  (`among` the player's card first, the player's card chosen as the Use and Rest routes choose it);
+  otherwise, with native items on, `generateCombatLoot` (loot.service.ts, its randomness now injected)
+  drops plain items into the player's bag; otherwise nothing.
+- **Once per fight.** A directed fight (every ruleset fight, and Classic or Tactical with the combat
+  director) drops on the step that wins, inside that step's transaction (`save()` in
+  combat-director.routes.ts), and keeps it on `CombatDirectorState.loot`, which `sync()` copies into the
+  summary, empty when nothing dropped. The fight state keeps each bestiary opponent's table
+  (`RulesetFightState.lootTables`) as the fight is built. A fight played on the screen alone asks
+  `POST /api/game/inventory/loot` (`lootGameFight`), keyed by the message that started it and
+  remembered in `gameLootedFights` beside the stacks. The unused `/game/combat/loot` and
+  `/game/loot/generate` routes are gone.
+- **Said.** `handleCombatEnd` waits for the drop before the recap: "Loot (already in the party's
+  bags)", what was left behind, the journal line and a notification; the "decide a reward" line only
+  when nothing dropped.
+- **The Game Master's `[loot:]`.** Parsed beside the inventory tags (`createLootTagRegex`,
+  `parseLootTagBody`), rolled by a hook `applyGameInventoryTags` takes, seeded per turn
+  (`gameLootTagRoller`, kept apart from the use and rest dice), and answered as resolved adds, so the
+  screen announces it and the next turn reads it as any add; a table that drops nothing or a refused
+  tag keeps its own place. Reserved, stripped from narration, a badge in the session log, and listed in
+  the Game Master's instructions only where the ruleset has tables. Mari's instructions say what
+  really happens.
+- **Examples.** Gravewatch's grave goods, carried by the hollow warden and the grave wight, with a
+  filter line for any arm. Ember Roads keeps none, so the lanes that cut it down stay as they were.
+- **Proven** by `scripts/regressions/game-ruleset-loot.regression.ts` (a directed Ember fight won
+  through the routes among it), the `[loot:]` turn in `game-inventory-turn.regression.ts`, and
+  `e2e/game-ruleset-loot.e2e.ts`, with 40 deliberate breaks each caught.
+
 ## Gaps a ruleset author found
 
 The author of [Marinara-RPG-Extension](https://github.com/Kenhito/Marinara-RPG-Extension), who

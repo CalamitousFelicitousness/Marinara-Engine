@@ -10917,6 +10917,8 @@ function GameSurfaceComponent({
   // Combat end handler — clear combat state and notify GM
   const handleCombatEnd = useCallback(
     (outcome: "victory" | "defeat" | "flee", summary: CombatSummary) => {
+      // The message that started the fight names it, so a win reported twice drops its loot once.
+      const fightKey = combatStartMessageId;
       setCombatParty(null);
       setCombatEnemies(null);
       setCombatSceneMeta(null);
@@ -10988,87 +10990,125 @@ function GameSurfaceComponent({
       }
       rulesetBattleSeedsRef.current = null;
 
-      // Build a compact, model-friendly recap so the GM can narrate the aftermath.
-      const defeatedEnemies = summary.enemies.filter((e) => e.defeated).map((e) => e.name);
-      const survivingEnemies = summary.enemies.filter((e) => !e.defeated);
-      const partyStatus = summary.party.map((p) => {
-        const hpPct = p.maxHp > 0 ? Math.round((p.hp / p.maxHp) * 100) : 0;
-        const effects = p.statusEffects.length > 0 ? ` [${p.statusEffects.join(", ")}]` : "";
-        const ko = p.ko ? " KO" : "";
-        const resources = [
-          p.mp !== undefined ? `${p.mp}/${p.maxMp ?? p.mp} MP` : "",
-          p.spellSlots ? `remaining spell slots ${JSON.stringify(p.spellSlots)}` : "",
-        ]
-          .filter(Boolean)
+      // A won fight drops its loot into the bags before the recap goes out, so the Game Master is told
+      // what is already there. A directed fight dropped its own on the step that won it, and its
+      // summary says so even when that was nothing; one played on the screen alone asks for it now,
+      // known by the message that started it. Without that message it cannot be dropped only once, so
+      // it is not asked for, and the Game Master decides the reward as before.
+      const endedIn = activeChatId;
+      const fallen = summary.enemies.filter((enemy) => enemy.defeated).length;
+      const looted: Promise<CombatSummary["loot"]> =
+        outcome !== "victory" || summary.loot !== undefined || fallen === 0 || !endedIn || !fightKey
+          ? Promise.resolve(summary.loot)
+          : sendInventory((chatId) =>
+              api.post<{ loot: NonNullable<CombatSummary["loot"]>; inventory: GameInventoryStack[] }>(
+                "/game/inventory/loot",
+                { chatId, fight: fightKey, defeated: Math.min(20, fallen) },
+              ),
+            )
+              .then((answer) => answer?.loot)
+              .catch(() => undefined);
+      const tellCombatEnd = (loot: CombatSummary["loot"]) => {
+        // Build a compact, model-friendly recap so the GM can narrate the aftermath.
+        const defeatedEnemies = summary.enemies.filter((e) => e.defeated).map((e) => e.name);
+        const survivingEnemies = summary.enemies.filter((e) => !e.defeated);
+        const partyStatus = summary.party.map((p) => {
+          const hpPct = p.maxHp > 0 ? Math.round((p.hp / p.maxHp) * 100) : 0;
+          const effects = p.statusEffects.length > 0 ? ` [${p.statusEffects.join(", ")}]` : "";
+          const ko = p.ko ? " KO" : "";
+          const resources = [
+            p.mp !== undefined ? `${p.mp}/${p.maxMp ?? p.mp} MP` : "",
+            p.spellSlots ? `remaining spell slots ${JSON.stringify(p.spellSlots)}` : "",
+          ]
+            .filter(Boolean)
+            .join(", ");
+          return `${p.name}: ${p.hp}/${p.maxHp} HP (${hpPct}%)${resources ? `; ${resources}` : ""}${effects}${ko}`;
+        });
+        const count = (name: string, quantity?: number) => (quantity && quantity > 1 ? `${name} ×${quantity}` : name);
+        const lootText = (loot ?? [])
+          .filter((drop) => (drop.quantity ?? 1) > 0)
+          .map((drop) => count(drop.name, drop.quantity))
           .join(", ");
-        return `${p.name}: ${p.hp}/${p.maxHp} HP (${hpPct}%)${resources ? `; ${resources}` : ""}${effects}${ko}`;
-      });
-      const lootText =
-        summary.loot && summary.loot.length > 0
-          ? summary.loot.map((l) => (l.quantity && l.quantity > 1 ? `${l.name} ×${l.quantity}` : l.name)).join(", ")
-          : "";
+        const leftText = (loot ?? [])
+          .filter((drop) => (drop.left ?? 0) > 0)
+          .map((drop) => count(drop.name, drop.left))
+          .join(", ");
+        // Only a player still looking at this chat is shown what dropped.
+        if (lootText && useChatStore.getState().activeChatId === endedIn) {
+          showInventoryNotification(localizeUi("ui.game.gamesurfacecomponent.lootDropped", { items: lootText }), true);
+        }
 
-      // Flee on round 1 means no round actually resolved — phrase it accordingly.
-      const rounds = fought ? fought.ruleset.rounds : summary.rounds;
-      const roundsPhrase =
-        outcome === "flee" && rounds <= 1 ? "before combat began" : `after ${rounds} round${rounds === 1 ? "" : "s"}`;
+        // Flee on round 1 means no round actually resolved — phrase it accordingly.
+        const rounds = fought ? fought.ruleset.rounds : summary.rounds;
+        const roundsPhrase =
+          outcome === "flee" && rounds <= 1 ? "before combat began" : `after ${rounds} round${rounds === 1 ? "" : "s"}`;
 
-      const recapLines: string[] = [];
-      recapLines.push(`OUTCOME: ${outcome.toUpperCase()} (${roundsPhrase})`);
-      if (defeatedEnemies.length > 0) recapLines.push(`Defeated: ${defeatedEnemies.join(", ")}`);
-      if (survivingEnemies.length > 0 && !fought) {
-        recapLines.push(`Survived: ${survivingEnemies.map((e) => `${e.name} (${e.hp}/${e.maxHp} HP)`).join(", ")}`);
-      }
-      // The ruleset's own numbers in place of the percentage lines: the fight was not fought on a
-      // share of a maximum, so the Game Master is never shown one.
-      if (fought) recapLines.push(...rulesetCombatRecapLines(fought.definition, fought.ruleset));
-      else recapLines.push(`Party: ${partyStatus.join("; ")}`);
-      if (sheetRecapLine) recapLines.push(sheetRecapLine);
-      if (summary.battlefieldSummary?.trim()) recapLines.push(`Battlefield: ${summary.battlefieldSummary.trim()}`);
-      if (lootText) recapLines.push(`Loot: ${lootText}`);
-      else
-        recapLines.push(
-          'Rewards: If a reward is narratively appropriate, decide it now and add it with [inventory: action="add" item="..."].',
-        );
+        const recapLines: string[] = [];
+        recapLines.push(`OUTCOME: ${outcome.toUpperCase()} (${roundsPhrase})`);
+        if (defeatedEnemies.length > 0) recapLines.push(`Defeated: ${defeatedEnemies.join(", ")}`);
+        if (survivingEnemies.length > 0 && !fought) {
+          recapLines.push(`Survived: ${survivingEnemies.map((e) => `${e.name} (${e.hp}/${e.maxHp} HP)`).join(", ")}`);
+        }
+        // The ruleset's own numbers in place of the percentage lines: the fight was not fought on a
+        // share of a maximum, so the Game Master is never shown one.
+        if (fought) recapLines.push(...rulesetCombatRecapLines(fought.definition, fought.ruleset));
+        else recapLines.push(`Party: ${partyStatus.join("; ")}`);
+        if (sheetRecapLine) recapLines.push(sheetRecapLine);
+        if (summary.battlefieldSummary?.trim()) recapLines.push(`Battlefield: ${summary.battlefieldSummary.trim()}`);
+        // What dropped is already in the bags, so the Game Master narrates it and never adds it again.
+        if (lootText) recapLines.push(`Loot (already in the party's bags): ${lootText}`);
+        if (leftText) recapLines.push(`Left behind (nobody could carry it): ${leftText}`);
+        if (!lootText && !leftText)
+          recapLines.push(
+            'Rewards: If a reward is narratively appropriate, decide it now and add it with [inventory: action="add" item="..."].',
+          );
 
-      const recap = recapLines.join("\n");
-      let prefix: string;
-      if (outcome === "victory") prefix = "*The battle is won.*";
-      else if (outcome === "defeat") prefix = "*The party has been defeated...*";
-      else prefix = "*The party flees from battle!*";
+        const recap = recapLines.join("\n");
+        let prefix: string;
+        if (outcome === "victory") prefix = "*The battle is won.*";
+        else if (outcome === "defeat") prefix = "*The party has been defeated...*";
+        else prefix = "*The party flees from battle!*";
 
-      // Wrap the recap in a clearly-labelled block so the GM treats it as canonical combat
-      // context (the core prompt rule teaches how to narrate it). The block is stripped from
-      // the user-visible bubble by stripGmTags / stripGmTagsKeepReadables, leaving only the
-      // cosmetic italic prefix. State is flipped above via transitionGameState so no
-      // [state:] tag is needed here.
-      sendMessage(`${prefix}\n\n[combat_result]\n${recap}\n[/combat_result]`);
+        // Wrap the recap in a clearly-labelled block so the GM treats it as canonical combat
+        // context (the core prompt rule teaches how to narrate it). The block is stripped from
+        // the user-visible bubble by stripGmTags / stripGmTagsKeepReadables, leaving only the
+        // cosmetic italic prefix. State is flipped above via transitionGameState so no
+        // [state:] tag is needed here.
+        sendMessage(`${prefix}\n\n[combat_result]\n${recap}\n[/combat_result]`);
 
-      // Journal: record combat outcome. The server's addCombatEntry only persists
-      // (description, outcome) into JournalEntry.content, so fold the structured recap
-      // into the description itself to preserve rounds / party status for players.
-      const journalDescLines: string[] = [];
-      if (outcome === "victory") journalDescLines.push(`Victory (${roundsPhrase})`);
-      else if (outcome === "defeat") journalDescLines.push(`The party was defeated (${roundsPhrase})`);
-      else journalDescLines.push(`The party fled from battle (${roundsPhrase})`);
-      if (defeatedEnemies.length > 0) journalDescLines.push(`Defeated: ${defeatedEnemies.join(", ")}`);
-      journalDescLines.push(`Party status: ${partyStatus.join("; ")}`);
-      if (lootText) journalDescLines.push(`Loot: ${lootText}`);
+        // Journal: record combat outcome. The server's addCombatEntry only persists
+        // (description, outcome) into JournalEntry.content, so fold the structured recap
+        // into the description itself to preserve rounds / party status for players.
+        const journalDescLines: string[] = [];
+        if (outcome === "victory") journalDescLines.push(`Victory (${roundsPhrase})`);
+        else if (outcome === "defeat") journalDescLines.push(`The party was defeated (${roundsPhrase})`);
+        else journalDescLines.push(`The party fled from battle (${roundsPhrase})`);
+        if (defeatedEnemies.length > 0) journalDescLines.push(`Defeated: ${defeatedEnemies.join(", ")}`);
+        journalDescLines.push(`Party status: ${partyStatus.join("; ")}`);
+        if (lootText) journalDescLines.push(`Loot: ${lootText}`);
 
-      api
-        .post("/game/journal/entry", {
-          chatId: activeChatId,
-          type: "combat",
-          data: {
-            description: journalDescLines.join(" — "),
-            outcome: outcome === "flee" ? "fled" : outcome,
-          },
-        })
-        .catch(() => {});
+        api
+          .post("/game/journal/entry", {
+            chatId: activeChatId,
+            type: "combat",
+            data: {
+              description: journalDescLines.join(" — "),
+              outcome: outcome === "flee" ? "fled" : outcome,
+            },
+          })
+          .catch(() => {});
+      };
+      // The recap belongs to the chat the fight ended in, whichever one is open by then (`sendMessage`
+      // keeps that chat): without it the Game Master never learns the outcome, and reopening the chat
+      // would start the same fight again.
+      void looted.then(tellCombatEnd);
     },
     [
       sendMessage,
       activeChatId,
+      combatStartMessageId,
+      sendInventory,
+      showInventoryNotification,
       chatMeta.gameCharacterCards,
       clearCombatSnapshot,
       gameRuleset,

@@ -196,6 +196,7 @@ import {
   normalizeGameInventoryStacks,
   rulesetItemPromptFacts,
   type RoleplayCommandActivity,
+  type RulesetDefinition,
   type RulesetItemBook,
   type RulesetLiveStates,
 } from "@marinara-engine/shared";
@@ -228,6 +229,7 @@ import {
   type GameRulesetSheetTurn,
 } from "../services/game/ruleset-sheet-turn.service.js";
 import { gameInventoryItemUser, gameInventoryRestRecharge } from "../services/game/game-item-use.service.js";
+import { gameLootTagRoller } from "../services/game/game-loot.service.js";
 import {
   commitGameInventoryChange,
   followGameInventoryOnRow,
@@ -9303,8 +9305,10 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               /** The rests the turn's sheet commands took, whose charges come back to what is carried. */
               rests: Array<{ who: string; rest: string }>;
             };
+            /** What a `[loot:]` rolls: the ruleset its tables are in, and the dice's seed. */
+            loot?: { definition: RulesetDefinition; seed: number };
           } | null = null;
-          const tellsInventory = /\[inventory:/i.test(fullResponse);
+          const tellsInventory = /\[(?:inventory|loot):/i.test(fullResponse);
           // A rest the sheet commands took may bring charges back to what the rested carry.
           const turnRests = rulesetSheetTurn?.rests ?? [];
           const retellsInventoryTurn =
@@ -9355,6 +9359,10 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       rests: turnRests,
                     }
                   : undefined;
+              const loot =
+                turnGameRuleset?.status === "ok" && turnGameRuleset.definition.items?.lootTables?.length
+                  ? { definition: turnGameRuleset.definition, seed: randomInt(0, 2 ** 31 - 1) }
+                  : undefined;
               const preview = tellsInventory
                 ? applyGameInventoryTags(
                     requested,
@@ -9365,6 +9373,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                     uses && rules
                       ? gameInventoryItemUser(uses.context, rules.itemOf, uses.live, uses.seed).useItem
                       : undefined,
+                    loot ? gameLootTagRoller(loot.definition, rules, loot.seed) : undefined,
                   ).content
                 : requested;
               if (preview !== fullResponse) {
@@ -9379,6 +9388,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 tellsInventory,
                 ...(rules ? { rules } : {}),
                 ...(uses ? { uses } : {}),
+                ...(loot ? { loot } : {}),
                 messageId: retold?.id ?? null,
                 replaced: retold ? (retold.activeSwipeIndex ?? 0) : null,
               };
@@ -9784,6 +9794,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                         undefined,
                         pending.rules,
                         user?.useItem,
+                        pending.loot
+                          ? gameLootTagRoller(pending.loot.definition, pending.rules, pending.loot.seed)
+                          : undefined,
                       )
                     : { content: pending.requested, stacks: plan.start, journal: [] };
                   // The turn's rests bring charges back on top of what its tags did, from the same start.

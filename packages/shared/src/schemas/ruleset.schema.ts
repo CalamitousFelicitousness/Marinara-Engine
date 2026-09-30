@@ -1833,6 +1833,8 @@ export const rulesetCreatureSchema = z
     // A creature whose sheet gives it abilities may have no block actions of its own at all.
     actions: z.array(creatureActionSchema).max(RULESET_CREATURE_MAX_ACTIONS).default([]),
     sheet: creatureSheetSchema.optional(),
+    /** The loot table a won fight rolls for it, by the id `items.lootTables` gives it. */
+    loot: sheetId.optional(),
   })
   .strict()
   .superRefine((creature, ctx) => {
@@ -1901,6 +1903,47 @@ const currencyFamilySchema = z
   })
   .strict();
 
+/** One line of a loot table: one of the ruleset's items (`<catalog>/<entry>`), or any of its items a
+ *  `filter` names, with how likely it is against the table's other lines and how many drop. */
+const lootEntrySchema = z
+  .object({
+    item: z
+      .string()
+      .max(81)
+      .regex(/^[a-z][a-z0-9_]{0,39}\/[a-z0-9]+(?:-[a-z0-9]+)*$/, "An item is named as <catalog>/<entry>")
+      .optional(),
+    filter: z
+      .object({ rarity: sheetId.optional(), category: sheetId.optional(), tag: sheetId.optional() })
+      .strict()
+      .optional(),
+    weight: z.number().int().min(1).max(1000).default(1),
+    count: z.union([z.number().int().min(1).max(999), catalogDice]).default(1),
+  })
+  .strict()
+  .superRefine((entry, ctx) => {
+    if ((entry.item === undefined) === (entry.filter === undefined)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "A loot line names an item or a filter, one of the two" });
+    }
+    if (entry.filter && Object.keys(entry.filter).length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["filter"],
+        message: "A filter names a rarity, a category or a tag",
+      });
+    }
+  });
+
+/** What a treasure hoard or a creature's pockets hold: `rolls` picks (a number or dice, none at all
+ *  allowed), each a line drawn by weight. */
+const lootTableSchema = z
+  .object({
+    id: sheetId,
+    label,
+    rolls: z.union([z.number().int().min(0).max(20), catalogDice]).default(1),
+    entries: z.array(lootEntrySchema).min(1).max(48),
+  })
+  .strict();
+
 const itemsSchema = z
   .object({
     categories: z.array(itemWordSchema).min(1).max(24),
@@ -1940,6 +1983,9 @@ const itemsSchema = z
     propose: z.boolean().default(true),
     /** False turns Game Mode's own untyped items off in this ruleset's games. */
     native: z.boolean().default(true),
+    /** Tables a won fight's creatures and the Game Master's `[loot:]` roll. A ruleset that declares
+     *  any drops its own items instead of Game Mode's native loot. */
+    lootTables: z.array(lootTableSchema).max(24).optional(),
     /** What an item the player types in becomes: a plain item, or nothing at all. */
     freeform: z.enum(["plain", "refuse"]).default("plain"),
   })
@@ -4161,6 +4207,29 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         issue([...path, "perWeight"], "Coins weigh something only when the items block has a carry block");
       }
     });
+    // A loot line names one of the ruleset's items, or the words its filter picks them by. An item
+    // of a catalog kept in its own file is checked when that file is read.
+    unique(items.lootTables ?? [], at("lootTables"), "loot table");
+    const words = { rarity: items.rarities ?? [], category: items.categories, tag: items.tags ?? [] };
+    items.lootTables?.forEach((table, tableIndex) => {
+      table.entries.forEach((entry, entryIndex) => {
+        const path = at("lootTables", tableIndex, "entries", entryIndex);
+        if (entry.item) {
+          const [catalogId, entryId] = entry.item.split("/") as [string, string];
+          const catalog = def.catalogs?.find((each) => each.id === catalogId);
+          if (!catalog || catalog.holds !== "items") issue([...path, "item"], `No item catalog "${catalogId}"`);
+          else if (catalog.entries && !catalog.entries.some((each) => each.id === entryId && each.item)) {
+            issue([...path, "item"], `No item "${entryId}" in catalog "${catalogId}"`);
+          }
+        }
+        for (const key of ["rarity", "category", "tag"] as const) {
+          const id = entry.filter?.[key];
+          if (id !== undefined && !words[key].some((word) => word.id === id)) {
+            issue([...path, "filter", key], `Unknown item ${key} "${id}"`);
+          }
+        }
+      });
+    });
   }
 
   const catalogs = def.catalogs ?? [];
@@ -5215,6 +5284,9 @@ function creatureIssues(
   const combat = definition.combat;
   if (!combat) {
     return add(at, "This ruleset has no combat block, so there is nothing for a creature to be written in");
+  }
+  if (creature.loot !== undefined && !definition.items?.lootTables?.some((table) => table.id === creature.loot)) {
+    add([...at, "loot"], `Unknown loot table "${creature.loot}"`);
   }
   const budgets = new Set(combat.economy.budgets.map((budget) => budget.id));
   const saves = new Set(definition.sheet.saves.map((save) => save.id));

@@ -763,7 +763,8 @@ export interface CombatSummary {
   }>;
   /** Resolved tactical terrain retained after the live combat snapshot is cleared. */
   battlefieldSummary?: string;
-  loot?: Array<{ name: string; quantity?: number }>;
+  /** What the win dropped into the party's bags, and how many of each nobody could carry. */
+  loot?: Array<{ name: string; quantity?: number; left?: number }>;
   /** What a ruleset fight really ended on, in the ruleset's own numbers. Present only for a fight
    *  the ruleset resolved, and the recap is written from it instead of the shares above. */
   ruleset?: import("../features/ruleset-combat/types.js").RulesetEncounterSummary;

@@ -26,8 +26,11 @@ import {
 } from "./game-inventory-stacks.js";
 import {
   createInventoryTagRegex,
+  createLootTagRegex,
   parseInventoryTagBody,
+  parseLootTagBody,
   serializeInventoryTag,
+  serializeLootTag,
   type InventoryTagOutcome,
 } from "./inventory-command-tag.js";
 
@@ -107,6 +110,9 @@ export function applyGameInventoryTags(
   rules?: GameInventoryItemRules,
   /** Uses one of the ruleset's items, for `action="use"`. */
   useItem?: GameInventoryItemUser,
+  /** Rolls one of the ruleset's loot tables, for `[loot:]`: what it dropped, or null for a table the
+   *  ruleset does not have. Without it a loot tag is refused. */
+  loot?: (table: string) => ReadonlyArray<{ item: string; name: string; count: number }> | null,
 ): GameInventoryTagsOutcome {
   let current = stacks;
   const journal: GameInventoryJournalEntry[] = [];
@@ -117,6 +123,46 @@ export function applyGameInventoryTags(
     current = outcome.stacks;
     journal.push(...outcome.journal);
     return outcome.results;
+  };
+
+  /** An add into the bag named (`named` as the Game Master wrote it, `bag` as it was found), or with
+   *  nobody named into the shared view, which a ruleset that says what everyone carries fills by who can
+   *  carry it, the player first. Answered as one resolved add per bag it went into, saying whose when
+   *  nobody was named (the player's says nobody), and one for what nobody could carry; the first carries
+   *  what was changed. */
+  const addAnswered = (
+    item: string,
+    ref: { item?: string },
+    count: number,
+    named: string | undefined,
+    bag: GameInventoryBagRef | undefined,
+    note?: string,
+  ): string => {
+    const [result] = apply([
+      bag
+        ? { op: "add", name: item, ...ref, count, holder: bag.holder, log: true }
+        : { op: "add", name: item, ...ref, count, among: ["", ...party.members], log: true },
+    ]);
+    const shown = { action: "add" as const, item, count, ...(named ? { who: named } : {}) };
+    if (!result?.ok) return serializeInventoryTag(shown, outcomeOf(result), note);
+    const answers = result.placed
+      ? result.placed.map((share, index) =>
+          serializeInventoryTag(
+            { action: "add", item, count: share.count, ...(share.holder ? { who: share.holder } : {}) },
+            { ok: true, count: share.count, now: share.now },
+            index === 0 ? note : undefined,
+          ),
+        )
+      : [serializeInventoryTag(shown, outcomeOf(result), note)];
+    if (result.left) {
+      answers.push(
+        serializeInventoryTag(
+          { action: "add", item, count: result.left, ...(named ? { who: named } : {}) },
+          { ok: false, reason: "too-heavy" },
+        ),
+      );
+    }
+    return answers.join(" ");
   };
 
   /** Putting on, taking off, binding or unbinding up to `count` of the item a name finds in one bag,
@@ -187,34 +233,7 @@ export function applyGameInventoryTags(
           }
           const note = invented?.notes.join(" ") || undefined;
           const ref = invented ? { item: invented.item } : {};
-          // Into whose bag it was said to go; with nobody named, into the shared view, which a ruleset
-          // that says what everyone carries fills by who can carry it, the player first.
-          const [result] = apply([
-            who.bag
-              ? { op: "add", name: item, ...ref, count: request.count, holder: who.bag.holder, log: true }
-              : { op: "add", name: item, ...ref, count: request.count, among: ["", ...party.members], log: true },
-          ]);
-          if (!result?.ok) return serializeInventoryTag(shown, outcomeOf(result), note);
-          // One answer per bag it went into, saying whose when nobody was named (the player's says
-          // nobody), and one for what nobody could carry. The first carries what was changed.
-          const answers = result.placed
-            ? result.placed.map((share, index) =>
-                serializeInventoryTag(
-                  { action: request.action, item, count: share.count, ...(share.holder ? { who: share.holder } : {}) },
-                  { ok: true, count: share.count, now: share.now },
-                  index === 0 ? note : undefined,
-                ),
-              )
-            : [serializeInventoryTag(shown, outcomeOf(result), note)];
-          if (result.left) {
-            answers.push(
-              serializeInventoryTag(
-                { action: request.action, item, count: result.left, ...(request.who ? { who: request.who } : {}) },
-                { ok: false, reason: "too-heavy" },
-              ),
-            );
-          }
-          return answers.join(" ");
+          return addAnswered(item, ref, request.count, request.who, who.bag, note);
         }
         if (
           request.action === "equip" ||
@@ -305,7 +324,23 @@ export function applyGameInventoryTags(
       .join(" ");
   });
 
-  return { content: next, stacks: current, journal, tags };
+  // Then each loot tag, on the stacks the inventory tags left: what it dropped is answered as the
+  // inventory's own resolved adds, so the screen announces it and the Game Master reads it back as it
+  // reads any add; a tag that dropped nothing, or was refused, keeps its own place.
+  const looted = next.replace(createLootTagRegex(), (_whole, body: string) => {
+    tags += 1;
+    if (tags > MAX_INVENTORY_TAGS) return serializeLootTag({ raw: body.trim() }, "too-many");
+    const request = parseLootTagBody(body);
+    if (!request) return serializeLootTag({ raw: body.trim() }, "unreadable");
+    if (!loot) return serializeLootTag(request, "no-loot-tables");
+    const who = resolveGameInventoryHolder(request.who, party, current);
+    if (!who.ok) return serializeLootTag(request, who.reason);
+    const drops = loot(request.table);
+    if (!drops) return serializeLootTag(request, "unknown-loot-table");
+    if (drops.length === 0) return serializeLootTag(request);
+    return drops.map((drop) => addAnswered(drop.name, { item: drop.item }, drop.count, request.who, who.bag)).join(" ");
+  });
+  return { content: looted, stacks: current, journal, tags };
 }
 
 /** One tag body answered as refused: one tag per item it names, or its sanitized text when it names
@@ -334,5 +369,10 @@ function refuseTagBody(body: string, reason: string): string {
  * carry out at all. Whatever the tags said, they then say that nothing happened, which is true.
  */
 export function refuseGameInventoryTags(content: string, reason: string): string {
-  return content.replace(createInventoryTagRegex(), (_whole, body: string) => refuseTagBody(body, reason));
+  return content
+    .replace(createInventoryTagRegex(), (_whole, body: string) => refuseTagBody(body, reason))
+    .replace(createLootTagRegex(), (_whole, body: string) => {
+      const request = parseLootTagBody(body);
+      return serializeLootTag(request ?? { raw: body.trim() }, reason);
+    });
 }

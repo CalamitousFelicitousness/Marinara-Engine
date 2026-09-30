@@ -114,6 +114,14 @@ export function formatNarration(content: string, boldDialogue = true): string {
         [attrs.action, attrs.item].filter(Boolean).join(": "),
       );
     })
+    .replace(/\[loot:\s*([^\]]+)\]/gi, (_match, rawAttrs: string) => {
+      const attrs = parseCommandAttributes(rawAttrs);
+      return commandBadge(
+        "bg-lime-500/15 text-lime-200 ring-1 ring-lime-400/20",
+        translate("game.narration.loot"),
+        attrs.table || rawAttrs.trim(),
+      );
+    })
     .replace(/\[map_update:\s*([^\]]+)\]/gi, (_match, rawAttrs: string) => {
       const attrs = parseCommandAttributes(rawAttrs);
       return commandBadge(

@@ -127,6 +127,8 @@ try {
           ...catalog,
           entries: catalog.entries?.filter((entry) => entry.id !== "grave-wight"),
         }));
+        // And the loot its creatures carry, which names a table of the items block.
+        for (const catalog of doc.catalogs) for (const entry of catalog.entries ?? []) delete entry.creature?.loot;
       }),
       "Gravewatch without items",
     );

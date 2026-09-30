@@ -17,6 +17,7 @@ import {
   gameInventoryAddedItem,
   gameInventoryGiveRefusal,
   gameInventoryKeptByCurse,
+  gameInventoryUsableStack,
   gameInventoryOverloads,
   cleanGameInventoryHolder,
   gameInventoryBagKey,
@@ -66,7 +67,8 @@ export const gameInventoryOpSchema = z.discriminatedUnion("op", [
     })
     .strict(),
   /** Out by name, from one bag when `from` is given and otherwise the player's first. `as` is what the
-   *  journal calls it; without it nothing is written there. Not held to one stack's bound. */
+   *  journal calls it; without it nothing is written there. Not held to one stack's bound. `worn` takes
+   *  only from stacks the item may be used from, as a fight uses it (#6909). */
   z
     .object({
       op: z.literal("take"),
@@ -74,6 +76,19 @@ export const gameInventoryOpSchema = z.discriminatedUnion("op", [
       count: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
       from: z.object({ holder: holder.optional() }).strict().optional(),
       as: z.enum(["lost", "used", "removed"]).optional(),
+      worn: z.literal(true).optional(),
+    })
+    .strict(),
+  /** `count` uses of one of the ruleset's items that holds charges, by its own name (#6909): each
+   *  spends its cost from the first stack of it with enough, the player's own first (or `from`'s bag),
+   *  and a stack emptied rolls the item's `breaksOn`, gone when it breaks. The journal says it was used,
+   *  and lost where it broke. */
+  z
+    .object({
+      op: z.literal("charge"),
+      name: itemName,
+      count: amount,
+      from: z.object({ holder: holder.optional() }).strict().optional(),
     })
     .strict(),
   /** One stack set to a count; 0 removes it. A smaller count is written in the journal as removed. */
@@ -120,6 +135,8 @@ export type GameInventoryOpResult =
       placed?: Array<{ holder?: string; count: number; now: number }>;
       /** How many of an add nobody could carry, which were left behind. */
       left?: number;
+      /** A charge: how many stacks of it broke when their last charge was spent. */
+      broke?: number;
     }
   | { ok: false; reason: GameInventoryOpRefusal };
 
@@ -145,6 +162,9 @@ export function applyGameInventoryOps(
   ops: readonly GameInventoryOp[],
   newId?: () => string,
   rules?: GameInventoryItemRules,
+  /** Throws a die of that many sides, for an item that may break as its last charge is spent. Without
+   *  it such an item never breaks. */
+  roll?: (sides: number) => number,
 ): GameInventoryOpsOutcome {
   let current = stacks;
   const results: GameInventoryOpResult[] = [];
@@ -207,7 +227,7 @@ export function applyGameInventoryOps(
         // Which items the name means is settled before the take: once the last stack of an item is
         // gone, the name alone could find another item by its nickname.
         const items = gameInventoryItemsNamed(current, op.name, from);
-        const taken = takeFromGameInventory(current, op.name, op.count, from, rules);
+        const taken = takeFromGameInventory(current, op.name, op.count, from, rules, op.worn === true);
         if (taken.taken === 0) {
           // Held, but only as a bound cursed item the player cannot part with.
           const cursed = current.some(
@@ -222,6 +242,46 @@ export function applyGameInventoryOps(
         current = taken.stacks;
         results.push({ ok: true, count: taken.taken, now: gameInventoryCountItems(current, items, from) });
         if (op.as) journal.push({ item: op.name.trim(), action: op.as, quantity: taken.taken });
+        break;
+      }
+      case "charge": {
+        const from = op.from ? { holder: cleanGameInventoryHolder(op.from.holder) } : undefined;
+        const items = gameInventoryItemsNamed(current, op.name, from);
+        // Only from a stack the item may be used from: worn where it takes slots, bound where it binds.
+        const chargesOf = (stack: GameInventoryStack) =>
+          gameInventoryUsableStack(stack, rules) && stack.item ? rules?.itemOf(stack.item)?.charges : undefined;
+        const left = (stack: GameInventoryStack) => {
+          const held = chargesOf(stack);
+          return held ? Math.min(held.max, stack.charges ?? held.max) : 0;
+        };
+        let spent = 0;
+        let broke = 0;
+        for (; spent < op.count; spent++) {
+          // The player's own bag first, then the party in the order the stacks are kept.
+          const usable = current.filter(
+            (stack) =>
+              items.has(gameInventoryItemId(stack)) &&
+              (!from || gameInventoryBagKey(stack.holder) === gameInventoryBagKey(from.holder)) &&
+              chargesOf(stack) !== undefined &&
+              left(stack) >= chargesOf(stack)!.cost,
+          );
+          const stack = usable.find((each) => !each.holder) ?? usable[0];
+          if (!stack) break;
+          const held = chargesOf(stack)!;
+          const now = left(stack) - held.cost;
+          const breaks = now === 0 && held.breaksOn && roll ? roll(held.breaksOn.die) <= held.breaksOn.atMost : false;
+          if (breaks) broke++;
+          current = breaks
+            ? current.filter((each) => each !== stack)
+            : current.map((each) => (each === stack ? { ...each, charges: now } : each));
+        }
+        if (spent === 0) {
+          refuse("none-held");
+          break;
+        }
+        results.push({ ok: true, count: spent, ...(broke > 0 ? { broke } : {}) });
+        journal.push({ item: op.name.trim(), action: "used", quantity: spent });
+        if (broke > 0) journal.push({ item: op.name.trim(), action: "lost", quantity: broke });
         break;
       }
       case "set": {

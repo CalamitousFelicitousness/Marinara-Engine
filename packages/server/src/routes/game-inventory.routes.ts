@@ -7,6 +7,7 @@ import { applyGameInventoryOps, gameInventoryOpsRequestSchema } from "@marinara-
 import { commitGameInventoryChange, loadGameInventoryItemBook } from "../services/game/game-inventory.service.js";
 import { restGameRulesetCharacter, useGameRulesetItem } from "../services/game/game-item-use.service.js";
 import { lootGameFight } from "../services/game/game-loot.service.js";
+import { rollDieSecurely } from "../services/game/dice-rng.js";
 
 const restRequestSchema = z
   .object({
@@ -36,7 +37,8 @@ export async function gameInventoryRoutes(app: FastifyInstance) {
     // The ruleset's items, read before the change so no catalog is read with the chat's queue held.
     const rules = await loadGameInventoryItemBook(app.db, { chatId }, "player");
     const committed = await commitGameInventoryChange(app.db, chatId, (stacks) => {
-      const outcome = applyGameInventoryOps(stacks, ops, undefined, rules);
+      // The Engine's own dice, for an item that may break as a fight spends its last charge.
+      const outcome = applyGameInventoryOps(stacks, ops, undefined, rules, rollDieSecurely);
       return { stacks: outcome.stacks, journal: outcome.journal, value: outcome.results };
     });
     if (!committed) return reply.status(404).send({ error: "Chat not found" });

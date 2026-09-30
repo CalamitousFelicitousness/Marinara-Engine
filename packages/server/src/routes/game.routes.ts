@@ -371,6 +371,7 @@ import {
   playGameSpotifyTrack,
 } from "../services/spotify/game-spotify-music.service.js";
 import { loadGameFightItems, loadGameInventoryItemBook } from "../services/game/game-inventory.service.js";
+import { rollGameFightItemGate } from "../services/game/game-item-use.service.js";
 import {
   readIllustratorAppearance,
   readPreferredCharacterReferenceImage,
@@ -9897,6 +9898,13 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     );
     const fight = itemActions.length > 0 ? await loadGameFightItems(app.db, meta, []) : null;
     if (fight?.ruleset) {
+      // Who uses each item, for the check a gated one asks first: the leader for the player's own
+      // command, as the round gives it to them, and each party member for theirs.
+      const leader = controlledId ?? combatants.find((c) => c.hp > 0 && c.side === "player")?.id;
+      const users = new Map<object, string | undefined>([
+        ...(playerAction?.type === "item" ? [[playerAction, leader] as const] : []),
+        ...Object.entries(partyActions ?? {}).map(([id, action]) => [action, id] as const),
+      ]);
       for (const action of itemActions) {
         const line = fight.lines.find(
           (entry) => gameInventoryNameKey(entry.name) === gameInventoryNameKey(action.itemId ?? ""),
@@ -9905,7 +9913,10 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         const worked = fight.effects.find(
           (effect) => effect.ruleset && gameInventoryNameKey(effect.name) === gameInventoryNameKey(line.name),
         );
-        if (worked) action.itemEffect = worked;
+        if (!worked) continue;
+        const who = combatants.find((c) => c.id === users.get(action))?.name ?? "";
+        const gate = line.item ? await rollGameFightItemGate(app.db, chatId, who, line.item) : null;
+        action.itemEffect = gate && !gate.success ? { ...worked, failed: gate.line } : worked;
       }
     }
     const difficulty = normalizeGameDifficulty((meta.gameSetupConfig as Record<string, unknown>)?.difficulty);

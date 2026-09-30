@@ -11,6 +11,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - The Roleplay **Whisper** command description now shows the format for whispering to another character (#6895).
 
+- Charged and gated ruleset items now work in Classic and Tactical battles too: a wand or Gravewatch's dawn bell is offered while it has a use left and spends its charges (and may break on its last), a scroll or the page of the vigil litany rolls its check with the user's sheet first and is spent for nothing when it fails, and an item that has to be worn or bound is used only while it is, the worn one used up rather than a spare in the bag (#6909).
+
 - In a Game Mode game whose ruleset leaves fights to Classic and Tactical battles, the ruleset's items now do what the ruleset says in a fight: a poultice heals by its own dice and a firepot burns, with the conditions they put on, instead of whatever a model guessed. An item the ruleset gives no use is not offered, and a ruleset that turns Game Mode's own items off still offers its own usable items (#6905).
 
 - A Game Mode ruleset's money is now real: its coins are items in each character's bag, weigh what the ruleset says, and a line above the inventory shows what they are worth. The Game Master charges and pays the party with `[inventory: action="pay"]` and `action="earn"`, and a payment makes change within the coin's family, or is refused when the purse is short. Loot tables can drop coins, and a ruleset's layer can take a coin out of a variant, pricing items in the coins left. Rulesets that drop coins or take them out with a layer need Capability API 1.64 (#6901).

@@ -4,7 +4,7 @@ import {
   gameInventoryBags,
   gameInventoryBagKey,
   gameInventoryFightEffects,
-  gameInventoryFightLines,
+  gameFightOffers,
   gameInventoryNameKey,
   gameInventoryStackLabel,
   normalizeGameInventoryStacks,
@@ -3033,20 +3033,19 @@ function GameSurfaceComponent({
   // effect found under that line's name.
   const gameRuleset = useGameRuleset(chatMeta);
   // In a game with ruleset items, one of the ruleset's items is offered only when the fight's effects
-  // (worked out by the server from its `use`, #6905) say what it does, and the rest only while the
-  // ruleset leaves Game Mode's own items on, as the server offers them.
+  // (worked out by the server from its `use`, #6905) say what it does, one that holds charges counted in
+  // uses while any is left (#6909), and the rest only while the ruleset leaves Game Mode's own items on,
+  // as the server offers them.
   const rulesetItems = gameRuleset.status === "ok" ? gameRuleset.definition.items : undefined;
-  const fightInventoryLines = useMemo(() => {
-    const lines = gameInventoryFightLines(inventoryItems);
-    if (!rulesetItems) return lines;
-    return lines.filter((line) =>
-      line.item
-        ? combatItemEffects.some(
-            (effect) => effect.ruleset && gameInventoryNameKey(effect.name) === gameInventoryNameKey(line.name),
-          )
-        : rulesetItems.native !== false,
-    );
-  }, [inventoryItems, rulesetItems, combatItemEffects]);
+  const fightInventoryLines = useMemo(
+    () =>
+      gameFightOffers(
+        inventoryItems,
+        combatItemEffects,
+        rulesetItems ? { native: rulesetItems.native !== false } : undefined,
+      ),
+    [inventoryItems, rulesetItems, combatItemEffects],
+  );
   const fightItemEffects = useMemo(
     () => gameInventoryFightEffects(fightInventoryLines, combatItemEffects),
     [fightInventoryLines, combatItemEffects],
@@ -8106,8 +8105,16 @@ function GameSurfaceComponent({
       const spentName =
         fightInventoryLines.find((line) => gameInventoryNameKey(line.name) === gameInventoryNameKey(itemName))
           ?.ownName ?? normalizedItemName;
+      // One of the ruleset's items that holds charges spends a use of them, not the item (#6909).
+      const charged = combatItemEffects.some(
+        (effect) => effect.charges && gameInventoryNameKey(effect.name) === gameInventoryNameKey(itemName),
+      );
       try {
-        const [result] = await commitInventory([{ op: "take", name: spentName, count: 1, as: "used" }]);
+        const [result] = await commitInventory([
+          charged
+            ? { op: "charge", name: spentName, count: 1 }
+            : { op: "take", name: spentName, count: 1, as: "used", worn: true },
+        ]);
         if (!result?.ok) {
           toast.error(
             localizeUi("ui.game.gamesurfacecomponent.value1IsNoLongerInYourInventory", {
@@ -8129,7 +8136,7 @@ function GameSurfaceComponent({
         );
       }
     },
-    [activeChatId, commitInventory, fightInventoryLines, showInventoryNotification, localizeUi],
+    [activeChatId, commitInventory, fightInventoryLines, combatItemEffects, showInventoryNotification, localizeUi],
   );
 
   /**

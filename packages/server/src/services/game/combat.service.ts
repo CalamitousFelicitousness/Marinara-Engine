@@ -91,6 +91,8 @@ export interface InitiativeEntry {
 }
 
 export interface AttackResult {
+  /** What the log says instead of the usual line, as an item whose gate its user failed (#6909). */
+  note?: string;
   attackerId: string;
   defenderId: string;
   attackRoll: number;
@@ -270,6 +272,25 @@ function resolveItemAction(
   weather?: CombatWeather,
 ): AttackResult {
   const itemName = itemId?.trim() || "Item";
+  // Its user failed the check it asks first (#6909): it is spent and does nothing.
+  if (itemEffect?.failed) {
+    return {
+      note: itemEffect.failed,
+      attackerId: attacker.id,
+      defenderId: target.id,
+      attackRoll: 0,
+      defenseRoll: 0,
+      rawDamage: 0,
+      mitigated: 0,
+      finalDamage: 0,
+      isCritical: false,
+      isMiss: true,
+      remainingHp: target.hp,
+      isKo: target.hp <= 0,
+      skillName: itemName,
+      reaction: null,
+    };
+  }
   const effectType = itemEffect?.type;
   if (itemEffect && effectType && effectType !== "heal") {
     const power = Math.max(0.05, Math.min(2.5, Number(itemEffect.power) || 0.25));

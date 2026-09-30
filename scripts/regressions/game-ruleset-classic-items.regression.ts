@@ -18,10 +18,14 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  applyGameInventoryOps,
+  defaultRulesetSheetBuild,
   gameFightItems,
+  gameFightOffers,
   gameInventoryFightLines,
   parseRulesetDefinition,
   rulesetItemBook,
+  rollRulesetItemGate,
   rulesetItemFightEffect,
   type CombatItemEffect,
   type GameInventoryStack,
@@ -36,6 +40,7 @@ process.env.FILE_STORAGE_DIR = join(dataDir, "storage");
 const { default: Fastify } = await import("../../packages/server/node_modules/fastify/fastify.js");
 const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
 const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
+const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
 const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
 const { createGameStateStorage } = await import("../../packages/server/src/services/storage/game-state.storage.js");
 const { createGameEngineStateStorage } =
@@ -46,6 +51,7 @@ const { resolveCombatRound } = await import("../../packages/server/src/services/
 const { loadGameFightItems } = await import("../../packages/server/src/services/game/game-inventory.service.js");
 const { encounterRoutes } = await import("../../packages/server/src/routes/encounter.routes.js");
 const { gameRoutes } = await import("../../packages/server/src/routes/game.routes.js");
+const { gameInventoryRoutes } = await import("../../packages/server/src/routes/game-inventory.routes.js");
 const { combatDirectorRoutes, COMBAT_DIRECTOR_NAMESPACE } =
   await import("../../packages/server/src/routes/combat-director.routes.js");
 
@@ -72,6 +78,7 @@ const app = Fastify();
 app.decorate("db", db);
 await app.register(encounterRoutes, { prefix: "/encounter" });
 await app.register(gameRoutes, { prefix: "/game" });
+await app.register(gameInventoryRoutes, { prefix: "/game/inventory" });
 await app.register(combatDirectorRoutes, { prefix: "/combat", chooseBoss: async () => "" });
 
 try {
@@ -167,8 +174,23 @@ try {
     // A heal of one is as little as an effect goes, a twentieth.
     assert.equal(effectOf(graveBook, "kit/warming-tonic")?.power, 0.05);
     // Charges, a gate, no use at all: not in the Engine's own battles.
-    assert.equal(effectOf(graveBook, "kit/dawn-bell"), null, "charges wait for I8-2");
-    assert.equal(effectOf(graveBook, "kit/litany-page"), null, "a gate waits for I8-2");
+    // Charges and a gate (#6909): the bell spends its charges and is kept, used only worn and bound;
+    // the page says the check it asks first.
+    assert.deepEqual(effectOf(graveBook, "kit/dawn-bell"), {
+      name: "Dawn bell",
+      target: "enemy",
+      type: "debuff",
+      description: "Steel 7 save negates it, Rattled, spends 1 of 3 charges",
+      status: { name: "Rattled", emoji: "💢", duration: 2 },
+      consumes: false,
+      charges: { cost: 1, max: 3 },
+      wear: { equipped: true, bound: true },
+      ruleset: true,
+    });
+    assert.equal(
+      effectOf(graveBook, "kit/litany-page")?.description,
+      "restores 2 Resolve, needs a Ward check against 2 first, unless Nerve is 3 or more; failed, it is used up for nothing",
+    );
     assert.equal(effectOf(emberBook, "outfitter/leather-coat"), null);
     assert.equal(rulesetItemFightEffect("Nothing", undefined), null);
     // Crafted uses, one part at a time.
@@ -195,6 +217,8 @@ try {
         description: "Pinned",
         status: { name: "Pinned", emoji: "💢", duration: 2 },
         consumes: false,
+        // An axe is held in the hands, so it is used only while held.
+        wear: { equipped: true },
         ruleset: true,
       },
       "an attack that only puts a condition on is a status, for two rounds without its own",
@@ -214,7 +238,6 @@ try {
       { id: "s3", name: "Leather coat", quantity: 1, item: "outfitter/leather-coat" },
       { id: "s4", name: "Firepot", quantity: 2, item: "outfitter/firepot", holder: "Bram" },
     ];
-    const lines = gameInventoryFightLines(stacks);
     const guess = (name: string, extra: Partial<CombatItemEffect> = {}): CombatItemEffect => ({
       name,
       target: "ally",
@@ -229,7 +252,7 @@ try {
       guess("Leather coat"),
       guess("Stone", { ruleset: true }),
     ];
-    const on = gameFightItems(lines, emberBook, true, guessed);
+    const on = gameFightItems(stacks, emberBook, true, guessed);
     assert.deepEqual(
       on.lines.map((line) => line.name),
       ["Rope", "Poultice", "Firepot"],
@@ -244,7 +267,7 @@ try {
       ],
       "the guesses for the ruleset's items, and one that claims to be the ruleset's, are gone",
     );
-    const off = gameFightItems(lines, emberBook, false, guessed);
+    const off = gameFightItems(stacks, emberBook, false, guessed);
     assert.deepEqual(
       off.lines.map((line) => line.name),
       ["Poultice", "Firepot"],
@@ -255,7 +278,7 @@ try {
       ["Poultice", "Firepot"],
     );
     // No book: every item is guessed at, as before, but a guess never passes for the ruleset's.
-    const none = gameFightItems(lines, undefined, true, guessed);
+    const none = gameFightItems(stacks, undefined, true, guessed);
     assert.deepEqual(
       none.lines.map((line) => line.name),
       ["Rope", "Poultice", "Leather coat", "Firepot"],
@@ -278,7 +301,7 @@ try {
           ? { id: `p${index}`, name: "Poultice", quantity: 1 }
           : { id: `r${index}`, name: "Poultice", quantity: 1, item: "outfitter/poultice" },
       );
-      const fight = gameFightItems(gameInventoryFightLines(stacks), emberBook, true, [guess]);
+      const fight = gameFightItems(stacks, emberBook, true, [guess]);
       const effectOfLine = (item: string | undefined) => {
         const line = fight.lines.find((each) => each.item === item)!;
         return fight.effects.find((effect) => effect.name === line.name)?.description;
@@ -287,6 +310,192 @@ try {
       assert.equal(effectOfLine("outfitter/poultice"), "heals 1d4 + 1, range 0", `${first} first`);
       assert.equal(fight.effects.length, 2, `${first} first: nothing else`);
     }
+  }
+
+  // ── Charges and gates (#6909) ──
+  {
+    const bell = (id: string, extra: Partial<GameInventoryStack> = {}): GameInventoryStack => ({
+      id,
+      name: "Dawn bell",
+      quantity: 1,
+      item: "kit/dawn-bell",
+      equipped: true,
+      bound: true,
+      ...extra,
+    });
+    const effects = [effectOf(graveBook, "kit/dawn-bell")!];
+    const uses = (stacks: GameInventoryStack[]) =>
+      gameFightOffers(stacks, effects, { native: true }).map((line) => [line.name, line.quantity]);
+    // Counted in uses, from the stacks worn and bound, a stack without a count full.
+    assert.deepEqual(uses([bell("b1", { charges: 2 })]), [["Dawn bell", 2]]);
+    assert.deepEqual(uses([bell("b1")]), [["Dawn bell", 3]]);
+    assert.deepEqual(uses([bell("b1", { charges: 1 }), bell("b2", { charges: 2, holder: "Bram" })]), [
+      ["Dawn bell", 3],
+    ]);
+    assert.deepEqual(uses([bell("b1", { charges: 0 })]), [], "none left, not offered");
+    assert.deepEqual(uses([bell("b1", { bound: false })]), [], "not bound, not offered");
+    assert.deepEqual(uses([bell("b1", { equipped: false })]), [], "not worn, not offered");
+    assert.deepEqual(uses([bell("b1", { charges: 9 })]), [["Dawn bell", 3]], "never more than it holds");
+    // A bell that reads its most off a stat it does not give holds a count nobody can say: not offered.
+    const uncounted = parsedOrThrow(
+      variant(gravewatchText, (doc) => {
+        doc.catalogs
+          .find((catalog: { id: string }) => catalog.id === "kit")
+          .entries.find((entry: { id: string }) => entry.id === "dawn-bell").item.charges.max = { stat: "target" };
+      }),
+      "a bell that counts by a stat it does not give",
+    );
+    assert.equal(
+      rulesetItemFightEffect("Dawn bell", rulesetItemBook(uncounted, entriesOf(uncounted)).itemOf("kit/dawn-bell")),
+      null,
+    );
+    // Nor is a page whose check reads its difficulty off a stat it does not give: nobody can say it.
+    const unsaid = parsedOrThrow(
+      variant(gravewatchText, (doc) => {
+        doc.catalogs
+          .find((catalog: { id: string }) => catalog.id === "kit")
+          .entries.find((entry: { id: string }) => entry.id === "litany-page").item.use.gate.difficulty = {
+          stat: "target",
+        };
+      }),
+      "a page whose check reads a stat it does not give",
+    );
+    assert.equal(
+      rulesetItemFightEffect(
+        "Page of the vigil litany",
+        rulesetItemBook(unsaid, entriesOf(unsaid)).itemOf("kit/litany-page"),
+      ),
+      null,
+    );
+    // A worn item used up counts only the worn ones.
+    const wornTonic = parsedOrThrow(
+      variant(gravewatchText, (doc) => {
+        const tonic = doc.catalogs
+          .find((catalog: { id: string }) => catalog.id === "kit")
+          .entries.find((entry: { id: string }) => entry.id === "warming-tonic");
+        tonic.item.slots = { worn: 1 };
+      }),
+      "a tonic worn to be drunk",
+    );
+    const wornBook = rulesetItemBook(wornTonic, entriesOf(wornTonic));
+    assert.deepEqual(
+      gameFightOffers(
+        [
+          { id: "t1", name: "Warming tonic", quantity: 1, item: "kit/warming-tonic", equipped: true },
+          { id: "t2", name: "Warming tonic", quantity: 3, item: "kit/warming-tonic" },
+        ],
+        [rulesetItemFightEffect("Warming tonic", wornBook.itemOf("kit/warming-tonic"))!],
+        { native: true },
+      ).map((line) => line.quantity),
+      [1],
+    );
+    // And a fight drinks the worn one, never one from the bag before it; anything else takes the first.
+    const drink = (worn: boolean) =>
+      applyGameInventoryOps(
+        [
+          { id: "t2", name: "Warming tonic", quantity: 3, item: "kit/warming-tonic" },
+          { id: "t1", name: "Warming tonic", quantity: 1, item: "kit/warming-tonic", equipped: true },
+        ],
+        [{ op: "take", name: "Warming tonic", count: 1, as: "used", ...(worn ? { worn: true as const } : {}) }],
+        undefined,
+        wornBook,
+      ).stacks.map((stack) => [stack.id, stack.quantity]);
+    assert.deepEqual(drink(true), [["t2", 3]], "a fight drinks the worn one");
+    assert.deepEqual(
+      drink(false),
+      [
+        ["t2", 2],
+        ["t1", 1],
+      ],
+      "anything else takes the first",
+    );
+
+    // Spending: a use off the player's own stack first; the last charge rolls its die, and a 1 breaks it.
+    const charge = (stacks: GameInventoryStack[], count: number, faces: number[] = [20], holder?: string) => {
+      let at = 0;
+      return applyGameInventoryOps(
+        stacks,
+        [{ op: "charge", name: "Dawn bell", count, ...(holder !== undefined ? { from: { holder } } : {}) }],
+        undefined,
+        graveBook,
+        (sides) => Math.min(sides, faces[Math.min(at++, faces.length - 1)]!),
+      );
+    };
+    const two = [bell("b2", { charges: 2, holder: "Bram" }), bell("b1", { charges: 2 })];
+    const once = charge(two, 1);
+    assert.deepEqual(
+      once.stacks.map((stack) => [stack.id, stack.charges]),
+      [
+        ["b2", 2],
+        ["b1", 1],
+      ],
+      "the player's own first",
+    );
+    assert.deepEqual(once.results, [{ ok: true, count: 1 }]);
+    assert.deepEqual(once.journal, [{ item: "Dawn bell", action: "used", quantity: 1 }]);
+    const emptied = charge([bell("b1", { charges: 1 })], 1, [20]);
+    assert.deepEqual(
+      emptied.stacks.map((stack) => stack.charges),
+      [0],
+      "emptied, it rolls and holds",
+    );
+    const broken = charge([bell("b1", { charges: 1 })], 1, [1]);
+    assert.deepEqual(broken.stacks, [], "a 1 on its d20 breaks it");
+    assert.deepEqual(broken.results, [{ ok: true, count: 1, broke: 1 }]);
+    assert.deepEqual(broken.journal, [
+      { item: "Dawn bell", action: "used", quantity: 1 },
+      { item: "Dawn bell", action: "lost", quantity: 1 },
+    ]);
+    assert.deepEqual(
+      applyGameInventoryOps(
+        [bell("b1", { charges: 1 })],
+        [{ op: "charge", name: "Dawn bell", count: 1 }],
+        undefined,
+        graveBook,
+      ).stacks.map((stack) => stack.charges),
+      [0],
+      "without dice nothing breaks",
+    );
+    assert.deepEqual(
+      charge(two, 3).stacks.map((stack) => [stack.id, stack.charges]),
+      [
+        ["b2", 1],
+        ["b1", 0],
+      ],
+      "then the party's, when the player's runs out",
+    );
+    assert.deepEqual(
+      charge(two, 1, [20], "Bram").stacks.map((stack) => stack.charges),
+      [1, 2],
+      "from one bag",
+    );
+    assert.deepEqual(charge([bell("b1", { charges: 0 })], 1).results, [{ ok: false, reason: "none-held" }]);
+    assert.deepEqual(
+      charge([bell("b1", { bound: false })], 1).results,
+      [{ ok: false, reason: "none-held" }],
+      "not bound",
+    );
+    assert.deepEqual(charge([bell("b1", { charges: 1 })], 5).results, [{ ok: true, count: 1 }], "as many as there are");
+
+    // A gate rolled for its user: skipped when their Nerve is 3, a failure for two dice showing ones.
+    const page = graveBook.itemOf("kit/litany-page")!.entry.item!;
+    const user = (nerve: number) => ({
+      build: { ...defaultRulesetSheetBuild(gravewatch), abilities: { sinew: 2, nerve, warmth: 2 } },
+      live: undefined,
+    });
+    const gate = (nerve: number, face: number) =>
+      rollRulesetItemGate({
+        definition: gravewatch,
+        itemOf: graveBook.itemOf,
+        stacks: [],
+        holder: undefined,
+        item: page,
+        user: user(nerve),
+        roll: () => face,
+      });
+    assert.equal(gate(3, 1), null, "unless holds");
+    assert.deepEqual(gate(2, 1), { check: "Ward", total: 0, difficulty: 2, success: false, rolls: [1, 1] });
+    assert.equal(gate(2, 8)?.success, true);
   }
 
   // ── A ruleset heal heals by its own strength ──
@@ -656,6 +865,306 @@ try {
         ["Poultice", "heal", "heals 1d4 + 1, range 0"],
         ["Rope", "status", "tangles"],
       ],
+    );
+  }
+
+  // ── Charges and gates through the routes (#6909) ──
+  {
+    // Gravewatch without the fights it resolves itself; the hard copy's page asks more than two dice
+    // can ever show.
+    const graveNoFights = (edit: (doc: Record<string, any>) => void = () => {}) =>
+      variant(gravewatchText, (doc) => {
+        delete doc.combat;
+        doc.catalogs = doc.catalogs.filter((catalog: { holds?: string }) => catalog.holds !== "creatures");
+        edit(doc);
+      });
+    const graveDoc = graveNoFights();
+    const gravePin = await pin("grave-classic-items", graveDoc, parsedOrThrow(graveDoc, "Gravewatch for battles"));
+    const hardDoc = graveNoFights((doc) => {
+      doc.catalogs
+        .find((catalog: { id: string }) => catalog.id === "kit")
+        .entries.find((entry: { id: string }) => entry.id === "litany-page").item.use.gate.difficulty = 100;
+    });
+    const hardPin = await pin("grave-classic-hard", hardDoc, parsedOrThrow(hardDoc, "Gravewatch with a hard page"));
+    // The same hard page pinned where it is worn to be read, so a fight counts and spends only a worn one.
+    const wornDoc = graveNoFights((doc) => {
+      const page = doc.catalogs
+        .find((catalog: { id: string }) => catalog.id === "kit")
+        .entries.find((entry: { id: string }) => entry.id === "litany-page").item;
+      page.use.gate.difficulty = 100;
+      page.slots = { worn: 1 };
+    });
+    const wornPin = await pin("grave-classic-worn", wornDoc, parsedOrThrow(wornDoc, "Gravewatch with a worn page"));
+    const ada = (nerve: number) => ({
+      name: "Ada",
+      rulesetSheet: {
+        v: 1,
+        build: { ...defaultRulesetSheetBuild(gravewatch), abilities: { sinew: 2, nerve, warmth: 2 } },
+      },
+    });
+    const kit: GameInventoryStack[] = [
+      { id: "st-page", name: "Page of the vigil litany", quantity: 2, item: "kit/litany-page" },
+      { id: "st-bell", name: "Dawn bell", quantity: 1, item: "kit/dawn-bell", equipped: true, bound: true, charges: 2 },
+    ];
+    const graveGame = async (gameRuleset: unknown, nerve: number) => {
+      const game = await newGame(gameRuleset);
+      await chats.patchMetadata(game.chatId, { gameInventory: kit, gameCharacterCards: [ada(nerve)] });
+      return game;
+    };
+    const combatants = [
+      {
+        id: "ada",
+        name: "Ada",
+        side: "player",
+        hp: 20,
+        maxHp: 100,
+        mp: 0,
+        maxMp: 0,
+        attack: 10,
+        defense: 5,
+        speed: 5,
+        level: 1,
+      },
+      {
+        id: "rat",
+        name: "Rat",
+        side: "enemy",
+        hp: 100,
+        maxHp: 100,
+        mp: 0,
+        maxMp: 0,
+        attack: 1,
+        defense: 1,
+        speed: 1,
+        level: 1,
+      },
+    ];
+    const pageRound = async (chatId: string) => {
+      const answer = await app.inject({
+        method: "POST",
+        url: "/game/combat/round",
+        payload: {
+          chatId,
+          round: 1,
+          combatants,
+          playerAction: { type: "item", itemId: "Page of the vigil litany", targetId: "ada" },
+        },
+      });
+      assert.equal(answer.statusCode, 200, answer.body);
+      return answer
+        .json()
+        .result.actions.find((action: { skillName?: string }) => action.skillName === "Page of the vigil litany");
+    };
+    // Nerve 3: no check, and the page does what it does.
+    const read = await pageRound((await graveGame(gravePin, 3)).chatId);
+    assert.equal(read.isMiss, false);
+    assert.equal(read.note, undefined);
+    // Nerve 1, and a page that asks more than the dice can show: the check fails, and it does nothing.
+    const failed = await pageRound((await graveGame(hardPin, 1)).chatId);
+    assert.equal(failed.isMiss, true);
+    assert.match(
+      failed.note,
+      /^Ada rolls Ward to use Page of the vigil litany: \d+ against \d+, failed, and it is used up for nothing\.$/,
+    );
+    // A bell with no use left is not offered.
+    const silent = await graveGame(gravePin, 3);
+    await chats.patchMetadata(silent.chatId, { gameInventory: [{ ...kit[1]!, charges: 0 }] });
+    const rung = await app.inject({
+      method: "POST",
+      url: "/game/combat/round",
+      payload: {
+        chatId: silent.chatId,
+        round: 1,
+        combatants,
+        playerAction: { type: "item", itemId: "Dawn bell", targetId: "rat" },
+      },
+    });
+    assert.equal(rung.statusCode, 400);
+
+    // The check is rolled for whoever uses the page: Bram (Nerve 1) fails where Ada (Nerve 3) would not.
+    const party = await graveGame(hardPin, 3);
+    await chats.patchMetadata(party.chatId, {
+      gameCharacterCards: [ada(3), { ...ada(1), name: "Bram" }],
+    });
+    const brams = await app.inject({
+      method: "POST",
+      url: "/game/combat/round",
+      payload: {
+        chatId: party.chatId,
+        round: 1,
+        combatants: [...combatants, { ...combatants[0]!, id: "bram", name: "Bram" }],
+        partyActions: { bram: { type: "item", itemId: "Page of the vigil litany", targetId: "bram" } },
+      },
+    });
+    assert.equal(brams.statusCode, 200, brams.body);
+    assert.match(
+      brams.json().result.actions.find((action: { attackerId: string }) => action.attackerId === "bram").note,
+      /^Bram rolls Ward to use Page of the vigil litany: .*failed/,
+    );
+    // Only the player's own unit falls back on the player's card: Wren, the player, has no card of that
+    // name and reads Ada's (Nerve 3, no check); Cleo, a companion with no card, rolls on a blank sheet
+    // (Nerve 2) and fails.
+    const wren = await createCharactersStorage(db).createPersona("Wren", "The player");
+    await chats.update(party.chatId, { personaId: wren.id });
+    const mixed = await app.inject({
+      method: "POST",
+      url: "/game/combat/round",
+      payload: {
+        chatId: party.chatId,
+        round: 1,
+        combatants: [
+          ...combatants,
+          { ...combatants[0]!, id: "wren", name: "Wren" },
+          { ...combatants[0]!, id: "cleo", name: "Cleo" },
+        ],
+        partyActions: {
+          wren: { type: "item", itemId: "Page of the vigil litany", targetId: "wren" },
+          cleo: { type: "item", itemId: "Page of the vigil litany", targetId: "cleo" },
+        },
+      },
+    });
+    assert.equal(mixed.statusCode, 200, mixed.body);
+    const actionOf = (id: string) =>
+      mixed.json().result.actions.find((action: { attackerId: string }) => action.attackerId === id);
+    assert.equal(actionOf("wren").note, undefined, "the player's own unit reads the player's card");
+    assert.match(actionOf("cleo").note, /^Cleo rolls Ward to use Page of the vigil litany: .*failed/);
+
+    // The route rolls the Engine's dice for a bell's last charge: one that always breaks is gone.
+    const brittleDoc = graveNoFights((doc) => {
+      doc.catalogs
+        .find((catalog: { id: string }) => catalog.id === "kit")
+        .entries.find((entry: { id: string }) => entry.id === "dawn-bell").item.charges.breaksOn = {
+        die: 20,
+        atMost: 20,
+      };
+    });
+    const brittlePin = await pin("grave-classic-brittle", brittleDoc, parsedOrThrow(brittleDoc, "a brittle bell"));
+    const brittle = await graveGame(brittlePin, 3);
+    await chats.patchMetadata(brittle.chatId, { gameInventory: [{ ...kit[1]!, charges: 1 }] });
+    const lastRing = await app.inject({
+      method: "POST",
+      url: "/game/inventory",
+      payload: { chatId: brittle.chatId, ops: [{ op: "charge", name: "Dawn bell", count: 1 }] },
+    });
+    assert.equal(lastRing.statusCode, 200, lastRing.body);
+    assert.deepEqual(lastRing.json().results, [{ ok: true, count: 1, broke: 1 }]);
+    assert.deepEqual(lastRing.json().inventory, []);
+
+    // The inventory route spends a charge, as the screen asks when a fight used the bell.
+    const spent = await graveGame(gravePin, 3);
+    const charged = await app.inject({
+      method: "POST",
+      url: "/game/inventory",
+      payload: { chatId: spent.chatId, ops: [{ op: "charge", name: "Dawn bell", count: 1 }] },
+    });
+    assert.equal(charged.statusCode, 200, charged.body);
+    assert.equal(
+      (charged.json().inventory as GameInventoryStack[]).find((stack) => stack.id === "st-bell")?.charges,
+      1,
+    );
+
+    // The combat director: the bell is offered by its uses and spends a charge; a failed page is spent
+    // for nothing and the log says so. The page is worn, with a spare in the bag before it: only the
+    // worn one counts, and it is the one spent.
+    const directed = await graveGame(wornPin, 1);
+    await chats.patchMetadata(directed.chatId, {
+      gameInventory: [
+        { id: "st-spare", name: "Page of the vigil litany", quantity: 1, item: "kit/litany-page" },
+        { ...kit[0]!, quantity: 1, equipped: true },
+        kit[1]!,
+      ],
+    });
+    const unit = (id: string, name: string, side: "player" | "enemy") => ({
+      id,
+      name,
+      side,
+      hp: 30,
+      maxHp: 30,
+      attack: 8,
+      defense: 6,
+      speed: 6,
+      level: 3,
+      skills: [],
+    });
+    const started = await app.inject({
+      method: "POST",
+      url: "/combat/start",
+      payload: {
+        chatId: directed.chatId,
+        anchor: directed.anchor,
+        style: "classic",
+        party: [unit("ada", "Ada", "player")],
+        enemies: [unit("rat", "Rat", "enemy")],
+      },
+    });
+    assert.equal(started.statusCode, 200, started.body);
+    type View = {
+      id: string;
+      instanceId: string;
+      revision: number;
+      stage: string;
+      actorId?: string;
+      window?: unknown;
+      inventory: Array<{ name: string; quantity: number }>;
+      log: Array<{ text: string }>;
+    };
+    let view = started.json().session as View;
+    assert.deepEqual(
+      view.inventory.map((line) => [line.name, line.quantity]),
+      [
+        ["Page of the vigil litany", 1],
+        ["Dawn bell", 2],
+      ],
+    );
+    let requests = 0;
+    const command = async (body: Record<string, unknown>) => {
+      const answer = await app.inject({
+        method: "POST",
+        url: "/combat/command",
+        payload: {
+          chatId: directed.chatId,
+          anchor: directed.anchor,
+          id: view.id,
+          instanceId: view.instanceId,
+          revision: view.revision,
+          requestId: `r${++requests}`,
+          command: body,
+        },
+      });
+      assert.equal(answer.statusCode, 200, answer.body);
+      view = answer.json().session as View;
+    };
+    const saved = async () =>
+      JSON.parse((await chats.getById(directed.chatId))!.metadata as string).gameInventory as GameInventoryStack[];
+    // Ada's turn comes round; each item command is hers to give.
+    const onAdasTurn = async (action: Record<string, unknown>) => {
+      for (let step = 0; step < 40; step++) {
+        if (view.stage === "action" && view.actorId === "ada" && !view.window) {
+          await command({ type: "classic", action });
+          return;
+        }
+        await command({ type: "continue" });
+      }
+      assert.fail("Ada's turn never came");
+    };
+    await onAdasTurn({ type: "item", itemId: "Dawn bell", targetId: "rat" });
+    assert.equal((await saved()).find((stack) => stack.id === "st-bell")?.charges, 1, "a charge spent");
+    assert.equal(view.inventory.find((line) => line.name === "Dawn bell")?.quantity, 1, "one use left");
+    await onAdasTurn({ type: "item", itemId: "Page of the vigil litany", targetId: "ada" });
+    assert.deepEqual(
+      (await saved()).filter((stack) => stack.item === "kit/litany-page").map((stack) => [stack.id, stack.quantity]),
+      [["st-spare", 1]],
+      "the worn page is spent, never the spare in the bag",
+    );
+    for (let step = 0; step < 20; step++) {
+      if (view.log.some((entry) => /failed, and it is used up for nothing/.test(entry.text))) break;
+      await command({ type: "continue" });
+    }
+    assert.ok(
+      view.log.some((entry) =>
+        /^Ada rolls Ward to use Page of the vigil litany: .*failed, and it is used up for nothing\.$/.test(entry.text),
+      ),
+      `the log says the check failed: ${view.log.map((entry) => entry.text).join(" | ")}`,
     );
   }
 

@@ -194,3 +194,181 @@ test("a Classic battle offers the ruleset's items by their own use, and the poul
     await new Promise<void>((resolve) => model.server.close(() => resolve()));
   }
 });
+
+/** Gravewatch without the fights it resolves itself, whose page asks more than two dice can show, so
+ *  its check always fails. */
+function gravewatchWithoutFights(id: string): string {
+  const doc = JSON.parse(readFileSync(new URL("../docs/examples/rulesets/gravewatch.json", import.meta.url), "utf8"));
+  doc.id = id;
+  delete doc.combat;
+  doc.catalogs = doc.catalogs.filter((catalog: { holds?: string }) => catalog.holds !== "creatures");
+  const kit = doc.catalogs.find((catalog: { id: string }) => catalog.id === "kit");
+  const page = kit.entries.find((entry: { id: string }) => entry.id === "litany-page").item;
+  page.use.gate.difficulty = 100;
+  // Pinned where it is worn to be read, so a fight spends the worn one and never the spare in the bag.
+  page.slots = { worn: 1 };
+  return JSON.stringify(doc);
+}
+
+test("a charged bell spends its charges and a failed page is spent for nothing in a Classic battle", async ({
+  page,
+  request,
+}, testInfo) => {
+  test.setTimeout(120_000);
+  const model = await encounterModel({ party: [{ name: "Ada" }], enemies: [{ name: "Rat" }], itemEffects: [] });
+  let connectionId = "";
+  try {
+    await withImports(request, async (cleanup) => {
+      const imported = await request.post("/api/game-rulesets/import", {
+        data: { definition: gravewatchWithoutFights("grave-classic-charges-e2e") },
+      });
+      expect(imported.ok(), await imported.text()).toBeTruthy();
+      const rulesetId = (await imported.json()).rulesetId as string;
+      const connection = await request.post("/api/connections", {
+        data: {
+          name: "Local encounter fixture",
+          provider: "custom",
+          baseUrl: model.baseUrl,
+          apiKey: "synthetic-test-key",
+          model: "encounter-fixture",
+          maxContext: 32768,
+          treatAsLocalEndpoint: true,
+        },
+      });
+      expect(connection.ok()).toBeTruthy();
+      connectionId = (await connection.json()).id;
+      const created = await request.post("/api/chats", {
+        data: { name: "Classic charges", mode: "game", characterIds: [], connectionId },
+      });
+      expect(created.ok()).toBeTruthy();
+      const chatId = ((await created.json()) as { id: string }).id;
+      cleanup.push({ chatId, rulesetId, anchor: "" });
+      expect(
+        (
+          await request.patch(`/api/chats/${chatId}/metadata`, {
+            data: {
+              gameId: `classic-charges-${chatId}`,
+              gameSessionStatus: "active",
+              gameIntroPresented: true,
+              gameImageAutoGenerationEnabled: false,
+              gameStoryboardAutoIllustrationsEnabled: false,
+              enableAgents: false,
+              gameRuleset: { id: rulesetId, version: 1, packageId: null, options: {} },
+              // Ada's Nerve of 1 is too low to skip the page's check.
+              gameCharacterCards: [
+                { name: "Ada", rulesetSheet: { v: 1, build: { abilities: { sinew: 2, nerve: 1, warmth: 2 } } } },
+              ],
+              gameInventory: [
+                { id: "st-spare", name: "Page of the vigil litany", quantity: 1, item: "kit/litany-page" },
+                {
+                  id: "st-page",
+                  name: "Page of the vigil litany",
+                  quantity: 1,
+                  item: "kit/litany-page",
+                  equipped: true,
+                },
+                {
+                  id: "st-bell",
+                  name: "Dawn bell",
+                  quantity: 1,
+                  item: "kit/dawn-bell",
+                  equipped: true,
+                  bound: true,
+                  charges: 2,
+                },
+              ],
+            },
+          })
+        ).ok(),
+      ).toBeTruthy();
+      const init = await request.post("/api/encounter/init", { data: { chatId, settings: {} } });
+      expect(init.ok(), await init.text()).toBeTruthy();
+      const itemEffects = (await init.json()).combatState.itemEffects;
+      const unit = { maxHp: 100, attack: 5, defense: 5, speed: 5, level: 1, skills: [] };
+      const message = await request.post(`/api/chats/${chatId}/messages`, {
+        data: { role: "assistant", content: "A rat bares its teeth. [state: combat]" },
+      });
+      expect(message.ok()).toBeTruthy();
+      expect(
+        (
+          await request.patch(`/api/chats/${chatId}/metadata`, {
+            data: {
+              gameActiveState: "combat",
+              gameCombatStyle: "classic",
+              gameCombatState: {
+                party: [{ ...unit, id: "ada", name: "Ada", side: "player", hp: 50 }],
+                enemies: [{ ...unit, id: "rat", name: "Rat", side: "enemy", hp: 100, attack: 0 }],
+                itemEffects,
+                mechanics: [],
+                dialogueCues: [],
+                startMessageId: (await message.json()).id,
+                combatStyle: "classic",
+              },
+            },
+          })
+        ).ok(),
+      ).toBeTruthy();
+      await openGame(page, chatId);
+      const items = page.getByRole("button", { name: "Items", exact: true });
+      await expect(items).toBeVisible({ timeout: 40_000 });
+      await items.click();
+      const bell = page.getByRole("button", { name: /^Dawn bell/ });
+      await expect(bell).toContainText("spends 1 of 3 charges");
+      await expect(bell).toContainText("x2");
+      await page.screenshot({ path: testInfo.outputPath("classic-charges.png") });
+
+      // Rung at the rat: one charge spent, one use left.
+      const rung = page.waitForResponse((r) => r.url().endsWith("/api/game/combat/round"));
+      await bell.click();
+      await page.getByRole("button", { name: /^Rat HP/ }).click();
+      expect((await rung).ok()).toBeTruthy();
+      await expect
+        .poll(() => held(request, chatId))
+        .toEqual([
+          ["Page of the vigil litany", 1],
+          ["Page of the vigil litany", 1],
+          ["Dawn bell", 1],
+        ]);
+      const charges = async () => {
+        const row = await (await request.get(`/api/chats/${chatId}`)).json();
+        const metadata = typeof row.metadata === "string" ? JSON.parse(row.metadata) : row.metadata;
+        return (metadata.gameInventory as Array<{ id: string; charges?: number }>).find(
+          (stack) => stack.id === "st-bell",
+        )?.charges;
+      };
+      await expect.poll(charges).toBe(1);
+
+      // The worn page: Ada fails its check, it is spent, and the log says so; the spare stays in the bag.
+      await expect(items).toBeVisible({ timeout: 20_000 });
+      await items.click();
+      const read = page.waitForResponse((r) => r.url().endsWith("/api/game/combat/round"));
+      await page.getByRole("button", { name: /^Page of the vigil litany/ }).click();
+      expect((await read).ok()).toBeTruthy();
+      await expect(
+        page
+          .getByText(
+            /^Ada rolls Ward to use Page of the vigil litany: \d+ against \d+, failed, and it is used up for nothing\.$/,
+          )
+          .first(),
+      ).toBeVisible({ timeout: 20_000 });
+      await expect
+        .poll(async () => {
+          const row = await (await request.get(`/api/chats/${chatId}`)).json();
+          const metadata = typeof row.metadata === "string" ? JSON.parse(row.metadata) : row.metadata;
+          return (metadata.gameInventory as Array<{ id: string; quantity: number }>).map((stack) => [
+            stack.id,
+            stack.quantity,
+          ]);
+        })
+        .toEqual([
+          ["st-spare", 1],
+          ["st-bell", 1],
+        ]);
+      await page.screenshot({ path: testInfo.outputPath("classic-failed-gate.png") });
+    });
+  } finally {
+    if (connectionId) await request.delete(`/api/connections/${connectionId}`).catch(() => undefined);
+    model.server.closeAllConnections();
+    await new Promise<void>((resolve) => model.server.close(() => resolve()));
+  }
+});

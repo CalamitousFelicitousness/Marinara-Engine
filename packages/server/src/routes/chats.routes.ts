@@ -2431,7 +2431,7 @@ export async function chatsRoutes(app: FastifyInstance) {
   app.patch<{ Params: { chatId: string; messageId: string } }>("/:chatId/messages/:messageId", async (req, reply) => {
     const { content } = req.body as { content: string };
     if (typeof content !== "string") return reply.status(400).send({ error: "content is required" });
-    const updated = await storage.updateMessageContent(req.params.messageId, content);
+    const updated = await storage.updateMessageContent(req.params.messageId, content, { authored: true });
     if (!updated) return reply.status(404).send({ error: "Message not found" });
     return updated;
   });

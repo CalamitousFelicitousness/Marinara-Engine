@@ -103,6 +103,8 @@ Once a whisper is visible, choose **Edit whisper**, change the text, then **Save
 
 You can also write `[whisper: character="name" text="the secret"]` in your own Roleplay message to whisper to one chat character. Your own whispers are visible to you immediately. This works in ordinary chats without enabling multiplayer.
 
+The same command works when you edit a character's or the narrator's message: after you save, it becomes that message's whisper. Whisper text can span several lines and quote dialogue as is, for example `text=""I love you.""`.
+
 ### Your private notes
 
 With **Personal Notes** enabled under **Roleplay Commands**, write `[notes: content="your private note"]` in your own message. These notes belong to you and are included only for the appointed narrator, not ordinary characters or shared agents. Use the message's command details to edit or delete them.

@@ -806,6 +806,30 @@ test("Roleplay users send and edit private whispers and notes in Manual group ch
     await page.getByRole("dialog").getByRole("button", { name: "Delete", exact: true }).click();
     await expect.poll(() => preview(narrator.id)).not.toContain("USER_NOTE");
     expect(await preview(bob.id)).toContain("USER_WHISPER_EDITED");
+
+    // A whisper typed while editing the narrator's reply becomes a whisper, quotes and line breaks included.
+    const narrated = await request.post(`/api/chats/${chat.id}/messages`, {
+      data: { role: "assistant", characterId: narrator.id, content: "The fog rolls in." },
+    });
+    expect(narrated.ok(), await narrated.text()).toBeTruthy();
+    const narratorBubble = page.locator(`[data-message-id="${(await narrated.json()).id}"]`);
+    await page.reload();
+    await narratorBubble.getByRole("button", { name: "Edit", exact: true }).click();
+    await narratorBubble
+      .locator("textarea[data-chat-message-editor]")
+      .fill(
+        'The fog lifts. [whisper: character="Bob" text=""NARRATOR_WHISPER," a voice breathes.\nOnly you hear it."] The bells ring.',
+      );
+    await narratorBubble.getByRole("button", { name: "Save edit", exact: true }).click();
+    await expect(narratorBubble.locator("textarea[data-chat-message-editor]")).toHaveCount(0);
+    const narratorWhisper = narratorBubble.locator("[data-roleplay-whisper]").filter({ hasText: "Whisper to Bob" });
+    await expect(narratorWhisper).toBeVisible();
+    await expect(narratorBubble).not.toContainText("[whisper:");
+    await expect(narratorBubble).toContainText("The bells ring.");
+    await narratorWhisper.getByRole("button", { name: "Reveal a secret", exact: true }).click();
+    await expect(narratorWhisper).toContainText('"NARRATOR_WHISPER," a voice breathes.');
+    expect(await preview(bob.id)).toContain("NARRATOR_WHISPER");
+    expect(await preview(alice.id)).not.toContain("NARRATOR_WHISPER");
     const sendPrivateCommand = async (content: string) => {
       await page.locator("textarea[data-chat-composer]").fill(content);
       const response = page.waitForResponse(

@@ -2565,10 +2565,17 @@ export function createChatsStorage(db: DB) {
       }
     },
 
-    async updateMessageContent(id: string, content: string) {
+    /**
+     * `authored`: a person typed this text in the editor, so Roleplay private tags in it become
+     * commands on any message. Generated rewrites never reinterpret model text as typed tags.
+     */
+    async updateMessageContent(id: string, content: string, options: { authored?: boolean } = {}) {
       return withPatchQueue(messageExtraPatchQueues, id, async () => {
         const existing = await this.getMessage(id);
-        const prepare = existing?.role === "user" ? await userRoleplayPreparer(existing.chatId) : null;
+        const prepare =
+          existing && (existing.role === "user" || options.authored)
+            ? await userRoleplayPreparer(existing.chatId)
+            : null;
         const prepared = prepare?.(content, existing?.extra);
         content = prepared?.content ?? content;
 

@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- In Roleplay, a `[whisper: character="name" text="..."]` command typed while editing a character's or the narrator's message now becomes a whisper when you save, as it already did in your own messages. Whisper text can span several lines and quote dialogue as is, like `text=""I love you.""`, and the command description now says so (#6918).
 - Select a word or short phrase in a chat message to get an **Add to lorebook** button, on desktop and mobile. Pick a lorebook and it opens on a new entry named after the selection, with the selection as its keyword, ready for you to write the content (#6899).
 - World Maps can now hold up to 5,000 locations instead of 500, enough for a whole world with its buildings, floors and rooms. Game Mode also accepts these larger maps when a game starts (Marinara-Agents#1132).
 - Two ruleset regression lanes no longer fail now and then: the classic-items lane's directed battle could end on the dice before the test's second item was used, and the loot lane counted the hand axes the party already carried as loot when the table dropped another (#6913).

@@ -585,6 +585,22 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["uses", say({ type: "uses", actorId: "lurker", optionId: "thorns", label: "Thorns", left: 1, of: 3 })],
     ["broke", say({ type: "broke", actorId: "corwin", optionId: "use:0", label: "Wand of sparks", roll: 1 })],
     [
+      "gate",
+      say({
+        type: "gate",
+        actorId: "corwin",
+        optionId: "use:1",
+        label: "Scroll of fireball",
+        check: "Arcana",
+        rolls: [6],
+        kept: 6,
+        modifier: 3,
+        total: 9,
+        difficulty: 13,
+        success: false,
+      }),
+    ],
+    [
       "recharge",
       say({
         type: "recharge",
@@ -732,6 +748,10 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(printed.get("window"), "Brenna breaks away, and Thorn Lurker may strike.");
   assert.equal(printed.get("restored"), "Corwin gets back 2 Ki, and is on 5 of 7.");
   assert.equal(printed.get("broke"), "Wand of sparks breaks (a 1 on its die).");
+  assert.equal(
+    printed.get("gate"),
+    "Corwin rolls Arcana to use Scroll of fireball: 6 + 3 = 9 against 13, a failure. It is used up for nothing.",
+  );
   assert.equal(printed.get("cancelled"), "Thorn Lurker stops Brenna: Fireball never happens.");
   assert.equal(
     printed.get("hardness"),

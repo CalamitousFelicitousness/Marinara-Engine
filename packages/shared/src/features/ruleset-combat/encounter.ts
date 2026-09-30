@@ -33,7 +33,8 @@ import {
   type RulesetLiveState,
   type RulesetSheetOp,
 } from "../rulesets/live-state.js";
-import { rulesetItemSources, type RulesetCheckSource } from "../rulesets/check-effects.js";
+import { rulesetItemGateCheck, rulesetItemSources, type RulesetCheckSource } from "../rulesets/check-effects.js";
+import { rulesetItemGateDifficulty, rulesetItemGateLabel } from "../rulesets/item-book.js";
 import { rulesetCatalogEntriesByRef } from "../rulesets/scaled-rows.js";
 import {
   lookupStepTable,
@@ -309,8 +310,9 @@ export interface RulesetConditionModifier {
 /**
  * Everything this combatant's conditions (and levels) do to one number. For a save, a change that
  * names its saves (its own, else its condition's) changes only those; everything else it changes
- * whatever the roll is for. A change to checks narrowed to some skills never reaches a fight, whose
- * contests roll the fight's own checks, and a change that only rolls twice adds nothing here.
+ * whatever the roll is for. A change to checks narrowed to some skills reaches a fight only on a check
+ * that names one of them (an item's gate), since its contests roll the fight's own checks; a change
+ * that only rolls twice adds nothing here.
  */
 export function rulesetConditionModifiers(
   definition: RulesetDefinition,
@@ -318,6 +320,8 @@ export function rulesetConditionModifiers(
   combatant: RulesetCombatant,
   to: NonNullable<RulesetCombatCondition["modifiers"]>[number]["to"],
   state?: RulesetEncounterState,
+  /** The save rolled, for modifiers to saves; the skill rolled, for modifiers to checks, so what is
+   *  narrowed to it counts (a contest names none, and reads only what is narrowed to nothing). */
   save?: string,
 ): RulesetConditionModifier[] {
   // A ruleset with no items and no condition or level that changes a number has nothing to read. One
@@ -334,7 +338,8 @@ export function rulesetConditionModifiers(
       .filter((modifier) => {
         if (modifier.to !== to) return false;
         if (modifier.flat === undefined && modifier.dice === undefined && modifier.times === undefined) return false;
-        if (to === "checks" && (modifier.skills ?? entry.skills)) return false;
+        const skills = modifier.skills ?? entry.skills;
+        if (to === "checks" && skills && !(save !== undefined && skills.includes(save))) return false;
         const saves = modifier.saves ?? entry.saves;
         return !(to === "saves" && save !== undefined && saves && !saves.includes(save));
       })
@@ -416,17 +421,21 @@ export function rulesetCheckMode(
   combat: RulesetCombat,
   combatant: RulesetCombatant,
   state?: RulesetEncounterState,
+  /** The skill rolled, where a check names one (an item's gate), so what is narrowed to it counts. */
+  skill?: string,
 ): "normal" | "advantage" | "disadvantage" {
   if (!rulesetCombatAdvantage(combat)) return "normal";
   let advantage = false;
   let disadvantage = false;
+  const narrowedAway = (skills: readonly string[] | undefined) =>
+    !!skills && !(skill !== undefined && skills.includes(skill));
   for (const entry of rulesetActiveConditions(definition, combat, combatant, state)) {
     for (const modifier of entry.modifiers ?? []) {
-      if (modifier.to !== "checks" || !modifier.mode || (modifier.skills ?? entry.skills)) continue;
+      if (modifier.to !== "checks" || !modifier.mode || narrowedAway(modifier.skills ?? entry.skills)) continue;
       if (modifier.mode === "advantage") advantage = true;
       else disadvantage = true;
     }
-    if (entry.skills) continue;
+    if (narrowedAway(entry.skills)) continue;
     if (entry.effects.includes("own-checks-advantage")) advantage = true;
     if (entry.effects.includes("own-checks-disadvantage")) disadvantage = true;
   }
@@ -746,6 +755,13 @@ function itemUseActions(
     if (aim.target !== undefined) action.target = aim.target;
     const restored = amountOf(use.restore?.amount);
     if (use.restore && restored) action.restore = { pool: use.restore.pool, amount: restored };
+    // A gate read off a stat the item does not give is a check against nothing, as a save's is.
+    const gateDifficulty = use.gate ? rulesetItemGateDifficulty(item, use.gate) : undefined;
+    if (use.gate && gateDifficulty === undefined) return;
+    const gate =
+      use.gate && gateDifficulty !== undefined
+        ? rulesetItemGateCheck(definition, build, evaluated, use.gate, gateDifficulty)
+        : null;
     action.itemUse = {
       item: index,
       ...(use.consumes ? { consumes: true as const } : {}),
@@ -755,6 +771,16 @@ function itemUseActions(
               cost: use.charges,
               max,
               ...(item.charges?.breaksOn ? { breaksOn: { ...item.charges.breaksOn } } : {}),
+            },
+          }
+        : {}),
+      ...(gate
+        ? {
+            gate: {
+              check: rulesetItemGateLabel(definition, use.gate!),
+              ...(gate.target?.type === "skill" ? { skill: gate.target.id } : {}),
+              modifier: gate.modifier,
+              difficulty: gate.difficulty,
             },
           }
         : {}),

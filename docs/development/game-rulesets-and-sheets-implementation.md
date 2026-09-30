@@ -1519,6 +1519,39 @@ I6-4) so the rest seam and the check seam ship on their own.
   `game-inventory-turn.regression.ts`, and `e2e/game-ruleset-item-charges.e2e.ts`, with 35 deliberate
   breaks each caught.
 
+### What item gates settled
+
+Capability API 1.62, for #6892. Slice I6-4 of the ruleset items plan, the check seam split from
+charges over time.
+
+- **The key.** A use's `gate`: `check` is exactly one of a skill, an ability or a value ref (the value
+  form is for a number that differs per character, as a 5e caster's spellcasting modifier does);
+  `difficulty` is 1 to 100 or an item stat; `unless` is a value ref and `atLeast`. Unknown skills,
+  abilities, value refs and item stats are refused at import.
+- **Worked out once.** `rulesetItemGateCheck` (check-effects.ts) answers null when `unless` is met and
+  otherwise the target, the sheet's number (`rulesetCheckModifier`, or the value) with
+  `resolution.adjust`, and the difficulty (`rulesetItemGateDifficulty`, item-book.ts, which a missing
+  stat leaves undefined: the fight drops the use and the Use button refuses it as `no-use`).
+- **In a fight.** `itemUseActions` puts the gate on `itemUse.gate` as the fight begins (no gate when
+  `unless` is met). The main choice path rolls it right after `spendAvailability` (`passesGate`,
+  shaped as `rollSave`): a pool in a pool fight, the fight's dice otherwise, with the "checks"
+  modifiers and roll mode of the user's conditions and worn items. `rulesetConditionModifiers` and
+  `rulesetCheckMode` now let a named skill through, so what is narrowed to it counts; contests still
+  name none. A failed gate emits a `gate` event and ends the action with the item spent. Item uses
+  are never reactions, sequence parts or signatures, so no other spend path needs it.
+- **Outside a fight.** `useRulesetItemOutsideFight` rolls it before anything is applied, with the
+  user's own items (`rulesetSheetItems` for the stack's holder), the ruleset's roller
+  (`rollDiceSumCheck`, or `rollDicePoolCheck` with the difficulty clamped to what a pool can count),
+  the wound penalty and `rulesetCheckEffects`. A failure spends the item and applies nothing; `said.gate`
+  carries the roll into the line.
+- **Seen and said.** Item facts carry `gate` (check label, difficulty, `unless` as a value label); the
+  Game Master's line says "needs a Ward check against 2 first, unless Nerve is 3 or more; failed, it
+  is used up for nothing", the details say the same, and the fight log has pass and fail lines.
+- **Examples.** Gravewatch's page of the vigil litany restores two Resolve behind a Ward gate that
+  Nerve 3 skips.
+- **Proven** by `scripts/regressions/game-ruleset-item-gate.regression.ts` and
+  `e2e/game-ruleset-item-gate.e2e.ts`, with 36 deliberate breaks each caught.
+
 ## Gaps a ruleset author found
 
 The author of [Marinara-RPG-Extension](https://github.com/Kenhito/Marinara-RPG-Extension), who

@@ -306,6 +306,40 @@ try {
     assert(!content.includes("LEGACY_SECRET") && !content.includes("LEGACY_PLAN_SECRET"));
     assert(content.includes("Old public."));
   }
+
+  // A whisper typed while editing the narrator's reply works like one the narrator wrote.
+  const narratorReply = await chats.createMessage({
+    chatId: chat.id,
+    role: "assistant",
+    characterId: narrator.id,
+    content: "Old narration.",
+  });
+  assert(narratorReply);
+  const edited = await app.inject({
+    method: "PATCH",
+    url: `/api/chats/${chat.id}/messages/${narratorReply.id}`,
+    payload: {
+      content:
+        'The fog lifts. [whisper: character="Bob" text=""EDITED_SECRET," a voice breathes.\nOnly you hear it."] The bells ring.',
+    },
+  });
+  assert.equal(edited.statusCode, 200, edited.body);
+  const editedMessage = edited.json() as { content: string; extra: unknown };
+  assert.equal(editedMessage.content, "The fog lifts.  The bells ring.");
+  const editedExtra =
+    typeof editedMessage.extra === "string" ? JSON.parse(editedMessage.extra) : (editedMessage.extra as object);
+  assert.deepEqual(
+    getRoleplayWhispers(editedExtra).map(({ recipient, command }) => [recipient.id, command.text]),
+    [[bob.id, '"EDITED_SECRET," a voice breathes.\nOnly you hear it.']],
+  );
+  assert((await preview(bob.id)).includes("EDITED_SECRET"));
+  assert(!(await preview(alice.id)).includes("EDITED_SECRET"));
+  // Generated rewrites keep bracketed prose; only typed edits are read as commands.
+  await chats.updateMessageContent(narratorReply.id, "A rewrite keeps [notes about the harbor] as prose.");
+  assert.equal(
+    (await chats.getMessage(narratorReply.id))?.content,
+    "A rewrite keeps [notes about the harbor] as prose.",
+  );
   console.log(
     "User Roleplay private commands passed: manual/direct generation, recipient and narrator privacy, Smart selection, preview parity, legacy input and active-member notes.",
   );

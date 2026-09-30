@@ -2487,7 +2487,7 @@
   "roleplay.commands.sound.requirements": "Requires an ElevenLabs audio connection with sound effect generation enabled.",
   "roleplay.commands.title": "Commands",
   "roleplay.commands.whisper.audience": "Who can whisper",
-  "roleplay.commands.whisper.description": "Hide part of a message from everyone except a selected character and the appointed narrator. Use it for secrets, visions, and private asides. Your persona can be the recipient. You can also use this command to whisper other characters: [whisper: character=\"name\" text=\"text hidden from anyone but specified character\"].",
+  "roleplay.commands.whisper.description": "Hide part of a message from everyone except a selected character and the appointed narrator. Use it for secrets, visions, and private asides. Your persona can be the recipient. You can also use this command to whisper other characters: [whisper: character=\"name\" text=\"text hidden from anyone but specified character\"]. The text may span several lines and quote dialogue as is, like text=\"\"I love you.\"\".",
   "roleplay.commands.whisper.edit": "Edit whisper",
   "roleplay.commands.whisper.hide": "Hide the secret",
   "roleplay.commands.whisper.label": "Whisper",

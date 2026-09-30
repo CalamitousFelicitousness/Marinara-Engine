@@ -561,7 +561,7 @@ export function buildRoleplayCommandsReminder(args: {
     );
   if (args.privateAvailable && enabled("whisper"))
     lines.push(
-      '- [whisper: character="name" text="text hidden from anyone but the specified character"] Hides a part of the message and makes it available only to a selected character. No one else will be able to access it, except for the appointed narrator. This can be used to whisper secrets, show visions, etc. Name exactly one chat character or the user\'s persona. Put the command where the secret belongs in the message, and do not repeat its text in public narration.',
+      '- [whisper: character="name" text="text hidden from anyone but the specified character"] Hides a part of the message and makes it available only to a selected character. No one else will be able to access it, except for the appointed narrator. This can be used to whisper secrets, show visions, etc. Name exactly one chat character or the user\'s persona. Put the command where the secret belongs in the message, and do not repeat its text in public narration. The text may span several lines and quote dialogue as is, for example text=""I love you."".',
     );
   if (enabled("roll"))
     lines.push(

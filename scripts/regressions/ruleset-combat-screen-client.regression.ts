@@ -575,6 +575,10 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ],
     ["heal", say({ type: "heal", targetId: "corwin", rolls: [5], flat: 4, amount: 9, health: 29, maxHealth: 38 })],
     ["temporary", say({ type: "temporary", targetId: "brenna", rolls: [3], flat: 2, amount: 5 })],
+    [
+      "restored",
+      say({ type: "restored", targetId: "corwin", pool: "Ki", rolls: [], flat: 2, amount: 2, value: 5, max: 7 }),
+    ],
     ["condition", say({ type: "condition", targetId: "brenna", condition: "prone", active: true, reason: "applied" })],
     ["spend", say({ type: "spend", actorId: "corwin", pool: "slots_1", label: "1st-level slots", amount: 1 })],
     ["budget", say({ type: "budget", actorId: "brenna", budget: "bonus", left: 0 })],
@@ -725,6 +729,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
 
   // The exact strings, so rewording one is a decision rather than an accident.
   assert.equal(printed.get("window"), "Brenna breaks away, and Thorn Lurker may strike.");
+  assert.equal(printed.get("restored"), "Corwin gets back 2 Ki, and is on 5 of 7.");
   assert.equal(printed.get("cancelled"), "Thorn Lurker stops Brenna: Fireball never happens.");
   assert.equal(
     printed.get("hardness"),

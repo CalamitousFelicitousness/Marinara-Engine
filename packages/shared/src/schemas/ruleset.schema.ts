@@ -2065,7 +2065,7 @@ export type RulesetItemAttack = z.infer<typeof rulesetItemAttackSchema>;
  * off a pool, a check, a reaction, concentration, scaling and a turn's economy. It spends its own
  * `budget` (unless `free`), rolls to hit with its own `toHit` where it rolls, and asks its own
  * `saveDifficulty` where it asks a save. It may take the item off its stack (`consumes`) or spend the
- * item's `charges`.
+ * item's `charges`, and may `restore` a pool of whoever it lands on.
  */
 /** The most charges an item holds, written down or read off a stat, and so the most one use spends. */
 export const RULESET_ITEM_CHARGES_MAX = 100;
@@ -2089,6 +2089,11 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     saveDifficulty: orItemStat(z.number().int().min(0).max(100)).optional(),
     consumes: z.literal(true).optional(),
     charges: z.number().int().min(1).max(RULESET_ITEM_CHARGES_MAX).optional(),
+    /** A pool of the user's sheet it gives back some of, as a blood bag gives back blood. */
+    restore: z
+      .object({ pool: sheetId, amount: z.object(catalogAmountShape).strict() })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine((use, ctx) => {
@@ -2099,6 +2104,13 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     if (use.free && use.budget !== undefined) issue("free", "Something free spends no budget, so it names none");
     if (use.consumes && use.charges !== undefined) {
       issue("charges", "A use that uses the item up spends no charges of it");
+    }
+    if (use.restore && use.restore.amount.dice === undefined && use.restore.amount.flat === undefined) {
+      issue("restore", "A restore says how much it gives back");
+    }
+    // Giving back is help: a use aimed to harm restores nobody's pool.
+    if (use.restore && use.kind !== "heal" && use.kind !== "buff") {
+      issue("restore", "A restore is on a use that helps, a heal or a buff");
     }
   });
 export type RulesetItemUse = z.infer<typeof rulesetItemUseSchema>;
@@ -5548,6 +5560,14 @@ function useIssues(
   value(use.saveDifficulty, "number", [...at, "saveDifficulty"]);
   if (use.charges !== undefined && !item.charges) {
     add([...at, "charges"], "A use that spends charges is on an item that holds some");
+  }
+  if (use.restore) {
+    const pool = definition.sheet.live.pools.find((entry) => entry.id === use.restore!.pool);
+    const health = definition.combat?.health ?? definition.battle?.health;
+    if (!pool) add([...at, "restore", "pool"], `Unknown pool "${use.restore.pool}"`);
+    else if (health && "pool" in health && health.pool === pool.id) {
+      add([...at, "restore", "pool"], "Health comes back with a heal, not a restore");
+    }
   }
   if (use.toHit && !use.attackRoll) add([...at, "toHit"], "A to-hit is for a use that rolls to hit");
   // A wound track has boxes and no buffer, as an ability's temporary points are refused there too.

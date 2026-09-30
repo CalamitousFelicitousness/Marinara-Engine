@@ -156,6 +156,7 @@ function rulesetItemUseLine(facts: RulesetItemFacts, t: TFunction): string {
     use.save ? rulesetItemUseSaveText(use.save, t) : "",
     use.applies?.length ? t("ui.game.gameinventory.useApplies", { conditions: use.applies.join(", ") }) : "",
     use.temporary ? t("ui.game.gameinventory.useTemporary", { amount: use.temporary }) : "",
+    use.restore ? t("ui.game.gameinventory.useRestore", { amount: use.restore.amount, pool: use.restore.pool }) : "",
     use.range !== undefined ? t("game.ruleset.catalog.mechanics.range", { distance: distance(use.range) }) : "",
     use.area
       ? t("game.ruleset.catalog.mechanics.area", {

@@ -299,6 +299,8 @@ export interface RulesetCombatAction {
   damage?: RulesetCombatDamage;
   heal?: RulesetCombatAmount;
   temporary?: RulesetCombatAmount;
+  /** A pool of each target's sheet this gives back some of: an item's `restore`. */
+  restore?: { pool: string; amount: RulesetCombatAmount };
   save?: RulesetCombatSaveRider;
   /** The source's own save difficulty, for a save-ends on an action with no save of its own. */
   saveDifficulty?: number;
@@ -807,6 +809,18 @@ export type RulesetCombatEvent =
     }
   | { type: "temporary"; targetId: string; sourceId?: string; rolls: number[]; flat: number; amount: number }
   | {
+      type: "restored";
+      targetId: string;
+      sourceId?: string;
+      /** The pool's own label, and where it stands after. */
+      pool: string;
+      rolls: number[];
+      flat: number;
+      amount: number;
+      value: number;
+      max: number;
+    }
+  | {
       type: "condition";
       targetId: string;
       condition: string;
@@ -1010,6 +1024,8 @@ export interface RulesetCombatOption {
   /** Whether the amount below is health GIVEN BACK rather than taken off. Without it a menu and an
    *  opponent's own choices cannot tell a heal from a blow, because both are an amount. */
   heals?: boolean;
+  /** The pool of its target's sheet it gives back some of, so a picker can leave a full one alone. */
+  restores?: string;
   /** Expected values, never a future die: `averageDamage` is the average of the amount rolled and
    *  `hitChance` the share of rolls that would land against the first legal target. A sequence
    *  forecasts the sum of its parts' damage and no single chance to hit, because its parts each

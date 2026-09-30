@@ -964,6 +964,7 @@ function optionFrom(
     targets: action.targets,
     ...(rulesetFreeStrike(actor, action) ? { strikes: actor.strikesLeft } : {}),
     ...(action.heal ? { heals: true } : {}),
+    ...(action.restore ? { restores: action.restore.pool } : {}),
   };
   if (paid.cost.length > 0) option.cost = paid.cost;
   if (action.uses) option.left = actor.uses[action.id] ?? 0;

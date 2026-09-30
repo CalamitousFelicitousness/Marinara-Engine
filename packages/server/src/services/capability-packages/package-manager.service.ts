@@ -984,6 +984,17 @@ function entriesCarryItemUse(entries: unknown): boolean {
   );
 }
 
+const ITEM_RESTORE_ISSUE =
+  "A ruleset whose items restore a pool when used requires schemaVersion 2 and capabilityApi 1.60 or newer";
+
+/** A use's `restore`, which is 1.60: a new key on the strict use. */
+function entriesCarryItemRestore(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) &&
+    entries.some((entry) => plainRecord(plainRecord(plainRecord(entry)?.item)?.use)?.restore !== undefined)
+  );
+}
+
 /** A level that reads a derived value, which is 1.54: a new key on the strict level. */
 function rulesetCarriesDerivedLevels154(ruleset: { combat?: unknown } | undefined): boolean {
   const levels = plainRecord(ruleset?.combat)?.levels;
@@ -1228,6 +1239,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryAmmo(header.entries) && !declaresApi(57)) return AMMO_ISSUE;
       if (entriesCarryWeaponWays(header.entries) && !declaresApi(58)) return WEAPON_WAYS_ISSUE;
       if (entriesCarryItemUse(header.entries) && !declaresApi(59)) return ITEM_USE_ISSUE;
+      if (entriesCarryItemRestore(header.entries) && !declaresApi(60)) return ITEM_RESTORE_ISSUE;
       const asset = header.asset;
       if (typeof asset !== "string") continue;
       // A path that does not normalize is never a declared one, whatever else failed to normalize.
@@ -1260,6 +1272,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryAmmo(fileEntries) && !declaresApi(57)) return AMMO_ISSUE;
       if (entriesCarryWeaponWays(fileEntries) && !declaresApi(58)) return WEAPON_WAYS_ISSUE;
       if (entriesCarryItemUse(fileEntries) && !declaresApi(59)) return ITEM_USE_ISSUE;
+      if (entriesCarryItemRestore(fileEntries) && !declaresApi(60)) return ITEM_RESTORE_ISSUE;
     }
   }
   // The battle block lives inside the ruleset file too, so it is read the same way and for the same

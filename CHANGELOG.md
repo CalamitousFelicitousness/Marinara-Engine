@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- A Game Mode ruleset's items can now be used outside a fight: the inventory's Use button on a poultice or a potion heals whoever carries it with the Engine's dice, takes it out of the bag and tells the Game Master what happened, and the Game Master can use items the same way. An item can also give back a pool, such as a tonic that restores Resolve, in a fight or out of one. Rulesets that restore a pool need Capability API 1.60 (#6881).
+
 - Updated brace-expansion, fast-uri, and ip-address dependencies with upstream denial-of-service and address-validation security fixes.
 - Termux rebuilds now include the multiplayer guest assets required by startup checks, and dependency updates retain Sharp's matching WebAssembly fallback for Android image processing (#6883, #6859).
 - Merged Roleplay groups update expressions for the active, selected cast during replies and manual retries, instead of only the first character (#6872).

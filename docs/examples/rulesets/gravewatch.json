@@ -703,11 +703,12 @@
             "stack": 6,
             "cost": { "amount": 4, "unit": "penny" },
             "use": {
-              "$comment": "A swallow on the quick budget, so it fits beside a blow: it clears one box of harm, and the bottle is empty.",
+              "$comment": "A swallow on the quick budget, so it fits beside a blow: it clears one box of harm and gives back a point of Resolve, and the bottle is empty. Used outside a fight, from the inventory or by the Game Master, it does the same.",
               "kind": "heal",
               "budget": "quick",
               "targets": "self",
               "amount": { "flat": 1 },
+              "restore": { "pool": "resolve", "amount": { "flat": 1 } },
               "consumes": true
             }
           }

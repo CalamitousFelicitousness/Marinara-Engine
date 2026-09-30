@@ -1134,6 +1134,95 @@ try {
     assert.deepEqual(await stacksOf(carried.json().sessionChat.id), ["Old Map 1"]);
   }
 
+  // ── Using an item (#6881): a turn's `use` heals from the turn's start and spends the item once ──
+  {
+    const ember = {
+      ...(JSON.parse(
+        readFileSync(fileURLToPath(new URL("../../docs/examples/rulesets/ember-roads.json", import.meta.url)), "utf8"),
+      ) as Record<string, any>),
+      id: "ember-use-turn",
+    };
+    await createGameRulesetsStorage(db).put({
+      rulesetId: "local/ember-use-turn",
+      version: ember.version,
+      sourceKind: "local",
+      definition: JSON.stringify(ember),
+    });
+    const connection = (await createConnectionsStorage(db).list())[0]!;
+    const used = await chats.create({
+      name: "Using",
+      mode: "game",
+      characterIds: [],
+      connectionId: connection.id,
+      promptPresetId: null,
+    });
+    assert.ok(used);
+    // With no persona the first card is the player's: Ada, down to no Grit.
+    await chats.patchMetadata(used.id, {
+      enableAgents: false,
+      enableTools: false,
+      gameRuleset: { id: "local/ember-use-turn", version: ember.version, packageId: null, options: {} },
+      gameCharacterCards: [
+        {
+          name: "Ada",
+          rulesetSheet: { v: 1, build: { abilities: { brawn: 0, wits: 0, heart: 0 }, fields: {}, lists: {} } },
+        },
+      ],
+      gameInventory: [{ id: "st-poultice", name: "Poultice", quantity: 2, item: "outfitter/poultice" }],
+    });
+    const states = createGameStateStorage(db);
+    const before = await chats.createMessage({ chatId: used.id, role: "assistant", content: "Ada is bleeding." });
+    await states.create({
+      chatId: used.id,
+      messageId: before.id,
+      swipeIndex: 0,
+      date: null,
+      time: null,
+      location: null,
+      weather: null,
+      temperature: null,
+      presentCharacters: [],
+      recentEvents: [],
+      playerStats: null,
+      personaStats: null,
+    });
+    await states.updateLatest(used.id, { rulesetLive: { ada: { pools: { grit: { value: 0 } } } } });
+    const gritOn = async (messageId: string, swipe: number) => {
+      const row = await states.getByChatAndMessage(used.id, messageId, swipe);
+      const live = row?.rulesetLive ? (JSON.parse(row.rulesetLive as string) as Record<string, any>) : {};
+      return live.ada?.pools?.grit?.value as number | undefined;
+    };
+    const poultices = async () =>
+      normalizeGameInventoryStacks(JSON.parse((await chats.getById(used.id))!.metadata as string).gameInventory).find(
+        (stack) => stack.id === "st-poultice",
+      )?.quantity;
+    reply = `Ada presses a poultice to the cut. [inventory: action="use" item="Poultice"]`;
+    await chats.createMessage({ chatId: used.id, role: "user", content: "I tend the wound." });
+    const told = await app.inject({
+      method: "POST",
+      url: "/api/generate/",
+      payload: { chatId: used.id, streaming: true },
+    });
+    assert.equal(told.statusCode, 200, told.body);
+    const saved = (await chats.listMessages(used.id)).at(-1)!;
+    const [answer] = readResolvedInventoryTags(saved.content);
+    assert.deepEqual(answer && [answer.action, answer.ok, answer.count, answer.now], ["use", true, 1, 1]);
+    assert.match(saved.content, /note="Ada uses Poultice: heals [2-5] \(Grit [2-5]\/\d+\)\. 1 left\."/);
+    assert.equal(await poultices(), 1);
+    const healed = await gritOn(saved.id, 0);
+    assert.ok(healed !== undefined && healed >= 2 && healed <= 5, `the turn saved Ada healed, not ${healed}`);
+    assert.match(told.body, /"type":"game_state_patch"[^\n]*"grit"/, "the client is told the sheet changed");
+    // Told again, it starts from where the turn began: one poultice used, not two, and Ada healed from 0.
+    await app.inject({
+      method: "POST",
+      url: "/api/generate/",
+      payload: { chatId: used.id, streaming: true, regenerateMessageId: saved.id },
+    });
+    assert.equal(await poultices(), 1);
+    const retold = await gritOn(saved.id, 1);
+    assert.ok(retold !== undefined && retold >= 2 && retold <= 5, `the retelling healed from 0, not ${retold}`);
+  }
+
   console.info("game inventory turn regressions passed.");
 } finally {
   ClaudeSubscriptionProvider.prototype.chat = originalChat;

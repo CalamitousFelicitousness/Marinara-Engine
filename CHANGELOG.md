@@ -4,6 +4,10 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- A message's **Private note** (under **Bookmark, pin or note**) can be shown to one Roleplay character with **Show the note to the narrator character**. That character receives it next to the message, and nobody else does. Notes stay private by default (#6895).
+
+- The Roleplay **Whisper** command description now shows the format for whispering to another character (#6895).
+
 - A Game Mode ruleset's items can now get their charges back on a rest: a wand or a bell refills when its holder takes the rest the ruleset names, from the sheet's Rest button or the Game Master's rest, and an item can break when its last charge is spent, as a 5e wand crumbles on a 1. The Game Master sees how many charges each item has left. Rulesets that use these need Capability API 1.61 (#6888).
 
 - A Game Mode ruleset's items can now be used outside a fight: the inventory's Use button on a poultice or a potion heals whoever carries it with the Engine's dice, takes it out of the bag and tells the Game Master what happened, and the Game Master can use items the same way. An item can also give back a pool, such as a tonic that restores Resolve, in a fight or out of one. Rulesets that restore a pool need Capability API 1.60 (#6881).

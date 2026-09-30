@@ -8,6 +8,7 @@ import {
   isMessagePinnedToContext,
   readMessageBookmark,
   readMessagePrivateNote,
+  readMessagePrivateNoteRecipientId,
 } from "@marinara-engine/shared";
 import { useQueryClient } from "@tanstack/react-query";
 import { Bookmark, Pin, StickyNote } from "lucide-react";
@@ -18,9 +19,19 @@ import { toast } from "sonner";
 import { useUpdateMessageExtra } from "../../hooks/use-chats";
 import { ApiError } from "../../lib/api-client";
 import { cn } from "../../lib/utils";
+import { SettingsSwitch } from "../panels/settings/SettingControls";
 import { MESSAGE_ACTION_ICON_SIZE, MessageActionButton, useMessageActionMenu } from "./MessageActionButton";
 
 type MarkableMessage = { id: string; chatId: string; extra?: unknown };
+
+/** Roleplay chats can show a message's private note to one of their characters. */
+export type MessageNoteSharing = {
+  characters: Array<{ id: string; name: string }>;
+  /** The chat's command narrator, preselected when sharing starts. */
+  narratorId: string | null;
+  /** Only per-character replies can keep a note from the other characters. */
+  available: boolean;
+};
 
 const POPOVER_CLASS =
   "marinara-chat-popover fixed z-[9999] max-h-[calc(var(--mari-visual-viewport-height,100dvh)-1rem)] w-[min(18rem,calc(100vw-1rem))] overflow-y-auto overscroll-contain rounded-xl border border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--marinara-chat-chrome-panel-bg)] p-2 text-[var(--marinara-chat-chrome-panel-text)] shadow-xl";
@@ -65,10 +76,12 @@ export function MessageMarksAction({
   message,
   align = "left",
   stopPropagation,
+  noteSharing,
 }: {
   message: MarkableMessage;
   align?: "left" | "right";
   stopPropagation?: boolean;
+  noteSharing?: MessageNoteSharing;
 }) {
   const { t: localizeUi } = useUiTranslation();
   const { open, setOpen, buttonRef, menuRef, position } = useMessageActionMenu(align);
@@ -78,6 +91,9 @@ export function MessageMarksAction({
   const [note, setNote] = useState(marks.note ?? "");
   const labelId = useId();
   const noteId = useId();
+  const recipientSelectId = useId();
+  const recipientId = noteSharing ? readMessagePrivateNoteRecipientId(message.extra) : null;
+  const recipientListed = !!recipientId && !!noteSharing?.characters.some((character) => character.id === recipientId);
 
   useEffect(() => {
     if (!open) return;
@@ -185,16 +201,66 @@ export function MessageMarksAction({
                 rows={3}
                 maxLength={MAX_PRIVATE_NOTE_LENGTH}
                 onChange={(event) => setNote(event.target.value)}
-                placeholder={localizeUi("ui.chat.messagemarks.privateNotePlaceholder")}
+                placeholder={localizeUi(
+                  recipientId
+                    ? "ui.chat.messagemarks.privateNoteSharedPlaceholder"
+                    : "ui.chat.messagemarks.privateNotePlaceholder",
+                )}
                 className={cn(FIELD_CLASS, "resize-y leading-5")}
               />
+              {noteSharing && noteSharing.characters.length > 0 && (
+                <div className="mt-1.5 space-y-1.5">
+                  <SettingsSwitch
+                    label={localizeUi("ui.chat.messagemarks.shareNoteWithNarrator")}
+                    checked={!!recipientId}
+                    disabled={!recipientId && !noteSharing.available}
+                    onChange={(shared) =>
+                      save({
+                        privateNoteRecipientId: shared
+                          ? (noteSharing.narratorId ?? noteSharing.characters[0]!.id)
+                          : null,
+                      })
+                    }
+                    description={localizeUi(
+                      noteSharing.available
+                        ? "ui.chat.messagemarks.noteSharedDescription"
+                        : "ui.chat.messagemarks.noteSharingUnavailable",
+                    )}
+                    className="!gap-2 !p-0 text-xs"
+                  />
+                  {recipientId && (
+                    <div>
+                      <label htmlFor={recipientSelectId} className="sr-only">
+                        {localizeUi("ui.chat.messagemarks.noteRecipient")}
+                      </label>
+                      <select
+                        id={recipientSelectId}
+                        value={recipientListed ? recipientId : ""}
+                        onChange={(event) => save({ privateNoteRecipientId: event.target.value || null })}
+                        className={cn(FIELD_CLASS, "h-8")}
+                      >
+                        {!recipientListed && (
+                          <option value="" disabled>
+                            {localizeUi("ui.chat.messagemarks.chooseNoteRecipient")}
+                          </option>
+                        )}
+                        {noteSharing.characters.map((character) => (
+                          <option key={character.id} value={character.id}>
+                            {character.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="mt-1.5 flex justify-end gap-1.5">
                 {marks.note && (
                   <button
                     type="button"
                     onClick={() => {
                       setNote("");
-                      save({ privateNote: null });
+                      save({ privateNote: null, privateNoteRecipientId: null });
                     }}
                     className="mari-chrome-control mari-chrome-control--small px-2"
                   >

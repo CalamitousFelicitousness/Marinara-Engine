@@ -109,6 +109,8 @@ With **Personal Notes** enabled under **Roleplay Commands**, write `[notes: cont
 
 The narrator also stops receiving a character's notes when that character is disabled or removed from the group. Disabling does not delete the saved notes; re-enabling the character makes them available again.
 
+You can also keep a note on a single message. Choose **Bookmark, pin or note** under the message and write a **Private note**. It stays private and is never sent to the model unless you turn on **Show the note to the narrator character** and pick a character. That character then receives the note next to that message, and no other character does. Sharing needs a solo chat or **Individual** group generation, because a merged group reply is written for every character at once. **Remove note** also stops sharing it.
+
 ## Character interruptions
 
 In **Chat Settings → Agents → Roleplay Commands**, enable **Interruptions** to let characters cut off the latest message when a verbal or physical intervention is plausible. It starts off and does not need a downloadable agent.

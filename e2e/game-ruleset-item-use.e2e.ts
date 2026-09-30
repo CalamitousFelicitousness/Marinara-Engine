@@ -122,7 +122,10 @@ test("a bound bell spends a charge and the bag keeps the count", async ({ page, 
     await inventoryButton(page).click({ timeout: 30_000 });
     await page.getByRole("button", { name: /^Dawn bell/ }).click();
     await expect(
-      page.getByText("Use (Act): Steel save of 7 negates it, Rattled, 1 of 3 charges", { exact: true }),
+      page.getByText(
+        "Use (Act): Steel save of 7 negates it, Rattled, spends 1 of 3 charges, regains all on Stand down from the vigil, breaks on a 1 on a d20 when emptied",
+        { exact: true },
+      ),
     ).toBeVisible();
     await expect(page.getByText("2 of 3 charges left", { exact: true })).toBeVisible();
 

@@ -226,7 +226,7 @@ import {
   type GameRulesetSheetContext,
   type GameRulesetSheetTurn,
 } from "../services/game/ruleset-sheet-turn.service.js";
-import { gameInventoryItemUser } from "../services/game/game-item-use.service.js";
+import { gameInventoryItemUser, gameInventoryRestRecharge } from "../services/game/game-item-use.service.js";
 import {
   commitGameInventoryChange,
   followGameInventoryOnRow,
@@ -4599,6 +4599,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 }),
               )
             : undefined;
+          // What each stack of an item that holds charges has left: its kept count, or all of them.
+          const promptCharges = promptItemBook
+            ? (stack: (typeof promptInventoryStacks)[number]) => {
+                const max = stack.item ? promptItemBook.itemOf(stack.item)?.facts.use?.charges?.max : undefined;
+                return max === undefined ? undefined : { now: Math.min(max, stack.charges ?? max), max };
+              }
+            : undefined;
           const formatReminder = resolvePromptMacros(
             buildGmFormatReminder({
               hasSceneModel,
@@ -4667,10 +4674,10 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               // One line per item with its total, so a stack the player split reads as one thing,
               // and the same per bag once anybody else in the party carries something.
               playerInventory: (() => {
-                const inv = gameInventoryTotals(promptInventoryStacks);
+                const inv = gameInventoryTotals(promptInventoryStacks, promptCharges);
                 return inv.length > 0 ? inv : undefined;
               })(),
-              partyInventory: gameInventoryBags(promptInventoryStacks),
+              partyInventory: gameInventoryBags(promptInventoryStacks, promptCharges),
               ...(promptItemFacts ? { inventoryItemFacts: promptItemFacts } : {}),
               ...(promptBearers ? { inventoryBearers: promptBearers } : {}),
             }),
@@ -9279,13 +9286,25 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             replaced: number | null;
             /** What a `use` works on: the sheets as the sheet commands left them, and the dice's seed,
              *  so the answers worked out now and once the reply is saved roll the same. */
-            uses?: { context: GameRulesetSheetContext; live: RulesetLiveStates; seed: number };
+            uses?: {
+              context: GameRulesetSheetContext;
+              live: RulesetLiveStates;
+              seed: number;
+              /** The rests the turn's sheet commands took, whose charges come back to what is carried. */
+              rests: Array<{ who: string; rest: string }>;
+            };
           } | null = null;
           const tellsInventory = /\[inventory:/i.test(fullResponse);
+          // A rest the sheet commands took may bring charges back to what the rested carry.
+          const turnRests = rulesetSheetTurn?.rests ?? [];
           const retellsInventoryTurn =
             !!input.regenerateMessageId &&
             readGameInventoryTurn(chatMeta.gameInventoryTurn)?.messageId === input.regenerateMessageId;
-          if (chatMode === "game" && !input.impersonate && (tellsInventory || retellsInventoryTurn)) {
+          if (
+            chatMode === "game" &&
+            !input.impersonate &&
+            (tellsInventory || retellsInventoryTurn || turnRests.length > 0)
+          ) {
             try {
               const party = { player: personaName || undefined, members: canonicalGamePartyNames };
               const retoldId = input.regenerateMessageId ?? input.continueMessageId ?? null;
@@ -9309,16 +9328,22 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 telling,
               );
               const requested = fullResponse;
-              const rules = tellsInventory
-                ? await loadGameInventoryItemBook(
-                    app.db,
-                    { metadata: currentMeta, resolved: turnGameRuleset, playerName: personaName || null },
-                    "game-master",
-                  )
-                : undefined;
+              const rules =
+                tellsInventory || turnRests.length > 0
+                  ? await loadGameInventoryItemBook(
+                      app.db,
+                      { metadata: currentMeta, resolved: turnGameRuleset, playerName: personaName || null },
+                      "game-master",
+                    )
+                  : undefined;
               const uses =
                 rules && turnSheetContext && rulesetSheetTurn
-                  ? { context: turnSheetContext, live: rulesetSheetTurn.live, seed: randomInt(0, 2 ** 31 - 1) }
+                  ? {
+                      context: turnSheetContext,
+                      live: rulesetSheetTurn.live,
+                      seed: randomInt(0, 2 ** 31 - 1),
+                      rests: turnRests,
+                    }
                   : undefined;
               const preview = tellsInventory
                 ? applyGameInventoryTags(
@@ -9751,6 +9776,15 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                         user?.useItem,
                       )
                     : { content: pending.requested, stacks: plan.start, journal: [] };
+                  // The turn's rests bring charges back on top of what its tags did, from the same start.
+                  if (pending.uses?.rests.length && pending.rules) {
+                    outcome.stacks = gameInventoryRestRecharge(
+                      pending.uses.context,
+                      pending.rules.itemOf,
+                      pending.uses.rests,
+                      pending.uses.seed,
+                    )(outcome.stacks);
+                  }
                   const turnRecord = recordGameInventoryTelling(
                     pending.messageId ?? savedMsg.id,
                     plan.before,

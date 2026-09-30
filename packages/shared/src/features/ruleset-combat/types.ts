@@ -366,7 +366,11 @@ export interface RulesetCombatAction {
   onHit?: Array<{ condition: string; atLeast: number; rounds?: number }>;
   /** Using an item: which of the holder's items it is (its place in `sheet.items`), and what using
    *  it spends of it: one off the stack, or some of its charges. */
-  itemUse?: { item: number; consumes?: true; charges?: { cost: number; max: number } };
+  itemUse?: {
+    item: number;
+    consumes?: true;
+    charges?: { cost: number; max: number; breaksOn?: { die: number; atMost: number } };
+  };
 }
 
 /** One other way to make an attack: how many it shoots, what it adds to hit (dice in a pool fight),
@@ -509,6 +513,8 @@ export interface RulesetCombatant {
   recoverable?: Record<string, number>;
   /** What each item with charges holds now, keyed as the rest are. */
   charges?: Record<string, number>;
+  /** The items that broke when their last charge was spent, keyed as the rest are. */
+  broken?: Record<string, true>;
   /** A party member's sheet, which is where their health and conditions really live. */
   sheet?: {
     build: RulesetSheetBuild;
@@ -855,6 +861,8 @@ export type RulesetCombatEvent =
   | { type: "spend"; actorId: string; pool: string; label: string; amount: number }
   | { type: "budget"; actorId: string; budget: string; left: number }
   | { type: "uses"; actorId: string; optionId: string; label: string; left: number; of: number }
+  /** An item whose last charge was just spent, and whose die said it breaks. */
+  | { type: "broke"; actorId: string; optionId: string; label: string; roll: number }
   | {
       type: "recharge";
       actorId: string;

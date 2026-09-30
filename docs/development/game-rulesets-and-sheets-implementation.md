@@ -1489,6 +1489,36 @@ on their own.
 - **Proven** by `scripts/regressions/game-ruleset-item-use-outside.regression.ts` and
   `e2e/game-ruleset-item-use-outside.e2e.ts`, with 48 deliberate breaks each caught.
 
+### What charges over time settled
+
+Capability API 1.61, for #6888. Slice I6-3 of the ruleset items plan, split from scroll gates (now
+I6-4) so the rest seam and the check seam ship on their own.
+
+- **The keys.** An item's `charges` gains `recharge` (`rests`, one to twelve of the ruleset's rest
+  ids; `amount`, `"max"` or an amount) and `breaksOn` (`die` 2 to 100, `atMost` no more than the
+  die). An unknown rest and an empty amount are refused at import.
+- **Breaking.** A fight's use carries `breaksOn` on `itemUse.charges`; `breakRulesetItem` (ammo.ts),
+  called by `spendAvailability` right after a spend that emptied the item, rolls the fight's die and
+  on a break takes the item off its stack of one and marks it `broken`, with a `broke` event. The
+  write-back journals what was taken as "lost". Outside a fight `useRulesetItemOutsideFight` rolls the
+  same way and says `broke`.
+- **Recharging.** `rechargeRulesetItems` (item-use.ts) refills the items one bag carries for one rest,
+  never past `max`, dropping the kept count once full. The sheet's Rest button, where the ruleset has
+  items, goes through `POST /api/game/inventory/rest` (`restGameRulesetCharacter`): the rest on the
+  character's sheet and the recharge of their bag (the player's own for the player's card) in one
+  transaction, after any sheet edit still waiting to be saved has landed. The Game Master's rests come
+  back from `applySheetCommandTags` as `rests` (per card, so a party rest counts each member), and the
+  generate route's inventory pass runs for them too, recharging from the turn's start with a die
+  kept apart from the uses' (`gameInventoryRestRecharge`).
+- **Seen and said.** The Game Master's inventory line gives each charged stack's charges left
+  (`gameInventoryTotals`' `chargesOf`); item facts and details say what recharges and what breaks, and
+  a use's cost now reads "spends 1 of 3 charges".
+- **Examples.** Gravewatch's dawn bell regains its charges on standing down from the vigil and may
+  crack when rung empty.
+- **Proven** by `scripts/regressions/game-ruleset-item-charges.regression.ts`, the Game Master's rest in
+  `game-inventory-turn.regression.ts`, and `e2e/game-ruleset-item-charges.e2e.ts`, with 35 deliberate
+  breaks each caught.
+
 ## Gaps a ruleset author found
 
 The author of [Marinara-RPG-Extension](https://github.com/Kenhito/Marinara-RPG-Extension), who

@@ -490,12 +490,18 @@ export interface GameInventoryTotal {
   /** How many of it are worn, and how many bound, when any are. */
   equipped?: number;
   bound?: number;
+  /** What each stack of an item that holds charges has left, for whoever reads them. */
+  charges?: Array<{ now: number; max: number }>;
 }
 
 /** One line per item: every stack of an item added together, in the order the items first appear,
  *  shown by the first stack's name. What the Game Master and a fight read, since a split is the
  *  player's own arrangement. */
-export function gameInventoryTotals(stacks: readonly GameInventoryStack[]): GameInventoryTotal[] {
+export function gameInventoryTotals(
+  stacks: readonly GameInventoryStack[],
+  /** What a stack's item holds of its charges, for an item that holds any. */
+  chargesOf?: (stack: GameInventoryStack) => { now: number; max: number } | undefined,
+): GameInventoryTotal[] {
   const totals = new Map<string, GameInventoryTotal>();
   for (const stack of stacks) {
     const item = gameInventoryItemId(stack);
@@ -512,6 +518,8 @@ export function gameInventoryTotals(stacks: readonly GameInventoryStack[]): Game
     line.quantity += stack.quantity;
     if (stack.equipped) line.equipped = (line.equipped ?? 0) + stack.quantity;
     if (stack.bound) line.bound = (line.bound ?? 0) + stack.quantity;
+    const charges = chargesOf?.(stack);
+    if (charges) line.charges = [...(line.charges ?? []), charges];
   }
   return [...totals.values()];
 }
@@ -589,6 +597,7 @@ export function gameInventoryFightEffects<T extends { name: string }>(
  *  that hold something are listed. */
 export function gameInventoryBags(
   stacks: readonly GameInventoryStack[],
+  chargesOf?: (stack: GameInventoryStack) => { now: number; max: number } | undefined,
 ): Array<{ holder?: string; items: GameInventoryTotal[] }> {
   const bags = new Map<string, { holder?: string; stacks: GameInventoryStack[] }>([["", { stacks: [] }]]);
   for (const stack of stacks) {
@@ -599,7 +608,10 @@ export function gameInventoryBags(
   }
   return [...bags.values()]
     .filter((bag) => bag.stacks.length > 0)
-    .map((bag) => ({ ...(bag.holder ? { holder: bag.holder } : {}), items: gameInventoryTotals(bag.stacks) }));
+    .map((bag) => ({
+      ...(bag.holder ? { holder: bag.holder } : {}),
+      items: gameInventoryTotals(bag.stacks, chargesOf),
+    }));
 }
 
 /** How many of an item there are, across all its stacks, or in one bag's. */

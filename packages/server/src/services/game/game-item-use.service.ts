@@ -3,11 +3,14 @@
 // the bag in the chat's metadata and the sheet on the game-state row the player sees, inside the
 // chat's metadata queue and one transaction, so a use either changes both or changes neither.
 import {
+  applyRulesetSheetOp,
   defaultRulesetSheetBuild,
   normalizeCharacterLookupName,
+  rechargeRulesetItems,
   rulesetCombatRoller,
   rulesetItemUseLine,
   useRulesetItemOutsideFight,
+  type RulesetItemRecharge,
   type GameInventoryItemUser,
   type GameInventoryStack,
   type RulesetItemBook,
@@ -35,6 +38,54 @@ export type GameItemUseResult =
       playerStats?: unknown;
     }
   | { ok: false; status: 404 | 409; error: string; reason?: RulesetItemUseRefusal | "no-ruleset" | "no-state" };
+
+/** The card a character plays with, and the bag they carry: the player's own for the player's card
+ *  (the one named for who the chat plays as, or the first card), and their own otherwise. */
+function cardAndBag(
+  context: GameRulesetSheetContext,
+  name: string,
+): { card: GameRulesetSheetContext["cards"][number]; holder: string | undefined } | null {
+  const key = normalizeCharacterLookupName(name);
+  const card = context.cards.find((each) => normalizeCharacterLookupName(each.name) === key);
+  if (!card) return null;
+  const player =
+    (context.playerName
+      ? context.cards.find(
+          (each) => normalizeCharacterLookupName(each.name) === normalizeCharacterLookupName(context.playerName!),
+        )
+      : undefined) ?? context.cards[0];
+  return { card, holder: card === player ? undefined : card.name };
+}
+
+/**
+ * What the Game Master's rests bring back to the items each resting character carries, on the stacks a
+ * turn works from. Dice come from `seed` (kept apart from the uses' own), so the answer worked out
+ * before the reply is saved and the one saved agree.
+ */
+export function gameInventoryRestRecharge(
+  context: GameRulesetSheetContext,
+  itemOf: RulesetItemBook["itemOf"],
+  rests: ReadonlyArray<{ who: string; rest: string }>,
+  seed: number,
+): (stacks: GameInventoryStack[]) => GameInventoryStack[] {
+  return (stacks) => {
+    const roll = rulesetCombatRoller(seed, 10_000);
+    let current = stacks;
+    for (const { who, rest } of rests) {
+      const found = cardAndBag(context, who);
+      if (!found) continue;
+      current = rechargeRulesetItems({
+        definition: context.definition,
+        itemOf,
+        stacks: current,
+        holder: found.holder,
+        rest,
+        roll,
+      }).stacks;
+    }
+    return current;
+  };
+}
 
 /** Uses the item on one stack for whoever carries it: the party member the stack names, or the player.
  *  `live` is every character's live state, and the one who used it comes back changed. */
@@ -168,4 +219,96 @@ export async function useGameRulesetItem(
     line: rulesetItemUseLine(used.said),
     ...(done.playerStats ? { playerStats: done.playerStats } : {}),
   };
+}
+
+export type GameRestResult =
+  | {
+      ok: true;
+      rulesetLive: RulesetLiveStates;
+      /** The rest's own words for the sheet ("Grit 11/11"), and what came back to the items carried. */
+      now: string;
+      recharged: RulesetItemRecharge[];
+      inventory?: GameInventoryStack[];
+      playerStats?: unknown;
+    }
+  | { ok: false; status: 404 | 409; error: string; reason?: string };
+
+/**
+ * The sheet's Rest button: the rest on one character's sheet, and the charges it brings back to the items
+ * they carry, written together inside the chat's metadata queue and one transaction.
+ */
+export async function restGameRulesetCharacter(
+  db: DB,
+  chatId: string,
+  character: string,
+  rest: string,
+  roll: (sides: number) => number = rollDieSecurely,
+): Promise<GameRestResult> {
+  const context = await loadGameRulesetSheetContext(db, chatId);
+  if (!context) return { ok: false, status: 409, error: "This game has no ruleset", reason: "no-ruleset" };
+  const found = cardAndBag(context, character);
+  if (!found) return { ok: false, status: 404, error: "No such character", reason: "unknown-character" };
+  const book = await loadGameInventoryItemBook(db, { chatId }, "player");
+  const key = normalizeCharacterLookupName(found.card.name);
+  let result: GameRestResult | null = null;
+  try {
+    await withChatMetadataPatchQueue(chatId, () =>
+      db.transaction(async () => {
+        const states = createGameStateStorage(db);
+        const visibleAnchor = resolveVisibleGameStateAnchor(await createChatsStorage(db).listMessages(chatId));
+        const row = await states.getForGeneration(chatId, { preferLatestVisible: true, visibleAnchor });
+        if (!row) throw new ItemUseRefused("no-state");
+        const stored: RulesetLiveStates = parseStoredRulesetLive(row.rulesetLive) ?? {};
+        const rested = applyRulesetSheetOp(context.definition, found.card.build, stored[key], { op: "rest", rest });
+        if (!rested.ok) throw new RestRefused(rested.reason);
+        let recharged: RulesetItemRecharge[] = [];
+        const committed = book
+          ? await applyGameInventoryChangeHeld(db, chatId, (stacks) => {
+              const outcome = rechargeRulesetItems({
+                definition: context.definition,
+                itemOf: book.itemOf,
+                stacks,
+                holder: found.holder,
+                rest,
+                roll,
+              });
+              recharged = outcome.recharged;
+              return { stacks: recharged.length > 0 ? outcome.stacks : stacks, journal: [], value: null };
+            })
+          : null;
+        const next: RulesetLiveStates = { ...stored };
+        if (Object.keys(rested.live).length > 0) next[key] = rested.live;
+        else delete next[key];
+        const written =
+          (visibleAnchor
+            ? await states.updateByMessage(visibleAnchor.messageId, visibleAnchor.swipeIndex, chatId, {
+                rulesetLive: next,
+              })
+            : null) ?? (await states.updateLatest(chatId, { rulesetLive: next }));
+        if (!written) throw new ItemUseRefused("no-state");
+        result = {
+          ok: true,
+          rulesetLive: parseStoredRulesetLive(written.rulesetLive) ?? {},
+          now: rested.now,
+          recharged,
+          ...(committed ? { inventory: committed.stacks } : {}),
+          ...(committed?.playerStats ? { playerStats: committed.playerStats } : {}),
+        };
+      }),
+    );
+  } catch (error) {
+    if (error instanceof RestRefused)
+      return { ok: false, status: 409, error: `The rest could not be taken (${error.reason})`, reason: error.reason };
+    if (error instanceof ItemUseRefused)
+      return { ok: false, status: 409, error: "This game has no state yet", reason: error.reason };
+    throw error;
+  }
+  return result ?? { ok: false, status: 404, error: "Chat not found", reason: "no-chat" };
+}
+
+/** A rest the sheet refused, so nothing it touched is written. */
+class RestRefused extends Error {
+  constructor(readonly reason: string) {
+    super(reason);
+  }
 }

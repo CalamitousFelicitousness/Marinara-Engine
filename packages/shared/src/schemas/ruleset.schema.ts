@@ -2147,7 +2147,31 @@ const catalogItemSchema = z
     use: rulesetItemUseSchema.optional(),
     /** How many charges it holds, which its use spends. The count is kept on its stack. */
     charges: z
-      .object({ max: orItemStat(z.number().int().min(1).max(RULESET_ITEM_CHARGES_MAX)) })
+      .object({
+        max: orItemStat(z.number().int().min(1).max(RULESET_ITEM_CHARGES_MAX)),
+        /** Which of the ruleset's rests bring them back, and how many: all of them, or an amount. */
+        recharge: z
+          .object({
+            rests: z.array(sheetId).min(1).max(12),
+            amount: z.union([z.literal("max"), z.object(catalogAmountShape).strict()]),
+          })
+          .strict()
+          .optional(),
+        /** A die rolled when a use spends the last charge: at or under `atMost`, the item breaks. */
+        breaksOn: z
+          .object({ die: z.number().int().min(2).max(100), atMost: z.number().int().min(1).max(100) })
+          .strict()
+          .superRefine((breaks, ctx) => {
+            if (breaks.atMost > breaks.die) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ["atMost"],
+                message: "A break is at most the die's own faces",
+              });
+            }
+          })
+          .optional(),
+      })
       .strict()
       .optional(),
   })
@@ -5447,6 +5471,20 @@ function itemIssues(
     const given = typeof max === "object" ? item.stats?.[max.stat] : undefined;
     if (typeof given === "number" && given < 1) {
       add([...at, "stats", (max as { stat: string }).stat], "An item that holds charges holds at least one");
+    }
+    const recharge = item.charges.recharge;
+    recharge?.rests.forEach((rest, index) => {
+      if (!definition.rests.some((entry) => entry.id === rest)) {
+        add([...at, "charges", "recharge", "rests", index], `Unknown rest "${rest}"`);
+      }
+    });
+    if (
+      recharge &&
+      recharge.amount !== "max" &&
+      recharge.amount.dice === undefined &&
+      recharge.amount.flat === undefined
+    ) {
+      add([...at, "charges", "recharge", "amount"], 'A recharge says how many come back, or "max"');
     }
   }
 }

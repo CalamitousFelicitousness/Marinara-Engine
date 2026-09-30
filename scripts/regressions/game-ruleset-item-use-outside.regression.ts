@@ -180,19 +180,23 @@ try {
     const gateIssue = /items restore a pool when used.*capabilityApi 1\.60/;
     const issue = (minor: number, doc: Record<string, any>, paths?: string[], files?: Map<string, unknown>) =>
       getCapabilityPackageInstallIssue(manifest(minor, paths) as any, doc, files);
-    assert.match(issue(59, variant(gravewatchText)) ?? "", gateIssue);
-    assert.equal(issue(60, variant(gravewatchText)), null);
+    // Less the dawn bell's recharge and break, which are 1.61's and have a lane of their own.
+    const gravewatchAt160 = JSON.stringify(
+      variant(gravewatchText, (doc) => (itemEntry(doc, "dawn-bell").item.charges = { max: 3 })),
+    );
+    assert.match(issue(59, variant(gravewatchAt160)) ?? "", gateIssue);
+    assert.equal(issue(60, variant(gravewatchAt160)), null);
     const withoutRestore = (doc: Record<string, any>) => delete itemEntry(doc, "warming-tonic").item.use.restore;
-    assert.equal(issue(59, variant(gravewatchText, withoutRestore)), null, "the rest of the example stays 1.59");
+    assert.equal(issue(59, variant(gravewatchAt160, withoutRestore)), null, "the rest of the example stays 1.59");
     assert.equal(issue(59, variant(emberText)), null, "Ember Roads restores nothing");
-    const inFile = variant(gravewatchText, (doc) => {
+    const inFile = variant(gravewatchAt160, (doc) => {
       const catalog = itemCatalogOf(doc);
       delete catalog.entries;
       catalog.asset = "catalogs/kit.json";
     });
     const paths = ["ruleset.json", "catalogs/kit.json"];
     const files = new Map<string, unknown>([
-      ["catalogs/kit.json", { entries: itemCatalogOf(variant(gravewatchText)).entries }],
+      ["catalogs/kit.json", { entries: itemCatalogOf(variant(gravewatchAt160)).entries }],
     ]);
     assert.match(issue(59, inFile, paths, files) ?? "", gateIssue, "a catalog file");
     assert.equal(issue(60, inFile, paths, files), null);

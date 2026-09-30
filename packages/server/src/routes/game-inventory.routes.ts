@@ -5,8 +5,15 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { applyGameInventoryOps, gameInventoryOpsRequestSchema } from "@marinara-engine/shared";
 import { commitGameInventoryChange, loadGameInventoryItemBook } from "../services/game/game-inventory.service.js";
-import { useGameRulesetItem } from "../services/game/game-item-use.service.js";
+import { restGameRulesetCharacter, useGameRulesetItem } from "../services/game/game-item-use.service.js";
 
+const restRequestSchema = z
+  .object({
+    chatId: z.string().min(1).max(200),
+    character: z.string().min(1).max(200),
+    rest: z.string().min(1).max(64),
+  })
+  .strict();
 const itemUseRequestSchema = z
   .object({ chatId: z.string().min(1).max(200), stackId: z.string().min(1).max(200) })
   .strict();
@@ -49,5 +56,21 @@ export async function gameInventoryRoutes(app: FastifyInstance) {
       line: used.line,
       ...(used.playerStats ? { playerStats: used.playerStats } : {}),
     };
+  });
+
+  // The sheet's Rest button: a rest on one character's sheet, and the charges it brings back to what
+  // they carry, written together.
+  app.post("/rest", async (req, reply) => {
+    const parsed = restRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Invalid rest", issues: parsed.error.issues.slice(0, 10) });
+    }
+    const rested = await restGameRulesetCharacter(app.db, parsed.data.chatId, parsed.data.character, parsed.data.rest);
+    if (!rested.ok)
+      return reply
+        .status(rested.status)
+        .send({ error: rested.error, ...(rested.reason ? { reason: rested.reason } : {}) });
+    const { ok: _ok, ...answer } = rested;
+    return answer;
   });
 }

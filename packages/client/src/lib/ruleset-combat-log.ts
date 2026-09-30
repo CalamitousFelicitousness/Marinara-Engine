@@ -428,6 +428,8 @@ export function rulesetCombatEventLine(
       });
     case "uses":
       return key("uses", { label: event.label, left: event.left, of: event.of });
+    case "broke":
+      return key("broke", { label: event.label, roll: event.roll });
     case "recharge":
       return key(event.back ? "rechargeBack" : "rechargeNot", {
         label: event.label,

@@ -1550,7 +1550,7 @@ charges over time.
 - **Examples.** Gravewatch's page of the vigil litany restores two Resolve behind a Ward gate that
   Nerve 3 skips.
 - **Proven** by `scripts/regressions/game-ruleset-item-gate.regression.ts` and
-  `e2e/game-ruleset-item-gate.e2e.ts`, with 40 deliberate breaks each caught.
+  `e2e/game-ruleset-item-gate.e2e.ts`, with 36 deliberate breaks each caught.
 
 ### What loot settled
 

@@ -7,6 +7,7 @@
 // loads and the browser from the ones it fetches, so both read an item the same way.
 // ──────────────────────────────────────────────
 import {
+  RULESET_ITEM_CHARGES_MAX,
   rulesetItemIssues,
   type RulesetCatalogEntry,
   type RulesetCatalogItem,
@@ -232,7 +233,9 @@ function rulesetItemUseFacts(
     ? rulesetItemAttackFacts(definition, item, { budget: "", toHit: use.toHit, damage: {} })
     : undefined;
   const difficulty = number(use.saveDifficulty);
-  const max = item.charges ? number(item.charges.max) : undefined;
+  const held = item.charges ? number(item.charges.max) : undefined;
+  // As a fight reads it: a stat's number held to the most a written count may be.
+  const max = held === undefined ? undefined : Math.min(RULESET_ITEM_CHARGES_MAX, Math.trunc(held));
   const dealt = amount(use.amount);
   const temporary = amount(use.temporary);
   return {

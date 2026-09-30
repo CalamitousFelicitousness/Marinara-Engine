@@ -581,6 +581,10 @@ try {
     );
     const statBell = itemOf(byStat, "kit/dawn-bell");
     assert.equal(optionOf(byStat, fight(byStat, [held(statBell, "Bell", true)]), "use:0")?.left, 5);
+    // A stat is held to the most charges a written count may be, so the stack never keeps more.
+    const loud = { ...statBell, stats: { ...statBell.stats, peals: 500 } };
+    assert.equal(optionOf(byStat, fight(byStat, [held(loud, "Bell", true)]), "use:0")?.left, 100);
+    assert.deepEqual(rulesetItemFacts(byStat, loud).use?.charges, { cost: 1, max: 100 });
     const statless = { ...statBell, stats: { conceal: "pocket" } };
     assert.equal(optionOf(byStat, fight(byStat, [held(statless, "Bell", true)]), "use:0"), undefined);
     // A use that rolls to hit adds its own to-hit, as a weapon's does, and a pool fight's its target.

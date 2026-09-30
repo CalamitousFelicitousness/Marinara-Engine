@@ -9,6 +9,7 @@
 
 import {
   RULESET_CATALOG_ROW_KEY,
+  RULESET_ITEM_CHARGES_MAX,
   type RulesetCatalogEntriesById,
   type RulesetCatalogEntry,
   type RulesetCatalogItem,
@@ -718,7 +719,9 @@ function itemUseActions(
     const read = (value: unknown) => itemAttackValue(item, value);
     const whole = (value: unknown) =>
       typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : undefined;
-    const max = item.charges ? whole(read(item.charges.max)) : undefined;
+    // A stat holds its own range, so what it gives is held to the most a written count may be.
+    const counted = item.charges ? whole(read(item.charges.max)) : undefined;
+    const max = counted === undefined ? undefined : Math.min(RULESET_ITEM_CHARGES_MAX, counted);
     if (use.charges !== undefined && !(max !== undefined && max >= 1)) return;
     const aim = use.toHit ? itemToHit(definition, build, evaluated, item, use.toHit, pooled) : { toHit: 0 };
     const difficulty = whole(read(use.saveDifficulty));

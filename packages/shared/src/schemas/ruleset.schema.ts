@@ -2067,6 +2067,9 @@ export type RulesetItemAttack = z.infer<typeof rulesetItemAttackSchema>;
  * `saveDifficulty` where it asks a save. It may take the item off its stack (`consumes`) or spend the
  * item's `charges`.
  */
+/** The most charges an item holds, written down or read off a stat, and so the most one use spends. */
+export const RULESET_ITEM_CHARGES_MAX = 100;
+
 export const rulesetItemUseSchema = catalogMechanicsObject
   .omit({
     kind: true,
@@ -2085,7 +2088,7 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     toHit: itemToHitSchema.optional(),
     saveDifficulty: orItemStat(z.number().int().min(0).max(100)).optional(),
     consumes: z.literal(true).optional(),
-    charges: z.number().int().min(1).max(100).optional(),
+    charges: z.number().int().min(1).max(RULESET_ITEM_CHARGES_MAX).optional(),
   })
   .strict()
   .superRefine((use, ctx) => {
@@ -2132,7 +2135,7 @@ const catalogItemSchema = z
     use: rulesetItemUseSchema.optional(),
     /** How many charges it holds, which its use spends. The count is kept on its stack. */
     charges: z
-      .object({ max: orItemStat(z.number().int().min(1).max(100)) })
+      .object({ max: orItemStat(z.number().int().min(1).max(RULESET_ITEM_CHARGES_MAX)) })
       .strict()
       .optional(),
   })

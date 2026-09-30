@@ -5,9 +5,13 @@ import {
   combatAiHintsSchema,
   combatBossSchema,
   combatInterruptFields,
+  gameInventoryFightLines,
+  normalizeGameInventoryStacks,
   rulesetProposedCreatureSchema,
+  type CombatItemEffect,
   type RulesetDefinition,
 } from "@marinara-engine/shared";
+import { loadGameFightItems } from "../services/game/game-inventory.service.js";
 import { loadRulesetCatalogEntries } from "../services/game/ruleset-catalog.service.js";
 import { loadRulesetRegistry, resolveGameRuleset } from "../services/game/ruleset-registry.service.js";
 // ──────────────────────────────────────────────
@@ -510,9 +514,10 @@ export function buildInitPrompt(
   tacticalBattlefield?: TacticalBattlefieldSetup,
   /** Present only for a game whose ruleset resolves its own fights. */
   ruleset?: EncounterRulesetBrief | null,
-  /** False when the game's ruleset turns Game Mode's own items off: the model is not asked what the
-   *  inventory's items do, since they do nothing in a fight until the ruleset says what they do. */
-  itemsInFights = true,
+  /** What the model is asked about the inventory's items. `guess` is false when the game's ruleset
+   *  turns Game Mode's own items off, and `ruleset` names the ruleset's items, which do what their own
+   *  `use` says (#6905) and are never guessed at. */
+  items: { guess: boolean; ruleset: readonly string[] } = { guess: true, ruleset: [] },
 ): ChatMessage[] {
   const msgs: ChatMessage[] = [];
 
@@ -600,7 +605,7 @@ export function buildInitPrompt(
     inst += `      "features": [{"terrain":"plains|forest|mountain|ruin|water|wall","placement":"center|north|south|east|west","shape":"patch|barrier"}]`;
   }
   inst += `\n    }\n  },\n`;
-  if (itemsInFights) {
+  if (items.guess) {
     inst += `  "itemEffects": [\n`;
     inst += `    {"name":"Inventory item name","target":"self|ally|enemy|any","type":"heal|damage|buff|debuff|status|utility","description":"what this item does in this fight","power":0.3,"element":"optional","status":{"name":"Wet","emoji":"💧","duration":2,"modifier":-2,"stat":"defense"},"consumes":true}\n`;
     inst += `  ],\n`;
@@ -624,9 +629,13 @@ export function buildInitPrompt(
   inst += `- attacks: each has "name" and "type" (single-target, AoE, or both). Add cooldown/status/element only when useful.\n`;
   inst += `- allies: include ${personaName} and any party members or nearby NPCs clearly fighting on ${personaName}'s side. Give allies battle-specific attacks inspired by their cards/context.\n`;
   inst += `- enemies: weak enemies can have one simple attack; bosses and elites should have multiple attacks and one memorable mechanic.\n`;
-  inst += itemsInFights
-    ? `- items: DO NOT invent inventory. itemEffects must only describe how existing inventory items from context work in this encounter. Examples: potion heals, bottle of alcohol can wet/prime a target for fire.\n`
-    : `- items: this game's ruleset keeps its items out of fights for now, so give no itemEffects.\n`;
+  inst += items.guess
+    ? `- items: DO NOT invent inventory. itemEffects must only describe how existing inventory items from context work in this encounter. Examples: potion heals, bottle of alcohol can wet/prime a target for fire.${
+        items.ruleset.length
+          ? ` The game's ruleset already says what these items do, so give no itemEffects for them: ${items.ruleset.join(", ")}.`
+          : ""
+      }\n`
+    : `- items: the game's ruleset says what its own items do in a fight, so give no itemEffects.\n`;
   inst += `- mechanics: use sparingly. Boss charge attacks should include interval, counterplay, effectType, and a matching dialogueCue with trigger "charge".\n`;
   inst += `- dialogueCues: optional, short, and only for named allies, named enemies, bosses, or important NPCs. Generic unnamed enemies should not get voiced lines.\n`;
   inst += `- visuals: set isBossFight true only for bosses/story-significant enemies. backgroundPrompt/illustrationPrompt are optional and only for important fights.\n`;
@@ -894,12 +903,17 @@ export async function encounterRoutes(app: FastifyInstance) {
       // A game with no ruleset, or one whose ruleset does not resolve its own fights, is asked for
       // exactly the blueprint it was asked for before any of this existed.
       let rulesetBrief: EncounterRulesetBrief | null = null;
-      let itemsInFights = true;
+      const items = { guess: true, ruleset: [] as string[] };
       if (chatMeta?.gameRuleset != null) {
         const resolved = resolveGameRuleset(chatMeta, await loadRulesetRegistry());
         if (resolved.status === "ok") {
           rulesetBrief = await encounterRulesetBrief(resolved.definition, resolved.packageId);
-          itemsInFights = resolved.definition.items?.native !== false;
+          items.guess = resolved.definition.items?.native !== false;
+          if (resolved.definition.items) {
+            items.ruleset = gameInventoryFightLines(normalizeGameInventoryStacks(chatMeta.gameInventory)).flatMap(
+              (line) => (line.item ? [line.name] : []),
+            );
+          }
         }
       }
       const prompt = buildInitPrompt(
@@ -912,7 +926,7 @@ export async function encounterRoutes(app: FastifyInstance) {
         combatStyle === "tactical",
         tacticalBattlefieldResult?.success ? tacticalBattlefieldResult.data : undefined,
         rulesetBrief,
-        itemsInFights,
+        items,
       );
       debugLog(
         "[debug/game/combat:init] request chatId=%s model=%s historyMessages=%d settings=%s",
@@ -964,8 +978,12 @@ export async function encounterRoutes(app: FastifyInstance) {
         }
         combatState = tacticalResult.blueprint as Record<string, unknown>;
       }
-      // Whatever the model guessed anyway, items the ruleset keeps out of fights do nothing in one.
-      if (!itemsInFights) combatState = { ...combatState, itemEffects: [] };
+      // The ruleset's items do what their `use` says, and what the model guessed for them anyway, or for
+      // anything while the ruleset turns Game Mode's own items off, is dropped.
+      if (chatMeta?.gameRuleset != null) {
+        const guessed = Array.isArray(combatState.itemEffects) ? (combatState.itemEffects as CombatItemEffect[]) : [];
+        combatState = { ...combatState, itemEffects: (await loadGameFightItems(app.db, chatMeta, guessed)).effects };
+      }
       debugLog("[debug/game/combat:init] parsed response:\n%s", JSON.stringify(combatState, null, 2));
 
       await chats.patchMetadata(chatId, { encounterActive: true }, { touchUpdatedAt: false });

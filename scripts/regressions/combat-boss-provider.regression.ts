@@ -182,7 +182,7 @@ try {
     assert.equal(noItems.statusCode, 200, noItems.body);
     assert.deepEqual(noItems.json().combatState.itemEffects, []);
     assert.doesNotMatch(JSON.stringify(payload!.messages), /itemEffects\\": \[/);
-    assert.match(JSON.stringify(payload!.messages), /keeps its items out of fights for now/);
+    assert.match(JSON.stringify(payload!.messages), /says what its own items do in a fight, so give no itemEffects/);
   } finally {
     await app.close();
   }

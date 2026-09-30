@@ -346,11 +346,15 @@ function resolveItemAction(
   }
 
   const lowerName = itemName.toLowerCase();
-  const potency = /mega|greater|large|strong|elixir|max/.test(lowerName)
-    ? 0.5
-    : /minor|small|snack|ration/.test(lowerName)
-      ? 0.2
-      : 0.3;
+  // A ruleset's item says how much it heals; a guessed heal goes by what its name suggests.
+  const potency =
+    itemEffect?.ruleset && itemEffect.power !== undefined
+      ? Math.max(0.05, Math.min(1, itemEffect.power))
+      : /mega|greater|large|strong|elixir|max/.test(lowerName)
+        ? 0.5
+        : /minor|small|snack|ration/.test(lowerName)
+          ? 0.2
+          : 0.3;
   const desiredHeal = Math.max(1, Math.floor(target.maxHp * potency));
   const remainingHp = Math.min(target.maxHp, target.hp + desiredHeal);
   const actualHeal = Math.max(0, remainingHp - target.hp);

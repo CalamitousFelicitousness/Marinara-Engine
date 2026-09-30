@@ -54,6 +54,9 @@ export interface CombatItemEffect {
   element?: string;
   status?: CombatStatus;
   consumes?: boolean;
+  /** Worked out by the Engine from one of the game's ruleset items rather than guessed by a model:
+   *  its `power` is the share of the target's maximum health it heals or harms. */
+  ruleset?: true;
 }
 
 /** One generated in-combat dialogue cue. */

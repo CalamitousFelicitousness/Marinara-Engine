@@ -3032,13 +3032,21 @@ function GameSurfaceComponent({
   // What a fight lists: one line per item, each under a name no other line has, with each item's
   // effect found under that line's name.
   const gameRuleset = useGameRuleset(chatMeta);
-  // A ruleset that turns Game Mode's own items off keeps them out of fights, as the server does: no
-  // item is offered until the ruleset says what it does.
-  const itemsOutOfFights = gameRuleset.status === "ok" && gameRuleset.definition.items?.native === false;
-  const fightInventoryLines = useMemo(
-    () => (itemsOutOfFights ? [] : gameInventoryFightLines(inventoryItems)),
-    [inventoryItems, itemsOutOfFights],
-  );
+  // In a game with ruleset items, one of the ruleset's items is offered only when the fight's effects
+  // (worked out by the server from its `use`, #6905) say what it does, and the rest only while the
+  // ruleset leaves Game Mode's own items on, as the server offers them.
+  const rulesetItems = gameRuleset.status === "ok" ? gameRuleset.definition.items : undefined;
+  const fightInventoryLines = useMemo(() => {
+    const lines = gameInventoryFightLines(inventoryItems);
+    if (!rulesetItems) return lines;
+    return lines.filter((line) =>
+      line.item
+        ? combatItemEffects.some(
+            (effect) => effect.ruleset && gameInventoryNameKey(effect.name) === gameInventoryNameKey(line.name),
+          )
+        : rulesetItems.native !== false,
+    );
+  }, [inventoryItems, rulesetItems, combatItemEffects]);
   const fightItemEffects = useMemo(
     () => gameInventoryFightEffects(fightInventoryLines, combatItemEffects),
     [fightInventoryLines, combatItemEffects],

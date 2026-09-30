@@ -1009,6 +1009,17 @@ function entriesCarryChargesOverTime(entries: unknown): boolean {
   );
 }
 
+const ITEM_GATE_ISSUE =
+  "A ruleset whose items ask a check before they work requires schemaVersion 2 and capabilityApi 1.62 or newer";
+
+/** A use's `gate`, which is 1.62: a new key on the strict use. */
+function entriesCarryItemGate(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) &&
+    entries.some((entry) => plainRecord(plainRecord(plainRecord(entry)?.item)?.use)?.gate !== undefined)
+  );
+}
+
 /** A level that reads a derived value, which is 1.54: a new key on the strict level. */
 function rulesetCarriesDerivedLevels154(ruleset: { combat?: unknown } | undefined): boolean {
   const levels = plainRecord(ruleset?.combat)?.levels;
@@ -1255,6 +1266,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryItemUse(header.entries) && !declaresApi(59)) return ITEM_USE_ISSUE;
       if (entriesCarryItemRestore(header.entries) && !declaresApi(60)) return ITEM_RESTORE_ISSUE;
       if (entriesCarryChargesOverTime(header.entries) && !declaresApi(61)) return CHARGES_OVER_TIME_ISSUE;
+      if (entriesCarryItemGate(header.entries) && !declaresApi(62)) return ITEM_GATE_ISSUE;
       const asset = header.asset;
       if (typeof asset !== "string") continue;
       // A path that does not normalize is never a declared one, whatever else failed to normalize.
@@ -1289,6 +1301,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryItemUse(fileEntries) && !declaresApi(59)) return ITEM_USE_ISSUE;
       if (entriesCarryItemRestore(fileEntries) && !declaresApi(60)) return ITEM_RESTORE_ISSUE;
       if (entriesCarryChargesOverTime(fileEntries) && !declaresApi(61)) return CHARGES_OVER_TIME_ISSUE;
+      if (entriesCarryItemGate(fileEntries) && !declaresApi(62)) return ITEM_GATE_ISSUE;
     }
   }
   // The battle block lives inside the ruleset file too, so it is read the same way and for the same

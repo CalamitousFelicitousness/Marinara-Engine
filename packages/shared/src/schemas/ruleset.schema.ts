@@ -2094,6 +2094,21 @@ export const rulesetItemUseSchema = catalogMechanicsObject
       .object({ pool: sheetId, amount: z.object(catalogAmountShape).strict() })
       .strict()
       .optional(),
+    /** A check its user passes before it works, as a scroll above the reader's own spells asks for
+     *  one, unless a value on their sheet is high enough. A failed check uses the item up for
+     *  nothing. `check` names what is rolled: a skill, an ability, or a value off the sheet. */
+    gate: z
+      .object({
+        check: z.union([
+          z.object({ skill: sheetId }).strict(),
+          z.object({ ability: sheetId }).strict(),
+          z.object({ value: rulesetValueRefSchema }).strict(),
+        ]),
+        difficulty: orItemStat(z.number().int().min(1).max(100)),
+        unless: z.object({ value: rulesetValueRefSchema, atLeast: z.number().finite() }).strict().optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine((use, ctx) => {
@@ -5608,6 +5623,28 @@ function useIssues(
     }
   }
   if (use.toHit && !use.attackRoll) add([...at, "toHit"], "A to-hit is for a use that rolls to hit");
+  if (use.gate) {
+    const { check, unless } = use.gate;
+    const names = rulesetSheetNames(definition.sheet, definition.items);
+    if ("skill" in check && !definition.sheet.skills.some((skill) => skill.id === check.skill)) {
+      add([...at, "gate", "check", "skill"], `Unknown skill "${check.skill}"`);
+    }
+    if ("ability" in check && !definition.sheet.abilities.some((ability) => ability.id === check.ability)) {
+      add([...at, "gate", "check", "ability"], `Unknown ability "${check.ability}"`);
+    }
+    // Both are read off the user's sheet with their live state and items, as a requirement is.
+    if ("value" in check) {
+      for (const issue of rulesetValueRefIssues(check.value, names, names.derived, true)) {
+        add([...at, "gate", "check", "value", issue.key], issue.message);
+      }
+    }
+    if (unless) {
+      for (const issue of rulesetValueRefIssues(unless.value, names, names.derived, true)) {
+        add([...at, "gate", "unless", "value", issue.key], issue.message);
+      }
+    }
+    value(use.gate.difficulty, "number", [...at, "gate", "difficulty"]);
+  }
   // A wound track has boxes and no buffer, as an ability's temporary points are refused there too.
   const health = definition.combat?.health ?? definition.battle?.health;
   const track =

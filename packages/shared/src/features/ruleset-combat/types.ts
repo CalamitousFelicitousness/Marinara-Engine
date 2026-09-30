@@ -370,6 +370,10 @@ export interface RulesetCombatAction {
     item: number;
     consumes?: true;
     charges?: { cost: number; max: number; breaksOn?: { die: number; atMost: number } };
+    /** Its `gate`, read off the user's sheet as the fight began: what is rolled (a skill's id when it
+     *  is one, so what is narrowed to it counts), the sheet's number for it, and the difficulty. No
+     *  gate here when the user's sheet was high enough to skip it. */
+    gate?: { check: string; skill?: string; modifier: number; difficulty: number };
   };
 }
 
@@ -863,6 +867,24 @@ export type RulesetCombatEvent =
   | { type: "uses"; actorId: string; optionId: string; label: string; left: number; of: number }
   /** An item whose last charge was just spent, and whose die said it breaks. */
   | { type: "broke"; actorId: string; optionId: string; label: string; roll: number }
+  /** An item's gate: the check its user rolled before it could work. A failed one used it up for
+   *  nothing. Shaped as a save is, with `check` naming what was rolled. */
+  | {
+      type: "gate";
+      actorId: string;
+      optionId: string;
+      label: string;
+      check: string;
+      mode?: RulesetCombatRollMode;
+      rolls: number[];
+      kept: number;
+      modifier: number;
+      bonuses?: RulesetConditionBonus[];
+      total: number;
+      difficulty: number;
+      success: boolean;
+      pool?: RulesetCombatPoolRoll;
+    }
   | {
       type: "recharge";
       actorId: string;

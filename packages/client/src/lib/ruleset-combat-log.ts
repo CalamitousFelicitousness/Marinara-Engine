@@ -430,6 +430,23 @@ export function rulesetCombatEventLine(
       return key("uses", { label: event.label, left: event.left, of: event.of });
     case "broke":
       return key("broke", { label: event.label, roll: event.roll });
+    case "gate":
+      if (event.pool) {
+        return key(event.success ? "gatePoolSuccess" : "gatePoolFailure", {
+          actor: names.combatant(event.actorId),
+          check: event.check,
+          label: event.label,
+          roll: rulesetPoolRollText({ ...event, pool: event.pool }, t, bonusNamer(names, t)),
+          needed: t("game.combat.ruleset.roll.needed", { count: event.difficulty }),
+        });
+      }
+      return key(event.success ? "gateSuccess" : "gateFailure", {
+        actor: names.combatant(event.actorId),
+        check: event.check,
+        label: event.label,
+        roll: rulesetRollText(event, t, bonusNamer(names, t)),
+        difficulty: event.difficulty,
+      });
     case "recharge":
       return key(event.back ? "rechargeBack" : "rechargeNot", {
         label: event.label,

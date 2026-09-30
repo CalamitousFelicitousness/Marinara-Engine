@@ -362,7 +362,8 @@
       { "id": "coat", "label": "Coat" },
       { "id": "tonic", "label": "Tonic" },
       { "id": "token", "label": "Token" },
-      { "id": "powder", "label": "Shot and powder" }
+      { "id": "powder", "label": "Shot and powder" },
+      { "id": "page", "label": "Page" }
     ],
     "rarities": [
       { "id": "common", "label": "Common" },
@@ -710,6 +711,30 @@
               "amount": { "flat": 1 },
               "restore": { "pool": "resolve", "amount": { "flat": 1 } },
               "consumes": true
+            }
+          }
+        },
+        {
+          "id": "litany-page",
+          "label": "Page of the vigil litany",
+          "summary": "A torn leaf of the old litany, the ink gone brown. Read aloud, it steadies whoever reads it.",
+          "item": {
+            "category": "page",
+            "rarity": "rare",
+            "stack": 3,
+            "cost": { "amount": 1, "unit": "shilling" },
+            "use": {
+              "$comment": "Read aloud on the quick budget, it gives back two Resolve and the page crumbles. A warden with less than 3 Nerve has to pass a Ward check needing two successes first, and a failed reading uses the page up for nothing. One with Nerve 3 or more reads it straight through.",
+              "kind": "buff",
+              "budget": "quick",
+              "targets": "self",
+              "restore": { "pool": "resolve", "amount": { "flat": 2 } },
+              "consumes": true,
+              "gate": {
+                "check": { "skill": "ward" },
+                "difficulty": 2,
+                "unless": { "value": { "abilityScore": "nerve" }, "atLeast": 3 }
+              }
             }
           }
         },

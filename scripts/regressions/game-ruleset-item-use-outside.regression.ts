@@ -180,9 +180,14 @@ try {
     const gateIssue = /items restore a pool when used.*capabilityApi 1\.60/;
     const issue = (minor: number, doc: Record<string, any>, paths?: string[], files?: Map<string, unknown>) =>
       getCapabilityPackageInstallIssue(manifest(minor, paths) as any, doc, files);
-    // Less the dawn bell's recharge and break, which are 1.61's and have a lane of their own.
+    // Less the dawn bell's recharge and break and the litany page, whose gate is 1.62's: they have
+    // lanes of their own.
     const gravewatchAt160 = JSON.stringify(
-      variant(gravewatchText, (doc) => (itemEntry(doc, "dawn-bell").item.charges = { max: 3 })),
+      variant(gravewatchText, (doc) => {
+        itemEntry(doc, "dawn-bell").item.charges = { max: 3 };
+        const catalog = itemCatalogOf(doc);
+        catalog.entries = catalog.entries.filter((entry: { id: string }) => entry.id !== "litany-page");
+      }),
     );
     assert.match(issue(59, variant(gravewatchAt160)) ?? "", gateIssue);
     assert.equal(issue(60, variant(gravewatchAt160)), null);

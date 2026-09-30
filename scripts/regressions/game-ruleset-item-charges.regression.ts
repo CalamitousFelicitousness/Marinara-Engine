@@ -172,10 +172,22 @@ try {
     const gateIssue = /regain charges on a rest or break when emptied.*capabilityApi 1\.61/;
     const issue = (minor: number, doc: Record<string, any>, paths?: string[], files?: Map<string, unknown>) =>
       getCapabilityPackageInstallIssue(manifest(minor, paths) as any, doc, files);
-    assert.match(issue(60, variant(gravewatchText)) ?? "", gateIssue);
-    assert.equal(issue(61, variant(gravewatchText)), null);
+    // Less the litany page's gate, which is 1.62's and has a lane of its own.
+    const ungated = (doc: Record<string, any>) => delete itemEntry(doc, "litany-page").item.use.gate;
+    assert.match(issue(60, variant(gravewatchText, ungated)) ?? "", gateIssue);
+    assert.equal(issue(61, variant(gravewatchText, ungated)), null);
     const plain = (doc: Record<string, any>) => (itemEntry(doc, "dawn-bell").item.charges = { max: 3 });
-    assert.equal(issue(60, variant(gravewatchText, plain)), null, "the rest of the example stays 1.60");
+    assert.equal(
+      issue(
+        60,
+        variant(gravewatchText, (doc) => {
+          plain(doc);
+          ungated(doc);
+        }),
+      ),
+      null,
+      "the rest of the example stays 1.60",
+    );
     const onlyBreaks = variant(gravewatchText, (doc) => {
       itemEntry(doc, "dawn-bell").item.charges = { max: 3, breaksOn: { die: 20, atMost: 1 } };
     });
@@ -187,7 +199,7 @@ try {
     });
     const paths = ["ruleset.json", "catalogs/kit.json"];
     const files = new Map<string, unknown>([
-      ["catalogs/kit.json", { entries: itemCatalogOf(variant(gravewatchText)).entries }],
+      ["catalogs/kit.json", { entries: itemCatalogOf(variant(gravewatchText, ungated)).entries }],
     ]);
     assert.match(issue(60, inFile, paths, files) ?? "", gateIssue, "a catalog file");
     assert.equal(issue(61, inFile, paths, files), null);

@@ -9,12 +9,16 @@ import {
   followGameInventoryDetails,
   normalizeCharacterLookupName,
   forgetGameInventoryTelling,
+  gameFightItems,
+  gameInventoryFightLines,
   gameInventoryForTelling,
   normalizeGameInventoryStacks,
   readGameInventoryTurn,
   readRulesetInventedItems,
   rulesetItemBook,
   rulesetLayerOptionKey,
+  type CombatItemEffect,
+  type GameInventoryFightLine,
   type GameInventoryJournalEntry,
   type GameInventoryStack,
   type InventoryItem,
@@ -187,6 +191,25 @@ export async function loadGameInventoryItemBook(
  * no model what the items do and offers none: they have no fight effect until the ruleset says what
  * they do. A game whose ruleset cannot be read keeps Game Mode's own.
  */
+/**
+ * The items one of the Engine's own fights (Classic or Tactical) offers in this game, and what each
+ * does (#6905): the ruleset's items by their `use`, the rest by `guessed`, and none of the rest where
+ * the ruleset turns Game Mode's own items off. A game without ruleset items (`ruleset` false) offers
+ * every item as guessed, as it always has, and its routes check nothing more than they did.
+ */
+export async function loadGameFightItems(
+  db: DB,
+  metadata: Record<string, unknown>,
+  guessed: readonly CombatItemEffect[],
+): Promise<{ lines: GameInventoryFightLine[]; effects: CombatItemEffect[]; ruleset: boolean }> {
+  const lines = gameInventoryFightLines(normalizeGameInventoryStacks(metadata.gameInventory));
+  const resolved = metadata.gameRuleset == null ? null : resolveGameRuleset(metadata, await loadRulesetRegistry(db));
+  const native = resolved?.status !== "ok" || resolved.definition.items?.native !== false;
+  const book =
+    resolved?.status === "ok" ? await loadGameInventoryItemBook(db, { metadata, resolved }, "player") : undefined;
+  return { ...gameFightItems(lines, book, native, guessed), ruleset: book !== undefined };
+}
+
 export async function gameRulesetTurnsNativeItemsOff(db: DB, metadata: Record<string, unknown>): Promise<boolean> {
   if (metadata.gameRuleset == null) return false;
   const resolved = resolveGameRuleset(metadata, await loadRulesetRegistry(db));

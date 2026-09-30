@@ -212,6 +212,7 @@ import {
   applyTacticalTurn,
   TERRAIN_DATA,
   extractLeadingThinkingBlocks,
+  gameInventoryNameKey,
   type RPGStatsConfig,
 } from "@marinara-engine/shared";
 import {
@@ -369,7 +370,7 @@ import {
   getGameSpotifyErrorStatus,
   playGameSpotifyTrack,
 } from "../services/spotify/game-spotify-music.service.js";
-import { gameRulesetTurnsNativeItemsOff, loadGameInventoryItemBook } from "../services/game/game-inventory.service.js";
+import { loadGameFightItems, loadGameInventoryItemBook } from "../services/game/game-inventory.service.js";
 import {
   readIllustratorAppearance,
   readPreferredCharacterReferenceImage,
@@ -5859,8 +5860,10 @@ async function serializeGameTurnStoryboard(args: {
   };
 }
 
-/** Why an item is refused in a fight of a game whose ruleset turns Game Mode's own items off. */
-const ITEMS_OUT_OF_FIGHTS = "This game's ruleset keeps its items out of fights for now.";
+/** Why an item the fight does not offer is refused: one nobody holds, one of the ruleset's items with
+ *  no use (or, in screen-played Tactical, any of them), or any item of Game Mode's own that the ruleset
+ *  turns off. */
+const ITEM_NOT_IN_FIGHT = "That item does nothing in this fight.";
 
 export function parseRoomGameConfig(value: unknown): GameSetupConfig {
   const config = gameSetupConfigSchema.parse(value);
@@ -9886,12 +9889,24 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     if (!chat) throw new Error("Chat not found");
 
     const meta = parseMeta(chat.metadata);
-    // A ruleset that turns Game Mode's own items off keeps them out of fights: no item does anything in
-    // one until the ruleset says what it does.
-    const usesItem =
-      playerAction?.type === "item" || Object.values(partyActions ?? {}).some((action) => action.type === "item");
-    if (usesItem && (await gameRulesetTurnsNativeItemsOff(app.db, meta))) {
-      return reply.code(400).send({ error: ITEMS_OUT_OF_FIGHTS });
+    // In a game with ruleset items, only an item the fight offers can be used, and one of the ruleset's
+    // items does what its `use` says, worked out here rather than taken from the screen (#6905). The rest
+    // do what was guessed, and a game without ruleset items is checked no more than it ever was.
+    const itemActions = [playerAction, ...Object.values(partyActions ?? {})].filter(
+      (action): action is NonNullable<typeof action> => action?.type === "item",
+    );
+    const fight = itemActions.length > 0 ? await loadGameFightItems(app.db, meta, []) : null;
+    if (fight?.ruleset) {
+      for (const action of itemActions) {
+        const line = fight.lines.find(
+          (entry) => gameInventoryNameKey(entry.name) === gameInventoryNameKey(action.itemId ?? ""),
+        );
+        if (!line) return reply.code(400).send({ error: ITEM_NOT_IN_FIGHT });
+        const worked = fight.effects.find(
+          (effect) => effect.ruleset && gameInventoryNameKey(effect.name) === gameInventoryNameKey(line.name),
+        );
+        if (worked) action.itemEffect = worked;
+      }
     }
     const difficulty = normalizeGameDifficulty((meta.gameSetupConfig as Record<string, unknown>)?.difficulty);
     const elementPreset = ((meta.gameSetupConfig as Record<string, unknown>)?.elementPreset as string) ?? "default";
@@ -10133,8 +10148,18 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const chats = createChatsStorage(app.db);
     const chat = await chats.getById(chatId);
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
-    if (action.type === "item" && (await gameRulesetTurnsNativeItemsOff(app.db, parseMeta(chat.metadata)))) {
-      return reply.status(400).send({ error: ITEMS_OUT_OF_FIGHTS });
+    // This engine heals with any item it is handed and reads no effect, so in a game with ruleset items
+    // it takes only an item the battle offers that is not the ruleset's own: one of the ruleset's items
+    // does what its `use` says, which this engine cannot do (#6905). The screen offers no items here; the
+    // directed battle does.
+    const fight = action.type === "item" ? await loadGameFightItems(app.db, parseMeta(chat.metadata), []) : null;
+    if (action.type === "item" && fight?.ruleset) {
+      const line = fight.lines.find(
+        (entry) => gameInventoryNameKey(entry.name) === gameInventoryNameKey(String(action.itemName ?? "")),
+      );
+      if (!line || fight.effects.some((effect) => effect.ruleset && effect.name === line.name)) {
+        return reply.status(400).send({ error: ITEM_NOT_IN_FIGHT });
+      }
     }
 
     // The schema only validates the envelope; the engine assumes further

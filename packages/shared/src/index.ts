@@ -217,6 +217,7 @@ export * from "./features/rulesets/scaled-rows.js";
 export * from "./features/rulesets/combat-bridge.js";
 export * from "./features/rulesets/layers.js";
 export * from "./features/rulesets/item-book.js";
+export * from "./features/rulesets/item-fight.js";
 export * from "./features/rulesets/check-effects.js";
 export * from "./features/rulesets/invented-items.js";
 export * from "./features/rulesets/item-use.js";

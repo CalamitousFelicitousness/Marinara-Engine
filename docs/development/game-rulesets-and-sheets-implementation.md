@@ -1631,6 +1631,37 @@ Capability API 1.64, for #6901. Slice I7-2 of the ruleset items plan, after loot
   `e2e/game-ruleset-money.e2e.ts`, with 55 deliberate breaks each caught. Two more found conditions
   in the payment that could never change its result, which were deleted.
 
+### What items in Classic and Tactical battles settled
+
+No Capability API change: slice I8-1 of the ruleset items plan (#6905) reads keys that shipped with 1.59.
+
+- **Effects from `use`.** `rulesetItemFightEffect` (features/rulesets/item-fight.ts) turns an item's
+  `use` into a `CombatItemEffect` marked `ruleset: true`: heal or damage by a share of the target's
+  maximum health (`average / AVERAGE_AMOUNT_PER_POWER * 0.22`, from 0.05 to 1, the bridge's scale
+  measured against the Engine's typical hit of 11 to 15 out of about 60), the damage type as the
+  element, the first applied condition as a status by its label, `targets` or a default by kind, and
+  `consumes`. The description is the item's own use text.
+- **Which items a battle offers.** `gameFightItems` keeps a plain item while `native` is on, and one
+  of the ruleset's items only when it has an effect; only a guess a plain item takes is kept (so one
+  made for the ruleset's items is dropped, and a plain item sharing a ruleset item's name keeps its
+  own whichever is listed first), and one that claims to be the ruleset's is dropped. Without an item
+  book every item is guessed at, as before. The server's `loadGameFightItems` reads it for the
+  encounter's start (whose prompt names the ruleset's items the model must leave alone), the combat
+  director's start (which no longer trusts the screen's effects for them) and, in a game with ruleset
+  items, the Classic round route (which refuses an item the battle does not offer and puts the
+  worked-out effect on one of the ruleset's). The screen lists an item of the ruleset only when the
+  battle's effects include it.
+- **A ruleset heal sets its strength.** `resolveItemAction` heals by `power` for a ruleset effect; a
+  guessed heal still goes by what its name suggests, as it did.
+- **Left for I8-2.** An item whose use spends charges or asks a check first is not offered in these
+  battles: they cannot yet spend charges or roll the gate. Screen-played Tactical battles offer no
+  items at all, as before, and their route, whose engine heals with any item it is handed, now takes
+  only a plain item the battle offers.
+- **Proven** by `scripts/regressions/game-ruleset-classic-items.regression.ts` and
+  `e2e/game-ruleset-classic-items.e2e.ts`, with 39 deliberate breaks each caught. A fortieth showed a
+  check on the guesses that could never change the result once only guesses a plain item takes are
+  kept, and it was deleted.
+
 ## Gaps a ruleset author found
 
 The author of [Marinara-RPG-Extension](https://github.com/Kenhito/Marinara-RPG-Extension), who

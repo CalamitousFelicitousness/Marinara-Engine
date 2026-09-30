@@ -845,13 +845,16 @@ try {
   {
     const plain = buildInitPrompt("Ada", "persona", "cards", [], "", "", false, undefined, null);
     // A ruleset that turns Game Mode's own items off (#6822) is not asked what the inventory does.
-    const noItems = buildInitPrompt("Ada", "persona", "cards", [], "", "", false, undefined, null, false)
+    const noItems = buildInitPrompt("Ada", "persona", "cards", [], "", "", false, undefined, null, {
+      guess: false,
+      ruleset: [],
+    })
       .map((message) => message.content)
       .join("\n");
     assert.doesNotMatch(noItems, /"itemEffects"/);
     assert.match(
       noItems,
-      /- items: this game's ruleset keeps its items out of fights for now, so give no itemEffects\./,
+      /- items: the game's ruleset says what its own items do in a fight, so give no itemEffects\./,
     );
     assert.match(plain.map((message) => message.content).join("\n"), /"itemEffects": \[/);
     const same = buildInitPrompt("Ada", "persona", "cards", [], "", "", false, undefined, undefined);

@@ -536,6 +536,17 @@ try {
       ...JSON.parse(readFileSync(new URL("../../docs/examples/rulesets/gravewatch.json", import.meta.url), "utf8")),
       id: "gravewatch-fight",
     };
+    // A ruleset's item is offered in the Engine's own fights only when it can be used (#6905), so the
+    // ring is given a use here.
+    gravewatch.catalogs
+      .find((catalog: { id: string }) => catalog.id === "kit")
+      .entries.find((entry: { id: string }) => entry.id === "widows-ring").item.use = {
+      kind: "heal",
+      free: true,
+      targets: "self",
+      amount: { flat: 1 },
+      consumes: true,
+    };
     await createGameRulesetsStorage(db).put({
       rulesetId: "local/gravewatch-fight",
       version: gravewatch.version,

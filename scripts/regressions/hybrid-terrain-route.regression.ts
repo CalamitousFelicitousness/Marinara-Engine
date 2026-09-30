@@ -433,7 +433,7 @@ try {
     payload: { chatId: session.id, round: 1, combatants, playerAction: { type: "item", itemId: "Potion" } },
   });
   assert.equal(itemRound.statusCode, 400, itemRound.body);
-  assert.match(itemRound.body, /keeps its items out of fights/);
+  assert.match(itemRound.body, /That item does nothing in this fight/);
   const allyItem = await app.inject({
     method: "POST",
     url: "/api/game/combat/round",
@@ -462,7 +462,7 @@ try {
     },
   });
   assert.equal(tacticalItem.statusCode, 400, tacticalItem.body);
-  assert.match(tacticalItem.body, /keeps its items out of fights/);
+  assert.match(tacticalItem.body, /That item does nothing in this fight/);
 } finally {
   await app.close();
   await closeDB();

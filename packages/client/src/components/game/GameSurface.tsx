@@ -3481,6 +3481,11 @@ function GameSurfaceComponent({
             ? localizeUi("ui.game.gamesurfacecomponent.inventoryWhoUsed", { who: update.who, item })
             : localizeUi("ui.game.gamesurfacecomponent.inventoryYouUsed", { item });
         }
+        if (update.action === "pay") {
+          return update.who
+            ? localizeUi("ui.game.gamesurfacecomponent.inventoryWhoPaid", { who: update.who, item })
+            : localizeUi("ui.game.gamesurfacecomponent.inventoryYouPaid", { item });
+        }
         if (
           update.action === "equip" ||
           update.action === "unequip" ||
@@ -3501,7 +3506,11 @@ function GameSurfaceComponent({
         update.ok && update.count > 0
           ? [
               {
-                gain: update.action === "add" || update.action === "equip" || update.action === "bind",
+                gain:
+                  update.action === "add" ||
+                  update.action === "earn" ||
+                  update.action === "equip" ||
+                  update.action === "bind",
                 text: describe(update, inventoryLabel(update.item, update.count)),
               },
             ]

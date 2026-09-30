@@ -32,7 +32,7 @@ function rolledAmount(value: number | string, roll: (sides: number) => number): 
  */
 export function rollRulesetLootTable(
   definition: RulesetDefinition,
-  book: Pick<RulesetItemBook, "entries">,
+  book: Pick<RulesetItemBook, "entries" | "coins">,
   tableId: string,
   roll: (sides: number) => number,
 ): RulesetLootDrop[] | null {
@@ -46,6 +46,8 @@ export function rollRulesetLootTable(
     const line = table.entries.find((entry) => (face -= entry.weight) <= 0) ?? table.entries.at(-1)!;
     let found: RulesetItemBookEntry | undefined;
     if (line.item) found = book.entries.find((entry) => entry.item === line.item);
+    // A coin a layer took out is no longer in the book, and drops nothing.
+    else if (line.coins) found = book.coins.find((coin) => coin.entry.id === line.coins);
     else {
       const { rarity, category, tag } = line.filter!;
       const matching = book.entries.filter((entry) => {

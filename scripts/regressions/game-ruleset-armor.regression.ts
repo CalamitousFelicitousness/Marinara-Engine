@@ -283,6 +283,7 @@ try {
       // And the loot, which is 1.63's.
       delete doc.items?.lootTables;
       for (const catalog of doc.catalogs) for (const entry of catalog.entries ?? []) delete entry.creature?.loot;
+      for (const layer of doc.layers ?? []) delete layer.currencies;
       delete doc.combat?.offHand;
       for (const entry of itemCatalogOf(doc).entries) {
         for (const key of ["ammo", "clip", "modes", "offHand", "floor", "onHit"]) delete entry.item.attack?.[key];

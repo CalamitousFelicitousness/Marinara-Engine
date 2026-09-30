@@ -127,8 +127,10 @@ try {
           ...catalog,
           entries: catalog.entries?.filter((entry) => entry.id !== "grave-wight"),
         }));
-        // And the loot its creatures carry, which names a table of the items block.
+        // And the loot its creatures carry, which names a table of the items block, and the coin a
+        // layer takes out of it.
         for (const catalog of doc.catalogs) for (const entry of catalog.entries ?? []) delete entry.creature?.loot;
+        for (const layer of doc.layers ?? []) delete layer.currencies;
       }),
       "Gravewatch without items",
     );

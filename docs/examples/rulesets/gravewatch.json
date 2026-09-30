@@ -419,7 +419,7 @@
     ],
     "lootTables": [
       {
-        "$comment": "What the dead and the hollow carry: one or two picks, mostly shot and powder and the odd tonic, now and then a page of the litany, and once in a while whatever arm they fell with, which the filter picks from every arm in the kit.",
+        "$comment": "What the dead and the hollow carry: one or two picks, mostly shot and powder and the odd tonic, now and then a page of the litany or a few shillings, and once in a while whatever arm they fell with, which the filter picks from every arm in the kit.",
         "id": "grave_goods",
         "label": "Grave goods",
         "rolls": "1d2",
@@ -427,7 +427,8 @@
           { "item": "kit/shot-and-powder", "weight": 4, "count": "1d4" },
           { "item": "kit/warming-tonic", "weight": 3 },
           { "item": "kit/litany-page", "weight": 2 },
-          { "filter": { "category": "arm" }, "weight": 1 }
+          { "filter": { "category": "arm" }, "weight": 1 },
+          { "coins": "shilling", "weight": 2, "count": "1d6" }
         ]
       }
     ]
@@ -818,7 +819,7 @@
   },
   "layers": [
     {
-      "$comment": "A layer replaces the ladder in the shape of its OWN resolution kind, so a pool ruleset swaps counts of successes and per-step targets, never a DC.",
+      "$comment": "A layer replaces the ladder in the shape of its OWN resolution kind, so a pool ruleset swaps counts of successes and per-step targets, never a DC. No crown reaches the barrows in the long night either, so the layer takes the crown out of the coin: a warden pays in shillings and pennies.",
       "id": "long_night",
       "label": "The long night",
       "summary": "The sun does not come back. Every difficulty asks for more.",
@@ -826,6 +827,7 @@
         "guidance": "The long night is on. The dark presses on everything a warden tries, so use the harsher ladder and let failure leave a mark that lasts past the scene.",
         "worldGuidance": "The long night is on. Build a world without daylight: lantern oil is currency, the barrow roads are open all hours, and every settlement is a ring of light with something outside it."
       },
+      "currencies": { "removeUnits": ["crown"] },
       "difficultyLadder": [
         { "label": "Plain work", "successes": 1, "target": 7 },
         { "label": "Awkward", "successes": 2, "target": 8 },

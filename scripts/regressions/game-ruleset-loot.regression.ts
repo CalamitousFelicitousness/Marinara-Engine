@@ -21,6 +21,7 @@ import {
   defaultRulesetSheetBuild,
   parseRulesetDefinition,
   refuseGameInventoryTags,
+  resolveRulesetLayers,
   rollRulesetLootTable,
   rulesetItemBook,
   stripGmTags,
@@ -119,7 +120,7 @@ try {
   {
     assert.equal(gravewatch.items?.lootTables?.[0]?.id, "grave_goods");
     assert.equal(entryOf(JSON.parse(gravewatchText), "night", "grave-wight").creature.loot, "grave_goods");
-    assert.equal(gravewatch.items?.lootTables?.[0]?.entries.at(-1)?.filter?.category, "arm");
+    assert.equal(gravewatch.items?.lootTables?.[0]?.entries.at(-2)?.filter?.category, "arm");
     const table = (edit: (table: Record<string, any>) => void) => (doc: Record<string, any>) =>
       edit(doc.items.lootTables[0]);
     refused(
@@ -159,12 +160,12 @@ try {
     );
     refused(
       table((t) => (t.entries[0] = { item: "kit/silver-nail", filter: { tag: "silver" } })),
-      /names an item or a filter, one of the two/,
+      /names an item, a filter or coins, one of them/,
       "both",
     );
     refused(
       table((t) => (t.entries[0] = { weight: 2 })),
-      /names an item or a filter, one of the two/,
+      /names an item, a filter or coins, one of them/,
       "neither",
     );
     refused(
@@ -215,23 +216,32 @@ try {
       restartRequired: false,
     });
     const gateIssue = /loot tables, or creatures that carry loot.*capabilityApi 1\.63/;
+    // Gravewatch without the coins of 1.64 (its money lane gates those).
+    const lootText = JSON.stringify(
+      variant(gravewatchText, (doc) => {
+        delete doc.layers[0].currencies;
+        doc.items.lootTables[0].entries = doc.items.lootTables[0].entries.filter(
+          (entry: { coins?: string }) => !entry.coins,
+        );
+      }),
+    );
     const issue = (minor: number, doc: Record<string, any>, paths?: string[], files?: Map<string, unknown>) =>
       getCapabilityPackageInstallIssue(manifest(minor, paths) as any, doc, files);
     const lootless = (doc: Record<string, any>) => {
       delete doc.items.lootTables;
       for (const entry of catalogOf(doc, "night").entries) delete entry.creature.loot;
     };
-    assert.match(issue(62, variant(gravewatchText)) ?? "", gateIssue);
-    assert.equal(issue(63, variant(gravewatchText)), null);
-    assert.equal(issue(62, variant(gravewatchText, lootless)), null, "the rest of the example stays 1.62");
-    const tablesOnly = variant(gravewatchText, (doc) => {
+    assert.match(issue(62, variant(lootText)) ?? "", gateIssue);
+    assert.equal(issue(63, variant(lootText)), null);
+    assert.equal(issue(62, variant(lootText, lootless)), null, "the rest of the example stays 1.62");
+    const tablesOnly = variant(lootText, (doc) => {
       for (const entry of catalogOf(doc, "night").entries) delete entry.creature.loot;
     });
     assert.match(issue(62, tablesOnly) ?? "", gateIssue, "tables alone");
-    const creaturesOnly = variant(gravewatchText, (doc) => delete doc.items.lootTables);
+    const creaturesOnly = variant(lootText, (doc) => delete doc.items.lootTables);
     assert.match(issue(62, creaturesOnly) ?? "", gateIssue, "a creature's loot alone");
     // A bestiary in its own file: the creature's loot is 1.63 there too.
-    const inFile = variant(gravewatchText, (doc) => {
+    const inFile = variant(lootText, (doc) => {
       delete doc.items.lootTables;
       const night = catalogOf(doc, "night");
       delete night.entries;
@@ -239,7 +249,7 @@ try {
     });
     const paths = ["ruleset.json", "catalogs/night.json"];
     const files = new Map<string, unknown>([
-      ["catalogs/night.json", { entries: catalogOf(variant(gravewatchText), "night").entries }],
+      ["catalogs/night.json", { entries: catalogOf(variant(lootText), "night").entries }],
     ]);
     assert.match(issue(62, inFile, paths, files) ?? "", gateIssue, "a creature in a catalog file");
     assert.equal(issue(63, inFile, paths, files), null);
@@ -247,17 +257,17 @@ try {
 
   // ── Rolling a table ──
   {
-    // One pick (the first of 1d2), the heaviest line (shot, weight 4 of 10), three of it (1d4).
+    // One pick (the first of 1d2), the heaviest line (shot, weight 4 of 12), three of it (1d4).
     const shot = dice(1, 3, 3);
     assert.deepEqual(rollRulesetLootTable(gravewatch, graveBook, "grave_goods", shot), [
       { item: "kit/shot-and-powder", name: "Shot and powder", count: 3 },
     ]);
-    assert.deepEqual(shot.rolled, [2, 10, 4], "the picks, the line by weight, the count");
+    assert.deepEqual(shot.rolled, [2, 12, 4], "the picks, the line by weight, the count");
     // Two picks of the same line add up; a line's weight is its share: 5 to 7 is the tonic.
     assert.deepEqual(rollRulesetLootTable(gravewatch, graveBook, "grave_goods", dice(2, 6, 7)), [
       { item: "kit/warming-tonic", name: "Warming tonic", count: 2 },
     ]);
-    // The last face is the lightest line, whose filter picks evenly among every arm: the second here.
+    // Face 10 is the lightest line, whose filter picks evenly among every arm: the second here.
     assert.ok(arms.length >= 2);
     assert.deepEqual(rollRulesetLootTable(gravewatch, graveBook, "grave_goods", dice(1, 10, 2)), [
       { item: arms[1]!.item, name: arms[1]!.name, count: 1 },
@@ -289,6 +299,23 @@ try {
     );
     assert.deepEqual(rollRulesetLootTable(empty, graveBook, "grave_goods", dice(1)), []);
     assert.equal(rollRulesetLootTable(gravewatch, graveBook, "dragon_hoard", dice(1)), null);
+  }
+
+  // ── A layer still applies in the browser ──
+  {
+    // The listing a browser gets sends each catalog without its entries, so a loot line's item cannot
+    // be found there; it was checked at import, and the long night must not be dropped for it.
+    const listing = {
+      ...gravewatch,
+      catalogs: gravewatch.catalogs!.map(({ entries, ...catalog }) => ({
+        ...catalog,
+        entryCount: entries?.length ?? 0,
+      })),
+    } as unknown as RulesetDefinition;
+    assert.deepEqual(
+      resolveRulesetLayers(listing, { "layer.long_night": true }).applied.map((layer) => layer.id),
+      ["long_night"],
+    );
   }
 
   // ── Game Mode's native tables ──

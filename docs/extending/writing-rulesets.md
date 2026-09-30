@@ -634,7 +634,7 @@ The limits are 12 catalogs per ruleset, 2000 entries per catalog either way, and
 
 ## Items: what a party carries
 
-Armor, weapons, potions, gear, ammunition and money are items. An optional `items` block declares the words every item of your ruleset is written in, and a catalog with `holds: "items"` lists the items themselves. Both need Capability API 1.49; the block's `rarityCaps` and `propose`, which govern the items the Game Master invents, need 1.51, a value that reads the items a character holds (`itemStat`) needs 1.52, what an item does to checks while worn or carried, with the block's `bonus` caps, needs 1.53, what an item asks of its wearer and the abilities it changes need 1.54, a weapon's `attack` needs 1.55, what an item does in a fight needs 1.56, what a weapon shoots and holds loaded needs 1.57, a weapon's modes, off-hand attack, floor and conditions on a hit need 1.58, what using an item does in a fight, with the charges it holds, needs 1.59, a use that restores a pool needs 1.60, charges regained on a rest or an item that breaks when emptied need 1.61, a use that asks a check first (`gate`) needs 1.62, and loot tables and a creature's loot need 1.63.
+Armor, weapons, potions, gear, ammunition and money are items. An optional `items` block declares the words every item of your ruleset is written in, and a catalog with `holds: "items"` lists the items themselves. Both need Capability API 1.49; the block's `rarityCaps` and `propose`, which govern the items the Game Master invents, need 1.51, a value that reads the items a character holds (`itemStat`) needs 1.52, what an item does to checks while worn or carried, with the block's `bonus` caps, needs 1.53, what an item asks of its wearer and the abilities it changes need 1.54, a weapon's `attack` needs 1.55, what an item does in a fight needs 1.56, what a weapon shoots and holds loaded needs 1.57, a weapon's modes, off-hand attack, floor and conditions on a hit need 1.58, what using an item does in a fight, with the charges it holds, needs 1.59, a use that restores a pool needs 1.60, charges regained on a rest or an item that breaks when emptied need 1.61, a use that asks a check first (`gate`) needs 1.62, loot tables and a creature's loot need 1.63, and a loot line that drops coins or a layer that takes coins out needs 1.64.
 
 ### The items block
 
@@ -709,6 +709,7 @@ The block goes in `items` at the top level of the file. This is Ember Roads', a 
   - Two families never change into each other. A second nation's coin, or a setting's favours, is a family of its own.
   - A coin's id is unique across every family, because an item's cost names the coin alone.
   - `perWeight` (optional, and only beside `carry`) is how many of the family's coins weigh one unit of the carry stat.
+  - Coins are the party's money, carried in the bags like any item (see Money, below).
 - `rarityCaps`: optional, one per rarity at most. The most an item the Game Master invents may give at that rarity: the largest value of each number stat named in `stats`, inside that stat's own range, and a whole number for a stat that takes whole numbers, and `bonus` (Capability API 1.53), the largest flat bonus one of its worn or carried modifiers may add. At a rarity with a `bonus`, a bonus in dice is left out, since dice cannot be held to a number; a penalty is never capped. An invented item is held to it; the items your catalogs list are yours and never capped.
 - `propose`: `true` by default. `false` forbids the Game Master to invent items of your ruleset.
 - `native`: `true` by default. `false` turns off Game Mode's own untyped items in your ruleset's games (see **What reads items**). The Game Master can still invent items, written in your ruleset's words.
@@ -746,7 +747,7 @@ Each entry carries an `item` instead of `rows` or a `creature`:
 - `stats`: values for the block's stats. Each one is a value its stat could hold.
 - `slots`: how many of each slot the item takes, never more than a character has.
 - `stack`: the most one stack holds, from 1 to 999,999. Without it, a stack holds as many as any Game Mode stack. An item that holds `charges` is one to a stack.
-- `cost`: a whole `amount` of one coin, named by its `unit` id.
+- `cost`: a whole `amount` of one coin, named by its `unit` id. The picker shows it, and the Game Master sees it beside the item (see Money, below).
 - `binds`: the item has to be bound before it does anything while worn. `restriction` (optional) says in words who may bind it, and `cursed: true` marks one that will not let go. Only a ruleset with `binding` can have items that bind.
 - `worn` and `carried` (optional, Capability API 1.53): what the item does to its holder's checks and saves while it is worn, and while it is only carried, (1.54) the abilities it sets or raises, and (1.56) what it does in a fight. See [Checks outside a fight](#checks-outside-a-fight) and [Armor and worn effects in a fight](#armor-and-worn-effects-in-a-fight).
 - `requires` (optional, Capability API 1.54): what the item asks of whoever wears it, and what applies while they fall short. See [Checks outside a fight](#checks-outside-a-fight).
@@ -776,7 +777,7 @@ Everything above is checked when the ruleset is imported, and your catalogs of i
 - **What a weapon does** shows the same way ("Attack (Action): Brawn to hit, 1d6 + Brawn cut damage"), and a fight offers it while it is held (see Weapons in a fight, below).
 - **What using an item does** shows the same way ("Use (Action): heals 1d4 + 1, range 0 paces, used up"), with the charges it has left. A fight offers it, and so do the inventory's **Use** button and the Game Master's `[inventory: action="use"]` (see Using items in a fight and Using items outside a fight, below).
 
-A fight already spends one of your items the way it spends any item, unless `native` is `false`. Whatever `native` says, the sheet can read your items (below), a held weapon is an attack in a ruleset fight, shooting what it draws from the bag, what an item does while worn or carried counts in one (see Armor and worn effects in a fight, below), and an item with a `use` is used by its own rules, in a fight and outside one (see Using items in a fight and Using items outside a fight, below). Money comes in a later release.
+A fight already spends one of your items the way it spends any item, unless `native` is `false`. Whatever `native` says, the sheet can read your items (below), a held weapon is an attack in a ruleset fight, shooting what it draws from the bag, what an item does while worn or carried counts in one (see Armor and worn effects in a fight, below), and an item with a `use` is used by its own rules, in a fight and outside one (see Using items in a fight and Using items outside a fight, below), and your `currencies` are the party's money (see Money, below).
 
 ### Items on the sheet
 
@@ -1016,17 +1017,28 @@ A won fight drops loot in every Game Mode game, once, into the party's bags. Wit
       { "item": "kit/shot-and-powder", "weight": 4, "count": "1d4" },
       { "item": "kit/warming-tonic", "weight": 3 },
       { "item": "kit/litany-page", "weight": 2 },
-      { "filter": { "category": "arm" }, "weight": 1 }
+      { "filter": { "category": "arm" }, "weight": 1 },
+      { "coins": "shilling", "weight": 2, "count": "1d6" }
     ]
   }
 ]
 ```
 
 - `rolls` is how many picks the table makes: a number from 0 to 20, or dice (`"1d2"`), 1 by default.
-- Each pick draws one line by `weight` (1 by default) against the others. A line names one of your items as `<catalog>/<entry>`, or a `filter` by `rarity`, `category` and `tag`, which picks evenly among every item that matches. `count` is how many drop, a number or dice, 1 by default. An item a layer takes out drops nothing, and neither does a filter that finds none.
+- Each pick draws one line by `weight` (1 by default) against the others. A line names one of your items as `<catalog>/<entry>`, a `filter` by `rarity`, `category` and `tag`, which picks evenly among every item that matches, or (Capability API 1.64) `coins`, one of your coins by its id. `count` is how many drop, a number or dice, 1 by default. An item or a coin a layer takes out drops nothing, and neither does a filter that finds none.
 - A bestiary creature names the table it carries with `loot` (see Creatures, below). A won ruleset fight rolls the table of each creature defeated, and a fight the Engine does not resolve by your rules has no bestiary creatures, so it drops nothing.
 - What drops goes into the shared view as an add does, the player's bag asked first, and what nobody can carry is left behind. The recap the Game Master gets says what dropped and that it is already in the bags, the journal says so, and a notification shows it.
 - The Game Master rolls a table in the story with `[loot: table="grave_goods" who="Ada"]` (`who=` for one character's bag), measured from where the turn began like its inventory tags, so a regenerated reply drops once. Each item that drops is answered as an add, and its instructions list your tables.
+
+### Money
+
+Your `currencies` are the party's money. A coin is an item in the bags, a stack of each coin like any other, named by its `label`:
+
+- It weighs one unit of your carry stat for every `perWeight` of its family's coins, counts toward its bearer's load and is placed by the carrying rule when it comes in. A family without `perWeight` weighs nothing.
+- The player adds coins from the picker's **Coins** list, and splits, gives and merges them as any stack.
+- A line above the inventory's stacks shows each family's coins in view and their worth in the family's smallest coin. The Game Master sees that worth beside each bag (`Coin worth 432 pennies`), and an item's `cost` beside the item (`costs 3 shillings`).
+- The Game Master pays with `[inventory: action="pay" amount="3 shillings" who="Ada"]` and is paid with `action="earn"`. `amount` is a count and a coin, by its id or label, one of it or many, in any case (`1 penny`, `12 pennies`). A payment comes out of one bag (the player's without `who=`), in the coin's own family only: the largest coins that fit go first, then the smallest coin left that covers what is still owed is broken, and the change comes back in the family's smaller coins, largest first. The answer says what was paid and what came back: 3 shillings out of a purse holding one crown is `Paid with crowns ×1; shillings ×2 back.` A payment the bag cannot meet is refused (`cannot-afford`), and so is a coin you do not have (`unknown-coin`) and any payment in a ruleset without currencies (`no-currencies`). An earning is an add of that coin, into `who`'s bag or shared out by the carrying rule. The journal lists what was spent and earned, and a notification shows it. Its instructions list your coins, and only a ruleset with some has them.
+- Buying is a payment and then an add. There is no shop screen.
 
 ### Using items outside a fight
 
@@ -2354,6 +2366,12 @@ exactly like the ruleset itself.
   declared `filters` and exactly one comparison: `above` or `below` for a `number` filter,
   `equals` or `notIn` for a `text` or `tags` one. An entry that does not set that filter at all is
   never hidden.
+- `currencies` takes coins out: `removeUnits` names single coins and `removeFamilies` whole
+  families. A family's smallest coin goes only with its family, so every family left can still pay
+  and give change. While the layer is on, nobody earns, pays with, picks or drops a coin taken out,
+  and the purse line leaves it out. A price named in it is said in the largest coin left that pays
+  it exactly, at the same worth: Gravewatch's long night takes the crown out, so a watch pistol at 3
+  crowns costs 15 shillings. An item whose whole family is gone has no price.
 
 **What a layer cannot do.** It cannot add an enum value, add a field, a skill, a pool or a rest,
 change the resolution kind, touch live state or combat numbers, or add a model call. A value a
@@ -2367,11 +2385,12 @@ declared **later** is dropped, so the same two choices always give the same rule
 **A sheet that already holds a removed value keeps it.** Nothing rewrites a character. The editor
 simply stops offering the value, and a character who already had it shows it as what it is. Turn
 the layer off in a new game and the value is offered again. The same is true of a hidden catalog
-entry: it is left out of the picker, and a row a player already picked stays on the sheet.
+entry: it is left out of the picker, and a row a player already picked stays on the sheet. Coins a
+layer takes out that somebody already carries stay in their bag.
 
 **Limits.** 12 layers per ruleset, and 4000 characters of guidance per layer counting both strings
 together. A packaged ruleset that declares `layers`, or a base `gm.worldGuidance`, needs Capability
-API 1.25. A ruleset you import is validated by the Engine that reads it, so it needs nothing.
+API 1.25, and one whose layers take coins out needs 1.64. A ruleset you import is validated by the Engine that reads it, so it needs nothing.
 
 **Layers written by somebody else** (a Low Magic layer for a ruleset you did not write, shipped in
 its own file) are a later addition. Today a layer ships inside the ruleset it belongs to.

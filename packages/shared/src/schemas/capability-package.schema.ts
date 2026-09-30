@@ -538,7 +538,12 @@ const capabilityPackageManifestBaseSchema = z
 //        native loot. Not a soft seam, for the same reason as 1.20 through 1.62: an Engine that cannot
 //        read these refuses the whole ruleset or catalog file, so a package that ships either declares
 //        1.63. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 63 } as const);
+// 1.64: a layer may take coins out of the ruleset's currencies (`currencies.removeUnits` and
+//        `removeFamilies`), and a loot line may drop coins (`coins`); coins are held as inventory stacks
+//        (`coin:<unit>`) that the Game Master pays and earns with. Not a soft seam, for the same reason as
+//        1.20 through 1.63: an Engine that cannot read these refuses the whole ruleset file, so a package
+//        that ships either declares 1.64. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 64 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

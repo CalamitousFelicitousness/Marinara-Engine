@@ -8,6 +8,10 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - The Roleplay **Whisper** command description now shows the format for whispering to another character (#6895).
 
+- A Game Mode ruleset's money is now real: its coins are items in each character's bag, weigh what the ruleset says, and a line above the inventory shows what they are worth. The Game Master charges and pays the party with `[inventory: action="pay"]` and `action="earn"`, and a payment makes change within the coin's family, or is refused when the purse is short. Loot tables can drop coins, and a ruleset's layer can take a coin out of a variant, pricing items in the coins left. Rulesets that drop coins or take them out with a layer need Capability API 1.64 (#6901).
+
+- A Game Mode ruleset with loot tables no longer loses its layers on the game screen, where the long night of Gravewatch was silently dropped from the sheet and picker while the Game Master still played by it (#6901).
+
 - A won fight in Game Mode now drops loot straight into the party's bags, as the combat guide always said it did: Game Mode's own treasure without a ruleset, and a ruleset's own items where it declares loot tables and says what its creatures carry. The Game Master is told what dropped, and can roll a ruleset's table in the story with `[loot:]`. Rulesets that use loot tables need Capability API 1.63 (#6894, #6758).
 
 - A Game Mode ruleset's items can now ask a check before they work, as a 5e scroll of a spell above the reader's level does: the Engine rolls it when the item is used, in a fight or from the Use button, skips it when the user's sheet is high enough, and a failed check uses the item up for nothing. Rulesets that use this need Capability API 1.62 (#6892).

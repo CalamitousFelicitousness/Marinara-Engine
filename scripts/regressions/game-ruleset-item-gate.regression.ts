@@ -176,6 +176,7 @@ const withNerve = (nerve: number): RulesetSheetBuild => {
   const noLoot = (doc: Record<string, any>) => {
     delete doc.items?.lootTables;
     for (const catalog of doc.catalogs) for (const entry of catalog.entries ?? []) delete entry.creature?.loot;
+    for (const layer of doc.layers ?? []) delete layer.currencies;
   };
   assert.match(issue(61, variant(gravewatchText, noLoot)) ?? "", gateIssue);
   assert.equal(issue(62, variant(gravewatchText, noLoot)), null);

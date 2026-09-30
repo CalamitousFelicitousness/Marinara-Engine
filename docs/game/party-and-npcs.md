@@ -109,6 +109,16 @@ A party member's character sheet lists what they carry.
 
 The Game Master adds, removes and hands over items as the story goes, and says who carries them. An item it names that is one of the ruleset's items is that item, and it is told what each of the ruleset's items you hold is. It uses the ruleset's items the same way the **Use** button does. In a ruleset that says how items are worn and carried, it also puts items on and takes them off, binds and unbinds them, and sees each character's load, slots and bound items; an item it adds without saying who gets it is shared out the same way as yours. Each change is made when the reply is saved, and its notification appears when you reach that part of the story. When the Game Master takes an item without saying from whom, it comes from your bag first and then from the rest of the party. A change that cannot happen, such as taking something nobody has, is refused, and the Game Master is told. When you regenerate a reply, its changes start again from where that turn began, and swiping back to an earlier version shows what that version left. Deleting the version you are on shows what the next one left, and a branch of the chat keeps every version's inventory with it. This only happens while the inventory is still exactly as the reply left it: once you change something yourself, a new reply adds its changes on top and nothing you did is undone. A fight uses items from the **Items** action and counts every stack of an item together, whoever carries it and whatever it is called. Every bag, splits and nicknames included, carries over to the next session.
 
+### Money
+
+A ruleset can have its own money: one or more families of coins, such as pennies, shillings and crowns, where each larger coin is worth a number of the smallest. Coins are stacks like any item. They weigh what the ruleset says and count toward the load of whoever carries them, and you can split, give and merge them like anything else. **From the ruleset** has a **Coins** list for adding them by hand.
+
+Above the stacks, a line shows each family of coins in the tab that is open and what they come to, such as **Coin: crowns ×2, pennies ×12 (worth 132 pennies)**.
+
+The Game Master charges and pays the party in these coins, and a won fight or a treasure it rolls can drop them too. A payment comes out of one character's purse, yours unless it says whose, and only in the family the price is named in: the largest coins go first, and when the exact amount is not there a larger coin is broken and the change comes back in smaller ones. A price the purse cannot meet is refused, and the Game Master is told. A price in one family is never paid in another, so a price in salt is paid in salt. Money the party earns goes into the bags as any item does. Each payment and earning shows as a notification.
+
+A variant of the ruleset can leave a coin out, such as a long night in which no crowns reach the barrows. Nobody is paid in that coin or pays with it then, and a price named in it is shown in the coins left, at the same worth.
+
 ## Recruiting and removing party members
 
 The Game Master controls who is in your party as the story unfolds. There is no manual "add companion" button. Instead, the GM adds or removes party members through the narration, based on what happens in the scene.

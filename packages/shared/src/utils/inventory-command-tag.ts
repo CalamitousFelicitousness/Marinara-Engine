@@ -7,7 +7,7 @@
 // naming several items becomes one tag per item, so every item carries its own outcome.
 // ──────────────────────────────────────────────
 
-import type { GameInventoryItemProposal } from "./game-inventory-stacks.js";
+import { GAME_INVENTORY_MAX_QUANTITY, type GameInventoryItemProposal } from "./game-inventory-stacks.js";
 import { readGmTagAttributes } from "./skill-check-tag.js";
 
 /** Longest body an inventory tag can carry, so a reply full of unclosed heads stays cheap to scan. */
@@ -21,7 +21,8 @@ const MAX_TAG_NOTE_LENGTH = 600;
 /** The most parts one proposed item's list (its tags, stats or slots) is read for. */
 const MAX_PROPOSAL_PARTS = 24;
 
-export type InventoryTagAction = "add" | "remove" | "give" | "equip" | "unequip" | "bind" | "unbind" | "use";
+export type InventoryTagAction =
+  "add" | "remove" | "give" | "equip" | "unequip" | "bind" | "unbind" | "use" | "pay" | "earn";
 
 const INVENTORY_TAG_ACTIONS: readonly InventoryTagAction[] = [
   "add",
@@ -32,6 +33,8 @@ const INVENTORY_TAG_ACTIONS: readonly InventoryTagAction[] = [
   "bind",
   "unbind",
   "use",
+  "pay",
+  "earn",
 ];
 
 function readAction(value: string | undefined): InventoryTagAction | undefined {
@@ -146,21 +149,26 @@ export function parseInventoryTagBody(body: string): InventoryTagRequest | null 
   let action: InventoryTagAction = readAction(actionValue) ?? "add";
   if (actionValue === undefined) {
     // A bare word, read only before the first attribute so an item's own name never counts.
-    const bare = /\b(add|remove|give|equip|unequip|bind|unbind|use)\b/i.exec(
+    const bare = /\b(add|remove|give|equip|unequip|bind|unbind|use|pay|earn)\b/i.exec(
       body.slice(0, Math.min(attributes[0]?.start ?? body.length, 40)),
     );
     if (bare) action = bare[1]!.toLowerCase() as InventoryTagAction;
   }
 
-  const items = (values.get("items") ?? values.get("item") ?? "")
+  // A payment or an earning names its coins as an amount ("5 gold"), or as an item and a count.
+  const amount =
+    action === "pay" || action === "earn" ? /^(\d{1,9})\s*(\S.*)$/.exec(values.get("amount")?.trim() ?? "") : null;
+  const items = (amount ? amount[2]! : (values.get("items") ?? values.get("item") ?? ""))
     .split(",")
     .map((item) => cleanName(unquote(item)))
     .filter((item): item is string => Boolean(item));
   if (items.length === 0) return null;
 
-  const countText = values.get("count") ?? values.get("quantity") ?? values.get("qty");
+  const countText = amount?.[1] ?? values.get("count") ?? values.get("quantity") ?? values.get("qty");
   const parsedCount = countText && /^\d{1,9}$/.test(countText.trim()) ? Number.parseInt(countText, 10) : 1;
-  const count = parsedCount > 0 ? Math.min(parsedCount, INVENTORY_TAG_COUNT_MAX) : 1;
+  // Coins come by the thousand, so a payment or an earning is held only to what one stack may hold.
+  const most = action === "pay" || action === "earn" ? GAME_INVENTORY_MAX_QUANTITY : INVENTORY_TAG_COUNT_MAX;
+  const count = parsedCount > 0 ? Math.min(parsedCount, most) : 1;
   const who = cleanName(values.get("who"));
   const to = cleanName(values.get("to"));
   const proposal = action === "add" ? readProposal(values) : undefined;

@@ -239,6 +239,7 @@ try {
       // And the loot, which is 1.63's.
       delete doc.items?.lootTables;
       for (const catalog of doc.catalogs) for (const entry of catalog.entries ?? []) delete entry.creature?.loot;
+      for (const layer of doc.layers ?? []) delete layer.currencies;
       for (const entry of itemCatalogOf(doc).entries) {
         delete entry.item.use;
         delete entry.item.charges;

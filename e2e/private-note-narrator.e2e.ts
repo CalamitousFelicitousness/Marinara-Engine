@@ -96,14 +96,25 @@ test("a message's private note can be shown to one chosen Roleplay character", a
     await expect.poll(async () => (await savedExtra()).privateNoteRecipientId ?? null).toBeNull();
     expect(await promptFor(request, chat.id, bard.id)).not.toContain(NOTE);
 
-    // One request writes for every character in a merged group, so a note cannot stay private there.
+    // One request writes for every character in a merged group, so a note cannot stay private there:
+    // a note shared before the switch is withheld, and sharing can be turned off but not on.
+    await shareLabel.click();
+    await expect.poll(async () => (await savedExtra()).privateNoteRecipientId).toBe(narrator.id);
     await request.patch(`/api/chats/${chat.id}/metadata`, { data: { groupChatMode: "merged" } });
+    const merged = await request.post("/api/generate/dryRun", { data: { chatId: chat.id, returnPrompt: true } });
+    expect(merged.ok(), await merged.text()).toBeTruthy();
+    expect(JSON.stringify((await merged.json()).prompt.messages)).not.toContain(NOTE);
     await page.reload();
     await expect(messageRow).toContainText("I open the door.");
     await messageRow.focus();
     await messageRow.getByRole("button", { name: "Bookmark, pin or note" }).click();
-    await expect(menu.getByRole("checkbox", { name: /^Show the note to the narrator character/ })).toBeDisabled();
     await expect(menu).toContainText("Needs a one-character chat, or a group chat with individual replies.");
+    await expect(share).toBeChecked();
+    await expect(share).toBeEnabled();
+    await shareLabel.click();
+    await expect(share).not.toBeChecked();
+    await expect(share).toBeDisabled();
+    await expect.poll(async () => (await savedExtra()).privateNoteRecipientId ?? null).toBeNull();
   } finally {
     await request.delete(`/api/chats/${chat.id}`);
     await request.delete(`/api/characters/${narrator.id}`);

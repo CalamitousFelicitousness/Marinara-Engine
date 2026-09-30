@@ -229,6 +229,22 @@ const use = (
   assert.equal(passed.difficulty, 2);
   assert.ok(passed.pool, "a pool fight throws the check as a pool");
   assert.ok(read.events.some((event) => event.type === "restored"));
+  // A difficulty past what the pool can count is held to it, as the Use button holds it.
+  const steepPage = parsedOrThrow(
+    variant(gravewatchText, (doc) => (itemEntry(doc, "litany-page").item.use.gate.difficulty = 100)),
+    "Gravewatch with a steep page",
+  );
+  const steepHeld = carried(
+    rulesetItemBook(steepPage, entriesOf(steepPage)).itemOf("kit/litany-page")!.entry.item!,
+    "Page of the vigil litany",
+    "st-page",
+    "kit/litany-page",
+  );
+  assert.ok(steepPage.resolution.kind === "dice-pool");
+  assert.equal(
+    firstOf(use(steepPage, fight(steepPage, withNerve(1), [steepHeld]), () => 1).events, "gate").difficulty,
+    rulesetPoolMaxSuccesses(steepPage.resolution),
+  );
   // Every die a 1: it fails, nothing it does happens, and the page is still spent.
   const stumbled = use(gravewatch, start, () => 1);
   const failed = firstOf(stumbled.events, "gate");

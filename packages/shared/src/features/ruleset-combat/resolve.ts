@@ -6,7 +6,12 @@
 // `applyRulesetSheetOp`, so a fight can never write something the sheet would refuse from the
 // player or from the Game Master.
 
-import type { RulesetCombat, RulesetCreatureHideEntry, RulesetDefinition } from "../../schemas/ruleset.schema.js";
+import {
+  rulesetPoolMaxSuccesses,
+  type RulesetCombat,
+  type RulesetCreatureHideEntry,
+  type RulesetDefinition,
+} from "../../schemas/ruleset.schema.js";
 import { readRulesetLive, type RulesetSheetOp } from "../rulesets/live-state.js";
 import {
   breakRulesetItem,
@@ -802,9 +807,12 @@ function passesGate(
     modifier: gate.modifier,
   };
   if (rulesetCombatIsPool(ctx.combat)) {
-    // The check's number is its pool, and its difficulty the successes it needs, never fewer than one.
+    // The check's number is its pool, and its difficulty the successes it needs: never fewer than
+    // one, nor more than the ruleset's pool can count, as the Use button holds it.
     const bonuses = rollBonuses(ctx, modifiers);
-    const needed = Math.max(1, gate.difficulty);
+    const resolution = ctx.definition.resolution;
+    const most = resolution.kind === "dice-pool" ? rulesetPoolMaxSuccesses(resolution) : Infinity;
+    const needed = Math.min(most, Math.max(1, gate.difficulty));
     const thrown = throwPool(ctx, actor, gate.modifier + bonusTotal(bonuses), mode);
     const success = !thrown.botch && thrown.successes >= needed;
     ctx.events.push({

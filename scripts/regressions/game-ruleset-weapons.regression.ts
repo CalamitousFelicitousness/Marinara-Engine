@@ -332,6 +332,9 @@ try {
     const withoutArmor = (text: string) =>
       JSON.stringify(
         variant(text, (doc) => {
+          // And the loot, which is 1.63's.
+          delete doc.items?.lootTables;
+          for (const catalog of doc.catalogs) for (const entry of catalog.entries ?? []) delete entry.creature?.loot;
           delete doc.combat?.offHand;
           for (const catalog of doc.catalogs) {
             for (const entry of catalog.entries ?? []) {

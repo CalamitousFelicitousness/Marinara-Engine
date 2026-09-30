@@ -219,6 +219,7 @@ export * from "./features/rulesets/item-book.js";
 export * from "./features/rulesets/check-effects.js";
 export * from "./features/rulesets/invented-items.js";
 export * from "./features/rulesets/item-use.js";
+export * from "./features/rulesets/loot.js";
 export * from "./features/ruleset-combat/index.js";
 
 export * from "./constants/request-timeouts.js";

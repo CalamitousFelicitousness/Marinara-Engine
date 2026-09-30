@@ -18,6 +18,8 @@ import {
   loadGameInventoryItemBook,
 } from "../services/game/game-inventory.service.js";
 import { resolveCombatWeather } from "../services/game/weather.service.js";
+import { addGameLoot, planGameVictoryLoot } from "../services/game/game-loot.service.js";
+import { rollDieSecurely } from "../services/game/dice-rng.js";
 import type { FastifyInstance } from "fastify";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -569,6 +571,25 @@ export async function combatDirectorRoutes(
     // the fight has spent something: a bound cursed item is one the player cannot use up.
     const rules =
       Object.keys(s.itemSpends).length > 0 ? await loadGameInventoryItemBook(app.db, { chatId }, "player") : undefined;
+    // The step that wins drops the fight's loot, rolled before the queue is held and added with the
+    // step: each defeated bestiary opponent's table, or the native tables by how many fell.
+    const won = s.outcome === "victory" && s.loot === undefined;
+    const encounter = s.style === "ruleset" ? s.rulesetFight?.encounter : undefined;
+    const fallen = encounter
+      ? encounter.combatants.filter((combatant) => combatant.side === "enemy" && combatant.defeated)
+      : s.enemies.filter((enemy) => enemy.hp <= 0);
+    const loot = won
+      ? await planGameVictoryLoot(
+          app.db,
+          chatId,
+          {
+            tables: fallen.flatMap((enemy) => s.rulesetFight?.lootTables?.[enemy.id] ?? []),
+            defeated: fallen.length,
+            difficulty: s.difficulty,
+          },
+          rollDieSecurely,
+        )
+      : null;
     await withChatMetadataPatchQueue(chatId, () =>
       app.db.transaction(async () => {
         const previous = await load(chatId, s.anchor);
@@ -619,6 +640,18 @@ export async function combatDirectorRoutes(
             return { stacks: applied.stacks, journal: applied.journal, value: null };
           });
         if (s.style === "ruleset" && s.rulesetFight) live = await writeRulesetLive(chatId, s.anchor, s.rulesetFight);
+        // A win already saved has dropped its loot: this one keeps what that one dropped.
+        if (won) {
+          const dropped = previous.state.loot
+            ? null
+            : loot
+              ? await applyGameInventoryChangeHeld(app.db, chatId, (stacks) => {
+                  const added = addGameLoot(stacks, loot);
+                  return { stacks: added.stacks, journal: added.journal, value: added.dropped };
+                })
+              : null;
+          s.loot = previous.state.loot ?? dropped?.value ?? [];
+        }
         await store.updateStateById(rowId, JSON.stringify(s), true, chatId);
       }),
     );

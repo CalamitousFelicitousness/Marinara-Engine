@@ -6,12 +6,20 @@ import { z } from "zod";
 import { applyGameInventoryOps, gameInventoryOpsRequestSchema } from "@marinara-engine/shared";
 import { commitGameInventoryChange, loadGameInventoryItemBook } from "../services/game/game-inventory.service.js";
 import { restGameRulesetCharacter, useGameRulesetItem } from "../services/game/game-item-use.service.js";
+import { lootGameFight } from "../services/game/game-loot.service.js";
 
 const restRequestSchema = z
   .object({
     chatId: z.string().min(1).max(200),
     character: z.string().min(1).max(200),
     rest: z.string().min(1).max(64),
+  })
+  .strict();
+const lootRequestSchema = z
+  .object({
+    chatId: z.string().min(1).max(200),
+    fight: z.string().min(1).max(200),
+    defeated: z.number().int().min(1).max(20),
   })
   .strict();
 const itemUseRequestSchema = z
@@ -56,6 +64,18 @@ export async function gameInventoryRoutes(app: FastifyInstance) {
       line: used.line,
       ...(used.playerStats ? { playerStats: used.playerStats } : {}),
     };
+  });
+
+  // A won fight the director did not run: its loot, dropped once into the bags. A directed fight drops
+  // its own on the step that wins it.
+  app.post("/loot", async (req, reply) => {
+    const parsed = lootRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Invalid loot", issues: parsed.error.issues.slice(0, 10) });
+    }
+    const looted = await lootGameFight(app.db, parsed.data.chatId, parsed.data.fight, parsed.data.defeated);
+    if (!looted) return reply.status(404).send({ error: "Chat not found" });
+    return looted;
   });
 
   // The sheet's Rest button: a rest on one character's sheet, and the charges it brings back to what

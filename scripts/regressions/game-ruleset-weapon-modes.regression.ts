@@ -236,6 +236,9 @@ try {
     };
     /** Less what the examples' items do when used, which is 1.59's and has a lane of its own. */
     const withoutUse = (doc: Record<string, any>) => {
+      // And the loot, which is 1.63's.
+      delete doc.items?.lootTables;
+      for (const catalog of doc.catalogs) for (const entry of catalog.entries ?? []) delete entry.creature?.loot;
       for (const entry of itemCatalogOf(doc).entries) {
         delete entry.item.use;
         delete entry.item.charges;

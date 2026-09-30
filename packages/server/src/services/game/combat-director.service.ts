@@ -59,6 +59,9 @@ type Task =
 type Source = "gm" | "ai" | "manual" | "fallback";
 export interface CombatDirectorState extends DirectedCombatView {
   schemaVersion: 1;
+  /** What the win dropped into the party's bags, once it is won: set on the step that wins, so a fight
+   *  drops its loot once. Empty when it dropped nothing. */
+  loot?: Array<{ name: string; quantity: number; left?: number }>;
   anchor: string;
   gm: boolean;
   difficulty: string;
@@ -145,6 +148,8 @@ function sync(s: CombatDirectorState) {
         statusEffects: (u.statusEffects ?? []).map((e) => e.name),
       })),
       enemies: s.enemies.map((u) => ({ name: u.name, hp: u.hp, maxHp: u.maxHp, defeated: u.hp <= 0 })),
+      // Once a won fight has dropped its loot, even none, the summary says so: nothing drops it again.
+      ...(s.loot ? { loot: s.loot.map((drop) => ({ ...drop })) } : {}),
     };
   }
 }

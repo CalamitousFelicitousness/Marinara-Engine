@@ -477,6 +477,11 @@ function bearerNote(status: GameInventoryBearerStatus | undefined, bindingLabel:
 
 /** The tag line for wearing: only the actions this ruleset has, putting on for slots and binding for a
  *  binding limit, so a model is never offered one the Engine would refuse every time. */
+/** The ruleset's loot tables as the Game Master names them: "grave_goods (Grave goods)". */
+function promptLootTables(tables: ReadonlyArray<{ id: string; label: string }>): string {
+  return tables.map((table) => `${table.id} (${normalizePromptText(table.label)})`).join(", ");
+}
+
 function wearGrammarLine(slots: boolean, bindingLabel: string | undefined): string {
   const binding = bindingLabel === undefined ? undefined : normalizePromptText(bindingLabel);
   const actions = [...(slots ? ["equip", "unequip"] : []), ...(binding !== undefined ? ["bind", "unbind"] : [])];
@@ -1450,6 +1455,11 @@ export function buildGmFormatReminder(
           ...(ctx.ruleset?.catalogs?.some((catalog) => catalog.holds === "items")
             ? [
                 `- [inventory: action="use" item="Name" who="Name"] - when a character uses one of the ruleset's items whose [brackets] say "use (...)". The Engine rolls what it does to whoever uses it, writes that on their sheet and spends the item, and the answer says what happened: narrate that, and what it does to anybody else. A player's message may end with an [item_used] block: the Engine already used that item the same way, so narrate it and never use or remove it again.`,
+              ]
+            : []),
+          ...(ctx.ruleset?.items?.lootTables?.length
+            ? [
+                `- [loot: table="id" who="Name"] - when the party finds a hoard, searches the fallen or is rewarded, instead of adding the items yourself. The Engine rolls the ruleset's table and puts what it drops into the bags as an add would (who="..." for one character's), and the answer says what dropped: narrate exactly that. Tables: ${promptLootTables(ctx.ruleset.items.lootTables)}. A won fight already dropped its own loot, which the combat result lists: never roll a table for it again.`,
               ]
             : []),
         ]),

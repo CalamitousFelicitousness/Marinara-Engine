@@ -172,8 +172,12 @@ try {
     const gateIssue = /regain charges on a rest or break when emptied.*capabilityApi 1\.61/;
     const issue = (minor: number, doc: Record<string, any>, paths?: string[], files?: Map<string, unknown>) =>
       getCapabilityPackageInstallIssue(manifest(minor, paths) as any, doc, files);
-    // Less the litany page's gate, which is 1.62's and has a lane of its own.
-    const ungated = (doc: Record<string, any>) => delete itemEntry(doc, "litany-page").item.use.gate;
+    // Less the litany page's gate and the loot, which are 1.62's and 1.63's and have lanes of their own.
+    const ungated = (doc: Record<string, any>) => {
+      delete itemEntry(doc, "litany-page").item.use.gate;
+      delete doc.items?.lootTables;
+      for (const catalog of doc.catalogs) for (const entry of catalog.entries ?? []) delete entry.creature?.loot;
+    };
     assert.match(issue(60, variant(gravewatchText, ungated)) ?? "", gateIssue);
     assert.equal(issue(61, variant(gravewatchText, ungated)), null);
     const plain = (doc: Record<string, any>) => (itemEntry(doc, "dawn-bell").item.charges = { max: 3 });
@@ -193,6 +197,7 @@ try {
     });
     assert.match(issue(60, onlyBreaks) ?? "", gateIssue, "a break alone");
     const inFile = variant(gravewatchText, (doc) => {
+      ungated(doc);
       const catalog = itemCatalogOf(doc);
       delete catalog.entries;
       catalog.asset = "catalogs/kit.json";

@@ -115,6 +115,8 @@ export interface RulesetFightState {
   bosses: string[];
   /** Every clamp and every fallback the opponents were built with, in plain words. */
   adjustments: string[];
+  /** The loot table each opponent built from the bestiary carries, by combatant id: what a win rolls. */
+  lootTables?: Record<string, string>;
 }
 
 export type RulesetCommandResult = { ok: true } | { ok: false; error: string; code: string };
@@ -205,6 +207,7 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
   if (!combat) return { ok: false, error: "This game's ruleset does not resolve its own fights." };
 
   const adjustments: string[] = [];
+  const lootTables: Record<string, string> = {};
   /** Invented opponents written as sheets, and the tier each is held to once it is built. */
   const heldToTier = new Map<string, NonNullable<typeof combat.threat>["tiers"][number]>();
   const builds = rulesetSheetBuildsByName(input.cards, input.playerName);
@@ -245,6 +248,7 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
         side: "enemy",
         creature: { catalogId: found.catalogId, entryId: found.entry.id },
       });
+      if (found.entry.creature?.loot) lootTables[opponent.id] = found.entry.creature.loot;
       continue;
     }
     const proposed =
@@ -363,6 +367,7 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     controllers: {},
     bosses: input.enemies.filter((opponent) => opponent.boss).map((opponent) => opponent.id),
     adjustments: adjustments.slice(0, RULESET_ADJUSTMENT_LIMIT),
+    ...(Object.keys(lootTables).length > 0 ? { lootTables } : {}),
   };
   record(fight, encounter.opening);
   for (const line of fight.adjustments) logger.info("[game/combat:ruleset] %s", line);

@@ -416,6 +416,20 @@
           { "id": "crown", "label": "crowns", "value": 60 }
         ]
       }
+    ],
+    "lootTables": [
+      {
+        "$comment": "What the dead and the hollow carry: one or two picks, mostly shot and powder and the odd tonic, now and then a page of the litany, and once in a while whatever arm they fell with, which the filter picks from every arm in the kit.",
+        "id": "grave_goods",
+        "label": "Grave goods",
+        "rolls": "1d2",
+        "entries": [
+          { "item": "kit/shot-and-powder", "weight": 4, "count": "1d4" },
+          { "item": "kit/warming-tonic", "weight": 3 },
+          { "item": "kit/litany-page", "weight": 2 },
+          { "filter": { "category": "arm" }, "weight": 1 }
+        ]
+      }
     ]
   },
   "catalogs": [
@@ -542,6 +556,7 @@
           "summary": "A warden who did not come back from the dark, and still walks the watch.",
           "creature": {
             "tier": "dread",
+            "loot": "grave_goods",
             "health": 6,
             "defense": 2,
             "initiativeModifier": 2,
@@ -566,6 +581,7 @@
           "summary": "Something in grave-cloth that climbed back out, and does not feel a blade.",
           "creature": {
             "tier": "dread",
+            "loot": "grave_goods",
             "health": 5,
             "defense": 2,
             "initiativeModifier": 1,

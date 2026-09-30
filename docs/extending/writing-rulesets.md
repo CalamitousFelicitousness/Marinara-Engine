@@ -634,7 +634,7 @@ The limits are 12 catalogs per ruleset, 2000 entries per catalog either way, and
 
 ## Items: what a party carries
 
-Armor, weapons, potions, gear, ammunition and money are items. An optional `items` block declares the words every item of your ruleset is written in, and a catalog with `holds: "items"` lists the items themselves. Both need Capability API 1.49; the block's `rarityCaps` and `propose`, which govern the items the Game Master invents, need 1.51, a value that reads the items a character holds (`itemStat`) needs 1.52, what an item does to checks while worn or carried, with the block's `bonus` caps, needs 1.53, what an item asks of its wearer and the abilities it changes need 1.54, a weapon's `attack` needs 1.55, what an item does in a fight needs 1.56, what a weapon shoots and holds loaded needs 1.57, a weapon's modes, off-hand attack, floor and conditions on a hit need 1.58, what using an item does in a fight, with the charges it holds, needs 1.59, a use that restores a pool needs 1.60, charges regained on a rest or an item that breaks when emptied need 1.61, and a use that asks a check first (`gate`) needs 1.62.
+Armor, weapons, potions, gear, ammunition and money are items. An optional `items` block declares the words every item of your ruleset is written in, and a catalog with `holds: "items"` lists the items themselves. Both need Capability API 1.49; the block's `rarityCaps` and `propose`, which govern the items the Game Master invents, need 1.51, a value that reads the items a character holds (`itemStat`) needs 1.52, what an item does to checks while worn or carried, with the block's `bonus` caps, needs 1.53, what an item asks of its wearer and the abilities it changes need 1.54, a weapon's `attack` needs 1.55, what an item does in a fight needs 1.56, what a weapon shoots and holds loaded needs 1.57, a weapon's modes, off-hand attack, floor and conditions on a hit need 1.58, what using an item does in a fight, with the charges it holds, needs 1.59, a use that restores a pool needs 1.60, charges regained on a rest or an item that breaks when emptied need 1.61, a use that asks a check first (`gate`) needs 1.62, and loot tables and a creature's loot need 1.63.
 
 ### The items block
 
@@ -713,6 +713,7 @@ The block goes in `items` at the top level of the file. This is Ember Roads', a 
 - `propose`: `true` by default. `false` forbids the Game Master to invent items of your ruleset.
 - `native`: `true` by default. `false` turns off Game Mode's own untyped items in your ruleset's games (see **What reads items**). The Game Master can still invent items, written in your ruleset's words.
 - `freeform`: what an item the player types in becomes. `"plain"` (the default) keeps it as an item with no rules, as today. `"refuse"` allows only items of your ruleset.
+- `lootTables` (Capability API 1.63): optional, up to 24. What a won fight's creatures and the Game Master's `[loot:]` drop (see Loot, below).
 
 ### An item
 
@@ -998,6 +999,34 @@ An item may be used in a fight (Capability API 1.59): a poultice pressed on a cu
   ```
 
 What a fight uses up and the charges it leaves are written to the inventory as each step is taken, as a weapon's shots are, and the journal says what was used. The fight log says each use ("Poultice: 1 of 2 left.", "Dawn bell: 2 of 3 left."). A party member the Engine plays uses a heal only on somebody hurt, and nobody uses an item to strike at somebody walking away. The item's details and the Game Master's line say what using it does: "Use (Action): heals 1d4 + 1, range 0 paces, used up" and `use (Act): Steel 7 save negates it, Rattled, 1 of 3 charges`, and the details show the charges left. An item the Game Master invents `like=` one of yours is used as that one is, charges and all.
+
+### Loot
+
+A won fight drops loot in every Game Mode game, once, into the party's bags. Without a ruleset it comes from Game Mode's own tables (more and rarer on a harder game), and so it does in a ruleset that declares no loot tables and leaves `native` on. A ruleset that declares loot tables drops its own items instead, and one with `native: false` and no tables drops nothing.
+
+`lootTables` in the `items` block (Capability API 1.63) lists them, as Gravewatch's grave goods do:
+
+```json
+"lootTables": [
+  {
+    "id": "grave_goods",
+    "label": "Grave goods",
+    "rolls": "1d2",
+    "entries": [
+      { "item": "kit/shot-and-powder", "weight": 4, "count": "1d4" },
+      { "item": "kit/warming-tonic", "weight": 3 },
+      { "item": "kit/litany-page", "weight": 2 },
+      { "filter": { "category": "arm" }, "weight": 1 }
+    ]
+  }
+]
+```
+
+- `rolls` is how many picks the table makes: a number from 0 to 20, or dice (`"1d2"`), 1 by default.
+- Each pick draws one line by `weight` (1 by default) against the others. A line names one of your items as `<catalog>/<entry>`, or a `filter` by `rarity`, `category` and `tag`, which picks evenly among every item that matches. `count` is how many drop, a number or dice, 1 by default. An item a layer takes out drops nothing, and neither does a filter that finds none.
+- A bestiary creature names the table it carries with `loot` (see Creatures, below). A won ruleset fight rolls the table of each creature defeated, and a fight the Engine does not resolve by your rules has no bestiary creatures, so it drops nothing.
+- What drops goes into the shared view as an add does, the player's bag asked first, and what nobody can carry is left behind. The recap the Game Master gets says what dropped and that it is already in the bags, the journal says so, and a notification shows it.
+- The Game Master rolls a table in the story with `[loot: table="grave_goods" who="Ada"]` (`who=` for one character's bag), measured from where the turn began like its inventory tags, so a regenerated reply drops once. Each item that drops is answered as an add, and its instructions list your tables.
 
 ### Using items outside a fight
 
@@ -1690,6 +1719,7 @@ as a `sheet`, takes `health`, `defense`, `initiativeModifier`, `speed`, `abiliti
   of those item tags is taken as it comes (Capability API 1.55, see
   [Weapons in a fight](#weapons-in-a-fight)). `conditionImmunities` names your own conditions.
 - `tier`: which rung of `combat.threat` it belongs to.
+- `loot` (Capability API 1.63): the id of the loot table a won fight rolls for it (see Loot, above).
 - `traits`: short name and text pairs the Game Master is shown. They are never resolved, so
   anything with numbers in it belongs in an action.
 - `signaturePoints`: points given back at the start of its own turn, spent on `signature` actions.

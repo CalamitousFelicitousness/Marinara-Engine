@@ -172,11 +172,20 @@ const withNerve = (nerve: number): RulesetSheetBuild => {
   const gateIssue = /items ask a check before they work.*capabilityApi 1\.62/;
   const issue = (minor: number, doc: Record<string, any>, paths?: string[], files?: Map<string, unknown>) =>
     getCapabilityPackageInstallIssue(manifest(minor, paths) as any, doc, files);
-  assert.match(issue(61, variant(gravewatchText)) ?? "", gateIssue);
-  assert.equal(issue(62, variant(gravewatchText)), null);
-  const ungated = (doc: Record<string, any>) => delete itemEntry(doc, "litany-page").item.use.gate;
+  // Less the loot, which is 1.63's and has a lane of its own.
+  const noLoot = (doc: Record<string, any>) => {
+    delete doc.items?.lootTables;
+    for (const catalog of doc.catalogs) for (const entry of catalog.entries ?? []) delete entry.creature?.loot;
+  };
+  assert.match(issue(61, variant(gravewatchText, noLoot)) ?? "", gateIssue);
+  assert.equal(issue(62, variant(gravewatchText, noLoot)), null);
+  const ungated = (doc: Record<string, any>) => {
+    noLoot(doc);
+    delete itemEntry(doc, "litany-page").item.use.gate;
+  };
   assert.equal(issue(61, variant(gravewatchText, ungated)), null, "the rest of the example stays 1.61");
   const inFile = variant(gravewatchText, (doc) => {
+    noLoot(doc);
     const catalog = itemCatalogOf(doc);
     delete catalog.entries;
     catalog.asset = "catalogs/kit.json";

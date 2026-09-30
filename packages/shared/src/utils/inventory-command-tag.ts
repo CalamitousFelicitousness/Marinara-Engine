@@ -167,6 +167,42 @@ export function parseInventoryTagBody(body: string): InventoryTagRequest | null 
   return { action, items, count, ...(who ? { who } : {}), ...(to ? { to } : {}), ...(proposal ? { proposal } : {}) };
 }
 
+/** The Game Master's `[loot: table="..." who="..."]`: one of the ruleset's loot tables, rolled. */
+export function createLootTagRegex(): RegExp {
+  return new RegExp(`\\[loot:([^\\]]{0,${MAX_INVENTORY_TAG_BODY}})\\]`, "gi");
+}
+
+/** One loot tag body read leniently, as an inventory tag's is: the table (or a bare word naming it) and
+ *  whose bag, if any. Null when it names no table. */
+export function parseLootTagBody(body: string): { table: string; who?: string } | null {
+  const values = new Map<string, string>();
+  for (const attribute of readGmTagAttributes(body)) {
+    const key = attribute.key.trim().toLowerCase();
+    if (key && !values.has(key)) values.set(key, unquote(attribute.rawValue));
+  }
+  const table = cleanName(values.get("table") ?? (values.size === 0 ? body : undefined));
+  if (!table) return null;
+  const who = cleanName(values.get("who"));
+  return { table, ...(who ? { who } : {}) };
+}
+
+/** A loot tag that dropped nothing, answered in place: rolled and empty, or refused and why. What it did
+ *  drop is answered as the inventory's own resolved adds instead. */
+export function serializeLootTag(input: { table: string; who?: string } | { raw: string }, refused?: string): string {
+  const parts: string[] = [];
+  const attribute = (key: string, value: string) => parts.push(`${key}="${sanitize(value)}"`);
+  if ("raw" in input) attribute("raw", input.raw);
+  else {
+    attribute("table", input.table);
+    if (input.who) attribute("who", input.who);
+  }
+  if (refused) {
+    attribute("result", "refused");
+    attribute("reason", refused);
+  } else attribute("result", "nothing");
+  return `[loot: ${parts.join(" ")}]`;
+}
+
 /** What the Engine did with one item of a tag. `count` is how many really moved and `now` how many
  *  of it the bag holds afterwards: the receiver's for a give. */
 export type InventoryTagOutcome = { ok: true; count: number; now: number } | { ok: false; reason: string };

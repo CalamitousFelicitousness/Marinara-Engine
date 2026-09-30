@@ -230,6 +230,9 @@ try {
     /** Less the other ways their weapons fight and what their items do when used, which are 1.58's
      *  and 1.59's and have lanes of their own. */
     const withoutWays = (doc: Record<string, any>) => {
+      // And the loot, which is 1.63's.
+      delete doc.items?.lootTables;
+      for (const catalog of doc.catalogs) for (const entry of catalog.entries ?? []) delete entry.creature?.loot;
       delete doc.combat?.offHand;
       for (const entry of itemCatalogOf(doc).entries) {
         for (const key of ["modes", "offHand", "floor", "onHit"]) delete entry.item.attack?.[key];

@@ -108,7 +108,6 @@ import {
   resolveInitialMapLocationName,
 } from "../services/game/world-map-mode.js";
 import { resolveCombatRound, type CombatantStats } from "../services/game/combat.service.js";
-import { generateCombatLoot, generateLootTable } from "../services/game/loot.service.js";
 import {
   advanceTime,
   formatGameTime,
@@ -10155,40 +10154,6 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       logger.warn(err, "Tactical action failed on round-tripped state for chat %s", chatId);
       return reply.status(400).send({ error: "Invalid tactical combat state" });
     }
-  });
-
-  // ── POST /game/combat/loot ──
-  app.post("/combat/loot", async (req) => {
-    const schema = z.object({
-      chatId: z.string().min(1),
-      enemyCount: z.number().int().min(1).max(20),
-    });
-    const { chatId, enemyCount } = schema.parse(req.body);
-    const chats = createChatsStorage(app.db);
-    const chat = await chats.getById(chatId);
-    if (!chat) throw new Error("Chat not found");
-
-    const meta = parseMeta(chat.metadata);
-    const difficulty = normalizeGameDifficulty((meta.gameSetupConfig as Record<string, unknown>)?.difficulty);
-    const drops = generateCombatLoot(enemyCount, difficulty);
-    return { drops };
-  });
-
-  // ── POST /game/loot/generate ──
-  app.post("/loot/generate", async (req) => {
-    const schema = z.object({
-      chatId: z.string().min(1),
-      count: z.number().int().min(1).max(20).default(3),
-    });
-    const { chatId, count } = schema.parse(req.body);
-    const chats = createChatsStorage(app.db);
-    const chat = await chats.getById(chatId);
-    if (!chat) throw new Error("Chat not found");
-
-    const meta = parseMeta(chat.metadata);
-    const difficulty = normalizeGameDifficulty((meta.gameSetupConfig as Record<string, unknown>)?.difficulty);
-    const drops = generateLootTable(count, difficulty);
-    return { drops };
   });
 
   // ── POST /game/time/advance ──

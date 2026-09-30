@@ -1440,11 +1440,17 @@ try {
       ["Watch pistol", 1],
     ]);
     // Told again, it pays from where the turn began, once.
-    await app.inject({
+    const retold = await app.inject({
       method: "POST",
       url: "/api/generate/",
       payload: { chatId: market.id, streaming: true, regenerateMessageId: saved.id },
     });
+    assert.equal(retold.statusCode, 200, retold.body);
+    assert.match(
+      String((await chats.listMessages(market.id)).at(-1)!.content),
+      /\[inventory: action="pay" item="pennies" count="30" result="ok"/,
+      "the retelling paid again",
+    );
     assert.deepEqual(await held(), [
       ["pennies", 29],
       ["Watch pistol", 1],

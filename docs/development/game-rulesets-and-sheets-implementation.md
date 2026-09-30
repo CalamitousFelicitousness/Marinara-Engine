@@ -1681,15 +1681,19 @@ No Capability API change: slice I8-2 of the ruleset items plan (#6909).
   (`gameInventoryUsableStack`, shared with the `charge` op) spends only a worn, and where it binds
   bound, stack; the screen and the director set it. Without it a fight counted the worn tonic but
   drank a spare from the bag, and a worn cursed ring used spare rings up in its place.
+  One rule, `gameInventoryWearNeeds` with `gameInventoryWearMet`, says what worn means for the Use
+  button, the fight menu and these spends alike, so they cannot drift apart again.
 - **Gates rolled on the server.** `rollRulesetItemGate` (item-use.ts), extracted from the Use
   button's path, rolls it for the user's sheet, live state and worn items. `rollGameFightItemGate`
-  (game-item-use.service.ts) finds the user's card by the unit's name (the player's card otherwise).
+  (game-item-use.service.ts) finds the user's card by the unit's name; only the player's own unit (the
+  player's card, or the persona's name) falls back on the player's card, and anyone else without one
+  rolls on a blank sheet from their own bag, as a ruleset fight builds them.
   The Classic round route rolls it for the unit the round gives the item to; the director's command
   route rolls it before a player's classic or tactical item command and marks the action `failed`.
   A failed use is a miss that does nothing and carries a `note` the log shows instead of its usual line.
 - **Proven** by the charges-and-gates sections of
   `scripts/regressions/game-ruleset-classic-items.regression.ts` and by
-  `e2e/game-ruleset-classic-items.e2e.ts`, with 37 deliberate breaks each caught.
+  `e2e/game-ruleset-classic-items.e2e.ts`, with 40 deliberate breaks each caught.
 
 ## Gaps a ruleset author found
 

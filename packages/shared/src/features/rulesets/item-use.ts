@@ -8,7 +8,12 @@
 // or spends its charges, through the same write a fight uses.
 
 import type { GameInventoryJournalEntry } from "../../utils/game-inventory-ops.js";
-import { gameInventoryBagKey, type GameInventoryStack } from "../../utils/game-inventory-stacks.js";
+import {
+  gameInventoryBagKey,
+  gameInventoryWearMet,
+  gameInventoryWearNeeds,
+  type GameInventoryStack,
+} from "../../utils/game-inventory-stacks.js";
 import type { RulesetCatalogItem, RulesetDefinition, RulesetSheetBuild } from "../../schemas/ruleset.schema.js";
 import { applyRulesetFightItemChanges } from "../ruleset-combat/ammo.js";
 import { parseRulesetCombatDice } from "../ruleset-combat/dice.js";
@@ -102,8 +107,7 @@ export function useRulesetItemOutsideFight(input: {
   const use = item.use;
   if (!use) return { ok: false, reason: "no-use" };
   // Used while worn where it takes a slot or binds, as a fight uses it; worn means bound too there.
-  const takesSlots = Object.values(item.slots ?? {}).some((count) => count > 0);
-  if ((takesSlots && !stack.equipped) || (item.binds && !stack.bound)) return { ok: false, reason: "not-worn" };
+  if (!gameInventoryWearMet(stack, gameInventoryWearNeeds(item))) return { ok: false, reason: "not-worn" };
   const facts = rulesetItemFacts(definition, item).use;
   const max = facts?.charges?.max;
   if (use.charges !== undefined) {

@@ -160,8 +160,9 @@ export function gameInventoryItemUser(
 /**
  * The check one of the ruleset's items asks before it works (`gate`), rolled as a party member uses it
  * in one of the Engine's own Classic or Tactical fights (#6909), which roll none of the ruleset's own
- * dice: for the card of that member's name (the player's card when no card has it), with the sheet as
- * the player sees it and the worn items in that card's bag, as the Use button rolls it. Null when the
+ * dice: for the card of that member's name, with the sheet as the player sees it and the worn items in
+ * that member's bag, as the Use button rolls it. Only the player's own unit falls back on the player's
+ * card; anybody else without a card rolls on a blank sheet, as a ruleset fight builds them. Null when the
  * item asks no check, or its `unless` holds; otherwise whether it passed, and the fight log's line.
  */
 export async function rollGameFightItemGate(
@@ -178,7 +179,11 @@ export async function rollGameFightItemGate(
   const named = (name: string) =>
     context.cards.find((each) => normalizeCharacterLookupName(each.name) === normalizeCharacterLookupName(name));
   const player = (context.playerName ? named(context.playerName) : undefined) ?? context.cards[0];
-  const card = named(who) ?? player;
+  const own = named(who);
+  const isPlayer = own
+    ? own === player
+    : !!context.playerName && normalizeCharacterLookupName(who) === normalizeCharacterLookupName(context.playerName);
+  const card = own ?? (isPlayer ? player : undefined);
   const chats = createChatsStorage(db);
   const chat = await chats.getById(chatId);
   const metadata = readMetadata(chat?.metadata);
@@ -189,7 +194,7 @@ export async function rollGameFightItemGate(
     definition: context.definition,
     itemOf: book.itemOf,
     stacks: normalizeGameInventoryStacks(metadata.gameInventory),
-    holder: card && card !== player ? card.name : undefined,
+    holder: isPlayer ? undefined : (card?.name ?? who),
     item: read.entry.item,
     user: { build: card?.build ?? defaultRulesetSheetBuild(context.definition), live },
     roll,

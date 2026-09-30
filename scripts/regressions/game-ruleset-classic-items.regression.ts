@@ -40,6 +40,7 @@ process.env.FILE_STORAGE_DIR = join(dataDir, "storage");
 const { default: Fastify } = await import("../../packages/server/node_modules/fastify/fastify.js");
 const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
 const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
+const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
 const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
 const { createGameStateStorage } = await import("../../packages/server/src/services/storage/game-state.storage.js");
 const { createGameEngineStateStorage } =
@@ -1000,6 +1001,33 @@ try {
       brams.json().result.actions.find((action: { attackerId: string }) => action.attackerId === "bram").note,
       /^Bram rolls Ward to use Page of the vigil litany: .*failed/,
     );
+    // Only the player's own unit falls back on the player's card: Wren, the player, has no card of that
+    // name and reads Ada's (Nerve 3, no check); Cleo, a companion with no card, rolls on a blank sheet
+    // (Nerve 2) and fails.
+    const wren = await createCharactersStorage(db).createPersona("Wren", "The player");
+    await chats.update(party.chatId, { personaId: wren.id });
+    const mixed = await app.inject({
+      method: "POST",
+      url: "/game/combat/round",
+      payload: {
+        chatId: party.chatId,
+        round: 1,
+        combatants: [
+          ...combatants,
+          { ...combatants[0]!, id: "wren", name: "Wren" },
+          { ...combatants[0]!, id: "cleo", name: "Cleo" },
+        ],
+        partyActions: {
+          wren: { type: "item", itemId: "Page of the vigil litany", targetId: "wren" },
+          cleo: { type: "item", itemId: "Page of the vigil litany", targetId: "cleo" },
+        },
+      },
+    });
+    assert.equal(mixed.statusCode, 200, mixed.body);
+    const actionOf = (id: string) =>
+      mixed.json().result.actions.find((action: { attackerId: string }) => action.attackerId === id);
+    assert.equal(actionOf("wren").note, undefined, "the player's own unit reads the player's card");
+    assert.match(actionOf("cleo").note, /^Cleo rolls Ward to use Page of the vigil litany: .*failed/);
 
     // The route rolls the Engine's dice for a bell's last charge: one that always breaks is gone.
     const brittleDoc = graveNoFights((doc) => {

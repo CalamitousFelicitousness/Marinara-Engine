@@ -1174,16 +1174,32 @@ export function gameInventoryOverloads(
   return pastLimit(stacks, stack.holder, weightOf(stack, rules) * amount, rules);
 }
 
-/** Whether a stack may be used as its item asks: worn where it takes slots, bound where it binds. A
- *  plain item, or one the rules do not know, always may. */
+/** What a ruleset's item asks of a stack before it may be used: worn where it takes slots, bound
+ *  where it binds. The one rule the Use button, the fight menu and a fight's spends all read. */
+export function gameInventoryWearNeeds(item: { slots?: Readonly<Record<string, number>>; binds?: unknown }): {
+  equipped?: true;
+  bound?: true;
+} {
+  const takesSlots = Object.values(item.slots ?? {}).some((count) => count > 0);
+  return { ...(takesSlots ? { equipped: true as const } : {}), ...(item.binds ? { bound: true as const } : {}) };
+}
+
+/** Whether a stack is worn and bound as `needs` asks. */
+export function gameInventoryWearMet(
+  stack: Pick<GameInventoryStack, "equipped" | "bound">,
+  needs: { equipped?: boolean; bound?: boolean } | undefined,
+): boolean {
+  return (!needs?.equipped || stack.equipped === true) && (!needs?.bound || stack.bound === true);
+}
+
+/** Whether a stack may be used as its item asks (`gameInventoryWearNeeds`). A plain item, or one the
+ *  rules do not know, always may. */
 export function gameInventoryUsableStack(
   stack: GameInventoryStack,
   rules: GameInventoryItemRules | undefined,
 ): boolean {
   const read = stack.item ? rules?.itemOf(stack.item) : undefined;
-  if (!read) return true;
-  const takesSlots = Object.values(read.slots ?? {}).some((count) => count > 0);
-  return (!takesSlots || stack.equipped === true) && (!read.binds || stack.bound === true);
+  return !read || gameInventoryWearMet(stack, gameInventoryWearNeeds(read));
 }
 
 /** Whether the player's own change would part them from this stack: a bound cursed item. */

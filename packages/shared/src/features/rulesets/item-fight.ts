@@ -9,6 +9,8 @@ import {
   gameInventoryFightEffects,
   gameInventoryFightLines,
   gameInventoryNameKey,
+  gameInventoryWearMet,
+  gameInventoryWearNeeds,
   type GameInventoryFightLine,
   type GameInventoryStack,
 } from "../../utils/game-inventory-stacks.js";
@@ -60,7 +62,7 @@ export function rulesetItemFightEffect(
   const applied = use.applies?.[0];
   const rounds = applied && typeof applied.duration === "object" ? applied.duration.rounds : undefined;
   const helps = use.kind === "heal" || use.kind === "buff";
-  const takesSlots = Object.values(item.slots ?? {}).some((count) => count > 0);
+  const wear = gameInventoryWearNeeds(item);
   return {
     name,
     target: use.targets ?? (helps ? "ally" : "enemy"),
@@ -78,11 +80,7 @@ export function rulesetItemFightEffect(
     ...(condition ? { status: { name: condition, emoji: helps ? "✨" : "💢", duration: rounds ?? 2 } } : {}),
     consumes: use.consumes === true,
     ...(said.charges ? { charges: { cost: said.charges.cost, max: said.charges.max } } : {}),
-    ...(takesSlots || item.binds
-      ? {
-          wear: { ...(takesSlots ? { equipped: true as const } : {}), ...(item.binds ? { bound: true as const } : {}) },
-        }
-      : {}),
+    ...(wear.equipped || wear.bound ? { wear } : {}),
     ruleset: true,
   };
 }
@@ -109,10 +107,7 @@ export function gameFightOffers(
     );
     if (!effect) return [];
     // Only the stacks it may be used from: worn and bound where the item asks it.
-    const usable = stacks.filter(
-      (stack) =>
-        stack.item === line.item && (!effect.wear?.equipped || stack.equipped) && (!effect.wear?.bound || stack.bound),
-    );
+    const usable = stacks.filter((stack) => stack.item === line.item && gameInventoryWearMet(stack, effect.wear));
     // A stack without a count of its own is full, and no stack holds more than its item's most.
     const charges = effect.charges;
     const uses = charges

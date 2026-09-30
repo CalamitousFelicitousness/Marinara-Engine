@@ -81,11 +81,17 @@ const AGENT_BATCH_FALLBACK_MAX_CONCURRENT = 4;
  *  turn silently hides whatever state the rest of the message described. */
 const HISTORY_MESSAGE_MAX_CHARS = 2000;
 
-function stripHtmlTags(text: string): string {
-  return text
-    .replace(/<\/?[a-zA-Z][^>]*>/g, "")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+/** `keepSpeakerTags` preserves merged group replies' only record of who said each line. */
+function stripHtmlTags(text: string, keepSpeakerTags = false): string {
+  const tagPattern = keepSpeakerTags ? /<\/?(?!speaker\b)[a-zA-Z][^>]*>/g : /<\/?[a-zA-Z][^>]*>/g;
+  // Strip to a fixed point: one pass over `<scr<b>ipt>` leaves a working tag behind.
+  // Each changing pass shortens the text, so this terminates.
+  let stripped = text;
+  for (let previous = ""; previous !== stripped;) {
+    previous = stripped;
+    stripped = stripped.replace(tagPattern, "");
+  }
+  return stripped.replace(/\n{3,}/g, "\n\n").trim();
 }
 
 function escapeXml(value: string): string {
@@ -2726,7 +2732,11 @@ function buildAgentMessages(
     for (let msgIdx = 0; msgIdx < recent.length; msgIdx++) {
       const msg = recent[msgIdx]!;
       const role: "user" | "assistant" = msg.role === "assistant" ? "assistant" : "user";
-      let content = stripHtmlTags(msg.content).slice(0, HISTORY_MESSAGE_MAX_CHARS);
+      let content = stripHtmlTags(msg.content, true).slice(0, HISTORY_MESSAGE_MAX_CHARS);
+      // Consecutive same-role turns merge below, so group speakers must be named here.
+      if (msg.speakerName && !new RegExp(`^${escapeRegex(msg.speakerName)}\\s*:`, "i").test(content)) {
+        content = `${msg.speakerName}: ${content}`;
+      }
       if (options.includeMessageIds && msg.id) {
         content = `<message_id>${msg.id}</message_id>\n${content}`;
       }

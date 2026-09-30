@@ -4,6 +4,9 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Echo Chamber and other agents now see who said what in group chats: turns in individual group mode are labeled with the speaker's name, and merged replies keep their speaker tags. Reactions no longer credit one character's line to another (#6906).
+- On mobile, Echo Chamber stays scrolled to its newest reaction after you finish typing or editing, instead of showing an empty box until you scroll back up (#6906).
+
 - A message's **Private note** (under **Bookmark, pin or note**) can be shown to one Roleplay character with **Show the note to the narrator character**. That character receives it next to the message, and nobody else does. Notes stay private by default (#6895).
 
 - The Roleplay **Whisper** command description now shows the format for whispering to another character (#6895).

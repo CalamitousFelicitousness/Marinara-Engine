@@ -897,9 +897,7 @@ const longLoreContext: AgentContext = {
 const illustrator = makeAgent("illustrator", "image_prompt");
 const fullLoreProvider = new RecordingProvider('{"prompt":"An illustration"}');
 await executeAgent(illustrator, longLoreContext, fullLoreProvider, "agent-model");
-const fullLoreBatchProvider = new RecordingProvider(
-  '{"world-state":{"weather":"rain"},"quest":{"quests":[]}}',
-);
+const fullLoreBatchProvider = new RecordingProvider('{"world-state":{"weather":"rain"},"quest":{"quests":[]}}');
 await executeAgentBatch(
   [makeAgent("world-state", "game_state_update"), makeAgent("quest", "quest_update")],
   longLoreContext,
@@ -936,3 +934,49 @@ const noPreviousProvider = new RecordingProvider('{"weather":"rain"}');
 await executeAgent(selectiveAgent, previousContext, noPreviousProvider, "agent-model");
 assert.equal(previousOutputLoads, 1, "disabled previous output must not be loaded");
 assert.doesNotMatch(JSON.stringify(noPreviousProvider.messages), /BUILT_IN_PRIVATE_PREVIOUS_CONTEXT/);
+
+// Group history must tell agents who spoke: individual turns merge into one assistant block,
+// and merged replies only record their speakers in <speaker> tags.
+const groupHistoryProvider = new RecordingProvider('{"reactions":[]}');
+await executeAgent(
+  {
+    id: "echo-chamber",
+    type: "echo-chamber",
+    name: "Echo Chamber",
+    phase: "parallel",
+    promptTemplate: "React to the latest roleplay beat.",
+    connectionId: null,
+    settings: { contextSize: 10, maxTokens: 512 },
+    isCustomAgent: false,
+  },
+  {
+    ...context,
+    recentMessages: [
+      { role: "user", content: "Hello, everyone.", speakerName: "Mari" },
+      { role: "assistant", content: "I made tea.", characterId: "alice", speakerName: "Alice" },
+      { role: "assistant", content: "Bob: I brought cake.", characterId: "bob", speakerName: "Bob" },
+      { role: "user", content: "Thank you both." },
+      {
+        role: "assistant",
+        content: '<speaker="Alice">"Thanks,"</speaker> she said. <speaker="Bob">"Anytime."</speaker> <b>Cake.</b>',
+        characterId: "alice",
+      },
+      { role: "user", content: "<scr<b>ipt>Nested</script> markup." },
+    ],
+  },
+  groupHistoryProvider,
+  "agent-model",
+);
+const groupHistory = groupHistoryProvider.messages[0]!.filter((message) => message.role !== "system")
+  .map((message) => String(message.content))
+  .join("\n---\n");
+assert.match(groupHistory, /Mari: Hello, everyone\./, "group history must name the persona");
+assert.match(groupHistory, /Alice: I made tea\.\n\nBob: I brought cake\./, "merged same-role turns must keep speakers");
+assert.doesNotMatch(groupHistory, /Bob:\s*Bob:/, "an existing speaker prefix must not be doubled");
+assert.match(
+  groupHistory,
+  /<speaker="Alice">"Thanks,"<\/speaker> she said\. <speaker="Bob">"Anytime\."<\/speaker> Cake\./,
+  "merged replies must keep their speaker tags while other markup is stripped",
+);
+assert.match(groupHistory, /Nested markup\./);
+assert.doesNotMatch(groupHistory, /<\/?script/i, "nested markup must not reassemble into a tag after stripping");

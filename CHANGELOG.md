@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Select a word or short phrase in a chat message to get an **Add to lorebook** button, on desktop and mobile. Pick a lorebook and it opens on a new entry named after the selection, with the selection as its keyword, ready for you to write the content (#6899).
 - World Maps can now hold up to 5,000 locations instead of 500, enough for a whole world with its buildings, floors and rooms. Game Mode also accepts these larger maps when a game starts (Marinara-Agents#1132).
 - Two ruleset regression lanes no longer fail now and then: the classic-items lane's directed battle could end on the dice before the test's second item was used, and the loot lane counted the hand axes the party already carried as loot when the table dropped another (#6913).
 - Echo Chamber and other agents now see who said what in group chats: turns in individual group mode are labeled with the speaker's name, and merged replies keep their speaker tags. Reactions no longer credit one character's line to another (#6906).

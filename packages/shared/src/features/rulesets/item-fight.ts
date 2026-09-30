@@ -7,11 +7,21 @@
 import type { CombatItemEffect } from "../../types/combat-encounter.js";
 import {
   gameInventoryFightEffects,
+  gameInventoryFightLines,
   gameInventoryNameKey,
+  gameInventoryWearMet,
+  gameInventoryWearNeeds,
   type GameInventoryFightLine,
+  type GameInventoryStack,
 } from "../../utils/game-inventory-stacks.js";
 import { AVERAGE_AMOUNT_PER_POWER, averageAmount } from "./combat-bridge.js";
-import { rulesetItemUseDoes, type RulesetItemBook, type RulesetItemBookEntry } from "./item-book.js";
+import {
+  rulesetItemGateDifficulty,
+  rulesetItemGateText,
+  rulesetItemUseDoes,
+  type RulesetItemBook,
+  type RulesetItemBookEntry,
+} from "./item-book.js";
 
 /** The share of its maximum health that one typical hit takes in the Engine's own fights, whose
  *  combatants carry around 60 hit points and deal 11 to 15 a hit (see `carryHealthShare`). An item that
@@ -23,20 +33,23 @@ const TYPICAL_HIT_SHARE = 0.22;
  * fight lists it by; null for an item those fights cannot use. A heal heals and an attack harms, by the
  * share of the target's maximum health its dice come to, with its damage type as the element; the
  * first condition it puts on becomes a status by the ruleset's own name, and a buff or debuff is that
- * status alone. An item used up is spent; one that is not stays. What the Engine's fights have no
- * place for (a roll to hit, a save, an area, temporary points, a pool restored) is left to the
+ * status alone. An item used up is spent; one that holds charges spends them (#6909); one that is
+ * neither stays. A gate is rolled by the server when the item is used. What the Engine's fights have
+ * no place for (a roll to hit, a save, an area, temporary points, a pool restored) is left to the
  * description, as the combat bridge leaves it for a catalog entry.
  */
 export function rulesetItemFightEffect(
   name: string,
   read: Pick<RulesetItemBookEntry, "entry" | "facts"> | undefined,
 ): CombatItemEffect | null {
-  const use = read?.entry.item?.use;
+  const item = read?.entry.item;
+  const use = item?.use;
   const said = read?.facts.use;
-  // ponytail: an item that spends charges or asks a check first is left out of these fights, as the
-  // bridge leaves out a skill whose cost it cannot charge; spending charges and rolling the gate here
-  // is slice I8-2.
-  if (!use || !said || use.charges !== undefined || use.gate) return null;
+  if (!item || !use || !said) return null;
+  // A charge it cannot count, or a gate whose difficulty it cannot say, is a use the Engine cannot
+  // make, as the Use button refuses it.
+  if (use.charges !== undefined && !said.charges) return null;
+  if (use.gate && rulesetItemGateDifficulty(item, use.gate) === undefined) return null;
   const average = averageAmount(use.amount);
   const power =
     average === null
@@ -49,17 +62,62 @@ export function rulesetItemFightEffect(
   const applied = use.applies?.[0];
   const rounds = applied && typeof applied.duration === "object" ? applied.duration.rounds : undefined;
   const helps = use.kind === "heal" || use.kind === "buff";
+  const wear = gameInventoryWearNeeds(item);
   return {
     name,
     target: use.targets ?? (helps ? "ally" : "enemy"),
     type: use.kind === "attack" ? (power === undefined ? "status" : "damage") : use.kind,
-    description: rulesetItemUseDoes(said).join(", ") || name,
+    description:
+      [
+        ...rulesetItemUseDoes(said),
+        said.charges ? `spends ${said.charges.cost} of ${said.charges.max} charges` : "",
+        said.gate ? rulesetItemGateText(said.gate) : "",
+      ]
+        .filter(Boolean)
+        .join(", ") || name,
     ...(power !== undefined && (use.kind === "heal" || use.kind === "attack") ? { power } : {}),
     ...(use.damageType ? { element: use.damageType } : {}),
     ...(condition ? { status: { name: condition, emoji: helps ? "✨" : "💢", duration: rounds ?? 2 } } : {}),
     consumes: use.consumes === true,
+    ...(said.charges ? { charges: { cost: said.charges.cost, max: said.charges.max } } : {}),
+    ...(wear.equipped || wear.bound ? { wear } : {}),
     ruleset: true,
   };
+}
+
+/**
+ * The lines one of the Engine's fights offers once what each item does is known, on the server and on
+ * the screen alike. Without `rulesetItems` (a game with no ruleset items) every item is offered. With
+ * it, one of the ruleset's items is offered only when an effect the Engine worked out says what it
+ * does, only from the stacks it may be used from (worn and bound where it asks it), and one that holds
+ * charges only while a use is left, counted in uses rather than items; the rest are offered while the
+ * ruleset leaves Game Mode's own items on.
+ */
+export function gameFightOffers(
+  stacks: readonly GameInventoryStack[],
+  effects: readonly CombatItemEffect[],
+  rulesetItems: { native: boolean } | undefined,
+): GameInventoryFightLine[] {
+  const lines = gameInventoryFightLines(stacks);
+  if (!rulesetItems) return lines;
+  return lines.flatMap((line) => {
+    if (!line.item) return rulesetItems.native ? [line] : [];
+    const effect = effects.find(
+      (each) => each.ruleset && gameInventoryNameKey(each.name) === gameInventoryNameKey(line.name),
+    );
+    if (!effect) return [];
+    // Only the stacks it may be used from: worn and bound where the item asks it.
+    const usable = stacks.filter((stack) => stack.item === line.item && gameInventoryWearMet(stack, effect.wear));
+    // A stack without a count of its own is full, and no stack holds more than its item's most.
+    const charges = effect.charges;
+    const uses = charges
+      ? usable.reduce(
+          (total, stack) => total + Math.floor(Math.min(charges.max, stack.charges ?? charges.max) / charges.cost),
+          0,
+        )
+      : usable.reduce((total, stack) => total + stack.quantity, 0);
+    return uses > 0 ? [{ ...line, quantity: uses }] : [];
+  });
 }
 
 /**
@@ -70,32 +128,28 @@ export function rulesetItemFightEffect(
  * with no ruleset items) every item is guessed at, as before.
  */
 export function gameFightItems(
-  lines: readonly GameInventoryFightLine[],
+  stacks: readonly GameInventoryStack[],
   book: Pick<RulesetItemBook, "itemOf"> | undefined,
   native: boolean,
   guessed: readonly CombatItemEffect[],
 ): { lines: GameInventoryFightLine[]; effects: CombatItemEffect[] } {
-  const offered: GameInventoryFightLine[] = [];
-  const worked: CombatItemEffect[] = [];
-  for (const line of lines) {
-    if (!line.item || !book) {
-      if (native) offered.push(line);
-      continue;
-    }
-    const effect = rulesetItemFightEffect(line.name, book.itemOf(line.item));
-    if (!effect) continue;
-    offered.push(line);
-    worked.push(effect);
-  }
+  const all = gameInventoryFightLines(stacks);
+  const worked = book
+    ? all.flatMap((line) => {
+        const effect = line.item ? rulesetItemFightEffect(line.name, book.itemOf(line.item)) : null;
+        return effect ? [effect] : [];
+      })
+    : [];
+  const lines = gameFightOffers(stacks, worked, book ? { native } : undefined);
   const guesses = guessed.filter((effect) => !effect.ruleset);
-  const plain = offered.filter((line) => !line.item || !book);
+  const plain = lines.filter((line) => !line.item || !book);
   const matched = gameInventoryFightEffects(plain, guesses);
   // With ruleset items, only a guess one of the plain items takes is kept: a guess made for one of the
   // ruleset's items is gone, and a plain item that shares its name keeps its own, whichever of the two
   // is listed first. Without them, every guess is kept, as before.
   const plainNames = new Set(plain.map((line) => gameInventoryNameKey(line.name)));
   return {
-    lines: offered,
+    lines,
     effects: [
       ...worked,
       ...(book ? matched.filter((effect) => plainNames.has(gameInventoryNameKey(effect.name))) : matched),

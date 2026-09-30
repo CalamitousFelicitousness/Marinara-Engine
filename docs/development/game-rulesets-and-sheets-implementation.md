@@ -1653,14 +1653,47 @@ No Capability API change: slice I8-1 of the ruleset items plan (#6905) reads key
   battle's effects include it.
 - **A ruleset heal sets its strength.** `resolveItemAction` heals by `power` for a ruleset effect; a
   guessed heal still goes by what its name suggests, as it did.
-- **Left for I8-2.** An item whose use spends charges or asks a check first is not offered in these
-  battles: they cannot yet spend charges or roll the gate. Screen-played Tactical battles offer no
-  items at all, as before, and their route, whose engine heals with any item it is handed, now takes
-  only a plain item the battle offers.
+- **Split from I8-2.** An item whose use spends charges or asks a check first was left out of these
+  battles until I8-2 (below). Screen-played Tactical battles offer no items at all, as before, and
+  their route, whose engine heals with any item it is handed, now takes only a plain item the battle
+  offers.
 - **Proven** by `scripts/regressions/game-ruleset-classic-items.regression.ts` and
   `e2e/game-ruleset-classic-items.e2e.ts`, with 39 deliberate breaks each caught. A fortieth showed a
   check on the guesses that could never change the result once only guesses a plain item takes are
   kept, and it was deleted.
+
+### What charges and gates in Classic and Tactical battles settled
+
+No Capability API change: slice I8-2 of the ruleset items plan (#6909).
+
+- **Offered by uses, from the stacks they may be used from.** An effect carries `charges` (cost and
+  most) and `wear` (worn and bound where the item asks it). `gameFightOffers`, which the server and the
+  screen both read, counts a charged line in uses over the usable stacks (a stack without a count
+  full) and offers a line only while one is left. This also closes an I8-1 gap: an item that takes
+  slots or binds was offered unworn.
+- **Spent by a `charge` operation.** New inventory op: `count` uses by own name, each off the first
+  usable stack with enough, the player's own first (or one bag with `from`); a stack emptied rolls the
+  item's `breaksOn` with the dice the caller passes (`applyGameInventoryOps` takes a `roll`; the
+  inventory route and the director pass `rollDieSecurely`), gone when it breaks. The book's items
+  carry their charge rules (`GameInventoryRulesetItem.charges`). The screen sends it for a charged
+  item after a round; the director turns a charged line's spends into it when it saves a step.
+- **Used up from a stack it may be used from.** The `take` op's new `worn` flag
+  (`gameInventoryUsableStack`, shared with the `charge` op) spends only a worn, and where it binds
+  bound, stack; the screen and the director set it. Without it a fight counted the worn tonic but
+  drank a spare from the bag, and a worn cursed ring used spare rings up in its place.
+  One rule, `gameInventoryWearNeeds` with `gameInventoryWearMet`, says what worn means for the Use
+  button, the fight menu and these spends alike, so they cannot drift apart again.
+- **Gates rolled on the server.** `rollRulesetItemGate` (item-use.ts), extracted from the Use
+  button's path, rolls it for the user's sheet, live state and worn items. `rollGameFightItemGate`
+  (game-item-use.service.ts) finds the user's card by the unit's name; only the player's own unit (the
+  player's card, or the persona's name) falls back on the player's card, and anyone else without one
+  rolls on a blank sheet from their own bag, as a ruleset fight builds them.
+  The Classic round route rolls it for the unit the round gives the item to; the director's command
+  route rolls it before a player's classic or tactical item command and marks the action `failed`.
+  A failed use is a miss that does nothing and carries a `note` the log shows instead of its usual line.
+- **Proven** by the charges-and-gates sections of
+  `scripts/regressions/game-ruleset-classic-items.regression.ts` and by
+  `e2e/game-ruleset-classic-items.e2e.ts`, with 40 deliberate breaks each caught.
 
 ## Gaps a ruleset author found
 

@@ -1010,7 +1010,10 @@ A ruleset that does not resolve its own fights leaves them to Game Mode's own Cl
 - `targets` says who it is used on. Without it, a heal or a buff goes to a friend and an attack or a debuff to a foe.
 - `consumes: true` takes one off the stack, and a use without it leaves the item where it is.
 - A roll to hit, a save, an area, temporary points and a restored pool have no place in these battles, as with a catalog entry's `mechanics` there: the item's description on the menu still says them.
-- An item with no `use` is not offered in these battles, and neither is a heal without an `amount`. An item whose use spends `charges`, or asks a check first with `gate`, is not offered yet either: these battles cannot yet spend charges or roll the check.
+- An item that takes slots is used only while it is worn, and one that binds only while it is bound, as in a ruleset fight. One that is used up is taken from what is worn, never from a spare in the bag.
+- An item whose use spends `charges` is offered while a use is left, and the Items menu counts its uses. Each use spends them from the item's stack, the player's own first, and the last one spent rolls its `breaksOn`: broken, it is gone from the bag, and the journal counts it as lost.
+- An item that asks a check first (`gate`) has it rolled on the server when a party member uses it, with that member's sheet and what they wear (a companion with no card of their own rolls on a blank sheet, and only the player's own unit falls back on the player's card), as the Use button rolls it, and skipped when `unless` holds. Failed, the item is spent (or its charges are) and does nothing, and the log says so: "Ada rolls Ward to use Page of the vigil litany: 0 against 2, failed, and it is used up for nothing."
+- An item with no `use` is not offered in these battles, and neither is a heal without an `amount`.
 
 The Engine works each item's effect out itself, so what the screen sends never decides what one of your items does.
 

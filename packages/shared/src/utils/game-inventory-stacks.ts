@@ -107,6 +107,9 @@ export interface GameInventoryRulesetItem {
   slots?: Readonly<Record<string, number>>;
   /** It has to be bound to work; `cursed` keeps it bound. Without this, it cannot be bound. */
   binds?: { cursed?: boolean };
+  /** A use spends `cost` of the `max` charges it holds (a stack without a count is full), and the last
+   *  one spent rolls a d`die` that breaks it at `atMost` or under. */
+  charges?: { cost: number; max: number; breaksOn?: { die: number; atMost: number } };
 }
 
 /** An item the Game Master proposes, as its inventory tag gives it: every part optional, each in the
@@ -803,6 +806,8 @@ export function takeFromGameInventory(
   from?: GameInventoryBagRef,
   /** With the player's rules, a bound cursed item is never taken: the curse keeps it. */
   rules?: GameInventoryItemRules,
+  /** Only from stacks the item may be used from, as a fight uses it (`gameInventoryUsableStack`). */
+  worn = false,
 ): { stacks: GameInventoryStack[]; taken: number } {
   // Not held to one stack's bound: the stacks of an item together may hold more than one stack can.
   let left = Number.isFinite(count) ? Math.floor(count) : 0;
@@ -811,7 +816,7 @@ export function takeFromGameInventory(
   let taken = 0;
   for (const { stack, index } of stacksNamed(stacks, name, from)) {
     if (left < 1) break;
-    if (keptByCurse(stack, rules)) continue;
+    if (keptByCurse(stack, rules) || (worn && !gameInventoryUsableStack(stack, rules))) continue;
     const take = Math.min(left, stack.quantity);
     left -= take;
     taken += take;
@@ -1167,6 +1172,34 @@ export function gameInventoryOverloads(
   rules: GameInventoryItemRules | undefined,
 ): boolean {
   return pastLimit(stacks, stack.holder, weightOf(stack, rules) * amount, rules);
+}
+
+/** What a ruleset's item asks of a stack before it may be used: worn where it takes slots, bound
+ *  where it binds. The one rule the Use button, the fight menu and a fight's spends all read. */
+export function gameInventoryWearNeeds(item: { slots?: Readonly<Record<string, number>>; binds?: unknown }): {
+  equipped?: true;
+  bound?: true;
+} {
+  const takesSlots = Object.values(item.slots ?? {}).some((count) => count > 0);
+  return { ...(takesSlots ? { equipped: true as const } : {}), ...(item.binds ? { bound: true as const } : {}) };
+}
+
+/** Whether a stack is worn and bound as `needs` asks. */
+export function gameInventoryWearMet(
+  stack: Pick<GameInventoryStack, "equipped" | "bound">,
+  needs: { equipped?: boolean; bound?: boolean } | undefined,
+): boolean {
+  return (!needs?.equipped || stack.equipped === true) && (!needs?.bound || stack.bound === true);
+}
+
+/** Whether a stack may be used as its item asks (`gameInventoryWearNeeds`). A plain item, or one the
+ *  rules do not know, always may. */
+export function gameInventoryUsableStack(
+  stack: GameInventoryStack,
+  rules: GameInventoryItemRules | undefined,
+): boolean {
+  const read = stack.item ? rules?.itemOf(stack.item) : undefined;
+  return !read || gameInventoryWearMet(stack, gameInventoryWearNeeds(read));
 }
 
 /** Whether the player's own change would part them from this stack: a bound cursed item. */

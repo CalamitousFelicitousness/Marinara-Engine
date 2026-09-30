@@ -530,7 +530,8 @@ try {
   }
   // A bound cursed item stays with whoever it is bound to (#6801): the fight cannot use up the
   // Widow's ring the player cannot part with, and the step is refused whole, so its effect is never
-  // had for nothing. An unbound ring beside it is the one a fight spends.
+  // had for nothing. A spare ring in the bag beside it is not worn, so the fight never spends it in the
+  // worn one's place (#6909).
   {
     const gravewatch = {
       ...JSON.parse(readFileSync(new URL("../../docs/examples/rulesets/gravewatch.json", import.meta.url), "utf8")),
@@ -559,7 +560,10 @@ try {
       role: "assistant",
       content: "[state: combat]",
     });
-    const bound = [{ id: "st-ring", name: "Widow's ring", item: "kit/widows-ring", quantity: 1, bound: true }];
+    // Worn and bound, as a ring that binds is used (#6909).
+    const bound = [
+      { id: "st-ring", name: "Widow's ring", item: "kit/widows-ring", quantity: 1, equipped: true, bound: true },
+    ];
     await chats.patchMetadata(ringChat.id, {
       gameSetupConfig: { combatDirector: true },
       gameRuleset: { id: "local/gravewatch-fight", version: gravewatch.version, packageId: null, options: {} },
@@ -597,13 +601,20 @@ try {
     assert.deepEqual(JSON.parse((await chats.getById(ringChat.id))!.metadata).gameInventory, bound);
     const kept = (await store.getByChatAndMessage(ringChat.id, ringAnchor.id, 0, COMBAT_DIRECTOR_NAMESPACE))!;
     assert.equal(JSON.parse(kept.state).revision, r.revision, "the refused step is not saved");
-    // With an unbound ring beside it, the fight spends that one and the bound ring stays.
-    await chats.patchMetadata(ringChat.id, {
-      gameInventory: [...bound, { id: "st-spare", name: "Widow's ring", item: "kit/widows-ring", quantity: 1 }],
-    });
-    const spent = await ringCmd(use);
-    assert.equal(spent.statusCode, 200, spent.body);
-    assert.deepEqual(JSON.parse((await chats.getById(ringChat.id))!.metadata).gameInventory, bound);
+    // A spare in the bag is not the ring being worn, so the step is still refused and both stay.
+    const spare = [...bound, { id: "st-spare", name: "Widow's ring", item: "kit/widows-ring", quantity: 1 }];
+    await chats.patchMetadata(ringChat.id, { gameInventory: spare });
+    const still = await ringCmd(use);
+    assert.equal(still.statusCode, 400, still.body);
+    assert.match(still.body, /Widow's ring is cursed/);
+    assert.deepEqual(JSON.parse((await chats.getById(ringChat.id))!.metadata).gameInventory, spare);
+    // Taken off since, it is no longer the ring being used: the step is refused as a change to the
+    // inventory, not as the curse.
+    const off = [{ ...bound[0]!, equipped: false }, spare[1]!];
+    await chats.patchMetadata(ringChat.id, { gameInventory: off });
+    const gone = await ringCmd(use);
+    assert.equal(gone.statusCode, 400, gone.body);
+    assert.match(gone.body, /Inventory changed/);
   }
   // A ruleset that turns Game Mode's own items off (#6822): the fight offers no item and uses none of
   // what a model guessed, and the inventory stays as it was.

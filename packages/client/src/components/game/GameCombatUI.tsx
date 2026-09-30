@@ -1637,7 +1637,7 @@ export function GameCombatUI({
             for (const [actorId, order] of Object.entries(orders)) {
               if (
                 order.type === "item" &&
-                order.itemEffect?.consumes !== false &&
+                (order.itemEffect?.consumes !== false || order.itemEffect?.charges) &&
                 result.actions.some((action) => action.attackerId === actorId && action.skillName === order.itemId)
               )
                 void onInventoryItemUsed?.(order.itemId);
@@ -3504,7 +3504,9 @@ function formatCombatActionNarration(action: CombatAttackResult, allCombatants: 
   const defenderName = defender?.name ?? "???";
 
   let text: string;
-  if (action.isMiss) {
+  if (action.note) {
+    text = action.note;
+  } else if (action.isMiss) {
     text = action.skillName
       ? `${attackerName} uses ${action.skillName} on ${defenderName} — but it misses!`
       : `${attackerName} attacks ${defenderName} — but misses!`;

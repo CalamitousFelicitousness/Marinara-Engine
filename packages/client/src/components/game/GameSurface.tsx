@@ -11033,8 +11033,10 @@ function GameSurfaceComponent({
           .filter((drop) => (drop.left ?? 0) > 0)
           .map((drop) => count(drop.name, drop.left))
           .join(", ");
-        if (lootText)
+        // Only a player still looking at this chat is shown what dropped.
+        if (lootText && useChatStore.getState().activeChatId === endedIn) {
           showInventoryNotification(localizeUi("ui.game.gamesurfacecomponent.lootDropped", { items: lootText }), true);
+        }
 
         // Flee on round 1 means no round actually resolved — phrase it accordingly.
         const rounds = fought ? fought.ruleset.rounds : summary.rounds;
@@ -11096,11 +11098,10 @@ function GameSurfaceComponent({
           })
           .catch(() => {});
       };
-      void looted.then((loot) => {
-        // A player who moved to another chat meanwhile does not have this one's recap sent there.
-        if (useChatStore.getState().activeChatId !== endedIn) return;
-        tellCombatEnd(loot);
-      });
+      // The recap belongs to the chat the fight ended in, whichever one is open by then (`sendMessage`
+      // keeps that chat): without it the Game Master never learns the outcome, and reopening the chat
+      // would start the same fight again.
+      void looted.then(tellCombatEnd);
     },
     [
       sendMessage,

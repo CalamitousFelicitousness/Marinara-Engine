@@ -109,6 +109,90 @@ test("a won fight without a ruleset drops Game Mode's loot into the player's bag
   }
 });
 
+test("the recap reaches the chat the fight ended in, even after the player leaves it", async ({ page, request }) => {
+  test.setTimeout(120_000);
+  const created = await request.post("/api/game/create", {
+    data: {
+      name: "Loot on the way out",
+      setupConfig: {
+        genre: "Fantasy",
+        setting: "Ruins",
+        tone: "Adventure",
+        difficulty: "normal",
+        playerGoals: "Hold",
+        gmMode: "standalone",
+        rating: "sfw",
+        partyCharacterIds: [],
+        combatStyle: "classic",
+        combatDirector: false,
+        gmBossControl: false,
+      },
+    },
+  });
+  expect(created.ok(), await created.text()).toBeTruthy();
+  const chatId = (await created.json()).sessionChat.id as string;
+  try {
+    const unit = (id: string, side: "player" | "enemy", hp: number) => ({
+      id,
+      name: id,
+      side,
+      hp,
+      maxHp: 30,
+      attack: 5,
+      defense: 5,
+      speed: 5,
+      level: 1,
+      skills: [],
+    });
+    const message = await request.post(`/api/chats/${chatId}/messages`, {
+      data: { role: "assistant", content: "The last guard staggers. [state: combat]" },
+    });
+    expect(message.ok()).toBeTruthy();
+    const patched = await request.patch(`/api/chats/${chatId}/metadata`, {
+      data: {
+        gameSessionStatus: "active",
+        gameIntroPresented: true,
+        gameActiveState: "combat",
+        gameImageAutoGenerationEnabled: false,
+        gameStoryboardAutoIllustrationsEnabled: false,
+        gameCombatStyle: "classic",
+        gameCombatState: {
+          party: [unit("Hero", "player", 30)],
+          enemies: [unit("Guard", "enemy", 0)],
+          itemEffects: [],
+          mechanics: [],
+          dialogueCues: [],
+          startMessageId: (await message.json()).id,
+          combatStyle: "classic",
+        },
+      },
+    });
+    expect(patched.ok(), await patched.text()).toBeTruthy();
+    const sent = await captureSent(page);
+    // The drop is held until the player has gone back to the home screen.
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => (release = resolve));
+    let asked = false;
+    await page.route("**/api/game/inventory/loot", async (route) => {
+      const response = await route.fetch();
+      asked = true;
+      await released;
+      await route.fulfill({ response });
+    });
+    await openGame(page, chatId);
+    await page.getByRole("button", { name: "Continue", exact: true }).click({ timeout: 40_000 });
+    await expect.poll(() => asked).toBe(true);
+    await page.getByTitle("Home", { exact: true }).click();
+    release();
+    // Still told, and told in that chat, so reopening it never starts the fight again.
+    await expect.poll(sent).toContain("Loot (already in the party's bags): ");
+    expect(sent()).toContain(`"chatId":"${chatId}"`);
+    await page.unrouteAll({ behavior: "ignoreErrors" });
+  } finally {
+    await request.delete(`/api/chats/${chatId}`);
+  }
+});
+
 /** The fighters a directed ruleset fight starts with: the ruleset reads their real numbers. */
 const fighter = (id: string, name: string, side: "player" | "enemy") => ({
   id,

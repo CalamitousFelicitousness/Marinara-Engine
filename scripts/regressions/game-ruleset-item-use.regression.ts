@@ -339,11 +339,12 @@ try {
         delete entry.item.charges;
       }
     };
-    /** Less what a use restores and what brings charges back or breaks an item, which are 1.60's and
-     *  1.61's and have lanes of their own. */
+    /** Less what a use restores, what brings charges back or breaks an item, and a use's gate, which
+     *  are 1.60's, 1.61's and 1.62's and have lanes of their own. */
     const withoutRestore = (doc: Record<string, any>) => {
       for (const entry of itemCatalogOf(doc).entries) {
         delete entry.item.use?.restore;
+        delete entry.item.use?.gate;
         // And its charges' recharge and break, which are 1.61's.
         delete entry.item.charges?.recharge;
         delete entry.item.charges?.breaksOn;

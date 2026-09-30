@@ -145,6 +145,13 @@ export interface RulesetItemUseFact {
   };
   /** A pool it gives back some of, by the pool's label. */
   restore?: { pool: string; amount: string };
+  /** The check its user passes before it works, by label, and the value off their sheet that skips it
+   *  when it is high enough. No difficulty when it names a stat the item does not give. */
+  gate?: {
+    check: string;
+    difficulty?: number;
+    unless?: { what: string; of?: "modifier" | "items"; atLeast: number };
+  };
 }
 
 /** A weapon's attack as labels and numbers: the budget it spends, what it adds to hit and deals, and
@@ -241,6 +248,7 @@ function rulesetItemUseFacts(
     ? rulesetItemAttackFacts(definition, item, { budget: "", toHit: use.toHit, damage: {} })
     : undefined;
   const difficulty = number(use.saveDifficulty);
+  const gateDifficulty = use.gate ? rulesetItemGateDifficulty(item, use.gate) : undefined;
   const held = item.charges ? number(item.charges.max) : undefined;
   // As a fight reads it: a stat's number held to the most a written count may be.
   const max = held === undefined ? undefined : Math.min(RULESET_ITEM_CHARGES_MAX, Math.trunc(held));
@@ -299,6 +307,22 @@ function rulesetItemUseFacts(
           restore: {
             pool: labelOf(definition.sheet.live.pools, use.restore.pool),
             amount: amount(use.restore.amount),
+          },
+        }
+      : {}),
+    ...(use.gate
+      ? {
+          gate: {
+            check: rulesetItemGateLabel(definition, use.gate),
+            ...(gateDifficulty !== undefined ? { difficulty: gateDifficulty } : {}),
+            ...(use.gate.unless
+              ? {
+                  unless: {
+                    ...rulesetValueRefLabel(definition, use.gate.unless.value),
+                    atLeast: use.gate.unless.atLeast,
+                  },
+                }
+              : {}),
           },
         }
       : {}),
@@ -400,6 +424,31 @@ function rulesetItemAttackFacts(
         }
       : {}),
   };
+}
+
+/** A gate's difficulty as a fight and the Use button read it: written, or the item's own stat, a
+ *  whole number from 1 to 100. Undefined when it names a stat the item does not give. */
+export function rulesetItemGateDifficulty(
+  item: RulesetCatalogItem,
+  gate: NonNullable<RulesetItemUse["gate"]>,
+): number | undefined {
+  const written = gate.difficulty;
+  const found = typeof written === "number" ? written : item.stats?.[written.stat];
+  return typeof found === "number" && Number.isFinite(found)
+    ? Math.min(100, Math.max(1, Math.trunc(found)))
+    : undefined;
+}
+
+/** What a use's gate rolls, in the ruleset's own words: a skill's or an ability's label, or the value
+ *  off the sheet it reads ("Wits modifier"). */
+export function rulesetItemGateLabel(definition: RulesetDefinition, gate: NonNullable<RulesetItemUse["gate"]>): string {
+  const { check } = gate;
+  if ("skill" in check) return definition.sheet.skills.find((entry) => entry.id === check.skill)?.label ?? check.skill;
+  if ("ability" in check) {
+    return definition.sheet.abilities.find((entry) => entry.id === check.ability)?.label ?? check.ability;
+  }
+  const { what, of } = rulesetValueRefLabel(definition, check.value);
+  return of === "modifier" ? `${what} modifier` : what;
 }
 
 /** A value off the sheet by the ruleset's own label: an ability, a skill, a derived value. An ability's
@@ -938,9 +987,20 @@ export function rulesetItemUseText(use: RulesetItemUseFact): string {
     use.charges?.breaksOn
       ? `breaks on ${rulesetBreakFaces(use.charges.breaksOn)} on a d${use.charges.breaksOn.die} when emptied`
       : "",
+    use.gate ? rulesetItemGateText(use.gate) : "",
   ]
     .filter(Boolean)
     .join(", ")}`;
+}
+
+/** A gate for the Game Master: "needs a Lore check against 13 first, unless Caster level is 3 or more;
+ *  failed, it is used up for nothing". */
+export function rulesetItemGateText(gate: NonNullable<RulesetItemUseFact["gate"]>): string {
+  const against = gate.difficulty !== undefined ? ` against ${gate.difficulty}` : "";
+  const unless = gate.unless
+    ? `, unless ${gate.unless.what}${gate.unless.of === "modifier" ? " modifier" : ""} is ${gate.unless.atLeast} or more`
+    : "";
+  return `needs a ${gate.check} check${against} first${unless}; failed, it is used up for nothing`;
 }
 
 /** What using an item does, as the Game Master's parts of it, leaving out what it spends. */

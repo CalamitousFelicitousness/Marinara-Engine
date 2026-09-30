@@ -12,9 +12,24 @@ import { gameInventoryBagKey, type GameInventoryStack } from "../../utils/game-i
 import type { RulesetDefinition, RulesetSheetBuild } from "../../schemas/ruleset.schema.js";
 import { applyRulesetFightItemChanges } from "../ruleset-combat/ammo.js";
 import { parseRulesetCombatDice } from "../ruleset-combat/dice.js";
+import { rulesetPoolMaxSuccesses } from "../../schemas/ruleset.schema.js";
+import {
+  rollRulesetCheckModifiers,
+  rulesetCheckEffects,
+  rulesetCheckRollMode,
+  rulesetCheckSources,
+  rulesetItemGateCheck,
+} from "./check-effects.js";
 import type { RulesetItemBookEntry } from "./item-book.js";
-import { rulesetItemFacts, rulesetItemUseDoes } from "./item-book.js";
-import { applyRulesetSheetOp, type RulesetLiveState, type RulesetSheetOp } from "./live-state.js";
+import { rulesetItemFacts, rulesetItemGateDifficulty, rulesetItemUseDoes, rulesetSheetItems } from "./item-book.js";
+import {
+  applyRulesetSheetOp,
+  evaluateRulesetSheetLive,
+  readRulesetWoundPenalty,
+  type RulesetLiveState,
+  type RulesetSheetOp,
+} from "./live-state.js";
+import { rollDicePoolCheck, rollDiceSumCheck } from "./sheet-math.js";
 
 /** Why an item could not be used. */
 export type RulesetItemUseRefusal =
@@ -51,6 +66,9 @@ export interface RulesetItemUseSaid {
   left: { count: number } | { charges: number; max: number };
   /** It spent its last charge and its `breaksOn` die said it breaks: the face rolled. */
   broke?: number;
+  /** Its gate, when its user rolled one: what was rolled, the total (a pool's successes) against the
+   *  difficulty, and whether it passed. Failed, nothing it does happened. */
+  gate?: { check: string; total: number; difficulty: number; success: boolean; rolls: number[] };
 }
 
 export type RulesetItemUseOutcome =
@@ -94,9 +112,23 @@ export function useRulesetItemOutsideFight(input: {
     if (now < use.charges) return { ok: false, reason: "none-left" };
   }
 
+  // Its gate first, as a fight rolls it once the item is spent: failed, the item is spent below and
+  // nothing it does happens. A difficulty read off a stat the item does not give is a use the Engine
+  // cannot make, as a fight leaves it off the menu.
+  let gate: RulesetItemUseSaid["gate"];
+  if (use.gate) {
+    const difficulty = rulesetItemGateDifficulty(item, use.gate);
+    if (difficulty === undefined) return { ok: false, reason: "no-use" };
+    const held = rulesetSheetItems({ itemOf: input.itemOf }, stacks, stack.holder);
+    const evaluated = evaluateRulesetSheetLive(definition, user.build, user.live, held);
+    const ask = rulesetItemGateCheck(definition, user.build, evaluated, use.gate, difficulty);
+    if (ask) gate = { check: facts?.gate?.check ?? "", ...rollGateOutsideFight(definition, user, held, ask, roll) };
+  }
+  const works = gate?.success !== false;
+
   // What it does to its user: a heal or a buff not aimed at the other side. Anything else is for
   // somebody else, and outside a fight that is the story's to tell.
-  const onUser = (use.kind === "heal" || use.kind === "buff") && use.targets !== "enemy";
+  const onUser = works && (use.kind === "heal" || use.kind === "buff") && use.targets !== "enemy";
   let live = user.live;
   const parts: RulesetItemUsePart[] = [];
   const write = (op: RulesetSheetOp): string | undefined => {
@@ -188,7 +220,7 @@ export function useRulesetItemOutsideFight(input: {
   // Charges spent write no journal line of their own, so the use is said as one.
   const journal =
     spent.journal.length > 0 ? spent.journal : [{ item: stack.name, action: "used" as const, quantity: 1 }];
-  const aimed = !onUser && facts ? rulesetItemUseDoes(facts).join(", ") : undefined;
+  const aimed = works && !onUser && facts ? rulesetItemUseDoes(facts).join(", ") : undefined;
   return {
     ok: true,
     stacks: spent.stacks,
@@ -200,12 +232,49 @@ export function useRulesetItemOutsideFight(input: {
       parts,
       ...(aimed ? { aimed } : {}),
       ...(broke !== undefined ? { broke } : {}),
+      ...(gate ? { gate } : {}),
       left:
         charges !== undefined && max !== undefined
           ? { charges, max }
           : { count: use.consumes ? stack.quantity - 1 : stack.quantity },
     },
   };
+}
+
+/** A gate rolled as a check is outside a fight: the ruleset's own dice with the sheet's number, the
+ *  user's wound penalty and what their conditions and items do to that check, and the lean they give
+ *  it. A pool's difficulty is the successes it needs, never fewer than one nor more than it can count. */
+function rollGateOutsideFight(
+  definition: RulesetDefinition,
+  user: { build: RulesetSheetBuild; live: unknown },
+  held: ReturnType<typeof rulesetSheetItems>,
+  ask: NonNullable<ReturnType<typeof rulesetItemGateCheck>>,
+  roll: (sides: number) => number,
+): Omit<NonNullable<RulesetItemUseSaid["gate"]>, "check"> {
+  const resolution = definition.resolution;
+  const effects = rulesetCheckEffects(rulesetCheckSources(definition, user.build, user.live, held), ask.target);
+  const penalty = resolution.penaltyFrom
+    ? readRulesetWoundPenalty(definition, user.build, user.live, resolution.penaltyFrom)
+    : 0;
+  const modifier = ask.modifier + penalty + rollRulesetCheckModifiers(effects.modifiers, roll).total;
+  if (resolution.kind === "dice-pool") {
+    const required = Math.min(rulesetPoolMaxSuccesses(resolution), Math.max(1, ask.difficulty));
+    const rolled = rollDicePoolCheck(definition, { modifier, required, isSave: false }, roll);
+    return { total: rolled.total, difficulty: required, success: rolled.success, rolls: rolled.rolls };
+  }
+  const mode = rulesetCheckRollMode({}, effects);
+  const rolled = rollDiceSumCheck(
+    definition,
+    {
+      modifier,
+      dc: ask.difficulty,
+      isSave: false,
+      advantage: mode === "advantage",
+      disadvantage: mode === "disadvantage",
+    },
+    roll,
+  );
+  return { total: rolled.total, difficulty: ask.difficulty, success: rolled.success, rolls: rolled.rolls };
 }
 
 /** What happened, in one line for the Game Master: "Juno uses Poultice: heals 4 (Grit 6/11). 1 left." */
@@ -217,11 +286,17 @@ export function rulesetItemUseLine(said: RulesetItemUseSaid): string {
     if (part.kind === "restore") return `restores ${part.amount} ${part.label}${now}`;
     return `${part.label}`;
   });
-  const does = said.aimed
-    ? `aimed at somebody else, so nothing was applied: ${said.aimed}`
-    : parts.length > 0
-      ? parts.join(", ")
-      : "nothing changed";
+  const gate = said.gate
+    ? `${said.gate.check} check ${said.gate.total} against ${said.gate.difficulty}, ${said.gate.success ? "passed" : "failed"}; `
+    : "";
+  const does =
+    said.gate?.success === false
+      ? "it is used up for nothing"
+      : said.aimed
+        ? `aimed at somebody else, so nothing was applied: ${said.aimed}`
+        : parts.length > 0
+          ? parts.join(", ")
+          : "nothing changed";
   const left =
     said.broke !== undefined
       ? `Its last charge spent, it breaks (a ${said.broke} on its die).`
@@ -230,7 +305,7 @@ export function rulesetItemUseLine(said: RulesetItemUseSaid): string {
         : said.left.count > 0
           ? `${said.left.count} left.`
           : "None left.";
-  return `${said.user} uses ${said.item}: ${does}. ${left}`;
+  return `${said.user} uses ${said.item}: ${gate}${does}. ${left}`;
 }
 
 /** What a rest gave back to one item. */

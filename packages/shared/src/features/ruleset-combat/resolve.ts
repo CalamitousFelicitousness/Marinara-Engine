@@ -781,6 +781,67 @@ function rollSave(
   return success;
 }
 
+/** An item's gate, rolled by its user as a check: the fight's own dice (a pool in a pool fight) with
+ *  the sheet's number read as the fight began, what their conditions add to checks (and to the skill
+ *  it names), and the lean they give it. Logged as a save is. */
+function passesGate(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  gate: NonNullable<NonNullable<RulesetCombatAction["itemUse"]>["gate"]>,
+): boolean {
+  const mode = rulesetCheckMode(ctx.definition, ctx.combat, actor, ctx.state, gate.skill);
+  const modifiers = rulesetConditionModifiers(ctx.definition, ctx.combat, actor, "checks", ctx.state, gate.skill);
+  const said = {
+    type: "gate" as const,
+    actorId: actor.id,
+    optionId: action.id,
+    label: action.label,
+    check: gate.check,
+    ...(mode === "normal" ? {} : { mode }),
+    modifier: gate.modifier,
+  };
+  if (rulesetCombatIsPool(ctx.combat)) {
+    // The check's number is its pool, and its difficulty the successes it needs, never fewer than one.
+    const bonuses = rollBonuses(ctx, modifiers);
+    const needed = Math.max(1, gate.difficulty);
+    const thrown = throwPool(ctx, actor, gate.modifier + bonusTotal(bonuses), mode);
+    const success = !thrown.botch && thrown.successes >= needed;
+    ctx.events.push({
+      ...said,
+      rolls: thrown.rolls,
+      kept: thrown.successes,
+      ...(bonuses.length > 0 ? { bonuses } : {}),
+      total: thrown.successes,
+      difficulty: needed,
+      success,
+      pool: poolRecord(thrown),
+    });
+    return success;
+  }
+  const dice = ctx.combat.attackRoll!.dice;
+  const first = rollRulesetDice(ctx.roll, dice.count, dice.sides);
+  const second = mode === "normal" ? null : rollRulesetDice(ctx.roll, dice.count, dice.sides);
+  const kept = second
+    ? mode === "advantage"
+      ? Math.max(sumOf(first), sumOf(second))
+      : Math.min(sumOf(first), sumOf(second))
+    : sumOf(first);
+  const bonuses = rollBonuses(ctx, modifiers);
+  const total = kept + gate.modifier + bonusTotal(bonuses);
+  const success = total >= gate.difficulty;
+  ctx.events.push({
+    ...said,
+    rolls: second ? [...first, ...second] : first,
+    kept,
+    ...(bonuses.length > 0 ? { bonuses } : {}),
+    total,
+    difficulty: gate.difficulty,
+    success,
+  });
+  return success;
+}
+
 /** A pool thrown to act, with the thrower's wound penalty in it: what a `dice-pool` fight throws for
  *  an attack, a save and a side of a contest. The penalty is dice off the pool, under the ruleset's
  *  own floor, exactly as it is on a check. */
@@ -1233,6 +1294,12 @@ export function applyRulesetCombatChoice(
     ctx.events.push({ type: "spend", actorId: working.id, pool: entry.pool, label: entry.label, amount: entry.amount });
   }
   spendAvailability(ctx, working, action);
+  // An item's gate is rolled once the item is spent: failed, it is used up for nothing, and nobody is
+  // asked about a use that never happened.
+  if (action.itemUse?.gate && !passesGate(ctx, working, action, action.itemUse.gate)) {
+    noteOutcome(ctx);
+    return finish();
+  }
   // An attack with an off-hand weapon lets another one strike on the off-hand budget this turn.
   if (action.pairs !== undefined) working.flags.offHand = action.pairs;
   // A contest is settled between the two of them on the spot, and opens no window: nobody else is

@@ -529,7 +529,11 @@ const capabilityPackageManifestBaseSchema = z
 //        back to the inventory. Not a soft seam, for the same reason as 1.20 through 1.60: an Engine
 //        that cannot read these refuses the whole ruleset or catalog file, so a package that ships
 //        either declares 1.61. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 61 } as const);
+// 1.62: an item's `use` may have a `gate`, a check its user passes before it works unless a value
+//        on their sheet is high enough; a failed check uses the item up for nothing. Not a soft seam,
+//        for the same reason as 1.20 through 1.61: an Engine that cannot read `gate` refuses the whole
+//        ruleset or catalog file, so a package that ships it declares 1.62. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 62 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

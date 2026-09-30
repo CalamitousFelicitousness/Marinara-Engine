@@ -182,10 +182,29 @@ function rulesetItemUseLine(facts: RulesetItemFacts, t: TFunction): string {
           { die: use.charges.breaksOn.die, atMost: use.charges.breaksOn.atMost },
         )
       : "",
+    use.gate
+      ? use.gate.unless
+        ? t("ui.game.gameinventory.useGateUnless", {
+            check: use.gate.check,
+            difficulty: use.gate.difficulty ?? "?",
+            what: rulesetSheetValueWords(use.gate.unless, t),
+            atLeast: use.gate.unless.atLeast,
+          })
+        : t("ui.game.gameinventory.useGate", { check: use.gate.check, difficulty: use.gate.difficulty ?? "?" })
+      : "",
   ].filter(Boolean);
   return use.budget
     ? t("ui.game.gameinventory.use", { budget: use.budget, does: parts.join(", ") })
     : t("ui.game.gameinventory.useFree", { does: parts.join(", ") });
+}
+
+/** A value off the sheet an item reads, in words: "Wits modifier", "Charm items", or its label. */
+function rulesetSheetValueWords(value: { what: string; of?: "modifier" | "items" }, t: TFunction): string {
+  if (value.of === "modifier") return t("ui.game.gameinventory.requiresModifier", { name: value.what });
+  if (value.of !== "items") return value.what;
+  return value.what
+    ? t("ui.game.gameinventory.requiresItemsOf", { name: value.what })
+    : t("ui.game.gameinventory.requiresItems");
 }
 
 /** What an item does while worn, and while only carried, one line each: "While worn: -1 on Sneak
@@ -259,14 +278,7 @@ export function rulesetItemEffectLines(facts: RulesetItemFacts, t: TFunction): s
     ),
     ...(facts.requires ?? []).map((need) =>
       t("ui.game.gameinventory.requires", {
-        what:
-          need.of === "modifier"
-            ? t("ui.game.gameinventory.requiresModifier", { name: need.what })
-            : need.of === "items"
-              ? need.what
-                ? t("ui.game.gameinventory.requiresItemsOf", { name: need.what })
-                : t("ui.game.gameinventory.requiresItems")
-              : need.what,
+        what: rulesetSheetValueWords(need, t),
         atLeast: need.atLeast,
         effects: need.otherwise.map(phrase).join("; "),
       }),

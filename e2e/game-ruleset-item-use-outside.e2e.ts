@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { type APIRequestContext, expect, type Locator, type Page, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { inventoryButton } from "./game-inventory-fixture.js";
 import { openGame, savedInventory, seedFight, withImports } from "./game-ruleset-fight-fixture.js";
@@ -136,10 +136,27 @@ test("while the ruleset's items are still loading, Use asks the Engine before sa
   });
 });
 
-test("an older Use answer arriving last never puts back the sheet a newer one wrote", async ({ page, request }) => {
-  test.setTimeout(120_000);
+type UseAnswer = { rulesetLive: Record<string, { pools?: Record<string, { value: number }> }> };
+
+/**
+ * Juno with no Grit, two poultices and three apples, and a first Use whose answer is held until
+ * `release` is called: it reaches the Engine at once, so the Engine applies it first. Nothing reads the
+ * sheet back from the Engine meanwhile, so the sheet on screen is what the answers wrote.
+ */
+async function withHeldUse(
+  page: Page,
+  request: APIRequestContext,
+  id: string,
+  run: (juno: {
+    use: () => Promise<void>;
+    first: () => UseAnswer | null;
+    release: () => void;
+    said: () => number;
+    grit: () => Locator;
+  }) => Promise<void>,
+): Promise<void> {
   const doc = JSON.parse(readFileSync(new URL("../docs/examples/rulesets/ember-roads.json", import.meta.url), "utf8"));
-  doc.id = "ember-use-order-e2e";
+  doc.id = id;
   const character = await request.post("/api/characters", { data: { data: { name: "Juno" } } });
   expect(character.ok(), await character.text()).toBeTruthy();
   const characterId = ((await character.json()) as { id: string }).id;
@@ -162,6 +179,7 @@ test("an older Use answer arriving last never puts back the sheet a newer one wr
           ],
           gameInventory: [
             { id: "st-poultice", name: "Poultice", quantity: 2, item: "outfitter/poultice", holder: "Juno" },
+            { id: "st-apple", name: "Apple", quantity: 3, holder: "Juno" },
           ],
         },
         { juno: { pools: { grit: { value: 0 } } } },
@@ -180,52 +198,87 @@ test("an older Use answer arriving last never puts back the sheet a newer one wr
       await expect(page.locator('[data-component="GameNarration.ActivePanel"]')).toContainText("Juno is bleeding", {
         timeout: 30_000,
       });
-      // The first use reaches the Engine at once, but its answer is held until the second's has landed.
-      type Answer = { rulesetLive: Record<string, { pools?: Record<string, { value: number }> }> };
-      let release!: () => void;
-      const released = new Promise<void>((resolve) => (release = resolve));
-      let first: Answer | null = null;
-      let calls = 0;
-      // Nothing reads the sheet back from the Engine meanwhile, so the screen shows what the answers wrote.
       await page.route(`**/api/chats/${seeded.chatId}/game-state*`, (route) =>
         route.request().method() === "GET" ? new Promise<void>(() => {}) : route.continue(),
       );
+      let release!: () => void;
+      const released = new Promise<void>((resolve) => (release = resolve));
+      let first: UseAnswer | null = null;
+      let calls = 0;
       await page.route("**/api/game/inventory/use", async (route) => {
         calls += 1;
         if (calls > 1) return route.continue();
         const response = await route.fetch();
-        first = (await response.json()) as Answer;
+        first = (await response.json()) as UseAnswer;
         await released;
         await route.fulfill({ response });
       });
-      const use = async () => {
-        await inventoryButton(page).click({ timeout: 30_000 });
-        await page.getByRole("button", { name: /^Poultice/ }).click();
-        await page.getByRole("button", { name: "Use", exact: true }).click();
-      };
-      await use();
-      await expect.poll(() => first !== null).toBe(true);
-      const second = page.waitForResponse((r) => r.url().endsWith("/api/game/inventory/use"));
-      await use();
-      const newer = (await (await second).json()) as Answer;
-      await expect.poll(() => said).toBe(1);
-      release();
-      // The older answer has been taken in once its message goes.
-      await expect.poll(() => said).toBe(2);
-      const older = (first as Answer | null)!.rulesetLive.juno?.pools?.grit?.value;
-      const latest = newer.rulesetLive.juno?.pools?.grit?.value;
-      expect(latest).toBeGreaterThan(older ?? 0);
-      const portrait = page
-        .getByTitle("Juno - Click to open character sheet", { exact: true })
-        .filter({ visible: true });
-      const members = page.getByRole("button", { name: "Open party members", exact: true }).filter({ visible: true });
-      await expect(portrait.or(members).first()).toBeVisible({ timeout: 30_000 });
-      if (await members.isVisible()) await members.click();
-      await portrait.first().click();
-      await expect(page.getByLabel("Grit for Juno", { exact: true })).toHaveValue(String(latest));
+      await run({
+        use: async () => {
+          await inventoryButton(page).click({ timeout: 30_000 });
+          await page.getByRole("button", { name: /^Poultice/ }).click();
+          await page.getByRole("button", { name: "Use", exact: true }).click();
+        },
+        first: () => first,
+        release,
+        said: () => said,
+        grit: () => page.getByLabel("Grit for Juno", { exact: true }),
+      });
       await page.unrouteAll({ behavior: "ignoreErrors" });
     });
   } finally {
     await request.delete(`/api/characters/${characterId}`);
   }
+}
+
+async function openJunoSheet(page: Page): Promise<void> {
+  const portrait = page.getByTitle("Juno - Click to open character sheet", { exact: true }).filter({ visible: true });
+  const members = page.getByRole("button", { name: "Open party members", exact: true }).filter({ visible: true });
+  await expect(portrait.or(members).first()).toBeVisible({ timeout: 30_000 });
+  if (await members.isVisible()) await members.click();
+  await portrait.first().click();
+}
+
+test("an older Use answer arriving last never puts back the sheet a newer one wrote", async ({ page, request }) => {
+  test.setTimeout(120_000);
+  await withHeldUse(page, request, "ember-use-order-e2e", async (juno) => {
+    await juno.use();
+    await expect.poll(() => juno.first() !== null).toBe(true);
+    const second = page.waitForResponse((r) => r.url().endsWith("/api/game/inventory/use"));
+    await juno.use();
+    const newer = (await (await second).json()) as UseAnswer;
+    await expect.poll(juno.said).toBe(1);
+    juno.release();
+    // The older answer has been taken in once its message goes.
+    await expect.poll(juno.said).toBe(2);
+    const older = juno.first()!.rulesetLive.juno?.pools?.grit?.value;
+    const latest = newer.rulesetLive.juno?.pools?.grit?.value;
+    expect(latest).toBeGreaterThan(older ?? 0);
+    await openJunoSheet(page);
+    await expect(juno.grit()).toHaveValue(String(latest));
+  });
+});
+
+test("a Use answer overtaken only by a plain inventory save still shows its sheet", async ({ page, request }) => {
+  test.setTimeout(120_000);
+  await withHeldUse(page, request, "ember-use-overtaken-e2e", async (juno) => {
+    await juno.use();
+    await expect.poll(() => juno.first() !== null).toBe(true);
+    // An apple added while the use's answer is on its way: a save with no sheet in it, answered first.
+    const saved = page.waitForResponse(
+      (r) => r.url().endsWith("/api/game/inventory") && r.request().method() === "POST",
+    );
+    await inventoryButton(page).click({ timeout: 30_000 });
+    await page.getByRole("button", { name: /^Apple/ }).click();
+    const amount = page.getByLabel("Apple amount", { exact: true });
+    await amount.fill("+1");
+    await amount.press("Enter");
+    expect((await saved).ok()).toBeTruthy();
+    await expect(page.getByRole("button", { name: /^Apple x4/ })).toBeVisible();
+    juno.release();
+    await expect.poll(juno.said).toBe(1);
+    await page.getByRole("heading", { name: "Inventory", exact: true }).locator("xpath=../../button").click();
+    await openJunoSheet(page);
+    await expect(juno.grit()).toHaveValue(String(juno.first()!.rulesetLive.juno?.pools?.grit?.value));
+  });
 });

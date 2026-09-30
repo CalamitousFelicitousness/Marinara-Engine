@@ -961,6 +961,7 @@ await executeAgent(
         content: '<speaker="Alice">"Thanks,"</speaker> she said. <speaker="Bob">"Anytime."</speaker> <b>Cake.</b>',
         characterId: "alice",
       },
+      { role: "user", content: "<scr<b>ipt>Nested</script> markup." },
     ],
   },
   groupHistoryProvider,
@@ -977,3 +978,5 @@ assert.match(
   /<speaker="Alice">"Thanks,"<\/speaker> she said\. <speaker="Bob">"Anytime\."<\/speaker> Cake\./,
   "merged replies must keep their speaker tags while other markup is stripped",
 );
+assert.match(groupHistory, /Nested markup\./);
+assert.doesNotMatch(groupHistory, /<\/?script/i, "nested markup must not reassemble into a tag after stripping");

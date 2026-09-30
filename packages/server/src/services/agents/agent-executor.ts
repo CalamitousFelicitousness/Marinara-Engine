@@ -83,10 +83,15 @@ const HISTORY_MESSAGE_MAX_CHARS = 2000;
 
 /** `keepSpeakerTags` preserves merged group replies' only record of who said each line. */
 function stripHtmlTags(text: string, keepSpeakerTags = false): string {
-  return text
-    .replace(keepSpeakerTags ? /<\/?(?!speaker\b)[a-zA-Z][^>]*>/g : /<\/?[a-zA-Z][^>]*>/g, "")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  const tagPattern = keepSpeakerTags ? /<\/?(?!speaker\b)[a-zA-Z][^>]*>/g : /<\/?[a-zA-Z][^>]*>/g;
+  // Strip to a fixed point: one pass over `<scr<b>ipt>` leaves a working tag behind.
+  // Each changing pass shortens the text, so this terminates.
+  let stripped = text;
+  for (let previous = ""; previous !== stripped;) {
+    previous = stripped;
+    stripped = stripped.replace(tagPattern, "");
+  }
+  return stripped.replace(/\n{3,}/g, "\n\n").trim();
 }
 
 function escapeXml(value: string): string {

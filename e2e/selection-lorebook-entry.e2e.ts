@@ -53,6 +53,15 @@ test("selected chat text becomes a lorebook entry on desktop and mobile (#6899)"
 
     const touch = testInfo.project.name.includes("mobile");
     const addButton = page.getByRole("button", { name: "Add to lorebook", exact: true });
+    if (!touch) {
+      // From the keyboard, the picker takes focus and hands it back when dismissed.
+      await addButton.focus();
+      await page.keyboard.press("Enter");
+      await expect(page.getByRole("menuitem").first()).toBeFocused();
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("menu")).toHaveCount(0);
+      await expect(addButton).toBeFocused();
+    }
     await (touch ? addButton.tap() : addButton.click());
     const bookItem = page.getByRole("menuitem", { name: "Selection lore", exact: true });
     await (touch ? bookItem.tap() : bookItem.click());

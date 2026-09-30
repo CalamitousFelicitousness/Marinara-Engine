@@ -21,6 +21,7 @@ import { NEUTRAL_PANEL_SHELL } from "../ui/neutral-surface-styles";
 const MAX_ENTRY_NAME_LENGTH = 200;
 
 type SelectionAnchor = { text: string; x: number; y: number };
+type LorebookMenu = SelectionAnchor & { fromKeyboard: boolean };
 
 function readMessageSelection(): SelectionAnchor | null {
   const selection = window.getSelection();
@@ -46,7 +47,7 @@ export function SelectionLorebookButton() {
   const { data: lorebooks } = useLorebooks();
   const createEntry = useCreateLorebookEntry();
   const [anchor, setAnchor] = useState<SelectionAnchor | null>(null);
-  const [menu, setMenu] = useState<SelectionAnchor | null>(null);
+  const [menu, setMenu] = useState<LorebookMenu | null>(null);
 
   const update = useCallback(() => setAnchor(readMessageSelection()), []);
 
@@ -67,10 +68,10 @@ export function SelectionLorebookButton() {
     };
   }, [update]);
 
-  const openMenu = (button: HTMLElement) => {
+  const openMenu = (button: HTMLElement, fromKeyboard: boolean) => {
     if (!anchor) return;
     const rect = button.getBoundingClientRect();
-    setMenu({ text: anchor.text, x: rect.left, y: rect.bottom + 4 });
+    setMenu({ text: anchor.text, x: rect.left, y: rect.bottom + 4, fromKeyboard });
   };
 
   const items = useMemo((): ContextMenuItem[] => {
@@ -104,41 +105,45 @@ export function SelectionLorebookButton() {
     }));
   }, [chat, createEntry, lorebooks, menu, t]);
 
-  if (menu) {
-    return (
-      <ContextMenu
-        x={menu.x}
-        y={menu.y}
-        items={items}
-        onClose={() => {
-          setMenu(null);
-          update();
-        }}
-      />
-    );
-  }
-  if (!anchor) return null;
-  return createPortal(
-    <button
-      type="button"
-      data-selection-lorebook-button
-      title={t("chat.selectionLorebook.add")}
-      style={{ left: anchor.x, top: anchor.y }}
-      // A tap would collapse the selection before its click; opening on press also
-      // suppresses the tap's compatibility mousedown that would close the menu.
-      onPointerDown={(event: ReactPointerEvent<HTMLButtonElement>) => {
-        event.preventDefault();
-        openMenu(event.currentTarget);
-      }}
-      onClick={(event) => openMenu(event.currentTarget)}
-      className={cn(
-        NEUTRAL_PANEL_SHELL,
-        "fixed z-[9998] inline-flex min-h-9 -translate-x-1/2 items-center gap-1.5 !rounded-full px-3 text-xs font-medium text-[var(--marinara-chat-chrome-panel-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]",
+  return (
+    <>
+      {anchor &&
+        createPortal(
+          <button
+            type="button"
+            data-selection-lorebook-button
+            title={t("chat.selectionLorebook.add")}
+            style={{ left: anchor.x, top: anchor.y }}
+            // A tap would collapse the selection before its click; opening on press also
+            // suppresses the tap's compatibility mousedown that would close the menu.
+            onPointerDown={(event: ReactPointerEvent<HTMLButtonElement>) => {
+              event.preventDefault();
+              openMenu(event.currentTarget, false);
+            }}
+            // Enter or Space: a click without a pointer (detail 0) moves focus into the menu.
+            onClick={(event) => openMenu(event.currentTarget, event.detail === 0)}
+            className={cn(
+              NEUTRAL_PANEL_SHELL,
+              "fixed z-[9998] inline-flex min-h-9 -translate-x-1/2 items-center gap-1.5 !rounded-full px-3 text-xs font-medium text-[var(--marinara-chat-chrome-panel-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]",
+            )}
+          >
+            <BookPlus size="0.8125rem" aria-hidden="true" />
+            {t("chat.selectionLorebook.add")}
+          </button>,
+          document.body,
+        )}
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          items={items}
+          autoFocus={menu.fromKeyboard}
+          onClose={() => {
+            setMenu(null);
+            update();
+          }}
+        />
       )}
-    >
-      <BookPlus size="0.8125rem" aria-hidden="true" />
-      {t("chat.selectionLorebook.add")}
-    </button>,
-    document.body,
+    </>
   );
 }

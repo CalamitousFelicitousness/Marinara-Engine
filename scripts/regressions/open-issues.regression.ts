@@ -6280,8 +6280,13 @@ const globalStylesSource = readFileSync(
 );
 assert.match(
   globalStylesSource,
-  /@media \(max-width: 767px\)[\s\S]*\[data-component="ChatArea\.Roleplay"\]:has\(\.mari-roleplay-message-body--editing\) \[data-roleplay-agent-window\] \{\s*display: none;/u,
+  /@media \(max-width: 767px\)[\s\S]*\[data-component="ChatArea\.Roleplay"\]:has\(\.mari-roleplay-message-body--editing\)\s+\[data-roleplay-agent-window\]:not\(\[data-roleplay-agent-window="echo"\]\) \{\s*display: none;/u,
   "Mobile Roleplay editing must temporarily remove agent windows from the constrained viewport",
+);
+assert.match(
+  globalStylesSource,
+  /@media \(max-width: 767px\)[\s\S]*\[data-component="ChatArea\.Roleplay"\]\[data-mobile-composer-active="true"\] \[data-roleplay-agent-window="echo"\],\s*\[data-component="ChatArea\.Roleplay"\]:has\(\.mari-roleplay-message-body--editing\) \[data-roleplay-agent-window="echo"\] \{\s*visibility: hidden;/u,
+  "Mobile Echo must keep its scroll box while hidden, or reactions revealed during typing leave it pinned to a stale offset",
 );
 assert.equal(
   appSource.match(/document\.addEventListener\("visibilitychange", syncEffectsPausedState\)/gu)?.length,

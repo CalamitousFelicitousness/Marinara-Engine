@@ -444,6 +444,7 @@ import {
   resolveCharacterActivityUpdate,
   resolveBaseUrl,
   resolveGroupGenerationMode,
+  resolveGroupIndividualHistorySpeaker,
   resolveRoleplaySummaryTail,
   resolveCharacterNameMap,
   resolvePromptCharacterIdsForTarget,
@@ -4958,14 +4959,31 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           latestGameState.swipeIndex === visibleGameStateAnchor.swipeIndex
             ? latestGameState
             : null;
+        // Individual group turns are saved one speaker per message, so agents can be told who spoke.
+        // Merged replies are saved under the first character and keep attribution in <speaker> tags instead.
+        const agentHistoryCharacterNamesById =
+          isGroupChat && chatMode !== "game" && groupChatMode === "individual"
+            ? await getGroupHistoryCharacterNamesById()
+            : null;
 
         const recentMsgs = agentSlice.map((m: any, index: number) => {
           const resolved = resolvedAgentSlice[index];
+          const speakerName = agentHistoryCharacterNamesById
+            ? resolveGroupIndividualHistorySpeaker(
+                {
+                  role: m.role,
+                  characterId: m.characterId,
+                  personaSnapshotName: m.role === "user" ? readPersonaSnapshotName(m.extra) : null,
+                },
+                { personaName, characterNamesById: agentHistoryCharacterNamesById },
+              )
+            : null;
           const msg: AgentContext["recentMessages"][number] = {
             id: typeof m.id === "string" ? m.id : undefined,
             role: m.role as string,
             content: resolved?.content ?? (m.content as string),
             characterId: m.characterId ?? undefined,
+            ...(speakerName ? { speakerName } : {}),
           };
           if (m.role === "assistant") {
             const messageSwipeIndex =

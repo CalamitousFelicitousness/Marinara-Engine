@@ -2052,6 +2052,8 @@ test("mobile Roleplay context and edit controls keep their chrome and space", as
     await expect(roleplaySurface).toHaveAttribute("data-mobile-composer-active", "true");
     await expect(agentWindow).toBeHidden();
     await expect(echoChamber).toBeHidden();
+    // Echo stays laid out while hidden, so reactions revealed during typing keep it pinned to the newest one.
+    expect(await echoChamber.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThan(0);
 
     await page.waitForTimeout(400);
     await page.evaluate(() => document.documentElement.setAttribute("data-mari-software-keyboard-open", ""));

@@ -102,7 +102,7 @@ interface GameInventoryProps {
    *  it is in afterwards (one item of a larger stack is taken into its own). */
   onWearItem?: (stackId: string, wear: GameInventoryWear) => Promise<string | null> | string | null;
   /** Called when the user wants to use an item during input phase */
-  onUseItem?: (itemName: string) => void;
+  onUseItem?: (stackId: string, itemName: string) => void;
   /** Called when the user gives a stack a nickname, or its own name back. Resolves to the stack's id. */
   onRenameItem?: (stackId: string, nextName: string) => Promise<string | null> | string | null;
   /** Called when the user sets a stack's count: the +1 and -1 buttons, or a typed amount. 0 removes it. */
@@ -195,8 +195,8 @@ export function GameInventory({
   }, []);
 
   const handleUse = useCallback(
-    (itemName: string) => {
-      onUseItem?.(itemName);
+    (stackId: string, itemName: string) => {
+      onUseItem?.(stackId, itemName);
       setSelectedItem(null);
     },
     [onUseItem],
@@ -939,6 +939,7 @@ export function GameInventory({
                     // A nickname is said with the item's own name, in the "Nickname (Name)" form the Game
                     // Master's inventory block uses, so it knows what it is.
                     handleUse(
+                      selectedInventoryItem.id,
                       selectedInventoryItem.nickname
                         ? `${selectedLabel} (${selectedInventoryItem.name})`
                         : selectedLabel,

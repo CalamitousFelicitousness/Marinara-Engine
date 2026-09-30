@@ -339,7 +339,11 @@ try {
         delete entry.item.charges;
       }
     };
-    for (const text of [emberText, gravewatchText]) {
+    /** Less what a use restores, which is 1.60's and has a lane of its own. */
+    const withoutRestore = (doc: Record<string, any>) => {
+      for (const entry of itemCatalogOf(doc).entries) delete entry.item.use?.restore;
+    };
+    for (const text of [emberText, gravewatchText].map((each) => JSON.stringify(variant(each, withoutRestore)))) {
       assert.match(issue(58, variant(text)) ?? "", gateIssue);
       assert.equal(issue(59, variant(text)), null);
       assert.equal(issue(58, variant(text, withoutUse)), null, "the rest of the example stays 1.58");
@@ -628,15 +632,18 @@ try {
       "wits and the bonus",
     );
     const flung = parsedOrThrow(
-      variant(gravewatchText, (doc) =>
-        Object.assign(itemEntry(doc, "warming-tonic").item.use, {
+      variant(gravewatchText, (doc) => {
+        const use = itemEntry(doc, "warming-tonic").item.use;
+        // A blow restores nobody's pool.
+        delete use.restore;
+        Object.assign(use, {
           kind: "attack",
           attackRoll: true,
           targets: "enemy",
           amount: { dice: "1d10" },
           toHit: { abilities: ["nerve"], target: 8 },
-        }),
-      ),
+        });
+      }),
       "a tonic flung",
     );
     assert.equal(actionOf(flung, [held(itemOf(flung, "kit/warming-tonic"), "Tonic")])?.target, 8);
@@ -658,6 +665,7 @@ try {
     const harms = parsedOrThrow(
       variant(gravewatchText, (doc) => {
         const use = itemEntry(doc, "warming-tonic").item.use;
+        delete use.restore;
         use.kind = "attack";
         use.targets = "enemy";
         use.amount = { dice: "2d10" };
@@ -824,7 +832,10 @@ try {
       rulesetItemPromptFacts(rulesetItemFacts(ember, poultice)),
       /; use \(Action\): heals 1d4 \+ 1, range 0 paces, used up$/,
     );
-    assert.match(rulesetItemPromptFacts(rulesetItemFacts(gravewatch, tonic)), /; use \(Quick\): heals 1, used up$/);
+    assert.match(
+      rulesetItemPromptFacts(rulesetItemFacts(gravewatch, tonic)),
+      /; use \(Quick\): heals 1, restores 1 Resolve, used up$/,
+    );
     assert.match(
       rulesetItemPromptFacts(rulesetItemFacts(gravewatch, bell)),
       /; use \(Act\): Steel 7 save negates it, Rattled, 1 of 3 charges$/,

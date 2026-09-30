@@ -367,6 +367,14 @@ export function rulesetCombatEventLine(
       });
     case "temporary":
       return key("temporary", { target: names.combatant(event.targetId), amount: event.amount });
+    case "restored":
+      return key("restored", {
+        target: names.combatant(event.targetId),
+        amount: event.amount,
+        pool: event.pool,
+        value: event.value,
+        max: event.max,
+      });
     case "condition":
       return key(`condition${event.reason[0]!.toUpperCase()}${event.reason.slice(1)}`, {
         target: names.combatant(event.targetId),

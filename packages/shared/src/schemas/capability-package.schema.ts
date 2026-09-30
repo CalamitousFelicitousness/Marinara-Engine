@@ -520,7 +520,11 @@ const capabilityPackageManifestBaseSchema = z
 //        used up and the charges left to the inventory. Not a soft seam, for the same reason as 1.20
 //        through 1.58: an Engine that cannot read these refuses the whole ruleset or catalog file, so
 //        a package that ships any of them declares 1.59. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 59 } as const);
+// 1.60: an item's `use` may `restore` a pool, and an item is used outside a fight too (the Use
+//        button and the Game Master's `[inventory: action="use"]`). Not a soft seam, for the same
+//        reason as 1.20 through 1.59: an Engine that cannot read `restore` refuses the whole ruleset
+//        or catalog file, so a package that ships it declares 1.60. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 60 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

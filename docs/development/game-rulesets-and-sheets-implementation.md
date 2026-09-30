@@ -1454,6 +1454,41 @@ a fight (the Use button, the Game Master's `use`, scroll gates, charges regained
   lines and invented items), lanes that pin older gates, the examples or the menu's groups, and
   `e2e/game-ruleset-item-use.e2e.ts`, with 69 deliberate breaks each caught.
 
+### What using items outside a fight settled
+
+Capability API 1.60, for #6881. Slice I6-2 of the ruleset items plan, split again from charges
+regained on rests, `breaksOn` and scroll `gate`s (now I6-3), so the inventory and generate seams ship
+on their own.
+
+- **`restore`.** A use's `restore` (`pool`, `amount`) is a declared live pool that is not the health
+  pool, on a heal or a buff, with an amount. In a fight it is `action.restore`, written to each
+  target with a sheet after its temporary points, with a `restored` event; the option carries
+  `restores`, and the Engine's picker skips a target (or a shape of friends) whose pool is full.
+- **One use, outside a fight.** `useRulesetItemOutsideFight` (shared `item-use.ts`) is pure: it finds
+  the stack and its item, refuses one that is not a ruleset item, has no use, is not worn where it
+  takes slots or binds, or has too few charges, then applies to its user what lands on them (a heal or
+  a buff not aimed at the enemy): a heal through the same op a fight uses (a pool's `restore`, or one
+  wound mark cleared), `temp`, the `restore`, and each condition on. A harmful or enemy-aimed use
+  applies nothing and says what it does (`rulesetItemUseDoes`). It spends through
+  `applyRulesetFightItemChanges`, journals a use of charges as "used", and returns the said parts;
+  `rulesetItemUseLine` is the Game Master's sentence.
+- **The Use button.** `POST /api/game/inventory/use` (`useGameRulesetItem`) runs inside the chat's
+  metadata queue and one transaction: the bag through `applyGameInventoryChangeHeld`, and the carrier's
+  live sheet on the visible game-state row, rolled with `rollDieSecurely`. The client sends it through
+  the same ordered path as other inventory saves (`sendInventory`), catches the game-state store up,
+  and sends "I use my X." with an `[item_used]` block holding the line. The block is a reserved tag
+  name, stripped with the combat recap (`stripEngineResultBlocks`) and shown as a badge. An item
+  without a use still sends the plain sentence.
+- **The Game Master's `use`.** `InventoryTagAction` gains `use`; `applyGameInventoryTags` takes a
+  `GameInventoryItemUser`, supplied by the generate route from `gameInventoryItemUser` over the sheet
+  commands' live and a per-turn seed (`rulesetCombatRoller`), so the preview answers and the saved ones
+  roll the same. The answer carries the line as its `note`; the sheets the uses left replace the turn's
+  live before it is saved. The prompt offers the tag in rulesets with item catalogs and explains
+  `[item_used]`, and the client announces "You used Poultice."
+- **Examples.** Gravewatch's warming tonic also restores a point of Resolve.
+- **Proven** by `scripts/regressions/game-ruleset-item-use-outside.regression.ts` and
+  `e2e/game-ruleset-item-use-outside.e2e.ts`, with 48 deliberate breaks each caught.
+
 ## Gaps a ruleset author found
 
 The author of [Marinara-RPG-Extension](https://github.com/Kenhito/Marinara-RPG-Extension), who

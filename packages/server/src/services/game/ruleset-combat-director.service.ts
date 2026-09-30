@@ -1114,13 +1114,26 @@ function rulesetCandidatesFrom(
         if (!lands) candidate.action.choice.targetIds = [targetId, ...others.map((other) => other.id)];
         candidate.damage = Math.min(2, (average / pool) * (1 + others.length)) * chance;
         if (average >= pool) candidate.finish = chance;
-      } else if (ally) candidate.support = 0.4;
-      else candidate.setup = 0.4;
+      } else if (ally) {
+        // Giving back a pool that is already full, or one somebody without a sheet does not have,
+        // gives nothing.
+        if (option.restores && !rulesetPoolHasRoom(definition, target, option.restores)) continue;
+        candidate.support = 0.4;
+      } else candidate.setup = 0.4;
       candidates.push(candidate);
     }
   }
   if (standing) for (const candidate of candidates) candidate.action.to = { ...standing };
   return candidates;
+}
+
+/** Whether a pool of this fighter's sheet has room for more. */
+function rulesetPoolHasRoom(definition: RulesetDefinition, fighter: RulesetCombatant, pool: string): boolean {
+  if (!fighter.sheet) return false;
+  const now = readRulesetLive(definition, fighter.sheet.build, fighter.sheet.live).pools.find(
+    (entry) => entry.key === pool,
+  );
+  return !!now && now.value < now.max;
 }
 
 /**
@@ -1197,7 +1210,12 @@ function areaCandidates(
       candidate.damage = Math.max(0, Math.min(2, share - hurt)) * chance;
       if (candidate.damage <= 0) continue;
     } else if (foes.length > 0) candidate.setup = 0.4;
-    else candidate.support = 0.4;
+    else {
+      if (option.restores && !friends.some((friend) => rulesetPoolHasRoom(definition, friend, option.restores!))) {
+        continue;
+      }
+      candidate.support = 0.4;
+    }
     candidates.push(candidate);
   }
   return candidates;

@@ -72,7 +72,7 @@ import { registerParameterPreviewRoute } from "./generate/parameter-preview-rout
 import type { FastifyInstance } from "fastify";
 import type { input as SchemaInput } from "zod";
 import { translateGeneratedMessage } from "../services/translation.service.js";
-import { randomUUID } from "crypto";
+import { randomInt, randomUUID } from "crypto";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import {
@@ -223,8 +223,10 @@ import {
   loadTurnRulesetCatalogs,
   renderGameRulesetSheetBlocks,
   sheetCommandCards,
+  type GameRulesetSheetContext,
   type GameRulesetSheetTurn,
 } from "../services/game/ruleset-sheet-turn.service.js";
+import { gameInventoryItemUser } from "../services/game/game-item-use.service.js";
 import {
   commitGameInventoryChange,
   followGameInventoryOnRow,
@@ -9226,6 +9228,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           // the message before it, or, for a continuation, the row the continued message already
           // has. That is what keeps a swipe or a regenerated turn from spending twice.
           let rulesetSheetTurn: GameRulesetSheetTurn | null = null;
+          // Kept for the inventory tags below, which use items onto the same sheets.
+          let turnSheetContext: GameRulesetSheetContext | null = null;
           if (chatMode === "game" && !input.impersonate && chatMeta.gameRuleset != null) {
             // Purchases the checks above already paid for, folded onto the turn's starting state
             // one character at a time, so a member nobody spent for is untouched.
@@ -9233,6 +9237,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               checkSpendLive ? { ...(base ?? {}), ...checkSpendLive } : base;
             try {
               const sheetContext = await loadGameRulesetSheetContext(app.db, input.chatId, turnGameRuleset);
+              turnSheetContext = sheetContext;
               if (sheetContext) {
                 rulesetSheetTurn = applyGameRulesetSheetTurn(
                   sheetContext,
@@ -9272,6 +9277,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             messageId: string | null;
             /** The swipe a regenerated or continued telling replaced or added to. */
             replaced: number | null;
+            /** What a `use` works on: the sheets as the sheet commands left them, and the dice's seed,
+             *  so the answers worked out now and once the reply is saved roll the same. */
+            uses?: { context: GameRulesetSheetContext; live: RulesetLiveStates; seed: number };
           } | null = null;
           const tellsInventory = /\[inventory:/i.test(fullResponse);
           const retellsInventoryTurn =
@@ -9308,8 +9316,21 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                     "game-master",
                   )
                 : undefined;
+              const uses =
+                rules && turnSheetContext && rulesetSheetTurn
+                  ? { context: turnSheetContext, live: rulesetSheetTurn.live, seed: randomInt(0, 2 ** 31 - 1) }
+                  : undefined;
               const preview = tellsInventory
-                ? applyGameInventoryTags(requested, plan.start, party, undefined, rules).content
+                ? applyGameInventoryTags(
+                    requested,
+                    plan.start,
+                    party,
+                    undefined,
+                    rules,
+                    uses && rules
+                      ? gameInventoryItemUser(uses.context, rules.itemOf, uses.live, uses.seed).useItem
+                      : undefined,
+                  ).content
                 : requested;
               if (preview !== fullResponse) {
                 fullResponse = preview;
@@ -9322,6 +9343,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 party,
                 tellsInventory,
                 ...(rules ? { rules } : {}),
+                ...(uses ? { uses } : {}),
                 messageId: retold?.id ?? null,
                 replaced: retold ? (retold.activeSwipeIndex ?? 0) : null,
               };
@@ -9692,9 +9714,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           // Now that the reply is saved, its tags are carried out on the stacks as they are, in one
           // save with the journal. What this telling left is remembered beside where its turn began,
           // and what its tags did is laid onto the row the reply was saved with.
+          // The sheets as the items the reply's inventory tags used left them, when any were used.
+          let inventoryLive: RulesetLiveStates | undefined;
           if (inventoryTurn && savedMsg?.id) {
             const pending = inventoryTurn;
             let carriedOut = false;
+            // The items used here change the sheets the turn saves below.
+            let user: ReturnType<typeof gameInventoryItemUser> | undefined;
             try {
               const swipeIndex = savedSwipeIndex ?? 0;
               const committed = await commitGameInventoryChange(
@@ -9706,8 +9732,24 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                     stacks,
                     pending.telling,
                   );
+                  user =
+                    pending.uses && pending.rules
+                      ? gameInventoryItemUser(
+                          pending.uses.context,
+                          pending.rules.itemOf,
+                          pending.uses.live,
+                          pending.uses.seed,
+                        )
+                      : undefined;
                   const outcome = pending.tellsInventory
-                    ? applyGameInventoryTags(pending.requested, plan.start, pending.party, undefined, pending.rules)
+                    ? applyGameInventoryTags(
+                        pending.requested,
+                        plan.start,
+                        pending.party,
+                        undefined,
+                        pending.rules,
+                        user?.useItem,
+                      )
                     : { content: pending.requested, stacks: plan.start, journal: [] };
                   const turnRecord = recordGameInventoryTelling(
                     pending.messageId ?? savedMsg.id,
@@ -9743,6 +9785,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               );
               if (committed) {
                 carriedOut = true;
+                if (user?.used()) inventoryLive = user.live();
                 const { plan, content, before } = committed.value;
                 // The stacks moved while the reply was being written (the player changed them), so
                 // its saved answers are brought in line with what really happened.
@@ -9846,7 +9889,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           // and otherwise just the purchases the checks already paid for. Without the second half a
           // turn whose sheet pass was skipped or threw would keep the automatic successes a player
           // bought and quietly give the points back, which is a free success.
-          const liveAfterTurn = rulesetSheetTurn?.live ?? checkSpendLive;
+          const liveAfterTurn = inventoryLive ?? rulesetSheetTurn?.live ?? checkSpendLive;
           if (liveAfterTurn && savedMsg?.id) {
             try {
               const swipeIndex = savedSwipeIndex ?? 0;

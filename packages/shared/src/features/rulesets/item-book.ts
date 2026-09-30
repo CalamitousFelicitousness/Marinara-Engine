@@ -137,6 +137,8 @@ export interface RulesetItemUseFact {
   consumes?: true;
   /** What one use spends of the charges the item holds at most. */
   charges?: { cost: number; max: number };
+  /** A pool it gives back some of, by the pool's label. */
+  restore?: { pool: string; amount: string };
 }
 
 /** A weapon's attack as labels and numbers: the budget it spends, what it adds to hit and deals, and
@@ -269,6 +271,14 @@ function rulesetItemUseFacts(
       : {}),
     ...(use.consumes ? { consumes: true as const } : {}),
     ...(use.charges !== undefined && max !== undefined ? { charges: { cost: use.charges, max } } : {}),
+    ...(use.restore
+      ? {
+          restore: {
+            pool: labelOf(definition.sheet.live.pools, use.restore.pool),
+            amount: amount(use.restore.amount),
+          },
+        }
+      : {}),
   };
 }
 
@@ -895,6 +905,17 @@ function rulesetItemModeText(mode: NonNullable<RulesetItemAttackFact["modes"]>[n
 
 /** An item's use for the Game Master: what it spends, what it does, and what using it costs of it. */
 export function rulesetItemUseText(use: RulesetItemUseFact): string {
+  return `use (${use.budget ?? "free"}): ${[
+    ...rulesetItemUseDoes(use),
+    use.consumes ? "used up" : "",
+    use.charges ? `${use.charges.cost} of ${use.charges.max} charges` : "",
+  ]
+    .filter(Boolean)
+    .join(", ")}`;
+}
+
+/** What using an item does, as the Game Master's parts of it, leaving out what it spends. */
+export function rulesetItemUseDoes(use: RulesetItemUseFact): string[] {
   const does =
     use.kind === "heal"
       ? use.amount
@@ -903,7 +924,7 @@ export function rulesetItemUseText(use: RulesetItemUseFact): string {
       : use.amount
         ? [use.amount, use.type].filter(Boolean).join(" ")
         : "";
-  return `use (${use.budget ?? "free"}): ${[
+  return [
     does,
     use.toHit ? `${use.toHit} to hit${use.target !== undefined ? ` at ${use.target}` : ""}` : "",
     use.save
@@ -913,13 +934,10 @@ export function rulesetItemUseText(use: RulesetItemUseFact): string {
       : "",
     ...(use.applies ?? []),
     use.temporary ? `${use.temporary} temporary` : "",
+    use.restore ? `restores ${use.restore.amount} ${use.restore.pool}` : "",
     use.range !== undefined ? `range ${use.range}${use.unit ? ` ${use.unit}` : ""}` : "",
     use.area ? `${use.area.shape} ${use.area.size}${use.unit ? ` ${use.unit}` : ""}` : "",
-    use.consumes ? "used up" : "",
-    use.charges ? `${use.charges.cost} of ${use.charges.max} charges` : "",
-  ]
-    .filter(Boolean)
-    .join(", ")}`;
+  ].filter(Boolean);
 }
 
 export function rulesetItemAttackText(attack: RulesetItemAttackFact): string {

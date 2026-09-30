@@ -744,6 +744,8 @@ function itemUseActions(
     });
     if (!action) return;
     if (aim.target !== undefined) action.target = aim.target;
+    const restored = amountOf(use.restore?.amount);
+    if (use.restore && restored) action.restore = { pool: use.restore.pool, amount: restored };
     action.itemUse = {
       item: index,
       ...(use.consumes ? { consumes: true as const } : {}),

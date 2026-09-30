@@ -509,6 +509,33 @@ function grantTemporary(
   });
 }
 
+/** Some of a pool given back, on a sheet: a creature's block has no pools, so it takes nothing. */
+function restorePool(
+  ctx: RulesetCombatContext,
+  target: RulesetCombatant,
+  pool: string,
+  input: { sourceId?: string; rolls: number[]; flat: number; amount: number },
+): void {
+  if (!target.sheet) return;
+  const amount = Math.max(0, Math.floor(input.amount));
+  if (amount > 0) writeRulesetSheet(ctx.definition, target, { op: "restore", pool, amount });
+  const now = readRulesetLive(ctx.definition, target.sheet.build, target.sheet.live).pools.find(
+    (entry) => entry.key === pool,
+  );
+  if (!now) return;
+  ctx.events.push({
+    type: "restored",
+    targetId: target.id,
+    ...(input.sourceId ? { sourceId: input.sourceId } : {}),
+    pool: now.label,
+    rolls: input.rolls,
+    flat: input.flat,
+    amount,
+    value: now.value,
+    max: now.max,
+  });
+}
+
 // ── Going down, and coming back ──
 
 /** The conditions this one was holding up by still being on their feet. A charm ends when whoever
@@ -2164,6 +2191,7 @@ function resolveAction(
   const clauses = (action.damage?.plus ?? []).map((clause) => once(clause)!);
   const heal = once(action.heal);
   const temporary = once(action.temporary);
+  const restore = once(action.restore?.amount);
 
   const pooled = rulesetCombatIsPool(ctx.combat);
   // A spending attack throws the number its maker has as the blow lands, and whether anything landed
@@ -2592,6 +2620,15 @@ function resolveAction(
     if (temporary) {
       const rolled = temporary();
       grantTemporary(ctx, target, {
+        sourceId: actor.id,
+        rolls: rolled.rolls,
+        flat: rolled.flat,
+        amount: rolled.total,
+      });
+    }
+    if (restore && action.restore) {
+      const rolled = restore();
+      restorePool(ctx, target, action.restore.pool, {
         sourceId: actor.id,
         rolls: rolled.rolls,
         flat: rolled.flat,

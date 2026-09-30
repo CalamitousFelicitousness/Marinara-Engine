@@ -1,0 +1,88 @@
+import { expect, test } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import { inventoryButton } from "./game-inventory-fixture.js";
+import { openGame, savedInventory, seedFight, withImports } from "./game-ruleset-fight-fixture.js";
+
+/**
+ * Using an item outside a fight (#6881), on screen. In an Ember Roads game Juno is down to no Grit and
+ * carries two poultices: the Use button heals her with the Engine's dice before anything is said, takes
+ * one out of the saved bag, and the message the Game Master gets says what happened in an
+ * `[item_used]` block.
+ */
+
+test("the Use button heals with a poultice and tells the Game Master", async ({ page, request }, testInfo) => {
+  test.setTimeout(120_000);
+  const doc = JSON.parse(readFileSync(new URL("../docs/examples/rulesets/ember-roads.json", import.meta.url), "utf8"));
+  doc.id = "ember-use-outside-e2e";
+  await withImports(request, async (cleanup) => {
+    const seeded = await seedFight(
+      request,
+      doc,
+      { name: "Poultice", genre: "Fantasy", setting: "The road", tone: "Adventure" },
+      {
+        gameCharacterCards: [
+          {
+            name: "Juno",
+            rulesetSheet: {
+              v: 1,
+              build: { abilities: { brawn: 1, wits: 3, heart: 0 }, fields: { toughness: 6 }, lists: {} },
+            },
+          },
+        ],
+        gameInventory: [
+          { id: "st-poultice", name: "Poultice", quantity: 2, item: "outfitter/poultice", holder: "Juno" },
+        ],
+      },
+      { juno: { pools: { grit: { value: 0 } } } },
+      "The road is quiet, and Juno is bleeding.",
+    );
+    cleanup.push(seeded);
+    // The reply is not the point here: what the player's message carries is.
+    let sent: string | null = null;
+    await page.route("**/api/generate", async (route) => {
+      sent = JSON.stringify(route.request().postDataJSON());
+      await route.fulfill({ contentType: "text/event-stream", body: 'data: {"type":"done"}\n\n' });
+    });
+    await openGame(page, seeded.chatId);
+    await expect(page.locator('[data-component="GameNarration.ActivePanel"]')).toContainText("Juno is bleeding", {
+      timeout: 30_000,
+    });
+    await inventoryButton(page).click({ timeout: 30_000 });
+    await page.getByRole("button", { name: /^Poultice/ }).click();
+    await page.screenshot({ path: testInfo.outputPath("ruleset-use-outside-before.png"), fullPage: true });
+    const used = page.waitForResponse((r) => r.url().endsWith("/api/game/inventory/use"));
+    await page.getByRole("button", { name: "Use", exact: true }).click();
+    const answer = await used;
+    expect(answer.ok(), await answer.text()).toBeTruthy();
+    const body = (await answer.json()) as {
+      line: string;
+      rulesetLive: Record<string, { pools?: Record<string, { value: number }> }>;
+    };
+    expect(body.line).toMatch(/^Juno uses Poultice: heals [2-5] \(Grit [2-5]\/\d+\)\. 1 left\.$/);
+    // The message says it, with the Engine's line in the block the Game Master reads.
+    await expect.poll(() => sent).toContain("I use my Poultice.");
+    expect(sent).toContain("[item_used]");
+    expect(sent).toContain(body.line.replace(/"/g, '\\"'));
+    // And it is written: one poultice left in the bag, and Juno's Grit back on the sheet.
+    await expect
+      .poll(
+        async () =>
+          (await savedInventory(request, seeded.chatId)).find((stack) => stack.id === "st-poultice")?.quantity,
+      )
+      .toBe(1);
+    const state = await (await request.get(`/api/chats/${seeded.chatId}/game-state`)).json();
+    expect(state.rulesetLive?.juno?.pools?.grit?.value).toBe(body.rulesetLive.juno?.pools?.grit?.value);
+    expect(state.rulesetLive?.juno?.pools?.grit?.value).toBeGreaterThanOrEqual(2);
+    // Saved as the player's message, the block shows as a badge with the Engine's line in the session log.
+    const saved = await request.post(`/api/chats/${seeded.chatId}/messages`, {
+      data: { role: "user", content: `I use my Poultice.\n\n[item_used]\n${body.line}\n[/item_used]` },
+    });
+    expect(saved.ok(), await saved.text()).toBeTruthy();
+    await page.goto("/");
+    await page.getByRole("button", { name: "Logs", exact: true }).click({ timeout: 30_000 });
+    const logs = page.getByRole("dialog").filter({ has: page.getByRole("heading", { name: "Session Logs" }) });
+    await expect(logs.getByText("🎒 Item used", { exact: true })).toBeVisible();
+    await expect(logs.getByText(body.line)).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("ruleset-use-outside-after.png"), fullPage: true });
+  });
+});

@@ -62,7 +62,8 @@ test("the Use button heals with a poultice and tells the Game Master", async ({ 
     // The message says it, with the Engine's line in the block the Game Master reads.
     await expect.poll(() => sent).toContain("I use my Poultice.");
     expect(sent).toContain("[item_used]");
-    expect(sent).toContain(body.line.replace(/"/g, '\\"'));
+    // The request body is JSON, so the line is looked for as JSON writes it.
+    expect(sent).toContain(JSON.stringify(body.line).slice(1, -1));
     // And it is written: one poultice left in the bag, and Juno's Grit back on the sheet.
     await expect
       .poll(
@@ -84,5 +85,53 @@ test("the Use button heals with a poultice and tells the Game Master", async ({ 
     await expect(logs.getByText("🎒 Item used", { exact: true })).toBeVisible();
     await expect(logs.getByText(body.line)).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath("ruleset-use-outside-after.png"), fullPage: true });
+  });
+});
+
+test("while the ruleset's items are still loading, Use asks the Engine before saying it", async ({ page, request }) => {
+  test.setTimeout(120_000);
+  const doc = JSON.parse(readFileSync(new URL("../docs/examples/rulesets/ember-roads.json", import.meta.url), "utf8"));
+  doc.id = "ember-use-loading-e2e";
+  await withImports(request, async (cleanup) => {
+    const seeded = await seedFight(
+      request,
+      doc,
+      { name: "Arrows", genre: "Fantasy", setting: "The road", tone: "Adventure" },
+      {
+        gameCharacterCards: [
+          {
+            name: "Juno",
+            rulesetSheet: { v: 1, build: { abilities: { brawn: 1, wits: 3, heart: 0 }, fields: {}, lists: {} } },
+          },
+        ],
+        gameInventory: [{ id: "st-arrows", name: "Arrows", quantity: 4, item: "outfitter/arrows", holder: "Juno" }],
+      },
+      {},
+      "The road is quiet.",
+    );
+    cleanup.push(seeded);
+    // The catalogs never arrive, so the screen cannot tell whether arrows do anything when used.
+    await page.route("**/api/capability-packages/rulesets/catalog**", () => new Promise<void>(() => {}));
+    let sent: string | null = null;
+    await page.route("**/api/generate", async (route) => {
+      sent = JSON.stringify(route.request().postDataJSON());
+      await route.fulfill({ contentType: "text/event-stream", body: 'data: {"type":"done"}\n\n' });
+    });
+    await openGame(page, seeded.chatId);
+    await expect(page.locator('[data-component="GameNarration.ActivePanel"]')).toContainText("The road is quiet", {
+      timeout: 30_000,
+    });
+    await inventoryButton(page).click({ timeout: 30_000 });
+    await page.getByRole("button", { name: /^Arrows/ }).click();
+    const asked = page.waitForResponse((r) => r.url().endsWith("/api/game/inventory/use"));
+    await page.getByRole("button", { name: "Use", exact: true }).click();
+    const answer = await asked;
+    expect(answer.status()).toBe(409);
+    expect((await answer.json()).reason).toBe("no-use");
+    // Arrows do nothing the Engine applies, so they are simply said, and nothing is spent.
+    await expect.poll(() => sent).toContain("I use my Arrows.");
+    expect(sent).not.toContain("[item_used]");
+    expect((await savedInventory(request, seeded.chatId)).find((stack) => stack.id === "st-arrows")?.quantity).toBe(4);
+    await page.unrouteAll({ behavior: "ignoreErrors" });
   });
 });

@@ -8741,9 +8741,12 @@ function GameSurfaceComponent({
     async (stackId: string, label: string) => {
       setInventoryOpen(false);
       const stack = inventoryItemsRef.current.find((entry) => entry.id === stackId);
-      const usable = stack?.item ? inventoryItemBook?.itemOf(stack.item)?.entry.item?.use : undefined;
-      if (!usable) {
-        sendMessage(`I use my ${label}.`);
+      const said = () => sendMessage(`I use my ${label}.`);
+      // Only an item the screen already knows has no use is simply said. One it cannot tell about yet
+      // (the ruleset or its catalogs still loading) goes to the Engine, which always knows.
+      const known = stack?.item ? inventoryItemBook?.itemOf(stack.item) : undefined;
+      if (!stack?.item || gameRuleset.status === "none" || (known && !known.entry.item?.use)) {
+        said();
         return;
       }
       const usedIn = activeChatId;
@@ -8765,6 +8768,11 @@ function GameSurfaceComponent({
           error instanceof ApiError && error.payload && typeof error.payload === "object"
             ? (error.payload as { reason?: unknown }).reason
             : undefined;
+        // Nothing the Engine uses: it is said as any other item is.
+        if (reason === "no-use" || reason === "not-ruleset-item" || reason === "no-ruleset") {
+          if (useChatStore.getState().activeChatId === usedIn) said();
+          return;
+        }
         toast.error(
           localizeUi(
             reason === "none-left"
@@ -8789,7 +8797,7 @@ function GameSurfaceComponent({
           false;
       if (!sent) toast.error(localizeUi("ui.game.gamesurfacecomponent.itemUsedNotSent", { item: label }));
     },
-    [activeChatId, inventoryItemBook, localizeUi, sendInventory, sendMessage],
+    [activeChatId, gameRuleset.status, inventoryItemBook, localizeUi, sendInventory, sendMessage],
   );
 
   // Who an item added in the shared view may go to, in order: the player, then the party.

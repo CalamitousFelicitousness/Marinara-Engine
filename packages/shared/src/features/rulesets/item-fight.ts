@@ -65,9 +65,9 @@ export function rulesetItemFightEffect(
 /**
  * The items one of the Engine's fights offers, and what each does: the ruleset's own items by their
  * `use` (and not at all when they have none), and the rest by what a model guessed, while the ruleset
- * leaves Game Mode's own items on. A guess made for one of the ruleset's items is dropped, and so is
- * any guess that claims to be the ruleset's. Without a book (a game with no ruleset items) every item
- * is guessed at, as before.
+ * leaves Game Mode's own items on. A guess no plain item takes is dropped (so one made for the
+ * ruleset's items is), and so is any guess that claims to be the ruleset's. Without a book (a game
+ * with no ruleset items) every item is guessed at, as before.
  */
 export function gameFightItems(
   lines: readonly GameInventoryFightLine[],
@@ -87,18 +87,18 @@ export function gameFightItems(
     offered.push(line);
     worked.push(effect);
   }
-  const theirs = new Set(lines.flatMap((line) => (line.item && book ? [gameInventoryNameKey(line.name)] : [])));
-  const guesses = native
-    ? guessed.filter((effect) => !effect.ruleset && !theirs.has(gameInventoryNameKey(effect.name)))
-    : [];
+  const guesses = guessed.filter((effect) => !effect.ruleset);
+  const plain = offered.filter((line) => !line.item || !book);
+  const matched = gameInventoryFightEffects(plain, guesses);
+  // With ruleset items, only a guess one of the plain items takes is kept: a guess made for one of the
+  // ruleset's items is gone, and a plain item that shares its name keeps its own, whichever of the two
+  // is listed first. Without them, every guess is kept, as before.
+  const plainNames = new Set(plain.map((line) => gameInventoryNameKey(line.name)));
   return {
     lines: offered,
     effects: [
       ...worked,
-      ...gameInventoryFightEffects(
-        offered.filter((line) => !line.item || !book),
-        guesses,
-      ),
+      ...(book ? matched.filter((effect) => plainNames.has(gameInventoryNameKey(effect.name))) : matched),
     ],
   };
 }

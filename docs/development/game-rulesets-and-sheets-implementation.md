@@ -1115,7 +1115,8 @@ character holds.
   through the real context loader, the sheet block, a fight's initiative, and a ruleset fight started
   through the real route), `game-inventory-turn.regression.ts` (the Game Master's prompt on a real
   turn) and `e2e/game-ruleset-wearing.e2e.ts` (the in-game sheet's Guard before and after the coat is
-  put on), with 40 deliberate breaks each caught.
+  put on), with 39 deliberate breaks each caught. A fortieth showed a check on the guesses that could never
+  change the result once only guesses a plain item takes are kept, and it was deleted.
 
 ### What worn effects on checks settled
 
@@ -1642,8 +1643,9 @@ No Capability API change: slice I8-1 of the ruleset items plan (#6905) reads key
   element, the first applied condition as a status by its label, `targets` or a default by kind, and
   `consumes`. The description is the item's own use text.
 - **Which items a battle offers.** `gameFightItems` keeps a plain item while `native` is on, and one
-  of the ruleset's items only when it has an effect; a guess for one of the ruleset's items, or one
-  that claims to be the ruleset's, is dropped. Without an item book every item is guessed at, as
+  of the ruleset's items only when it has an effect; only a guess a plain item takes is kept (so one
+  made for the ruleset's items is dropped, and a plain item sharing a ruleset item's name keeps its
+  own whichever is listed first), and one that claims to be the ruleset's is dropped. Without an item book every item is guessed at, as
   before. The server's `loadGameFightItems` reads it for the encounter's start (whose prompt names the
   ruleset's items the model must leave alone), the combat director's start (which no longer trusts
   the screen's effects for them) and, in a game with ruleset items, the Classic round route (which

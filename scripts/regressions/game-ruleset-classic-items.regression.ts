@@ -266,6 +266,29 @@ try {
     );
   }
 
+  // ── A plain item that shares a ruleset item's name keeps its own guess, in either order ──
+  {
+    const guess: CombatItemEffect = { name: "Poultice", target: "enemy", type: "damage", description: "guessed" };
+    for (const [first, second] of [
+      ["plain", "ruleset"],
+      ["ruleset", "plain"],
+    ]) {
+      const stacks = [first, second].map((kind, index): GameInventoryStack =>
+        kind === "plain"
+          ? { id: `p${index}`, name: "Poultice", quantity: 1 }
+          : { id: `r${index}`, name: "Poultice", quantity: 1, item: "outfitter/poultice" },
+      );
+      const fight = gameFightItems(gameInventoryFightLines(stacks), emberBook, true, [guess]);
+      const effectOfLine = (item: string | undefined) => {
+        const line = fight.lines.find((each) => each.item === item)!;
+        return fight.effects.find((effect) => effect.name === line.name)?.description;
+      };
+      assert.equal(effectOfLine(undefined), "guessed", `${first} first: the plain poultice keeps the guess`);
+      assert.equal(effectOfLine("outfitter/poultice"), "heals 1d4 + 1, range 0", `${first} first`);
+      assert.equal(fight.effects.length, 2, `${first} first: nothing else`);
+    }
+  }
+
   // ── A ruleset heal heals by its own strength ──
   {
     const hero = {

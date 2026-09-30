@@ -40,9 +40,14 @@ export function ContextMenu({ x, y, items, onClose, destructiveTone = "destructi
     if (left < 4) left = 4;
     if (top < 4) top = 4;
     setPos({ left, top });
-    // Keyboard users land inside the menu instead of behind it at the end of the page.
-    el.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus({ preventScroll: true });
   }, [x, y]);
+
+  // Keyboard users land inside the menu, and return to where they were when it closes.
+  useEffect(() => {
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    ref.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus({ preventScroll: true });
+    return () => previous?.focus({ preventScroll: true });
+  }, []);
 
   // Close on outside click, Escape, scroll, or window resize.
   useEffect(() => {

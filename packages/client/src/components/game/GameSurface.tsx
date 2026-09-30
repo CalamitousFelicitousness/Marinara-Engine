@@ -3027,7 +3027,7 @@ function GameSurfaceComponent({
   const inventoryItemsRef = useRef(inventoryItems);
   /** The screen's inventory saves: how many were sent, the newest whose answer is on screen, and
    *  whether the chat changed while one was on its way (and so was not read then). */
-  const inventoryCommitSeq = useRef({ sent: 0, applied: 0, skippedResync: false });
+  const inventoryCommitSeq = useRef({ sent: 0, applied: 0, sheetApplied: 0, skippedResync: false });
   // What a fight offers: one line per item, however the player split its stacks.
   // What a fight lists: one line per item, each under a name no other line has, with each item's
   // effect found under that line's name.
@@ -7632,6 +7632,16 @@ function GameSurfaceComponent({
           void queryClient.invalidateQueries({ queryKey: chatKeys.detail(activeChatId) });
         }
       };
+      // The sheet a route wrote with the bag (a use) is ordered on its own: an answer older than one
+      // whose sheet is already shown never puts that sheet back, while one overtaken only by a plain
+      // inventory save, which carries no sheet, still has the newest.
+      if (response.rulesetLive && seq > inventoryCommitSeq.current.sheetApplied) {
+        inventoryCommitSeq.current.sheetApplied = seq;
+        const shown = useGameStateStore.getState().current;
+        if (shown?.chatId === activeChatId) {
+          useGameStateStore.getState().setGameState({ ...shown, rulesetLive: response.rulesetLive });
+        }
+      }
       // The server applies requests in order, so an answer to an older one that arrives after a
       // newer one describes stacks that are already out of date: its results still count, but it
       // must not put an older inventory back on screen.
@@ -7645,15 +7655,9 @@ function GameSurfaceComponent({
       setInventoryItems(inventory);
       await queryClient.cancelQueries({ queryKey: chatKeys.detail(activeChatId) });
       syncInventoryToChatCache(inventory);
-      // The sheet a route wrote with the bag (a use) catches up here too, so an older answer never
-      // puts back what a newer one changed.
       const currentGameState = useGameStateStore.getState().current;
-      if ((response.playerStats || response.rulesetLive) && currentGameState?.chatId === activeChatId) {
-        useGameStateStore.getState().setGameState({
-          ...currentGameState,
-          ...(response.playerStats ? { playerStats: response.playerStats } : {}),
-          ...(response.rulesetLive ? { rulesetLive: response.rulesetLive } : {}),
-        });
+      if (response.playerStats && currentGameState?.chatId === activeChatId) {
+        useGameStateStore.getState().setGameState({ ...currentGameState, playerStats: response.playerStats });
       }
       settle();
       return response;

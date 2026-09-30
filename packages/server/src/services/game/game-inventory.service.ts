@@ -10,7 +10,6 @@ import {
   normalizeCharacterLookupName,
   forgetGameInventoryTelling,
   gameFightItems,
-  gameInventoryFightLines,
   gameInventoryForTelling,
   normalizeGameInventoryStacks,
   readGameInventoryTurn,
@@ -70,7 +69,8 @@ export interface GameInventoryCommitted<T> {
   value: T;
 }
 
-function readMetadata(raw: unknown): Record<string, unknown> {
+/** A chat's metadata as an object, or an empty one when it is missing or will not parse. */
+export function readMetadata(raw: unknown): Record<string, unknown> {
   if (raw && typeof raw === "object" && !Array.isArray(raw)) return raw as Record<string, unknown>;
   if (typeof raw !== "string" || !raw) return {};
   try {
@@ -202,12 +202,12 @@ export async function loadGameFightItems(
   metadata: Record<string, unknown>,
   guessed: readonly CombatItemEffect[],
 ): Promise<{ lines: GameInventoryFightLine[]; effects: CombatItemEffect[]; ruleset: boolean }> {
-  const lines = gameInventoryFightLines(normalizeGameInventoryStacks(metadata.gameInventory));
+  const stacks = normalizeGameInventoryStacks(metadata.gameInventory);
   const resolved = metadata.gameRuleset == null ? null : resolveGameRuleset(metadata, await loadRulesetRegistry(db));
   const native = resolved?.status !== "ok" || resolved.definition.items?.native !== false;
   const book =
     resolved?.status === "ok" ? await loadGameInventoryItemBook(db, { metadata, resolved }, "player") : undefined;
-  return { ...gameFightItems(lines, book, native, guessed), ruleset: book !== undefined };
+  return { ...gameFightItems(stacks, book, native, guessed), ruleset: book !== undefined };
 }
 
 export async function gameRulesetTurnsNativeItemsOff(db: DB, metadata: Record<string, unknown>): Promise<boolean> {

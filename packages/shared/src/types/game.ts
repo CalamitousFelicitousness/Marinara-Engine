@@ -662,6 +662,8 @@ export interface ElementInfo {
 
 /** A single attack result in combat. */
 export interface CombatAttackResult {
+  /** What the log says instead of the usual line, as an item whose gate its user failed (#6909). */
+  note?: string;
   attackerId: string;
   defenderId: string;
   attackRoll: number;

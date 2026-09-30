@@ -7,6 +7,7 @@ import {
   gameInventoryCountItems,
   gameInventoryItemsOwnNamed,
   gameInventoryKeptByCurse,
+  gameInventoryUsableStack,
   normalizeGameInventoryStacks,
   rulesetFightItemChanges,
 } from "@marinara-engine/shared";
@@ -18,6 +19,7 @@ import {
 import { resolveCombatWeather } from "../services/game/weather.service.js";
 import { addGameLoot, planGameVictoryLoot } from "../services/game/game-loot.service.js";
 import { rollDieSecurely } from "../services/game/dice-rng.js";
+import { rollGameFightItemGate } from "../services/game/game-item-use.service.js";
 import type { FastifyInstance } from "fastify";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -593,32 +595,45 @@ export async function combatDirectorRoutes(
         const previous = await load(chatId, s.anchor);
         if (!previous || previous.row.id !== rowId) throw new Error("Battle changed while saving.");
         // Spent by the item's own name, which only ever finds that item, not by a nickname.
-        const spent = new Map<string, number>();
+        // One of the ruleset's items that holds charges counts uses, and spends charges (#6909): kept
+        // apart from a plain item of the same own name, which is taken.
+        const spent = new Map<string, { name: string; count: number; charged: boolean }>();
         for (const [name, count] of Object.entries(s.itemSpends)) {
           const more = count - (previous.state.itemSpends[name] ?? 0);
           if (more <= 0) continue;
           const own = s.inventory.find((line) => line.name === name)?.ownName ?? name;
-          spent.set(own, (spent.get(own) ?? 0) + more);
+          const charged = s.itemEffects.some((effect) => effect.name === name && effect.charges);
+          const key = `${charged ? "charge" : "take"}:${own}`;
+          spent.set(key, { name: own, count: (spent.get(key)?.count ?? 0) + more, charged });
         }
-        const deltas = [...spent].map(([name, count]) => ({ name, count }));
+        const deltas = [...spent.values()];
         if (deltas.length)
           // Taken by name across every stack and bag of the item, the player's own first, since the
-          // fight saw one total per item; the detailed inventory and the journal follow with it.
+          // fight saw one total per item; the detailed inventory and the journal follow with it. Charges
+          // are spent the same way, and an item that may break rolls the Engine's own dice.
           await applyGameInventoryChangeHeld(app.db, chatId, (stacks) => {
             for (const d of deltas) {
-              // Counted as the items of that own name, so another item's nickname can never make up the count.
+              if (d.charged) continue;
+              // Counted as the items of that own name, so another item's nickname can never make up the count,
+              // and only where the item may be used from, as the fight counted it: worn, and bound where it binds.
               const items = gameInventoryItemsOwnNamed(stacks, d.name);
-              if (gameInventoryCountItems(stacks, items) < d.count)
+              const usable = stacks.filter((stack) => gameInventoryUsableStack(stack, rules));
+              if (gameInventoryCountItems(usable, items) < d.count)
                 throw new Error("Inventory changed. Reload the battle.");
-              const free = stacks.filter((stack) => !gameInventoryKeptByCurse(stack, rules));
+              const free = usable.filter((stack) => !gameInventoryKeptByCurse(stack, rules));
               if (gameInventoryCountItems(free, items) < d.count)
                 throw new Error(`${d.name} is cursed and stays with whoever it is bound to, so it cannot be used.`);
             }
             const outcome = applyGameInventoryOps(
               stacks,
-              deltas.map((d) => ({ op: "take" as const, name: d.name, count: d.count, as: "used" as const })),
+              deltas.map((d) =>
+                d.charged
+                  ? { op: "charge" as const, name: d.name, count: d.count }
+                  : { op: "take" as const, name: d.name, count: d.count, as: "used" as const, worn: true as const },
+              ),
               undefined,
               rules,
+              rollDieSecurely,
             );
             // The step counted on every item it spends: one taken short throws, and the whole step with it.
             if (outcome.results.some((result, i) => !result.ok || result.count !== deltas[i]!.count))
@@ -760,10 +775,11 @@ export async function combatDirectorRoutes(
         const fightItems = await loadGameFightItems(app.db, meta, input.itemEffects);
         const state = createCombatDirector({
           ...input,
-          inventory: fightItems.lines.map(({ name, quantity, ownName }) => ({
+          inventory: fightItems.lines.map(({ name, quantity, ownName, item }) => ({
             name,
             quantity,
             ...(ownName ? { ownName } : {}),
+            ...(item ? { item } : {}),
           })),
           itemEffects: fightItems.effects,
           party: input.party as Combatant[],
@@ -925,6 +941,24 @@ export async function combatDirectorRoutes(
         if (input.command.type === "choose" && w?.controller !== "manual")
           throw new Error("This decision belongs to the boss controller.");
         if (input.command.type === "ruleset" && !ruleset) throw new Error("Action does not match this combat mode.");
+        // One of the ruleset's items that asks a check first has it rolled here, for whoever uses it,
+        // with their sheet and the Engine's own dice (#6909); the fight is told only when they failed.
+        const used =
+          input.command.type === "classic" && input.command.action.type === "item"
+            ? { name: input.command.action.itemId, unitId: state.actorId, action: input.command.action }
+            : input.command.type === "tactical" && input.command.action.type === "item"
+              ? {
+                  name: input.command.action.itemName,
+                  unitId: input.command.action.unitId,
+                  action: input.command.action,
+                }
+              : null;
+        const usedLine = used && !ruleset ? state.inventory.find((line) => line.name === used.name) : undefined;
+        if (usedLine?.item && state.itemEffects.some((effect) => effect.name === usedLine.name && effect.ruleset)) {
+          const who = state.party.find((unit) => unit.id === used!.unitId)?.name ?? "";
+          const gate = await rollGameFightItemGate(app.db, input.chatId, who, usedLine.item);
+          if (gate && !gate.success) (used!.action as { failed?: string }).failed = gate.line;
+        }
         const refused = step(input.command as DirectedCommand);
         // A refusal changed nothing, so nothing is saved and no request id is spent on it.
         if (refused) return { refusal: refused };

@@ -735,6 +735,8 @@ export function rulesetItemBook(
     entry: RulesetCatalogEntry & { item: RulesetCatalogItem },
   ): RulesetItemBookEntry => {
     const weight = carryStat ? entry.item.stats?.[carryStat] : undefined;
+    const facts = rulesetItemFacts(definition, entry.item, options.layerOptions);
+    const charges = facts.use?.charges;
     return {
       item: ref,
       name: entry.label,
@@ -742,10 +744,19 @@ export function rulesetItemBook(
       ...(typeof weight === "number" && weight > 0 ? { weight } : {}),
       ...(entry.item.slots && Object.keys(entry.item.slots).length > 0 ? { slots: entry.item.slots } : {}),
       ...(entry.item.binds ? { binds: { ...(entry.item.binds.cursed ? { cursed: true } : {}) } } : {}),
+      ...(charges
+        ? {
+            charges: {
+              cost: charges.cost,
+              max: charges.max,
+              ...(charges.breaksOn ? { breaksOn: charges.breaksOn } : {}),
+            },
+          }
+        : {}),
       catalogId,
       entry,
       ...(entry.summary ? { summary: entry.summary } : {}),
-      facts: rulesetItemFacts(definition, entry.item, options.layerOptions),
+      facts,
     };
   };
   const all = new Map<string, RulesetItemBookEntry>();

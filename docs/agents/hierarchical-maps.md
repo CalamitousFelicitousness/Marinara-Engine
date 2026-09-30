@@ -286,7 +286,7 @@ towns, stairs between selected floors, a portal between worlds, or a secret
 passage between rooms in different buildings.
 
 A 25-floor tower should normally model the floors as siblings under one tower,
-not as a 25-deep parent chain. Maps allow up to 500 locations and 20 hierarchy
+not as a 25-deep parent chain. Maps allow up to 5,000 locations and 20 hierarchy
 levels.
 
 ## Draft or expand a map with AI

@@ -5,7 +5,7 @@
 // NPC notes, locations, inventory, and events —
 // all assembled from committed snapshots, no LLM.
 // ──────────────────────────────────────────────
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from "react";
 import {
   X,
   MapPin,
@@ -19,6 +19,7 @@ import {
   Loader2,
   Wand2,
   Check,
+  Globe2,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { api } from "../../lib/api-client";
@@ -28,7 +29,7 @@ import { applyInlineMarkdown, renderMarkdownBlocks } from "../../lib/markdown";
 import { showConfirmDialog } from "../../lib/app-dialogs";
 import { AnimatedText } from "./AnimatedText";
 
-import type { GameNpc } from "@marinara-engine/shared";
+import type { GameNpc, WorldJournal } from "@marinara-engine/shared";
 import { useTranslation as useUiTranslation } from "react-i18next";
 
 interface JournalEntry {
@@ -72,17 +73,22 @@ interface GameJournalProps {
   generatingNpcPortraitNames?: Set<string>;
   onNpcRemove?: (npcName: string) => Promise<void> | void;
   embedded?: boolean;
+  /** The game has a generated world (worldgen W7), so the journal has a World tab. */
+  hasWorld?: boolean;
+  /** The latest turn as shown (its swipe too), so the World tab reads the world again after it. */
+  worldTurnKey?: string | null;
 }
 
-type TabId = "all" | "npcs" | "locations" | "inventory" | "library" | "notes";
+type TabId = "all" | "npcs" | "locations" | "inventory" | "library" | "notes" | "world";
 
-const TABS: Array<{ id: TabId; label: string; icon: typeof ScrollText }> = [
+const TABS: Array<{ id: TabId; label: string; labelKey?: string; icon: typeof ScrollText }> = [
   { id: "all", label: "Timeline", icon: ScrollText },
   { id: "npcs", label: "NPCs", icon: Users },
   { id: "locations", label: "Map", icon: MapPin },
   { id: "inventory", label: "Items", icon: Package },
   { id: "library", label: "Library", icon: BookOpen },
   { id: "notes", label: "Notes", icon: PenLine },
+  { id: "world", label: "World", labelKey: "ui.game.gamejournal.world", icon: Globe2 },
 ];
 
 const TYPE_ICONS: Record<string, typeof ScrollText> = {
@@ -189,6 +195,8 @@ export function GameJournal({
   generatingNpcPortraitNames,
   onNpcRemove,
   embedded = false,
+  hasWorld = false,
+  worldTurnKey = null,
 }: GameJournalProps) {
   const { t: localizeUi } = useUiTranslation();
   const [journal, setJournal] = useState<Journal | null>(null);
@@ -374,7 +382,7 @@ export function GameJournal({
       {/* Tabs — horizontally scrollable on mobile */}
       <div className="overflow-x-auto border-b border-white/10 px-4 py-2 scrollbar-hide [-webkit-overflow-scrolling:touch]">
         <div className="flex gap-1 w-max min-w-full">
-          {TABS.map((tab) => {
+          {TABS.filter((tab) => tab.id !== "world" || hasWorld).map((tab) => {
             const Icon = tab.icon;
             return (
               <button
@@ -390,7 +398,7 @@ export function GameJournal({
                 )}
               >
                 <Icon size={12} />
-                {tab.label}
+                {tab.labelKey ? localizeUi(tab.labelKey) : tab.label}
               </button>
             );
           })}
@@ -435,6 +443,7 @@ export function GameJournal({
           />
         )}
         {activeTab === "notes" && <NotesView notes={playerNotes} onChange={handleNotesChange} saved={notesSaved} />}
+        {activeTab === "world" && hasWorld && <WorldView chatId={chatId} turnKey={worldTurnKey} />}
       </div>
 
       {editingEntry && (
@@ -738,6 +747,121 @@ function NpcsView({
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/** The world as the party knows it (worldgen W7): read from the replies when the tab opens and after
+ *  each turn, and only ever for the game it was asked for. */
+function WorldView({ chatId, turnKey }: { chatId: string; turnKey: string | null }) {
+  const { t: localizeUi } = useUiTranslation();
+  const [world, setWorld] = useState<{ chatId: string; journal: WorldJournal | null } | undefined>(undefined);
+  useEffect(() => {
+    let superseded = false;
+    api
+      .get<{ journal: WorldJournal | null }>(`/game/${chatId}/world-journal`)
+      .then((res) => {
+        if (!superseded) setWorld({ chatId, journal: res.journal });
+      })
+      .catch(() => {
+        if (!superseded) setWorld({ chatId, journal: null });
+      });
+    return () => {
+      superseded = true;
+    };
+  }, [chatId, turnKey]);
+  // Another game's world is never shown while this one's is read.
+  const shown = world?.chatId === chatId ? world.journal : undefined;
+  if (shown === undefined) {
+    return (
+      <div className="flex justify-center py-6 text-white/40">
+        <Loader2 size={14} className="animate-spin" />
+      </div>
+    );
+  }
+  if (shown === null) {
+    return <div className="text-center text-xs text-white/40">{localizeUi("ui.game.worldview.noWorld")}</div>;
+  }
+  const nothing = <div className="text-xs text-white/40">{localizeUi("ui.game.worldview.nothingYet")}</div>;
+  const row = "rounded-lg border border-white/5 bg-white/3 px-3 py-2 text-xs text-white/70";
+  const section = (title: string, body: ReactNode) => (
+    <section className="flex flex-col gap-2">
+      <h3 className="text-[0.625rem] font-semibold uppercase tracking-wide text-white/50">{title}</h3>
+      {body}
+    </section>
+  );
+  return (
+    <div className="flex flex-col gap-4">
+      {section(
+        localizeUi("ui.game.worldview.where"),
+        <div className={row}>
+          {shown.where.join(" › ")}
+          <div className="mt-1 text-white/45">{localizeUi(`ui.game.worldview.renown.${shown.renown}`)}</div>
+        </div>,
+      )}
+      {section(
+        localizeUi("ui.game.worldview.standing"),
+        shown.standing.length
+          ? shown.standing.map((each) => (
+              <div key={each.group} className={cn(row, "flex items-center justify-between gap-2")}>
+                <span>{each.group}</span>
+                <span className="text-white/45">{localizeUi(`ui.game.worldview.standingBands.${each.band}`)}</span>
+              </div>
+            ))
+          : nothing,
+      )}
+      {section(
+        localizeUi("ui.game.worldview.news"),
+        shown.news.length
+          ? shown.news.map((each, index) => (
+              <div key={index} className={row}>
+                <div className="flex gap-2 text-white/45">
+                  <span>{each.when}</span>
+                  {each.rumour ? <span className="italic">{localizeUi("ui.game.worldview.rumour")}</span> : null}
+                </div>
+                <div>{each.text}</div>
+              </div>
+            ))
+          : nothing,
+      )}
+      {section(
+        localizeUi("ui.game.worldview.brewing"),
+        shown.brewing.length
+          ? shown.brewing.map((each, index) => (
+              <div key={index} className={row}>
+                {localizeUi("ui.game.worldview.brewingLine", {
+                  a: each.groups[0],
+                  b: each.groups[1],
+                  count: each.weeks,
+                })}
+                {each.close ? (
+                  <div className="text-white/45">{localizeUi("ui.game.worldview.brewingClose")}</div>
+                ) : null}
+              </div>
+            ))
+          : nothing,
+      )}
+      {section(
+        localizeUi("ui.game.worldview.deeds"),
+        shown.deeds.length
+          ? shown.deeds.map((each, index) => (
+              <div key={index} className={row}>
+                <span className="text-white/45">{each.place}</span>
+                <div>{each.text}</div>
+              </div>
+            ))
+          : nothing,
+      )}
+      {section(
+        localizeUi("ui.game.worldview.past"),
+        shown.past.length
+          ? shown.past.map((line, index) => (
+              <div key={index} className={row}>
+                {line}
+              </div>
+            ))
+          : nothing,
+      )}
     </div>
   );
 }

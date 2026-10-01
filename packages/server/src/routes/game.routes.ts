@@ -222,6 +222,10 @@ import {
   worldAssetsForFamily,
   gameWorldSchema,
   gameWorldFromMetadata,
+  lastGamePlace,
+  readWorldLedger,
+  worldJournal,
+  worldPresent,
   worldBriefSchema,
   WORLD_GROUNDINGS,
   readReputationTags,
@@ -401,6 +405,7 @@ import {
   playGameSpotifyTrack,
 } from "../services/spotify/game-spotify-music.service.js";
 import { loadGameFightItems, loadGameInventoryItemBook } from "../services/game/game-inventory.service.js";
+import { gameRepliesBefore } from "../services/game/game-market.service.js";
 import { rollGameFightItemGate } from "../services/game/game-item-use.service.js";
 import {
   readIllustratorAppearance,
@@ -10706,6 +10711,21 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const playerNotes = (meta.gamePlayerNotes as string) ?? "";
 
     return { journal, recap: buildStructuredRecap(journal, sessionNumber), playerNotes };
+  });
+
+  // ── GET /game/:chatId/world-journal ──
+  // The world as the party knows it (worldgen W7), folded from the replies exactly as a turn folds it:
+  // the ledger from all of them, the party's place from the ones the Game Master last read.
+  app.get<{ Params: { chatId: string } }>("/:chatId/world-journal", async (req, reply) => {
+    const chat = await createChatsStorage(app.db).getById(req.params.chatId);
+    if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    const world = gameWorldFromMetadata(parseMeta(chat.metadata));
+    if (!world) return { journal: null };
+    const replies = await gameRepliesBefore(app.db, req.params.chatId);
+    const place = lastGamePlace(replies.scoped);
+    return {
+      journal: worldJournal(world, worldPresent(world, readWorldLedger(replies.all)), { name: place?.name }),
+    };
   });
 
   // ── PUT /game/:chatId/journal/entries/:entryIndex ──

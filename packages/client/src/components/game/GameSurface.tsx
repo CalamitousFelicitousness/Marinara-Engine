@@ -12287,6 +12287,8 @@ function GameSurfaceComponent({
             <Suspense fallback={null}>
               <GameJournal
                 chatId={activeChatId}
+                hasWorld={Boolean(chatMeta.gameWorld)}
+                worldTurnKey={narrationTurnKey(latestAssistantMsg)}
                 npcs={npcs}
                 onClose={() => setSessionPanelOpen(false)}
                 onNpcPortraitClick={handleNpcPortraitClick}

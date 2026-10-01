@@ -137,7 +137,8 @@ const labelOf = (entries: ReadonlyArray<{ id: string; label: string }>, id: stri
 const plural = (word: string) => (/s$/i.test(word) ? word : `${word}s`);
 
 /** How long ago, in the kit's days. */
-function daysAgo(kit: WorldKit, count: number): string {
+/** How long ago, in the kit's own word for a day. */
+export function worldDaysAgo(kit: WorldKit, count: number): string {
   if (count <= 0) return "Today";
   return `${count} ${count === 1 ? kit.calendar.day : plural(kit.calendar.day)} ago`;
 }
@@ -284,7 +285,7 @@ export function worldWhereYouAreText(
       lines.push(
         `- Word that has reached here, newest first:`,
         ...news.map(
-          ({ news: each, ago, rumour }) => `  - ${daysAgo(kit, ago)}${rumour ? ", a rumour" : ""}: ${each.text}`,
+          ({ news: each, ago, rumour }) => `  - ${worldDaysAgo(kit, ago)}${rumour ? ", a rumour" : ""}: ${each.text}`,
         ),
       );
     }

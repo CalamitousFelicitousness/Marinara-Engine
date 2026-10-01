@@ -304,3 +304,114 @@ test("the Game Master meets the world's people: offered by name, brought in once
     await new Promise<void>((resolve) => model.server.close(() => resolve()));
   }
 });
+
+test("what the story does to the world is remembered: deeds and places answered, then told back", async ({
+  page,
+  request,
+}, testInfo) => {
+  test.setTimeout(120_000);
+  const checked = checkWorldBrief(kit, {
+    ...brief,
+    groups: [{ name: "The Reed Wardens", kind: "village_council", seat: "Hollin" }],
+  });
+  if (!checked.ok) throw new Error(checked.issues.join("; "));
+  const model = await fakeModel([
+    [
+      "I help the wardens mend the dikes.",
+      // A deed, a place the story brings in, and a deed on a group the world does not have (worldgen W4).
+      'The wardens cheer. [world: deed="help" group="the reed wardens" note="mended the dikes"] [world: fact="place" name="The Sunken Shrine" in="hollin"] [world: deed="destroy" group="The Grey Hand"]',
+    ],
+    // A place a reply brings in is a place the same reply can go.
+    [
+      "I follow the old stair.",
+      'Steps lead down into the dark. [world: fact="place" name="The Drowned Stair" in="Hollin"] [place: name="the drowned stair"]',
+    ],
+    // A place added before the conversation start is still the world's after it.
+    ["I light a torch.", 'Shadows jump along the wet stone. [place: name="the sunken shrine"]'],
+  ]);
+  let connectionId = "";
+  let chatId = "";
+  try {
+    const connection = await request.post("/api/connections", {
+      data: {
+        name: "Local ledger fixture",
+        provider: "custom",
+        baseUrl: model.baseUrl,
+        apiKey: "synthetic-test-key",
+        model: "ledger-fixture",
+        maxContext: 32768,
+        treatAsLocalEndpoint: true,
+      },
+    });
+    connectionId = (await connection.json()).id;
+    const created = await request.post("/api/chats", {
+      data: { name: "Ledger", mode: "game", characterIds: [], connectionId },
+    });
+    chatId = ((await created.json()) as { id: string }).id;
+    const meta = await request.patch(`/api/chats/${chatId}/metadata`, {
+      data: {
+        gameId: `ledger-${chatId}`,
+        gameSessionStatus: "active",
+        gameIntroPresented: true,
+        gameImageAutoGenerationEnabled: false,
+        enableAgents: false,
+        enableTools: false,
+        gameWorldKit: kit,
+        gameWorld: { ...gameWorld, brief: checked.brief },
+      },
+    });
+    expect(meta.ok(), await meta.text()).toBeTruthy();
+    await request.post(`/api/chats/${chatId}/messages`, {
+      data: { role: "assistant", content: "Mist lies on the reeds around Hollin." },
+    });
+    await openGame(page, chatId);
+    const narration = page.locator('[data-component="GameNarration.ActivePanel"]');
+    await expect(narration).toContainText("Mist lies on the reeds around Hollin.", { timeout: 30_000 });
+    const send = async (said: string, shown: string) => {
+      const before = model.prompts.length;
+      await page.getByPlaceholder("What do you do?", { exact: true }).fill(said);
+      await page.getByRole("button", { name: "Send game turn", exact: true }).click();
+      await expect(narration).toContainText(shown, { timeout: 30_000 });
+      return model.prompts.slice(before).find((body) => body.includes(said))!;
+    };
+    const lastReply = async () =>
+      ((await (await request.get(`/api/chats/${chatId}/messages`)).json()) as Array<{ role: string; content: string }>)
+        .filter((message) => message.role === "assistant")
+        .at(-1)!.content;
+
+    // The Game Master is told how to write deeds; its tags are answered in place and never shown.
+    const first = await send("I help the wardens mend the dikes.", "The wardens cheer.");
+    expect(first).toContain("When the party changes the world, record it in your reply");
+    const answered = await lastReply();
+    expect(answered).toContain('[world: deed="help" group="The Reed Wardens" note="mended the dikes" result="ok"]');
+    expect(answered).toContain('[world: fact="place" name="The Sunken Shrine" in="Hollin" result="ok"]');
+    expect(answered).toContain('[world: deed="destroy" group="The Grey Hand" result="refused" reason="unknown-group"]');
+    await expect(narration).not.toContainText("[world:");
+
+    // A conversation start scopes what the Game Master reads, not what the story did to the world.
+    expect(
+      (
+        await request.post(`/api/chats/${chatId}/messages`, {
+          data: { role: "assistant", content: "A new day over Hollin.", extra: { isConversationStart: true } },
+        })
+      ).ok(),
+    ).toBeTruthy();
+
+    // The next turn is told the world as the story left it, and an added place is a place to go.
+    const second = await send("I follow the old stair.", "Steps lead down into the dark.");
+    expect(second).toContain("<where_you_are>\\nThe party is in Hollin (village, ");
+    expect(second).toMatch(/- Inside it: [^\\]*The Sunken Shrine\./);
+    expect(second).toContain("- The party's standing: The Reed Wardens (on good terms).");
+    expect(await lastReply()).toContain('[place: name="The Drowned Stair" size="village" result="ok"]');
+
+    const third = await send("I light a torch.", "Shadows jump along the wet stone.");
+    expect(third).toContain("<where_you_are>\\nThe party is in The Drowned Stair, in Hollin (village, ");
+    expect(await lastReply()).toContain('[place: name="The Sunken Shrine" size="village" result="ok"]');
+    await page.screenshot({ path: testInfo.outputPath("world-ledger.png") });
+  } finally {
+    if (chatId) await request.delete(`/api/chats/${chatId}`).catch(() => undefined);
+    if (connectionId) await request.delete(`/api/connections/${connectionId}`).catch(() => undefined);
+    model.server.closeAllConnections();
+    await new Promise<void>((resolve) => model.server.close(() => resolve()));
+  }
+});

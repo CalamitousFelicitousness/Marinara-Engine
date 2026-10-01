@@ -49,7 +49,7 @@ const { buildGmFormatReminder } = await import("../../packages/server/src/servic
 const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
 const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
 const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
-const { gamePlaceBefore, loadGameMarket } =
+const { gamePlaceBefore, gameRepliesBefore, loadGameMarket } =
   await import("../../packages/server/src/services/game/game-market.service.js");
 
 const read = (path: string) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8");
@@ -679,6 +679,11 @@ try {
     extra: { isConversationStart: true },
   });
   assert.equal(await gamePlaceBefore(db, chat.id), null);
+  // The world's ledger (worldgen W4) reads every reply: a conversation start scopes what the Game
+  // Master reads, not what the story did to the world.
+  const replies = await gameRepliesBefore(db, chat.id);
+  assert.equal(replies.scoped.length, 0);
+  assert.equal(replies.all.length, 3);
   // A seller's `only` is read off the buyer's own card: the player's (the first card, with no
   // persona), a member's by name, and a blank sheet for someone with none (Nerve 2 by default).
   const cards = [

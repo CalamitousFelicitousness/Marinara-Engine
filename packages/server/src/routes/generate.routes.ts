@@ -192,6 +192,11 @@ import {
   worldPersonNpc,
   applyWorldHistoryTags,
   worldHistoryAnswerText,
+  applyWorldTags,
+  readWorldLedger,
+  worldPresent,
+  worldAddedPlace,
+  type WorldPresent,
   lastGamePlace,
   rulesetMarketPlace,
   rulesetMarketPromptText,
@@ -247,7 +252,7 @@ import {
 } from "../services/game/ruleset-sheet-turn.service.js";
 import { gameInventoryItemUser, gameInventoryRestRecharge } from "../services/game/game-item-use.service.js";
 import { gameLootTagRoller } from "../services/game/game-loot.service.js";
-import { gamePlaceBefore, gameRepliesBefore, loadGameMarket } from "../services/game/game-market.service.js";
+import { gameRepliesBefore, loadGameMarket } from "../services/game/game-market.service.js";
 import {
   commitGameInventoryChange,
   followGameInventoryOnRow,
@@ -4603,9 +4608,10 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               : undefined;
           // Where the scene is: the place the visible messages last said (not the telling a
           // regeneration replaces), read once for the market and the world.
-          let promptRepliesRead: Promise<string[]> | undefined;
-          const promptReplies = () =>
+          let promptRepliesRead: ReturnType<typeof gameRepliesBefore> | undefined;
+          const promptRepliesAll = () =>
             (promptRepliesRead ??= gameRepliesBefore(app.db, input.chatId, input.regenerateMessageId ?? null));
+          const promptReplies = async () => (await promptRepliesAll()).scoped;
           const promptPlace = async () => lastGamePlace(await promptReplies());
           // Where the party is in the game's world (worldgen W1): the place last said, when the world
           // lists it, else where the world starts the party until the Game Master says.
@@ -4618,15 +4624,18 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           );
           const promptWhereYouAre = promptWorld
             ? await (async () => {
+                // The world as the story has left it (worldgen W4): the ledger in all the replies.
+                const present = worldPresent(promptWorld, readWorldLedger((await promptRepliesAll()).all));
                 const before = await promptPlace();
                 if (!before?.name) {
                   const start = promptWorld.world.places.find((place) => place.id === promptWorld.world.startId);
-                  return worldWhereYouAreText(promptWorld, { place: start, met: promptMet });
+                  return worldWhereYouAreText(promptWorld, { place: start, met: promptMet, present });
                 }
                 return worldWhereYouAreText(promptWorld, {
                   place: worldPlaceByName(promptWorld.world, before.name),
                   name: before.name,
                   met: promptMet,
+                  present,
                 });
               })()
             : undefined;
@@ -9431,14 +9440,30 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               ? turnGameRuleset.definition.items?.market
               : undefined;
           const turnWorld = chatMode === "game" && !input.impersonate ? gameWorldFromMetadata(chatMeta) : null;
+          let turnPresent: WorldPresent | undefined;
           if (turnMarket || turnWorld) {
-            turnPlace = await gamePlaceBefore(app.db, input.chatId, input.regenerateMessageId ?? null);
+            const replies = await gameRepliesBefore(app.db, input.chatId, input.regenerateMessageId ?? null);
+            turnPlace = lastGamePlace(replies.scoped);
             turnPlaceBefore = turnPlace;
+            // What the reply does to the world (worldgen W4): each world tag answered in place against
+            // the world as the replies before it left it, before its place tags, so a place it adds is
+            // a place it can go.
+            if (turnWorld) {
+              const ledger = readWorldLedger(replies.all);
+              if (/\[world:/i.test(fullResponse)) {
+                const answered = applyWorldTags(fullResponse, turnWorld, ledger);
+                if (answered !== fullResponse) {
+                  fullResponse = answered;
+                  contentReplaced = true;
+                }
+              }
+              turnPresent = worldPresent(turnWorld, [...ledger, ...readWorldLedger([fullResponse])]);
+            }
             if (/\[place:/i.test(fullResponse)) {
               const placed = applyGamePlaceTags(
                 fullResponse,
                 (word) => (turnMarket ? rulesetMarketPlace(turnMarket, word) : worldKitSize(turnWorld!.kit, word)),
-                turnWorld ? (name) => worldPlaceForTag(turnWorld, name, turnMarket?.places) : undefined,
+                turnWorld ? (name) => worldPlaceForTag(turnWorld, name, turnMarket?.places, turnPresent) : undefined,
               );
               if (placed.content !== fullResponse) {
                 fullResponse = placed.content;
@@ -9461,7 +9486,10 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             const startPlace = turnWorld.world.places.find((place) => place.id === turnWorld.world.startId);
             // Where the scene is now first, so a name both places have is the person here.
             const placeIds = [turnPlace, turnPlaceBefore].flatMap((place) => {
-              const found = place?.name ? worldPlaceByName(turnWorld.world, place.name) : startPlace;
+              const found = place?.name
+                ? (worldPlaceByName(turnWorld.world, place.name) ??
+                  (turnPresent ? worldAddedPlace(turnWorld, turnPresent, place.name)?.within : undefined))
+                : startPlace;
               return found ? [found.id] : [];
             });
             const named = worldPeopleNamed(turnWorld, placeIds, fullResponse);

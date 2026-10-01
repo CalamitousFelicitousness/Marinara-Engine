@@ -21,35 +21,38 @@ import type { ResolvedGameRuleset } from "./ruleset-registry.service.js";
 import { gameRulesetLayerOptions } from "./game-inventory.service.js";
 import { loadGameRulesetSheetContext } from "./ruleset-sheet-turn.service.js";
 
+/** The Game Master's own replies before the telling a regeneration replaces, oldest first. */
+export interface GameRepliesBefore {
+  /** Since the latest conversation start, as the Game Master's own context is scoped: what the place,
+   *  and the history asked for, are read from. */
+  scoped: string[];
+  /** All of them: what the world's ledger is read from (worldgen W4), since a conversation start
+   *  scopes what the model reads, not what the story did to the world. */
+  all: string[];
+}
+
+export async function gameRepliesBefore(db: DB, chatId: string, replacing?: string | null): Promise<GameRepliesBefore> {
+  const messages = await createChatsStorage(db).listMessages(chatId);
+  const end = replacing ? messages.findIndex((message) => message.id === replacing) : -1;
+  const before = end >= 0 ? messages.slice(0, end) : messages;
+  // Only the Game Master's own replies: a tag a player types is never answered.
+  const all: string[] = [];
+  let scopedFrom = 0;
+  for (const message of before) {
+    if (parseExtra(message.extra).isConversationStart === true) scopedFrom = all.length;
+    if (message.role === "assistant" && typeof message.content === "string") all.push(message.content);
+  }
+  return { scoped: all.slice(scopedFrom), all };
+}
+
 /**
  * The place the chat's scene is in before a reply: the last place tag the Engine answered in the
  * messages as the player sees them (each its active swipe), from the latest conversation start on, as
  * the Game Master's own context is scoped. A regeneration reads only what came before the telling it
  * replaces. Null when none was said.
  */
-/** The Game Master's own replies since the conversation began, before the telling a regeneration
- *  replaces, oldest first: what the place, and the history asked for, are read from. */
-export async function gameRepliesBefore(db: DB, chatId: string, replacing?: string | null): Promise<string[]> {
-  const messages = await createChatsStorage(db).listMessages(chatId);
-  const end = replacing ? messages.findIndex((message) => message.id === replacing) : -1;
-  const before = end >= 0 ? messages.slice(0, end) : messages;
-  let start = 0;
-  for (let index = before.length - 1; index >= 0; index--) {
-    if (parseExtra(before[index]!.extra).isConversationStart === true) {
-      start = index;
-      break;
-    }
-  }
-  // Only the Game Master's own replies: a tag a player types is never answered.
-  return before
-    .slice(start)
-    .flatMap((message) =>
-      message.role === "assistant" && typeof message.content === "string" ? [message.content] : [],
-    );
-}
-
 export async function gamePlaceBefore(db: DB, chatId: string, replacing?: string | null): Promise<GamePlace | null> {
-  return lastGamePlace(await gameRepliesBefore(db, chatId, replacing));
+  return lastGamePlace((await gameRepliesBefore(db, chatId, replacing)).scoped);
 }
 
 /**

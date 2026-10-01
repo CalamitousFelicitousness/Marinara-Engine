@@ -118,6 +118,7 @@ export const RESERVED_GM_TAG_NAMES = Object.freeze([
   "thought",
   "whisper",
   "widget",
+  "world",
 ] as const);
 
 const reservedGmTagNames = new Set<string>(RESERVED_GM_TAG_NAMES);

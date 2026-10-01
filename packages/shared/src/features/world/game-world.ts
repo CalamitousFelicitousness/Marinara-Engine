@@ -10,6 +10,13 @@ import { checkWorldBrief, worldBriefSchema, type WorldBrief } from "../../schema
 import { WORLD_GENERATOR_VERSION, compileWorld, type CompiledWorld, type WorldPlace } from "./compile.js";
 import { worldCast, worldPersonSheet } from "./people.js";
 import { worldHistory, worldHistoryLine, worldNotablePast, worldPlacePast } from "./history.js";
+import {
+  worldAddedPlace,
+  worldChangesLines,
+  worldLedgerInstructions,
+  worldStandingWord,
+  type WorldPresent,
+} from "./ledger.js";
 
 /** How many people not yet met the Game Master is shown at once. */
 const WHERE_YOU_ARE_PEOPLE = 5;
@@ -86,23 +93,33 @@ export function worldPlaceByName(world: CompiledWorld, name: string | undefined)
  * world's own name for it and its size. A place inside a settlement has its settlement's size, and a
  * place above the settlements (a province, a system) has none, as the road and the wilds have none.
  * The size is the kit's, or, given the ladder a ruleset's market declares, the place on that ladder at
- * the same height, so a world's capital is the market's biggest place.
+ * the same height, so a world's capital is the market's biggest place. A place the story added (worldgen
+ * W4) is read as a place inside the world place it was added in.
  */
 export function worldPlaceForTag(
-  { kit, world }: GameWorld,
+  game: GameWorld,
   name: string,
   ladder?: ReadonlyArray<{ id: string }>,
+  present?: WorldPresent,
 ): { name: string; size?: string } | undefined {
-  const place = worldPlaceByName(world, name);
+  const { kit, world } = game;
+  const listed = worldPlaceByName(world, name);
+  const added = listed || !present ? undefined : worldAddedPlace(game, present, name);
+  const place = listed ?? added?.within;
   if (!place) return undefined;
-  const parent = place.parentId ? world.places.find((each) => each.id === place.parentId) : undefined;
-  const settlement = place.rank !== undefined ? place : parent?.rank !== undefined ? parent : undefined;
-  if (!settlement) return { name: place.name };
-  if (!ladder) return { name: place.name, size: settlement.size };
+  const named = added?.place.name ?? place.name;
+  // The settlement it is in: itself, or the nearest place up that is one (none above the settlements).
+  let settlement: WorldPlace | undefined = place;
+  while (settlement && settlement.rank === undefined) {
+    const up: string | null = settlement.parentId;
+    settlement = up ? world.places.find((each) => each.id === up) : undefined;
+  }
+  if (!settlement) return { name: named };
+  if (!ladder) return { name: named, size: settlement.size };
   const top = Math.max(1, kit.sizes.length - 1);
   // Rounded down, so only the world's own top places reach the market's biggest.
   const at = Math.floor((settlement.rank! * (ladder.length - 1)) / top);
-  return { name: place.name, size: ladder[Math.min(ladder.length - 1, Math.max(0, at))]!.id };
+  return { name: named, size: ladder[Math.min(ladder.length - 1, Math.max(0, at))]!.id };
 }
 
 /** A size word (id or label, any case) on the kit's own ladder, for a world without a market. */
@@ -125,10 +142,11 @@ function days(kit: WorldKit, count: number): string {
   return `about ${rounded} ${rounded === 1 ? day : plural(day)}`;
 }
 
-function describe(kit: WorldKit, place: WorldPlace): string {
+function describe(kit: WorldKit, place: WorldPlace, present?: WorldPresent): string {
   const layer = labelOf(kit.layers, place.layer);
   if (place.size === undefined) return `${place.name} (${layer})`;
-  return `${place.name} (${labelOf(kit.sizes, place.size)}, ${place.prosperity})`;
+  const state = present?.ruined.includes(place.id) ? "in ruins" : (present?.prosperity[place.id] ?? place.prosperity);
+  return `${place.name} (${labelOf(kit.sizes, place.size)}, ${state})`;
 }
 
 /** The fixed part, for the cached system prompt: the premise, the outer places, the biggest settlements. */
@@ -164,23 +182,29 @@ export function worldOverviewPromptText(game: GameWorld): string {
       return past.length ? [`- The past:`, ...past.map((event) => `  - ${worldHistoryLine(event)}`)] : [];
     })(),
     `To recall the past of a place or group not shown here, write [history: place="Name"] or [history: group="Name"]; the answer comes with your next turn.`,
+    worldLedgerInstructions(game),
     `Use these places and names. When the party goes somewhere, say where with [place: name="..."], using a name from this world when it is one; a place this world does not list (a farmhouse, a camp, a ship) gets a name of its own.`,
     `</world_places>`,
   ];
   return lines.join("\n");
 }
 
-/** The changing part, for the per-turn reminder: where the party is, and where it can go from there. */
+/** The changing part, for the per-turn reminder: where the party is, and where it can go from there,
+ *  as the story has left the world (`present`, worldgen W4). */
 export function worldWhereYouAreText(
   game: GameWorld,
-  at: { place?: WorldPlace; name?: string; met?: ReadonlySet<string> },
+  at: { place?: WorldPlace; name?: string; met?: ReadonlySet<string>; present?: WorldPresent },
 ): string {
   const { kit, world } = game;
+  const present = at.present;
   const byId = new Map(world.places.map((place) => [place.id, place]));
-  const place = at.place;
+  // A place the story added is told as a place inside the world place it was added in.
+  const added = !at.place && at.name && present ? worldAddedPlace(game, present, at.name) : undefined;
+  const place = at.place ?? added?.within;
   const lines = [`<where_you_are>`];
+  const changes = present ? worldChangesLines(game, present) : [];
   if (!place) {
-    lines.push(`The party is at ${at.name ?? "an unnamed place"}, which this world does not list.`);
+    lines.push(`The party is at ${at.name ?? "an unnamed place"}, which this world does not list.`, ...changes);
     lines.push(`</where_you_are>`);
     return lines.join("\n");
   }
@@ -192,8 +216,11 @@ export function worldWhereYouAreText(
   ) {
     chain.push(up);
   }
+  const around = added ? [place, ...chain] : chain;
   lines.push(
-    `The party is in ${describe(kit, place)}${chain.length ? `, in ${chain.map((each) => describe(kit, each)).join(", ")}` : ""}.`,
+    `The party is in ${added ? added.place.name : describe(kit, place, present)}${
+      around.length ? `, in ${around.map((each) => describe(kit, each, present)).join(", ")}` : ""
+    }.`,
   );
   if (place.tags.length) lines.push(`- Known for: ${place.tags.map((tag) => labelOf(kit.placeTags, tag)).join(", ")}.`);
   if (place.note) lines.push(`- ${place.note}`);
@@ -201,15 +228,30 @@ export function worldWhereYouAreText(
   const history = worldHistory(game);
   const home = place.rank !== undefined ? place : chain.find((each) => each.rank !== undefined);
   if (home) {
-    const keeper = history.keepers[home.id];
-    const leader = keeper ? history.leaders[keeper]?.name : undefined;
-    if (keeper) lines.push(`- Kept by ${keeper}${leader ? `, led by ${leader}` : ""}.`);
+    const keeper = (present ?? history).keepers[home.id];
+    const leader = keeper ? (present ?? history).leaders[keeper]?.name : undefined;
+    const standing = keeper !== undefined ? present?.standing[keeper] : undefined;
+    if (keeper) {
+      lines.push(
+        `- Kept by ${keeper}${leader ? `, led by ${leader}` : ""}${
+          standing !== undefined ? `; the party is ${worldStandingWord(standing)} with them` : ""
+        }.`,
+      );
+    }
     const past = worldPlacePast(history, home, 4);
     if (past.length) lines.push(`- Its past: ${past.map(worldHistoryLine).join(" ")}`);
+    // What the party has done here, latest last.
+    const done = [home.id, ...(place.id !== home.id ? [place.id] : []), ...(added ? [added.place.id] : [])].flatMap(
+      (id) => present?.done[id] ?? [],
+    );
+    if (done.length) lines.push(`- Since play began: ${done.slice(-3).join(" ")}`);
   }
   // Where it goes from here: the settlement's links (or its town's, for a place inside one).
   const settlement = place.size !== undefined ? place : chain.find((each) => each.size !== undefined);
-  const inside = world.places.filter((each) => each.parentId === (settlement ?? place).id);
+  const inside = [
+    ...world.places.filter((each) => each.parentId === (settlement ?? place).id),
+    ...(present?.places ?? []).filter((each) => each.parentId === (settlement ?? place).id),
+  ];
   if (inside.length) lines.push(`- Inside it: ${inside.map((each) => each.name).join(", ")}.`);
   if (settlement) {
     const routes = world.links
@@ -220,7 +262,8 @@ export function worldWhereYouAreText(
       lines.push(
         `- From here: ${routes
           .map(
-            ({ other, link }) => `${describe(kit, other)}, ${days(kit, link.days)} by ${labelOf(kit.travel, link.way)}`,
+            ({ other, link }) =>
+              `${describe(kit, other, present)}, ${days(kit, link.days)} by ${labelOf(kit.travel, link.way)}`,
           )
           .join("; ")}.`,
       );
@@ -237,6 +280,6 @@ export function worldWhereYouAreText(
       ...unmet.map((person) => `  - ${person.name}: ${worldPersonSheet(kit, person)}`),
     );
   }
-  lines.push(`</where_you_are>`);
+  lines.push(...changes, `</where_you_are>`);
   return lines.join("\n");
 }

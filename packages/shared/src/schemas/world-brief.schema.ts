@@ -7,8 +7,19 @@
 import { z } from "zod";
 import { promptSafeText } from "./ruleset.schema.js";
 import type { WorldKit } from "./world-kit.schema.js";
+import { isOverusedName } from "../features/world/overused-names.js";
 
-export const WORLD_BRIEF_LIMITS = Object.freeze({ places: 60, names: 160, cultures: 12, allNames: 400 });
+export const WORLD_BRIEF_LIMITS = Object.freeze({
+  places: 60,
+  names: 160,
+  cultures: 12,
+  allNames: 400,
+  groups: 24,
+  peopleNames: 150,
+  allPeopleNames: 1500,
+});
+/** How a culture puts a person's names together. */
+export const WORLD_NAME_ORDERS = Object.freeze(["given-family", "family-given", "given"] as const);
 
 const ref = z.string().max(40);
 const placeName = promptSafeText(60);
@@ -31,6 +42,22 @@ const briefPlace = z
   })
   .strict();
 
+const personName = promptSafeText(40);
+
+const briefGroup = z
+  .object({
+    name: placeName,
+    /** One of the kit's group kinds. */
+    kind: ref,
+    /** The name of the brief place it is seated in. */
+    seat: placeName.optional(),
+    /** What it wants, in one line. */
+    note: promptSafeText(240).optional(),
+    allies: z.array(placeName).max(8).default([]),
+    rivals: z.array(placeName).max(8).default([]),
+  })
+  .strict();
+
 export const worldBriefSchema = z
   .object({
     briefVersion: z.literal(1),
@@ -45,12 +72,35 @@ export const worldBriefSchema = z
       .refine((groups) => groups.reduce((sum, group) => sum + group.names.length, 0) <= WORLD_BRIEF_LIMITS.allNames, {
         message: `At most ${WORLD_BRIEF_LIMITS.allNames} place names in all`,
       }),
+    /** The groups that matter (worldgen W2): powers and the everyday groups the premise turns on. */
+    groups: z.array(briefGroup).max(WORLD_BRIEF_LIMITS.groups).default([]),
+    /** Names for the people the compile draws, per culture, in that culture's own sound and order. */
+    peopleNames: z
+      .array(
+        z
+          .object({
+            culture: ref,
+            given: z.array(personName).max(WORLD_BRIEF_LIMITS.peopleNames),
+            family: z.array(personName).max(WORLD_BRIEF_LIMITS.peopleNames).default([]),
+            order: z.enum(WORLD_NAME_ORDERS).default("given-family"),
+          })
+          .strict(),
+      )
+      .max(WORLD_BRIEF_LIMITS.cultures)
+      .default([])
+      .refine(
+        (groups) =>
+          groups.reduce((sum, group) => sum + group.given.length + group.family.length, 0) <=
+          WORLD_BRIEF_LIMITS.allPeopleNames,
+        { message: `At most ${WORLD_BRIEF_LIMITS.allPeopleNames} people's names in all` },
+      ),
   })
   .strict();
 
 export type WorldBrief = z.infer<typeof worldBriefSchema>;
 export type WorldBriefInput = z.input<typeof worldBriefSchema>;
 export type WorldBriefPlace = WorldBrief["places"][number];
+export type WorldBriefGroup = WorldBrief["groups"][number];
 
 /** The deepest layer a brief may place: the settlements layer, and for a world of one site or one
  *  town the layer inside it too, since that town is the whole world. */
@@ -126,16 +176,67 @@ export function checkWorldBrief(
     }
   }
 
+  // A name list keeps each name once, and none that models overuse.
+  const fresh = (where: string, names: string[], also: (name: string) => boolean = () => false) => {
+    const unique = [...new Set(names.map((name) => name.trim()))].filter((name) => name && !also(name));
+    const overused = unique.filter(isOverusedName);
+    if (overused.length) repairs.push(`${where}: names models overuse were left out (${overused.join(", ")})`);
+    return unique.filter((name) => !isOverusedName(name));
+  };
+
   const placeNames: WorldBrief["placeNames"] = [];
   for (const group of parsed.data.placeNames) {
     if (!cultures.has(group.culture)) {
       repairs.push(`placeNames: "${group.culture}" is not one of the kit's cultures`);
       continue;
     }
-    const names = [...new Set(group.names.map((name) => name.trim()))].filter(
-      (name) => name && !seen.has(name.toLowerCase()),
-    );
-    placeNames.push({ culture: group.culture, names });
+    placeNames.push({
+      culture: group.culture,
+      names: fresh(`placeNames (${group.culture})`, group.names, (name) => seen.has(name.toLowerCase())),
+    });
   }
-  return { ok: true, brief: { ...parsed.data, places, placeNames }, repairs };
+
+  const peopleNames: WorldBrief["peopleNames"] = [];
+  for (const group of parsed.data.peopleNames) {
+    if (!cultures.has(group.culture) || peopleNames.some((each) => each.culture === group.culture)) {
+      repairs.push(`peopleNames: "${group.culture}" is not one of the kit's cultures, or is listed twice`);
+      continue;
+    }
+    peopleNames.push({
+      ...group,
+      given: fresh(`peopleNames (${group.culture})`, group.given),
+      family: fresh(`peopleNames (${group.culture})`, group.family),
+    });
+  }
+
+  const kinds = new Set(kit.groupKinds.map((kind) => kind.id));
+  const groupNames = new Set<string>();
+  const groups: WorldBrief["groups"] = [];
+  for (const group of parsed.data.groups) {
+    const key = group.name.toLowerCase();
+    if (!kinds.has(group.kind) || groupNames.has(key)) {
+      repairs.push(
+        `${group.name}: left out, "${group.kind}" is not one of the kit's kinds of group, or the name is used`,
+      );
+      continue;
+    }
+    groupNames.add(key);
+    const next = { ...group };
+    if (group.seat !== undefined && !seen.has(group.seat.toLowerCase())) {
+      repairs.push(`${group.name}: "${group.seat}" is not one of the brief's places, its seat was left out`);
+      delete next.seat;
+    }
+    groups.push(next);
+  }
+  // Allies and rivals are read once every group is known.
+  for (const group of groups) {
+    const known = (name: string) =>
+      groupNames.has(name.toLowerCase()) && name.toLowerCase() !== group.name.toLowerCase();
+    if (![...group.allies, ...group.rivals].every(known)) {
+      repairs.push(`${group.name}: an ally or rival that is not one of the brief's groups was left out`);
+    }
+    group.allies = group.allies.filter(known);
+    group.rivals = group.rivals.filter(known);
+  }
+  return { ok: true, brief: { ...parsed.data, places, placeNames, peopleNames, groups }, repairs };
 }

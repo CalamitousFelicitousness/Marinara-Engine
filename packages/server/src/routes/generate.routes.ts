@@ -188,6 +188,8 @@ import {
   worldPlaceByName,
   worldPlaceForTag,
   worldWhereYouAreText,
+  worldPeopleNamed,
+  worldPersonNpc,
   rulesetMarketPlace,
   rulesetMarketPromptText,
   type GameInventoryMarket,
@@ -4604,16 +4606,23 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           // Where the party is in the game's world (worldgen W1): the place last said, when the world
           // lists it, else where the world starts the party until the Game Master says.
           const promptWorld = gameWorldFromMetadata(chatMeta);
+          // The people the party has already met (worldgen W2), so the block offers only new ones.
+          const promptMet = new Set(
+            (Array.isArray(chatMeta.gameNpcs) ? (chatMeta.gameNpcs as GameNpc[]) : []).flatMap((npc) =>
+              typeof npc.worldId === "string" ? [npc.worldId] : [],
+            ),
+          );
           const promptWhereYouAre = promptWorld
             ? await (async () => {
                 const before = await promptPlace();
                 if (!before?.name) {
                   const start = promptWorld.world.places.find((place) => place.id === promptWorld.world.startId);
-                  return worldWhereYouAreText(promptWorld, { place: start });
+                  return worldWhereYouAreText(promptWorld, { place: start, met: promptMet });
                 }
                 return worldWhereYouAreText(promptWorld, {
                   place: worldPlaceByName(promptWorld.world, before.name),
                   name: before.name,
+                  met: promptMet,
                 });
               })()
             : undefined;
@@ -9406,6 +9415,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           // own, each answered in place. The reply's buys are priced at the place it leaves the party
           // in. A name the world lists takes its size from the world (worldgen W1).
           let turnPlace: GamePlace | null = null;
+          let turnPlaceBefore: GamePlace | null = null;
           const turnMarket =
             chatMode === "game" && !input.impersonate && turnGameRuleset?.status === "ok"
               ? turnGameRuleset.definition.items?.market
@@ -9413,6 +9423,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           const turnWorld = chatMode === "game" && !input.impersonate ? gameWorldFromMetadata(chatMeta) : null;
           if (turnMarket || turnWorld) {
             turnPlace = await gamePlaceBefore(app.db, input.chatId, input.regenerateMessageId ?? null);
+            turnPlaceBefore = turnPlace;
             if (/\[place:/i.test(fullResponse)) {
               const placed = applyGamePlaceTags(
                 fullResponse,
@@ -9424,6 +9435,27 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 contentReplaced = true;
               }
               if (placed.place) turnPlace = placed.place;
+            }
+          }
+          // People the reply brings in (worldgen W2): one of the people of the place the scene was in,
+          // or moved to, named in full, becomes a tracked NPC with the world's id and sheet, once.
+          if (turnWorld) {
+            const startPlace = turnWorld.world.places.find((place) => place.id === turnWorld.world.startId);
+            // Where the scene is now first, so a name both places have is the person here.
+            const placeIds = [turnPlace, turnPlaceBefore].flatMap((place) => {
+              const found = place?.name ? worldPlaceByName(turnWorld.world, place.name) : startPlace;
+              return found ? [found.id] : [];
+            });
+            const named = worldPeopleNamed(turnWorld, placeIds, fullResponse);
+            if (named.length > 0) {
+              await chats.patchMetadata(input.chatId, (current) => {
+                const npcs = Array.isArray(current.gameNpcs) ? (current.gameNpcs as GameNpc[]) : [];
+                const known = new Set(npcs.flatMap((npc) => (npc.worldId ? [npc.worldId] : [])));
+                const added = named
+                  .filter((person) => !known.has(person.id))
+                  .map((person) => worldPersonNpc(turnWorld, person));
+                return added.length > 0 ? { gameNpcs: [...npcs, ...added] } : {};
+              });
             }
           }
           const tellsInventory = /\[(?:inventory|loot):/i.test(fullResponse);

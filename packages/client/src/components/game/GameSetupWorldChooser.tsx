@@ -330,12 +330,15 @@ export function GameSetupWorldChooser({
                       value={place.name}
                       onChange={(event) =>
                         edit((next) => {
-                          // The places inside it follow the new name.
+                          // The places inside it, and the groups seated in it, follow the new name.
                           const was = next.brief!.places![index]!.name.toLowerCase();
                           const now = event.target.value;
                           next.brief!.places![index]!.name = now;
                           for (const other of next.brief!.places!) {
                             if (other.parent?.toLowerCase() === was) other.parent = now;
+                          }
+                          for (const group of next.brief!.groups ?? []) {
+                            if (group.seat?.toLowerCase() === was) group.seat = now;
                           }
                         })
                       }
@@ -377,6 +380,77 @@ export function GameSetupWorldChooser({
                     />
                   );
                 })}
+                {kit.cultures.map((culture) => {
+                  const names = (draft.brief!.peopleNames ?? []).find((each) => each.culture === culture.id);
+                  const setNames = (key: "given" | "family", words: string[]) =>
+                    edit((next) => {
+                      const all = next.brief!.peopleNames ?? [];
+                      const own = all.find((each) => each.culture === culture.id) ?? {
+                        culture: culture.id,
+                        given: [],
+                        family: [],
+                      };
+                      const updated = { ...own, [key]: words };
+                      const others = all.filter((each) => each.culture !== culture.id);
+                      next.brief!.peopleNames =
+                        updated.given.length || (updated.family ?? []).length ? [...others, updated] : others;
+                    });
+                  return (
+                    <div key={`people-${culture.id}`} className="grid gap-2 sm:grid-cols-2">
+                      <WordsField
+                        id={`world-given-${culture.id}`}
+                        label={t("game.world.setup.givenNames", { culture: culture.label })}
+                        words={names?.given ?? []}
+                        onChange={(words) => setNames("given", words)}
+                      />
+                      <WordsField
+                        id={`world-family-${culture.id}`}
+                        label={t("game.world.setup.familyNames", { culture: culture.label })}
+                        words={names?.family ?? []}
+                        onChange={(words) => setNames("family", words)}
+                      />
+                    </div>
+                  );
+                })}
+                {(draft.brief.groups ?? []).map((group, index) => (
+                  <div key={`group-${index}`} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+                    <input
+                      value={group.name}
+                      onChange={(event) =>
+                        edit((next) => {
+                          // The groups that call it an ally or a rival follow the new name.
+                          const was = next.brief!.groups![index]!.name.toLowerCase();
+                          const now = event.target.value;
+                          next.brief!.groups![index]!.name = now;
+                          for (const other of next.brief!.groups!) {
+                            other.allies = (other.allies ?? []).map((name) =>
+                              name.toLowerCase() === was ? now : name,
+                            );
+                            other.rivals = (other.rivals ?? []).map((name) =>
+                              name.toLowerCase() === was ? now : name,
+                            );
+                          }
+                        })
+                      }
+                      aria-label={t("game.world.setup.groupName", {
+                        kind: kit.groupKinds.find((kind) => kind.id === group.kind)?.label ?? group.kind,
+                      })}
+                      className={INPUT}
+                    />
+                    <input
+                      value={group.note ?? ""}
+                      onChange={(event) =>
+                        edit((next) => {
+                          if (event.target.value) next.brief!.groups![index]!.note = event.target.value;
+                          else delete next.brief!.groups![index]!.note;
+                        })
+                      }
+                      aria-label={t("game.world.setup.groupNote", { name: group.name })}
+                      placeholder={t("game.world.setup.groupNotePlaceholder")}
+                      className={INPUT}
+                    />
+                  </div>
+                ))}
               </div>
             </details>
           )}

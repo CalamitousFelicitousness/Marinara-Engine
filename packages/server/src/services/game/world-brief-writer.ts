@@ -23,6 +23,7 @@ function kitWords(kit: WorldKit): string {
       .join("; ")}`,
     `Sizes, smallest first (id: word): ${kit.sizes.map((size) => `${size.id}: ${size.label}`).join("; ")}`,
     `Place tags (id: word): ${kit.placeTags.map((tag) => `${tag.id}: ${tag.label}`).join("; ") || "none"}`,
+    `Kinds of group (id: word): ${kit.groupKinds.map((kind) => `${kind.id}: ${kind.label}`).join("; ")}`,
     `Cultures (id: word, naming): ${kit.cultures.map((culture) => `${culture.id}: ${culture.label}, ${culture.naming}`).join(" | ")}`,
   ].join("\n");
 }
@@ -53,7 +54,7 @@ export function buildWorldBriefPrompt(input: WorldBriefWritingInput): { system: 
   const canon = input.canon ?? [];
   const system = [
     `You write the brief of a role-playing game's world: what exists in it, in the words of its setting. Code lays the world out from your brief, so say what exists and what it is like, never where it lies on a map.`,
-    `Return one JSON object only: {"briefVersion": 1, "premise": "...", "places": [...], "placeNames": [...]}. No prose, no code fences.`,
+    `Return one JSON object only: {"briefVersion": 1, "premise": "...", "places": [...], "placeNames": [...], "groups": [...], "peopleNames": [...]}. No prose, no code fences.`,
     `Rules:`,
     `- "premise": the present day as the game begins, in one or two sentences: name a cause and a person or group, not a mood. At most 600 characters.`,
     `- "places": the major places, each {"name", "layer", "parent", "size", "tags", "note", "start"}. "layer" is a layer id below; "parent" is the name of another place in this list in an outer layer; "size" (settlements only) is a size id; "tags" are tag ids; "note" is one line of at most 240 characters. Mark the one place the party starts in with "start": true.`,
@@ -61,9 +62,11 @@ export function buildWorldBriefPrompt(input: WorldBriefWritingInput): { system: 
       ? `- Add no places of your own: the world is the lore's places and no more.`
       : `- Write 8 to 30 places: the outer places and the settlements that matter. The rest of the world is drawn by code.`,
     `- "placeNames": for each culture id, a list of 40 to 120 names for the places code draws, {"culture": id, "names": [...]}, in that culture's own sound as its naming note says. Names are new: not names already used in "places", not famous names from well-known fiction, and never the same few names models reach for.`,
+    `- "groups": the 3 to 12 groups the present day turns on, each {"name", "kind", "seat", "note", "allies", "rivals"}: "kind" is a kind of group id below (households and shops count as well as powers); "seat" is the name of a place in "places"; "note" is what it wants, in one line; "allies" and "rivals" are names of other groups here.`,
+    `- "peopleNames": for each culture id, the names its people are given, {"culture": id, "given": [...], "family": [...], "order": "given-family" | "family-given" | "given"}: 60 to 150 given names and 40 to 150 family names (none when the culture has no family names), in that culture's own sound and order as its naming note says. Varied: no name twice, not the same few names models reach for, not famous characters' names.`,
     `- Use only the ids listed below. ${TEXT_RULE}`,
     ...languageRule(input.language),
-    `At most ${WORLD_BRIEF_LIMITS.places} places and ${WORLD_BRIEF_LIMITS.allNames} names in all.`,
+    `At most ${WORLD_BRIEF_LIMITS.places} places, ${WORLD_BRIEF_LIMITS.allNames} place names and ${WORLD_BRIEF_LIMITS.allPeopleNames} people's names in all.`,
   ].join("\n");
   const user = [
     kitWords(input.kit),

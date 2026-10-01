@@ -217,6 +217,8 @@ import {
   gameWorldFromMetadata,
   worldBriefSchema,
   WORLD_GROUNDINGS,
+  readReputationTags,
+  stripReputationTags,
   checkWorldBrief,
   WORLD_GENERATOR_VERSION,
   RULESET_REF_MAX_OPTIONS,
@@ -4547,7 +4549,8 @@ export function resolveNpcPortraitAppearance(
   const metadataDescriptionIsCanonical =
     metadataNpc?.descriptionSource === "model" ||
     metadataNpc?.descriptionSource === "library" ||
-    metadataNpc?.descriptionSource === "user";
+    metadataNpc?.descriptionSource === "user" ||
+    metadataNpc?.descriptionSource === "world";
 
   if (metadataDescriptionIsCanonical) {
     addPortraitAppearancePart(parts, seenValues, metadataNpc?.description, "Canonical NPC profile");
@@ -9646,6 +9649,8 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     notJson: string;
     read: (data: unknown) => { ok: true; value: T } | { ok: false; issues: string[] };
     repair: (issues: string[]) => string;
+    /** Room for the reply; a brief with its name lists needs more than a kit. */
+    maxTokens?: number;
   }): Promise<{ ok: true; value: T } | { ok: false; status: number; error?: string; issues: string[] }> => {
     const debugLog = (message: string, ...rest: any[]) => logDebugOverride(args.debugMode === true, message, ...rest);
     const connections = createConnectionsStorage(app.db);
@@ -9664,7 +9669,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       maxTokens: clampGameMaxOutputTokens({
         provider: conn.provider,
         model: conn.model,
-        maxTokens: 8192,
+        maxTokens: args.maxTokens ?? 8192,
         maxTokensOverride: conn.maxTokensOverride,
       }),
       signal: createResponseAbortSignal(args.reply, GAME_GENERATION_TIMEOUT_MS, args.title),
@@ -9752,6 +9757,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       debugMode: input.debugMode,
       route: "world-brief",
       title: "World brief",
+      maxTokens: GAME_SETUP_DEFAULT_OUTPUT_TOKENS,
       prompt: buildWorldBriefPrompt({ ...input, canon, strict: input.grounding === "strict" }),
       notJson: "brief: The reply was not JSON",
       read: (data) => {
@@ -12084,12 +12090,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     }
 
     // Extract and apply reputation tags from party response
-    const repRegex = /\[reputation:\s*npc="([^"]+)"\s*action="([^"]+)"\]/gi;
-    let repMatch: RegExpExecArray | null;
-    const repActions: Array<{ npcId: string; action: string }> = [];
-    while ((repMatch = repRegex.exec(raw)) !== null) {
-      repActions.push({ npcId: repMatch[1]!.trim(), action: repMatch[2]!.trim() });
-    }
+    const repActions = readReputationTags(raw).map((tag) => ({ npcId: tag.id ?? tag.npcName, action: tag.action }));
     if (repActions.length > 0) {
       try {
         const currentNpcs = (meta.gameNpcs as GameNpc[]) ?? [];
@@ -12105,7 +12106,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     }
 
     // Strip reputation tags from the displayed content
-    const cleanRaw = raw.replace(/\[reputation:\s*npc="[^"]+"\s*action="[^"]+"\]/gi, "").trim();
+    const cleanRaw = stripReputationTags(raw).trim();
 
     // Save party response as a message in the game chat
     const partyMsg = await chats.createMessage({

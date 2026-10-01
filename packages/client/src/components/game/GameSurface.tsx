@@ -1393,6 +1393,7 @@ function mergeSceneAssetNpcCandidates(
       case "user":
         return 4;
       case "model":
+      case "world":
         return 3;
       case "library":
         return 2;
@@ -5197,7 +5198,7 @@ function GameSurfaceComponent({
     // NPC reputation actions from inline [reputation:] tags
     if (tags.reputationActions.length > 0) {
       const repActions = tags.reputationActions.map((ra) => ({
-        npcId: ra.npcName,
+        npcId: ra.id ?? ra.npcName,
         action: ra.action,
       }));
       _updateReputation.mutate({ chatId: activeChatId, actions: repActions });

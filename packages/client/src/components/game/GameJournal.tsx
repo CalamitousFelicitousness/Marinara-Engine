@@ -139,14 +139,15 @@ function pruneJournalNpc(journal: Journal, npcName: string): Journal {
 }
 
 function shouldShowNpcDescription(npc: GameNpc): boolean {
-  return (npc as GameNpc & { descriptionSource?: string }).descriptionSource === "model" && !!npc.description?.trim();
+  const source = (npc as GameNpc & { descriptionSource?: string }).descriptionSource;
+  return (source === "model" || source === "world") && !!npc.description?.trim();
 }
 
 function shouldShowJournalNpc(npc: GameNpc): boolean {
   const source = (npc as GameNpc & { descriptionSource?: string }).descriptionSource;
   const hasReputationChange = Number.isFinite(npc.reputation) && npc.reputation !== 0;
   const hasRelationshipNotes = Array.isArray(npc.notes) && npc.notes.some((note) => !!note.trim());
-  return source === "model" || hasReputationChange || hasRelationshipNotes;
+  return source === "model" || source === "world" || hasReputationChange || hasRelationshipNotes;
 }
 
 function isDuplicateInventoryEntry(

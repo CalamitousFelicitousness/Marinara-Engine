@@ -163,8 +163,9 @@ export interface GameNpc {
   name: string;
   emoji: string;
   description: string;
-  /** Origin of the description. "model", "library", and "user" descriptions are canonical profile text. */
-  descriptionSource?: "model" | "library" | "narration" | "user";
+  /** Origin of the description. "model", "library", "user" and "world" descriptions are canonical profile
+   *  text; "world" is a person the game's world drew (worldgen W2), described by their sheet. */
+  descriptionSource?: "model" | "library" | "narration" | "user" | "world";
   /** Optional presentation hint used for systems like NPC voice matching. */
   gender?: string | null;
   /** Optional pronoun hint used for systems like NPC voice matching. */
@@ -176,6 +177,10 @@ export interface GameNpc {
   notes: string[];
   /** Optional avatar URL (generated or uploaded) */
   avatarUrl?: string | null;
+  /** The world's id for this person, when the game's world drew them (worldgen W2). */
+  worldId?: string;
+  /** What they do, for a person the world drew. */
+  role?: string;
 }
 
 // ── Sessions ──

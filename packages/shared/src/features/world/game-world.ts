@@ -8,6 +8,10 @@ import { z } from "zod";
 import { gameWorldKitFromMetadata, type WorldKit } from "../../schemas/world-kit.schema.js";
 import { checkWorldBrief, worldBriefSchema, type WorldBrief } from "../../schemas/world-brief.schema.js";
 import { WORLD_GENERATOR_VERSION, compileWorld, type CompiledWorld, type WorldPlace } from "./compile.js";
+import { worldCast, worldPersonSheet } from "./people.js";
+
+/** How many people not yet met the Game Master is shown at once. */
+const WHERE_YOU_ARE_PEOPLE = 5;
 
 export const WORLD_GROUNDINGS = Object.freeze(["expand", "strict"] as const);
 
@@ -140,6 +144,16 @@ export function worldOverviewPromptText({ kit, brief, world }: GameWorld): strin
     `- Now: ${brief.premise}`,
     ...(outer.length ? [`- ${outer.map((place) => describe(kit, place)).join("; ")}.`] : []),
     `- Biggest places: ${biggest.map((place) => describe(kit, place)).join("; ")}.`,
+    ...brief.groups
+      .slice(0, 8)
+      .map((group) =>
+        [
+          `- ${group.name} (${labelOf(kit.groupKinds, group.kind)}${group.seat ? `, at ${group.seat}` : ""})`,
+          group.note ? `: ${group.note}` : "",
+          group.allies.length ? ` Allies: ${group.allies.join(", ")}.` : "",
+          group.rivals.length ? ` Rivals: ${group.rivals.join(", ")}.` : "",
+        ].join(""),
+      ),
     `Use these places and names. When the party goes somewhere, say where with [place: name="..."], using a name from this world when it is one; a place this world does not list (a farmhouse, a camp, a ship) gets a name of its own.`,
     `</world_places>`,
   ];
@@ -147,7 +161,11 @@ export function worldOverviewPromptText({ kit, brief, world }: GameWorld): strin
 }
 
 /** The changing part, for the per-turn reminder: where the party is, and where it can go from there. */
-export function worldWhereYouAreText({ kit, world }: GameWorld, at: { place?: WorldPlace; name?: string }): string {
+export function worldWhereYouAreText(
+  game: GameWorld,
+  at: { place?: WorldPlace; name?: string; met?: ReadonlySet<string> },
+): string {
+  const { kit, world } = game;
   const byId = new Map(world.places.map((place) => [place.id, place]));
   const place = at.place;
   const lines = [`<where_you_are>`];
@@ -187,6 +205,17 @@ export function worldWhereYouAreText({ kit, world }: GameWorld, at: { place?: Wo
           .join("; ")}.`,
       );
     }
+  }
+  // The people here not met yet (worldgen W2), so someone new in the scene is one of them, not a name
+  // the model reaches for.
+  const unmet = worldCast(game, place.id)
+    .filter((person) => person.named && !at.met?.has(person.id))
+    .slice(0, WHERE_YOU_ARE_PEOPLE);
+  if (unmet.length) {
+    lines.push(
+      `- People here the party has not met. When someone new comes into the scene, make it one of them, by their full name:`,
+      ...unmet.map((person) => `  - ${person.name}: ${worldPersonSheet(kit, person)}`),
+    );
   }
   lines.push(`</where_you_are>`);
   return lines.join("\n");

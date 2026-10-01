@@ -958,6 +958,11 @@ test("A world is made from a seed in the kit's words: the lore's places kept, th
       { name: "Hollin", layer: "settlement", parent: "Aldmark", size: "village", tags: [], start: true },
     ],
     placeNames: [{ culture: "heartland", names: ["Ashby", "Wending", "Calder"] }],
+    groups: [
+      { name: "The River Guild", kind: "guild", seat: "Thornmere", note: "Wants the tolls." },
+      { name: "House Vane", kind: "noble_house", rivals: ["The River Guild"] },
+    ],
+    peopleNames: [{ culture: "heartland", given: ["Ama", "Tobin"], family: ["Holt"] }],
   };
   const asked = { canon: [] as Array<Record<string, any>>, brief: [] as Array<Record<string, any>> };
   await page.route("**/api/game/world-canon", async (route) => {
@@ -1023,6 +1028,14 @@ test("A world is made from a seed in the kit's words: the lore's places kept, th
   await expect(wizard.getByTestId("world-preview")).toContainText("The party starts in Hollin.");
   await wizard.getByText("Change the brief", { exact: true }).click();
   await wizard.getByLabel("Now (the premise)", { exact: true }).fill("The old king is dead.");
+  // The groups and each people's names are the brief's words too.
+  await expect(wizard.getByLabel("Given names (heartland folk)", { exact: true })).toHaveValue("Ama, Tobin");
+  await wizard.getByLabel("Family names (heartland folk)", { exact: true }).fill("Holt, Marrow");
+  await wizard.getByLabel("What The River Guild wants", { exact: true }).fill("Wants the bridge.");
+  // Renaming a group carries the name to the groups that call it a rival.
+  await wizard.getByLabel("Name (guild)", { exact: true }).fill("The River Company");
+  await expect(wizard.getByText("Left out or changed to fit the kit:", { exact: true })).toHaveCount(0);
+  await wizard.getByLabel("Name (guild)", { exact: true }).fill("The River Guild");
   // Renaming the kit's settlements word keeps the brief's places; taking out a tag says what left.
   await wizard.getByText("Change its words", { exact: true }).click();
   await wizard.getByLabel("Places, outermost first", { exact: true }).fill("realm, province, burgh, quarter");
@@ -1037,6 +1050,11 @@ test("A world is made from a seed in the kit's words: the lore's places kept, th
   await wizard.getByLabel("Name (realm)", { exact: true }).fill("Aldmarch");
   await expect(wizard.getByTestId("world-preview")).toContainText("The party starts in Hollin.");
   await expect(wizard.getByText("Left out or changed to fit the kit:", { exact: true })).toHaveCount(0);
+  // And to the groups seated in it.
+  const thornmereName = wizard.getByLabel("Name (burgh)", { exact: true }).first();
+  await thornmereName.fill("Thornmere Port");
+  await expect(wizard.getByText("Left out or changed to fit the kit:", { exact: true })).toHaveCount(0);
+  await wizard.getByLabel("Name (burgh)", { exact: true }).first().fill("Thornmere");
   await page.screenshot({ path: testInfo.outputPath("world-panel.png"), fullPage: true });
 
   // A seed that is not one blocks the start, the download and the preview until it is fixed.
@@ -1054,6 +1072,11 @@ test("A world is made from a seed in the kit's words: the lore's places kept, th
   const result = JSON.parse((await page.getByTestId("wizard-result").textContent()) ?? "{}");
   expect(result.config.world).toMatchObject({ seed: 12345, generatorVersion: 1, grounding: "expand" });
   expect(result.config.world.brief.premise).toBe("The old king is dead.");
+  expect(result.config.world.brief.groups[0]).toMatchObject({ name: "The River Guild", note: "Wants the bridge." });
+  expect(result.config.world.brief.peopleNames[0]).toMatchObject({
+    given: ["Ama", "Tobin"],
+    family: ["Holt", "Marrow"],
+  });
   expect(result.config.world.brief.places[0]).toEqual({ ...canon[0], tags: ["port"] });
 });
 

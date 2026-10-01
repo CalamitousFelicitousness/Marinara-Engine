@@ -79,6 +79,27 @@ export const worldKitSchema = z
     /** The ground a generated world is laid out on (worldgen W1). A kit without one gets open
      *  ground named for its outermost layer. */
     terrain: z.array(terrain).min(1).max(16).optional(),
+    /** The words a world's people are drawn in (worldgen W2): the jobs its places need (by the place
+     *  tags they are common at; none means anywhere, and a tag the kit no longer has simply never
+     *  matches), and how people look, in the setting's own terms
+     *  (beastfolk, androids or spirits described as themselves). What a kit leaves out is filled from
+     *  `WORLD_PEOPLE_DEFAULTS`. */
+    people: z
+      .object({
+        roles: z
+          .array(z.object({ label: word, tags: z.array(kitId).max(12).optional() }).strict())
+          .min(1)
+          .max(60),
+        hair: z.array(word).min(1).max(30),
+        marks: z.array(word).min(1).max(40),
+        ages: z.array(word).min(1).max(12).optional(),
+        builds: z.array(word).min(1).max(20).optional(),
+        temperaments: z.array(word).min(1).max(30).optional(),
+        values: z.array(word).min(1).max(30).optional(),
+        speech: z.array(word).min(1).max(20).optional(),
+      })
+      .strict()
+      .optional(),
     calendar: z
       .object({
         year: word,

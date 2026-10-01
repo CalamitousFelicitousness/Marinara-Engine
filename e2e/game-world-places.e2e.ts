@@ -1,6 +1,14 @@
 import { expect, test } from "@playwright/test";
 import { createServer, type Server } from "node:http";
-import { WORLD_GENERATOR_VERSION, WORLD_STARTER_KITS, compileGameWorld, parseWorldKit } from "@marinara-engine/shared";
+import {
+  WORLD_GENERATOR_VERSION,
+  WORLD_STARTER_KITS,
+  checkWorldBrief,
+  compileGameWorld,
+  parseWorldKit,
+  worldCast,
+  type GameNpc,
+} from "@marinara-engine/shared";
 import { openGame } from "./game-ruleset-fight-fixture.js";
 
 /** A local model that answers by what the player just said, and keeps every prompt it was sent. */
@@ -58,6 +66,8 @@ const brief = {
     },
   ],
   placeNames: [{ culture: kit.cultures[0]!.id, names: ["Ashby", "Wending", "Calder", "Ravel", "Brennock", "Sallow"] }],
+  groups: [],
+  peopleNames: [] as Array<{ culture: string; given: string[]; family: string[]; order: "given-family" }>,
 };
 const gameWorld = { seed: 20261001, generatorVersion: WORLD_GENERATOR_VERSION, grounding: "expand" as const, brief };
 
@@ -159,6 +169,122 @@ test("the Game Master is told where the party is in its world, and a place it na
     expect(second).toContain(`- From here: `);
     expect(second).toContain(`${neighbourName} (`);
     await page.screenshot({ path: testInfo.outputPath("world-turn.png") });
+  } finally {
+    if (chatId) await request.delete(`/api/chats/${chatId}`).catch(() => undefined);
+    if (connectionId) await request.delete(`/api/connections/${connectionId}`).catch(() => undefined);
+    model.server.closeAllConnections();
+    await new Promise<void>((resolve) => model.server.close(() => resolve()));
+  }
+});
+
+test("the Game Master meets the world's people: offered by name, brought in once, and named by id", async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  const peopleBrief = {
+    ...brief,
+    peopleNames: [
+      {
+        culture: kit.cultures[0]!.id,
+        given: ["Ama", "Tobin", "Hesk", "Mira", "Oswin", "Bryn", "Cato", "Tamsin", "Wren", "Edda"],
+        family: ["Arnwald", "Fennick", "Holt", "Marrow", "Drey", "Callow"],
+        order: "given-family" as const,
+      },
+    ],
+  };
+  const checked = checkWorldBrief(kit, peopleBrief);
+  if (!checked.ok) throw new Error(checked.issues.join("; "));
+  const inputs = { kit, seed: gameWorld.seed, grounding: "expand" as const, brief: checked.brief };
+  const world = compileGameWorld(inputs);
+  const hollin = world.places.find((place) => place.name === "Hollin")!;
+  const [first, second] = worldCast({ ...inputs, world }, hollin.id).filter((person) => person.named);
+  const model = await fakeModel([
+    [
+      "I knock on the first door.",
+      // The tag names them by id only: the name it carries is no one's.
+      `${first!.name} opens the door. [reputation: id="${first!.id}" npc="the stranger" action="helped"]`,
+    ],
+    ["I ask about the mist.", `The mist thickens around ${first!.name}.`],
+  ]);
+  let connectionId = "";
+  let chatId = "";
+  try {
+    const connection = await request.post("/api/connections", {
+      data: {
+        name: "Local people fixture",
+        provider: "custom",
+        baseUrl: model.baseUrl,
+        apiKey: "synthetic-test-key",
+        model: "people-fixture",
+        maxContext: 32768,
+        treatAsLocalEndpoint: true,
+      },
+    });
+    connectionId = (await connection.json()).id;
+    const created = await request.post("/api/chats", {
+      data: { name: "People", mode: "game", characterIds: [], connectionId },
+    });
+    chatId = ((await created.json()) as { id: string }).id;
+    const meta = await request.patch(`/api/chats/${chatId}/metadata`, {
+      data: {
+        gameId: `people-${chatId}`,
+        gameSessionStatus: "active",
+        gameIntroPresented: true,
+        gameImageAutoGenerationEnabled: false,
+        enableAgents: false,
+        enableTools: false,
+        gameWorldKit: kit,
+        gameWorld: { ...gameWorld, brief: peopleBrief },
+      },
+    });
+    expect(meta.ok(), await meta.text()).toBeTruthy();
+    await request.post(`/api/chats/${chatId}/messages`, {
+      data: { role: "assistant", content: "Mist lies on the reeds around Hollin." },
+    });
+    await openGame(page, chatId);
+    await expect(page.locator('[data-component="GameNarration.ActivePanel"]')).toContainText(
+      "Mist lies on the reeds around Hollin.",
+      { timeout: 30_000 },
+    );
+
+    // The Game Master is offered the place's people, by name.
+    await page.getByPlaceholder("What do you do?", { exact: true }).fill("I knock on the first door.");
+    await page.getByRole("button", { name: "Send game turn", exact: true }).click();
+    await expect(page.locator('[data-component="GameNarration.ActivePanel"]')).toContainText(
+      `${first!.name} opens the door.`,
+      { timeout: 30_000 },
+    );
+    const firstPrompt = model.prompts.find((body) => body.includes("I knock on the first door."))!;
+    expect(firstPrompt).toContain("People here the party has not met.");
+    expect(firstPrompt).toContain(`  - ${first!.name}: ${first!.role};`);
+
+    // The reply brought them in, once, with the world's id; the reputation tag named them by id.
+    const npcs = async () => {
+      const row = await (await request.get(`/api/chats/${chatId}`)).json();
+      const metadata = typeof row.metadata === "string" ? JSON.parse(row.metadata) : row.metadata;
+      return (metadata.gameNpcs ?? []) as GameNpc[];
+    };
+    await expect.poll(async () => (await npcs()).filter((npc) => npc.worldId === first!.id).length).toBe(1);
+    await expect
+      .poll(async () => (await npcs()).find((npc) => npc.worldId === first!.id)?.reputation ?? 0)
+      .toBeGreaterThan(0);
+    const met = (await npcs()).find((npc) => npc.worldId === first!.id)!;
+    expect(met).toMatchObject({ name: first!.name, role: first!.role, descriptionSource: "world", location: "Hollin" });
+
+    // The next turn offers only people not yet met, and the tracked list knows what they do.
+    const before = model.prompts.length;
+    await page.getByPlaceholder("What do you do?", { exact: true }).fill("I ask about the mist.");
+    await page.getByRole("button", { name: "Send game turn", exact: true }).click();
+    await expect(page.locator('[data-component="GameNarration.ActivePanel"]')).toContainText("The mist thickens", {
+      timeout: 30_000,
+    });
+    // Named again, they are not brought in twice.
+    expect((await npcs()).filter((npc) => npc.worldId === first!.id)).toHaveLength(1);
+    const second_ = model.prompts.slice(before).find((body) => body.includes("I ask about the mist."))!;
+    expect(second_).not.toContain(`  - ${first!.name}:`);
+    expect(second_).toContain(`  - ${second!.name}:`);
+    expect(second_).toContain(`- ${first!.name} (${first!.role}) @ Hollin`);
   } finally {
     if (chatId) await request.delete(`/api/chats/${chatId}`).catch(() => undefined);
     if (connectionId) await request.delete(`/api/connections/${connectionId}`).catch(() => undefined);

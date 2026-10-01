@@ -241,6 +241,8 @@ function normalizePromptNpcs(value: unknown): GameNpc[] {
         reputation: typeof source.reputation === "number" && Number.isFinite(source.reputation) ? source.reputation : 0,
         notes: normalizePromptTextList(source.notes),
         avatarUrl: typeof source.avatarUrl === "string" ? source.avatarUrl : null,
+        ...(typeof source.worldId === "string" ? { worldId: source.worldId } : {}),
+        ...(typeof source.role === "string" ? { role: source.role } : {}),
       },
     ];
   });
@@ -396,8 +398,16 @@ function buildMapStateLines(map: GameMap, playerMoved?: boolean, turnNumber?: nu
 function buildTrackedNpcLines(npcs: GameNpc[]): string[] {
   const sorted = [...npcs].sort((left, right) => Math.abs(right.reputation) - Math.abs(left.reputation));
 
+  // People who share a name are told apart by what they are, and by id for the tags that name them.
+  const nameCounts = new Map<string, number>();
+  for (const npc of npcs) nameCounts.set(npc.name.toLowerCase(), (nameCounts.get(npc.name.toLowerCase()) ?? 0) + 1);
   const lines = sorted.slice(0, MAX_PROMPT_NPCS).map((npc) => {
-    const parts = [`- ${npc.name} @ ${npc.location || "unknown"}`, `rep ${npc.reputation}`];
+    const shared = (nameCounts.get(npc.name.toLowerCase()) ?? 0) > 1;
+    const who = [npc.role, shared ? npc.description : "", shared ? `id ${npc.worldId ?? npc.id}` : ""].filter(Boolean);
+    const parts = [
+      `- ${npc.name}${who.length ? ` (${who.join("; ")})` : ""} @ ${npc.location || "unknown"}`,
+      `rep ${npc.reputation}`,
+    ];
     if (npc.notes.length > 0) {
       parts.push(npc.notes.slice(0, 2).join("; "));
     }
@@ -1526,7 +1536,7 @@ export function buildGmFormatReminder(
         ]),
     `- [Note: contents] or [Book: contents] - when a new readable note or book is acquired and should be tracked in the journal.`,
     `- [state: exploration|dialogue|combat|travel_rest] - only on actual mode transitions. If you're planning to use [state: combat], this one ALWAYS has to be at the end of the turn, as it initiates a new combat generation and UI.`,
-    `- [reputation: npc="Name" action="helped"] - when an NPC's tracked stance changes because of what happened.`,
+    `- [reputation: npc="Name" action="helped"] - when an NPC's tracked stance changes because of what happened. When two tracked people share a name, add the one you mean: id="..." as listed.`,
     `- [party_change: character="Exact Character Name" change="add|remove"] - only when someone truly joins or leaves the party. Use remove when a party member dies, permanently departs, or is no longer traveling with the player.`,
     `- [session_end: reason="goal achieved|good place to pause"] - only when the current session truly ends.`,
   );

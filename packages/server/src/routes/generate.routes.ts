@@ -133,6 +133,9 @@ import {
   parseManagedGenerationParameterDefinitions,
   normalizeGameStoryboardKeyframeCount,
   estimateTextTokens,
+  diffChatVariables,
+  mergeChatVariableChanges,
+  undoChatVariableChanges,
   type APIProvider,
   type MacroContext,
   type RulesetCatalogEntriesById,
@@ -2487,26 +2490,47 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
       let runningMessagesForFollowUp: GenerationPromptMessage[] = [...mappedMessages];
       let followUpIteration = 0;
       const MAX_FOLLOW_UP_ITERATIONS = 2;
-      const chatMacroVariables = normalizeChatMacroVariables(chatMeta.macroVariables);
-      let persistedMacroVariables = JSON.stringify(chatMacroVariables);
-      let persistedMacroVariableSnapshot = { ...chatMacroVariables };
+      const savedMacroVariables = normalizeChatMacroVariables(chatMeta.macroVariables);
+      // A swipe starts from the values in place before its reply: undo what the reply's swipes changed.
+      const chatMacroVariables = input.regenerateMessageId
+        ? undoChatVariableChanges(
+            savedMacroVariables,
+            (await chats.getSwipes(input.regenerateMessageId))
+              .reverse()
+              .map((swipe) => parseExtra(swipe.extra).macroVariableChanges),
+          )
+        : { ...savedMacroVariables };
+      let persistedMacroVariables = JSON.stringify(savedMacroVariables);
+      let persistedMacroVariableSnapshot = { ...savedMacroVariables };
+      let recordedMacroVariables = { ...chatMacroVariables };
       const persistChatMacroVariables = async () => {
         const serialized = JSON.stringify(chatMacroVariables);
-        if (serialized === persistedMacroVariables) return;
-        await chats.patchMetadata(
-          input.chatId,
-          (current) => ({
-            ...current,
-            macroVariables: mergeGeneratedChatMacroVariables(
-              current.macroVariables,
-              persistedMacroVariableSnapshot,
-              chatMacroVariables,
-            ),
-          }),
-          { touchUpdatedAt: false },
-        );
-        persistedMacroVariables = serialized;
-        persistedMacroVariableSnapshot = { ...chatMacroVariables };
+        if (serialized !== persistedMacroVariables) {
+          await chats.patchMetadata(
+            input.chatId,
+            (current) => ({
+              ...current,
+              macroVariables: mergeGeneratedChatMacroVariables(
+                current.macroVariables,
+                persistedMacroVariableSnapshot,
+                chatMacroVariables,
+              ),
+            }),
+            { touchUpdatedAt: false },
+          );
+          persistedMacroVariables = serialized;
+          persistedMacroVariableSnapshot = { ...chatMacroVariables };
+        }
+        // Keep the turn's changes on its reply, so a swipe or a delete can undo them.
+        const changes = diffChatVariables(recordedMacroVariables, chatMacroVariables);
+        const messageId = typeof lastSavedMsg?.id === "string" ? lastSavedMsg.id : null;
+        if (!messageId || Object.keys(changes).length === 0) return;
+        const swipeIndex = lastSavedSwipeIndex ?? lastSavedMsg.activeSwipeIndex ?? 0;
+        const swipe = (await chats.getSwipes(messageId)).find((row) => row.index === swipeIndex);
+        await chats.updateMessageExtraForSwipe(messageId, swipeIndex, {
+          macroVariableChanges: mergeChatVariableChanges(parseExtra(swipe?.extra).macroVariableChanges, changes),
+        });
+        recordedMacroVariables = { ...chatMacroVariables };
       };
 
       // Hoisted out of the loop so the SSE flush, OOC posting, and

@@ -287,12 +287,23 @@ export function createMessageTrashStorage(db: DB) {
           await db.update(chats).set({ lastMessageAt: latest }).where(eq(chats.id, chatId));
         }
         // Deleting undid any roleplay interruption this message applied; re-apply it where still valid.
+        // The chat variables these replies changed (#6923) come back the same way, oldest first.
+        const variableChanges: unknown[] = [];
         for (const id of result.restoredMessageIds) {
           const restored = await chatsStorage.getMessage(id);
           if (restored && restored.extra.includes("roleplayCommandActivity")) {
             await chatsStorage.reconcileRoleplayInterruption(id);
           }
+          if (restored?.extra.includes("macroVariableChanges")) {
+            try {
+              variableChanges.push(JSON.parse(restored.extra).macroVariableChanges);
+            } catch {
+              // Unreadable extra: nothing to re-apply.
+            }
+          }
         }
+        // The restore route holds this chat's metadata queue for the whole restore.
+        await chatsStorage.replayVariableChanges(chatId, [], variableChanges, { metadataQueueHeld: true });
       }
       if (result.restoredMessageIds.length === 0 && restoreFailed) throw firstRestoreError;
       return result;

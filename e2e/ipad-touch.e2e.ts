@@ -51,3 +51,83 @@ test("tapping a roleplay in the iPad chat list opens it", async ({ page, request
     await request.delete(`/api/chats/${chat.id}?force=true`);
   }
 });
+
+/** Playwright has no software keyboard, so stand in for Safari's visual viewport. */
+async function mockVisualViewport(page: Page) {
+  await page.addInitScript(() => {
+    let keyboardTop: number | null = null;
+    const viewport = new EventTarget();
+    Object.defineProperties(viewport, {
+      height: { get: () => keyboardTop ?? window.innerHeight },
+      width: { get: () => window.innerWidth },
+      offsetTop: { get: () => 0 },
+      pageTop: { get: () => 0 },
+      offsetLeft: { get: () => 0 },
+      pageLeft: { get: () => 0 },
+      scale: { get: () => 1 },
+    });
+    Object.defineProperty(window, "visualViewport", { configurable: true, value: viewport });
+    Object.defineProperty(window, "__openIpadKeyboard", {
+      value: (top: number) => {
+        keyboardTop = top;
+        viewport.dispatchEvent(new Event("resize"));
+      },
+    });
+  });
+}
+
+test("editing a roleplay message on iPad keeps the editor above the keyboard", async ({ page, request }) => {
+  const created = await request.post("/api/chats", {
+    data: { name: "iPad keyboard edit", mode: "roleplay", characterIds: [] },
+  });
+  expect(created.ok()).toBeTruthy();
+  const chat = (await created.json()) as { id: string };
+  try {
+    let lastId = "";
+    for (let index = 0; index < 12; index += 1) {
+      const saved = await request.post(`/api/chats/${chat.id}/messages`, {
+        data: {
+          role: index % 2 ? "assistant" : "user",
+          content: `Keyboard line ${index + 1}. ${"The lantern light flickers over the old map. ".repeat(4)}`,
+        },
+      });
+      expect(saved.ok()).toBeTruthy();
+      lastId = ((await saved.json()) as { id: string }).id;
+    }
+    await mockVisualViewport(page);
+    await seedShell(page, {});
+    await page.addInitScript((id) => localStorage.setItem("marinara-active-chat-id", id), chat.id);
+    await page.goto("/");
+
+    // Tap the latest reply, then its Edit action, as in the report's video.
+    const latest = page.locator(`[data-message-id="${lastId}"]`);
+    await latest.getByText(/^Keyboard line 12\./).tap();
+    await latest.getByRole("button", { name: "Edit", exact: true }).tap();
+    const editor = latest.locator("[data-chat-message-editor]");
+    await expect(editor).toBeFocused();
+
+    const keyboardTop = Math.round(iPad.viewport.height * 0.6);
+    await page.evaluate((top) => {
+      (window as typeof window & { __openIpadKeyboard: (top: number) => void }).__openIpadKeyboard(top);
+    }, keyboardTop);
+    await expect(page.locator("html")).toHaveAttribute("data-mari-software-keyboard-open", "");
+
+    // The app shrinks to the visible area, so the composer sits on top of the keyboard.
+    await expect
+      .poll(async () => {
+        const shell = await page.locator('[data-component="AppShell"]').boundingBox();
+        return shell ? Math.round(shell.y + shell.height) : null;
+      })
+      .toBe(keyboardTop);
+    // The start of the message being edited stays visible above it.
+    const transcript = page.locator("[data-chat-scroll]:visible");
+    await expect
+      .poll(async () => {
+        const [box, area] = await Promise.all([editor.boundingBox(), transcript.boundingBox()]);
+        return !!box && !!area && box.y >= area.y && box.y + 40 <= area.y + area.height;
+      })
+      .toBe(true);
+  } finally {
+    await request.delete(`/api/chats/${chat.id}?force=true`);
+  }
+});

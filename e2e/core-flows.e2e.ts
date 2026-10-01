@@ -1199,7 +1199,7 @@ test("Game dice outcome narration can be disabled and stays disabled after reloa
     await page.goto("/");
     await openSection();
     await expect(narration).toBeChecked();
-    await expect(section.getByText(/Uses additional input and output tokens/)).toBeVisible();
+    await expect(section.getByText(/Uses more tokens/)).toBeVisible();
     await section.getByText("Narrate dice outcomes immediately", { exact: true }).click();
     await expect.poll(async () => (await readMetadata()).gameDiceOutcomeNarration).toBe(false);
     await page.reload();

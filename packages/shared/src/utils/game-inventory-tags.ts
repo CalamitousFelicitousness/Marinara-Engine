@@ -63,7 +63,15 @@ export type GameInventoryMarketRefusal =
 /** What a buy costs at the place the party is in, worked out by the Engine; the server builds it from
  *  the ruleset's market, the place and the buyers' sheets. */
 export interface GameInventoryMarket {
-  quote(request: { item: string; count: number; level?: string; seller?: string; who?: string }):
+  quote(request: {
+    item: string;
+    count: number;
+    level?: string;
+    seller?: string;
+    who?: string;
+    /** The stacks as the reply's tags have left them so far, which a seller's `only` reads. */
+    stacks: readonly GameInventoryStack[];
+  }):
     | {
         ok: true;
         /** The item bought, and its name. */
@@ -370,6 +378,7 @@ export function applyGameInventoryTags(
             ...(request.level ? { level: request.level } : {}),
             ...(request.seller ? { seller: request.seller } : {}),
             ...(request.who ? { who: request.who } : {}),
+            stacks: current,
           });
           if (!quote.ok) return serializeInventoryTag(asked, { ok: false, reason: quote.reason });
           const answered = {

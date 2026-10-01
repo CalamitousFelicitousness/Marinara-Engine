@@ -124,10 +124,10 @@ test("the Game Master buys at a market town: priced, paid with change, a service
 
       await page.getByPlaceholder("What do you do?", { exact: true }).fill("I buy a coat and a bed.");
       await page.getByRole("button", { name: "Send game turn", exact: true }).click();
-      await expect(page.getByText(/^You bought Lantern-keeper's coat.* for 12 shillings\.$/)).toBeVisible({
+      await expect(page.getByText(/^You bought Lantern-keeper's coat for 12 shillings\.$/)).toBeVisible({
         timeout: 30_000,
       });
-      await expect(page.getByText(/^You bought A bed at the watch-house.* for 6 pennies\.$/)).toBeVisible();
+      await expect(page.getByText(/^You bought A bed at the watch-house for 6 pennies\.$/)).toBeVisible();
       await expect(page.getByText(/bought Watch pistol/)).toHaveCount(0);
       await page.screenshot({ path: testInfo.outputPath("market-bought.png") });
       // Two crowns and a third broken for the coat, 3 shillings back; a shilling broken for the bed,

@@ -12,6 +12,7 @@ import {
   gameInventoryCoinRef,
   gameInventoryNameKey,
   type GameInventoryCoin,
+  type GameInventoryStack,
 } from "../../utils/game-inventory-stacks.js";
 import type { GameInventoryMarket } from "../../utils/game-inventory-tags.js";
 import type { RulesetItemBook } from "./item-book.js";
@@ -112,13 +113,17 @@ export function rulesetMarketPrice(
 /**
  * The Game Master's buys answered at a place (#6917): a market for `applyGameInventoryTags`. `place`
  * is the place in force for the reply, or null where none was said; `meets` says whether a buyer (the
- * player for no name) passes a seller's `only`.
+ * player for no name), carrying what the stacks hold at that tag, passes a seller's `only`.
  */
 export function rulesetMarketQuoter(
   definition: RulesetDefinition,
   book: Pick<RulesetItemBook, "itemNamed" | "offers">,
   place: RulesetMarketPlace | null,
-  meets: (only: NonNullable<RulesetMarketSeller["only"]>, who: string | undefined) => boolean,
+  meets: (
+    only: NonNullable<RulesetMarketSeller["only"]>,
+    who: string | undefined,
+    stacks: readonly GameInventoryStack[],
+  ) => boolean,
   layerOptions?: RulesetLayerOptions | null,
 ): GameInventoryMarket {
   return {
@@ -144,7 +149,7 @@ export function rulesetMarketQuoter(
             ? here
             : here.filter((each) => gameInventoryNameKey(each.id) === key || gameInventoryNameKey(each.label) === key);
         if (asked.length === 0) return { ok: false, reason: "no-seller" };
-        seller = asked.find((each) => !each.only || meets(each.only, request.who));
+        seller = asked.find((each) => !each.only || meets(each.only, request.who, request.stacks));
         if (!seller) return { ok: false, reason: "not-to-you" };
       }
       const price = rulesetMarketPrice(definition, item.cost, level.times, request.count, layerOptions);

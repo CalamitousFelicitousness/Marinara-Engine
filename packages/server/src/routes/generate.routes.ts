@@ -9457,7 +9457,6 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       input.chatId,
                       turnGameRuleset,
                       rules,
-                      plan.start,
                       turnPlace,
                       rulesetSheetTurn?.live ?? {
                         ...((await turnStartRulesetLive()) ?? {}),

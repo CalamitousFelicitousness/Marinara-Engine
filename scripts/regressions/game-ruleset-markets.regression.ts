@@ -339,6 +339,34 @@ const buy = (tag: string, stacks: GameInventoryStack[], market = quoter()) =>
     buy('[inventory: action="buy" item="Page of the vigil litany"]', coins([["crowns", "crown", 1]])).content,
     /seller="chapel of the Vigil" result="ok"/,
   );
+  // A seller's `only` reads the stacks as the reply's earlier tags left them: a ring added first is
+  // carried when the page is bought after it.
+  const ringHolder = rulesetMarketQuoter(gravewatch, book, town, (_only, _who, stacks) =>
+    stacks.some((stack) => stack.item === "kit/widows-ring"),
+  );
+  const purseOnly = coins([["crowns", "crown", 1]]);
+  const ringThenPage = applyGameInventoryTags(
+    '[inventory: action="add" item="Widow\'s ring"] [inventory: action="buy" item="Page of the vigil litany"]',
+    purseOnly,
+    party,
+    undefined,
+    book,
+    undefined,
+    undefined,
+    ringHolder,
+  );
+  assert.match(ringThenPage.content, /item="Page of the vigil litany".*result="ok"/);
+  const pageAlone = applyGameInventoryTags(
+    '[inventory: action="buy" item="Page of the vigil litany"]',
+    purseOnly,
+    party,
+    undefined,
+    book,
+    undefined,
+    undefined,
+    ringHolder,
+  );
+  assert.match(pageAlone.content, /result="refused" reason="not-to-you"/);
   // An item a layer hides is not sold, whoever asks.
   const hidden = applyGameInventoryTags(
     '[inventory: action="buy" item="Warming tonic"]',
@@ -675,15 +703,16 @@ try {
     gameCharacterCards: cards,
   });
   const resolved = { status: "ok", definition: gravewatch, packageId: null, layers: [], ref: {} } as never;
-  const buyers = (await loadGameMarket(db, game.id, resolved, book, [], { size: "town" }, {}))!;
-  const page = (who?: string) => buyers.quote({ item: "Page of the vigil litany", count: 1, ...(who ? { who } : {}) });
+  const buyers = (await loadGameMarket(db, game.id, resolved, book, { size: "town" }, {}))!;
+  const page = (who?: string) =>
+    buyers.quote({ item: "Page of the vigil litany", count: 1, ...(who ? { who } : {}), stacks: [] });
   assert.equal(page().ok, true, "the player (Ada, Nerve 3)");
   assert.equal(page("Ada").ok, true, "the player by name");
   assert.deepEqual(page("Bram"), { ok: false, reason: "not-to-you" }, "Bram, Nerve 1");
   assert.deepEqual(page("Cleo"), { ok: false, reason: "not-to-you" }, "a blank sheet, Nerve 2");
   assert.equal(
-    await loadGameMarket(db, game.id, resolved, book, [], null, {}).then(
-      (m) => m?.quote({ item: "Warming tonic", count: 1 }).ok,
+    await loadGameMarket(db, game.id, resolved, book, null, {}).then(
+      (m) => m?.quote({ item: "Warming tonic", count: 1, stacks: [] }).ok,
     ),
     false,
   );
@@ -691,8 +720,8 @@ try {
   // by the persona, they buy with Ada's sheet.
   const wren = await createCharactersStorage(db).createPersona("Wren", "The player");
   await chats.update(game.id, { personaId: wren.id });
-  const asPersona = (await loadGameMarket(db, game.id, resolved, book, [], { size: "town" }, {}))!;
-  assert.equal(asPersona.quote({ item: "Page of the vigil litany", count: 1, who: "Wren" }).ok, true);
+  const asPersona = (await loadGameMarket(db, game.id, resolved, book, { size: "town" }, {}))!;
+  assert.equal(asPersona.quote({ item: "Page of the vigil litany", count: 1, who: "Wren", stacks: [] }).ok, true);
   // `only` reads the live state the turn hands it: a chapel that asks for Resolve left sells to Ada
   // with 3 and not with 1.
   const resolveChapel = parsedOrThrow(
@@ -713,12 +742,11 @@ try {
       game.id,
       resolvedChapel,
       resolveBook,
-      [],
       { size: "town" },
       {
         ada: { pools: { resolve: { value } } },
       },
-    ))!.quote({ item: "Page of the vigil litany", count: 1, who: "Ada" });
+    ))!.quote({ item: "Page of the vigil litany", count: 1, who: "Ada", stacks: [] });
   assert.equal((await withResolve(3)).ok, true);
   assert.deepEqual(await withResolve(1), { ok: false, reason: "not-to-you" });
 } finally {

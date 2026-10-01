@@ -52,7 +52,7 @@ export async function gamePlaceBefore(db: DB, chatId: string, replacing?: string
  * The market a Game Master's buys are answered at, for a game whose ruleset declares one: the place in
  * force, the ruleset's prices and sellers, and each buyer's sheet for a seller's `only`, read as an
  * item's check is (the player's card for no name or the player's own, a member's own card by name, and
- * a blank sheet for someone with none), with what they carry and `live`, the turn's own live state (the
+ * a blank sheet for someone with none), with what they carry at that tag and `live`, the turn's own live state (the
  * one its items are used with, never a replaced telling's). Undefined for a ruleset without a market.
  */
 export async function loadGameMarket(
@@ -60,7 +60,6 @@ export async function loadGameMarket(
   chatId: string,
   resolved: ResolvedGameRuleset | null | undefined,
   book: RulesetItemBook,
-  stacks: readonly GameInventoryStack[],
   place: GamePlace | null,
   live: RulesetLiveStates | null | undefined,
 ): Promise<GameInventoryMarket | undefined> {
@@ -72,7 +71,11 @@ export async function loadGameMarket(
   const cards = context?.cards ?? [];
   const player =
     (context?.playerName ? cards.find((card) => same(card.name, context.playerName!)) : undefined) ?? cards[0];
-  const meets = (only: { value: Parameters<typeof resolveRulesetValueRef>[2]; atLeast: number }, who?: string) => {
+  const meets = (
+    only: { value: Parameters<typeof resolveRulesetValueRef>[2]; atLeast: number },
+    who: string | undefined,
+    stacks: readonly GameInventoryStack[],
+  ) => {
     const own = who ? cards.find((card) => same(card.name, who)) : undefined;
     const isPlayer = who ? (own ? own === player : !!context?.playerName && same(who, context.playerName)) : true;
     const card = own ?? (isPlayer ? player : undefined);

@@ -1718,12 +1718,12 @@ Capability API 1.65: slice I9-1 of the ruleset items plan (#6917).
   add itself (`service`), so nothing puts one in a bag, and the picker leaves services out. The market is built once per turn (`loadGameMarket`) and kept on the
   inventory turn, so the preview and the save answer alike. `only` is checked against the buyer's own
   card (the player's for no name or the player's own; a blank sheet for a member with none), with
-  what they carry and the turn's own live state, the one its items are used with (never a replaced
+  what they carry at that tag (the stacks the reply's earlier tags left) and the turn's own live state, the one its items are used with (never a replaced
   telling's row).
 - **Said to the Game Master** only where the ruleset has a market: the place and buy lines, and a
   MARKET block listing each seller present with a dozen wares, cheapest first.
 - **Proven** by `scripts/regressions/game-ruleset-markets.regression.ts` and
-  `e2e/game-ruleset-markets.e2e.ts`, with 60 deliberate breaks each caught.
+  `e2e/game-ruleset-markets.e2e.ts`, with 61 deliberate breaks each caught.
 
 ## Gaps a ruleset author found
 

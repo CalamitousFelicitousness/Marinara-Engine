@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- On iPad, tapping a chat in the chat list now opens it instead of leaving the list on top, and buttons that start a chat or open a page from a full-screen panel close that panel too. The keyboard no longer covers a message you are editing, and **Copy Support Diagnostics** now copies (#6944).
+
 - In Roleplay, a `roll_dice` added under **Function Calling** now reaches the model and actually rolls when called, the same as with the **Rolls** command. If **Rolls** is also on, its **Who can roll dice** choice still applies (#6945).
 
 - On phones, the top bar now looks like a small version of the desktop one: Home and Chats sit at the left and a hamburger menu sits at the right, with wider, finger-sized buttons, instead of every control stretching across the bar.

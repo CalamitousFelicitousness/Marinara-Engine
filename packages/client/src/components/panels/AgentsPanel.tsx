@@ -21,6 +21,7 @@ import {
   ShieldCheck,
   TriangleAlert,
   Dices,
+  AppWindow,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useUIStore, type ResourcePanelSort } from "../../stores/ui.store";
@@ -34,9 +35,11 @@ import {
   type AgentConfigRow,
 } from "../../hooks/use-agents";
 import {
+  isAppCapabilityPackage,
   useCapabilityAgentRegistry,
   useCapabilityCatalog,
   useImportRuleset,
+  useInstalledCapabilityPackages,
   useInstalledRulesets,
   useRemoveRuleset,
   useUninstallCapabilityPackage,
@@ -183,7 +186,7 @@ function useTouchSafeAgentDragMode() {
 }
 
 function createBuiltInAgentConfigRow(
-  agent: (typeof BUILT_IN_AGENTS)[number],
+  agent: Pick<(typeof BUILT_IN_AGENTS)[number], "id" | "name" | "description" | "phase">,
   config: AgentConfigRow | null | undefined,
 ): AgentConfigRow {
   const defaultSettings = {
@@ -237,6 +240,7 @@ export function AgentsPanel() {
   const { data: agentConfigs, isLoading } = useAgentConfigs();
   const { data: capabilityAgents, isLoading: capabilityAgentsLoading } = useCapabilityAgentRegistry();
   const { data: capabilityCatalog } = useCapabilityCatalog();
+  const { data: installedPackages } = useInstalledCapabilityPackages();
   const { data: installedRulesets = [], isLoading: rulesetsLoading } = useInstalledRulesets();
   const createAgent = useCreateAgent();
   const importAgent = useImportAgent();
@@ -332,6 +336,10 @@ export function AgentsPanel() {
       ),
     [capabilityAgents],
   );
+  const appPackageIds = useMemo(
+    () => new Set((installedPackages ?? []).filter((pkg) => isAppCapabilityPackage(pkg.manifest)).map((pkg) => pkg.id)),
+    [installedPackages],
+  );
   const capabilityAgentRegistryReady = !capabilityAgentsLoading && capabilityAgents !== undefined;
   const catalogArtworkByAgentId = useMemo(
     () =>
@@ -378,12 +386,13 @@ export function AgentsPanel() {
         return {
           ...agent,
           name: agent.name,
+          category: appPackageIds.has(packageIdByAgentType.get(agent.id) ?? "") ? ("app" as const) : agent.category,
           description: config?.description ?? agent.description,
           createdAt: config?.createdAt ?? "",
           updatedAt: config?.updatedAt ?? "",
         };
       }),
-    [configByType, visibleBuiltInAgents],
+    [appPackageIds, configByType, packageIdByAgentType, visibleBuiltInAgents],
   );
   const builtInExportRows = useMemo(
     () => visibleBuiltInAgents.map((agent) => createBuiltInAgentConfigRow(agent, configByType.get(agent.id))),
@@ -429,11 +438,17 @@ export function AgentsPanel() {
       : "custom",
   });
   const agentCategorySections: Array<{
-    category: AgentCategory;
+    category: AgentCategory | "app";
     title: string;
     emptyMessage: string;
     icon: ReactNode;
   }> = [
+    {
+      category: "app",
+      title: localizeUi("ui.panels.agentspanel.apps"),
+      emptyMessage: localizeUi("ui.panels.agentspanel.noAppsYet"),
+      icon: <AppWindow size="0.8125rem" />,
+    },
     {
       category: "writer",
       title: localizeUi("ui.panels.agentspanel.writingAgents"),
@@ -1907,7 +1922,7 @@ function renderAgentCard({
   type: string;
   name: string;
   description: string;
-  category: AgentCategory | "custom";
+  category: AgentCategory | "app" | "custom";
   imagePath?: string | null;
   custom: boolean;
   openAgentDetail: (id: string) => void;

@@ -465,6 +465,17 @@ const wuxia: WorldKitInput = {
       note: "Water swells the wood into grasping roots",
     },
   ],
+  scenes: [
+    { label: "Bamboo forest", like: "forest" as const },
+    { label: "Mountain pass", like: "mountains" as const },
+    { label: "Temple courtyard", like: "castle" as const },
+    { label: "Teahouse", like: "mansion" as const },
+    { label: "Market street", like: "city" as const },
+    { label: "River ford", like: "water" as const },
+    { label: "Hermit's cave", like: "cave" as const },
+    { label: "Ruined shrine", like: "ruins" as const },
+  ],
+  tiles: { plains: "Open ground", forest: "Bamboo", mountain: "Cliff", ruin: "Rubble", water: "River", wall: "Wall" },
   calendar: {
     year: "year of the reign",
     day: "day",
@@ -644,6 +655,19 @@ const modernDay: WorldKitInput = {
     { name: "A haircut", price: 3000, from: 1, service: true },
   ],
   elements: [],
+  scenes: [
+    { label: "Street", like: "city" as const },
+    { label: "Park", like: "plains" as const },
+    { label: "Café", like: "mansion" as const },
+    { label: "School", like: "mansion" as const },
+    { label: "Shopping mall", like: "city" as const },
+    { label: "Beach", like: "water" as const },
+    { label: "Forest trail", like: "forest" as const },
+    { label: "Office", like: "mansion" as const },
+    { label: "Subway tunnel", like: "cave" as const },
+    { label: "Parking garage", like: "dungeon" as const },
+  ],
+  tiles: { plains: "Pavement", forest: "Hedges", mountain: "Building", ruin: "Clutter", water: "Water", wall: "Wall" },
   calendar: { year: "year", day: "day", months },
   change: {
     kinds: {
@@ -808,6 +832,24 @@ const modernSupernatural: WorldKitInput = {
     { on: "Shadow", with: "Silver", label: "Bane", times: 1.6, note: "Silver bites into what hides in the dark" },
     { on: "Holy", with: "Fire", label: "Hallowed Flame", times: 1.5, note: "Consecrated fire burns twice as hot" },
   ],
+  scenes: [
+    { label: "Alley", like: "city" as const },
+    { label: "Cemetery", like: "ruins" as const },
+    { label: "Old church", like: "castle" as const },
+    { label: "Abandoned asylum", like: "mansion" as const },
+    { label: "Woods at night", like: "forest" as const },
+    { label: "Sewers", like: "dungeon" as const },
+    { label: "Basement", like: "cave" as const },
+    { label: "Night club", like: "mansion" as const },
+  ],
+  tiles: {
+    plains: "Open ground",
+    forest: "Undergrowth",
+    mountain: "Building",
+    ruin: "Gravestones",
+    water: "Water",
+    wall: "Wall",
+  },
   calendar: { year: "year", day: "day", months },
   change: {
     kinds: {
@@ -978,6 +1020,16 @@ const twenties: WorldKitInput = {
     { name: "Dinner at a supper club", price: 300, from: 3, service: true },
   ],
   elements: [],
+  scenes: [
+    { label: "Speakeasy", like: "mansion" as const },
+    { label: "Docks", like: "water" as const },
+    { label: "Back alley", like: "city" as const },
+    { label: "Train yard", like: "plains" as const },
+    { label: "Warehouse", like: "dungeon" as const },
+    { label: "Mansion", like: "mansion" as const },
+    { label: "Country road", like: "plains" as const },
+  ],
+  tiles: { plains: "Street", forest: "Crates", mountain: "Building", ruin: "Wreckage", water: "River", wall: "Wall" },
   calendar: { year: "year", day: "day", months },
   change: {
     kinds: {
@@ -1125,6 +1177,16 @@ const cyberpunk: WorldKitInput = {
     { on: "Thermal", with: "EM", label: "Overload", times: 1.5, note: "Hot circuits overload and blow" },
     { on: "EM", with: "Kinetic", label: "Short Circuit", times: 1.4, note: "A hit to fried systems shorts them out" },
   ],
+  scenes: [
+    { label: "Neon street", like: "city" as const },
+    { label: "Rooftop", like: "plains" as const },
+    { label: "Megablock corridor", like: "dungeon" as const },
+    { label: "Abandoned factory", like: "ruins" as const },
+    { label: "Corporate tower", like: "mansion" as const },
+    { label: "Undercity tunnels", like: "cave" as const },
+    { label: "Wasteland outskirts", like: "wasteland" as const },
+  ],
+  tiles: { plains: "Open ground", forest: "Cover", mountain: "Tower", ruin: "Debris", water: "Canal", wall: "Barrier" },
   calendar: { year: "year", day: "day", months },
   change: {
     kinds: {
@@ -1269,6 +1331,24 @@ const spaceOpera: WorldKitInput = {
     },
     { on: "EM", with: "Thermal", label: "Overload", times: 1.5, note: "Charged armor overheats and fails" },
   ],
+  scenes: [
+    { label: "Starship deck", like: "spaceship" as const },
+    { label: "Station concourse", like: "city" as const },
+    { label: "Alien jungle", like: "forest" as const },
+    { label: "Ice moon", like: "snow" as const },
+    { label: "Desert world", like: "desert" as const },
+    { label: "Lava field", like: "volcanic" as const },
+    { label: "Derelict hulk", like: "ruins" as const },
+    { label: "Asteroid tunnels", like: "cave" as const },
+  ],
+  tiles: {
+    plains: "Open deck",
+    forest: "Cover",
+    mountain: "Bulkhead",
+    ruin: "Wreckage",
+    water: "Coolant",
+    wall: "Hull",
+  },
   calendar: { year: "standard year", day: "standard day", era: "era" },
   change: {
     kinds: {
@@ -1418,6 +1498,23 @@ const postApocalyptic: WorldKitInput = {
     { on: "Chemical", with: "Fire", label: "Toxic Blaze", times: 1.6, note: "The fumes catch and burn" },
     { on: "Radiation", with: "Chemical", label: "Fallout", times: 1.4, note: "Poisoned ash clings and burns" },
   ],
+  scenes: [
+    { label: "Ruined city", like: "ruins" as const },
+    { label: "Wasteland", like: "wasteland" as const },
+    { label: "Bunker", like: "dungeon" as const },
+    { label: "Dead forest", like: "forest" as const },
+    { label: "Flooded underpass", like: "water" as const },
+    { label: "Scrap yard", like: "ruins" as const },
+    { label: "Desert highway", like: "desert" as const },
+  ],
+  tiles: {
+    plains: "Open ground",
+    forest: "Scrub",
+    mountain: "Rubble heap",
+    ruin: "Wreckage",
+    water: "Toxic water",
+    wall: "Wall",
+  },
   calendar: { year: "year after the fall", day: "day" },
   change: {
     kinds: {

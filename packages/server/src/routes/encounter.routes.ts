@@ -12,6 +12,10 @@ import {
   type RulesetDefinition,
   type WorldElementSet,
   gameWorldElementSet,
+  TACTICAL_TERRAINS,
+  WORLD_DEFAULT_BATTLEFIELDS,
+  gameWorldBattlefields,
+  type WorldBattlefields,
 } from "@marinara-engine/shared";
 import { loadGameFightItems } from "../services/game/game-inventory.service.js";
 import { loadRulesetCatalogEntries } from "../services/game/ruleset-catalog.service.js";
@@ -523,6 +527,8 @@ export function buildInitPrompt(
   /** The setting's own elements (worldgen W6c), when its kit names them; absent is the classic six,
    *  which the model is left to choose among freely as before. */
   elements?: WorldElementSet,
+  /** The setting's own scenes and tile words (worldgen W6d), when its kit names them. */
+  battlefields?: WorldBattlefields,
 ): ChatMessage[] {
   const msgs: ChatMessage[] = [];
   // What an attack's element may be: one of the setting's own, none in a setting without them.
@@ -602,7 +608,7 @@ export function buildInitPrompt(
   inst += `  ],\n`;
   inst += `  "environment": "Brief description of the combat environment",\n`;
   inst += `  "styleNotes": {\n`;
-  inst += `    "environmentType": "forest|dungeon|desert|cave|city|ruins|snow|water|castle|wasteland|plains|mountains|swamp|volcanic|spaceship|mansion",\n`;
+  inst += `    "environmentType": "${(battlefields ?? WORLD_DEFAULT_BATTLEFIELDS).scenes.map((scene) => scene.label).join("|")}",\n`;
   inst += `    "atmosphere": "bright|dark|foggy|stormy|calm|eerie|chaotic|peaceful",\n`;
   inst += `    "timeOfDay": "dawn|day|dusk|night|twilight",\n`;
   inst += `    "weather": "clear|rainy|snowy|windy|stormy|overcast"\n`;
@@ -656,6 +662,13 @@ export function buildInitPrompt(
     inst += `- class: pick each combatant's tactical role from how they fight — ranged bow/gun users → archer, spellcasters → mage, dedicated healers → healer, fast skirmishers/assassins → rogue, armored defenders → knight, otherwise fighter.\n`;
     inst += `- movementMode: use fly only when established context says the combatant can sustain battlefield flight, teleport only when established context says they can reliably teleport during combat, otherwise walk. Do not invent movement powers.\n`;
     inst += `- battlefield.terrainBrief: describe at most four important semantic terrain features supported by the scene. A barrier may use only wall, water, or mountain. Do not repeat the same terrain/placement/shape combination. The server generates and validates exact tiles.\n`;
+    // The setting's own words for the tiles (worldgen W6d), so the model knows what each id stands for here.
+    const tileWords = TACTICAL_TERRAINS.filter(
+      (terrain) => battlefields && battlefields.tiles[terrain] !== WORLD_DEFAULT_BATTLEFIELDS.tiles[terrain],
+    ).map((terrain) => `${terrain} is ${battlefields!.tiles[terrain]}`);
+    if (tileWords.length) {
+      inst += `- battlefield.terrainBrief.features: in this setting ${tileWords.join(", ")}. Write the terrain id, not the setting's word.\n`;
+    }
     if (tacticalBattlefield?.size) {
       inst += `- battlefield.terrainBrief.size: use exactly "${tacticalBattlefield.size}" because the player selected that board size.\n`;
     }
@@ -939,6 +952,7 @@ export async function encounterRoutes(app: FastifyInstance) {
         rulesetBrief,
         items,
         gameWorldElementSet(chatMeta),
+        gameWorldBattlefields(chatMeta),
       );
       debugLog(
         "[debug/game/combat:init] request chatId=%s model=%s historyMessages=%d settings=%s",

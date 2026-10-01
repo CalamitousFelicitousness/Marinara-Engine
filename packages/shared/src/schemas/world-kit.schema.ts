@@ -6,6 +6,7 @@
 // it follows the same hygiene as a ruleset's labels.
 // ──────────────────────────────────────────────
 import { z } from "zod";
+import { TACTICAL_ENVIRONMENTS, TACTICAL_TERRAINS } from "../features/tactical-combat/environments.js";
 import { promptSafeText } from "./ruleset.schema.js";
 
 const kitId = z
@@ -13,6 +14,9 @@ const kitId = z
   .max(40)
   .regex(/^[a-z][a-z0-9_]*$/, "An id is lowercase letters, digits and underscores, starting with a letter");
 const word = promptSafeText(80);
+/** A word the model picks from a list or reads inside quotes (an element, a scene, a tile): it may not
+ *  hold the list's "|" or a double quote. */
+const listedWord = word.refine((value) => !/[|"]/.test(value), 'May not hold "|" or a double quote');
 const named = z.object({ id: kitId, label: word }).strict();
 
 /** The generic kinds of change a world can go through, gentlest first (worldgen plan section 7). A
@@ -154,7 +158,7 @@ export const worldKitSchema = z
       .array(
         z
           .object({
-            label: word,
+            label: listedWord,
             emoji: z.string().max(16).optional(),
             color: z
               .string()
@@ -182,6 +186,23 @@ export const worldKitSchema = z
           .strict(),
       )
       .max(24)
+      .optional(),
+    /** The kinds of place a fight happens in, in the setting's words, each laid out on the board like one
+     *  of the engine's battlefields (worldgen W6d). Left out: the engine's own sixteen. */
+    scenes: z
+      .array(z.object({ label: listedWord, like: z.enum(TACTICAL_ENVIRONMENTS) }).strict())
+      .min(1)
+      .max(24)
+      .optional(),
+    /** The setting's words for the six kinds of tile on a tactical board (rubble and cover in a city). */
+    tiles: z
+      .object(
+        Object.fromEntries(TACTICAL_TERRAINS.map((terrain) => [terrain, listedWord.optional()])) as Record<
+          (typeof TACTICAL_TERRAINS)[number],
+          z.ZodOptional<typeof listedWord>
+        >,
+      )
+      .strict()
       .optional(),
     calendar: z
       .object({
@@ -289,6 +310,11 @@ export const worldKitSchema = z
     const goods = (kit.shop ?? []).map((thing) => thing.name.trim().toLowerCase());
     if (new Set(goods).size !== goods.length) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["shop"], message: "Two things in the shop share a name" });
+    }
+    // A scene is picked by its name, so no two may share one (worldgen W6d).
+    const scenes = (kit.scenes ?? []).map((scene) => scene.label.trim().toLowerCase());
+    if (new Set(scenes).size !== scenes.length) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["scenes"], message: "Two scenes share a name" });
     }
     for (const key of ["layers", "sizes", "groupKinds", "placeTags", "travel", "cultures", "terrain"] as const) {
       const seen = new Set<string>();

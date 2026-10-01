@@ -6,6 +6,7 @@
 // engine.ts and are intentionally not re-exported here.
 
 export * from "./types.js";
+export { TACTICAL_ENVIRONMENTS, TACTICAL_TERRAINS } from "./environments.js";
 
 export {
   createTacticalCombat,

@@ -122,6 +122,10 @@ Example reactions include Melt, Shatter, Overload, Superconduct, Toxic Blaze, Pu
 
 Attacks, skills and items can carry an element, and an element that lands on a target still wearing another's aura can set off a reaction that hits harder. Which elements exist belongs to the setting: a game without a setting kit, or with one that names none, fights with the classic six (fire, ice, lightning, poison, holy and shadow); a wuxia game with the five phases (wood, fire, earth, metal and water, each overcoming the next); a cyberpunk or space opera game with kinetic, thermal, EM and chemical or plasma; and a modern-day or 1920s game with none at all. Rain and storms on open ground damp fire-like elements and feed lightning-like ones. In a tactical fight, an element hits harder against one it beats and softer against one that beats it. You can change a kit's elements and their reactions under **Change its words**.
 
+## Battlefields
+
+A tactical fight's board is laid out like the kind of place the fight happens in: a forest has trees to hide among, a dungeon walls and corridors, a city streets. A game with a setting kit names its own scenes in its words, each laid out like one of those boards, so a cyberpunk fight happens on a rooftop or in a megablock corridor and a wuxia fight in a bamboo forest or a teahouse, and the board's tiles go by the setting's words too (cover and debris rather than forest and ruins). The map of an area and the small details the Game Master is prompted to notice follow the setting the same way. You can change a kit's scenes and tile words under **Change its words**.
+
 ## Boss mechanics and loot
 
 Strong enemies can have boss mechanics, which are special rules the GM writes for that fight. A mechanic can trigger on a schedule, such as every few rounds, or when the boss drops below a set health level. Mechanics can hit your whole party, buff the boss, or apply a status effect. When one triggers, the effect appears in the combat log so you can react.

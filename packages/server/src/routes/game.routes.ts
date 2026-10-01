@@ -215,6 +215,9 @@ import {
   gameWorldKitFromMetadata,
   gameWorldElementSet,
   worldElementSetSchema,
+  WORLD_DEFAULT_BATTLEFIELDS,
+  gameWorldBattlefields,
+  worldSceneLike,
   gameWorldSchema,
   gameWorldFromMetadata,
   worldBriefSchema,
@@ -9847,7 +9850,10 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const provider = await createGameMainProvider(connections, conn, baseUrl);
 
     const messages: ChatMessage[] = [
-      { role: "system", content: buildMapGenerationPrompt(locationType, mapContext) },
+      {
+        role: "system",
+        content: buildMapGenerationPrompt(locationType, mapContext, gameWorldBattlefields(parseMeta(chat.metadata))),
+      },
       { role: "user", content: "Generate the map." },
     ];
 
@@ -10379,13 +10385,17 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         .status(400)
         .send({ error: `Invalid tactical battle request: ${field}${issue?.message ?? "invalid input"}` });
     }
-    const { chatId, party, enemies, seed, environment, formation, battlefield, weather } = parsed.data;
+    const { chatId, party, enemies, seed, formation, battlefield, weather } = parsed.data;
 
     const chats = createChatsStorage(app.db);
     const chat = await chats.getById(chatId);
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
 
     const meta = parseMeta(chat.metadata);
+    // A scene in the setting's own words is laid out like the battlefield it names (worldgen W6d).
+    const environment =
+      worldSceneLike(gameWorldBattlefields(meta) ?? WORLD_DEFAULT_BATTLEFIELDS, parsed.data.environment) ??
+      parsed.data.environment;
     const setupConfig = meta.gameSetupConfig as Record<string, unknown> | undefined;
     const difficulty = normalizeGameDifficulty(setupConfig?.difficulty);
     const preferences = resolveTacticalStartPreferences({

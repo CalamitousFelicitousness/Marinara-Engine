@@ -16,7 +16,8 @@ export type { GameCombatStyle } from "../../types/game.js";
 
 // ── Terrain ──
 
-export type TacticalTerrain = "plains" | "forest" | "mountain" | "ruin" | "water" | "wall";
+export type { TacticalTerrain } from "./environments.js";
+import type { TacticalTerrain, TacticalEnvironment } from "./environments.js";
 
 /** Fixed board sizes for procedural tactical encounters. */
 export type TacticalBattlefieldSize = "small" | "medium" | "large";
@@ -83,23 +84,7 @@ export const TERRAIN_DATA: Record<TacticalTerrain, TerrainInfo> = {
 // spawn placement (grid-gen placeSpawns). Both are optional on state so old
 // snapshots (schemaVersion 1) keep working; unknown strings normalize away.
 
-export type TacticalEnvironment =
-  | "forest"
-  | "dungeon"
-  | "desert"
-  | "cave"
-  | "city"
-  | "ruins"
-  | "snow"
-  | "water"
-  | "castle"
-  | "wasteland"
-  | "plains"
-  | "mountains"
-  | "swamp"
-  | "volcanic"
-  | "spaceship"
-  | "mansion";
+export type { TacticalEnvironment } from "./environments.js";
 
 export type TacticalFormation = "line" | "ambush" | "surrounded" | "skirmish" | "defense";
 

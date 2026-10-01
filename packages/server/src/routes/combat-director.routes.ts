@@ -12,6 +12,9 @@ import {
   rulesetFightItemChanges,
   gameWorldElementSet,
   worldElementSetSchema,
+  WORLD_DEFAULT_BATTLEFIELDS,
+  gameWorldBattlefields,
+  worldSceneLike,
 } from "@marinara-engine/shared";
 import {
   applyGameInventoryChangeHeld,
@@ -778,8 +781,13 @@ export async function combatDirectorRoutes(
         // is not offered; the rest do what a model guessed, unless the ruleset turns them off.
         const fightItems = await loadGameFightItems(app.db, meta, input.itemEffects);
         const elements = gameWorldElementSet(meta);
+        // A scene in the setting's own words is laid out like the battlefield it names (worldgen W6d).
+        const environment =
+          worldSceneLike(gameWorldBattlefields(meta) ?? WORLD_DEFAULT_BATTLEFIELDS, input.environment) ??
+          input.environment;
         const state = createCombatDirector({
           ...input,
+          ...(environment ? { environment } : {}),
           inventory: fightItems.lines.map(({ name, quantity, ownName, item }) => ({
             name,
             quantity,
@@ -793,7 +801,7 @@ export async function combatDirectorRoutes(
           id: randomUUID(),
           gm: setup.gmBossControl === true,
           difficulty: normalizeGameDifficulty(setup.difficulty),
-          weather: resolveCombatWeather(weatherSource, input.environment, battlefield.battlefield?.exposure),
+          weather: resolveCombatWeather(weatherSource, environment, battlefield.battlefield?.exposure),
           // The setting's own elements (worldgen W6c), when its kit names them.
           ...(elements ? { elements } : {}),
           seed: battlefield.seed,
@@ -835,7 +843,7 @@ export async function combatDirectorRoutes(
             definition,
             seed: battlefield.seed,
             positioned: input.positioned === true,
-            environment: input.environment ?? null,
+            environment: environment ?? null,
             formation: input.formation ?? null,
             ...(battlefield.battlefield ? { battlefield: battlefield.battlefield } : {}),
             party: input.party.map((member) => ({ id: member.id, name: member.name })),

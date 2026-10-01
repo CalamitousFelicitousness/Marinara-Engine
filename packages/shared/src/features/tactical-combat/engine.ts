@@ -33,6 +33,7 @@ import {
   terrainInfoAt,
 } from "./math.js";
 import { deterministicRng } from "./rng.js";
+import { TACTICAL_ENVIRONMENTS } from "./environments.js";
 import type { WorldElementSet } from "../world/elements.js";
 import type {
   ApplyActionResult,
@@ -47,24 +48,7 @@ import type {
   TacticalUnit,
 } from "./types.js";
 
-const ENVIRONMENTS: TacticalEnvironment[] = [
-  "forest",
-  "dungeon",
-  "desert",
-  "cave",
-  "city",
-  "ruins",
-  "snow",
-  "water",
-  "castle",
-  "wasteland",
-  "plains",
-  "mountains",
-  "swamp",
-  "volcanic",
-  "spaceship",
-  "mansion",
-];
+const ENVIRONMENTS: readonly TacticalEnvironment[] = TACTICAL_ENVIRONMENTS;
 
 const FORMATIONS: TacticalFormation[] = ["line", "ambush", "surrounded", "skirmish", "defense"];
 

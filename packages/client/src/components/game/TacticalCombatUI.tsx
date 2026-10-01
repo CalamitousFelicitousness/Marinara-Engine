@@ -52,6 +52,7 @@ import { useTacticalCombatStart, useTacticalCombatAction } from "../../hooks/use
 import { useUpdateChatMetadata } from "../../hooks/use-chats";
 import {
   TERRAIN_DATA,
+  type TacticalTerrain,
   CLASS_PROFILES,
   getMovementRange,
   getTargetsInRange,
@@ -88,6 +89,9 @@ import {
 // ── Props ──
 
 interface TacticalCombatUIProps {
+  /** The setting's own words for the kinds of tile it names (worldgen W6d); the rest keep their
+   *  localized names. */
+  tileWords?: Partial<Record<TacticalTerrain, string>>;
   directed?: {
     state: TacticalCombatState;
     actorId?: string;
@@ -263,6 +267,7 @@ type UiMode =
 const DEFAULT_ITEM_NAME = "Potion";
 
 export function TacticalCombatUI({
+  tileWords,
   directed,
   chatId,
   party,
@@ -1315,9 +1320,9 @@ export function TacticalCombatUI({
                       isInspected && "ring-1 ring-white/70",
                     )}
                     style={{ backgroundColor: palette[terrain] + TILE_ALPHA, boxShadow: tileShadow(terrain) }}
-                    title={localizeUi(`ui.game.tacticalcombatui.terrain.${terrain}`)}
+                    title={tileWords?.[terrain] ?? localizeUi(`ui.game.tacticalcombatui.terrain.${terrain}`)}
                     aria-label={localizeUi("ui.game.tacticalcombatui.tileLabel", {
-                      terrain: localizeUi(`ui.game.tacticalcombatui.terrain.${terrain}`),
+                      terrain: tileWords?.[terrain] ?? localizeUi(`ui.game.tacticalcombatui.terrain.${terrain}`),
                       row: y + 1,
                       column: x + 1,
                     })}
@@ -1491,6 +1496,7 @@ export function TacticalCombatUI({
       {/* Inspect card (terrain + unit) — draggable within the battle surface. */}
       {inspectTile && !outcome && (
         <TileInspect
+          tileWords={tileWords}
           state={liveState}
           tile={inspectTile}
           onClose={() => setInspectTile(null)}
@@ -2179,7 +2185,9 @@ function TileInspect({
   tile,
   onClose,
   constraintsRef,
+  tileWords,
 }: {
+  tileWords?: Partial<Record<TacticalTerrain, string>>;
   state: TacticalCombatState;
   tile: TacticalCoord;
   onClose: () => void;
@@ -2205,7 +2213,7 @@ function TileInspect({
       <div className="mb-1 flex cursor-grab items-center justify-between active:cursor-grabbing">
         <span className="flex items-center gap-1 font-bold text-white">
           <GripVertical className="h-3 w-3 text-white/40" />
-          {info.label}
+          {tileWords?.[terrain] ?? info.label}
         </span>
         <button type="button" onClick={onClose} className="text-white/40 hover:text-white">
           <X size={13} />

@@ -63,7 +63,7 @@ A shared setup file remembers its ruleset. If you import one and do not have tha
 
 ### Choosing a setting kit
 
-A **Setting kit** gives the Game Master the words your kind of world is written in: what its places are called and how big a settlement can be, its kinds of group, what a place may be known for, how people travel, what a year and a day are called, how its peoples name themselves, what a won fight can drop, its money and the everyday things it sells, and its elements. It also says which kinds of change the world has, such as rivalries, crime, wars or disasters, and how fast it changes on its own. A kind that is off is never brought in as a background event, and a scene does not escalate into it, so a quarrel can stay a quarrel.
+A **Setting kit** gives the Game Master the words your kind of world is written in: what its places are called and how big a settlement can be, its kinds of group, what a place may be known for, how people travel, what a year and a day are called, how its peoples name themselves, what a won fight can drop, its money and the everyday things it sells, its elements, and the places its fights happen in. It also says which kinds of change the world has, such as rivalries, crime, wars or disasters, and how fast it changes on its own. A kind that is off is never brought in as a background event, and a scene does not escalate into it, so a quarrel can stay a quarrel.
 
 It is off by default (**No setting kit**), and only offered for a new game. There are eight to start from: high fantasy, wuxia and xianxia, modern day, modern supernatural, the 1920s, cyberpunk, space opera and post-apocalyptic. Modern day is gentle by default, with no crime, conflict or catastrophe, at a slow pace, for slice of life.
 

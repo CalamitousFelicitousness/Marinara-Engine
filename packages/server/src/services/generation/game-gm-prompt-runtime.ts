@@ -3,6 +3,7 @@ import {
   GAME_GM_BUILT_IN_PROMPT_TEMPLATES,
   gameWorldFromMetadata,
   gameWorldKitFromMetadata,
+  gameWorldBattlefields,
   normalizeAgentPromptTemplateOptions,
   normalizeTextForMatch,
   resolveGameSetupArtStylePrompt,
@@ -361,6 +362,8 @@ export async function injectGameGmPromptRuntime(args: {
         weather: latestSnapshot?.weather ?? null,
         timeOfDay: latestSnapshot?.time ?? null,
         presentNpcNames: presentNpcs,
+        // The setting's own scenes (worldgen W6d), so its places read as the kind of place they are.
+        scenes: gameWorldBattlefields(args.chatMetadata)?.scenes,
       };
       const hints = generatePerceptionHints(perceptionContext);
       if (hints.length > 0) {

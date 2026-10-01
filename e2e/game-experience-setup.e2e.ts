@@ -840,6 +840,9 @@ test("A setting kit is off by default, can be picked, written for the setting, e
   await wizard.getByLabel("Element", { exact: true }).first().fill("Flame");
   await wizard.getByRole("button", { name: "Add an element", exact: true }).click();
   await wizard.getByLabel("Element", { exact: true }).last().fill("Tide");
+  // Its battlefields (worldgen W6d): a scene renamed and a tile word of its own.
+  await wizard.getByLabel("Scene", { exact: true }).first().fill("Harbor road");
+  await wizard.getByLabel("Open tiles", { exact: true }).fill("Quay");
   // Retyping the places keeps the settlements on the layer of that name.
   const settlements = wizard.getByLabel("Which of them holds the settlements", { exact: true });
   await expect(settlements.locator("option:checked")).toHaveText("city");
@@ -880,6 +883,8 @@ test("A setting kit is off by default, can be picked, written for the setting, e
   expect(result.config.worldKit.change.kinds.crime).toEqual({ label: "smuggling on the docks", on: true });
   expect(result.config.worldKit.change.kinds.conflict.on).toBe(false);
   expect(result.config.worldKit.loot.common).toEqual(["Fishing net", "Tide table"]);
+  expect(result.config.worldKit.scenes[0]).toEqual({ label: "Harbor road", like: "city" });
+  expect(result.config.worldKit.tiles.plains).toBe("Quay");
   const elements = result.config.worldKit.elements as Array<{ label: string; beats?: string[] }>;
   expect(elements.map((element) => element.label)).toEqual([
     "Flame",

@@ -6,7 +6,10 @@ import { useRef, useState } from "react";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { Sparkles } from "lucide-react";
 import {
+  TACTICAL_ENVIRONMENTS,
+  TACTICAL_TERRAINS,
   WORLD_CHANGE_KINDS,
+  WORLD_DEFAULT_BATTLEFIELDS,
   WORLD_DEFAULT_ELEMENTS,
   WORLD_LOOT_RARITIES,
   WORLD_PACES,
@@ -736,6 +739,104 @@ export function GameSetupWorldKitChooser({
                     </button>
                   </>
                 )}
+              </fieldset>
+
+              <fieldset className="space-y-1.5">
+                <legend className={FIELD_LABEL}>{t("game.worldKit.setup.scenes")}</legend>
+                <p className="text-[var(--muted-foreground)]">{t("game.worldKit.setup.scenesHelp")}</p>
+                {kit.scenes === undefined ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      edit((draft) => {
+                        draft.scenes = WORLD_DEFAULT_BATTLEFIELDS.scenes.map((scene) => ({ ...scene }));
+                      })
+                    }
+                    className="rounded-md px-2 py-1 text-[var(--muted-foreground)] ring-1 ring-[var(--border)] hover:text-[var(--foreground)]"
+                  >
+                    {t("game.worldKit.setup.scenesOwn")}
+                  </button>
+                ) : (
+                  <>
+                    {kit.scenes.map((scene, index) => (
+                      <div key={`scene-${index}`} className="flex flex-wrap items-center gap-2">
+                        <input
+                          value={scene.label}
+                          onChange={(event) => edit((draft) => (draft.scenes![index]!.label = event.target.value))}
+                          aria-label={t("game.worldKit.setup.sceneName")}
+                          className={cn(INPUT, "min-w-32 flex-1")}
+                        />
+                        <select
+                          value={scene.like}
+                          onChange={(event) =>
+                            edit(
+                              (draft) =>
+                                (draft.scenes![index]!.like = event.target
+                                  .value as (typeof TACTICAL_ENVIRONMENTS)[number]),
+                            )
+                          }
+                          aria-label={t("game.worldKit.setup.sceneLike", { name: scene.label })}
+                          className={cn(INPUT, "w-auto shrink-0")}
+                        >
+                          {TACTICAL_ENVIRONMENTS.map((like) => (
+                            <option key={like} value={like}>
+                              {t(`game.worldKit.setup.battlefields.${like}`)}
+                            </option>
+                          ))}
+                        </select>
+                        {kit.scenes!.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => edit((draft) => draft.scenes!.splice(index, 1))}
+                            className="shrink-0 rounded-md px-2 py-1 text-[var(--muted-foreground)] ring-1 ring-[var(--border)] hover:text-[var(--foreground)]"
+                          >
+                            {t("game.worldKit.setup.removeScene")}
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    {kit.scenes.length < 24 && (
+                      <button
+                        type="button"
+                        onClick={() => edit((draft) => draft.scenes!.push({ label: "", like: "plains" }))}
+                        className="rounded-md px-2 py-1 text-[var(--muted-foreground)] ring-1 ring-[var(--border)] hover:text-[var(--foreground)]"
+                      >
+                        {t("game.worldKit.setup.addScene")}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => edit((draft) => delete draft.scenes)}
+                      className="rounded-md px-2 py-1 text-[var(--muted-foreground)] ring-1 ring-[var(--border)] hover:text-[var(--foreground)]"
+                    >
+                      {t("game.worldKit.setup.scenesBack")}
+                    </button>
+                  </>
+                )}
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {TACTICAL_TERRAINS.map((terrain) => (
+                    <div key={terrain}>
+                      <label htmlFor={`world-kit-tile-${terrain}`} className={FIELD_LABEL}>
+                        {t(`game.worldKit.setup.tiles.${terrain}`)}
+                      </label>
+                      <input
+                        id={`world-kit-tile-${terrain}`}
+                        value={kit.tiles?.[terrain] ?? ""}
+                        placeholder={WORLD_DEFAULT_BATTLEFIELDS.tiles[terrain]}
+                        onChange={(event) =>
+                          edit((draft) => {
+                            const tiles = { ...draft.tiles };
+                            if (event.target.value.trim()) tiles[terrain] = event.target.value;
+                            else delete tiles[terrain];
+                            if (Object.keys(tiles).length) draft.tiles = tiles;
+                            else delete draft.tiles;
+                          })
+                        }
+                        className={INPUT}
+                      />
+                    </div>
+                  ))}
+                </div>
               </fieldset>
 
               <fieldset className="space-y-1.5">

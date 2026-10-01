@@ -2,8 +2,10 @@ import {
   assignCombatTactics,
   combatTacticsSchema,
   gameWorldKitFromMetadata,
+  worldBattlefields,
   worldElementId,
   worldElementSet,
+  worldSceneLike,
   type WorldElementSet,
   gameInventoryBags,
   gameInventoryBagKey,
@@ -13497,6 +13499,12 @@ function GameSurfaceComponent({
                               combatItemEffects={fightItemEffects}
                               combatMechanics={combatMechanics}
                               environment={combatSceneMeta?.environmentType ?? undefined}
+                              environmentLike={
+                                gameKit?.scenes
+                                  ? worldSceneLike(worldBattlefields(gameKit), combatSceneMeta?.environmentType)
+                                  : undefined
+                              }
+                              tileWords={gameKit?.tiles}
                               formation={combatSceneMeta?.formation ?? undefined}
                               onCombatEnd={handleCombatEnd}
                               onInventoryItemUsed={handleUseCombatInventoryItem}
@@ -13504,6 +13512,7 @@ function GameSurfaceComponent({
                             />
                           ) : effectiveCombatStyle === "tactical" ? (
                             <TacticalCombatUI
+                              tileWords={gameKit?.tiles}
                               key={activeChatId}
                               chatId={activeChatId}
                               party={combatParty}

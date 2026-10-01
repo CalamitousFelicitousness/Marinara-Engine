@@ -6,6 +6,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - Agents and Download Agents now show Noodle, Slurp, Gacha Forge, Life Sim and other apps that open in their own Home tab in a separate **Apps** group at the top, instead of mixing them into Misc Agents (#6943).
 - The character and persona editors now show the whole name at the top whenever there is room for it, instead of cutting it short next to the creator and version (#6946).
+
+- In Roleplay, a `roll_dice` added under **Function Calling** now reaches the model and actually rolls when called, the same as with the **Rolls** command. If **Rolls** is also on, its **Who can roll dice** choice still applies (#6945).
 - On phones, the top bar now looks like a small version of the desktop one: Home and Chats sit at the left and a hamburger menu sits at the right, with wider, finger-sized buttons, instead of every control stretching across the bar.
 
 - Updated Sharp (with libvips 8.18.7), DOMPurify, @fastify/static, dotenv and nanoid, and Android APK builds now use Gradle 9.8.0. Termux installs keep Sharp's matching WebAssembly fallback for image processing. Hono, which the MCP SDK pulls in, moves to 4.13.11 for an upstream XSS fix in its JSX renderer.

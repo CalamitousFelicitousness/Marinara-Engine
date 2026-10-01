@@ -549,7 +549,14 @@ const capabilityPackageManifestBaseSchema = z
 //        says where the party is with `[place:]`. Not a soft seam, for the same reason as 1.20 through
 //        1.64: an Engine that cannot read these refuses the whole ruleset or catalog file, so a package
 //        that ships any of them declares 1.65. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 65 } as const);
+// 1.66: a market day: a place size may carry a daily `purse`, the market a `buyBack` share, a seller a
+//        `stock` loot table rolled each day, and a `sold` rule or an item's `sold` a `limited` count kept
+//        on hand (a rule or an item's `sold` may now name a limit without a place); the Game Master
+//        sells with `[inventory: action="sell"]` and starts a new day with `[place: day="new"]`. Not a
+//        soft seam, for the same reason as 1.20 through 1.65: an Engine that cannot read these refuses
+//        the whole ruleset or catalog file, so a package that ships any of them declares 1.66. No
+//        permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 66 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

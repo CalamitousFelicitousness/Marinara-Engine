@@ -186,7 +186,6 @@ import {
   rulesetMarketPlace,
   rulesetMarketPromptText,
   type GameInventoryMarket,
-  type GamePlace,
   createInventoryTagRegex,
   gameInventoryBags,
   gameInventoryTellingStart,
@@ -237,7 +236,7 @@ import {
 } from "../services/game/ruleset-sheet-turn.service.js";
 import { gameInventoryItemUser, gameInventoryRestRecharge } from "../services/game/game-item-use.service.js";
 import { gameLootTagRoller } from "../services/game/game-loot.service.js";
-import { gamePlaceBefore, loadGameMarket } from "../services/game/game-market.service.js";
+import { gameMarketDayFor, loadGameMarket } from "../services/game/game-market.service.js";
 import {
   commitGameInventoryChange,
   followGameInventoryOnRow,
@@ -4591,20 +4590,36 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   "game-master",
                 )
               : undefined;
-          // The market where the scene is, where the ruleset has one (#6917): the place the visible
-          // messages last said (not the telling a regeneration replaces) and what its sellers sell.
-          const promptMarket =
+          // The market where the scene is, where the ruleset has one (#6917, #6934): the place the Game
+          // Master's replies last said (not the telling a regeneration replaces), what its sellers sell,
+          // and what the market day has left.
+          const promptMarketBook =
             pinnedGameRuleset?.status === "ok" && pinnedGameRuleset.definition.items?.market
+              ? (promptItemBook ??
+                (await loadGameInventoryItemBook(
+                  app.db,
+                  { metadata: chatMeta, resolved: pinnedGameRuleset, playerName: personaName || null },
+                  "game-master",
+                )))
+              : undefined;
+          const promptMarketDay =
+            promptMarketBook && pinnedGameRuleset?.status === "ok"
+              ? await gameMarketDayFor(
+                  app.db,
+                  input.chatId,
+                  input.regenerateMessageId ?? null,
+                  undefined,
+                  promptMarketBook,
+                )
+              : undefined;
+          const promptMarket =
+            promptMarketBook && promptMarketDay && pinnedGameRuleset?.status === "ok"
               ? rulesetMarketPromptText(
                   pinnedGameRuleset.definition,
-                  promptItemBook ??
-                    (await loadGameInventoryItemBook(
-                      app.db,
-                      { metadata: chatMeta, resolved: pinnedGameRuleset, playerName: personaName || null },
-                      "game-master",
-                    )) ?? { entries: [] },
-                  await gamePlaceBefore(app.db, input.chatId, input.regenerateMessageId ?? null),
+                  promptMarketBook,
+                  promptMarketDay.place,
                   gameRulesetLayerOptions(pinnedGameRuleset),
+                  promptMarketDay.day,
                 )
               : undefined;
           // What each character carries, binds and wears against what they can, when the ruleset says.
@@ -9371,27 +9386,23 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             };
             /** What a `[loot:]` rolls: the ruleset its tables are in, and the dice's seed. */
             loot?: { definition: RulesetDefinition; seed: number };
-            /** Where the reply's buys are priced (#6917): the place in force, and the market there. */
-            market?: GameInventoryMarket;
+            /** Makes the market the reply's buys and sales are priced at (#6917, #6934): a fresh one for
+             *  each reading, since a market counts what the reply buys and sells. */
+            market?: () => GameInventoryMarket;
           } | null = null;
           // ── Place tags (#6917) ──
-          // Where the scene is, for a ruleset with a market: the last place the player's visible
-          // messages said (not the telling a regeneration replaces), then the reply's own, each
-          // answered in place. The reply's buys are priced at the place it leaves the party in.
-          let turnPlace: GamePlace | null = null;
+          // Where the scene is, for a ruleset with a market: each of the reply's place tags is answered
+          // in place. The reply's buys are priced at the place, and in the market day, it leaves the
+          // party in (`gameMarketDayFor`, below).
           const turnMarket =
             chatMode === "game" && !input.impersonate && turnGameRuleset?.status === "ok"
               ? turnGameRuleset.definition.items?.market
               : undefined;
-          if (turnMarket) {
-            turnPlace = await gamePlaceBefore(app.db, input.chatId, input.regenerateMessageId ?? null);
-            if (/\[place:/i.test(fullResponse)) {
-              const placed = applyGamePlaceTags(fullResponse, (word) => rulesetMarketPlace(turnMarket, word));
-              if (placed.content !== fullResponse) {
-                fullResponse = placed.content;
-                contentReplaced = true;
-              }
-              if (placed.place) turnPlace = placed.place;
+          if (turnMarket && /\[place:/i.test(fullResponse)) {
+            const placed = applyGamePlaceTags(fullResponse, (word) => rulesetMarketPlace(turnMarket, word));
+            if (placed.content !== fullResponse) {
+              fullResponse = placed.content;
+              contentReplaced = true;
             }
           }
           const tellsInventory = /\[(?:inventory|loot):/i.test(fullResponse);
@@ -9450,18 +9461,23 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   ? { definition: turnGameRuleset.definition, seed: randomInt(0, 2 ** 31 - 1) }
                   : undefined;
               // A seller's `only` reads the turn's own live state, as the items this reply uses do.
-              const market =
+              const marketDay =
                 rules && turnMarket
+                  ? await gameMarketDayFor(app.db, input.chatId, input.regenerateMessageId ?? null, requested, rules)
+                  : undefined;
+              const market =
+                rules && marketDay
                   ? await loadGameMarket(
                       app.db,
                       input.chatId,
                       turnGameRuleset,
                       rules,
-                      turnPlace,
+                      marketDay.place,
                       rulesetSheetTurn?.live ?? {
                         ...((await turnStartRulesetLive()) ?? {}),
                         ...(checkSpendLive ?? {}),
                       },
+                      marketDay.day,
                     )
                   : undefined;
               const preview = tellsInventory
@@ -9475,7 +9491,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       ? gameInventoryItemUser(uses.context, rules.itemOf, uses.live, uses.seed).useItem
                       : undefined,
                     loot ? gameLootTagRoller(loot.definition, rules, loot.seed) : undefined,
-                    market,
+                    market?.(),
                   ).content
                 : requested;
               if (preview !== fullResponse) {
@@ -9900,7 +9916,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                         pending.loot
                           ? gameLootTagRoller(pending.loot.definition, pending.rules, pending.loot.seed)
                           : undefined,
-                        pending.market,
+                        pending.market?.(),
                       )
                     : { content: pending.requested, stacks: plan.start, journal: [] };
                   // The turn's rests bring charges back on top of what its tags did, from the same start.

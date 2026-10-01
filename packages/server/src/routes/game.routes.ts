@@ -218,6 +218,8 @@ import {
   WORLD_DEFAULT_BATTLEFIELDS,
   gameWorldBattlefields,
   worldSceneLike,
+  gameArtFamily,
+  worldAssetsForFamily,
   gameWorldSchema,
   gameWorldFromMetadata,
   worldBriefSchema,
@@ -12451,6 +12453,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
           currentMusic: input.context.currentMusic,
           recentMusic: input.context.recentMusic,
           availableMusic: serverMusicTags,
+          family: gameArtFamily(meta),
         });
         if (scoredMusic) {
           parsed.music = scoredMusic;
@@ -14641,6 +14644,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
           sceneDescription: backgroundDescription,
           genre,
           setting,
+          family: gameArtFamily(meta),
           currentLocation: latestImageState?.location ?? null,
           currentWeather: latestImageState?.weather ?? null,
           currentTimeOfDay: latestImageState?.time ?? null,
@@ -14670,7 +14674,10 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         if (tag) {
           generatedBackground = tag;
         } else {
-          fallbackBackground = pickFallbackBackgroundTag(input.backgroundTag, getAssetManifest().assets);
+          fallbackBackground = pickFallbackBackgroundTag(
+            input.backgroundTag,
+            worldAssetsForFamily(getAssetManifest().assets, gameArtFamily(meta)) ?? {},
+          );
           if (fallbackBackground) {
             logger.warn(
               '[game/generate-assets] background generation failed for "%s"; using fallback "%s"',

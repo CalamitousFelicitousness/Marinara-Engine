@@ -71,6 +71,10 @@ export const worldKitSchema = z
     label: word,
     /** One paragraph for the picker. */
     summary: promptSafeText(400),
+    /** Where its art and music live (worldgen W6f): the folders named for this family, beside the
+     *  shared ones. Another family's are left out, so a cyberpunk game never plays fantasy music. Left
+     *  out (a kit saved before families): its starter kit's family, or every folder. */
+    family: kitId.optional(),
     scale: z.enum(WORLD_SCALES),
     /** The layers of place, outermost first; exactly one holds the settlements, whose places have
      *  a size and, with a market, sell things. */

@@ -396,7 +396,8 @@ export async function injectGameGmPromptRuntime(args: {
       gameActiveState === "combat" && resolvedCombatStyle === "tactical"
         ? summarizeTacticalBattlefield(args.chatMetadata.gameTacticalCombatSnapshot)
         : undefined,
-    genre: (setupConfig?.genre as string) || "fantasy",
+    // A game with a setting kit is never "fantasy" by default (worldgen W6f).
+    genre: (setupConfig?.genre as string) || gameWorldKitFromMetadata(args.chatMetadata)?.label || "fantasy",
     setting: (setupConfig?.setting as string) || "original",
     tone: (setupConfig?.tone as string) || "balanced",
     rating: (setupConfig?.rating as "sfw" | "nsfw") || "sfw",

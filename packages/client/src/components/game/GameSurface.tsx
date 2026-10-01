@@ -2,9 +2,11 @@ import {
   assignCombatTactics,
   combatTacticsSchema,
   gameWorldKitFromMetadata,
+  worldAssetsForFamily,
   worldBattlefields,
   worldElementId,
   worldElementSet,
+  worldKitArtFamily,
   worldSceneLike,
   type WorldElementSet,
   gameInventoryBags,
@@ -2280,6 +2282,14 @@ function GameSurfaceComponent({
     [chatMeta.gameWorldKit],
   );
   const gameElements = useMemo(() => worldElementSet(gameKit), [gameKit]);
+  // The setting's art family (worldgen W6f): another family's art, music and sounds are left out.
+  const artFamily = worldKitArtFamily(gameKit);
+  const artFamilyRef = useRef(artFamily);
+  artFamilyRef.current = artFamily;
+  useEffect(() => {
+    audioManager.setArtFamily(artFamily);
+    return () => audioManager.setArtFamily(undefined);
+  }, [artFamily]);
   const gameInputGenerationBlocked = isGenerationSendBlocked({
     streamActive: isStreaming,
     agentsProcessing,
@@ -2668,18 +2678,25 @@ function GameSurfaceComponent({
   // manifest — merging them unfiltered re-injected excluded context tracks
   // ahead of the blacklist (review-found).
   const scopedAssetMap = useMemo(
-    () => ({
-      ...(filterGameAssetMap(assetManifest?.assets ?? null, gameAssetExcludedFolders) ?? {}),
-      ...(filterGameAssetMap(generatedAudioAssetsRef.current, gameAssetExcludedFolders) ?? {}),
-    }),
-    [assetManifest?.assets, gameAssetExcludedFolders],
+    () =>
+      worldAssetsForFamily(
+        {
+          ...(filterGameAssetMap(assetManifest?.assets ?? null, gameAssetExcludedFolders) ?? {}),
+          ...(filterGameAssetMap(generatedAudioAssetsRef.current, gameAssetExcludedFolders) ?? {}),
+        },
+        artFamily,
+      )!,
+    [assetManifest?.assets, gameAssetExcludedFolders, artFamily],
   );
   const getScopedAssetMap = useCallback(() => {
     const manifest = queryClient.getQueryData<GameAssetManifest>(gameAssetKeys.manifest());
-    return {
-      ...(filterGameAssetMap(manifest?.assets ?? null, gameAssetExcludedFolders) ?? {}),
-      ...(filterGameAssetMap(generatedAudioAssetsRef.current, gameAssetExcludedFolders) ?? {}),
-    };
+    return worldAssetsForFamily(
+      {
+        ...(filterGameAssetMap(manifest?.assets ?? null, gameAssetExcludedFolders) ?? {}),
+        ...(filterGameAssetMap(generatedAudioAssetsRef.current, gameAssetExcludedFolders) ?? {}),
+      },
+      artFamilyRef.current,
+    )!;
   }, [gameAssetExcludedFolders, queryClient]);
   // Once the served manifest carries a session-generated tag, the manifest is
   // authoritative — dropping our shadow copy lets later renames/deletes in
@@ -2769,6 +2786,7 @@ function GameSurfaceComponent({
         currentMusic: useGameAssetStore.getState().currentMusic,
         recentMusic: recentMusicHistoryRef.current,
         availableMusic: Object.keys(assetMap ?? {}).filter((tag) => tag.startsWith("music:")),
+        family: artFamilyRef.current,
       });
       if (scored) {
         audioManager.playMusic(scored, assetMap);
@@ -5276,6 +5294,7 @@ function GameSurfaceComponent({
       currentWeather: gameSnapshot?.weather ?? null,
       currentTimeOfDay: gameSnapshot?.time ?? metaTime ?? null,
       genre: ((chatMeta.gameSetupConfig as Record<string, unknown> | undefined)?.genre as string | undefined) ?? null,
+      artFamily: artFamilyRef.current ?? null,
       setting:
         ((chatMeta.gameSetupConfig as Record<string, unknown> | undefined)?.setting as string | undefined) ?? null,
       worldOverview: (chatMeta.gameWorldOverview as string | undefined) ?? null,
@@ -5447,6 +5466,7 @@ function GameSurfaceComponent({
       currentMusic: useGameAssetStore.getState().currentMusic,
       recentMusic: recentMusicHistoryRef.current,
       availableMusic: musicTags,
+      family: artFamilyRef.current,
     });
     if (scoredMusic && !useMusicDjPlayerMusic) {
       audioManager.playMusic(scoredMusic, assetMap);
@@ -6891,6 +6911,7 @@ function GameSurfaceComponent({
       currentTimeOfDay: gameSnapshot?.time ?? metaTime ?? null,
       genre: (setupConfig?.genre as string | undefined) ?? null,
       setting: (setupConfig?.setting as string | undefined) ?? null,
+      artFamily: artFamilyRef.current ?? null,
       worldOverview: (chatMeta.gameWorldOverview as string | undefined) ?? null,
       canGenerateBackgrounds: gameBackgroundAutoGenerationEnabled,
       canGenerateIllustrations: gameImageAutoGenerationEnabled,
@@ -11385,6 +11406,7 @@ function GameSurfaceComponent({
       currentTimeOfDay: gameSnapshot?.time ?? metaTime ?? null,
       genre: (setupConfig?.genre as string | undefined) ?? null,
       setting: (setupConfig?.setting as string | undefined) ?? null,
+      artFamily: artFamilyRef.current ?? null,
       worldOverview: (chatMeta.gameWorldOverview as string | undefined) ?? null,
       canGenerateBackgrounds: gameBackgroundAutoGenerationEnabled,
       canGenerateIllustrations: gameImageAutoGenerationEnabled,

@@ -13,7 +13,9 @@ import {
   WORLD_DEFAULT_ELEMENTS,
   WORLD_LOOT_RARITIES,
   WORLD_PACES,
+  WORLD_ART_FAMILIES,
   WORLD_SCALES,
+  worldKitArtFamily,
   WORLD_STARTER_KITS,
   parseWorldKit,
   worldKitReworded,
@@ -145,6 +147,8 @@ export function GameSetupWorldKitChooser({
   const [writing, setWriting] = useState(false);
   const [writeError, setWriteError] = useState<string | null>(null);
   const checked = kit ? parseWorldKit(kit) : null;
+  // The family its art and music come from: its own, or a kit saved before families its starter's.
+  const family = worldKitArtFamily(kit);
   // The kit as last drawn, so a write that comes back late lands only on the kit it was asked for:
   // picking another kit, or changing a word, while it was out keeps what the player did.
   const latest = useRef(kit);
@@ -307,6 +311,34 @@ export function GameSetupWorldKitChooser({
                   onChange={(event) => edit((draft) => (draft.summary = event.target.value))}
                   className={INPUT}
                 />
+              </div>
+              <div>
+                <label htmlFor="world-kit-family" className={FIELD_LABEL}>
+                  {t("game.worldKit.setup.family")}
+                </label>
+                <select
+                  id="world-kit-family"
+                  value={family ?? ""}
+                  onChange={(event) =>
+                    edit((draft) => {
+                      if (event.target.value) draft.family = event.target.value;
+                      else delete draft.family;
+                    })
+                  }
+                  className={INPUT}
+                >
+                  {!family && <option value="">{t("game.worldKit.setup.families.none")}</option>}
+                  {[...WORLD_ART_FAMILIES, ...(!family || WORLD_ART_FAMILIES.includes(family) ? [] : [family])].map(
+                    (each) => (
+                      <option key={each} value={each}>
+                        {WORLD_ART_FAMILIES.includes(each) ? t(`game.worldKit.setup.families.${each}`) : each}
+                      </option>
+                    ),
+                  )}
+                </select>
+                <p className="mt-1 text-[var(--muted-foreground)]">
+                  {family ? t("game.worldKit.setup.familyHelp", { family }) : t("game.worldKit.setup.familyNoneHelp")}
+                </p>
               </div>
 
               <WordsField

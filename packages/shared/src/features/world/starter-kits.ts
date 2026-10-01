@@ -87,6 +87,7 @@ const highFantasy: WorldKitInput = {
   schemaVersion: 1,
   id: "high_fantasy",
   label: "High fantasy",
+  family: "fantasy",
   summary:
     "Kingdoms and provinces, walled towns and villages on old roads, guilds and temples and noble houses, magic that is rare and real, and monsters beyond the fields.",
   scale: "realm",
@@ -285,6 +286,7 @@ const wuxia: WorldKitInput = {
   schemaVersion: 1,
   id: "wuxia_xianxia",
   label: "Wuxia and xianxia",
+  family: "wuxia",
   summary:
     "An empire of provinces and prefectures, market towns and teahouses, and the jianghu beside it: martial sects on their mountains, sworn brothers, escort agencies, feuds and secret manuals; with xianxia, cultivation and flying swords.",
   scale: "realm",
@@ -528,6 +530,7 @@ const modernDay: WorldKitInput = {
   schemaVersion: 1,
   id: "modern_day",
   label: "Modern day",
+  family: "modern",
   summary:
     "The present day, from a quiet village to a city: neighbors, schools, cafés and shops, jobs and festivals, friendships and small rivalries. Gentle by default, for slice of life.",
   scale: "town",
@@ -696,6 +699,7 @@ const modernSupernatural: WorldKitInput = {
   schemaVersion: 1,
   id: "modern_supernatural",
   label: "Modern supernatural",
+  family: "modern",
   summary:
     "The present day with something hidden in it: covens, old courts of the night, hunters and things that should not be, living beside people who never notice.",
   scale: "town",
@@ -884,6 +888,7 @@ const twenties: WorldKitInput = {
   schemaVersion: 1,
   id: "the_1920s",
   label: "The 1920s",
+  family: "jazz_age",
   summary:
     "The years after the Great War: jazz and speakeasies, newspapers and rail depots, unions and political machines, bootleggers and the people who chase them.",
   scale: "region",
@@ -1058,6 +1063,7 @@ const cyberpunk: WorldKitInput = {
   schemaVersion: 1,
   id: "cyberpunk",
   label: "Cyberpunk",
+  family: "scifi",
   summary:
     "A megacity of districts and stacked blocks under corporate towers: gangs, fixers, netrunners, street clinics and night markets, and everybody owing somebody.",
   scale: "region",
@@ -1215,6 +1221,7 @@ const spaceOpera: WorldKitInput = {
   schemaVersion: 1,
   id: "space_opera",
   label: "Space opera",
+  family: "scifi",
   summary:
     "A sector of star systems joined by jump lanes: capital worlds and frontier colonies, noble houses and guilds, fleets and crews, and ruins older than anyone.",
   scale: "sector",
@@ -1383,6 +1390,7 @@ const postApocalyptic: WorldKitInput = {
   schemaVersion: 1,
   id: "post_apocalyptic",
   label: "Post-apocalyptic",
+  family: "wasteland",
   summary:
     "After the fall: camps and holds among the ruins, caravans on the old highways, water and fuel worth fighting for, and new ways growing out of the old.",
   scale: "region",

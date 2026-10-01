@@ -843,6 +843,9 @@ test("A setting kit is off by default, can be picked, written for the setting, e
   // Its battlefields (worldgen W6d): a scene renamed and a tile word of its own.
   await wizard.getByLabel("Scene", { exact: true }).first().fill("Harbor road");
   await wizard.getByLabel("Open tiles", { exact: true }).fill("Quay");
+  // Its art and music (worldgen W6f): the modern day's own family, changed to the jazz age's.
+  await expect(wizard.getByLabel("Art and music", { exact: true })).toHaveValue("modern");
+  await wizard.getByLabel("Art and music", { exact: true }).selectOption({ label: "Jazz age" });
   // Retyping the places keeps the settlements on the layer of that name.
   const settlements = wizard.getByLabel("Which of them holds the settlements", { exact: true });
   await expect(settlements.locator("option:checked")).toHaveText("city");
@@ -885,6 +888,7 @@ test("A setting kit is off by default, can be picked, written for the setting, e
   expect(result.config.worldKit.loot.common).toEqual(["Fishing net", "Tide table"]);
   expect(result.config.worldKit.scenes[0]).toEqual({ label: "Harbor road", like: "city" });
   expect(result.config.worldKit.tiles.plains).toBe("Quay");
+  expect(result.config.worldKit.family).toBe("jazz_age");
   const elements = result.config.worldKit.elements as Array<{ label: string; beats?: string[] }>;
   expect(elements.map((element) => element.label)).toEqual([
     "Flame",

@@ -591,6 +591,7 @@ export const sidecarRoutes: FastifyPluginAsync = async (app) => {
           currentMusic: body.context.currentMusic ?? null,
           recentMusic: body.context.recentMusic ?? null,
           availableMusic: musicTags,
+          family: body.context.artFamily,
         });
         result.music = scoredMusic ?? null;
       }

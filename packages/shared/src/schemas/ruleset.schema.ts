@@ -1163,12 +1163,17 @@ const riderAmountIssue = (rider: { amount: { dice?: string; flat?: number } }, c
 
 /** A rider a party member carries, from a catalog entry. `sources` names the attack lists it fires
  *  on and `requires` one truthy column of those lists' rows, so a rider that only comes off certain
- *  weapons says which without the Engine knowing one word of what a weapon is. */
+ *  weapons says which without the Engine knowing one word of what a weapon is. `weapons` (Capability
+ *  API 1.67) says the same of held weapons: one carrying any of these item tags. */
 const catalogRiderSchema = z
   .object({
     ...riderCoreShape,
     sources: z.array(sheetId).min(1).max(8).optional(),
     requires: z.object({ column: sheetId }).strict().optional(),
+    weapons: z
+      .object({ tags: z.array(sheetId).min(1).max(8) })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine(riderAmountIssue);
@@ -6399,6 +6404,12 @@ export function rulesetCatalogEntryIssues(
           add([...path, "requires", "column"], `No attack list this rider reads has a column "${column}"`);
         }
       }
+      // A held weapon's tags are the items block's own.
+      mechanics.rider.weapons?.tags.forEach((tag, tagIndex) => {
+        if (!definition.items?.tags?.some((each) => each.id === tag)) {
+          add([...path, "weapons", "tags", tagIndex], `Unknown item tag "${tag}"`);
+        }
+      });
       const types = definition.combat.damageTypes
         ? new Set(definition.combat.damageTypes.map((type) => type.trim().toLowerCase()))
         : null;

@@ -556,7 +556,10 @@ const capabilityPackageManifestBaseSchema = z
 //        soft seam, for the same reason as 1.20 through 1.65: an Engine that cannot read these refuses
 //        the whole ruleset or catalog file, so a package that ships any of them declares 1.66. No
 //        permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 66 } as const);
+// 1.67: a catalog entry's rider may name `weapons` by item tag, so it fires on a held weapon as it
+//        does on an attack row (Sneak Attack with a rapier held from the bag). A new key on the strict
+//        rider, so a package whose entries carry one declares 1.67.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 67 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

@@ -1132,17 +1132,28 @@ function truthyColumn(row: Record<string, unknown>, column: string): boolean {
 /**
  * The attack actions one rider fires on, resolved once when the fight begins.
  *
- * Undefined is "any hit at all", which is what a rider that names neither an attack list nor a
- * column means. Naming either turns into the ids of the rows that qualify, so the resolution never
- * reads a sheet again: the row a rider needs may have been edited by then.
+ * Undefined is "any hit at all", which is what a rider that names neither an attack list, a column
+ * nor weapons means. Naming any turns into the ids of the rows and held weapons that qualify, so the
+ * resolution never reads a sheet again: the row a rider needs may have been edited by then. A rider
+ * that names only weapons fires on no row, and one that names no weapons on no held weapon.
  */
 function riderActionIds(
   combat: RulesetCombat,
   build: RulesetSheetBuild,
   rider: NonNullable<RulesetCatalogMechanics["rider"]>,
+  items: readonly RulesetSheetItem[] | undefined,
 ): string[] | undefined {
-  if (!rider.sources && !rider.requires) return undefined;
+  if (!rider.sources && !rider.requires && !rider.weapons) return undefined;
   const ids: string[] = [];
+  // A held weapon with one of the tags, and its off-hand strike where it has one (`itemAttackActions`'
+  // ids).
+  items?.forEach((held, index) => {
+    if (!rider.weapons || !held.worn || !held.item.attack) return;
+    if (!held.item.tags?.some((tag) => rider.weapons!.tags.includes(tag))) return;
+    ids.push(`item:${index}`);
+    if (held.item.attack.offHand) ids.push(`offhand:${index}`);
+  });
+  if (!rider.sources && !rider.requires) return ids;
   (combat.attacks ?? []).forEach((source, index) => {
     if (rider.sources && !rider.sources.includes(source.list)) return;
     const rows = build.lists?.[source.list];
@@ -1167,7 +1178,7 @@ function rowName(definition: RulesetDefinition, listId: string, row: Record<stri
 }
 
 /** One rider a catalog entry carries, with its dice grown by the sheet exactly as an amount's are
- *  and the rows it fires on already worked out. */
+ *  and the rows and held weapons it fires on already worked out. */
 function riderFrom(
   definition: RulesetDefinition,
   combat: RulesetCombat,
@@ -1176,6 +1187,7 @@ function riderFrom(
   id: string,
   label: string,
   mechanics: RulesetCatalogMechanics,
+  items: readonly RulesetSheetItem[] | undefined,
 ): RulesetCombatRider | null {
   const declared = mechanics.rider;
   const amount = declared ? amountOf(declared.amount) : null;
@@ -1191,7 +1203,7 @@ function riderFrom(
         ),
       )
     : 0;
-  const actions = riderActionIds(combat, build, declared);
+  const actions = riderActionIds(combat, build, declared, items);
   return {
     id,
     label,
@@ -1213,6 +1225,7 @@ function abilityActions(
   catalogs: RulesetCatalogEntriesById,
   evaluated: EvaluatedRulesetSheet,
   perCell: number | undefined,
+  items: readonly RulesetSheetItem[] | undefined,
 ): { actions: RulesetCombatAction[]; riders: RulesetCombatRider[] } {
   const rows = build.lists?.[source.list];
   if (!Array.isArray(rows)) return { actions: [], riders: [] };
@@ -1248,6 +1261,7 @@ function abilityActions(
         `rider:${index}:${rowIndex}`,
         name,
         entry.mechanics,
+        items,
       );
       if (!rider) return;
       seen.add(ref);
@@ -1441,7 +1455,7 @@ function sheetCombatant(
       )
     : undefined;
   const abilities = (combat.abilities ?? []).map((source, index) =>
-    abilityActions(definition, combat, source, index, build, catalogs, evaluated, perCell),
+    abilityActions(definition, combat, source, index, build, catalogs, evaluated, perCell, input.items),
   );
   const actions = [
     ...(combat.attacks ?? []).flatMap((source, index) =>

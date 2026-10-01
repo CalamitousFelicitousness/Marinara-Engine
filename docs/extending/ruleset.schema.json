@@ -7319,6 +7319,26 @@
                           ],
                           "additionalProperties": false
                         },
+                        "weapons": {
+                          "type": "object",
+                          "properties": {
+                            "tags": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 8
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "tags"
+                          ],
+                          "additionalProperties": false
+                        },
                         "$comment": {}
                       },
                       "required": [

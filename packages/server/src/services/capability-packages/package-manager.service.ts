@@ -1020,6 +1020,17 @@ function entriesCarryItemGate(entries: unknown): boolean {
   );
 }
 
+const HELD_RIDER_ISSUE =
+  "A ruleset whose riders fire on held weapons requires schemaVersion 2 and capabilityApi 1.67 or newer";
+
+/** A rider that names held `weapons`, which is 1.67: a new key on the strict rider. */
+function entriesCarryHeldRider(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) &&
+    entries.some((entry) => plainRecord(plainRecord(plainRecord(entry)?.mechanics)?.rider)?.weapons !== undefined)
+  );
+}
+
 const MONEY_ISSUE =
   "A ruleset whose layers remove coins, or whose loot tables drop coins, requires schemaVersion 2 and capabilityApi 1.64 or newer";
 
@@ -1343,6 +1354,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryItemRestore(header.entries) && !declaresApi(60)) return ITEM_RESTORE_ISSUE;
       if (entriesCarryChargesOverTime(header.entries) && !declaresApi(61)) return CHARGES_OVER_TIME_ISSUE;
       if (entriesCarryItemGate(header.entries) && !declaresApi(62)) return ITEM_GATE_ISSUE;
+      if (entriesCarryHeldRider(header.entries) && !declaresApi(67)) return HELD_RIDER_ISSUE;
       if (entriesCarryCreatureLoot(header.entries)) carriesLoot = true;
       if (entriesCarryMarket(header.entries)) carriesMarket = true;
       if (entriesCarryMarketDay(header.entries)) carriesMarketDay = true;
@@ -1381,6 +1393,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryItemRestore(fileEntries) && !declaresApi(60)) return ITEM_RESTORE_ISSUE;
       if (entriesCarryChargesOverTime(fileEntries) && !declaresApi(61)) return CHARGES_OVER_TIME_ISSUE;
       if (entriesCarryItemGate(fileEntries) && !declaresApi(62)) return ITEM_GATE_ISSUE;
+      if (entriesCarryHeldRider(fileEntries) && !declaresApi(67)) return HELD_RIDER_ISSUE;
       if (entriesCarryCreatureLoot(fileEntries)) carriesLoot = true;
       if (entriesCarryMarket(fileEntries)) carriesMarket = true;
       if (entriesCarryMarketDay(fileEntries)) carriesMarketDay = true;

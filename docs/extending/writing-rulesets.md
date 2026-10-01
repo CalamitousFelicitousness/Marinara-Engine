@@ -634,7 +634,7 @@ The limits are 12 catalogs per ruleset, 2000 entries per catalog either way, and
 
 ## Items: what a party carries
 
-Armor, weapons, potions, gear, ammunition and money are items. An optional `items` block declares the words every item of your ruleset is written in, and a catalog with `holds: "items"` lists the items themselves. Both need Capability API 1.49; the block's `rarityCaps` and `propose`, which govern the items the Game Master invents, need 1.51, a value that reads the items a character holds (`itemStat`) needs 1.52, what an item does to checks while worn or carried, with the block's `bonus` caps, needs 1.53, what an item asks of its wearer and the abilities it changes need 1.54, a weapon's `attack` needs 1.55, what an item does in a fight needs 1.56, what a weapon shoots and holds loaded needs 1.57, a weapon's modes, off-hand attack, floor and conditions on a hit need 1.58, what using an item does in a fight, with the charges it holds, needs 1.59, a use that restores a pool needs 1.60, charges regained on a rest or an item that breaks when emptied need 1.61, a use that asks a check first (`gate`) needs 1.62, loot tables and a creature's loot need 1.63, a loot line that drops coins or a layer that takes coins out needs 1.64, a market, an item's `sold` place and a `service` need 1.65, and a market day (a purse, `buyBack`, a seller's `stock`, a `limited` count, or a `sold` that names no place) needs 1.66.
+Armor, weapons, potions, gear, ammunition and money are items. An optional `items` block declares the words every item of your ruleset is written in, and a catalog with `holds: "items"` lists the items themselves. Both need Capability API 1.49; the block's `rarityCaps` and `propose`, which govern the items the Game Master invents, need 1.51, a value that reads the items a character holds (`itemStat`) needs 1.52, what an item does to checks while worn or carried, with the block's `bonus` caps, needs 1.53, what an item asks of its wearer and the abilities it changes need 1.54, a weapon's `attack` needs 1.55, what an item does in a fight needs 1.56, what a weapon shoots and holds loaded needs 1.57, a weapon's modes, off-hand attack, floor and conditions on a hit need 1.58, what using an item does in a fight, with the charges it holds, needs 1.59, a use that restores a pool needs 1.60, charges regained on a rest or an item that breaks when emptied need 1.61, a use that asks a check first (`gate`) needs 1.62, loot tables and a creature's loot need 1.63, a loot line that drops coins or a layer that takes coins out needs 1.64, a market, an item's `sold` place and a `service` need 1.65, a market day (a purse, `buyBack`, a seller's `stock`, a `limited` count, or a `sold` that names no place) needs 1.66, and a rider that fires on held weapons (`weapons`) needs 1.67.
 
 ### The items block
 
@@ -1731,7 +1731,10 @@ adds one more damage clause to the first qualifying hit of a period, automatical
 
 `sources` names the attack lists it comes off and `requires` one truthy column of their rows, so a
 rider that only fires with certain weapons says which without the Engine knowing what a weapon is;
-naming neither means any hit its holder lands. `when` is ANY-of: `advantage` is how the attack roll
+naming neither means any hit its holder lands. A weapon held from the bag is no row, so `weapons`
+(Capability API 1.67) names the item tags it fires on as well: `"weapons": { "tags": ["finesse",
+"ranged"] }` fires on a hit with a held weapon carrying either tag, its off-hand strike included.
+Naming only `weapons` fires on no row, and naming only rows fires on no held weapon. `when` is ANY-of: `advantage` is how the attack roll
 finally leaned, and `ally-adjacent` is a standing ally of the attacker who can act, within one cell
 of the target on a board and anywhere at all without one. `oncePer` is `turn` (fresh at the start of
 every turn there is, so a strike made while somebody else acts can still carry one) or `round`.

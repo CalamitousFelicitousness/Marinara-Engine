@@ -1760,6 +1760,21 @@ Capability API 1.66: slice I9-2 of the ruleset items plan (#6934).
   as its own variant, so the earlier sections do not move with the day's dice) and
   `e2e/game-ruleset-markets.e2e.ts`, with 78 deliberate breaks each caught.
 
+### What riders on held weapons settled
+
+Capability API 1.67, ahead of the 5e package's weapons as items (P1).
+
+- **A rider reads rows, so a held weapon never qualified.** `riderActionIds` turned `sources` and
+  `requires` into the ids of the attack rows that qualify, and a weapon held from the bag is an
+  `item:<n>` action, so a 5e Sneak Attack would have stopped firing the day the package's weapons
+  became items. A rider's `weapons: { tags }` adds the held weapons carrying any of those tags, and
+  their off-hand strike where they have one; a rider naming only rows still fires on no held weapon,
+  and one naming nothing on any hit, as before.
+- **Checked at import** (each tag is one the items block declares) and **gated at 1.67**, inline and
+  in a catalog file.
+- **Proven** by the rider section of `scripts/regressions/game-ruleset-weapons.regression.ts`, with 11
+  deliberate breaks each caught.
+
 ## Gaps a ruleset author found
 
 The author of [Marinara-RPG-Extension](https://github.com/Kenhito/Marinara-RPG-Extension), who

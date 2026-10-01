@@ -12,8 +12,10 @@ import { worldCast, worldPersonSheet } from "./people.js";
 import { worldHistory, worldHistoryLine, worldNotablePast, worldPlacePast } from "./history.js";
 import {
   worldAddedPlace,
+  worldBrewingNear,
   worldChangesLines,
   worldLedgerInstructions,
+  worldNewsHere,
   worldStandingWord,
   type WorldPresent,
 } from "./ledger.js";
@@ -133,6 +135,12 @@ export function worldKitSize(kit: WorldKit, word: string): { id: string } | unde
 const labelOf = (entries: ReadonlyArray<{ id: string; label: string }>, id: string | undefined) =>
   entries.find((entry) => entry.id === id)?.label ?? id ?? "";
 const plural = (word: string) => (/s$/i.test(word) ? word : `${word}s`);
+
+/** How long ago, in the kit's days. */
+function daysAgo(kit: WorldKit, count: number): string {
+  if (count <= 0) return "Today";
+  return `${count} ${count === 1 ? kit.calendar.day : plural(kit.calendar.day)} ago`;
+}
 
 function days(kit: WorldKit, count: number): string {
   const day = kit.calendar.day;
@@ -266,6 +274,32 @@ export function worldWhereYouAreText(
               `${describe(kit, other, present)}, ${days(kit, link.days)} by ${labelOf(kit.travel, link.way)}`,
           )
           .join("; ")}.`,
+      );
+    }
+  }
+  // The living world (worldgen W5): the news that has reached here, and what is brewing near it.
+  if (present) {
+    const news = worldNewsHere(game, present, home?.id);
+    if (news.length) {
+      lines.push(
+        `- Word that has reached here, newest first:`,
+        ...news.map(
+          ({ news: each, ago, rumour }) => `  - ${daysAgo(kit, ago)}${rumour ? ", a rumour" : ""}: ${each.text}`,
+        ),
+      );
+    }
+    for (const { pending, weeks, ripe, here, heard } of worldBrewingNear(game, present, home?.id)) {
+      const [a, b] = pending.groups;
+      if (here && ripe && !pending.held) {
+        lines.push(
+          `- About to happen here [${pending.id}]: ${a} and ${b} are close to fighting over it. Play it out in the scene, and record how it ends.`,
+        );
+        continue;
+      }
+      lines.push(
+        `- Brewing [${pending.id}]: tension between ${a} and ${b}, for ${weeks} ${weeks === 1 ? "week" : "weeks"}${
+          pending.held ? ", held" : ripe ? "; it could come to blows any week" : ""
+        }${heard ? "" : " (the party has not heard of it)"}.`,
       );
     }
   }

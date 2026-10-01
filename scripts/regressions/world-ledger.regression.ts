@@ -162,7 +162,10 @@ const answer = (game: GameWorld, content: string, before: string[] = []) =>
     ),
   );
   const present = worldPresent(fantasy, readWorldLedger(replies));
-  assert.equal(present.standing["The Wardens"], 30);
+  // A deed pushes as far as the party's renown reaches (worldgen W5): half at first, rising with each.
+  const reach = (renown: number) => 0.5 + 1.5 * Math.min(1, renown / 20);
+  assert.equal(present.standing["The Wardens"], Math.round(15 * reach(0)) + Math.round(15 * reach(1)));
+  assert.equal(present.renown, 9);
   for (const [value, word] of [
     [100, "trusted"],
     [50, "trusted"],
@@ -183,7 +186,7 @@ const answer = (game: GameWorld, content: string, before: string[] = []) =>
   assert.deepEqual(present.leaders["The Ferrymen"], { name: "Old Mags", sinceYearsAgo: 0 });
   assert.equal(present.prosperity[capital.id], "thriving", "prosperity steps and stops at the top");
   const pair = "The Ferrymen|The Wardens";
-  assert.equal(present.relations[pair], Math.min(100, (history.relations[pair] ?? 0) + 25));
+  assert.equal(present.relations[pair], Math.min(100, (history.relations[pair] ?? 0) + Math.round(25 * reach(7))));
   assert.deepEqual(present.done[second.id], ["The Wardens took it (at dawn)."]);
   // The history is untouched: the seed never overwrites what the story did, nor the story the seed.
   assert.notEqual(worldHistory(fantasy).leaders["The Ferrymen"]?.name, "Old Mags");
@@ -211,7 +214,7 @@ const answer = (game: GameWorld, content: string, before: string[] = []) =>
       answer(fantasy, '[world: deed="help" group="The Ferrymen"] [world: deed="hinder" group="The Ferrymen"]'),
     ]),
   );
-  assert.equal(even.standing["The Ferrymen"], 0);
+  assert.equal(worldStandingWord(even.standing["The Ferrymen"]!), "neither");
   assert.ok(
     !worldWhereYouAreText(fantasy, { place: capital, present: even }).includes("standing"),
     "neither is not news",
@@ -304,7 +307,7 @@ const answer = (game: GameWorld, content: string, before: string[] = []) =>
   assert.ok(at.includes("The Ferrymen is gone."), at);
   assert.ok(at.includes(`${second.name} lies in ruins.`), at);
   assert.ok(at.includes("The Lantern Guild (guild, at The Sunken Shrine) has come into the world."), at);
-  assert.ok(at.includes("The Lantern Guild (trusted)"), at);
+  assert.ok(at.includes("The Lantern Guild (on good terms)"), at);
   assert.ok(
     worldWhereYouAreText(fantasy, { place: second, present }).includes(", in ruins)"),
     "a fallen place is in ruins",

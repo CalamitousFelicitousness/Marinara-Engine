@@ -6,7 +6,10 @@ import {
   checkWorldBrief,
   compileGameWorld,
   parseWorldKit,
+  readWorldLedger,
   worldCast,
+  worldPresent,
+  worldWhereYouAreText,
   type GameNpc,
 } from "@marinara-engine/shared";
 import { openGame } from "./game-ruleset-fight-fixture.js";
@@ -319,7 +322,7 @@ test("what the story does to the world is remembered: deeds and places answered,
     [
       "I help the wardens mend the dikes.",
       // A deed, a place the story brings in, and a deed on a group the world does not have (worldgen W4).
-      'The wardens cheer. [world: deed="help" group="the reed wardens" note="mended the dikes"] [world: fact="place" name="The Sunken Shrine" in="hollin"] [world: deed="destroy" group="The Grey Hand"]',
+      'The wardens cheer. [world: deed="ally" group="the reed wardens" note="mended the dikes"] [world: fact="place" name="The Sunken Shrine" in="hollin"] [world: deed="destroy" group="The Grey Hand"]',
     ],
     // A place a reply brings in is a place the same reply can go.
     [
@@ -383,7 +386,7 @@ test("what the story does to the world is remembered: deeds and places answered,
     const first = await send("I help the wardens mend the dikes.", "The wardens cheer.");
     expect(first).toContain("When the party changes the world, record it in your reply");
     const answered = await lastReply();
-    expect(answered).toContain('[world: deed="help" group="The Reed Wardens" note="mended the dikes" result="ok"]');
+    expect(answered).toContain('[world: deed="ally" group="The Reed Wardens" note="mended the dikes" result="ok"]');
     expect(answered).toContain('[world: fact="place" name="The Sunken Shrine" in="Hollin" result="ok"]');
     expect(answered).toContain('[world: deed="destroy" group="The Grey Hand" result="refused" reason="unknown-group"]');
     await expect(narration).not.toContainText("[world:");
@@ -408,6 +411,106 @@ test("what the story does to the world is remembered: deeds and places answered,
     expect(third).toContain("<where_you_are>\\nThe party is in The Drowned Stair, in Hollin (village, ");
     expect(await lastReply()).toContain('[place: name="The Sunken Shrine" size="village" result="ok"]');
     await page.screenshot({ path: testInfo.outputPath("world-ledger.png") });
+  } finally {
+    if (chatId) await request.delete(`/api/chats/${chatId}`).catch(() => undefined);
+    if (connectionId) await request.delete(`/api/connections/${connectionId}`).catch(() => undefined);
+    model.server.closeAllConnections();
+    await new Promise<void>((resolve) => model.server.close(() => resolve()));
+  }
+});
+
+test("the world goes on as time passes: told in the Game Master's block as the shared world computes it", async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  const checked = checkWorldBrief(kit, {
+    ...brief,
+    groups: [
+      { name: "The Reed Wardens", kind: "village_council", seat: "Hollin", rivals: ["The Tollmen"] },
+      { name: "The Tollmen", kind: "merchant_company", seat: "Thornmere" },
+    ],
+  });
+  if (!checked.ok) throw new Error(checked.issues.join("; "));
+  const passing =
+    'The weeks go by. [world: event="The river burst its banks" kind="everyday" place="hollin"] [world: days="30"]';
+  const model = await fakeModel([
+    ["I wait out the floods.", passing],
+    ["I ask what news there is.", "The ferryman shrugs."],
+  ]);
+  let connectionId = "";
+  let chatId = "";
+  try {
+    const connection = await request.post("/api/connections", {
+      data: {
+        name: "Local living fixture",
+        provider: "custom",
+        baseUrl: model.baseUrl,
+        apiKey: "synthetic-test-key",
+        model: "living-fixture",
+        maxContext: 32768,
+        treatAsLocalEndpoint: true,
+      },
+    });
+    connectionId = (await connection.json()).id;
+    const created = await request.post("/api/chats", {
+      data: { name: "Living", mode: "game", characterIds: [], connectionId },
+    });
+    chatId = ((await created.json()) as { id: string }).id;
+    const inputs = { ...gameWorld, brief: checked.brief };
+    const meta = await request.patch(`/api/chats/${chatId}/metadata`, {
+      data: {
+        gameId: `living-${chatId}`,
+        gameSessionStatus: "active",
+        gameIntroPresented: true,
+        gameImageAutoGenerationEnabled: false,
+        enableAgents: false,
+        enableTools: false,
+        gameWorldKit: kit,
+        gameWorld: inputs,
+      },
+    });
+    expect(meta.ok(), await meta.text()).toBeTruthy();
+    await request.post(`/api/chats/${chatId}/messages`, {
+      data: { role: "assistant", content: "Mist lies on the reeds around Hollin." },
+    });
+    await openGame(page, chatId);
+    const narration = page.locator('[data-component="GameNarration.ActivePanel"]');
+    await expect(narration).toContainText("Mist lies on the reeds around Hollin.", { timeout: 30_000 });
+    const send = async (said: string, shown: string) => {
+      const before = model.prompts.length;
+      await page.getByPlaceholder("What do you do?", { exact: true }).fill(said);
+      await page.getByRole("button", { name: "Send game turn", exact: true }).click();
+      await expect(narration).toContainText(shown, { timeout: 30_000 });
+      return model.prompts.slice(before).find((body) => body.includes(said))!;
+    };
+
+    const first = await send("I wait out the floods.", "The weeks go by.");
+    expect(first).toContain('[world: days=\\"N\\"]');
+    const replies = (
+      (await (await request.get(`/api/chats/${chatId}/messages`)).json()) as Array<{ role: string; content: string }>
+    )
+      .filter((message) => message.role === "assistant")
+      .map((message) => message.content);
+    expect(replies.at(-1)).toContain('[world: days="30" result="ok"]');
+
+    // The next turn is told the world as the shared fold steps it: the same news, the same brewing.
+    const second = await send("I ask what news there is.", "The ferryman shrugs.");
+    const game = {
+      kit,
+      ...inputs,
+      brief: checked.brief,
+      world: compileGameWorld({ kit, ...inputs, brief: checked.brief }),
+    };
+    const present = worldPresent(game, readWorldLedger(replies));
+    expect(present.day).toBe(30);
+    const hollin = game.world.places.find((place) => place.name === "Hollin")!;
+    const expected = worldWhereYouAreText(game, { place: hollin, present, met: new Set() }).split("\n");
+    const told = expected.filter((line) =>
+      /^(- Word that has reached here|- Brewing|- About to happen here|  - )/.test(line),
+    );
+    expect(told.join("\n")).toContain("30 days ago: The river burst its banks");
+    for (const line of told) expect(second).toContain(JSON.stringify(line).slice(1, -1));
   } finally {
     if (chatId) await request.delete(`/api/chats/${chatId}`).catch(() => undefined);
     if (connectionId) await request.delete(`/api/connections/${connectionId}`).catch(() => undefined);

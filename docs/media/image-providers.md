@@ -23,7 +23,7 @@ If **Test Image** returns a picture, your connection is ready. If it fails, chec
 
 ## Choosing a service
 
-The services fall into three groups. Cloud services need an API key and an account. Free services need no key. Local services run image software on your own computer.
+The services fall into three groups. Cloud services need an account, and most also need an API key. Free services need no key. Local services run image software on your own computer.
 
 The table below shows each service at a glance. Details and quirks follow in the per-service sections.
 

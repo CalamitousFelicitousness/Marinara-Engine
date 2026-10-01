@@ -7,6 +7,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - Agents and Download Agents now show Noodle, Slurp, Gacha Forge, Life Sim and other apps that open in their own Home tab in a separate **Apps** group at the top, instead of mixing them into Misc Agents (#6943).
 - The character and persona editors now show the whole name at the top whenever there is room for it, instead of cutting it short next to the creator and version (#6946).
 
+- Many tooltips and help texts in Chat Settings, Settings, lorebooks, connections, and the agent editor now use plain words, so it is easier to tell what each setting does (#6947).
+
 - In Roleplay, a `roll_dice` added under **Function Calling** now reaches the model and actually rolls when called, the same as with the **Rolls** command. If **Rolls** is also on, its **Who can roll dice** choice still applies (#6945).
 - On phones, the top bar now looks like a small version of the desktop one: Home and Chats sit at the left and a hamburger menu sits at the right, with wider, finger-sized buttons, instead of every control stretching across the bar.
 

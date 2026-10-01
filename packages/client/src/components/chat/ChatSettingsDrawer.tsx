@@ -1767,7 +1767,7 @@ export function ChatSettingsDrawer({
   });
   const musicDjAgentMeta = getAgentDisplayMeta("spotify", {
     name: "Music DJ",
-    description: "Plays music that fits the mood of the story, through Spotify or YouTube.",
+    description: "Plays music that fits the mood of the story, from Spotify, YouTube, or your own Game Assets music.",
   });
   const knowledgeRetrievalAgentMeta = getAgentDisplayMeta("knowledge-retrieval", {
     name: "Knowledge Retrieval",

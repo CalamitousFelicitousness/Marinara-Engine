@@ -6565,6 +6565,19 @@ strong {
   }
 }
 
+@media (max-width: 639px) {
+  .mari-topbar {
+    gap: 0.5rem;
+  }
+
+  .mari-topbar-action {
+    flex: 0 0 auto;
+    width: 3.5rem !important;
+    height: 2.25rem !important;
+    padding: 0 !important;
+  }
+}
+
 @media (pointer: coarse) {
   ::-webkit-scrollbar {
     width: 0.25rem;

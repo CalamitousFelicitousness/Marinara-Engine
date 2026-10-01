@@ -11,7 +11,7 @@ import {
   Sparkles,
   FileText,
   VenetianMask,
-  Ellipsis,
+  Menu,
   Check,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -702,13 +702,13 @@ function TopbarMoreMenu({
         title={label}
         className={cn(
           TOPBAR_PANEL_BUTTON_CLASS,
-          "sm:hidden",
+          "ml-auto sm:hidden",
           open
             ? TOPBAR_ACTIVE_BUTTON_CLASS
             : "text-[var(--muted-foreground)] hover:text-[var(--marinara-chat-chrome-button-text-hover)]",
         )}
       >
-        <Ellipsis size={15} className={TOPBAR_ACCENT_ICON_CLASS} />
+        <Menu size={15} className={TOPBAR_ACCENT_ICON_CLASS} />
       </button>
       {typeof document === "undefined" ? null : createPortal(menu, document.body)}
     </>

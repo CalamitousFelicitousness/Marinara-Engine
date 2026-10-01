@@ -2,7 +2,13 @@ import { prepareViteFixtureDependencies } from "./vite-fixture-dependencies.js";
 import { expect, test, type Locator, type Page, type TestInfo } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { seedUIState } from "./ui-state-fixture.js";
-import { WORLD_STARTER_KITS, type MultiplayerPlayer } from "@marinara-engine/shared";
+import {
+  WORLD_STARTER_KITS,
+  compileGameWorld,
+  parseWorldKit,
+  worldSpatialDraft,
+  type MultiplayerPlayer,
+} from "@marinara-engine/shared";
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 
@@ -1198,6 +1204,62 @@ test("A world is made from a seed in the kit's words: the lore's places kept, th
     family: ["Holt", "Marrow"],
   });
   expect(result.config.world.brief.places[0]).toEqual({ ...canon[0], tags: ["port"] });
+});
+
+test("A game that makes a world can lay it out as its World Maps map, exactly the world's places and ways", async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(120_000);
+  await page.route("**/api/capability-packages/installed", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/capability-packages/agents", (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: "hierarchical-maps",
+          name: "World Maps",
+          description: "Fixture",
+          phase: "post_generation",
+          category: "tracker",
+        },
+      ],
+    }),
+  );
+  await page.route("**/api/connections", (route) => route.fulfill({ json: wizardConnections }));
+  await page.route("**/api/lorebooks", (route) => route.fulfill({ json: [] }));
+  const wizard = await mountWizard(page, testInfo, { isNewGame: true });
+  await wizard
+    .locator("select")
+    .filter({ has: page.locator('option[value="wizard-connection"]') })
+    .first()
+    .selectOption("wizard-connection");
+  const { next } = stepNavigation(wizard);
+  await next();
+  await wizard.getByRole("button", { name: /^High fantasy/u }).click();
+  // Agents and World Maps, with no world yet: no map from the world is offered.
+  for (let step = 0; step < 4; step++) await next();
+  await wizard.getByRole("button", { name: /Enable Agents/u }).click();
+  await expect(wizard.getByRole("button", { name: /^From the world/u })).toHaveCount(0);
+  for (let step = 0; step < 4; step++) await stepNavigation(wizard).back();
+
+  await wizard.getByRole("checkbox", { name: /^Make a world/u }).check();
+  await wizard.getByLabel("World seed", { exact: true }).fill("12345");
+  await expect(wizard.getByTestId("world-preview")).toContainText("The party starts in ");
+  for (let step = 0; step < 4; step++) await next();
+  const fromTheWorld = wizard.getByRole("button", { name: /^From the world/u });
+  await fromTheWorld.click();
+  await expect(fromTheWorld).toHaveAttribute("aria-pressed", "true");
+  await next();
+  await wizard.getByRole("button", { name: /Start/u }).click();
+
+  const result = JSON.parse((await page.getByTestId("wizard-result").textContent()) ?? "{}");
+  expect(result.config.gameWorldMapMode).toBe("hierarchical");
+  expect(result.mapPlan.mode).toBe("world");
+  // The map is exactly the one the shared atlas makes of the game's world.
+  const kit = parseWorldKit(result.config.worldKit);
+  if (!kit.ok) throw new Error(kit.issues.join("; "));
+  const inputs = { kit: kit.kit, ...result.config.world };
+  expect(result.mapPlan.draft).toEqual(worldSpatialDraft({ ...inputs, world: compileGameWorld(inputs) }));
+  expect(result.mapPlan.draft.definition.startingLocationId).toBeTruthy();
 });
 
 test("A shared setup brings its world to a new game", async ({ page }, testInfo) => {

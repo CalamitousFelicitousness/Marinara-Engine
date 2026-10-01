@@ -88,6 +88,7 @@ export * from "./features/world/elements.js";
 export * from "./features/world/battlefields.js";
 export * from "./features/world/art-family.js";
 export * from "./features/world/journal.js";
+export * from "./features/world/atlas.js";
 export * from "./features/world/overused-names.js";
 export * from "./schemas/capability-package.schema.js";
 export * from "./schemas/gm-verb-table.schema.js";

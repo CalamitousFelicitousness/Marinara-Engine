@@ -143,7 +143,8 @@ export function worldDaysAgo(kit: WorldKit, count: number): string {
   return `${count} ${count === 1 ? kit.calendar.day : plural(kit.calendar.day)} ago`;
 }
 
-function days(kit: WorldKit, count: number): string {
+/** How long a trip takes, in the kit's own word for a day. */
+export function worldTripDays(kit: WorldKit, count: number): string {
   const day = kit.calendar.day;
   if (count < 0.1) return `well under a ${day}`;
   if (count < 1) return `about ${Math.round(count * 10) / 10} of a ${day}`;
@@ -272,7 +273,7 @@ export function worldWhereYouAreText(
         `- From here: ${routes
           .map(
             ({ other, link }) =>
-              `${describe(kit, other, present)}, ${days(kit, link.days)} by ${labelOf(kit.travel, link.way)}`,
+              `${describe(kit, other, present)}, ${worldTripDays(kit, link.days)} by ${labelOf(kit.travel, link.way)}`,
           )
           .join("; ")}.`,
       );

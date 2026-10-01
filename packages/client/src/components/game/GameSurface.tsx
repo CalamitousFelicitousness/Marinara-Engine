@@ -189,6 +189,7 @@ import type {
   SceneAnalysis,
   SpatialMapGroundingMode,
   SpatialMapDraftSize,
+  GenerateSpatialMapDraftResponse,
   PendingSpatialTransition,
 } from "@marinara-engine/shared";
 import type { AvatarCrop, SceneSegmentEffect } from "@marinara-engine/shared";
@@ -7114,6 +7115,7 @@ function GameSurfaceComponent({
     | { mode: "manual" }
     | { mode: "template"; selection: unknown }
     | { mode: "shared-world"; selection: unknown }
+    | { mode: "world"; draft: GenerateSpatialMapDraftResponse }
     | {
         mode: "ai";
         size: SpatialMapDraftSize;
@@ -7168,6 +7170,13 @@ function GameSurfaceComponent({
           selection: plan.selection,
         });
         toast.info(localizeUi("ui.game.gamesurfacecomponent.chooseAMapTemplateThenReviewItBeforeSaving"));
+        return;
+      }
+      // The atlas made from the game's world (worldgen W7): reviewed and saved like a drafted map.
+      if (plan.mode === "world") {
+        useGameModeStore.getState().setSetupActive(false);
+        useUIStore.getState().openSpatialMapDraftReview({ chatId, result: plan.draft, source: "game_setup" });
+        toast.success(localizeUi("game.world.atlas.review"));
         return;
       }
       if (plan.mode === "shared-world") {

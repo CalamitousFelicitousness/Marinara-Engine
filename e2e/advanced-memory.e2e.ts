@@ -720,7 +720,7 @@ test("Advanced Memory stays in Chat Settings with confirmed knowledge, resumable
     await expect.poll(() => status.records[0]?.enabled).toBe(false);
     const saveButton = inspector.getByRole("button", { name: "Save correction", exact: true });
     const sourceButton = inspector.getByRole("button", { name: "Inspect source messages", exact: true });
-    await expect(inspector.getByText(/Review the source messages, summary text and character access/)).toBeVisible();
+    await expect(inspector.getByText(/Check the source messages, the summary, and which characters know it/)).toBeVisible();
     await expect(saveButton).toBeEnabled();
     await saveButton.scrollIntoViewIfNeeded();
     await captureThemes(page, info, "advanced-memory-review-correction");
@@ -730,7 +730,7 @@ test("Advanced Memory stays in Chat Settings with confirmed knowledge, resumable
     await saveButton.click();
     expect((await correctionRequest).postDataJSON()).toEqual({ content: "Correction: the notebook is green." });
     await expect(saveButton).toBeDisabled();
-    await expect(inspector.getByText(/Review the source messages, summary text and character access/)).toHaveCount(0);
+    await expect(inspector.getByText(/Check the source messages, the summary, and which characters know it/)).toHaveCount(0);
     const saveBounds = await saveButton.boundingBox();
     const sourceBounds = await sourceButton.boundingBox();
     expect(saveBounds).not.toBeNull();

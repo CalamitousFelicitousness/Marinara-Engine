@@ -2,7 +2,7 @@
 // one the model writes for the player's own setting. A kit gives the Game Master the words this
 // kind of world uses and the kinds of change it allows. Every word can be changed here before the
 // game starts; the game keeps the kit it was created with.
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { Sparkles } from "lucide-react";
 import {
@@ -91,6 +91,10 @@ export function GameSetupWorldKitChooser({
   const [writing, setWriting] = useState(false);
   const [writeError, setWriteError] = useState<string | null>(null);
   const checked = kit ? parseWorldKit(kit) : null;
+  // The kit as last drawn, so a write that comes back late lands only on the kit it was asked for:
+  // picking another kit, or changing a word, while it was out keeps what the player did.
+  const latest = useRef(kit);
+  latest.current = kit;
 
   const cardClass = (selected: boolean) =>
     cn(
@@ -118,13 +122,14 @@ export function GameSetupWorldKitChooser({
     setWriting(true);
     setWriteError(null);
     try {
+      const asked = kit;
       const start = kit ? parseWorldKit(kit) : null;
       const { kit: written } = await api.post<{ kit: WorldKit }>("/game/world-kit", {
         ...writeRequest,
         ...(start?.ok ? { start: start.kit } : {}),
         debugMode: useUIStore.getState().debugMode,
       });
-      onChange(written);
+      if (latest.current === asked) onChange(written);
     } catch (error) {
       const reasons =
         error instanceof ApiError &&

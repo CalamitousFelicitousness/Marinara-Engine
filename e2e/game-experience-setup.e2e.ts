@@ -745,8 +745,10 @@ test("A setting kit is off by default, can be picked, written for the setting, e
   const written = { ...structuredClone(modern), id: "harbor_life", label: "Harbor town life" };
   const writes: Array<Record<string, any>> = [];
   let refuse = true;
+  let gate: Promise<void> | null = null;
   await page.route("**/api/game/world-kit", async (route) => {
     writes.push(route.request().postDataJSON());
+    if (gate) await gate;
     if (refuse) {
       await route.fulfill({
         status: 422,
@@ -797,12 +799,26 @@ test("A setting kit is off by default, can be picked, written for the setting, e
   );
   await expect(wizard.getByLabel("Name", { exact: true })).toHaveValue("Modern day");
   refuse = false;
+
+  // A write that comes back late never replaces a kit picked while it was out.
+  let open!: () => void;
+  gate = new Promise<void>((resolve) => (open = resolve));
+  await wizard.getByRole("button", { name: "Write it for my setting", exact: true }).click();
+  await expect.poll(() => writes.length).toBe(2);
+  await wizard.getByRole("button", { name: /^Cyberpunk A megacity/u }).click();
+  open();
+  gate = null;
+  await expect(wizard.getByRole("button", { name: "Write it for my setting", exact: true })).toBeEnabled();
+  await expect(wizard.getByLabel("Name", { exact: true })).toHaveValue("Cyberpunk");
+  await wizard.getByRole("button", { name: /^Modern day/u }).click();
+  await expect(wizard.getByLabel("Name", { exact: true })).toHaveValue("Modern day");
+
   await wizard.getByRole("button", { name: "Write it for my setting", exact: true }).click();
   await expect(wizard.getByLabel("Name", { exact: true })).toHaveValue("Harbor town life");
   await expect(wizard.getByRole("alert")).toHaveCount(0);
-  expect(writes).toHaveLength(2);
-  expect(writes[1]).toMatchObject({ connectionId: "wizard-connection", genre: "Fantasy", tone: "Heroic" });
-  expect(writes[1]!.start.id).toBe("modern_day");
+  expect(writes).toHaveLength(3);
+  expect(writes[2]).toMatchObject({ connectionId: "wizard-connection", genre: "Fantasy", tone: "Heroic" });
+  expect(writes[2]!.start.id).toBe("modern_day");
 
   // Every word can be changed; a list is typed as one line, and a trailing comma survives typing.
   const sizes = wizard.getByLabel("Settlement sizes, smallest first", { exact: true });
@@ -825,6 +841,7 @@ test("A setting kit is off by default, can be picked, written for the setting, e
   await expect(wizard.getByText("This kit cannot be used yet:", { exact: true })).toBeVisible();
   for (let step = 0; step < 5; step++) await next();
   await expect(wizard.getByRole("button", { name: /Start/u })).toBeDisabled();
+  await expect(wizard.getByRole("button", { name: "Download setup", exact: true })).toBeDisabled();
   await expect(
     wizard.getByText("Fix the setting kit on the World step before starting.", { exact: true }),
   ).toBeVisible();
@@ -836,6 +853,7 @@ test("A setting kit is off by default, can be picked, written for the setting, e
   await expect(wizard.getByText("This kit cannot be used yet:", { exact: true })).toHaveCount(0);
 
   for (let step = 0; step < 5; step++) await next();
+  await expect(wizard.getByRole("button", { name: "Download setup", exact: true })).toBeEnabled();
   await wizard.getByRole("button", { name: /Start/u }).click();
   const result = JSON.parse((await page.getByTestId("wizard-result").textContent()) ?? "{}");
   expect(result.config.worldKit.label).toBe("Harbor town life");

@@ -43,11 +43,15 @@ export function buildWorldKitWritingPrompt(input: WorldKitWritingInput): { syste
   return { system, user };
 }
 
-/** Reads what the model wrote as a kit. The schema version is the Engine's to set, never the model's. */
+/** The id every written kit has: it is the player's own, never one of the starter kits it began from. */
+export const WRITTEN_WORLD_KIT_ID = "written";
+
+/** Reads what the model wrote as a kit. The schema version and the id are the Engine's to set, never
+ *  the model's: a written kit that kept a starter's id would read as that starter, unchanged. */
 export function readWrittenWorldKit(data: unknown): { ok: true; kit: WorldKit } | { ok: false; issues: string[] } {
   if (!data || typeof data !== "object" || Array.isArray(data))
     return { ok: false, issues: ["kit: Not a JSON object"] };
-  return parseWorldKit({ ...(data as Record<string, unknown>), schemaVersion: 1 });
+  return parseWorldKit({ ...(data as Record<string, unknown>), schemaVersion: 1, id: WRITTEN_WORLD_KIT_ID });
 }
 
 /** The second turn after a refusal: the reasons, so the model can correct them. */

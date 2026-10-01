@@ -232,6 +232,7 @@ try {
     assert.equal(response.statusCode, 200, response.body);
     assert.equal(response.json().kit.label, "Harbor town life");
     assert.equal(response.json().kit.schemaVersion, 1);
+    assert.equal(response.json().kit.id, "written", "a written kit is the player's own, never a starter");
     assert.equal(requests.length, 1);
     const [system, user] = requests[0]!.messages;
     assert.ok(system!.content.includes(`Exactly one layer has "settlements": true`));
@@ -266,6 +267,17 @@ try {
       1,
       response.body,
     );
+  }
+  // A setting as long as a game accepts is never refused here.
+  {
+    requests.length = 0;
+    replies.push(JSON.stringify(harbor));
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/game/world-kit",
+      payload: { connectionId: connection!.id, genre: "Slice of life", setting: "a".repeat(25_000), tone: "Cozy" },
+    });
+    assert.equal(response.statusCode, 200, response.body.slice(0, 300));
   }
   // A start kit that is not one is refused before any model is asked.
   {

@@ -1064,6 +1064,8 @@ export function GameSetupWizard({
 
   const spatialMapTargetLocationCountValid =
     normalizeSpatialMapTargetLocationCount(spatialMapTargetLocationCountInput) !== null;
+  // A kit that does not hold together is never quietly left out of a downloaded setup.
+  const setupDownloadBlocked = Boolean(checkedWorldKit && !checkedWorldKit.ok);
   const canStart =
     (!multiplayerPlayers || multiplayerPlayers.every((player) => player.personaName?.trim())) &&
     !experienceSeedInvalid &&
@@ -4001,7 +4003,7 @@ export function GameSetupWizard({
                     <button
                       type="button"
                       onClick={handleExportSetup}
-                      disabled={isLoading}
+                      disabled={isLoading || setupDownloadBlocked}
                       className={cn(GAME_SETUP_GHOST_BUTTON_CLASS, "disabled:cursor-wait disabled:opacity-40")}
                     >
                       <Download size={14} />

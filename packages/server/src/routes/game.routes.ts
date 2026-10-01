@@ -2010,7 +2010,9 @@ const stateTransitionSchema = z.object({
 const worldKitWriteSchema = z.object({
   connectionId: z.string().min(1),
   genre: z.string().min(1).max(200),
-  setting: z.string().min(1).max(20_000),
+  // As long as a game's own setting may be (`gameSetupConfigSchema`), so a setting the game accepts
+  // is never refused here.
+  setting: z.string().min(1),
   tone: z.string().min(1).max(200),
   /** The kit the player has chosen so far, written over to fit their setting. */
   start: worldKitSchema.optional(),

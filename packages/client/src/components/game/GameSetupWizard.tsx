@@ -1164,6 +1164,9 @@ export function GameSetupWizard({
               canon: (config.world.brief.places ?? [])
                 .filter((place) => place.lore?.length)
                 .map((place) => ({ ...place, tags: place.tags ?? [] })),
+              canonEvents: (config.world.brief.events ?? [])
+                .filter((event) => event.lore?.length)
+                .map((event) => ({ ...event, places: event.places ?? [], groups: event.groups ?? [] })),
               brief: config.world.brief,
             }
           : null,

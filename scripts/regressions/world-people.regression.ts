@@ -406,11 +406,12 @@ const thornmere = placeNamed("Thornmere");
 {
   const { worldOverviewPromptText } = await import("../../packages/shared/src/index.js");
   const overview = worldOverviewPromptText(game);
-  assert.ok(
-    overview.includes("- The River Guild (guild, at Thornmere): Wants the tolls. Rivals: House Vane."),
+  // Each group line also names its head now (worldgen W3).
+  assert.match(
     overview,
+    /- The River Guild \(guild, at Thornmere, led by [^)]+\): Wants the tolls\. Rivals: House Vane\./,
   );
-  assert.ok(overview.includes("- House Vane (noble house, at Thornmere)"));
+  assert.match(overview, /- House Vane \(noble house, at Thornmere, led by [^)]+\)\./);
 }
 
 // ── The model is asked for the groups and the people's names ──

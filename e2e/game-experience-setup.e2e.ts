@@ -949,6 +949,16 @@ test("A world is made from a seed in the kit's words: the lore's places kept, th
     route.fulfill({ json: [{ id: "lb-aldmark", name: "Aldmark lore" }] }),
   );
   const canon = [{ name: "Thornmere", layer: "settlement", size: "city", tags: ["port"], lore: ["entry-a"] }];
+  const canonEvents = [
+    {
+      yearsAgo: 30,
+      kind: "catastrophe",
+      text: "The great flood.",
+      places: ["Thornmere"],
+      groups: ["The River Guild"],
+      lore: ["entry-a"],
+    },
+  ];
   const brief = {
     briefVersion: 1,
     premise: "The old king is dying.",
@@ -967,7 +977,7 @@ test("A world is made from a seed in the kit's words: the lore's places kept, th
   const asked = { canon: [] as Array<Record<string, any>>, brief: [] as Array<Record<string, any>> };
   await page.route("**/api/game/world-canon", async (route) => {
     asked.canon.push(route.request().postDataJSON());
-    await route.fulfill({ json: { places: canon, repairs: [], entriesRead: 3, entriesLeft: 0 } });
+    await route.fulfill({ json: { places: canon, events: canonEvents, repairs: [], entriesRead: 3, entriesLeft: 0 } });
   });
   let gate: Promise<void> | null = null;
   await page.route("**/api/game/world-brief", async (route) => {
@@ -999,6 +1009,7 @@ test("A world is made from a seed in the kit's words: the lore's places kept, th
   await wizard.getByRole("checkbox", { name: "Aldmark lore", exact: true }).check();
   await wizard.getByRole("button", { name: "Read the lore's places", exact: true }).click();
   await expect(wizard.getByText("From the lore: Thornmere.", { exact: true })).toBeVisible();
+  await expect(wizard.getByText("Dated events from the lore, kept as they are: 1.", { exact: true })).toBeVisible();
   // Before any brief, the world is the kit and the lore's places.
   await wizard.getByText(/^Settlements \(\d+\)$/u).click();
   await expect(wizard.getByTestId("world-preview")).toContainText("Thornmere (city)");
@@ -1024,7 +1035,10 @@ test("A world is made from a seed in the kit's words: the lore's places kept, th
 
   await wizard.getByRole("button", { name: "Write the world's brief", exact: true }).click();
   await expect(wizard.getByText("The brief is written.", { exact: true })).toBeVisible();
-  expect(asked.brief.at(-1)).toMatchObject({ canon, grounding: "expand", genre: "Fantasy" });
+  // Reading the lore again after the brief keeps the brief in step with it.
+  await wizard.getByRole("button", { name: "Read the lore's places", exact: true }).click();
+  await expect(wizard.getByText("Places found: 1, in 3 entries.", { exact: true })).toBeVisible();
+  expect(asked.brief.at(-1)).toMatchObject({ canon, canonEvents, grounding: "expand", genre: "Fantasy" });
   await expect(wizard.getByTestId("world-preview")).toContainText("The party starts in Hollin.");
   await wizard.getByText("Change the brief", { exact: true }).click();
   await wizard.getByLabel("Now (the premise)", { exact: true }).fill("The old king is dead.");
@@ -1072,6 +1086,7 @@ test("A world is made from a seed in the kit's words: the lore's places kept, th
   const result = JSON.parse((await page.getByTestId("wizard-result").textContent()) ?? "{}");
   expect(result.config.world).toMatchObject({ seed: 12345, generatorVersion: 1, grounding: "expand" });
   expect(result.config.world.brief.premise).toBe("The old king is dead.");
+  expect(result.config.world.brief.events).toEqual(canonEvents);
   expect(result.config.world.brief.groups[0]).toMatchObject({ name: "The River Guild", note: "Wants the bridge." });
   expect(result.config.world.brief.peopleNames[0]).toMatchObject({
     given: ["Ama", "Tobin"],

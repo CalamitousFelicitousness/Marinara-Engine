@@ -1734,6 +1734,7 @@
   "game.world.setup.briefRepaired": "The brief is written. Changes made to fit the kit: {{count}}.",
   "game.world.setup.briefWritten": "The brief is written.",
   "game.world.setup.canon": "From the lore: {{names}}.",
+  "game.world.setup.canonEvents": "Dated events from the lore, kept as they are: {{count}}.",
   "game.world.setup.editBrief": "Change the brief",
   "game.world.setup.failed": "The world could not be written.",
   "game.world.setup.familyNames": "Family names ({{culture}})",

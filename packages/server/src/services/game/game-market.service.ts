@@ -27,7 +27,9 @@ import { loadGameRulesetSheetContext } from "./ruleset-sheet-turn.service.js";
  * the Game Master's own context is scoped. A regeneration reads only what came before the telling it
  * replaces. Null when none was said.
  */
-export async function gamePlaceBefore(db: DB, chatId: string, replacing?: string | null): Promise<GamePlace | null> {
+/** The Game Master's own replies since the conversation began, before the telling a regeneration
+ *  replaces, oldest first: what the place, and the history asked for, are read from. */
+export async function gameRepliesBefore(db: DB, chatId: string, replacing?: string | null): Promise<string[]> {
   const messages = await createChatsStorage(db).listMessages(chatId);
   const end = replacing ? messages.findIndex((message) => message.id === replacing) : -1;
   const before = end >= 0 ? messages.slice(0, end) : messages;
@@ -38,14 +40,16 @@ export async function gamePlaceBefore(db: DB, chatId: string, replacing?: string
       break;
     }
   }
-  return lastGamePlace(
-    // Only the Game Master's own replies: a place tag a player types is never answered.
-    before
-      .slice(start)
-      .flatMap((message) =>
-        message.role === "assistant" && typeof message.content === "string" ? [message.content] : [],
-      ),
-  );
+  // Only the Game Master's own replies: a tag a player types is never answered.
+  return before
+    .slice(start)
+    .flatMap((message) =>
+      message.role === "assistant" && typeof message.content === "string" ? [message.content] : [],
+    );
+}
+
+export async function gamePlaceBefore(db: DB, chatId: string, replacing?: string | null): Promise<GamePlace | null> {
+  return lastGamePlace(await gameRepliesBefore(db, chatId, replacing));
 }
 
 /**

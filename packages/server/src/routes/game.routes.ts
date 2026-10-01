@@ -2047,6 +2047,8 @@ const worldBriefWriteSchema = z.object({
   language: z.string().max(100).optional(),
   /** Places read from the player's lore (`/game/world-canon`), kept exactly. */
   canon: worldBriefSchema.shape.places.optional(),
+  /** Dated events read from the player's lore, kept exactly. */
+  canonEvents: worldBriefSchema.shape.events.optional(),
   grounding: z.enum(WORLD_GROUNDINGS).default("expand"),
   debugMode: z.boolean().optional(),
 });
@@ -9751,6 +9753,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
   app.post("/world-brief", async (req, reply) => {
     const input = worldBriefWriteSchema.parse(req.body);
     const canon = input.canon ?? [];
+    const canonEvents = input.canonEvents ?? [];
     const written = await askWorldModel({
       reply,
       connectionId: input.connectionId,
@@ -9758,10 +9761,10 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       route: "world-brief",
       title: "World brief",
       maxTokens: GAME_SETUP_DEFAULT_OUTPUT_TOKENS,
-      prompt: buildWorldBriefPrompt({ ...input, canon, strict: input.grounding === "strict" }),
+      prompt: buildWorldBriefPrompt({ ...input, canon, canonEvents, strict: input.grounding === "strict" }),
       notJson: "brief: The reply was not JSON",
       read: (data) => {
-        const read = readWrittenWorldBrief(input.kit, data, canon);
+        const read = readWrittenWorldBrief(input.kit, data, canon, canonEvents);
         return read.ok ? { ok: true, value: { brief: read.brief, repairs: read.repairs } } : read;
       },
       repair: worldBriefRepairPrompt,

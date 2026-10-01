@@ -109,6 +109,19 @@ const pick = <T>(items: readonly T[], random: () => number): T => items[Math.flo
 const UNSPACED_SCRIPT =
   /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}]/u;
 
+/** A full name drawn from a culture's name lists, in its own order. Names in a script without spaces
+ *  are written together (林子墨), as their people write them. */
+export function worldFullName(
+  names: { given: readonly string[]; family: readonly string[]; order: "given-family" | "family-given" | "given" },
+  random: () => number,
+): string {
+  const given = pick(names.given, random);
+  const family = names.order !== "given" && names.family.length ? pick(names.family, random) : "";
+  if (!family) return given;
+  const gap = UNSPACED_SCRIPT.test(given) && UNSPACED_SCRIPT.test(family) ? "" : " ";
+  return names.order === "family-given" ? `${family}${gap}${given}` : `${given}${gap}${family}`;
+}
+
 function weighted<T>(items: ReadonlyArray<{ item: T; weight: number }>, random: () => number): T {
   const total = items.reduce((sum, entry) => sum + entry.weight, 0);
   let roll = random() * total;
@@ -166,15 +179,7 @@ export function worldCast({ kit, brief, world, seed }: GameWorld, placeId: strin
     const names = brief.peopleNames.find((group) => group.culture === culture);
     let name = "";
     for (let attempt = 0; attempt < 12 && names?.given.length; attempt++) {
-      const given = pick(names.given, random);
-      const family = names.order !== "given" && names.family.length ? pick(names.family, random) : "";
-      // Names in a script without spaces are written together (林子墨), as their people write them.
-      const gap = UNSPACED_SCRIPT.test(given) && UNSPACED_SCRIPT.test(family) ? "" : " ";
-      const full = !family
-        ? given
-        : names.order === "family-given"
-          ? `${family}${gap}${given}`
-          : `${given}${gap}${family}`;
+      const full = worldFullName(names, random);
       if (!used.has(full.toLowerCase())) {
         name = full;
         break;

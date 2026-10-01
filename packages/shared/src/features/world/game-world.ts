@@ -9,6 +9,7 @@ import { gameWorldKitFromMetadata, type WorldKit } from "../../schemas/world-kit
 import { checkWorldBrief, worldBriefSchema, type WorldBrief } from "../../schemas/world-brief.schema.js";
 import { WORLD_GENERATOR_VERSION, compileWorld, type CompiledWorld, type WorldPlace } from "./compile.js";
 import { worldCast, worldPersonSheet } from "./people.js";
+import { worldHistory, worldHistoryLine, worldNotablePast, worldPlacePast } from "./history.js";
 
 /** How many people not yet met the Game Master is shown at once. */
 const WHERE_YOU_ARE_PEOPLE = 5;
@@ -131,7 +132,9 @@ function describe(kit: WorldKit, place: WorldPlace): string {
 }
 
 /** The fixed part, for the cached system prompt: the premise, the outer places, the biggest settlements. */
-export function worldOverviewPromptText({ kit, brief, world }: GameWorld): string {
+export function worldOverviewPromptText(game: GameWorld): string {
+  const { kit, brief, world } = game;
+  const history = worldHistory(game);
   const settlementsDepth = kit.layers.findIndex((layer) => layer.settlements);
   const outer = world.places.filter((place) => place.depth < settlementsDepth && place.depth <= 1);
   const biggest = world.places
@@ -148,12 +151,19 @@ export function worldOverviewPromptText({ kit, brief, world }: GameWorld): strin
       .slice(0, 8)
       .map((group) =>
         [
-          `- ${group.name} (${labelOf(kit.groupKinds, group.kind)}${group.seat ? `, at ${group.seat}` : ""})`,
-          group.note ? `: ${group.note}` : "",
+          `- ${group.name} (${labelOf(kit.groupKinds, group.kind)}${group.seat ? `, at ${group.seat}` : ""}${
+            history.leaders[group.name]?.name ? `, led by ${history.leaders[group.name]!.name}` : ""
+          })`,
+          group.note ? `: ${group.note}` : ".",
           group.allies.length ? ` Allies: ${group.allies.join(", ")}.` : "",
           group.rivals.length ? ` Rivals: ${group.rivals.join(", ")}.` : "",
         ].join(""),
       ),
+    ...(() => {
+      const past = worldNotablePast(history);
+      return past.length ? [`- The past:`, ...past.map((event) => `  - ${worldHistoryLine(event)}`)] : [];
+    })(),
+    `To recall the past of a place or group not shown here, write [history: place="Name"] or [history: group="Name"]; the answer comes with your next turn.`,
     `Use these places and names. When the party goes somewhere, say where with [place: name="..."], using a name from this world when it is one; a place this world does not list (a farmhouse, a camp, a ship) gets a name of its own.`,
     `</world_places>`,
   ];
@@ -187,6 +197,16 @@ export function worldWhereYouAreText(
   );
   if (place.tags.length) lines.push(`- Known for: ${place.tags.map((tag) => labelOf(kit.placeTags, tag)).join(", ")}.`);
   if (place.note) lines.push(`- ${place.note}`);
+  // Who keeps it now, and its past (worldgen W3), told for the settlement it is in.
+  const history = worldHistory(game);
+  const home = place.rank !== undefined ? place : chain.find((each) => each.rank !== undefined);
+  if (home) {
+    const keeper = history.keepers[home.id];
+    const leader = keeper ? history.leaders[keeper]?.name : undefined;
+    if (keeper) lines.push(`- Kept by ${keeper}${leader ? `, led by ${leader}` : ""}.`);
+    const past = worldPlacePast(history, home, 4);
+    if (past.length) lines.push(`- Its past: ${past.map(worldHistoryLine).join(" ")}`);
+  }
   // Where it goes from here: the settlement's links (or its town's, for a place inside one).
   const settlement = place.size !== undefined ? place : chain.find((each) => each.size !== undefined);
   const inside = world.places.filter((each) => each.parentId === (settlement ?? place).id);

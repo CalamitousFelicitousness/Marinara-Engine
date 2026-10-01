@@ -6,7 +6,7 @@
 // ──────────────────────────────────────────────
 import { z } from "zod";
 import { promptSafeText } from "./ruleset.schema.js";
-import type { WorldKit } from "./world-kit.schema.js";
+import { WORLD_CHANGE_KINDS, type WorldKit } from "./world-kit.schema.js";
 import { isOverusedName } from "../features/world/overused-names.js";
 
 export const WORLD_BRIEF_LIMITS = Object.freeze({
@@ -17,6 +17,7 @@ export const WORLD_BRIEF_LIMITS = Object.freeze({
   groups: 24,
   peopleNames: 150,
   allPeopleNames: 1500,
+  events: 30,
 });
 /** How a culture puts a person's names together. */
 export const WORLD_NAME_ORDERS = Object.freeze(["given-family", "family-given", "given"] as const);
@@ -58,6 +59,20 @@ const briefGroup = z
   })
   .strict();
 
+/** A dated event of the world's past (worldgen W3): a fixed point its history is steered through. */
+const briefEvent = z
+  .object({
+    yearsAgo: z.number().int().min(1).max(5000),
+    kind: z.enum(WORLD_CHANGE_KINDS),
+    /** What happened, in one line, in the setting's words. */
+    text: promptSafeText(240),
+    places: z.array(placeName).max(4).default([]),
+    groups: z.array(placeName).max(4).default([]),
+    /** The lore entries that state it, when it was read from the player's lore. */
+    lore: z.array(z.string().max(64)).max(20).optional(),
+  })
+  .strict();
+
 export const worldBriefSchema = z
   .object({
     briefVersion: z.literal(1),
@@ -72,6 +87,8 @@ export const worldBriefSchema = z
       .refine((groups) => groups.reduce((sum, group) => sum + group.names.length, 0) <= WORLD_BRIEF_LIMITS.allNames, {
         message: `At most ${WORLD_BRIEF_LIMITS.allNames} place names in all`,
       }),
+    /** The dated events of the past the history must pass through (worldgen W3). */
+    events: z.array(briefEvent).max(WORLD_BRIEF_LIMITS.events).default([]),
     /** The groups that matter (worldgen W2): powers and the everyday groups the premise turns on. */
     groups: z.array(briefGroup).max(WORLD_BRIEF_LIMITS.groups).default([]),
     /** Names for the people the compile draws, per culture, in that culture's own sound and order. */
@@ -101,6 +118,7 @@ export type WorldBrief = z.infer<typeof worldBriefSchema>;
 export type WorldBriefInput = z.input<typeof worldBriefSchema>;
 export type WorldBriefPlace = WorldBrief["places"][number];
 export type WorldBriefGroup = WorldBrief["groups"][number];
+export type WorldBriefEvent = WorldBrief["events"][number];
 
 /** The deepest layer a brief may place: the settlements layer, and for a world of one site or one
  *  town the layer inside it too, since that town is the whole world. */
@@ -238,5 +256,63 @@ export function checkWorldBrief(
     group.allies = group.allies.filter(known);
     group.rivals = group.rivals.filter(known);
   }
-  return { ok: true, brief: { ...parsed.data, places, placeNames, peopleNames, groups }, repairs };
+  // Past events keep only the brief's own places and groups. One the model wrote of a kind of change
+  // this world does not have is left out; one read from the player's lore stays, as all canon does.
+  const events: WorldBrief["events"] = [];
+  for (const event of parsed.data.events) {
+    if (!event.lore?.length && !kit.change.kinds[event.kind].on) {
+      repairs.push(`An event of a kind this world does not have was left out: "${event.text}"`);
+      continue;
+    }
+    const placesKnown = event.places.filter((name) => seen.has(name.toLowerCase()));
+    const groupsKnown = event.groups.filter((name) => groupNames.has(name.toLowerCase()));
+    if (placesKnown.length < event.places.length || groupsKnown.length < event.groups.length) {
+      repairs.push(`"${event.text}": a place or group that is not in the brief was left out of it`);
+    }
+    events.push({ ...event, places: placesKnown, groups: groupsKnown });
+  }
+  return { ok: true, brief: { ...parsed.data, places, placeNames, peopleNames, groups, events }, repairs };
+}
+
+const nameOf = (item: unknown) =>
+  item && typeof item === "object" ? String((item as { name?: unknown }).name ?? "").toLowerCase() : "";
+const textOf = (item: unknown) =>
+  item && typeof item === "object" ? String((item as { text?: unknown }).text ?? "").toLowerCase() : "";
+
+/**
+ * A brief with the lore's places and events put back (worldgen W1, W3): each replaces the brief's own
+ * of the same name or text and goes first, a place keeps the brief's choice to start the party there,
+ * and what the brief adds is kept after them, within the brief's limits. Used on the model's reply and
+ * when lore is read again after a brief was written, so the brief never drifts from the lore.
+ */
+export function withWorldCanon(
+  written: unknown,
+  canon: WorldBriefPlace[],
+  canonEvents: WorldBriefEvent[] = [],
+): unknown {
+  if (!written || typeof written !== "object" || Array.isArray(written)) return written;
+  if (canon.length === 0 && canonEvents.length === 0) return written;
+  const record = { ...(written as Record<string, unknown>) };
+  if (canonEvents.length > 0) {
+    const events = Array.isArray(record.events) ? (record.events as unknown[]) : [];
+    const texts = new Set(canonEvents.map((event) => event.text.toLowerCase()));
+    record.events = [...canonEvents, ...events.filter((event) => !texts.has(textOf(event)))].slice(
+      0,
+      WORLD_BRIEF_LIMITS.events,
+    );
+  }
+  if (canon.length > 0) {
+    const places = Array.isArray(record.places) ? (record.places as unknown[]) : [];
+    const names = new Set(canon.map((place) => place.name.toLowerCase()));
+    const startsAt = places.find(
+      (place) =>
+        place && typeof place === "object" && (place as { start?: unknown }).start === true && names.has(nameOf(place)),
+    );
+    const startKey = startsAt ? nameOf(startsAt) : undefined;
+    record.places = [
+      ...canon.map((place) => (place.name.toLowerCase() === startKey ? { ...place, start: true as const } : place)),
+      ...places.filter((place) => !names.has(nameOf(place))),
+    ].slice(0, WORLD_BRIEF_LIMITS.places);
+  }
+  return record;
 }

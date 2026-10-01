@@ -68,6 +68,7 @@ const brief = {
   placeNames: [{ culture: kit.cultures[0]!.id, names: ["Ashby", "Wending", "Calder", "Ravel", "Brennock", "Sallow"] }],
   groups: [],
   peopleNames: [] as Array<{ culture: string; given: string[]; family: string[]; order: "given-family" }>,
+  events: [],
 };
 const gameWorld = { seed: 20261001, generatorVersion: WORLD_GENERATOR_VERSION, grounding: "expand" as const, brief };
 
@@ -84,7 +85,11 @@ test("the Game Master is told where the party is in its world, and a place it na
   )!.name;
   const model = await fakeModel([
     // The Game Master writes the wrong size: the world's own wins.
-    ["I take the boat to Thornmere.", 'The boat noses into Thornmere. [place: name="thornmere" size="hamlet"]'],
+    // It also asks for the past of a place (worldgen W3), answered on its next turn.
+    [
+      "I take the boat to Thornmere.",
+      'The boat noses into Thornmere. [place: name="thornmere" size="hamlet"] [history: place="hollin"]',
+    ],
     ["I look around the docks.", "Gulls wheel over the tall houses."],
   ]);
   let connectionId = "";
@@ -152,6 +157,12 @@ test("the Game Master is told where the party is in its world, and a place it na
     expect(saved.filter((message) => message.role === "assistant").at(-1)!.content).toContain(
       '[place: name="Thornmere" size="city" result="ok"]',
     );
+    expect(saved.filter((message) => message.role === "assistant").at(-1)!.content).toContain(
+      '[history: place="Hollin" result="ok"]',
+    );
+    // The where-you-are block tells who keeps a place and its past; the tag never shows as narration.
+    expect(first).toContain("- Its past: ");
+    await expect(page.locator('[data-component="GameNarration.ActivePanel"]')).not.toContainText("[history:");
 
     // The next turn: the party is where the Game Master said, and can see where it can go.
     const before = model.prompts.length;
@@ -168,6 +179,7 @@ test("the Game Master is told where the party is in its world, and a place it na
     expect(second).toContain("- A river port of tall houses.");
     expect(second).toContain(`- From here: `);
     expect(second).toContain(`${neighbourName} (`);
+    expect(second).toContain("<history_asked>\\nThe past you asked for:\\n- Hollin:");
     await page.screenshot({ path: testInfo.outputPath("world-turn.png") });
   } finally {
     if (chatId) await request.delete(`/api/chats/${chatId}`).catch(() => undefined);

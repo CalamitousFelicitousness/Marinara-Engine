@@ -190,6 +190,9 @@ import {
   worldWhereYouAreText,
   worldPeopleNamed,
   worldPersonNpc,
+  applyWorldHistoryTags,
+  worldHistoryAnswerText,
+  lastGamePlace,
   rulesetMarketPlace,
   rulesetMarketPromptText,
   type GameInventoryMarket,
@@ -244,7 +247,7 @@ import {
 } from "../services/game/ruleset-sheet-turn.service.js";
 import { gameInventoryItemUser, gameInventoryRestRecharge } from "../services/game/game-item-use.service.js";
 import { gameLootTagRoller } from "../services/game/game-loot.service.js";
-import { gamePlaceBefore, loadGameMarket } from "../services/game/game-market.service.js";
+import { gamePlaceBefore, gameRepliesBefore, loadGameMarket } from "../services/game/game-market.service.js";
 import {
   commitGameInventoryChange,
   followGameInventoryOnRow,
@@ -4600,9 +4603,10 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               : undefined;
           // Where the scene is: the place the visible messages last said (not the telling a
           // regeneration replaces), read once for the market and the world.
-          let promptPlaceRead: Promise<GamePlace | null> | undefined;
-          const promptPlace = () =>
-            (promptPlaceRead ??= gamePlaceBefore(app.db, input.chatId, input.regenerateMessageId ?? null));
+          let promptRepliesRead: Promise<string[]> | undefined;
+          const promptReplies = () =>
+            (promptRepliesRead ??= gameRepliesBefore(app.db, input.chatId, input.regenerateMessageId ?? null));
+          const promptPlace = async () => lastGamePlace(await promptReplies());
           // Where the party is in the game's world (worldgen W1): the place last said, when the world
           // lists it, else where the world starts the party until the Game Master says.
           const promptWorld = gameWorldFromMetadata(chatMeta);
@@ -4625,6 +4629,10 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   met: promptMet,
                 });
               })()
+            : undefined;
+          // The past the Game Master asked for in its last reply (worldgen W3).
+          const promptHistoryAsked = promptWorld
+            ? worldHistoryAnswerText(promptWorld, (await promptReplies()).at(-1) ?? "")
             : undefined;
           // The market where the scene is, where the ruleset has one (#6917): what its sellers sell.
           const promptMarket =
@@ -4756,7 +4764,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               ...(promptItemFacts ? { inventoryItemFacts: promptItemFacts } : {}),
               ...(promptBearers ? { inventoryBearers: promptBearers } : {}),
               ...(promptPurses ? { inventoryPurses: promptPurses } : {}),
-              ...(promptWhereYouAre ? { whereYouAre: promptWhereYouAre } : {}),
+              ...(promptWhereYouAre
+                ? { whereYouAre: [promptWhereYouAre, promptHistoryAsked].filter(Boolean).join("\n\n") }
+                : {}),
               ...(promptMarket ? { market: promptMarket } : {}),
               ...(pinnedGameRuleset?.status === "ok" && pinnedGameRuleset.layers.length > 0
                 ? {
@@ -9435,6 +9445,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 contentReplaced = true;
               }
               if (placed.place) turnPlace = placed.place;
+            }
+          }
+          // The past the reply asks for (worldgen W3): answered in place, carried on the next turn.
+          if (turnWorld && /\[history:/i.test(fullResponse)) {
+            const asked = applyWorldHistoryTags(fullResponse, turnWorld);
+            if (asked !== fullResponse) {
+              fullResponse = asked;
+              contentReplaced = true;
             }
           }
           // People the reply brings in (worldgen W2): one of the people of the place the scene was in,

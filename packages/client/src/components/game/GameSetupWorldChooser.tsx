@@ -9,7 +9,9 @@ import {
   WORLD_GENERATOR_VERSION,
   checkWorldBrief,
   compileGameWorld,
+  withWorldCanon,
   type WorldBrief,
+  type WorldBriefEvent,
   type WorldBriefInput,
   type WorldBriefPlace,
   type WorldKit,
@@ -28,6 +30,9 @@ export interface WorldDraft {
   lorebookIds: string[];
   /** The places read from the lore, kept exactly by the brief. */
   canon: WorldBriefPlace[];
+  /** The dated events read from the lore (worldgen W3), kept exactly by the brief. Absent in drafts
+   *  made before events were read. */
+  canonEvents?: WorldBriefEvent[];
   /** The brief the model wrote, as the player has changed it; null until one is written. */
   brief: WorldBriefInput | null;
 }
@@ -58,7 +63,13 @@ export function worldDraftConfig(
   | { ok: false; issues: string[] } {
   const seed = parseExperienceSeed(draft.seed);
   if (seed === null) return { ok: false, issues: ["seed"] };
-  const brief = draft.brief ?? { briefVersion: 1 as const, premise: kit.summary, places: draft.canon, placeNames: [] };
+  const brief = draft.brief ?? {
+    briefVersion: 1 as const,
+    premise: kit.summary,
+    places: draft.canon,
+    placeNames: [],
+    events: draft.canonEvents ?? [],
+  };
   const checked = checkWorldBrief(kit, brief);
   if (!checked.ok) return { ok: false, issues: checked.issues };
   return {
@@ -142,12 +153,21 @@ export function GameSetupWorldChooser({
   };
 
   const readLore = () =>
-    ask<{ places: WorldBriefPlace[]; repairs: string[]; entriesRead: number; entriesLeft: number }>(
+    ask<{
+      places: WorldBriefPlace[];
+      events: WorldBriefEvent[];
+      repairs: string[];
+      entriesRead: number;
+      entriesLeft: number;
+    }>(
       "lore",
       "/game/world-canon",
       { connectionId: request!.connectionId, kit, lorebookIds: draft!.lorebookIds },
       (value, into) => {
         into.canon = value.places;
+        into.canonEvents = value.events;
+        // A brief already written takes the lore read now, so it never drifts from what is shown.
+        if (into.brief) into.brief = withWorldCanon(into.brief, value.places, value.events) as WorldBriefInput;
       },
       (value) =>
         t(value.entriesLeft > 0 ? "game.world.setup.loreReadSome" : "game.world.setup.loreRead", {
@@ -160,7 +180,7 @@ export function GameSetupWorldChooser({
     ask<{ brief: WorldBriefInput; repairs: string[] }>(
       "brief",
       "/game/world-brief",
-      { ...request!, kit, canon: draft!.canon, grounding: draft!.grounding },
+      { ...request!, kit, canon: draft!.canon, canonEvents: draft!.canonEvents ?? [], grounding: draft!.grounding },
       (value, into) => {
         into.brief = value.brief;
       },
@@ -277,6 +297,11 @@ export function GameSetupWorldChooser({
                   {t("game.world.setup.canon", { names: draft.canon.map((place) => place.name).join(", ") })}
                 </p>
               )}
+              {(draft.canonEvents ?? []).length > 0 && (
+                <p className="text-[var(--muted-foreground)]">
+                  {t("game.world.setup.canonEvents", { count: draft.canonEvents!.length })}
+                </p>
+              )}
             </fieldset>
           )}
 
@@ -330,7 +355,7 @@ export function GameSetupWorldChooser({
                       value={place.name}
                       onChange={(event) =>
                         edit((next) => {
-                          // The places inside it, and the groups seated in it, follow the new name.
+                          // The places inside it, the groups seated in it and the events there follow the new name.
                           const was = next.brief!.places![index]!.name.toLowerCase();
                           const now = event.target.value;
                           next.brief!.places![index]!.name = now;
@@ -339,6 +364,9 @@ export function GameSetupWorldChooser({
                           }
                           for (const group of next.brief!.groups ?? []) {
                             if (group.seat?.toLowerCase() === was) group.seat = now;
+                          }
+                          for (const past of next.brief!.events ?? []) {
+                            past.places = (past.places ?? []).map((name) => (name.toLowerCase() === was ? now : name));
                           }
                         })
                       }
@@ -418,7 +446,7 @@ export function GameSetupWorldChooser({
                       value={group.name}
                       onChange={(event) =>
                         edit((next) => {
-                          // The groups that call it an ally or a rival follow the new name.
+                          // The groups that call it an ally or a rival, and the events that name it, follow the new name.
                           const was = next.brief!.groups![index]!.name.toLowerCase();
                           const now = event.target.value;
                           next.brief!.groups![index]!.name = now;
@@ -429,6 +457,9 @@ export function GameSetupWorldChooser({
                             other.rivals = (other.rivals ?? []).map((name) =>
                               name.toLowerCase() === was ? now : name,
                             );
+                          }
+                          for (const past of next.brief!.events ?? []) {
+                            past.groups = (past.groups ?? []).map((name) => (name.toLowerCase() === was ? now : name));
                           }
                         })
                       }

@@ -1678,6 +1678,10 @@ export function ConnectionEditor() {
                     setLocalProvider(key);
                     // Auto-fill base URL
                     setLocalBaseUrl(info.defaultBaseUrl);
+                    // The base URL and model are reset, so the old image service must be picked again;
+                    // otherwise a hidden-field service like ChatGPT (Codex login) keeps a stale URL.
+                    setLocalImageGenerationSource("");
+                    setLocalImageService(null);
                     // Leave Grok CLI blank so the local CLI can use its
                     // account/default model until the user fetches
                     // `grok models`. Other providers keep their usual seeded

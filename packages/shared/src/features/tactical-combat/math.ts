@@ -6,6 +6,7 @@ import {
   type CombatWeather,
   type CombatAttackTraits,
 } from "../combat-conditions.js";
+import { WORLD_DEFAULT_ELEMENTS, worldElementId, type WorldElementSet } from "../world/elements.js";
 // ──────────────────────────────────────────────
 // Tactical Combat — pure combat math
 // ──────────────────────────────────────────────
@@ -63,35 +64,19 @@ export function deriveMovement(speed: number): number {
 export const DIFFICULTY_DAMAGE_MULT = ENEMY_DAMAGE_MULTIPLIERS;
 
 // ── Elements ──
-// Simplified wheel over the classic six elements. Fire/Ice/Lightning form a
-// rock-paper-scissors trio; Holy and Shadow are mutually super-effective;
-// Poison is neutral. strong = 1.5x, weak = 0.5x, otherwise 1.0x.
-
-const STRONG_AGAINST: Record<string, string[]> = {
-  fire: ["ice"],
-  ice: ["lightning"],
-  lightning: ["fire"],
-  holy: ["shadow"],
-  shadow: ["holy"],
-  poison: [],
-};
-
-const WEAK_AGAINST: Record<string, string[]> = {
-  fire: ["lightning"],
-  ice: ["fire"],
-  lightning: ["ice"],
-  holy: [],
-  shadow: [],
-  poison: [],
-};
-
-export function elementMultiplier(attackElement?: string, defenderElement?: string): number {
-  if (!attackElement || !defenderElement) return 1;
-  const a = attackElement.toLowerCase();
-  const d = defenderElement.toLowerCase();
-  if (a === d) return 1;
-  if (STRONG_AGAINST[a]?.includes(d)) return 1.5;
-  if (WEAK_AGAINST[a]?.includes(d)) return 0.5;
+// Which element beats which comes from the game's element set (worldgen W6c): the classic wheel is
+// Fire/Ice/Lightning as a rock-paper-scissors trio with Holy and Shadow strong against each other.
+// Strong = 1.5x, weak (the reverse) = 0.5x, otherwise 1.0x.
+export function elementMultiplier(
+  attackElement?: string,
+  defenderElement?: string,
+  elements: WorldElementSet = WORLD_DEFAULT_ELEMENTS,
+): number {
+  const a = worldElementId(elements, attackElement);
+  const d = worldElementId(elements, defenderElement);
+  if (!a || !d || a === d) return 1;
+  if (elements.beats[a]?.includes(d)) return 1.5;
+  if (elements.beats[d]?.includes(a)) return 0.5;
   return 1;
 }
 
@@ -149,6 +134,8 @@ export function critChance(attacker: TacticalUnit, defender: TacticalUnit): numb
 
 export interface DamageInputs {
   weather?: CombatWeather;
+  /** The game's elements (worldgen W6c); the classic six when absent. */
+  elements?: WorldElementSet;
   grid: TacticalGrid;
   attacker: TacticalUnit;
   defender: TacticalUnit;
@@ -181,8 +168,8 @@ export function computeDamage(inp: DamageInputs): number {
   const mitigation = effectiveDefense(defender) * 0.6 + defTile.defenseBonus * 2;
 
   let dmg = raw - mitigation;
-  dmg *= elementMultiplier(element, defender.element);
-  dmg *= weatherDamageMultiplier(inp.weather, element);
+  dmg *= elementMultiplier(element, defender.element, inp.elements);
+  dmg *= weatherDamageMultiplier(inp.weather, element, inp.elements);
   if (crit) dmg *= 2;
   if (defender.defending) dmg *= 0.5;
   if (attacker.side === "enemy") dmg *= DIFFICULTY_DAMAGE_MULT[normalizeGameDifficulty(difficulty)];

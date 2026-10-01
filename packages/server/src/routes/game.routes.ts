@@ -213,6 +213,8 @@ import {
   rulesetRefSchema,
   worldKitSchema,
   gameWorldKitFromMetadata,
+  gameWorldElementSet,
+  worldElementSetSchema,
   gameWorldSchema,
   gameWorldFromMetadata,
   worldBriefSchema,
@@ -10205,7 +10207,11 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       }
     }
     const difficulty = normalizeGameDifficulty((meta.gameSetupConfig as Record<string, unknown>)?.difficulty);
-    const elementPreset = ((meta.gameSetupConfig as Record<string, unknown>)?.elementPreset as string) ?? "default";
+    // The setting's own elements (worldgen W6c), when its kit names them; else the classic preset.
+    const elementPreset =
+      gameWorldElementSet(meta) ??
+      ((meta.gameSetupConfig as Record<string, unknown>)?.elementPreset as string) ??
+      "default";
     const result = resolveCombatRound(
       combatants as (CombatantStats & { side?: "player" | "enemy" })[],
       round,
@@ -10288,6 +10294,8 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     .object({
       schemaVersion: z.literal(1),
       weather: combatWeatherSchema.optional(),
+      // The setting's elements (worldgen W6c): a state the client sends back is checked before it is read.
+      elements: worldElementSetSchema.optional(),
       grid: z
         .object({
           width: z.number().int().min(1).max(64),
@@ -10402,6 +10410,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
                 preferences.battlefield?.exposure,
               )),
         difficulty,
+        ...(gameWorldElementSet(meta) ? { elements: gameWorldElementSet(meta) } : {}),
         environment,
         formation,
         battlefield: preferences.battlefield,

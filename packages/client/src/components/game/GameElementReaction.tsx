@@ -3,6 +3,7 @@
 // ──────────────────────────────────────────────
 import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
+import { WORLD_DEFAULT_ELEMENTS, worldElementId, type WorldElementSet } from "@marinara-engine/shared";
 
 interface ReactionDisplay {
   reaction: string;
@@ -15,6 +16,8 @@ interface ReactionDisplay {
 
 interface GameElementReactionProps {
   reaction: ReactionDisplay;
+  /** The game's elements (worldgen W6c), whose own colours and signs come first. */
+  elements?: WorldElementSet;
   onDismiss: () => void;
 }
 
@@ -60,7 +63,7 @@ const ELEMENT_EMOJI: Record<string, string> = {
   imaginary: "✦",
 };
 
-export function GameElementReaction({ reaction, onDismiss }: GameElementReactionProps) {
+export function GameElementReaction({ reaction, elements, onDismiss }: GameElementReactionProps) {
   const [animate, setAnimate] = useState(false);
   const onDismissRef = useRef(onDismiss);
   onDismissRef.current = onDismiss;
@@ -75,8 +78,10 @@ export function GameElementReaction({ reaction, onDismiss }: GameElementReaction
     };
   }, [reaction]);
 
-  const glowColor = reaction.element ? (ELEMENT_COLORS[reaction.element] ?? "#ffffff") : "#ffffff";
-  const emoji = reaction.element ? (ELEMENT_EMOJI[reaction.element] ?? "💥") : "💥";
+  const set = elements ?? WORLD_DEFAULT_ELEMENTS;
+  const own = set.elements.find((element) => element.id === worldElementId(set, reaction.element));
+  const glowColor = own?.color ?? (reaction.element ? (ELEMENT_COLORS[reaction.element] ?? "#ffffff") : "#ffffff");
+  const emoji = own?.emoji ?? (reaction.element ? (ELEMENT_EMOJI[reaction.element] ?? "💥") : "💥");
   const multiplierText =
     reaction.damageMultiplier > 1
       ? `${reaction.damageMultiplier}x DMG`

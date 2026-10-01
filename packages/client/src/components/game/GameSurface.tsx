@@ -2,6 +2,9 @@ import {
   assignCombatTactics,
   combatTacticsSchema,
   gameWorldKitFromMetadata,
+  worldElementId,
+  worldElementSet,
+  type WorldElementSet,
   gameInventoryBags,
   gameInventoryBagKey,
   gameInventoryFightEffects,
@@ -2004,15 +2007,14 @@ function applyCombatStatusTagsToCombatants(
   return { party: nextParty, enemies: nextEnemies, appliedCount };
 }
 
-function normalizeCombatElement(value: string): string {
+/** An element word as the game's own element (worldgen W6c): one of its set by id, label or a classic
+ *  alias ("pyro" is fire), so the screen and the fight read one element; another word keeps the
+ *  older aliases it always had. */
+function normalizeCombatElement(value: string, elements: WorldElementSet): string {
+  const own = worldElementId(elements, value);
+  if (own) return own;
   const normalized = value.trim().toLowerCase();
   const aliases: Record<string, string> = {
-    fire: "pyro",
-    flame: "pyro",
-    ice: "cryo",
-    frost: "cryo",
-    lightning: "electro",
-    thunder: "electro",
     water: "hydro",
     wind: "anemo",
     earth: "geo",
@@ -2027,14 +2029,15 @@ function applyElementAttackTagsToCombatants(
   party: Combatant[],
   enemies: Combatant[],
   tags: ElementAttackTag[],
+  elements: WorldElementSet,
 ): { party: Combatant[]; enemies: Combatant[]; appliedCount: number } {
   let appliedCount = 0;
   const applyTag = (combatant: Combatant, tag: ElementAttackTag): Combatant => ({
     ...combatant,
     elementAura: {
-      element: normalizeCombatElement(tag.element),
+      element: normalizeCombatElement(tag.element, elements),
       gauge: 1,
-      sourceId: `gm:${normalizeCombatStatusKey(tag.target)}:${normalizeCombatElement(tag.element)}`,
+      sourceId: `gm:${normalizeCombatStatusKey(tag.target)}:${normalizeCombatElement(tag.element, elements)}`,
     },
   });
 
@@ -2269,6 +2272,12 @@ function GameSurfaceComponent({
   const backgroundIllustration = useChatStore((state) => state.backgroundIllustrationChatIds.has(activeChatId));
   const agentsProcessing = useAgentStore((state) => state.processingChatIds.includes(activeChatId));
   const gameSequentialAgents = chatMeta.gameSequentialAgents === true;
+  // The setting kit the game was made with, and the elements its fights use (worldgen W6b, W6c).
+  const gameKit = useMemo(
+    () => gameWorldKitFromMetadata({ gameWorldKit: chatMeta.gameWorldKit }),
+    [chatMeta.gameWorldKit],
+  );
+  const gameElements = useMemo(() => worldElementSet(gameKit), [gameKit]);
   const gameInputGenerationBlocked = isGenerationSendBlocked({
     streamActive: isStreaming,
     agentsProcessing,
@@ -5125,7 +5134,12 @@ function GameSurfaceComponent({
       });
       const canApplyToActiveCombat = gameState === "combat" && !!combatParty && !!combatEnemies;
       if (canApplyToActiveCombat && !appliedCombatElementMessageIdsRef.current.has(msg.id)) {
-        const applied = applyElementAttackTagsToCombatants(combatParty, combatEnemies, tags.elementAttacks);
+        const applied = applyElementAttackTagsToCombatants(
+          combatParty,
+          combatEnemies,
+          tags.elementAttacks,
+          gameElements,
+        );
         if (applied.appliedCount > 0) {
           setCombatParty(applied.party);
           setCombatEnemies(applied.enemies);
@@ -8779,10 +8793,7 @@ function GameSurfaceComponent({
     };
   }, [chatMeta.gameCharacterCards, gameRuleset, inventoryPlayerName]);
   // A game with no ruleset buys and pays in its setting kit's money (worldgen W6b).
-  const inventoryKit = useMemo(
-    () => gameWorldKitFromMetadata({ gameWorldKit: chatMeta.gameWorldKit }),
-    [chatMeta.gameWorldKit],
-  );
+  const inventoryKit = gameKit;
   const inventoryItemBook = useRulesetItemBook(gameRuleset, inventorySheets, chatMeta.gameInventedItems, inventoryKit);
   /** The Use button. One of the ruleset's items with a `use` is used by the Engine first: what it does
    *  to whoever carries it lands on their sheet, it is spent, and the Game Master is told what happened
@@ -10369,13 +10380,13 @@ function GameSurfaceComponent({
         [
           `I attempt a special combat maneuver: ${cleanInstruction}`,
           ``,
-          `GM combat adjudication: Resolve this in your GM role using the current fiction and tactical state. If the maneuver creates a real combat condition, emit [status: target="Exact Name" effect="Effect Name" turns=1-3 stat="hp|attack|defense|speed" modifier="+/-N"]. If it applies an element, emit [element_attack: element="pyro|hydro|cryo|electro|anemo|geo|dendro|physical" target="Exact Name"]. Keep [state: combat] unless this action truly ends the fight.`,
+          `GM combat adjudication: Resolve this in your GM role using the current fiction and tactical state. If the maneuver creates a real combat condition, emit [status: target="Exact Name" effect="Effect Name" turns=1-3 stat="hp|attack|defense|speed" modifier="+/-N"]. ${gameElements.elements.length ? `If it applies an element, emit [element_attack: element="${gameElements.elements.map((element) => element.id).join("|")}" target="Exact Name"]. ` : ""}Keep [state: combat] unless this action truly ends the fight.`,
           ``,
           `Current combat snapshot: Party: ${partySnapshot}. Enemies: ${enemySnapshot}.`,
         ].join("\n"),
       );
     },
-    [combatEnemies, combatParty, isStreaming, sendMessage, sessionInteractive, localizeUi],
+    [combatEnemies, combatParty, gameElements, isStreaming, sendMessage, sessionInteractive, localizeUi],
   );
   const sessionSummaries = Array.isArray(chatMeta.gamePreviousSessionSummaries)
     ? (chatMeta.gamePreviousSessionSummaries as SessionSummary[])
@@ -13102,7 +13113,11 @@ function GameSurfaceComponent({
               </div>
 
               {!replayActive && pendingReaction && (
-                <GameElementReaction reaction={pendingReaction} onDismiss={() => setPendingReaction(null)} />
+                <GameElementReaction
+                  reaction={pendingReaction}
+                  elements={gameElements}
+                  onDismiss={() => setPendingReaction(null)}
+                />
               )}
 
               {/* Main content area */}
@@ -13508,6 +13523,7 @@ function GameSurfaceComponent({
                             />
                           ) : (
                             <GameCombatUI
+                              elements={gameElements}
                               chatId={activeChatId}
                               party={combatParty}
                               enemies={combatEnemies}

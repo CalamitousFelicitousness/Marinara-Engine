@@ -5,6 +5,7 @@ import {
   classicHitProbability,
   type CombatSkill,
   type CombatWeather,
+  type WorldElementSet,
 } from "@marinara-engine/shared";
 import { chooseCombatCandidate, combatAiHash, type CombatAiCandidate } from "@marinara-engine/shared";
 import type { CombatantStats, PlayerAction } from "./combat.service.js";
@@ -16,6 +17,7 @@ export function chooseClassicAction(
   round: number,
   difficulty: string = "normal",
   weather?: CombatWeather,
+  elements?: WorldElementSet,
 ): PlayerAction {
   if (!enemies.length) return { type: "defend" };
   if (!unit.tactics) return { type: "attack", targetId: enemies[0]!.id };
@@ -42,7 +44,7 @@ export function chooseClassicAction(
           (unit.skillCooldowns?.[s.id] ?? 0) <= 0,
       ),
     ]) {
-      const estimate = (foe: CombatantStats) => estimateClassicAttack(unit, foe, skill, difficulty, weather);
+      const estimate = (foe: CombatantStats) => estimateClassicAttack(unit, foe, skill, difficulty, weather, elements);
       const { damage, hitProbability } = estimate(target);
       candidates.push({
         action: skill
@@ -115,6 +117,7 @@ export function estimateClassicAttack(
   skill?: CombatSkill,
   difficulty = "normal",
   weather?: CombatWeather,
+  elements?: WorldElementSet,
 ) {
   const attack = skill ? Math.max(1, Math.floor(unit.attack * Math.max(1, skill.power))) : unit.attack;
   const base = Math.max(
@@ -126,7 +129,7 @@ export function estimateClassicAttack(
   const scaled =
     unit.side === "enemy" ? Math.floor(base * ENEMY_DAMAGE_MULTIPLIERS[normalizeGameDifficulty(difficulty)]) : base;
   return {
-    damage: Math.floor(scaled * weatherDamageMultiplier(weather, skill?.element ?? unit.element)),
+    damage: Math.floor(scaled * weatherDamageMultiplier(weather, skill?.element ?? unit.element, elements)),
     hitProbability: classicHitProbability(attack, target.defense, weather, skill ?? unit),
   };
 }

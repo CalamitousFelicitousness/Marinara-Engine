@@ -832,6 +832,14 @@ test("A setting kit is off by default, can be picked, written for the setting, e
   // Its money and what it sells (worldgen W6b).
   await wizard.getByLabel("Coin", { exact: true }).nth(1).fill("buck");
   await wizard.getByLabel("Price of Coffee, in the smallest coin", { exact: true }).fill("350");
+  // Its elements (worldgen W6c): modern day has none, and one can be added.
+  await expect(wizard.getByText("This setting has no elemental attacks.", { exact: true })).toBeVisible();
+  // Back to the classic six as words to change: a renamed element is renamed where the kit names it.
+  await wizard.getByRole("button", { name: "Back to the classic six", exact: true }).click();
+  await wizard.getByRole("button", { name: "Change them", exact: true }).click();
+  await wizard.getByLabel("Element", { exact: true }).first().fill("Flame");
+  await wizard.getByRole("button", { name: "Add an element", exact: true }).click();
+  await wizard.getByLabel("Element", { exact: true }).last().fill("Tide");
   // Retyping the places keeps the settlements on the layer of that name.
   const settlements = wizard.getByLabel("Which of them holds the settlements", { exact: true });
   await expect(settlements.locator("option:checked")).toHaveText("city");
@@ -872,6 +880,22 @@ test("A setting kit is off by default, can be picked, written for the setting, e
   expect(result.config.worldKit.change.kinds.crime).toEqual({ label: "smuggling on the docks", on: true });
   expect(result.config.worldKit.change.kinds.conflict.on).toBe(false);
   expect(result.config.worldKit.loot.common).toEqual(["Fishing net", "Tide table"]);
+  const elements = result.config.worldKit.elements as Array<{ label: string; beats?: string[] }>;
+  expect(elements.map((element) => element.label)).toEqual([
+    "Flame",
+    "Ice",
+    "Lightning",
+    "Poison",
+    "Holy",
+    "Shadow",
+    "Tide",
+  ]);
+  expect(elements.find((element) => element.label === "Lightning")!.beats).toEqual(["Flame"]);
+  expect(
+    (result.config.worldKit.reactions as Array<{ on: string; with: string; label: string }>).find(
+      (reaction) => reaction.label === "Melt",
+    ),
+  ).toMatchObject({ on: "Flame", with: "Ice" });
   expect(result.config.worldKit.money.units.map((unit: { label: string }) => unit.label)).toEqual(["cent", "buck"]);
   expect(result.config.worldKit.shop.find((thing: { name: string }) => thing.name === "Coffee").price).toBe(350);
   // The ladder lost a size; what the shop sold from the biggest keeps its rank (the market reads it as

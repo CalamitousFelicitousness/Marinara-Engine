@@ -439,6 +439,32 @@ const wuxia: WorldKitInput = {
     { name: "A room at the inn", price: 100, from: 1, service: true },
     { name: "An escort to the next town", price: 2000, from: 2, service: true },
   ],
+  elements: [
+    { label: "Wood", emoji: "🌳", color: "#2e8b57", beats: ["Earth"] },
+    { label: "Fire", emoji: "🔥", color: "#ff4500", weather: "hot", beats: ["Metal"] },
+    { label: "Earth", emoji: "⛰️", color: "#a0522d", beats: ["Water"] },
+    { label: "Metal", emoji: "⚔️", color: "#c0c0c0", beats: ["Wood"] },
+    { label: "Water", emoji: "💧", color: "#1e90ff", beats: ["Fire"] },
+  ],
+  reactions: [
+    { on: "Wood", with: "Fire", label: "Wildfire", times: 1.6, note: "Wood feeds the fire and the blaze leaps higher" },
+    { on: "Fire", with: "Earth", label: "Ash and Cinder", times: 1.3, note: "Fire burns down to choking ash" },
+    { on: "Earth", with: "Metal", label: "Ore Burst", times: 1.3, note: "Metal tears from the earth in shards" },
+    {
+      on: "Metal",
+      with: "Water",
+      label: "Cold Steel",
+      times: 1.3,
+      note: "Water beads on cold metal and freezes the joints",
+    },
+    {
+      on: "Water",
+      with: "Wood",
+      label: "Entangling Growth",
+      times: 1.4,
+      note: "Water swells the wood into grasping roots",
+    },
+  ],
   calendar: {
     year: "year of the reign",
     day: "day",
@@ -617,6 +643,7 @@ const modernDay: WorldKitInput = {
     { name: "A movie ticket", price: 1400, from: 2, service: true },
     { name: "A haircut", price: 3000, from: 1, service: true },
   ],
+  elements: [],
   calendar: { year: "year", day: "day", months },
   change: {
     kinds: {
@@ -768,6 +795,18 @@ const modernSupernatural: WorldKitInput = {
     { name: "Old Rosary", price: 2000, from: 2 },
     { name: "Occult Notebook", price: 4000, from: 3 },
     { name: "A reading at the occult shop", price: 5000, from: 2, service: true },
+  ],
+  elements: [
+    { label: "Holy", emoji: "✨", color: "#fffacd", beats: ["Shadow"] },
+    { label: "Shadow", emoji: "🌑", color: "#4a0080", beats: ["Holy"] },
+    { label: "Fire", emoji: "🔥", color: "#ff4500", weather: "hot" },
+    { label: "Silver", emoji: "🥈", color: "#c0c0c0", beats: ["Shadow"] },
+  ],
+  reactions: [
+    { on: "Shadow", with: "Holy", label: "Purification", times: 2.0, note: "Holy light burns the darkness away" },
+    { on: "Holy", with: "Shadow", label: "Eclipse", times: 1.8, note: "Darkness swallows the light" },
+    { on: "Shadow", with: "Silver", label: "Bane", times: 1.6, note: "Silver bites into what hides in the dark" },
+    { on: "Holy", with: "Fire", label: "Hallowed Flame", times: 1.5, note: "Consecrated fire burns twice as hot" },
   ],
   calendar: { year: "year", day: "day", months },
   change: {
@@ -938,6 +977,7 @@ const twenties: WorldKitInput = {
     { name: "A shave at the barber", price: 25, from: 1, service: true },
     { name: "Dinner at a supper club", price: 300, from: 3, service: true },
   ],
+  elements: [],
   calendar: { year: "year", day: "day", months },
   change: {
     kinds: {
@@ -1074,6 +1114,17 @@ const cyberpunk: WorldKitInput = {
     { name: "A night in a capsule hotel", price: 30, from: 1, service: true },
     { name: "A street doc's patch-up", price: 250, from: 1, service: true },
   ],
+  elements: [
+    { label: "Kinetic", emoji: "💥", color: "#b0b0b0" },
+    { label: "Thermal", emoji: "🔥", color: "#ff4500", weather: "hot", beats: ["Chemical"] },
+    { label: "EM", emoji: "⚡", color: "#ffd700", weather: "charged", beats: ["Kinetic"] },
+    { label: "Chemical", emoji: "🧪", color: "#7fff00", beats: ["Thermal"] },
+  ],
+  reactions: [
+    { on: "Chemical", with: "Thermal", label: "Flashfire", times: 1.7, note: "The chemicals ignite in a white flash" },
+    { on: "Thermal", with: "EM", label: "Overload", times: 1.5, note: "Hot circuits overload and blow" },
+    { on: "EM", with: "Kinetic", label: "Short Circuit", times: 1.4, note: "A hit to fried systems shorts them out" },
+  ],
   calendar: { year: "year", day: "day", months },
   change: {
     kinds: {
@@ -1201,6 +1252,22 @@ const spaceOpera: WorldKitInput = {
     { name: "Personal Shield Emitter", price: 6000, from: 4 },
     { name: "A berth on a freighter", price: 200, from: 1, service: true },
     { name: "Docking for a day", price: 50, from: 1, service: true },
+  ],
+  elements: [
+    { label: "Kinetic", emoji: "💥", color: "#b0b0b0" },
+    { label: "Thermal", emoji: "🔥", color: "#ff4500", weather: "hot" },
+    { label: "EM", emoji: "⚡", color: "#ffd700", weather: "charged", beats: ["Kinetic"] },
+    { label: "Plasma", emoji: "🟣", color: "#da70d6", beats: ["Thermal"] },
+  ],
+  reactions: [
+    {
+      on: "Thermal",
+      with: "Plasma",
+      label: "Plasma Flare",
+      times: 1.6,
+      note: "The heat feeds the plasma into a blinding flare",
+    },
+    { on: "EM", with: "Thermal", label: "Overload", times: 1.5, note: "Charged armor overheats and fails" },
   ],
   calendar: { year: "standard year", day: "standard day", era: "era" },
   change: {
@@ -1341,6 +1408,15 @@ const postApocalyptic: WorldKitInput = {
     { name: "Water Filter", price: 200, from: 3 },
     { name: "Hunting Rifle", price: 300, from: 3 },
     { name: "A safe night behind the walls", price: 10, from: 1, service: true },
+  ],
+  elements: [
+    { label: "Fire", emoji: "🔥", color: "#ff4500", weather: "hot" },
+    { label: "Radiation", emoji: "☢️", color: "#adff2f" },
+    { label: "Chemical", emoji: "🧪", color: "#7fff00", beats: ["Radiation"] },
+  ],
+  reactions: [
+    { on: "Chemical", with: "Fire", label: "Toxic Blaze", times: 1.6, note: "The fumes catch and burn" },
+    { on: "Radiation", with: "Chemical", label: "Fallout", times: 1.4, note: "Poisoned ash clings and burns" },
   ],
   calendar: { year: "year after the fall", day: "day" },
   change: {

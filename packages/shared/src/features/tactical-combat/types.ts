@@ -1,5 +1,6 @@
 import type { CombatWeather, CombatAttackTraits, GameDifficulty } from "../combat-conditions.js";
 import type { CombatController, CombatTactics } from "../combat-ai.js";
+import type { WorldElementSet } from "../world/elements.js";
 // ──────────────────────────────────────────────
 // Tactical Combat — shared types
 // ──────────────────────────────────────────────
@@ -247,6 +248,8 @@ export type TacticalDifficulty = GameDifficulty;
 
 export interface TacticalCombatState {
   weather?: CombatWeather;
+  /** The game's elements (worldgen W6c); the classic six when absent. */
+  elements?: WorldElementSet;
   schemaVersion: 1;
   grid: TacticalGrid;
   units: TacticalUnit[];

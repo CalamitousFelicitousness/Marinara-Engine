@@ -147,6 +147,42 @@ export const worldKitSchema = z
       )
       .max(60)
       .optional(),
+    /** What an elemental attack can be in this setting (worldgen W6c), how rain treats it (a hot one is
+     *  damped, a charged one fed) and which it beats in a tactical fight. An empty list: this setting has no elemental attacks.
+     *  Left out: the classic six. */
+    elements: z
+      .array(
+        z
+          .object({
+            label: word,
+            emoji: z.string().max(16).optional(),
+            color: z
+              .string()
+              .regex(/^#[0-9a-fA-F]{6}$/, "A color is #rrggbb")
+              .optional(),
+            weather: z.enum(["hot", "charged"]).optional(),
+            beats: z.array(word).max(8).optional(),
+          })
+          .strict(),
+      )
+      .max(12)
+      .optional(),
+    /** What happens when one of the kit's elements lands on a target still wearing another (its aura):
+     *  the reaction's name, how much harder the hit lands, and a line for the telling. */
+    reactions: z
+      .array(
+        z
+          .object({
+            on: word,
+            with: word,
+            label: word,
+            times: z.number().min(0.1).max(5),
+            note: promptSafeText(200).optional(),
+          })
+          .strict(),
+      )
+      .max(24)
+      .optional(),
     calendar: z
       .object({
         year: word,
@@ -220,6 +256,36 @@ export const worldKitSchema = z
     if (kit.shop?.length && !kit.money) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["shop"], message: "A shop needs the setting's money" });
     }
+    // Every element a kit's beats and reactions name is one of its own.
+    const elements = new Set((kit.elements ?? []).map((element) => element.label.trim().toLowerCase()));
+    if (elements.size !== (kit.elements ?? []).length) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["elements"], message: "Two elements share a name" });
+    }
+    (kit.elements ?? []).forEach((element, index) => {
+      for (const beaten of element.beats ?? []) {
+        if (!elements.has(beaten.trim().toLowerCase())) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["elements", index, "beats"],
+            message: `Beats "${beaten}", which is not one of the kit's elements`,
+          });
+        }
+      }
+    });
+    if (kit.reactions?.length && !kit.elements) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["reactions"], message: "Reactions need the kit's elements" });
+    }
+    (kit.reactions ?? []).forEach((reaction, index) => {
+      for (const key of ["on", "with"] as const) {
+        if (kit.elements && !elements.has(reaction[key].trim().toLowerCase())) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["reactions", index, key],
+            message: `Names "${reaction[key]}", which is not one of the kit's elements`,
+          });
+        }
+      }
+    });
     const goods = (kit.shop ?? []).map((thing) => thing.name.trim().toLowerCase());
     if (new Set(goods).size !== goods.length) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["shop"], message: "Two things in the shop share a name" });

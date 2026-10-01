@@ -17,9 +17,13 @@ import type { CombatController, CombatTactics } from "@marinara-engine/shared";
 // ──────────────────────────────────────────────
 
 import { rollDice } from "./dice.service.js";
-import type { CombatItemEffect, CombatMechanic, CombatSkill } from "@marinara-engine/shared";
+import type { CombatItemEffect, CombatMechanic, CombatSkill, WorldElementSet } from "@marinara-engine/shared";
 import type { ElementAura, ReactionResult } from "./element-reactions.service.js";
 import { resolveElementApplication, applyReactionDamage } from "./element-reactions.service.js";
+
+/** A setting kit's element set, when the fight was given one rather than a preset name (worldgen W6c). */
+const elementSetOf = (preset: string | WorldElementSet | undefined) =>
+  preset && typeof preset === "object" ? preset : undefined;
 
 // ── Types ──
 
@@ -162,7 +166,7 @@ function resolveSkillAction(
   target: CombatantStats,
   skill: CombatSkill,
   difficulty: string = "normal",
-  elementPreset?: string,
+  elementPreset?: string | WorldElementSet,
   prepaid = false,
   weather?: CombatWeather,
 ): AttackResult {
@@ -268,7 +272,7 @@ function resolveItemAction(
   target: CombatantStats,
   itemId?: string,
   itemEffect?: CombatItemEffect,
-  elementPreset?: string,
+  elementPreset?: string | WorldElementSet,
   weather?: CombatWeather,
 ): AttackResult {
   const itemName = itemId?.trim() || "Item";
@@ -301,7 +305,11 @@ function resolveItemAction(
         effectType === "damage"
           ? Math.max(
               1,
-              Math.floor(Math.max(attacker.attack, target.maxHp) * power * weatherDamageMultiplier(weather, element)),
+              Math.floor(
+                Math.max(attacker.attack, target.maxHp) *
+                  power *
+                  weatherDamageMultiplier(weather, element, elementSetOf(elementPreset)),
+              ),
             )
           : 0;
       const remainingHp = Math.max(0, target.hp - finalDamage);
@@ -462,7 +470,7 @@ export function resolveAttack(
   attacker: CombatantStats,
   defender: CombatantStats,
   difficulty: string = "normal",
-  elementPreset?: string,
+  elementPreset?: string | WorldElementSet,
   weather?: CombatWeather,
 ): AttackResult {
   // Attack roll: 1d20 + attack stat modifier
@@ -500,7 +508,9 @@ export function resolveAttack(
   // Difficulty scaling
   if (attacker.side === "enemy")
     finalDamage = Math.floor(finalDamage * ENEMY_DAMAGE_MULTIPLIERS[normalizeGameDifficulty(difficulty)]);
-  finalDamage = Math.floor(finalDamage * weatherDamageMultiplier(weather, attacker.element));
+  finalDamage = Math.floor(
+    finalDamage * weatherDamageMultiplier(weather, attacker.element, elementSetOf(elementPreset)),
+  );
 
   // Apply status effect modifiers
   if (attacker.statusEffects) {
@@ -608,7 +618,7 @@ function resolveMechanicActions(
   combatants: (CombatantStats & { side?: "player" | "enemy" })[],
   round: number,
   mechanics: CombatMechanic[] | undefined,
-  elementPreset: string | undefined,
+  elementPreset: string | WorldElementSet | undefined,
   defendingIds: Set<string>,
   weather?: CombatWeather,
 ): { actions: AttackResult[]; reactions: CombatRoundResult["reactions"] } {
@@ -649,7 +659,9 @@ function resolveMechanicActions(
         ? Math.max(
             1,
             Math.floor(
-              Math.max(owner.attack, target.maxHp) * power * weatherDamageMultiplier(weather, mechanic.element),
+              Math.max(owner.attack, target.maxHp) *
+                power *
+                weatherDamageMultiplier(weather, mechanic.element, elementSetOf(elementPreset)),
             ),
           )
         : 0;
@@ -708,7 +720,7 @@ export function resolveCombatRound(
   combatants: (CombatantStats & { side?: "player" | "enemy" })[],
   round: number,
   difficulty: string = "normal",
-  elementPreset?: string,
+  elementPreset?: string | WorldElementSet,
   playerAction?: PlayerAction,
   mechanics?: CombatMechanic[],
   partyActions?: Record<string, PlayerAction>,
@@ -758,7 +770,7 @@ export function resolveCombatRound(
         command ??
         (isPlayerSide && attacker.controller === "manual"
           ? { type: "defend" as const }
-          : chooseClassicAction(attacker, allies, opponents, round, difficulty, weather));
+          : chooseClassicAction(attacker, allies, opponents, round, difficulty, weather, elementSetOf(elementPreset)));
       if (choice.type === "defend") {
         defendingIds.add(attacker.id);
         continue;

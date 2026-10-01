@@ -118,6 +118,10 @@ Some attacks and skills carry an element: Fire, Ice, Lightning, Poison, Holy, or
 
 Example reactions include Melt, Shatter, Overload, Superconduct, Toxic Blaze, Purification, Eclipse, and Electrotoxin. This system runs on its own. You do not turn it on or configure it. Reactions happen automatically when the right elements chain on the same target.
 
+## Elements
+
+Attacks, skills and items can carry an element, and an element that lands on a target still wearing another's aura can set off a reaction that hits harder. Which elements exist belongs to the setting: a game without a setting kit, or with one that names none, fights with the classic six (fire, ice, lightning, poison, holy and shadow); a wuxia game with the five phases (wood, fire, earth, metal and water, each overcoming the next); a cyberpunk or space opera game with kinetic, thermal, EM and chemical or plasma; and a modern-day or 1920s game with none at all. Rain and storms on open ground damp fire-like elements and feed lightning-like ones. In a tactical fight, an element hits harder against one it beats and softer against one that beats it. You can change a kit's elements and their reactions under **Change its words**.
+
 ## Boss mechanics and loot
 
 Strong enemies can have boss mechanics, which are special rules the GM writes for that fight. A mechanic can trigger on a schedule, such as every few rounds, or when the boss drops below a set health level. Mechanics can hit your whole party, buff the boss, or apply a status effect. When one triggers, the effect appears in the combat log so you can react.

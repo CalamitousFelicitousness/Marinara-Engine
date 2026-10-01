@@ -1073,6 +1073,9 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       macroSources: [
         ...mappedMessages.map((message) => message.content),
         promptParts ? JSON.stringify(promptParts) : "",
+        // Author's notes, a chat's own system or Game prompt, and the preset's mode prompts.
+        JSON.stringify(chatMeta),
+        effectivePreset ? JSON.stringify(effectivePreset) : "",
       ],
     });
     const historyMacroProfilesById = (await resolveCharacterMacroData(app.db, allCharacterIds)).profilesById;

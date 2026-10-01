@@ -137,6 +137,25 @@ Unknown lorebook IDs resolve to `0`. The count includes all entries regardless o
 
 Use this macro in prompt sections, character card fields, lorebook entry content, or anywhere else macros are resolved.
 
+## Lorebook include macro
+
+`{{include::ENTRY}}` puts the text of a lorebook entry where you write it. Keep a shared piece of text, such as house rules, in one entry and reuse it in other entries, prompt sections, or cards, so there is only one copy to edit. Replace `ENTRY` with the entry's ID or its name. Names ignore uppercase and lowercase.
+
+- Inside a lorebook entry, a name is looked up in that entry's own lorebook.
+- Anywhere else, a name is looked up in the lorebooks this chat uses: the ones added to the chat, the ones linked to its characters and persona, and global ones.
+- An ID finds the entry in any lorebook.
+
+`{{include::BOOK::ENTRY}}` takes the entry from the lorebook you name, by its ID or name. That lorebook does not have to be added to the chat or even turned on.
+
+```text
+{{include::Rules of the arena}}
+{{include::Shared lore::Rules of the arena}}
+```
+
+The included entry does not have to activate, and it can be turned off, so you can keep entries that exist only to be included. Macros in the included text work as usual, and it can include other entries too. If an include leads back to an entry it is already inside, such as an entry that includes itself, that include becomes nothing instead of repeating forever. An entry or lorebook that is not found also becomes nothing.
+
+Write names and IDs as plain text. Macros inside them, such as `{{include::{{char}}}}`, are not filled in.
+
 ## Time macros
 
 All time macros read one shared moment per resolution, so they always agree with each other. The timezone comes from your browser.

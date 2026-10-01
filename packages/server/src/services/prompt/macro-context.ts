@@ -17,15 +17,17 @@ import {
   formatRpgStatsForPrompt,
   resolveMacros,
   stripMacroComments,
+  usesLorebookIncludes,
   type CharacterMacroProfile,
   type CharacterData,
+  type LorebookIncludeSource,
   type MacroContext,
   type RPGStatsConfig,
   type ResolveMacroOptions,
   type WrapFormat,
 } from "@marinara-engine/shared";
 import type { DB } from "../../db/connection.js";
-import { processLorebooks, type LorebookScanResult } from "../lorebook/index.js";
+import { loadLorebookIncludes, processLorebooks, type LorebookScanResult } from "../lorebook/index.js";
 import { createCharactersStorage, type PersonaStorageRow } from "../storage/characters.storage.js";
 import { createLorebooksStorage } from "../storage/lorebooks.storage.js";
 import { wrapContent } from "./format-engine.js";
@@ -780,6 +782,14 @@ export async function buildPromptMacroContext(input: BuildPromptMacroContextInpu
       // If the count fails, continue with empty counts — {{lorebooksize::ID}} resolves to 0.
     }
   }
+  let lorebookIncludes: LorebookIncludeSource | undefined;
+  if (macroSources.some(usesLorebookIncludes)) {
+    try {
+      lorebookIncludes = await loadLorebookIncludes(input.db, input.chatId);
+    } catch (err) {
+      logger.warn(err, "Failed to load lorebooks for include macros; leaving them as written");
+    }
+  }
 
   return {
     user: input.personaName || "User",
@@ -798,6 +808,7 @@ export async function buildPromptMacroContext(input: BuildPromptMacroContextInpu
     idleDuration: input.idleDuration,
     timeZone: input.timeZone,
     lorebookEntryCounts,
+    ...(lorebookIncludes ? { lorebookIncludes } : {}),
     characterFields: {
       ...(characterMacroData.primaryFields ?? {}),
       ...(input.groupScenarioOverrideText ? { scenario: input.groupScenarioOverrideText } : {}),

@@ -67,6 +67,8 @@ export interface MacroContext {
   decisions?: MacroDecisionAnswers;
   /** Per-lorebook total entry counts, keyed by lorebook ID (for {{lorebooksize::ID}}) */
   lorebookEntryCounts?: Record<string, number>;
+  /** Lorebooks `{{include::...}}` reads from; loaded only when a prompt uses it (see `expandLorebookIncludes`). */
+  lorebookIncludes?: LorebookIncludeSource;
   /** Current character card fields used by macros like {{description}} */
   characterFields?: {
     phoneticName?: string;
@@ -97,6 +99,17 @@ export interface MacroContext {
     personaAbout?: string;
     convoBehavior?: string;
   };
+}
+
+/**
+ * What `{{include::ENTRY}}` and `{{include::BOOK::ENTRY}}` can read (#6912): every
+ * lorebook and entry, whether or not the chat uses it and whether or not it is enabled.
+ */
+export interface LorebookIncludeSource {
+  books: ReadonlyArray<{ id: string; name: string }>;
+  entries: ReadonlyArray<{ id: string; lorebookId: string; name: string; content: string }>;
+  /** Where the short form looks for an entry name: the lorebooks the chat uses. */
+  currentBookIds: readonly string[];
 }
 
 export interface MacroDecisionAnswers {
@@ -496,6 +509,17 @@ export const SUPPORTED_MACROS: readonly SupportedMacroDefinition[] = [
     category: "Lorebooks",
     syntax: "{{lorebooksize::ID}}",
     description: "Total number of entries in the lorebook with the given ID",
+  },
+  {
+    category: "Lorebooks",
+    syntax: "{{include::ENTRY}}",
+    description:
+      "Text of a lorebook entry, by ID or name. Inside an entry, a name is looked up in that entry's lorebook; elsewhere, in the chat's lorebooks",
+  },
+  {
+    category: "Lorebooks",
+    syntax: "{{include::BOOK::ENTRY}}",
+    description: "Text of an entry from the lorebook with this ID or name, even one the chat does not use",
   },
   {
     category: "Game",
@@ -2682,6 +2706,62 @@ function formatMacroDateTime(now: Date, requestedTimeZone?: string): MacroDateTi
   }
 }
 
+const LOREBOOK_INCLUDE_RE = /\{\{\s*include::/iu;
+
+/** Whether text uses `{{include::...}}`, so a caller loads lorebooks only when it must. */
+export function usesLorebookIncludes(text: string): boolean {
+  return LOREBOOK_INCLUDE_RE.test(text);
+}
+
+function findIncludedEntry(source: LorebookIncludeSource, currentBookIds: readonly string[], parts: string[]) {
+  const named = (name: string) => (item: { name: string }) => item.name.trim().toLowerCase() === name.toLowerCase();
+  const entryRef = parts.at(-1) ?? "";
+  if (!entryRef || parts.length > 2) return undefined;
+  let bookIds = currentBookIds;
+  if (parts.length === 2) {
+    const book = source.books.find((item) => item.id === parts[0]) ?? source.books.find(named(parts[0]!));
+    if (!book) return undefined;
+    bookIds = [book.id];
+  } else {
+    // An ID names one entry wherever it is; only a name needs the current lorebooks.
+    const byId = source.entries.find((entry) => entry.id === entryRef);
+    if (byId) return byId;
+  }
+  const inBooks = source.entries.filter((entry) => bookIds.includes(entry.lorebookId));
+  return inBooks.find((entry) => entry.id === entryRef) ?? inBooks.find(named(entryRef));
+}
+
+/**
+ * Replace `{{include::ENTRY}}` and `{{include::BOOK::ENTRY}}` with that lorebook entry's
+ * content (#6912). Books and entries are found by ID first, then by name, ignoring case;
+ * the short form looks for a name in `currentBookIds`. No match reads as empty.
+ *
+ * Included text can include more, and its own short form looks in its own lorebook. An
+ * entry already included on the way here reads as empty, so `A -> B -> A` stops.
+ */
+export function expandLorebookIncludes(
+  text: string,
+  source: LorebookIncludeSource,
+  scope: { currentBookIds?: readonly string[]; seen?: ReadonlySet<string> } = {},
+  options: ResolveMacroOptions = {},
+): string {
+  if (!usesLorebookIncludes(text)) return text;
+  return replaceBalancedMacros(text, (body, original) => {
+    const match = /^\s*include::([\s\S]*)$/iu.exec(body);
+    if (!match) return undefined;
+    if (!consumeMacroExpansion(options)) return original;
+    const parts = splitTopLevelDoubleColon(match[1]!).map((part) => part.trim());
+    const entry = findIncludedEntry(source, scope.currentBookIds ?? source.currentBookIds, parts);
+    if (!entry || scope.seen?.has(entry.id)) return "";
+    return expandLorebookIncludes(
+      stripMacroComments(entry.content),
+      source,
+      { currentBookIds: [entry.lorebookId], seen: new Set([...(scope.seen ?? []), entry.id]) },
+      options,
+    );
+  });
+}
+
 /**
  * Replace macros in a prompt string with their values.
  *
@@ -2719,6 +2799,7 @@ function formatMacroDateTime(now: Date, requestedTimeZone?: string): MacroDateTi
  *  - {{idle_duration}} — time since the last chat activity
  *  - {{outlet::name}} — activated lorebook entries assigned to a named Outlet
  *  - {{lorebooksize::ID}} — total number of entries in the lorebook with the given ID
+ *  - {{include::ENTRY}} / {{include::BOOK::ENTRY}} — content of a lorebook entry (see expandLorebookIncludes)
  *  - {{gameStoryboardKeyframeCount}} — current Game Mode Keyframes per Turn target
  *  - {{// comment}} — removed (author comments)
  *  - {{trim}} — remove surrounding whitespace
@@ -2777,6 +2858,9 @@ export function resolveMacros(template: string, ctx: MacroContext, options: Reso
 
   // ── Comments — strip first so they don't interfere ──
   result = stripMacroComments(result);
+
+  // ── Lorebook includes — before everything else, so included text goes through every pass below. ──
+  if (ctx.lorebookIncludes) result = expandLorebookIncludes(result, ctx.lorebookIncludes, {}, options);
 
   // #3104: resolve the persona fields lazily — only when {{persona}} can appear
   // in the output — instead of unconditionally on every call (the root cause of

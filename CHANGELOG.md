@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- The new `{{include::Entry name}}` macro puts in the text of a lorebook entry, so shared text can live in one entry and be reused in other entries, presets and cards. Inside an entry it looks in that entry's lorebook, and elsewhere in the chat's lorebooks. `{{include::Lorebook name::Entry name}}` reads from any lorebook, even one the chat does not use. IDs work too, and an include that loops back to itself becomes empty (#6912).
 - A character ID macro now turns into the character's name even when that character is already in the chat, instead of staying as raw `{{ID}}` text. Their card is still sent only once (#6924).
 - On phones, the top bar now looks like a small version of the desktop one: Home and Chats sit at the left and a hamburger menu sits at the right, with wider, finger-sized buttons, instead of every control stretching across the bar.
 

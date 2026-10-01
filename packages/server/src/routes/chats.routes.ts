@@ -3272,6 +3272,9 @@ export async function chatsRoutes(app: FastifyInstance) {
             macroSources: [
               ...sections.map((section) => section.content),
               ...mappedMessages.map((message) => message.content),
+              // Author's notes, a chat's own system or Game prompt, and the preset's mode prompts.
+              JSON.stringify(chatMeta),
+              preset ? JSON.stringify(preset) : "",
             ],
           });
           const resolvePromptMacros = (value: string, lorebookEntryCounts?: Readonly<Record<string, number>>) => {

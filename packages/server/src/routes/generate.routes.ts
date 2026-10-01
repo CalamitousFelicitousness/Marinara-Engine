@@ -2759,6 +2759,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             activeChatSummary ?? "",
             ...currentInputMessages().map((message) => message.content),
             ...pipelineConfiguredPromptAgents.map((agent) => JSON.stringify(agent.settings)),
+            // Author's notes, a chat's own system or Game prompt, and the preset's mode prompts.
+            JSON.stringify(chatMeta),
+            resolvedPreset ? JSON.stringify(resolvedPreset) : "",
           ],
         });
         const conversationMacroFieldsByCharacterId = new Map<string, NonNullable<MacroContext["convoFields"]>>();

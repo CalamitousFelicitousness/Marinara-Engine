@@ -7,6 +7,7 @@ import { useTranslation as useUiTranslation } from "react-i18next";
 import { Sparkles } from "lucide-react";
 import {
   WORLD_CHANGE_KINDS,
+  WORLD_LOOT_RARITIES,
   WORLD_PACES,
   WORLD_SCALES,
   WORLD_STARTER_KITS,
@@ -421,6 +422,35 @@ export function GameSetupWorldKitChooser({
                     ))}
                   </select>
                 </div>
+              </fieldset>
+
+              <fieldset className="space-y-1.5">
+                <legend className={FIELD_LABEL}>{t("game.worldKit.setup.loot")}</legend>
+                <p className="text-[var(--muted-foreground)]">{t("game.worldKit.setup.lootHelp")}</p>
+                {WORLD_LOOT_RARITIES.map((rarity) => (
+                  <WordsField
+                    key={rarity}
+                    id={`world-kit-loot-${rarity}`}
+                    label={t(`game.worldKit.setup.rarities.${rarity}`)}
+                    words={kit.loot?.[rarity] ?? []}
+                    onChange={(words) =>
+                      edit((draft) => {
+                        const loot = {
+                          common: [],
+                          uncommon: [],
+                          rare: [],
+                          epic: [],
+                          legendary: [],
+                          ...draft.loot,
+                          [rarity]: words,
+                        };
+                        // With every list empty, the game drops what its genre usually has.
+                        if (Object.values(loot).some((each) => each.length > 0)) draft.loot = loot;
+                        else delete draft.loot;
+                      })
+                    }
+                  />
+                ))}
               </fieldset>
 
               <fieldset className="space-y-2">

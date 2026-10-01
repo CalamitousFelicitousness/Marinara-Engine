@@ -57,6 +57,9 @@ const travelWay = z
   })
   .strict();
 
+/** Item names of one rarity of loot. */
+const lootWords = z.array(word).max(20);
+
 export const worldKitSchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -99,6 +102,22 @@ export const worldKitSchema = z
         speech: z.array(word).min(1).max(20).optional(),
       })
       .strict()
+      .optional(),
+    /** What a won fight drops in a game with no ruleset loot (worldgen W6a): item names by rarity, in
+     *  the setting's own words. A kit without it rolls the starter kit its game's genre names, else loot
+     *  that belongs to no setting (`worldLootWords`), never another setting's. */
+    loot: z
+      .object({
+        common: lootWords,
+        uncommon: lootWords,
+        rare: lootWords,
+        epic: lootWords,
+        legendary: lootWords,
+      })
+      .strict()
+      .refine((loot) => Object.values(loot).some((words) => words.length > 0), {
+        message: "Names at least one thing a fight can drop",
+      })
       .optional(),
     calendar: z
       .object({
@@ -174,6 +193,8 @@ export const worldKitSchema = z
 
 export type WorldKit = z.infer<typeof worldKitSchema>;
 export type WorldKitInput = z.input<typeof worldKitSchema>;
+/** A kit's loot words by rarity. */
+export type WorldLoot = NonNullable<WorldKit["loot"]>;
 
 /** A kit read from anywhere (a starter, the model, the player's edits), or the reasons it is not one. */
 export function parseWorldKit(input: unknown): { ok: true; kit: WorldKit } | { ok: false; issues: string[] } {

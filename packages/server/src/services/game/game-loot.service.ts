@@ -10,6 +10,8 @@
 
 import {
   applyGameInventoryOps,
+  gameWorldKitFromMetadata,
+  worldLootWords,
   normalizeCharacterLookupName,
   rollRulesetLootTable,
   rulesetCombatRoller,
@@ -90,7 +92,14 @@ export async function planGameVictoryLoot(
   const chat = await createChatsStorage(db).getById(chatId);
   const metadata = readMetadata(chat?.metadata);
   if (await gameRulesetTurnsNativeItemsOff(db, metadata)) return null;
-  const ops = generateCombatLoot(fight.defeated, fight.difficulty, random).map((drop) => ({
+  // In the setting's own words (worldgen W6a): the game's kit, else its genre's starter kit, else words
+  // that belong to no setting.
+  const setup = metadata.gameSetupConfig as { genre?: unknown } | undefined;
+  const loot = worldLootWords(
+    gameWorldKitFromMetadata(metadata),
+    typeof setup?.genre === "string" ? setup.genre : undefined,
+  );
+  const ops = generateCombatLoot(fight.defeated, fight.difficulty, random, loot).map((drop) => ({
     op: "add" as const,
     name: drop.item.name,
     count: drop.quantity,

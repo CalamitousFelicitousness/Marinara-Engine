@@ -827,6 +827,8 @@ test("A setting kit is off by default, can be picked, written for the setting, e
   await sizes.pressSequentially(" city");
   await wizard.getByRole("checkbox", { name: "Crime", exact: true }).check();
   await wizard.getByLabel("What Crime looks like here", { exact: true }).fill("smuggling on the docks");
+  // What a won fight drops, in the kit's own words (worldgen W6a).
+  await wizard.getByLabel("Common", { exact: true }).fill("Fishing net, Tide table,");
   // Retyping the places keeps the settlements on the layer of that name.
   const settlements = wizard.getByLabel("Which of them holds the settlements", { exact: true });
   await expect(settlements.locator("option:checked")).toHaveText("city");
@@ -866,6 +868,7 @@ test("A setting kit is off by default, can be picked, written for the setting, e
   ]);
   expect(result.config.worldKit.change.kinds.crime).toEqual({ label: "smuggling on the docks", on: true });
   expect(result.config.worldKit.change.kinds.conflict.on).toBe(false);
+  expect(result.config.worldKit.loot.common).toEqual(["Fishing net", "Tide table"]);
   expect(result.config.worldKit.layers).toEqual([
     { id: "country", label: "country" },
     { id: "city", label: "city" },

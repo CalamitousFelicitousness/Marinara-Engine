@@ -82,6 +82,7 @@ export * from "./features/world/people.js";
 export * from "./features/world/history.js";
 export * from "./features/world/ledger.js";
 export * from "./features/world/engine.js";
+export * from "./features/world/loot.js";
 export * from "./features/world/overused-names.js";
 export * from "./schemas/capability-package.schema.js";
 export * from "./schemas/gm-verb-table.schema.js";

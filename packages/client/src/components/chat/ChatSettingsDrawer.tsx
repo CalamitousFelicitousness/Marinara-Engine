@@ -1731,55 +1731,55 @@ export function ChatSettingsDrawer({
   );
   const lorebookKeeperAgentMeta = getAgentDisplayMeta("lorebook-keeper", {
     name: "Lorebook Keeper",
-    description: "Creates and updates durable chat lorebook entries from important story facts.",
+    description: "Saves important story facts to the chat's lorebook as you play.",
   });
   const cardEvolutionAuditorAgentMeta = getAgentDisplayMeta("card-evolution-auditor", {
     name: "Card Evolution Auditor",
-    description: "Audits durable roleplay changes against saved character cards for user approval.",
+    description: "Suggests character card updates when the story changes a character, for you to approve.",
   });
   const proseGuardianAgentMeta = getAgentDisplayMeta("prose-guardian", {
     name: "Prose Guardian",
-    description: "Post-processes the latest assistant message to remove unwanted prose habits.",
+    description: "Cleans up repetitive or unwanted writing habits in AI messages.",
   });
   const continuityAgentMeta = getAgentDisplayMeta("continuity", {
     name: "Continuity Checker",
-    description: "Post-processes the latest assistant message to fix concrete spatial and timeline errors.",
+    description: "Fixes mistakes about places, time, and physical details in AI messages.",
   });
   const htmlAgentMeta = getAgentDisplayMeta("html", {
     name: "Immersive HTML",
-    description: "Post-processes the latest assistant message with diegetic HTML/CSS/JS visuals.",
+    description: "Adds HTML/CSS/JS visual effects to AI messages.",
   });
   const directorAgentMeta = getAgentDisplayMeta("director", {
     name: "Narrative Director",
-    description: "Creates one-shot story directions when you choose to push the next response forward.",
+    description: "Gives the story a push in a new direction when you ask for it.",
   });
   const expressionAgentMeta = getAgentDisplayMeta("expression", {
     name: "Expression Engine",
-    description: "Detects character emotions and selects VN sprites/expressions.",
+    description: "Changes character sprites to match how they feel.",
   });
   const illustratorAgentMeta = getAgentDisplayMeta("illustrator", {
     name: "Illustrator",
-    description: "Responsible for image and video generations.",
+    description: "Creates images and videos for your chats.",
   });
   const echoChamberAgentMeta = getAgentDisplayMeta("echo-chamber", {
     name: "Echo Chamber",
-    description: "Simulates a live streaming-style chat reacting to your roleplay in real time.",
+    description: "Shows a live stream-style chat reacting to your roleplay.",
   });
   const musicDjAgentMeta = getAgentDisplayMeta("spotify", {
     name: "Music DJ",
-    description: "Analyzes the narrative mood and plays matching music through Spotify or YouTube.",
+    description: "Plays music that fits the mood of the story, through Spotify or YouTube.",
   });
   const knowledgeRetrievalAgentMeta = getAgentDisplayMeta("knowledge-retrieval", {
     name: "Knowledge Retrieval",
-    description: "Scans selected lorebooks and files for facts relevant to the current scene.",
+    description: "Finds facts in your lorebooks and files that matter for the current scene.",
   });
   const knowledgeRouterAgentMeta = getAgentDisplayMeta("knowledge-router", {
     name: "Knowledge Router",
-    description: "Routes relevant lorebook entries into the next prompt by ID.",
+    description: "Picks the lorebook entries that fit the scene and gives them to the AI.",
   });
   const hapticAgentMeta = getAgentDisplayMeta("haptic", {
     name: "Haptic Feedback",
-    description: "Analyzes narrative content and controls connected intimate toys in real time.",
+    description: "Controls connected intimate toys to match what happens in the story.",
   });
 
   // Estimate the per-turn cost of the active agent loadout — feeds the readout

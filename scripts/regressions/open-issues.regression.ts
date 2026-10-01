@@ -10047,7 +10047,7 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
   const worldMapsFeatureSummary = String(lorebookEnglishLocale["ui.chat.chatsettingsdrawer.worldMapsFeatureSummary"]);
   assert.equal(
     worldMapsFeatureSummary,
-    "Adds persistent hierarchical locations, durable shared worlds, reusable artwork, customizable Direct Link lines, and movement to Roleplay and Game.",
+    "Adds world maps to Roleplay and Game, from whole regions down to single rooms, with art and travel between places.",
     "The canonical English World Maps settings summary must describe the feature",
   );
   assert.doesNotMatch(

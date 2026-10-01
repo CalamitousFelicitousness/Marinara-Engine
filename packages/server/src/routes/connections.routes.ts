@@ -11,6 +11,7 @@ import { extname, join } from "path";
 import {
   ATLAS_CLOUD_IMAGE_MODELS,
   ATLAS_CLOUD_VIDEO_MODELS,
+  CODEX_IMAGE_MODEL,
   ZAI_IMAGE_MODELS,
   FAL_IMAGE_MODELS,
   IMAGE_DEFAULTS_STORAGE_KEY,
@@ -809,6 +810,16 @@ export async function connectionsRoutes(app: FastifyInstance) {
           latencyMs: Date.now() - start,
           modelName: conn.model,
         };
+      } else if (conn.provider === "image_generation" && imageSource === "codex_chatgpt") {
+        // Only reads the local login, so checking never uses the ChatGPT image allowance.
+        const auth = await getOpenAIChatGPTAuth();
+        const detail = auth.planType ? ` (${auth.planType})` : "";
+        return {
+          success: true,
+          message: `ChatGPT login found via Codex auth${detail}. Use Test Image to generate one image with your ChatGPT plan.`,
+          latencyMs: Date.now() - start,
+          modelName: conn.model,
+        };
       } else if (conn.provider === "image_generation" && imageSource === "horde") {
         // Horde: heartbeat is the lightweight health endpoint for the public API.
         testUrl = buildHordeUrl(baseUrl, "status/heartbeat");
@@ -1045,6 +1056,9 @@ export async function connectionsRoutes(app: FastifyInstance) {
       }
       if (conn.provider === "image_generation" && imageSource === "fal") {
         return { models: FAL_IMAGE_MODELS.map((model) => ({ id: model.id, name: model.name })) };
+      }
+      if (conn.provider === "image_generation" && imageSource === "codex_chatgpt") {
+        return { models: [{ id: CODEX_IMAGE_MODEL, name: "GPT Image 2" }] };
       }
       baseUrl = normalizeConnectionTestBaseUrl(baseUrl, conn.provider);
       const lowerBase = baseUrl.toLowerCase();

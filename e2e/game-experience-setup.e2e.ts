@@ -2,7 +2,7 @@ import { prepareViteFixtureDependencies } from "./vite-fixture-dependencies.js";
 import { expect, test, type Locator, type Page, type TestInfo } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { seedUIState } from "./ui-state-fixture.js";
-import type { MultiplayerPlayer } from "@marinara-engine/shared";
+import { WORLD_STARTER_KITS, type MultiplayerPlayer } from "@marinara-engine/shared";
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 
@@ -731,4 +731,189 @@ test("Tactical setup keeps size and retires battlefield seed and terrain guidanc
   expect(result.config.tacticalBattlefield).toEqual({
     size: "large",
   });
+});
+
+test("A setting kit is off by default, can be picked, written for the setting, edited and carried", async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(120_000);
+  await page.route("**/api/capability-packages/installed", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/capability-packages/agents", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/connections", (route) => route.fulfill({ json: wizardConnections }));
+  await page.route("**/api/lorebooks", (route) => route.fulfill({ json: [] }));
+  const modern = WORLD_STARTER_KITS.find((kit) => kit.id === "modern_day")!;
+  const written = { ...structuredClone(modern), id: "harbor_life", label: "Harbor town life" };
+  const writes: Array<Record<string, any>> = [];
+  let refuse = true;
+  await page.route("**/api/game/world-kit", async (route) => {
+    writes.push(route.request().postDataJSON());
+    if (refuse) {
+      await route.fulfill({
+        status: 422,
+        json: {
+          error: "The model could not write a setting kit that holds together.",
+          issues: ["layers: Exactly one layer holds the settlements"],
+        },
+      });
+    } else {
+      await route.fulfill({ json: { kit: written } });
+    }
+  });
+
+  const wizard = await mountWizard(page, testInfo, { isNewGame: true });
+  await wizard
+    .locator("select")
+    .filter({ has: page.locator('option[value="wizard-connection"]') })
+    .first()
+    .selectOption("wizard-connection");
+  const { next, back } = stepNavigation(wizard);
+  await next();
+  // Off by default: nothing to edit until a kit is picked.
+  await expect(wizard.getByRole("button", { name: /^No setting kit/u })).toHaveAttribute("aria-pressed", "true");
+  await expect(wizard.getByLabel("Name", { exact: true })).toHaveCount(0);
+
+  await wizard.getByRole("button", { name: /^Modern day/u }).click();
+  await expect(wizard.getByRole("button", { name: /^Modern day/u })).toHaveAttribute("aria-pressed", "true");
+  // The words are folded away until asked for, so the World step stays short.
+  await expect(wizard.getByLabel("Name", { exact: true })).toBeHidden();
+  await wizard.getByText("Change its words", { exact: true }).click();
+  await expect(wizard.getByLabel("Name", { exact: true })).toHaveValue("Modern day");
+  // The slice-of-life kit is gentle: no crime, conflict or catastrophe.
+  for (const kind of ["Crime", "Conflict", "Catastrophe"]) {
+    await expect(wizard.getByRole("checkbox", { name: kind, exact: true })).not.toBeChecked();
+  }
+  await expect(wizard.getByRole("checkbox", { name: "Rivalry", exact: true })).toBeChecked();
+
+  // Picking the kit already picked keeps the words already changed.
+  await wizard.getByLabel("Name", { exact: true }).fill("My modern day");
+  await wizard.getByRole("button", { name: /^Modern day/u }).click();
+  await expect(wizard.getByLabel("Name", { exact: true })).toHaveValue("My modern day");
+  await wizard.getByLabel("Name", { exact: true }).fill("Modern day");
+
+  // A refusal says why, and keeps the kit as it was.
+  await wizard.getByRole("button", { name: "Write it for my setting", exact: true }).click();
+  await expect(wizard.getByRole("alert")).toContainText(
+    "The model could not write a setting kit that holds together. layers: Exactly one layer holds the settlements",
+  );
+  await expect(wizard.getByLabel("Name", { exact: true })).toHaveValue("Modern day");
+  refuse = false;
+  await wizard.getByRole("button", { name: "Write it for my setting", exact: true }).click();
+  await expect(wizard.getByLabel("Name", { exact: true })).toHaveValue("Harbor town life");
+  await expect(wizard.getByRole("alert")).toHaveCount(0);
+  expect(writes).toHaveLength(2);
+  expect(writes[1]).toMatchObject({ connectionId: "wizard-connection", genre: "Fantasy", tone: "Heroic" });
+  expect(writes[1]!.start.id).toBe("modern_day");
+
+  // Every word can be changed; a list is typed as one line, and a trailing comma survives typing.
+  const sizes = wizard.getByLabel("Settlement sizes, smallest first", { exact: true });
+  await sizes.fill("hamlet, port town,");
+  await expect(sizes).toHaveValue("hamlet, port town,");
+  await sizes.pressSequentially(" city");
+  await wizard.getByRole("checkbox", { name: "Crime", exact: true }).check();
+  await wizard.getByLabel("What Crime looks like here", { exact: true }).fill("smuggling on the docks");
+  // Retyping the places keeps the settlements on the layer of that name.
+  const settlements = wizard.getByLabel("Which of them holds the settlements", { exact: true });
+  await expect(settlements.locator("option:checked")).toHaveText("city");
+  await wizard.getByLabel("Places, outermost first", { exact: true }).fill("country, city, quarter");
+  await expect(settlements.locator("option:checked")).toHaveText("city");
+  await settlements.selectOption({ label: "quarter" });
+
+  await page.screenshot({ path: testInfo.outputPath("setting-kit-editor.png"), fullPage: true });
+
+  // A kit that does not hold together blocks the start until it is fixed.
+  await wizard.getByLabel("Name", { exact: true }).fill("");
+  await expect(wizard.getByText("This kit cannot be used yet:", { exact: true })).toBeVisible();
+  for (let step = 0; step < 5; step++) await next();
+  await expect(wizard.getByRole("button", { name: /Start/u })).toBeDisabled();
+  await expect(
+    wizard.getByText("Fix the setting kit on the World step before starting.", { exact: true }),
+  ).toBeVisible();
+  for (let step = 0; step < 5; step++) await back();
+  if (!(await wizard.getByLabel("Name", { exact: true }).isVisible())) {
+    await wizard.getByText("Change its words", { exact: true }).click();
+  }
+  await wizard.getByLabel("Name", { exact: true }).fill("Harbor town life");
+  await expect(wizard.getByText("This kit cannot be used yet:", { exact: true })).toHaveCount(0);
+
+  for (let step = 0; step < 5; step++) await next();
+  await wizard.getByRole("button", { name: /Start/u }).click();
+  const result = JSON.parse((await page.getByTestId("wizard-result").textContent()) ?? "{}");
+  expect(result.config.worldKit.label).toBe("Harbor town life");
+  expect(result.config.worldKit.sizes).toEqual([
+    { id: "hamlet", label: "hamlet" },
+    { id: "port_town", label: "port town" },
+    { id: "city", label: "city" },
+  ]);
+  expect(result.config.worldKit.change.kinds.crime).toEqual({ label: "smuggling on the docks", on: true });
+  expect(result.config.worldKit.change.kinds.conflict.on).toBe(false);
+  expect(result.config.worldKit.layers).toEqual([
+    { id: "country", label: "country" },
+    { id: "city", label: "city" },
+    { id: "quarter", label: "quarter", settlements: true },
+  ]);
+});
+
+test("A shared setup brings its setting kit to a new game and refuses one that does not hold together", async ({
+  page,
+}, testInfo) => {
+  await page.route("**/api/capability-packages/installed", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/capability-packages/agents", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/connections", (route) => route.fulfill({ json: wizardConnections }));
+  await page.route("**/api/lorebooks", (route) => route.fulfill({ json: [] }));
+  const wuxia = WORLD_STARTER_KITS.find((kit) => kit.id === "wuxia_xianxia")!;
+  const shared = (worldKit: unknown, gameName: string) => ({
+    name: "kit.marinara-game-setup.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(
+      JSON.stringify({
+        format: "marinara-game-setup",
+        version: 1,
+        gameName,
+        gmConnectionId: "wizard-connection",
+        setup: {
+          config: {
+            genre: "Wuxia",
+            setting: "The jianghu",
+            tone: "Heroic",
+            difficulty: "normal",
+            rating: "sfw",
+            gmMode: "standalone",
+            partyCharacterIds: [],
+            playerGoals: "",
+            worldKit,
+          },
+        },
+      }),
+    ),
+  });
+  const wizard = await mountWizard(page, testInfo, { isNewGame: true });
+  const file = wizard.locator('input[type="file"]').first();
+  const gameName = wizard.getByPlaceholder("Name your adventure...", { exact: true });
+  await file.setInputFiles(shared(wuxia, "Rivers and lakes"));
+  await expect(gameName).toHaveValue("Rivers and lakes");
+  // A kit that does not hold together refuses the whole file (with a toast this standalone mount
+  // does not draw), so nothing of it lands over what the first file set.
+  const noSettlements = { ...wuxia, layers: wuxia.layers.map(({ settlements: _, ...layer }) => layer) };
+  await file.setInputFiles(shared(noSettlements, "Broken kit"));
+  await page.waitForTimeout(500);
+  await expect(gameName).toHaveValue("Rivers and lakes");
+  const { next } = stepNavigation(wizard);
+  await next();
+  await expect(wizard.getByRole("button", { name: /^Wuxia and xianxia/u })).toHaveAttribute("aria-pressed", "true");
+  for (let step = 0; step < 5; step++) await next();
+  await wizard.getByRole("button", { name: /Start/u }).click();
+  const result = JSON.parse((await page.getByTestId("wizard-result").textContent()) ?? "{}");
+  expect(result.config.worldKit.id).toBe("wuxia_xianxia");
+});
+
+test("An existing game never offers a setting kit", async ({ page }, testInfo) => {
+  await page.route("**/api/capability-packages/installed", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/capability-packages/agents", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/connections", (route) => route.fulfill({ json: wizardConnections }));
+  await page.route("**/api/lorebooks", (route) => route.fulfill({ json: [] }));
+  const wizard = await mountWizard(page, testInfo, { isNewGame: false });
+  const { next } = stepNavigation(wizard);
+  await next();
+  await expect(wizard.getByRole("heading", { name: "World", exact: true })).toBeVisible();
+  await expect(wizard.getByText("Setting kit", { exact: true })).toHaveCount(0);
 });

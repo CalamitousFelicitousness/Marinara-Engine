@@ -25,6 +25,11 @@ import { eq } from "../db/file-query.js";
 import { IMPORTED_GAME_ENGINE_ANCHOR_PREFIX } from "../db/file-backed-store.js";
 import { chats as chatsTable } from "../db/schema/index.js";
 import { logger, logDebugOverride } from "../lib/logger.js";
+import {
+  buildWorldKitWritingPrompt,
+  readWrittenWorldKit,
+  worldKitRepairPrompt,
+} from "../services/game/world-kit-writer.js";
 import { registerSequentialGameTasks, retainSequentialGameTask } from "../services/game/sequential-tasks.js";
 import { readImageDimensionsFromFile } from "../utils/image-metadata.js";
 import { createChatsStorage, METADATA_WRITE_ORDINALS_KEY } from "../services/storage/chats.storage.js";
@@ -198,6 +203,8 @@ import {
   isCommunityRulesetId,
   rulesetLayerSelectionIssues,
   rulesetRefSchema,
+  worldKitSchema,
+  gameWorldKitFromMetadata,
   RULESET_REF_MAX_OPTIONS,
   type RulesetDefinition,
   type RulesetRef,
@@ -1846,6 +1853,7 @@ const gameSetupConfigSchema = z.object({
       message: `A ruleset choice carries at most ${RULESET_REF_MAX_OPTIONS} options`,
     })
     .optional(),
+  worldKit: worldKitSchema.optional(),
   /** Opaque config owned by that experience — persisted verbatim, never read by the host. */
   experienceConfig: z
     .record(z.string().max(120), z.unknown())
@@ -1997,6 +2005,17 @@ const diceRollSchema = z.object({
 const stateTransitionSchema = z.object({
   chatId: z.string().min(1),
   newState: z.enum(["exploration", "dialogue", "combat", "travel_rest"]),
+});
+
+const worldKitWriteSchema = z.object({
+  connectionId: z.string().min(1),
+  genre: z.string().min(1).max(200),
+  setting: z.string().min(1).max(20_000),
+  tone: z.string().min(1).max(200),
+  /** The kit the player has chosen so far, written over to fit their setting. */
+  start: worldKitSchema.optional(),
+  language: z.string().max(100).optional(),
+  debugMode: z.boolean().optional(),
 });
 
 const mapGenerateSchema = z.object({
@@ -6614,6 +6633,8 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       // Likewise fixed for the game's lifetime. Written only when a ruleset was chosen, so a game
       // on Marinara's own rules carries exactly the metadata it always has.
       ...(gameRuleset ? { gameRuleset } : {}),
+      // The setting kit, likewise only when one was chosen.
+      ...(setupConfig.worldKit ? { gameWorldKit: setupConfig.worldKit } : {}),
       gameNpcs: [],
       enableAgents: setupConfig.enableAgents === true,
       activeAgentIds: setupActiveAgentIds,
@@ -6883,6 +6904,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
           customHudWidgets: customHudWidgets.length > 0 ? customHudWidgets : undefined,
           lorebookContext: setupLorebookContext,
           rulesetWorldGuidance,
+          worldKit: gameWorldKitFromMetadata(meta),
           language: setupConfig.language,
           gameSystemPrompt: setupGameSystemPrompt,
           gameSpecialInstructions: setupGameSpecialInstructions,
@@ -9540,6 +9562,80 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     }
 
     return { previousState: currentState, newState: validatedState };
+  });
+
+  // ── POST /game/world-kit ──
+  // The model writes a setting kit from the player's own setting (worldgen W0). Nothing is stored:
+  // the kit goes back to the wizard, where the player can change any word before the game starts.
+  // A kit that does not hold together is sent back once with the reasons, then refused with them.
+  app.post("/world-kit", async (req, reply) => {
+    const input = worldKitWriteSchema.parse(req.body);
+    const requestDebug = input.debugMode === true;
+    const debugLog = (message: string, ...args: any[]) => logDebugOverride(requestDebug, message, ...args);
+    const connections = createConnectionsStorage(app.db);
+    const { conn, baseUrl, defaultGenerationParameters } = await resolveConnection(
+      connections,
+      input.connectionId,
+      null,
+    );
+    const provider = await createGameMainProvider(connections, conn, baseUrl);
+    const prompt = buildWorldKitWritingPrompt(input);
+    const messages: ChatMessage[] = [
+      { role: "system", content: prompt.system },
+      { role: "user", content: prompt.user },
+    ];
+    const overrides: Partial<ChatOptions> = {
+      temperature: 0.7,
+      maxTokens: clampGameMaxOutputTokens({
+        provider: conn.provider,
+        model: conn.model,
+        maxTokens: 8192,
+        maxTokensOverride: conn.maxTokensOverride,
+      }),
+      signal: createResponseAbortSignal(reply, GAME_GENERATION_TIMEOUT_MS, "Setting kit"),
+    };
+    if (!defaultGenerationParameters?.reasoningEffort) {
+      overrides.reasoningEffort = undefined;
+      overrides.enableThinking = false;
+    }
+    const options = gameGenOptions(conn.model, overrides, defaultGenerationParameters, conn.provider);
+    let issues: string[] = [];
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      for (const message of messages) {
+        debugLog("[game/world-kit] [%s] (%d chars):\n%s", message.role, message.content.length, message.content);
+      }
+      let result: ChatCompletionResult;
+      try {
+        result = await runGameChatComplete(
+          provider,
+          messages,
+          options,
+          attempt === 1 ? "Setting kit" : "Setting kit retry",
+        );
+      } catch (error) {
+        const failure = formatInitialGameGmConnectionError(error);
+        logger.warn(error, "[game/world-kit] GM connection failed");
+        return reply.status(failure.statusCode).send({ error: failure.message });
+      }
+      const text = extractLeadingThinkingBlocks(
+        result.content ?? "",
+        defaultGenerationParameters?.customThinkingTags,
+      ).content;
+      debugLog("[game/world-kit] Response (%d chars):\n%s", text.length, text);
+      let data: unknown = null;
+      try {
+        data = parseJSON(text);
+      } catch {
+        /* refused below */
+      }
+      const read =
+        data === null ? { ok: false as const, issues: ["kit: The reply was not JSON"] } : readWrittenWorldKit(data);
+      if (read.ok) return { kit: read.kit };
+      issues = read.issues;
+      logger.warn("[game/world-kit] Written kit refused on attempt %d: %s", attempt, issues.join("; "));
+      messages.push({ role: "assistant", content: text }, { role: "user", content: worldKitRepairPrompt(issues) });
+    }
+    return reply.status(422).send({ error: "The model could not write a setting kit that holds together.", issues });
   });
 
   // ── POST /game/map/generate ──

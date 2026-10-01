@@ -90,7 +90,7 @@ export type RulesetRef = z.infer<typeof rulesetRefSchema>;
 /** Every label and guidance string can end up inside the GM prompt, so they all follow the
  *  gm-verbs description hygiene: one line, no control characters, no square brackets (the shape of
  *  a GM tag), no macro braces. */
-function promptSafeText(max: number) {
+export function promptSafeText(max: number) {
   return z
     .string()
     .min(1)

@@ -1,4 +1,4 @@
-import { normalizeGameDifficulty } from "@marinara-engine/shared";
+import { normalizeGameDifficulty, parseWorldKit, type WorldKitInput } from "@marinara-engine/shared";
 // ──────────────────────────────────────────────
 // Game: Setup Wizard (initial game setup modal)
 // ──────────────────────────────────────────────
@@ -82,6 +82,13 @@ import { useConnections, useModelParameterCapabilities } from "../../hooks/use-c
 import { useDefaultPreset, usePresets } from "../../hooks/use-presets";
 import { useCharacterGroups, usePersonas } from "../../hooks/use-characters";
 import { GameSetupRulesChooser, GameSetupRulesetSheetStatus } from "./GameSetupRulesChooser";
+import { GameSetupWorldKitChooser } from "./GameSetupWorldKitChooser";
+import {
+  GAME_SETUP_FIELD_LABEL,
+  GAME_SETUP_GHOST_BUTTON_CLASS,
+  GAME_SETUP_INPUT_CLASS,
+  GAME_SETUP_PRIMARY_BUTTON_CLASS,
+} from "./game-setup-classes";
 import { SettingsSwitchTrack } from "../panels/settings/SettingControls";
 import { useSidecarStore } from "../../stores/sidecar.store";
 import { useEntriesAcrossLorebooks, useLorebooks } from "../../hooks/use-lorebooks";
@@ -279,13 +286,6 @@ function normalizeSpatialMapTargetLocationCount(value: string): number | null {
   return Math.max(1, Math.min(SPATIAL_CUSTOM_TARGET_LOCATION_LIMIT, parsed));
 }
 
-const GAME_SETUP_FIELD_LABEL = "mb-1.5 block text-xs font-medium text-[var(--foreground)]";
-const GAME_SETUP_INPUT_CLASS =
-  "w-full rounded-lg bg-[var(--secondary)] px-3 py-2 text-xs text-[var(--foreground)] outline-none ring-1 ring-[var(--border)] transition-all placeholder:text-[var(--muted-foreground)] focus:ring-[var(--primary)]/40";
-const GAME_SETUP_GHOST_BUTTON_CLASS =
-  "flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)]";
-const GAME_SETUP_PRIMARY_BUTTON_CLASS =
-  "flex items-center gap-1 rounded-lg bg-[var(--primary)] px-4 py-1.5 text-xs font-medium text-[var(--primary-foreground)] transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50";
 const GAME_SETUP_WIZARD_PANEL_CLASS = cn(
   NEUTRAL_PANEL_SHELL,
   "pointer-events-auto flex max-h-[calc(100dvh-1.5rem)] w-full max-w-lg flex-col overflow-hidden sm:max-h-[min(90dvh,44rem)]",
@@ -541,6 +541,9 @@ export function GameSetupWizard({
     ? restoredRulesetLayers(activeRuleset.definition, rulesetLayerOptions(rulesetLayerIds))
     : [];
   const [rulesetImportNotice, setRulesetImportNotice] = useState<string | null>(null);
+  // The setting kit (worldgen W0): off unless the player picks one, and only for a new game.
+  const [worldKit, setWorldKit] = useState<WorldKitInput | null>(null);
+  const checkedWorldKit = isNewGame && worldKit ? parseWorldKit(worldKit) : null;
   const experienceSeedInvalid = Boolean(experienceSetup?.seed && parseExperienceSeed(experienceSeed) === null);
   const [experienceImportNotice, setExperienceImportNotice] = useState<string | null>(null);
   const [generationElapsedSeconds, setGenerationElapsedSeconds] = useState(0);
@@ -1064,6 +1067,7 @@ export function GameSetupWizard({
   const canStart =
     (!multiplayerPlayers || multiplayerPlayers.every((player) => player.personaName?.trim())) &&
     !experienceSeedInvalid &&
+    !(checkedWorldKit && !checkedWorldKit.ok) &&
     (!activeLorebookEntryIds.length || Boolean(eligibleEntries)) &&
     !!gmConnectionId &&
     (!enableAgents || !hierarchicalMapsInstalled || !draftSpatialMap || spatialMapTargetLocationCountValid);
@@ -1071,15 +1075,17 @@ export function GameSetupWizard({
     ? localizeUi("multiplayer.game.missingPersona")
     : experienceSeedInvalid
       ? localizeUi("game.experienceSetup.invalidSeed", { max: MAX_EXPERIENCE_SEED })
-      : activeLorebookEntryIds.length && !eligibleEntries
-        ? localizeUi(entryQuery.isError && !entryQuery.isFetching ? "game.setupLore.error" : "game.setupLore.loading")
-        : !gmConnectionId
-          ? localizeUi("ui.game.gamesetupwizard.selectAConnectionOnTheFirstStepBeforeStarting")
-          : !spatialMapTargetLocationCountValid && enableAgents && hierarchicalMapsInstalled && draftSpatialMap
-            ? localizeUi("ui.game.gamesetupwizard.chooseAnyWholeNumberFrom1ToValue1Places", {
-                value1: SPATIAL_CUSTOM_TARGET_LOCATION_LIMIT,
-              })
-            : null;
+      : checkedWorldKit && !checkedWorldKit.ok
+        ? localizeUi("game.worldKit.setup.fixBeforeStart")
+        : activeLorebookEntryIds.length && !eligibleEntries
+          ? localizeUi(entryQuery.isError && !entryQuery.isFetching ? "game.setupLore.error" : "game.setupLore.loading")
+          : !gmConnectionId
+            ? localizeUi("ui.game.gamesetupwizard.selectAConnectionOnTheFirstStepBeforeStarting")
+            : !spatialMapTargetLocationCountValid && enableAgents && hierarchicalMapsInstalled && draftSpatialMap
+              ? localizeUi("ui.game.gamesetupwizard.chooseAnyWholeNumberFrom1ToValue1Places", {
+                  value1: SPATIAL_CUSTOM_TARGET_LOCATION_LIMIT,
+                })
+              : null;
   const normalizedLanguage = normalizeGameLanguage(language);
   const illustratorEnabled = enableAgents && illustratorInstalled && enableSpriteGeneration;
   const musicDjEnabled = enableAgents && musicDjInstalled && enableSpotifyDj;
@@ -1126,6 +1132,7 @@ export function GameSetupWizard({
       });
       const config = imported.config;
       setRulesetId(config.ruleset?.id ?? null);
+      setWorldKit(config.worldKit ?? null);
       // The layers the file chose, against the definition installed HERE: an id this version of the
       // ruleset no longer has is dropped rather than sent to a create call that would refuse it.
       const importedRuleset = rulesets.find((entry) => entry.definition.id === config.ruleset?.id);
@@ -1358,6 +1365,7 @@ export function GameSetupWizard({
             },
           }
         : {}),
+      ...(checkedWorldKit?.ok ? { worldKit: checkedWorldKit.kit } : {}),
       combatDirector: true,
       gmBossControl,
       ...(Object.keys(tacticalBattlefield).length > 0 ? { tacticalBattlefield } : {}),
@@ -2118,6 +2126,23 @@ export function GameSetupWizard({
                       <p role="status" className="text-xs text-[var(--muted-foreground)]">
                         {rulesetImportNotice}
                       </p>
+                    )}
+                    {isNewGame && (
+                      <GameSetupWorldKitChooser
+                        kit={worldKit}
+                        onChange={setWorldKit}
+                        writeRequest={
+                          gmConnectionId
+                            ? {
+                                connectionId: gmConnectionId,
+                                genre: genres.join(", ") || "Fantasy",
+                                setting: setting || `A ${(genres[0] ?? "fantasy").toLowerCase()} world`,
+                                tone: tones.join(", ") || "Heroic",
+                                language: normalizedLanguage || undefined,
+                              }
+                            : null
+                        }
+                      />
                     )}
 
                     {/* Content Rating */}

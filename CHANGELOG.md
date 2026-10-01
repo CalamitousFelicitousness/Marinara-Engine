@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Game Mode has an optional **Setting kit** on the World step of a new game: the words a kind of world is written in (its places and settlement sizes, groups, travel, calendar and how its peoples are named) and which kinds of change it has, such as crime or wars, and how fast. Pick one of eight starters, from high fantasy and wuxia to modern day and space opera, have the model write it for your setting, and change any word. The Game Master reads it every turn and keeps out the kinds of change the world does not have, so a cozy modern-day game stays cozy.
 - Updated Sharp (with libvips 8.18.7), DOMPurify, @fastify/static, dotenv and nanoid, and Android APK builds now use Gradle 9.8.0. Termux installs keep Sharp's matching WebAssembly fallback for image processing. Hono, which the MCP SDK pulls in, moves to 4.13.11 for an upstream XSS fix in its JSX renderer.
 - In Roleplay, a `[whisper: character="name" text="..."]` command typed while editing a character's or the narrator's message now becomes a whisper when you save, as it already did in your own messages. Whisper text can span several lines and quote dialogue as is, like `text=""I love you.""`, and the command description now says so (#6918).
 - Select a word or short phrase in a chat message to get an **Add to lorebook** button, on desktop and mobile. Pick a lorebook and it opens on a new entry named after the selection, with the selection as its keyword, ready for you to write the content (#6899).

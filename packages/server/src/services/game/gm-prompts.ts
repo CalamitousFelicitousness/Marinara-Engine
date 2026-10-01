@@ -19,6 +19,8 @@ import {
   wrapGameInstructions,
   type GameInventoryBearerStatus,
   type RulesetLayerOptions,
+  type WorldKit,
+  worldKitPromptText,
 } from "@marinara-engine/shared";
 import type { CharacterSpriteInfo } from "./sprite.service.js";
 
@@ -144,6 +146,9 @@ export interface GmPromptContext {
   /** User-overridable GM instruction body. Wrapped in <instructions> before sending. */
   gameSystemPrompt?: string | null;
   gameSpecialInstructions?: string | null;
+  /** The game's setting kit (worldgen W0): the world's own words and the kinds of change it
+   *  allows. Fixed for the game, so it sits in the cached system prompt. */
+  worldKit?: WorldKit | null;
 }
 
 const MAX_PROMPT_MAP_LOCATIONS = 10;
@@ -642,6 +647,7 @@ export function buildGmSystemPrompt(ctx: GmPromptContext): string {
   }
   gameBlockLines.push(`</game>`);
   sections.push(...gameBlockLines);
+  if (ctx.worldKit) sections.push(worldKitPromptText(ctx.worldKit));
 
   if (ctx.tacticalBattlefieldContext) {
     sections.push(
@@ -1688,6 +1694,8 @@ export interface SetupPromptContext {
    *  ruleset text world generation reads: everything else a ruleset says reaches the per-turn
    *  reminder instead, because the world is designed once and the sheets change every turn. */
   rulesetWorldGuidance?: string | null;
+  /** The game's setting kit (worldgen W0), so the world is designed in its words. */
+  worldKit?: WorldKit | null;
   /** Language for natural-language JSON values */
   language?: string;
   /** User-overridable GM instruction body that will be used after setup. */
@@ -1766,6 +1774,12 @@ export function buildSetupPrompt(ctx: SetupPromptContext = {}): string {
       `This game runs on a rules system its author wrote. Design the world so it fits these rules:`,
       rulesetWorldGuidance,
       `</ruleset_world>`,
+    );
+  }
+  if (ctx.worldKit) {
+    contextSections.push(
+      `Design the world in the words of the setting below: its places, groups, travel and names.`,
+      worldKitPromptText(ctx.worldKit),
     );
   }
   if (ctx.customHudWidgets?.length) {

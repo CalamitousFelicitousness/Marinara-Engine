@@ -251,6 +251,10 @@ export interface GameSetupConfig {
   /** The Game Mode ruleset chosen for a NEW game. The server pins it as `chat.metadata.gameRuleset`
    *  from its own registry, so only `id` is trusted. Absent means Marinara's own rules. */
   ruleset?: import("../schemas/ruleset.schema.js").RulesetRef;
+  /** The setting kit chosen or written for a NEW game (worldgen W0): the world's own words and the
+   *  kinds of change it allows. The server stores it as `chat.metadata.gameWorldKit`. Absent means
+   *  no kit: the Game Master works from genre, setting and tone alone, as before. */
+  worldKit?: import("../schemas/world-kit.schema.js").WorldKit;
   /** Whatever the experience's own setup collected, stored verbatim and never interpreted by the host, so
    *  it can always recover the options the game was created with. */
   experienceConfig?: Record<string, unknown>;

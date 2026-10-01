@@ -39,7 +39,12 @@ export async function gamePlaceBefore(db: DB, chatId: string, replacing?: string
     }
   }
   return lastGamePlace(
-    before.slice(start).flatMap((message) => (typeof message.content === "string" ? [message.content] : [])),
+    // Only the Game Master's own replies: a place tag a player types is never answered.
+    before
+      .slice(start)
+      .flatMap((message) =>
+        message.role === "assistant" && typeof message.content === "string" ? [message.content] : [],
+      ),
   );
 }
 

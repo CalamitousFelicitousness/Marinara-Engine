@@ -7721,6 +7721,8 @@ function GameSurfaceComponent({
               : localizeUi("ui.game.gamesurfacecomponent.youCannotCarryValue1", { value1 });
         case "cursed":
           return localizeUi("ui.game.gamesurfacecomponent.cursedValue1", { value1 });
+        case "service":
+          return localizeUi("ui.game.gamesurfacecomponent.serviceValue1", { value1 });
         case "no-slot":
           return localizeUi("ui.game.gamesurfacecomponent.noSlotValue1", { value1 });
         case "not-wearable":

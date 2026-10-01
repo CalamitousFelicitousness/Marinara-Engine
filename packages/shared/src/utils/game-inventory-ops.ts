@@ -119,7 +119,14 @@ export const gameInventoryOpsRequestSchema = z
  *  ruleset's items, where only those may be added. `too-heavy`: past what its bearer can carry. The
  *  rest are `GameInventoryWearRefusal`s; `cursed` also refuses parting with a bound cursed item. */
 export type GameInventoryOpRefusal =
-  "missing-stack" | "none-held" | "not-ruleset-item" | "too-heavy" | GameInventoryWearRefusal | "refused";
+  | "missing-stack"
+  | "none-held"
+  | "not-ruleset-item"
+  | "too-heavy"
+  /** A service (#6917): bought, never carried. */
+  | "service"
+  | GameInventoryWearRefusal
+  | "refused";
 
 export type GameInventoryOpResult =
   | {
@@ -185,6 +192,11 @@ export function applyGameInventoryOps(
           : gameInventoryAddedItem(current, op.name, bag.holder, rules);
         if (!like) {
           refuse("not-ruleset-item");
+          break;
+        }
+        // A service (lodging, passage) is bought and never carried, whoever adds it.
+        if (like.item && rules?.itemOf(like.item)?.service) {
+          refuse("service");
           break;
         }
         const destination = op.among ? { among: op.among.map((holder) => cleanGameInventoryHolder(holder)) } : bag;

@@ -1709,12 +1709,13 @@ Capability API 1.65: slice I9-1 of the ruleset items plan (#6917).
   `itemPrice` says a cost), the quoter a buy is answered with, and the Game Master's block.
 - **The place comes from the chat, not from stored state.** The Game Master's `[place:]` tag is
   answered in place (`game-place-tag.ts`), and the place in force is the last one answered in the
-  messages the player sees from the latest conversation start (`gamePlaceBefore`, which reads only
+  Game Master's replies the player sees (a tag a player types never counts) from the latest conversation start (`gamePlaceBefore`, which reads only
   what came before the telling a regeneration replaces), then the reply's own. So swipes, deletions and branches need nothing of their own. `place` is a
   reserved GM tag name. The worldgen plan will fill the same seam from a generated world.
 - **A buy is a payment and an add, or neither.** The `buy` action quotes, pays with
-  `payGameInventoryCoins` out of the buyer's bag, then adds on the paid stacks; a refused add leaves
-  the stacks as they were. The market is built once per turn (`loadGameMarket`) and kept on the
+  `payGameInventoryCoins` out of the buyer's bag, then adds on the paid stacks; a refused add, or one
+  that fits only some of what was bought, leaves the stacks as they were. A service is refused by the
+  add itself (`service`), so nothing puts one in a bag, and the picker leaves services out. The market is built once per turn (`loadGameMarket`) and kept on the
   inventory turn, so the preview and the save answer alike. `only` is checked against the buyer's own
   card (the player's for no name or the player's own; a blank sheet for a member with none), with
   what they carry and the turn's own live state, the one its items are used with (never a replaced
@@ -1722,7 +1723,7 @@ Capability API 1.65: slice I9-1 of the ruleset items plan (#6917).
 - **Said to the Game Master** only where the ruleset has a market: the place and buy lines, and a
   MARKET block listing each seller present with a dozen wares, cheapest first.
 - **Proven** by `scripts/regressions/game-ruleset-markets.regression.ts` and
-  `e2e/game-ruleset-markets.e2e.ts`, with 56 deliberate breaks each caught.
+  `e2e/game-ruleset-markets.e2e.ts`, with 60 deliberate breaks each caught.
 
 ## Gaps a ruleset author found
 

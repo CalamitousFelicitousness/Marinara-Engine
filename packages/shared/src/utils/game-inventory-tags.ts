@@ -393,6 +393,8 @@ export function applyGameInventoryTags(
             );
             const [result] = added.results;
             if (!result?.ok) return serializeInventoryTag(answered, outcomeOf(result));
+            // Paid for in full, so delivered in full: what does not fit leaves the whole buy undone.
+            if ((result.left ?? 0) > 0) return serializeInventoryTag(answered, { ok: false, reason: "too-heavy" });
             after = added.stacks;
             bought.push(...added.journal);
             now = result.now ?? 0;

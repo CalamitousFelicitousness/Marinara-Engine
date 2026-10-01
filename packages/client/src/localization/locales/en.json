@@ -7847,6 +7847,7 @@
   "ui.game.gamesurfacecomponent.sceneIllustrationFailed": "Scene illustration failed.",
   "ui.game.gamesurfacecomponent.sceneVideoGenerated": "Scene video generated.",
   "ui.game.gamesurfacecomponent.sceneVideoGenerationFailed": "Scene video generation failed.",
+  "ui.game.gamesurfacecomponent.serviceValue1": "{{value1}} is a service: it is bought, never carried.",
   "ui.game.gamesurfacecomponent.sessionHistory": "Session History",
   "ui.game.gamesurfacecomponent.sessionValue1DetailsUpdated": "Session {{value1}} details updated.",
   "ui.game.gamesurfacecomponent.setGameDayToValue1": "Set game day to {{value1}}.",

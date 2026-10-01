@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { createServer, type Server } from "node:http";
 import { readFileSync } from "node:fs";
+import { inventoryButton } from "./game-inventory-fixture.js";
 import { openGame, savedInventory, withImports } from "./game-ruleset-fight-fixture.js";
 
 /**
@@ -162,6 +163,13 @@ test("the Game Master buys at a market town: priced, paid with change, a service
       expect(prompt).toBeTruthy();
       expect(prompt).toContain("MARKET: Barrowmere, a market town. Prices at fair, the default level");
       expect(prompt).toContain("- smith: Grave spade 3 shillings, Silver coffin nail 2 crowns");
+
+      // The picker never offers a service: a bed at the watch-house is bought, not carried.
+      await inventoryButton(page).click();
+      await page.getByRole("button", { name: "From the ruleset", exact: true }).click();
+      const picker = page.getByRole("dialog", { name: "Add items from the ruleset" });
+      await expect(picker.getByRole("checkbox", { name: "Lantern-keeper's coat", exact: true })).toBeVisible();
+      await expect(picker.getByRole("checkbox", { name: "A bed at the watch-house", exact: true })).toHaveCount(0);
     });
   } finally {
     if (connectionId) await request.delete(`/api/connections/${connectionId}`).catch(() => undefined);

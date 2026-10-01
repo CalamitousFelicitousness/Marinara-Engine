@@ -107,6 +107,8 @@ export interface GameInventoryRulesetItem {
   slots?: Readonly<Record<string, number>>;
   /** It has to be bound to work; `cursed` keeps it bound. Without this, it cannot be bound. */
   binds?: { cursed?: boolean };
+  /** Bought and never carried (#6917): nothing adds it to a bag. */
+  service?: true;
   /** A use spends `cost` of the `max` charges it holds (a stack without a count is full), and the last
    *  one spent rolls a d`die` that breaks it at `atMost` or under. */
   charges?: { cost: number; max: number; breaksOn?: { die: number; atMost: number } };

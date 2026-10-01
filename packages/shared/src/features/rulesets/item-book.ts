@@ -744,6 +744,7 @@ export function rulesetItemBook(
       ...(typeof weight === "number" && weight > 0 ? { weight } : {}),
       ...(entry.item.slots && Object.keys(entry.item.slots).length > 0 ? { slots: entry.item.slots } : {}),
       ...(entry.item.binds ? { binds: { ...(entry.item.binds.cursed ? { cursed: true } : {}) } } : {}),
+      ...(entry.item.service ? { service: true as const } : {}),
       ...(charges
         ? {
             charges: {

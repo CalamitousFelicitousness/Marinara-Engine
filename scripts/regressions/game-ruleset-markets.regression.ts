@@ -17,6 +17,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  applyGameInventoryOps,
   applyGameInventoryTags,
   applyGamePlaceTags,
   defaultRulesetSheetBuild,
@@ -378,6 +379,52 @@ const buy = (tag: string, stacks: GameInventoryStack[], market = quoter()) =>
   assert.match(tooHeavy.content, /result="refused" reason="too-heavy"/);
   assert.deepEqual(tooHeavy.stacks, purse, "nothing paid");
   assert.deepEqual(tooHeavy.journal, []);
+  // Two coats where only one fits: paid for in full or not at all, so not at all.
+  const oneFits = parsedOrThrow(
+    variant(gravewatchText, (doc) => {
+      doc.items.stats.push({ id: "weight", label: "Weight", type: "number", min: 0, max: 100, default: 0 });
+      doc.items.carry = { stat: "weight", encumberedAbove: { const: 1 }, limit: { const: 2 } };
+      doc.catalogs
+        .find((catalog: { id: string }) => catalog.id === "kit")
+        .entries.find((entry: { id: string }) => entry.id === "lantern-coat").item.stats.weight = 2;
+    }),
+    "Gravewatch with a coat that weighs 2",
+  );
+  const oneFitsBook = rulesetItemBook(oneFits, entriesOf(oneFits), {
+    sheets: { player: defaultRulesetSheetBuild(oneFits) },
+  });
+  const richer = coins([["crowns", "crown", 5]]);
+  const twoCoats = applyGameInventoryTags(
+    '[inventory: action="buy" item="Lantern-keeper\'s coat" count="2"]',
+    richer,
+    party,
+    undefined,
+    oneFitsBook,
+    undefined,
+    undefined,
+    rulesetMarketQuoter(oneFits, oneFitsBook, town, () => true),
+  );
+  assert.match(twoCoats.content, /result="refused" reason="too-heavy"/);
+  assert.deepEqual(twoCoats.stacks, richer, "nothing paid, nothing added");
+  // A service is never carried, however it is added: the Game Master's add, the picker's.
+  assert.deepEqual(
+    applyGameInventoryOps(
+      [],
+      [{ op: "add", name: "A bed at the watch-house", item: "kit/watch-house-bed", count: 1 }],
+      undefined,
+      book,
+    ).results,
+    [{ ok: false, reason: "service" }],
+  );
+  const added = applyGameInventoryTags(
+    '[inventory: action="add" item="A bed at the watch-house"]',
+    [],
+    party,
+    undefined,
+    book,
+  );
+  assert.match(added.content, /result="refused" reason="service"/);
+  assert.deepEqual(added.stacks, []);
   // A layer that takes crowns out prices and pays in what is left.
   const nightBook = rulesetItemBook(gravewatch, entriesOf(gravewatch), { layerOptions: night });
   const paidAtNight = applyGameInventoryTags(
@@ -578,7 +625,12 @@ try {
     role: "assistant",
     content: 'On to town. [place: name="Millbrook" size="town" result="ok"]',
   });
-  await chats.createMessage({ chatId: chat.id, role: "user", content: "I look for a smith." });
+  // A place tag a player types, answered or not, is never read: only the Game Master's replies are.
+  await chats.createMessage({
+    chatId: chat.id,
+    role: "user",
+    content: 'I look for a smith. [place: name="Anywhere" size="city" result="ok"]',
+  });
   assert.deepEqual(await gamePlaceBefore(db, chat.id), { name: "Millbrook", size: "town" });
   await chats.createMessage({
     chatId: chat.id,

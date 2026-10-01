@@ -24,20 +24,29 @@ const { characterDataSchema, getRoleplayCommandActivity } = await import("../../
 
 const requests: Array<Record<string, any>> = [];
 let outputs: string[] = [];
+// Errors inside the fake provider are kept and rethrown after the request, so a broken
+// assertion there fails the test instead of leaving the response open until it times out.
+let providerError: unknown = null;
 // A KoboldCPP-style local endpoint whose model writes its tool calls as text.
 const provider = createServer(async (request, response) => {
-  const chunks: Buffer[] = [];
-  for await (const chunk of request) chunks.push(Buffer.from(chunk));
-  if (!request.url?.endsWith("/chat/completions")) return void response.writeHead(404).end();
-  const body = JSON.parse(Buffer.concat(chunks).toString());
-  requests.push(body);
-  const content = outputs.shift();
-  assert.notEqual(content, undefined, "unexpected provider request");
-  response.writeHead(200, { "content-type": "text/event-stream" });
-  response.write(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content }, finish_reason: null }] })}\n\n`);
-  response.end(
-    `data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`,
-  );
+  try {
+    const chunks: Buffer[] = [];
+    for await (const chunk of request) chunks.push(Buffer.from(chunk));
+    if (!request.url?.endsWith("/chat/completions")) return void response.writeHead(404).end();
+    const body = JSON.parse(Buffer.concat(chunks).toString());
+    requests.push(body);
+    const content = outputs.shift();
+    assert.notEqual(content, undefined, "unexpected provider request");
+    response.writeHead(200, { "content-type": "text/event-stream" });
+    response.write(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content }, finish_reason: null }] })}\n\n`);
+    response.end(
+      `data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`,
+    );
+  } catch (error) {
+    providerError ??= error;
+    if (!response.headersSent) response.writeHead(500);
+    response.end();
+  }
 });
 const db = await getDB();
 const chats = createChatsStorage(db);
@@ -94,12 +103,14 @@ try {
   const generate = async (metadata: Record<string, unknown>, sequence: string[]) => {
     await chats.patchMetadata(chat.id, { enableAgents: false, enableMemoryRecall: false, ...metadata });
     outputs = [...sequence];
+    providerError = null;
     const start = requests.length;
     const response = await app.inject({
       method: "POST",
       url: "/api/generate/",
       payload: { chatId: chat.id, forCharacterId: narrator.id },
     });
+    if (providerError) throw providerError;
     assert.equal(response.statusCode, 200, response.body);
     assert(!response.body.includes('"type":"error"'), response.body);
     assert.equal(outputs.length, 0, "every planned provider round ran");

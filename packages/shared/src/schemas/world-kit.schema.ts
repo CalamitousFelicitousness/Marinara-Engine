@@ -119,6 +119,34 @@ export const worldKitSchema = z
         message: "Names at least one thing a fight can drop",
       })
       .optional(),
+    /** A setting's money, for a game with no ruleset (worldgen W6b): one family of coins, each worth so
+     *  many of the smallest, which is worth 1. */
+    money: z
+      .object({
+        label: word,
+        units: z
+          .array(z.object({ label: word, value: z.number().int().min(1).max(1_000_000) }).strict())
+          .min(1)
+          .max(6),
+      })
+      .strict()
+      .optional(),
+    /** Everyday things a game with no ruleset can buy (worldgen W6b): the price in the smallest coin, the
+     *  smallest place that sells it by its rank on the size ladder (0 is the smallest), and whether it
+     *  is a service, bought but never carried. */
+    shop: z
+      .array(
+        z
+          .object({
+            name: word,
+            price: z.number().int().min(0).max(1_000_000_000),
+            from: z.number().int().min(0).max(11).default(0),
+            service: z.literal(true).optional(),
+          })
+          .strict(),
+      )
+      .max(60)
+      .optional(),
     calendar: z
       .object({
         year: word,
@@ -175,6 +203,26 @@ export const worldKitSchema = z
         path: ["layers"],
         message: "Exactly one layer holds the settlements",
       });
+    }
+    if (kit.money) {
+      if (!kit.money.units.some((unit) => unit.value === 1)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["money", "units"],
+          message: "One coin is the smallest, worth 1",
+        });
+      }
+      const coins = kit.money.units.map((unit) => unit.label.trim().toLowerCase());
+      if (new Set(coins).size !== coins.length) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["money", "units"], message: "Two coins share a name" });
+      }
+    }
+    if (kit.shop?.length && !kit.money) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["shop"], message: "A shop needs the setting's money" });
+    }
+    const goods = (kit.shop ?? []).map((thing) => thing.name.trim().toLowerCase());
+    if (new Set(goods).size !== goods.length) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["shop"], message: "Two things in the shop share a name" });
     }
     for (const key of ["layers", "sizes", "groupKinds", "placeTags", "travel", "cultures", "terrain"] as const) {
       const seen = new Set<string>();

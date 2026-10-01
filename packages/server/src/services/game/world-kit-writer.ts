@@ -25,6 +25,7 @@ export function buildWorldKitWritingPrompt(input: WorldKitWritingInput): { syste
     `- "sizes" is that layer's size ladder, smallest first. "groupKinds" include everyday groups (households, shops, crews) as well as powers.`,
     `- "change.kinds" has exactly the eight keys of the kit you start from. Each label says what that kind of change looks like in this setting. Set "on" to false for a kind this setting should never have (a cozy slice of life has no crime, conflict or catastrophe). "pace" is one of still, slow, steady, quick.`,
     `- "loot" names what a won fight can drop, by rarity, as things this setting really has: a modern town drops a gift card or a first-aid kit, never an enchanted sword.`,
+    `- "money" is what this setting pays in: its coins, each "value" how many of the smallest it is worth (the smallest is 1). "shop" lists everyday things this setting sells, each "price" in the smallest coin and "from" the smallest size that sells it (0 is the smallest on "sizes"); lodging or passage has "service": true.`,
     `- "cultures" say how people are named, never the names themselves. Write real cultures with respect, never as caricature. An invented setting invents its own naming customs; never fall back on English or European names for a culture that is neither.`,
     `- No text may contain line breaks, square brackets or angle brackets. "summary" is at most 400 characters, each naming note at most 600.`,
     ...(language && language.toLowerCase() !== "english"

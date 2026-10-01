@@ -229,6 +229,28 @@ const highFantasy: WorldKitInput = {
     ],
     legendary: ["Flamebrand", "Shadowblade", "Dragonscale Plate", "Enchanted Cloak", "Elixir of Vitality"],
   },
+  money: {
+    label: "coin",
+    units: [
+      { label: "copper", value: 1 },
+      { label: "silver", value: 10 },
+      { label: "gold", value: 100 },
+    ],
+  },
+  shop: [
+    { name: "Bread and cheese", price: 2, from: 0 },
+    { name: "Mug of ale", price: 1, from: 0 },
+    { name: "Torch", price: 1, from: 0 },
+    { name: "Rope (50ft)", price: 10, from: 1 },
+    { name: "Bedroll", price: 10, from: 1 },
+    { name: "Lantern", price: 50, from: 2 },
+    { name: "Healing Potion", price: 50, from: 2 },
+    { name: "Iron Shortsword", price: 100, from: 2 },
+    { name: "Chainmail Shirt", price: 500, from: 3 },
+    { name: "Riding Horse", price: 2500, from: 3 },
+    { name: "Spell Scroll", price: 1000, from: 4 },
+    { name: "A night at the inn", price: 5, from: 1, service: true },
+  ],
   calendar: { year: "year", day: "day" },
   change: {
     kinds: {
@@ -396,6 +418,27 @@ const wuxia: WorldKitInput = {
     ],
     legendary: ["Heaven-Splitting Blade", "Immortal's Robe", "Thousand-Year Ginseng", "Lost Manual of the Five Phases"],
   },
+  money: {
+    label: "money",
+    units: [
+      { label: "copper cash", value: 1 },
+      { label: "tael of silver", value: 1000 },
+    ],
+  },
+  shop: [
+    { name: "Steamed buns", price: 5, from: 0 },
+    { name: "Pot of tea", price: 10, from: 0 },
+    { name: "Straw sandals", price: 20, from: 0 },
+    { name: "Herbal Salve", price: 80, from: 1 },
+    { name: "Bandages", price: 30, from: 1 },
+    { name: "Iron Dao", price: 1500, from: 2 },
+    { name: "Steel Jian", price: 4000, from: 3 },
+    { name: "Qi-Restoring Pill", price: 3000, from: 3 },
+    { name: "Fine Silk Robe", price: 8000, from: 3 },
+    { name: "Riding Horse", price: 20000, from: 3 },
+    { name: "A room at the inn", price: 100, from: 1, service: true },
+    { name: "An escort to the next town", price: 2000, from: 2, service: true },
+  ],
   calendar: {
     year: "year of the reign",
     day: "day",
@@ -553,6 +596,27 @@ const modernDay: WorldKitInput = {
     epic: ["Rare Vinyl Record", "Designer Handbag", "Collector's Comic"],
     legendary: ["Winning Lottery Ticket", "Grandmother's Locket", "Lost Family Heirloom"],
   },
+  money: {
+    label: "money",
+    units: [
+      { label: "cent", value: 1 },
+      { label: "dollar", value: 100 },
+    ],
+  },
+  shop: [
+    { name: "Coffee", price: 400, from: 0 },
+    { name: "Sandwich", price: 700, from: 0 },
+    { name: "Bottle of Water", price: 150, from: 0 },
+    { name: "Umbrella", price: 1500, from: 1 },
+    { name: "Phone Charger", price: 2000, from: 1 },
+    { name: "Flashlight", price: 1800, from: 1 },
+    { name: "First-Aid Kit", price: 2500, from: 2 },
+    { name: "Bicycle", price: 30000, from: 2 },
+    { name: "Concert Tickets", price: 6000, from: 3 },
+    { name: "Bus Pass", price: 250, from: 1 },
+    { name: "A movie ticket", price: 1400, from: 2, service: true },
+    { name: "A haircut", price: 3000, from: 1, service: true },
+  ],
   calendar: { year: "year", day: "day", months },
   change: {
     kinds: {
@@ -686,6 +750,25 @@ const modernSupernatural: WorldKitInput = {
     epic: ["Consecrated Blade", "Hunter's Journal", "Fae Glass Lens"],
     legendary: ["Relic of a Saint", "Bound Spirit Lantern", "True Name Scroll"],
   },
+  money: {
+    label: "money",
+    units: [
+      { label: "cent", value: 1 },
+      { label: "dollar", value: 100 },
+    ],
+  },
+  shop: [
+    { name: "Coffee", price: 400, from: 0 },
+    { name: "Flashlight", price: 1800, from: 0 },
+    { name: "Salt Packet", price: 100, from: 0 },
+    { name: "Candles", price: 600, from: 1 },
+    { name: "First-Aid Kit", price: 2500, from: 1 },
+    { name: "Silver Knife", price: 12000, from: 2 },
+    { name: "Holy Water Vial", price: 500, from: 2 },
+    { name: "Old Rosary", price: 2000, from: 2 },
+    { name: "Occult Notebook", price: 4000, from: 3 },
+    { name: "A reading at the occult shop", price: 5000, from: 2, service: true },
+  ],
   calendar: { year: "year", day: "day", months },
   change: {
     kinds: {
@@ -835,6 +918,26 @@ const twenties: WorldKitInput = {
     epic: ["Drum Magazine", "Stock Certificates", "Diamond Ring"],
     legendary: ["The Boss's Ledger", "Bearer Bonds", "The Heiress's Tiara"],
   },
+  money: {
+    label: "money",
+    units: [
+      { label: "cent", value: 1 },
+      { label: "dollar", value: 100 },
+    ],
+  },
+  shop: [
+    { name: "Newspaper", price: 2, from: 0 },
+    { name: "Cup of coffee", price: 5, from: 0 },
+    { name: "Pack of Cigarettes", price: 15, from: 0 },
+    { name: "Matchbook", price: 1, from: 0 },
+    { name: "Train Ticket", price: 300, from: 1 },
+    { name: "Pocket Watch", price: 800, from: 2 },
+    { name: "Flask", price: 150, from: 2 },
+    { name: "Snub-Nose Revolver", price: 2500, from: 3 },
+    { name: "Good suit", price: 3500, from: 3 },
+    { name: "A shave at the barber", price: 25, from: 1, service: true },
+    { name: "Dinner at a supper club", price: 300, from: 3, service: true },
+  ],
   calendar: { year: "year", day: "day", months },
   change: {
     kinds: {
@@ -957,6 +1060,20 @@ const cyberpunk: WorldKitInput = {
     epic: ["Monoblade", "Prototype Cyberarm", "Corporate Access Key"],
     legendary: ["Experimental Neural Implant", "Zero-Day Exploit", "AI Core Fragment"],
   },
+  money: { label: "credits", units: [{ label: "credit", value: 1 }] },
+  shop: [
+    { name: "Ration Bar", price: 5, from: 0 },
+    { name: "Burner Phone", price: 60, from: 0 },
+    { name: "Stim Patch", price: 40, from: 1 },
+    { name: "Med Spray", price: 80, from: 1 },
+    { name: "Data Chip", price: 20, from: 1 },
+    { name: "Heavy Pistol", price: 600, from: 2 },
+    { name: "Armored Jacket", price: 900, from: 2 },
+    { name: "Trauma Kit", price: 300, from: 2 },
+    { name: "Cyberdeck Cable", price: 150, from: 2 },
+    { name: "A night in a capsule hotel", price: 30, from: 1, service: true },
+    { name: "A street doc's patch-up", price: 250, from: 1, service: true },
+  ],
   calendar: { year: "year", day: "day", months },
   change: {
     kinds: {
@@ -1071,6 +1188,20 @@ const spaceOpera: WorldKitInput = {
     epic: ["Energy Sword", "Powered Armor Plate", "Jump Coordinates"],
     legendary: ["Precursor Relic", "Ancient Starmap", "Fleet Command Codes"],
   },
+  money: { label: "credits", units: [{ label: "credit", value: 1 }] },
+  shop: [
+    { name: "Ration Pack", price: 5, from: 0 },
+    { name: "Power Cell", price: 20, from: 0 },
+    { name: "Med Patch", price: 30, from: 0 },
+    { name: "Comm Bead", price: 80, from: 1 },
+    { name: "Repair Kit", price: 150, from: 1 },
+    { name: "Blaster Pistol", price: 900, from: 2 },
+    { name: "Armored Flight Suit", price: 1500, from: 2 },
+    { name: "Star Chart", price: 400, from: 2 },
+    { name: "Personal Shield Emitter", price: 6000, from: 4 },
+    { name: "A berth on a freighter", price: 200, from: 1, service: true },
+    { name: "Docking for a day", price: 50, from: 1, service: true },
+  ],
   calendar: { year: "standard year", day: "standard day", era: "era" },
   change: {
     kinds: {
@@ -1197,6 +1328,20 @@ const postApocalyptic: WorldKitInput = {
     epic: ["Military Armor", "Working Radio", "Seed Vault Key"],
     legendary: ["Sealed Medical Kit", "Intact Engine", "Map to the Green Valley"],
   },
+  money: { label: "scrip", units: [{ label: "scrip", value: 1 }] },
+  shop: [
+    { name: "Clean Water", price: 3, from: 0 },
+    { name: "Canned Food", price: 5, from: 0 },
+    { name: "Bandages", price: 4, from: 0 },
+    { name: "Duct Tape", price: 6, from: 1 },
+    { name: "Box of Ammo", price: 15, from: 1 },
+    { name: "Gas Mask", price: 60, from: 2 },
+    { name: "Machete", price: 40, from: 1 },
+    { name: "Iodine Tablets", price: 25, from: 2 },
+    { name: "Water Filter", price: 200, from: 3 },
+    { name: "Hunting Rifle", price: 300, from: 3 },
+    { name: "A safe night behind the walls", price: 10, from: 1, service: true },
+  ],
   calendar: { year: "year after the fall", day: "day" },
   change: {
     kinds: {

@@ -1,6 +1,7 @@
 import {
   assignCombatTactics,
   combatTacticsSchema,
+  gameWorldKitFromMetadata,
   gameInventoryBags,
   gameInventoryBagKey,
   gameInventoryFightEffects,
@@ -8777,7 +8778,12 @@ function GameSurfaceComponent({
       }),
     };
   }, [chatMeta.gameCharacterCards, gameRuleset, inventoryPlayerName]);
-  const inventoryItemBook = useRulesetItemBook(gameRuleset, inventorySheets, chatMeta.gameInventedItems);
+  // A game with no ruleset buys and pays in its setting kit's money (worldgen W6b).
+  const inventoryKit = useMemo(
+    () => gameWorldKitFromMetadata({ gameWorldKit: chatMeta.gameWorldKit }),
+    [chatMeta.gameWorldKit],
+  );
+  const inventoryItemBook = useRulesetItemBook(gameRuleset, inventorySheets, chatMeta.gameInventedItems, inventoryKit);
   /** The Use button. One of the ruleset's items with a `use` is used by the Engine first: what it does
    *  to whoever carries it lands on their sheet, it is spent, and the Game Master is told what happened
    *  in an `[item_used]` block. Anything else is simply said, and the Game Master decides. */

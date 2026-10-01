@@ -2921,7 +2921,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         };
         const decisionTurn = decisionTiming.turn;
         const heldDecisions: HeldDecisions = (kind, key, modifiers) =>
-          heldDecision(decisionTimerState, decisionTurn, kind, key, modifiers?.every);
+          heldDecision(decisionTimerState, decisionTurn, kind, key, modifiers?.every, modifiers?.lasts);
         await saveDecisionTimers();
         // Worked out once: the agents' plan below includes the prompt's statements too.
         const promptDecisionReachable = reachableDecisionStatements(promptDecisionTexts, promptMacroContext);

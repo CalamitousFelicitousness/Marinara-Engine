@@ -3326,7 +3326,7 @@ export async function chatsRoutes(app: FastifyInstance) {
           const previewDecisionTimers = readDecisionTimers(chatMeta[DECISION_TIMERS_METADATA_KEY]);
           const previewDecisionTurn = decisionTurnFor(previewDecisionTimers, latestTurnDecisionId(filteredMessages));
           const heldDecisions: HeldDecisions = (kind, key, modifiers) =>
-            heldDecision(previewDecisionTimers, previewDecisionTurn, kind, key, modifiers?.every);
+            heldDecision(previewDecisionTimers, previewDecisionTurn, kind, key, modifiers?.every, modifiers?.lasts);
           {
             const texts = collectTurnDecisionTexts({
               // The same sources generation plans from: preset sections only outside

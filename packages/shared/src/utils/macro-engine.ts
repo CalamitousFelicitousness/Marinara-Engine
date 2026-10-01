@@ -598,6 +598,13 @@ export const SUPPORTED_MACROS: readonly SupportedMacroDefinition[] = [
   },
   {
     category: "Formatting",
+    syntax:
+      '{{#if decision:"A fight starts in the latest message" until:"The fight ends in the latest message"}}...{{/if}}',
+    description:
+      'After a yes, stays on and asks the until statement each turn instead, turning off once it is true. while:"..." turns off once its statement is false. With sticky, :and stops at whichever ends first, :or at whichever ends last',
+  },
+  {
+    category: "Formatting",
     syntax: '{{#if decision:"The weather changes in the latest message" every:3}}...{{/if}}',
     description: "Asked only every 3 turns; reads as no between checks and takes no statement slot then",
   },
@@ -1028,6 +1035,24 @@ export interface DecisionStatementModifiers {
   cooldown?: number;
   every?: number;
   priority?: DecisionStatementPriority;
+  lasts?: DecisionStatementLifetime;
+}
+
+/**
+ * `until:"..."` or `while:"..."` after a `decision:` statement (#6922). After a yes the
+ * block stays on without the statement being asked; this one is asked each turn instead.
+ */
+export interface DecisionStatementLifetime {
+  /** As written, before its macros are resolved. */
+  statement: string;
+  /** `until` turns the block off when this is true, `while` when it is false. */
+  kind: "until" | "while";
+  /**
+   * With sticky: `and` (or `restrict`) turns the block off at whichever ends first, `or`
+   * (or `extend`) at whichever ends last. Until defaults to `and`, while to `or`. Without
+   * sticky, this statement alone decides.
+   */
+  mode: "and" | "or";
 }
 
 export type DecisionStatementPriority = "high" | "low";
@@ -1040,18 +1065,39 @@ export const MAX_DECISION_TIMING_TURNS = 1000;
 const DECISION_STATEMENT_WITH_MODIFIERS_RE =
   /^(["\u201c\u201d\u201e\u201f]|['\u2018\u2019\u201a\u201b])([\s\S]*)(["\u201c\u201d\u201e\u201f]|['\u2018\u2019\u201a\u201b])((?:\s+[a-z_]+\s*:\s*\S+)*)\s*$/iu;
 
+// `until:"..."` or `while:"..."`, then an optional `:and`, `:or`, `:restrict` or `:extend`.
+// Its value is a whole statement with spaces, so it is taken out before the other modifiers.
+const DECISION_LIFETIME_RE =
+  /\s+(until|while)\s*:\s*(?:["\u201c\u201d\u201e\u201f]([^"\u201c\u201d\u201e\u201f]*)["\u201c\u201d\u201e\u201f]|['\u2018\u2019\u201a\u201b]([^'\u2018\u2019\u201a\u201b]*)['\u2018\u2019\u201a\u201b])(?::([a-z]+))?(?=\s|$)/giu;
+
+function lifetimeModifier(kind: string, statement: string, mode = ""): DecisionStatementLifetime | undefined {
+  if (!statement.trim()) return undefined;
+  const until = kind.toLowerCase() === "until";
+  const set = mode.toLowerCase();
+  const and = set === "and" || set === "restrict" ? true : set === "or" || set === "extend" ? false : until;
+  return { statement: statement.trim(), kind: until ? "until" : "while", mode: and ? "and" : "or" };
+}
+
 function statementAfterPrefix(
   raw: string,
   prefix: RegExp,
 ): { question: string; timing: DecisionStatementModifiers } | null {
   const token = raw.trim();
   if (!prefix.test(token)) return null;
-  const rest = token.replace(prefix, "").trim();
+  const timing: DecisionStatementModifiers = {};
+  const rest = token
+    .replace(prefix, "")
+    .replace(DECISION_LIFETIME_RE, (_match, kind: string, double?: string, single?: string, mode?: string) => {
+      // Until and while are the same condition turned around, so only the first counts.
+      const lasts = timing.lasts ?? lifetimeModifier(kind, double ?? single ?? "", mode);
+      if (lasts) timing.lasts = lasts;
+      return "";
+    })
+    .trim();
   const quoted = DECISION_STATEMENT_WITH_MODIFIERS_RE.exec(rest);
   if (quoted && quoteKind(quoted[1]) === quoteKind(quoted[3]) && quoted[4]!.trim()) {
     const question = stripOuterQuotes(`${quoted[1]}${quoted[2]}${quoted[3]}`) ?? quoted[2]!;
     if (!question.trim()) return null;
-    const timing: DecisionStatementModifiers = {};
     for (const modifier of quoted[4]!.trim().split(/\s+(?=[a-z_]+\s*:)/iu)) {
       const [name, value] = modifier.split(":").map((part) => part.trim().toLowerCase());
       const turns = /^\d+$/u.test(value ?? "") ? Math.min(MAX_DECISION_TIMING_TURNS, Number(value)) : NaN;
@@ -1063,7 +1109,7 @@ function statementAfterPrefix(
     return { question, timing };
   }
   const question = stripOuterQuotes(rest) ?? rest;
-  return question.trim() ? { question, timing: {} } : null;
+  return question.trim() ? { question, timing } : null;
 }
 
 /** The statement inside a `decision:"..."` operand, as written, or null for any other operand. */

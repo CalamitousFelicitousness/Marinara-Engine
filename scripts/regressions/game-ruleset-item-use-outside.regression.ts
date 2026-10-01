@@ -191,6 +191,14 @@ try {
         delete doc.items?.lootTables;
         for (const catalog of doc.catalogs) for (const entry of catalog.entries ?? []) delete entry.creature?.loot;
         for (const layer of doc.layers ?? []) delete layer.currencies;
+        // And the market, which is 1.65's.
+        delete doc.items?.market;
+        for (const catalog of doc.catalogs ?? []) {
+          for (const entry of catalog.entries ?? []) {
+            delete entry.item?.sold;
+            delete entry.item?.service;
+          }
+        }
       }),
     );
     assert.match(issue(59, variant(gravewatchAt160)) ?? "", gateIssue);

@@ -1037,6 +1037,20 @@ function rulesetCarriesMoney164(ruleset: { layers?: unknown; items?: unknown } |
   );
 }
 
+const MARKET_ISSUE =
+  "A ruleset with a market, or whose items name where they are sold or are services, requires schemaVersion 2 and capabilityApi 1.65 or newer";
+
+/** An item's `sold` or `service`, which are 1.65: new keys on the strict item. */
+function entriesCarryMarket(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) &&
+    entries.some((entry) => {
+      const item = plainRecord(plainRecord(entry)?.item);
+      return item?.sold !== undefined || item?.service !== undefined;
+    })
+  );
+}
+
 const LOOT_ISSUE =
   "A ruleset with loot tables, or creatures that carry loot, requires schemaVersion 2 and capabilityApi 1.63 or newer";
 
@@ -1225,6 +1239,7 @@ export function getCapabilityPackageInstallIssue(
   const declaresApi = (minor: number) => !!api && (api.major > 1 || (api.major === 1 && api.minor >= minor));
   /** Whether a catalog, inline or in its own file, gives a creature its loot: 1.63, asked last. */
   let carriesLoot = false;
+  let carriesMarket = false;
   const catalogs = ruleset?.catalogs;
   if (Array.isArray(catalogs) && catalogs.length > 0) {
     if (!declaresApi(21)) {
@@ -1297,6 +1312,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryChargesOverTime(header.entries) && !declaresApi(61)) return CHARGES_OVER_TIME_ISSUE;
       if (entriesCarryItemGate(header.entries) && !declaresApi(62)) return ITEM_GATE_ISSUE;
       if (entriesCarryCreatureLoot(header.entries)) carriesLoot = true;
+      if (entriesCarryMarket(header.entries)) carriesMarket = true;
       const asset = header.asset;
       if (typeof asset !== "string") continue;
       // A path that does not normalize is never a declared one, whatever else failed to normalize.
@@ -1333,6 +1349,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryChargesOverTime(fileEntries) && !declaresApi(61)) return CHARGES_OVER_TIME_ISSUE;
       if (entriesCarryItemGate(fileEntries) && !declaresApi(62)) return ITEM_GATE_ISSUE;
       if (entriesCarryCreatureLoot(fileEntries)) carriesLoot = true;
+      if (entriesCarryMarket(fileEntries)) carriesMarket = true;
     }
   }
   // The battle block lives inside the ruleset file too, so it is read the same way and for the same
@@ -1536,6 +1553,7 @@ export function getCapabilityPackageInstallIssue(
   // asked last, so a package that declares an older minor hears first about what that minor lacks.
   if (!declaresApi(63) && (carriesLoot || plainRecord(ruleset?.items)?.lootTables !== undefined)) return LOOT_ISSUE;
   if (!declaresApi(64) && rulesetCarriesMoney164(ruleset)) return MONEY_ISSUE;
+  if (!declaresApi(65) && (carriesMarket || plainRecord(ruleset?.items)?.market !== undefined)) return MARKET_ISSUE;
   return null;
 }
 

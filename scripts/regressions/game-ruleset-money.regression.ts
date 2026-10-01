@@ -87,6 +87,17 @@ const ember = parsedOrThrow(JSON.parse(emberText), "Ember Roads");
 const graveBook = rulesetItemBook(gravewatch, entriesOf(gravewatch));
 const emberBook = rulesetItemBook(ember, entriesOf(ember));
 const night = { "layer.long_night": true };
+/** Gravewatch without its market, which is 1.65's and has a lane of its own. */
+const withoutMarket = (doc: Record<string, any>) => {
+  delete doc.items?.market;
+  for (const catalog of doc.catalogs ?? []) {
+    for (const entry of catalog.entries ?? []) {
+      delete entry.item?.sold;
+      delete entry.item?.service;
+    }
+  }
+  return doc;
+};
 
 // ── Import ──
 {
@@ -144,7 +155,7 @@ const night = { "layer.long_night": true };
   });
   const gateIssue = /layers remove coins, or whose loot tables drop coins.*capabilityApi 1\.64/;
   const issue = (minor: number, doc: Record<string, any>) =>
-    getCapabilityPackageInstallIssue(manifest(minor) as any, doc);
+    getCapabilityPackageInstallIssue(manifest(minor) as any, withoutMarket(doc));
   const noLayerCoins = (doc: Record<string, any>) => delete doc.layers[0].currencies;
   const noLootCoins = (doc: Record<string, any>) =>
     (doc.items.lootTables[0].entries = doc.items.lootTables[0].entries.filter((entry: any) => !entry.coins));
@@ -403,6 +414,8 @@ const night = { "layer.long_night": true };
       delete doc.layers;
       doc.items.lootTables[0].entries = doc.items.lootTables[0].entries.filter((entry: any) => !entry.coins);
       for (const catalog of doc.catalogs) for (const entry of catalog.entries ?? []) delete entry.item?.cost;
+      // Nothing is sold without coins: the market and its services go with them.
+      withoutMarket(doc);
     }),
     "Gravewatch without coins",
   );

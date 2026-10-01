@@ -22,7 +22,7 @@ const MAX_TAG_NOTE_LENGTH = 600;
 const MAX_PROPOSAL_PARTS = 24;
 
 export type InventoryTagAction =
-  "add" | "remove" | "give" | "equip" | "unequip" | "bind" | "unbind" | "use" | "pay" | "earn";
+  "add" | "remove" | "give" | "equip" | "unequip" | "bind" | "unbind" | "use" | "pay" | "earn" | "buy";
 
 const INVENTORY_TAG_ACTIONS: readonly InventoryTagAction[] = [
   "add",
@@ -35,6 +35,7 @@ const INVENTORY_TAG_ACTIONS: readonly InventoryTagAction[] = [
   "use",
   "pay",
   "earn",
+  "buy",
 ];
 
 function readAction(value: string | undefined): InventoryTagAction | undefined {
@@ -52,6 +53,9 @@ export interface InventoryTagRequest {
   to?: string;
   /** An add that proposes an item of the ruleset: the parts the Game Master gave it. */
   proposal?: Omit<GameInventoryItemProposal, "name">;
+  /** A buy's price level and seller, as the Game Master named them (#6917). */
+  level?: string;
+  seller?: string;
 }
 
 /** "damage=1d8, bulk: 2; hands" as parts: each `key=value` or `key: value`, split only before the
@@ -149,7 +153,7 @@ export function parseInventoryTagBody(body: string): InventoryTagRequest | null 
   let action: InventoryTagAction = readAction(actionValue) ?? "add";
   if (actionValue === undefined) {
     // A bare word, read only before the first attribute so an item's own name never counts.
-    const bare = /\b(add|remove|give|equip|unequip|bind|unbind|use|pay|earn)\b/i.exec(
+    const bare = /\b(add|remove|give|equip|unequip|bind|unbind|use|pay|earn|buy)\b/i.exec(
       body.slice(0, Math.min(attributes[0]?.start ?? body.length, 40)),
     );
     if (bare) action = bare[1]!.toLowerCase() as InventoryTagAction;
@@ -172,7 +176,18 @@ export function parseInventoryTagBody(body: string): InventoryTagRequest | null 
   const who = cleanName(values.get("who"));
   const to = cleanName(values.get("to"));
   const proposal = action === "add" ? readProposal(values) : undefined;
-  return { action, items, count, ...(who ? { who } : {}), ...(to ? { to } : {}), ...(proposal ? { proposal } : {}) };
+  const level = action === "buy" ? cleanName(values.get("level")) : undefined;
+  const seller = action === "buy" ? cleanName(values.get("seller")) : undefined;
+  return {
+    action,
+    items,
+    count,
+    ...(who ? { who } : {}),
+    ...(to ? { to } : {}),
+    ...(proposal ? { proposal } : {}),
+    ...(level ? { level } : {}),
+    ...(seller ? { seller } : {}),
+  };
 }
 
 /** The Game Master's `[loot: table="..." who="..."]`: one of the ruleset's loot tables, rolled. */
@@ -226,7 +241,19 @@ function sanitize(value: string, max = MAX_TAG_NAME_LENGTH): string {
 /** The canonical form of one resolved item, built from what the Engine read and did, never spliced
  *  out of what the model wrote. `raw` stands in for a body nothing could be read from. */
 export function serializeInventoryTag(
-  input: { action: InventoryTagAction; item: string; count: number; who?: string; to?: string } | { raw: string },
+  input:
+    | {
+        action: InventoryTagAction;
+        item: string;
+        count: number;
+        who?: string;
+        to?: string;
+        /** A buy's level and seller, and, bought, what it cost (#6917). */
+        level?: string;
+        seller?: string;
+        price?: string;
+      }
+    | { raw: string },
   outcome: InventoryTagOutcome,
   /** What the Engine changed about an item the Game Master invented. */
   note?: string,
@@ -241,10 +268,13 @@ export function serializeInventoryTag(
     attribute("count", outcome.ok ? outcome.count : input.count);
     if (input.who) attribute("who", input.who);
     if (input.to) attribute("to", input.to);
+    if (input.level) attribute("level", input.level);
+    if (input.seller) attribute("seller", input.seller);
   }
   if (outcome.ok) {
     attribute("result", "ok");
     attribute("now", outcome.now);
+    if (!("raw" in input) && input.price) attribute("price", input.price);
   } else {
     attribute("result", "refused");
     attribute("reason", outcome.reason);
@@ -262,6 +292,8 @@ export interface ResolvedInventoryTag {
   ok: boolean;
   now?: number;
   reason?: string;
+  /** What a buy cost, said in the ruleset's coins. */
+  price?: string;
 }
 
 /** Read one resolved tag body, or null for one the Engine has not answered. */
@@ -281,6 +313,7 @@ export function readResolvedInventoryTagBody(body: string): ResolvedInventoryTag
   const who = cleanName(values.get("who"));
   const to = cleanName(values.get("to"));
   const reason = values.get("reason")?.trim();
+  const price = values.get("price")?.trim();
   return {
     action,
     item,
@@ -291,6 +324,7 @@ export function readResolvedInventoryTagBody(body: string): ResolvedInventoryTag
     ok: result === "ok",
     ...(result === "ok" && Number.isFinite(now) ? { now } : {}),
     ...(reason && result !== "ok" ? { reason } : {}),
+    ...(price && result === "ok" && action === "buy" ? { price } : {}),
   };
 }
 

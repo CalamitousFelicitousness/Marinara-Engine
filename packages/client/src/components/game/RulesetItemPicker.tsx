@@ -327,7 +327,8 @@ export function RulesetItemPicker({
   // The same cached query the book was built from: only its loading and failure are read here.
   const query = useRulesetCatalog(definition.id, catalog?.id ?? "", definition.version, open && Boolean(catalog));
   const items = useMemo(
-    () => (coinsChosen ? [...book.coins] : book.entries.filter((each) => each.catalogId === catalog?.id)),
+    () =>
+      coinsChosen ? [...book.coins] : book.entries.filter((each) => each.catalogId === catalog?.id && !each.service),
     [book, catalog, coinsChosen],
   );
   const entries = useMemo(() => items.map((each) => each.entry), [items]);

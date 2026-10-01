@@ -543,7 +543,13 @@ const capabilityPackageManifestBaseSchema = z
 //        (`coin:<unit>`) that the Game Master pays and earns with. Not a soft seam, for the same reason as
 //        1.20 through 1.63: an Engine that cannot read these refuses the whole ruleset file, so a package
 //        that ships either declares 1.64. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 64 } as const);
+// 1.65: the items block may declare a `market` (price levels, place sizes, what each place sells, and
+//        kinds of seller), and an item may name the smallest place that sells it (`sold`) or be a
+//        `service`, bought and never carried; the Game Master buys with `[inventory: action="buy"]` and
+//        says where the party is with `[place:]`. Not a soft seam, for the same reason as 1.20 through
+//        1.64: an Engine that cannot read these refuses the whole ruleset or catalog file, so a package
+//        that ships any of them declares 1.65. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 65 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

@@ -133,6 +133,9 @@ export interface GmPromptContext {
   inventoryBearers?: Record<string, GameInventoryBearerStatus>;
   /** What each bag's coins are worth ("Coin worth 432 bits"), by bag key, where the ruleset has coins. */
   inventoryPurses?: Record<string, string>;
+  /** The market block for the place the scene is in (`rulesetMarketPromptText`), where the ruleset
+   *  has a market (#6917). */
+  market?: string;
   /** The layers the game's ruleset really plays with, for what a layer hides without rewriting the
    *  ruleset (its coins). */
   rulesetLayerOptions?: RulesetLayerOptions;
@@ -1172,6 +1175,7 @@ export function buildGmFormatReminder(
     | "inventoryItemFacts"
     | "inventoryBearers"
     | "inventoryPurses"
+    | "market"
     | "rulesetLayerOptions"
     | "language"
     | "rating"
@@ -1490,7 +1494,13 @@ export function buildGmFormatReminder(
             : []),
           ...(coins.length
             ? [
-                `- [inventory: action="pay" amount="5 ${coins[0]!.units.at(-1)!.label}" who="Name"] and [inventory: action="earn" amount="12 ${coins[0]!.units[0]!.label}" who="Name"] - when a character pays for something or is paid, in the ruleset's coins (${promptCoins(coins)}). Coins are items in each character's purse: a payment comes out of that character's purse (the player's with who left out), inside the coin's own family, with change in its smaller coins, and one they cannot afford is refused; an earning goes into the bags as an add does. The answer says what was paid and what is left: narrate exactly that. Buying is a payment and then an add; never add or remove coins any other way.`,
+                `- [inventory: action="pay" amount="5 ${coins[0]!.units.at(-1)!.label}" who="Name"] and [inventory: action="earn" amount="12 ${coins[0]!.units[0]!.label}" who="Name"] - when a character pays for something or is paid, in the ruleset's coins (${promptCoins(coins)}). Coins are items in each character's purse: a payment comes out of that character's purse (the player's with who left out), inside the coin's own family, with change in its smaller coins, and one they cannot afford is refused; an earning goes into the bags as an add does. The answer says what was paid and what is left: narrate exactly that. ${ctx.ruleset?.items?.market ? "Buying is a buy (below)" : "Buying is a payment and then an add"}; never add or remove coins any other way.`,
+              ]
+            : []),
+          ...(ctx.ruleset?.items?.market
+            ? [
+                `- [place: name="Name" size="${ctx.ruleset.items.market.places.at(-1)!.label}"] - whenever the scene moves to a new place, with its size, one of: ${ctx.ruleset.items.market.places.map((place) => place.label).join(", ")} (smallest first). Leave size out for somewhere with no market (a road, the wilds). The Engine keeps the last place said until you say another, and the MARKET block below shows what it sells.`,
+                `- [inventory: action="buy" item="Name" count="1" level="${ctx.ruleset.items.market.prices.find((level) => level.default)!.label}" seller="Seller" who="Name"] - when a character buys something, instead of paying and adding it yourself. Levels: ${ctx.ruleset.items.market.prices.map((level) => `${level.label} ×${level.times}${level.default ? " (the default)" : ""}`).join(", ")}; haggling or a seller's mood moves the level, never the price. The Engine checks the place and the seller sell it, prices it, takes the price from the buyer's purse (the player's with who left out) and puts it in their bag (a service only pays), and the answer says what it cost or why not: narrate exactly that.`,
               ]
             : []),
           ...(ctx.ruleset?.items?.lootTables?.length
@@ -1642,6 +1652,8 @@ export function buildGmFormatReminder(
     const note = bearerFor(undefined);
     lines.push(``, `PLAYER INVENTORY${note ? ` (${note})` : ""}: ${buildCompactInventoryLine(playerInventory)}`);
   }
+
+  if (ctx.market) lines.push(``, ctx.market);
 
   const specialInstructions = normalizePromptText(ctx.gameSpecialInstructions);
   if (specialInstructions) {

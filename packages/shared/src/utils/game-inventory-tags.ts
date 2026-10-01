@@ -21,6 +21,7 @@ import {
   giveFromGameInventoryNamed,
   wearGameInventoryStack,
   type GameInventoryBagRef,
+  type GameInventoryCoin,
   type GameInventoryItemRules,
   type GameInventoryStack,
 } from "./game-inventory-stacks.js";
@@ -45,6 +46,49 @@ export type GameInventoryItemUser = (
 ) =>
   | { ok: true; stacks: GameInventoryStack[]; journal: GameInventoryJournalEntry[]; line: string }
   | { ok: false; reason: string };
+
+/** Why a market will not sell (#6917): no market in this ruleset, no place said, a level, item or seller
+ *  it does not know, an item with no price or not sold at a place this size, or a seller who will not
+ *  sell to this buyer. */
+export type GameInventoryMarketRefusal =
+  | "no-market"
+  | "no-place"
+  | "unknown-level"
+  | "unknown-item"
+  | "not-for-sale"
+  | "not-here"
+  | "no-seller"
+  | "not-to-you";
+
+/** What a buy costs at the place the party is in, worked out by the Engine; the server builds it from
+ *  the ruleset's market, the place and the buyers' sheets. */
+export interface GameInventoryMarket {
+  quote(request: {
+    item: string;
+    count: number;
+    level?: string;
+    seller?: string;
+    who?: string;
+    /** The stacks as the reply's tags have left them so far, which a seller's `only` reads. */
+    stacks: readonly GameInventoryStack[];
+  }):
+    | {
+        ok: true;
+        /** The item bought, and its name. */
+        item: string;
+        name: string;
+        /** Bought and never carried: buying it only pays. */
+        service: boolean;
+        /** The coins of the family it is paid in, and how much, in the family's smallest coin. */
+        family: readonly GameInventoryCoin[];
+        owed: number;
+        /** The price as said: "36 Shilling". */
+        price: string;
+        level: string;
+        seller?: string;
+      }
+    | { ok: false; reason: GameInventoryMarketRefusal };
+}
 
 export interface GameInventoryParty {
   /** The player's own character's name, when it is known. */
@@ -90,6 +134,15 @@ export interface GameInventoryTagsOutcome {
   tags: number;
 }
 
+/** What a payment handed over and got back, for the Game Master: "Paid with Crown ×1; Shilling ×2 back." */
+function paymentNote(paid: GameInventoryPayment): string {
+  const listed = (coins: GameInventoryPayment["paid"]) => {
+    const each = coins.map((coin) => `${coin.name} ×${coin.count}`);
+    return each.length > 1 ? `${each.slice(0, -1).join(", ")} and ${each.at(-1)}` : each.join("");
+  };
+  return `Paid with ${listed(paid.paid)}${paid.change.length ? `; ${listed(paid.change)} back` : ""}.`;
+}
+
 function outcomeOf(result: GameInventoryOpResult | undefined): InventoryTagOutcome {
   if (!result) return { ok: false, reason: "refused" };
   return result.ok
@@ -114,6 +167,9 @@ export function applyGameInventoryTags(
   /** Rolls one of the ruleset's loot tables, for `[loot:]`: what it dropped, or null for a table the
    *  ruleset does not have. Without it a loot tag is refused. */
   loot?: (table: string) => ReadonlyArray<{ item: string; name: string; count: number }> | null,
+  /** The place the party is in and what it sells, for `action="buy"` (#6917). Without it a buy is
+   *  refused. */
+  market?: GameInventoryMarket,
 ): GameInventoryTagsOutcome {
   let current = stacks;
   const journal: GameInventoryJournalEntry[] = [];
@@ -303,12 +359,68 @@ export function applyGameInventoryTags(
               (stack) => stack.item === coin.item && gameInventoryBagKey(stack.holder) === gameInventoryBagKey(holder),
             )
             .reduce((sum, stack) => sum + stack.quantity, 0);
-          const listed = (coins: GameInventoryPayment["paid"]) => {
-            const each = coins.map((coin) => `${coin.name} ×${coin.count}`);
-            return each.length > 1 ? `${each.slice(0, -1).join(", ")} and ${each.at(-1)}` : each.join("");
-          };
-          const note = `Paid with ${listed(paid.paid)}${paid.change.length ? `; ${listed(paid.change)} back` : ""}.`;
+          const note = paymentNote(paid);
           return serializeInventoryTag(answered, { ok: true, count: request.count, now }, note);
+        }
+        if (request.action === "buy") {
+          // The Engine prices it at the place the party is in, takes the price out of the buyer's
+          // purse as a payment is, and puts the item in their bag; a service only pays. Either both
+          // happen or neither does.
+          if (!market) return serializeInventoryTag(shown, { ok: false, reason: "no-market" });
+          const asked = {
+            ...shown,
+            ...(request.level ? { level: request.level } : {}),
+            ...(request.seller ? { seller: request.seller } : {}),
+          };
+          const quote = market.quote({
+            item,
+            count: request.count,
+            ...(request.level ? { level: request.level } : {}),
+            ...(request.seller ? { seller: request.seller } : {}),
+            ...(request.who ? { who: request.who } : {}),
+            stacks: current,
+          });
+          if (!quote.ok) return serializeInventoryTag(asked, { ok: false, reason: quote.reason });
+          const answered = {
+            ...asked,
+            item: quote.name,
+            level: quote.level,
+            ...(quote.seller ? { seller: quote.seller } : {}),
+          };
+          const holder = who.bag?.holder;
+          const paid = payGameInventoryCoins(current, holder, quote.family, quote.owed);
+          if (!paid.ok) return serializeInventoryTag(answered, { ok: false, reason: paid.reason });
+          let after = paid.stacks;
+          const bought: GameInventoryJournalEntry[] = [];
+          let now = 0;
+          if (!quote.service) {
+            const added = applyGameInventoryOps(
+              paid.stacks,
+              [{ op: "add", name: quote.name, item: quote.item, count: request.count, holder, log: true }],
+              newId,
+              rules,
+            );
+            const [result] = added.results;
+            if (!result?.ok) return serializeInventoryTag(answered, outcomeOf(result));
+            // Paid for in full, so delivered in full: what does not fit leaves the whole buy undone.
+            if ((result.left ?? 0) > 0) return serializeInventoryTag(answered, { ok: false, reason: "too-heavy" });
+            after = added.stacks;
+            bought.push(...added.journal);
+            now = result.now ?? 0;
+          }
+          current = after;
+          journal.push(
+            ...paid.paid.map((each) => ({ item: each.name, action: "used" as const, quantity: each.count })),
+            ...paid.change.map((each) => ({ item: each.name, action: "acquired" as const, quantity: each.count })),
+            ...bought,
+          );
+          // Something free takes no coin at all.
+          const note = paid.paid.length ? paymentNote(paid) : undefined;
+          return serializeInventoryTag(
+            { ...answered, price: quote.price },
+            { ok: true, count: request.count, now },
+            note,
+          );
         }
         if (request.action === "remove") {
           const [result] = apply([

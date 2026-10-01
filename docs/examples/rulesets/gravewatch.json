@@ -363,7 +363,8 @@
       { "id": "tonic", "label": "Tonic" },
       { "id": "token", "label": "Token" },
       { "id": "powder", "label": "Shot and powder" },
-      { "id": "page", "label": "Page" }
+      { "id": "page", "label": "Page" },
+      { "id": "service", "label": "Service" }
     ],
     "rarities": [
       { "id": "common", "label": "Common" },
@@ -431,7 +432,40 @@
           { "coins": "shilling", "weight": 2, "count": "1d6" }
         ]
       }
-    ]
+    ],
+    "market": {
+      "$comment": "What a place sells and at what price. Rare things are found from a market town up and arms from a village up, and the watch pistol only in a city; the chapel sells its litany pages only to wardens steady enough to read them.",
+      "prices": [
+        { "id": "cheap", "label": "cheap", "times": 0.75 },
+        { "id": "fair", "label": "fair", "times": 1, "default": true },
+        { "id": "dear", "label": "dear", "times": 1.5 }
+      ],
+      "places": [
+        { "id": "hamlet", "label": "hamlet" },
+        { "id": "village", "label": "village" },
+        { "id": "town", "label": "market town" },
+        { "id": "city", "label": "city" }
+      ],
+      "sold": [
+        { "filter": { "rarity": "rare" }, "place": "town" },
+        { "filter": { "category": "arm" }, "place": "village" }
+      ],
+      "sellers": [
+        {
+          "id": "chandler",
+          "label": "chandler",
+          "sells": [{ "category": "coat" }, { "category": "tonic" }, { "category": "powder" }, { "category": "service" }]
+        },
+        { "id": "smith", "label": "smith", "sells": [{ "category": "arm" }], "place": "village" },
+        {
+          "id": "chapel",
+          "label": "chapel of the Vigil",
+          "sells": [{ "category": "page" }],
+          "place": "town",
+          "only": { "value": { "abilityScore": "nerve" }, "atLeast": 3, "label": "wardens of Nerve 3 or more" }
+        }
+      ]
+    }
   },
   "catalogs": [
     {
@@ -689,6 +723,7 @@
             "stats": { "target": 7, "damage": "2d10", "harm": "tearing", "conceal": "coat" },
             "slots": { "hands": 1 },
             "cost": { "amount": 3, "unit": "crown" },
+            "sold": { "place": "city" },
             "attack": {
               "$comment": "One ball loaded at a time: it fires what it holds, and loading the next out of the warden's shot and powder takes the warden's whole action.",
               "budget": "act",
@@ -804,6 +839,12 @@
               "modifiers": [{ "to": "attacks", "flat": -1 }]
             }
           }
+        },
+        {
+          "id": "watch-house-bed",
+          "label": "A bed at the watch-house",
+          "summary": "A cot, a blanket and a bolted door until the dawn bell.",
+          "item": { "category": "service", "service": true, "cost": { "amount": 6, "unit": "penny" } }
         }
       ]
     }

@@ -145,6 +145,7 @@ export * from "./utils/game-inventory-ops.js";
 export * from "./utils/game-inventory-tags.js";
 export * from "./utils/game-inventory-turns.js";
 export * from "./utils/inventory-command-tag.js";
+export * from "./utils/game-place-tag.js";
 export * from "./utils/agent-cost.js";
 export * from "./utils/token-estimator.js";
 export * from "./utils/character-token-estimator.js";
@@ -222,6 +223,7 @@ export * from "./features/rulesets/check-effects.js";
 export * from "./features/rulesets/invented-items.js";
 export * from "./features/rulesets/item-use.js";
 export * from "./features/rulesets/loot.js";
+export * from "./features/rulesets/market.js";
 export * from "./features/ruleset-combat/index.js";
 
 export * from "./constants/request-timeouts.js";

@@ -1949,6 +1949,60 @@ const lootTableSchema = z
   })
   .strict();
 
+/** Which of the ruleset's items a rule or a seller means: every word it names must match. */
+const itemFilterSchema = z
+  .object({ rarity: sheetId.optional(), category: sheetId.optional(), tag: sheetId.optional() })
+  .strict();
+
+/** What a place sells and at what price (#6917, Capability API 1.65). Buying is the Game Master's
+ *  `buy`, answered with the price the Engine works out. */
+const marketSchema = z
+  .object({
+    /** Price levels, each a multiplier on an item's cost: cheap, fair and dear, say. One is the
+     *  default, the level a buy is at when the Game Master names none. */
+    prices: z
+      .array(
+        z
+          .object({
+            id: sheetId,
+            label,
+            times: z.number().finite().gt(0).max(100),
+            default: z.literal(true).optional(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(8),
+    /** Place sizes, smallest first: a hamlet, a town, a city, in the ruleset's own words. */
+    places: z.array(itemWordSchema).min(1).max(12),
+    /** The smallest place that sells what a filter picks, the first rule that matches an item
+     *  deciding. An item no rule reaches is sold anywhere. */
+    sold: z
+      .array(z.object({ filter: itemFilterSchema, place: sheetId }).strict())
+      .max(48)
+      .optional(),
+    /** Kinds of seller, each with what it sells, the smallest place that has one, and who it sells
+     *  to: a value on the buyer's sheet at least so high, said to the Game Master as `label`. */
+    sellers: z
+      .array(
+        z
+          .object({
+            id: sheetId,
+            label,
+            sells: z.array(itemFilterSchema).min(1).max(12),
+            place: sheetId.optional(),
+            only: z
+              .object({ value: rulesetValueRefSchema, atLeast: z.number().finite(), label: promptSafeText(80) })
+              .strict()
+              .optional(),
+          })
+          .strict(),
+      )
+      .max(24)
+      .optional(),
+  })
+  .strict();
+
 const itemsSchema = z
   .object({
     categories: z.array(itemWordSchema).min(1).max(24),
@@ -1993,6 +2047,7 @@ const itemsSchema = z
     lootTables: z.array(lootTableSchema).max(24).optional(),
     /** What an item the player types in becomes: a plain item, or nothing at all. */
     freeform: z.enum(["plain", "refuse"]).default("plain"),
+    market: marketSchema.optional(),
   })
   .strict();
 
@@ -2196,6 +2251,10 @@ const catalogItemSchema = z
       .object({ amount: z.number().int().min(0).max(1_000_000_000), unit: sheetId })
       .strict()
       .optional(),
+    /** The smallest of the market's places that sells it, over any rule that would say otherwise. */
+    sold: z.object({ place: sheetId }).strict().optional(),
+    /** Lodging, passage, a blessing: bought like an item, never carried. Buying it only pays. */
+    service: z.literal(true).optional(),
     /** The item has to be bound (attuned, invested) before it does anything while worn. */
     binds: z
       .object({ restriction: catalogText(200).optional(), cursed: z.boolean().optional() })
@@ -4255,6 +4314,40 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         }
       });
     });
+    const market = items.market;
+    if (market) {
+      // A filter picks by the items block's own words, and says at least one of them.
+      const checkFilter = (filter: { rarity?: string; category?: string; tag?: string }, path: (string | number)[]) => {
+        if (Object.keys(filter).length === 0) issue(path, "A filter names a rarity, a category or a tag");
+        for (const key of ["rarity", "category", "tag"] as const) {
+          const id = filter[key];
+          if (id !== undefined && !words[key].some((word) => word.id === id)) {
+            issue([...path, key], `Unknown item ${key} "${id}"`);
+          }
+        }
+      };
+      const places = unique(market.places, at("market", "places"), "place");
+      const checkPlace = (place: string | undefined, path: (string | number)[]) => {
+        if (place !== undefined && !places.has(place)) issue(path, `Unknown place "${place}"`);
+      };
+      unique(market.prices, at("market", "prices"), "price level");
+      if (market.prices.filter((level) => level.default).length !== 1) {
+        issue(at("market", "prices"), "One price level is the default");
+      }
+      market.sold?.forEach((rule, index) => {
+        checkFilter(rule.filter, at("market", "sold", index, "filter"));
+        checkPlace(rule.place, at("market", "sold", index, "place"));
+      });
+      unique(market.sellers ?? [], at("market", "sellers"), "seller");
+      market.sellers?.forEach((seller, index) => {
+        seller.sells.forEach((filter, filterIndex) =>
+          checkFilter(filter, at("market", "sellers", index, "sells", filterIndex)),
+        );
+        checkPlace(seller.place, at("market", "sellers", index, "place"));
+        // Read off the buyer's sheet with their live state, as a gate's `unless` is.
+        if (seller.only) checkRef(seller.only.value, at("market", "sellers", index, "only", "value"), derivedIds);
+      });
+    }
   }
 
   const catalogs = def.catalogs ?? [];
@@ -5560,6 +5653,19 @@ function itemIssues(
     );
   }
   if (item.binds && !items.binding) add([...at, "binds"], "This ruleset declares no binding, so nothing is bound");
+  if (item.sold) {
+    if (!items.market) add([...at, "sold"], "This ruleset declares no market, so nothing is sold anywhere");
+    else if (!items.market.places.some((place) => place.id === item.sold!.place)) {
+      add([...at, "sold", "place"], `Unknown place "${item.sold.place}"`);
+    }
+  }
+  if (item.service) {
+    // Bought and never carried: it costs something, and nothing about carrying or using it applies.
+    if (!item.cost) add([...at, "service"], "A service is bought, so it has a cost");
+    for (const key of ["slots", "stack", "binds", "worn", "carried", "requires", "attack", "use", "charges"] as const) {
+      if (item[key] !== undefined) add([...at, key], "A service is never carried, so it has no " + key);
+    }
+  }
   const skills = new Set(definition.sheet.skills.map((skill) => skill.id));
   const saves = new Set(definition.sheet.saves.map((save) => save.id));
   const abilities = new Map(definition.sheet.abilities.map((ability) => [ability.id, ability]));

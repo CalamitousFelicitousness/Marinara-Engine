@@ -1695,6 +1695,36 @@ No Capability API change: slice I8-2 of the ruleset items plan (#6909).
   `scripts/regressions/game-ruleset-classic-items.regression.ts` and by
   `e2e/game-ruleset-classic-items.e2e.ts`, with 40 deliberate breaks each caught.
 
+### What markets settled
+
+Capability API 1.65: slice I9-1 of the ruleset items plan (#6917).
+
+- **The market lives in the items block.** `items.market` holds price levels (`times` on an item's
+  cost, one `default`), place sizes (a ladder, smallest first), `sold` rules (filters read as a loot
+  line's are, the first match deciding) and `sellers` (filters, a smallest place, an `only` read off
+  the buyer's sheet as a gate's `unless` is). An item may carry its own `sold` place, and a `service`
+  mark for something bought and never carried. `market.ts` works everything out: a place by id or
+  label, the rank an item is sold from, the sellers at a rank, the price (worked out in the smallest
+  coin, rounded there and said in the largest coin the layers leave that pays it exactly, as
+  `itemPrice` says a cost), the quoter a buy is answered with, and the Game Master's block.
+- **The place comes from the chat, not from stored state.** The Game Master's `[place:]` tag is
+  answered in place (`game-place-tag.ts`), and the place in force is the last one answered in the
+  Game Master's replies the player sees (a tag a player types never counts) from the latest conversation start (`gamePlaceBefore`, which reads only
+  what came before the telling a regeneration replaces), then the reply's own. So swipes, deletions and branches need nothing of their own. `place` is a
+  reserved GM tag name. The worldgen plan will fill the same seam from a generated world.
+- **A buy is a payment and an add, or neither.** The `buy` action quotes, pays with
+  `payGameInventoryCoins` out of the buyer's bag, then adds on the paid stacks; a refused add, or one
+  that fits only some of what was bought, leaves the stacks as they were. A service is refused by the
+  add itself (`service`), so nothing puts one in a bag, and the picker leaves services out. The market is built once per turn (`loadGameMarket`) and kept on the
+  inventory turn, so the preview and the save answer alike. `only` is checked against the buyer's own
+  card (the player's for no name or the player's own; a blank sheet for a member with none), with
+  what they carry at that tag (the stacks the reply's earlier tags left) and the turn's own live state, the one its items are used with (never a replaced
+  telling's row).
+- **Said to the Game Master** only where the ruleset has a market: the place and buy lines, and a
+  MARKET block listing each seller present with a dozen wares, cheapest first.
+- **Proven** by `scripts/regressions/game-ruleset-markets.regression.ts` and
+  `e2e/game-ruleset-markets.e2e.ts`, with 61 deliberate breaks each caught.
+
 ## Gaps a ruleset author found
 
 The author of [Marinara-RPG-Extension](https://github.com/Kenhito/Marinara-RPG-Extension), who

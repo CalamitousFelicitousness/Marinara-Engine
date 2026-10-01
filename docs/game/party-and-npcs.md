@@ -119,6 +119,8 @@ The Game Master charges and pays the party in these coins, and a won fight or a 
 
 A variant of the ruleset can leave a coin out, such as a long night in which no crowns reach the barrows. Nobody is paid in that coin or pays with it then, and a price named in it is shown in the coins left, at the same worth.
 
+A ruleset can also have markets, so what you can buy depends on where you are. The Game Master says which place a scene is in and how big it is, a hamlet or a city in the ruleset's own words, and a small place sells less: rare things may only be found in a town, and some sellers keep shop only in bigger places or serve only some buyers, such as a chapel that sells only to the faithful. When you buy something, the Engine works out the price from the item's cost and how cheap or dear the deal is, takes it from the buyer's purse and puts the item in their bag. Lodging, passage and other services are only paid for. A notification shows what was bought and for how much, and a purchase the place, the seller or the purse cannot make is refused, and the Game Master is told why.
+
 ## Recruiting and removing party members
 
 The Game Master controls who is in your party as the story unfolds. There is no manual "add companion" button. Instead, the GM adds or removes party members through the narration, based on what happens in the scene.

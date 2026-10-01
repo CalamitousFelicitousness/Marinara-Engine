@@ -817,7 +817,8 @@ test("A setting kit is off by default, can be picked, written for the setting, e
   await expect(wizard.getByLabel("Name", { exact: true })).toHaveValue("Harbor town life");
   await expect(wizard.getByRole("alert")).toHaveCount(0);
   expect(writes).toHaveLength(3);
-  expect(writes[2]).toMatchObject({ connectionId: "wizard-connection", genre: "Fantasy", tone: "Heroic" });
+  // The modern day kit brought its own genre, since none was chosen (worldgen W6g).
+  expect(writes[2]).toMatchObject({ connectionId: "wizard-connection", genre: "Modern", tone: "Heroic" });
   expect(writes[2]!.start.id).toBe("modern_day");
 
   // Every word can be changed; a list is typed as one line, and a trailing comma survives typing.
@@ -915,6 +916,66 @@ test("A setting kit is off by default, can be picked, written for the setting, e
     { id: "city", label: "city" },
     { id: "quarter", label: "quarter", settlements: true },
   ]);
+});
+
+test("The wizard suggests settings from across settings, and a picked kit brings its own and its genre", async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(120_000);
+  await page.route("**/api/capability-packages/installed", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/capability-packages/agents", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/connections", (route) => route.fulfill({ json: wizardConnections }));
+  await page.route("**/api/lorebooks", (route) => route.fulfill({ json: [] }));
+  // Which starter setting each suggested setting comes from (worldgen W6g).
+  const english = JSON.parse(
+    readFileSync(new URL("../packages/client/src/localization/locales/en.json", import.meta.url), "utf8"),
+  ) as Record<string, string>;
+  const settingOf = new Map(
+    Object.entries(english)
+      .filter(([key]) => /^game\.setup\.suggestions\.[a-z0-9_]+\.setting\d$/.test(key))
+      .map(([key, text]) => [text, key.split(".")[3]!]),
+  );
+  const wizard = await mountWizard(page, testInfo, { isNewGame: true });
+  const suggested = async () =>
+    (await wizard.getByRole("button").allInnerTexts()).map((text) => text.trim()).filter((text) => settingOf.has(text));
+  await wizard
+    .locator("select")
+    .filter({ has: page.locator('option[value="wizard-connection"]') })
+    .first()
+    .selectOption("wizard-connection");
+  const { next } = stepNavigation(wizard);
+  await next();
+
+  // Without a kit: three ideas from three different settings, beside "Surprise me!".
+  const first = await suggested();
+  expect(first).toHaveLength(3);
+  expect(new Set(first.map((text) => settingOf.get(text))).size).toBe(3);
+  await expect(wizard.getByRole("button", { name: "Surprise me!", exact: true }).first()).toBeVisible();
+  await expect(wizard.getByRole("button", { name: "Fantasy", exact: true })).toHaveAttribute("aria-pressed", "true");
+
+  // A picked cyberpunk kit brings its own two ideas first, and its genre while none was chosen.
+  await wizard.getByRole("button", { name: /A megacity of districts and stacked blocks/u }).click();
+  const cyberpunk = await suggested();
+  expect(cyberpunk.slice(0, 2)).toEqual([
+    english["game.setup.suggestions.cyberpunk.setting1"],
+    english["game.setup.suggestions.cyberpunk.setting2"],
+  ]);
+  expect(settingOf.get(cyberpunk[2]!)).not.toBe("cyberpunk");
+  await expect(wizard.getByRole("button", { name: "Cyberpunk", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(wizard.getByRole("button", { name: "Fantasy", exact: true })).toHaveAttribute("aria-pressed", "false");
+  await wizard
+    .getByRole("button", { name: english["game.setup.suggestions.cyberpunk.setting2"]!, exact: true })
+    .click();
+  await expect(wizard.getByPlaceholder(english["ui.game.gamesetupwizard.describeYourWorld"]!)).toHaveValue(
+    english["game.setup.suggestions.cyberpunk.setting2"]!,
+  );
+
+  // Once the player chooses a genre, a kit never changes it.
+  await wizard.getByRole("button", { name: "Horror", exact: true }).click();
+  await wizard.getByRole("button", { name: /A sector of star systems joined by jump lanes/u }).click();
+  await expect(wizard.getByRole("button", { name: "Horror", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(wizard.getByRole("button", { name: "Cyberpunk", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(wizard.getByRole("button", { name: "Sci-Fi", exact: true })).toHaveAttribute("aria-pressed", "false");
 });
 
 test("A shared setup brings its setting kit to a new game and refuses one that does not hold together", async ({

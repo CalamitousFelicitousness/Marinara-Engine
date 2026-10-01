@@ -6436,6 +6436,8 @@
   "ui.chatSettings.chatvariablessection.couldNotSaveThatVariable": "Could not save that variable. Your text is still here — press Enter to try again.",
   "ui.chatSettings.chatvariablessection.name": "name",
   "ui.chatSettings.chatvariablessection.noVariablesYetAddOneNamedChar1WithTheValue": "No variables yet. Add one named char1 with the value Mary, then type {{example}} in a message and the AI reads Mary.",
+  "ui.chatSettings.chatvariablessection.remove": "Remove",
+  "ui.chatSettings.chatvariablessection.removeNameFromThisChat": "Remove \"{{name}}\" from this chat?",
   "ui.chatSettings.chatvariablessection.removeVariable": "Remove variable",
   "ui.chatSettings.chatvariablessection.thatNameBelongsToABuiltInMacro": "That name belongs to a built-in macro. Pick another one.",
   "ui.chatSettings.chatvariablessection.thatNameIsAlreadyUsedInThisChat": "That name is already used in this chat.",

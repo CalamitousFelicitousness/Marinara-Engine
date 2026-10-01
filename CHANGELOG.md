@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Removing a chat variable in Chat Settings now asks first, so one stray tap on a phone no longer deletes it. Cancel, or tap outside the question, and the variable stays (#6942).
+
 - Chat variables that `{{setvar}}`, `{{decvar}}` and the other variable macros change now go back with the reply that changed them, as tracker values do. A new swipe starts from the values before that reply, showing another swipe brings back its values, and deleting the reply undoes its changes, so a lorebook countdown no longer drops again on every swipe. Values you typed in Chat Settings since stay as they are (#6923).
 
 - On phones, the top bar now looks like a small version of the desktop one: Home and Chats sit at the left and a hamburger menu sits at the right, with wider, finger-sized buttons, instead of every control stretching across the bar.

@@ -255,7 +255,7 @@ const regressionAgentDefinitions = REGRESSION_AGENT_IDS.map((id) => ({
   name: id === "html" ? "Immersive HTML" : id === "illustrator" ? "Illustrator" : id,
   description:
     id === "html"
-      ? "Post-processes the latest Roleplay response with diegetic HTML/CSS/JS visual artifacts without changing the story meaning."
+      ? "Adds HTML/CSS/JS visual effects to AI messages."
       : `Regression fixture for ${id}`,
   phase: "post_processing" as const,
   enabledByDefault: false,
@@ -6683,7 +6683,7 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
 
       assert.equal(update.promptTemplate, "");
       assert.equal(update.phase, "post_processing");
-      assert.match(String(update.description), /Post-processes the latest Roleplay response/);
+      assert.match(String(update.description), /Adds HTML\/CSS\/JS visual effects to AI messages/);
       const settings = JSON.parse(String(update.settings)) as Record<string, unknown>;
       assert.equal(settings.resultType, "text_rewrite");
       assert.equal(settings.contextSize, 5);

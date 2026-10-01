@@ -7742,10 +7742,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   content: latestRoleplayMessage.content,
                 }
               : null;
+          // While the Rolls command is on, it decides who may roll. Otherwise a roll_dice the
+          // chat's Function Calling settings attached is offered and run the same way (#6945).
           const roleplayRollEnabled =
             chatMode === "roleplay" &&
             !input.impersonate &&
-            isRoleplayCommandAllowed(chatMeta, "roll", roleplayCallerId);
+            (isRoleplayCommandEnabled(chatMeta, "roll")
+              ? isRoleplayCommandAllowed(chatMeta, "roll", roleplayCallerId)
+              : chatResolvedToolNames.has("roll_dice"));
           const roleplayActivity: RoleplayCommandActivity[] = [];
           const roleplayInlinePrefixes = new Map<RoleplayCommandActivity, string>();
           const responderToolDefs =

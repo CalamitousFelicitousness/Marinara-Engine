@@ -131,3 +131,39 @@ test("editing a roleplay message on iPad keeps the editor above the keyboard", a
     await request.delete(`/api/chats/${chat.id}?force=true`);
   }
 });
+
+test("Support Diagnostics copies while the iPad tap is still being handled", async ({ page }) => {
+  // Safari only lets a page write to the clipboard while it is handling the tap. Playwright's
+  // WebKit allows a few seconds more, so hold the copy to Safari's rule here.
+  await page.addInitScript(() => {
+    let handlingTap = false;
+    window.addEventListener(
+      "click",
+      (event) => {
+        if (!event.isTrusted) return;
+        handlingTap = true;
+        setTimeout(() => (handlingTap = false), 0);
+      },
+      true,
+    );
+    Object.defineProperty(navigator.clipboard, "writeText", {
+      configurable: true,
+      value: async (text: string) => {
+        if (!handlingTap) throw new DOMException("Clipboard write outside the tap", "NotAllowedError");
+        (window as typeof window & { __copiedReport?: string }).__copiedReport = text;
+      },
+    });
+    const execCommand = document.execCommand.bind(document);
+    document.execCommand = (command, ...rest) =>
+      command === "copy" && !handlingTap ? false : execCommand(command, ...rest);
+  });
+  await seedShell(page, { rightPanelOpen: true, rightPanel: "settings", settingsTab: "advanced" });
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Copy Support Diagnostics", exact: true }).tap();
+
+  await expect(page.getByText("Support diagnostics copied.", { exact: true })).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => (window as typeof window & { __copiedReport?: string }).__copiedReport ?? ""))
+    .toContain("Mari last acted on: none recorded this session");
+});

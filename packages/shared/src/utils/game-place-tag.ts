@@ -57,11 +57,14 @@ function serialize(place: GamePlace, answer: { result: "ok" } | { result: "refus
 /**
  * Every place tag in a reply, answered in place: a size the ladder has becomes its id, a size it does
  * not have is refused (and changes nothing), and a tag naming neither a place nor a size is refused.
+ * With a world (worldgen W1), a name that is one of its places takes its size from the world, whatever
+ * size was written: `known` answers such a name, and undefined for a name the world does not list.
  * `place` is the last place the reply moved to, or undefined when it moved nowhere.
  */
 export function applyGamePlaceTags(
   content: string,
   sizeOf: (word: string) => { id: string } | undefined,
+  known?: (name: string) => { name: string; size?: string } | undefined,
 ): { content: string; place?: GamePlace } {
   let place: GamePlace | undefined;
   const next = content.replace(createPlaceTagRegex(), (_whole, body: string) => {
@@ -69,6 +72,11 @@ export function applyGamePlaceTags(
     const name = clean(values.get("name"));
     const written = clean(values.get("size"));
     if (!name && !written) return serialize({}, { result: "refused", reason: "unreadable" });
+    const listed = name && known ? known(name) : undefined;
+    if (listed) {
+      place = { name: listed.name, ...(listed.size ? { size: listed.size } : {}) };
+      return serialize(place, { result: "ok" });
+    }
     const size = written === undefined ? undefined : sizeOf(written);
     if (written !== undefined && !size) {
       return serialize({ ...(name ? { name } : {}), size: written }, { result: "refused", reason: "unknown-size" });

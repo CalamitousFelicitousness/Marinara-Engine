@@ -34,7 +34,51 @@ export const worldKitEntries = (words: readonly string[]) =>
       .replace(/^_+|_+$/g, "");
     return { id: !slug ? `entry_${index + 1}` : /^[0-9]/.test(slug) ? `n_${slug}` : slug, label };
   });
+/**
+ * A list of the kit's words, retyped. A word still in the list keeps its entry, and a word renamed in
+ * place keeps the entry it replaced, id and all (and anything it carries, such as what a way of
+ * travel crosses), so a world's brief that names that id still finds it. A new word gets a new id,
+ * never one already in the list.
+ */
+export function worldKitReworded<T extends { id: string; label: string }>(
+  previous: readonly T[],
+  words: readonly string[],
+): Array<T | { id: string; label: string }> {
+  const byLabel = new Map(previous.map((entry) => [entry.label, entry]));
+  const fresh = worldKitEntries(words);
+  const out = words.map((label, index) => {
+    const same = byLabel.get(label);
+    if (same) return same;
+    const replaced = previous[index];
+    if (replaced && !words.includes(replaced.label) && !byLabel.has(label)) return { ...replaced, label };
+    return null;
+  });
+  const taken = new Set(out.flatMap((entry) => (entry ? [entry.id] : [])));
+  return out.map((entry, index) => {
+    if (entry) return entry;
+    let id = fresh[index]!.id;
+    for (let n = 2; taken.has(id); n++) id = `${fresh[index]!.id.slice(0, 36)}_${n}`;
+    taken.add(id);
+    return { id, label: words[index]! };
+  });
+}
 const named = (...words: string[]) => worldKitEntries(words);
+type Crosses = "open" | "water" | "any";
+/** Ways of travel: what each crosses and how many times walking pace it goes. */
+const ways = (...entries: Array<[label: string, crosses: Crosses, speed: number]>) =>
+  worldKitEntries(entries.map(([label]) => label)).map((entry, index) => ({
+    ...entry,
+    crosses: entries[index]![1],
+    speed: entries[index]![2],
+  }));
+type TerrainKind = "open" | "water" | "barrier";
+/** The ground's classes, each with its kind and its share of the ground. */
+const ground = (...entries: Array<[label: string, kind: TerrainKind, share: number]>) =>
+  worldKitEntries(entries.map(([label]) => label)).map((entry, index) => ({
+    ...entry,
+    kind: entries[index]![1],
+    share: entries[index]![2],
+  }));
 
 const highFantasy: WorldKitInput = {
   schemaVersion: 1,
@@ -78,7 +122,22 @@ const highFantasy: WorldKitInput = {
     "border fort",
     "holy site",
   ),
-  travel: named("road", "river", "sea lane", "mountain pass", "forest track"),
+  travel: ways(
+    ["road", "open", 1],
+    ["river", "water", 1.5],
+    ["sea lane", "water", 2.5],
+    ["mountain pass", "any", 0.5],
+    ["forest track", "open", 0.75],
+  ),
+  terrain: ground(
+    ["grassland", "open", 25],
+    ["farmland", "open", 15],
+    ["forest", "open", 20],
+    ["hills", "open", 10],
+    ["marsh", "open", 5],
+    ["mountains", "barrier", 10],
+    ["sea", "water", 15],
+  ),
   calendar: { year: "year", day: "day" },
   change: {
     kinds: {
@@ -151,7 +210,23 @@ const wuxia: WorldKitInput = {
     "bamboo forest",
     "border pass",
   ),
-  travel: named("road", "river", "canal", "mountain path", "qinggong over the rooftops", "flying sword"),
+  travel: ways(
+    ["road", "open", 1],
+    ["river", "water", 1.5],
+    ["canal", "water", 1.25],
+    ["mountain path", "any", 0.5],
+    ["qinggong over the rooftops", "open", 1],
+    ["flying sword", "any", 8],
+  ),
+  terrain: ground(
+    ["rice paddies", "open", 20],
+    ["plains", "open", 15],
+    ["bamboo forest", "open", 15],
+    ["hills", "open", 15],
+    ["mountains", "barrier", 15],
+    ["lakes", "water", 8],
+    ["sea", "water", 12],
+  ),
   calendar: {
     year: "year of the reign",
     day: "day",
@@ -242,7 +317,23 @@ const modernDay: WorldKitInput = {
     "festival grounds",
     "office district",
   ),
-  travel: named("walking", "bicycle", "bus", "train", "car", "ferry", "plane"),
+  travel: ways(
+    ["walking", "open", 1],
+    ["bicycle", "open", 3],
+    ["bus", "open", 6],
+    ["train", "open", 10],
+    ["car", "open", 12],
+    ["ferry", "water", 5],
+    ["plane", "any", 100],
+  ),
+  terrain: ground(
+    ["suburbs", "open", 25],
+    ["fields", "open", 25],
+    ["woods", "open", 20],
+    ["hills", "open", 10],
+    ["river and lakes", "water", 10],
+    ["coast", "water", 10],
+  ),
   calendar: { year: "year", day: "day", months },
   change: {
     kinds: {
@@ -309,7 +400,22 @@ const modernSupernatural: WorldKitInput = {
     "abandoned factory",
     "woods at the edge of town",
   ),
-  travel: named("walking", "bus", "train", "car", "plane", "hidden paths"),
+  travel: ways(
+    ["walking", "open", 1],
+    ["bus", "open", 6],
+    ["train", "open", 15],
+    ["car", "open", 12],
+    ["plane", "any", 100],
+    ["hidden paths", "any", 4],
+  ),
+  terrain: ground(
+    ["suburbs", "open", 25],
+    ["fields", "open", 20],
+    ["old woods", "open", 25],
+    ["hills", "open", 10],
+    ["marshland", "open", 5],
+    ["lakes", "water", 15],
+  ),
   calendar: { year: "year", day: "day", months },
   change: {
     kinds: {
@@ -382,7 +488,23 @@ const twenties: WorldKitInput = {
     "boarding house",
     "city hall",
   ),
-  travel: named("walking", "streetcar", "motorcar", "rail", "steamship", "airplane"),
+  travel: ways(
+    ["walking", "open", 1],
+    ["streetcar", "open", 4],
+    ["motorcar", "open", 8],
+    ["rail", "open", 12],
+    ["steamship", "water", 6],
+    ["airplane", "any", 40],
+  ),
+  terrain: ground(
+    ["farmland", "open", 30],
+    ["prairie", "open", 15],
+    ["woods", "open", 15],
+    ["hills", "open", 10],
+    ["mountains", "barrier", 5],
+    ["lakes", "water", 10],
+    ["sea", "water", 15],
+  ),
   calendar: { year: "year", day: "day", months },
   change: {
     kinds: {
@@ -413,7 +535,7 @@ const cyberpunk: WorldKitInput = {
   label: "Cyberpunk",
   summary:
     "A megacity of districts and stacked blocks under corporate towers: gangs, fixers, netrunners, street clinics and night markets, and everybody owing somebody.",
-  scale: "town",
+  scale: "region",
   layers: [
     { id: "megacity", label: "megacity" },
     { id: "district", label: "district" },
@@ -447,7 +569,21 @@ const cyberpunk: WorldKitInput = {
     "club",
     "capsule hotel",
   ),
-  travel: named("walking", "metro", "maglev", "aerodyne", "motorbike"),
+  travel: ways(
+    ["walking", "open", 1],
+    ["metro", "open", 10],
+    ["maglev", "any", 30],
+    ["aerodyne", "any", 40],
+    ["motorbike", "open", 12],
+  ),
+  terrain: ground(
+    ["sprawl", "open", 35],
+    ["slums", "open", 20],
+    ["industrial zone", "open", 20],
+    ["corporate core", "open", 10],
+    ["wasteland", "open", 5],
+    ["bay", "water", 10],
+  ),
   calendar: { year: "year", day: "day", months },
   change: {
     kinds: {
@@ -512,7 +648,13 @@ const spaceOpera: WorldKitInput = {
     "trade hub",
     "frontier",
   ),
-  travel: named("jump lane", "shuttle", "freighter route", "gate"),
+  travel: ways(["jump lane", "open", 20], ["shuttle", "open", 1], ["freighter route", "open", 2], ["gate", "any", 60]),
+  terrain: ground(
+    ["open space", "open", 60],
+    ["nebula", "open", 15],
+    ["asteroid field", "open", 10],
+    ["gravity well", "barrier", 15],
+  ),
   calendar: { year: "standard year", day: "standard day", era: "era" },
   change: {
     kinds: {
@@ -583,7 +725,20 @@ const postApocalyptic: WorldKitInput = {
     "ruined city",
     "fuel depot",
   ),
-  travel: named("on foot", "caravan trail", "old highway", "river barge"),
+  travel: ways(
+    ["on foot", "open", 1],
+    ["caravan trail", "open", 1.5],
+    ["old highway", "open", 2],
+    ["river barge", "water", 1.5],
+  ),
+  terrain: ground(
+    ["wasteland", "open", 30],
+    ["ruins", "open", 20],
+    ["scrubland", "open", 20],
+    ["dead forest", "open", 10],
+    ["craters", "barrier", 10],
+    ["toxic lakes", "water", 10],
+  ),
   calendar: { year: "year after the fall", day: "day" },
   change: {
     kinds: {

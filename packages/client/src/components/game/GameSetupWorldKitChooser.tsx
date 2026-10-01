@@ -11,7 +11,7 @@ import {
   WORLD_SCALES,
   WORLD_STARTER_KITS,
   parseWorldKit,
-  worldKitEntries,
+  worldKitReworded,
   type WorldKit,
   type WorldKitInput,
 } from "@marinara-engine/shared";
@@ -39,7 +39,7 @@ const splitWords = (text: string) =>
 
 /** A list of the kit's words, typed as one comma-separated line. The line is kept as typed, so a
  *  trailing comma survives the keystroke, and is reset only when the kit changes from outside. */
-function WordsField({
+export function WordsField({
   id,
   label,
   words,
@@ -95,6 +95,13 @@ export function GameSetupWorldKitChooser({
   // picking another kit, or changing a word, while it was out keeps what the player did.
   const latest = useRef(kit);
   latest.current = kit;
+  // The kit as it came in (picked, written or imported), which retyped words are read against, so a
+  // word's id depends only on that kit and the words now typed, never on the keystrokes in between.
+  const base = useRef(kit);
+  const lastEdit = useRef<WorldKitInput | null>(null);
+  if (kit !== lastEdit.current && kit !== base.current) base.current = kit;
+  const from = <K extends "layers" | "sizes" | "groupKinds" | "placeTags" | "travel">(key: K) =>
+    (base.current?.[key] ?? []) as NonNullable<WorldKitInput[K]>;
 
   const cardClass = (selected: boolean) =>
     cn(
@@ -113,6 +120,7 @@ export function GameSetupWorldKitChooser({
     if (!kit) return;
     const draft = structuredClone(kit);
     change(draft);
+    lastEdit.current = draft;
     onChange(draft);
   };
   const settlementsIndex = Math.max(0, kit?.layers.findIndex((layer) => layer.settlements) ?? 0);
@@ -257,8 +265,9 @@ export function GameSetupWorldKitChooser({
                     // and otherwise with the layer at the same place in it.
                     const named = words.indexOf(kit.layers[settlementsIndex]?.label ?? "");
                     const settled = named >= 0 ? named : Math.min(settlementsIndex, words.length - 1);
-                    draft.layers = worldKitEntries(words).map((entry, index) =>
-                      index === settled ? { ...entry, settlements: true } : entry,
+                    draft.layers = worldKitReworded(from("layers"), words).map(
+                      ({ settlements: _was, ...entry }: { id: string; label: string; settlements?: true }, index) =>
+                        index === settled ? { ...entry, settlements: true as const } : entry,
                     );
                   })
                 }
@@ -292,26 +301,26 @@ export function GameSetupWorldKitChooser({
                   id="world-kit-sizes"
                   label={t("game.worldKit.setup.sizes")}
                   words={kit.sizes.map((size) => size.label)}
-                  onChange={(words) => edit((draft) => (draft.sizes = worldKitEntries(words)))}
+                  onChange={(words) => edit((draft) => (draft.sizes = worldKitReworded(from("sizes"), words)))}
                 />
               </div>
               <WordsField
                 id="world-kit-groups"
                 label={t("game.worldKit.setup.groups")}
                 words={kit.groupKinds.map((group) => group.label)}
-                onChange={(words) => edit((draft) => (draft.groupKinds = worldKitEntries(words)))}
+                onChange={(words) => edit((draft) => (draft.groupKinds = worldKitReworded(from("groupKinds"), words)))}
               />
               <WordsField
                 id="world-kit-tags"
                 label={t("game.worldKit.setup.placeTags")}
                 words={(kit.placeTags ?? []).map((tag) => tag.label)}
-                onChange={(words) => edit((draft) => (draft.placeTags = worldKitEntries(words)))}
+                onChange={(words) => edit((draft) => (draft.placeTags = worldKitReworded(from("placeTags"), words)))}
               />
               <WordsField
                 id="world-kit-travel"
                 label={t("game.worldKit.setup.travel")}
                 words={kit.travel.map((way) => way.label)}
-                onChange={(words) => edit((draft) => (draft.travel = worldKitEntries(words)))}
+                onChange={(words) => edit((draft) => (draft.travel = worldKitReworded(from("travel"), words)))}
               />
 
               <div className="grid gap-2 sm:grid-cols-3">

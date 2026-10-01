@@ -36,6 +36,27 @@ export const WORLD_SCALES = Object.freeze(["site", "town", "region", "realm", "w
 
 const changeKind = z.object({ label: word, on: z.boolean() }).strict();
 
+/** What a stretch of ground is, for travel: open ground anyone can cross, water a boat or a bridge
+ *  crosses, or a barrier (peaks, a gravity well) only a way that crosses anything gets over. */
+export const WORLD_TERRAIN_KINDS = Object.freeze(["open", "water", "barrier"] as const);
+/** What a way of travel crosses: open ground, water, or anything. */
+export const WORLD_TRAVEL_CROSSES = Object.freeze(["open", "water", "any"] as const);
+
+/** One class of the world's ground, in the setting's words, and how much of the ground it covers. */
+const terrain = z
+  .object({ id: kitId, label: word, kind: z.enum(WORLD_TERRAIN_KINDS), share: z.number().int().min(1).max(100) })
+  .strict();
+/** A way of travel. `crosses` and `speed` (multiples of walking pace) say where it goes and how fast;
+ *  a kit written before worlds (W0) leaves them out, and the world reads open ground at walking pace. */
+const travelWay = z
+  .object({
+    id: kitId,
+    label: word,
+    crosses: z.enum(WORLD_TRAVEL_CROSSES).optional(),
+    speed: z.number().min(0.25).max(500).optional(),
+  })
+  .strict();
+
 export const worldKitSchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -54,7 +75,10 @@ export const worldKitSchema = z
     sizes: z.array(named).min(1).max(12),
     groupKinds: z.array(named).min(1).max(24),
     placeTags: z.array(named).max(48).default([]),
-    travel: z.array(named).min(1).max(12),
+    travel: z.array(travelWay).min(1).max(12),
+    /** The ground a generated world is laid out on (worldgen W1). A kit without one gets open
+     *  ground named for its outermost layer. */
+    terrain: z.array(terrain).min(1).max(16).optional(),
     calendar: z
       .object({
         year: word,
@@ -112,9 +136,9 @@ export const worldKitSchema = z
         message: "Exactly one layer holds the settlements",
       });
     }
-    for (const key of ["layers", "sizes", "groupKinds", "placeTags", "travel", "cultures"] as const) {
+    for (const key of ["layers", "sizes", "groupKinds", "placeTags", "travel", "cultures", "terrain"] as const) {
       const seen = new Set<string>();
-      kit[key].forEach((entry, index) => {
+      (kit[key] ?? []).forEach((entry, index) => {
         if (seen.has(entry.id)) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,

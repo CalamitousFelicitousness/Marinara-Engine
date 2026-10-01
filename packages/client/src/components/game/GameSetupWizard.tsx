@@ -83,6 +83,7 @@ import { useDefaultPreset, usePresets } from "../../hooks/use-presets";
 import { useCharacterGroups, usePersonas } from "../../hooks/use-characters";
 import { GameSetupRulesChooser, GameSetupRulesetSheetStatus } from "./GameSetupRulesChooser";
 import { GameSetupWorldKitChooser } from "./GameSetupWorldKitChooser";
+import { GameSetupWorldChooser, worldDraftConfig, type WorldDraft } from "./GameSetupWorldChooser";
 import {
   GAME_SETUP_FIELD_LABEL,
   GAME_SETUP_GHOST_BUTTON_CLASS,
@@ -544,6 +545,9 @@ export function GameSetupWizard({
   // The setting kit (worldgen W0): off unless the player picks one, and only for a new game.
   const [worldKit, setWorldKit] = useState<WorldKitInput | null>(null);
   const checkedWorldKit = isNewGame && worldKit ? parseWorldKit(worldKit) : null;
+  // The world made in that kit's words (worldgen W1): off unless the player asks for one.
+  const [worldDraft, setWorldDraft] = useState<WorldDraft | null>(null);
+  const checkedWorld = checkedWorldKit?.ok && worldDraft ? worldDraftConfig(checkedWorldKit.kit, worldDraft) : null;
   const experienceSeedInvalid = Boolean(experienceSetup?.seed && parseExperienceSeed(experienceSeed) === null);
   const [experienceImportNotice, setExperienceImportNotice] = useState<string | null>(null);
   const [generationElapsedSeconds, setGenerationElapsedSeconds] = useState(0);
@@ -1064,12 +1068,14 @@ export function GameSetupWizard({
 
   const spatialMapTargetLocationCountValid =
     normalizeSpatialMapTargetLocationCount(spatialMapTargetLocationCountInput) !== null;
-  // A kit that does not hold together is never quietly left out of a downloaded setup.
-  const setupDownloadBlocked = Boolean(checkedWorldKit && !checkedWorldKit.ok);
+  // A kit or a world that does not hold together is never quietly left out of a downloaded setup.
+  const setupDownloadBlocked =
+    Boolean(checkedWorldKit && !checkedWorldKit.ok) || Boolean(checkedWorld && !checkedWorld.ok);
   const canStart =
     (!multiplayerPlayers || multiplayerPlayers.every((player) => player.personaName?.trim())) &&
     !experienceSeedInvalid &&
     !(checkedWorldKit && !checkedWorldKit.ok) &&
+    !(checkedWorld && !checkedWorld.ok) &&
     (!activeLorebookEntryIds.length || Boolean(eligibleEntries)) &&
     !!gmConnectionId &&
     (!enableAgents || !hierarchicalMapsInstalled || !draftSpatialMap || spatialMapTargetLocationCountValid);
@@ -1079,16 +1085,30 @@ export function GameSetupWizard({
       ? localizeUi("game.experienceSetup.invalidSeed", { max: MAX_EXPERIENCE_SEED })
       : checkedWorldKit && !checkedWorldKit.ok
         ? localizeUi("game.worldKit.setup.fixBeforeStart")
-        : activeLorebookEntryIds.length && !eligibleEntries
-          ? localizeUi(entryQuery.isError && !entryQuery.isFetching ? "game.setupLore.error" : "game.setupLore.loading")
-          : !gmConnectionId
-            ? localizeUi("ui.game.gamesetupwizard.selectAConnectionOnTheFirstStepBeforeStarting")
-            : !spatialMapTargetLocationCountValid && enableAgents && hierarchicalMapsInstalled && draftSpatialMap
-              ? localizeUi("ui.game.gamesetupwizard.chooseAnyWholeNumberFrom1ToValue1Places", {
-                  value1: SPATIAL_CUSTOM_TARGET_LOCATION_LIMIT,
-                })
-              : null;
+        : checkedWorld && !checkedWorld.ok
+          ? localizeUi("game.world.setup.fixBeforeStart")
+          : activeLorebookEntryIds.length && !eligibleEntries
+            ? localizeUi(
+                entryQuery.isError && !entryQuery.isFetching ? "game.setupLore.error" : "game.setupLore.loading",
+              )
+            : !gmConnectionId
+              ? localizeUi("ui.game.gamesetupwizard.selectAConnectionOnTheFirstStepBeforeStarting")
+              : !spatialMapTargetLocationCountValid && enableAgents && hierarchicalMapsInstalled && draftSpatialMap
+                ? localizeUi("ui.game.gamesetupwizard.chooseAnyWholeNumberFrom1ToValue1Places", {
+                    value1: SPATIAL_CUSTOM_TARGET_LOCATION_LIMIT,
+                  })
+                : null;
   const normalizedLanguage = normalizeGameLanguage(language);
+  // What the model writes a setting kit or a world's brief for: the World step's own choices.
+  const worldWriteRequest = gmConnectionId
+    ? {
+        connectionId: gmConnectionId,
+        genre: genres.join(", ") || "Fantasy",
+        setting: setting || `A ${(genres[0] ?? "fantasy").toLowerCase()} world`,
+        tone: tones.join(", ") || "Heroic",
+        language: normalizedLanguage || undefined,
+      }
+    : null;
   const illustratorEnabled = enableAgents && illustratorInstalled && enableSpriteGeneration;
   const musicDjEnabled = enableAgents && musicDjInstalled && enableSpotifyDj;
   const lorebookKeeperEnabled = enableAgents && lorebookKeeperInstalled && enableLorebookKeeper;
@@ -1135,6 +1155,19 @@ export function GameSetupWizard({
       const config = imported.config;
       setRulesetId(config.ruleset?.id ?? null);
       setWorldKit(config.worldKit ?? null);
+      setWorldDraft(
+        config.world
+          ? {
+              seed: String(config.world.seed),
+              grounding: config.world.grounding ?? "expand",
+              lorebookIds: [],
+              canon: (config.world.brief.places ?? [])
+                .filter((place) => place.lore?.length)
+                .map((place) => ({ ...place, tags: place.tags ?? [] })),
+              brief: config.world.brief,
+            }
+          : null,
+      );
       // The layers the file chose, against the definition installed HERE: an id this version of the
       // ruleset no longer has is dropped rather than sent to a create call that would refuse it.
       const importedRuleset = rulesets.find((entry) => entry.definition.id === config.ruleset?.id);
@@ -1368,6 +1401,7 @@ export function GameSetupWizard({
           }
         : {}),
       ...(checkedWorldKit?.ok ? { worldKit: checkedWorldKit.kit } : {}),
+      ...(checkedWorld?.ok ? { world: checkedWorld.world } : {}),
       combatDirector: true,
       gmBossControl,
       ...(Object.keys(tacticalBattlefield).length > 0 ? { tacticalBattlefield } : {}),
@@ -2133,17 +2167,16 @@ export function GameSetupWizard({
                       <GameSetupWorldKitChooser
                         kit={worldKit}
                         onChange={setWorldKit}
-                        writeRequest={
-                          gmConnectionId
-                            ? {
-                                connectionId: gmConnectionId,
-                                genre: genres.join(", ") || "Fantasy",
-                                setting: setting || `A ${(genres[0] ?? "fantasy").toLowerCase()} world`,
-                                tone: tones.join(", ") || "Heroic",
-                                language: normalizedLanguage || undefined,
-                              }
-                            : null
-                        }
+                        writeRequest={worldWriteRequest}
+                      />
+                    )}
+                    {checkedWorldKit?.ok && (
+                      <GameSetupWorldChooser
+                        kit={checkedWorldKit.kit}
+                        draft={worldDraft}
+                        onChange={setWorldDraft}
+                        lorebooks={lorebooks}
+                        request={worldWriteRequest && { ...worldWriteRequest, playerGoals: playerGoals || undefined }}
                       />
                     )}
 

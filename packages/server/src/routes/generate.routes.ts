@@ -183,6 +183,11 @@ import {
   getRoleplayCommandActivity,
   applyGameInventoryTags,
   applyGamePlaceTags,
+  gameWorldFromMetadata,
+  worldKitSize,
+  worldPlaceByName,
+  worldPlaceForTag,
+  worldWhereYouAreText,
   rulesetMarketPlace,
   rulesetMarketPromptText,
   type GameInventoryMarket,
@@ -4591,8 +4596,28 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   "game-master",
                 )
               : undefined;
-          // The market where the scene is, where the ruleset has one (#6917): the place the visible
-          // messages last said (not the telling a regeneration replaces) and what its sellers sell.
+          // Where the scene is: the place the visible messages last said (not the telling a
+          // regeneration replaces), read once for the market and the world.
+          let promptPlaceRead: Promise<GamePlace | null> | undefined;
+          const promptPlace = () =>
+            (promptPlaceRead ??= gamePlaceBefore(app.db, input.chatId, input.regenerateMessageId ?? null));
+          // Where the party is in the game's world (worldgen W1): the place last said, when the world
+          // lists it, else where the world starts the party until the Game Master says.
+          const promptWorld = gameWorldFromMetadata(chatMeta);
+          const promptWhereYouAre = promptWorld
+            ? await (async () => {
+                const before = await promptPlace();
+                if (!before?.name) {
+                  const start = promptWorld.world.places.find((place) => place.id === promptWorld.world.startId);
+                  return worldWhereYouAreText(promptWorld, { place: start });
+                }
+                return worldWhereYouAreText(promptWorld, {
+                  place: worldPlaceByName(promptWorld.world, before.name),
+                  name: before.name,
+                });
+              })()
+            : undefined;
+          // The market where the scene is, where the ruleset has one (#6917): what its sellers sell.
           const promptMarket =
             pinnedGameRuleset?.status === "ok" && pinnedGameRuleset.definition.items?.market
               ? rulesetMarketPromptText(
@@ -4603,7 +4628,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       { metadata: chatMeta, resolved: pinnedGameRuleset, playerName: personaName || null },
                       "game-master",
                     )) ?? { entries: [] },
-                  await gamePlaceBefore(app.db, input.chatId, input.regenerateMessageId ?? null),
+                  await promptPlace(),
                   gameRulesetLayerOptions(pinnedGameRuleset),
                 )
               : undefined;
@@ -4722,6 +4747,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               ...(promptItemFacts ? { inventoryItemFacts: promptItemFacts } : {}),
               ...(promptBearers ? { inventoryBearers: promptBearers } : {}),
               ...(promptPurses ? { inventoryPurses: promptPurses } : {}),
+              ...(promptWhereYouAre ? { whereYouAre: promptWhereYouAre } : {}),
               ...(promptMarket ? { market: promptMarket } : {}),
               ...(pinnedGameRuleset?.status === "ok" && pinnedGameRuleset.layers.length > 0
                 ? {
@@ -9375,18 +9401,24 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             market?: GameInventoryMarket;
           } | null = null;
           // ── Place tags (#6917) ──
-          // Where the scene is, for a ruleset with a market: the last place the player's visible
-          // messages said (not the telling a regeneration replaces), then the reply's own, each
-          // answered in place. The reply's buys are priced at the place it leaves the party in.
+          // Where the scene is, for a ruleset with a market or a game with a world: the last place the
+          // player's visible messages said (not the telling a regeneration replaces), then the reply's
+          // own, each answered in place. The reply's buys are priced at the place it leaves the party
+          // in. A name the world lists takes its size from the world (worldgen W1).
           let turnPlace: GamePlace | null = null;
           const turnMarket =
             chatMode === "game" && !input.impersonate && turnGameRuleset?.status === "ok"
               ? turnGameRuleset.definition.items?.market
               : undefined;
-          if (turnMarket) {
+          const turnWorld = chatMode === "game" && !input.impersonate ? gameWorldFromMetadata(chatMeta) : null;
+          if (turnMarket || turnWorld) {
             turnPlace = await gamePlaceBefore(app.db, input.chatId, input.regenerateMessageId ?? null);
             if (/\[place:/i.test(fullResponse)) {
-              const placed = applyGamePlaceTags(fullResponse, (word) => rulesetMarketPlace(turnMarket, word));
+              const placed = applyGamePlaceTags(
+                fullResponse,
+                (word) => (turnMarket ? rulesetMarketPlace(turnMarket, word) : worldKitSize(turnWorld!.kit, word)),
+                turnWorld ? (name) => worldPlaceForTag(turnWorld, name, turnMarket?.places) : undefined,
+              );
               if (placed.content !== fullResponse) {
                 fullResponse = placed.content;
                 contentReplaced = true;

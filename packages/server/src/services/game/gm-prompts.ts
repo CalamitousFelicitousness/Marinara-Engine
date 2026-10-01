@@ -19,8 +19,10 @@ import {
   wrapGameInstructions,
   type GameInventoryBearerStatus,
   type RulesetLayerOptions,
+  type GameWorld,
   type WorldKit,
   worldKitPromptText,
+  worldOverviewPromptText,
 } from "@marinara-engine/shared";
 import type { CharacterSpriteInfo } from "./sprite.service.js";
 
@@ -149,6 +151,11 @@ export interface GmPromptContext {
   /** The game's setting kit (worldgen W0): the world's own words and the kinds of change it
    *  allows. Fixed for the game, so it sits in the cached system prompt. */
   worldKit?: WorldKit | null;
+  /** The game's generated world (worldgen W1), when it has one: its premise and outer places, fixed
+   *  for the game and so in the cached system prompt. Where the party is goes in the reminder. */
+  world?: GameWorld | null;
+  /** Where the party is in that world and where it can go from there (`worldWhereYouAreText`). */
+  whereYouAre?: string;
 }
 
 const MAX_PROMPT_MAP_LOCATIONS = 10;
@@ -648,6 +655,7 @@ export function buildGmSystemPrompt(ctx: GmPromptContext): string {
   gameBlockLines.push(`</game>`);
   sections.push(...gameBlockLines);
   if (ctx.worldKit) sections.push(worldKitPromptText(ctx.worldKit));
+  if (ctx.world) sections.push(worldOverviewPromptText(ctx.world));
 
   if (ctx.tacticalBattlefieldContext) {
     sections.push(
@@ -1182,6 +1190,7 @@ export function buildGmFormatReminder(
     | "inventoryBearers"
     | "inventoryPurses"
     | "market"
+    | "whereYouAre"
     | "rulesetLayerOptions"
     | "language"
     | "rating"
@@ -1659,6 +1668,7 @@ export function buildGmFormatReminder(
     lines.push(``, `PLAYER INVENTORY${note ? ` (${note})` : ""}: ${buildCompactInventoryLine(playerInventory)}`);
   }
 
+  if (ctx.whereYouAre) lines.push(``, ctx.whereYouAre);
   if (ctx.market) lines.push(``, ctx.market);
 
   const specialInstructions = normalizePromptText(ctx.gameSpecialInstructions);
@@ -1696,6 +1706,8 @@ export interface SetupPromptContext {
   rulesetWorldGuidance?: string | null;
   /** The game's setting kit (worldgen W0), so the world is designed in its words. */
   worldKit?: WorldKit | null;
+  /** The game's generated world (worldgen W1), so the story is set among its places. */
+  world?: GameWorld | null;
   /** Language for natural-language JSON values */
   language?: string;
   /** User-overridable GM instruction body that will be used after setup. */
@@ -1780,6 +1792,13 @@ export function buildSetupPrompt(ctx: SetupPromptContext = {}): string {
     contextSections.push(
       `Design the world in the words of the setting below: its places, groups, travel and names.`,
       worldKitPromptText(ctx.worldKit),
+    );
+  }
+  if (ctx.world) {
+    const start = ctx.world.world.places.find((place) => place.id === ctx.world!.world.startId);
+    contextSections.push(
+      worldOverviewPromptText(ctx.world),
+      `This world already exists: set the story among its places and do not rename them. The party starts in ${start?.name ?? "its starting place"}; the starting map is of that place.`,
     );
   }
   if (ctx.customHudWidgets?.length) {

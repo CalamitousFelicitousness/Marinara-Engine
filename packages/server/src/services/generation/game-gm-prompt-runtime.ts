@@ -1,6 +1,7 @@
 import { currentRoomGeneration, roomHostIdentity } from "../multiplayer/generation-policy.js";
 import {
   GAME_GM_BUILT_IN_PROMPT_TEMPLATES,
+  gameWorldFromMetadata,
   gameWorldKitFromMetadata,
   normalizeAgentPromptTemplateOptions,
   normalizeTextForMatch,
@@ -429,6 +430,7 @@ export async function injectGameGmPromptRuntime(args: {
         ? args.chatMetadata.gameSpecialInstructions.trim()
         : null,
     worldKit: gameWorldKitFromMetadata(args.chatMetadata),
+    world: gameWorldFromMetadata(args.chatMetadata),
   };
 
   const builtGmPrompt = buildGmSystemPrompt(gmCtx);

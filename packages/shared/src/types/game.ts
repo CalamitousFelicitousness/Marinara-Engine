@@ -255,6 +255,9 @@ export interface GameSetupConfig {
    *  kinds of change it allows. The server stores it as `chat.metadata.gameWorldKit`. Absent means
    *  no kit: the Game Master works from genre, setting and tone alone, as before. */
   worldKit?: import("../schemas/world-kit.schema.js").WorldKit;
+  /** The generated world for a NEW game (worldgen W1): its seed, generator version, grounding and
+   *  brief, stored as `chat.metadata.gameWorld`. Needs `worldKit`; absent means no world. */
+  world?: import("../features/world/game-world.js").GameWorldInput;
   /** Whatever the experience's own setup collected, stored verbatim and never interpreted by the host, so
    *  it can always recover the options the game was created with. */
   experienceConfig?: Record<string, unknown>;

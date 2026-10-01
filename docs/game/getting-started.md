@@ -31,7 +31,7 @@ When you create a Game Mode chat, a **setup wizard** opens. It has seven steps. 
 The seven steps are:
 
 1. **Connection.** Set the game name, pick the GM connection, and optionally set a scene-effects connection. Scene effects default to **Local Model (Gemma)**.
-2. **World.** Set the genre, setting, tone, difficulty, content rating, and language. Choose **Classic** or **Tactical** under **Combat Preference**. Tactical games also offer optional battlefield seed, size and terrain guidance. When a Game Mode ruleset is installed, a **Rules** choice appears below it: keep **Marinara's own rules**, or pick the ruleset. See [Choosing rules](#choosing-rules). Below that is an optional **Setting kit**. See [Choosing a setting kit](#choosing-a-setting-kit).
+2. **World.** Set the genre, setting, tone, difficulty, content rating, and language. Choose **Classic** or **Tactical** under **Combat Preference**. Tactical games also offer optional battlefield seed, size and terrain guidance. When a Game Mode ruleset is installed, a **Rules** choice appears below it: keep **Marinara's own rules**, or pick the ruleset. See [Choosing rules](#choosing-rules). Below that is an optional **Setting kit**, and with one chosen, **Make a world**. See [Choosing a setting kit](#choosing-a-setting-kit) and [Making a world](#making-a-world).
 3. **Party.** Pick your persona (the character you play), the **Game Master Mode**, and any party members.
 4. **Goals.** Tell the GM what you want from the adventure.
 5. **Lorebooks.** Attach any lorebooks whose facts the GM should treat as canon. A lorebook is a set of background world facts. See [Lorebooks](../lorebooks/overview.md).
@@ -70,6 +70,20 @@ It is off by default (**No setting kit**), and only offered for a new game. Ther
 After you pick one, **Write it for my setting** asks your Game Master connection to rewrite it for the genre, setting and tone you chose. If what the model writes does not hold together, it is asked once more with the reasons, and then the wizard tells you what was wrong and keeps the kit you had. **Change its words** opens every word of the kit for editing. A list is typed on one line, separated by commas. A kit with a problem, such as an empty name or no settlements, says what is wrong, and the game cannot start until it is fixed.
 
 The game keeps the kit it was created with. The Game Master reads it every turn, and world generation uses its words. A shared setup file carries its kit too.
+
+### Making a world
+
+With a setting kit chosen, **Make a world** lays out a whole world in the kit's words before the game starts: its regions, settlements of every size on the kit's ladder, what each place is known for, and the ways between them (roads, rivers, sea lanes, jump lanes) with how many days each trip takes. It is off by default, and only offered for a new game.
+
+A world is made from a **World seed**. The same seed, kit and brief always make the same world, so **Roll** gives you another and typing a number back brings one back. The preview under it is the world the game will play: a small map of the ground and its settlements, where the party starts, and a list of every settlement by region.
+
+- **Start from this lore** reads the lorebooks you tick for the places they state, each kept exactly as the lore says, with the entries it came from. **Build around the lore** fills the world in around them; **Only the lore's places** makes nothing beside them.
+- **Write the world's brief** asks your Game Master connection for the rest: the present day as the game begins, the major places, and names for the places the world draws, in each of the kit's peoples' own sound. The lore's places are kept whatever the model writes, and anything that does not fit the kit is left out and counted. **Change the brief** opens its words for editing.
+
+Without a brief, the world is the kit and the lore's places alone, and the places it draws are numbered until a brief gives them names.
+
+In play, the Game Master always knows where the party is in the world and where it can go from there, and how long each way takes. It says where the party goes with a place tag; a place the world lists takes the world's own size, and on a ruleset with markets, the matching place on the market's ladder, so a world's capital is the market's biggest place. A place the world does not list, such as a farmhouse or a camp, keeps the name the Game Master gives it. The world is fixed once the game starts, and a shared setup file carries it.
+
 
 ### Defaults worth knowing
 

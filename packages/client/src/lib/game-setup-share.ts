@@ -1,4 +1,4 @@
-import { normalizeGameDifficulty, parseWorldKit, rulesetRefSchema } from "@marinara-engine/shared";
+import { gameWorldSchema, normalizeGameDifficulty, parseWorldKit, rulesetRefSchema } from "@marinara-engine/shared";
 import {
   ANIME_GAME_PROMPT_TEMPLATE_ID,
   COMIC_PAGE_GAME_VIDEO_PROMPT_TEMPLATE_ID,
@@ -341,6 +341,9 @@ function parseShareConfig(value: unknown): GameSetupConfig {
   // The setting kit is read the same way: a kit that does not hold together is refused, not half-used.
   const worldKit = value.worldKit == null ? undefined : parseWorldKit(value.worldKit);
   if (worldKit && !worldKit.ok) throw new Error(translate("game.worldKit.setup.invalidImport"));
+  // And its world: one without a kit, or one that is not one, refuses the file.
+  const world = value.world == null ? undefined : gameWorldSchema.safeParse(value.world);
+  if (world && (!world.success || !worldKit?.ok)) throw new Error(translate("game.world.setup.invalidImport"));
   const generationParameters = parseGenerationParameters(value.generationParameters);
   const spatialMapDraftOptions =
     value.spatialMapDraftSize !== undefined || value.spatialMapTargetLocationCount !== undefined
@@ -359,6 +362,7 @@ function parseShareConfig(value: unknown): GameSetupConfig {
     partyCharacterIds: [...value.partyCharacterIds],
     ...(ruleset ? { ruleset: ruleset.data } : {}),
     worldKit: worldKit?.ok ? worldKit.kit : undefined,
+    world: world?.success ? world.data : undefined,
     generationParameters,
     ...(spatialMapDraftOptions
       ? {
@@ -592,6 +596,7 @@ export function resolveGameSetupImport(
     experienceConfig: _experienceConfig,
     ruleset: _ruleset,
     worldKit: _worldKit,
+    world: _world,
     ...ordinaryConfig
   } = sourceConfig;
 
@@ -670,6 +675,9 @@ export function resolveGameSetupImport(
       ...rulesetSelection,
       // Like a ruleset, a setting kit is chosen once, for a new game.
       ...(context.isNewGame !== false && sourceConfig.worldKit ? { worldKit: sourceConfig.worldKit } : {}),
+      ...(context.isNewGame !== false && sourceConfig.worldKit && sourceConfig.world
+        ? { world: sourceConfig.world }
+        : {}),
       gmMode,
       gmCharacterId,
       partyCharacterIds: [...new Set(partyCharacterIds)],
@@ -860,6 +868,9 @@ export function buildGameSetupSummarySections(source: GameSetupShareSource): Gam
         { label: "Setting", value: config.setting },
         { label: "Tone", value: config.tone },
         ...(config.worldKit ? [{ label: translate("game.worldKit.setup.label"), value: config.worldKit.label }] : []),
+        ...(config.world
+          ? [{ label: translate("game.world.setup.summaryRow"), value: String(config.world.seed) }]
+          : []),
         { label: "Difficulty", value: titleCaseToken(config.difficulty) },
         { label: "Combat style", value: titleCaseToken(config.combatStyle ?? "classic") },
         ...tacticalBattlefieldRows(config),

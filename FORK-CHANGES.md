@@ -145,6 +145,21 @@ The picker's empty label is now `ui.panels.connectiondefaultssection.useTheActiv
 instead of a hardcoded string, and `bulkConnectionAgentDefault` became `bulkConnectionChatConnection`
 for the confirm dialog and toast. `en.json` is upstream-hot as well.
 
+### NanoGPT receives Top K and Min P
+
+`shouldSendTopK()` in `packages/server/src/services/llm/providers/openai.provider.ts` sent `top_k`
+and `min_p` only to the bundled sidecar and generic custom endpoints, so a NanoGPT connection showed
+a Top K field that never reached the request. NanoGPT's chat completion reference documents both,
+and NanoGPT connections now send them; a value of 0 still omits them. Pinned in
+`scripts/regressions/provider-compat.regression.ts`.
+
+Live probe, 2026-10-01: NanoGPT accepted both on `openai/gpt-5.4-nano`,
+`anthropic/claude-haiku-4.5` and `google/gemini-3.1-flash-lite` without an error. Whether the
+upstream host applies them varies by route. With `top_k: 1` at temperature 1, `google/gemma-4-31b-it`
+returned 3 of 3 identical replies, and `z-ai/glm-5.3` pinned to the `zai` provider returned 2 of 3;
+unconstrained controls returned 3 distinct replies on both. Default-routed `z-ai/glm-5.3` ignored
+both samplers. No route tested applied `min_p`.
+
 ## Fork-only additions
 
 ### Preset variables resolve in every mode, not only Roleplay

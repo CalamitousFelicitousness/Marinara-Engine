@@ -346,7 +346,7 @@ export class OpenAIProvider extends BaseLLMProvider {
   private static extractContentBlocks = extractOpenAICompatibleContentBlocks;
 
   private shouldSendTopK(): boolean {
-    return this.apiKey === "local-sidecar" || this.isGenericCustomProvider();
+    return this.apiKey === "local-sidecar" || this.isGenericCustomProvider() || this.providerKind === "nanogpt";
   }
 
   /**
@@ -1300,8 +1300,9 @@ export class OpenAIProvider extends BaseLLMProvider {
           body.top_k = Math.round(options.topK);
         }
         // min_p, like top_k, is a non-standard sampler only sent where the backend
-        // is known to accept it (the bundled local model); other backends can use
-        // the customParameters escape hatch. minP=0 means "disabled" → omit it.
+        // is known to accept it (the bundled local model, custom endpoints, NanoGPT);
+        // other backends can use the customParameters escape hatch. minP=0 means
+        // "disabled" → omit it.
         if (
           this.shouldSendTopK() &&
           typeof options.minP === "number" &&
@@ -1591,8 +1592,9 @@ export class OpenAIProvider extends BaseLLMProvider {
           body.top_k = Math.round(options.topK);
         }
         // min_p, like top_k, is a non-standard sampler only sent where the backend
-        // is known to accept it (the bundled local model); other backends can use
-        // the customParameters escape hatch. minP=0 means "disabled" → omit it.
+        // is known to accept it (the bundled local model, custom endpoints, NanoGPT);
+        // other backends can use the customParameters escape hatch. minP=0 means
+        // "disabled" → omit it.
         if (
           this.shouldSendTopK() &&
           typeof options.minP === "number" &&

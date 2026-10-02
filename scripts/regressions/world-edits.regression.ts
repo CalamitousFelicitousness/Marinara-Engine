@@ -383,6 +383,9 @@ try {
       app.inject({ method: "PUT", url: `/api/game/${chat.id}/world/edits`, payload: { edits } });
     const saved = await save(additions);
     assert.equal(saved.statusCode, 200, saved.body);
+    const again = await save({ ...additions, places: [{ id: city.id, name: "Newhaven" }] });
+    assert.equal(again.statusCode, 200, `a world saved again is checked as compiled: ${again.body}`);
+    assert.equal((await save(additions)).statusCode, 200);
     assert.deepEqual((await meta()).gameWorld.edits, additions, "kept with the world");
     assert.equal(
       gameWorldFromMetadata(await meta())!.world.places.find((place) => place.id === "e1")?.name,

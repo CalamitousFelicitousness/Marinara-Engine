@@ -99,7 +99,8 @@ export function gameWorldFromMetadata(metadata: Record<string, unknown> | null |
 /** Why an edit layer (W9c) does not fit a world, or nothing: checked against the world as compiled.
  *  Drawn people are checked by their place's cast size, since they are drawn rather than stored. */
 export function worldEditIssues(inputs: Omit<GameWorld, "world" | "edits">, edits: WorldEdits): string[] {
-  const compiled = compileGameWorld(inputs);
+  // Against the world as compiled, never as already edited (a game read back carries its stored layer).
+  const compiled = compileGameWorld({ ...inputs, edits: undefined });
   const byId = new Map(compiled.places.map((place) => [place.id, place]));
   return checkWorldEdits(inputs.kit, compiled, edits, (place) => {
     const settlement = place.rank !== undefined ? place : place.parentId ? byId.get(place.parentId) : undefined;

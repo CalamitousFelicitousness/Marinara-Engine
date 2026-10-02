@@ -564,7 +564,9 @@ export function GameSetupWizard({
   );
   const mapPack = mapPackQuery.data ?? null;
   const mapPackUnreadable = mapPackQuery.isError;
-  const [mapPackWorldPath, setMapPackWorldPath] = useState<string | null>(null);
+  // The map picked, for the Experience it was picked for: another Experience starts on its own first map.
+  const [mapPackPick, setMapPackPick] = useState<{ experienceId: string; path: string } | null>(null);
+  const mapPackWorldPath = mapPackPick && mapPackPick.experienceId === activeExperience?.id ? mapPackPick.path : null;
   const mapPackWorld = mapPack
     ? (mapPack.worlds.find((world) => world.path === mapPackWorldPath) ?? mapPack.worlds[0] ?? null)
     : null;
@@ -2226,7 +2228,9 @@ export function GameSetupWizard({
                         pack={mapPack}
                         error={mapPackQuery.error instanceof Error ? mapPackQuery.error.message : null}
                         worldPath={mapPackWorld?.path ?? null}
-                        onPickWorld={setMapPackWorldPath}
+                        onPickWorld={(path) =>
+                          activeExperience && setMapPackPick({ experienceId: activeExperience.id, path })
+                        }
                       />
                     )}
                     {isNewGame && !mapPack && !mapPackUnreadable && (

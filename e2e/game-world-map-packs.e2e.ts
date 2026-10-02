@@ -4,6 +4,7 @@ import {
   WORLD_GENERATOR_VERSION,
   WORLD_STARTER_KITS,
   checkWorldBrief,
+  compileGameWorld,
   parseWorldKit,
   type ExperienceMapPack,
 } from "@marinara-engine/shared";
@@ -30,13 +31,18 @@ const worldOf = (seed: number) => ({
   brief: read.brief,
 });
 const rows = (char: string) => Array.from({ length: 16 }, () => char.repeat(16));
+const renamed = compileGameWorld({ kit, ...worldOf(10) }).places[0]!;
+const downriver = {
+  ...worldOf(10),
+  edits: { editsVersion: 1 as const, places: [{ id: renamed.id, name: "Newhaven" }] },
+};
 const pack: ExperienceMapPack = {
   packageId: "mapfixture",
   name: "River Experience",
   kit,
   worlds: [
     { path: "upriver.world.json", name: "Upriver", world: worldOf(9) },
-    { path: "downriver.world.json", name: "Downriver", world: worldOf(10) },
+    { path: "downriver.world.json", name: "Downriver", world: downriver },
   ],
   tiles: {
     tilePackVersion: 1,
@@ -195,13 +201,12 @@ test("an Experience's map pack sets the kit and offers only its maps, and lets g
   for (let step = 0; step < 6 && !(await start.isVisible()); step++) await go("Next");
   await start.click();
   const result = JSON.parse((await page.getByTestId("wizard-result").textContent()) ?? "{}") as {
-    config: { gameExperienceId?: string; worldKit?: { id: string }; world?: { seed: number } };
+    config: { gameExperienceId?: string; worldKit?: unknown; world?: unknown };
   };
-  expect([result.config.gameExperienceId, result.config.worldKit?.id, result.config.world?.seed]).toEqual([
-    "mapfixture",
-    "riverlands",
-    10,
-  ]);
+  // Exactly the pack's kit and world, its hand edits too: what the Engine's lock compares them against.
+  expect(result.config.gameExperienceId).toBe("mapfixture");
+  expect(result.config.worldKit).toEqual(pack.kit);
+  expect(result.config.world).toEqual(downriver);
 });
 
 test("a game started with a map pack draws its overworld with the pack's tiles", async ({ page, request }) => {
@@ -232,8 +237,21 @@ test("a game started with a map pack draws its overworld with the pack's tiles",
     await openGame(page, chatId);
     await expect(page.getByRole("region", { name: "Overworld", exact: true })).toBeVisible({ timeout: 40_000 });
     await packRead;
-    // Drawn with its own tiles: the setting family's built-in pack is never asked for.
-    await page.waitForTimeout(1000);
+    // Drawn with its own tiles (its grass is #224466), and the setting family's built-in pack never asked for.
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const canvas = document.querySelector<HTMLCanvasElement>('[aria-label="Overworld"] canvas');
+          const ctx = canvas?.getContext("2d");
+          if (!canvas || !ctx) return false;
+          const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+          for (let at = 0; at < data.length; at += 4) {
+            if (data[at] === 0x22 && data[at + 1] === 0x44 && data[at + 2] === 0x66) return true;
+          }
+          return false;
+        }),
+      )
+      .toBe(true);
     expect(builtIn).toEqual([]);
   } finally {
     await request.delete(`/api/chats/${chatId}`);

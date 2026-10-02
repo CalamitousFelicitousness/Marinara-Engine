@@ -13724,6 +13724,16 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           // ── Text rewrite/editing agents: run after ALL other agents ──
           const originalResponseBeforeRewrite = completedResponse;
           let textRewriteApplied = false;
+          // A game reply keeps what the Engine wrote (worldgen W10): every world, place and story tag, and
+          // every scene shown as written (a continuation's, kept with the reply it continues).
+          const engineScenes =
+            requestChatMode === "game"
+              ? turnShownScenes.length
+                ? turnShownScenes
+                : input.continueMessageId
+                  ? storyScenesOf(continueTargetMessage?.extra)
+                  : []
+              : null;
           if (activatedTextRewriteRunAgents.length > 0 && messageId && !generationSignal.aborted) {
             let currentResponseForRewrite = originalResponseBeforeRewrite;
 
@@ -13804,18 +13814,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   const droppedProtectedMarkup =
                     (strictEditNeeded &&
                       textRewriteDropsProtectedMarkup(currentResponseForRewrite, sanitizedEditedText)) ||
-                    // What the Engine wrote stays as it wrote it (worldgen W10): every world, place and story
-                    // tag, and every scene shown as written (a continuation's, kept with the reply).
-                    (requestChatMode === "game" &&
-                      textRewriteChangesEngineText(
-                        currentResponseForRewrite,
-                        sanitizedEditedText,
-                        turnShownScenes.length
-                          ? turnShownScenes
-                          : input.continueMessageId
-                            ? storyScenesOf(continueTargetMessage?.extra)
-                            : [],
-                      ));
+                    (engineScenes !== null &&
+                      textRewriteChangesEngineText(currentResponseForRewrite, sanitizedEditedText, engineScenes));
                   if (droppedProtectedMarkup) {
                     logger.warn(
                       "[text-rewrite] Skipping %s rewrite because it dropped protected markup from message %s",

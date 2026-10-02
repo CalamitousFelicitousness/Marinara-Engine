@@ -91,7 +91,7 @@ import { useDefaultPreset, usePresets } from "../../hooks/use-presets";
 import { useCharacterGroups, usePersonas } from "../../hooks/use-characters";
 import { GameSetupRulesChooser, GameSetupRulesetSheetStatus } from "./GameSetupRulesChooser";
 import { GameSetupWorldKitChooser } from "./GameSetupWorldKitChooser";
-import { GameSetupWorldChooser, worldDraftConfig, type WorldDraft } from "./GameSetupWorldChooser";
+import { GameSetupWorldChooser, worldDraftConfig, worldDraftFromWorld, type WorldDraft } from "./GameSetupWorldChooser";
 import {
   GAME_SETUP_FIELD_LABEL,
   GAME_SETUP_GHOST_BUTTON_CLASS,
@@ -1192,22 +1192,7 @@ export function GameSetupWizard({
       const config = imported.config;
       setRulesetId(config.ruleset?.id ?? null);
       setWorldKit(config.worldKit ?? null);
-      setWorldDraft(
-        config.world
-          ? {
-              seed: String(config.world.seed),
-              grounding: config.world.grounding ?? "expand",
-              lorebookIds: [],
-              canon: (config.world.brief.places ?? [])
-                .filter((place) => place.lore?.length)
-                .map((place) => ({ ...place, tags: place.tags ?? [] })),
-              canonEvents: (config.world.brief.events ?? [])
-                .filter((event) => event.lore?.length)
-                .map((event) => ({ ...event, places: event.places ?? [], groups: event.groups ?? [] })),
-              brief: config.world.brief,
-            }
-          : null,
-      );
+      setWorldDraft(config.world ? worldDraftFromWorld(config.world) : null);
       // The layers the file chose, against the definition installed HERE: an id this version of the
       // ruleset no longer has is dropped rather than sent to a create call that would refuse it.
       const importedRuleset = rulesets.find((entry) => entry.definition.id === config.ruleset?.id);
@@ -2220,6 +2205,10 @@ export function GameSetupWizard({
                       <GameSetupWorldKitChooser
                         kit={worldKit}
                         onChange={chooseWorldKit}
+                        onImportWorld={(kit, world) => {
+                          chooseWorldKit(kit);
+                          setWorldDraft(worldDraftFromWorld(world));
+                        }}
                         writeRequest={worldWriteRequest}
                       />
                     )}

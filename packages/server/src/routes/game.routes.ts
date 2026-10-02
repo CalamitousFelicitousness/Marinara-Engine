@@ -14,6 +14,7 @@ import {
   worldEditsEmpty,
   worldEditIssues,
   worldEditsSchema,
+  worldFile,
   worldGroundLooks,
   worldPersonByHand,
   worldKitArtFamily,
@@ -10992,6 +10993,22 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const world = compileGameWorld({ ...game, edits });
     logger.info("[game/world] %s: hand edits %s", chatId, edits ? "saved" : "cleared");
     return { edits: edits ?? null, links: world.links };
+  });
+
+  // GET /game/:chatId/world/file: the game's world as a share file (worldgen W9d): its kit, and its world
+  // with the hand edits kept with it, to start a new game from.
+  app.get<{ Params: { chatId: string } }>("/:chatId/world/file", async (req, reply) => {
+    const chat = await createChatsStorage(app.db).getById(req.params.chatId);
+    if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    const game = chat.mode === "game" ? gameWorldFromMetadata(parseMeta(chat.metadata)) : null;
+    if (!game) return reply.status(404).send({ error: "This game has no world." });
+    return worldFile(chat.name, game.kit, {
+      seed: game.seed,
+      generatorVersion: WORLD_GENERATOR_VERSION,
+      grounding: game.grounding,
+      brief: game.brief,
+      ...(game.edits ? { edits: game.edits } : {}),
+    });
   });
 
   // GET /game/:chatId/world/people?place=: a place's people as the game has them, edits applied.

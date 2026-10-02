@@ -11186,7 +11186,13 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
 
   // DELETE /game/:chatId/story
   app.delete<{ Params: { chatId: string } }>("/:chatId/story", async (req, reply) => {
-    const updated = await createChatsStorage(app.db).patchMetadata(req.params.chatId, () => ({ gameStory: null }));
+    const chats = createChatsStorage(app.db);
+    const chat = await chats.getById(req.params.chatId);
+    if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    if (chat.mode !== "game" || !gameWorldFromMetadata(parseMeta(chat.metadata))) {
+      return reply.status(404).send({ error: "This game has no world." });
+    }
+    const updated = await chats.patchMetadata(req.params.chatId, () => ({ gameStory: null }));
     if (!updated) return reply.status(404).send({ error: "Chat not found" });
     logger.info("[game/story] %s: story taken away", req.params.chatId);
     return { story: null };

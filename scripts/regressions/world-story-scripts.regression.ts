@@ -16,6 +16,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  buildGameSetupShareFile,
+  parseGameSetupShareFileJson,
+  resolveGameSetupImport,
+} from "../../packages/client/src/lib/game-setup-share.js";
+import {
   WORLD_GENERATOR_VERSION,
   WORLD_STARTER_KITS,
   checkStoryScript,
@@ -183,6 +188,38 @@ try {
     /no group "Nobody"/,
   );
   assert.match(
+    refusal((s) => s.events![3]!.do.push({ world: { deed: "befriend", group: "The Red Hand", with: "the red hand" } })),
+    /two different groups/,
+  );
+  // A kind of change the kit has off never happens, so a story cannot count on it.
+  const calm: GameWorld = {
+    ...game,
+    kit: {
+      ...kit,
+      change: {
+        ...kit.change,
+        kinds: { ...kit.change.kinds, catastrophe: { ...kit.change.kinds.catastrophe, on: false } },
+      },
+    },
+  };
+  const fall = checkStoryScript(calm, {
+    ...story,
+    events: [
+      ...story.events!,
+      { id: "fall", when: { on: "flags" }, do: [{ world: { deed: "fall", place: ashford.id } }] },
+    ],
+  });
+  assert.ok(!fall.ok && /changes off/.test(fall.issues.join(" ")), JSON.stringify(fall));
+  // The player may speak a page; a party member may not (a world's story is played with any party).
+  assert.equal(
+    refusal((s) => ((s.cutscenes![0] as { pages: Array<{ speaker?: string }> }).pages[0]!.speaker = "player")),
+    "",
+  );
+  assert.match(
+    refusal((s) => ((s.cutscenes![0] as { pages: Array<{ speaker?: string }> }).pages[0]!.speaker = "Mira")),
+    /no person "Mira"/,
+  );
+  assert.match(
     refusal((s) => s.flags!.push({ id: "trust", kind: "bool", initial: false })),
     /Two flags/,
   );
@@ -224,6 +261,8 @@ try {
     `[story: event="betrayal" result="refused" reason="conditions"]`,
     `[story: flag="trust" set="trust=yes" result="ok"]`,
     `[story: event="chat" set="trust=3" result="ok"]`,
+    // A value of the wrong kind (a script changed since) is skipped, never stored.
+    `[story: flag="trust" set="trust=true;met_mayor=7" result="ok"]`,
   ];
   const state = storyState(story1, readStoryLedger(replies));
   assert.deepEqual(state.flags, { met_mayor: true, trust: 3, key: false });
@@ -256,6 +295,41 @@ try {
   assert.equal(elsewhere.story, undefined, "a story for another world is left out");
   assert.match(elsewhere.notes[0] ?? "", /story does not fit/);
   assert.equal(readWorldFile(text(worldFile("Plain", kit, world))).ok, true, "a world without a story");
+
+  // ── A setup file carries the story with its world, and only with it ──
+  type SetupConfig = Parameters<typeof buildGameSetupShareFile>[0]["config"];
+  const setupBase = {
+    genre: "Fantasy",
+    setting: "A river kingdom",
+    tone: "Grim",
+    difficulty: "normal",
+    rating: "sfw",
+    playerGoals: "",
+    gmMode: "standalone",
+    partyCharacterIds: [],
+    worldKit: kit,
+    world,
+  } as unknown as SetupConfig;
+  const resources = { characters: [], connections: [], lorebooks: [], personas: [], promptPresets: [] };
+  const setupJson = (config: Record<string, unknown>) =>
+    JSON.stringify(
+      buildGameSetupShareFile({ gameName: "Ashford", config: { ...setupBase, ...config } as SetupConfig }),
+    );
+  const shared = parseGameSetupShareFileJson(setupJson({ story: story1 }));
+  assert.deepEqual(resolveGameSetupImport(shared, resources).config.story, story1);
+  assert.throws(
+    () => parseGameSetupShareFileJson(setupJson({ story: { storyVersion: 2 } })),
+    "a story that does not read",
+  );
+  assert.throws(
+    () => parseGameSetupShareFileJson(setupJson({ world: undefined, story: story1 })),
+    "a story without its world",
+  );
+  assert.equal(
+    resolveGameSetupImport(shared, { ...resources, isNewGame: false }).config.story,
+    undefined,
+    "only a new game takes a world, and its story",
+  );
   assert.equal(gameStoryFromMetadata({ gameStory: story1 }, game)?.events.length, 4);
   assert.equal(
     gameStoryFromMetadata(
@@ -351,6 +425,18 @@ try {
     assert.equal(removed.statusCode, 200);
     assert.equal((await meta()).gameStory ?? null, null);
     assert.deepEqual((await app.inject({ method: "GET", url: `/api/game/${chatId}/story` })).json(), { story: null });
+    // Only a game with a world has a story to take away.
+    const conversation = (await createChatsStorage(db).create({
+      name: "Chat",
+      mode: "conversation",
+      characterIds: [],
+    }))!;
+    assert.equal((await app.inject({ method: "DELETE", url: `/api/game/${conversation.id}/story` })).statusCode, 404);
+    assert.equal(
+      JSON.parse((await createChatsStorage(db).getById(conversation.id))!.metadata as string).gameStory,
+      undefined,
+      "and nothing is written to another chat",
+    );
   } finally {
     await app.close();
     await closeDB();

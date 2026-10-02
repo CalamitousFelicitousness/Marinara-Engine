@@ -40,6 +40,8 @@ export const STORY_EXPRESSIONS = Object.freeze([
   "confused",
   "sleepy",
 ] as const);
+/** A cutscene page spoken by the game's player. */
+export const STORY_PLAYER = "player";
 /** What a fight can end in, as the combat recap says it. */
 export const STORY_FIGHT_OUTCOMES = Object.freeze(["victory", "defeat", "flee"] as const);
 
@@ -92,7 +94,8 @@ const action = z.union([
 
 const page = z
   .object({
-    /** A person of the world, by id; none for narration. */
+    /** A person of the world by id, or `player` (the game's player, named at play); none for narration.
+     *  A world's story is played with any party, so its party members are not speakers. */
     speaker: z.string().min(1).max(140).optional(),
     expression: z.enum(STORY_EXPRESSIONS).optional(),
     text: promptSafeText(600),
@@ -304,13 +307,20 @@ export function checkStoryScript(
         if (deed.place) placeOk(deed.place, where);
         groupOk(deed.group, where);
         groupOk(deed.with, where);
+        // As the world's ledger answers it: a kind of change the kit has off is always refused.
+        if (!game.kit.change.kinds[WORLD_DEED_KINDS[deed.deed]].on) {
+          issues.push(`${where}: this kit has "${WORLD_DEED_KINDS[deed.deed]}" changes off, so ${deed.deed} never happens.`);
+        }
+        if (deed.with && deed.group && deed.with.toLowerCase() === deed.group.toLowerCase()) {
+          issues.push(`${where}: ${deed.deed} needs two different groups.`);
+        }
       }
     }
   }
   for (const cutscene of story.cutscenes) {
     if (cutscene.kind !== "pages") continue;
     for (const page of cutscene.pages) {
-      if (page.speaker) personOk(page.speaker, `Cutscene "${cutscene.id}"`);
+      if (page.speaker && page.speaker !== STORY_PLAYER) personOk(page.speaker, `Cutscene "${cutscene.id}"`);
     }
   }
   const unique20 = [...new Set(issues)].slice(0, 20);

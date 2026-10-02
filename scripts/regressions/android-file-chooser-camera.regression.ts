@@ -1,0 +1,21 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+
+// #6953: in the Android app, a page that asks for images also gets a Camera choice, and the
+// photo taken goes back to the page. The WebView can't run in CI, so this checks the source.
+const source = readFileSync(
+  new URL("../../android/app/src/main/java/com/marinara/engine/MainActivity.java", import.meta.url),
+  "utf8",
+);
+
+assert.match(source, /Intent intent = withCameraChoice\(params\);/u, "the file chooser must offer the camera");
+assert.match(source, /new Intent\(MediaStore\.ACTION_IMAGE_CAPTURE\)/u, "the camera choice must take a photo");
+assert.match(source, /camera\.putExtra\(MediaStore\.EXTRA_OUTPUT, photo\)/u, "the photo must go to the prepared file");
+assert.match(
+  source,
+  /result = new Uri\[\] \{ cameraPhoto \};/u,
+  "a photo taken with the camera must go back to the page",
+);
+assert.match(source, /discardPendingCameraPhoto\(\);/u, "an unused photo file must be removed");
+
+console.log("Android file chooser camera regression passed.");

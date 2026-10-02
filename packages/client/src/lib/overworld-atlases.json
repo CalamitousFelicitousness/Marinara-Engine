@@ -136,6 +136,95 @@
       ],
       "party": [
         68
+      ],
+      "town_ground": [
+        69,
+        70
+      ],
+      "street": [
+        71,
+        72
+      ],
+      "square": [
+        73
+      ],
+      "wall": [
+        74
+      ],
+      "wall_window": [
+        75
+      ],
+      "wall_door": [
+        76
+      ],
+      "stall": [
+        77
+      ],
+      "well": [
+        78
+      ],
+      "tree": [
+        79
+      ],
+      "folk": [
+        80,
+        81,
+        82,
+        83
+      ],
+      "roof_nw": [
+        84
+      ],
+      "hall_nw": [
+        85
+      ],
+      "roof_n": [
+        86
+      ],
+      "hall_n": [
+        87
+      ],
+      "roof_ne": [
+        88
+      ],
+      "hall_ne": [
+        89
+      ],
+      "roof_w": [
+        90
+      ],
+      "hall_w": [
+        91
+      ],
+      "roof_c": [
+        92
+      ],
+      "hall_c": [
+        93
+      ],
+      "roof_e": [
+        94
+      ],
+      "hall_e": [
+        95
+      ],
+      "roof_sw": [
+        96
+      ],
+      "hall_sw": [
+        97
+      ],
+      "roof_s": [
+        98
+      ],
+      "hall_s": [
+        99
+      ],
+      "roof_se": [
+        100
+      ],
+      "hall_se": [
+        101
       ]
     }
   },
@@ -276,6 +365,95 @@
       ],
       "party": [
         68
+      ],
+      "town_ground": [
+        69,
+        70
+      ],
+      "street": [
+        71,
+        72
+      ],
+      "square": [
+        73
+      ],
+      "wall": [
+        74
+      ],
+      "wall_window": [
+        75
+      ],
+      "wall_door": [
+        76
+      ],
+      "stall": [
+        77
+      ],
+      "well": [
+        78
+      ],
+      "tree": [
+        79
+      ],
+      "folk": [
+        80,
+        81,
+        82,
+        83
+      ],
+      "roof_nw": [
+        84
+      ],
+      "hall_nw": [
+        85
+      ],
+      "roof_n": [
+        86
+      ],
+      "hall_n": [
+        87
+      ],
+      "roof_ne": [
+        88
+      ],
+      "hall_ne": [
+        89
+      ],
+      "roof_w": [
+        90
+      ],
+      "hall_w": [
+        91
+      ],
+      "roof_c": [
+        92
+      ],
+      "hall_c": [
+        93
+      ],
+      "roof_e": [
+        94
+      ],
+      "hall_e": [
+        95
+      ],
+      "roof_sw": [
+        96
+      ],
+      "hall_sw": [
+        97
+      ],
+      "roof_s": [
+        98
+      ],
+      "hall_s": [
+        99
+      ],
+      "roof_se": [
+        100
+      ],
+      "hall_se": [
+        101
       ]
     }
   },
@@ -416,6 +594,95 @@
       ],
       "party": [
         68
+      ],
+      "town_ground": [
+        69,
+        70
+      ],
+      "street": [
+        71,
+        72
+      ],
+      "square": [
+        73
+      ],
+      "wall": [
+        74
+      ],
+      "wall_window": [
+        75
+      ],
+      "wall_door": [
+        76
+      ],
+      "stall": [
+        77
+      ],
+      "well": [
+        78
+      ],
+      "tree": [
+        79
+      ],
+      "folk": [
+        80,
+        81,
+        82,
+        83
+      ],
+      "roof_nw": [
+        84
+      ],
+      "hall_nw": [
+        85
+      ],
+      "roof_n": [
+        86
+      ],
+      "hall_n": [
+        87
+      ],
+      "roof_ne": [
+        88
+      ],
+      "hall_ne": [
+        89
+      ],
+      "roof_w": [
+        90
+      ],
+      "hall_w": [
+        91
+      ],
+      "roof_c": [
+        92
+      ],
+      "hall_c": [
+        93
+      ],
+      "roof_e": [
+        94
+      ],
+      "hall_e": [
+        95
+      ],
+      "roof_sw": [
+        96
+      ],
+      "hall_sw": [
+        97
+      ],
+      "roof_s": [
+        98
+      ],
+      "hall_s": [
+        99
+      ],
+      "roof_se": [
+        100
+      ],
+      "hall_se": [
+        101
       ]
     }
   },
@@ -556,6 +823,95 @@
       ],
       "party": [
         68
+      ],
+      "town_ground": [
+        69,
+        70
+      ],
+      "street": [
+        71,
+        72
+      ],
+      "square": [
+        73
+      ],
+      "wall": [
+        74
+      ],
+      "wall_window": [
+        75
+      ],
+      "wall_door": [
+        76
+      ],
+      "stall": [
+        77
+      ],
+      "well": [
+        78
+      ],
+      "tree": [
+        79
+      ],
+      "folk": [
+        80,
+        81,
+        82,
+        83
+      ],
+      "roof_nw": [
+        84
+      ],
+      "hall_nw": [
+        85
+      ],
+      "roof_n": [
+        86
+      ],
+      "hall_n": [
+        87
+      ],
+      "roof_ne": [
+        88
+      ],
+      "hall_ne": [
+        89
+      ],
+      "roof_w": [
+        90
+      ],
+      "hall_w": [
+        91
+      ],
+      "roof_c": [
+        92
+      ],
+      "hall_c": [
+        93
+      ],
+      "roof_e": [
+        94
+      ],
+      "hall_e": [
+        95
+      ],
+      "roof_sw": [
+        96
+      ],
+      "hall_sw": [
+        97
+      ],
+      "roof_s": [
+        98
+      ],
+      "hall_s": [
+        99
+      ],
+      "roof_se": [
+        100
+      ],
+      "hall_se": [
+        101
       ]
     }
   },
@@ -696,6 +1052,95 @@
       ],
       "party": [
         68
+      ],
+      "town_ground": [
+        69,
+        70
+      ],
+      "street": [
+        71,
+        72
+      ],
+      "square": [
+        73
+      ],
+      "wall": [
+        74
+      ],
+      "wall_window": [
+        75
+      ],
+      "wall_door": [
+        76
+      ],
+      "stall": [
+        77
+      ],
+      "well": [
+        78
+      ],
+      "tree": [
+        79
+      ],
+      "folk": [
+        80,
+        81,
+        82,
+        83
+      ],
+      "roof_nw": [
+        84
+      ],
+      "hall_nw": [
+        85
+      ],
+      "roof_n": [
+        86
+      ],
+      "hall_n": [
+        87
+      ],
+      "roof_ne": [
+        88
+      ],
+      "hall_ne": [
+        89
+      ],
+      "roof_w": [
+        90
+      ],
+      "hall_w": [
+        91
+      ],
+      "roof_c": [
+        92
+      ],
+      "hall_c": [
+        93
+      ],
+      "roof_e": [
+        94
+      ],
+      "hall_e": [
+        95
+      ],
+      "roof_sw": [
+        96
+      ],
+      "hall_sw": [
+        97
+      ],
+      "roof_s": [
+        98
+      ],
+      "hall_s": [
+        99
+      ],
+      "roof_se": [
+        100
+      ],
+      "hall_se": [
+        101
       ]
     }
   },
@@ -836,6 +1281,95 @@
       ],
       "party": [
         68
+      ],
+      "town_ground": [
+        69,
+        70
+      ],
+      "street": [
+        71,
+        72
+      ],
+      "square": [
+        73
+      ],
+      "wall": [
+        74
+      ],
+      "wall_window": [
+        75
+      ],
+      "wall_door": [
+        76
+      ],
+      "stall": [
+        77
+      ],
+      "well": [
+        78
+      ],
+      "tree": [
+        79
+      ],
+      "folk": [
+        80,
+        81,
+        82,
+        83
+      ],
+      "roof_nw": [
+        84
+      ],
+      "hall_nw": [
+        85
+      ],
+      "roof_n": [
+        86
+      ],
+      "hall_n": [
+        87
+      ],
+      "roof_ne": [
+        88
+      ],
+      "hall_ne": [
+        89
+      ],
+      "roof_w": [
+        90
+      ],
+      "hall_w": [
+        91
+      ],
+      "roof_c": [
+        92
+      ],
+      "hall_c": [
+        93
+      ],
+      "roof_e": [
+        94
+      ],
+      "hall_e": [
+        95
+      ],
+      "roof_sw": [
+        96
+      ],
+      "hall_sw": [
+        97
+      ],
+      "roof_s": [
+        98
+      ],
+      "hall_s": [
+        99
+      ],
+      "roof_se": [
+        100
+      ],
+      "hall_se": [
+        101
       ]
     }
   }

@@ -688,6 +688,174 @@ function party(p) {
   return t;
 }
 
+// ── Towns (worldgen W8b): streets, the square, roofs and fronts by the family's style, and townsfolk ──
+
+/** The street each family paves: cobbles, flagstones, asphalt or a dirt track. */
+const STREET = {
+  fantasy: "cobble",
+  wuxia: "flag",
+  modern: "asphalt",
+  jazz_age: "cobble",
+  scifi: "asphalt",
+  wasteland: "dirt",
+};
+/** The nine places of a roof: its corners, edges and middle. */
+const NINE = ["nw", "n", "ne", "w", "c", "e", "sw", "s", "se"];
+
+function street(p, kind, seed) {
+  const t = tile();
+  if (kind === "asphalt") {
+    fill(t, p.rockDark);
+    speckle(t, p.stoneDark, 6, seed);
+    if (seed % 2) (rect(t, 7, 2, 2, 4, p.accent), rect(t, 7, 10, 2, 4, p.accent));
+  } else if (kind === "dirt") {
+    fill(t, p.soil);
+    speckle(t, p.soilDark, 8, seed);
+    speckle(t, p.sandDark, 4, seed + 7);
+  } else {
+    fill(t, kind === "flag" ? p.stoneDark : p.stone);
+    const size = kind === "flag" ? 8 : 4;
+    for (let y = 0; y < T; y += size) rect(t, 0, y, T, 1, kind === "flag" ? p.rockDark : p.stoneDark);
+    for (let y = 0; y < T; y += size)
+      for (let x = (y / size) % 2 ? size / 2 : 0; x < T; x += size)
+        rect(t, x, y, 1, size, kind === "flag" ? p.rockDark : p.stoneDark);
+    speckle(t, kind === "flag" ? p.stone : p.rockLight, 3, seed);
+  }
+  return t;
+}
+
+/** One of a roof's nine places, in the family's style and a colour pair (homes, or halls and shops). */
+function roofTile(style, at, roof, shade, light, accent) {
+  const t = tile();
+  const [north, south, west, east] = [at.startsWith("n"), at.startsWith("s"), at.endsWith("w"), at.endsWith("e")];
+  fill(t, roof);
+  if (style === "flat") {
+    speckle(t, shade, 4, NINE.indexOf(at) + 3);
+    if (north) rect(t, 0, 0, T, 2, light);
+    if (south) rect(t, 0, T - 2, T, 2, shade);
+    if (west) rect(t, 0, 0, 2, T, light);
+    if (east) rect(t, T - 2, 0, 2, T, shade);
+    if (at === "c") (rect(t, 6, 6, 4, 4, shade), rect(t, 7, 7, 2, 2, light));
+    return t;
+  }
+  if (style === "tent") {
+    for (let x = 0; x < T; x += 4) rect(t, x, 0, 2, T, shade);
+    if (north) rect(t, 0, 0, T, 1, light);
+    if (south) rect(t, 0, T - 2, T, 2, shade);
+    return t;
+  }
+  if (style === "dome") {
+    for (let y = 0; y < T; y++)
+      for (let x = 0; x < T; x++) {
+        const dx = west ? T - x : east ? x : T;
+        const dy = north ? T - y : south ? y : T;
+        if ((west || east) && (north || south) && Math.hypot(dx, dy) > T)
+          (px(t, x, y, [0, 0, 0], 0), (t[(y * T + x) * 4 + 3] = 0));
+      }
+    if (north && !west && !east) rect(t, 0, 2, T, 1, light);
+    if (at === "c" || at === "n") rect(t, 4, 4, 3, 2, light);
+    if (south) rect(t, 0, T - 2, T, 2, shade);
+    return t;
+  }
+  // Gable and pagoda: rows of shingles, a ridge along the top, dark eaves along the bottom.
+  for (let y = 3; y < T; y += 4) rect(t, 0, y, T, 1, shade);
+  for (let y = 1; y < T; y += 4) for (let x = y % 8 === 1 ? 0 : 3; x < T; x += 6) px(t, x, y, shade);
+  if (north) rect(t, 0, 0, T, 2, style === "pagoda" ? accent : light);
+  if (south) rect(t, 0, T - 3, T, 3, shade);
+  if (west) rect(t, 0, 0, 1, T, shade);
+  if (east) rect(t, T - 1, 0, 1, T, shade);
+  if (style === "pagoda" && south && (west || east)) {
+    // The eaves curl up at the corners.
+    const x = west ? 0 : T - 3;
+    rect(t, x, T - 5, 3, 2, accent);
+  }
+  return t;
+}
+
+function front(p, kind) {
+  const t = tile();
+  fill(t, p.wall);
+  rect(t, 0, 0, T, 2, p.wallShade);
+  rect(t, 0, T - 1, T, 1, p.wallShade);
+  if (kind === "window") {
+    rect(t, 5, 5, 6, 5, p.door);
+    rect(t, 6, 6, 4, 3, "#3a4a5a");
+    px(t, 6, 6, "#8aa4bc");
+  } else if (kind === "door") {
+    rect(t, 5, 4, 6, 12, p.door);
+    px(t, 9, 10, p.accent);
+  }
+  return t;
+}
+
+function stall(p) {
+  const t = tile();
+  rect(t, 2, 10, 12, 4, p.trunk);
+  rect(t, 2, 10, 12, 1, p.soilDark);
+  for (let x = 1; x < 15; x += 2) rect(t, x, 4, 2, 5, (x / 2) % 2 < 1 ? p.accent : p.wall);
+  rect(t, 1, 9, 14, 1, p.roofShade);
+  speckle(t, p.crop, 3, 5);
+  return t;
+}
+
+function well(p) {
+  const t = tile();
+  for (let a = 0; a < 40; a++)
+    px(t, 8 + Math.cos((a / 40) * Math.PI * 2) * 5, 9 + Math.sin((a / 40) * Math.PI * 2) * 4, p.stoneDark);
+  rect(t, 5, 7, 7, 5, p.water);
+  rect(t, 6, 8, 3, 1, p.waterLight);
+  rect(t, 3, 2, 1, 7, p.trunk);
+  rect(t, 12, 2, 1, 7, p.trunk);
+  rect(t, 3, 2, 10, 1, p.roof);
+  return t;
+}
+
+function folk(p, cloak, shade, seed) {
+  const t = tile();
+  rect(t, 5, 14, 6, 1, "#000000", 70);
+  sprite(t, 5, 2, ["..hh..", ".hssh.", "..ss..", ".cCCc.", "cCCCCc", ".cCCc.", ".l..l.", ".l..l."], {
+    h: seed % 2 ? p.hair : p.trunk,
+    s: p.skin,
+    c: shade,
+    C: cloak,
+    l: p.trunk,
+  });
+  return t;
+}
+
+function towns(p, family) {
+  const style = STYLE[family].house;
+  const hall = STYLE[family].landmark === "keep" ? "flat" : STYLE[family].landmark;
+  const out = {
+    town_ground: [1, 2].map((seed) => ground(p, "grass", "grassLight", "grassDark", seed + 200, 0.5)),
+    street: [1, 2].map((seed) => street(p, STREET[family], seed)),
+    square: [street(p, STREET[family] === "dirt" ? "dirt" : "flag", 9)],
+    wall: [front(p, "plain")],
+    wall_window: [front(p, "window")],
+    wall_door: [front(p, "door")],
+    stall: [stall(p)],
+    well: [well(p)],
+    tree: [
+      (() => {
+        const t = tile();
+        roundTree(t, 5, 4, p);
+        return t;
+      })(),
+    ],
+    folk: [
+      folk(p, p.accent, p.roofShade, 1),
+      folk(p, p.roof, p.roofShade, 2),
+      folk(p, p.leaf, p.leafDark, 3),
+      folk(p, p.rockLight, p.rock, 4),
+    ],
+  };
+  for (const at of NINE) {
+    out[`roof_${at}`] = [roofTile(style, at, p.roof, p.roofShade, p.wall, p.accent)];
+    out[`hall_${at}`] = [roofTile(hall, at, p.stone, p.stoneDark, p.wall, p.accent)];
+  }
+  return out;
+}
+
 // ── PNG ──
 
 function png(width, height, rgba) {
@@ -730,6 +898,7 @@ for (const [family, p] of Object.entries(PALETTES)) {
   tiers.forEach((image, tier) => add(`marker${tier}`, [image]));
   add("ruin", [ruin]);
   add("party", [party(p)]);
+  for (const [id, images] of Object.entries(towns(p, family))) add(id, images);
   const rows = Math.ceil(tiles.length / COLUMNS);
   const width = COLUMNS * T;
   const atlas = new Uint8ClampedArray(width * rows * T * 4);

@@ -1604,6 +1604,11 @@ const WorldOverworld = lazy(async () => {
   return { default: module.WorldOverworld };
 });
 
+const TownView = lazy(async () => {
+  const module = await import("./TownView");
+  return { default: module.TownView };
+});
+
 const GameSessionReplay = lazy(async () => {
   const module = await import("./GameSessionReplay");
   return { default: module.GameSessionReplay };
@@ -8748,9 +8753,16 @@ function GameSurfaceComponent({
   // view and back. A fight, a replay and a package that draws the game itself keep their own screens.
   const overworldShown =
     gameWorld !== null && chatMeta.gameWorldView !== "scene" && !experienceOwnsGame && !combatUiActive && !replayActive;
-  const handleToggleWorldView = useCallback(() => {
-    updateChatMetadata.mutate({ id: activeChatId, gameWorldView: overworldShown ? "scene" : "overworld" });
-  }, [activeChatId, overworldShown, updateChatMetadata]);
+  // The town the party is in (worldgen W8b) is the overworld's other side: entered from it, left to it.
+  const townShown = overworldShown && chatMeta.gameWorldView === "town";
+  const setWorldView = useCallback(
+    (view: "overworld" | "scene" | "town") => updateChatMetadata.mutate({ id: activeChatId, gameWorldView: view }),
+    [activeChatId, updateChatMetadata],
+  );
+  const handleToggleWorldView = useCallback(
+    () => setWorldView(overworldShown ? "scene" : "overworld"),
+    [overworldShown, setWorldView],
+  );
   // Effective combat style: active encounter pin ?? runtime metadata override
   // (settings drawer) ?? wizard setup choice ?? legacy default "classic".
   const combatSetupConfig = chatMeta.gameSetupConfig as Record<string, unknown> | undefined;
@@ -13212,28 +13224,35 @@ function GameSurfaceComponent({
                 data-chat-resource-drop-surface
                 className={cn("relative flex min-h-0 flex-1 flex-col overflow-hidden", experienceSurfaceClass)}
               >
-                {overworldShown && gameWorld && (
-                  <Suspense fallback={null}>
-                    <WorldOverworld
-                      chatId={activeChatId}
-                      game={gameWorld}
-                      turnKey={narrationTurnKey(latestAssistantMsg)}
-                      time={
-                        gameTimeMeta
-                          ? {
-                              day: normalizeGameDay(gameTimeMeta.day),
-                              hour: normalizeGameHour(gameTimeMeta.hour),
-                              minute: normalizeGameMinute(gameTimeMeta.minute),
-                            }
-                          : null
-                      }
-                      clockRunning={!isStreaming && narrationDone && sessionInteractive}
-                      canWalk={!isStreaming && narrationDone && sessionInteractive}
-                      family={artFamily}
-                      handleRef={overworldClockRef}
-                    />
-                  </Suspense>
-                )}
+                {overworldShown &&
+                  gameWorld &&
+                  (() => {
+                    const view = {
+                      chatId: activeChatId,
+                      game: gameWorld,
+                      turnKey: narrationTurnKey(latestAssistantMsg),
+                      time: gameTimeMeta
+                        ? {
+                            day: normalizeGameDay(gameTimeMeta.day),
+                            hour: normalizeGameHour(gameTimeMeta.hour),
+                            minute: normalizeGameMinute(gameTimeMeta.minute),
+                          }
+                        : null,
+                      clockRunning: !isStreaming && narrationDone && sessionInteractive,
+                      canWalk: !isStreaming && narrationDone && sessionInteractive,
+                      family: artFamily,
+                      handleRef: overworldClockRef,
+                    };
+                    return (
+                      <Suspense fallback={null}>
+                        {townShown ? (
+                          <TownView {...view} onLeave={() => setWorldView("overworld")} />
+                        ) : (
+                          <WorldOverworld {...view} onEnterTown={() => setWorldView("town")} />
+                        )}
+                      </Suspense>
+                    );
+                  })()}
                 {/* Main mount. pointer-events-none lets clicks fall through empty regions to the
                     narration underneath; the package sets pointer-events-auto on its own chrome. */}
                 {experienceSurfaceActive ? (

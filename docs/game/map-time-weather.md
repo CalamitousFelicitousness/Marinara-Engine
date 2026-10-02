@@ -20,6 +20,12 @@ A place in ruins is drawn in ruins. After dark the map dims and the settlements'
 
 The overworld is a view, and the scene view (the game's backgrounds and character art) is a switch away: **Show the scene** in the game's toolbar, or in the game's actions menu on a phone, and **Show the overworld** to come back. The game remembers which one you chose. A fight and a session replay use their own screens.
 
+### The town
+
+When the party is at a settlement, pick it on the overworld and choose **Enter** to see the town. It is laid out from the world: its streets and square, the places the world or the story has in it (named on their buildings), its hall in a bigger place, the workplaces of the trades it is known for, and its homes. Its people are where the hour has them: at work by day, in the square at dusk, at home at night.
+
+Pick a building or the square, or choose from **Places in town**, to see who is there now and how many minutes away it is. **Walk there** takes the party across town: the minutes pass on the clock, and **your next turn tells the Game Master** where the party went and who is there. A visit to a named place, such as an inn the story added, makes it the place the party is in. **Leave town** goes back to the overworld. The game remembers which view you were in.
+
 ## Grid view and node view
 
 The map has two views. Marinara Engine picks the view for you based on the kind of place the map represents. You do not switch views by hand.

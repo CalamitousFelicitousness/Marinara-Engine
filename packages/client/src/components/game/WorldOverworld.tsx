@@ -14,18 +14,23 @@ import {
   type MutableRefObject,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { Footprints, MapPin, X } from "lucide-react";
+import { DoorOpen, Footprints, MapPin, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
-  OVERWORLD_SECONDS_PER_GAME_MINUTE,
   worldGroundCells,
   worldGroundLooks,
   worldRoute,
   type GameWorld,
   type WorldPlace,
 } from "@marinara-engine/shared";
-import { useAdvanceTime, useOverworld, useOverworldWalk } from "../../hooks/use-game";
+import { useOverworld, useOverworldWalk } from "../../hooks/use-game";
+import {
+  overworldCamera,
+  useOverworldAtlas,
+  useOverworldClock,
+  type OverworldClockHandle,
+} from "../../hooks/use-overworld-view";
 import { useGameStateStore } from "../../stores/game-state.store";
 import {
   OVERWORLD_TILE,
@@ -38,17 +43,9 @@ import {
   paintWay,
 } from "../../lib/overworld-paint";
 import { cn } from "../../lib/utils";
-import overworldAtlases from "../../lib/overworld-atlases.json";
-
-// Each setting family's tiles, drawn in code by scripts/art/build-overworld-tiles.mjs: an image of 16 px
-// tiles and a map of tile ids (a ground look, marker0..3, ruin, party) to their variants. Community tile
-// packs can use the same format later. A tile a family lacks is drawn plain.
-const ATLASES = overworldAtlases as Record<string, { columns: number; tiles: Record<string, number[]> }>;
 
 /** What the game screen can ask of the overworld: send the real time it has passed so far. */
-export interface WorldOverworldHandle {
-  flush: () => Promise<void>;
-}
+export type WorldOverworldHandle = OverworldClockHandle;
 
 interface WorldOverworldProps {
   chatId: string;
@@ -62,13 +59,13 @@ interface WorldOverworldProps {
   canWalk: boolean;
   /** The setting's art family, whose tiles the overworld is drawn with when it has them. */
   family?: string;
+  /** Opens the town the party is in (worldgen W8b). */
+  onEnterTown?: () => void;
   handleRef?: MutableRefObject<WorldOverworldHandle | null>;
 }
 
 type Point = { x: number; y: number };
 
-/** Real-time minutes sent together (Pixelforge saves its clock at most every thirty seconds). */
-const FLUSH_MINUTES = 6;
 /** Cells a second the party walks on screen, and the shortest and longest a walk is shown for. */
 const WALK_CELLS_PER_SECOND = 6;
 const WALK_SHORTEST_MS = 1200;
@@ -91,14 +88,12 @@ export function WorldOverworld({
   clockRunning,
   canWalk,
   family,
+  onEnterTown,
   handleRef,
 }: WorldOverworldProps) {
   const { t } = useTranslation();
   const { data: overworld } = useOverworld(chatId, turnKey, true);
   const walkMutation = useOverworldWalk();
-  const advance = useAdvanceTime();
-  const advanceRef = useRef(advance.mutateAsync);
-  advanceRef.current = advance.mutateAsync;
 
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -111,8 +106,6 @@ export function WorldOverworld({
   const [lookAt, setLookAt] = useState<Point | null>(null);
   const [walking, setWalking] = useState(false);
   const walkingRef = useRef(false);
-  const [pendingMinutes, setPendingMinutes] = useState(0);
-  const pendingRef = useRef(0);
 
   const { world, kit } = game;
   const byId = useMemo(() => new Map(world.places.map((place) => [place.id, place])), [world]);
@@ -131,84 +124,14 @@ export function WorldOverworld({
   }, [here, world]);
 
   // ── The clock (Pixelforge's): a game minute every five real seconds while the overworld waits ──
-  const flush = useCallback(
-    async (keepalive = false) => {
-      const minutes = pendingRef.current;
-      if (minutes < 1) return;
-      pendingRef.current = 0;
-      setPendingMinutes(0);
-      try {
-        await advanceRef.current({ chatId, minutes, keepalive });
-      } catch {
-        // A minute the server did not take is a minute lost, never a broken game.
-      }
-    },
-    [chatId],
-  );
-  useEffect(() => {
-    if (handleRef) handleRef.current = { flush: () => flush() };
-    return () => {
-      if (handleRef) handleRef.current = null;
-    };
-  }, [flush, handleRef]);
-  useEffect(() => {
-    if (!clockRunning) return;
-    let seconds = 0;
-    const timer = window.setInterval(() => {
-      if (document.visibilityState !== "visible" || walkingRef.current) return;
-      seconds += 1;
-      if (seconds < OVERWORLD_SECONDS_PER_GAME_MINUTE) return;
-      seconds = 0;
-      pendingRef.current += 1;
-      setPendingMinutes(pendingRef.current);
-      if (pendingRef.current >= FLUSH_MINUTES) void flush();
-    }, 1000);
-    return () => window.clearInterval(timer);
-  }, [clockRunning, flush]);
-  useEffect(() => {
-    const onHidden = () => {
-      if (document.visibilityState === "hidden") void flush();
-    };
-    const onPageHide = () => void flush(true);
-    document.addEventListener("visibilitychange", onHidden);
-    window.addEventListener("pagehide", onPageHide);
-    return () => {
-      document.removeEventListener("visibilitychange", onHidden);
-      window.removeEventListener("pagehide", onPageHide);
-      void flush();
-    };
-  }, [flush]);
+  const { pendingMinutes, flush } = useOverworldClock(chatId, clockRunning, () => walkingRef.current, handleRef);
 
   const clockMinutes = time ? (time.day * 24 + time.hour) * 60 + time.minute + pendingMinutes : null;
   const darkness = clockMinutes === null ? 0 : overworldDarkness(Math.floor(clockMinutes / 60) % 24, clockMinutes % 60);
   const lit = darkness > 0.25;
 
   // ── The family's tiles: drawn plain until (and unless) they load ──
-  const atlasMap = family ? ATLASES[family] : undefined;
-  const [atlas, setAtlas] = useState<HTMLImageElement | null>(null);
-  useEffect(() => {
-    setAtlas(null);
-    if (!atlasMap) return;
-    const image = new Image();
-    image.onload = () => setAtlas(image);
-    image.src = `/overworld/${family}.png`;
-    return () => {
-      image.onload = null;
-    };
-  }, [atlasMap, family]);
-  /** Draws a tile of the family's at (x, y), the variant by `pick` (0..1); false when it has none. */
-  const drawTile = useCallback(
-    (ctx: CanvasRenderingContext2D, id: string, x: number, y: number, pick = 0) => {
-      const variants = atlas && atlasMap ? atlasMap.tiles[id] : undefined;
-      if (!atlas || !atlasMap || !variants?.length) return false;
-      const index = variants[Math.min(variants.length - 1, Math.floor(pick * variants.length))]!;
-      const sx = (index % atlasMap.columns) * OVERWORLD_TILE;
-      const sy = Math.floor(index / atlasMap.columns) * OVERWORLD_TILE;
-      ctx.drawImage(atlas, sx, sy, OVERWORLD_TILE, OVERWORLD_TILE, x, y, OVERWORLD_TILE, OVERWORLD_TILE);
-      return true;
-    },
-    [atlas, atlasMap],
-  );
+  const drawTile = useOverworldAtlas(family);
 
   // ── What is drawn once: the ground and its ways, then the settlements ──
   const ground = useMemo(() => {
@@ -298,21 +221,7 @@ export function WorldOverworld({
   const homeAt = here ? byId.get(here) : undefined;
   const partyRef = useRef<Point | null>(null);
   if (!walkingRef.current) partyRef.current = homeAt ? centre(homeAt) : null;
-  const camera = useCallback(
-    (at: Point) => {
-      // A little above the middle, since the narration sits at the bottom: the view may go past the
-      // world's bottom edge by almost half a screen, so a place on it is never under the narration.
-      const axis = (worldPx: number, view: number, look: number, share: number, past: number) =>
-        worldPx * scale <= view
-          ? Math.round((worldPx * scale - view) / 2)
-          : Math.round(Math.min(Math.max(0, look * scale - view * share), worldPx * scale - view + past));
-      return {
-        x: axis(ground.width, size.width, at.x, 0.5, 0),
-        y: axis(ground.height, size.height, at.y, 0.4, size.height * 0.45),
-      };
-    },
-    [ground.height, ground.width, scale, size.height, size.width],
-  );
+  const camera = useCallback((at: Point) => overworldCamera(at, ground, size, scale), [ground, scale, size]);
   const restingCamera = camera(lookAt ?? partyRef.current ?? { x: ground.width / 2, y: ground.height / 2 });
   const [cameraX, cameraY] = [restingCamera.x, restingCamera.y];
 
@@ -613,7 +522,20 @@ export function WorldOverworld({
               </button>
             </div>
             {chosen.id === here ? (
-              <div className="mt-2 text-white/60">{t("game.overworld.here")}</div>
+              <>
+                <div className="mt-2 text-white/60">{t("game.overworld.here")}</div>
+                {onEnterTown && (
+                  <button
+                    type="button"
+                    disabled={walking}
+                    onClick={onEnterTown}
+                    className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:opacity-40"
+                  >
+                    <DoorOpen size={13} />
+                    {t("game.overworld.enter", { name: chosen.name })}
+                  </button>
+                )}
+              </>
             ) : route ? (
               <>
                 <div className="mt-2">{tripText(route.days)}</div>

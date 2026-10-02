@@ -39,7 +39,7 @@ import type {
   TacticalEvent,
   RPGStatPool,
 } from "@marinara-engine/shared";
-import type { Chat, WorldRoute, WorldWalk } from "@marinara-engine/shared";
+import type { Chat, WorldRoute, WorldTown, WorldTownVisit, WorldWalk } from "@marinara-engine/shared";
 import { isJsonRecord } from "@marinara-engine/shared";
 
 // ── Query Keys ──
@@ -48,6 +48,7 @@ export const gameKeys = {
   all: ["game"] as const,
   sessions: (gameId: string) => [...gameKeys.all, "sessions", gameId] as const,
   overworld: (chatId: string) => [...gameKeys.all, "overworld", chatId] as const,
+  town: (chatId: string) => [...gameKeys.all, "town", chatId] as const,
 };
 
 // ── Types ──
@@ -1004,6 +1005,43 @@ export function useOverworldWalk() {
     },
     onSettled: (_res, _error, variables) => {
       qc.invalidateQueries({ queryKey: gameKeys.overworld(variables.chatId) });
+      qc.invalidateQueries({ queryKey: chatKeys.detail(variables.chatId) });
+    },
+  });
+}
+
+// ── The town (worldgen W8b) ──
+
+/** The town the party is in, where in it the party stands, and the visit its next turn tells. */
+export type TownState = WorldTown & { at: string; visit: WorldTownVisit | null };
+
+export function useTown(chatId: string, turnKey: string | null, enabled: boolean) {
+  return useQuery({
+    queryKey: [...gameKeys.town(chatId), turnKey],
+    queryFn: () => api.get<{ town: TownState | null }>(`/game/${chatId}/town`),
+    select: (data) => data.town,
+    enabled: enabled && !!chatId,
+    staleTime: 30_000,
+  });
+}
+
+/** A walk across town to a building or the square: its minutes go on the game's clock. */
+export function useTownVisit() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { chatId: string; to: string }) =>
+      api.post<{ visit: WorldTownVisit; at: string; minutes: number; formatted: string }>(
+        `/game/${data.chatId}/town/visit`,
+        { to: data.to },
+      ),
+    // The party is where it walked at once, so the town never shows it back where it set out.
+    onSuccess: (res, variables) => {
+      qc.setQueriesData<{ town: TownState | null }>({ queryKey: gameKeys.town(variables.chatId) }, (old) =>
+        old?.town ? { town: { ...old.town, at: res.at, visit: res.visit } } : old,
+      );
+    },
+    onSettled: (_res, _error, variables) => {
+      qc.invalidateQueries({ queryKey: gameKeys.town(variables.chatId) });
       qc.invalidateQueries({ queryKey: chatKeys.detail(variables.chatId) });
     },
   });

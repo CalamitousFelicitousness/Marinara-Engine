@@ -9,12 +9,7 @@ import { z } from "zod";
 import { promptSafeText } from "../../schemas/ruleset.schema.js";
 import { TACTICAL_ENVIRONMENTS, TACTICAL_TERRAINS } from "../tactical-combat/environments.js";
 import { gridDimensions, tacticalMadeBoardIssues } from "../tactical-combat/grid-gen.js";
-import type {
-  TacticalEnvironment,
-  TacticalGrid,
-  TacticalMadeBattlefield,
-  TacticalTerrain,
-} from "../tactical-combat/types.js";
+import type { TacticalGrid, TacticalMadeBattlefield, TacticalTerrain } from "../tactical-combat/types.js";
 import type { GameWorld } from "./game-world.js";
 
 /** The most battlefields a world has. */
@@ -61,6 +56,20 @@ export function worldBattlefieldIssues(map: WorldBattlefieldMap): string[] {
   return tacticalMadeBoardIssues(map.size, worldBattlefieldGrid(map));
 }
 
+/**
+ * A stored layer with the boards that cannot be fought on left out, and their names: a board checked by an
+ * older Engine, or written around the editor's route, never costs a world its other hand edits.
+ */
+export function worldEditsFightable<T extends { battlefields?: WorldBattlefieldMap[] }>(
+  edits: T,
+): { edits: T; dropped: string[] } {
+  const unfit = (edits.battlefields ?? []).filter((map) => worldBattlefieldIssues(map).length > 0);
+  if (!unfit.length) return { edits, dropped: [] };
+  const kept = edits.battlefields!.filter((map) => !unfit.includes(map));
+  const { battlefields: _all, ...rest } = edits;
+  return { edits: (kept.length ? { ...rest, battlefields: kept } : rest) as T, dropped: unfit.map((map) => map.name) };
+}
+
 /** A board of the size, plains throughout: where painting one starts. */
 export function worldBattlefieldBlankRows(size: WorldBattlefieldMap["size"]): string[] {
   const { width, height } = gridDimensions(0, size);
@@ -75,7 +84,7 @@ export function worldBattlefieldHere(
   game: GameWorld,
   placeId: string | null | undefined,
   seed: number,
-): { made: TacticalMadeBattlefield; scene: TacticalEnvironment } | null {
+): TacticalMadeBattlefield | null {
   const maps = game.edits?.battlefields;
   if (!maps?.length) return null;
   const parents = new Map(game.world.places.map((place) => [place.id, place.parentId]));
@@ -83,10 +92,7 @@ export function worldBattlefieldHere(
     const here = maps.filter((map) => map.place === at);
     if (!here.length) continue;
     const map = here[(seed >>> 0) % here.length]!;
-    return {
-      made: { id: map.id, name: map.name, size: map.size, grid: worldBattlefieldGrid(map) },
-      scene: map.scene,
-    };
+    return { id: map.id, name: map.name, size: map.size, scene: map.scene, grid: worldBattlefieldGrid(map) };
   }
   return null;
 }

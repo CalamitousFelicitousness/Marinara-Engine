@@ -613,6 +613,7 @@ export function directedRulesetView(
       : null;
   const distance = definition.combat.distance;
   const grid = encounter.board?.grid;
+  const made = encounter.board?.battlefield?.kind === "hand-made" ? encounter.board.battlefield : null;
   return {
     ruleset: { ...encounter.ruleset },
     round: encounter.round,
@@ -624,6 +625,7 @@ export function directedRulesetView(
             height: grid.height,
             tiles: grid.tiles.map((row) => [...row]),
             distance: { ...distance },
+            ...(made ? { scene: made.scene } : {}),
           },
         }
       : {}),

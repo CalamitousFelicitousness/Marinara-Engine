@@ -157,7 +157,7 @@ export function DirectedCombatUI(props: Props) {
             units={[...s.party, ...s.enemies]}
             budgetLabel={budgetLabel}
             defenseLabel={defenseLabel}
-            environment={props.environmentLike ?? props.environment}
+            environment={board.grid?.scene ?? props.environmentLike ?? props.environment}
             busy={busy}
             onChoose={choose}
             onFlee={() => send({ type: "flee" })}

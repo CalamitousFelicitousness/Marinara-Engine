@@ -24,11 +24,12 @@ function isKnownTerrain(value: unknown): value is keyof typeof TERRAIN_DATA {
 export function summarizeTacticalBattlefield(value: unknown): string | undefined {
   if (!isRecord(value) || !isRecord(value.battlefield) || !isRecord(value.grid)) return undefined;
   const provenance = value.battlefield;
-  // A hand-made board's name, as the Game Master may be told it: one plain line.
+  // A hand-made board's name, as the Game Master may be told it: one plain line, with nothing a macro or a
+  // prompt tag is made of (a round-tripped snapshot is the client's JSON).
   const madeName =
     provenance.kind === "hand-made" && typeof provenance.name === "string"
       ? provenance.name
-          .replace(/[\u0000-\u001f\u007f\u0085\u2028\u2029"[\]]/g, " ")
+          .replace(/[\u0000-\u001f\u007f\u0085\u2028\u2029"[\]{}<>]/g, " ")
           .replace(/\s+/g, " ")
           .trim()
           .slice(0, 60)

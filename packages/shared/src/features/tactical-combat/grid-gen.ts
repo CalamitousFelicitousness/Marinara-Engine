@@ -541,7 +541,7 @@ export function madeTacticalBattlefield(made: TacticalMadeBattlefield): Generate
     ok: true,
     grid,
     protectedTiles,
-    battlefield: { kind: "hand-made", size: made.size, id: made.id, name: made.name },
+    battlefield: { kind: "hand-made", size: made.size, id: made.id, name: made.name, scene: made.scene },
   };
 }
 

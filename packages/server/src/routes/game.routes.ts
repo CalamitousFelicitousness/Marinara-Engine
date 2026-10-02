@@ -10548,7 +10548,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         ...(gameWorldElementSet(meta) ? { elements: gameWorldElementSet(meta) } : {}),
         environment,
         formation,
-        ...(here ? { made: here.made } : { battlefield: preferences.battlefield }),
+        ...(here ? { made: here } : { battlefield: preferences.battlefield }),
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unable to generate the requested battlefield.";

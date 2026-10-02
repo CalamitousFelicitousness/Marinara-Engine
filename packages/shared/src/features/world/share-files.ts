@@ -11,6 +11,7 @@ import { WORLD_GENERATOR_VERSION } from "./compile.js";
 import type { WorldEdits } from "./edits.js";
 import { compileGameWorld, gameWorldSchema, worldEditIssues, type WORLD_GROUNDINGS } from "./game-world.js";
 import { checkStoryScript, type StoryScript } from "./story.js";
+import { worldEditsFightable } from "./battlefield-maps.js";
 
 export const WORLD_KIT_FILE_FORMAT = "marinara-world-kit";
 export const WORLD_FILE_FORMAT = "marinara-world";
@@ -147,6 +148,12 @@ export function readWorldFile(
   const inputs = { kit: kit.kit, seed: stored.data.seed, grounding: stored.data.grounding, brief: brief.brief };
   let edits = stored.data.edits;
   if (edits) {
+    // A board that cannot be fought on is left out on its own, never with the rest of the layer.
+    const fightable = worldEditsFightable(edits);
+    if (fightable.dropped.length) {
+      notes.push(`Battlefields that cannot be fought on were left out: ${fightable.dropped.join(", ")}.`);
+    }
+    edits = fightable.edits;
     const unfit = worldEditIssues(inputs, edits);
     if (unfit.length) {
       // First, so it is never cut off behind the brief's own notes.

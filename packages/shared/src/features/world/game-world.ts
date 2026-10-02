@@ -9,6 +9,7 @@ import { gameWorldKitFromMetadata, type WorldKit } from "../../schemas/world-kit
 import { checkWorldBrief, worldBriefSchema, type WorldBrief } from "../../schemas/world-brief.schema.js";
 import { WORLD_GENERATOR_VERSION, compileWorld, type CompiledWorld, type WorldPlace } from "./compile.js";
 import { applyWorldEdits, checkWorldEdits, worldEditsSchema, worldPlaceNamed, type WorldEdits } from "./edits.js";
+import { worldEditsFightable } from "./battlefield-maps.js";
 import { worldCast, worldCastSize, worldPersonSheet } from "./people.js";
 import { worldHistory, worldHistoryLine, worldNotablePast, worldPlacePast } from "./history.js";
 import {
@@ -91,7 +92,7 @@ export function gameWorldFromMetadata(metadata: Record<string, unknown> | null |
   const inputs = { kit, seed: parsed.data.seed, grounding: parsed.data.grounding, brief: checked.brief };
   // A layer that does not fit its world (one written around the editor's check) is not applied at all,
   // so what the editor's route refuses never reaches a reader by another route.
-  const edits = parsed.data.edits;
+  const edits = parsed.data.edits && worldEditsFightable(parsed.data.edits).edits;
   const full = edits && worldEditIssues(inputs, edits).length === 0 ? { ...inputs, edits } : inputs;
   return { ...full, world: compileGameWorld(full) };
 }

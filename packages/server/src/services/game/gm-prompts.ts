@@ -679,7 +679,7 @@ export function buildGmSystemPrompt(ctx: GmPromptContext): string {
   if (ctx.tacticalBattlefieldContext) {
     sections.push(
       `<tactical_battlefield>`,
-      `This is the accepted generated board for the active tactical encounter:`,
+      `This is the accepted board for the active tactical encounter:`,
       ctx.tacticalBattlefieldContext,
       `Keep later combat narration consistent with this resolved board and its terrain.`,
       `</tactical_battlefield>`,

@@ -59,7 +59,7 @@ export type TacticalBattlefieldProvenance =
       size: TacticalBattlefieldSize;
       brief?: TacticalBattlefieldBrief;
     }
-  | { kind: "hand-made"; size: TacticalBattlefieldSize; id: string; name: string };
+  | { kind: "hand-made"; size: TacticalBattlefieldSize; id: string; name: string; scene: TacticalEnvironment };
 
 /** A board painted by hand (worldgen W9g), already checked: one of the standard sizes, its deployment
  *  strips plains and every tile a fighter can stand on connected. Used exactly as painted. */
@@ -67,6 +67,8 @@ export interface TacticalMadeBattlefield {
   id: string;
   name: string;
   size: TacticalBattlefieldSize;
+  /** The battlefield it looks like: its colours, and the weather's reach. */
+  scene: TacticalEnvironment;
   grid: TacticalGrid;
 }
 

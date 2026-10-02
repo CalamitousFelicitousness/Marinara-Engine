@@ -784,8 +784,12 @@ export async function combatDirectorRoutes(
         const elements = gameWorldElementSet(meta);
         // A board painted for where the fight starts (worldgen W9g), for a fight on a board: fought on as
         // painted, in its own scene; the brief's terrain is not used.
+        // A ruleset's fight is on a board only when the game asks for one and the ruleset says what a cell
+        // is worth; the ruleset is read once, here.
+        const resolved = input.style === "ruleset" ? resolveGameRuleset(meta, await loadRulesetRegistry()) : null;
         const here =
-          input.style === "tactical" || (input.style === "ruleset" && input.positioned === true)
+          input.style === "tactical" ||
+          (input.positioned === true && resolved?.status === "ok" && resolved.definition.combat?.distance)
             ? await gameBattlefieldHere(app.db, input.chatId, meta, battlefield.seed)
             : null;
         // A scene in the setting's own words is laid out like the battlefield it names (worldgen W6d).
@@ -818,11 +822,10 @@ export async function combatDirectorRoutes(
           ...(elements ? { elements } : {}),
           seed: battlefield.seed,
           battlefield: here ? undefined : battlefield.battlefield,
-          ...(here ? { made: here.made } : {}),
+          ...(here ? { made: here } : {}),
         });
         let session: RulesetSession | null = null;
-        if (input.style === "ruleset") {
-          const resolved = resolveGameRuleset(meta, await loadRulesetRegistry());
+        if (input.style === "ruleset" && resolved) {
           if (resolved.status !== "ok")
             return reply.code(400).send({ error: "This game does not pin a ruleset this install can read." });
           const definition = resolved.definition;
@@ -858,7 +861,7 @@ export async function combatDirectorRoutes(
             positioned: input.positioned === true,
             environment: environment ?? null,
             formation: input.formation ?? null,
-            ...(here ? { made: here.made } : battlefield.battlefield ? { battlefield: battlefield.battlefield } : {}),
+            ...(here ? { made: here } : battlefield.battlefield ? { battlefield: battlefield.battlefield } : {}),
             party: input.party.map((member) => ({ id: member.id, name: member.name })),
             enemies: input.enemies.map((enemy) => ({
               id: enemy.id,

@@ -164,7 +164,7 @@ test("A tactical fight at a place with a hand-made battlefield is fought on it a
       const metadata = typeof row.metadata === "string" ? JSON.parse(row.metadata) : row.metadata;
       return metadata.gameTacticalCombatSnapshot?.battlefield;
     };
-    await expect.poll(kept).toEqual({ kind: "hand-made", size: "small", id: "b1", name: "Mill yard" });
+    await expect.poll(kept).toEqual({ kind: "hand-made", size: "small", id: "b1", name: "Mill yard", scene: "ruins" });
 
     // A restart is fought on the same board, never on a brief.
     await page.getByTitle("Restart the battle", { exact: true }).click();

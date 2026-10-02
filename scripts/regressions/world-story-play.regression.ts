@@ -22,6 +22,8 @@ import {
   WORLD_STARTER_KITS,
   applyStoryTags,
   checkStoryScript,
+  readToldLedger,
+  refuseStoryTags,
   checkWorldBrief,
   compileGameWorld,
   createConnectionSchema,
@@ -149,13 +151,12 @@ assert.ok(read.ok, JSON.stringify(read));
 const story: StoryScript = read.story;
 
 const turnOf = (replies: string[], extra: Partial<StoryTurnWorld> = {}) => {
-  const ledger = readWorldLedger(replies);
   return storyTurn(story, {
     game,
     replies,
     repliesBefore: replies.length,
     latest: replies.at(-1) ?? null,
-    ledger,
+    told: [],
     day: 0,
     fight: null,
     playerName: "Robin",
@@ -169,8 +170,9 @@ const { gameRoutes } = await import("../../packages/server/src/routes/game.route
 const { generateRoutes } = await import("../../packages/server/src/routes/generate.routes.js");
 const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
 const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
-const { textRewriteChangesEngineText } =
+const { storyScenesOf, textRewriteChangesEngineText } =
   await import("../../packages/server/src/services/generation/text-rewrite-safety.js");
+const { gameRepliesBefore } = await import("../../packages/server/src/services/game/game-market.service.js");
 
 try {
   // ── The Engine's triggers ──
@@ -237,8 +239,8 @@ try {
       game,
       replies,
       repliesBefore: replies.length,
-      latest: null,
-      ledger: readWorldLedger(replies),
+      latest: replies.at(-1) ?? null,
+      told: [],
       day,
       fight: null,
     });
@@ -253,6 +255,122 @@ try {
     "and again for another",
   );
   assert.deepEqual(datedTurn([`[world: deed="hinder" group="The Red Hand" result="ok"]`], 0).tripped, []);
+  // A repeating flags event happens when its conditions come true, not on every turn they stay true.
+  const rising = checkStoryScript(game, {
+    storyVersion: 1,
+    flags: [{ id: "alarm", kind: "bool", initial: false, gm: true }],
+    events: [
+      {
+        id: "bells",
+        when: { on: "flags" },
+        repeat: true,
+        if: [{ flag: "alarm", is: "=", value: true }],
+        do: [{ tell: "Bells." }],
+      },
+    ],
+  });
+  assert.ok(rising.ok);
+  const bells = (replies: string[]) =>
+    storyTurn(rising.story, {
+      game,
+      replies,
+      repliesBefore: replies.length,
+      latest: null,
+      told: [],
+      day: 0,
+      fight: null,
+    }).tripped;
+  const raised = `[story: flag="alarm" set="alarm=true" result="ok"]`;
+  const rang = `[story: event="bells" by="engine" result="ok"]`;
+  const lowered = `[story: flag="alarm" set="alarm=false" result="ok"]`;
+  assert.deepEqual(bells([]), [], "not while false");
+  assert.deepEqual(bells([raised]), ["bells"]);
+  assert.deepEqual(bells([raised, rang]), [], "not again while it stays true");
+  assert.deepEqual(bells([raised, rang, "x"]), []);
+  assert.deepEqual(bells([raised, rang, lowered, raised]), ["bells"], "again once it comes true again");
+
+  // Arriving: by this turn's walk (its tags go before this reply), only while the party is there, and a
+  // repeating arrival again only once the party has come back.
+  const walked = turnOf(["The rain."], { told: readToldLedger(`[world: days="2"][place: name="${away.name}"]`) });
+  assert.ok(walked.tripped.includes("gates"), "the walk's arrival, this very turn");
+  const elsewhere = startHere.name;
+  const comeAndGo = [`[place: name="${away.name}" result="ok"]`, `[place: name="${elsewhere}" result="ok"]`];
+  const gated = checkStoryScript(game, {
+    storyVersion: 1,
+    flags: [{ id: "open", kind: "bool", initial: false, gm: true }],
+    events: [
+      {
+        id: "once",
+        when: { on: "arrive", place: away.id },
+        if: [{ flag: "open", is: "=", value: true }],
+        do: [{ tell: "In." }],
+      },
+      { id: "each", when: { on: "arrive", place: away.id }, repeat: true, do: [{ tell: "Again." }] },
+    ],
+  });
+  assert.ok(gated.ok, JSON.stringify(gated));
+  const arrive = (replies: string[], told = "") =>
+    storyTurn(gated.story, {
+      game,
+      replies,
+      repliesBefore: replies.length,
+      latest: replies.at(-1) ?? null,
+      told: readToldLedger(told),
+      day: 0,
+      fight: null,
+    }).tripped;
+  const opened = `[story: flag="open" set="open=true" result="ok"]`;
+  assert.deepEqual(arrive([...comeAndGo, opened]), [], "the gates opened while the party was away: not there");
+  assert.deepEqual(arrive([...comeAndGo, opened], `[place: name="${away.name}"]`), ["once", "each"], "back there");
+  const been = [comeAndGo[0]!, `[story: event="each" by="engine" result="ok"]`];
+  assert.deepEqual(arrive(been), [], "still there: not again");
+  assert.deepEqual(arrive([...been, comeAndGo[1]!]), [], "gone");
+  assert.deepEqual(arrive([...been, comeAndGo[1]!, comeAndGo[0]!]), ["each"], "come back: again");
+
+  // A repeating event that would set itself off again is refused.
+  const loops = checkStoryScript(game, {
+    storyVersion: 1,
+    events: [
+      { id: "greet", when: { on: "meet", person: mayor.id }, repeat: true, do: [{ cutscene: "hello" }] },
+      {
+        id: "helped",
+        when: { on: "deed", deed: "help" },
+        repeat: true,
+        do: [{ world: { deed: "help", group: "The Red Hand" } }],
+      },
+    ],
+    cutscenes: [{ id: "hello", kind: "pages", pages: [{ speaker: mayor.id, text: "Hello again." }] }],
+  });
+  assert.ok(!loops.ok && /meet them again every turn/.test(loops.issues.join(" ")), JSON.stringify(loops));
+  assert.ok(!loops.ok && /does the deed it waits for/.test(loops.issues.join(" ")));
+  // A deed counts at its place by any name the place went by (a hand edit renamed it).
+  const renamedGame: GameWorld = {
+    ...game,
+    edits: { editsVersion: 1, places: [{ id: ashford.id, name: "Newhaven" }] },
+    world: compileGameWorld({
+      kit,
+      ...stored,
+      edits: { editsVersion: 1, places: [{ id: ashford.id, name: "Newhaven" }] },
+    }),
+  };
+  const atAshford = checkStoryScript(renamedGame, {
+    storyVersion: 1,
+    events: [{ id: "mended", when: { on: "deed", deed: "improve", place: ashford.id }, do: [{ tell: "Mended." }] }],
+  });
+  assert.ok(atAshford.ok);
+  const improved = `[world: deed="improve" place="Ashford" result="ok"]`;
+  assert.deepEqual(
+    storyTurn(atAshford.story, {
+      game: renamedGame,
+      replies: [improved],
+      repliesBefore: 1,
+      latest: improved,
+      told: [],
+      day: 0,
+      fight: null,
+    }).tripped,
+    ["mended"],
+  );
 
   // ── The Game Master's own tags ──
   const state = storyState(story, readStoryLedger(dusk));
@@ -283,6 +401,40 @@ try {
     applyStoryTags(`[story: event="betrayal"]`, story, game, storyState(story, [])),
     /reason="conditions"/,
     "its conditions first",
+  );
+  const spam = checkStoryScript(game, {
+    storyVersion: 1,
+    flags: [{ id: "n", kind: "number", initial: 0, gm: true }],
+    events: [{ id: "shout", when: { on: "gm" }, gm: true, repeat: true, do: [{ add: "n", amount: 1 }] }],
+  });
+  assert.ok(spam.ok);
+  const twice = applyStoryTags(
+    `[story: event="shout"] [story: event="shout"]`,
+    spam.story,
+    game,
+    storyState(spam.story, []),
+  );
+  assert.equal((twice.match(/result="ok"/g) ?? []).length, 1, "once a turn");
+  assert.match(twice, /reason="this-turn"/);
+  assert.match(
+    applyStoryTags(`[story: event="shout"]`, spam.story, game, storyState(spam.story, []), ["shout"]),
+    /reason="this-turn"/,
+    "nor after the Engine tripped it this turn",
+  );
+  assert.match(
+    applyStoryTags(
+      `[story: flag="n" add="1e308"] [story: flag="n" add="1e308"]`,
+      spam.story,
+      game,
+      storyState(spam.story, []),
+    ),
+    /set="n=1e\+308" result="ok"\] \[story: flag="n" result="refused" reason="unreadable"\]/,
+    "never past a number a record can hold",
+  );
+  assert.equal(
+    refuseStoryTags(`A. [story: event="x" set="favours=3" result="ok"] [story: flag="y" value="1"]`),
+    `A. [story: event="x" result="refused" reason="no-story"] [story: flag="y" result="refused" reason="no-story"]`,
+    "with no story, nothing a tag claims can count",
   );
   // What it tripped arrives at the start of the next reply: its scene and its ask, not its deed again.
   const next = turnOf([...dusk, answered]);
@@ -317,13 +469,26 @@ try {
 
   // ── A rewrite never changes what the Engine wrote ──
   const written = `${there.prepend}They enter.`;
-  assert.equal(textRewriteChangesEngineText(written, `${there.prepend}They walk in.`, there.prepend), false);
-  assert.equal(textRewriteChangesEngineText(written, written.replace("creak open", "swing wide"), there.prepend), true);
+  assert.equal(textRewriteChangesEngineText(written, `${there.prepend}They walk in.`, there.shown), false);
+  assert.equal(textRewriteChangesEngineText(written, written.replace("creak open", "swing wide"), there.shown), true);
+  const tagged = `A. [world: days="2" result="ok"]`;
+  assert.equal(textRewriteChangesEngineText(tagged, "A.", []), true, "nor drops a tag");
   assert.equal(
-    textRewriteChangesEngineText(`A. [world: days="2" result="ok"]`, "A.", ""),
+    textRewriteChangesEngineText(tagged, `${tagged} [world: days="2" result="ok"]`, []),
     true,
-    "nor drops an answered tag",
+    "nor doubles one",
   );
+  assert.equal(
+    textRewriteChangesEngineText(tagged, `${tagged} [story: event="won" by="engine" result="ok"]`, []),
+    true,
+    "nor adds one",
+  );
+  assert.equal(
+    textRewriteChangesEngineText(tagged, tagged.replace("A.", "Ah."), []),
+    false,
+    "the prose is the rewrite's",
+  );
+  assert.deepEqual(storyScenesOf(JSON.stringify({ worldShownScenes: ["x"] })), ["x"]);
 
   // ── Through the routes, with a stand-in model ──
   const replies: string[] = [];
@@ -340,6 +505,7 @@ try {
     );
   });
   await new Promise<void>((resolve) => standIn.listen(0, "127.0.0.1", resolve));
+  standIn.unref();
   const address = standIn.address();
   assert.ok(address && typeof address !== "string");
   const db = await getDB();
@@ -404,9 +570,14 @@ try {
     assert.match(reply2.content, /\[story: flag="trust" set="trust=2" result="ok"\]/);
     assert.match(
       reply2.content,
-      /\[story: event="betrayal" result="ok"\]\[world: deed="hinder" group="The Red Hand" result="(ok|refused)"/,
+      /\[story: event="betrayal" result="ok"\]\[world: deed="hinder" group="The Red Hand" result="ok"/,
     );
     await turn("Swords out.");
+    assert.equal(
+      (await gameRepliesBefore(db, chatId)).player,
+      null,
+      "after the Game Master's reply, no player message waits for an answer (an old fight never counts again)",
+    );
     const reply3 = (await gmReplies()).at(-1)!;
     assert.match(reply3.content, /^The mayor's smile slips\./, "the scene first, as written");
     assert.match(prompts.join("\n"), /The guards close in\./);
@@ -428,6 +599,20 @@ try {
       [["Favours", 0]],
       "the objectives the player sees, the party's echo left out",
     );
+
+    // A walk into the place: its arrival scene opens that very reply, and the Game Master is told.
+    const walk = await app.inject({
+      method: "POST",
+      url: `/api/game/${chatId}/overworld/walk`,
+      payload: { to: away.id },
+    });
+    assert.equal(walk.statusCode, 200, walk.body);
+    await turn("Hooves on cobbles.");
+    const arrived = (await gmReplies()).at(-1)!;
+    assert.match(arrived.content, /The gates creak open\./);
+    assert.ok(arrived.content.indexOf("The gates creak open.") < arrived.content.indexOf("Hooves on cobbles."));
+    assert.match(prompts.join("\n"), /shown this scene as written/);
+    assert.deepEqual(JSON.parse(arrived.extra as string).worldShownScenes.length, 1, "kept for any rewrite later");
   } finally {
     await app.close();
     await closeDB();

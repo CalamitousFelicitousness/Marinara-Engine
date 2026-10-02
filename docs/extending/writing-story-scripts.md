@@ -59,8 +59,8 @@ A flag is a value the story keeps: `"bool"` (true or false) or `"number"`.
 ```
 
 A yes-or-no objective is done when its flag is true; a number objective when it reaches its `goal`
-(1 when not given), and the journal shows how far along it is. An objective with `"hidden": true` waits
-in the journal until an event shows it.
+(1 when not given), and with a `goal` written the journal shows how far along it is. An objective with
+`"hidden": true` waits in the journal until an event shows it.
 
 ### Directions
 
@@ -85,8 +85,8 @@ An event is something that happens: when its trigger fires and its conditions ho
   "do": [{ "cutscene": "gates" }, { "set": "arrived", "value": true }, { "show": "key" }] }
 ```
 
-An event happens once, unless it has `"repeat": true`. At most 32 events happen in one turn, each at most
-once, in the order the script lists them.
+An event happens once, unless it has `"repeat": true` (which `start`, `turn` and `day` ignore). At most
+32 events happen in one turn, each at most once, in the order the script lists them.
 
 **Triggers** (`when.on`), all read from what the game has recorded:
 
@@ -94,13 +94,16 @@ once, in the order the script lists them.
 | --- | --- |
 | `start` | On the game's first reply. |
 | `turn` | On or after the Game Master's reply number `turn` in the whole game, across sessions. |
-| `day` | Once the world's day (as the Game Master's time passing has moved it) is `day` or later. |
-| `arrive` | When the party comes into `place` (a place id) or a place inside it: by starting there, a walk on the overworld, a visit in town, or a place the Game Master names. With `repeat`, each time it comes back from elsewhere. |
-| `meet` | When a reply names `person` (a person id such as `p11-3`, or `p11-e1` for one added by hand) in full. With `repeat`, for each reply that does. |
-| `deed` | When the world records a deed of the party, of kind `deed` and at `place` when given. With `repeat`, for each one. |
+| `day` | Once the world's day (moved by the Game Master's time passing and by walks) is `day` or later. |
+| `arrive` | While the party is in `place` (a place id) or a place inside it, having come there by starting there, a walk on the overworld, a visit in town, or a place the Game Master names. With `repeat`, again each time it comes back from elsewhere. |
+| `meet` | Once a reply has named `person` (a person id such as `p11-3`, or `p11-e1` for one added by hand) in full. With `repeat`, again for each reply that names them. Only this session's replies are read for names. |
+| `deed` | Once the world has recorded a deed of the party, of kind `deed` and at `place` when given. With `repeat`, again for each reply that records one. |
 | `fight` | When a fight ends in `outcome`: `victory`, `defeat` or `flee`. |
-| `flags` | Whenever its conditions hold. With `repeat`, on every turn they hold, so have it change them. |
+| `flags` | When its conditions hold. With `repeat`, again each time they come true after being false. |
 | `gm` | Only when the Game Master trips it (the event needs `"gm": true`). |
+
+A repeating `meet` event whose own scene names that person, or a repeating `deed` event that does the
+deed it waits for, would set itself off every turn, so the Engine refuses it.
 
 **Actions** (`do`):
 
@@ -152,13 +155,15 @@ game's next session.
 
 ### The Game Master's tags
 
-The Game Master is told only what the script makes its own: the `gm` events (with their `note`) and
-the `gm` flags. It marks them in its reply:
+Each turn the Game Master is told the story's values (hidden from the player) and the directions in
+force. Of the rest of the script it is told only what the script makes its own: the `gm` events (with
+their `note`) and the `gm` flags. It marks them in its reply:
 
 - `[story: event="<id>"]` trips a `gm` event whose conditions hold (once, unless it repeats).
 - `[story: flag="<id>" value="<value>"]`, or `add="<number>"` for a number flag, sets a `gm` flag.
 
-The Engine answers each tag in place, and refuses anything else with the reason. What the Game Master
+The Engine answers each tag in place, an event at most once a turn, and refuses anything else with the
+reason. In a game with no story, every story tag is refused. What the Game Master
 trips takes effect at once (its flags, its deeds); its scenes and what it asks come at the start of the
 next reply.
 

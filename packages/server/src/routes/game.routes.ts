@@ -12,6 +12,8 @@ import {
   checkStoryScript,
   compileGameWorld,
   gameStoryFromMetadata,
+  STORY_EXPRESSIONS,
+  WORLD_DEED_KINDS,
   readStoryLedger,
   storyObjectives,
   storyScriptSchema,
@@ -11173,7 +11175,27 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const meta = parseMeta(chat.metadata);
     const game = chat.mode === "game" ? gameWorldFromMetadata(meta) : null;
     if (!game) return reply.status(404).send({ error: "This game has no world." });
-    return { story: gameStoryFromMetadata(meta, game) };
+    const story = gameStoryFromMetadata(meta, game);
+    const replies = await gameRepliesBefore(app.db, req.params.chatId);
+    return {
+      story,
+      // For a story maker: what the story has done in this game so far, and what a story can name here
+      // (the world as edited; its people come from /world/people).
+      state: story ? storyState(story, readStoryLedger(replies.all)) : null,
+      names: {
+        places: game.world.places.map((place) => ({
+          id: place.id,
+          name: place.name,
+          parentId: place.parentId ?? null,
+          settlement: place.rank !== undefined,
+        })),
+        groups: game.brief.groups.map((group) => group.name),
+        deeds: (Object.keys(WORLD_DEED_KINDS) as Array<keyof typeof WORLD_DEED_KINDS>).filter(
+          (deed) => game.kit.change.kinds[WORLD_DEED_KINDS[deed]].on,
+        ),
+        expressions: STORY_EXPRESSIONS,
+      },
+    };
   });
 
   // PUT /game/:chatId/story {story}

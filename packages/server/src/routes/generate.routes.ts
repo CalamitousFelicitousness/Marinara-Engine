@@ -197,6 +197,8 @@ import {
   applyWorldTags,
   applyStoryTags,
   gameStoryFromMetadata,
+  readToldLedger,
+  refuseStoryTags,
   readStoryLedger,
   storyFightOutcome,
   storyState,
@@ -321,6 +323,7 @@ import {
   resolveIllustratorImageSize,
 } from "../services/image/image-generation-settings.js";
 import {
+  storyScenesOf,
   textRewriteChangesEngineText,
   textRewriteDropsProtectedMarkup,
 } from "../services/generation/text-rewrite-safety.js";
@@ -1942,8 +1945,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 const visitTags = visit && town ? worldTownVisitTags(town, visit) : "";
                 const told =
                   walk && visit && visit.settlementId !== walk.to ? visitTags + walkTags : walkTags + visitTags;
-                const ledger = [...before, ...readWorldLedger([told])];
-                const own = replies.all.slice(replies.carried ? 1 : 0);
+                const toldEntries = readToldLedger(told);
+                const present = worldPresent(game, [...before, ...toldEntries]);
+                const own = replies.all.slice(replies.carried?.tags ? 1 : 0);
                 return {
                   story,
                   game,
@@ -1951,9 +1955,10 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                     game,
                     replies: replies.all,
                     repliesBefore: (replies.carried?.replies ?? 0) + own.length,
-                    latest: own.at(-1) ?? null,
-                    ledger,
-                    day: worldPresent(game, ledger).day,
+                    latest: own.filter((reply) => reply.trim()).at(-1) ?? replies.carried?.last ?? null,
+                    told: toldEntries,
+                    added: present.places,
+                    day: present.day,
                     fight: storyFightOutcome(replies.player),
                     playerName: personaName,
                   }),
@@ -7028,9 +7033,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         let reasoningDurationMs: number | null = null;
         let receivedThinking = false;
         let allResponses: string[] = [];
-        // What the Engine put before a game reply (the walk, the visit, the story's turn): a rewrite of the
-        // reply must keep it as it is (worldgen W10).
-        let turnEnginePrefix = "";
+        // The scenes a game reply shows as written (worldgen W10): a rewrite of the reply must keep them.
+        let turnShownScenes: readonly string[] = [];
         const allResponseSegments: NonNullable<AgentContext["mainResponseSegments"]> = [];
         const roleplayResponseIndexes = new Map<string, number>();
         let continuedMessageRewriteSource: string | null = null;
@@ -9652,20 +9656,28 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               // walk and the visit it may have tripped on.
               const storyTurnTold = await turnStory();
               const story = storyTurnTold?.story ?? gameStoryFromMetadata(chatMeta, turnWorld);
-              if (story && /\[story:/i.test(fullResponse)) {
-                const before = storyTurnTold?.turn.state ?? storyState(story, readStoryLedger(replies.all));
-                const answered = applyStoryTags(fullResponse, story, turnWorld, before);
+              if (/\[story:/i.test(fullResponse)) {
+                // Without a story, nothing answers them: refused, so none can count if a story comes later.
+                const answered = story
+                  ? applyStoryTags(
+                      fullResponse,
+                      story,
+                      turnWorld,
+                      storyTurnTold?.turn.state ?? storyState(story, readStoryLedger(replies.all)),
+                      storyTurnTold?.turn.tripped,
+                    )
+                  : refuseStoryTags(fullResponse);
                 if (answered !== fullResponse) {
                   fullResponse = answered;
                   contentReplaced = true;
                 }
               }
-              const prefix = told + (storyTurnTold && fullResponse.trim() ? storyTurnTold.turn.prepend : "");
-              if (prefix) {
-                fullResponse = `${prefix}${fullResponse}`;
+              const storyPrefix = storyTurnTold && fullResponse.trim() ? storyTurnTold.turn.prepend : "";
+              if (told || storyPrefix) {
+                fullResponse = `${told}${storyPrefix}${fullResponse}`;
                 contentReplaced = true;
-                turnEnginePrefix = prefix;
               }
+              if (storyPrefix) turnShownScenes = storyTurnTold!.turn.shown;
               const ledger = readWorldLedger(replies.all);
               if (/\[world:/i.test(fullResponse)) {
                 const answered = applyWorldTags(fullResponse, turnWorld, ledger);
@@ -10208,6 +10220,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 : {}),
             });
             savedSwipeIndex = 0;
+          }
+          // The scenes the reply shows as written (worldgen W10) stay with it, so a rewrite later (a retry, or
+          // after a continuation) keeps them too.
+          if (savedMsg?.id && turnShownScenes.length && !input.continueMessageId) {
+            await chats
+              .updateMessageExtra(savedMsg.id, { worldShownScenes: [...turnShownScenes] })
+              .catch((err: unknown) => logger.warn(err, "[generate/game] Could not keep the story's scenes"));
           }
           // The walk the reply told (worldgen W8) stays with it, so a regeneration tells it again, and is
           // no longer pending; the days the Game Master's telling passed go on the game's clock.
@@ -13785,9 +13804,18 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   const droppedProtectedMarkup =
                     (strictEditNeeded &&
                       textRewriteDropsProtectedMarkup(currentResponseForRewrite, sanitizedEditedText)) ||
-                    // What the Engine wrote stays as it wrote it (worldgen W10): the walk, the visit and the
-                    // story's turn before the reply, a scene shown as written, and every answered tag.
-                    textRewriteChangesEngineText(currentResponseForRewrite, sanitizedEditedText, turnEnginePrefix);
+                    // What the Engine wrote stays as it wrote it (worldgen W10): every world, place and story
+                    // tag, and every scene shown as written (a continuation's, kept with the reply).
+                    (requestChatMode === "game" &&
+                      textRewriteChangesEngineText(
+                        currentResponseForRewrite,
+                        sanitizedEditedText,
+                        turnShownScenes.length
+                          ? turnShownScenes
+                          : input.continueMessageId
+                            ? storyScenesOf(continueTargetMessage?.extra)
+                            : [],
+                      ));
                   if (droppedProtectedMarkup) {
                     logger.warn(
                       "[text-rewrite] Skipping %s rewrite because it dropped protected markup from message %s",

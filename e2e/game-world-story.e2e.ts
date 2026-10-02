@@ -6,7 +6,6 @@ import {
   checkWorldBrief,
   compileGameWorld,
   parseWorldKit,
-  readWorldLedger,
   storyTurn,
   worldCast,
 } from "@marinara-engine/shared";
@@ -87,7 +86,7 @@ const turn = storyTurn(story, {
   replies: before,
   repliesBefore: before.length,
   latest: before.at(-1)!,
-  ledger: readWorldLedger(before),
+  told: [],
   day: 0,
   fight: null,
 });

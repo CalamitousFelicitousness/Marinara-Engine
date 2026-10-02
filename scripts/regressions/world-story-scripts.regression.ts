@@ -379,7 +379,17 @@ try {
     assert.deepEqual((await meta()).gameStory, story1);
 
     // Read, saved, taken away.
-    assert.deepEqual((await app.inject({ method: "GET", url: `/api/game/${chatId}/story` })).json(), { story: story1 });
+    const got = (await app.inject({ method: "GET", url: `/api/game/${chatId}/story` })).json();
+    assert.deepEqual(got.story, story1);
+    // For a maker: what it has done so far, and what a story can name in this world.
+    assert.deepEqual(got.state.flags, { met_mayor: false, trust: 0, key: false });
+    assert.ok(
+      got.names.places.some(
+        (place: { id: string; name: string }) => place.id === ashford.id && place.name === "Ashford",
+      ),
+    );
+    assert.deepEqual(got.names.groups, ["The Red Hand"]);
+    assert.ok(got.names.deeds.includes("help") && got.names.expressions.includes("happy"));
     const file = (await app.inject({ method: "GET", url: `/api/game/${chatId}/world/file` })).json();
     assert.deepEqual(file.story, story1, "the world file carries its story");
     const shorter = { ...story1, cutscenes: story1.cutscenes, events: story1.events.slice(0, 2) };
@@ -442,7 +452,7 @@ try {
     const removed = await app.inject({ method: "DELETE", url: `/api/game/${chatId}/story` });
     assert.equal(removed.statusCode, 200);
     assert.equal((await meta()).gameStory ?? null, null);
-    assert.deepEqual((await app.inject({ method: "GET", url: `/api/game/${chatId}/story` })).json(), { story: null });
+    assert.equal((await app.inject({ method: "GET", url: `/api/game/${chatId}/story` })).json().story, null);
     // Only a game with a world has a story to take away.
     const conversation = (await createChatsStorage(db).create({
       name: "Chat",

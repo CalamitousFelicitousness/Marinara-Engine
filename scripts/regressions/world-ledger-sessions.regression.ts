@@ -115,6 +115,11 @@ try {
     );
     const meta = JSON.parse((await chats.getById(second))!.metadata as string);
     assert.equal(meta.gameLedgerCarry.replies, 2, "the Game Master's replies so far");
+    assert.match(
+      meta.gameLedgerCarry.last,
+      /event="gates"/,
+      "and the last reply's tags, for what the Game Master tripped there (worldgen W10)",
+    );
 
     // ── Session 3: everything before it, in order ──
     await say(second, "assistant", `A week on the road.\n[world: days="7" result="ok"]`);

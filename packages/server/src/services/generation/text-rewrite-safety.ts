@@ -16,16 +16,38 @@ export function textRewriteDropsProtectedMarkup(original: string | null | undefi
   return (originalHasTags && !hasHtmlOrXmlTag(edited)) || (originalHasFences && !hasFencedBlock(edited));
 }
 
-/** Answered world, place and story tags: the Engine's record of what a reply did (worldgen W4, W10). */
-const ANSWERED_TAG = /\[(?:world|place|story):[^\]]*result="ok"[^\]]*\]/gi;
+/** World, place and story tags: the Engine's record of what a reply did (worldgen W4, W10). */
+const ENGINE_TAG = /\[(?:world|place|story):[^\]]*\]/gi;
+const engineTags = (text: string) => (text.match(ENGINE_TAG) ?? []).sort().join("\n");
+
+/** The scenes a game reply shows as written (worldgen W10), as kept on the message. */
+export function storyScenesOf(extra: unknown): string[] {
+  const scenes = (parseStoredExtra(extra) as { worldShownScenes?: unknown }).worldShownScenes;
+  return Array.isArray(scenes) ? scenes.filter((scene): scene is string => typeof scene === "string") : [];
+}
+
+function parseStoredExtra(extra: unknown): Record<string, unknown> {
+  if (extra && typeof extra === "object") return extra as Record<string, unknown>;
+  if (typeof extra !== "string") return {};
+  try {
+    const parsed = JSON.parse(extra);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
 
 /**
- * True when a rewrite changes what the Engine wrote into a reply: the text it put before the reply (a
- * walk's, a visit's and a story's tags, and a scene shown as written, which the player must see as
- * written), or any answered tag, which the world's and the story's ledgers are read from.
+ * True when a rewrite changes what the Engine wrote into a game reply: any world, place or story tag
+ * (taken away, added, doubled or altered: the ledgers are read from them), or a scene shown as written,
+ * which the player must see as written.
  */
-export function textRewriteChangesEngineText(original: string | null | undefined, edited: string, prefix: string) {
+export function textRewriteChangesEngineText(
+  original: string | null | undefined,
+  edited: string,
+  scenes: readonly string[] = [],
+): boolean {
   if (!original) return false;
-  if (prefix && original.startsWith(prefix) && !edited.startsWith(prefix)) return true;
-  return (original.match(ANSWERED_TAG) ?? []).some((tag) => !edited.includes(tag));
+  if (engineTags(original) !== engineTags(edited)) return true;
+  return scenes.some((scene) => original.includes(scene) && !edited.includes(scene));
 }

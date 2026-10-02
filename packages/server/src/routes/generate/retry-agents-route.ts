@@ -97,7 +97,11 @@ import { createCharacterGalleryStorage } from "../../services/storage/character-
 import { createPersonaGalleryStorage } from "../../services/storage/persona-gallery.storage.js";
 import { createPromptsStorage } from "../../services/storage/prompts.storage.js";
 import { findLastUserMessageIdBefore } from "../../services/generation/message-history.js";
-import { textRewriteDropsProtectedMarkup } from "../../services/generation/text-rewrite-safety.js";
+import {
+  storyScenesOf,
+  textRewriteChangesEngineText,
+  textRewriteDropsProtectedMarkup,
+} from "../../services/generation/text-rewrite-safety.js";
 import {
   resolveConnectionImageDefaults,
   resolveConnectionImageQuality,
@@ -2952,7 +2956,14 @@ async function applyRetryResultEffects(args: {
         const rewriteAllowed =
           editNeededValue === false ? false : strictEditNeeded ? explicitlyRequestsTextRewrite(editNeededValue) : true;
         const droppedProtectedMarkup =
-          strictEditNeeded && textRewriteDropsProtectedMarkup(currentResponseForRewrite, editedText);
+          (strictEditNeeded && textRewriteDropsProtectedMarkup(currentResponseForRewrite, editedText)) ||
+          // A game reply keeps what the Engine wrote into it (worldgen W10), as a rewrite after a turn does.
+          (chat?.mode === "game" &&
+            textRewriteChangesEngineText(
+              currentResponseForRewrite,
+              editedText,
+              storyScenesOf((await createChatsStorage(app.db).getMessage(retryMessageId))?.extra),
+            ));
         if (droppedProtectedMarkup) {
           logger.warn(
             "[retry-agents] Skipping %s rewrite because it dropped protected markup from message %s",

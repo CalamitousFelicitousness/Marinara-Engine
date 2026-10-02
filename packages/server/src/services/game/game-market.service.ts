@@ -64,9 +64,13 @@ export async function gameRepliesBefore(db: DB, chatId: string, replacing?: stri
   for (const message of before) {
     if (parseExtra(message.extra).isConversationStart === true) scopedFrom = all.length;
     if (message.role === "user" && typeof message.content === "string") player = message.content;
-    if (isGameMasterReply(message)) all.push(message.content);
+    if (isGameMasterReply(message)) {
+      all.push(message.content);
+      // Answered: a later reply answers only what the player writes after it.
+      if (message.content.trim()) player = null;
+    }
   }
-  return { scoped: all.slice(scopedFrom), all, carried: carried?.tags ? carried : null, player };
+  return { scoped: all.slice(scopedFrom), all, carried, player };
 }
 
 /**

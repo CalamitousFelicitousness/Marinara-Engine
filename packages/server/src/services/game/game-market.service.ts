@@ -14,6 +14,7 @@ import {
   type RulesetItemBook,
   type RulesetLiveStates,
   type WorldKitItems,
+  type WorldLedgerCarry,
   worldLedgerCarry,
 } from "@marinara-engine/shared";
 import type { DB } from "../../db/connection.js";
@@ -31,6 +32,10 @@ export interface GameRepliesBefore {
   /** All of them: what the world's ledger is read from (worldgen W4), since a conversation start
    *  scopes what the model reads, not what the story did to the world. */
   all: string[];
+  /** What earlier sessions carried in (W10-0), read first in `all` as one reply; null in a first session. */
+  carried: WorldLedgerCarry | null;
+  /** The player's message the reply answers: the last one before it (worldgen W10, a fight's recap). */
+  player: string | null;
 }
 
 /** A Game Master's own reply: an assistant message that is not a party's turn (a tag a party's model
@@ -55,11 +60,13 @@ export async function gameRepliesBefore(db: DB, chatId: string, replacing?: stri
   const carried = worldLedgerCarry(readMetadata(chat?.metadata).gameLedgerCarry);
   const all: string[] = carried?.tags ? [carried.tags] : [];
   let scopedFrom = all.length;
+  let player: string | null = null;
   for (const message of before) {
     if (parseExtra(message.extra).isConversationStart === true) scopedFrom = all.length;
+    if (message.role === "user" && typeof message.content === "string") player = message.content;
     if (isGameMasterReply(message)) all.push(message.content);
   }
-  return { scoped: all.slice(scopedFrom), all };
+  return { scoped: all.slice(scopedFrom), all, carried: carried?.tags ? carried : null, player };
 }
 
 /**

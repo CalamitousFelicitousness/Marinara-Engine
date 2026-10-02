@@ -18,6 +18,7 @@ import {
   checkWorldBrief,
   compileGameWorld,
   parseWorldKit,
+  readStoryLedger,
   readWorldLedger,
   worldPresent,
 } from "../../packages/shared/src/index.js";
@@ -65,7 +66,11 @@ try {
       chats.createMessage({ chatId, role, characterId: null, content });
     await say(first.id, "assistant", `[place: name="${town.name}" result="ok"]\nThe gates open.`);
     await say(first.id, "user", "We rest.");
-    await say(first.id, "assistant", `Three days go by.\n[world: days="3" result="ok"]`);
+    await say(
+      first.id,
+      "assistant",
+      `Three days go by.\n[world: days="3" result="ok"] [story: event="gates" set="arrived=true" by="engine" result="ok"]`,
+    );
     // A party's turn echoing an answered tag: never the Game Master's word.
     await say(first.id, "assistant", `[party-turn]\nMira: "We razed it!" [world: days="40" result="ok"]`);
 
@@ -103,6 +108,11 @@ try {
       "and where the party went",
     );
     assert.deepEqual(carried.scoped, [], "the new session's own scene starts with its own replies");
+    assert.deepEqual(
+      readStoryLedger(carried.all).map((entry) => [entry.event, entry.set]),
+      [["gates", [["arrived", true]]]],
+      "and what the world's story did (worldgen W10)",
+    );
     const meta = JSON.parse((await chats.getById(second))!.metadata as string);
     assert.equal(meta.gameLedgerCarry.replies, 2, "the Game Master's replies so far");
 

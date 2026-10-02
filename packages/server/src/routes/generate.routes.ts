@@ -195,6 +195,16 @@ import {
   applyWorldHistoryTags,
   worldHistoryAnswerText,
   applyWorldTags,
+  applyStoryTags,
+  gameStoryFromMetadata,
+  readStoryLedger,
+  storyFightOutcome,
+  storyState,
+  storyTurn,
+  storyTurnPromptText,
+  type GameWorld,
+  type StoryScript,
+  type StoryTurn,
   readWorldLedger,
   worldKitItems,
   gameWorldKitFromMetadata,
@@ -310,7 +320,10 @@ import {
   loadImageGenerationUserSettings,
   resolveIllustratorImageSize,
 } from "../services/image/image-generation-settings.js";
-import { textRewriteDropsProtectedMarkup } from "../services/generation/text-rewrite-safety.js";
+import {
+  textRewriteChangesEngineText,
+  textRewriteDropsProtectedMarkup,
+} from "../services/generation/text-rewrite-safety.js";
 import { compileImagePrompt } from "../services/image/image-prompt-compiler.js";
 import {
   mergeSpatialLocationReferenceImages,
@@ -1908,6 +1921,45 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               return worldTownVisitFromMetadata(chatMeta);
             })()
           : Promise.resolve(null);
+      // The story's turn (worldgen W10): what its script trips before this reply, read once (when the
+      // prompt is built, the player named by then) for the Game Master's prompt and for the reply, so both
+      // tell the same turn. A continuation trips nothing, as it tells no walk.
+      let turnStoryRead: Promise<{ story: StoryScript; game: GameWorld; turn: StoryTurn } | null> | undefined;
+      const turnStory = () =>
+        (turnStoryRead ??=
+          chatMode === "game" && !input.impersonate && !input.continueMessageId
+            ? (async () => {
+                const game = gameWorldFromMetadata(chatMeta);
+                const story = gameStoryFromMetadata(chatMeta, game);
+                if (!game || !story) return null;
+                const replies = await gameRepliesBefore(app.db, input.chatId, input.regenerateMessageId ?? null);
+                const walk = await turnWalkPromise;
+                const visit = await turnVisitPromise;
+                const before = readWorldLedger(replies.all);
+                const town = visit ? worldTown(game, visit.settlementId, worldPresent(game, before)) : null;
+                // The walk and the visit this turn tells, as their tags will stand before the reply.
+                const walkTags = walk ? worldWalkTags(game, walk) : "";
+                const visitTags = visit && town ? worldTownVisitTags(town, visit) : "";
+                const told =
+                  walk && visit && visit.settlementId !== walk.to ? visitTags + walkTags : walkTags + visitTags;
+                const ledger = [...before, ...readWorldLedger([told])];
+                const own = replies.all.slice(replies.carried ? 1 : 0);
+                return {
+                  story,
+                  game,
+                  turn: storyTurn(story, {
+                    game,
+                    replies: replies.all,
+                    repliesBefore: (replies.carried?.replies ?? 0) + own.length,
+                    latest: own.at(-1) ?? null,
+                    ledger,
+                    day: worldPresent(game, ledger).day,
+                    fight: storyFightOutcome(replies.player),
+                    playerName: personaName,
+                  }),
+                };
+              })()
+            : Promise.resolve(null));
       const turnHour = Number((chatMeta.gameTime as { hour?: unknown } | undefined)?.hour ?? 8) || 0;
       const rawSelectedGameStateSnapshotPromise = gameStateStore.getForGeneration(
         input.chatId,
@@ -4699,6 +4751,12 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               typeof npc.worldId === "string" ? [npc.worldId] : [],
             ),
           );
+          // What the story says to the Game Master this turn (worldgen W10): its values, the directions in
+          // force, the scene just shown, and what it asks now.
+          const promptTurnStory = await turnStory();
+          const promptStoryNow = promptTurnStory
+            ? storyTurnPromptText(promptTurnStory.story, promptTurnStory.turn)
+            : "";
           const promptWhereYouAre = promptWorld
             ? await (async () => {
                 // The world as the story has left it (worldgen W4): the ledger in all the replies.
@@ -4877,6 +4935,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               ...(promptWhereYouAre
                 ? { whereYouAre: [promptWhereYouAre, promptHistoryAsked].filter(Boolean).join("\n\n") }
                 : {}),
+              ...(promptStoryNow ? { storyNow: promptStoryNow } : {}),
               ...(promptMarket ? { market: promptMarket } : {}),
               ...(pinnedGameRuleset?.status === "ok" && pinnedGameRuleset.layers.length > 0
                 ? {
@@ -6969,6 +7028,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         let reasoningDurationMs: number | null = null;
         let receivedThinking = false;
         let allResponses: string[] = [];
+        // What the Engine put before a game reply (the walk, the visit, the story's turn): a rewrite of the
+        // reply must keep it as it is (worldgen W10).
+        let turnEnginePrefix = "";
         const allResponseSegments: NonNullable<AgentContext["mainResponseSegments"]> = [];
         const roleplayResponseIndexes = new Map<string, number>();
         let continuedMessageRewriteSource: string | null = null;
@@ -9585,9 +9647,24 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               // In the order they happened, so the place the reply leaves the party in is the last one.
               const told =
                 walk && visit && visit.settlementId !== walk.to ? visitTags + walkTags : walkTags + visitTags;
-              if (told) {
-                fullResponse = `${told}${fullResponse}`;
+              // The story (worldgen W10): the Game Master's own story tags answered first, against the story
+              // as this turn's trips left it; then what the turn tripped goes before the reply, after the
+              // walk and the visit it may have tripped on.
+              const storyTurnTold = await turnStory();
+              const story = storyTurnTold?.story ?? gameStoryFromMetadata(chatMeta, turnWorld);
+              if (story && /\[story:/i.test(fullResponse)) {
+                const before = storyTurnTold?.turn.state ?? storyState(story, readStoryLedger(replies.all));
+                const answered = applyStoryTags(fullResponse, story, turnWorld, before);
+                if (answered !== fullResponse) {
+                  fullResponse = answered;
+                  contentReplaced = true;
+                }
+              }
+              const prefix = told + (storyTurnTold && fullResponse.trim() ? storyTurnTold.turn.prepend : "");
+              if (prefix) {
+                fullResponse = `${prefix}${fullResponse}`;
                 contentReplaced = true;
+                turnEnginePrefix = prefix;
               }
               const ledger = readWorldLedger(replies.all);
               if (/\[world:/i.test(fullResponse)) {
@@ -13706,7 +13783,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                         ? explicitlyRequestsTextRewrite(editNeededValue)
                         : true;
                   const droppedProtectedMarkup =
-                    strictEditNeeded && textRewriteDropsProtectedMarkup(currentResponseForRewrite, sanitizedEditedText);
+                    (strictEditNeeded &&
+                      textRewriteDropsProtectedMarkup(currentResponseForRewrite, sanitizedEditedText)) ||
+                    // What the Engine wrote stays as it wrote it (worldgen W10): the walk, the visit and the
+                    // story's turn before the reply, a scene shown as written, and every answered tag.
+                    textRewriteChangesEngineText(currentResponseForRewrite, sanitizedEditedText, turnEnginePrefix);
                   if (droppedProtectedMarkup) {
                     logger.warn(
                       "[text-rewrite] Skipping %s rewrite because it dropped protected markup from message %s",

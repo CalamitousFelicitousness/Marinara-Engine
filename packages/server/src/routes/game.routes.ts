@@ -12,7 +12,10 @@ import {
   checkStoryScript,
   compileGameWorld,
   gameStoryFromMetadata,
+  readStoryLedger,
+  storyObjectives,
   storyScriptSchema,
+  storyState,
   type StoryScript,
   worldCast,
   worldEditsEmpty,
@@ -10888,8 +10891,13 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       lastGamePlace(replies.scoped),
       (await resolveOwnerSpatialProjection(req.params.chatId, {}, meta))?.currentLocationId,
     );
+    // The story's objectives (worldgen W10), as the replies have left its flags.
+    const story = gameStoryFromMetadata(meta, world);
     return {
-      journal: worldJournal(world, worldPresent(world, readWorldLedger(replies.all)), { name: place?.name }),
+      journal: {
+        ...worldJournal(world, worldPresent(world, readWorldLedger(replies.all)), { name: place?.name }),
+        ...(story ? { story: storyObjectives(story, storyState(story, readStoryLedger(replies.all))) } : {}),
+      },
     };
   });
 

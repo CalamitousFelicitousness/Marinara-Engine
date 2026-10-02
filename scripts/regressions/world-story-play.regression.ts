@@ -1,0 +1,439 @@
+/**
+ * Playing a story (worldgen W10b): one evaluation a turn, before the Game Master's reply.
+ *
+ *   - The Engine trips what it sees: the start, a turn, a day, an arrival (starting there, a place tag,
+ *     a walk), a person named, a deed, a fight's outcome, flags. Once unless an event repeats, at most
+ *     once a turn, in the script's order; a trip's flag changes can trip more the same turn.
+ *   - A trip is recorded in the reply it happens before (its tag carries what it set and showed), its
+ *     scenes are shown as written there, its world deeds answered with the reply's, and the Game Master
+ *     is told what it asks and the scene to narrate, that very turn.
+ *   - The Game Master's own story tags are answered in place: only what the script made its own; what
+ *     it trips arrives at the start of the next reply. A regeneration tells the same turn again, once.
+ *   - The player sees the objectives the story shows; a rewrite never changes what the Engine wrote.
+ */
+import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { createServer } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import {
+  WORLD_GENERATOR_VERSION,
+  WORLD_STARTER_KITS,
+  applyStoryTags,
+  checkStoryScript,
+  checkWorldBrief,
+  compileGameWorld,
+  createConnectionSchema,
+  parseWorldKit,
+  readStoryLedger,
+  readWorldLedger,
+  storyFightOutcome,
+  storyObjectives,
+  storyScriptPromptText,
+  storyState,
+  storyTurn,
+  storyTurnPromptText,
+  worldCast,
+  type GameWorld,
+  type StoryScript,
+  type StoryScriptInput,
+  type StoryTurnWorld,
+} from "../../packages/shared/src/index.js";
+
+const dataDir = mkdtempSync(join(tmpdir(), "marinara-world-story-play-"));
+process.env.DATA_DIR = dataDir;
+process.env.FILE_STORAGE_DIR = join(dataDir, "storage");
+process.env.LOG_LEVEL = "silent";
+
+const parsed = parseWorldKit(WORLD_STARTER_KITS.find((each) => each.id === "high_fantasy")!);
+assert.ok(parsed.ok);
+const kit = parsed.kit;
+const settlementLayer = kit.layers.find((layer) => layer.settlements)!;
+const checked = checkWorldBrief(kit, {
+  briefVersion: 1,
+  premise: "A river kingdom",
+  places: [
+    { name: "Ashford", layer: settlementLayer.id, size: kit.sizes.at(-1)!.id, tags: [] },
+    { name: "Millbrook", layer: settlementLayer.id, size: kit.sizes[0]!.id, tags: [] },
+  ],
+  groups: [{ name: "The Red Hand", kind: kit.groupKinds[0]!.id, seat: "Ashford" }],
+  peopleNames: kit.cultures.map((culture) => ({
+    culture: culture.id,
+    given: ["Ama", "Tobin", "Hesk", "Mira", "Elara", "Oswin", "Bryn", "Cato", "Tamsin", "Wren", "Edda", "Fenn"],
+    family: ["Arnwald", "Fennick", "Holt", "Marrow", "Voss", "Drey", "Callow"],
+  })),
+});
+assert.ok(checked.ok, JSON.stringify(checked));
+const stored = {
+  seed: 31,
+  generatorVersion: WORLD_GENERATOR_VERSION,
+  grounding: "expand" as const,
+  brief: checked.brief,
+};
+const game: GameWorld = { kit, ...stored, world: compileGameWorld({ kit, ...stored }) };
+const ashford = game.world.places.find((place) => place.name === "Ashford")!;
+const millbrook = game.world.places.find((place) => place.name === "Millbrook")!;
+const startHere = game.world.places.find((place) => place.id === game.world.startId)!;
+const away = [ashford, millbrook].find((place) => place.id !== startHere.id && startHere.parentId !== place.id)!;
+const mayor = worldCast(game, ashford.id).find((person) => person.named)!;
+
+const input: StoryScriptInput = {
+  storyVersion: 1,
+  flags: [
+    { id: "trust", kind: "number", initial: 0, gm: true, note: "How far the town trusts the party" },
+    { id: "arrived", kind: "bool", initial: false },
+    {
+      id: "key",
+      kind: "bool",
+      initial: false,
+      quest: { title: "The mill key", text: "Find the mill key", hidden: true },
+    },
+    {
+      id: "favours",
+      kind: "number",
+      initial: 0,
+      quest: { title: "Favours", text: "Do the town three favours", goal: 3 },
+    },
+  ],
+  directions: [
+    { id: "wary", text: "The town is wary of strangers.", if: [{ flag: "trust", is: "<", value: 2 }] },
+    { id: "warm", text: "The town greets the party warmly.", if: [{ flag: "trust", is: ">=", value: 2 }] },
+  ],
+  events: [
+    { id: "opening", when: { on: "start" }, do: [{ tell: "Open on a rainy morning." }] },
+    {
+      id: "gates",
+      when: { on: "arrive", place: away.id },
+      do: [{ cutscene: "gates" }, { set: "arrived", value: true }, { show: "key" }],
+    },
+    {
+      id: "welcome",
+      when: { on: "flags" },
+      if: [{ flag: "arrived", is: "=", value: true }],
+      do: [{ add: "favours", amount: 1 }],
+    },
+    { id: "mayor", when: { on: "meet", person: mayor.id }, do: [{ add: "trust", amount: 1 }] },
+    { id: "third", when: { on: "turn", turn: 5 }, do: [{ cutscene: "dusk" }] },
+    { id: "won", when: { on: "fight", outcome: "victory" }, repeat: true, do: [{ add: "favours", amount: 1 }] },
+    {
+      id: "betrayal",
+      when: { on: "gm" },
+      gm: true,
+      note: "The mayor turns on the party",
+      if: [{ flag: "trust", is: ">=", value: 1 }],
+      do: [
+        { cutscene: "turn" },
+        { tell: "The guards close in." },
+        { world: { deed: "hinder", group: "The Red Hand" } },
+      ],
+    },
+  ],
+  cutscenes: [
+    {
+      id: "gates",
+      kind: "pages",
+      background: "backgrounds:generated:town-gates",
+      pages: [
+        { text: "The gates creak open." },
+        { speaker: mayor.id, expression: "happy", text: "Welcome, travellers." },
+        { speaker: "player", text: "We come in peace." },
+      ],
+    },
+    { id: "dusk", kind: "beats", beats: ["Lamps are lit.", "A bell tolls."] },
+    { id: "turn", kind: "pages", pages: [{ text: "The mayor's smile slips." }] },
+  ],
+};
+const read = checkStoryScript(game, input);
+assert.ok(read.ok, JSON.stringify(read));
+const story: StoryScript = read.story;
+
+const turnOf = (replies: string[], extra: Partial<StoryTurnWorld> = {}) => {
+  const ledger = readWorldLedger(replies);
+  return storyTurn(story, {
+    game,
+    replies,
+    repliesBefore: replies.length,
+    latest: replies.at(-1) ?? null,
+    ledger,
+    day: 0,
+    fight: null,
+    playerName: "Robin",
+    ...extra,
+  });
+};
+
+const { default: Fastify } = await import("../../packages/server/node_modules/fastify/fastify.js");
+const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
+const { gameRoutes } = await import("../../packages/server/src/routes/game.routes.js");
+const { generateRoutes } = await import("../../packages/server/src/routes/generate.routes.js");
+const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
+const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
+const { textRewriteChangesEngineText } =
+  await import("../../packages/server/src/services/generation/text-rewrite-safety.js");
+
+try {
+  // ── The Engine's triggers ──
+  const first = turnOf([]);
+  assert.deepEqual(first.tripped, ["opening"], "the start, and nothing else yet");
+  assert.deepEqual(first.tells, ["Open on a rainy morning."]);
+  assert.match(first.prepend, /\[story: event="opening" by="engine" result="ok"\]/);
+  assert.deepEqual(turnOf(["The rain."]).tripped, [], "the start only once");
+
+  // Arriving (a place tag): the scene shown as written, its flags set, an objective shown, and the flags
+  // event it trips the same turn.
+  const arrival = [
+    `[story: event="opening" by="engine" result="ok"] The rain.`,
+    `[place: name="${away.name}" result="ok"] The road ends.`,
+  ];
+  const there = turnOf(arrival);
+  assert.deepEqual(there.tripped, ["gates", "welcome"]);
+  assert.match(there.prepend, /\[bg: backgrounds:generated:town-gates\]/);
+  assert.ok(
+    there.prepend.indexOf("[bg:") < there.prepend.indexOf("The gates creak open."),
+    "the scene's background first",
+  );
+  assert.match(there.prepend, new RegExp(`\\[${mayor.name}\\] \\[main\\] \\[happy\\]: "Welcome, travellers\\."`));
+  assert.match(there.prepend, /\[Robin\] \[main\] \[neutral\]: "We come in peace\."/, "the player, named");
+  assert.match(there.prepend, /\[story: event="gates" set="arrived=true" show="key" by="engine" result="ok"\]/);
+  assert.match(there.prepend, /\[story: event="welcome" set="favours=1" by="engine" result="ok"\]/);
+  assert.equal(there.shown.length, 1);
+  assert.deepEqual([there.state.flags.arrived, there.state.flags.favours, there.state.shown], [true, 1, ["key"]]);
+  // Recorded, it never trips again; swiped away, it never happened.
+  const afterArrival = [...arrival, `${there.prepend}They enter.`];
+  // The mayor spoke in that scene, so the party has met them: that trips next, the arrival never again.
+  const greeted = turnOf(afterArrival);
+  assert.deepEqual(greeted.tripped, ["mayor"]);
+  assert.deepEqual(turnOf([arrival[0]!]).tripped, [], "no arrival without its place tag");
+  // Met in a reply, named in full.
+  assert.deepEqual(turnOf(["The rain.", `${mayor.name} bows.`]).tripped, ["mayor"]);
+  assert.deepEqual(turnOf(["The rain.", "Someone bows."]).tripped, []);
+
+  // The fifth turn: a scene for the Game Master to narrate now.
+  const settled = [...afterArrival, `${greeted.prepend}They talk.`];
+  const fifth = turnOf(settled);
+  assert.deepEqual(fifth.tripped, ["third"]);
+  assert.deepEqual(fifth.beats, [["Lamps are lit.", "A bell tolls."]], "a scene to narrate now");
+  // A fight won (it repeats), never a second trip a turn.
+  const dusk = [...settled, `${fifth.prepend}Dusk.`];
+  const fight = `*The battle is won.*\n\n[combat_result]\nOUTCOME: VICTORY (3 rounds)\n[/combat_result]`;
+  assert.equal(storyFightOutcome(fight), "victory");
+  assert.equal(storyFightOutcome("OUTCOME: VICTORY"), null, "only a combat recap says so");
+  const won = turnOf(dusk, { fight: "victory" });
+  assert.deepEqual(won.tripped, ["won"]);
+  assert.deepEqual(turnOf([...dusk, `${won.prepend}x`], { fight: "victory" }).tripped, ["won"], "it repeats");
+  assert.deepEqual(turnOf(dusk, { fight: "defeat" }).tripped, [], "only for its outcome");
+  // A day and a deed trip on or after (and the deed only for its kind).
+  const dated = checkStoryScript(game, {
+    storyVersion: 1,
+    events: [
+      { id: "fifth", when: { on: "day", day: 5 }, do: [{ tell: "Day five." }] },
+      { id: "helped", when: { on: "deed", deed: "help" }, repeat: true, do: [{ tell: "Helped." }] },
+    ],
+  });
+  assert.ok(dated.ok);
+  const datedTurn = (replies: string[], day: number) =>
+    storyTurn(dated.story, {
+      game,
+      replies,
+      repliesBefore: replies.length,
+      latest: null,
+      ledger: readWorldLedger(replies),
+      day,
+      fight: null,
+    });
+  assert.deepEqual(datedTurn([], 4).tripped, []);
+  assert.deepEqual(datedTurn([], 9).tripped, ["fifth"], "a day passed over still counts");
+  const help = `[world: deed="help" group="The Red Hand" result="ok"]`;
+  assert.deepEqual(datedTurn([help], 0).tripped, ["helped"]);
+  assert.deepEqual(datedTurn([help, `[story: event="helped" by="engine" result="ok"]`], 0).tripped, [], "once a deed");
+  assert.deepEqual(
+    datedTurn([help, `[story: event="helped" by="engine" result="ok"]`, help], 0).tripped,
+    ["helped"],
+    "and again for another",
+  );
+  assert.deepEqual(datedTurn([`[world: deed="hinder" group="The Red Hand" result="ok"]`], 0).tripped, []);
+
+  // ── The Game Master's own tags ──
+  const state = storyState(story, readStoryLedger(dusk));
+  const answered = applyStoryTags(
+    [
+      `[story: flag="trust" value="2"]`,
+      `[story: event="betrayal"]`,
+      `[story: event="betrayal"]`,
+      `[story: event="gates"]`,
+      `[story: event="nowhere"]`,
+      `[story: flag="arrived" value="false"]`,
+      `[story: flag="trust" value="lots"]`,
+      `[story: event="mayor" by="engine" result="ok"]`,
+    ].join(" "),
+    story,
+    game,
+    state,
+  );
+  assert.match(answered, /\[story: flag="trust" set="trust=2" result="ok"\]/);
+  assert.match(answered, /\[story: event="betrayal" result="ok"\]\[world: deed="hinder" group="The Red Hand"\]/);
+  assert.match(answered, /\[story: event="betrayal" result="refused" reason="done"\]/, "once");
+  assert.match(answered, /\[story: event="gates" result="refused" reason="not-yours"\]/);
+  assert.match(answered, /\[story: event="nowhere" result="refused" reason="unknown-event"\]/);
+  assert.match(answered, /\[story: flag="arrived" result="refused" reason="not-yours"\]/);
+  assert.match(answered, /\[story: flag="trust" result="refused" reason="unreadable"\]/);
+  assert.match(answered, /\[story: event="mayor" result="refused" reason="not-yours"\]/, "never the Engine's word");
+  assert.match(
+    applyStoryTags(`[story: event="betrayal"]`, story, game, storyState(story, [])),
+    /reason="conditions"/,
+    "its conditions first",
+  );
+  // What it tripped arrives at the start of the next reply: its scene and its ask, not its deed again.
+  const next = turnOf([...dusk, answered]);
+  assert.match(next.prepend, /The mayor's smile slips\./);
+  assert.ok(!/deed="hinder"/.test(next.prepend));
+  assert.deepEqual(next.tells, ["The guards close in."]);
+  assert.deepEqual(turnOf([...dusk, answered, "Later."]).tells, [], "and only then");
+
+  // ── What the Game Master and the player are told ──
+  const script = storyScriptPromptText(story);
+  assert.match(script, /- betrayal: The mayor turns on the party/);
+  assert.match(script, /- trust \(a number\): How far the town trusts the party/);
+  assert.ok(!/gates|Welcome|arrived/.test(script), "nothing else of the script");
+  const now = storyTurnPromptText(story, there);
+  assert.match(now, /trust = 0/);
+  assert.match(now, /The town is wary of strangers\./);
+  assert.ok(!/greets the party warmly/.test(now), "only the directions in force");
+  assert.match(now, /shown this scene as written/);
+  assert.deepEqual(
+    storyObjectives(story, storyState(story, [])).map((each) => each.title),
+    ["Favours"],
+    "a hidden objective waits to be shown",
+  );
+  const shownNow = storyObjectives(story, there.state);
+  assert.deepEqual(
+    shownNow.map((each) => [each.title, each.done, each.progress ?? null]),
+    [
+      ["The mill key", false, null],
+      ["Favours", false, { at: 1, goal: 3 }],
+    ],
+  );
+
+  // ── A rewrite never changes what the Engine wrote ──
+  const written = `${there.prepend}They enter.`;
+  assert.equal(textRewriteChangesEngineText(written, `${there.prepend}They walk in.`, there.prepend), false);
+  assert.equal(textRewriteChangesEngineText(written, written.replace("creak open", "swing wide"), there.prepend), true);
+  assert.equal(
+    textRewriteChangesEngineText(`A. [world: days="2" result="ok"]`, "A.", ""),
+    true,
+    "nor drops an answered tag",
+  );
+
+  // ── Through the routes, with a stand-in model ──
+  const replies: string[] = [];
+  const prompts: string[] = [];
+  const standIn = createServer(async (req, res) => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(Buffer.from(chunk));
+    prompts.push(Buffer.concat(chunks).toString());
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(
+      JSON.stringify({
+        choices: [{ index: 0, finish_reason: "stop", message: { role: "assistant", content: replies.shift() ?? "" } }],
+      }),
+    );
+  });
+  await new Promise<void>((resolve) => standIn.listen(0, "127.0.0.1", resolve));
+  const address = standIn.address();
+  assert.ok(address && typeof address !== "string");
+  const db = await getDB();
+  const app = Fastify();
+  app.decorate("db", db);
+  await app.register(gameRoutes, { prefix: "/api/game" });
+  await app.register(generateRoutes, { prefix: "/api/generate" });
+  try {
+    const connection = await createConnectionsStorage(db).create(
+      createConnectionSchema.parse({
+        name: "Stand-in",
+        provider: "custom",
+        baseUrl: `http://127.0.0.1:${address.port}/v1`,
+        model: "stand-in",
+        apiKey: "sk-stand-in",
+      }),
+    );
+    const chats = createChatsStorage(db);
+    const chat = (await chats.create({ name: "Story", mode: "game", characterIds: [], connectionId: connection!.id }))!;
+    const chatId = chat.id;
+    await chats.patchMetadata(chatId, {
+      gameId: `story-${chatId}`,
+      gameSessionStatus: "active",
+      gameIntroPresented: true,
+      gameWorldKit: kit,
+      gameWorld: stored,
+      gameStory: story,
+      gameTime: { day: 1, hour: 10, minute: 0 },
+    });
+    const turn = async (reply: string, extra: Record<string, unknown> = {}) => {
+      replies.push(reply);
+      prompts.length = 0;
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/generate/",
+        payload: { chatId, userMessage: "We go on.", streaming: false, ...extra },
+      });
+      assert.equal(response.statusCode, 200, response.body);
+    };
+    const gmReplies = async () =>
+      (await chats.listMessages(chatId)).filter((message: { role: string }) => message.role === "assistant");
+
+    // The first turn: the start trips, and the Game Master is told what it asks, that turn.
+    await turn("Rain on the roofs.");
+    const prompt1 = prompts.join("\n");
+    assert.match(prompt1, /Open on a rainy morning\./);
+    assert.match(prompt1, /betrayal: The mayor turns on the party/, "its own events in the system prompt");
+    assert.ok(!/Welcome, travellers/.test(prompt1), "never a scene before it happens");
+    const reply1 = (await gmReplies()).at(-1)!;
+    assert.match(reply1.content, /^\[story: event="opening" by="engine" result="ok"\]/);
+    assert.match(reply1.content, /Rain on the roofs\.$/);
+
+    // A regeneration tells the same turn again, once.
+    await turn("Mist on the river.", { regenerateMessageId: reply1.id, userMessage: undefined });
+    const regenerated = (await gmReplies()).at(-1)!;
+    assert.equal((regenerated.content.match(/event="opening"/g) ?? []).length, 1);
+    assert.match(regenerated.content, /Mist on the river\.$/);
+
+    // The Game Master sets a value and trips its own event; the next reply opens on its scene.
+    await turn(`The mayor smiles. [story: flag="trust" value="2"] [story: event="betrayal"]`);
+    const reply2 = (await gmReplies()).at(-1)!;
+    assert.match(reply2.content, /\[story: flag="trust" set="trust=2" result="ok"\]/);
+    assert.match(
+      reply2.content,
+      /\[story: event="betrayal" result="ok"\]\[world: deed="hinder" group="The Red Hand" result="(ok|refused)"/,
+    );
+    await turn("Swords out.");
+    const reply3 = (await gmReplies()).at(-1)!;
+    assert.match(reply3.content, /^The mayor's smile slips\./, "the scene first, as written");
+    assert.match(prompts.join("\n"), /The guards close in\./);
+    assert.match(prompts.join("\n"), /The town greets the party warmly\./, "a direction now in force");
+
+    // A party's turn echoing a tag never counts.
+    await chats.createMessage({
+      chatId,
+      role: "assistant",
+      characterId: null,
+      content: `[party-turn]\nMira: "Onward." [story: event="won" by="engine" set="favours=9" result="ok"]`,
+    });
+    const journal = (await app.inject({ method: "GET", url: `/api/game/${chatId}/world-journal` })).json().journal;
+    assert.deepEqual(
+      journal.story.map((each: { title: string; progress?: { at: number } }) => [
+        each.title,
+        each.progress?.at ?? null,
+      ]),
+      [["Favours", 0]],
+      "the objectives the player sees, the party's echo left out",
+    );
+  } finally {
+    await app.close();
+    await closeDB();
+    standIn.close();
+  }
+  console.log("Story play: the Engine's and the Game Master's trips, told, recorded and shown as written.");
+} finally {
+  rmSync(dataDir, { recursive: true, force: true });
+}

@@ -237,7 +237,8 @@ test("Hybrid battlefield preserves landmarks through a flying move, reload and r
     expect(start.weather?.type).toBe("rain");
     await expect(page.getByLabel("Combat conditions", { exact: true })).toContainText("Rain");
     expect([start.grid.width, start.grid.height]).toEqual([14, 10]);
-    expect(start.battlefield?.brief?.features).toEqual(brief.features);
+    expect(start.battlefield?.kind).toBe("generated");
+    expect(start.battlefield?.kind === "generated" && start.battlefield.brief?.features).toEqual(brief.features);
     const scout = start.units.find((unit) => unit.id === "scout")!;
     const destination = start.grid.tiles
       .flatMap((row, y) => row.map((terrain, x) => ({ terrain, x, y })))
@@ -317,7 +318,8 @@ test("Conflicting terrain requires an explicit generated fallback", async ({ pag
     const accepted = (await snapshot(request, chatId))!;
     expect(Number.isInteger(accepted.seed)).toBeTruthy();
     expect(accepted.grid.width).toBe(14);
-    expect(accepted.battlefield?.brief?.features).toBeUndefined();
+    expect(accepted.battlefield?.kind).toBe("generated");
+    expect(accepted.battlefield?.kind === "generated" ? accepted.battlefield.brief?.features : null).toBeUndefined();
     expect(requests).toHaveLength(2);
     expect(requests[1]?.battlefield?.features).toBeUndefined();
     await page.getByTitle("Restart the battle", { exact: true }).click();

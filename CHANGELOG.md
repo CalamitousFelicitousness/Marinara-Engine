@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- In a Game Mode game whose World Maps map was made from its world, the map and the world agree on where the party is: a move on the map is where the next turn, the World tab and the markets place the party, and a world place the Game Master names moves the map there (by the shortest route with World Maps 1.6.0 or later, one step at a time before it).
 - A Game Mode game that makes a world can lay it out as its World Maps map: **From the world** in setup turns the world's regions, settlements and places, and the ways between them with their travel times, into a map you review before saving, with no model call.
 - Game Mode games with a generated world have a World tab in the journal: where the party is, how well known it is, its standing with each group, its deeds, the news that has reached it, trouble brewing that it has heard of, and the notable past, only ever what the party could know.
 - The Game Mode setup wizard's setting and goal ideas now come from many kinds of setting, a new mix each time it opens, instead of mostly fantasy ones, and start with the picked setting kit's own. Picking a setting kit before choosing a genre sets the genre that fits it, so a cyberpunk game is no longer told it is fantasy, and a Wuxia genre joins the list.

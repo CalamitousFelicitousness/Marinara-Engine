@@ -173,6 +173,7 @@ import { isHierarchicalMapsEnabledForChat } from "../services/spatial-context/ac
 import {
   createAssistantSpatialDirectiveStreamFilter,
   extractAssistantSpatialDirective,
+  parseStoredSpatialDefinition,
   materializeAssistantSpatialState,
 } from "../services/spatial-context/state-resolution.js";
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
@@ -186,6 +187,7 @@ import {
   gameWorldFromMetadata,
   worldKitSize,
   worldPlaceByName,
+  worldPlaceInForce,
   worldPlaceForTag,
   worldWhereYouAreText,
   worldPeopleNamed,
@@ -4617,7 +4619,18 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           const promptRepliesAll = () =>
             (promptRepliesRead ??= gameRepliesBefore(app.db, input.chatId, input.regenerateMessageId ?? null));
           const promptReplies = async () => (await promptRepliesAll()).scoped;
-          const promptPlace = async () => lastGamePlace(await promptReplies());
+          // The place in force: the map's location when the game's atlas puts the party at a world place
+          // (worldgen W7), else the place the replies last named.
+          const promptPlace = async () =>
+            worldPlaceInForce(
+              promptWorld,
+              lastGamePlace(await promptReplies()),
+              (await ownerSpatialProjectionPromise)?.currentLocationId,
+              (pinnedGameRuleset?.status === "ok"
+                ? pinnedGameRuleset.definition.items?.market
+                : promptKitItems?.definition.items?.market
+              )?.places,
+            );
           // Where the party is in the game's world (worldgen W1): the place last said, when the world
           // lists it, else where the world starts the party until the Game Master says.
           const promptWorld = gameWorldFromMetadata(chatMeta);
@@ -9465,7 +9478,12 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           let turnPresent: WorldPresent | undefined;
           if (turnMarket || turnWorld) {
             const replies = await gameRepliesBefore(app.db, input.chatId, input.regenerateMessageId ?? null);
-            turnPlace = lastGamePlace(replies.scoped);
+            turnPlace = worldPlaceInForce(
+              turnWorld,
+              lastGamePlace(replies.scoped),
+              (await ownerSpatialProjectionPromise)?.currentLocationId,
+              turnMarket?.places,
+            );
             turnPlaceBefore = turnPlace;
             // What the reply does to the world (worldgen W4): each world tag answered in place against
             // the world as the replies before it left it, before its place tags, so a place it adds is
@@ -9492,6 +9510,21 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 contentReplaced = true;
               }
               if (placed.place) turnPlace = placed.place;
+              // The map follows the story (worldgen W7): a world place the reply names, when the game's
+              // atlas has it, is the reply's move on the map unless the reply made one of its own.
+              // A market game without a world answers place tags too, and has no world places to map.
+              const mapped =
+                turnWorld && placed.place?.name ? worldPlaceByName(turnWorld.world, placed.place.name) : undefined;
+              if (
+                mapped &&
+                hierarchicalMapsEnabledForChat &&
+                !assistantSpatialDirective &&
+                !shouldSuppressAssistantSpatialMutation(input) &&
+                // By id alone, as the place in force reads the map: the player may rename it.
+                parseStoredSpatialDefinition(chatMeta)?.locations.some((location) => location.id === mapped.id)
+              ) {
+                assistantSpatialDirective = { type: "move", destinationId: mapped.id };
+              }
             }
           }
           // The past the reply asks for (worldgen W3): answered in place, carried on the next turn.

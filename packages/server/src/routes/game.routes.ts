@@ -225,6 +225,7 @@ import {
   lastGamePlace,
   readWorldLedger,
   worldJournal,
+  worldPlaceInForce,
   worldPresent,
   worldBriefSchema,
   WORLD_GROUNDINGS,
@@ -10719,10 +10720,16 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
   app.get<{ Params: { chatId: string } }>("/:chatId/world-journal", async (req, reply) => {
     const chat = await createChatsStorage(app.db).getById(req.params.chatId);
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
-    const world = gameWorldFromMetadata(parseMeta(chat.metadata));
+    const meta = parseMeta(chat.metadata);
+    const world = gameWorldFromMetadata(meta);
     if (!world) return { journal: null };
     const replies = await gameRepliesBefore(app.db, req.params.chatId);
-    const place = lastGamePlace(replies.scoped);
+    // The place in force, as a turn reads it: the map's location when it is a world place (worldgen W7).
+    const place = worldPlaceInForce(
+      world,
+      lastGamePlace(replies.scoped),
+      (await resolveOwnerSpatialProjection(req.params.chatId, {}, meta))?.currentLocationId,
+    );
     return {
       journal: worldJournal(world, worldPresent(world, readWorldLedger(replies.all)), { name: place?.name }),
     };

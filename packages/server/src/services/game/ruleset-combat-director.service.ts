@@ -23,6 +23,7 @@ import {
   findRulesetCreature,
   fillRulesetSheetChoices,
   generateTacticalBattlefield,
+  madeTacticalBattlefield,
   holdRulesetCombatant,
   holdRulesetSheetHealth,
   liftRulesetCrashes,
@@ -82,6 +83,7 @@ import {
   type RulesetLiveState,
   type RulesetLiveStates,
   type TacticalBattlefieldBrief,
+  type TacticalMadeBattlefield,
   type TacticalGrid,
   type CombatTactics,
   type RulesetSheetItem,
@@ -179,6 +181,8 @@ export interface RulesetFightSeed {
   environment?: string | null;
   formation?: string | null;
   battlefield?: TacticalBattlefieldBrief;
+  /** A board painted for the fight's place (worldgen W9g), fought on as painted: the brief is not used. */
+  made?: TacticalMadeBattlefield;
   /** The chat's own party cards, which is where a sheet build lives. */
   cards: unknown;
   playerName: string | null;
@@ -405,12 +409,14 @@ function buildRulesetBoard(
   // The same cursor the tactical style reserves for setup, from the same seed, so the two styles
   // generate the same board for the same fight.
   const rng = deterministicRng(input.seed >>> 0, 0);
-  const generated = generateTacticalBattlefield(
-    stands.length,
-    rng,
-    normalizeTacticalEnvironment(input.environment ?? undefined),
-    input.battlefield,
-  );
+  const generated = input.made
+    ? madeTacticalBattlefield(input.made)
+    : generateTacticalBattlefield(
+        stands.length,
+        rng,
+        normalizeTacticalEnvironment(input.environment ?? undefined),
+        input.battlefield,
+      );
   if (!generated.ok) return { error: generated.error };
   const { grid } = generated;
   if (

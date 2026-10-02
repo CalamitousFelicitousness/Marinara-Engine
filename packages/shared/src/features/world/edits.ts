@@ -3,7 +3,7 @@
 // compile so every reader of the world (the Game Master's prompt, the World tab, the overworld, towns,
 // the atlas) sees the edited world. A world stays its seed, kit and brief plus this small layer: the
 // ground painted cell by cell, compiled places renamed or moved, places added, drawn people renamed,
-// people added. Nothing compiled is removed.
+// people added, and tactical boards painted for places (W9g). Nothing compiled is removed.
 //
 // A layer is checked strictly when it is saved (an unknown place, a cell off the map, a name another
 // place has is refused with the reason), and again when its world is read: one that does not fit (written
@@ -14,6 +14,7 @@ import { z } from "zod";
 import type { WorldKit } from "../../schemas/world-kit.schema.js";
 import { promptSafeText } from "../../schemas/ruleset.schema.js";
 import { compileLinks, worldTerrainEntries, type CompiledWorld, type WorldPlace } from "./compile.js";
+import { WORLD_BATTLEFIELDS_MAX, worldBattlefieldIssues, worldBattlefieldMapSchema } from "./battlefield-maps.js";
 
 /** The most places a layer adds, people it renames or adds, and compiled places it changes. */
 export const WORLD_EDITS_MAX_ADDED = 200;
@@ -81,6 +82,8 @@ export const worldEditsSchema = z
       )
       .max(WORLD_EDITS_MAX_PEOPLE)
       .optional(),
+    /** Tactical boards painted for places (worldgen W9g): `b<n>` ids. */
+    battlefields: z.array(worldBattlefieldMapSchema).max(WORLD_BATTLEFIELDS_MAX).optional(),
   })
   .strict();
 export type WorldEdits = z.infer<typeof worldEditsSchema>;
@@ -97,7 +100,8 @@ export function worldEditsEmpty(edits: WorldEdits | null | undefined): boolean {
       !edits.places?.length &&
       !edits.added?.length &&
       !edits.people?.length &&
-      !edits.addedPeople?.length)
+      !edits.addedPeople?.length &&
+      !edits.battlefields?.length)
   );
 }
 
@@ -180,6 +184,13 @@ export function checkWorldEdits(
       issues.push(`"${person.name}": the id must start with its place's.`);
     if (peopleSeen.has(person.id)) issues.push(`Person "${person.id}" is added twice.`);
     peopleSeen.add(person.id);
+  }
+  const battlefieldsSeen = new Set<string>();
+  for (const map of edits.battlefields ?? []) {
+    if (!byId.has(map.place) && !added.has(map.place)) issues.push(`"${map.name}": no place "${map.place}".`);
+    if (battlefieldsSeen.has(map.id)) issues.push(`Battlefield "${map.id}" is given twice.`);
+    battlefieldsSeen.add(map.id);
+    for (const issue of worldBattlefieldIssues(map)) issues.push(`"${map.name}": ${issue}`);
   }
   return [...new Set(issues)].slice(0, 20);
 }

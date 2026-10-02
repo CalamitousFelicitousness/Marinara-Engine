@@ -34,6 +34,8 @@ export {
   TACTICAL_BATTLEFIELD_GENERATOR_VERSION,
   generateTacticalBattlefield,
   gridDimensions,
+  madeTacticalBattlefield,
+  tacticalMadeBoardIssues,
   placeSpawns,
   validateTacticalBattlefieldBrief,
   type GenerateTacticalBattlefieldResult,

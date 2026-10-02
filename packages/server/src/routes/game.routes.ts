@@ -82,6 +82,7 @@ import {
 } from "../services/storage/game-engine-state.storage.js";
 import { createSpatialContextStorage } from "../services/storage/spatial-context.storage.js";
 import { formatOwnerSpatialBreadcrumb, resolveOwnerSpatialProjection } from "../services/spatial-context/projection.js";
+import { gameBattlefieldHere } from "../services/game/made-battlefield.service.js";
 import {
   parseStoredSpatialDefinition,
   resolveEffectiveSpatialState,
@@ -10512,10 +10513,6 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
 
     const meta = parseMeta(chat.metadata);
-    // A scene in the setting's own words is laid out like the battlefield it names (worldgen W6d).
-    const environment =
-      worldSceneLike(gameWorldBattlefields(meta) ?? WORLD_DEFAULT_BATTLEFIELDS, parsed.data.environment) ??
-      parsed.data.environment;
     const setupConfig = meta.gameSetupConfig as Record<string, unknown> | undefined;
     const difficulty = normalizeGameDifficulty(setupConfig?.difficulty);
     const preferences = resolveTacticalStartPreferences({
@@ -10525,6 +10522,14 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       randomSeed: () => randomInt(0, 0x1_0000_0000),
     });
     if (!preferences.ok) return reply.status(400).send({ error: preferences.error });
+    // A board painted for where the fight starts (worldgen W9g) is fought on as painted, in its own scene;
+    // the brief's terrain is not used.
+    const here = await gameBattlefieldHere(app.db, chatId, meta, preferences.seed);
+    // A scene in the setting's own words is laid out like the battlefield it names (worldgen W6d).
+    const environment =
+      here?.scene ??
+      worldSceneLike(gameWorldBattlefields(meta) ?? WORLD_DEFAULT_BATTLEFIELDS, parsed.data.environment) ??
+      parsed.data.environment;
 
     let state: TacticalCombatState;
     try {
@@ -10537,13 +10542,13 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
               resolveCombatWeather(
                 meta.gameWeather ?? (await createGameStateStorage(app.db).getLatestCommitted(chatId))?.weather,
                 environment,
-                preferences.battlefield?.exposure,
+                here ? undefined : preferences.battlefield?.exposure,
               )),
         difficulty,
         ...(gameWorldElementSet(meta) ? { elements: gameWorldElementSet(meta) } : {}),
         environment,
         formation,
-        battlefield: preferences.battlefield,
+        ...(here ? { made: here.made } : { battlefield: preferences.battlefield }),
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unable to generate the requested battlefield.";

@@ -21,7 +21,7 @@ The GM supplies a small structured brief grounded in the scene. The engine resol
 
 The environment/formation pipeline supports optional map size and scene landmarks. Terrain guidance belongs to each encounter; map seeds are internal per encounter, with no campaign setup seed control. Keep old setups valid. Save the accepted grid and generator provenance so a future generator change cannot redraw an existing battle. Saved seeds reproduce generation given the same brief and combatants; they do not make arbitrary model output deterministic.
 
-Generated terrain may be repaired for connectivity, but authored constraints must not silently disappear. Bound model output, tile counts, unit counts and feature dimensions. Reject an impossible constrained layout with an actionable reason and offer an explicit generated fallback. A full paint/place editor and arbitrary authored maps are later work and must use the same validation rules.
+Generated terrain may be repaired for connectivity, but authored constraints must not silently disappear. Bound model output, tile counts, unit counts and feature dimensions. Reject an impossible constrained layout with an actionable reason and offer an explicit generated fallback. Boards painted by hand for a world's places (worldgen W9g, in a maker such as Pixelforge) pass the same rules: their deployment strips plains and every open tile connected, so they are fought on exactly as painted.
 
 ### Movement capabilities
 

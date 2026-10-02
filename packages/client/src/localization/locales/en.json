@@ -8297,6 +8297,7 @@
   "ui.game.tacticalcombatui.keepFighting": "Keep fighting",
   "ui.game.tacticalcombatui.landmarks_one": "{{count}} landmark",
   "ui.game.tacticalcombatui.landmarks_other": "{{count}} landmarks",
+  "ui.game.tacticalcombatui.madeMapValue1": "Hand-made map: {{value1}}",
   "ui.game.tacticalcombatui.movementFlying": "Flying",
   "ui.game.tacticalcombatui.movementTeleporting": "Teleporting",
   "ui.game.tacticalcombatui.movementWalking": "Walking",

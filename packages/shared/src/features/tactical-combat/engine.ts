@@ -18,7 +18,7 @@ import { assignCombatTactics } from "../combat-ai.js";
 import type { Combatant, CombatSkill, CombatStatusEffect, CombatSummary } from "../../types/game.js";
 import { summarizeTacticalBattlefield } from "./battlefield-summary.js";
 import { CLASS_PROFILES, deriveClass } from "./classes.js";
-import { generateTacticalBattlefield, placeSpawns } from "./grid-gen.js";
+import { generateTacticalBattlefield, madeTacticalBattlefield, placeSpawns } from "./grid-gen.js";
 import {
   clamp,
   computeDamage,
@@ -45,6 +45,7 @@ import type {
   TacticalEvent,
   TacticalForecast,
   TacticalFormation,
+  TacticalMadeBattlefield,
   TacticalUnit,
 } from "./types.js";
 
@@ -122,6 +123,8 @@ export function createTacticalCombat(
     environment?: string;
     formation?: string;
     battlefield?: TacticalBattlefieldBrief;
+    /** A board painted by hand for the fight's place (worldgen W9g): fought on as painted, the brief unused. */
+    made?: TacticalMadeBattlefield;
   },
 ): TacticalCombatState {
   const difficulty = normalizeGameDifficulty(opts.difficulty);
@@ -148,7 +151,9 @@ export function createTacticalCombat(
   ];
 
   const setupRng = deterministicRng(seed, 0);
-  const generated = generateTacticalBattlefield(units.length, setupRng, environment, opts.battlefield);
+  const generated = opts.made
+    ? madeTacticalBattlefield(opts.made)
+    : generateTacticalBattlefield(units.length, setupRng, environment, opts.battlefield);
   if (!generated.ok) throw new Error(generated.error);
   const { grid } = generated;
   if (!placeSpawns(grid, units, formation, setupRng, generated.protectedTiles)) {

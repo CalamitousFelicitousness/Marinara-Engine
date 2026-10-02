@@ -72,6 +72,7 @@ import {
 import { loadRulesetRegistry, resolveGameRuleset } from "../services/game/ruleset-registry.service.js";
 import { loadRulesetCatalogEntries } from "../services/game/ruleset-catalog.service.js";
 import { resolveTacticalStartPreferences } from "../services/game/tactical-battlefield.service.js";
+import { gameBattlefieldHere } from "../services/game/made-battlefield.service.js";
 import { logger } from "../lib/logger.js";
 import { resolveVisibleGameStateAnchor } from "./generate/generate-route-utils.js";
 
@@ -781,8 +782,15 @@ export async function combatDirectorRoutes(
         // is not offered; the rest do what a model guessed, unless the ruleset turns them off.
         const fightItems = await loadGameFightItems(app.db, meta, input.itemEffects);
         const elements = gameWorldElementSet(meta);
+        // A board painted for where the fight starts (worldgen W9g), for a fight on a board: fought on as
+        // painted, in its own scene; the brief's terrain is not used.
+        const here =
+          input.style === "tactical" || (input.style === "ruleset" && input.positioned === true)
+            ? await gameBattlefieldHere(app.db, input.chatId, meta, battlefield.seed)
+            : null;
         // A scene in the setting's own words is laid out like the battlefield it names (worldgen W6d).
         const environment =
+          here?.scene ??
           worldSceneLike(gameWorldBattlefields(meta) ?? WORLD_DEFAULT_BATTLEFIELDS, input.environment) ??
           input.environment;
         const state = createCombatDirector({
@@ -801,11 +809,16 @@ export async function combatDirectorRoutes(
           id: randomUUID(),
           gm: setup.gmBossControl === true,
           difficulty: normalizeGameDifficulty(setup.difficulty),
-          weather: resolveCombatWeather(weatherSource, environment, battlefield.battlefield?.exposure),
+          weather: resolveCombatWeather(
+            weatherSource,
+            environment,
+            here ? undefined : battlefield.battlefield?.exposure,
+          ),
           // The setting's own elements (worldgen W6c), when its kit names them.
           ...(elements ? { elements } : {}),
           seed: battlefield.seed,
-          battlefield: battlefield.battlefield,
+          battlefield: here ? undefined : battlefield.battlefield,
+          ...(here ? { made: here.made } : {}),
         });
         let session: RulesetSession | null = null;
         if (input.style === "ruleset") {
@@ -845,7 +858,7 @@ export async function combatDirectorRoutes(
             positioned: input.positioned === true,
             environment: environment ?? null,
             formation: input.formation ?? null,
-            ...(battlefield.battlefield ? { battlefield: battlefield.battlefield } : {}),
+            ...(here ? { made: here.made } : battlefield.battlefield ? { battlefield: battlefield.battlefield } : {}),
             party: input.party.map((member) => ({ id: member.id, name: member.name })),
             enemies: input.enemies.map((enemy) => ({
               id: enemy.id,

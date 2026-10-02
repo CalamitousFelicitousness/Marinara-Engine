@@ -28,6 +28,7 @@ import {
   type CombatMechanic,
   type CombatItemEffect,
   type TacticalBattlefieldBrief,
+  type TacticalMadeBattlefield,
 } from "@marinara-engine/shared";
 import { chooseClassicAction, estimateClassicAttack } from "./combat-ai.service.js";
 import { resolveCombatRound, rollInitiative, canCombatantAct } from "./combat.service.js";
@@ -213,6 +214,8 @@ export function createCombatDirector(input: {
   environment?: string;
   formation?: string;
   battlefield?: TacticalBattlefieldBrief;
+  /** A board painted for the fight's place (worldgen W9g), fought on as painted. */
+  made?: TacticalMadeBattlefield;
   itemEffects?: CombatItemEffect[];
   mechanics?: CombatMechanic[];
   inventory?: CombatDirectorState["inventory"];
@@ -264,6 +267,7 @@ export function createCombatDirector(input: {
       environment: input.environment,
       formation: input.formation,
       battlefield: input.battlefield,
+      ...(input.made ? { made: input.made } : {}),
     });
   for (const u of directorUnits(s))
     s.budgets[u.id] = { legendary: side(u) === "enemy" ? (u.boss?.points ?? 0) : 0, reaction: 1 };

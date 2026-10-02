@@ -20,6 +20,16 @@ A place in ruins is drawn in ruins. After dark the map dims and the settlements'
 
 The overworld is a view, and the scene view (the game's backgrounds and character art) is a switch away: **Show the scene** in the game's toolbar, or in the game's actions menu on a phone, and **Show the overworld** to come back. The game remembers which one you chose. A fight and a session replay use their own screens.
 
+### Tile packs
+
+The overworld and the towns are drawn from **tile packs**: a palette and every tile (each kind of ground, the settlements by size, the party, and the town's streets, roofs and townsfolk) as rows of pixels. Every setting family has its own built-in pack. Open the **Agents** panel and find **Tile packs** to:
+
+- choose which pack each setting is drawn with (**Built in** is its own);
+- **Import a tile pack** from a `.tilepack.json` file someone shared;
+- **Export** a pack to share it, or **Remove** it, which sends any setting drawn with it back to its own tiles.
+
+A pack only needs the tiles it changes: anything it leaves out is drawn plain. A pack that names a tile Marinara Engine does not draw keeps the rest and says what it left out.
+
 ### The town
 
 When the party is at a settlement, pick it on the overworld and choose **Enter** to see the town. It is laid out from the world: its streets and square, the places the world or the story has in it (named on their buildings), its hall in a bigger place, the workplaces of the trades it is known for, and its homes. Its people are where the hour has them: at work by day, in the square at dusk, at home at night.

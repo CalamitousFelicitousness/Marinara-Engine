@@ -10,17 +10,15 @@
 // own base assets, and community asset packs later in the same format). Change the art here and rerun;
 // the world-overworld lane checks the committed images are this script's.
 //
-// Writes packages/client/public/overworld/<family>.png (16 px tiles, 8 to a row) and the tile map
-// packages/client/src/lib/overworld-atlases.json (a tile id to the indices of its variants).
+// Writes packages/server/src/assets/overworld-tiles/<family>.json: each family's tile pack (the shared tile-pack
+// format: a palette, and every tile's variants as sixteen rows of sixteen characters).
 // ──────────────────────────────────────────────
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { crc32, deflateSync } from "node:zlib";
 
 const ROOT = process.env.OVERWORLD_TILES_OUT ?? join(dirname(fileURLToPath(import.meta.url)), "../..");
 const T = 16;
-const COLUMNS = 8;
 
 // ── Pixels ──
 
@@ -856,42 +854,51 @@ function towns(p, family) {
   return out;
 }
 
-// ── PNG ──
+// ── Packs: each family's tiles as data, a palette and rows of characters (the shared tile-pack format) ──
 
-function png(width, height, rgba) {
-  const raw = Buffer.alloc((width * 4 + 1) * height);
-  for (let y = 0; y < height; y++)
-    Buffer.from(rgba.buffer, rgba.byteOffset + y * width * 4, width * 4).copy(raw, y * (width * 4 + 1) + 1);
-  const chunk = (type, data) => {
-    const body = Buffer.concat([Buffer.from(type), data]);
-    const out = Buffer.alloc(body.length + 8);
-    out.writeUInt32BE(data.length, 0);
-    body.copy(out, 4);
-    out.writeUInt32BE(crc32(body) >>> 0, body.length + 4);
-    return out;
-  };
-  const header = Buffer.alloc(13);
-  header.writeUInt32BE(width, 0);
-  header.writeUInt32BE(height, 4);
-  header.set([8, 6, 0, 0, 0], 8);
-  return Buffer.concat([
-    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
-    chunk("IHDR", header),
-    chunk("IDAT", deflateSync(raw, { level: 9 })),
-    chunk("IEND", Buffer.alloc(0)),
-  ]);
-}
+const ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+const NAMES = {
+  fantasy: "Fantasy",
+  wuxia: "Wuxia",
+  modern: "Modern day",
+  jazz_age: "The 1920s",
+  scifi: "Science fiction",
+  wasteland: "Wasteland",
+};
+const hex2 = (value) => Math.round(value).toString(16).padStart(2, "0");
 
-// ── Atlases ──
-
-const maps = {};
-const outDir = join(ROOT, "packages/client/public/overworld");
+const outDir = join(ROOT, "packages/server/src/assets/overworld-tiles");
 mkdirSync(outDir, { recursive: true });
+let written = 0;
 for (const [family, p] of Object.entries(PALETTES)) {
-  const tiles = [];
-  const ids = {};
+  const palette = [];
+  const index = new Map();
+  const rowsOf = (image) => {
+    const rows = [];
+    for (let y = 0; y < T; y++) {
+      let line = "";
+      for (let x = 0; x < T; x++) {
+        const at = (y * T + x) * 4;
+        const alpha = image[at + 3];
+        if (alpha === 0) {
+          line += ".";
+          continue;
+        }
+        const colour = `#${hex2(image[at])}${hex2(image[at + 1])}${hex2(image[at + 2])}${alpha < 255 ? hex2(alpha) : ""}`;
+        if (!index.has(colour)) {
+          if (palette.length >= ALPHABET.length) throw new Error(`${family}: more than ${ALPHABET.length} colours`);
+          index.set(colour, palette.length);
+          palette.push(colour);
+        }
+        line += ALPHABET[index.get(colour)];
+      }
+      rows.push(line);
+    }
+    return rows;
+  };
+  const tiles = {};
   const add = (id, images) => {
-    ids[id] = images.map((image) => tiles.push(image) - 1);
+    tiles[id] = images.map(rowsOf);
   };
   for (const [look, images] of Object.entries(grounds(p))) add(look, images);
   const { tiers, ruin } = markers(p, STYLE[family]);
@@ -899,17 +906,8 @@ for (const [family, p] of Object.entries(PALETTES)) {
   add("ruin", [ruin]);
   add("party", [party(p)]);
   for (const [id, images] of Object.entries(towns(p, family))) add(id, images);
-  const rows = Math.ceil(tiles.length / COLUMNS);
-  const width = COLUMNS * T;
-  const atlas = new Uint8ClampedArray(width * rows * T * 4);
-  tiles.forEach((image, index) => {
-    const ox = (index % COLUMNS) * T;
-    const oy = Math.floor(index / COLUMNS) * T;
-    for (let y = 0; y < T; y++) atlas.set(image.subarray(y * T * 4, (y + 1) * T * 4), ((oy + y) * width + ox) * 4);
-  });
-  writeFileSync(join(outDir, `${family}.png`), png(width, rows * T, atlas));
-  maps[family] = { columns: COLUMNS, tiles: ids };
+  const pack = { tilePackVersion: 1, id: family, name: NAMES[family], family, version: 1, palette, tiles };
+  writeFileSync(join(outDir, `${family}.json`), `${JSON.stringify(pack)}\n`);
+  written++;
 }
-mkdirSync(join(ROOT, "packages/client/src/lib"), { recursive: true });
-writeFileSync(join(ROOT, "packages/client/src/lib/overworld-atlases.json"), `${JSON.stringify(maps, null, 2)}\n`);
-console.log(`Overworld tiles: ${Object.keys(maps).length} families written.`);
+console.log(`Overworld tiles: ${written} family packs written.`);

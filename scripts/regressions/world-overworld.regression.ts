@@ -16,13 +16,13 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { inflateSync } from "node:zlib";
 
 import {
   WORLD_ART_FAMILIES,
   WORLD_DAYS_CAP,
   WORLD_GENERATOR_VERSION,
-  WORLD_GROUND_LOOKS,
+  WORLD_TILE_IDS,
+  parseTilePack,
   WORLD_STARTER_KITS,
   checkWorldBrief,
   compileGameWorld,
@@ -117,59 +117,30 @@ try {
   assert.equal(worldTerrainLook({ id: "entry_4", kind: "barrier" }), "mountains");
   assert.equal(worldTerrainLook({ id: "entry_5", kind: "open" }), "grass");
 
-  // ── Each family's tiles: every look, the settlement markers and the party, inside its image ──
-  const atlases = JSON.parse(
-    readFileSync(new URL("../../packages/client/src/lib/overworld-atlases.json", import.meta.url), "utf8"),
-  ) as Record<string, { columns: number; tiles: Record<string, number[]> }>;
-  assert.deepEqual(Object.keys(atlases).sort(), [...WORLD_ART_FAMILIES].sort(), "an atlas for every family");
-  for (const [family, atlas] of Object.entries(atlases)) {
-    const png = readFileSync(new URL(`../../packages/client/public/overworld/${family}.png`, import.meta.url));
-    const tiles = (png.readUInt32BE(16) / 16) * (png.readUInt32BE(20) / 16);
-    assert.equal(png.readUInt32BE(16) / 16, atlas.columns, `${family}: its columns`);
-    for (const id of [...WORLD_GROUND_LOOKS, "marker0", "marker1", "marker2", "marker3", "ruin", "party"]) {
-      const variants = atlas.tiles[id];
-      assert.ok(variants?.length, `${family}: ${id}`);
-      assert.ok(
-        variants.every((index) => Number.isInteger(index) && index >= 0 && index < tiles),
-        `${family}: ${id} in its image`,
-      );
-    }
+  // ── Each family's tile pack (W9a): every tile the overworld and the towns draw, as the script draws it ──
+  const packOf = (root: string, family: string) =>
+    parseTilePack(readFileSync(join(root, `packages/server/src/assets/overworld-tiles/${family}.json`), "utf8"));
+  const repo = fileURLToPath(new URL("../../", import.meta.url));
+  for (const family of WORLD_ART_FAMILIES) {
+    const read = packOf(repo, family);
+    assert.ok(read.ok, `${family}: its pack reads`);
+    assert.deepEqual(read.notes, [], `${family}: nothing in it the Engine does not draw`);
+    for (const id of WORLD_TILE_IDS) assert.ok(read.pack.tiles[id]?.length, `${family}: ${id}`);
   }
   for (const kit of WORLD_STARTER_KITS) {
-    assert.ok(atlases[worldKitArtFamily(kit) ?? ""], `${kit.id}: drawn with its family's tiles`);
-  }
-  // The committed tiles are the script's, pixel for pixel (compared decoded, as zlib may differ by build).
-  const pixels = (png: Buffer) => {
-    const width = png.readUInt32BE(16);
-    const parts: Buffer[] = [];
-    for (let at = 8; at < png.length;) {
-      const length = png.readUInt32BE(at);
-      if (png.toString("ascii", at + 4, at + 8) === "IDAT") parts.push(png.subarray(at + 8, at + 8 + length));
-      at += length + 12;
-    }
-    const raw = inflateSync(Buffer.concat(parts));
-    const row = width * 4 + 1;
-    return Buffer.concat(
-      Array.from({ length: raw.length / row }, (_, y) => {
-        assert.equal(raw[y * row], 0, "rows the script wrote, unfiltered");
-        return raw.subarray(y * row + 1, (y + 1) * row);
-      }),
+    assert.ok(
+      (WORLD_ART_FAMILIES as readonly string[]).includes(worldKitArtFamily(kit) ?? ""),
+      `${kit.id}: drawn with its family's tiles`,
     );
-  };
+  }
+  // The committed packs are the script's (change the art there, never in the packs).
   const drawn = mkdtempSync(join(tmpdir(), "marinara-overworld-tiles-"));
   try {
     execFileSync(process.execPath, [fileURLToPath(new URL("../art/build-overworld-tiles.mjs", import.meta.url))], {
       env: { ...process.env, OVERWORLD_TILES_OUT: drawn },
     });
-    assert.deepEqual(
-      JSON.parse(readFileSync(join(drawn, "packages/client/src/lib/overworld-atlases.json"), "utf8")),
-      atlases,
-      "the tile map is the script's",
-    );
-    for (const family of Object.keys(atlases)) {
-      const committed = readFileSync(new URL(`../../packages/client/public/overworld/${family}.png`, import.meta.url));
-      const fresh = readFileSync(join(drawn, `packages/client/public/overworld/${family}.png`));
-      assert.ok(pixels(committed).equals(pixels(fresh)), `${family}: the tiles are the script's`);
+    for (const family of WORLD_ART_FAMILIES) {
+      assert.deepEqual(packOf(drawn, family), packOf(repo, family), `${family}: the tiles are the script's`);
     }
   } finally {
     rmSync(drawn, { recursive: true, force: true });

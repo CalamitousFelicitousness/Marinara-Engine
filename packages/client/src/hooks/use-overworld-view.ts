@@ -1,12 +1,16 @@
 // ──────────────────────────────────────────────
 // What the overworld and the town views share (worldgen W8): the game's clock running in real time as
-// Pixelforge's world does, and a setting family's tiles.
+// Pixelforge's world does, and a setting family's tiles (its tile pack, W9a).
 // ──────────────────────────────────────────────
-import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
-import { OVERWORLD_SECONDS_PER_GAME_MINUTE } from "@marinara-engine/shared";
-import overworldAtlases from "../lib/overworld-atlases.json";
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { OVERWORLD_SECONDS_PER_GAME_MINUTE, tilePackPixels, type TilePack } from "@marinara-engine/shared";
+import { api } from "../lib/api-client";
 import { OVERWORLD_TILE } from "../lib/overworld-paint";
 import { useAdvanceTime } from "./use-game";
+
+/** Tiles to a row on the canvas a pack is laid out on. */
+const ATLAS_COLUMNS = 8;
 
 /** What the game screen can ask of the view in front: send the real time it has passed so far. */
 export interface OverworldClockHandle {
@@ -82,10 +86,27 @@ export function useOverworldClock(
   return { pendingMinutes, flush };
 }
 
-// Each setting family's tiles, drawn in code by scripts/art/build-overworld-tiles.mjs: an image of 16 px
-// tiles and a map of tile ids (ground looks, markers, ruins, the party, the town's pieces) to their
-// variants. Community tile packs can use the same format later. A tile a family lacks is drawn plain.
-const ATLASES = overworldAtlases as Record<string, { columns: number; tiles: Record<string, number[]> }>;
+// ── Tile packs (worldgen W9a) ──
+
+/** The stored tile packs, the families with a built-in pack, and the pack each family is drawn with. */
+export interface TilePackLibrary {
+  packs: Array<{ id: string; name: string; family: string; version: number }>;
+  builtIn: string[];
+  selection: Record<string, string>;
+}
+
+export const tilePackKeys = {
+  library: ["game", "tile-packs"] as const,
+  pack: (family: string, chosen: string | null) => ["game", "tile-packs", "pack", family, chosen] as const,
+};
+
+export function useTilePackLibrary() {
+  return useQuery({
+    queryKey: tilePackKeys.library,
+    queryFn: () => api.get<TilePackLibrary>("/game-tile-packs"),
+    staleTime: 5 * 60_000,
+  });
+}
 
 /** Draws a family's tile at (x, y), the variant by `pick` (0..1); false while the tiles load, when the
  *  family has none, or when it lacks that tile, so the caller draws it plain. */
@@ -97,30 +118,60 @@ export type OverworldTileDrawer = (
   pick?: number,
 ) => boolean;
 
+/** The tiles a family is drawn with: the pack chosen for it, else the Engine's own for the family, laid
+ *  out once on a canvas. A family with neither is drawn plain. */
 export function useOverworldAtlas(family: string | undefined): OverworldTileDrawer {
-  const atlasMap = family ? ATLASES[family] : undefined;
-  const [atlas, setAtlas] = useState<HTMLImageElement | null>(null);
-  useEffect(() => {
-    setAtlas(null);
-    if (!atlasMap) return;
-    const image = new Image();
-    image.onload = () => setAtlas(image);
-    image.src = `/overworld/${family}.png`;
-    return () => {
-      image.onload = null;
-    };
-  }, [atlasMap, family]);
+  const { data: library } = useTilePackLibrary();
+  const chosen = (family && library?.selection[family]) || null;
+  const builtIn = Boolean(family && library?.builtIn.includes(family));
+  const { data: pack } = useQuery({
+    queryKey: tilePackKeys.pack(family ?? "", chosen),
+    queryFn: async () => {
+      if (chosen) {
+        // A chosen pack that is gone or no longer reads falls back to the built-in one.
+        const stored = await api
+          .get<{ pack: TilePack }>(`/game-tile-packs/pack?id=${encodeURIComponent(chosen)}`)
+          .catch(() => null);
+        if (stored) return stored.pack;
+      }
+      if (!builtIn) return null;
+      return (await api.get<{ pack: TilePack }>(`/game-tile-packs/builtin/${encodeURIComponent(family!)}`)).pack;
+    },
+    enabled: Boolean(family && library),
+    staleTime: Infinity,
+  });
+  const atlas = useMemo(() => {
+    if (!pack) return null;
+    const ids = Object.keys(pack.tiles);
+    const total = ids.reduce((sum, id) => sum + pack.tiles[id]!.length, 0);
+    const canvas = document.createElement("canvas");
+    canvas.width = ATLAS_COLUMNS * OVERWORLD_TILE;
+    canvas.height = Math.max(1, Math.ceil(total / ATLAS_COLUMNS)) * OVERWORLD_TILE;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    const index: Record<string, number[]> = {};
+    let next = 0;
+    for (const id of ids) {
+      index[id] = pack.tiles[id]!.map((rows) => {
+        const at = next++;
+        const image = new ImageData(tilePackPixels(pack, rows), OVERWORLD_TILE, OVERWORLD_TILE);
+        ctx.putImageData(image, (at % ATLAS_COLUMNS) * OVERWORLD_TILE, Math.floor(at / ATLAS_COLUMNS) * OVERWORLD_TILE);
+        return at;
+      });
+    }
+    return { canvas, index };
+  }, [pack]);
   return useCallback(
     (ctx, id, x, y, pick = 0) => {
-      const variants = atlas && atlasMap ? atlasMap.tiles[id] : undefined;
-      if (!atlas || !atlasMap || !variants?.length) return false;
-      const index = variants[Math.min(variants.length - 1, Math.floor(pick * variants.length))]!;
-      const sx = (index % atlasMap.columns) * OVERWORLD_TILE;
-      const sy = Math.floor(index / atlasMap.columns) * OVERWORLD_TILE;
-      ctx.drawImage(atlas, sx, sy, OVERWORLD_TILE, OVERWORLD_TILE, x, y, OVERWORLD_TILE, OVERWORLD_TILE);
+      const variants = atlas?.index[id];
+      if (!atlas || !variants?.length) return false;
+      const at = variants[Math.min(variants.length - 1, Math.floor(pick * variants.length))]!;
+      const sx = (at % ATLAS_COLUMNS) * OVERWORLD_TILE;
+      const sy = Math.floor(at / ATLAS_COLUMNS) * OVERWORLD_TILE;
+      ctx.drawImage(atlas.canvas, sx, sy, OVERWORLD_TILE, OVERWORLD_TILE, x, y, OVERWORLD_TILE, OVERWORLD_TILE);
       return true;
     },
-    [atlas, atlasMap],
+    [atlas],
   );
 }
 
@@ -141,4 +192,37 @@ export function overworldCamera(
     x: axis(map.width, view.width, at.x, 0.5, 0),
     y: axis(map.height, view.height, at.y, 0.4, view.height * 0.45),
   };
+}
+
+/** Draws a family with a stored pack, or (null) with its own again. */
+export function useChooseTilePack() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { family: string; packId: string | null }) =>
+      api.put<{ selection: Record<string, string> }>("/game-tile-packs/selection", data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: tilePackKeys.library }),
+  });
+}
+
+/** Imports a tile pack file, kept as it came. */
+export function useImportTilePack() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (definition: string) =>
+      api.post<{ status: "added" | "unchanged"; pack: { id: string; name: string; version: number }; notes: string[] }>(
+        "/game-tile-packs/import",
+        { definition },
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: tilePackKeys.library }),
+  });
+}
+
+/** Removes every version of a stored pack. */
+export function useRemoveTilePack() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (packId: string) =>
+      api.delete<{ removed: number }>(`/game-tile-packs?id=${encodeURIComponent(packId)}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["game", "tile-packs"] }),
+  });
 }

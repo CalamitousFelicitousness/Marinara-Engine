@@ -6,6 +6,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - Switching a Roleplay group between **Merged (Narrator)** and **Individual** now changes the whole prompt at once. Continuing a reply in Merged mode no longer makes the model speak as that reply's character, a message sent right after switching waits for the new mode to be saved, and Chat Settings always shows the mode replies actually use (#6959).
 
+- **Image Captioning** in Chat Settings now shows its prompt in a box under the toggle, so you can change how images are described (for example, ask for more detail) or reset it to the default. If captioning fails, the reply now stops with an error instead of quietly sending the image to the chat model (#6960).
+
 - GLM models on NanoGPT, such as GLM 4.7 and 5.1, now stop reasoning when Reasoning Effort is **Off**, whether the chat sets Off itself or takes it from the connection's Default Chat Parameters. Before, they kept reasoning anyway and could spend the whole reply budget on it, ending with a message to raise Max Tokens (#6961).
 
 - In the Android app, picking a picture now offers the camera too, on Android 10 and newer, as Chrome does. Photos you take are saved to Pictures/Marinara (#6953).

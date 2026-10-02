@@ -278,8 +278,7 @@ export async function buildConversationCommandsReminder(args: {
       `   - {{user}} says "I'm coming over" or "Let's go to the park" → trigger a scene for arriving/being at that location.`,
       `   - You invite {{user}} somewhere and they accept → trigger a scene for that activity.`,
       `   - A plan is made (date, trip, hangout, confrontation) and the moment arrives → trigger a scene.`,
-      `   Do NOT wait for {{user}} to explicitly ask for a scene. If the conversation implies you and {{user}} are about to DO something together, initiate the scene yourself.`,
-      `   EXCEPTION: Do NOT start a scene for playing UNO, chess, poker, 8-ball pool, tic-tac-toe, rock-paper-scissors, cards, or other board/table games — those have their own commands. Use [uno] for UNO, [chess] for chess, [poker] for poker, [eightball] for 8-ball pool, [tic_tac_toe] for tic-tac-toe, and [rock_paper_scissors] for rock-paper-scissors, not [scene].`,
+      `   - Do NOT wait for {{user}} to explicitly ask for a scene. If the conversation implies you and {{user}} are about to DO something together, initiate the scene yourself.`,
     );
   }
 

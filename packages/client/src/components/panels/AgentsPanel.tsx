@@ -2162,7 +2162,13 @@ function TilePacksSection() {
     }
   };
   const onRemove = async (packId: string, name: string) => {
-    if (!window.confirm(t("game.tilePacks.removeConfirm", { name }))) return;
+    const confirmed = await showConfirmDialog({
+      title: t("game.tilePacks.removeNamed", { name }),
+      message: t("game.tilePacks.removeConfirm", { name }),
+      confirmLabel: t("game.tilePacks.remove"),
+      tone: "destructive",
+    });
+    if (!confirmed) return;
     try {
       await removePack.mutateAsync(packId);
     } catch (error) {

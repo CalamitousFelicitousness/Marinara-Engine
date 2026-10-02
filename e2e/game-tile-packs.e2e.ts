@@ -113,8 +113,8 @@ test("a tile pack is imported, chosen for its family, drawn on the overworld, ex
       const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
       useUIStore.getState().openRightPanel("agents");
     });
-    page.once("dialog", (dialog) => void dialog.accept());
     await page.getByRole("button", { name: "Remove Night meadows", exact: true }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Remove", exact: true }).click();
     await expect(page.getByText("Fantasy, version 1", { exact: true })).toHaveCount(0);
     expect((await (await request.get("/api/game-tile-packs")).json()).selection).toEqual({});
   } finally {

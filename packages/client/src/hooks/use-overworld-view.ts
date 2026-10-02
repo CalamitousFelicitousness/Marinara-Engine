@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { OVERWORLD_SECONDS_PER_GAME_MINUTE, tilePackPixels, type TilePack } from "@marinara-engine/shared";
-import { api } from "../lib/api-client";
+import { ApiError, api } from "../lib/api-client";
 import { OVERWORLD_TILE } from "../lib/overworld-paint";
 import { useAdvanceTime } from "./use-game";
 
@@ -132,10 +132,14 @@ export function useOverworldAtlas(family: string | undefined): OverworldTileDraw
     queryKey: tilePackKeys.pack(family ?? "", chosen, version),
     queryFn: async () => {
       if (chosen) {
-        // A chosen pack that is gone or no longer reads falls back to the built-in one.
+        // A chosen pack that is gone or no longer reads (404) falls back to the built-in one; any other
+        // failure is thrown, so the query retries rather than keeping the fallback under this pack's key.
         const stored = await api
           .get<{ pack: TilePack }>(`/game-tile-packs/pack?id=${encodeURIComponent(chosen)}`)
-          .catch(() => null);
+          .catch((error: unknown) => {
+            if (error instanceof ApiError && error.status === 404) return null;
+            throw error;
+          });
         if (stored) return stored.pack;
       }
       if (!builtIn) return null;

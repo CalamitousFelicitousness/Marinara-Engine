@@ -145,7 +145,12 @@ export async function gameTilePacksRoutes(app: FastifyInstance) {
     const { family, packId } = z
       .object({ family: familySchema, packId: z.string().min(1).max(80).nullable() })
       .parse(req.body);
-    if (packId && !(await store.latestOf(packId))) return reply.status(404).send({ error: "No such tile pack." });
+    if (packId) {
+      const row = await store.latestOf(packId);
+      if (!row) return reply.status(404).send({ error: "No such tile pack." });
+      // Only for its own family, so the choices never name more families than the stored packs do.
+      if (row.family !== family) return reply.status(400).send({ error: "That tile pack is for another setting." });
+    }
     const selection = await readSelection();
     if (packId) selection[family] = packId;
     else delete selection[family];

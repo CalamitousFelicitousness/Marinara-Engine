@@ -140,6 +140,12 @@ try {
     const choose = (packId: string | null) =>
       app.inject({ method: "PUT", url: "/api/game-tile-packs/selection", payload: { family: "fantasy", packId } });
     assert.equal((await choose("local/nothing")).statusCode, 404, "only a stored pack");
+    const elsewhere = await app.inject({
+      method: "PUT",
+      url: "/api/game-tile-packs/selection",
+      payload: { family: "wuxia", packId: "local/shared-pack" },
+    });
+    assert.equal(elsewhere.statusCode, 400, "only for its own family");
     assert.deepEqual((await choose("local/shared-pack")).json().selection, { fantasy: "local/shared-pack" });
     assert.deepEqual((await library()).selection, { fantasy: "local/shared-pack" });
     const removed = await app.inject({ method: "DELETE", url: "/api/game-tile-packs?id=local/shared-pack" });

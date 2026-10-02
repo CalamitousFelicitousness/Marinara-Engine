@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- With streaming on, a reply no longer starts with the raw `<tool_call>…</tool_call>` text when the model writes its tool calls as text, as some KoboldCPP or Gemma setups do. Once Marinara recognises and runs the call, that text disappears from the message on screen and is not saved, the same as with streaming off (#6951).
+
 - `{{<character ID>}}` macros now become the character's name in Conversation and Game chats, and in Roleplay chats without a preset, instead of staying as raw text. In these chats the macro gives only the name; the referenced card is not added to the prompt (#6956).
 
 - On iPad, tapping a chat in the chat list now opens it instead of leaving the list on top, and buttons that start a chat or open a page from a full-screen panel close that panel too. The keyboard no longer covers a message you are editing, and **Copy Support Diagnostics** now copies (#6944).

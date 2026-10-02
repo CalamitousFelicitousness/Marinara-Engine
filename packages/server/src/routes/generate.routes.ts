@@ -8231,6 +8231,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               if (result.content && !fullResponse.endsWith(result.content)) {
                 await writeContentChunked(result.content);
               }
+              // A tool call the model wrote as text was streamed before the provider recognised
+              // it, and the provider leaves that text out of the result, as without streaming.
+              // Take it back out of the reply and the client's view (#6951).
+              if (result.toolCalls.length && !result.content && fullResponse.length > roundResponseStart) {
+                fullResponse = fullResponse.slice(0, roundResponseStart);
+                if (!holdForTextRewrite) sendSseEvent(reply, { type: "content_replace", data: fullResponse });
+              }
 
               // Gemini thought signatures reach this branch as providerMetadata rather than
               // through onResponseParts, which is only wired on the no-tools path. Without

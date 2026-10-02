@@ -8,6 +8,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - `{{<character ID>}}` macros now become the character's name in Conversation and Game chats, and in Roleplay chats without a preset, instead of staying as raw text. In these chats the macro gives only the name; the referenced card is not added to the prompt (#6956).
 
+- **Image Captioning** in Chat Settings now shows its prompt in a box under the toggle, so you can change how images are described (for example, ask for more detail) or reset it to the default. If captioning fails, the reply now stops with an error instead of quietly sending the image to the chat model (#6960).
+
 - GLM models on NanoGPT, such as GLM 4.7 and 5.1, now stop reasoning when Reasoning Effort is **Off**, whether the chat sets Off itself or takes it from the connection's Default Chat Parameters. Before, they kept reasoning anyway and could spend the whole reply budget on it, ending with a message to raise Max Tokens (#6961).
 
 - In the Android app, picking a picture now offers the camera too, on Android 10 and newer, as Chrome does. Photos you take are saved to Pictures/Marinara (#6953).

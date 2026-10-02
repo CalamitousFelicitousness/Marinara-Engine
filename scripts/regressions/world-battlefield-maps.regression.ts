@@ -412,8 +412,13 @@ try {
 
     // ── A directed fight: on a tactical board and on a ruleset's, the same; theatre of the mind, none ──
     let fightChat = { chatId: "", anchor: "" };
-    const directed = async (payload: Record<string, unknown>) => {
-      const { chatId, anchor } = await play([at("Ashford")]);
+    const directed = async (
+      payload: Record<string, unknown>,
+      boards: WorldBattlefieldMap[] = [millYard],
+      meta: Record<string, unknown> = {},
+    ) => {
+      const { chatId, anchor } = await play([at("Ashford")], boards);
+      if (Object.keys(meta).length) await chats.patchMetadata(chatId, meta);
       fightChat = { chatId, anchor };
       const response = await app.inject({
         method: "POST",
@@ -455,6 +460,47 @@ try {
     assert.match(told, /Environment: ruins/);
     assert.match(told, /Board: "Mill yard", made by hand/);
     assert.equal((await directed({ style: "ruleset" })).ruleset?.grid, undefined, "no board, none painted");
+    // A fight not on a board takes nothing of a painted one, not even its scene: the rain still falls on
+    // a classic fight in the woods, and on a ruleset's that says nothing about distance, though the town's
+    // board is a dungeon that would keep it off.
+    await createGameRulesetsStorage(db).put({
+      rulesetId: "local/5e-flat",
+      version: 1,
+      sourceKind: "local",
+      // The same rules with nothing measured in cells: theatre of the mind.
+      definition: JSON.stringify({
+        ...fiveE,
+        id: "5e-flat",
+        combat: (() => {
+          const {
+            distance: _distance,
+            ranged: _ranged,
+            cover: _cover,
+            opportunity: _opportunity,
+            ...rest
+          } = fiveE.combat as Record<string, unknown> & {
+            attacks: Array<Record<string, unknown>>;
+            contests: Array<{ onWin: Record<string, unknown> }>;
+          };
+          return {
+            ...rest,
+            attacks: rest.attacks.map(({ reach: _reach, range: _range, ...attack }) => attack),
+            contests: rest.contests.filter((contest) => !("push" in contest.onWin)),
+          };
+        })(),
+      }),
+    });
+    const crypt = [{ ...millYard, scene: "dungeon" as const }];
+    const rain = { gameWeather: { type: "rain" } };
+    const underCover = await directed({ style: "tactical" }, crypt, rain);
+    assert.equal(underCover.weather?.exposure, "sheltered", "the painted dungeon keeps the rain off");
+    assert.equal((await directed({ style: "classic" }, crypt, rain)).weather?.exposure, "exposed");
+    const flat = await directed({ style: "ruleset", positioned: true }, crypt, {
+      ...rain,
+      gameRuleset: { id: "local/5e-flat", version: 1, packageId: null, options: {} },
+    });
+    assert.equal(flat.ruleset?.grid, undefined, "a ruleset with no distance has no board");
+    assert.equal(flat.weather?.exposure, "exposed");
   } finally {
     await app.close();
     await closeDB();

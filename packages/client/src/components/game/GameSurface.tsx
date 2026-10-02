@@ -10782,8 +10782,10 @@ function GameSurfaceComponent({
     ) => {
       if (!sessionInteractive) return false;
       audioManager.unlock();
-      // The overworld's real time so far is on the clock before the Game Master reads it.
-      await overworldClockRef.current?.flush();
+      // The overworld's real time so far goes on the clock with the turn. Not awaited: the send must stay
+      // synchronous up to the generation (a yield here broke the native dice turn), and the few minutes it
+      // carries need not land before the Game Master reads the clock.
+      void overworldClockRef.current?.flush();
       // Commit a pending interrupt: persist the truncated GM message before generating
       // so the server-side prompt build doesn't see segments the player never read. We
       // await so the PATCH (and the optional risky-mode system message) land before

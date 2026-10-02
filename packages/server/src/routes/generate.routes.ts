@@ -10092,6 +10092,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                     }
                   : {}),
               }));
+              if (turnToldWalk) await chats.updateMessageExtra(savedMsg.id, { worldWalk: turnToldWalk });
               const latest = clock ? await gameStateStore.getLatest(input.chatId) : null;
               if (clock && latest) {
                 await gameStateStore.updateLatest(
@@ -10102,7 +10103,6 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   ) as any,
                 );
               }
-              if (turnToldWalk) await chats.updateMessageExtra(savedMsg.id, { worldWalk: turnToldWalk });
             } catch (err) {
               // The reply is saved either way: a failed write is logged, never the turn's failure.
               logger.error(err, "[generate] Overworld walk and clock update failed for chat %s", input.chatId);

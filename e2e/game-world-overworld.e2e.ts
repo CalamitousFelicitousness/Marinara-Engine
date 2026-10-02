@@ -135,12 +135,18 @@ test("a world game opens on the overworld, and a walk moves the party and the cl
       { timeout: 30_000 },
     );
 
+    // A settlement on the map itself takes a click through the narration's empty space.
+    const card = page.locator('[data-component="WorldOverworld.Card"]');
+    await page.getByRole("button", { name: /^Hollin, .*: the party is here$/u }).click();
+    await expect(card).toContainText("The party is here.");
+    await card.getByRole("button", { name: "Close", exact: true }).click();
+    await expect(card).toHaveCount(0);
+
     // Places, nearest first: Thornmere, with its days on the way.
     await page.getByRole("button", { name: "Places", exact: true }).click();
     const places = page.getByRole("list", { name: "Places" });
     await expect(places.getByRole("button").first()).toContainText("Hollin");
     await places.getByRole("button", { name: /^Thornmere/u }).click();
-    const card = page.locator('[data-component="WorldOverworld.Card"]');
     await expect(card).toContainText("Thornmere");
     await expect(card).toContainText(trip.days < 1 ? /hours? on the way/u : /days? on the way/u);
     await page.screenshot({ path: testInfo.outputPath("overworld-card.png") });

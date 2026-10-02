@@ -196,6 +196,11 @@ try {
   assert.deepEqual([walk.from, walk.to, walk.days], [start.id, far.path[1], firstLeg.days]);
   const on = worldWalkJoined(walk, worldRoute(world, far.path[1]!, far.path[2]!)!, "w2");
   assert.equal(on.from, start.id, "a walk taken further keeps where it set out from");
+  assert.equal(
+    on.days,
+    Math.round((walk.days + worldRoute(world, far.path[1]!, far.path[2]!)!.days) * 100) / 100,
+    "and adds its days",
+  );
   assert.equal(on.to, far.path[2]);
   assert.equal(new Set(on.ways).size, on.ways.length, "each way once");
   assert.match(worldWalkText(game, on), new RegExp(`from ${start.name} to `, "u"));

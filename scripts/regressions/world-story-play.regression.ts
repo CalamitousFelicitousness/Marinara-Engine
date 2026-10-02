@@ -327,7 +327,21 @@ try {
   assert.deepEqual(arrive([...been, comeAndGo[1]!]), [], "gone");
   assert.deepEqual(arrive([...been, comeAndGo[1]!, comeAndGo[0]!]), ["each"], "come back: again");
 
-  // A place the Game Master added inside the town is still the town: stepping in is no new arrival.
+  // A place the Game Master added inside the town is still the town: the party there is in it (a gated
+  // arrival happens once the gates open), and stepping in is no new arrival.
+  assert.deepEqual(
+    storyTurn(gated.story, {
+      game,
+      replies: [comeAndGo[0]!, opened, `[place: name="The Gilded Gull" result="ok"]`],
+      repliesBefore: 3,
+      latest: null,
+      told: [],
+      added: [{ id: "a1", name: "The Gilded Gull", parentId: away.id }],
+      day: 0,
+      fight: null,
+    }).tripped,
+    ["once", "each"],
+  );
   const tavern = [
     comeAndGo[0]!,
     `[story: event="each" by="engine" result="ok"]`,

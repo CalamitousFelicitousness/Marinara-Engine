@@ -343,11 +343,14 @@ export function WorldOverworld({
   const startWalk = useCallback(
     async (to: string) => {
       if (!canWalk || walkingRef.current) return;
+      // Under way from the first click, so a second one while the clock is sent starts nothing.
+      walkingRef.current = true;
       await flush();
       let result;
       try {
         result = await walkMutation.mutateAsync({ chatId, to });
       } catch (error) {
+        walkingRef.current = false;
         toast.error(error instanceof Error && error.message ? error.message : t("game.overworld.walkFailed"));
         return;
       }

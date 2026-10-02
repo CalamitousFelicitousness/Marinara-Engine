@@ -255,6 +255,8 @@ export function TownView({
   const startVisit = useCallback(
     async (to: string) => {
       if (!town || !canWalk || walkingRef.current) return;
+      // Under way from the first click, so a second one while the clock is sent starts nothing.
+      walkingRef.current = true;
       const from = worldTownDoor(town, town.at);
       const target = worldTownDoor(town, to);
       // The real time so far goes on the clock before the walk's minutes.
@@ -263,12 +265,16 @@ export function TownView({
       try {
         result = await visitMutation.mutateAsync({ chatId, to });
       } catch (error) {
+        walkingRef.current = false;
         toast.error(error instanceof Error && error.message ? error.message : t("game.town.walkFailed"));
         return;
       }
       setSelectedState(null);
       setLookAt(null);
-      if (!from || !target) return;
+      if (!from || !target) {
+        walkingRef.current = false;
+        return;
+      }
       // Along the street the party is on, then the one it turns into.
       const corner = { x: target.x, y: from.y };
       const points = [centreOf(from), centreOf(corner), centreOf(target)];

@@ -99,7 +99,7 @@ To remove a saved summary, open it in **Access memories for this chat** and choo
 
 ### Optional Jev decisions
 
-Turn on **Use Decision model (Jev)** in Advanced Memory, then choose a saved **Memory Decision connection**. Create it in **Connections** using TypeSafe, OpenRouter or a compatible Decision source; see [Decision Models](../connections/decision-models.md). This option is off by default and saved for each Roleplay chat. Its connection is separate from the global Decision default.
+Turn on **Use Decision model** in Advanced Memory, then choose a saved **Memory Decision connection**. Create it in **Connections** using TypeSafe, OpenRouter or a compatible Decision source; see [Decision Models](../connections/decision-models.md). This option is off by default and saved for each Roleplay chat. Its connection is separate from the global Decision default.
 
 The selected model identifies scene boundaries during history preparation and ongoing scene checks, then selects relevant scene recaps and original-message excerpts before a new reply. Uncertain boundaries leave the scene open. The **Helper model** still writes every summary and continuity update. Recalled scenes, excerpt lengths, character access and token budgets keep their existing limits. A valid decision can select nothing.
 

@@ -111,9 +111,11 @@ export async function askNoulQuestions(req: DecisionRequest): Promise<{
         req.questions.map((q) => {
           const instructions = buildDecisionInstructions(q.instructions, req.questionShape ?? "text");
           if (!q.options) return [q.id, { type: "noul", instructions }];
-          // Descriptions are optional in System One; the option name says it all, and
-          // only the added "none" option needs one.
-          const criteria: Record<string, string | null> = Object.fromEntries(q.options.map((option) => [option, null]));
+          // The option name says it all, so only the added "none" option is described.
+          // The others get an empty description, not null: System One allows null, but
+          // some servers (Strands decider) accept only strings, and an empty string left
+          // every Open-Jev answer unchanged in testing (#6981).
+          const criteria: Record<string, string> = Object.fromEntries(q.options.map((option) => [option, ""]));
           criteria[DECISION_CHOICE_NONE] = "None of the other options apply.";
           return [q.id, { type: "choice", instructions, criteria }];
         }),

@@ -136,6 +136,34 @@ const installed = [
   ),
   install("kitonly", { "kit.worldkit.json": text(worldKitFile(kit)) }, { kit: "kit.worldkit.json" }),
   install("plain", {}, null),
+  // A world whose hand edits do not fit it reads with a note: in a pack, it is refused.
+  install(
+    "unfit",
+    {
+      "kit.worldkit.json": text(worldKitFile(kit)),
+      "unfit.world.json": text(
+        worldFile("Unfit", kit, {
+          ...worldOf(9),
+          edits: { editsVersion: 1, places: [{ id: "nowhere", name: "Nowhere" }] },
+        }),
+      ),
+    },
+    { kit: "kit.worldkit.json", worlds: ["unfit.world.json"] },
+  ),
+  // Larger than a share file: refused on its declared size, before the read.
+  install(
+    "huge",
+    {
+      "kit.worldkit.json": text(worldKitFile(kit)),
+      "huge.world.json": `${text(worldFile("Huge", kit, worldOf(9)))}${" ".repeat(2_000_001)}`,
+    },
+    { kit: "kit.worldkit.json", worlds: ["huge.world.json"] },
+  ),
+  install(
+    "badtiles",
+    { "kit.worldkit.json": text(worldKitFile(kit)), "tiles.tilepack.json": "{}" },
+    { kit: "kit.worldkit.json", tiles: "tiles.tilepack.json" },
+  ),
 ];
 writeFileSync(
   join(dataDir, "capability-packages", "installed.json"),
@@ -164,7 +192,10 @@ try {
     ...manifest,
     contributions: { ...manifest.contributions, slots: ["home-browser-tab"], homeBrowserTab: { label: "x" } },
   });
-  assert.ok(!wrongSlot.success, "only an Experience ships a map pack");
+  assert.ok(
+    !wrongSlot.success && wrongSlot.error.issues.some((issue) => /requires the game-surface slot/.test(issue.message)),
+    "only an Experience ships a map pack (its setup asks for the slot)",
+  );
   const ownSetup = capabilityPackageManifestSchema.safeParse({
     ...manifest,
     contributions: { ...manifest.contributions, gameSurface: { mapPack: goodPack } },
@@ -187,6 +218,15 @@ try {
   assert.ok(stray && !stray.ok && /another kit/.test(stray.reason), JSON.stringify(stray));
   const tampered = await readMapPack("tampered");
   assert.ok(tampered && !tampered.ok && /integrity/i.test(tampered.reason), JSON.stringify(tampered));
+  const unfit = await readMapPack("unfit");
+  assert.ok(unfit && !unfit.ok && /does not fit its kit/.test(unfit.reason), JSON.stringify(unfit));
+  const huge = await readMapPack("huge");
+  assert.ok(
+    huge && !huge.ok && /^huge\.world\.json is larger than a share file/.test(huge.reason),
+    JSON.stringify(huge),
+  );
+  const badTiles = await readMapPack("badtiles");
+  assert.ok(badTiles && !badTiles.ok && /tiles do not read/.test(badTiles.reason), JSON.stringify(badTiles));
   assert.equal(await readMapPack("plain"), null, "an Experience without a pack");
   assert.equal(await readMapPack("nowhere"), null, "not installed");
 
@@ -228,6 +268,16 @@ try {
     assert.equal(noWorld.statusCode, 400, "a pack with maps needs one of them");
     const otherSeed = await create({ gameExperienceId: "mapfixture", worldKit: kit, world: { ...worldOf(11) } });
     assert.equal(otherSeed.statusCode, 400, "a world not among its maps");
+    const noEdits = await create({ gameExperienceId: "mapfixture", worldKit: kit, world: { ...worldOf(9) } });
+    assert.equal(noEdits.statusCode, 400, "its map, but without the map's hand edits");
+    // The same kit and world with their keys in another order are the same.
+    const reordered = <T extends object>(value: T) => Object.fromEntries(Object.entries(value).reverse()) as T;
+    const shuffled = await create({
+      gameExperienceId: "mapfixture",
+      worldKit: reordered(kit),
+      world: reordered({ ...worldOf(10), brief: reordered(checked.brief) }),
+    });
+    assert.equal(shuffled.statusCode, 200, shuffled.body);
     const made = await create({ gameExperienceId: "mapfixture", worldKit: kit, world: { ...worldOf(9), edits } });
     assert.equal(made.statusCode, 200, made.body);
     const meta = JSON.parse(made.json().sessionChat.metadata);

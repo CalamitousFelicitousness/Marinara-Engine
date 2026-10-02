@@ -209,9 +209,48 @@ test("an Experience's map pack sets the kit and offers only its maps, and lets g
   expect(result.config.world).toEqual(downriver);
 });
 
+test("an Experience whose map pack does not read cannot start a game, and says why", async ({ page }, testInfo) => {
+  test.setTimeout(120_000);
+  const wizard = await mountWizard(page, testInfo);
+  // Registered last, so it answers instead of the good pack.
+  await page.route("**/api/game/experience-map-pack/mapfixture", (route) =>
+    route.fulfill({ status: 400, json: { error: "upriver.world.json was made with another kit" } }),
+  );
+  await wizard
+    .locator("select")
+    .filter({ has: page.locator('option[value="wizard-connection"]') })
+    .first()
+    .selectOption("wizard-connection");
+  await wizard.getByRole("button", { name: "Show", exact: true }).click();
+  await wizard.getByRole("switch", { name: "River Experience", exact: true }).click();
+  const heading = wizard.getByRole("heading", { level: 4 }).first();
+  const next = async () => {
+    const previous = await heading.innerText();
+    await wizard.getByRole("button", { name: "Next", exact: true }).click();
+    await expect(heading).not.toHaveText(previous);
+  };
+  const kitLabel = wizard.getByText("Setting kit", { exact: true });
+  for (let step = 0; step < 6 && !(await kitLabel.isVisible()); step++) await next();
+  await expect(
+    wizard.getByText("River Experience cannot start a game: upriver.world.json was made with another kit"),
+  ).toBeVisible();
+  // Neither the pack's maps nor the player's own kit chooser: nothing to start with.
+  await expect(wizard.getByRole("radio", { name: "Upriver", exact: true })).toHaveCount(0);
+  await expect(wizard.getByRole("button", { name: "Import a world file", exact: true })).toHaveCount(0);
+  const start = wizard.getByRole("button", { name: "Start Game", exact: true });
+  for (let step = 0; step < 6 && !(await start.isVisible()); step++) await next();
+  await expect(start).toBeDisabled();
+  await expect(wizard.getByText("This Experience's map pack does not read, so it cannot start a game.")).toBeVisible();
+});
+
 test("a game started with a map pack draws its overworld with the pack's tiles", async ({ page, request }) => {
   test.setTimeout(120_000);
-  await page.route("**/api/game/experience-map-pack/mapfixture", (route) => route.fulfill({ json: { mapPack: pack } }));
+  // Answered late, so the overworld is up while the pack is still loading: it waits, never drawing the
+  // setting family's tiles in the meantime.
+  await page.route("**/api/game/experience-map-pack/mapfixture", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 4000));
+    await route.fulfill({ json: { mapPack: pack } });
+  });
   const builtIn: string[] = [];
   page.on("request", (req) => {
     if (req.url().includes("/api/game-tile-packs/builtin/")) builtIn.push(req.url());

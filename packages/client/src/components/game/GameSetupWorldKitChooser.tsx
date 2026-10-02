@@ -1188,16 +1188,22 @@ export function MapPackLock({
   onPickWorld: (path: string) => void;
 }) {
   const { t } = useUiTranslation();
+  const label = (
+    <span className="mb-1 block text-xs font-medium text-[var(--foreground)]">{t("game.worldKit.setup.label")}</span>
+  );
   if (!pack) {
     return (
-      <p role="alert" className="text-xs text-[var(--destructive)]">
-        {t("game.mapPack.unreadable", { name, reason: error ?? "" })}
-      </p>
+      <div>
+        {label}
+        <p role="alert" className="text-xs text-[var(--destructive)]">
+          {t("game.mapPack.unreadable", { name, reason: error ?? "" })}
+        </p>
+      </div>
     );
   }
   return (
     <div>
-      <span className="mb-1 block text-xs font-medium text-[var(--foreground)]">{t("game.worldKit.setup.label")}</span>
+      {label}
       <div className="rounded-lg bg-[var(--primary)]/10 p-3 text-xs ring-1 ring-[var(--primary)]/40">
         <span className="block font-medium text-[var(--foreground)]">{pack.kit.label}</span>
         <span className="mt-1 block text-[var(--muted-foreground)]">{t("game.mapPack.kitSetBy", { name })}</span>

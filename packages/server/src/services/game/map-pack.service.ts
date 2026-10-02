@@ -16,19 +16,11 @@ export type MapPack = ExperienceMapPack;
 
 export type MapPackRead = { ok: true; pack: MapPack } | { ok: false; reason: string } | null;
 
-/** Two values the same, whatever order their keys were written in. */
+/** Two values the same. Both sides always come out of the same parsers (the share file readers, the
+ *  create route's schema and brief check), so their keys are in one order whatever order they were sent
+ *  in (the regression sends them shuffled). */
 export function sameJson(left: unknown, right: unknown): boolean {
-  const canon = (value: unknown): unknown =>
-    Array.isArray(value)
-      ? value.map(canon)
-      : value && typeof value === "object"
-        ? Object.fromEntries(
-            Object.keys(value as Record<string, unknown>)
-              .sort()
-              .map((key) => [key, canon((value as Record<string, unknown>)[key])]),
-          )
-        : value;
-  return JSON.stringify(canon(left)) === JSON.stringify(canon(right));
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 /** The Experience's map pack, checked; null when it ships none (or is not installed and ready). A pack

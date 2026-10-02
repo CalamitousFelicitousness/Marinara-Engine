@@ -619,14 +619,15 @@ export const capabilityPackageManifestSchema = z
     const mapPack = manifest.contributions?.gameSurface?.mapPack;
     if (mapPack) {
       const api = manifest.schemaVersion === 2 ? manifest.capabilityApi : null;
-      if (!api || api.major !== 1 || api.minor < 68 || !manifest.contributions?.slots?.includes("game-surface")) {
+      if (!api || api.major !== 1 || api.minor < 68) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["contributions", "gameSurface", "mapPack"],
-          message: "A map pack requires the game-surface slot, schemaVersion 2 and capabilityApi 1.68 or newer",
+          message: "A map pack requires schemaVersion 2 and capabilityApi 1.68 or newer",
         });
       }
-      // The lock lives in the Engine's own setup, so an Experience with a map pack sets up through it.
+      // The lock lives in the Engine's own setup, so an Experience with a map pack sets up through it
+      // (and the setup's own rule asks for the game-surface slot).
       if (!manifest.contributions?.gameSurface?.setup) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,

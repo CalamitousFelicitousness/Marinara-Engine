@@ -4,6 +4,10 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Image Generation connections have a new **ChatGPT (Codex login)** service that makes images with your ChatGPT plan, using the `codex login` session on the computer running Marinara, so no API key or API credits are needed. Selfies, illustrations, avatars, sprites, reference images and the gallery work with it like with any other image service. Based on prisoner310's prototype (#6884).
+
+- In Roleplay, a `roll_dice` added under **Function Calling** now reaches the model and actually rolls when called, the same as with the **Rolls** command. If **Rolls** is also on, its **Who can roll dice** choice still applies (#6945).
+
 - Many tooltips and help texts in Chat Settings, Settings, lorebooks, connections, and the agent editor now use plain words, so it is easier to tell what each setting does (#6947).
 
 - In Roleplay, a `roll_dice` added under **Function Calling** now reaches the model and actually rolls when called, the same as with the **Rolls** command. If **Rolls** is also on, its **Who can roll dice** choice still applies (#6945).

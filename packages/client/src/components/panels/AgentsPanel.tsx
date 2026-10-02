@@ -340,6 +340,12 @@ export function AgentsPanel() {
     () => new Set((installedPackages ?? []).filter((pkg) => isAppCapabilityPackage(pkg.manifest)).map((pkg) => pkg.id)),
     [installedPackages],
   );
+  // An app package's agents count as apps everywhere: the root list, folders and filters.
+  const builtInCategory = useCallback(
+    (agentType: string, category: AgentCategory) =>
+      appPackageIds.has(packageIdByAgentType.get(agentType) ?? "") ? ("app" as const) : category,
+    [appPackageIds, packageIdByAgentType],
+  );
   const capabilityAgentRegistryReady = !capabilityAgentsLoading && capabilityAgents !== undefined;
   const catalogArtworkByAgentId = useMemo(
     () =>
@@ -386,13 +392,13 @@ export function AgentsPanel() {
         return {
           ...agent,
           name: agent.name,
-          category: appPackageIds.has(packageIdByAgentType.get(agent.id) ?? "") ? ("app" as const) : agent.category,
+          category: builtInCategory(agent.id, agent.category),
           description: config?.description ?? agent.description,
           createdAt: config?.createdAt ?? "",
           updatedAt: config?.updatedAt ?? "",
         };
       }),
-    [appPackageIds, configByType, packageIdByAgentType, visibleBuiltInAgents],
+    [builtInCategory, configByType, visibleBuiltInAgents],
   );
   const builtInExportRows = useMemo(
     () => visibleBuiltInAgents.map((agent) => createBuiltInAgentConfigRow(agent, configByType.get(agent.id))),
@@ -434,7 +440,7 @@ export function AgentsPanel() {
     name: agent.name,
     description: agent.description,
     category: builtInAgentIds.has(agent.type)
-      ? (availableBuiltInAgents.find((entry) => entry.id === agent.type)?.category ?? "misc")
+      ? builtInCategory(agent.type, availableBuiltInAgents.find((entry) => entry.id === agent.type)?.category ?? "misc")
       : "custom",
   });
   const agentCategorySections: Array<{
@@ -1078,7 +1084,7 @@ export function AgentsPanel() {
     (agent: AgentConfigRow) => {
       const builtInMeta = availableBuiltInAgents.find((entry) => entry.id === agent.type);
       const custom = !builtInMeta;
-      const category = custom ? "custom" : builtInMeta.category;
+      const category = custom ? "custom" : builtInCategory(agent.type, builtInMeta.category);
       return renderAgentCard({
         localizeUi,
         id: agent.id,
@@ -1140,6 +1146,7 @@ export function AgentsPanel() {
     },
     [
       availableBuiltInAgents,
+      builtInCategory,
       catalogArtworkByAgentId,
       capabilityAgentRegistryReady,
       confirmAndRemoveAgent,

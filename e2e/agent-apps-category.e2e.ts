@@ -107,6 +107,13 @@ test("standalone apps get their own group in Agents and Download Agents", async 
   const catalogSection = (title: string) => catalogView.locator("aside h3", { hasText: title }).locator("..");
   await expect(catalogSection("Apps").locator("button")).toHaveText([/Pocket Town/u]);
   await expect(catalogSection("Misc Agents").locator("button")).toHaveText([/Scene Painter/u, /Story Pack/u]);
+  // Searching for a group's name finds the packages in it.
+  const search = catalogView.getByLabel("Search downloadable agents");
+  await search.fill("Apps");
+  await expect(catalogView.locator("aside button", { hasText: /Pocket Town|Scene Painter|Story Pack/u })).toHaveText([
+    /Pocket Town/u,
+  ]);
+  await search.fill("");
   await catalogSection("Apps")
     .getByRole("button", { name: /Pocket Town/u })
     .click();

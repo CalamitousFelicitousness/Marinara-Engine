@@ -178,6 +178,10 @@ export function AgentCatalogView() {
             manifest.description,
             manifest.id,
             catalogCategory({ manifest, category }),
+            localizeUi(
+              CATEGORY_SECTIONS.find((section) => section.id === catalogCategory({ manifest, category }))?.labelKey ??
+                "",
+            ),
             ...manifest.kind.map(kindLabel),
             ...packageModes(manifest.id).map((mode) => localizeUi(MODE_BADGES[mode].labelKey)),
           ]

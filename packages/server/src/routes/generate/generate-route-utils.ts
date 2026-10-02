@@ -8,6 +8,7 @@ import {
   customTrackerFieldLockPrefix,
   generationParametersSchema,
   normalizeInventoryTrackerRows,
+  normalizeGroupChatMode,
   normalizeTrackerFieldLocksForState,
   extractCharacterCardCastMembers,
   normalizeTextForMatch,
@@ -1233,7 +1234,7 @@ export function resolveGroupGenerationMode(
   _chatMode: string | null | undefined,
   configuredMode: unknown,
 ): GroupGenerationMode {
-  return configuredMode === "individual" ? "individual" : "merged";
+  return normalizeGroupChatMode(configuredMode);
 }
 
 export function shouldRestoreRegenerationCharacterTarget(

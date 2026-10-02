@@ -16,7 +16,7 @@ A game with a generated world (see [Making a world](getting-started.md#making-a-
 
 Tap or click a settlement, or pick it from **Places** (the places nearest first, with how long the way takes), to see its size and the trip from where you are: how many days or hours on the way, and by which ways. **Walk there** sends the party along the world's ways to it, by the quickest route, and the walk's days pass on the clock at once. The party is there from then on, and **your next turn tells the Game Master** where you walked, how long it took and by which ways, so it can tell the arrival. The world's own days go by with it, as they do when the Game Master says time passes. A second walk before your next turn carries on from where the first ended.
 
-A place in ruins is drawn in ruins. After dark the map dims and the settlements' windows light up. Each setting family has its own tiles for now from Kenney's free (CC0) packs, recoloured per family; they are placeholders until Marinara Engine has its own art or community tile packs. A setting kit with no family draws plain tiles.
+A place in ruins is drawn in ruins. After dark the map dims and the settlements' windows light up. Each setting family has its own tiles: fantasy, wuxia, modern day, the 1920s, science fiction and the wasteland each have their own colours and buildings. A setting kit with no family draws plain tiles.
 
 The overworld is a view, and the scene view (the game's backgrounds and character art) is a switch away: **Show the scene** in the game's toolbar, or in the game's actions menu on a phone, and **Show the overworld** to come back. The game remembers which one you chose. A fight and a session replay use their own screens.
 

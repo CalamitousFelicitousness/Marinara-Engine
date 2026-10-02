@@ -40,10 +40,9 @@ import {
 import { cn } from "../../lib/utils";
 import overworldAtlases from "../../lib/overworld-atlases.json";
 
-// ponytail: placeholder art. Each setting family's tiles are cut from Kenney's CC0 packs (the user,
-// 2026-10-02: "the Kenney packs are just placeholders"); the upgrade path is the Engine's own base assets
-// or community asset packs, in this same format: an image of 16 px tiles and a map of tile ids (a ground
-// look, marker0..3, ruin, party) to their variants. A tile a family lacks is drawn plain.
+// Each setting family's tiles, drawn in code by scripts/art/build-overworld-tiles.mjs: an image of 16 px
+// tiles and a map of tile ids (a ground look, marker0..3, ruin, party) to their variants. Community tile
+// packs can use the same format later. A tile a family lacks is drawn plain.
 const ATLASES = overworldAtlases as Record<string, { columns: number; tiles: Record<string, number[]> }>;
 
 /** What the game screen can ask of the overworld: send the real time it has passed so far. */

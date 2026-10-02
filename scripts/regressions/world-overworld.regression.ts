@@ -10,10 +10,12 @@
  *   - The overworld's real time passes minutes on the clock.
  */
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { inflateSync } from "node:zlib";
 
 import {
   WORLD_ART_FAMILIES,
@@ -134,6 +136,42 @@ try {
   }
   for (const kit of WORLD_STARTER_KITS) {
     assert.ok(atlases[worldKitArtFamily(kit) ?? ""], `${kit.id}: drawn with its family's tiles`);
+  }
+  // The committed tiles are the script's, pixel for pixel (compared decoded, as zlib may differ by build).
+  const pixels = (png: Buffer) => {
+    const width = png.readUInt32BE(16);
+    const parts: Buffer[] = [];
+    for (let at = 8; at < png.length;) {
+      const length = png.readUInt32BE(at);
+      if (png.toString("ascii", at + 4, at + 8) === "IDAT") parts.push(png.subarray(at + 8, at + 8 + length));
+      at += length + 12;
+    }
+    const raw = inflateSync(Buffer.concat(parts));
+    const row = width * 4 + 1;
+    return Buffer.concat(
+      Array.from({ length: raw.length / row }, (_, y) => {
+        assert.equal(raw[y * row], 0, "rows the script wrote, unfiltered");
+        return raw.subarray(y * row + 1, (y + 1) * row);
+      }),
+    );
+  };
+  const drawn = mkdtempSync(join(tmpdir(), "marinara-overworld-tiles-"));
+  try {
+    execFileSync(process.execPath, [new URL("../art/build-overworld-tiles.mjs", import.meta.url).pathname], {
+      env: { ...process.env, OVERWORLD_TILES_OUT: drawn },
+    });
+    assert.deepEqual(
+      JSON.parse(readFileSync(join(drawn, "packages/client/src/lib/overworld-atlases.json"), "utf8")),
+      atlases,
+      "the tile map is the script's",
+    );
+    for (const family of Object.keys(atlases)) {
+      const committed = readFileSync(new URL(`../../packages/client/public/overworld/${family}.png`, import.meta.url));
+      const fresh = readFileSync(join(drawn, `packages/client/public/overworld/${family}.png`));
+      assert.ok(pixels(committed).equals(pixels(fresh)), `${family}: the tiles are the script's`);
+    }
+  } finally {
+    rmSync(drawn, { recursive: true, force: true });
   }
 
   const game = gameOf("high_fantasy", 21);

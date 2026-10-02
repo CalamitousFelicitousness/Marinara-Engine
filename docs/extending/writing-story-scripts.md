@@ -17,6 +17,8 @@ world it was written for (its seed, its brief and its hand edits).
   know stories still reads the world.
 - In an Experience's **map pack**: each world file can carry its story, and a new game takes it with the
   map. See [optional agent packages](../development/optional-agent-packages.md).
+- In a world kept in the library, outside any game: `GET`, `PUT` and `DELETE /api/game-worlds/:id/story`,
+  the same as a game's. A new game started from that world takes the story with it.
 - In a game, once it starts: `GET`, `PUT` and `DELETE /api/game/:chatId/story` read, save and remove it.
   A save is checked against the game's world, hand edits included, and hand edits that would take away
   something the story names are refused.

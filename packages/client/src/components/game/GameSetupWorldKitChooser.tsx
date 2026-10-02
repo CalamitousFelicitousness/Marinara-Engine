@@ -34,6 +34,7 @@ import { ApiError, api } from "../../lib/api-client";
 import { downloadJsonFile } from "../../lib/download-json";
 import { cn } from "../../lib/utils";
 import { useUIStore } from "../../stores/ui.store";
+import { useWorldLibrary } from "../../hooks/use-world-library";
 import { GAME_SETUP_GHOST_BUTTON_CLASS, GAME_SETUP_INPUT_CLASS as INPUT } from "./game-setup-classes";
 
 export interface WorldKitWriteRequest {
@@ -179,6 +180,10 @@ export function GameSetupWorldKitChooser({
       onChange(structuredClone(read.kit));
       return setFileNote({ error: false, text: t("game.worldKit.setup.kitImported", { name: read.kit.label }) });
     }
+    takeWorld(text);
+  };
+  /** A world file's text, read in: its kit, world, hand edits and story. */
+  const takeWorld = (text: string) => {
     const read = readWorldFile(text);
     if (!read.ok)
       return setFileNote({ error: true, text: t("game.worldKit.setup.fileRefused", { reason: read.issues[0] }) });
@@ -188,6 +193,25 @@ export function GameSetupWorldKitChooser({
       error: false,
       text: [t("game.worldKit.setup.worldImported", { name: read.name }), ...read.notes.slice(0, 3)].join(" "),
     });
+  };
+  // Worlds made outside any game (worldgen W9f): one picked comes in as a world file does.
+  const library = useWorldLibrary();
+  const pickLibraryWorld = async (id: string) => {
+    if (!id) return;
+    const turn = ++lastRead.current;
+    try {
+      const file = await api.get<unknown>(`/game-worlds/${encodeURIComponent(id)}/world/file`);
+      if (turn === lastRead.current) takeWorld(JSON.stringify(file));
+    } catch (error) {
+      if (turn === lastRead.current) {
+        setFileNote({
+          error: true,
+          text: t("game.worldKit.setup.fileRefused", {
+            reason: error instanceof Error ? error.message : String(error),
+          }),
+        });
+      }
+    }
   };
   const checked = kit ? parseWorldKit(kit) : null;
   // The family its art and music come from: its own, or a kit saved before families its starter's.
@@ -293,6 +317,21 @@ export function GameSetupWorldKitChooser({
           <Download size={13} />
           {t("game.worldKit.setup.downloadKit")}
         </button>
+        {library.data?.length ? (
+          <select
+            aria-label={t("game.worldKit.setup.libraryWorld")}
+            value=""
+            onChange={(event) => void pickLibraryWorld(event.target.value)}
+            className={cn(INPUT, "w-auto")}
+          >
+            <option value="">{t("game.worldKit.setup.libraryWorldPick")}</option>
+            {library.data.map((world) => (
+              <option key={world.id} value={world.id}>
+                {world.kit ? `${world.name} (${world.kit})` : world.name}
+              </option>
+            ))}
+          </select>
+        ) : null}
         <input
           ref={kitFileRef}
           type="file"

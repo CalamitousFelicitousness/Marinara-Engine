@@ -185,6 +185,45 @@ test("a world file comes into a new game's setup with its kit and hand edits, an
   await expect(wizard.getByText("Imported the setting kit River kit.")).toBeVisible();
 });
 
+test("a world from the library comes into a new game's setup with its kit, hand edits and story", async ({
+  page,
+  request,
+}, testInfo) => {
+  test.setTimeout(120_000);
+  // A world kept outside any game (worldgen W9f).
+  const kept = await request.post("/api/game-worlds/import", {
+    data: { text: JSON.stringify(worldFile("Library Riverlands", kit, { ...world, edits }, story)) },
+  });
+  expect(kept.ok(), await kept.text()).toBeTruthy();
+  const libraryId = ((await kept.json()) as { world: { id: string } }).world.id;
+  try {
+    const wizard = await mountWizard(page, testInfo);
+    const kitLabel = wizard.getByText("Setting kit", { exact: true });
+    const heading = wizard.getByRole("heading", { level: 4 }).first();
+    for (let step = 0; step < 6 && !(await kitLabel.isVisible()); step++) {
+      const previous = await heading.innerText();
+      await wizard.getByRole("button", { name: "Next", exact: true }).click();
+      await expect(heading).not.toHaveText(previous);
+    }
+    const picker = wizard.getByRole("combobox", { name: "Your worlds", exact: true });
+    await expect(picker.locator(`option[value="${libraryId}"]`)).toHaveCount(1);
+    await picker.selectOption(libraryId);
+    await expect(wizard.getByText("Imported the world Library Riverlands with its setting kit.")).toBeVisible();
+    await expect(wizard.getByText("This world has hand edits.", { exact: false })).toBeVisible();
+    await expect(wizard.getByText("This world has a story", { exact: false })).toBeVisible();
+    const downloaded = await download(page, () =>
+      wizard.getByRole("button", { name: "Download this world", exact: true }).click(),
+    );
+    expect([downloaded.file.world.seed, downloaded.file.world.edits, downloaded.file.story]).toEqual([
+      4242,
+      edits,
+      story,
+    ]);
+  } finally {
+    await request.delete(`/api/game-worlds/${libraryId}`);
+  }
+});
+
 test("a game's world downloads from its World tab, hand edits and all", async ({ page, request }) => {
   test.setTimeout(120_000);
   const created = await request.post("/api/chats", { data: { name: "Riverlands", mode: "game", characterIds: [] } });

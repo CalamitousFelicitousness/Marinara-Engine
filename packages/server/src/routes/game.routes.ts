@@ -12,14 +12,11 @@ import {
   checkStoryScript,
   compileGameWorld,
   gameStoryFromMetadata,
-  STORY_EXPRESSIONS,
-  WORLD_DEED_KINDS,
   readStoryLedger,
   storyObjectives,
   storyScriptSchema,
   storyState,
   type StoryScript,
-  worldCast,
   worldEditsEmpty,
   worldEditIssues,
   worldEditsSchema,
@@ -29,11 +26,7 @@ import {
   parseWorldKit,
   WORLD_STARTER_KITS,
   WORLD_SHARE_FILE_MAX_BYTES,
-  worldGroundLooks,
-  worldPersonByHand,
   worldKitArtFamily,
-  worldTerrainEntries,
-  type CompiledWorld,
 } from "@marinara-engine/shared";
 import { resolveCombatWeather } from "../services/game/weather.service.js";
 import { resolveGameConnection } from "../services/game/connection.service.js";
@@ -52,6 +45,12 @@ import { eq } from "../db/file-query.js";
 import { IMPORTED_GAME_ENGINE_ANCHOR_PREFIX } from "../db/file-backed-store.js";
 import { chats as chatsTable } from "../db/schema/index.js";
 import { mapPackLockIssue, readMapPack, type MapPack } from "../services/game/map-pack.service.js";
+import {
+  editsStoryRefusal,
+  storyNamesOf,
+  worldForEditor,
+  worldPeopleOf,
+} from "../services/game/world-editor.service.js";
 import { logger, logDebugOverride } from "../lib/logger.js";
 import {
   buildWorldKitWritingPrompt,
@@ -6025,42 +6024,6 @@ function editIssues(game: Omit<GameWorld, "world" | "edits">, edits: unknown): s
   return worldEditIssues(game, parsed.data);
 }
 
-/** A game's world as compiled, in the shape a world editor draws: the ground and its classes (with the
- *  look each is drawn as), the places, and the kit's words for layers, sizes and tags. */
-function worldForEditor(game: GameWorld) {
-  const compiled: CompiledWorld = compileGameWorld({ ...game, edits: undefined });
-  const looks = worldGroundLooks({ ...game, world: compiled });
-  const terrain = worldTerrainEntries(game.kit);
-  return {
-    width: compiled.width,
-    height: compiled.height,
-    ground: compiled.ground,
-    terrain: compiled.terrain.map((id, index) => {
-      const entry = terrain.find((each) => each.id === id);
-      return { id, label: entry?.label ?? id, kind: entry?.kind ?? "open", look: looks[index] };
-    }),
-    places: compiled.places.map((place) => ({
-      id: place.id,
-      name: place.name,
-      layer: place.layer,
-      depth: place.depth,
-      parentId: place.parentId,
-      at: place.at,
-      ...(place.size ? { size: place.size, rank: place.rank } : {}),
-      tags: place.tags,
-    })),
-    startId: compiled.startId,
-    layers: game.kit.layers.map((layer) => ({
-      id: layer.id,
-      label: layer.label,
-      settlements: Boolean(layer.settlements),
-    })),
-    sizes: game.kit.sizes.map((size) => ({ id: size.id, label: size.label })),
-    placeTags: game.kit.placeTags.map((tag) => ({ id: tag.id, label: tag.label })),
-    family: worldKitArtFamily(game.kit) ?? null,
-  };
-}
-
 export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions = {}) {
   registerSequentialGameTasks(app, [
     "/setup",
@@ -11060,17 +11023,8 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         throw Object.assign(new Error("This game has no world."), { statusCode: 404 });
       }
       const now = gameWorldFromMetadata(fresh);
-      const storyNow = gameStoryFromMetadata(fresh, now);
-      if (now && storyNow) {
-        const fits = checkStoryScript({ ...now, edits, world: compileGameWorld({ ...now, edits }) }, storyNow);
-        if (!fits.ok) {
-          storyRefusal = {
-            error: `The game's story names what these edits take away: ${fits.issues[0]}`,
-            issues: fits.issues,
-          };
-          return {};
-        }
-      }
+      storyRefusal = now ? editsStoryRefusal(now, edits, gameStoryFromMetadata(fresh, now)) : null;
+      if (storyRefusal) return {};
       const { edits: _old, ...stored } = fresh.gameWorld as Record<string, unknown>;
       return { gameWorld: edits ? { ...stored, edits } : stored };
     });
@@ -11182,19 +11136,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       // For a story maker: what the story has done in this game so far, and what a story can name here
       // (the world as edited; its people come from /world/people).
       state: story ? storyState(story, readStoryLedger(replies.all)) : null,
-      names: {
-        places: game.world.places.map((place) => ({
-          id: place.id,
-          name: place.name,
-          parentId: place.parentId ?? null,
-          settlement: place.rank !== undefined,
-        })),
-        groups: game.brief.groups.map((group) => group.name),
-        deeds: (Object.keys(WORLD_DEED_KINDS) as Array<keyof typeof WORLD_DEED_KINDS>).filter(
-          (deed) => game.kit.change.kinds[WORLD_DEED_KINDS[deed]].on,
-        ),
-        expressions: STORY_EXPRESSIONS,
-      },
+      names: storyNamesOf(game),
     };
   });
 
@@ -11248,15 +11190,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
     const game = chat.mode === "game" ? gameWorldFromMetadata(parseMeta(chat.metadata)) : null;
     if (!game) return reply.status(404).send({ error: "This game has no world." });
-    return {
-      people: worldCast(game, place).map((person) => ({
-        id: person.id,
-        name: person.name,
-        named: person.named,
-        role: person.role,
-        byHand: worldPersonByHand(person.id),
-      })),
-    };
+    return { people: worldPeopleOf(game, place) };
   });
 
   // ── GET /game/:chatId/overworld ──

@@ -27,6 +27,7 @@ import {
   checkWorldBrief,
   compileGameWorld,
   gameStoryFromMetadata,
+  gameWorldFromMetadata,
   parseWorldKit,
   readStoryLedger,
   readWorldFile,
@@ -421,6 +422,23 @@ try {
     );
     // A story read back with a game's world: it still fits after the rename (it names places by id).
     assert.equal((await app.inject({ method: "GET", url: `/api/game/${chatId}/story` })).json().story.events.length, 3);
+    // A story naming Odda and edits taking her away, saved at the same moment: never both, so what is
+    // kept always fits.
+    const [raceStory, raceEdits] = await Promise.all([
+      app.inject({ method: "PUT", url: `/api/game/${chatId}/story`, payload: { story: meetOdda } }),
+      putEdits({ places: [{ id: ashford.id, name: "Newhaven" }] }),
+    ]);
+    assert.ok(
+      !(raceStory.statusCode === 200 && raceEdits.statusCode === 200),
+      `${raceStory.statusCode} ${raceStory.body} / ${raceEdits.statusCode} ${raceEdits.body}`,
+    );
+    const raced = await meta();
+    const racedGame = gameWorldFromMetadata(raced)!;
+    assert.ok(raced.gameStory == null || gameStoryFromMetadata(raced, racedGame), "what is kept fits");
+    assert.equal(
+      (await putEdits({ addedPeople: [odda], places: [{ id: ashford.id, name: "Newhaven" }] })).statusCode,
+      200,
+    );
     const removed = await app.inject({ method: "DELETE", url: `/api/game/${chatId}/story` });
     assert.equal(removed.statusCode, 200);
     assert.equal((await meta()).gameStory ?? null, null);

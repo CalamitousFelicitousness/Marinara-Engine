@@ -11041,27 +11041,31 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const issues = worldEditIssues(game, parsed.data);
     if (issues.length) return reply.status(400).send({ error: issues.join(" "), issues });
     const edits = worldEditsEmpty(parsed.data) ? undefined : parsed.data;
-    // The game's story (worldgen W10) names places and people: edits that take one away are refused.
-    const story = gameStoryFromMetadata(parseMeta(chat.metadata), game);
-    if (story) {
-      const edited = { ...game, edits, world: compileGameWorld({ ...game, edits }) };
-      const unfit = checkStoryScript(edited, story);
-      if (!unfit.ok) {
-        return reply.status(400).send({
-          error: `The game's story names what these edits take away: ${unfit.issues[0]}`,
-          issues: unfit.issues,
-        });
-      }
-    }
+    // The game's story (worldgen W10) names places and people: edits that take one away are refused, as
+    // the story stands when the edits are written (one saved meanwhile counts).
+    let storyRefusal = null as { error: string; issues: string[] } | null;
     const updated = await chats.patchMetadata(chatId, (fresh) => {
       // The world is the same one the edits were checked against: a world is written once, at creation.
       if (!fresh.gameWorld || typeof fresh.gameWorld !== "object") {
         throw Object.assign(new Error("This game has no world."), { statusCode: 404 });
       }
+      const now = gameWorldFromMetadata(fresh);
+      const storyNow = gameStoryFromMetadata(fresh, now);
+      if (now && storyNow) {
+        const fits = checkStoryScript({ ...now, edits, world: compileGameWorld({ ...now, edits }) }, storyNow);
+        if (!fits.ok) {
+          storyRefusal = {
+            error: `The game's story names what these edits take away: ${fits.issues[0]}`,
+            issues: fits.issues,
+          };
+          return {};
+        }
+      }
       const { edits: _old, ...stored } = fresh.gameWorld as Record<string, unknown>;
       return { gameWorld: edits ? { ...stored, edits } : stored };
     });
     if (!updated) return reply.status(404).send({ error: "Chat not found" });
+    if (storyRefusal) return reply.status(400).send(storyRefusal);
     const world = compileGameWorld({ ...game, edits });
     logger.info("[game/world] %s: hand edits %s", chatId, edits ? "saved" : "cleared");
     return { edits: edits ?? null, links: world.links };
@@ -11172,16 +11176,25 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
     const game = chat.mode === "game" ? gameWorldFromMetadata(parseMeta(chat.metadata)) : null;
     if (!game) return reply.status(404).send({ error: "This game has no world." });
-    const checked = checkStoryScript(game, (req.body as { story?: unknown } | undefined)?.story);
-    if (!checked.ok) {
-      return reply
-        .status(400)
-        .send({ error: `The story does not fit this world: ${checked.issues[0]}`, issues: checked.issues });
-    }
-    const updated = await chats.patchMetadata(chatId, () => ({ gameStory: checked.story }));
+    const input = (req.body as { story?: unknown } | undefined)?.story;
+    // Checked against the world as it is when the story is written: hand edits saved meanwhile count.
+    let refusal = null as { error: string; issues: string[] } | null;
+    let story = null as StoryScript | null;
+    const updated = await chats.patchMetadata(chatId, (fresh) => {
+      const now = gameWorldFromMetadata(fresh);
+      const checked = now ? checkStoryScript(now, input) : null;
+      if (!checked?.ok) {
+        const issues = checked?.issues ?? ["the game has no world"];
+        refusal = { error: `The story does not fit this world: ${issues[0]}`, issues };
+        return {};
+      }
+      story = checked.story;
+      return { gameStory: checked.story };
+    });
     if (!updated) return reply.status(404).send({ error: "Chat not found" });
+    if (refusal) return reply.status(400).send(refusal);
     logger.info("[game/story] %s: story saved", chatId);
-    return { story: checked.story };
+    return { story };
   });
 
   // DELETE /game/:chatId/story

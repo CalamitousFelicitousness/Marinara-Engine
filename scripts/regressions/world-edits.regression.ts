@@ -54,15 +54,7 @@ const settlementLayer = kit.layers.find((layer) => layer.settlements)!;
 const checked = checkWorldBrief(kit, {
   briefVersion: 1,
   premise: "x",
-  places: [
-    { name: "Ashford", layer: settlementLayer.id, size: kit.sizes.at(-1)!.id, tags: [] },
-    {
-      name: "The Gilded Cup",
-      layer: kit.layers[kit.layers.indexOf(settlementLayer) + 1]!.id,
-      parent: "Ashford",
-      tags: [],
-    },
-  ],
+  places: [{ name: "Ashford", layer: settlementLayer.id, size: kit.sizes.at(-1)!.id, tags: [] }],
   groups: [{ name: "The Wardens", kind: kit.groupKinds[0]!.id, seat: "Ashford", allies: [], rivals: [] }],
   peopleNames: kit.cultures.map((culture) => ({
     culture: culture.id,

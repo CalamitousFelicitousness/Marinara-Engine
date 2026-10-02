@@ -278,8 +278,10 @@ export function WorldOverworld({
     const looks = worldGroundLooks(game);
     const cells = worldGroundCells(world);
     const count = new Map<string, number>();
-    for (let x = 0; x < world.width; x++) {
-      for (const y of [0, world.height - 1]) {
+    for (let y = 0; y < world.height; y++) {
+      for (let x = 0; x < world.width; x++) {
+        // The whole border: the top and bottom rows and the first and last columns.
+        if (y > 0 && y < world.height - 1 && x > 0 && x < world.width - 1) continue;
         const look = looks[cells[y * world.width + x]!]!;
         count.set(look, (count.get(look) ?? 0) + 1);
       }

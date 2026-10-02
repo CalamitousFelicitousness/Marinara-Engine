@@ -15,6 +15,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { inflateSync } from "node:zlib";
 
 import {
@@ -157,7 +158,7 @@ try {
   };
   const drawn = mkdtempSync(join(tmpdir(), "marinara-overworld-tiles-"));
   try {
-    execFileSync(process.execPath, [new URL("../art/build-overworld-tiles.mjs", import.meta.url).pathname], {
+    execFileSync(process.execPath, [fileURLToPath(new URL("../art/build-overworld-tiles.mjs", import.meta.url))], {
       env: { ...process.env, OVERWORLD_TILES_OUT: drawn },
     });
     assert.deepEqual(

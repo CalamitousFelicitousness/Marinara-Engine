@@ -1960,6 +1960,7 @@
   "game.worldKit.setup.label": "Setting kit",
   "game.worldKit.setup.layers": "Places, outermost first",
   "game.worldKit.setup.libraryWorld": "Your worlds",
+  "game.worldKit.setup.libraryWorldOption": "{{name}} ({{kit}})",
   "game.worldKit.setup.libraryWorldPick": "Start from one of your worlds…",
   "game.worldKit.setup.loot": "What a won fight can drop",
   "game.worldKit.setup.lootHelp": "Item names by rarity, in this setting's own words. Leave every list empty to drop what the game's genre usually has.",

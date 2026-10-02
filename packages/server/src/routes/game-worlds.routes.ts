@@ -11,6 +11,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
   WORLD_GENERATOR_VERSION,
+  WORLD_SHARE_FILE_MAX_BYTES,
   checkStoryScript,
   checkWorldBrief,
   compileGameWorld,
@@ -138,7 +139,8 @@ export async function gameWorldsRoutes(app: FastifyInstance) {
   });
 
   // ── POST /api/game-worlds/import {text} ── a world file, read as a new game's setup reads one.
-  app.post("/import", { bodyLimit: 3_000_000 }, async (req, reply) => {
+  // A share file's own cap, with room for the JSON escaping of its text, as the other imports allow.
+  app.post("/import", { bodyLimit: WORLD_SHARE_FILE_MAX_BYTES * 6 + 16_384 }, async (req, reply) => {
     if (!requirePrivilegedAccess(req, reply, { feature: "World library import" })) return;
     const text = z.object({ text: z.string() }).safeParse(req.body);
     if (!text.success) return reply.status(400).send({ error: "Send the world file's text." });
@@ -177,7 +179,8 @@ export async function gameWorldsRoutes(app: FastifyInstance) {
 
   app.get<{ Params: { id: string } }>("/:id/world/file", async (req, reply) => {
     const world = await worldOr404(req.params.id, reply);
-    return world ? JSON.parse(world.row.file) : undefined;
+    // The world as this Engine reads it (what its editor shows), not merely the text kept.
+    return world ? JSON.parse(fileOf(world.row.name, world.game, world.story)) : undefined;
   });
 
   app.get<{ Params: { id: string } }>("/:id/world/edit", async (req, reply) => {

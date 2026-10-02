@@ -199,11 +199,14 @@ export function GameSetupWorldKitChooser({
   const pickLibraryWorld = async (id: string) => {
     if (!id) return;
     const turn = ++lastRead.current;
+    // The kit as it was asked from: picked or edited meanwhile, the player's choice stands.
+    const asked = latest.current;
+    const current = () => turn === lastRead.current && latest.current === asked;
     try {
       const file = await api.get<unknown>(`/game-worlds/${encodeURIComponent(id)}/world/file`);
-      if (turn === lastRead.current) takeWorld(JSON.stringify(file));
+      if (current()) takeWorld(JSON.stringify(file));
     } catch (error) {
-      if (turn === lastRead.current) {
+      if (current()) {
         setFileNote({
           error: true,
           text: t("game.worldKit.setup.fileRefused", {
@@ -327,7 +330,9 @@ export function GameSetupWorldKitChooser({
             <option value="">{t("game.worldKit.setup.libraryWorldPick")}</option>
             {library.data.map((world) => (
               <option key={world.id} value={world.id}>
-                {world.kit ? `${world.name} (${world.kit})` : world.name}
+                {world.kit
+                  ? t("game.worldKit.setup.libraryWorldOption", { name: world.name, kit: world.kit })
+                  : world.name}
               </option>
             ))}
           </select>

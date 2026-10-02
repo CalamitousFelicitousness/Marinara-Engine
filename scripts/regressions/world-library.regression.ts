@@ -167,6 +167,29 @@ try {
     assert.equal((await call("DELETE", `/${id}/story`)).statusCode, 200);
     assert.equal((await gameMeta()).gameStory.events[0].id, "odda", "the game keeps its own copy");
 
+    // ── A kept world this Engine no longer reads: listed as such, never edited, never served ──
+    const { createGameWorldsStorage } =
+      await import("../../packages/server/src/services/storage/game-worlds.storage.js");
+    const broken = await createGameWorldsStorage(db).create(
+      "Broken",
+      JSON.stringify({ format: "marinara-world", version: 99 }),
+    );
+    const listed = (await call("GET", "/")).json().worlds.find((world: { id: string }) => world.id === broken.id);
+    assert.deepEqual([listed.reads, listed.kit, listed.seed], [false, null, null]);
+    assert.equal((await call("GET", `/${broken.id}/world/edit`)).statusCode, 404);
+    assert.match((await call("GET", `/${broken.id}/world/file`)).json().error, /no longer reads/);
+    assert.equal((await call("PUT", `/${broken.id}`, { name: "Fixed" })).statusCode, 409);
+    assert.equal((await call("DELETE", `/${broken.id}/story`)).statusCode, 409);
+    assert.equal((await call("DELETE", `/${broken.id}`)).statusCode, 200, "but it can be removed");
+    // A world file at the share files' own size cap comes in (its JSON escaping allowed for).
+    // Quote marks double twice when sent (in the file's text, then in the request's JSON): a 1.8 MB file,
+    // under the cap, is a 3.6 MB request.
+    const padded = JSON.stringify({ ...worldFile("Large", kit, read.world, read.story), pad: '"'.repeat(900_000) });
+    assert.ok(padded.length < 2_000_000 && JSON.stringify({ text: padded }).length > 3_000_000);
+    const large = await call("POST", "/import", { text: padded });
+    assert.equal(large.statusCode, 200, large.body.slice(0, 200));
+    assert.equal((await call("DELETE", `/${large.json().world.id}`)).statusCode, 200);
+
     // ── Renamed, imported, removed ──
     const renamedWorld = await call("PUT", `/${id}`, { name: "The Riverlands" });
     assert.equal(renamedWorld.json().world.name, "The Riverlands");

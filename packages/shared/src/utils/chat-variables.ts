@@ -77,6 +77,73 @@ export function isReservedMacroName(name: string): boolean {
   return RESERVED_MACRO_NAMES.has(name.trim().toLowerCase());
 }
 
+/**
+ * What one reply changed in its chat's variables: name → [value before, value after],
+ * where null means the variable did not exist. Saved on the reply so that
+ * regenerating or deleting it can put the earlier values back.
+ */
+export type ChatVariableChanges = Record<string, [before: string | null, after: string | null]>;
+type ChatVariableChange = ChatVariableChanges[string];
+
+const isChatVariableChange = (value: unknown): value is ChatVariableChange =>
+  Array.isArray(value) && value.length === 2 && value.every((entry) => entry === null || typeof entry === "string");
+
+// Records are read back from message data, so anything malformed is skipped.
+const readChatVariableChanges = (value: unknown): Array<[string, ChatVariableChange]> =>
+  value && typeof value === "object" && !Array.isArray(value)
+    ? Object.entries(value).filter((entry): entry is [string, ChatVariableChange] => isChatVariableChange(entry[1]))
+    : [];
+
+/** The changes that turn `before` into `after`. */
+export function diffChatVariables(before: Record<string, string>, after: Record<string, string>): ChatVariableChanges {
+  const from = new Map(Object.entries(before));
+  const to = new Map(Object.entries(after));
+  // Entries, not assignment: a "__proto__" name must stay an own key.
+  return Object.fromEntries(
+    [...new Set([...from.keys(), ...to.keys()])].flatMap((name) => {
+      const change: ChatVariableChange = [from.get(name) ?? null, to.get(name) ?? null];
+      return change[0] === change[1] ? [] : [[name, change]];
+    }),
+  );
+}
+
+/** Add later changes of the same reply: each name keeps its first "before" and its last "after". */
+export function mergeChatVariableChanges(earlier: unknown, later: ChatVariableChanges): ChatVariableChanges {
+  const merged = new Map(readChatVariableChanges(earlier));
+  for (const [name, [before, after]] of readChatVariableChanges(later)) {
+    merged.set(name, [merged.has(name) ? merged.get(name)![0] : before, after]);
+  }
+  return Object.fromEntries([...merged].filter(([, [before, after]]) => before !== after));
+}
+
+function replayChatVariableChanges(variables: unknown, records: unknown[], redo: boolean): Record<string, string> {
+  const stored = variables && typeof variables === "object" && !Array.isArray(variables) ? variables : {};
+  const next = new Map(
+    Object.entries(stored).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+  );
+  for (const record of records) {
+    for (const [name, [before, after]] of readChatVariableChanges(record)) {
+      const [expected, restored] = redo ? [before, after] : [after, before];
+      // Someone changed it since (the user, or a later reply): their value stays.
+      if ((next.get(name) ?? null) !== expected) continue;
+      if (restored === null) next.delete(name);
+      else next.set(name, restored);
+    }
+  }
+  return Object.fromEntries(next);
+}
+
+/**
+ * Put back the values recorded replies replaced. Pass the records newest first.
+ * A variable that no longer holds the value a reply left keeps its current value.
+ */
+export const undoChatVariableChanges = (variables: unknown, records: unknown[]) =>
+  replayChatVariableChanges(variables, records, false);
+
+/** Apply recorded replies again, oldest first, wherever the value they replaced is still in place. */
+export const redoChatVariableChanges = (variables: unknown, records: unknown[]) =>
+  replayChatVariableChanges(variables, records, true);
+
 export type ChatVariableNameIssue = "empty" | "format" | "reserved" | "duplicate";
 
 /**

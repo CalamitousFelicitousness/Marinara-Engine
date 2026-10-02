@@ -116,6 +116,10 @@ export function mergeGeneratedChatMacroVariables(
       Object.defineProperty(merged, name, { value, enumerable: true, writable: true, configurable: true });
     }
   }
+  // A regeneration starts by undoing its reply, which removes what that reply created.
+  for (const [name, before] of Object.entries(previous)) {
+    if (!Object.hasOwn(generated, name) && Object.hasOwn(merged, name) && merged[name] === before) delete merged[name];
+  }
   return normalizeChatMacroVariables(merged);
 }
 

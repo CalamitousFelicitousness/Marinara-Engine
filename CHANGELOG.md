@@ -6,6 +6,9 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - On iPad, tapping a chat in the chat list now opens it instead of leaving the list on top, and buttons that start a chat or open a page from a full-screen panel close that panel too. The keyboard no longer covers a message you are editing, and **Copy Support Diagnostics** now copies (#6944).
 
+- Agents and Download Agents now show Noodle, Slurp, Gacha Forge, Life Sim and other apps that open in their own Home tab in a separate **Apps** group at the top, instead of mixing them into Misc Agents (#6943).
+- The character and persona editors now show the whole name at the top whenever there is room for it, instead of cutting it short next to the creator and version (#6946).
+
 - A decision block can now stay on for as long as something lasts: `{{#if decision:"A fight starts" until:"The fight ends"}}` stays on after a yes and asks the until statement each turn instead, turning off when it is true. `while:"..."` turns off when its statement is false. With sticky, add `:and` to stop at whichever ends first or `:or` for whichever ends last, and cooldown starts once the block turns off (#6922).
 - The new `{{include::Entry name}}` macro puts in the text of a lorebook entry, so shared text can live in one entry and be reused in other entries, presets and cards. Inside an entry it looks in that entry's lorebook, and elsewhere in the chat's lorebooks. `{{include::Lorebook name::Entry name}}` reads from any lorebook, even one the chat does not use. IDs work too, and an include that loops back to itself becomes empty (#6912).
 - A character ID macro now turns into the character's name even when that character is already in the chat, instead of staying as raw `{{ID}}` text. Their card is still sent only once (#6924).

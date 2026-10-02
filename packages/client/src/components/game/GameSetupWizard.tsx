@@ -90,7 +90,8 @@ import { useConnections, useModelParameterCapabilities } from "../../hooks/use-c
 import { useDefaultPreset, usePresets } from "../../hooks/use-presets";
 import { useCharacterGroups, usePersonas } from "../../hooks/use-characters";
 import { GameSetupRulesChooser, GameSetupRulesetSheetStatus } from "./GameSetupRulesChooser";
-import { GameSetupWorldKitChooser } from "./GameSetupWorldKitChooser";
+import { GameSetupWorldKitChooser, MapPackLock } from "./GameSetupWorldKitChooser";
+import { useExperienceMapPack } from "../../hooks/use-map-pack";
 import { GameSetupWorldChooser, worldDraftConfig, worldDraftFromWorld, type WorldDraft } from "./GameSetupWorldChooser";
 import {
   GAME_SETUP_FIELD_LABEL,
@@ -556,10 +557,25 @@ export function GameSetupWizard({
   const [rulesetImportNotice, setRulesetImportNotice] = useState<string | null>(null);
   // The setting kit (worldgen W0): off unless the player picks one, and only for a new game.
   const [worldKit, setWorldKit] = useState<WorldKitInput | null>(null);
-  const checkedWorldKit = isNewGame && worldKit ? parseWorldKit(worldKit) : null;
+  // An Experience's map pack (worldgen W9e) owns the kit, and the world when it ships maps, while the
+  // Experience is on. The player's own choices stay untouched underneath and come back once it is off.
+  const mapPackQuery = useExperienceMapPack(
+    activeExperience?.manifest.contributions?.gameSurface?.mapPack ? activeExperience.id : null,
+  );
+  const mapPack = mapPackQuery.data ?? null;
+  const mapPackUnreadable = mapPackQuery.isError;
+  const [mapPackWorldPath, setMapPackWorldPath] = useState<string | null>(null);
+  const mapPackWorld = mapPack
+    ? (mapPack.worlds.find((world) => world.path === mapPackWorldPath) ?? mapPack.worlds[0] ?? null)
+    : null;
+  const effectiveWorldKit: WorldKitInput | null = mapPack ? mapPack.kit : worldKit;
+  const checkedWorldKit = isNewGame && effectiveWorldKit ? parseWorldKit(effectiveWorldKit) : null;
   // The world made in that kit's words (worldgen W1): off unless the player asks for one.
   const [worldDraft, setWorldDraft] = useState<WorldDraft | null>(null);
-  const checkedWorld = checkedWorldKit?.ok && worldDraft ? worldDraftConfig(checkedWorldKit.kit, worldDraft) : null;
+  const mapPackDraft = useMemo(() => (mapPackWorld ? worldDraftFromWorld(mapPackWorld.world) : null), [mapPackWorld]);
+  const effectiveWorldDraft = mapPackDraft ?? worldDraft;
+  const checkedWorld =
+    checkedWorldKit?.ok && effectiveWorldDraft ? worldDraftConfig(checkedWorldKit.kit, effectiveWorldDraft) : null;
   const experienceSeedInvalid = Boolean(experienceSetup?.seed && parseExperienceSeed(experienceSeed) === null);
   const [experienceImportNotice, setExperienceImportNotice] = useState<string | null>(null);
   const [generationElapsedSeconds, setGenerationElapsedSeconds] = useState(0);
@@ -907,8 +923,8 @@ export function GameSetupWizard({
     (keys: string[]) => ["Surprise me!", ...keys.map((key) => localizeUi(key))],
     [localizeUi],
   );
-  const settingSuggestions = suggestionText(setupSuggestionKeys("setting", worldKit?.id, suggestionOffset));
-  const goalSuggestions = suggestionText(setupSuggestionKeys("goal", worldKit?.id, suggestionOffset));
+  const settingSuggestions = suggestionText(setupSuggestionKeys("setting", effectiveWorldKit?.id, suggestionOffset));
+  const goalSuggestions = suggestionText(setupSuggestionKeys("goal", effectiveWorldKit?.id, suggestionOffset));
   const allSettingSuggestions = useMemo(() => suggestionText(allSetupSuggestionKeys("setting")), [suggestionText]);
   const allGoalSuggestions = useMemo(() => suggestionText(allSetupSuggestionKeys("goal")), [suggestionText]);
   const learnedSettings = useMemo(
@@ -1111,6 +1127,7 @@ export function GameSetupWizard({
   const canStart =
     (!multiplayerPlayers || multiplayerPlayers.every((player) => player.personaName?.trim())) &&
     !experienceSeedInvalid &&
+    !mapPackUnreadable &&
     !(checkedWorldKit && !checkedWorldKit.ok) &&
     !(checkedWorld && !checkedWorld.ok) &&
     (!activeLorebookEntryIds.length || Boolean(eligibleEntries)) &&
@@ -1120,21 +1137,23 @@ export function GameSetupWizard({
     ? localizeUi("multiplayer.game.missingPersona")
     : experienceSeedInvalid
       ? localizeUi("game.experienceSetup.invalidSeed", { max: MAX_EXPERIENCE_SEED })
-      : checkedWorldKit && !checkedWorldKit.ok
-        ? localizeUi("game.worldKit.setup.fixBeforeStart")
-        : checkedWorld && !checkedWorld.ok
-          ? localizeUi("game.world.setup.fixBeforeStart")
-          : activeLorebookEntryIds.length && !eligibleEntries
-            ? localizeUi(
-                entryQuery.isError && !entryQuery.isFetching ? "game.setupLore.error" : "game.setupLore.loading",
-              )
-            : !gmConnectionId
-              ? localizeUi("ui.game.gamesetupwizard.selectAConnectionOnTheFirstStepBeforeStarting")
-              : !spatialMapTargetLocationCountValid && enableAgents && hierarchicalMapsInstalled && draftSpatialMap
-                ? localizeUi("ui.game.gamesetupwizard.chooseAnyWholeNumberFrom1ToValue1Places", {
-                    value1: SPATIAL_CUSTOM_TARGET_LOCATION_LIMIT,
-                  })
-                : null;
+      : mapPackUnreadable
+        ? localizeUi("game.mapPack.fixBeforeStart")
+        : checkedWorldKit && !checkedWorldKit.ok
+          ? localizeUi("game.worldKit.setup.fixBeforeStart")
+          : checkedWorld && !checkedWorld.ok
+            ? localizeUi("game.world.setup.fixBeforeStart")
+            : activeLorebookEntryIds.length && !eligibleEntries
+              ? localizeUi(
+                  entryQuery.isError && !entryQuery.isFetching ? "game.setupLore.error" : "game.setupLore.loading",
+                )
+              : !gmConnectionId
+                ? localizeUi("ui.game.gamesetupwizard.selectAConnectionOnTheFirstStepBeforeStarting")
+                : !spatialMapTargetLocationCountValid && enableAgents && hierarchicalMapsInstalled && draftSpatialMap
+                  ? localizeUi("ui.game.gamesetupwizard.chooseAnyWholeNumberFrom1ToValue1Places", {
+                      value1: SPATIAL_CUSTOM_TARGET_LOCATION_LIMIT,
+                    })
+                  : null;
   const normalizedLanguage = normalizeGameLanguage(language);
   // What the model writes a setting kit or a world's brief for: the World step's own choices.
   const worldWriteRequest = gmConnectionId
@@ -2201,7 +2220,16 @@ export function GameSetupWizard({
                         {rulesetImportNotice}
                       </p>
                     )}
-                    {isNewGame && (
+                    {isNewGame && (mapPack || mapPackUnreadable) && (
+                      <MapPackLock
+                        name={activeExperience?.manifest.name ?? ""}
+                        pack={mapPack}
+                        error={mapPackQuery.error instanceof Error ? mapPackQuery.error.message : null}
+                        worldPath={mapPackWorld?.path ?? null}
+                        onPickWorld={setMapPackWorldPath}
+                      />
+                    )}
+                    {isNewGame && !mapPack && !mapPackUnreadable && (
                       <GameSetupWorldKitChooser
                         kit={worldKit}
                         onChange={chooseWorldKit}
@@ -2212,7 +2240,7 @@ export function GameSetupWizard({
                         writeRequest={worldWriteRequest}
                       />
                     )}
-                    {checkedWorldKit?.ok && (
+                    {checkedWorldKit?.ok && !mapPackWorld && !mapPackUnreadable && (
                       <GameSetupWorldChooser
                         kit={checkedWorldKit.kit}
                         draft={worldDraft}

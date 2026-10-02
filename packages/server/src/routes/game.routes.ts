@@ -42,6 +42,7 @@ import { carryGameInventory, rulesetInventedItemRef } from "@marinara-engine/sha
 import { eq } from "../db/file-query.js";
 import { IMPORTED_GAME_ENGINE_ANCHOR_PREFIX } from "../db/file-backed-store.js";
 import { chats as chatsTable } from "../db/schema/index.js";
+import { mapPackLockIssue, readMapPack, type MapPack } from "../services/game/map-pack.service.js";
 import { logger, logDebugOverride } from "../lib/logger.js";
 import {
   buildWorldKitWritingPrompt,
@@ -6653,6 +6654,27 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       }
       gameWorld = { ...requestedWorld, brief: checked.brief };
     }
+    // An Experience's map pack (worldgen W9e) locks the game to its kit, and to one of its worlds when
+    // it ships any; a pack that does not read keeps the Experience from starting a game, with the reason.
+    let mapPack: MapPack | null = null;
+    const experienceId = parsedCreateGameInput.setupConfig.gameExperienceId;
+    if (experienceId) {
+      const read = await readMapPack(experienceId);
+      if (read && !read.ok) {
+        return rejectGenerationOutput(reply, 400, {
+          error: `This Experience's map pack does not read: ${read.reason}`,
+          code: "map_pack_invalid",
+        });
+      }
+      if (read?.ok) {
+        const issue = mapPackLockIssue(read.pack, {
+          worldKit: parsedCreateGameInput.setupConfig.worldKit,
+          world: gameWorld,
+        });
+        if (issue) return rejectGenerationOutput(reply, 400, { error: issue, code: "map_pack_locked" });
+        mapPack = read.pack;
+      }
+    }
     const setupConfig: GameSetupConfig = {
       ...parsedCreateGameInput.setupConfig,
       ...(gameRuleset ? { ruleset: gameRuleset } : {}),
@@ -6806,6 +6828,8 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       // The setting kit, likewise only when one was chosen, and the world made in its words.
       ...(setupConfig.worldKit ? { gameWorldKit: setupConfig.worldKit } : {}),
       ...(gameWorld ? { gameWorld } : {}),
+      // The game draws with its map pack's tiles while the Experience is installed.
+      ...(mapPack?.tiles ? { gameMapPack: { packageId: mapPack.packageId } } : {}),
       gameNpcs: [],
       enableAgents: setupConfig.enableAgents === true,
       activeAgentIds: setupActiveAgentIds,
@@ -11051,6 +11075,15 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const read = readWorldKitFile(text);
     if (!read.ok) return reply.status(400).send({ error: read.issues[0], issues: read.issues });
     return { kit: read.kit, notes: read.notes };
+  });
+
+  // GET /game/experience-map-pack/:packageId: an installed Experience's map pack (worldgen W9e), checked,
+  // for the setup wizard to lock to and a game to draw with; null when it ships none.
+  app.get<{ Params: { packageId: string } }>("/experience-map-pack/:packageId", async (req, reply) => {
+    const read = await readMapPack(req.params.packageId);
+    if (!read) return { mapPack: null };
+    if (!read.ok) return reply.status(400).send({ error: `This Experience's map pack does not read: ${read.reason}` });
+    return { mapPack: read.pack };
   });
 
   // GET /game/:chatId/world/file: the game's world as a share file (worldgen W9d): its kit, and its world

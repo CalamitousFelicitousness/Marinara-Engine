@@ -73,6 +73,11 @@ After you pick one, **Write it for my setting** asks your Game Master connection
 
 The game keeps the kit it was created with. The Game Master reads it every turn, and world generation uses its words. A shared setup file carries its kit too.
 
+An Experience can ship its own **map pack**: a setting kit, ready-made maps and its own tiles. With
+that Experience on, the setup shows its kit as set (no kit to choose) and, if it ships maps, a **Map**
+to pick from; the game is played on that map and drawn in the Experience's tiles. Turning the
+Experience off gives your own choices back.
+
 **Download this kit** saves the kit as a file (`.worldkit.json`) to share, and **Import a kit file** reads one back in. **Import a world file** brings in a whole world at once (see below).
 
 ### Making a world

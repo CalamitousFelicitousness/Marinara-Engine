@@ -22,7 +22,13 @@ import {
   type WorldKit,
   type WorldKitInput,
 } from "@marinara-engine/shared";
-import { readWorldFile, readWorldKitFile, worldKitFile, type WorldFileWorld } from "@marinara-engine/shared";
+import {
+  readWorldFile,
+  readWorldKitFile,
+  worldKitFile,
+  type ExperienceMapPack,
+  type WorldFileWorld,
+} from "@marinara-engine/shared";
 import { ApiError, api } from "../../lib/api-client";
 import { downloadJsonFile } from "../../lib/download-json";
 import { cn } from "../../lib/utils";
@@ -1161,6 +1167,58 @@ export function GameSetupWorldKitChooser({
             </div>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+/** The kit, and the maps when it ships any, an Experience's map pack (worldgen W9e) sets while the
+ *  Experience is on: shown, not chosen. One of its maps is picked here. */
+export function MapPackLock({
+  name,
+  pack,
+  error,
+  worldPath,
+  onPickWorld,
+}: {
+  name: string;
+  pack: ExperienceMapPack | null;
+  error: string | null;
+  worldPath: string | null;
+  onPickWorld: (path: string) => void;
+}) {
+  const { t } = useUiTranslation();
+  if (!pack) {
+    return (
+      <p role="alert" className="text-xs text-[var(--destructive)]">
+        {t("game.mapPack.unreadable", { name, reason: error ?? "" })}
+      </p>
+    );
+  }
+  return (
+    <div>
+      <span className="mb-1 block text-xs font-medium text-[var(--foreground)]">{t("game.worldKit.setup.label")}</span>
+      <div className="rounded-lg bg-[var(--primary)]/10 p-3 text-xs ring-1 ring-[var(--primary)]/40">
+        <span className="block font-medium text-[var(--foreground)]">{pack.kit.label}</span>
+        <span className="mt-1 block text-[var(--muted-foreground)]">{t("game.mapPack.kitSetBy", { name })}</span>
+      </div>
+      {pack.worlds.length > 0 && (
+        <fieldset className="mt-3 space-y-1.5">
+          <legend className="mb-1 block text-xs font-medium text-[var(--foreground)]">{t("game.mapPack.maps")}</legend>
+          <p className="text-[0.6875rem] text-[var(--muted-foreground)]">{t("game.mapPack.mapsHelp", { name })}</p>
+          {pack.worlds.map((world) => (
+            <label key={world.path} className="flex items-center gap-2 text-xs text-[var(--foreground)]">
+              <input
+                type="radio"
+                name="map-pack-world"
+                checked={world.path === worldPath}
+                onChange={() => onPickWorld(world.path)}
+                className="size-4 accent-[var(--primary)]"
+              />
+              {world.name}
+            </label>
+          ))}
+        </fieldset>
       )}
     </div>
   );

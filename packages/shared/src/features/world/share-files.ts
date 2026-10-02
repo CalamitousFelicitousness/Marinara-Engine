@@ -63,6 +63,17 @@ export const worldFile = (
   world,
 });
 
+/** An installed Experience's map pack (worldgen W9e) as the Engine read and checked it: its setting kit,
+ *  the ready-made worlds built with it, and its tile pack. */
+export interface ExperienceMapPack {
+  packageId: string;
+  /** The Experience's name. */
+  name: string;
+  kit: WorldKit;
+  worlds: Array<{ path: string; name: string; world: WorldFileWorld }>;
+  tiles: import("./tile-pack.js").TilePack | null;
+}
+
 type Read<T> = ({ ok: true; notes: string[] } & T) | { ok: false; issues: string[] };
 
 /** The file's JSON object of the given format, or why it is not one. */

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { allowsDefaultChatModel } from "../llm/local-context-limit.js";
 import {
   DEFAULT_IMAGE_CAPTIONING_PROMPT,
@@ -107,7 +108,8 @@ export async function resolveImageCaptioningRuntime(args: {
   admissionMode?: ConnectionAdmissionMode;
 }): Promise<ImageCaptioningRuntime> {
   const { chatMeta, connections } = args;
-  let captioningEnabled = false;
+  // An explicit "on" in the chat counts even if loading a connection below throws, so that error is shown.
+  let captioningEnabled = chatMeta.imageCaptioningEnabled === true;
   try {
     const hasChatEnabledOverride = typeof chatMeta.imageCaptioningEnabled === "boolean";
     const hasChatConnectionOverride = Object.prototype.hasOwnProperty.call(chatMeta, "imageCaptioningConnectionId");
@@ -241,12 +243,24 @@ function normalizeImageCaptionText(value: unknown): string | null {
   return text.length > IMAGE_CAPTION_MAX_CHARS ? `${text.slice(0, IMAGE_CAPTION_MAX_CHARS).trim()}...` : text;
 }
 
+function effectiveCaptionPrompt(imageCaptioning: ImageCaptioningRuntime): string {
+  return imageCaptioning.prompt?.trim() || DEFAULT_IMAGE_CAPTIONING_PROMPT;
+}
+
+function captionPromptKey(prompt: string): string {
+  return createHash("sha256").update(prompt).digest("hex").slice(0, 16);
+}
+
 function readCachedImageCaption(attachment: PromptAttachment, imageCaptioning: ImageCaptioningRuntime): string | null {
   const caption = normalizeImageCaptionText(attachment.imageCaption);
   if (!caption || !imageCaptioning.connection) return null;
   if (attachment.imageCaptionConnectionId !== imageCaptioning.connectionId) return null;
   if (attachment.imageCaptionModel !== imageCaptioning.connection.model) return null;
   if (attachment.imageCaptionProvider !== imageCaptioning.connection.provider) return null;
+  // A changed prompt makes a new caption. Captions from before prompts were editable used the default.
+  const prompt = effectiveCaptionPrompt(imageCaptioning);
+  const cachedKey = attachment.imageCaptionPromptKey ?? captionPromptKey(DEFAULT_IMAGE_CAPTIONING_PROMPT);
+  if (cachedKey !== captionPromptKey(prompt)) return null;
   return caption;
 }
 
@@ -274,7 +288,7 @@ export async function generateImageCaptionForDataUrl(
 ): Promise<string | null> {
   if (!imageCaptioning.provider || !imageCaptioning.connection) return null;
   const messages = [
-    { role: "system" as const, content: imageCaptioning.prompt?.trim() || DEFAULT_IMAGE_CAPTIONING_PROMPT },
+    { role: "system" as const, content: effectiveCaptionPrompt(imageCaptioning) },
     {
       role: "user" as const,
       content: `Describe this image attachment named "${filename}" for use inside a chat prompt. Return only the description.`,
@@ -407,6 +421,7 @@ export async function resolvePromptAttachmentInputs(args: {
         imageCaptionConnectionId: imageCaptioning.connectionId,
         imageCaptionModel: captionConnection.model,
         imageCaptionProvider: captionConnection.provider,
+        imageCaptionPromptKey: captionPromptKey(effectiveCaptionPrompt(imageCaptioning)),
         imageCaptionedAt: new Date().toISOString(),
       };
     }

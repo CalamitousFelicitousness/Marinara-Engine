@@ -71,6 +71,20 @@ const disabledOverrideRuntime = await resolveImageCaptioningRuntime({
 });
 assert.equal(disabledOverrideRuntime.enabled, false);
 
+// Captioning switched on in the chat reports a connection that can't be loaded instead of quietly turning off.
+const failingLoadRuntime = await resolveImageCaptioningRuntime({
+  chatMeta: { imageCaptioningEnabled: true },
+  fallbackConnectionId: mainConnection.id,
+  connections: {
+    ...runtimeConnections,
+    getWithKey: async () => {
+      throw new Error("connection storage is unavailable");
+    },
+  },
+});
+assert.equal(failingLoadRuntime.enabled, true, "an explicit on must stay on when loading fails");
+assert.match(String(failingLoadRuntime.unavailableReason), /connection storage is unavailable/u);
+
 const inheritedConnectionRuntime = await resolveImageCaptioningRuntime({
   chatMeta: { imageCaptioningEnabled: true },
   fallbackConnectionId: mainConnection.id,
@@ -172,6 +186,18 @@ assert.ok(
 assert.ok(resolution.content.indexOf("caption for image-7.png") < resolution.content.indexOf("cached caption"));
 assert.equal(resolution.updatedAttachments?.[7]?.imageCaption, "caption for image-7.png");
 assert.equal(resolution.updatedAttachments?.[10]?.imageCaption, "cached caption");
+
+// A changed prompt makes a new caption instead of reusing one made with the old prompt.
+assert.ok(resolution.updatedAttachments?.[7]?.imageCaptionPromptKey, "new captions remember their prompt");
+const promptChanged = new CaptionProvider();
+const recaptioned = await resolvePromptAttachmentInputs({
+  content: "prompt",
+  attachments: [attachments[10]!],
+  imageCaptioning: { ...runtime, provider: promptChanged, prompt: "Describe every detail." },
+  signal: new AbortController().signal,
+});
+assert.deepEqual(promptChanged.calls, ["cached-after-limit.png"], "a changed prompt must caption the image again");
+assert.match(recaptioned.content, /caption for cached-after-limit\.png/u);
 
 // A failed caption stops the turn with a clear error instead of quietly sending the raw image.
 const signal = new AbortController().signal;

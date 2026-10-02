@@ -4667,11 +4667,17 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             )?.places;
             // A walk this turn tells has taken the party where it walked (worldgen W8).
             const walk = promptWorld ? await turnWalkPromise : null;
-            // A visit in town to a named place there, or else a walk, has taken the party where it went.
+            // A visit in town to a named place there, or else a walk, has taken the party where it went; a
+            // visit in a town the party has since walked away from does not.
             const visit = promptWorld ? await turnVisitPromise : null;
-            const visited = visit
-              ? worldTown(promptWorld!, visit.settlementId)?.buildings.find((building) => building.id === visit.to)
-              : undefined;
+            const visited =
+              visit && (!walk || visit.settlementId === walk.to)
+                ? worldTown(
+                    promptWorld!,
+                    visit.settlementId,
+                    worldPresent(promptWorld!, readWorldLedger((await promptRepliesAll()).all)),
+                  )?.buildings.find((building) => building.id === visit.to)
+                : undefined;
             if (visited?.placeId && visited.name) {
               return worldPlaceForTag(promptWorld!, visited.name, ladder) ?? { name: visited.name };
             }
@@ -4701,9 +4707,12 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 const walk = await turnWalkPromise;
                 const visit = await turnVisitPromise;
                 const visitTown = visit ? worldTown(promptWorld, visit.settlementId, present) : null;
+                // In the order they happened: a visit in a town the party then walked away from comes first.
+                const walkLine = walk ? `${worldWalkText(promptWorld, walk)}\n` : "";
+                const visitLine =
+                  visit && visitTown ? `${worldTownVisitText(promptWorld, visitTown, visit, turnHour)}\n` : "";
                 const walked =
-                  (walk ? `${worldWalkText(promptWorld, walk)}\n` : "") +
-                  (visit && visitTown ? `${worldTownVisitText(promptWorld, visitTown, visit, turnHour)}\n` : "");
+                  walk && visit && visit.settlementId !== walk.to ? visitLine + walkLine : walkLine + visitLine;
                 if (!before?.name) {
                   const start = promptWorld.world.places.find((place) => place.id === promptWorld.world.startId);
                   return walked + worldWhereYouAreText(promptWorld, { place: start, met: promptMet, present });
@@ -9563,15 +9572,19 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               const visitTown = visit
                 ? worldTown(turnWorld, visit.settlementId, worldPresent(turnWorld, readWorldLedger(replies.all)))
                 : null;
-              let told = "";
+              let walkTags = "";
+              let visitTags = "";
               if (walk && fullResponse.trim()) {
-                told += worldWalkTags(turnWorld, walk);
+                walkTags = worldWalkTags(turnWorld, walk);
                 turnToldWalk = walk;
               }
               if (visit && visitTown && fullResponse.trim()) {
-                told += worldTownVisitTags(visitTown, visit);
+                visitTags = worldTownVisitTags(visitTown, visit);
                 turnToldVisit = visit;
               }
+              // In the order they happened, so the place the reply leaves the party in is the last one.
+              const told =
+                walk && visit && visit.settlementId !== walk.to ? visitTags + walkTags : walkTags + visitTags;
               if (told) {
                 fullResponse = `${told}${fullResponse}`;
                 contentReplaced = true;

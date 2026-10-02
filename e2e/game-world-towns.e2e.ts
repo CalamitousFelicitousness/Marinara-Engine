@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { createServer, type Server } from "node:http";
 import { WORLD_GENERATOR_VERSION, WORLD_STARTER_KITS, compileGameWorld, parseWorldKit } from "@marinara-engine/shared";
 import { openGame } from "./game-ruleset-fight-fixture.js";
@@ -55,6 +55,15 @@ const gameWorld = { seed: 20261002, generatorVersion: WORLD_GENERATOR_VERSION, g
 async function metadataOf(request: APIRequestContext, chatId: string) {
   const row = await (await request.get(`/api/chats/${chatId}`)).json();
   return (typeof row.metadata === "string" ? JSON.parse(row.metadata) : row.metadata) as Record<string, any>;
+}
+
+/** On a phone the toolbar's buttons sit in the game's actions menu. */
+async function toolbarButton(page: Page, name: string) {
+  const actions = page.getByRole("button", { name: "Game actions", exact: true });
+  const button = page.getByRole("button", { name, exact: true });
+  await expect(actions.or(button).first()).toBeVisible({ timeout: 40_000 });
+  if (await actions.isVisible()) await actions.click();
+  return button;
 }
 
 test("the party enters the town it is in, walks across it, and the next turn tells where", async ({
@@ -144,6 +153,12 @@ test("the party enters the town it is in, walks across it, and the next turn tel
       "In Thornmere, the party has walked to",
     );
     await expect.poll(async () => (await metadataOf(request, chatId)).gameTownVisit ?? null).toBeNull();
+
+    // The scene view and back returns to the town, not the overworld.
+    await (await toolbarButton(page, "Show the scene")).click();
+    await expect(page.getByRole("region", { name: "Town", exact: true })).toBeHidden();
+    await (await toolbarButton(page, "Show the overworld")).click();
+    await expect(page.getByRole("region", { name: "Town", exact: true })).toBeVisible();
 
     // Leave back to the overworld.
     await page.getByRole("button", { name: "Leave town", exact: true }).click();

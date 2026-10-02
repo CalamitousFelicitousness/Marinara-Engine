@@ -8759,8 +8759,11 @@ function GameSurfaceComponent({
     (view: "overworld" | "scene" | "town") => updateChatMetadata.mutate({ id: activeChatId, gameWorldView: view }),
     [activeChatId, updateChatMetadata],
   );
+  // Back from the scene view to the side of the world the player left: the overworld or the town.
+  const worldSideRef = useRef<"overworld" | "town">("overworld");
+  if (overworldShown) worldSideRef.current = townShown ? "town" : "overworld";
   const handleToggleWorldView = useCallback(
-    () => setWorldView(overworldShown ? "scene" : "overworld"),
+    () => setWorldView(overworldShown ? "scene" : worldSideRef.current),
     [overworldShown, setWorldView],
   );
   // Effective combat style: active encounter pin ?? runtime metadata override

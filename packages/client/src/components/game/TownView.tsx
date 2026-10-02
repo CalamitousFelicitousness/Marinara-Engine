@@ -75,7 +75,7 @@ export function TownView({
   const drawTile = useOverworldAtlas(family);
   const walkingRef = useRef(false);
   const [walking, setWalking] = useState(false);
-  const { pendingMinutes } = useOverworldClock(chatId, clockRunning, () => walkingRef.current, handleRef);
+  const { pendingMinutes, flush } = useOverworldClock(chatId, clockRunning, () => walkingRef.current, handleRef);
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -257,6 +257,8 @@ export function TownView({
       if (!town || !canWalk || walkingRef.current) return;
       const from = worldTownDoor(town, town.at);
       const target = worldTownDoor(town, to);
+      // The real time so far goes on the clock before the walk's minutes.
+      await flush();
       let result;
       try {
         result = await visitMutation.mutateAsync({ chatId, to });
@@ -301,7 +303,7 @@ export function TownView({
       };
       frameRef.current = requestAnimationFrame(frame);
     },
-    [canWalk, chatId, t, town, visitMutation],
+    [canWalk, chatId, flush, t, town, visitMutation],
   );
 
   if (!town) {

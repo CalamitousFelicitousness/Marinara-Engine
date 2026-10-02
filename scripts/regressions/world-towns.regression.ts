@@ -244,13 +244,39 @@ try {
     const innVisit = await visit(inn.id);
     assert.equal(innVisit.statusCode, 200, innVisit.body);
     await turn("Warm light and ale.");
-    assert.match(prompts.join("\n"), /The party is at The Gilded Gull|The Gilded Gull/u);
+    assert.match(prompts.join("\n"), /The party is in The Gilded Gull/u, "the Game Master is told the party is there");
     const told = (await chats.listMessages(chatId))
       .filter((m: any) => m.role === "assistant")
       .map((m: any) => m.content);
     assert.equal(lastGamePlace(told)?.name, "The Gilded Gull", "the place in force is the inn");
     assert.equal((await read()).at, inn.id, "and the town has the party there");
     assert.ok(worldTownDoor(withInn, "square"));
+
+    // A visit in the city, then a walk away before the turn: told in that order, and the party ends up
+    // where it walked, not where it visited.
+    // (To the square and back to the inn, so the visit told before the walk names a place.)
+    assert.equal((await visit("square")).statusCode, 200);
+    assert.equal((await visit(inn.id)).statusCode, 200);
+    const away = game.world.links.find((link) => link.from === city.id || link.to === city.id)!;
+    const next = game.world.places.find((place) => place.id === (away.from === city.id ? away.to : away.from))!;
+    const left = await app.inject({
+      method: "POST",
+      url: `/api/game/${chatId}/overworld/walk`,
+      payload: { to: next.id },
+    });
+    assert.equal(left.statusCode, 200, left.body);
+    await turn("The road again.");
+    const order = prompts.join("\n");
+    const [visitAt, walkAt] = [
+      order.indexOf(`In ${city.name}, the party has walked to`),
+      order.indexOf("On the overworld"),
+    ];
+    assert.ok(visitAt >= 0 && walkAt > visitAt, "the visit, then the walk");
+    assert.match(order, new RegExp(`The party is in ${next.name}`, "u"), "where it walked");
+    const after = (await chats.listMessages(chatId))
+      .filter((m: any) => m.role === "assistant")
+      .map((m: any) => m.content);
+    assert.equal(lastGamePlace(after)?.name, next.name, "the place in force is where it walked");
   } finally {
     await app.close();
     await closeDB();

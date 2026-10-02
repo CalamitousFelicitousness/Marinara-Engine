@@ -1542,6 +1542,23 @@ assert.equal(merged.length, 2, "the three built-in rewrite agents should share o
 assert.match(merged[0]!.name, /prose-guardian.*continuity.*html/u);
 assert.equal(getAgentBatchLane(merged[0]!), "rewrite");
 assert.equal(getAgentBatchLane(trackerAgent), "standard");
+// #6977: a rewrite agent with sharing turned off keeps its own editor request.
+const soloContinuity = {
+  ...rewriteAgents[1]!,
+  settings: { ...rewriteAgents[1]!.settings, batchWithOtherAgents: false },
+};
+const partlyMerged = mergePairedBuiltInRewriteAgents([
+  rewriteAgents[0]!,
+  soloContinuity,
+  rewriteAgents[2]!,
+  trackerAgent,
+]);
+assert.deepEqual(
+  partlyMerged.map((agent) => agent.name),
+  ["prose-guardian + html", "continuity", "world-state"],
+  "a rewrite agent that may not share runs on its own beside the merged editor",
+);
+assert.doesNotMatch(partlyMerged[0]!.promptTemplate, /continuity prompt/u, "the merged editor leaves out its tasks");
 assert.equal(
   estimateAgentLoadCost(
     [

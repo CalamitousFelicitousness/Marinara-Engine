@@ -810,6 +810,7 @@ export function AgentEditor() {
   const [localSourceLorebookIds, setLocalSourceLorebookIds] = useState<string[]>([]);
   const [localUseChatActiveLorebooks, setLocalUseChatActiveLorebooks] = useState(false);
   const [localTriggerLorebooksForAgentCalls, setLocalTriggerLorebooksForAgentCalls] = useState(false);
+  const [localBatchWithOtherAgents, setLocalBatchWithOtherAgents] = useState(true);
   const [localSourceFileIds, setLocalSourceFileIds] = useState<string[]>([]);
   const [localAutoGenerateAvatars, setLocalAutoGenerateAvatars] = useState(false);
   const [localUseAvatarReferences, setLocalUseAvatarReferences] = useState(false);
@@ -963,6 +964,7 @@ export function AgentEditor() {
         (settings.useChatActiveLorebooks as boolean | undefined) ?? defaultSettings.useChatActiveLorebooks === true,
       );
       setLocalTriggerLorebooksForAgentCalls(settings.triggerLorebooksForAgentCalls === true);
+      setLocalBatchWithOtherAgents(settings.batchWithOtherAgents !== false);
       setLocalSourceFileIds(normalizeStringArray(settings.sourceFileIds));
       setLocalAutoGenerateAvatars(settings.autoGenerateAvatars === true);
       setLocalUseAvatarReferences(
@@ -1039,6 +1041,7 @@ export function AgentEditor() {
       setLocalSourceLorebookIds([]);
       setLocalUseChatActiveLorebooks(defaultSettings.useChatActiveLorebooks === true);
       setLocalTriggerLorebooksForAgentCalls(false);
+      setLocalBatchWithOtherAgents(defaultSettings.batchWithOtherAgents !== false);
       setLocalSourceFileIds([]);
       setLocalAutoGenerateAvatars(false);
       setLocalUseAvatarReferences(defaultSettings.useAvatarReferences === true);
@@ -1106,6 +1109,7 @@ export function AgentEditor() {
       setLocalSourceLorebookIds([]);
       setLocalUseChatActiveLorebooks(false);
       setLocalTriggerLorebooksForAgentCalls(false);
+      setLocalBatchWithOtherAgents(true);
       setLocalSourceFileIds([]);
       setLocalAutoGenerateAvatars(false);
       setLocalUseAvatarReferences(false);
@@ -1442,6 +1446,7 @@ export function AgentEditor() {
         ...(isEditingCustomAgent ? { customCapabilities } : {}),
         ...(isEditingCustomAgent ? { homeWidgets: localHomeWidgets } : {}),
         contextSources: localContextSources,
+        batchWithOtherAgents: localBatchWithOtherAgents,
         ...(isEditingCustomAgent ? { resultType: localResultType } : {}),
         ...(isEditingCustomAgent ? localOutputOptions : {}),
         ...(isEditingCustomAgent ? { triggerLorebooksForAgentCalls: localTriggerLorebooksForAgentCalls } : {}),
@@ -1604,6 +1609,7 @@ export function AgentEditor() {
     localSpotifyClientId,
     localUseChatActiveLorebooks,
     localTriggerLorebooksForAgentCalls,
+    localBatchWithOtherAgents,
     localSourceLorebookIds,
     localSourceFileIds,
     localAutoGenerateAvatars,
@@ -1688,6 +1694,7 @@ export function AgentEditor() {
       ...(isEditingCustomAgent ? { customCapabilities } : {}),
       ...(isEditingCustomAgent ? { homeWidgets: localHomeWidgets } : {}),
       contextSources: localContextSources,
+      batchWithOtherAgents: localBatchWithOtherAgents,
       ...(isEditingCustomAgent ? { resultType: localResultType } : {}),
       ...(isEditingCustomAgent ? localOutputOptions : {}),
       ...(isEditingCustomAgent ? { triggerLorebooksForAgentCalls: localTriggerLorebooksForAgentCalls } : {}),
@@ -2659,6 +2666,18 @@ export function AgentEditor() {
                 ? localizeUi("ui.agents.agenteditor.usesTheBuiltInLocalModelFromTheConnections")
                 : localizeUi("ui.agents.agenteditor.whenEmptyUsesTheAgentDefaultConnectionIfOne")}
             </p>
+            {/* ponytail: this switch can only keep an agent apart. It still shows "on" for agents the server
+                always runs alone (shouldRunAgentIndividually); showing that needs that rule moved into shared. */}
+            <EditorSwitchRow
+              className="mt-3"
+              label={localizeUi("agents.batching.label")}
+              description={localizeUi("agents.batching.description")}
+              checked={localBatchWithOtherAgents}
+              onChange={(checked) => {
+                setLocalBatchWithOtherAgents(checked);
+                markDirty();
+              }}
+            />
           </FieldGroup>
 
           {/* ── Image Generation Connection ── */}

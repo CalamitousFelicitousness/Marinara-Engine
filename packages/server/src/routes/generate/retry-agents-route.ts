@@ -235,6 +235,7 @@ import {
   isBuiltInTextRewriteAgentType,
   mergePairedBuiltInRewriteAgents,
   normalizeProseGuardianPromptTemplate,
+  sharesBuiltInRewriteRequest,
 } from "../../services/generation/prose-guardian-settings.js";
 import {
   forceImageGenerationScopeError,
@@ -2586,7 +2587,7 @@ async function executeRetryBatches(
 }
 
 function mergeRetryPairedBuiltInRewriteAgents(entries: ResolvedRetryAgent[]): ResolvedRetryAgent[] {
-  const builtInRewriteEntries = entries.filter((entry) => isBuiltInTextRewriteAgentType(entry.resolved.type));
+  const builtInRewriteEntries = entries.filter((entry) => sharesBuiltInRewriteRequest(entry.resolved));
   if (builtInRewriteEntries.length <= 1) return entries;
 
   const firstMergeIndex = Math.min(...builtInRewriteEntries.map((entry) => entries.indexOf(entry)));
@@ -2601,7 +2602,7 @@ function mergeRetryPairedBuiltInRewriteAgents(entries: ResolvedRetryAgent[]): Re
   for (let index = 0; index < entries.length; index++) {
     const entry = entries[index]!;
     if (index === firstMergeIndex) merged.push(mergedEntry);
-    if (isBuiltInTextRewriteAgentType(entry.resolved.type)) continue;
+    if (sharesBuiltInRewriteRequest(entry.resolved)) continue;
     merged.push(entry);
   }
   return merged;

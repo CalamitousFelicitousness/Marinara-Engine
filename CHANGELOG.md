@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- The agent editor has a new **Share requests with other agents** switch under **Connection Override**. Turn it off to send that agent in its own request instead of together with other agents, which helps local models that mix up their tasks. This also works for Prose Guardian, Continuity Checker and Immersive HTML, which otherwise rewrite the reply together. It is on by default, and agents that already ran on their own still do (#6977).
+
 - In group chats, replying to a character's message now makes that character answer, the same as mentioning them with @. Before, the reply did not count when choosing who speaks next, and since a character rarely speaks twice in a row, replying to the message they just sent almost always got an answer from someone else (#6978).
 
 - Professor Mari, and other background calls on slow local models, no longer give up when the first token takes more than two minutes. They now wait as long as the **Text generation** request timeout allows (Settings, or `CHAT_GENERATION_TIMEOUT_MS`; 5 minutes by default) (#6970).

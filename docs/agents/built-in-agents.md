@@ -12,7 +12,7 @@ Each agent below shows three quick facts.
 - **Where it works**: the chat modes that let you add the agent. Most agents work in **Roleplay** chats. A few work in other modes, and each entry says which.
 - **Key settings**: the settings you are most likely to change. You set these when you add the agent, or later in the agent's setup card in **Chat Settings**.
 
-Marinara groups its agents into three categories in the **Agents** panel: **Writer Agents**, **Tracker Agents**, and **Misc Agents**. This reference uses the same grouping.
+Marinara groups its agents in the **Agents** panel into **Apps**, **Writer Agents**, **Tracker Agents**, and **Misc Agents**. Apps are packages with their own Home tab, like Noodle and Slurp. This reference describes Noodle in the Misc agents section.
 
 A run interval means the agent runs once every few user and assistant messages instead of after every message. You can change a run interval in the agent's setup, up to 100.
 

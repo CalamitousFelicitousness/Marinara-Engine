@@ -309,6 +309,32 @@ try {
   assert.equal(decisionCalls.length, decisionBeforeTrigger + 2);
   assert.equal(JSON.parse((await chats.getById(chat.id))!.metadata).groupResponseOrder, "manual");
 
+  // Replying to a character's message makes that character answer, like an @mention, even
+  // right after they spoke and when the Decision model would pick someone else (#6978).
+  await chats.patchMetadata(chat.id, { groupResponseOrder: "smart" });
+  await settings.set(DECISION_SMART_ORDER_SETTINGS_KEY, "true");
+  probabilities = { [aya!.id]: 0.1, [bram!.id]: 0.1, [cole!.id]: 0.9 };
+  assert.deepEqual(await turn(null, { forCharacterId: bram!.id }), ["Bram"]);
+  const bramMessage = (await chats.listMessages(chat.id)).filter((message) => message.role === "assistant").at(-1)!;
+  assert.equal(bramMessage.characterId, bram!.id);
+  const decisionBeforeReply = decisionCalls.length;
+  const selectorBeforeReply = selectorCalls.length;
+  assert.deepEqual(
+    await turn("Really?", { replyTo: { messageId: bramMessage.id, name: "Bram", content: bramMessage.content } }),
+    ["Bram"],
+    "the character being replied to answers",
+  );
+  assert.equal(decisionCalls.length, decisionBeforeReply, "a reply needs no Decision request to pick its speaker");
+  assert.equal(selectorCalls.length, selectorBeforeReply, "nor a selector call");
+  const ownMessage = (await chats.listMessages(chat.id)).filter((message) => message.role === "user").at(-1)!;
+  assert.deepEqual(
+    await turn("Anyone else?", { replyTo: { messageId: ownMessage.id, name: "You", content: ownMessage.content } }),
+    ["Cole"],
+    "a reply to the user's own message addresses no one, so smart order still decides",
+  );
+  assert.equal(decisionCalls.length, decisionBeforeReply + 1);
+  await settings.remove(DECISION_SMART_ORDER_SETTINGS_KEY);
+
   console.log("smart-group-decision regression passed");
 } finally {
   await app.close();

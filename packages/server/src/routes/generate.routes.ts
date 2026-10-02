@@ -391,7 +391,7 @@ import { executeKnowledgeRouter } from "../services/agents/knowledge-router.js";
 import { extractFileText, getSourceFilePath } from "./knowledge-sources.routes.js";
 import { gameStateSnapshots as gameStateSnapshotsTable } from "../db/schema/index.js";
 import { and, eq } from "../db/file-query.js";
-import { PROFESSOR_MARI_ID, type GenerationParameterSendMap } from "@marinara-engine/shared";
+import { messageReplySchema, PROFESSOR_MARI_ID, type GenerationParameterSendMap } from "@marinara-engine/shared";
 import { chunkAndEmbedMessages } from "../services/memory-recall.js";
 import {
   isMemoryRecallVectorizerAvailable,
@@ -6936,16 +6936,28 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         };
 
         const getExplicitlyMentionedCharacterIds = (assistantText?: string): string[] => {
+          const latestUserMessage = [...chatMessages].reverse().find((message: any) => message.role === "user");
           const latestUserText =
             assistantText ??
             (typeof input.userMessage === "string" && input.userMessage.trim()
               ? input.userMessage
-              : String([...chatMessages].reverse().find((message: any) => message.role === "user")?.content ?? ""));
+              : String(latestUserMessage?.content ?? ""));
           const requestedNames = new Set(
             (assistantText === undefined ? (input.mentionedCharacterNames ?? []) : []).map((name: string) =>
               normalizeTextForMatch(name),
             ),
           );
+          // Replying to a character's message addresses that character, like an @mention.
+          const reply =
+            assistantText === undefined
+              ? messageReplySchema.safeParse(parseExtra(latestUserMessage?.extra).replyTo)
+              : null;
+          const quotedMessage = reply?.success
+            ? chatMessages.find((message: any) => message.id === reply.data.messageId)
+            : undefined;
+          const replyCharacterId = quotedMessage?.role === "assistant" ? quotedMessage.characterId : undefined;
+          // The quoted message can fall outside the loaded history; its speaker's name still identifies them.
+          if (reply?.success && !quotedMessage) requestedNames.add(normalizeTextForMatch(reply.data.name));
 
           const candidates =
             assistantText !== undefined && chatMode === "conversation"
@@ -6953,6 +6965,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               : availableGroupCharacters;
           return candidates
             .filter((character) => {
+              if (character.id === replyCharacterId) return true;
               const names = [character.name, conversationCharacterPresenceById.get(character.id)?.displayName].filter(
                 (name): name is string => typeof name === "string" && name.trim().length > 0,
               );

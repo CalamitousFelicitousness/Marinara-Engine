@@ -333,6 +333,17 @@ try {
     "a reply to the user's own message addresses no one, so smart order still decides",
   );
   assert.equal(decisionCalls.length, decisionBeforeReply + 1);
+  // A reply to a message past the context limit still finds its author in the full chat.
+  const ayaMessage = (await chats.listMessages(chat.id))
+    .filter((message) => message.role === "assistant" && message.characterId === aya!.id)
+    .at(-1)!;
+  await chats.patchMetadata(chat.id, { contextMessageLimit: 2 });
+  assert.deepEqual(
+    await turn("Back to you", { replyTo: { messageId: ayaMessage.id, name: "Aya", content: ayaMessage.content } }),
+    ["Aya"],
+    "an older quoted message outside the loaded history still addresses its author",
+  );
+  await chats.patchMetadata(chat.id, { contextMessageLimit: null });
   await settings.remove(DECISION_SMART_ORDER_SETTINGS_KEY);
 
   console.log("smart-group-decision regression passed");

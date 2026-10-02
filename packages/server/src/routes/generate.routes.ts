@@ -6952,12 +6952,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             assistantText === undefined
               ? messageReplySchema.safeParse(parseExtra(latestUserMessage?.extra).replyTo)
               : null;
+          // The whole chat, since the quoted message may be hidden from the AI or past the context limit.
           const quotedMessage = reply?.success
-            ? chatMessages.find((message: any) => message.id === reply.data.messageId)
+            ? allChatMessages.find((message: any) => message.id === reply.data.messageId)
             : undefined;
           const replyCharacterId = quotedMessage?.role === "assistant" ? quotedMessage.characterId : undefined;
-          // The quoted message can fall outside the loaded history; its speaker's name still identifies them.
-          if (reply?.success && !quotedMessage) requestedNames.add(normalizeTextForMatch(reply.data.name));
 
           const candidates =
             assistantText !== undefined && chatMode === "conversation"

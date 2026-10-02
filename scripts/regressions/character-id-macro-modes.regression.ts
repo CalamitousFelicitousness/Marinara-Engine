@@ -25,6 +25,7 @@ const { createChatsStorage } = await import("../../packages/server/src/services/
 const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
 const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
 const { characterDataSchema } = await import("../../packages/shared/dist/index.js");
+const { buildReferencedCharacterContext } = await import("../../packages/server/src/services/prompt/macro-context.js");
 
 const sent: string[] = [];
 const provider = createServer(async (request, response) => {
@@ -113,6 +114,23 @@ try {
     check(`${mode} sent prompt`, sent.at(-1)!);
     assert.match(sent.at(-1)!, /MIRA_CARD: an old friend of Susie\./u, `${mode}: the chat member's card names her too`);
   }
+  // A names-only pass names every referenced character, not just the first eight.
+  const crowd = await Promise.all(
+    Array.from({ length: 9 }, (_, index) =>
+      characters.create(characterDataSchema.parse({ name: `Guest ${index + 1}` })),
+    ),
+  );
+  const named = await buildReferencedCharacterContext({
+    db,
+    activeCharacterIds: [],
+    sources: [crowd.map((guest) => `{{${guest!.id}}}`).join(" ")],
+    chatMessages: [],
+    macroCtx: {} as never,
+    wrapFormat: "none",
+    chatId: "",
+    namesOnly: true,
+  });
+  assert.equal(Object.keys(named.references).length, 9, "every referenced character gets a name");
   console.log("Character ID macros resolve to names in Conversation and Game chats.");
 } finally {
   await app.close();

@@ -195,7 +195,7 @@ export function resolveMacrosForPreview(
   return resolveMacros(template, cloneMacroContextForPreview(macroCtx), options);
 }
 
-export function extractCharacterReferenceIds(sources: readonly string[]): string[] {
+export function extractCharacterReferenceIds(sources: readonly string[], limit = MAX_REFERENCED_CHARACTERS): string[] {
   const ids: string[] = [];
   const seen = new Set<string>();
   for (const source of sources) {
@@ -204,7 +204,7 @@ export function extractCharacterReferenceIds(sources: readonly string[]): string
       if (seen.has(id)) continue;
       seen.add(id);
       ids.push(id);
-      if (ids.length >= MAX_REFERENCED_CHARACTERS) return ids;
+      if (ids.length >= limit) return ids;
     }
   }
   return ids;
@@ -509,10 +509,11 @@ export async function buildReferencedCharacterContext(input: {
     sources.push(...referencedCharacterSourceFields(data));
   });
 
-  const mentionedIds = extractCharacterReferenceIds(sources);
+  // Names cost nothing, so a names-only pass names every ID; the cap only limits added cards (#6956).
+  const mentionedIds = extractCharacterReferenceIds(sources, input.namesOnly ? Infinity : MAX_REFERENCED_CHARACTERS);
   const candidateIds = mentionedIds
     .filter((id) => !activeIds.has(id))
-    .slice(0, Math.max(0, input.maxReferences ?? MAX_REFERENCED_CHARACTERS));
+    .slice(0, input.namesOnly ? Infinity : Math.max(0, input.maxReferences ?? MAX_REFERENCED_CHARACTERS));
   const referencedRows = await Promise.all(candidateIds.map((id) => characters.getById(id)));
   const referenced = candidateIds.flatMap((id, index) => {
     const data = parseCharacterData(referencedRows[index]?.data);

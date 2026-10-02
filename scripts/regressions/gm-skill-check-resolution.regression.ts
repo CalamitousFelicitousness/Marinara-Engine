@@ -513,10 +513,9 @@ const generateRoutes = readFileSync(join(root, "packages/server/src/routes/gener
 const resolutionAt = generateRoutes.indexOf("resolveSkillCheckTagsInContent(fullResponse");
 // The frame post-processing sends with the finished turn. A tool round may clear text it
 // streamed before that (#6951), but post-processing has not started then and sends its own frame.
-const contentReplaceAt = generateRoutes.indexOf(
-  `type: "content_replace", data: fullResponse`,
-  generateRoutes.indexOf("if (contentReplaced) {"),
-);
+const postProcessingFrameAt = generateRoutes.indexOf("if (contentReplaced) {");
+assert.ok(postProcessingFrameAt > 0, "post-processing must still send its own content_replace frame");
+const contentReplaceAt = generateRoutes.indexOf(`type: "content_replace", data: fullResponse`, postProcessingFrameAt);
 assert.ok(resolutionAt > 0, "generation post-processing must roll the GM's checks");
 assert.ok(contentReplaceAt > 0);
 assert.ok(

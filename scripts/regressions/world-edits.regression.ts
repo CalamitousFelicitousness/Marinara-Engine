@@ -49,10 +49,12 @@ const { gameRoutes } = await import("../../packages/server/src/routes/game.route
 const parsed = parseWorldKit(WORLD_STARTER_KITS.find((each) => each.id === "high_fantasy")!);
 assert.ok(parsed.ok);
 const kit = parsed.kit;
+const settlementLayer = kit.layers.find((layer) => layer.settlements)!;
 const checked = checkWorldBrief(kit, {
   briefVersion: 1,
   premise: "x",
-  groups: [],
+  places: [{ name: "Ashford", layer: settlementLayer.id, size: kit.sizes.at(-1)!.id, tags: [] }],
+  groups: [{ name: "The Wardens", kind: kit.groupKinds[0]!.id, seat: "Ashford", allies: [], rivals: [] }],
   peopleNames: kit.cultures.map((culture) => ({
     culture: culture.id,
     given: ["Ama", "Tobin", "Hesk", "Mira", "Oswin", "Bryn", "Calla", "Doran"],
@@ -67,7 +69,7 @@ const edited = (edits: WorldEdits): GameWorld => ({ ...inputs, edits, world: com
 const settlementsDepth = kit.layers.findIndex((layer) => layer.settlements);
 const settlements = base.world.places.filter((place) => place.depth === settlementsDepth);
 const byRank = [...settlements].sort((a, b) => b.rank! - a.rank! || a.id.localeCompare(b.id));
-const city = byRank[0]!;
+const city = settlements.find((place) => place.name === "Ashford")!;
 const village = byRank.at(-1)!;
 const castSize = (place: WorldPlace) => {
   const settlement = place.rank !== undefined ? place : base.world.places.find((each) => each.id === place.parentId);
@@ -120,6 +122,19 @@ try {
     assert.match(answered, /place="Newhaven"/);
     assert.match(answered, /result="ok"/);
     assert.deepEqual(worldHistory(game), worldHistory(base), "the past is the compiled world's");
+    // A group seated there is still seated there: its people, its place in the overview, its doings.
+    const groupsOf = (world: GameWorld) => worldCast(world, city.id).map((person) => person.group ?? null);
+    assert.ok(groupsOf(base).includes("The Wardens"), "(some of the Wardens live in Ashford)");
+    assert.deepEqual(groupsOf(game), groupsOf(base), "the Wardens still live there");
+    assert.match(worldOverviewPromptText(game), /The Wardens \([^)]*at Newhaven/);
+    const years = [{ days: "365" }, { days: "365" }, { days: "365" }];
+    const renamedPresent = worldPresent(game, years);
+    const plainPresent = worldPresent(base, years);
+    assert.deepEqual(
+      [renamedPresent.fortune, renamedPresent.relations, renamedPresent.leaders, renamedPresent.ruined],
+      [plainPresent.fortune, plainPresent.relations, plainPresent.leaders, plainPresent.ruined],
+      "the world goes on as it would have",
+    );
   }
 
   // ── A settlement moved: its ways are laid again ──
@@ -161,7 +176,10 @@ try {
         tags: [kit.placeTags[0]!.id],
       },
     ],
-    addedPeople: [{ id: `${city.id}-e1`, placeId: city.id, name: "Wren Hollis", role: "a cartographer" }],
+    addedPeople: [
+      { id: `${city.id}-e1`, placeId: city.id, name: "Wren Hollis", role: "a cartographer" },
+      { id: "e2-e1", placeId: "e2", name: "Pell Garrow" },
+    ],
     people: [{ id: `${city.id}-1`, name: "Old Tomas" }],
   };
   {
@@ -181,6 +199,7 @@ try {
     const present = worldPresent(game, ledger);
     const plain = worldPresent(base, ledger);
     assert.equal(present.fortune.e1, worldPresent(game, []).fortune.e1, "its fortune as it started");
+    assert.equal(plain.fortune.e1, undefined, "the world without the edit has no Stonebridge");
     assert.ok(plain.news.length > 0, "(three years of the world's own changes)");
     assert.deepEqual(present.news, plain.news, "the world's own changes are as they were");
 
@@ -194,14 +213,25 @@ try {
     assert.deepEqual(worldCast(game, city.id), cast, "the same every time");
     const town = worldTown(game, city.id)!;
     const plainTown = worldTown(base, city.id)!;
+    // Nothing in town moves: a building keeps its lot, or an empty home's lot goes to the place added by
+    // hand, as it does to a place the story adds.
     for (const building of plainTown.buildings) {
       const same = town.buildings.find((each) => each.id === building.id);
-      assert.deepEqual(same && { x: same.x, y: same.y }, { x: building.x, y: building.y }, `${building.id} stays put`);
+      const there = town.buildings.find((each) => each.x === building.x && each.y === building.y);
+      assert.ok(
+        same ? same.x === building.x && same.y === building.y : building.people.length === 0 && there?.placeId === "e2",
+        `${building.id} stays put`,
+      );
     }
     for (const person of plainTown.people)
       assert.equal(town.homeOf[person.id], plainTown.homeOf[person.id], `${person.name} keeps their home`);
     const lantern = town.buildings.find((building) => building.placeId === "e2");
     assert.ok(lantern, "the place added by hand is a building");
+    assert.deepEqual(
+      lantern.people,
+      worldCast(game, "e2").map((person) => person.id),
+      "its people work there",
+    );
     assert.ok(town.homeOf[wren.id], "the person added by hand has a home");
     for (const person of worldCast(game, "e2"))
       assert.equal(town.workOf[person.id], "e2", `${person.name} works at The Lantern`);
@@ -227,6 +257,13 @@ try {
     assert.ok(bad({ size: "megalopolis" })[0]!.includes("settlement size"));
     assert.ok(bad({ tags: ["nonsense"] })[0]!.includes("place tag"));
     assert.ok(issues({ people: [{ id: `${city.id}-999`, name: "Nobody" }] })[0]!.includes("No person"));
+    const parentLater = issues({
+      added: [additions.added![1]!, additions.added![0]!].map((add, at) => ({
+        ...add,
+        ...(at === 0 ? { parentId: "e1" } : {}),
+      })),
+    });
+    assert.ok(parentLater[0]!.includes("one layer out"), "a place's parent is added before it");
     assert.ok(
       issues({ addedPeople: [{ id: `${top.id}-e1`, placeId: top.id, name: "Ghost" }] })[0]!.includes("settlement"),
       "nobody lives in a province",
@@ -258,6 +295,24 @@ try {
       },
     });
     const meta = async () => JSON.parse((await chats.getById(chat.id))!.metadata as string) as Record<string, any>;
+    // A layer written around the editor's check (by another route) is not applied at all.
+    const stored = {
+      seed: inputs.seed,
+      generatorVersion: WORLD_GENERATOR_VERSION,
+      grounding: "expand",
+      brief: inputs.brief,
+    };
+    await chats.patchMetadata(chat.id, {
+      gameWorld: { ...stored, edits: { editsVersion: 1, places: [{ id: city.id, name: village.name }] } },
+    });
+    const around = gameWorldFromMetadata(await meta())!;
+    assert.equal(around.edits, undefined);
+    assert.equal(
+      around.world.places.find((place) => place.id === city.id)!.name,
+      city.name,
+      "two places never share a name",
+    );
+    await chats.patchMetadata(chat.id, { gameWorld: stored });
     const listed = (await app.inject({ method: "GET", url: "/api/game/worlds" })).json().worlds;
     assert.deepEqual(
       listed.map((world: { chatId: string; edited: boolean; family: string }) => [

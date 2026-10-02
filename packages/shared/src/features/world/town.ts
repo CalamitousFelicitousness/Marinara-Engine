@@ -7,6 +7,7 @@
 // ──────────────────────────────────────────────
 import { z } from "zod";
 import { worldStream, type WorldPlace } from "./compile.js";
+import { worldPersonByHand } from "./edits.js";
 import type { GameWorld } from "./game-world.js";
 import type { WorldPresent } from "./ledger.js";
 import { WORLD_PEOPLE_DEFAULTS, worldCast, type WorldPerson } from "./people.js";
@@ -150,8 +151,8 @@ export function worldTown(game: GameWorld, settlementId: string, present?: World
   // People added by hand come after everyone drawn, so nobody already in town moves house.
   const cast = [settlement, ...within].flatMap((place) => worldCast(game, place.id));
   const people = [
-    ...cast.filter((person) => !person.id.includes("-e")),
-    ...cast.filter((person) => person.id.includes("-e")),
+    ...cast.filter((person) => !worldPersonByHand(person.id)),
+    ...cast.filter((person) => worldPersonByHand(person.id)),
   ];
   const buildings: WorldTownBuilding[] = [];
   const homeOf: Record<string, string> = {};

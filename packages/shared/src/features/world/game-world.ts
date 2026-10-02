@@ -8,8 +8,8 @@ import { z } from "zod";
 import { gameWorldKitFromMetadata, type WorldKit } from "../../schemas/world-kit.schema.js";
 import { checkWorldBrief, worldBriefSchema, type WorldBrief } from "../../schemas/world-brief.schema.js";
 import { WORLD_GENERATOR_VERSION, compileWorld, type CompiledWorld, type WorldPlace } from "./compile.js";
-import { applyWorldEdits, worldEditsSchema, worldPlaceNamed, type WorldEdits } from "./edits.js";
-import { worldCast, worldPersonSheet } from "./people.js";
+import { applyWorldEdits, checkWorldEdits, worldEditsSchema, worldPlaceNamed, type WorldEdits } from "./edits.js";
+import { worldCast, worldCastSize, worldPersonSheet } from "./people.js";
 import { worldHistory, worldHistoryLine, worldNotablePast, worldPlacePast } from "./history.js";
 import {
   worldAddedPlace,
@@ -88,14 +88,23 @@ export function gameWorldFromMetadata(metadata: Record<string, unknown> | null |
   if (!parsed.success || parsed.data.generatorVersion !== WORLD_GENERATOR_VERSION) return null;
   const checked = checkWorldBrief(kit, parsed.data.brief);
   if (!checked.ok) return null;
-  const inputs = {
-    kit,
-    seed: parsed.data.seed,
-    grounding: parsed.data.grounding,
-    brief: checked.brief,
-    ...(parsed.data.edits ? { edits: parsed.data.edits } : {}),
-  };
-  return { ...inputs, world: compileGameWorld(inputs) };
+  const inputs = { kit, seed: parsed.data.seed, grounding: parsed.data.grounding, brief: checked.brief };
+  // A layer that does not fit its world (one written around the editor's check) is not applied at all,
+  // so what the editor's route refuses never reaches a reader by another route.
+  const edits = parsed.data.edits;
+  const full = edits && worldEditIssues(inputs, edits).length === 0 ? { ...inputs, edits } : inputs;
+  return { ...full, world: compileGameWorld(full) };
+}
+
+/** Why an edit layer (W9c) does not fit a world, or nothing: checked against the world as compiled.
+ *  Drawn people are checked by their place's cast size, since they are drawn rather than stored. */
+export function worldEditIssues(inputs: Omit<GameWorld, "world" | "edits">, edits: WorldEdits): string[] {
+  const compiled = compileGameWorld(inputs);
+  const byId = new Map(compiled.places.map((place) => [place.id, place]));
+  return checkWorldEdits(inputs.kit, compiled, edits, (place) => {
+    const settlement = place.rank !== undefined ? place : place.parentId ? byId.get(place.parentId) : undefined;
+    return settlement?.rank !== undefined ? worldCastSize(place, settlement) : 0;
+  });
 }
 
 /** The world's place by the name the Game Master used, ignoring case and spacing, or by a name it went

@@ -6,8 +6,9 @@
 // people added. Nothing compiled is removed.
 //
 // A layer is checked strictly when it is saved (an unknown place, a cell off the map, a name another
-// place has is refused with the reason) and applied leniently when it is read (anything that no longer
-// fits is skipped), so a stored layer never makes a world unreadable.
+// place has is refused with the reason), and again when its world is read: one that does not fit (written
+// around the editor's route) is not applied at all, so a stored layer never makes a world unreadable or
+// breaks what the check keeps (one name per place).
 // ──────────────────────────────────────────────
 import { z } from "zod";
 import type { WorldKit } from "../../schemas/world-kit.schema.js";
@@ -41,7 +42,7 @@ export const worldEditsSchema = z
       .array(z.object({ id: placeId, name: placeName.optional(), at: cell.optional() }).strict())
       .max(WORLD_EDITS_MAX_PEOPLE)
       .optional(),
-    /** Places added by hand: `e<n>` ids, in the order they were added. */
+    /** Places added by hand: `e<n>` ids, in the order they were added (a place's parent before it). */
     added: z
       .array(
         z
@@ -84,6 +85,9 @@ export const worldEditsSchema = z
   .strict();
 export type WorldEdits = z.infer<typeof worldEditsSchema>;
 export type WorldEditsInput = z.input<typeof worldEditsSchema>;
+
+/** True for a person added by hand (`<placeId>-e<n>`); drawn people are `<placeId>-<n>`. */
+export const worldPersonByHand = (id: string) => /-e\d+$/.test(id);
 
 /** True when a layer changes nothing. */
 export function worldEditsEmpty(edits: WorldEdits | null | undefined): boolean {

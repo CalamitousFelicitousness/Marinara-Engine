@@ -9,17 +9,16 @@ import { rejectGenerationOutput, type GenerationOutput } from "./generate/sse.js
 import { resolveStoredChatOptions, resolveStoredMaxTokens } from "../services/generation/generation-parameters.js";
 import { normalizeGameDifficulty, normalizeWeatherType, combatWeatherSchema } from "@marinara-engine/shared";
 import {
-  checkWorldEdits,
   compileGameWorld,
   worldCast,
-  worldCastSize,
   worldEditsEmpty,
+  worldEditIssues,
   worldEditsSchema,
   worldGroundLooks,
+  worldPersonByHand,
   worldKitArtFamily,
   worldTerrainEntries,
   type CompiledWorld,
-  type WorldPlace,
 } from "@marinara-engine/shared";
 import { resolveCombatWeather } from "../services/game/weather.service.js";
 import { resolveGameConnection } from "../services/game/connection.service.js";
@@ -5999,16 +5998,11 @@ export interface GameRouteOptions {
 
 export type CreateGameRequest = z.input<typeof createGameSchema>;
 export type SetupGameRequest = z.input<typeof setupSchema>;
-/** Why an edit layer does not fit a world, or nothing: checked against the world as compiled. */
-function worldEditIssues(game: Omit<GameWorld, "world">, edits: unknown): string[] {
+/** Why a sent edit layer does not fit a world, or nothing: it reads, and it fits. */
+function editIssues(game: Omit<GameWorld, "world" | "edits">, edits: unknown): string[] {
   const parsed = worldEditsSchema.safeParse(edits);
   if (!parsed.success) return [parsed.error.issues[0]?.message ?? "The edits do not read."];
-  const compiled = compileGameWorld({ ...game, edits: undefined });
-  const byId = new Map(compiled.places.map((place) => [place.id, place]));
-  return checkWorldEdits(game.kit, compiled, parsed.data, (place: WorldPlace) => {
-    const settlement = place.rank !== undefined ? place : place.parentId ? byId.get(place.parentId) : undefined;
-    return settlement?.rank !== undefined ? worldCastSize(place, settlement) : 0;
-  });
+  return worldEditIssues(game, parsed.data);
 }
 
 /** A game's world as compiled, in the shape a world editor draws: the ground and its classes (with the
@@ -6639,15 +6633,15 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         });
       }
       // Hand edits (worldgen W9c) sent with a world are held to what a saved edit layer is.
-      const editIssues = requestedWorld.edits
-        ? worldEditIssues(
+      const unfit = requestedWorld.edits
+        ? editIssues(
             { kit, seed: requestedWorld.seed, grounding: requestedWorld.grounding, brief: checked.brief },
             requestedWorld.edits,
           )
         : [];
-      if (editIssues.length) {
+      if (unfit.length) {
         return rejectGenerationOutput(reply, 400, {
-          error: `The world's hand edits do not fit it: ${editIssues[0]}`,
+          error: `The world's hand edits do not fit it: ${unfit[0]}`,
           code: "world_invalid",
         });
       }
@@ -11013,7 +11007,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         name: person.name,
         named: person.named,
         role: person.role,
-        byHand: person.id.includes("-e"),
+        byHand: worldPersonByHand(person.id),
       })),
     };
   });

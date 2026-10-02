@@ -101,6 +101,24 @@ try {
     repaired.notes.some((note) => note.includes("Nowhere")),
     "what of the brief the kit does not fit is noted",
   );
+  // Hand edits left out are said first, whatever else the brief needed.
+  const both = readWorldFile(
+    text(
+      worldFile("x", kit, {
+        ...world,
+        brief: {
+          ...world.brief,
+          places: [
+            ...world.brief.places,
+            ...["Nowhere", "Elsewhere", "Neverland"].map((name) => ({ name, layer: "galaxy", tags: [] })),
+          ],
+        },
+        edits: { editsVersion: 1, places: [{ id: "p9999", name: "X" }] },
+      }),
+    ),
+  );
+  assert.ok(both.ok && both.notes.length >= 4);
+  assert.match(both.notes[0]!, /hand edits do not fit/);
 
   // ── A game's world downloads as a world file ──
   const db = await getDB();
@@ -118,6 +136,37 @@ try {
     assert.deepEqual([read.name, read.kit, read.world], ["River kingdom", kit, { ...world, edits }]);
     const plain = await chats.create({ name: "No world", mode: "game", characterIds: [] });
     assert.equal((await app.inject({ method: "GET", url: `/api/game/${plain.id}/world/file` })).statusCode, 404);
+
+    // ── Kits for a maker: listed, fetched, checked into a file, read from one ──
+    const kits = (await app.inject({ method: "GET", url: "/api/game/world-kits" })).json();
+    assert.equal(kits.starters.length, WORLD_STARTER_KITS.length);
+    assert.deepEqual(kits.games, [{ chatId: chat.id, name: "River kingdom", label: kit.label }]);
+    const starter = await app.inject({ method: "GET", url: "/api/game/world-kits/starter/high_fantasy" });
+    assert.deepEqual(starter.json().kit, kit);
+    assert.equal((await app.inject({ method: "GET", url: "/api/game/world-kits/starter/nope" })).statusCode, 404);
+    assert.deepEqual((await app.inject({ method: "GET", url: `/api/game/${chat.id}/world-kit` })).json().kit, kit);
+    assert.equal((await app.inject({ method: "GET", url: `/api/game/${plain.id}/world-kit` })).statusCode, 404);
+    const mine = { ...kit, id: "river_kit", label: "River kit" };
+    const checkedKit = await app.inject({ method: "POST", url: "/api/game/world-kits/check", payload: { kit: mine } });
+    assert.equal(checkedKit.statusCode, 200, checkedKit.body);
+    const asFile = readWorldKitFile(JSON.stringify(checkedKit.json().file));
+    assert.ok(asFile.ok && asFile.kit.label === "River kit", "the file the check writes reads back");
+    const broken = await app.inject({
+      method: "POST",
+      url: "/api/game/world-kits/check",
+      payload: { kit: { ...kit, layers: kit.layers.map((layer) => ({ id: layer.id, label: layer.label })) } },
+    });
+    assert.equal(broken.statusCode, 400);
+    assert.match(broken.json().issues.join(" "), /settlements/);
+    const readBack = await app.inject({
+      method: "POST",
+      url: "/api/game/world-kits/read",
+      payload: { text: JSON.stringify(worldKitFile(mine)) },
+    });
+    assert.equal(readBack.json().kit.id, "river_kit");
+    const unread = await app.inject({ method: "POST", url: "/api/game/world-kits/read", payload: { text: "{" } });
+    assert.equal(unread.statusCode, 400);
+    assert.match(unread.json().error, /not JSON/);
   } finally {
     await app.close();
     await closeDB();

@@ -155,11 +155,15 @@ export function GameSetupWorldKitChooser({
   const [fileNote, setFileNote] = useState<{ error: boolean; text: string } | null>(null);
   const kitFileRef = useRef<HTMLInputElement>(null);
   const worldFileRef = useRef<HTMLInputElement>(null);
+  // Only the file picked last is read in: an earlier one still reading never replaces it.
+  const lastRead = useRef(0);
   const readFile = async (input: HTMLInputElement, kind: "kit" | "world") => {
     const file = input.files?.[0];
     input.value = "";
     if (!file) return;
+    const turn = ++lastRead.current;
     const text = await file.text();
+    if (turn !== lastRead.current) return;
     if (kind === "kit") {
       const read = readWorldKitFile(text);
       if (!read.ok)

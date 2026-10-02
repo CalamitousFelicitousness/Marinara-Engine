@@ -131,7 +131,8 @@ export function readWorldFile(text: string): Read<{ name: string; kit: WorldKit;
   if (edits) {
     const unfit = worldEditIssues(inputs, edits);
     if (unfit.length) {
-      notes.push(`The world's hand edits do not fit it, so they were left out: ${unfit[0]}`);
+      // First, so it is never cut off behind the brief's own notes.
+      notes.unshift(`The world's hand edits do not fit it, so they were left out: ${unfit[0]}`);
       edits = undefined;
     }
   }

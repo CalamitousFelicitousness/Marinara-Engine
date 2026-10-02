@@ -15,6 +15,11 @@ import {
   worldEditIssues,
   worldEditsSchema,
   worldFile,
+  worldKitFile,
+  readWorldKitFile,
+  parseWorldKit,
+  WORLD_STARTER_KITS,
+  WORLD_SHARE_FILE_MAX_BYTES,
   worldGroundLooks,
   worldPersonByHand,
   worldKitArtFamily,
@@ -10993,6 +10998,59 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const world = compileGameWorld({ ...game, edits });
     logger.info("[game/world] %s: hand edits %s", chatId, edits ? "saved" : "cleared");
     return { edits: edits ?? null, links: world.links };
+  });
+
+  // ── Setting kits for a maker (worldgen W9d): the starter kits, the games' kits, and a kit checked and
+  // written as a file, so a kit editor (Pixelforge's) never writes one this Engine would refuse ──
+
+  // GET /game/world-kits: the starter kits, and each game's kit.
+  app.get("/world-kits", async () => {
+    const games: Array<{ chatId: string; name: string; label: string }> = [];
+    for (const chat of await createChatsStorage(app.db).list()) {
+      if (chat.mode !== "game") continue;
+      const kit = gameWorldKitFromMetadata(parseMeta(chat.metadata));
+      if (kit) games.push({ chatId: chat.id, name: chat.name, label: kit.label });
+    }
+    return {
+      starters: WORLD_STARTER_KITS.map((kit) => ({ id: kit.id, label: kit.label, summary: kit.summary })),
+      games,
+    };
+  });
+
+  // GET /game/world-kits/starter/:id: a starter kit, as a kit reads.
+  app.get<{ Params: { id: string } }>("/world-kits/starter/:id", async (req, reply) => {
+    const starter = WORLD_STARTER_KITS.find((kit) => kit.id === req.params.id);
+    const read = starter ? parseWorldKit(starter) : null;
+    if (!read?.ok) return reply.status(404).send({ error: "No such starter kit." });
+    return { kit: read.kit };
+  });
+
+  // GET /game/:chatId/world-kit: the kit a game keeps.
+  app.get<{ Params: { chatId: string } }>("/:chatId/world-kit", async (req, reply) => {
+    const chat = await createChatsStorage(app.db).getById(req.params.chatId);
+    if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    const kit = chat.mode === "game" ? gameWorldKitFromMetadata(parseMeta(chat.metadata)) : null;
+    if (!kit) return reply.status(404).send({ error: "This game has no setting kit." });
+    return { kit };
+  });
+
+  // POST /game/world-kits/check {kit}: the kit as this Engine reads it, and as a kit file; or why not.
+  app.post("/world-kits/check", async (req, reply) => {
+    const read = parseWorldKit((req.body as { kit?: unknown } | undefined)?.kit);
+    if (!read.ok) {
+      return reply
+        .status(400)
+        .send({ error: `The kit does not read: ${read.issues[0]}`, issues: read.issues.slice(0, 20) });
+    }
+    return { kit: read.kit, file: worldKitFile(read.kit) };
+  });
+
+  // POST /game/world-kits/read {text}: a kit file, read; or why it cannot be.
+  app.post("/world-kits/read", { bodyLimit: WORLD_SHARE_FILE_MAX_BYTES * 6 + 16_384 }, async (req, reply) => {
+    const { text } = z.object({ text: z.string().min(1) }).parse(req.body);
+    const read = readWorldKitFile(text);
+    if (!read.ok) return reply.status(400).send({ error: read.issues[0], issues: read.issues });
+    return { kit: read.kit, notes: read.notes };
   });
 
   // GET /game/:chatId/world/file: the game's world as a share file (worldgen W9d): its kit, and its world

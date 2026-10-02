@@ -1347,6 +1347,8 @@ export async function processLorebooks(
   // budgets and macros all see the included text.
   if (allEntries.some((entry) => usesLorebookIncludes(entry.content))) {
     try {
+      // ponytail: reads every lorebook once per scan, and only when an entry uses include. If chats
+      // with includes get slow, load this once per request and pass it in through the scan options.
       const includes = await loadLorebookIncludes(db);
       allEntries = allEntries.map((entry) => ({
         ...entry,

@@ -768,6 +768,9 @@ export function createChatsStorage(db: DB) {
 
   // Deleting a reply puts back the chat variables it changed (#6923). The changes live on its
   // swipes, so they are read before the rows go and undone once the message queues are released.
+  // ponytail: two deletes running at the same moment can undo in the wrong order and leave a deleted
+  // reply's value. The UI deletes one at a time and bulk deletes undo in one sorted batch; if this ever
+  // matters, hold the message and metadata queues together in one fixed order for delete and replay.
   type VariableChanges = { chatId: string; createdAt: string; index: number; changes: unknown };
   async function readVariableChanges(rows: MessageRow[]): Promise<VariableChanges[]> {
     if (rows.length === 0) return [];

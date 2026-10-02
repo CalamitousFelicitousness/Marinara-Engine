@@ -294,9 +294,13 @@ export function createMessageTrashStorage(db: DB) {
           if (restored && restored.extra.includes("roleplayCommandActivity")) {
             await chatsStorage.reconcileRoleplayInterruption(id);
           }
-          if (restored?.extra.includes("macroVariableChanges")) {
+          // Deleting read the record from the swipe on screen, so restoring reads it from there too.
+          const shown = restored
+            ? (await chatsStorage.getSwipes(id)).find((swipe) => swipe.index === restored.activeSwipeIndex)
+            : undefined;
+          if (shown?.extra.includes("macroVariableChanges")) {
             try {
-              variableChanges.push(JSON.parse(restored.extra).macroVariableChanges);
+              variableChanges.push(JSON.parse(shown.extra).macroVariableChanges);
             } catch {
               // Unreadable extra: nothing to re-apply.
             }

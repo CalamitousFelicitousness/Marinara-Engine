@@ -10777,7 +10777,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const chat = await createChatsStorage(app.db).getById(req.params.chatId);
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
     const meta = parseMeta(chat.metadata);
-    const world = gameWorldFromMetadata(meta);
+    const world = chat.mode === "game" ? gameWorldFromMetadata(meta) : null;
     if (!world) return { overworld: null };
     const { here, walk, present } = await overworldPlace(req.params.chatId, meta, world);
     return { overworld: { here, walk, ruined: present.ruined } };
@@ -10793,7 +10793,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const chat = await chats.getById(chatId);
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
     const meta = parseMeta(chat.metadata);
-    const world = gameWorldFromMetadata(meta);
+    const world = chat.mode === "game" ? gameWorldFromMetadata(meta) : null;
     if (!world) return reply.status(400).send({ error: "This game has no world." });
     const { here, walk } = await overworldPlace(chatId, meta, world);
     const route = here ? worldRoute(world.world, here, to) : null;

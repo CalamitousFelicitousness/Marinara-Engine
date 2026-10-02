@@ -10075,29 +10075,37 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           }
           // The walk the reply told (worldgen W8) stays with it, so a regeneration tells it again, and is
           // no longer pending; the days the Game Master's telling passed go on the game's clock.
-          if (savedMsg?.id && turnToldWalk) await chats.updateMessageExtra(savedMsg.id, { worldWalk: turnToldWalk });
           if (savedMsg?.id && (turnToldWalk || turnClockDays > 0)) {
-            let clock: GameTime | undefined;
-            await chats.patchMetadata(input.chatId, (fresh) => ({
-              ...(turnToldWalk && worldWalkFromMetadata(fresh)?.id === turnToldWalk.id ? { gameWorldWalk: null } : {}),
-              ...(turnClockDays > 0
-                ? {
-                    gameTime: (clock = addMinutes(
-                      (fresh.gameTime as GameTime) ?? createInitialTime(),
-                      turnClockDays * 24 * 60,
-                    )),
-                  }
-                : {}),
-            }));
-            const latest = clock ? await gameStateStore.getLatest(input.chatId) : null;
-            if (clock && latest) {
-              await gameStateStore.updateLatest(
-                input.chatId,
-                applyTrackerFieldLocksToGameStatePatch(
-                  { time: formatGameTime(clock) },
-                  parseGameStateRow(latest as Record<string, unknown>),
-                ) as any,
-              );
+            try {
+              // Cleared first, so a failed write never leaves a told walk pending to be told twice.
+              let clock: GameTime | undefined;
+              await chats.patchMetadata(input.chatId, (fresh) => ({
+                ...(turnToldWalk && worldWalkFromMetadata(fresh)?.id === turnToldWalk.id
+                  ? { gameWorldWalk: null }
+                  : {}),
+                ...(turnClockDays > 0
+                  ? {
+                      gameTime: (clock = addMinutes(
+                        (fresh.gameTime as GameTime) ?? createInitialTime(),
+                        turnClockDays * 24 * 60,
+                      )),
+                    }
+                  : {}),
+              }));
+              const latest = clock ? await gameStateStore.getLatest(input.chatId) : null;
+              if (clock && latest) {
+                await gameStateStore.updateLatest(
+                  input.chatId,
+                  applyTrackerFieldLocksToGameStatePatch(
+                    { time: formatGameTime(clock) },
+                    parseGameStateRow(latest as Record<string, unknown>),
+                  ) as any,
+                );
+              }
+              if (turnToldWalk) await chats.updateMessageExtra(savedMsg.id, { worldWalk: turnToldWalk });
+            } catch (err) {
+              // The reply is saved either way: a failed write is logged, never the turn's failure.
+              logger.error(err, "[generate] Overworld walk and clock update failed for chat %s", input.chatId);
             }
           }
           // Empty messageId on the paths that save no message; that costs the claim, never the effect.

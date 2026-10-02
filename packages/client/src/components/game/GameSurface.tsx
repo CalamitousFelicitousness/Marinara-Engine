@@ -238,7 +238,7 @@ import { GameDiceResult } from "./GameDiceResult";
 import { GameSkillCheckResult } from "./GameSkillCheckResult";
 import { GameElementReaction } from "./GameElementReaction";
 import { GameTravelView } from "./GameTravelView";
-import { WorldOverworld, type WorldOverworldHandle } from "./WorldOverworld";
+import type { WorldOverworldHandle } from "./WorldOverworld";
 import type { CurrentSessionSecrets } from "./GameSessionHistory";
 import { GameTransitionManager } from "./GameTransitionManager";
 import { GameChoiceCards } from "./GameChoiceCards";
@@ -1597,6 +1597,11 @@ const GameSetupWizard = lazy(async () => {
 const GameJournal = lazy(async () => {
   const module = await import("./GameJournal");
   return { default: module.GameJournal };
+});
+
+const WorldOverworld = lazy(async () => {
+  const module = await import("./WorldOverworld");
+  return { default: module.WorldOverworld };
 });
 
 const GameSessionReplay = lazy(async () => {
@@ -13206,23 +13211,26 @@ function GameSurfaceComponent({
                 className={cn("relative flex min-h-0 flex-1 flex-col overflow-hidden", experienceSurfaceClass)}
               >
                 {overworldShown && gameWorld && (
-                  <WorldOverworld
-                    chatId={activeChatId}
-                    game={gameWorld}
-                    turnKey={narrationTurnKey(latestAssistantMsg)}
-                    time={
-                      gameTimeMeta
-                        ? {
-                            day: normalizeGameDay(gameTimeMeta.day),
-                            hour: normalizeGameHour(gameTimeMeta.hour),
-                            minute: normalizeGameMinute(gameTimeMeta.minute),
-                          }
-                        : null
-                    }
-                    clockRunning={!isStreaming && narrationDone && sessionInteractive}
-                    canWalk={!isStreaming && narrationDone && sessionInteractive}
-                    handleRef={overworldClockRef}
-                  />
+                  <Suspense fallback={null}>
+                    <WorldOverworld
+                      chatId={activeChatId}
+                      game={gameWorld}
+                      turnKey={narrationTurnKey(latestAssistantMsg)}
+                      time={
+                        gameTimeMeta
+                          ? {
+                              day: normalizeGameDay(gameTimeMeta.day),
+                              hour: normalizeGameHour(gameTimeMeta.hour),
+                              minute: normalizeGameMinute(gameTimeMeta.minute),
+                            }
+                          : null
+                      }
+                      clockRunning={!isStreaming && narrationDone && sessionInteractive}
+                      canWalk={!isStreaming && narrationDone && sessionInteractive}
+                      family={artFamily}
+                      handleRef={overworldClockRef}
+                    />
+                  </Suspense>
                 )}
                 {/* Main mount. pointer-events-none lets clicks fall through empty regions to the
                     narration underneath; the package sets pointer-events-auto on its own chrome. */}

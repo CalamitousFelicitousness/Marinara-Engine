@@ -38,6 +38,13 @@ import {
   paintWay,
 } from "../../lib/overworld-paint";
 import { cn } from "../../lib/utils";
+import overworldAtlases from "../../lib/overworld-atlases.json";
+
+// ponytail: placeholder art. Each setting family's tiles are cut from Kenney's CC0 packs (the user,
+// 2026-10-02: "the Kenney packs are just placeholders"); the upgrade path is the Engine's own base assets
+// or community asset packs, in this same format: an image of 16 px tiles and a map of tile ids (a ground
+// look, marker0..3, ruin, party) to their variants. A tile a family lacks is drawn plain.
+const ATLASES = overworldAtlases as Record<string, { columns: number; tiles: Record<string, number[]> }>;
 
 /** What the game screen can ask of the overworld: send the real time it has passed so far. */
 export interface WorldOverworldHandle {
@@ -54,6 +61,8 @@ interface WorldOverworldProps {
   /** The clock runs: the overworld is in front and the game waits on the player. */
   clockRunning: boolean;
   canWalk: boolean;
+  /** The setting's art family, whose tiles the overworld is drawn with when it has them. */
+  family?: string;
   handleRef?: MutableRefObject<WorldOverworldHandle | null>;
 }
 
@@ -75,7 +84,16 @@ const centre = (place: WorldPlace): Point => ({
   y: place.at.y * OVERWORLD_TILE + OVERWORLD_TILE / 2,
 });
 
-export function WorldOverworld({ chatId, game, turnKey, time, clockRunning, canWalk, handleRef }: WorldOverworldProps) {
+export function WorldOverworld({
+  chatId,
+  game,
+  turnKey,
+  time,
+  clockRunning,
+  canWalk,
+  family,
+  handleRef,
+}: WorldOverworldProps) {
   const { t } = useTranslation();
   const { data: overworld } = useOverworld(chatId, turnKey, true);
   const walkMutation = useOverworldWalk();
@@ -166,6 +184,33 @@ export function WorldOverworld({ chatId, game, turnKey, time, clockRunning, canW
   const darkness = clockMinutes === null ? 0 : overworldDarkness(Math.floor(clockMinutes / 60) % 24, clockMinutes % 60);
   const lit = darkness > 0.25;
 
+  // ── The family's tiles: drawn plain until (and unless) they load ──
+  const atlasMap = family ? ATLASES[family] : undefined;
+  const [atlas, setAtlas] = useState<HTMLImageElement | null>(null);
+  useEffect(() => {
+    setAtlas(null);
+    if (!atlasMap) return;
+    const image = new Image();
+    image.onload = () => setAtlas(image);
+    image.src = `/overworld/${family}.png`;
+    return () => {
+      image.onload = null;
+    };
+  }, [atlasMap, family]);
+  /** Draws a tile of the family's at (x, y), the variant by `pick` (0..1); false when it has none. */
+  const drawTile = useCallback(
+    (ctx: CanvasRenderingContext2D, id: string, x: number, y: number, pick = 0) => {
+      const variants = atlas && atlasMap ? atlasMap.tiles[id] : undefined;
+      if (!atlas || !atlasMap || !variants?.length) return false;
+      const index = variants[Math.min(variants.length - 1, Math.floor(pick * variants.length))]!;
+      const sx = (index % atlasMap.columns) * OVERWORLD_TILE;
+      const sy = Math.floor(index / atlasMap.columns) * OVERWORLD_TILE;
+      ctx.drawImage(atlas, sx, sy, OVERWORLD_TILE, OVERWORLD_TILE, x, y, OVERWORLD_TILE, OVERWORLD_TILE);
+      return true;
+    },
+    [atlas, atlasMap],
+  );
+
   // ── What is drawn once: the ground and its ways, then the settlements ──
   const ground = useMemo(() => {
     const canvas = document.createElement("canvas");
@@ -183,7 +228,10 @@ export function WorldOverworld({ chatId, game, turnKey, time, clockRunning, canW
     for (let y = 0; y < world.height; y++) {
       for (let x = 0; x < world.width; x++) {
         const cell = cells[y * world.width + x]!;
-        paintGround(ctx, looks[cell]!, x * OVERWORLD_TILE, y * OVERWORLD_TILE, cellNoise(x, y));
+        const noise = cellNoise(x, y);
+        if (!drawTile(ctx, looks[cell]!, x * OVERWORLD_TILE, y * OVERWORLD_TILE, noise(99))) {
+          paintGround(ctx, looks[cell]!, x * OVERWORLD_TILE, y * OVERWORLD_TILE, noise);
+        }
         if (water[cell]) {
           paintShore(ctx, x * OVERWORLD_TILE, y * OVERWORLD_TILE, {
             n: !wet(x, y - 1),
@@ -201,7 +249,7 @@ export function WorldOverworld({ chatId, game, turnKey, time, clockRunning, canW
       paintWay(ctx, from.at, to.at, kit.travel.find((way) => way.id === link.way)?.crosses ?? "open");
     }
     return canvas;
-  }, [byId, game, kit.travel, world]);
+  }, [byId, drawTile, game, kit.travel, world]);
   const markers = useMemo(() => {
     const canvas = document.createElement("canvas");
     canvas.width = world.width * OVERWORLD_TILE;
@@ -209,10 +257,41 @@ export function WorldOverworld({ chatId, game, turnKey, time, clockRunning, canW
     const ctx = canvas.getContext("2d");
     if (!ctx) return canvas;
     for (const { place } of settlements) {
-      paintSettlement(ctx, place.at.x, place.at.y, settlementTier(place, top), ruined.has(place.id), lit);
+      const [x, y] = [place.at.x * OVERWORLD_TILE, place.at.y * OVERWORLD_TILE];
+      // After dark, a warm glow of lit windows under each place still standing.
+      if (lit && !ruined.has(place.id)) {
+        const glow = ctx.createRadialGradient(x + 8, y + 9, 1, x + 8, y + 9, 13);
+        glow.addColorStop(0, "rgba(255, 196, 90, 0.55)");
+        glow.addColorStop(1, "rgba(255, 196, 90, 0)");
+        ctx.fillStyle = glow;
+        ctx.fillRect(x - 6, y - 5, 28, 28);
+      }
+      const tier = settlementTier(place, top);
+      if (!drawTile(ctx, ruined.has(place.id) ? "ruin" : `marker${tier}`, x, y)) {
+        paintSettlement(ctx, place.at.x, place.at.y, tier, ruined.has(place.id), lit);
+      }
     }
     return canvas;
-  }, [lit, ruined, settlements, top, world.height, world.width]);
+  }, [drawTile, lit, ruined, settlements, top, world.height, world.width]);
+
+  // Beyond the world's edge, the ground its edge has most of (the sea around an island, open space).
+  const beyond = useMemo(() => {
+    const looks = worldGroundLooks(game);
+    const cells = worldGroundCells(world);
+    const count = new Map<string, number>();
+    for (let x = 0; x < world.width; x++) {
+      for (const y of [0, world.height - 1]) {
+        const look = looks[cells[y * world.width + x]!]!;
+        count.set(look, (count.get(look) ?? 0) + 1);
+      }
+    }
+    const look = [...count].sort((a, b) => b[1] - a[1])[0]?.[0] ?? looks[0]!;
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = OVERWORLD_TILE;
+    const ctx = canvas.getContext("2d");
+    if (ctx && !drawTile(ctx, look, 0, 0)) paintGround(ctx, look as (typeof looks)[number], 0, 0, cellNoise(0, 0));
+    return canvas;
+  }, [drawTile, game, world]);
 
   // ── The view: where it looks, kept inside the world ──
   const homeAt = here ? byId.get(here) : undefined;
@@ -253,10 +332,23 @@ export function WorldOverworld({ chatId, game, turnKey, time, clockRunning, canW
       ctx.fillStyle = "#05060a";
       ctx.fillRect(0, 0, width, height);
       ctx.setTransform(scale * dpr, 0, 0, scale * dpr, -cam.x * dpr, -cam.y * dpr);
+      const pattern = ctx.createPattern(beyond, "repeat");
+      if (pattern) {
+        ctx.fillStyle = pattern;
+        ctx.fillRect(
+          Math.floor(cam.x / scale / OVERWORLD_TILE - 1) * OVERWORLD_TILE,
+          Math.floor(cam.y / scale / OVERWORLD_TILE - 1) * OVERWORLD_TILE,
+          size.width / scale + OVERWORLD_TILE * 3,
+          size.height / scale + OVERWORLD_TILE * 3,
+        );
+      }
       ctx.drawImage(ground, 0, 0);
       ctx.drawImage(markers, 0, 0);
       const party = partyRef.current;
-      if (party) paintParty(ctx, Math.round(party.x) - 7, Math.round(party.y) - 13, step);
+      if (party) {
+        const [x, y] = [Math.round(party.x) - 8, Math.round(party.y) - 14 - (step ? 1 : 0)];
+        if (!drawTile(ctx, "party", x, y)) paintParty(ctx, x + 1, y + 1, step);
+      }
       if (darkness > 0) {
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.globalCompositeOperation = "multiply";
@@ -266,7 +358,7 @@ export function WorldOverworld({ chatId, game, turnKey, time, clockRunning, canW
       }
       if (layerRef.current) layerRef.current.style.transform = `translate(${-cam.x}px, ${-cam.y}px)`;
     },
-    [darkness, ground, markers, scale, size.height, size.width],
+    [beyond, darkness, drawTile, ground, markers, scale, size.height, size.width],
   );
 
   useEffect(() => {
@@ -283,6 +375,21 @@ export function WorldOverworld({ chatId, game, turnKey, time, clockRunning, canW
   }, [cameraX, cameraY, draw, here]);
   // When the party is somewhere new, the view goes with it.
   useEffect(() => setLookAt(null), [here]);
+
+  // The walk's frames draw with the latest view (the screen may turn mid-walk) and stop with the overworld.
+  const drawRef = useRef(draw);
+  drawRef.current = draw;
+  const cameraOfRef = useRef(camera);
+  cameraOfRef.current = camera;
+  const frameRef = useRef<number | null>(null);
+  const arrivalRef = useRef<(() => void) | null>(null);
+  useEffect(
+    () => () => {
+      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+      arrivalRef.current?.();
+    },
+    [],
+  );
 
   /** Shows a settlement: chosen, and in view. */
   const choose = useCallback(
@@ -353,6 +460,14 @@ export function WorldOverworld({ chatId, game, turnKey, time, clockRunning, canW
       setSelected(null);
       setLookAt(null);
       const started = performance.now();
+      // The clock as the walk left it, shown once the party arrives (or the overworld closes first).
+      arrivalRef.current = () => {
+        arrivalRef.current = null;
+        const snapshot = useGameStateStore.getState().current;
+        if (snapshot?.chatId === chatId) {
+          useGameStateStore.getState().setGameState({ ...snapshot, time: result.formatted });
+        }
+      };
       const frame = (now: number) => {
         const progress = Math.min(1, (now - started) / duration);
         let along = progress * total;
@@ -372,21 +487,19 @@ export function WorldOverworld({ chatId, game, turnKey, time, clockRunning, canW
           const day = fromDay + Math.floor((fromMinutes + result.route.days * 24 * 60 * progress) / (24 * 60));
           walkChipRef.current.textContent = t("game.overworld.walking", { day });
         }
-        draw(camera(at), Math.floor(now / 180) % 2 === 0);
+        drawRef.current(cameraOfRef.current(at), Math.floor(now / 180) % 2 === 0);
         if (progress < 1) {
-          requestAnimationFrame(frame);
+          frameRef.current = requestAnimationFrame(frame);
           return;
         }
+        frameRef.current = null;
         walkingRef.current = false;
         setWalking(false);
-        const snapshot = useGameStateStore.getState().current;
-        if (snapshot?.chatId === chatId) {
-          useGameStateStore.getState().setGameState({ ...snapshot, time: result.formatted });
-        }
+        arrivalRef.current?.();
       };
-      requestAnimationFrame(frame);
+      frameRef.current = requestAnimationFrame(frame);
     },
-    [byId, camera, canWalk, chatId, draw, flush, t, time, walkMutation],
+    [byId, canWalk, chatId, flush, t, time, walkMutation],
   );
 
   const tripText = (days: number) =>

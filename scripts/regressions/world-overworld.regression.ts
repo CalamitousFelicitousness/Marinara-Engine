@@ -10,14 +10,16 @@
  *   - The overworld's real time passes minutes on the clock.
  */
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  WORLD_ART_FAMILIES,
   WORLD_DAYS_CAP,
   WORLD_GENERATOR_VERSION,
+  WORLD_GROUND_LOOKS,
   WORLD_STARTER_KITS,
   checkWorldBrief,
   compileGameWorld,
@@ -34,6 +36,7 @@ import {
   worldWalkJoined,
   worldWalkTags,
   worldWalkText,
+  worldKitArtFamily,
   type GameWorld,
 } from "../../packages/shared/src/index.js";
 
@@ -110,6 +113,28 @@ try {
   assert.equal(worldTerrainLook({ id: "entry_3", kind: "water" }), "sea", "no words: by kind");
   assert.equal(worldTerrainLook({ id: "entry_4", kind: "barrier" }), "mountains");
   assert.equal(worldTerrainLook({ id: "entry_5", kind: "open" }), "grass");
+
+  // ── Each family's tiles: every look, the settlement markers and the party, inside its image ──
+  const atlases = JSON.parse(
+    readFileSync(new URL("../../packages/client/src/lib/overworld-atlases.json", import.meta.url), "utf8"),
+  ) as Record<string, { columns: number; tiles: Record<string, number[]> }>;
+  assert.deepEqual(Object.keys(atlases).sort(), [...WORLD_ART_FAMILIES].sort(), "an atlas for every family");
+  for (const [family, atlas] of Object.entries(atlases)) {
+    const png = readFileSync(new URL(`../../packages/client/public/overworld/${family}.png`, import.meta.url));
+    const tiles = (png.readUInt32BE(16) / 16) * (png.readUInt32BE(20) / 16);
+    assert.equal(png.readUInt32BE(16) / 16, atlas.columns, `${family}: its columns`);
+    for (const id of [...WORLD_GROUND_LOOKS, "marker0", "marker1", "marker2", "marker3", "ruin", "party"]) {
+      const variants = atlas.tiles[id];
+      assert.ok(variants?.length, `${family}: ${id}`);
+      assert.ok(
+        variants.every((index) => Number.isInteger(index) && index >= 0 && index < tiles),
+        `${family}: ${id} in its image`,
+      );
+    }
+  }
+  for (const kit of WORLD_STARTER_KITS) {
+    assert.ok(atlases[worldKitArtFamily(kit) ?? ""], `${kit.id}: drawn with its family's tiles`);
+  }
 
   const game = gameOf("high_fantasy", 21);
   const { world } = game;
@@ -250,6 +275,19 @@ try {
       time.day * 24 * 60 + time.hour * 60 + time.minute;
 
     assert.deepEqual((await overworld()).overworld, { here: start.id, walk: null, ruined: [] });
+    // A chat that is not a game has no overworld, whatever its metadata says.
+    const roleplay = await chats.create({ name: "Not a game", mode: "roleplay", characterIds: [] });
+    await chats.patchMetadata(roleplay.id, { gameWorldKit: game.kit, gameWorld: (await meta()).gameWorld });
+    assert.equal(
+      (await app.inject({ method: "GET", url: `/api/game/${roleplay.id}/overworld` })).json().overworld,
+      null,
+    );
+    const refused = await app.inject({
+      method: "POST",
+      url: `/api/game/${roleplay.id}/overworld/walk`,
+      payload: { to: far.path[1] },
+    });
+    assert.equal(refused.statusCode, 400);
 
     // The real time the overworld passes.
     const ticked = await app.inject({ method: "POST", url: "/api/game/time/advance", payload: { chatId, minutes: 7 } });

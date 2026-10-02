@@ -10,6 +10,16 @@ On a computer, the map is an inline panel you can read at a glance. On a phone, 
 
 You can drag the panel and lock it in place. For how draggable panels work, see the HUD widgets guide linked below.
 
+## The overworld
+
+A game with a generated world (see [Making a world](getting-started.md#making-a-world)) opens on the **overworld**: the world's ground drawn as a pixel map behind the narration, with its forests, hills, coasts and seas, the roads and lanes between its settlements, each settlement drawn by its size, and your party. The bigger places are named on the map, and so is the one you are in. Drag the map to look around.
+
+Tap or click a settlement, or pick it from **Places** (the places nearest first, with how long the way takes), to see its size and the trip from where you are: how many days or hours on the way, and by which ways. **Walk there** sends the party along the world's ways to it, by the quickest route, and the walk's days pass on the clock at once. The party is there from then on, and **your next turn tells the Game Master** where you walked, how long it took and by which ways, so it can tell the arrival. The world's own days go by with it, as they do when the Game Master says time passes. A second walk before your next turn carries on from where the first ended.
+
+A place in ruins is drawn in ruins. After dark the map dims and the settlements' windows light up.
+
+The overworld is a view, and the scene view (the game's backgrounds and character art) is a switch away: **Show the scene** in the game's toolbar, or in the game's actions menu on a phone, and **Show the overworld** to come back. The game remembers which one you chose. A fight and a session replay use their own screens.
+
 ## Grid view and node view
 
 The map has two views. Marinara Engine picks the view for you based on the kind of place the map represents. You do not switch views by hand.
@@ -73,6 +83,12 @@ The game clock runs on its own. It uses fixed math, not the AI, so it is always 
 | Travel | 2 hours |
 
 When the clock passes midnight, the day number goes up by one.
+
+In a game with a world, time also passes as it does in Pixelforge's world:
+
+- While the overworld is in front and the game is waiting on you, a game minute passes every five real seconds. It stops while the Game Master is writing, before you have read its reply, while the scene view is in front, and while the app is in the background.
+- A walk on the overworld passes the days its route takes.
+- When the Game Master says days pass (a journey, a long rest, a wait), the clock moves by those days too. A regenerated reply does not move it again; set the day by hand if the new telling takes a different time.
 
 ## Weather
 

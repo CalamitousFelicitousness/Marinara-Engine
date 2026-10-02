@@ -1,6 +1,7 @@
 import {
   assignCombatTactics,
   combatTacticsSchema,
+  gameWorldFromMetadata,
   gameWorldKitFromMetadata,
   worldAssetsForFamily,
   worldBattlefields,
@@ -237,6 +238,7 @@ import { GameDiceResult } from "./GameDiceResult";
 import { GameSkillCheckResult } from "./GameSkillCheckResult";
 import { GameElementReaction } from "./GameElementReaction";
 import { GameTravelView } from "./GameTravelView";
+import { WorldOverworld, type WorldOverworldHandle } from "./WorldOverworld";
 import type { CurrentSessionSecrets } from "./GameSessionHistory";
 import { GameTransitionManager } from "./GameTransitionManager";
 import { GameChoiceCards } from "./GameChoiceCards";
@@ -2073,6 +2075,7 @@ import {
   Image,
   ImagePlus,
   Loader2,
+  Map as MapIcon,
   MoreHorizontal,
   PanelsTopLeft,
   Play,
@@ -2283,6 +2286,12 @@ function GameSurfaceComponent({
     [chatMeta.gameWorldKit],
   );
   const gameElements = useMemo(() => worldElementSet(gameKit), [gameKit]);
+  // The game's world (worldgen W8), drawn as the overworld, and the real time the overworld has passed.
+  const gameWorld = useMemo(
+    () => gameWorldFromMetadata({ gameWorld: chatMeta.gameWorld, gameWorldKit: chatMeta.gameWorldKit }),
+    [chatMeta.gameWorld, chatMeta.gameWorldKit],
+  );
+  const overworldClockRef = useRef<WorldOverworldHandle | null>(null);
   // The setting's art family (worldgen W6f): another family's art, music and sounds are left out.
   const artFamily = worldKitArtFamily(gameKit);
   const artFamilyRef = useRef(artFamily);
@@ -8730,6 +8739,13 @@ function GameSurfaceComponent({
   );
 
   const combatUiActive = gameState === "combat" && !!combatParty && !!combatEnemies;
+  // The overworld (worldgen W8): a game with a world opens on it, and the player can switch to the scene
+  // view and back. A fight, a replay and a package that draws the game itself keep their own screens.
+  const overworldShown =
+    gameWorld !== null && chatMeta.gameWorldView !== "scene" && !experienceOwnsGame && !combatUiActive && !replayActive;
+  const handleToggleWorldView = useCallback(() => {
+    updateChatMetadata.mutate({ id: activeChatId, gameWorldView: overworldShown ? "scene" : "overworld" });
+  }, [activeChatId, overworldShown, updateChatMetadata]);
   // Effective combat style: active encounter pin ?? runtime metadata override
   // (settings drawer) ?? wizard setup choice ?? legacy default "classic".
   const combatSetupConfig = chatMeta.gameSetupConfig as Record<string, unknown> | undefined;
@@ -10761,6 +10777,8 @@ function GameSurfaceComponent({
     ) => {
       if (!sessionInteractive) return false;
       audioManager.unlock();
+      // The overworld's real time so far is on the clock before the Game Master reads it.
+      await overworldClockRef.current?.flush();
       // Commit a pending interrupt: persist the truncated GM message before generating
       // so the server-side prompt build doesn't see segments the player never read. We
       // await so the PATCH (and the optional risky-mode system message) land before
@@ -12590,7 +12608,10 @@ function GameSurfaceComponent({
           {/* Full-body VN sprite — active speaker only */}
           <div
             className="transition-opacity duration-700 ease-in-out"
-            style={{ opacity: spriteVisible ? 1 : 0, pointerEvents: spriteVisible ? "auto" : "none" }}
+            style={{
+              opacity: spriteVisible && !overworldShown ? 1 : 0,
+              pointerEvents: spriteVisible && !overworldShown ? "auto" : "none",
+            }}
           >
             {displaySpriteIds.length > 0 && (
               <Suspense fallback={null}>
@@ -12801,6 +12822,16 @@ function GameSurfaceComponent({
                     buttonClassName={GAME_TOP_ICON_BUTTON}
                     onOpen={dismissOtherFloatingWindows}
                   />
+                  {gameWorld && (
+                    <button
+                      onClick={handleToggleWorldView}
+                      className={GAME_TOP_ICON_BUTTON}
+                      title={overworldShown ? t("game.overworld.showScene") : t("game.overworld.show")}
+                      aria-label={overworldShown ? t("game.overworld.showScene") : t("game.overworld.show")}
+                    >
+                      {overworldShown ? <Film size={14} /> : <MapIcon size={14} />}
+                    </button>
+                  )}
                   <button
                     data-chat-help="gallery"
                     data-chat-toolbar-panel-action="gallery"
@@ -13095,6 +13126,19 @@ function GameSurfaceComponent({
                           title={t("chat.toolbar.activeContext")}
                           onOpen={dismissOtherFloatingWindows}
                         />
+                        {gameWorld && (
+                          <button
+                            onClick={() => {
+                              setMobileActionsOpen(false);
+                              handleToggleWorldView();
+                            }}
+                            className={GAME_MOBILE_ICON_BUTTON}
+                            title={overworldShown ? t("game.overworld.showScene") : t("game.overworld.show")}
+                            aria-label={overworldShown ? t("game.overworld.showScene") : t("game.overworld.show")}
+                          >
+                            {overworldShown ? <Film size={14} /> : <MapIcon size={14} />}
+                          </button>
+                        )}
                         <button
                           data-chat-help="gallery"
                           data-chat-toolbar-panel-action="gallery"
@@ -13161,6 +13205,25 @@ function GameSurfaceComponent({
                 data-chat-resource-drop-surface
                 className={cn("relative flex min-h-0 flex-1 flex-col overflow-hidden", experienceSurfaceClass)}
               >
+                {overworldShown && gameWorld && (
+                  <WorldOverworld
+                    chatId={activeChatId}
+                    game={gameWorld}
+                    turnKey={narrationTurnKey(latestAssistantMsg)}
+                    time={
+                      gameTimeMeta
+                        ? {
+                            day: normalizeGameDay(gameTimeMeta.day),
+                            hour: normalizeGameHour(gameTimeMeta.hour),
+                            minute: normalizeGameMinute(gameTimeMeta.minute),
+                          }
+                        : null
+                    }
+                    clockRunning={!isStreaming && narrationDone && sessionInteractive}
+                    canWalk={!isStreaming && narrationDone && sessionInteractive}
+                    handleRef={overworldClockRef}
+                  />
+                )}
                 {/* Main mount. pointer-events-none lets clicks fall through empty regions to the
                     narration underneath; the package sets pointer-events-auto on its own chrome. */}
                 {experienceSurfaceActive ? (
@@ -13595,6 +13658,7 @@ function GameSurfaceComponent({
                     return (
                       <GameTravelView>
                         <GameNarration
+                          passThrough={overworldShown}
                           messages={narrationMessages}
                           isStreaming={isStreaming}
                           characterMap={characterMap}
@@ -13693,6 +13757,7 @@ function GameSurfaceComponent({
                   }
                   return (
                     <GameNarration
+                      passThrough={overworldShown}
                       messages={narrationMessages}
                       isStreaming={isStreaming}
                       characterMap={characterMap}

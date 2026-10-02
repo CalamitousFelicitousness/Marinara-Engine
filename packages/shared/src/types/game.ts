@@ -263,6 +263,9 @@ export interface GameSetupConfig {
   /** The generated world for a NEW game (worldgen W1): its seed, generator version, grounding and
    *  brief, stored as `chat.metadata.gameWorld`. Needs `worldKit`; absent means no world. */
   world?: import("../features/world/game-world.js").GameWorldInput;
+  /** The world's story script (worldgen W10), checked against the world and stored as
+   *  `chat.metadata.gameStory`. Needs `world`. */
+  story?: import("../features/world/story.js").StoryScript;
   /** Whatever the experience's own setup collected, stored verbatim and never interpreted by the host, so
    *  it can always recover the options the game was created with. */
   experienceConfig?: Record<string, unknown>;

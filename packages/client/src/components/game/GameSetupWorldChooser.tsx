@@ -7,11 +7,13 @@ import { useTranslation as useUiTranslation } from "react-i18next";
 import { Download, Shuffle, Sparkles } from "lucide-react";
 import {
   WORLD_GENERATOR_VERSION,
+  checkStoryScript,
   checkWorldBrief,
   compileGameWorld,
   withWorldCanon,
   worldEditIssues,
   worldFile,
+  type StoryScript,
   type WorldEdits,
   type WorldBrief,
   type WorldBriefEvent,
@@ -43,18 +45,24 @@ export interface WorldDraft {
    *  were made for: kept while those stay as they are and the edits fit them. */
   edits?: WorldEdits;
   editsFor?: string;
+  /** The world's story script (worldgen W10), kept on the same terms as the hand edits: while the seed,
+   *  grounding and brief stay as they were, and it fits the world. */
+  story?: StoryScript;
 }
 
 const editsKey = (seed: number, grounding: WorldDraft["grounding"], brief: WorldBriefInput | null) =>
   JSON.stringify([seed, grounding, brief]);
 
 /** A world (from a setup or world file) as a draft: its lore-read places and events kept as canon. */
-export function worldDraftFromWorld(world: {
-  seed: number;
-  grounding?: WorldDraft["grounding"];
-  brief: WorldBriefInput;
-  edits?: WorldEdits;
-}): WorldDraft {
+export function worldDraftFromWorld(
+  world: {
+    seed: number;
+    grounding?: WorldDraft["grounding"];
+    brief: WorldBriefInput;
+    edits?: WorldEdits;
+  },
+  story?: StoryScript,
+): WorldDraft {
   return {
     seed: String(world.seed),
     grounding: world.grounding ?? "expand",
@@ -66,9 +74,9 @@ export function worldDraftFromWorld(world: {
       .filter((event) => event.lore?.length)
       .map((event) => ({ ...event, places: event.places ?? [], groups: event.groups ?? [] })),
     brief: world.brief,
-    ...(world.edits
-      ? { edits: world.edits, editsFor: editsKey(world.seed, world.grounding ?? "expand", world.brief) }
-      : {}),
+    ...(world.edits ? { edits: world.edits } : {}),
+    ...(story ? { story } : {}),
+    ...(world.edits || story ? { editsFor: editsKey(world.seed, world.grounding ?? "expand", world.brief) } : {}),
   };
 }
 
@@ -98,10 +106,14 @@ export function worldDraftConfig(
         brief: WorldBrief;
         edits?: WorldEdits;
       };
+      /** The world's story, when it fits the world as made. */
+      story?: StoryScript;
       /** What of the brief the kit no longer fits, left out or changed. */
       repairs: string[];
       /** The draft's hand edits no longer fit it (its seed or brief changed), so they are left out. */
       editsLeftOut?: true;
+      /** The same for the draft's story. */
+      storyLeftOut?: true;
     }
   | { ok: false; issues: string[] } {
   const seed = parseExperienceSeed(draft.seed);
@@ -118,15 +130,22 @@ export function worldDraftConfig(
   const world = { seed, generatorVersion: WORLD_GENERATOR_VERSION, grounding: draft.grounding, brief: checked.brief };
   // Hand edits are made for one compile: they stay while they fit it, and are left out once the seed or
   // the brief changes under them.
-  const fits =
-    draft.edits &&
-    draft.editsFor === editsKey(seed, draft.grounding, draft.brief) &&
-    worldEditIssues({ kit, ...world }, draft.edits).length === 0;
+  const unchanged = draft.editsFor === editsKey(seed, draft.grounding, draft.brief);
+  const fits = draft.edits && unchanged && worldEditIssues({ kit, ...world }, draft.edits).length === 0;
+  const made = fits ? { ...world, edits: draft.edits } : world;
+  // A story names the world's places and people (by id), so it stays only with the very world it was
+  // written for, and only while it fits it.
+  const storyFits =
+    draft.story &&
+    unchanged &&
+    checkStoryScript({ kit, ...made, world: compileGameWorld({ kit, ...made }) }, draft.story).ok;
   return {
     ok: true,
-    world: fits ? { ...world, edits: draft.edits } : world,
+    world: made,
+    ...(storyFits ? { story: draft.story } : {}),
     repairs: checked.repairs,
     ...(draft.edits && !fits ? { editsLeftOut: true as const } : {}),
+    ...(draft.story && !storyFits ? { storyLeftOut: true as const } : {}),
   };
 }
 
@@ -298,7 +317,7 @@ export function GameSetupWorldChooser({
               onClick={() =>
                 config?.ok &&
                 downloadJsonFile(
-                  worldFile(`${kit.label} ${config.world.seed}`, kit, config.world),
+                  worldFile(`${kit.label} ${config.world.seed}`, kit, config.world, config.story),
                   `${`${kit.label} ${config.world.seed}`.replace(/[^\w.-]+/g, "_")}.world.json`,
                 )
               }
@@ -317,6 +336,14 @@ export function GameSetupWorldChooser({
           {config?.ok && config.editsLeftOut && (
             <p role="status" className="text-[var(--muted-foreground)]">
               {t("game.world.setup.editsLeftOut")}
+            </p>
+          )}
+          {config?.ok && config.story && (
+            <p className="text-[var(--muted-foreground)]">{t("game.world.setup.story")}</p>
+          )}
+          {config?.ok && config.storyLeftOut && (
+            <p role="status" className="text-[var(--muted-foreground)]">
+              {t("game.world.setup.storyLeftOut")}
             </p>
           )}
 

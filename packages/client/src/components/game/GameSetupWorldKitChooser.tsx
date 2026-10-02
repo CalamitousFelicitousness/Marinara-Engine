@@ -27,6 +27,7 @@ import {
   readWorldKitFile,
   worldKitFile,
   type ExperienceMapPack,
+  type StoryScript,
   type WorldFileWorld,
 } from "@marinara-engine/shared";
 import { ApiError, api } from "../../lib/api-client";
@@ -150,7 +151,7 @@ export function GameSetupWorldKitChooser({
   kit: WorldKitInput | null;
   onChange: (kit: WorldKitInput | null) => void;
   /** A world file read (worldgen W9d): its kit and world, both taken. */
-  onImportWorld: (kit: WorldKit, world: WorldFileWorld) => void;
+  onImportWorld: (kit: WorldKit, world: WorldFileWorld, story?: StoryScript) => void;
   /** What the model writes a kit for; null until a connection is chosen. */
   writeRequest: WorldKitWriteRequest | null;
 }) {
@@ -182,7 +183,7 @@ export function GameSetupWorldKitChooser({
     if (!read.ok)
       return setFileNote({ error: true, text: t("game.worldKit.setup.fileRefused", { reason: read.issues[0] }) });
     setWriteError(null);
-    onImportWorld(structuredClone(read.kit), read.world);
+    onImportWorld(structuredClone(read.kit), read.world, read.story);
     setFileNote({
       error: false,
       text: [t("game.worldKit.setup.worldImported", { name: read.name }), ...read.notes.slice(0, 3)].join(" "),

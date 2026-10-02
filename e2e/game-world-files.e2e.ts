@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import {
   WORLD_GENERATOR_VERSION,
   WORLD_STARTER_KITS,
+  checkStoryScript,
   checkWorldBrief,
   compileGameWorld,
   parseWorldKit,
@@ -16,7 +17,7 @@ import { prepareViteFixtureDependencies } from "./vite-fixture-dependencies.js";
 
 /**
  * Kit and world share files (worldgen W9d), on screen: a world file is imported into a new game's setup
- * with its setting kit and hand edits, the edits stay while they fit and are left out once the seed
+ * with its setting kit, hand edits and story (W10), the edits and story stay while they fit and are left out once the seed
  * changes, the world and the kit download again, a file that does not read is refused, and a game's
  * world downloads from its World tab.
  */
@@ -39,6 +40,17 @@ const world = {
 };
 const ashford = compileGameWorld({ kit, ...world }).places.find((place) => place.name === "Ashford")!;
 const edits = { editsVersion: 1 as const, places: [{ id: ashford.id, name: "Newhaven" }] };
+// Its story (worldgen W10): it names Ashford by id, so it is the world's own.
+const checkedStory = checkStoryScript(
+  { kit, ...world, edits, world: compileGameWorld({ kit, ...world, edits }) },
+  {
+    storyVersion: 1,
+    events: [{ id: "gates", when: { on: "arrive", place: ashford.id }, do: [{ cutscene: "gates" }] }],
+    cutscenes: [{ id: "gates", kind: "pages", pages: [{ text: "The gates creak open." }] }],
+  },
+);
+if (!checkedStory.ok) throw new Error(checkedStory.issues.join("; "));
+const story = checkedStory.story;
 const file = (value: unknown, name: string) => ({
   name,
   mimeType: "application/json",
@@ -129,10 +141,11 @@ test("a world file comes into a new game's setup with its kit and hand edits, an
   // The world file: its kit chosen, its world made, its hand edits kept.
   await wizard
     .getByLabel("Import a world file", { exact: true })
-    .setInputFiles(file(worldFile("Riverlands", kit, { ...world, edits }), "riverlands.world.json"));
+    .setInputFiles(file(worldFile("Riverlands", kit, { ...world, edits }, story), "riverlands.world.json"));
   await expect(wizard.getByText("Imported the world Riverlands with its setting kit.")).toBeVisible();
   await expect(wizard.getByRole("checkbox", { name: /Make a world/ })).toBeChecked();
   await expect(wizard.getByText("This world has hand edits.", { exact: false })).toBeVisible();
+  await expect(wizard.getByText("This world has a story", { exact: false })).toBeVisible();
   await wizard.getByRole("button", { name: "Import a world file", exact: true }).scrollIntoViewIfNeeded();
   await page.screenshot({ path: testInfo.outputPath("world-file-imported.png") });
   const downloadedWorld = await download(page, () =>
@@ -144,6 +157,7 @@ test("a world file comes into a new game's setup with its kit and hand edits, an
     4242,
     edits,
   ]);
+  expect(downloadedWorld.file.story, "the world's story downloads with it").toEqual(story);
   const downloadedKit = await download(page, () =>
     wizard.getByRole("button", { name: "Download this kit", exact: true }).click(),
   );
@@ -154,10 +168,15 @@ test("a world file comes into a new game's setup with its kit and hand edits, an
   // Another seed: the hand edits were made for this one, so they are left out.
   await wizard.getByLabel("World seed", { exact: true }).fill("4243");
   await expect(wizard.getByText("so they are left out now", { exact: false })).toBeVisible();
+  await expect(wizard.getByText("so it is left out now", { exact: false })).toBeVisible();
   const reseeded = await download(page, () =>
     wizard.getByRole("button", { name: "Download this world", exact: true }).click(),
   );
-  expect([reseeded.file.world.seed, reseeded.file.world.edits]).toEqual([4243, undefined]);
+  expect([reseeded.file.world.seed, reseeded.file.world.edits, reseeded.file.story]).toEqual([
+    4243,
+    undefined,
+    undefined,
+  ]);
 
   // A kit file on its own.
   await wizard
@@ -182,6 +201,7 @@ test("a game's world downloads from its World tab, hand edits and all", async ({
         gameWorldView: "scene",
         gameWorldKit: kit,
         gameWorld: { ...world, edits },
+        gameStory: story,
       },
     });
     expect(meta.ok(), await meta.text()).toBeTruthy();
@@ -203,6 +223,7 @@ test("a game's world downloads from its World tab, hand edits and all", async ({
       downloaded.file.world.seed,
       downloaded.file.world.edits,
     ]).toEqual(["Riverlands", kit.id, 4242, edits]);
+    expect(downloaded.file.story, "and its story").toEqual(story);
   } finally {
     await request.delete(`/api/chats/${chatId}`);
   }

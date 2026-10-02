@@ -9,7 +9,11 @@ import { rejectGenerationOutput, type GenerationOutput } from "./generate/sse.js
 import { resolveStoredChatOptions, resolveStoredMaxTokens } from "../services/generation/generation-parameters.js";
 import { normalizeGameDifficulty, normalizeWeatherType, combatWeatherSchema } from "@marinara-engine/shared";
 import {
+  checkStoryScript,
   compileGameWorld,
+  gameStoryFromMetadata,
+  storyScriptSchema,
+  type StoryScript,
   worldCast,
   worldEditsEmpty,
   worldEditIssues,
@@ -1920,6 +1924,8 @@ const gameSetupConfigSchema = z.object({
     .optional(),
   worldKit: worldKitSchema.optional(),
   world: gameWorldSchema.optional(),
+  /** The world's story script (worldgen W10): read here, checked against the world once it is read. */
+  story: storyScriptSchema.optional(),
   /** Opaque config owned by that experience — persisted verbatim, never read by the host. */
   experienceConfig: z
     .record(z.string().max(120), z.unknown())
@@ -6656,6 +6662,21 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       }
       gameWorld = { ...requestedWorld, brief: checked.brief };
     }
+    // A story script (worldgen W10) names the world's places and people, so it is checked against it.
+    let gameStory: StoryScript | null = null;
+    const requestedStory = parsedCreateGameInput.setupConfig.story;
+    if (requestedStory != null) {
+      const kit = parsedCreateGameInput.setupConfig.worldKit;
+      const inputs = gameWorld && kit ? { kit, ...gameWorld, edits: gameWorld.edits } : null;
+      const checked = inputs ? checkStoryScript({ ...inputs, world: compileGameWorld(inputs) }, requestedStory) : null;
+      if (!checked?.ok) {
+        return rejectGenerationOutput(reply, 400, {
+          error: checked ? `The world's story does not fit it: ${checked.issues[0]}` : "A story needs a world.",
+          code: "story_invalid",
+        });
+      }
+      gameStory = checked.story;
+    }
     // An Experience's map pack (worldgen W9e) locks the game to its kit, and to one of its worlds when
     // it ships any; a pack that does not read keeps the Experience from starting a game, with the reason.
     let mapPack: MapPack | null = null;
@@ -6672,6 +6693,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         const issue = mapPackLockIssue(read.pack, {
           worldKit: parsedCreateGameInput.setupConfig.worldKit,
           world: gameWorld,
+          story: gameStory,
         });
         if (issue) return rejectGenerationOutput(reply, 400, { error: issue, code: "map_pack_locked" });
         mapPack = read.pack;
@@ -6682,6 +6704,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       ...(gameRuleset ? { ruleset: gameRuleset } : {}),
       // The setup's own copy carries the world as read, never the brief as sent.
       world: gameWorld ?? undefined,
+      story: gameStory ?? undefined,
       gameWorldMapMode:
         requestedWorldMapMode === "hierarchical" && parsedCreateGameInput.setupConfig.enableAgents === true
           ? "hierarchical"
@@ -6832,6 +6855,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       ...(gameWorld ? { gameWorld } : {}),
       // The game draws with its map pack's tiles while the Experience is installed.
       ...(mapPack?.tiles ? { gameMapPack: { packageId: mapPack.packageId } } : {}),
+      ...(gameStory ? { gameStory } : {}),
       gameNpcs: [],
       enableAgents: setupConfig.enableAgents === true,
       activeAgentIds: setupActiveAgentIds,
@@ -11017,6 +11041,18 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const issues = worldEditIssues(game, parsed.data);
     if (issues.length) return reply.status(400).send({ error: issues.join(" "), issues });
     const edits = worldEditsEmpty(parsed.data) ? undefined : parsed.data;
+    // The game's story (worldgen W10) names places and people: edits that take one away are refused.
+    const story = gameStoryFromMetadata(parseMeta(chat.metadata), game);
+    if (story) {
+      const edited = { ...game, edits, world: compileGameWorld({ ...game, edits }) };
+      const unfit = checkStoryScript(edited, story);
+      if (!unfit.ok) {
+        return reply.status(400).send({
+          error: `The game's story names what these edits take away: ${unfit.issues[0]}`,
+          issues: unfit.issues,
+        });
+      }
+    }
     const updated = await chats.patchMetadata(chatId, (fresh) => {
       // The world is the same one the edits were checked against: a world is written once, at creation.
       if (!fresh.gameWorld || typeof fresh.gameWorld !== "object") {
@@ -11100,13 +11136,60 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
     const game = chat.mode === "game" ? gameWorldFromMetadata(parseMeta(chat.metadata)) : null;
     if (!game) return reply.status(404).send({ error: "This game has no world." });
-    return worldFile(chat.name, game.kit, {
-      seed: game.seed,
-      generatorVersion: WORLD_GENERATOR_VERSION,
-      grounding: game.grounding,
-      brief: game.brief,
-      ...(game.edits ? { edits: game.edits } : {}),
-    });
+    return worldFile(
+      chat.name,
+      game.kit,
+      {
+        seed: game.seed,
+        generatorVersion: WORLD_GENERATOR_VERSION,
+        grounding: game.grounding,
+        brief: game.brief,
+        ...(game.edits ? { edits: game.edits } : {}),
+      },
+      gameStoryFromMetadata(parseMeta(chat.metadata), game),
+    );
+  });
+
+  // ── A game's story script (worldgen W10), for a maker: read, saved (checked against the game's world,
+  // its hand edits included) and taken away. What the story has done so far is folded from the replies,
+  // so a script changed mid-game never rewrites it. ──
+
+  // GET /game/:chatId/story
+  app.get<{ Params: { chatId: string } }>("/:chatId/story", async (req, reply) => {
+    const chat = await createChatsStorage(app.db).getById(req.params.chatId);
+    if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    const meta = parseMeta(chat.metadata);
+    const game = chat.mode === "game" ? gameWorldFromMetadata(meta) : null;
+    if (!game) return reply.status(404).send({ error: "This game has no world." });
+    return { story: gameStoryFromMetadata(meta, game) };
+  });
+
+  // PUT /game/:chatId/story {story}
+  app.put<{ Params: { chatId: string } }>("/:chatId/story", async (req, reply) => {
+    const { chatId } = req.params;
+    const chats = createChatsStorage(app.db);
+    const chat = await chats.getById(chatId);
+    if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    const game = chat.mode === "game" ? gameWorldFromMetadata(parseMeta(chat.metadata)) : null;
+    if (!game) return reply.status(404).send({ error: "This game has no world." });
+    const checked = checkStoryScript(game, (req.body as { story?: unknown } | undefined)?.story);
+    if (!checked.ok) {
+      return reply
+        .status(400)
+        .send({ error: `The story does not fit this world: ${checked.issues[0]}`, issues: checked.issues });
+    }
+    const updated = await chats.patchMetadata(chatId, () => ({ gameStory: checked.story }));
+    if (!updated) return reply.status(404).send({ error: "Chat not found" });
+    logger.info("[game/story] %s: story saved", chatId);
+    return { story: checked.story };
+  });
+
+  // DELETE /game/:chatId/story
+  app.delete<{ Params: { chatId: string } }>("/:chatId/story", async (req, reply) => {
+    const updated = await createChatsStorage(app.db).patchMetadata(req.params.chatId, () => ({ gameStory: null }));
+    if (!updated) return reply.status(404).send({ error: "Chat not found" });
+    logger.info("[game/story] %s: story taken away", req.params.chatId);
+    return { story: null };
   });
 
   // GET /game/:chatId/world/people?place=: a place's people as the game has them, edits applied.

@@ -56,6 +56,11 @@ export interface BuildPromptMacroContextInput {
   timeZone?: string;
   /** Extra prompt templates that may contain macros outside card/persona fields. */
   macroSources?: readonly string[];
+  /**
+   * Name the `{{<card ID>}}` macros found in these sources. For prompts the preset
+   * assembler does not build: it names them itself, as it pulls their cards in (#6956).
+   */
+  nameCharacterReferences?: boolean;
 }
 
 export interface CharacterMacroData {
@@ -190,7 +195,7 @@ export function resolveMacrosForPreview(
   return resolveMacros(template, cloneMacroContextForPreview(macroCtx), options);
 }
 
-export function extractCharacterReferenceIds(sources: readonly string[]): string[] {
+export function extractCharacterReferenceIds(sources: readonly string[], limit = MAX_REFERENCED_CHARACTERS): string[] {
   const ids: string[] = [];
   const seen = new Set<string>();
   for (const source of sources) {
@@ -199,7 +204,7 @@ export function extractCharacterReferenceIds(sources: readonly string[]): string
       if (seen.has(id)) continue;
       seen.add(id);
       ids.push(id);
-      if (ids.length >= MAX_REFERENCED_CHARACTERS) return ids;
+      if (ids.length >= limit) return ids;
     }
   }
   return ids;
@@ -488,6 +493,8 @@ export async function buildReferencedCharacterContext(input: {
   excludedLorebookIds?: string[];
   excludedLorebookSourceAgentIds?: string[];
   maxReferences?: number;
+  /** Only the names: no card text and no lorebook scan. */
+  namesOnly?: boolean;
 }): Promise<{ content: string; references: Record<string, string> }> {
   const characters = createCharactersStorage(input.db);
   const activeIds = new Set(input.activeCharacterIds);
@@ -502,22 +509,23 @@ export async function buildReferencedCharacterContext(input: {
     sources.push(...referencedCharacterSourceFields(data));
   });
 
-  const mentionedIds = extractCharacterReferenceIds(sources);
-  const candidateIds = mentionedIds
-    .filter((id) => !activeIds.has(id))
-    .slice(0, Math.max(0, input.maxReferences ?? MAX_REFERENCED_CHARACTERS));
-  const referencedRows = await Promise.all(candidateIds.map((id) => characters.getById(id)));
-  const referenced = candidateIds.flatMap((id, index) => {
-    const data = parseCharacterData(referencedRows[index]?.data);
+  // Every referenced ID gets a name in every mode; the cap only limits which cards are added (#6956).
+  const mentionedIds = extractCharacterReferenceIds(sources, Infinity);
+  const outsideIds = mentionedIds.filter((id) => !activeIds.has(id));
+  const outsideRows = await Promise.all(outsideIds.map((id) => characters.getById(id)));
+  const outside = outsideIds.flatMap((id, index) => {
+    const data = parseCharacterData(outsideRows[index]?.data);
     return data ? [{ id, data }] : [];
   });
+  const cardLimit = input.namesOnly ? 0 : Math.max(0, input.maxReferences ?? MAX_REFERENCED_CHARACTERS);
+  const referenced = outside.slice(0, cardLimit);
   // A character already in the chat still resolves to its name; its card is
   // already in the prompt, so it gets no second copy below (#6924).
   const references = Object.fromEntries([
     ...mentionedIds.flatMap((id) => (activeNames.has(id) ? [[id, activeNames.get(id)!] as const] : [])),
-    ...referenced.map(({ id, data }) => [id, data.name || "Character"] as const),
+    ...outside.map(({ id, data }) => [id, data.name || "Character"] as const),
   ]);
-  if (referenced.length === 0) return { content: "", references };
+  if (referenced.length === 0 || input.namesOnly) return { content: "", references };
 
   const macroCtx = { ...input.macroCtx, characterReferences: { ...Object.fromEntries(activeNames), ...references } };
   const lorebooks = createLorebooksStorage(input.db);
@@ -795,7 +803,7 @@ export async function buildPromptMacroContext(input: BuildPromptMacroContextInpu
     }
   }
 
-  return {
+  const macroCtx: MacroContext = {
     user: input.personaName || "User",
     userPhonetic: input.personaPhoneticName || input.personaFields?.phoneticName || input.personaName || "User",
     char: characterMacroData.names[0] || "Character",
@@ -822,6 +830,21 @@ export async function buildPromptMacroContext(input: BuildPromptMacroContextInpu
       ...(input.personaFields ?? {}),
     },
   };
+  if (input.nameCharacterReferences) {
+    macroCtx.characterReferences = (
+      await buildReferencedCharacterContext({
+        db: input.db,
+        activeCharacterIds: input.groupCharacterIds ?? input.characterIds,
+        sources: macroSources,
+        chatMessages: [],
+        macroCtx,
+        wrapFormat: "none",
+        chatId: input.chatId ?? "",
+        namesOnly: true,
+      })
+    ).references;
+  }
+  return macroCtx;
 }
 
 function characterFieldsFromProfile(profile: CharacterMacroProfile): NonNullable<MacroContext["characterFields"]> {

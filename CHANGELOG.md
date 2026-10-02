@@ -4,6 +4,10 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- With streaming on, a reply no longer starts with the raw `<tool_call>…</tool_call>` text when the model writes its tool calls as text, as some KoboldCPP or Gemma setups do. Once Marinara recognises and runs the call, that text disappears from the message on screen and is not saved, the same as with streaming off (#6951).
+
+- `{{<character ID>}}` macros now become the character's name in Conversation and Game chats, and in Roleplay chats without a preset, instead of staying as raw text. In these chats the macro gives only the name; the referenced card is not added to the prompt (#6956).
+
 - Switching a Roleplay group between **Merged (Narrator)** and **Individual** now changes the whole prompt at once. Continuing a reply in Merged mode no longer makes the model speak as that reply's character, a message sent right after switching waits for the new mode to be saved, and Chat Settings always shows the mode replies actually use (#6959).
 
 - **Image Captioning** in Chat Settings now shows its prompt in a box under the toggle, so you can change how images are described (for example, ask for more detail) or reset it to the default. If captioning fails, the reply now stops with an error instead of quietly sending the image to the chat model (#6960).

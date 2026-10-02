@@ -117,6 +117,12 @@ try {
     return { body: response.body, sent: requests.slice(start) };
   };
   const offered = (body: Record<string, any>) => (body.tools ?? []).map((tool: any) => tool.function.name);
+  // What the client shows when the stream ends: tokens add to the reply, content_replace replaces it.
+  const shown = (body: string) =>
+    body.split("\n").reduce((text, line) => {
+      const event = line.startsWith("data: ") ? JSON.parse(line.slice(6)) : null;
+      return event?.type === "token" ? text + event.data : event?.type === "content_replace" ? event.data : text;
+    }, "");
 
   // The reporter's setup: Commands off, Function Calling on with roll_dice, and a model that answers in text.
   const call =
@@ -142,6 +148,9 @@ try {
   assert.equal(roll?.command.type, "roll", "the roll is kept with the reply like a Rolls command's");
   assert.equal(roll?.error, undefined, roll?.error);
   assert.match(roll?.result ?? "", /"total":/u);
+  // #6951: the call was streamed as text before it was recognised. It must not stay in the reply.
+  assert.equal(saved.content, "The die settles.", "the call's text is not saved with the reply");
+  assert.equal(shown(functionCalling.body), "The die settles.", "nor left on screen");
 
   // Negative controls: Function Calling only grants what the chat selected, and an
   // enabled Roll command keeps deciding who may roll.

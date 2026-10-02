@@ -4,9 +4,12 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
-- In the Android app, picking a picture now offers the camera too, on Android 10 and newer, as Chrome does. Photos you take are saved to Pictures/Marinara (#6953).
+- **Image Captioning** in Chat Settings now shows its prompt in a box under the toggle, so you can change how images are described (for example, ask for more detail) or reset it to the default. If captioning fails, the reply now stops with an error instead of quietly sending the image to the chat model (#6960).
 
 - GLM models on NanoGPT, such as GLM 4.7 and 5.1, now stop reasoning when Reasoning Effort is **Off**, whether the chat sets Off itself or takes it from the connection's Default Chat Parameters. Before, they kept reasoning anyway and could spend the whole reply budget on it, ending with a message to raise Max Tokens (#6961).
+
+- In the Android app, picking a picture now offers the camera too, on Android 10 and newer, as Chrome does. Photos you take are saved to Pictures/Marinara (#6953).
+
 - On iPad, tapping a chat in the chat list now opens it instead of leaving the list on top, and buttons that start a chat or open a page from a full-screen panel close that panel too. The keyboard no longer covers a message you are editing, and **Copy Support Diagnostics** now copies (#6944).
 
 - Removing a chat variable in Chat Settings now asks first, so one stray tap on a phone no longer deletes it. Cancel, or tap outside the question, and the variable stays (#6942).
@@ -26,7 +29,6 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - Many tooltips and help texts in Chat Settings, Settings, lorebooks, connections, and the agent editor now use plain words, so it is easier to tell what each setting does (#6947).
 
-- In Roleplay, a `roll_dice` added under **Function Calling** now reaches the model and actually rolls when called, the same as with the **Rolls** command. If **Rolls** is also on, its **Who can roll dice** choice still applies (#6945).
 - On phones, the top bar now looks like a small version of the desktop one: Home and Chats sit at the left and a hamburger menu sits at the right, with wider, finger-sized buttons, instead of every control stretching across the bar.
 
 - Updated Sharp (with libvips 8.18.7), DOMPurify, @fastify/static, dotenv and nanoid, and Android APK builds now use Gradle 9.8.0. Termux installs keep Sharp's matching WebAssembly fallback for image processing. Hono, which the MCP SDK pulls in, moves to 4.13.11 for an upstream XSS fix in its JSX renderer.

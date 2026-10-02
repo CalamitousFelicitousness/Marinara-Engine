@@ -6,6 +6,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - GLM models on NanoGPT, such as GLM 4.7 and 5.1, now stop reasoning when Reasoning Effort is **Off**, whether the chat sets Off itself or takes it from the connection's Default Chat Parameters. Before, they kept reasoning anyway and could spend the whole reply budget on it, ending with a message to raise Max Tokens (#6961).
 
+- On iPad, tapping a chat in the chat list now opens it instead of leaving the list on top, and buttons that start a chat or open a page from a full-screen panel close that panel too. The keyboard no longer covers a message you are editing, and **Copy Support Diagnostics** now copies (#6944).
+
 - Removing a chat variable in Chat Settings now asks first, so one stray tap on a phone no longer deletes it. Cancel, or tap outside the question, and the variable stays (#6942).
 
 - Chat variables that `{{setvar}}`, `{{decvar}}` and the other variable macros change now go back with the reply that changed them, as tracker values do. A new swipe starts from the values before that reply, showing another swipe brings back its values, and deleting the reply undoes its changes, so a lorebook countdown no longer drops again on every swipe. Values you typed in Chat Settings since stay as they are (#6923).

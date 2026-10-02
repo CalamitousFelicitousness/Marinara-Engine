@@ -8142,26 +8142,31 @@ function AdvancedSettings() {
     // only the timeout carve-out is new.
     retry: (failureCount, error) => !isRequestTimeoutError(error) && failureCount < 1,
   });
+  // #5740: the report includes what Mari last reported acting on. Safari only
+  // lets a tap write to the clipboard while the tap is handled, so this cannot
+  // be fetched after the tap; it reloads whenever Settings opens instead. The
+  // deadline keeps a frozen host from disabling the copy button (#5657).
+  const settingsOpen = useUIStore((s) => s.rightPanelOpen && s.rightPanel === "settings");
+  const mariStatus = useQuery<{ latestUnderstoodRequest?: SupportDiagnostics["mariActingOn"] }>({
+    queryKey: ["professor-mari", "workspace-status"],
+    queryFn: ({ signal }) =>
+      api.get("/professor-mari/workspace/status", { signal: requestTimeoutSignal(5_000, signal) }),
+    enabled: settingsOpen,
+    staleTime: 0,
+    retry: false,
+  });
   const connections = (rawConnections ?? []) as APIConnection[];
   const activeConnection = activeChat?.connectionId
     ? (connections.find((connection) => connection.id === activeChat.connectionId) ?? null)
     : (connections.find((connection) => connection.isDefault) ?? null);
   // Health is included so a copy taken before the query settles cannot label
   // pending wake-lock/freeze telemetry as genuinely absent (#5656 review).
-  const supportDiagnosticsPending = isConnectionsLoading || (!!activeChatId && isActiveChatLoading) || health.isPending;
+  const supportDiagnosticsPending =
+    isConnectionsLoading || (!!activeChatId && isActiveChatLoading) || health.isPending || mariStatus.isPending;
 
   const handleCopySupportDiagnostics = useCallback(async () => {
-    // #5740: include what Mari last reported acting on - the load-bearing
-    // triage line for "she edited something I never asked for" reports.
-    // Best-effort: a failed fetch reads as unavailable, never blocks the copy.
-    // The deadline matters most on the frozen host this button exists for
-    // (#5657) - without it the fetch pends forever and no report is copied.
-    const mariActingOn = await api
-      .get<{
-        latestUnderstoodRequest: SupportDiagnostics["mariActingOn"];
-      }>("/professor-mari/workspace/status", { signal: requestTimeoutSignal(5_000) })
-      .then((status) => status.latestUnderstoodRequest ?? null)
-      .catch(() => undefined);
+    // Best-effort: a failed status request reads as unavailable, never blocks the copy.
+    const mariActingOn = mariStatus.isError ? undefined : (mariStatus.data?.latestUnderstoodRequest ?? null);
     const report = formatSupportDiagnostics({
       clientRuntime: getClientRuntimeDiagnostics(),
       mariActingOn,
@@ -8202,7 +8207,7 @@ function AdvancedSettings() {
     } else {
       toast.error(localizeUi("ui.panels.advancedsettings.supportDiagnosticsCopyFailed"));
     }
-  }, [activeConnection, health.data, health.error, localizeUi]);
+  }, [activeConnection, health.data, health.error, localizeUi, mariStatus.data, mariStatus.isError]);
 
   const deleteBackupMutation = useMutation({
     mutationFn: (name: string) => api.delete(`/backup/${name}`),

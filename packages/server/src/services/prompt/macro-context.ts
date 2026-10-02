@@ -56,6 +56,11 @@ export interface BuildPromptMacroContextInput {
   timeZone?: string;
   /** Extra prompt templates that may contain macros outside card/persona fields. */
   macroSources?: readonly string[];
+  /**
+   * Name the `{{<card ID>}}` macros found in these sources. For prompts the preset
+   * assembler does not build: it names them itself, as it pulls their cards in (#6956).
+   */
+  nameCharacterReferences?: boolean;
 }
 
 export interface CharacterMacroData {
@@ -488,6 +493,8 @@ export async function buildReferencedCharacterContext(input: {
   excludedLorebookIds?: string[];
   excludedLorebookSourceAgentIds?: string[];
   maxReferences?: number;
+  /** Only the names: no card text and no lorebook scan. */
+  namesOnly?: boolean;
 }): Promise<{ content: string; references: Record<string, string> }> {
   const characters = createCharactersStorage(input.db);
   const activeIds = new Set(input.activeCharacterIds);
@@ -517,7 +524,7 @@ export async function buildReferencedCharacterContext(input: {
     ...mentionedIds.flatMap((id) => (activeNames.has(id) ? [[id, activeNames.get(id)!] as const] : [])),
     ...referenced.map(({ id, data }) => [id, data.name || "Character"] as const),
   ]);
-  if (referenced.length === 0) return { content: "", references };
+  if (referenced.length === 0 || input.namesOnly) return { content: "", references };
 
   const macroCtx = { ...input.macroCtx, characterReferences: { ...Object.fromEntries(activeNames), ...references } };
   const lorebooks = createLorebooksStorage(input.db);
@@ -795,7 +802,7 @@ export async function buildPromptMacroContext(input: BuildPromptMacroContextInpu
     }
   }
 
-  return {
+  const macroCtx: MacroContext = {
     user: input.personaName || "User",
     userPhonetic: input.personaPhoneticName || input.personaFields?.phoneticName || input.personaName || "User",
     char: characterMacroData.names[0] || "Character",
@@ -822,6 +829,21 @@ export async function buildPromptMacroContext(input: BuildPromptMacroContextInpu
       ...(input.personaFields ?? {}),
     },
   };
+  if (input.nameCharacterReferences) {
+    macroCtx.characterReferences = (
+      await buildReferencedCharacterContext({
+        db: input.db,
+        activeCharacterIds: input.groupCharacterIds ?? input.characterIds,
+        sources: macroSources,
+        chatMessages: [],
+        macroCtx,
+        wrapFormat: "none",
+        chatId: input.chatId ?? "",
+        namesOnly: true,
+      })
+    ).references;
+  }
+  return macroCtx;
 }
 
 function characterFieldsFromProfile(profile: CharacterMacroProfile): NonNullable<MacroContext["characterFields"]> {

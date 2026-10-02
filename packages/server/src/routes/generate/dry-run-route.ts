@@ -1077,6 +1077,13 @@ export async function registerDryRunRoute(app: FastifyInstance) {
         JSON.stringify(chatMeta),
         effectivePreset ? JSON.stringify(effectivePreset) : "",
       ],
+      nameCharacterReferences: !(
+        !promptParts &&
+        effectivePresetId &&
+        effectivePreset &&
+        chatMode !== "conversation" &&
+        chatMode !== "game"
+      ),
     });
     const historyMacroProfilesById = (await resolveCharacterMacroData(app.db, allCharacterIds)).profilesById;
 

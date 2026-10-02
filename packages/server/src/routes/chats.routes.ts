@@ -3276,6 +3276,7 @@ export async function chatsRoutes(app: FastifyInstance) {
               JSON.stringify(chatMeta),
               preset ? JSON.stringify(preset) : "",
             ],
+            nameCharacterReferences: !(preset && chatMode !== "conversation" && chatMode !== "game"),
           });
           const resolvePromptMacros = (value: string, lorebookEntryCounts?: Readonly<Record<string, number>>) => {
             setLorebookEntryCounts(promptMacroContext, lorebookEntryCounts);

@@ -2787,6 +2787,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             JSON.stringify(chatMeta),
             resolvedPreset ? JSON.stringify(resolvedPreset) : "",
           ],
+          nameCharacterReferences: !(presetId && resolvedPreset && chatMode !== "conversation" && chatMode !== "game"),
         });
         const conversationMacroFieldsByCharacterId = new Map<string, NonNullable<MacroContext["convoFields"]>>();
         const historyMacroProfilesById = (await resolveCharacterMacroData(app.db, allCharacterIds)).profilesById;

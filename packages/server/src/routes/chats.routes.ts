@@ -3272,6 +3272,9 @@ export async function chatsRoutes(app: FastifyInstance) {
             macroSources: [
               ...sections.map((section) => section.content),
               ...mappedMessages.map((message) => message.content),
+              // Author's notes, a chat's own system or Game prompt, and the preset's mode prompts.
+              JSON.stringify(chatMeta),
+              preset ? JSON.stringify(preset) : "",
             ],
           });
           const resolvePromptMacros = (value: string, lorebookEntryCounts?: Readonly<Record<string, number>>) => {
@@ -3323,7 +3326,7 @@ export async function chatsRoutes(app: FastifyInstance) {
           const previewDecisionTimers = readDecisionTimers(chatMeta[DECISION_TIMERS_METADATA_KEY]);
           const previewDecisionTurn = decisionTurnFor(previewDecisionTimers, latestTurnDecisionId(filteredMessages));
           const heldDecisions: HeldDecisions = (kind, key, modifiers) =>
-            heldDecision(previewDecisionTimers, previewDecisionTurn, kind, key, modifiers?.every);
+            heldDecision(previewDecisionTimers, previewDecisionTurn, kind, key, modifiers?.every, modifiers?.lasts);
           {
             const texts = collectTurnDecisionTexts({
               // The same sources generation plans from: preset sections only outside

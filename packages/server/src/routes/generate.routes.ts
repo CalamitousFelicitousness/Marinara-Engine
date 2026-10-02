@@ -1128,6 +1128,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         error: "Choose either regenerateMessageId or continueMessageId, not both",
       });
     }
+    const earlyMeta = roomGenerationMetadata(parseExtra(chat.metadata));
+    // One reading per request: the restored speaker, the identity and the context all follow it (#6959).
+    const groupGenerationMode = resolveGroupGenerationMode(requestChatMode, earlyMeta.groupChatMode);
     let continueTargetMessage: any = null;
     if (input.continueMessageId) {
       if (input.impersonate) {
@@ -1140,14 +1143,21 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
       if (continueTargetMessage.role !== "assistant") {
         return rejectGenerationOutput(reply, 400, { error: "Only assistant messages can be continued" });
       }
-      if (!input.forCharacterId && continueTargetMessage.characterId) {
+      if (
+        !input.forCharacterId &&
+        continueTargetMessage.characterId &&
+        shouldRestoreRegenerationCharacterTarget(
+          requestChatMode,
+          groupGenerationMode,
+          parseJsonField<string[]>(chat.characterIds, []),
+        )
+      ) {
         input.forCharacterId = continueTargetMessage.characterId;
       }
     }
     let conversationGenerationStartedAt: number | null = null;
     let conversationAssistantSaved = false;
     const conversationCustomEmojiUrlByName = new Map<string, string>();
-    const earlyMeta = roomGenerationMetadata(parseExtra(chat.metadata));
     const shouldAccountAutonomousGeneration =
       requestChatMode === "conversation" &&
       input.autonomous === true &&
@@ -1259,7 +1269,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         if (
           !input.forCharacterId &&
           regenCandidate.characterId &&
-          shouldRestoreRegenerationCharacterTarget(requestChatMode, earlyMeta.groupChatMode, regenerationCharacterIds)
+          shouldRestoreRegenerationCharacterTarget(requestChatMode, groupGenerationMode, regenerationCharacterIds)
         ) {
           input.forCharacterId = regenCandidate.characterId;
         }
@@ -2466,7 +2476,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         input.smartResponse &&
         chatMode === "roleplay" &&
         allCharacterIds.length > 1 &&
-        resolveGroupGenerationMode(chatMode, chatMeta.groupChatMode) === "individual" &&
+        groupGenerationMode === "individual" &&
         (savedGroupResponseOrder === "smart" || savedGroupResponseOrder === "manual") &&
         !input.forCharacterId &&
         !input.regenerateMessageId &&
@@ -2707,7 +2717,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             }
           });
         const promptGroupResponseOrder = effectiveGroupResponseOrder;
-        const promptGroupChatMode = resolveGroupGenerationMode(chatMode, chatMeta.groupChatMode);
+        const promptGroupChatMode = groupGenerationMode;
         // Each responder sees other characters as user input. Keep shared history
         // untouched until those roles are scoped, including replies within this turn.
         const deferGroupPromptRegex =
@@ -3440,8 +3450,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         // ── Conversation mode: inject built-in DM-style system prompt ──
         let convoAwarenessBlock: string | null = null;
         if (chatMode === "conversation") {
-          const deferPresenceDelayToResponders =
-            characterIds.length > 1 && resolveGroupGenerationMode(chatMode, chatMeta.groupChatMode) === "individual";
+          const deferPresenceDelayToResponders = characterIds.length > 1 && groupGenerationMode === "individual";
           const presenceRuntime = await resolveConversationPresenceRuntime({
             db: app.db,
             chatId: input.chatId,
@@ -4920,7 +4929,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         // one participant. The active list still controls who may respond.
         const isGroupChat = chatMode === "roleplay" ? allCharacterIds.length > 1 : characterIds.length > 1;
         const groupResponseOrder = effectiveGroupResponseOrder;
-        const groupChatMode = resolveGroupGenerationMode(chatMode, chatMeta.groupChatMode);
+        const groupChatMode = groupGenerationMode;
         // Auto-enable speaker colors for conversation mode groups (system prompt already requests tags)
         const groupSpeakerColors = chatMeta.groupSpeakerColors === true || (chatMode === "conversation" && isGroupChat);
         const groupTurnPromptEnabled = chatMeta.groupTurnPromptEnabled !== false;

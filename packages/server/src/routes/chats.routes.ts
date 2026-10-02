@@ -52,6 +52,7 @@ import {
   applyContextMessageLimitWithPins,
   isMessagePinnedToContext,
   normalizeMessageMarkPatch,
+  normalizeGroupChatMode,
   readMessagePrivateNote,
   stripPrivateMessageNote,
   MESSAGE_MARK_EXTRA_KEYS,
@@ -1403,6 +1404,10 @@ export async function chatsRoutes(app: FastifyInstance) {
         return reply.status(400).send({ error: `A chat cannot hold more than ${MAX_CHAT_VARIABLES} variables` });
       }
       return updated ? normalizeChatForResponse(updated) : updated;
+    }
+    if (Object.prototype.hasOwnProperty.call(incoming, "groupChatMode")) {
+      // Store only a mode generation understands, so the drawer and the prompt never read it differently.
+      incoming.groupChatMode = normalizeGroupChatMode(incoming.groupChatMode);
     }
     if (incoming.conversationSchedulesEnabled === false) {
       // Chat-scoped only: drop this chat's cached copy, but leave the character
@@ -3630,8 +3635,7 @@ export async function chatsRoutes(app: FastifyInstance) {
           }
 
           // ── Inject group chat speaker tag instructions ──
-          const groupChatMode =
-            chatMode === "conversation" ? "merged" : ((chatMeta.groupChatMode as string) ?? "merged");
+          const groupChatMode = normalizeGroupChatMode(chatMeta.groupChatMode);
           const groupSpeakerColors =
             chatMeta.groupSpeakerColors === true || (chatMode === "conversation" && isGroupChat);
 

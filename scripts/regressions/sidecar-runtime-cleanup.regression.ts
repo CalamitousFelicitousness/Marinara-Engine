@@ -29,6 +29,9 @@ try {
       mkdirSync(join(runtimeDir, dir), { recursive: true });
     writeFileSync(model, "weights");
     writeFileSync(join(runtimeDir, "llama-b10188-bin-ubuntu-vulkan-x64.zip"), "archive");
+    writeFileSync(join(runtimeDir, "cudart-llama-bin-win-cuda-13.3-x64.zip"), "archive");
+    // Another runtime's download beside them is not this service's to remove either.
+    writeFileSync(join(runtimeDir, "other-runtime.zip"), "archive");
     writeFileSync(join(runtimeDir, "server.log"), "log");
   };
 
@@ -39,15 +42,15 @@ try {
   );
   assert.deepEqual(
     readdirSync(runtimeDir).sort(),
-    ["b10188-linux-x64-vulkan", "decision", "mlx", "server.log"],
-    "an update removes the old runtime and the download leftovers, and nothing else",
+    ["b10188-linux-x64-vulkan", "decision", "mlx", "other-runtime.zip", "server.log"],
+    "an update removes the old runtime and its own download leftovers, and nothing else",
   );
   assert.ok(existsSync(model), "the decision model survives an update");
 
   // Reinstall runtime removes every llama.cpp runtime, and still nothing else.
   seed();
   sidecarRuntimeService.resetRuntime();
-  assert.deepEqual(readdirSync(runtimeDir).sort(), ["decision", "mlx", "server.log"]);
+  assert.deepEqual(readdirSync(runtimeDir).sort(), ["decision", "mlx", "other-runtime.zip", "server.log"]);
   assert.ok(existsSync(model), "the decision model survives Reinstall runtime");
   console.log("Sidecar runtime cleanup regression passed.");
 } finally {

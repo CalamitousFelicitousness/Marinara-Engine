@@ -74,6 +74,13 @@ try {
     // A party's turn echoing an answered tag: never the Game Master's word.
     await say(first.id, "assistant", `[party-turn]\nMira: "We razed it!" [world: days="40" result="ok"]`);
 
+    // A carry with no tags still counts the replies it stands for (a story's turn number reads it).
+    const untagged = (await chats.create({ name: "Untagged", mode: "game", characterIds: [], groupId: "other" }))!;
+    await chats.patchMetadata(untagged.id, { gameLedgerCarry: { replies: 5, tags: "" } });
+    const counted = await gameRepliesBefore(db, untagged.id);
+    assert.equal(counted.carried?.replies, 5);
+    assert.deepEqual(counted.all, [], "and adds no reply of its own");
+
     // Within a session, the party's turn is left out.
     const own = await gameRepliesBefore(db, first.id);
     assert.equal(own.all.length, 2, "the two Game Master replies, not the party's turn");

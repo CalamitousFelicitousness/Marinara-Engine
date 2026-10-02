@@ -327,6 +327,47 @@ try {
   assert.deepEqual(arrive([...been, comeAndGo[1]!]), [], "gone");
   assert.deepEqual(arrive([...been, comeAndGo[1]!, comeAndGo[0]!]), ["each"], "come back: again");
 
+  // A place the Game Master added inside the town is still the town: stepping in is no new arrival.
+  const tavern = [
+    comeAndGo[0]!,
+    `[story: event="each" by="engine" result="ok"]`,
+    `[place: name="The Gilded Gull" result="ok"]`,
+  ];
+  assert.deepEqual(
+    storyTurn(gated.story, {
+      game,
+      replies: tavern,
+      repliesBefore: tavern.length,
+      latest: tavern.at(-1)!,
+      told: [],
+      added: [{ id: "a1", name: "The Gilded Gull", parentId: away.id }],
+      day: 0,
+      fight: null,
+    }).tripped,
+    [],
+  );
+  // A repeating meet happens again only for a reply that names them again.
+  const greeting = checkStoryScript(game, {
+    storyVersion: 1,
+    events: [{ id: "hi", when: { on: "meet", person: mayor.id }, repeat: true, do: [{ tell: "Hi." }] }],
+  });
+  assert.ok(greeting.ok);
+  const greet = (replies: string[]) =>
+    storyTurn(greeting.story, {
+      game,
+      replies,
+      repliesBefore: replies.length,
+      latest: replies.at(-1) ?? null,
+      told: [],
+      day: 0,
+      fight: null,
+    }).tripped;
+  const said = `${mayor.name} nods.`;
+  const greeted1 = `[story: event="hi" by="engine" result="ok"] The square.`;
+  assert.deepEqual(greet([said]), ["hi"]);
+  assert.deepEqual(greet([said, greeted1]), [], "not for the reply that already counted");
+  assert.deepEqual(greet([said, greeted1, `Again, ${mayor.name}.`]), ["hi"], "again for a reply that names them");
+
   // A repeating event that would set itself off again is refused.
   const loops = checkStoryScript(game, {
     storyVersion: 1,
@@ -572,6 +613,8 @@ try {
       reply2.content,
       /\[story: event="betrayal" result="ok"\]\[world: deed="hinder" group="The Red Hand" result="ok"/,
     );
+    // A reply with nothing in it in between never swallows what the Game Master tripped.
+    await chats.createMessage({ chatId, role: "assistant", characterId: null, content: "" });
     await turn("Swords out.");
     assert.equal(
       (await gameRepliesBefore(db, chatId)).player,
@@ -613,6 +656,11 @@ try {
     assert.ok(arrived.content.indexOf("The gates creak open.") < arrived.content.indexOf("Hooves on cobbles."));
     assert.match(prompts.join("\n"), /shown this scene as written/);
     assert.deepEqual(JSON.parse(arrived.extra as string).worldShownScenes.length, 1, "kept for any rewrite later");
+
+    // With the story taken away, whatever story tag the Game Master writes is refused: none can count later.
+    assert.equal((await app.inject({ method: "DELETE", url: `/api/game/${chatId}/story` })).statusCode, 200);
+    await turn(`Quiet. [story: event="won" set="favours=3" result="ok"]`);
+    assert.match((await gmReplies()).at(-1)!.content, /\[story: event="won" result="refused" reason="no-story"\]/);
   } finally {
     await app.close();
     await closeDB();

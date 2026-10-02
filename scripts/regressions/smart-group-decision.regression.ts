@@ -221,17 +221,18 @@ try {
   });
 
   const settings = createAppSettingsStorage(db);
-  const turn = async (text: string | null, overrides: Record<string, unknown> = {}) => {
+  const turnForChat = async (chatId: string, text: string | null, overrides: Record<string, unknown> = {}) => {
     replies.length = 0;
     const response = await app.inject({
       method: "POST",
       url: "/api/generate/",
-      payload: { chatId: chat.id, userMessage: text, ...overrides },
+      payload: { chatId, userMessage: text, ...overrides },
     });
     assert.equal(response.statusCode, 200, response.body);
     assert(!response.body.includes('"type":"error"'), response.body);
     return [...replies];
   };
+  const turn = (text: string | null, overrides: Record<string, unknown> = {}) => turnForChat(chat.id, text, overrides);
 
   // 1. The Decision model picks, and no chat-model selector call is made.
   await settings.set(DECISION_SMART_ORDER_SETTINGS_KEY, "true");
@@ -308,6 +309,76 @@ try {
   assert.equal(selectorCalls.length, selectorBeforeTrigger + 1, "with Decision disabled, Smart uses the chat selector");
   assert.equal(decisionCalls.length, decisionBeforeTrigger + 2);
   assert.equal(JSON.parse((await chats.getById(chat.id))!.metadata).groupResponseOrder, "manual");
+
+  // Replying to a character's message makes that character answer, like an @mention, even
+  // right after they spoke and when the Decision model would pick someone else (#6978).
+  await chats.patchMetadata(chat.id, { groupResponseOrder: "smart" });
+  await settings.set(DECISION_SMART_ORDER_SETTINGS_KEY, "true");
+  probabilities = { [aya!.id]: 0.1, [bram!.id]: 0.1, [cole!.id]: 0.9 };
+  assert.deepEqual(await turn(null, { forCharacterId: bram!.id }), ["Bram"]);
+  const bramMessage = (await chats.listMessages(chat.id)).filter((message) => message.role === "assistant").at(-1)!;
+  assert.equal(bramMessage.characterId, bram!.id);
+  const decisionBeforeReply = decisionCalls.length;
+  const selectorBeforeReply = selectorCalls.length;
+  assert.deepEqual(
+    await turn("Really?", { replyTo: { messageId: bramMessage.id, name: "Bram", content: bramMessage.content } }),
+    ["Bram"],
+    "the character being replied to answers",
+  );
+  assert.equal(decisionCalls.length, decisionBeforeReply, "a reply needs no Decision request to pick its speaker");
+  assert.equal(selectorCalls.length, selectorBeforeReply, "nor a selector call");
+  const ownMessage = (await chats.listMessages(chat.id)).filter((message) => message.role === "user").at(-1)!;
+  assert.deepEqual(
+    await turn("Anyone else?", { replyTo: { messageId: ownMessage.id, name: "You", content: ownMessage.content } }),
+    ["Cole"],
+    "a reply to the user's own message addresses no one, so smart order still decides",
+  );
+  assert.equal(decisionCalls.length, decisionBeforeReply + 1);
+  // A reply to a message past the context limit still finds its author in the full chat.
+  const ayaMessage = (await chats.listMessages(chat.id))
+    .filter((message) => message.role === "assistant" && message.characterId === aya!.id)
+    .at(-1)!;
+  await chats.patchMetadata(chat.id, { contextMessageLimit: 2 });
+  assert.deepEqual(
+    await turn("Back to you", { replyTo: { messageId: ayaMessage.id, name: "Aya", content: ayaMessage.content } }),
+    ["Aya"],
+    "an older quoted message outside the loaded history still addresses its author",
+  );
+  await chats.patchMetadata(chat.id, { contextMessageLimit: null });
+
+  // A Conversation group in merged mode takes the same addressed character, though Aya is first.
+  const mergedChat = await chats.create({
+    name: "Conversation merged reply",
+    mode: "conversation",
+    characterIds: [aya!.id, bram!.id, cole!.id],
+    connectionId: chatConnection.id,
+    promptPresetId: preset.id,
+  });
+  assert(mergedChat);
+  await chats.patchMetadata(mergedChat.id, {
+    enableAgents: false,
+    enableMemoryRecall: false,
+    groupChatMode: "merged",
+    groupResponseOrder: "smart",
+  });
+  await turnForChat(mergedChat.id, null, { forCharacterId: bram!.id });
+  const mergedBramMessage = (await chats.listMessages(mergedChat.id))
+    .filter((message) => message.role === "assistant")
+    .at(-1)!;
+  assert.equal(mergedBramMessage.characterId, bram!.id);
+  await turnForChat(mergedChat.id, "Really?", {
+    replyTo: { messageId: mergedBramMessage.id, name: "Bram", content: mergedBramMessage.content },
+  });
+  const mergedReply = (await chats.listMessages(mergedChat.id))
+    .filter((message) => message.role === "assistant")
+    .at(-1)!;
+  assert.notEqual(mergedReply.id, mergedBramMessage.id, "the reply produced a new message");
+  assert.equal(
+    mergedReply.characterId,
+    bram!.id,
+    "a Conversation merged group answers as the character being replied to",
+  );
+  await settings.remove(DECISION_SMART_ORDER_SETTINGS_KEY);
 
   console.log("smart-group-decision regression passed");
 } finally {

@@ -187,6 +187,21 @@ try {
   for (const link of world.links) {
     assert.ok(worldRoute(world, link.from, link.to)!.days <= link.days, "the cheapest way");
   }
+  // A long way round that is quicker than the straight road: found, not the first road seen.
+  const tri = {
+    ...world,
+    places: ["a", "b", "c"].map((id, index) => ({ ...world.places[0]!, id, at: { x: index, y: 0 } })),
+    links: [
+      { from: "a", to: "c", way: "road", days: 10 },
+      { from: "a", to: "b", way: "road", days: 1 },
+      { from: "b", to: "c", way: "road", days: 1 },
+    ],
+  };
+  assert.deepEqual(
+    [worldRoute(tri, "a", "c")!.path, worldRoute(tri, "a", "c")!.days],
+    [["a", "b", "c"], 2],
+    "the quicker way round",
+  );
   const back = worldRoute(world, far.path.at(-1)!, start.id)!;
   assert.equal(back.days, far.days, "the same way back");
 

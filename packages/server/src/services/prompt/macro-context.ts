@@ -17,15 +17,17 @@ import {
   formatRpgStatsForPrompt,
   resolveMacros,
   stripMacroComments,
+  usesLorebookIncludes,
   type CharacterMacroProfile,
   type CharacterData,
+  type LorebookIncludeSource,
   type MacroContext,
   type RPGStatsConfig,
   type ResolveMacroOptions,
   type WrapFormat,
 } from "@marinara-engine/shared";
 import type { DB } from "../../db/connection.js";
-import { processLorebooks, type LorebookScanResult } from "../lorebook/index.js";
+import { loadLorebookIncludes, processLorebooks, type LorebookScanResult } from "../lorebook/index.js";
 import { createCharactersStorage, type PersonaStorageRow } from "../storage/characters.storage.js";
 import { createLorebooksStorage } from "../storage/lorebooks.storage.js";
 import { wrapContent } from "./format-engine.js";
@@ -491,13 +493,17 @@ export async function buildReferencedCharacterContext(input: {
   const activeIds = new Set(input.activeCharacterIds);
   const sources = [...input.sources, ...input.chatMessages.map((message) => message.content)];
 
+  const activeNames = new Map<string, string>();
   const activeRows = await Promise.all([...activeIds].map((id) => characters.getById(id)));
-  for (const row of activeRows) {
-    const data = parseCharacterData(row?.data);
-    if (data) sources.push(...referencedCharacterSourceFields(data));
-  }
+  [...activeIds].forEach((id, index) => {
+    const data = parseCharacterData(activeRows[index]?.data);
+    if (!data) return;
+    activeNames.set(id, data.name || "Character");
+    sources.push(...referencedCharacterSourceFields(data));
+  });
 
-  const candidateIds = extractCharacterReferenceIds(sources)
+  const mentionedIds = extractCharacterReferenceIds(sources);
+  const candidateIds = mentionedIds
     .filter((id) => !activeIds.has(id))
     .slice(0, Math.max(0, input.maxReferences ?? MAX_REFERENCED_CHARACTERS));
   const referencedRows = await Promise.all(candidateIds.map((id) => characters.getById(id)));
@@ -505,10 +511,15 @@ export async function buildReferencedCharacterContext(input: {
     const data = parseCharacterData(referencedRows[index]?.data);
     return data ? [{ id, data }] : [];
   });
-  if (referenced.length === 0) return { content: "", references: {} };
+  // A character already in the chat still resolves to its name; its card is
+  // already in the prompt, so it gets no second copy below (#6924).
+  const references = Object.fromEntries([
+    ...mentionedIds.flatMap((id) => (activeNames.has(id) ? [[id, activeNames.get(id)!] as const] : [])),
+    ...referenced.map(({ id, data }) => [id, data.name || "Character"] as const),
+  ]);
+  if (referenced.length === 0) return { content: "", references };
 
-  const references = Object.fromEntries(referenced.map(({ id, data }) => [id, data.name || "Character"]));
-  const macroCtx = { ...input.macroCtx, characterReferences: references };
+  const macroCtx = { ...input.macroCtx, characterReferences: { ...Object.fromEntries(activeNames), ...references } };
   const lorebooks = createLorebooksStorage(input.db);
   if (referenced.some(({ data }) => /\{\{\s*lorebooksize::/iu.test(JSON.stringify(data) ?? ""))) {
     try {
@@ -775,6 +786,14 @@ export async function buildPromptMacroContext(input: BuildPromptMacroContextInpu
       // If the count fails, continue with empty counts — {{lorebooksize::ID}} resolves to 0.
     }
   }
+  let lorebookIncludes: LorebookIncludeSource | undefined;
+  if (macroSources.some(usesLorebookIncludes)) {
+    try {
+      lorebookIncludes = await loadLorebookIncludes(input.db, input.chatId);
+    } catch (err) {
+      logger.warn(err, "Failed to load lorebooks for include macros; leaving them as written");
+    }
+  }
 
   return {
     user: input.personaName || "User",
@@ -793,6 +812,7 @@ export async function buildPromptMacroContext(input: BuildPromptMacroContextInpu
     idleDuration: input.idleDuration,
     timeZone: input.timeZone,
     lorebookEntryCounts,
+    ...(lorebookIncludes ? { lorebookIncludes } : {}),
     characterFields: {
       ...(characterMacroData.primaryFields ?? {}),
       ...(input.groupScenarioOverrideText ? { scenario: input.groupScenarioOverrideText } : {}),

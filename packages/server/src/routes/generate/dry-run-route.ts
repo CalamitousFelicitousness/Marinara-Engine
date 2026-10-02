@@ -1073,6 +1073,9 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       macroSources: [
         ...mappedMessages.map((message) => message.content),
         promptParts ? JSON.stringify(promptParts) : "",
+        // Author's notes, a chat's own system or Game prompt, and the preset's mode prompts.
+        JSON.stringify(chatMeta),
+        effectivePreset ? JSON.stringify(effectivePreset) : "",
       ],
     });
     const historyMacroProfilesById = (await resolveCharacterMacroData(app.db, allCharacterIds)).profilesById;
@@ -1091,7 +1094,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
     const previewDecisionTimers = readDecisionTimers(chatMeta[DECISION_TIMERS_METADATA_KEY]);
     const previewDecisionTurn = decisionTurnFor(previewDecisionTimers, latestTurnDecisionId(chatMessages));
     const heldDecisions: HeldDecisions = (kind, key, modifiers) =>
-      heldDecision(previewDecisionTimers, previewDecisionTurn, kind, key, modifiers?.every);
+      heldDecision(previewDecisionTimers, previewDecisionTurn, kind, key, modifiers?.every, modifiers?.lasts);
     const decisionLocalSetting = await decisionSettings.get(DECISION_SETTINGS_KEYS.localDefault);
     const decisionConnection = await connections.getDefaultForDecision();
     const decisionConnectionId = decisionConnection?.id ?? null;

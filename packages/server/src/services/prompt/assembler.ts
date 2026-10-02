@@ -398,12 +398,15 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
 
   const addActivatedLorebookCardReferences = async (result: LorebookScanResult) => {
     let discoveredReferences = false;
+    const activeCharacterIds = input.groupCharacterIds ?? input.characterIds;
     const existingReferenceIds = Object.keys(macroCtx.characterReferences ?? {});
-    const remainingReferenceSlots = Math.max(0, MAX_REFERENCED_CHARACTERS - existingReferenceIds.length);
+    // Names of characters already in the chat take no slot: their cards are not added again.
+    const pulledReferenceCount = existingReferenceIds.filter((id) => !activeCharacterIds.includes(id)).length;
+    const remainingReferenceSlots = Math.max(0, MAX_REFERENCED_CHARACTERS - pulledReferenceCount);
     if (remainingReferenceSlots > 0) {
       const extraContext = await buildReferencedCharacterContext({
         db: input.db,
-        activeCharacterIds: [...(input.groupCharacterIds ?? input.characterIds), ...existingReferenceIds],
+        activeCharacterIds: [...activeCharacterIds, ...existingReferenceIds],
         sources: result.activatedEntries.map((entry) => entry.content),
         chatMessages: input.lorebookScanMessages ?? input.chatMessages,
         macroCtx,

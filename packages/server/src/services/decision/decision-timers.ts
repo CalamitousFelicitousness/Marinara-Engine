@@ -1,4 +1,4 @@
-import { MAX_DECISION_TIMING_TURNS } from "@marinara-engine/shared";
+import { MAX_DECISION_TIMING_TURNS, type DecisionStatementLifetime } from "@marinara-engine/shared";
 
 /**
  * Sticky and cooldown on decision statements (#6582): `decision:"..." sticky:3 cooldown:5`,
@@ -8,13 +8,28 @@ import { MAX_DECISION_TIMING_TURNS } from "@marinara-engine/shared";
  * turns, and is not asked meanwhile, so it takes none of the turn's statement slots. A
  * turn is each new message the Decision model reads: a regeneration or swipe of the
  * same message is the same turn. Kept in chat metadata, so it survives a restart.
+ *
+ * `until:"..."` and `while:"..."` (#6922) keep a block on after a yes for as long as a
+ * second statement allows. That one is asked each turn in place of the first.
  */
+
+/**
+ * `until:"..."` or `while:"..."` on a statement (#6922), with its condition resolved.
+ * While it keeps a block on, the condition is asked each turn instead of the statement:
+ * in `and` mode during sticky, to cut it short, and in `or` mode after it.
+ */
+export interface DecisionLifetime extends Omit<DecisionStatementLifetime, "statement"> {
+  /** The condition with its macros resolved: the key its answer is stored under. */
+  key: string;
+}
 
 /** A statement's held answer: the yes it keeps during sticky, or no during cooldown. */
 export interface HeldDecision {
   yes: boolean;
   /** For a Choice statement held yes, the option it keeps. */
   choice?: string;
+  /** Held yes only if this condition, asked this turn, keeps the block on. */
+  lasts?: DecisionLifetime;
 }
 
 interface DecisionTimerEntry {
@@ -25,6 +40,8 @@ interface DecisionTimerEntry {
   /** Then held no through this turn. */
   cooldownUntil: number;
   choice?: string;
+  /** With `until`/`while` in `or` mode: the block stays on past sticky; the last turn it was kept on. */
+  open?: number;
 }
 
 interface DecisionCheckEntry {
@@ -64,12 +81,14 @@ export function readDecisionTimers(value: unknown): DecisionTimerState {
       const yesTurn = nonNegative(fields.yesTurn);
       const stickyUntil = nonNegative(fields.stickyUntil);
       const cooldownUntil = nonNegative(fields.cooldownUntil);
+      const open = nonNegative(fields.open);
       if (yesTurn === null || stickyUntil === null || cooldownUntil === null) continue;
       state.statements[key] = {
         yesTurn,
         stickyUntil,
         cooldownUntil,
         ...(typeof fields.choice === "string" ? { choice: fields.choice } : {}),
+        ...(open !== null ? { open } : {}),
       };
     }
   if (raw.checks && typeof raw.checks === "object")
@@ -94,8 +113,14 @@ export function decisionTurnFor(state: DecisionTimerState, turnId: string | null
   if (turnId && turnId !== state.turnId) {
     state.turn += 1;
     state.turnId = turnId;
+    // A block kept on by until/while has no end turn; it is dropped once nothing has asked about it for a long time.
     for (const [key, entry] of Object.entries(state.statements))
-      if (state.turn > entry.cooldownUntil) delete state.statements[key];
+      if (
+        entry.open !== undefined
+          ? state.turn >= entry.open + MAX_DECISION_TIMING_TURNS
+          : state.turn > entry.cooldownUntil
+      )
+        delete state.statements[key];
     // Kept until no `every:` could still hold it, since the number may be edited.
     for (const [key, entry] of Object.entries(state.checks))
       if (state.turn >= entry.checkedTurn + MAX_DECISION_TIMING_TURNS) delete state.checks[key];
@@ -107,7 +132,8 @@ const timerKey = (kind: "noul" | "choice", key: string) => `${kind}\u0000${key}`
 
 /**
  * What timing holds a statement to on `turn`, or undefined when it is asked as usual.
- * `every` is the statement's own `every:`, since a check is only held while it applies.
+ * `every` and `lasts` are the statement's own `every:` and `until:`/`while:`, since each
+ * only holds a statement while it is written there.
  */
 export function heldDecision(
   state: DecisionTimerState,
@@ -115,12 +141,15 @@ export function heldDecision(
   kind: "noul" | "choice",
   key: string,
   every?: number,
+  lasts?: DecisionLifetime,
 ): HeldDecision | undefined {
   const entry = state.statements[timerKey(kind, key)];
   // The yes turn itself reads the answer it was given, so a regeneration matches it.
   if (entry && turn > entry.yesTurn) {
-    if (turn <= entry.stickyUntil)
-      return { yes: true, ...(entry.choice !== undefined ? { choice: entry.choice } : {}) };
+    const sticky = turn <= entry.stickyUntil;
+    // until/while: `and` can cut sticky short, `or` keeps the block on after it.
+    if (lasts && (lasts.mode === "and" ? sticky : !sticky && entry.open !== undefined)) return { yes: true, lasts };
+    if (sticky) return { yes: true, ...(entry.choice !== undefined ? { choice: entry.choice } : {}) };
     if (turn <= entry.cooldownUntil) return { yes: false };
   }
   // Between `every:` checks it reads as no; the check turn itself reads its own answer.
@@ -145,17 +174,45 @@ export function recordDecisionCheck(
 export function recordDecisionTimer(
   state: DecisionTimerState,
   turn: number,
-  decision: { kind: "noul" | "choice"; key: string; sticky?: number; cooldown?: number },
+  decision: {
+    kind: "noul" | "choice";
+    key: string;
+    sticky?: number;
+    cooldown?: number;
+    lasts?: DecisionLifetime;
+  },
   answer: { yes?: boolean; choice?: string },
 ): void {
   const sticky = decision.sticky ?? 0;
   const cooldown = decision.cooldown ?? 0;
-  if (sticky + cooldown <= 0) return;
+  if (sticky + cooldown <= 0 && !decision.lasts) return;
   if (decision.kind === "noul" ? answer.yes !== true : answer.choice === undefined) return;
   state.statements[timerKey(decision.kind, decision.key)] = {
     yesTurn: turn,
     stickyUntil: turn + sticky,
     cooldownUntil: turn + sticky + cooldown,
     ...(decision.kind === "choice" ? { choice: answer.choice } : {}),
+    ...(decision.lasts?.mode === "or" ? { open: turn } : {}),
   };
+}
+
+/**
+ * After a block's until/while condition is answered on `turn` (#6922): keep the block
+ * on, or turn it off there and start its cooldown, as after sticky.
+ */
+export function recordDecisionLifetime(
+  state: DecisionTimerState,
+  turn: number,
+  decision: { kind: "noul" | "choice"; key: string; cooldown?: number },
+  stays: boolean,
+): void {
+  const entry = state.statements[timerKey(decision.kind, decision.key)];
+  if (!entry) return;
+  if (stays) {
+    if (entry.open !== undefined) entry.open = turn;
+    return;
+  }
+  delete entry.open;
+  entry.stickyUntil = Math.min(entry.stickyUntil, turn - 1);
+  entry.cooldownUntil = turn + (decision.cooldown ?? 0);
 }

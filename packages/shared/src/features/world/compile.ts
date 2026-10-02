@@ -37,6 +37,10 @@ export interface WorldPlace {
   lore?: string[];
   /** True for a place the brief named; false for one the compile drew. */
   named: boolean;
+  /** The names it went by before a hand edit renamed it, still read as it (worldgen W9c). */
+  aliases?: string[];
+  /** A place added by hand, in the world's edit layer, rather than compiled. */
+  byHand?: true;
 }
 
 export interface WorldLink {
@@ -178,10 +182,14 @@ function shareOut(
   });
 }
 
+/** The kit's ground classes, in the order a world's ground indexes them: one open class when the kit
+ *  names none. */
+export function worldTerrainEntries(kit: WorldKit) {
+  return kit.terrain ?? [{ id: kit.layers[0]!.id, label: kit.layers[0]!.label, kind: "open" as const, share: 1 }];
+}
+
 function compileGround(seed: number, kit: WorldKit, width: number, height: number) {
-  const terrain = kit.terrain ?? [
-    { id: kit.layers[0]!.id, label: kit.layers[0]!.label, kind: "open" as const, share: 1 },
-  ];
+  const terrain = worldTerrainEntries(kit);
   const elevation = valueNoise(seed, "elevation", width, height);
   const moisture = valueNoise(seed, "moisture", width, height);
   const classes = terrain.map((entry, index) => ({ index, share: entry.share, kind: entry.kind }));
@@ -621,7 +629,9 @@ export function compileWorld({ seed, kit, brief, strict = false }: WorldCompileI
 
 // ── Links: a connected web over the settlements, each trip by the way that fits the ground ──
 
-function compileLinks(
+/** The ways between settlements: a connected web over them, each trip by the way that fits the ground.
+ *  Exported for the edit layer, which lays them again when places move or the ground is painted. */
+export function compileLinks(
   kit: WorldKit,
   kinds: Uint8Array,
   terrain: Array<{ kind: string }>,

@@ -9,7 +9,8 @@
 // ──────────────────────────────────────────────
 import type { WorldChangeKind } from "../../schemas/world-kit.schema.js";
 import { worldStream, type WorldPlace } from "./compile.js";
-import type { GameWorld } from "./game-world.js";
+import { worldPlaceNamed } from "./edits.js";
+import { compileGameWorld, type GameWorld } from "./game-world.js";
 import { worldFullName } from "./people.js";
 
 /** Days in one step of the world in play. */
@@ -89,15 +90,18 @@ export function stepWorld(game: GameWorld, state: WorldEngineState, step: number
   const on = (kind: WorldChangeKind) => kit.change.kinds[kind].on;
   const random = worldStream(seed, "play", String(step));
   const day = step * WORLD_STEP_DAYS;
+  // ponytail: a settlement added by hand (W9c) is left out of the world's own changes, so adding one never
+  // rewrites the weeks already played (the present is folded again from day 0). Its fortune stays where
+  // it started; stamping the day it was added and joining it from then is the upgrade.
   const settlements = world.places.filter(
-    (place) => place.rank !== undefined && !state.ruined.includes(place.id) && place.id !== partyAt,
+    (place) => place.rank !== undefined && !place.byHand && !state.ruined.includes(place.id) && place.id !== partyAt,
   );
   const say = (news: Omit<WorldNews, "day">) => state.news.push({ day, ...news });
   const seatOf = (name: string) => {
     const seat =
       brief.groups.find((group) => group.name === name)?.seat ??
       state.groups.find((group) => group.name === name)?.seat;
-    return seat ? world.places.find((place) => place.name.toLowerCase() === seat.toLowerCase()) : undefined;
+    return worldPlaceNamed(world.places, seat);
   };
   // One name, one group: a group the story brings back under a gone brief group's name is listed once.
   const living = [...new Set([...brief.groups.map((group) => group.name), ...state.groups.map((group) => group.name)])]
@@ -248,9 +252,12 @@ export function stepWorld(game: GameWorld, state: WorldEngineState, step: number
   }
 }
 
-/** Days from each settlement to `from` along the world's links (none for a place no way reaches). */
+/** Days from each settlement to `from` along the world's links (none for a place no way reaches). The
+ *  links are the compiled world's: how far word and change travel is the world's own, which hand edits
+ *  (W9c) never rewrite for the weeks already played, as they never rewrite its history. */
 export function worldTravelDays(game: GameWorld, from: string): Map<string, number> {
-  const known = travelCache.get(game.world);
+  const links = game.edits ? compileGameWorld({ ...game, edits: undefined }).links : game.world.links;
+  const known = travelCache.get(links);
   const cached = known?.get(from);
   if (cached) return cached;
   const days = new Map<string, number>([[from, 0]]);
@@ -258,7 +265,7 @@ export function worldTravelDays(game: GameWorld, from: string): Map<string, numb
   while (queue.length) {
     queue.sort((a, b) => days.get(a)! - days.get(b)!);
     const at = queue.shift()!;
-    for (const link of game.world.links) {
+    for (const link of links) {
       const other = link.from === at ? link.to : link.to === at ? link.from : undefined;
       if (!other) continue;
       const total = days.get(at)! + link.days;
@@ -270,7 +277,7 @@ export function worldTravelDays(game: GameWorld, from: string): Map<string, numb
   }
   const map = known ?? new Map<string, Map<string, number>>();
   map.set(from, days);
-  travelCache.set(game.world, map);
+  travelCache.set(links, map);
   return days;
 }
 const travelCache = new WeakMap<object, Map<string, Map<string, number>>>();

@@ -8,6 +8,19 @@ import {
 import { rejectGenerationOutput, type GenerationOutput } from "./generate/sse.js";
 import { resolveStoredChatOptions, resolveStoredMaxTokens } from "../services/generation/generation-parameters.js";
 import { normalizeGameDifficulty, normalizeWeatherType, combatWeatherSchema } from "@marinara-engine/shared";
+import {
+  checkWorldEdits,
+  compileGameWorld,
+  worldCast,
+  worldCastSize,
+  worldEditsEmpty,
+  worldEditsSchema,
+  worldGroundLooks,
+  worldKitArtFamily,
+  worldTerrainEntries,
+  type CompiledWorld,
+  type WorldPlace,
+} from "@marinara-engine/shared";
 import { resolveCombatWeather } from "../services/game/weather.service.js";
 import { resolveGameConnection } from "../services/game/connection.service.js";
 import { combatAiHintsSchema, combatTacticsSchema, combatInterruptFields } from "@marinara-engine/shared";
@@ -5986,6 +5999,54 @@ export interface GameRouteOptions {
 
 export type CreateGameRequest = z.input<typeof createGameSchema>;
 export type SetupGameRequest = z.input<typeof setupSchema>;
+/** Why an edit layer does not fit a world, or nothing: checked against the world as compiled. */
+function worldEditIssues(game: Omit<GameWorld, "world">, edits: unknown): string[] {
+  const parsed = worldEditsSchema.safeParse(edits);
+  if (!parsed.success) return [parsed.error.issues[0]?.message ?? "The edits do not read."];
+  const compiled = compileGameWorld({ ...game, edits: undefined });
+  const byId = new Map(compiled.places.map((place) => [place.id, place]));
+  return checkWorldEdits(game.kit, compiled, parsed.data, (place: WorldPlace) => {
+    const settlement = place.rank !== undefined ? place : place.parentId ? byId.get(place.parentId) : undefined;
+    return settlement?.rank !== undefined ? worldCastSize(place, settlement) : 0;
+  });
+}
+
+/** A game's world as compiled, in the shape a world editor draws: the ground and its classes (with the
+ *  look each is drawn as), the places, and the kit's words for layers, sizes and tags. */
+function worldForEditor(game: GameWorld) {
+  const compiled: CompiledWorld = compileGameWorld({ ...game, edits: undefined });
+  const looks = worldGroundLooks({ ...game, world: compiled });
+  const terrain = worldTerrainEntries(game.kit);
+  return {
+    width: compiled.width,
+    height: compiled.height,
+    ground: compiled.ground,
+    terrain: compiled.terrain.map((id, index) => {
+      const entry = terrain.find((each) => each.id === id);
+      return { id, label: entry?.label ?? id, kind: entry?.kind ?? "open", look: looks[index] };
+    }),
+    places: compiled.places.map((place) => ({
+      id: place.id,
+      name: place.name,
+      layer: place.layer,
+      depth: place.depth,
+      parentId: place.parentId,
+      at: place.at,
+      ...(place.size ? { size: place.size, rank: place.rank } : {}),
+      tags: place.tags,
+    })),
+    startId: compiled.startId,
+    layers: game.kit.layers.map((layer) => ({
+      id: layer.id,
+      label: layer.label,
+      settlements: Boolean(layer.settlements),
+    })),
+    sizes: game.kit.sizes.map((size) => ({ id: size.id, label: size.label })),
+    placeTags: game.kit.placeTags.map((tag) => ({ id: tag.id, label: tag.label })),
+    family: worldKitArtFamily(game.kit) ?? null,
+  };
+}
+
 export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions = {}) {
   registerSequentialGameTasks(app, [
     "/setup",
@@ -6574,6 +6635,19 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
             : requestedWorld.generatorVersion !== WORLD_GENERATOR_VERSION
               ? "This world was made by another version of the generator."
               : `The world's brief does not hold together: ${checked && !checked.ok ? checked.issues[0] : ""}`,
+          code: "world_invalid",
+        });
+      }
+      // Hand edits (worldgen W9c) sent with a world are held to what a saved edit layer is.
+      const editIssues = requestedWorld.edits
+        ? worldEditIssues(
+            { kit, seed: requestedWorld.seed, grounding: requestedWorld.grounding, brief: checked.brief },
+            requestedWorld.edits,
+          )
+        : [];
+      if (editIssues.length) {
+        return rejectGenerationOutput(reply, 400, {
+          error: `The world's hand edits do not fit it: ${editIssues[0]}`,
           code: "world_invalid",
         });
       }
@@ -10851,6 +10925,97 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       time: formatGameTime(time),
     });
     return { visit, at: to, minutes, time, formatted: formatGameTime(time) };
+  });
+
+  // ── The world editor (worldgen W9c): a game's world as compiled, its hand edits, a place's people ──
+  // The editor draws the compiled world with its edit layer on top and saves the whole layer; the
+  // Engine checks every layer against the world it edits.
+
+  // GET /game/worlds: the games with a world, for an editor to pick from.
+  app.get("/worlds", async () => {
+    const worlds: Array<{
+      chatId: string;
+      name: string;
+      updatedAt: string;
+      kit: string;
+      family: string | null;
+      edited: boolean;
+    }> = [];
+    for (const chat of await createChatsStorage(app.db).list()) {
+      if (chat.mode !== "game") continue;
+      const meta = parseMeta(chat.metadata);
+      if (meta.gameWorld == null) continue;
+      const kit = gameWorldKitFromMetadata(meta);
+      const stored = gameWorldSchema.safeParse(meta.gameWorld);
+      if (!kit || !stored.success || stored.data.generatorVersion !== WORLD_GENERATOR_VERSION) continue;
+      worlds.push({
+        chatId: chat.id,
+        name: chat.name,
+        updatedAt: chat.updatedAt,
+        kit: kit.label,
+        family: worldKitArtFamily(kit) ?? null,
+        edited: !worldEditsEmpty(stored.data.edits),
+      });
+    }
+    return { worlds };
+  });
+
+  // GET /game/:chatId/world/edit: the world as compiled (before any edit), in a shape an editor draws,
+  // the stored edit layer, and the ways as they run with it.
+  app.get<{ Params: { chatId: string } }>("/:chatId/world/edit", async (req, reply) => {
+    const chat = await createChatsStorage(app.db).getById(req.params.chatId);
+    if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    const game = chat.mode === "game" ? gameWorldFromMetadata(parseMeta(chat.metadata)) : null;
+    if (!game) return reply.status(404).send({ error: "This game has no world." });
+    return { world: worldForEditor(game), edits: game.edits ?? null, links: game.world.links };
+  });
+
+  // PUT /game/:chatId/world/edits: the whole edit layer, checked against the world; an empty one clears it.
+  app.put<{ Params: { chatId: string } }>("/:chatId/world/edits", async (req, reply) => {
+    const { chatId } = req.params;
+    const parsed = worldEditsSchema.safeParse((req.body as { edits?: unknown } | undefined)?.edits);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      return reply.status(400).send({ error: `The edits do not read: ${issue?.path.join(".")}: ${issue?.message}` });
+    }
+    const chats = createChatsStorage(app.db);
+    const chat = await chats.getById(chatId);
+    if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    const game = chat.mode === "game" ? gameWorldFromMetadata(parseMeta(chat.metadata)) : null;
+    if (!game) return reply.status(404).send({ error: "This game has no world." });
+    const issues = worldEditIssues(game, parsed.data);
+    if (issues.length) return reply.status(400).send({ error: issues.join(" "), issues });
+    const edits = worldEditsEmpty(parsed.data) ? undefined : parsed.data;
+    const updated = await chats.patchMetadata(chatId, (fresh) => {
+      // The world is the same one the edits were checked against: a world is written once, at creation.
+      if (!fresh.gameWorld || typeof fresh.gameWorld !== "object") {
+        throw Object.assign(new Error("This game has no world."), { statusCode: 404 });
+      }
+      const { edits: _old, ...stored } = fresh.gameWorld as Record<string, unknown>;
+      return { gameWorld: edits ? { ...stored, edits } : stored };
+    });
+    if (!updated) return reply.status(404).send({ error: "Chat not found" });
+    const world = compileGameWorld({ ...game, edits });
+    logger.info("[game/world] %s: hand edits %s", chatId, edits ? "saved" : "cleared");
+    return { edits: edits ?? null, links: world.links };
+  });
+
+  // GET /game/:chatId/world/people?place=: a place's people as the game has them, edits applied.
+  app.get<{ Params: { chatId: string } }>("/:chatId/world/people", async (req, reply) => {
+    const { place } = z.object({ place: z.string().min(1).max(16) }).parse(req.query);
+    const chat = await createChatsStorage(app.db).getById(req.params.chatId);
+    if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    const game = chat.mode === "game" ? gameWorldFromMetadata(parseMeta(chat.metadata)) : null;
+    if (!game) return reply.status(404).send({ error: "This game has no world." });
+    return {
+      people: worldCast(game, place).map((person) => ({
+        id: person.id,
+        name: person.name,
+        named: person.named,
+        role: person.role,
+        byHand: person.id.includes("-e"),
+      })),
+    };
   });
 
   // ── GET /game/:chatId/overworld ──

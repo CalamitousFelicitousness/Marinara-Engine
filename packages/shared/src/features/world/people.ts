@@ -9,6 +9,7 @@
 import type { WorldKit } from "../../schemas/world-kit.schema.js";
 import type { GameNpc } from "../../types/game.js";
 import { worldStream, type WorldPlace } from "./compile.js";
+import { worldPlaceNamed } from "./edits.js";
 import type { GameWorld } from "./game-world.js";
 
 /** The words a kit's people are drawn in when the kit leaves them out. Plain, setting-neutral words. */
@@ -141,7 +142,7 @@ export function worldCastSize(place: WorldPlace, settlement: WorldPlace): number
  * The people of one place: a settlement, or a place inside one (its own, fewer). A place above the
  * settlements (a province, a system) has no people of its own. Names are unique within the place.
  */
-export function worldCast({ kit, brief, world, seed }: GameWorld, placeId: string): WorldPerson[] {
+export function worldCast({ kit, brief, world, seed, edits }: GameWorld, placeId: string): WorldPerson[] {
   const byId = new Map(world.places.map((place) => [place.id, place]));
   const place = byId.get(placeId);
   if (!place) return [];
@@ -155,10 +156,8 @@ export function worldCast({ kit, brief, world, seed }: GameWorld, placeId: strin
     item: role.label,
     weight: !role.tags?.length ? 1 : role.tags.some((tag) => placeTags.has(tag)) ? 4 : 0.15,
   }));
-  const groupsHere = brief.groups.filter(
-    (group) =>
-      group.seat && [place.name, settlement.name].some((name) => name.toLowerCase() === group.seat!.toLowerCase()),
-  );
+  // A seat names the place as the brief did, which a hand edit may since have renamed.
+  const groupsHere = brief.groups.filter((group) => worldPlaceNamed([place, settlement], group.seat) !== undefined);
   const outerPlaces = world.places.filter((each) => each.depth <= 1 && each.size === undefined);
 
   const used = new Set<string>();
@@ -211,6 +210,31 @@ export function worldCast({ kit, brief, world, seed }: GameWorld, placeId: strin
       build: pick(words.builds, random),
       hair: pick(words.hair, random),
       mark: pick(words.marks, random),
+    });
+  }
+  // The hand edits (W9c): people renamed, and people added, each drawn the rest of the way from their
+  // own id so they read the same every time.
+  for (const rename of edits?.people ?? []) {
+    const person = people.find((each) => each.id === rename.id);
+    if (person) Object.assign(person, { name: rename.name.trim(), named: true });
+  }
+  for (const added of edits?.addedPeople ?? []) {
+    if (added.placeId !== place.id) continue;
+    const drawn = worldStream(seed, "cast-by-hand", added.id);
+    people.push({
+      id: added.id,
+      name: added.name.trim(),
+      named: true,
+      placeId: place.id,
+      culture: place.culture,
+      role: added.role?.trim() || weighted(roleWeights, drawn),
+      temperament: pick(words.temperaments, drawn),
+      value: pick(words.values, drawn),
+      speech: pick(words.speech, drawn),
+      age: pick(words.ages, drawn),
+      build: pick(words.builds, drawn),
+      hair: pick(words.hair, drawn),
+      mark: pick(words.marks, drawn),
     });
   }
   return people;

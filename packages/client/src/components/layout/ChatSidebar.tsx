@@ -46,7 +46,7 @@ import { useCharacterSummaries } from "../../hooks/use-characters";
 import { handleFolderRenameKeyDown, useFolderRenameGesture } from "../../hooks/use-folder-rename-gesture";
 import { useChatStore } from "../../stores/chat.store";
 import { confirmNonEmptyFolderDelete, showConfirmDialog } from "../../lib/app-dialogs";
-import { useUIStore, type UserStatus } from "../../stores/ui.store";
+import { isMobileShellViewport, useUIStore, type UserStatus } from "../../stores/ui.store";
 import { cn, getAvatarCropStyle } from "../../lib/utils";
 import { chatBackgroundMetadataToUrl } from "../../lib/backgrounds";
 import { formatRelativeContact } from "../../lib/relative-time";
@@ -667,7 +667,7 @@ export function ChatSidebar() {
       const connectionRows = ((connections ?? []) as Array<{ id: string }>).filter((connection) => !!connection.id);
       if (connectionRows.length === 0) {
         setPendingNewChatMode(mode, "sidebar");
-        if (typeof window !== "undefined" && window.innerWidth < 768) setSidebarOpen(false);
+        if (isMobileShellViewport()) setSidebarOpen(false);
         return;
       }
 
@@ -692,7 +692,7 @@ export function ChatSidebar() {
         {
           onSuccess: (chat) => {
             setActiveChatId(chat.id);
-            if (typeof window !== "undefined" && window.innerWidth < 768) setSidebarOpen(false);
+            if (isMobileShellViewport()) setSidebarOpen(false);
             useChatStore.getState().setShouldOpenSettings(true);
             useChatStore.getState().setShouldOpenWizard(true);
             if (starred) {
@@ -1009,7 +1009,7 @@ export function ChatSidebar() {
           }
           internalNavRef.current = true;
           setActiveChatId(chat.id);
-          if (window.innerWidth < 768) setSidebarOpen(false);
+          if (isMobileShellViewport()) setSidebarOpen(false);
         }}
         className={cn(
           "group relative isolate flex w-full touch-pan-y items-center gap-2.5 overflow-hidden rounded-lg px-3 py-2.5 text-left transition-all duration-150",

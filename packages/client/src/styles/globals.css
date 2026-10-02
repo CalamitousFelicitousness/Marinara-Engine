@@ -6191,7 +6191,11 @@ strong {
   .mari-gallery-image-actions .mari-chrome-accent-surface {
     @apply border-transparent bg-white/20 text-white hover:bg-white/30;
   }
+}
 
+/* Touch tablets get the phone shell (MOBILE_SHELL_MEDIA_QUERY in ui.store.ts),
+   so they also need its keyboard-aware viewport. */
+@media (max-width: 767px), (max-width: 1440px) and (hover: none) and (any-pointer: coarse) {
   /*
    * WKWebView native backing color is set by the literal background-color in
    * index.html <style> (inline critical CSS — not cached by SW, always fresh).
@@ -6292,7 +6296,9 @@ strong {
     height: var(--mari-visual-viewport-height, 100dvh);
     min-height: 0;
   }
+}
 
+@media (max-width: 767px) {
   .app-sidebar-mobile {
     position: fixed !important;
     inset: 0 !important;

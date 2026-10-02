@@ -6,6 +6,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - **Image Captioning** in Chat Settings now shows its prompt in a box under the toggle, so you can change how images are described (for example, ask for more detail) or reset it to the default. If captioning fails, the reply now stops with an error instead of quietly sending the image to the chat model (#6960).
 
+- GLM models on NanoGPT, such as GLM 4.7 and 5.1, now stop reasoning when Reasoning Effort is **Off**, whether the chat sets Off itself or takes it from the connection's Default Chat Parameters. Before, they kept reasoning anyway and could spend the whole reply budget on it, ending with a message to raise Max Tokens (#6961).
+
 - On iPad, tapping a chat in the chat list now opens it instead of leaving the list on top, and buttons that start a chat or open a page from a full-screen panel close that panel too. The keyboard no longer covers a message you are editing, and **Copy Support Diagnostics** now copies (#6944).
 
 - Removing a chat variable in Chat Settings now asks first, so one stray tap on a phone no longer deletes it. Cancel, or tap outside the question, and the variable stays (#6942).

@@ -120,11 +120,7 @@ export async function gameTilePacksRoutes(app: FastifyInstance) {
   // ── POST /api/game-tile-packs/import ── a share file.
   app.post("/import", { bodyLimit: IMPORT_BODY_LIMIT }, async (req, reply) => {
     if (!requirePrivilegedAccess(req, reply, { feature: "Tile pack import" })) return;
-    const { definition } = z.object({ definition: z.string().min(1) }).parse(req.body);
-    if (Buffer.byteLength(definition, "utf8") > TILE_PACK_MAX_BYTES) {
-      return reply.status(400).send({ error: "The file is larger than a tile pack can be." });
-    }
-    const read = parseTilePack(definition);
+    const read = parseTilePack(z.object({ definition: z.string().min(1) }).parse(req.body).definition);
     if (!read.ok)
       return reply.status(400).send({ error: `The tile pack is not usable: ${read.issues.slice(0, 5).join("; ")}` });
     return save(reply, read.pack, read.notes);

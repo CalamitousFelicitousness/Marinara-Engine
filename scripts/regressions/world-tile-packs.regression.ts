@@ -86,6 +86,11 @@ try {
     assert.equal((await save(pack({ version: 2, tiles: { grass: [rows("1")] } }))).json().status, "added");
     const served = await app.inject({ method: "GET", url: "/api/game-tile-packs/pack?id=local/my-meadows" });
     assert.equal(served.json().pack.version, 2, "the latest version");
+    assert.equal(
+      (await library()).packs.find((listed: { id: string }) => listed.id === "local/my-meadows")?.version,
+      2,
+      "the library lists the latest version",
+    );
     assert.deepEqual(served.json().pack.tiles.grass, [rows("1")]);
     assert.equal(
       (await save({ ...pack(), palette: ["nope"] } as TilePack)).statusCode,

@@ -33,6 +33,7 @@ import {
   worldPresent,
   worldRoute,
   worldTown,
+  worldTravelDays,
   type GameWorld,
   type WorldEdits,
   type WorldPlace,
@@ -53,7 +54,15 @@ const settlementLayer = kit.layers.find((layer) => layer.settlements)!;
 const checked = checkWorldBrief(kit, {
   briefVersion: 1,
   premise: "x",
-  places: [{ name: "Ashford", layer: settlementLayer.id, size: kit.sizes.at(-1)!.id, tags: [] }],
+  places: [
+    { name: "Ashford", layer: settlementLayer.id, size: kit.sizes.at(-1)!.id, tags: [] },
+    {
+      name: "The Gilded Cup",
+      layer: kit.layers[kit.layers.indexOf(settlementLayer) + 1]!.id,
+      parent: "Ashford",
+      tags: [],
+    },
+  ],
   groups: [{ name: "The Wardens", kind: kit.groupKinds[0]!.id, seat: "Ashford", allies: [], rivals: [] }],
   peopleNames: kit.cultures.map((culture) => ({
     culture: culture.id,
@@ -121,7 +130,15 @@ try {
     const answered = applyWorldTags(`[world: deed="improve" place="${city.name}"]`, game, []);
     assert.match(answered, /place="Newhaven"/);
     assert.match(answered, /result="ok"/);
-    assert.deepEqual(worldHistory(game), worldHistory(base), "the past is the compiled world's");
+    // The past is the compiled world's: told with the names it had then (the first history read here is
+    // the edited world's, so nothing cached stands in for it).
+    const past = worldHistory(game);
+    assert.ok(
+      past.events.some((event) => event.text.includes("Ashford")),
+      "(Ashford's past is told)",
+    );
+    assert.ok(!past.events.some((event) => event.text.includes("Newhaven")), "not under its new name");
+    assert.deepEqual(past, worldHistory(base));
     // A group seated there is still seated there: its people, its place in the overview, its doings.
     const groupsOf = (world: GameWorld) => worldCast(world, city.id).map((person) => person.group ?? null);
     assert.ok(groupsOf(base).includes("The Wardens"), "(some of the Wardens live in Ashford)");
@@ -150,6 +167,7 @@ try {
     assert.ok(before && after, "still reachable");
     assert.notEqual(after.days, before.days, "the trip takes another time");
     assert.deepEqual(worldHistory(game), worldHistory(base), "the past is the compiled world's");
+    assert.deepEqual(worldTravelDays(game, city.id), worldTravelDays(base, city.id), "word travels the compiled ways");
   }
 
   // ── Places added by hand ──
@@ -195,9 +213,11 @@ try {
     assert.ok(worldRoute(game.world, city.id, "e1"), "and the party can walk there");
     assert.deepEqual(worldHistory(game), worldHistory(base), "no past for it, and none rewritten");
     // The living world leaves it alone, so the weeks already played are the same.
-    const ledger = [{ days: "365" }, { days: "365" }, { days: "365" }];
-    const present = worldPresent(game, ledger);
+    // A ledger of its own, read first for the world without the edit: the present is kept per edit layer.
+    const ledger = [{ days: "365" }, { days: "365" }, { days: "364" }];
     const plain = worldPresent(base, ledger);
+    const present = worldPresent(game, ledger);
+    assert.equal(typeof present.fortune.e1, "number", "Stonebridge is in the present");
     assert.equal(present.fortune.e1, worldPresent(game, []).fortune.e1, "its fortune as it started");
     assert.equal(plain.fortune.e1, undefined, "the world without the edit has no Stonebridge");
     assert.ok(plain.news.length > 0, "(three years of the world's own changes)");
@@ -235,6 +255,41 @@ try {
     assert.ok(town.homeOf[wren.id], "the person added by hand has a home");
     for (const person of worldCast(game, "e2"))
       assert.equal(town.workOf[person.id], "e2", `${person.name} works at The Lantern`);
+  }
+
+  // ── A town whose settlements have places of their own (a town-scale kit): someone added by hand never
+  // moves anyone already living there ──
+  {
+    const modern = parseWorldKit(WORLD_STARTER_KITS.find((each) => each.id === "modern_day")!);
+    assert.ok(modern.ok);
+    const townKit = modern.kit;
+    const read = checkWorldBrief(townKit, {
+      briefVersion: 1,
+      premise: "x",
+      peopleNames: townKit.cultures.map((culture) => ({
+        culture: culture.id,
+        given: ["Ama", "Tobin", "Hesk", "Mira", "Oswin", "Bryn", "Calla", "Doran"],
+        family: ["Holt", "Drey", "Marrow", "Vane"],
+        order: "given-family" as const,
+      })),
+    });
+    assert.ok(read.ok);
+    const townInputs = { kit: townKit, seed: 4242, grounding: "expand" as const, brief: read.brief };
+    const plainGame: GameWorld = { ...townInputs, world: compileGameWorld(townInputs) };
+    const home = plainGame.world.places.find(
+      (place) => place.rank !== undefined && plainGame.world.places.some((each) => each.parentId === place.id),
+    )!;
+    assert.ok(home, "(a settlement with places of its own)");
+    const edits: WorldEdits = {
+      editsVersion: 1,
+      addedPeople: [{ id: `${home.id}-e1`, placeId: home.id, name: "Wren Hollis" }],
+    };
+    const withWren: GameWorld = { ...townInputs, edits, world: compileGameWorld({ ...townInputs, edits }) };
+    const before = worldTown(plainGame, home.id)!;
+    const after = worldTown(withWren, home.id)!;
+    for (const person of before.people)
+      assert.equal(after.homeOf[person.id], before.homeOf[person.id], `${person.name} keeps their home`);
+    assert.ok(after.homeOf[`${home.id}-e1`], "Wren has a home too");
   }
 
   // ── Checked strictly when saved ──

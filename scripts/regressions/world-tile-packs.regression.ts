@@ -93,7 +93,7 @@ try {
       "a pack that does not read",
     );
 
-    // Imported from a file, kept as it came and filed under local/.
+    // Imported from a file, filed under local/.
     const file = JSON.stringify(pack({ id: "shared-pack", name: "Shared" }), null, 2);
     const imported = await app.inject({
       method: "POST",
@@ -103,6 +103,33 @@ try {
     assert.equal(imported.statusCode, 200, imported.body);
     assert.equal(imported.json().pack.id, "local/shared-pack");
     assert.equal((await library()).packs.length, 2);
+    // The same file again is unchanged, and so is the same pack saved back from the maker.
+    const again = await app.inject({
+      method: "POST",
+      url: "/api/game-tile-packs/import",
+      payload: { definition: file },
+    });
+    assert.equal(again.json().status, "unchanged");
+    const readBack = (await app.inject({ method: "GET", url: "/api/game-tile-packs/pack?id=local/shared-pack" })).json()
+      .pack;
+    assert.equal((await save(readBack)).json().status, "unchanged", "saved back as it was read");
+    // An id too long to file under local/ is refused, never cut short into another pack's.
+    assert.equal((await save(pack({ id: "a".repeat(78) }))).statusCode, 400);
+    // A save larger than a share file can be is refused, as an import of it is.
+    const oversized = pack({
+      id: "oversized",
+      tiles: Object.fromEntries(
+        Array.from({ length: 500 }, (_, at) => [`extra${at}`, Array.from({ length: 8 }, () => rows("0"))]),
+      ),
+    });
+    assert.ok(JSON.stringify(oversized).length > 1_000_000, "(larger than a share file)");
+    assert.equal((await save(oversized)).statusCode, 413);
+    const oversizedFile = await app.inject({
+      method: "POST",
+      url: "/api/game-tile-packs/import",
+      payload: { definition: JSON.stringify(oversized) },
+    });
+    assert.equal(oversizedFile.statusCode, 400);
 
     // A family drawn with a stored pack, and back to its own when the pack is removed.
     const choose = (packId: string | null) =>

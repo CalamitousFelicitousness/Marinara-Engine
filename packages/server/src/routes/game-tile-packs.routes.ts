@@ -24,10 +24,17 @@ const BUILT_IN_DIR = fileURLToPath(new URL("../assets/overworld-tiles/", import.
 /** Which stored pack each family is drawn with, in app settings. */
 const SELECTION_KEY = "gameTilePackSelection";
 const LOCAL = "local/";
-/** A body carrying a whole pack: its JSON escaping can make a byte up to six. */
-const BODY_LIMIT = TILE_PACK_MAX_BYTES * 6 + 16_384;
+/** A pack saved from the maker is no larger than a share file can be. */
+const SAVE_BODY_LIMIT = TILE_PACK_MAX_BYTES + 16_384;
+/** A share file sent as text: its JSON escaping can make a byte up to six. */
+const IMPORT_BODY_LIMIT = TILE_PACK_MAX_BYTES * 6 + 16_384;
 
-const localId = (id: string) => (id.startsWith(LOCAL) ? id : `${LOCAL}${id}`).slice(0, 80);
+/** The id a pack is filed by, under `local/`; none when that would be longer than an id can be (cutting
+ *  it short could file two packs as one). */
+const localId = (id: string) => {
+  const filed = id.startsWith(LOCAL) ? id : `${LOCAL}${id}`;
+  return filed.length <= 80 ? filed : null;
+};
 const familySchema = z.string().trim().min(1).max(40);
 
 /** A stored row read back as a pack, under the id it is filed by. */
@@ -48,11 +55,14 @@ export async function gameTilePacksRoutes(app: FastifyInstance) {
     }
   };
 
-  /** Store a checked pack (a save from the maker, or an imported file) under its local id. */
-  const save = async (reply: FastifyReply, pack: TilePack, definition: string, notes: string[]) => {
-    const filed = { ...pack, id: localId(pack.id) };
+  /** Store a checked pack (a save from the maker, or an imported file) under its local id, as the same
+   *  text either way, so the same tiles saved again are recognised whatever way they came. */
+  const save = async (reply: FastifyReply, pack: TilePack, notes: string[]) => {
+    const id = localId(pack.id);
+    if (!id) return reply.status(400).send({ error: "The tile pack's id is too long." });
+    const filed = { ...pack, id };
     try {
-      const { status, row } = await store.put(filed, definition);
+      const { status, row } = await store.put(filed, JSON.stringify(filed));
       logger.info("[game/tile-packs] %s version %d: %s", row.packId, row.version, status);
       return { status, pack: { id: row.packId, version: row.version, name: row.name, family: row.family }, notes };
     } catch (error) {
@@ -99,17 +109,16 @@ export async function gameTilePacksRoutes(app: FastifyInstance) {
   });
 
   // ── POST /api/game-tile-packs ── a pack saved from the maker.
-  app.post("/", { bodyLimit: BODY_LIMIT }, async (req, reply) => {
+  app.post("/", { bodyLimit: SAVE_BODY_LIMIT }, async (req, reply) => {
     if (!requirePrivilegedAccess(req, reply, { feature: "Tile pack save" })) return;
     const read = parseTilePack(z.object({ pack: z.unknown() }).parse(req.body).pack);
     if (!read.ok)
       return reply.status(400).send({ error: `The tile pack is not usable: ${read.issues.slice(0, 5).join("; ")}` });
-    const filed = { ...read.pack, id: localId(read.pack.id) };
-    return save(reply, filed, JSON.stringify(filed), read.notes);
+    return save(reply, read.pack, read.notes);
   });
 
-  // ── POST /api/game-tile-packs/import ── a share file, kept as it arrived.
-  app.post("/import", { bodyLimit: BODY_LIMIT }, async (req, reply) => {
+  // ── POST /api/game-tile-packs/import ── a share file.
+  app.post("/import", { bodyLimit: IMPORT_BODY_LIMIT }, async (req, reply) => {
     if (!requirePrivilegedAccess(req, reply, { feature: "Tile pack import" })) return;
     const { definition } = z.object({ definition: z.string().min(1) }).parse(req.body);
     if (Buffer.byteLength(definition, "utf8") > TILE_PACK_MAX_BYTES) {
@@ -118,7 +127,7 @@ export async function gameTilePacksRoutes(app: FastifyInstance) {
     const read = parseTilePack(definition);
     if (!read.ok)
       return reply.status(400).send({ error: `The tile pack is not usable: ${read.issues.slice(0, 5).join("; ")}` });
-    return save(reply, read.pack, definition, read.notes);
+    return save(reply, read.pack, read.notes);
   });
 
   // ── DELETE /api/game-tile-packs?id= ── every version, and any family it was chosen for goes back to

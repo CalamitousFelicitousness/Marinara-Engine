@@ -97,14 +97,16 @@ export interface TilePackLibrary {
 
 export const tilePackKeys = {
   library: ["game", "tile-packs"] as const,
-  pack: (family: string, chosen: string | null) => ["game", "tile-packs", "pack", family, chosen] as const,
+  pack: (family: string, chosen: string | null, version: number | null) =>
+    ["game", "tile-packs", "pack", family, chosen, version] as const,
 };
 
 export function useTilePackLibrary() {
   return useQuery({
     queryKey: tilePackKeys.library,
     queryFn: () => api.get<TilePackLibrary>("/game-tile-packs"),
-    staleTime: 5 * 60_000,
+    // Read again when a view opens: a pack may have been saved from Pixelforge meanwhile.
+    staleTime: 0,
   });
 }
 
@@ -123,9 +125,11 @@ export type OverworldTileDrawer = (
 export function useOverworldAtlas(family: string | undefined): OverworldTileDrawer {
   const { data: library } = useTilePackLibrary();
   const chosen = (family && library?.selection[family]) || null;
+  // By version, so a pack saved again is drawn anew.
+  const version = (chosen && library?.packs.find((pack) => pack.id === chosen)?.version) || null;
   const builtIn = Boolean(family && library?.builtIn.includes(family));
   const { data: pack } = useQuery({
-    queryKey: tilePackKeys.pack(family ?? "", chosen),
+    queryKey: tilePackKeys.pack(family ?? "", chosen, version),
     queryFn: async () => {
       if (chosen) {
         // A chosen pack that is gone or no longer reads falls back to the built-in one.
@@ -204,7 +208,7 @@ export function useChooseTilePack() {
   });
 }
 
-/** Imports a tile pack file, kept as it came. */
+/** Imports a tile pack file. */
 export function useImportTilePack() {
   const qc = useQueryClient();
   return useMutation({

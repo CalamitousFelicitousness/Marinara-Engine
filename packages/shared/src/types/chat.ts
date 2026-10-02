@@ -25,6 +25,11 @@ export type ChatMode = "conversation" | "roleplay" | "game";
 /** How a multi-character (group) chat is handled. */
 export type GroupChatMode = "merged" | "individual";
 
+/** The one reading of a stored group mode: anything but "individual" is the default Merged mode. */
+export function normalizeGroupChatMode(value: unknown): GroupChatMode {
+  return value === "individual" ? "individual" : "merged";
+}
+
 /** How individual-mode group chats decide response order. */
 export type GroupResponseOrder = "sequential" | "smart" | "manual";
 

@@ -99,6 +99,7 @@ import {
   DEFAULT_GAME_DICE_POOL_WINDOW as DEFAULT_DICE_POOL_WINDOW,
   estimateTextTokens,
   isRoleplayCommandEnabled,
+  normalizeGroupChatMode,
   normalizeSemanticSummaryRetrievalSettings,
   resolveScopedRegexMode,
 } from "@marinara-engine/shared";
@@ -878,6 +879,8 @@ export function ChatSettingsDrawer({
   const updateChat = useUpdateChat();
   const updateMeta = useUpdateChatMetadata();
   const updateTranslationMeta = useUpdateChatMetadata({ serialize: true });
+  // Generation waits for queued saves, so the next reply uses the narration mode shown here (#6959).
+  const updateGroupChatModeMeta = useUpdateChatMetadata({ serialize: true });
   const updateMetaMutateAsyncRef = useRef(updateMeta.mutateAsync);
   const pendingCustomAgentImageSettingsRef = useRef<{
     chatId: string;
@@ -976,6 +979,7 @@ export function ChatSettingsDrawer({
     () => (typeof chat.metadata === "string" ? JSON.parse(chat.metadata) : (chat.metadata ?? {})),
     [chat.metadata],
   );
+  const groupChatMode = normalizeGroupChatMode(metadata.groupChatMode);
   const summaryRetrievalSettings = normalizeSemanticSummaryRetrievalSettings(metadata);
   // Package integrations only show while their package is installed and usable.
   const noodleInstalled = isCapabilityPackageAvailable(installedCapabilities, "noodle");
@@ -4435,7 +4439,7 @@ export function ChatSettingsDrawer({
           <AdvancedMemorySettings
             chatId={chat.id}
             metadataSettings={metadata.advancedMemory}
-            individual={metadata.groupChatMode === "individual"}
+            individual={groupChatMode === "individual"}
             characters={chatCharIds.map((id) => ({ id, name: charNameMap.get(id) ?? id }))}
             connections={textConnectionsList}
             hasHistory={!!chat.lastMessageAt}
@@ -4457,7 +4461,7 @@ export function ChatSettingsDrawer({
         {advancedMemoryEnabled && memoryView === "advanced" && (
           <AdvancedMemoryInspector
             chatId={chat.id}
-            individual={metadata.groupChatMode === "individual"}
+            individual={groupChatMode === "individual"}
             characters={chatCharIds.map((id) => ({ id, name: charNameMap.get(id) ?? id }))}
           />
         )}
@@ -6260,10 +6264,10 @@ export function ChatSettingsDrawer({
                 </label>
                 <div className="flex rounded-lg ring-1 ring-[var(--border)]">
                   <button
-                    onClick={() => updateMeta.mutate({ id: chat.id, groupChatMode: "merged" })}
+                    onClick={() => updateGroupChatModeMeta.mutate({ id: chat.id, groupChatMode: "merged" })}
                     className={cn(
                       "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors rounded-l-lg",
-                      (metadata.groupChatMode ?? "merged") === "merged"
+                      groupChatMode === "merged"
                         ? "bg-[var(--primary)] text-white"
                         : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
                     )}
@@ -6274,8 +6278,8 @@ export function ChatSettingsDrawer({
                   </button>
                   <button
                     onClick={() => {
-                      if (metadata.groupChatMode === "individual") return;
-                      updateMeta.mutate({
+                      if (groupChatMode === "individual") return;
+                      updateGroupChatModeMeta.mutate({
                         id: chat.id,
                         groupChatMode: "individual",
                         ...(isConversation && metadata.groupResponseOrder === "manual"
@@ -6293,7 +6297,7 @@ export function ChatSettingsDrawer({
                     }}
                     className={cn(
                       "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors rounded-r-lg",
-                      metadata.groupChatMode === "individual"
+                      groupChatMode === "individual"
                         ? "bg-[var(--primary)] text-white"
                         : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
                     )}
@@ -6304,7 +6308,7 @@ export function ChatSettingsDrawer({
               </div>
 
               {/* Merged mode: speaker color option */}
-              {!isConversation && (metadata.groupChatMode ?? "merged") === "merged" && (
+              {!isConversation && groupChatMode === "merged" && (
                 <div className="mt-2">
                   <SettingsSwitch
                     label={localizeUi("ui.chat.chatsettingsdrawer.colorDialogues")}
@@ -6326,7 +6330,7 @@ export function ChatSettingsDrawer({
               )}
 
               {/* Individual mode: response order */}
-              {metadata.groupChatMode === "individual" && (
+              {groupChatMode === "individual" && (
                 <div className="mt-2 space-y-2">
                   <label className="text-[0.6875rem] font-medium text-[var(--muted-foreground)]">
                     {localizeUi("ui.chat.chatsettingsdrawer.responseOrder")}

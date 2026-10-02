@@ -120,6 +120,7 @@ public class MainActivity extends Activity {
     private ValueCallback<Uri[]> fileUploadCallback;
     /** The empty photo the camera choice of the current file chooser writes into, if it offered one. */
     private Uri pendingCameraPhoto;
+    private static final String PENDING_CAMERA_PHOTO_STATE = "pendingCameraPhoto";
     private byte[] pendingFileSaveData;
     private String pendingFileSaveName;
     private boolean isDownloadingTermux;
@@ -140,6 +141,10 @@ public class MainActivity extends Activity {
     @SuppressLint("SetJavaScriptEnabled")
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // Android may close the app while the camera is open; keep the photo's address so a cancelled
+        // capture can still be cleaned up when it returns. The page's upload itself can't be resumed.
+        String pendingPhoto = savedInstanceState == null ? null : savedInstanceState.getString(PENDING_CAMERA_PHOTO_STATE);
+        if (pendingPhoto != null) pendingCameraPhoto = Uri.parse(pendingPhoto);
 
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         applyStatusBarVisibility(isStatusBarVisible());
@@ -1424,6 +1429,12 @@ public class MainActivity extends Activity {
             // Nothing else to clean up.
         }
         pendingCameraPhoto = null;
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        if (pendingCameraPhoto != null) outState.putString(PENDING_CAMERA_PHOTO_STATE, pendingCameraPhoto.toString());
     }
 
     /** Writes a download into the app's Pictures or Downloads collection on Android 10 and newer. */

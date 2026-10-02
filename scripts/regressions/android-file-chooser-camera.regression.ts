@@ -21,5 +21,10 @@ assert.match(
   "a photo taken with the camera must go back to the page",
 );
 assert.match(source, /discardPendingCameraPhoto\(\);/u, "an unused photo file must be removed");
+assert.match(
+  source,
+  /outState\.putString\(PENDING_CAMERA_PHOTO_STATE/u,
+  "the photo file must survive the app being closed while the camera is open",
+);
 
 console.log("Android file chooser camera regression passed.");

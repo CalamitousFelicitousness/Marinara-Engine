@@ -778,6 +778,8 @@ export function createChatsStorage(db: DB) {
       .where(inArray(messageSwipes.messageId, [...byId.keys()]));
     return swipes.flatMap((swipe) => {
       const row = byId.get(swipe.messageId)!;
+      // Only the swipe on screen holds the values in place; a hidden swipe's changes were already undone.
+      if (swipe.index !== row.activeSwipeIndex) return [];
       const changes = parseExtraRecord(swipe.extra).macroVariableChanges;
       return changes ? [{ chatId: row.chatId, createdAt: row.createdAt, index: swipe.index, changes }] : [];
     });

@@ -234,6 +234,11 @@ try {
   await request("POST", "/api/generate/", { chatId: chat.id, regenerateMessageId: reply.id });
   await showSwipe(0);
   assert.equal(await told(), "mine", "a value typed in Chat Settings stays when the swipe changes");
+  // Deleting the reply only undoes the swipe on screen. A hidden swipe once set "regenerate";
+  // when the user types that same value, the delete must not treat it as that swipe's change.
+  await request("PATCH", `/api/chats/${chat.id}/metadata`, { macroVariables: { told: "regenerate" } });
+  await request("DELETE", `/api/chats/${chat.id}/messages/${reply.id}`);
+  assert.equal(await told(), "regenerate", "deleting a reply ignores its hidden swipes");
 } finally {
   provider.closeAllConnections();
   await new Promise<void>((done) => provider.close(() => done()));

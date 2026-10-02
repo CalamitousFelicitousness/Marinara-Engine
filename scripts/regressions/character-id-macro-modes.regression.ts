@@ -131,6 +131,19 @@ try {
     namesOnly: true,
   });
   assert.equal(Object.keys(named.references).length, 9, "every referenced character gets a name");
+  // The card path (Roleplay with a preset) also names all nine, but adds at most eight cards.
+  const withCards = await buildReferencedCharacterContext({
+    db,
+    activeCharacterIds: [],
+    sources: [crowd.map((guest) => `{{${guest!.id}}}`).join(" ")],
+    chatMessages: [],
+    macroCtx: { user: "User", char: "Narrator" } as never,
+    wrapFormat: "none",
+    chatId: "",
+  });
+  assert.equal(Object.keys(withCards.references).length, 9, "the card path names every referenced character too");
+  assert.match(withCards.content, /Guest 8/u, "the first eight cards are added");
+  assert.doesNotMatch(withCards.content, /Guest 9/u, "a ninth card is not added");
   console.log("Character ID macros resolve to names in Conversation and Game chats.");
 } finally {
   await app.close();

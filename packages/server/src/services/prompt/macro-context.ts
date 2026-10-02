@@ -509,21 +509,21 @@ export async function buildReferencedCharacterContext(input: {
     sources.push(...referencedCharacterSourceFields(data));
   });
 
-  // Names cost nothing, so a names-only pass names every ID; the cap only limits added cards (#6956).
-  const mentionedIds = extractCharacterReferenceIds(sources, input.namesOnly ? Infinity : MAX_REFERENCED_CHARACTERS);
-  const candidateIds = mentionedIds
-    .filter((id) => !activeIds.has(id))
-    .slice(0, input.namesOnly ? Infinity : Math.max(0, input.maxReferences ?? MAX_REFERENCED_CHARACTERS));
-  const referencedRows = await Promise.all(candidateIds.map((id) => characters.getById(id)));
-  const referenced = candidateIds.flatMap((id, index) => {
-    const data = parseCharacterData(referencedRows[index]?.data);
+  // Every referenced ID gets a name in every mode; the cap only limits which cards are added (#6956).
+  const mentionedIds = extractCharacterReferenceIds(sources, Infinity);
+  const outsideIds = mentionedIds.filter((id) => !activeIds.has(id));
+  const outsideRows = await Promise.all(outsideIds.map((id) => characters.getById(id)));
+  const outside = outsideIds.flatMap((id, index) => {
+    const data = parseCharacterData(outsideRows[index]?.data);
     return data ? [{ id, data }] : [];
   });
+  const cardLimit = input.namesOnly ? 0 : Math.max(0, input.maxReferences ?? MAX_REFERENCED_CHARACTERS);
+  const referenced = outside.slice(0, cardLimit);
   // A character already in the chat still resolves to its name; its card is
   // already in the prompt, so it gets no second copy below (#6924).
   const references = Object.fromEntries([
     ...mentionedIds.flatMap((id) => (activeNames.has(id) ? [[id, activeNames.get(id)!] as const] : [])),
-    ...referenced.map(({ id, data }) => [id, data.name || "Character"] as const),
+    ...outside.map(({ id, data }) => [id, data.name || "Character"] as const),
   ]);
   if (referenced.length === 0 || input.namesOnly) return { content: "", references };
 

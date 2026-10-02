@@ -78,6 +78,12 @@ try {
       payload: { name: "X", kit },
     });
     assert.equal(untrusted.statusCode, 421);
+    const untrustedRemoval = await app.inject({
+      method: "DELETE",
+      url: `/api/game-worlds/${id}`,
+      headers: { host: "evil.example" },
+    });
+    assert.equal(untrustedRemoval.statusCode, 421, "nor removed from an untrusted host");
 
     // ── The editor's routes, as a game's world has them ──
     const edit = (await call("GET", `/${id}/world/edit`)).json();

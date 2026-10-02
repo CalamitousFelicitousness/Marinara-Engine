@@ -244,6 +244,8 @@ import {
   gameWorldFromMetadata,
   lastGamePlace,
   readWorldLedger,
+  carryWorldLedger,
+  worldLedgerCarry,
   worldJournal,
   worldPlaceInForce,
   worldPresent,
@@ -440,7 +442,7 @@ import {
   playGameSpotifyTrack,
 } from "../services/spotify/game-spotify-music.service.js";
 import { loadGameFightItems, loadGameInventoryItemBook } from "../services/game/game-inventory.service.js";
-import { gameRepliesBefore } from "../services/game/game-market.service.js";
+import { gameRepliesBefore, isGameMasterReply } from "../services/game/game-market.service.js";
 import { rollGameFightItemGate } from "../services/game/game-item-use.service.js";
 import {
   readIllustratorAppearance,
@@ -7659,6 +7661,11 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         gameActiveState: "exploration",
         gamePartyChatId: null,
         gamePreviousSessionSummaries: summaries,
+        // What the world's ledger read in the sessions before, and in this one: the new one goes on from it.
+        gameLedgerCarry: carryWorldLedger(
+          worldLedgerCarry(prevMeta.gameLedgerCarry),
+          latestSessionMessages.filter(isGameMasterReply).map((message) => message.content),
+        ),
         gameDialogueChatId: null,
         gameCombatChatId: null,
         gameSceneBackground: null,

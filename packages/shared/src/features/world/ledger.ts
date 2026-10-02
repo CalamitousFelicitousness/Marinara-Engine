@@ -284,6 +284,31 @@ export function readWorldLedger(replies: readonly string[]): WorldLedgerEntry[] 
   return entries;
 }
 
+/** What a game's earlier sessions carry into the next (each session is its own chat): every ledger tag
+ *  of their Game Master's replies, in order, and how many replies there were. */
+export interface WorldLedgerCarry {
+  replies: number;
+  tags: string;
+}
+
+/** A session's carry as stored in its metadata, or null. */
+export function worldLedgerCarry(value: unknown): WorldLedgerCarry | null {
+  if (!value || typeof value !== "object") return null;
+  const { replies, tags } = value as Record<string, unknown>;
+  return typeof tags === "string" && typeof replies === "number" && Number.isInteger(replies) && replies >= 0
+    ? { replies, tags }
+    : null;
+}
+
+/** The carry into the next session: what this one carried in, then its own Game Master's replies. */
+export function carryWorldLedger(carried: WorldLedgerCarry | null, replies: readonly string[]): WorldLedgerCarry {
+  const tags = replies.flatMap((reply) => [...reply.matchAll(LEDGER_TAG)].map((match) => match[0]));
+  return {
+    replies: (carried?.replies ?? 0) + replies.length,
+    tags: [carried?.tags ?? "", ...tags].filter(Boolean).join("\n"),
+  };
+}
+
 // A few folds, by their world and ledger, as the history keeps its runs: a turn folds the same replies
 // once for the prompt and again for each tag a reply writes.
 const presentCache = new Map<string, WorldPresent>();

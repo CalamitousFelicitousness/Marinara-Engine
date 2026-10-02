@@ -345,9 +345,8 @@ public class MainActivity extends Activity {
                     fileUploadCallback.onReceiveValue(null);
                 }
                 fileUploadCallback = callback;
-                Intent intent = withCameraChoice(params);
                 try {
-                    startActivityForResult(intent, FILE_CHOOSER_REQUEST);
+                    startActivityForResult(withCameraChoice(params), FILE_CHOOSER_REQUEST);
                 } catch (Exception e) {
                     discardPendingCameraPhoto();
                     fileUploadCallback = null;

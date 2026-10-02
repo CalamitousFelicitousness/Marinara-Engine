@@ -8,7 +8,11 @@ const source = readFileSync(
   "utf8",
 );
 
-assert.match(source, /Intent intent = withCameraChoice\(params\);/u, "the file chooser must offer the camera");
+assert.match(
+  source,
+  /startActivityForResult\(withCameraChoice\(params\), FILE_CHOOSER_REQUEST\)/u,
+  "the file chooser must offer the camera",
+);
 assert.match(source, /new Intent\(MediaStore\.ACTION_IMAGE_CAPTURE\)/u, "the camera choice must take a photo");
 assert.match(source, /camera\.putExtra\(MediaStore\.EXTRA_OUTPUT, photo\)/u, "the photo must go to the prepared file");
 assert.match(

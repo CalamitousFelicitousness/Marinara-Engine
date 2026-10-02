@@ -100,7 +100,7 @@ The game clock runs on its own. It uses fixed math, not the AI, so it is always 
 
 When the clock passes midnight, the day number goes up by one.
 
-In a game with a world, time also passes as it does in Pixelforge's world:
+In a game with a world, time also passes on its own:
 
 - While the overworld is in front and the game is waiting on you, a game minute passes every five real seconds. It stops while the Game Master is writing, before you have read its reply, while the scene view is in front, and while the app is in the background.
 - A walk on the overworld passes the days its route takes.

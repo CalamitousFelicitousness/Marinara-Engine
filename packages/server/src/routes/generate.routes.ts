@@ -133,6 +133,9 @@ import {
   parseManagedGenerationParameterDefinitions,
   normalizeGameStoryboardKeyframeCount,
   estimateTextTokens,
+  diffChatVariables,
+  mergeChatVariableChanges,
+  undoChatVariableChanges,
   type APIProvider,
   type MacroContext,
   type RulesetCatalogEntriesById,
@@ -393,7 +396,7 @@ import { executeKnowledgeRouter } from "../services/agents/knowledge-router.js";
 import { extractFileText, getSourceFilePath } from "./knowledge-sources.routes.js";
 import { gameStateSnapshots as gameStateSnapshotsTable } from "../db/schema/index.js";
 import { and, eq } from "../db/file-query.js";
-import { PROFESSOR_MARI_ID, type GenerationParameterSendMap } from "@marinara-engine/shared";
+import { messageReplySchema, PROFESSOR_MARI_ID, type GenerationParameterSendMap } from "@marinara-engine/shared";
 import { chunkAndEmbedMessages } from "../services/memory-recall.js";
 import {
   isMemoryRecallVectorizerAvailable,
@@ -1130,6 +1133,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         error: "Choose either regenerateMessageId or continueMessageId, not both",
       });
     }
+    const earlyMeta = roomGenerationMetadata(parseExtra(chat.metadata));
+    // One reading per request: the restored speaker, the identity and the context all follow it (#6959).
+    const groupGenerationMode = resolveGroupGenerationMode(requestChatMode, earlyMeta.groupChatMode);
     let continueTargetMessage: any = null;
     if (input.continueMessageId) {
       if (input.impersonate) {
@@ -1142,14 +1148,21 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
       if (continueTargetMessage.role !== "assistant") {
         return rejectGenerationOutput(reply, 400, { error: "Only assistant messages can be continued" });
       }
-      if (!input.forCharacterId && continueTargetMessage.characterId) {
+      if (
+        !input.forCharacterId &&
+        continueTargetMessage.characterId &&
+        shouldRestoreRegenerationCharacterTarget(
+          requestChatMode,
+          groupGenerationMode,
+          parseJsonField<string[]>(chat.characterIds, []),
+        )
+      ) {
         input.forCharacterId = continueTargetMessage.characterId;
       }
     }
     let conversationGenerationStartedAt: number | null = null;
     let conversationAssistantSaved = false;
     const conversationCustomEmojiUrlByName = new Map<string, string>();
-    const earlyMeta = roomGenerationMetadata(parseExtra(chat.metadata));
     const shouldAccountAutonomousGeneration =
       requestChatMode === "conversation" &&
       input.autonomous === true &&
@@ -1261,7 +1274,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         if (
           !input.forCharacterId &&
           regenCandidate.characterId &&
-          shouldRestoreRegenerationCharacterTarget(requestChatMode, earlyMeta.groupChatMode, regenerationCharacterIds)
+          shouldRestoreRegenerationCharacterTarget(requestChatMode, groupGenerationMode, regenerationCharacterIds)
         ) {
           input.forCharacterId = regenCandidate.characterId;
         }
@@ -2468,7 +2481,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         input.smartResponse &&
         chatMode === "roleplay" &&
         allCharacterIds.length > 1 &&
-        resolveGroupGenerationMode(chatMode, chatMeta.groupChatMode) === "individual" &&
+        groupGenerationMode === "individual" &&
         (savedGroupResponseOrder === "smart" || savedGroupResponseOrder === "manual") &&
         !input.forCharacterId &&
         !input.regenerateMessageId &&
@@ -2492,26 +2505,47 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
       let runningMessagesForFollowUp: GenerationPromptMessage[] = [...mappedMessages];
       let followUpIteration = 0;
       const MAX_FOLLOW_UP_ITERATIONS = 2;
-      const chatMacroVariables = normalizeChatMacroVariables(chatMeta.macroVariables);
-      let persistedMacroVariables = JSON.stringify(chatMacroVariables);
-      let persistedMacroVariableSnapshot = { ...chatMacroVariables };
+      const savedMacroVariables = normalizeChatMacroVariables(chatMeta.macroVariables);
+      // A swipe starts from the values in place before its reply: undo what the reply's swipes changed.
+      const chatMacroVariables = input.regenerateMessageId
+        ? undoChatVariableChanges(
+            savedMacroVariables,
+            (await chats.getSwipes(input.regenerateMessageId))
+              .reverse()
+              .map((swipe) => parseExtra(swipe.extra).macroVariableChanges),
+          )
+        : { ...savedMacroVariables };
+      let persistedMacroVariables = JSON.stringify(savedMacroVariables);
+      let persistedMacroVariableSnapshot = { ...savedMacroVariables };
+      let recordedMacroVariables = { ...chatMacroVariables };
       const persistChatMacroVariables = async () => {
         const serialized = JSON.stringify(chatMacroVariables);
-        if (serialized === persistedMacroVariables) return;
-        await chats.patchMetadata(
-          input.chatId,
-          (current) => ({
-            ...current,
-            macroVariables: mergeGeneratedChatMacroVariables(
-              current.macroVariables,
-              persistedMacroVariableSnapshot,
-              chatMacroVariables,
-            ),
-          }),
-          { touchUpdatedAt: false },
-        );
-        persistedMacroVariables = serialized;
-        persistedMacroVariableSnapshot = { ...chatMacroVariables };
+        if (serialized !== persistedMacroVariables) {
+          await chats.patchMetadata(
+            input.chatId,
+            (current) => ({
+              ...current,
+              macroVariables: mergeGeneratedChatMacroVariables(
+                current.macroVariables,
+                persistedMacroVariableSnapshot,
+                chatMacroVariables,
+              ),
+            }),
+            { touchUpdatedAt: false },
+          );
+          persistedMacroVariables = serialized;
+          persistedMacroVariableSnapshot = { ...chatMacroVariables };
+        }
+        // Keep the turn's changes on its reply, so a swipe or a delete can undo them.
+        const changes = diffChatVariables(recordedMacroVariables, chatMacroVariables);
+        const messageId = typeof lastSavedMsg?.id === "string" ? lastSavedMsg.id : null;
+        if (!messageId || Object.keys(changes).length === 0) return;
+        const swipeIndex = lastSavedSwipeIndex ?? lastSavedMsg.activeSwipeIndex ?? 0;
+        const swipe = (await chats.getSwipes(messageId)).find((row) => row.index === swipeIndex);
+        await chats.updateMessageExtraForSwipe(messageId, swipeIndex, {
+          macroVariableChanges: mergeChatVariableChanges(parseExtra(swipe?.extra).macroVariableChanges, changes),
+        });
+        recordedMacroVariables = { ...chatMacroVariables };
       };
 
       // Hoisted out of the loop so the SSE flush, OOC posting, and
@@ -2688,7 +2722,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             }
           });
         const promptGroupResponseOrder = effectiveGroupResponseOrder;
-        const promptGroupChatMode = resolveGroupGenerationMode(chatMode, chatMeta.groupChatMode);
+        const promptGroupChatMode = groupGenerationMode;
         // Each responder sees other characters as user input. Keep shared history
         // untouched until those roles are scoped, including replies within this turn.
         const deferGroupPromptRegex =
@@ -2764,7 +2798,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             activeChatSummary ?? "",
             ...currentInputMessages().map((message) => message.content),
             ...pipelineConfiguredPromptAgents.map((agent) => JSON.stringify(agent.settings)),
+            // Author's notes, a chat's own system or Game prompt, and the preset's mode prompts.
+            JSON.stringify(chatMeta),
+            resolvedPreset ? JSON.stringify(resolvedPreset) : "",
           ],
+          nameCharacterReferences: !(presetId && resolvedPreset && chatMode !== "conversation" && chatMode !== "game"),
         });
         const conversationMacroFieldsByCharacterId = new Map<string, NonNullable<MacroContext["convoFields"]>>();
         const historyMacroProfilesById = (await resolveCharacterMacroData(app.db, allCharacterIds)).profilesById;
@@ -2923,7 +2961,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         };
         const decisionTurn = decisionTiming.turn;
         const heldDecisions: HeldDecisions = (kind, key, modifiers) =>
-          heldDecision(decisionTimerState, decisionTurn, kind, key, modifiers?.every);
+          heldDecision(decisionTimerState, decisionTurn, kind, key, modifiers?.every, modifiers?.lasts);
         await saveDecisionTimers();
         // Worked out once: the agents' plan below includes the prompt's statements too.
         const promptDecisionReachable = reachableDecisionStatements(promptDecisionTexts, promptMacroContext);
@@ -3417,8 +3455,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         // ── Conversation mode: inject built-in DM-style system prompt ──
         let convoAwarenessBlock: string | null = null;
         if (chatMode === "conversation") {
-          const deferPresenceDelayToResponders =
-            characterIds.length > 1 && resolveGroupGenerationMode(chatMode, chatMeta.groupChatMode) === "individual";
+          const deferPresenceDelayToResponders = characterIds.length > 1 && groupGenerationMode === "individual";
           const presenceRuntime = await resolveConversationPresenceRuntime({
             db: app.db,
             chatId: input.chatId,
@@ -4918,7 +4955,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         // one participant. The active list still controls who may respond.
         const isGroupChat = chatMode === "roleplay" ? allCharacterIds.length > 1 : characterIds.length > 1;
         const groupResponseOrder = effectiveGroupResponseOrder;
-        const groupChatMode = resolveGroupGenerationMode(chatMode, chatMeta.groupChatMode);
+        const groupChatMode = groupGenerationMode;
         // Auto-enable speaker colors for conversation mode groups (system prompt already requests tags)
         const groupSpeakerColors = chatMeta.groupSpeakerColors === true || (chatMode === "conversation" && isGroupChat);
         const groupTurnPromptEnabled = chatMeta.groupTurnPromptEnabled !== false;
@@ -6925,16 +6962,27 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         };
 
         const getExplicitlyMentionedCharacterIds = (assistantText?: string): string[] => {
+          const latestUserMessage = [...chatMessages].reverse().find((message: any) => message.role === "user");
           const latestUserText =
             assistantText ??
             (typeof input.userMessage === "string" && input.userMessage.trim()
               ? input.userMessage
-              : String([...chatMessages].reverse().find((message: any) => message.role === "user")?.content ?? ""));
+              : String(latestUserMessage?.content ?? ""));
           const requestedNames = new Set(
             (assistantText === undefined ? (input.mentionedCharacterNames ?? []) : []).map((name: string) =>
               normalizeTextForMatch(name),
             ),
           );
+          // Replying to a character's message addresses that character, like an @mention.
+          const reply =
+            assistantText === undefined
+              ? messageReplySchema.safeParse(parseExtra(latestUserMessage?.extra).replyTo)
+              : null;
+          // The whole chat, since the quoted message may be hidden from the AI or past the context limit.
+          const quotedMessage = reply?.success
+            ? allChatMessages.find((message: any) => message.id === reply.data.messageId)
+            : undefined;
+          const replyCharacterId = quotedMessage?.role === "assistant" ? quotedMessage.characterId : undefined;
 
           const candidates =
             assistantText !== undefined && chatMode === "conversation"
@@ -6942,6 +6990,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               : availableGroupCharacters;
           return candidates
             .filter((character) => {
+              if (character.id === replyCharacterId) return true;
               const names = [character.name, conversationCharacterPresenceById.get(character.id)?.displayName].filter(
                 (name): name is string => typeof name === "string" && name.trim().length > 0,
               );
@@ -7765,10 +7814,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   content: latestRoleplayMessage.content,
                 }
               : null;
+          // While the Rolls command is on, it decides who may roll. Otherwise a roll_dice the
+          // chat's Function Calling settings attached is offered and run the same way (#6945).
           const roleplayRollEnabled =
             chatMode === "roleplay" &&
             !input.impersonate &&
-            isRoleplayCommandAllowed(chatMeta, "roll", roleplayCallerId);
+            (isRoleplayCommandEnabled(chatMeta, "roll")
+              ? isRoleplayCommandAllowed(chatMeta, "roll", roleplayCallerId)
+              : chatResolvedToolNames.has("roll_dice"));
           const roleplayActivity: RoleplayCommandActivity[] = [];
           const roleplayInlinePrefixes = new Map<RoleplayCommandActivity, string>();
           const responderToolDefs =
@@ -8224,6 +8277,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               // write the content conventionally
               if (result.content && !fullResponse.endsWith(result.content)) {
                 await writeContentChunked(result.content);
+              }
+              // A tool call the model wrote as text was streamed before the provider recognised
+              // it, and the provider leaves that text out of the result, as without streaming.
+              // Take it back out of the reply and the client's view (#6951).
+              if (result.toolCalls.length && !result.content && fullResponse.length > roundResponseStart) {
+                fullResponse = fullResponse.slice(0, roundResponseStart);
+                if (!holdForTextRewrite) sendSseEvent(reply, { type: "content_replace", data: fullResponse });
               }
 
               // Gemini thought signatures reach this branch as providerMetadata rather than
@@ -11184,9 +11244,12 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         };
 
         if (hasPostWork && (completedResponse || roleplayMediaRequests.length > 0) && !generationSignal.aborted) {
+          // A tracker the user gave its own request does not take on the scene check (#6977);
+          // Advanced Memory then checks the scene in a request of its own.
           const sceneCheckTrackers = pipelineAgents.filter(
             (agent) =>
               agent.phase === "post_processing" &&
+              agent.settings.batchWithOtherAgents !== false &&
               (trackerAgentTypes.has(agent.type) || resolveAgentResultType(agent) === "custom_tracker_update"),
           );
           if (

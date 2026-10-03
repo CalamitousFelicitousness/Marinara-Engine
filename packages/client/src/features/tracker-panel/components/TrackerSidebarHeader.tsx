@@ -86,7 +86,7 @@ export function TrackerSidebarHeader({
       onClick={onClose}
       title={localizeUi("ui.trackerPanel.trackersidebarheader.closeTrackers")}
       aria-label={localizeUi("ui.trackerPanel.trackersidebarheader.closeTrackerPanel")}
-      className="mari-accent-animated flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-[var(--marinara-app-accent-solid)] transition-colors hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--marinara-app-accent-solid)] active:scale-90"
+      className="mari-accent-animated flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-[var(--marinara-app-accent-solid)] transition-colors hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--marinara-app-accent-solid)] active:scale-90 max-md:order-first"
     >
       <TrackerPanelIcon size="1.25rem" />
     </button>
@@ -178,6 +178,17 @@ export function TrackerSidebarHeader({
     >
       <Settings2 size="0.8rem" />
     </button>
+  );
+
+  const settingsControl = (
+    <div className="flex min-w-0 items-center gap-1.5 max-md:order-last">
+      {activeEditMode === null && (
+        <span className="text-right text-[0.625rem] leading-tight text-[var(--muted-foreground)] md:hidden">
+          {localizeUi("ui.trackerPanel.trackersidebarheader.tapFieldToEdit")}
+        </span>
+      )}
+      {settingsButton}
+    </div>
   );
 
   const outerHeaderControls = (
@@ -374,9 +385,9 @@ export function TrackerSidebarHeader({
   return (
     <div className="sticky top-0 z-30 flex-shrink-0 bg-[color-mix(in_srgb,var(--card)_28%,var(--background)_72%)] shadow-[0_1px_0_color-mix(in_srgb,var(--border)_36%,transparent),0_8px_14px_color-mix(in_srgb,var(--background)_22%,transparent)] backdrop-blur-sm">
       <div className="relative flex h-7 items-center justify-between gap-1 px-1">
-        {trackerPanelSide === "left" ? settingsButton : closePanelButton}
+        {trackerPanelSide === "left" ? settingsControl : closePanelButton}
         <div className="min-w-0 flex-1" />
-        {trackerPanelSide === "left" ? closePanelButton : settingsButton}
+        {trackerPanelSide === "left" ? closePanelButton : settingsControl}
       </div>
       <div
         className={cn(

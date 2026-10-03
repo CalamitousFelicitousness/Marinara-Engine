@@ -156,7 +156,7 @@ export function WorldRenderedEdit({
       {showEditHint && !lockMode && !locked && (
         <span
           className={cn(
-            "pointer-events-none absolute top-1/2 z-[12] flex h-3 w-3 -translate-y-1/2 items-center justify-center rounded-[2px] bg-[var(--background)]/58 text-[var(--muted-foreground)] opacity-0 shadow-[0_0_6px_color-mix(in_srgb,var(--foreground)_10%,transparent)] ring-1 ring-[var(--border)] transition-opacity duration-150 group-hover/world-edit:opacity-70 group-focus-visible/world-edit:opacity-80 max-md:opacity-45",
+            "pointer-events-none absolute top-1/2 z-[12] flex h-3 w-3 -translate-y-1/2 items-center justify-center rounded-[2px] bg-[var(--background)]/58 text-[var(--muted-foreground)] opacity-0 shadow-[0_0_6px_color-mix(in_srgb,var(--foreground)_10%,transparent)] ring-1 ring-[var(--border)] transition-opacity duration-150 group-hover/world-edit:opacity-70 group-focus-visible/world-edit:opacity-80 max-md:hidden",
             controlsSide === "left" ? "left-0.5" : "right-0.5",
           )}
           aria-hidden="true"

@@ -4,7 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
-- UI/UX improvements: welcome-dialog frames and settings actions follow the selected accent, Game actions keep their Marinara pink, dark sidebars match the Home menu, and Tracker edit controls align with their fields on desktop and mobile (#7000).
+- UI/UX improvements: welcome-dialog frames and settings actions follow the selected accent, Game actions keep their Marinara pink, and dark sidebars match the Home menu. Tracker edit controls align with their fields on desktop; on mobile, tap a field to edit it, with a small hint beside settings instead of pencil icons (#7000).
 
 - Retrying or re-running agents now runs rewrite agents one after another, each on the text the one before left, as after a new reply. Before, retrying two of them together, such as Prose Guardian and a custom **Text Rewrite** agent, kept only the last one's edits. Agent retries now also keep to the connection's **Max Parallel Agent Jobs** limit (#6977).
 

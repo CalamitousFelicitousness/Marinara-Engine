@@ -11437,6 +11437,7 @@
   "ui.trackerPanel.trackersidebarheader.right": "right",
   "ui.trackerPanel.trackersidebarheader.showRadialStatGauges": "Show radial stat gauges",
   "ui.trackerPanel.trackersidebarheader.showRegularStatBars": "Show regular stat bars",
+  "ui.trackerPanel.trackersidebarheader.tapFieldToEdit": "Tap field to edit it",
   "ui.trackerPanel.trackersidebarheader.trackerDisplaySettings": "Tracker display settings",
   "ui.trackerPanel.trackersidebarheader.trackerEditingModes": "Tracker editing modes",
   "ui.trackerPanel.trackersidebarheader.trackerPanelAnchoredValue1ClickToAnchorValue2": "Tracker panel anchored {{value1}}. Click to anchor {{value2}}.",

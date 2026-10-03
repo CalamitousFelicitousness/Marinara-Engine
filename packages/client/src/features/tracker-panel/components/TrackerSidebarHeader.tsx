@@ -383,7 +383,7 @@ export function TrackerSidebarHeader({
   );
 
   return (
-    <div className="sticky top-0 z-30 flex-shrink-0 bg-[color-mix(in_srgb,var(--card)_28%,var(--background)_72%)] shadow-[0_1px_0_color-mix(in_srgb,var(--border)_36%,transparent),0_8px_14px_color-mix(in_srgb,var(--background)_22%,transparent)] backdrop-blur-sm">
+    <div className="mari-tracker-panel-header sticky top-0 z-30 flex-shrink-0 [background:inherit] shadow-[0_1px_0_color-mix(in_srgb,var(--border)_36%,transparent),0_8px_14px_color-mix(in_srgb,var(--background)_22%,transparent)]">
       <div className="relative flex h-7 items-center justify-between gap-1 px-1">
         {trackerPanelSide === "left" ? settingsControl : closePanelButton}
         <div className="min-w-0 flex-1" />
@@ -406,7 +406,7 @@ export function TrackerSidebarHeader({
             inert={!settingsOpen}
             onFocusCapture={handleToolbarFocus}
             onKeyDown={handleToolbarKeyDown}
-            className="flex items-center justify-center border-y border-[var(--border)]/30 bg-[color-mix(in_srgb,var(--card)_82%,var(--background)_18%)] px-2 py-1.5 shadow-lg"
+            className="flex items-center justify-center border-y border-[var(--border)]/30 px-2 py-1.5 shadow-lg"
           >
             {outerHeaderControls}
           </div>

@@ -4,7 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
-- The Character Editor has a new **Voice** section where you pick the voice Text to Speech uses for that character and hear it with **Preview**. It changes the same setting as **Connections → Text to Speech**, so the two always match, and the **Phonetic name** field now lives there too. Two cards with the same name, such as an AU version, now each keep their own voice instead of one card's voice being used for both (Marinara-Agents#1176).
+- The Character Editor has a new **Voice** section where you pick the voice Text to Speech uses for that character and hear it with **Preview**. It changes the same setting as **Connections → Text to Speech**, so the two always match, and the **Phonetic name** field now lives there too. Two cards with the same name, such as an AU version, can now each keep their own voice instead of one card's voice being used for both. Until a copy gets its own voice, its **Voice** section names the voice it still uses from the other card (Marinara-Agents#1176).
 
 - `decision_choice:` statements now get answers from System One servers that need a description for every option, such as Strands decider. Before, those servers refused the whole request, so every Choice comparison read as no. Open-Jev's answers stayed the same in testing. The Decision Models guide now explains how to run Strands decider yourself as a Decision connection (#6981).
 

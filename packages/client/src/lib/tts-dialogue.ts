@@ -226,6 +226,22 @@ export function setCharacterVoiceAssignment(
   return rows.map((entry) => (isOwnRow(entry) ? { ...entry, ...character, voice } : entry));
 }
 
+/**
+ * The voice a character still gets from its name without a row of its own, such as
+ * an AU copy using the original card's voice, or "" when it uses the default voice.
+ */
+export function getCharacterNameVoice(
+  assignments: readonly TTSVoiceAssignment[] | undefined,
+  character: Pick<TTSVoiceAssignment, "characterId" | "characterName">,
+): string {
+  const otherRows = setCharacterVoiceAssignment(assignments, character, "");
+  return resolveTTSVoiceForSpeaker(
+    { voice: "", voiceMode: "per-character", voiceAssignments: otherRows },
+    character.characterName,
+    character.characterId,
+  );
+}
+
 export function resolveTTSVoiceForSpeaker(
   config: Pick<TTSConfig, "voice"> &
     Partial<

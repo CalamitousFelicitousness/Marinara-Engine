@@ -12,6 +12,7 @@ import {
   splitTTSChunks,
   filterTTSText,
   findTTSCharacterIdBySpeakerName,
+  getCharacterNameVoice,
   getCharacterVoiceAssignment,
   resolveTTSVoiceForSpeaker,
   setCharacterVoiceAssignment,
@@ -778,6 +779,46 @@ assert.equal(
   "default-voice",
   "a character without its own row falls back to the default voice",
 );
+// Without a row of its own, a card still speaks with a voice set for its name, so the section must say so.
+const auCard = { characterId: "alice-au", characterName: "Alice" };
+assert.equal(
+  resolveTTSVoiceForSpeaker({ ...characterVoiceConfig, voiceAssignments: sharedVoiceRows }, "Alice", "alice-au"),
+  "original-voice",
+);
+assert.equal(getCharacterNameVoice(sharedVoiceRows, auCard), "original-voice", "an AU card shows the voice it uses");
+assert.equal(getCharacterNameVoice(withAuVoice, auCard), "original-voice", "its own row is not the name's voice");
+assert.equal(getCharacterNameVoice(withAuVoice, { characterId: "dottore-id", characterName: "Dottore" }), "");
+assert.equal(
+  getCharacterNameVoice([{ characterId: "alice-au", characterName: "Alice (Modern AU)", voice: "au-voice" }], {
+    characterId: "alice-original",
+    characterName: "Alice",
+  }),
+  "au-voice",
+  "a voice shared by every variant of the name counts too",
+);
+assert.equal(
+  getCharacterNameVoice([{ characterId: "", characterName: "Alice", voice: "legacy-voice" }], auCard),
+  "legacy-voice",
+  "a row saved with only a name counts too",
+);
+// Replay and autoplay find the speaking card the same way, so same-named cards in one chat keep their voices.
+const twoAlices = new Map([
+  ["alice-original", { name: "Alice" }],
+  ["alice-au", { name: "Alice" }],
+]);
+assert.deepEqual(
+  buildTTSVoiceRequests('"Hello there."', characterVoiceConfig, "Alice", "alice-au", (speaker) =>
+    findTTSCharacterIdBySpeakerName(speaker, twoAlices),
+  ).map(({ voice }) => voice),
+  ["au-voice"],
+);
+for (const file of ["ChatArea.tsx", "ChatMessage.tsx"]) {
+  assert.match(
+    readFileSync(join(repositoryRoot, "packages/client/src/components/chat", file), "utf8"),
+    /findTTSCharacterIdBySpeakerName\(speaker, characterMap\)/u,
+    `${file} must find the speaking card like the other chat playback path`,
+  );
+}
 assert.equal(buildElevenLabsTextInput('"Skill issue."', "chuckle"), '[chuckle] "Skill issue."');
 assert.equal(buildElevenLabsTextInput('[chuckle] "Skill issue."', "chuckle"), '[chuckle] "Skill issue."');
 

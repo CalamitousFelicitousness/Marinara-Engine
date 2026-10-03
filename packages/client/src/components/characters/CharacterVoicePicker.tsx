@@ -9,6 +9,7 @@ import { Loader2, Play, RefreshCw, Settings2, Square, Volume2 } from "lucide-rea
 import { useTranslation } from "react-i18next";
 import { useTTSConfig, useTTSVoices, useUpdateTTSConfig } from "../../hooks/use-tts";
 import {
+  getCharacterNameVoice,
   getCharacterVoiceAssignment,
   resolveTTSVoiceForSpeaker,
   setCharacterVoiceAssignment,
@@ -35,7 +36,7 @@ export function CharacterVoicePicker({
   spokenName: string;
 }) {
   const { t } = useTranslation();
-  const { data: config, isLoading: configLoading } = useTTSConfig();
+  const { data: config, isLoading: configLoading, dataUpdatedAt } = useTTSConfig();
   const updateConfig = useUpdateTTSConfig();
   const perCharacter = config?.enabled === true && config.voiceMode === "per-character";
   const voicesQuery = useTTSVoices(config?.source ?? "openai", config?.baseUrl ?? "", perCharacter);
@@ -46,6 +47,8 @@ export function CharacterVoicePicker({
   const configRef = useRef(config);
   configRef.current = config;
   const pendingSaveRef = useRef<{ timer: ReturnType<typeof setTimeout>; voice: string } | null>(null);
+  // Saves not answered yet. A refetch that lands meanwhile can be older than what was typed.
+  const savesInFlightRef = useRef(0);
 
   const saveVoiceRef = useRef((_voice: string) => {});
   saveVoiceRef.current = (nextVoice: string) => {
@@ -56,10 +59,17 @@ export function CharacterVoicePicker({
       { characterId, characterName },
       nextVoice,
     );
-    updateConfig.mutateAsync({ ...latest, voiceAssignments }).catch(() => {
-      toast.error(t("ui.characters.voice.saveFailed"));
-      if (!pendingSaveRef.current) setDraftVoice(null);
-    });
+    savesInFlightRef.current += 1;
+    updateConfig.mutateAsync({ ...latest, voiceAssignments }).then(
+      () => {
+        savesInFlightRef.current -= 1;
+      },
+      () => {
+        savesInFlightRef.current -= 1;
+        toast.error(t("ui.characters.voice.saveFailed"));
+        if (!pendingSaveRef.current && savesInFlightRef.current === 0) setDraftVoice(null);
+      },
+    );
   };
 
   const flushPendingSave = useCallback(() => {
@@ -73,10 +83,10 @@ export function CharacterVoicePicker({
   // A pick made just before leaving the editor is saved, not dropped.
   useEffect(() => flushPendingSave, [flushPendingSave]);
 
-  // Show the saved voice again once our save lands or Text to Speech settings change it.
+  // Show the saved voice again once every save has landed, or when Text to Speech settings change it.
   useEffect(() => {
-    if (!pendingSaveRef.current) setDraftVoice(null);
-  }, [savedVoice]);
+    if (!pendingSaveRef.current && savesInFlightRef.current === 0) setDraftVoice(null);
+  }, [savedVoice, dataUpdatedAt]);
 
   const changeVoice = (nextVoice: string) => {
     setDraftVoice(nextVoice);
@@ -138,6 +148,13 @@ export function CharacterVoicePicker({
     () => buildTTSVoiceOptions(voicesQuery.data, config?.source ?? "openai", [voice]),
     [config?.source, voice, voicesQuery.data],
   );
+  // Without a voice of its own, a card can still speak with one set for its name.
+  const nameVoice = getCharacterNameVoice(config?.voiceAssignments, { characterId, characterName });
+  const emptyVoiceLabel = nameVoice
+    ? t("ui.characters.voice.sameNameVoice", {
+        voice: voiceOptions.find((option) => option.id === nameVoice)?.name ?? nameVoice,
+      })
+    : t("ui.characters.voice.defaultVoice");
 
   if (configLoading) return <div className="shimmer h-9 w-full rounded-xl" aria-hidden="true" />;
 
@@ -182,7 +199,7 @@ export function CharacterVoicePicker({
           <CustomizableVoiceInput
             value={voice}
             options={voiceOptions}
-            placeholder={t("ui.characters.voice.defaultVoice")}
+            placeholder={emptyVoiceLabel}
             ariaLabel={ariaLabel}
             testId="character-voice-input"
             onChange={changeVoice}
@@ -192,9 +209,7 @@ export function CharacterVoicePicker({
             value={voice}
             options={voiceOptions}
             disabled={voicesQuery.isLoading || voiceOptions.length === 0}
-            placeholder={
-              voicesQuery.isLoading ? t("ui.panels.ttsconfigcard.loadingVoices") : t("ui.characters.voice.defaultVoice")
-            }
+            placeholder={voicesQuery.isLoading ? t("ui.panels.ttsconfigcard.loadingVoices") : emptyVoiceLabel}
             ariaLabel={ariaLabel}
             onChange={changeVoice}
           />

@@ -12578,12 +12578,7 @@ test("Home recent chats use mode colors and show character sprites", async ({ pa
   const expectedAccents = [
     ["Cyan chat", "oklch(0.79 0.16 205)"],
     ["Orange story", "oklch(0.76 0.19 52)"],
-    [
-      "Pink game",
-      await page
-        .locator("html")
-        .evaluate((element) => getComputedStyle(element).getPropertyValue("--marinara-chat-chrome-accent").trim()),
-    ],
+    ["Pink game", "#ec4b97"],
   ] as const;
   for (const [chatName, accent] of expectedAccents) {
     const card = page.getByRole("button", { name: new RegExp(chatName) });
@@ -20793,6 +20788,8 @@ test("Home widget order can be dragged and persists across reloads", async ({ pa
 
 test("chat mode tabs and new-chat actions stay reachable", { tag: "@smoke" }, async ({ page }) => {
   const errors = collectUnexpectedErrors(page);
+  await page.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: "" } }));
+  await seedUIState(page, { appAccentColor: "#3b82f6", appAccentRgbMode: true }, "merge");
   const modes = [
     {
       mode: "conversation",
@@ -20815,6 +20812,7 @@ test("chat mode tabs and new-chat actions stay reachable", { tag: "@smoke" }, as
 
   try {
     await page.goto("/");
+    await expect(page.locator("html")).toHaveAttribute("data-marinara-accent-animation");
     await page.locator('[data-tour="sidebar-toggle"]').click();
     const sidebar = page.locator('[data-component="ChatSidebar"]');
     await expect(sidebar).toBeVisible();
@@ -20823,12 +20821,23 @@ test("chat mode tabs and new-chat actions stay reachable", { tag: "@smoke" }, as
       const modeTab = page.locator(`[data-tour="${mode.tour}"]`);
       await expect(modeTab.locator(`[data-chat-mode-icon="${mode.mode}"]`)).toHaveClass(mode.iconClass);
       await modeTab.click();
-      await expect(page.getByLabel(mode.label, { exact: true })).toBeVisible();
-      await expect(
-        sidebar
-          .locator(`[data-chat-id="${characterlessChats[index]!.id}"]`)
-          .locator(`[data-chat-mode-icon="${mode.mode}"]`),
-      ).toHaveClass(mode.iconClass);
+      const newChatButton = page.getByLabel(mode.label, { exact: true });
+      await expect(newChatButton).toBeVisible();
+      const modeIcon = sidebar
+        .locator(`[data-chat-id="${characterlessChats[index]!.id}"]`)
+        .locator(`[data-chat-mode-icon="${mode.mode}"]`);
+      await expect(modeIcon).toHaveClass(mode.iconClass);
+      const colors = await modeIcon.evaluate((icon) => ({
+        icon: getComputedStyle(icon).color,
+        mode: getComputedStyle(icon.parentElement!).color,
+      }));
+      expect(colors.icon).toBe(colors.mode);
+      if (mode.mode === "game") expect(colors.icon).toBe("rgb(236, 75, 151)");
+      const buttonColors = await newChatButton.evaluate((button) => ({
+        icon: getComputedStyle(button.querySelector("svg")!).color,
+        text: getComputedStyle(button).color,
+      }));
+      expect(buttonColors.icon).toBe(buttonColors.text);
     }
 
     expect(errors).toEqual([]);

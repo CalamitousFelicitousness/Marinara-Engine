@@ -62,6 +62,14 @@ for (const theme of ["light", "dark"] as const) {
       await expect(temperature).toBeVisible();
       await expect(weather).toBeVisible();
       await page.screenshot({ path: info.outputPath(`world-controls-${theme}.png`) });
+      const expectControlCentered = async (field: Locator) => {
+        const centerOffset = await field.evaluate((element) => {
+          const control = element.querySelector(":scope > span[aria-hidden='true']")!.getBoundingClientRect();
+          const button = element.getBoundingClientRect();
+          return Math.abs(control.top + control.height / 2 - (button.top + button.height / 2));
+        });
+        expect(centerOffset).toBeLessThanOrEqual(1);
+      };
       const expectControlBeforeValue = async (field: Locator) => {
         const boxes = await field.evaluate((element) => {
           const control = element.querySelector(":scope > span[aria-hidden='true']")!.getBoundingClientRect();
@@ -77,7 +85,11 @@ for (const theme of ["light", "dark"] as const) {
         });
         expect(boxes.controlLeft - boxes.buttonLeft).toBeLessThan(boxes.buttonWidth / 4);
         expect(boxes.controlRight).toBeLessThanOrEqual(boxes.valueLeft);
+        await expectControlCentered(field);
       };
+      for (const name of [/^Location: A quiet riverside camp/, /^Time: Later evening/, /^Date: Unknown/]) {
+        await expectControlCentered(page.getByRole("button", { name }));
+      }
       await expectControlBeforeValue(temperature);
       await expectControlBeforeValue(weather);
       const timeIcon = await page

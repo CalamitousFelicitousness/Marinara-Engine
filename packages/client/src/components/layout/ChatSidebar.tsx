@@ -197,21 +197,21 @@ const MODE_CONFIG: Record<
   }
 > = {
   conversation: {
-    icon: <ChatModeIcon mode="conversation" size="0.875rem" />,
+    icon: <ChatModeIcon mode="conversation" size="0.875rem" className="mari-rgb-static-icon" />,
     label: "Conversation",
     shortLabel: "CONVO",
     description: "A straightforward AI conversation — no roleplay elements.",
     logoModeClass: "mari-chat-logo-mode--conversation",
   },
   roleplay: {
-    icon: <ChatModeIcon mode="roleplay" size="0.875rem" />,
+    icon: <ChatModeIcon mode="roleplay" size="0.875rem" className="mari-rgb-static-icon" />,
     label: "Roleplay",
     shortLabel: "RP",
     description: "Immersive roleplay with characters, game state tracking, and world simulation.",
     logoModeClass: "mari-chat-logo-mode--roleplay",
   },
   game: {
-    icon: <ChatModeIcon mode="game" size="0.875rem" />,
+    icon: <ChatModeIcon mode="game" size="0.875rem" className="mari-rgb-static-icon" />,
     label: "Game",
     shortLabel: "GM",
     description: "AI-managed singleplayer RPG with a Game Master, party, dice, maps, and quests.",
@@ -1370,7 +1370,7 @@ export function ChatSidebar() {
           title={t(`navigation.chatSidebar.new.${activeTab}`)}
           aria-label={t(`navigation.chatSidebar.new.${activeTab}`)}
         >
-          <Plus size="0.8125rem" className="mari-chrome-accent-icon mari-accent-animated" />
+          <Plus size="0.8125rem" className="mari-rgb-static-icon" />
         </button>
         <button
           onClick={() => chatImportInputRef.current?.click()}
@@ -1576,7 +1576,7 @@ export function ChatSidebar() {
                 activeModeConfig.logoModeClass,
               )}
             >
-              <span className="mari-chrome-accent-icon mari-accent-animated">+</span>
+              <span>+</span>
               {t(`navigation.chatSidebar.new.${activeTab}`)}
             </button>
           </div>

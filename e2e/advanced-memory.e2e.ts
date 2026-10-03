@@ -1397,7 +1397,7 @@ test("Advanced Memory Decision connection is optional and persists for its chat"
     await expect(toggle).not.toBeChecked();
     await expect(settings.getByRole("combobox", { name: "Memory Decision connection", exact: true })).toHaveCount(0);
     await captureThemes(page, info, "memory-decision-off");
-    await settings.getByText("Use Decision model (Jev)", { exact: true }).click();
+    await settings.getByText("Use Decision model", { exact: true }).click();
     const picker = settings.getByRole("combobox", { name: "Memory Decision connection", exact: true });
     await expect(picker).toBeEnabled();
     await expect(picker).toHaveValue("");
@@ -1418,7 +1418,7 @@ test("Advanced Memory Decision connection is optional and persists for its chat"
     await expect(page.locator("textarea[data-chat-composer]")).toBeVisible();
     settings = await openMemory();
     await expect(settings.getByText(/Choose a usable Decision connection/)).toBeVisible();
-    await settings.getByText("Use Decision model (Jev)", { exact: true }).click();
+    await settings.getByText("Use Decision model", { exact: true }).click();
     await expect.poll(async () => (await status()).settings.decisionEnabled).toBe(false);
     await expect(settings.getByRole("combobox", { name: "Memory Decision connection", exact: true })).toHaveCount(0);
   } finally {

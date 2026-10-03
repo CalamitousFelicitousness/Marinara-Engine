@@ -1602,7 +1602,10 @@ function normalizePromptPresetChildInserts(payload: Row, presetId: string): Arra
         wrapInXml: "false",
         xmlTagName: "",
         forbidOverrides: boolText(firstBoolean(rawSection, ["forbidOverrides"]) ?? false),
-        skipWrap: boolText(firstBoolean(rawSection, ["skipWrap"]) ?? false),
+        // Markers always keep their wrapper (#7014), so a marker never stores skipWrap on.
+        skipWrap: boolText(
+          firstBoolean(rawSection, ["skipWrap"]) === true && firstBoolean(rawSection, ["isMarker", "marker"]) !== true,
+        ),
       },
     });
   }
@@ -4706,10 +4709,15 @@ export class MariDbService {
           );
         }
         // #7014: the assembler ignores skipWrap on markers, so turning it on would report a no-op as success.
-        if (patch.skipWrap === "true" && String(patch.isMarker ?? existing.isMarker) === "true") {
+        const resultIsMarker = String(patch.isMarker ?? existing.isMarker) === "true";
+        if (patch.skipWrap === "true" && resultIsMarker) {
           throw new Error(
             `Section ${sectionId} is a marker; markers always keep their wrapper, so skipWrap has no effect.`,
           );
+        }
+        // A block that becomes a marker drops the flag, so a stored marker never claims to be sent bare.
+        if (resultIsMarker && patch.skipWrap === undefined && String(existing.skipWrap) === "true") {
+          patch.skipWrap = "false";
         }
         // #4812: a section may only join a group in its OWN preset, or it drops out of its preset's
         // group tree. validateTouchedRows only checks the group row exists, not its presetId.

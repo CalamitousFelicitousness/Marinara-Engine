@@ -31,6 +31,30 @@ export const ttsVoiceAssignmentSchema = z.object({
 });
 export type TTSVoiceAssignment = z.infer<typeof ttsVoiceAssignmentSchema>;
 
+/** Body of PUT /api/tts/config/voice-assignment: one character's voice; a blank voice removes its row. */
+export const ttsVoiceAssignmentInputSchema = z.object({
+  characterId: z.string().min(1).max(200),
+  characterName: z.string().max(500),
+  voice: z.string().max(2000),
+});
+export type TTSVoiceAssignmentInput = z.infer<typeof ttsVoiceAssignmentInputSchema>;
+
+/**
+ * Give one character its own voice, or drop its rows when the voice is blank so
+ * it falls back to the default voice. Other characters' rows keep their order.
+ */
+export function setCharacterVoiceAssignment(
+  assignments: readonly TTSVoiceAssignment[] | undefined,
+  character: Pick<TTSVoiceAssignment, "characterId" | "characterName">,
+  voice: string,
+): TTSVoiceAssignment[] {
+  const rows = assignments ?? [];
+  const isOwnRow = (entry: TTSVoiceAssignment) => entry.characterId === character.characterId;
+  if (!voice.trim()) return rows.filter((entry) => !isOwnRow(entry));
+  if (!rows.some(isOwnRow)) return [...rows, { ...character, voice }];
+  return rows.map((entry) => (isOwnRow(entry) ? { ...entry, ...character, voice } : entry));
+}
+
 export const ELEVENLABS_TTS_LANGUAGE_OPTIONS = [
   { code: "", label: "Auto detect" },
   { code: "af", label: "Afrikaans" },

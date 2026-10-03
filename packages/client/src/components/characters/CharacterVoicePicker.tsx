@@ -7,13 +7,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Loader2, Play, RefreshCw, Settings2, Square, Volume2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { useTTSConfig, useTTSVoices, useUpdateTTSConfig } from "../../hooks/use-tts";
-import {
-  getCharacterNameVoice,
-  getCharacterVoiceAssignment,
-  resolveTTSVoiceForSpeaker,
-  setCharacterVoiceAssignment,
-} from "../../lib/tts-dialogue";
+import { setCharacterVoiceAssignment } from "@marinara-engine/shared";
+import { useTTSConfig, useTTSVoices, useUpdateTTSConfig, useUpdateTTSVoiceAssignment } from "../../hooks/use-tts";
+import { getCharacterNameVoice, getCharacterVoiceAssignment, resolveTTSVoiceForSpeaker } from "../../lib/tts-dialogue";
 import { ttsService } from "../../lib/tts-service";
 import { cn } from "../../lib/utils";
 import { useUIStore } from "../../stores/ui.store";
@@ -38,29 +34,27 @@ export function CharacterVoicePicker({
   const { t } = useTranslation();
   const { data: config, isLoading: configLoading, dataUpdatedAt } = useTTSConfig();
   const updateConfig = useUpdateTTSConfig();
+  const updateVoiceAssignment = useUpdateTTSVoiceAssignment();
   const perCharacter = config?.enabled === true && config.voiceMode === "per-character";
   const voicesQuery = useTTSVoices(config?.source ?? "openai", config?.baseUrl ?? "", perCharacter);
 
   const savedVoice = getCharacterVoiceAssignment(config?.voiceAssignments, characterId);
   const [draftVoice, setDraftVoice] = useState<string | null>(null);
   const voice = draftVoice ?? savedVoice;
-  const configRef = useRef(config);
-  configRef.current = config;
   const pendingSaveRef = useRef<{ timer: ReturnType<typeof setTimeout>; voice: string } | null>(null);
   // Saves not answered yet. A refetch that lands meanwhile can be older than what was typed.
   const savesInFlightRef = useRef(0);
+  // Each save waits for the one before it, so the server applies them in the order they were made.
+  const saveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
 
   const saveVoiceRef = useRef((_voice: string) => {});
   saveVoiceRef.current = (nextVoice: string) => {
-    const latest = configRef.current;
-    if (!latest) return;
-    const voiceAssignments = setCharacterVoiceAssignment(
-      latest.voiceAssignments,
-      { characterId, characterName },
-      nextVoice,
-    );
+    // Only this character's row is sent, so settings saved elsewhere since this page loaded stay as they are.
+    const input = { characterId, characterName, voice: nextVoice };
     savesInFlightRef.current += 1;
-    updateConfig.mutateAsync({ ...latest, voiceAssignments }).then(
+    const save = saveQueueRef.current.then(() => updateVoiceAssignment.mutateAsync(input));
+    saveQueueRef.current = save.catch(() => undefined);
+    save.then(
       () => {
         savesInFlightRef.current -= 1;
       },
@@ -137,10 +131,9 @@ export function CharacterVoicePicker({
   };
 
   const switchToPerCharacterVoices = () => {
-    const latest = configRef.current;
-    if (!latest) return;
+    if (!config) return;
     updateConfig
-      .mutateAsync({ ...latest, voiceMode: "per-character" })
+      .mutateAsync({ ...config, voiceMode: "per-character" })
       .catch(() => toast.error(t("ui.characters.voice.saveFailed")));
   };
 

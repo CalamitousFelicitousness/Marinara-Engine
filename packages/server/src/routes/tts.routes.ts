@@ -11,6 +11,8 @@ import { join } from "path";
 import {
   ttsConfigSchema,
   ttsSourceProfileFromConfig,
+  ttsVoiceAssignmentInputSchema,
+  setCharacterVoiceAssignment,
   normalizeMusicEnemyTier,
   TTS_SETTINGS_KEY,
   TTS_API_KEY_MASK,
@@ -1310,6 +1312,17 @@ async function fetchProviderVoices(cfg: TTSConfig): Promise<TTSVoicesResponse> {
 export async function ttsRoutes(app: FastifyInstance) {
   const storage = createAppSettingsStorage(app.db);
   const connections = createConnectionsStorage(app.db);
+  // Config saves read the stored settings and write them back. Storage can hold a write
+  // (for example behind another request's transaction), so a save that read before
+  // another one landed would overwrite it. Run them one at a time instead.
+  // ponytail: in-process only, which covers the store's single writer process; any new
+  // read-modify-write of TTS_SETTINGS_KEY must go through this chain too.
+  let configWrites: Promise<unknown> = Promise.resolve();
+  const withConfigWriteLock = <T>(write: () => Promise<T>): Promise<T> => {
+    const run = configWrites.then(write);
+    configWrites = run.catch(() => undefined);
+    return run;
+  };
 
   /**
    * GET /api/tts/config
@@ -1328,11 +1341,33 @@ export async function ttsRoutes(app: FastifyInstance) {
    */
   app.put("/config", async (req, reply) => {
     const input = ttsConfigSchema.parse(req.body);
-    const existing = parseStoredConfig(await storage.get(TTS_SETTINGS_KEY));
-    const storedConfig = prepareTTSConfigForStorage(input, existing);
-    clearPocketTtsApiModeCache(existing);
-    clearPocketTtsApiModeCache(storedConfig);
-    await storage.set(TTS_SETTINGS_KEY, JSON.stringify(storedConfig));
+    await withConfigWriteLock(async () => {
+      const existing = parseStoredConfig(await storage.get(TTS_SETTINGS_KEY));
+      const storedConfig = prepareTTSConfigForStorage(input, existing);
+      clearPocketTtsApiModeCache(existing);
+      clearPocketTtsApiModeCache(storedConfig);
+      await storage.set(TTS_SETTINGS_KEY, JSON.stringify(storedConfig));
+    });
+    return reply.status(204).send();
+  });
+
+  /**
+   * PUT /api/tts/config/voice-assignment
+   * Sets or clears one character's voice and leaves every other setting as stored,
+   * so a voice picked in the Character Editor cannot undo a newer settings save.
+   */
+  app.put("/config/voice-assignment", async (req, reply) => {
+    const { characterId, characterName, voice } = ttsVoiceAssignmentInputSchema.parse(req.body);
+    await withConfigWriteLock(async () => {
+      const existing = parseStoredConfig(await storage.get(TTS_SETTINGS_KEY));
+      const voiceAssignments = setCharacterVoiceAssignment(
+        existing.voiceAssignments,
+        { characterId, characterName },
+        voice,
+      );
+      // Keys stay exactly as stored (already encrypted); the active source profile mirrors the list, as on PUT /config.
+      await storage.set(TTS_SETTINGS_KEY, JSON.stringify(withActiveSourceProfile({ ...existing, voiceAssignments })));
+    });
     return reply.status(204).send();
   });
 

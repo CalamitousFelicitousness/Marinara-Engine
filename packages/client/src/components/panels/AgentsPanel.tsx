@@ -23,6 +23,7 @@ import {
   Dices,
   Grid3x3,
   Upload,
+  AppWindow,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useUIStore, type ResourcePanelSort } from "../../stores/ui.store";
@@ -36,9 +37,11 @@ import {
   type AgentConfigRow,
 } from "../../hooks/use-agents";
 import {
+  isAppCapabilityPackage,
   useCapabilityAgentRegistry,
   useCapabilityCatalog,
   useImportRuleset,
+  useInstalledCapabilityPackages,
   useInstalledRulesets,
   useRemoveRuleset,
   useUninstallCapabilityPackage,
@@ -193,7 +196,7 @@ function useTouchSafeAgentDragMode() {
 }
 
 function createBuiltInAgentConfigRow(
-  agent: (typeof BUILT_IN_AGENTS)[number],
+  agent: Pick<(typeof BUILT_IN_AGENTS)[number], "id" | "name" | "description" | "phase">,
   config: AgentConfigRow | null | undefined,
 ): AgentConfigRow {
   const defaultSettings = {
@@ -247,6 +250,7 @@ export function AgentsPanel() {
   const { data: agentConfigs, isLoading } = useAgentConfigs();
   const { data: capabilityAgents, isLoading: capabilityAgentsLoading } = useCapabilityAgentRegistry();
   const { data: capabilityCatalog } = useCapabilityCatalog();
+  const { data: installedPackages } = useInstalledCapabilityPackages();
   const { data: installedRulesets = [], isLoading: rulesetsLoading } = useInstalledRulesets();
   const createAgent = useCreateAgent();
   const importAgent = useImportAgent();
@@ -342,6 +346,16 @@ export function AgentsPanel() {
       ),
     [capabilityAgents],
   );
+  const appPackageIds = useMemo(
+    () => new Set((installedPackages ?? []).filter((pkg) => isAppCapabilityPackage(pkg.manifest)).map((pkg) => pkg.id)),
+    [installedPackages],
+  );
+  // An app package's agents count as apps everywhere: the root list, folders and filters.
+  const builtInCategory = useCallback(
+    (agentType: string, category: AgentCategory) =>
+      appPackageIds.has(packageIdByAgentType.get(agentType) ?? "") ? ("app" as const) : category,
+    [appPackageIds, packageIdByAgentType],
+  );
   const capabilityAgentRegistryReady = !capabilityAgentsLoading && capabilityAgents !== undefined;
   const catalogArtworkByAgentId = useMemo(
     () =>
@@ -388,12 +402,13 @@ export function AgentsPanel() {
         return {
           ...agent,
           name: agent.name,
+          category: builtInCategory(agent.id, agent.category),
           description: config?.description ?? agent.description,
           createdAt: config?.createdAt ?? "",
           updatedAt: config?.updatedAt ?? "",
         };
       }),
-    [configByType, visibleBuiltInAgents],
+    [builtInCategory, configByType, visibleBuiltInAgents],
   );
   const builtInExportRows = useMemo(
     () => visibleBuiltInAgents.map((agent) => createBuiltInAgentConfigRow(agent, configByType.get(agent.id))),
@@ -435,15 +450,21 @@ export function AgentsPanel() {
     name: agent.name,
     description: agent.description,
     category: builtInAgentIds.has(agent.type)
-      ? (availableBuiltInAgents.find((entry) => entry.id === agent.type)?.category ?? "misc")
+      ? builtInCategory(agent.type, availableBuiltInAgents.find((entry) => entry.id === agent.type)?.category ?? "misc")
       : "custom",
   });
   const agentCategorySections: Array<{
-    category: AgentCategory;
+    category: AgentCategory | "app";
     title: string;
     emptyMessage: string;
     icon: ReactNode;
   }> = [
+    {
+      category: "app",
+      title: localizeUi("ui.panels.agentspanel.apps"),
+      emptyMessage: localizeUi("ui.panels.agentspanel.noAppsYet"),
+      icon: <AppWindow size="0.8125rem" />,
+    },
     {
       category: "writer",
       title: localizeUi("ui.panels.agentspanel.writingAgents"),
@@ -1073,7 +1094,7 @@ export function AgentsPanel() {
     (agent: AgentConfigRow) => {
       const builtInMeta = availableBuiltInAgents.find((entry) => entry.id === agent.type);
       const custom = !builtInMeta;
-      const category = custom ? "custom" : builtInMeta.category;
+      const category = custom ? "custom" : builtInCategory(agent.type, builtInMeta.category);
       return renderAgentCard({
         localizeUi,
         id: agent.id,
@@ -1135,6 +1156,7 @@ export function AgentsPanel() {
     },
     [
       availableBuiltInAgents,
+      builtInCategory,
       catalogArtworkByAgentId,
       capabilityAgentRegistryReady,
       confirmAndRemoveAgent,
@@ -1919,7 +1941,7 @@ function renderAgentCard({
   type: string;
   name: string;
   description: string;
-  category: AgentCategory | "custom";
+  category: AgentCategory | "app" | "custom";
   imagePath?: string | null;
   custom: boolean;
   openAgentDetail: (id: string) => void;

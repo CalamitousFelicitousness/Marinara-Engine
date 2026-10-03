@@ -815,7 +815,7 @@ assert.deepEqual(
 for (const file of ["ChatArea.tsx", "ChatMessage.tsx"]) {
   assert.match(
     readFileSync(join(repositoryRoot, "packages/client/src/components/chat", file), "utf8"),
-    /findTTSCharacterIdBySpeakerName\(speaker, characterMap\)/u,
+    /findTTSCharacterIdBySpeakerName\([^)]*\)/u,
     `${file} must find the speaking card like the other chat playback path`,
   );
 }

@@ -1,6 +1,6 @@
 ---
 name: marinara-upstream-sync
-description: How to sync this fork with upstream Pasta-Devs/Marinara-Engine — why the merge is a merge and not a rebase, how to see every conflict before touching the working tree, the specific fork patches that collide on each sync and how each one is resolved, and the four silent losses that no conflict marker will warn you about. Use this skill whenever the user wants to sync, rebase, update, merge, or pull in upstream changes; asks whether upstream has new commits or how far behind the fork is; mentions upstream/staging, a version bump, or a large batch of incoming commits; or hits a merge conflict anywhere in this repo. Consult it before resolving any conflict here, and before concluding that a post-merge test failure is yours.
+description: How to sync this fork with upstream Pasta-Devs/Marinara-Engine — why the merge is a merge and not a rebase, how to see every conflict before touching the working tree, the specific fork patches that collide on each sync and how each one is resolved, and the silent losses that no conflict marker will warn you about. Use this skill whenever the user wants to sync, rebase, update, merge, or pull in upstream changes; asks whether upstream has new commits or how far behind the fork is; mentions upstream/staging, a version bump, or a large batch of incoming commits; or hits a merge conflict anywhere in this repo. Consult it before resolving any conflict here, and before concluding that a post-merge test failure is yours.
 ---
 
 # Syncing this fork with upstream
@@ -31,6 +31,11 @@ files, 29 conflicts, v2.4.5 on both sides with no storage bump. Commit count
 does not predict the work. The 2026-08-20 sync pulled 447 commits for 7
 conflicts; this one pulled 240 for 29, because the overlap set grew from 18
 files to 69. Measure the overlap, not the log.
+
+On 2026-10-03: 564 commits, 82 overlapping files, 30 conflicts, one merge.
+The conflicted line counts pointed the wrong way. The largest conflict, 585
+lines in `TTSConfigCard.tsx`, was a one-sided keep; the riskiest outcomes carried
+no marker or a small one. Read what each side changed, not how much.
 
 Largest so far on 2026-09-27: 1141 upstream commits in sixteen days, 130
 overlapping files, 64 simulated conflicts, v2.4.6 and storage format 7. It ran
@@ -232,6 +237,8 @@ added and confirm both are present.
 | `e2e/core-flows.e2e.ts`                    | adjacency                       | keep both tests, close the first              |
 | `pnpm-lock.yaml`                           | regenerable                     | take upstream's, then `pnpm install`          |
 | `scripts/dev.mjs`, `client/vite.config.ts` | the `.env` PORT patch           | keep the fork's, guarded by `dev-ports:check` |
+| `settings/TTSConfigCard.tsx`               | upstream edits a region cut     | keep the fork's hunk, re-home the change      |
+| `chat/ChatMessage.tsx` action bars         | upstream edits its inline bars  | add the new items to the extracted bars       |
 
 **`retry-agents-route.ts` is the one to slow down for.** The fork's
 `authorNotes` derivation sits in the same object literal as `chatSummary`,
@@ -306,10 +313,12 @@ keep the assertions; the behavior under test is the same.
 
 ## Checks that no conflict marker will warn you about
 
-Four losses happen without a conflict. The first is a revert, because only one
-side edits the field; the second is an inbound fix that lands nowhere; the third
-is a fork field missing from code upstream added whole; the fourth is an
-upstream call to a helper the fork retired.
+Six losses happen without a conflict, or behind one that looks routine. The
+first is a revert, because only one side edits the field; the second is an
+inbound fix that lands nowhere; the third is a fork field missing from code
+upstream added whole; the fourth is an upstream call to a helper the fork
+retired; the fifth is upstream cleanup code that destroys a fork path; the sixth
+is two features that each work alone.
 
 **`package.json#pnpm`.** This fork moved dependency overrides into
 `pnpm-workspace.yaml` for pnpm 11; upstream stays on pnpm 10.x and keeps them
@@ -395,6 +404,36 @@ import.
 When a conflict resolves to "an identifier is not defined", check whether the
 fork deliberately retired it before restoring the import. `git log -S` on the
 old name finds the commit that replaced it, and its message says why.
+
+**Upstream cleanup code that destroys a fork path.** When upstream wraps a
+function in `try`/`catch` and the `catch` removes what the function created, a
+fork branch inside that `try` which updates an existing row instead of creating
+one inherits the rollback. The resolution compiles and reads as "wrap the fork's
+branch in upstream's new error handling", and a failure then deletes the user's
+data.
+
+The 2026-10-03 case: upstream's lorebook importer gained reference images, saved
+inside a `try` whose `catch` runs `storage.remove(newLb.id)`. The fork's overwrite
+path set `newLb` to the user's existing lorebook, so a failed re-import would
+have removed it. Read every new `catch`, `finally` and rollback in a conflicted
+function and ask what it does to a row the fork's side did not create.
+
+**Two features that each work alone.** Upstream adds state kept per swipe or per
+message, and the fork adds a feature that creates swipes or messages its own way.
+Neither file conflicts, both lanes pass, and the combination is wrong.
+
+The 2026-10-03 case: upstream records each turn's chat-variable changes on the
+swipe that produced them and replays them when the active swipe changes. Fork
+multiswipe appends candidates 2..N as silent swipes after candidate 1 is
+recorded, so they carried nothing, and browsing to one undid every `{{setvar}}`
+the shared prompt ran. For each new upstream per-swipe or per-message record,
+check it against multiswipe, branches and the fork's import overwrite, which all
+create or replace those rows outside upstream's paths.
+
+**Upstream e2e specs drive upstream's UI.** A new spec that finds a control by
+label in a surface the fork restructured fails on the locator, not on the
+behavior. Adapt it to the fork's surface and keep its assertions; on 2026-10-03
+`author-notes.e2e.ts` and `tts-pcm-settings.e2e.ts` needed that.
 
 ## Proving a failure is upstream's, not yours
 

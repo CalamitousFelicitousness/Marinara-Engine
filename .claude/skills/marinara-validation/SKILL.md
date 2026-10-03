@@ -214,6 +214,34 @@ that lane exits before reaching `prompt-attachments`, `context-fit`, or
 node ./scripts/run-regressions.mjs --filter scripts/regressions/author-note-presets.regression.ts
 ```
 
+### Regression suite: 534/540, as of 2026-10-03
+
+**Measured after the 2026-10-03 sync, app stopped.** Four of the five
+2026-09-27 failures below still fail; the flaky `capability-agent-runtime`
+passed. Two more, neither worth re-investigating:
+
+- `lorebook-images.regression.ts`, Windows only and new with that sync. It
+  plants a symlink in the image directory and expects the reader to refuse it;
+  the guard is `open(..., O_RDONLY | O_NOFOLLOW)`, and Windows ignores
+  `O_NOFOLLOW`. The fork is byte-identical to upstream on
+  `services/lorebook/` and the lane.
+- `ruleset-combat-director.regression.ts` passes alone in about 28.5 s against
+  the 30 s budget and timed out inside the full run, like
+  `advanced-memory-core` below. Re-run it alone first.
+
+`e2e/chat-insights.e2e.ts:72` (`chat search, stats and story exports work with
+private content filtered`) fails at its last step: the Game-mode jump notice
+shows as two identical toasts, and `getByText(...).toBeVisible()` trips strict
+mode. Confirmed identical on a clean `upstream/staging` worktree (`ed542bc56`,
+its own pnpm 10.34.5 install). The spec is not tagged `@smoke`, so upstream's CI
+never runs it.
+
+`termux-sharp.regression.mjs` failed on first run with
+`ERR_PNPM_NO_OFFLINE_META` and is fixed: under pnpm 11 an offline install
+checks every lockfile entry against the release-age policy, which needs
+registry metadata. Any new lane that runs `pnpm install --offline` against a
+fixture needs `minimumReleaseAge: 0` in that fixture's workspace file.
+
 ### Regression suite: 445/450, as of 2026-09-27
 
 **Measured after the 2026-09-27 sync, app stopped: 445/450.** The lane count

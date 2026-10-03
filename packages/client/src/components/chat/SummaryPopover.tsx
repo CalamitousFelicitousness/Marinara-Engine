@@ -91,6 +91,7 @@ import {
   type SemanticSummaryRetrievalControlField,
 } from "./SemanticSummaryRetrievalControls";
 import { useTouchFolderDrag } from "../../hooks/use-touch-folder-drag";
+import { useKeepFocusedFieldAboveKeyboard } from "../../hooks/use-keep-focused-field-above-keyboard";
 import { getTouchReorderDropIndex } from "../../lib/touch-reorder";
 import {
   CHAT_SUMMARY_BATCH_MAX_MESSAGES,
@@ -482,6 +483,7 @@ export function SummaryPopover({
   const [draggingEntryIndex, setDraggingEntryIndex] = useState<number | null>(null);
   const [dragReadyEntryIndex, setDragReadyEntryIndex] = useState<number | null>(null);
   const [summaryDropIndex, setSummaryDropIndex] = useState<number | null>(null);
+  useKeepFocusedFieldAboveKeyboard(panelRef);
 
   const { startBackfill, stopBackfill } = useRollingSummaryBackfill();
   const backfillState = useRollingBackfillStore();
@@ -2477,7 +2479,7 @@ export function SummaryPopover({
         </div>
 
         {/* Source controls */}
-        <div className="border-t border-[var(--border)] bg-[var(--card)]/45 px-3 py-2.5">
+        <div data-chat-floating-footer className="border-t border-[var(--border)] bg-[var(--card)]/45 px-3 py-2.5">
           <div className="mb-2.5 space-y-2">
             <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-start gap-3">
               <div className="min-w-0">

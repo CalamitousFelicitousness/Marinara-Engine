@@ -21,6 +21,8 @@ export const STORY_MAX = Object.freeze({
   conditions: 8,
   pages: 40,
   beats: 20,
+  /** The characters of the beats the Game Master is told with its own events, in every turn's prompt. */
+  gmBeatChars: 16_000,
 });
 /** The expressions a cutscene's speaker can wear: the Game Master's own list. */
 export const STORY_EXPRESSIONS = Object.freeze([
@@ -213,6 +215,16 @@ const NEEDS_PLACE: readonly WorldDeed[] = ["improve", "damage", "take", "fall"];
  * it names is there, its values fit their flags, and only what it declares the Game Master's is.
  * Strict, as a kit is: a script that does not fit is refused whole, with the reasons.
  */
+/** The beats a `gm` event's scenes have, each scene once: told to the Game Master with the event, to
+ *  narrate as it marks it. */
+function gmEventBeats(event: StoryEvent, cutscenes: ReadonlyMap<string, StoryScript["cutscenes"][number]>) {
+  const ids = new Set(event.do.flatMap((action) => ("cutscene" in action ? [action.cutscene] : [])));
+  return [...ids].flatMap((id) => {
+    const scene = cutscenes.get(id);
+    return scene?.kind === "beats" ? scene.beats : [];
+  });
+}
+
 export function checkStoryScript(
   game: GameWorld,
   input: unknown,
@@ -343,6 +355,16 @@ export function checkStoryScript(
     for (const page of cutscene.pages) {
       if (page.speaker && page.speaker !== STORY_PLAYER) personOk(page.speaker, `Cutscene "${cutscene.id}"`);
     }
+  }
+  // The Game Master is told its own events' beats on every turn, so they are kept to a prompt's share.
+  const scenes = new Map(story.cutscenes.map((cutscene) => [cutscene.id, cutscene]));
+  const gmBeatChars = story.events
+    .filter((event) => event.gm)
+    .reduce((sum, event) => sum + gmEventBeats(event, scenes).reduce((chars, beat) => chars + beat.length, 0), 0);
+  if (gmBeatChars > STORY_MAX.gmBeatChars) {
+    issues.push(
+      `The Game Master's own events have ${gmBeatChars} characters of beats, told on every turn; keep them to ${STORY_MAX.gmBeatChars}.`,
+    );
   }
   const unique20 = [...new Set(issues)].slice(0, 20);
   return unique20.length ? { ok: false, issues: unique20 } : { ok: true, story };
@@ -706,7 +728,9 @@ export function storyTurn(story: StoryScript, world: StoryTurnWorld): StoryTurn 
   const beats: string[][] = [];
   const tripped: string[] = [];
 
-  const deliver = (event: StoryEvent, withDeeds: boolean) => {
+  /** An event's scenes, asks and deeds: by the Engine this turn, or as the Game Master marked it last
+   *  reply, whose deeds went with its tag and whose beats it was told to narrate as it marked it. */
+  const deliver = (event: StoryEvent, byEngine: boolean) => {
     for (const action of event.do) {
       if ("tell" in action) tells.push(action.tell);
       else if ("cutscene" in action) {
@@ -715,8 +739,8 @@ export function storyTurn(story: StoryScript, world: StoryTurnWorld): StoryTurn 
           const pages = storyPages(game, cutscene, world.playerName);
           prepend.push(pages);
           shown.push(pages);
-        } else if (cutscene?.kind === "beats") beats.push([...cutscene.beats]);
-      } else if ("world" in action && withDeeds) prepend.push(storyWorldTag(game, action.world));
+        } else if (cutscene?.kind === "beats" && byEngine) beats.push([...cutscene.beats]);
+      } else if ("world" in action && byEngine) prepend.push(storyWorldTag(game, action.world));
     }
   };
 
@@ -879,18 +903,32 @@ export function refuseStoryTags(content: string): string {
 }
 
 /** The story as the Game Master is told it once, with the world: how to write its tags, and what of the
- *  script is its own. Nothing else of the script (its scenes and the Engine's events stay unknown until
- *  they happen). Empty when the script gives the Game Master nothing. */
+ *  script is its own, with the beats it narrates as it marks a moment (told after the moment, they would
+ *  only tell it again; a beats scene an Engine event shares is so known from the start). Nothing else
+ *  of the script (the Engine's events and every other scene stay unknown until they happen). Empty
+ *  when the script gives the Game Master nothing. */
 export function storyScriptPromptText(story: StoryScript): string {
   const events = story.events.filter((event) => event.gm);
   const flags = story.flags.filter((flag) => flag.gm);
   if (!events.length && !flags.length) return "";
+  const cutscenes = new Map(story.cutscenes.map((cutscene) => [cutscene.id, cutscene]));
   return [
     "This world has a story script. When the story reaches one of these moments, mark it with a story tag; the Engine answers it in place, and refuses anything else.",
     ...(events.length
       ? [
           'Moments you may trip, with [story: event="<id>"]:',
-          ...events.map((event) => `- ${event.id}${event.note ? `: ${event.note}` : ""}`),
+          ...events.flatMap((event) => {
+            const beats = gmEventBeats(event, cutscenes);
+            return [
+              `- ${event.id}${event.note ? `: ${event.note}` : ""}`,
+              ...(beats.length
+                ? [
+                    "  When you mark it, narrate this with it, in your own words, beat by beat:",
+                    ...beats.map((beat) => `  - ${beat}`),
+                  ]
+                : []),
+            ];
+          }),
         ]
       : []),
     ...(flags.length
@@ -906,7 +944,8 @@ export function storyScriptPromptText(story: StoryScript): string {
 }
 
 /** What the story says to the Game Master this turn: its values (hidden from the player), the standing
- *  directions in force, what it asks now, the scene just shown, and any scene to narrate now. */
+ *  directions in force, what it asks now, the scene just shown, any scene to narrate now, and which of
+ *  its own moments are not open now. */
 export function storyTurnPromptText(story: StoryScript, turn: StoryTurn): string {
   const lines: string[] = [];
   const values = story.flags.map((flag) => {
@@ -927,5 +966,19 @@ export function storyTurnPromptText(story: StoryScript, turn: StoryTurn): string
     lines.push("Narrate this scene now, in your own words, beat by beat:", ...scene.map((beat) => `- ${beat}`));
   }
   if (turn.tells.length) lines.push("The story asks this of you now:", ...turn.tells.map((tell) => `- ${tell}`));
+  // Its own moments it cannot mark now (done, held back by their conditions, or the Engine's this turn),
+  // so it never tells a moment, or its beats, that the Engine would refuse.
+  const closed = story.events.filter(
+    (event) =>
+      event.gm &&
+      (turn.tripped.includes(event.id) ||
+        (!event.repeat && (turn.state.fired[event.id] ?? 0) > 0) ||
+        !storyConditionsHold(event.if, turn.state.flags)),
+  );
+  if (closed.length) {
+    lines.push(
+      `Story moments not open to you now (do not mark them or tell their scenes): ${closed.map((event) => event.id).join(", ")}.`,
+    );
+  }
   return lines.join("\n");
 }

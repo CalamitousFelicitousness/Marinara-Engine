@@ -4358,7 +4358,7 @@ test("Character and Persona avatar actions stay separated and visually balanced"
         await expect(desktopTabs).toBeVisible();
         await expect(compactMenuButton).toBeHidden();
         await expect(editor.locator(".mari-editor-tab-rail")).toHaveCount(0);
-        await expect(desktopTabs.getByRole("button")).toHaveCount(panel === "characters" ? 9 : 8);
+        await expect(desktopTabs.getByRole("button")).toHaveCount(panel === "characters" ? 10 : 8);
         const [headerBox, identityBox, navigationBox, firstActionBox, tabBoxes] = await Promise.all([
           header.boundingBox(),
           header.locator(".mari-editor-header-main").boundingBox(),

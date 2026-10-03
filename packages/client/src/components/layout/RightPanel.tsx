@@ -146,7 +146,7 @@ export function RightPanel() {
       className="mari-right-panel-content mari-chrome-token-scope flex h-full min-h-0 flex-col outline-none"
     >
       {/* Header - OS window style */}
-      <div className="mari-right-panel-header relative flex h-12 flex-shrink-0 items-center justify-between bg-[var(--card)]/80 px-4 backdrop-blur-sm">
+      <div className="mari-right-panel-header relative flex h-12 flex-shrink-0 items-center justify-between px-4">
         <div className="absolute inset-x-0 bottom-0 h-px bg-[var(--border)]/30" />
         <div className="flex min-w-0 items-center gap-2.5">
           <div

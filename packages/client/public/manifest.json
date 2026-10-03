@@ -5,8 +5,8 @@
   "version": "2.4.6",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0a0a0f",
-  "theme_color": "#0a0a0f",
+  "background_color": "#121114",
+  "theme_color": "#121114",
   "icons": [
     {
       "src": "/favicon.png",

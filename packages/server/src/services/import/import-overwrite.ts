@@ -1,36 +1,17 @@
-// Emptying a row so an import can write into it.
+// Emptying a preset so an import can write into it.
 //
 // Characters and personas need none of this: their storage replaces the card in
-// one update and keeps the previous one as a version snapshot. Lorebooks and
-// presets keep their content in child rows instead, so replacing one means
-// clearing what is there first. Nothing snapshots those, which is why the
-// question that leads here has to say so.
+// one update and keeps the previous one as a version snapshot. Presets keep their
+// content in child rows instead, so replacing one means clearing what is there
+// first. Nothing snapshots those, which is why the question that leads here has
+// to say so. Lorebooks swap their rows inside the importer's own transaction.
 //
 // Emptying rather than deleting is the point: the row keeps its id, so
 // everything pointing at it stays pointed at it.
 
-import type { createLorebooksStorage } from "../storage/lorebooks.storage.js";
 import type { createPromptsStorage } from "../storage/prompts.storage.js";
 
-type LorebooksStorage = ReturnType<typeof createLorebooksStorage>;
 type PromptsStorage = ReturnType<typeof createPromptsStorage>;
-
-/**
- * Removes every entry and folder from a lorebook.
- *
- * Entries go first so no folder removal has to relocate one, and folders cascade
- * because a nested folder would otherwise be promoted to the root and survive.
- */
-export async function emptyLorebookForOverwrite(storage: LorebooksStorage, lorebookId: string): Promise<void> {
-  const entries = (await storage.listEntries(lorebookId)) as unknown as Array<{ id: string }>;
-  for (const entry of entries) {
-    await storage.removeEntry(entry.id);
-  }
-  const folders = (await storage.listFolders(lorebookId)) as unknown as Array<{ id: string }>;
-  for (const folder of folders) {
-    await storage.removeFolder(folder.id, lorebookId, true);
-  }
-}
 
 /**
  * Removes every section, group and choice block from a preset.

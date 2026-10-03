@@ -230,6 +230,10 @@ try {
     delete byDoc.layers;
     byDoc.id = "gravewatch-by-rest";
     byDoc.rests = [{ id: "breather", label: "Catch a breath", restore: [{ track: "harm", by: { const: -2 } }] }];
+    // The dawn bell's charges come back on the vigil, which this variant no longer has.
+    for (const catalog of byDoc.catalogs) {
+      for (const entry of catalog.entries ?? []) delete entry.item?.charges?.recharge;
+    }
     const parsedBy = parseRulesetDefinition(byDoc);
     assert.ok(parsedBy.ok, `the variant must validate: ${JSON.stringify(parsedBy)}`);
     const byDefinition = parsedBy.definition;
@@ -339,9 +343,13 @@ try {
     // penalty MEANS is the resolution kind's business.
     const summed = JSON.parse(gravewatchText) as Record<string, any>;
     delete summed.layers;
+    // Its fight throws pools, which a summed ruleset has none of.
+    delete summed.combat;
     // The example's charm changes a POOL check, which a summed ruleset cannot honour and is
     // refused for elsewhere. This case is about the penalty, so it reads the file without one.
     delete summed.catalogs;
+    // And the loot tables, whose items were in those catalogs.
+    delete summed.items.lootTables;
     delete summed.sheet.lists;
     delete summed.gm.sheetSummary.lists;
     // And with the lists goes the one that adds levels to the track, and a summed roll has no per-die
@@ -595,6 +603,19 @@ try {
     delete document.sheet.live.states;
     for (const rest of document.rests) {
       rest.restore = rest.restore.filter((step: { state?: string }) => step.state === undefined);
+    }
+    // And 1.49's items block, with the catalog written in it.
+    delete document.items;
+    document.catalogs = document.catalogs.filter((catalog: { holds?: string }) => catalog.holds !== "items");
+    // And 1.47's fight, with the bestiary written in its numbers and the charms it offers.
+    delete document.combat;
+    document.catalogs = (document.catalogs ?? []).filter(
+      (catalog: { holds?: string }) => catalog.holds !== "creatures",
+    );
+    for (const catalog of document.catalogs) {
+      catalog.entries = (catalog.entries ?? []).filter(
+        (entry: { mechanics?: { check?: unknown } }) => !entry.mechanics || entry.mechanics.check !== undefined,
+      );
     }
     for (const catalog of document.catalogs ?? []) {
       catalog.entries = (catalog.entries ?? []).filter((entry: any) => entry.mechanics?.check?.explode === undefined);

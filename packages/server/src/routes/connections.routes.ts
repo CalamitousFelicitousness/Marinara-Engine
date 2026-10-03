@@ -11,6 +11,7 @@ import { extname, join } from "path";
 import {
   ATLAS_CLOUD_IMAGE_MODELS,
   ATLAS_CLOUD_VIDEO_MODELS,
+  CODEX_IMAGE_MODEL,
   ZAI_IMAGE_MODELS,
   FAL_IMAGE_MODELS,
   IMAGE_DEFAULTS_STORAGE_KEY,
@@ -21,6 +22,8 @@ import {
   createDefaultVideoGenerationProfile,
   decisionTestTimeoutMs,
   generationParametersSchema,
+  type GenerationParameterKey,
+  type ModelParameterCapabilities,
   inferImageSource,
   inferVideoSource,
   isLocalAuthProvider,
@@ -817,6 +820,16 @@ export async function connectionsRoutes(app: FastifyInstance) {
           latencyMs: Date.now() - start,
           modelName: conn.model,
         };
+      } else if (conn.provider === "image_generation" && imageSource === "codex_chatgpt") {
+        // Only reads the local login, so checking never uses the ChatGPT image allowance.
+        const auth = await getOpenAIChatGPTAuth();
+        const detail = auth.planType ? ` (${auth.planType})` : "";
+        return {
+          success: true,
+          message: `ChatGPT login found via Codex auth${detail}. Use Test Image to generate one image with your ChatGPT plan.`,
+          latencyMs: Date.now() - start,
+          modelName: conn.model,
+        };
       } else if (conn.provider === "image_generation" && imageSource === "horde") {
         // Horde: heartbeat is the lightweight health endpoint for the public API.
         testUrl = buildHordeUrl(baseUrl, "status/heartbeat");
@@ -1060,6 +1073,9 @@ export async function connectionsRoutes(app: FastifyInstance) {
       }
       if (conn.provider === "image_generation" && imageSource === "fal") {
         return { models: FAL_IMAGE_MODELS.map((model) => ({ id: model.id, name: model.name })) };
+      }
+      if (conn.provider === "image_generation" && imageSource === "codex_chatgpt") {
+        return { models: [{ id: CODEX_IMAGE_MODEL, name: "GPT Image 2" }] };
       }
       baseUrl = normalizeConnectionTestBaseUrl(baseUrl, conn.provider);
       const lowerBase = baseUrl.toLowerCase();
@@ -1822,10 +1838,38 @@ interface RemoteModel {
   context?: number;
   maxOutput?: number;
   pricing?: TextModelPricing;
+  capabilities?: ModelParameterCapabilities;
   /** Aggregator subscription metadata (NanoGPT `detailed=true`). */
   subscriptionIncluded?: boolean;
   /** How many input tokens this model consumes per token of quota. */
   inputTokenMultiplier?: number;
+}
+
+/** OpenRouter names each model's accepted request fields; map the ones the parameter panel controls. */
+const OPENROUTER_PARAMETER_FIELDS: Record<string, GenerationParameterKey> = {
+  temperature: "temperature",
+  top_p: "topP",
+  top_k: "topK",
+  frequency_penalty: "frequencyPenalty",
+  presence_penalty: "presencePenalty",
+  max_tokens: "maxTokens",
+  max_completion_tokens: "maxTokens",
+  reasoning: "reasoningEffort",
+  reasoning_effort: "reasoningEffort",
+  verbosity: "verbosity",
+};
+
+export function readOpenRouterModelCapabilities(
+  model: Record<string, unknown>,
+): ModelParameterCapabilities | undefined {
+  const fields = Array.isArray(model.supported_parameters) ? model.supported_parameters : [];
+  const keys = new Set<GenerationParameterKey>();
+  for (const field of fields) {
+    const key = typeof field === "string" ? OPENROUTER_PARAMETER_FIELDS[field] : undefined;
+    if (key) keys.add(key);
+  }
+  // An empty or missing list says nothing; it must not hide every control.
+  return keys.size > 0 ? { supportedParameters: [...keys] } : undefined;
 }
 
 /**
@@ -1985,13 +2029,17 @@ function normalizeModelsResponse(provider: string, json: Record<string, unknown>
       // This covers openai, mistral, openrouter, custom, nanogpt
       const data = (json.data ?? []) as Array<Record<string, unknown> & { id?: string; name?: string }>;
       return data
-        .map((m) => ({
-          id: m.id ?? "",
-          name: m.name ?? m.id ?? "",
-          ...readOpenAICompatibleModelLimits(m),
-          ...spreadPricing(readTextModelPricing(provider, m)),
-          ...readSubscriptionMetadata(m),
-        }))
+        .map((m) => {
+          const capabilities = provider === "openrouter" ? readOpenRouterModelCapabilities(m) : undefined;
+          return {
+            id: m.id ?? "",
+            name: m.name ?? m.id ?? "",
+            ...readOpenAICompatibleModelLimits(m),
+            ...spreadPricing(readTextModelPricing(provider, m)),
+            ...readSubscriptionMetadata(m),
+            ...(capabilities ? { capabilities } : {}),
+          };
+        })
         .filter((m) => m.id);
     }
   }

@@ -30,6 +30,7 @@ import {
   type RulesetSheetBuild,
   type RulesetSheetEnvelope,
   type RulesetSheetOp,
+  type RulesetSheetItem,
 } from "@marinara-engine/shared";
 import { RulesetSheetEditor } from "../rulesets/RulesetSheetEditor";
 import { rulesetCheckValueText } from "../../lib/ruleset-resolution";
@@ -292,6 +293,11 @@ export interface GameRulesetSheetProps {
   onLiveChange: (next: RulesetLiveState) => void;
   onEnvelopeSave: (next: RulesetSheetEnvelope) => Promise<void> | void;
   readOnly?: boolean;
+  /** What the character holds, which a value reading their items (`itemStat`) shows. */
+  items?: ReadonlyArray<RulesetSheetItem>;
+  /** A rest taken by the game rather than here: the sheet and what the character carries change
+   *  together, and it answers with the rest's own words, or null when it was not taken. */
+  onRest?: (rest: string) => Promise<string | null>;
 }
 
 export function GameRulesetSheet({
@@ -304,18 +310,26 @@ export function GameRulesetSheet({
   onLiveChange,
   onEnvelopeSave,
   readOnly = false,
+  items,
+  onRest,
 }: GameRulesetSheetProps) {
   const { t: localizeUi } = useUiTranslation();
   const [draft, setDraft] = useState<RulesetSheetEnvelope | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [restNotice, setRestNotice] = useState<string | null>(null);
+  // A rest the Engine takes is one at a time: a second click would rest (and roll recharges) again.
+  const [resting, setResting] = useState(false);
 
   const layerNames = layers?.map((layer) => layer.label).join(", ") || null;
 
   const build = useMemo(() => envelope?.build ?? defaultRulesetSheetBuild(definition), [definition, envelope]);
   const resolved = useMemo(() => readRulesetLive(definition, build, live), [definition, build, live]);
-  // Against the live state as it stands, so a value that reads a track or a pool shows what it is now.
-  const evaluated = useMemo(() => evaluateRulesetSheet(definition, build, resolved), [definition, build, resolved]);
+  // Against the live state as it stands, so a value that reads a track or a pool shows what it is now,
+  // and against what the character holds, so one that reads their items does too.
+  const evaluated = useMemo(
+    () => evaluateRulesetSheet(definition, build, items ? { ...resolved, items } : resolved),
+    [definition, build, items, resolved],
+  );
 
   /** Every change a player makes takes the same route a Game Master command does. */
   const apply = (op: RulesetSheetOp) => {
@@ -420,6 +434,7 @@ export function GameRulesetSheet({
             envelope={draft}
             onChange={setDraft}
             live={live}
+            items={items}
           />
           <div className="flex flex-wrap gap-2">
             <button
@@ -637,8 +652,18 @@ export function GameRulesetSheet({
                   <button
                     key={rest.id}
                     type="button"
-                    disabled={readOnly}
-                    onClick={() => apply({ op: "rest", rest: rest.id })}
+                    disabled={readOnly || resting}
+                    onClick={() => {
+                      if (readOnly || resting) return;
+                      if (!onRest) return apply({ op: "rest", rest: rest.id });
+                      setResting(true);
+                      void onRest(rest.id)
+                        .then((now) => {
+                          if (now !== null) setRestNotice(now);
+                        })
+                        .catch(() => undefined)
+                        .finally(() => setResting(false));
+                    }}
                     aria-label={localizeUi("game.ruleset.sheet.restAria", { name: rest.label, who: cardName })}
                     className={`${chipClass} border-[var(--border)] text-[var(--foreground)] hover:bg-[var(--accent)]`}
                   >

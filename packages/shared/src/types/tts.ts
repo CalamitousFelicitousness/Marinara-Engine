@@ -9,7 +9,7 @@ import type { AudioModelLane, AudioModelPricing } from "./model-pricing.js";
 export const ttsSourceSchema = z.enum(TTS_SOURCE_IDS);
 export type TTSSource = z.infer<typeof ttsSourceSchema>;
 
-export const ttsAudioFormatSchema = z.enum(["mp3", "wav"]);
+export const ttsAudioFormatSchema = z.enum(["mp3", "wav", "pcm"]);
 export type TTSAudioFormat = z.infer<typeof ttsAudioFormatSchema>;
 
 export const ttsVoiceModeSchema = z.enum(["single", "per-character"]);

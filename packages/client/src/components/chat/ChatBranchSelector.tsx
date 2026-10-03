@@ -1,11 +1,14 @@
 import { createPortal } from "react-dom";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import {
+  BookOpen,
+  ChartColumn,
   Check,
   Download,
   Eye,
   FileText,
   GitBranch,
+  Hash,
   Loader2,
   Maximize2,
   MessageSquare,
@@ -28,6 +31,7 @@ import { showConfirmDialog, showPromptDialog } from "../../lib/app-dialogs";
 import { CHAT_FLOATING_UI_DISMISS_EVENT, isDesktopShellNavigationTarget } from "../../lib/chat-floating-ui-events";
 import { getChatDisplayName } from "../../lib/chat-display";
 import { orderBranches } from "../../lib/chat-branch-preview";
+import { openChatStats } from "../../lib/chat-insights";
 import { api } from "../../lib/api-client";
 import { useChatStore } from "../../stores/chat.store";
 import { useUIStore } from "../../stores/ui.store";
@@ -375,6 +379,38 @@ export function ChatBranchSelector({
                 >
                   <Download size="0.75rem" />
                   {isImporting ? "..." : localizeUi("ui.chat.chatbranchselector.import")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => exportChat.mutate({ chatId: activeChatId, format: "markdown" })}
+                  disabled={exportChat.isPending}
+                  title={localizeUi("chatInsights.export.markdownTitle")}
+                  className="flex items-center justify-center gap-1.5 rounded-lg bg-[var(--secondary)] px-2 py-2 text-[0.6875rem] font-medium text-[var(--foreground)] ring-1 ring-[var(--border)] transition-colors hover:bg-[var(--accent)] disabled:opacity-50"
+                >
+                  <Hash size="0.75rem" />
+                  {localizeUi("chatInsights.export.markdown")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => exportChat.mutate({ chatId: activeChatId, format: "html" })}
+                  disabled={exportChat.isPending}
+                  title={localizeUi("chatInsights.export.htmlTitle")}
+                  className="flex items-center justify-center gap-1.5 rounded-lg bg-[var(--secondary)] px-2 py-2 text-[0.6875rem] font-medium text-[var(--foreground)] ring-1 ring-[var(--border)] transition-colors hover:bg-[var(--accent)] disabled:opacity-50"
+                >
+                  <BookOpen size="0.75rem" />
+                  {localizeUi("chatInsights.export.html")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    openChatStats(activeChatId);
+                  }}
+                  title={localizeUi("chatInsights.stats.open")}
+                  className="flex items-center justify-center gap-1.5 rounded-lg bg-[var(--secondary)] px-2 py-2 text-[0.6875rem] font-medium text-[var(--foreground)] ring-1 ring-[var(--border)] transition-colors hover:bg-[var(--accent)] disabled:opacity-50"
+                >
+                  <ChartColumn size="0.75rem" />
+                  {localizeUi("chatInsights.stats.button")}
                 </button>
               </div>
             </div>

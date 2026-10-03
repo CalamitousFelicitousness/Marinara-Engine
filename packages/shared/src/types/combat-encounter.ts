@@ -54,6 +54,18 @@ export interface CombatItemEffect {
   element?: string;
   status?: CombatStatus;
   consumes?: boolean;
+  /** Worked out by the Engine from one of the game's ruleset items rather than guessed by a model:
+   *  its `power` is the share of the target's maximum health it heals or harms. */
+  ruleset?: true;
+  /** One of the ruleset's items that holds charges: what a use spends of the most it holds. A fight
+   *  offers it while a use is left, and spends charges rather than the item. */
+  charges?: { cost: number; max: number };
+  /** Set by the Engine on the one use whose gate its user failed: the item is spent and does nothing,
+   *  and this is what the log says. */
+  failed?: string;
+  /** One of the ruleset's items used only from a stack that is worn (it takes slots) and bound (it
+   *  binds), as a ruleset's own fight uses it. */
+  wear?: { equipped?: true; bound?: true };
 }
 
 /** One generated in-combat dialogue cue. */

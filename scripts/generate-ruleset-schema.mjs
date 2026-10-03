@@ -8,6 +8,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import {
+  RULESET_CHECK_SCOPED_EFFECTS,
   RULESET_COMBAT_CONDITION_EFFECTS,
   RULESET_CREATURE_PLAIN_NEEDS,
   RULESET_CREATURE_SHEET_REPLACES,
@@ -59,26 +60,31 @@ function requireOneCatalogSource(node) {
   }
 }
 
-// An entry writes rows onto a sheet or it is a creature, never both and never neither, and a
-// creature says what it does in its own actions rather than in `mechanics`. Refinements again, so
-// the editor is told here. The node is found by its shape: `rows` beside `creature`.
+// An entry writes rows onto a sheet, is a creature or is an item: exactly one of the three. A
+// creature says what it does in its own actions and an item in its item block, so neither carries
+// `mechanics`. Refinements again, so the editor is told here. The node is found by its shape: `rows`
+// beside `creature` and `item`.
 function requireOneEntryContent(node) {
   if (Array.isArray(node)) return node.forEach(requireOneEntryContent);
   if (!node || typeof node !== "object") return;
   Object.values(node).forEach(requireOneEntryContent);
-  if (node.type === "object" && node.properties?.rows && node.properties.creature) {
-    node.oneOf = [{ required: ["rows"] }, { required: ["creature"], not: { required: ["mechanics"] } }];
+  if (node.type === "object" && node.properties?.rows && node.properties.creature && node.properties.item) {
+    node.oneOf = [
+      { required: ["rows"] },
+      { required: ["creature"], not: { required: ["mechanics"] } },
+      { required: ["item"], not: { required: ["mechanics"] } },
+    ];
   }
 }
 
 // And the header the entries sit in: a catalog of rows names the lists it feeds, a catalog of
-// creatures names none. Found by its shape: `holds` beside `feeds`.
+// creatures or of items names none. Found by its shape: `holds` beside `feeds`.
 function requireCatalogFeeds(node) {
   if (Array.isArray(node)) return node.forEach(requireCatalogFeeds);
   if (!node || typeof node !== "object") return;
   Object.values(node).forEach(requireCatalogFeeds);
   if (node.type === "object" && node.properties?.holds && node.properties.feeds) {
-    node.if = { properties: { holds: { const: "creatures" } }, required: ["holds"] };
+    node.if = { properties: { holds: { enum: ["creatures", "items"] } }, required: ["holds"] };
     node.then = { not: { required: ["feeds"] } };
     node.else = { required: ["feeds"] };
   }
@@ -207,21 +213,26 @@ function cancelOnlyWhenAimed(node) {
 }
 
 // A condition's modifier changes its number by something: a flat amount that is not 0, dice (only on
-// a number that is rolled, and `minus` only with dice), or `times` (only on speed). Refinements, so
-// the editor is told here. The node is found by its shape: `to` beside `flat`, `dice` and `times`.
+// a number that is rolled, and `minus` only with dice), `times` (only on speed), or a `mode` (only on
+// checks and saves). Its own `skills` narrow a change to checks and its own `saves` one to saves.
+// Refinements, so the editor is told here. The node is found by its shape: `to` beside `flat`, `dice`
+// and `times`.
 function modifierSaysSomething(node) {
   if (Array.isArray(node)) return node.forEach(modifierSaysSomething);
   if (!node || typeof node !== "object") return;
   Object.values(node).forEach(modifierSaysSomething);
   const properties = node.properties;
   if (node.type !== "object" || !properties?.to || !properties.flat || !properties.dice || !properties.times) return;
-  requireAnyOf(node, ["flat", "dice", "times"]);
+  requireAnyOf(node, ["flat", "dice", "times", "mode"]);
   properties.flat = { ...properties.flat, not: { const: 0 } };
   node.allOf = [
     ...(node.allOf ?? []),
     { if: { required: ["dice"] }, then: { properties: { to: { enum: [...RULESET_ROLLED_MODIFIER_TARGETS] } } } },
     { if: { required: ["times"] }, then: { properties: { to: { const: "speed" } } } },
     { if: { required: ["minus"] }, then: { required: ["dice"] } },
+    { if: { required: ["mode"] }, then: { properties: { to: { enum: ["checks", "saves"] } } } },
+    { if: { required: ["skills"] }, then: { properties: { to: { const: "checks" } } } },
+    { if: { required: ["saves"] }, then: { properties: { to: { const: "saves" } } } },
   ];
 }
 
@@ -235,22 +246,40 @@ function conditionSavesAndLevels(node) {
   Object.values(node).forEach(conditionSavesAndLevels);
   const properties = node.properties;
   if (node.type !== "object" || !properties?.saves || !properties.effects || !properties.modifiers) return;
+  // And `skills` narrows the check effects and the modifiers to checks, so it needs one of those.
+  const narrows = (key, effects, to) => ({
+    if: { required: [key] },
+    then: {
+      anyOf: [
+        { required: ["effects"], properties: { effects: { contains: { enum: [...effects] } } } },
+        { required: ["modifiers"], properties: { modifiers: { contains: { properties: { to: { const: to } } } } } },
+      ],
+    },
+  });
   node.allOf = [
     ...(node.allOf ?? []),
-    {
-      if: { required: ["saves"] },
-      then: {
-        anyOf: [
-          { required: ["effects"], properties: { effects: { contains: { enum: [...RULESET_SAVE_SCOPED_EFFECTS] } } } },
-          {
-            required: ["modifiers"],
-            properties: { modifiers: { contains: { properties: { to: { const: "saves" } } } } },
-          },
-        ],
-      },
-    },
+    narrows("saves", RULESET_SAVE_SCOPED_EFFECTS, "saves"),
+    ...(properties.skills ? [narrows("skills", RULESET_CHECK_SCOPED_EFFECTS, "checks")] : []),
   ];
+  // An item's worn or carried effect (no `condition`, no `track`) does something.
+  if (!properties.condition && !properties.track) {
+    node.allOf.push({
+      anyOf: [
+        { required: ["effects"] },
+        { required: ["modifiers"] },
+        { required: ["failsSaves"] },
+        { required: ["abilities"] },
+        { required: ["resist"] },
+        { required: ["vulnerable"] },
+        { required: ["immune"] },
+        { required: ["conditionImmunities"] },
+      ],
+    });
+    return;
+  }
   if (!properties.track) return;
+  // A level reads a live track or a derived value, one of them.
+  node.allOf.push({ oneOf: [{ required: ["track"] }, { required: ["derived"] }] });
   const refused = new Set(RULESET_LEVEL_REFUSED_EFFECTS);
   properties.effects = {
     ...properties.effects,
@@ -263,6 +292,17 @@ function conditionSavesAndLevels(node) {
       { required: ["failsSaves"] },
     ],
   });
+}
+
+// What an unmet requirement applies cannot change an ability, since what it asks may read one. A
+// refinement, so the editor is told here. Found by shape: `value` beside `atLeast` and `otherwise`.
+function requirementChangesNoAbility(node) {
+  if (Array.isArray(node)) return node.forEach(requirementChangesNoAbility);
+  if (!node || typeof node !== "object") return;
+  Object.values(node).forEach(requirementChangesNoAbility);
+  const properties = node.properties;
+  if (node.type !== "object" || !properties?.value || !properties.atLeast || !properties.otherwise) return;
+  properties.otherwise = { ...properties.otherwise, not: { required: ["abilities"] } };
 }
 
 // A creature's action: a sequence carries nothing of its own, one that lands on the creature itself
@@ -371,6 +411,73 @@ function requireDistanceForMeasured(node) {
       then: { required: ["distance"] },
     },
   ];
+}
+
+// Each combat kind rolls with its own block and never the other's: `attack-vs-defense` says what an
+// attack rolls in `attackRoll`, and `dice-pool` throws the ruleset's own pools and says how damage and
+// soak are thrown in `pool`. Refinements, so the editor is told here. Found by its shape: `kind`
+// beside `attackRoll` and `pool`.
+function oneRollBlockPerKind(node) {
+  if (Array.isArray(node)) return node.forEach(oneRollBlockPerKind);
+  if (!node || typeof node !== "object") return;
+  Object.values(node).forEach(oneRollBlockPerKind);
+  const properties = node.properties;
+  if (node.type !== "object" || !properties?.kind || !properties.attackRoll || !properties.pool) return;
+  node.allOf = [
+    ...(node.allOf ?? []),
+    {
+      if: { required: ["kind"], properties: { kind: { const: "dice-pool" } } },
+      then: { required: ["pool"], not: { required: ["attackRoll"] } },
+      // Initiative thrown as a pool, or moved by attacks, is a pool fight's too.
+      else: {
+        required: ["attackRoll"],
+        not: { required: ["pool"] },
+        properties: { initiative: { not: { anyOf: [{ required: ["pool"] }, { required: ["resource"] }] } } },
+      },
+    },
+  ];
+}
+
+// Initiative is dice added up with a modifier, or a pool whose successes and `plus` are the number,
+// and a number attacks move opens as a pool and is never thrown again. Found by its shape: `dice` beside `pool` and
+// `resource`.
+function initiativeOneWay(node) {
+  if (Array.isArray(node)) return node.forEach(initiativeOneWay);
+  if (!node || typeof node !== "object") return;
+  Object.values(node).forEach(initiativeOneWay);
+  const properties = node.properties;
+  if (node.type !== "object" || !properties?.dice || !properties.pool || !properties.resource) return;
+  node.oneOf = [{ required: ["dice"] }, { required: ["pool"] }];
+  node.allOf = [
+    ...(node.allOf ?? []),
+    { if: { required: ["modifier"] }, then: { required: ["dice"] } },
+    { if: { required: ["plus"] }, then: { required: ["pool"] } },
+    { if: { required: ["resource"] }, then: { required: ["pool"], not: { required: ["each"] } } },
+  ];
+}
+
+// An attack's style either takes the number or spends it, never both, and at least one of them takes,
+// so a crashed combatant always has one to attack in. Found by its shape: `takes` beside `spends`, and
+// the `styles` list beside `base`.
+function styleTakesOrSpends(node) {
+  if (Array.isArray(node)) return node.forEach(styleTakesOrSpends);
+  if (!node || typeof node !== "object") return;
+  Object.values(node).forEach(styleTakesOrSpends);
+  const properties = node.properties;
+  if (node.type !== "object") return;
+  if (properties?.takes && properties.spends) node.oneOf = [{ required: ["takes"] }, { required: ["spends"] }];
+  if (properties?.styles && properties.base) properties.styles.contains = { required: ["takes"] };
+}
+
+// Soak soaks something: a number for every kind of harm, one per kind, or both. Found by its shape:
+// `roll` beside `all` and `byKind`.
+function soakSaysSomething(node) {
+  if (Array.isArray(node)) return node.forEach(soakSaysSomething);
+  if (!node || typeof node !== "object") return;
+  Object.values(node).forEach(soakSaysSomething);
+  const properties = node.properties;
+  if (node.type !== "object" || !properties?.roll || !properties.all || !properties.byKind) return;
+  requireAnyOf(node, ["all", "byKind"]);
 }
 
 /**
@@ -501,9 +608,14 @@ cancelOnlyWhenAimed(schema);
 modifierSaysSomething(schema);
 creatureActionShape(schema);
 conditionSavesAndLevels(schema);
+requirementChangesNoAbility(schema);
 oneSourceForCreature(schema);
 requireDamageAmount(schema);
 requireDistanceForMeasured(schema);
+oneRollBlockPerKind(schema);
+initiativeOneWay(schema);
+styleTakesOrSpends(schema);
+soakSaysSomething(schema);
 boundScaledColumns(schema);
 requireOneHideComparison(schema);
 requireOneHideWhenComparison(schema);

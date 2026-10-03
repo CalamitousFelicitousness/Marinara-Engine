@@ -70,6 +70,7 @@ import { TouchDragHandle } from "../ui/TouchDragHandle";
 import { PanelLoadMoreBar } from "./PanelLoadMoreBar";
 import { clearActiveChatResourceDrag, writeChatResourceDragPayload } from "../../lib/chat-resource-drag";
 import { ChatResourceActionButton } from "../chat/ChatResourceActionButton";
+import { CharacterBulkTagsModal } from "../characters/CharacterBulkTagsModal";
 
 type CharacterRow = CharacterCatalogEntry;
 type GroupRow = {
@@ -119,7 +120,7 @@ function parseCharacterRow(char: CharacterRow): ParsedCharacterRow {
       character_version: char.version,
       extensions: { fav: char.favorite, avatarCrop: char.avatarCrop, nameColor: char.nameColor },
     };
-    return { ...char, parsed: (parsed as unknown as ParsedCharacterRow["parsed"]) ?? {} };
+    return { ...char, parsed: parsed as unknown as ParsedCharacterRow["parsed"] };
   } catch {
     return { ...char, parsed: { name: "Unknown", description: "" } };
   }
@@ -217,6 +218,8 @@ export function CharactersPanel() {
   const [selectedCharacterIds, setSelectedCharacterIds] = useState<Set<string>>(new Set());
   const [exportingSelected, setExportingSelected] = useState(false);
   const [movingSelected, setMovingSelected] = useState(false);
+  const [bulkTagsOpen, setBulkTagsOpen] = useState(false);
+  const setCharacterDuplicatesOpen = useUIStore((s) => s.setCharacterDuplicatesOpen);
 
   // Parse character data and filter by search
   const parsedCharacters = useMemo(() => {
@@ -886,6 +889,15 @@ export function CharactersPanel() {
       <div className="flex flex-col gap-0.5">
         <div className="flex items-center gap-1">
           <button
+            type="button"
+            data-character-duplicates-trigger
+            onClick={() => setCharacterDuplicatesOpen(true)}
+            className="mari-chrome-control mari-chrome-control--small flex-1 justify-start text-[0.6875rem]"
+          >
+            <Search size="0.75rem" />
+            {localizeUi("characters.duplicates.title")}
+          </button>
+          <button
             onClick={handleCreateFolder}
             className="mari-chrome-control mari-chrome-control--small flex-1 justify-start text-[0.6875rem]"
           >
@@ -1062,6 +1074,7 @@ export function CharactersPanel() {
                       onKeyDown={(e) => {
                         if (e.key === "Enter") e.currentTarget.blur();
                         if (e.key === "Escape") {
+                          e.preventDefault();
                           setEditingGroupId(null);
                           setEditGroupName("");
                         }
@@ -1787,22 +1800,46 @@ export function CharactersPanel() {
           placement="panel"
           selectedCount={selectedCharacterIds.size}
           extraAction={
-            <button
-              type="button"
-              onClick={() => void handleMoveSelected()}
-              disabled={selectedCharacterIds.size === 0 || parsedGroups.length === 0 || movingSelected}
-              className="mari-chrome-control flex-1 px-3 py-2 text-xs"
-              title={localizeUi("lorebook.editor.batch.move")}
-            >
-              <FolderInput size="0.75rem" />
-              {localizeUi("lorebook.editor.batch.move")}
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => void handleMoveSelected()}
+                disabled={selectedCharacterIds.size === 0 || parsedGroups.length === 0 || movingSelected}
+                className="mari-chrome-control flex-1 px-3 py-2 text-xs"
+                title={localizeUi("lorebook.editor.batch.move")}
+              >
+                <FolderInput size="0.75rem" />
+                {localizeUi("lorebook.editor.batch.move")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setBulkTagsOpen(true)}
+                disabled={selectedCharacterIds.size === 0}
+                className="mari-chrome-control flex-1 px-3 py-2 text-xs"
+              >
+                <Tag size="0.75rem" />
+                {localizeUi("characters.bulkTags.actionShort")}
+              </button>
+            </>
           }
           onExport={() => void handleExportSelected()}
           onDelete={handleDeleteSelected}
           exporting={exportingSelected}
         />
       )}
+      <CharacterBulkTagsModal
+        open={bulkTagsOpen}
+        onClose={() => setBulkTagsOpen(false)}
+        selectedIds={selectedCharacterIds}
+        onApplied={(failedIds) => {
+          setBulkTagsOpen(false);
+          if (failedIds.length > 0) {
+            setSelectedCharacterIds(new Set(failedIds));
+            return;
+          }
+          exitSelectionMode();
+        }}
+      />
     </div>
   );
 }

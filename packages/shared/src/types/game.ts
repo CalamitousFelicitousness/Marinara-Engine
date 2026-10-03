@@ -508,6 +508,19 @@ export interface SkillCheckResult {
   adjust?: number;
   /** The standing re-throw the Game Master named with `reroll=` and the check applied, by its id. */
   reroll?: string;
+  /**
+   * What the character's conditions and worn or carried items added to or took off the check, their
+   * dice rolled: dice on a pool, a flat number on a sum (where it is inside `modifier` too). Absent
+   * when nothing did.
+   */
+  effects?: number;
+  /**
+   * The conditions and items that changed this check, by name: its number, how it was thrown, or that
+   * it failed without a roll. Only a ruleset game sets it, and only what changed something.
+   */
+  from?: string[];
+  /** The save failed without a roll, because something named in `from` makes it fail. */
+  automatic?: boolean;
 }
 
 // ── The sighted dice pool (opt-in, last) ──
@@ -662,6 +675,8 @@ export interface ElementInfo {
 
 /** A single attack result in combat. */
 export interface CombatAttackResult {
+  /** What the log says instead of the usual line, as an item whose gate its user failed (#6909). */
+  note?: string;
   attackerId: string;
   defenderId: string;
   attackRoll: number;
@@ -763,7 +778,8 @@ export interface CombatSummary {
   }>;
   /** Resolved tactical terrain retained after the live combat snapshot is cleared. */
   battlefieldSummary?: string;
-  loot?: Array<{ name: string; quantity?: number }>;
+  /** What the win dropped into the party's bags, and how many of each nobody could carry. */
+  loot?: Array<{ name: string; quantity?: number; left?: number }>;
   /** What a ruleset fight really ended on, in the ruleset's own numbers. Present only for a fight
    *  the ruleset resolved, and the recap is written from it instead of the shares above. */
   ruleset?: import("../features/ruleset-combat/types.js").RulesetEncounterSummary;

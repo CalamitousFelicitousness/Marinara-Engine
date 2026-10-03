@@ -373,6 +373,8 @@ export interface AgentContext {
     role: string;
     content: string;
     characterId?: string;
+    /** Speaker label for agent history; set only when the message has exactly one speaker. */
+    speakerName?: string;
     /** Tracker state snapshot for this message (if any). */
     gameState?: import("./game-state.js").GameState | null;
   }>;

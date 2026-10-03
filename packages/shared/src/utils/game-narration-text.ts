@@ -111,29 +111,39 @@ export function stripDanglingTagClosers(text: string): string {
   return text.replace(/^[^\S\r\n]*[\]}]+[^\S\r\n]*$/gm, "");
 }
 
+/** Strip the Engine's complete result blocks from a player's message, the combat recap and the report
+ *  of an item used, without retrying every unclosed opening tag. */
+export function stripEngineResultBlocks(content: string): string {
+  return stripResultBlocks(stripResultBlocks(content, /\[\/?combat_result\]/gi), /\[\/?item_used\]/gi);
+}
+
+function stripResultBlocks(content: string, tags: RegExp): string {
+  // Remove complete blocks with a forward-only scan. A malformed block with repeated opening tags must
+  // not search the entire suffix for each one.
+  const chunks: string[] = [];
+  let from = 0;
+  let start: number | undefined;
+  for (const tag of content.matchAll(tags)) {
+    if (tag[0][1] !== "/") {
+      start ??= tag.index;
+      continue;
+    }
+    if (start === undefined) continue;
+    chunks.push(content.slice(from, start));
+    from = tag.index + tag[0].length;
+    start = undefined;
+  }
+  chunks.push(content.slice(from));
+  return chunks.join("");
+}
+
 /**
  * Strip all GM tags EXCEPT [Note:] and [Book:] — these are kept inline
  * so the narration parser can create readable segments at the correct
  * story position.
  */
 export function stripGmTagsKeepReadables(content: string): string {
-  // Remove complete combat recaps with a forward-only scan. A malformed recap
-  // with repeated opening tags must not search the entire suffix for each one.
-  const lower = content.toLowerCase();
-  const open = "[combat_result]";
-  const close = "[/combat_result]";
-  const chunks: string[] = [];
-  let from = 0;
-  let start = lower.indexOf(open);
-  while (start !== -1) {
-    const end = lower.indexOf(close, start + open.length);
-    if (end === -1) break;
-    chunks.push(content.slice(from, start));
-    from = end + close.length;
-    start = lower.indexOf(open, from);
-  }
-  chunks.push(content.slice(from));
-  let text = chunks.join("").replace(/\[(?:party-turn|party-chat)\]/gi, "");
+  let text = stripEngineResultBlocks(content).replace(/\[(?:party-turn|party-chat)\]/gi, "");
   // The one-request dice branch delimiters. Three of the four are unreachable by
   // everything below: `stripUnknownBracketTags` and the `[\w+:` catch-all both require a
   // `:` after the name, and `[on success]` has a space before its `]` while `[/branch]`

@@ -25,6 +25,7 @@ import type {
   RulesetLayerOptions,
   RulesetLiveState,
   RulesetSheetEnvelope,
+  RulesetSheetItem,
 } from "@marinara-engine/shared";
 import { cn, getAvatarCropStyle } from "../../lib/utils";
 import { useBackdropDismiss } from "../../hooks/use-backdrop-dismiss";
@@ -88,6 +89,10 @@ export type GameCharacterSheetRuleset =
       onLiveChange: (next: RulesetLiveState) => void;
       onEnvelopeSave: (next: RulesetSheetEnvelope) => Promise<void> | void;
       readOnly?: boolean;
+      /** What the character holds, which a value reading their items shows. */
+      items?: ReadonlyArray<RulesetSheetItem>;
+      /** A rest the game takes, with the charges it brings back to what the character carries. */
+      onRest?: (rest: string) => Promise<string | null>;
     };
 
 interface GameCharacterSheetProps {
@@ -687,6 +692,8 @@ export function GameCharacterSheet({
                   onLiveChange={ruleset.onLiveChange}
                   onEnvelopeSave={ruleset.onEnvelopeSave}
                   readOnly={ruleset.readOnly}
+                  items={ruleset.items}
+                  onRest={ruleset.onRest}
                 />
               ) : (
                 <p className="text-xs text-[var(--muted-foreground)]">

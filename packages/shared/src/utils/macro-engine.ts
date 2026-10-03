@@ -28,6 +28,16 @@ export interface MacroContext {
   variables: Record<string, string>;
   /** SillyTavern-compatible local variables persisted in the current chat. */
   localVariables?: Record<string, string>;
+  /**
+   * Names a preset variable will define later in this request.
+   *
+   * History is resolved before the assembler merges preset values into
+   * `variables`, so without this the chat's own value would be baked into a
+   * message while prompt sections got the preset's — one request, two names.
+   * Listing the name here leaves the tag for the provider-boundary pass, which
+   * runs after that merge and so sees the preset value.
+   */
+  deferredPresetVariableNames?: ReadonlySet<string>;
   /** Last user input message (for {{input}}) */
   lastInput?: string;
   /** Chat ID (for {{chatId}}) */
@@ -57,6 +67,8 @@ export interface MacroContext {
   decisions?: MacroDecisionAnswers;
   /** Per-lorebook total entry counts, keyed by lorebook ID (for {{lorebooksize::ID}}) */
   lorebookEntryCounts?: Record<string, number>;
+  /** Lorebooks `{{include::...}}` reads from; loaded only when a prompt uses it (see `expandLorebookIncludes`). */
+  lorebookIncludes?: LorebookIncludeSource;
   /** Current character card fields used by macros like {{description}} */
   characterFields?: {
     phoneticName?: string;
@@ -87,6 +99,17 @@ export interface MacroContext {
     personaAbout?: string;
     convoBehavior?: string;
   };
+}
+
+/**
+ * What `{{include::ENTRY}}` and `{{include::BOOK::ENTRY}}` can read (#6912): every
+ * lorebook and entry, whether or not the chat uses it and whether or not it is enabled.
+ */
+export interface LorebookIncludeSource {
+  books: ReadonlyArray<{ id: string; name: string }>;
+  entries: ReadonlyArray<{ id: string; lorebookId: string; name: string; content: string }>;
+  /** Where the short form looks for an entry name: the lorebooks the chat uses. */
+  currentBookIds: readonly string[];
 }
 
 export interface MacroDecisionAnswers {
@@ -292,6 +315,19 @@ function nestedMacroOptions(options: ResolveMacroOptions): ResolveMacroOptions {
   };
 }
 
+/**
+ * Read a named value from a macro variable map.
+ *
+ * Own properties only: a bare `{{constructor}}` or `{{toString}}` must never
+ * reach `Object.prototype` and render native-code source text into a prompt.
+ * The string check keeps a malformed stored map from injecting a non-string.
+ */
+function readMacroVariable(map: Record<string, string> | undefined, name: string): string | undefined {
+  if (!map || !Object.prototype.hasOwnProperty.call(map, name)) return undefined;
+  const value = map[name];
+  return typeof value === "string" ? value : undefined;
+}
+
 function clampMacroOutput(value: string, options: ResolveMacroOptions): string {
   const maxLength = macroLimit(options, "maxMacroOutputLength");
   if (value.length <= maxLength) return value;
@@ -475,6 +511,17 @@ export const SUPPORTED_MACROS: readonly SupportedMacroDefinition[] = [
     description: "Total number of entries in the lorebook with the given ID",
   },
   {
+    category: "Lorebooks",
+    syntax: "{{include::ENTRY}}",
+    description:
+      "Text of a lorebook entry, by ID or name. Inside an entry, a name is looked up in that entry's lorebook; elsewhere, in the chat's lorebooks",
+  },
+  {
+    category: "Lorebooks",
+    syntax: "{{include::BOOK::ENTRY}}",
+    description: "Text of an entry from the lorebook with this ID or name, even one the chat does not use",
+  },
+  {
     category: "Game",
     syntax: "{{gameStoryboardKeyframeCount}}",
     description: "Current Game Mode Keyframes per Turn target (1-200, default 3)",
@@ -551,6 +598,13 @@ export const SUPPORTED_MACROS: readonly SupportedMacroDefinition[] = [
   },
   {
     category: "Formatting",
+    syntax:
+      '{{#if decision:"A fight starts in the latest message" until:"The fight ends in the latest message"}}...{{/if}}',
+    description:
+      'After a yes, stays on and asks the until statement each turn instead, turning off once it is true. while:"..." turns off once its statement is false. With sticky, :and stops at whichever ends first, :or at whichever ends last',
+  },
+  {
+    category: "Formatting",
     syntax: '{{#if decision:"The weather changes in the latest message" every:3}}...{{/if}}',
     description: "Asked only every 3 turns; reads as no between checks and takes no statement slot then",
   },
@@ -608,6 +662,7 @@ function macroContextForCharacterProfile(profile: CharacterMacroProfile, base?: 
     characterProfiles: base?.characterProfiles ?? [profile],
     variables: base?.variables ?? {},
     localVariables: base?.localVariables,
+    deferredPresetVariableNames: base?.deferredPresetVariableNames,
     lastInput: base?.lastInput,
     chatId: base?.chatId,
     model: base?.model,
@@ -980,6 +1035,24 @@ export interface DecisionStatementModifiers {
   cooldown?: number;
   every?: number;
   priority?: DecisionStatementPriority;
+  lasts?: DecisionStatementLifetime;
+}
+
+/**
+ * `until:"..."` or `while:"..."` after a `decision:` statement (#6922). After a yes the
+ * block stays on without the statement being asked; this one is asked each turn instead.
+ */
+export interface DecisionStatementLifetime {
+  /** As written, before its macros are resolved. */
+  statement: string;
+  /** `until` turns the block off when this is true, `while` when it is false. */
+  kind: "until" | "while";
+  /**
+   * With sticky: `and` (or `restrict`) turns the block off at whichever ends first, `or`
+   * (or `extend`) at whichever ends last. Until defaults to `and`, while to `or`. Without
+   * sticky, this statement alone decides.
+   */
+  mode: "and" | "or";
 }
 
 export type DecisionStatementPriority = "high" | "low";
@@ -992,18 +1065,39 @@ export const MAX_DECISION_TIMING_TURNS = 1000;
 const DECISION_STATEMENT_WITH_MODIFIERS_RE =
   /^(["\u201c\u201d\u201e\u201f]|['\u2018\u2019\u201a\u201b])([\s\S]*)(["\u201c\u201d\u201e\u201f]|['\u2018\u2019\u201a\u201b])((?:\s+[a-z_]+\s*:\s*\S+)*)\s*$/iu;
 
+// `until:"..."` or `while:"..."`, then an optional `:and`, `:or`, `:restrict` or `:extend`.
+// Its value is a whole statement with spaces, so it is taken out before the other modifiers.
+const DECISION_LIFETIME_RE =
+  /\s+(until|while)\s*:\s*(?:["\u201c\u201d\u201e\u201f]([^"\u201c\u201d\u201e\u201f]*)["\u201c\u201d\u201e\u201f]|['\u2018\u2019\u201a\u201b]([^'\u2018\u2019\u201a\u201b]*)['\u2018\u2019\u201a\u201b])(?::([a-z]+))?(?=\s|$)/giu;
+
+function lifetimeModifier(kind: string, statement: string, mode = ""): DecisionStatementLifetime | undefined {
+  if (!statement.trim()) return undefined;
+  const until = kind.toLowerCase() === "until";
+  const set = mode.toLowerCase();
+  const and = set === "and" || set === "restrict" ? true : set === "or" || set === "extend" ? false : until;
+  return { statement: statement.trim(), kind: until ? "until" : "while", mode: and ? "and" : "or" };
+}
+
 function statementAfterPrefix(
   raw: string,
   prefix: RegExp,
 ): { question: string; timing: DecisionStatementModifiers } | null {
   const token = raw.trim();
   if (!prefix.test(token)) return null;
-  const rest = token.replace(prefix, "").trim();
+  const timing: DecisionStatementModifiers = {};
+  const rest = token
+    .replace(prefix, "")
+    .replace(DECISION_LIFETIME_RE, (_match, kind: string, double?: string, single?: string, mode?: string) => {
+      // Until and while are the same condition turned around, so only the first counts.
+      const lasts = timing.lasts ?? lifetimeModifier(kind, double ?? single ?? "", mode);
+      if (lasts) timing.lasts = lasts;
+      return "";
+    })
+    .trim();
   const quoted = DECISION_STATEMENT_WITH_MODIFIERS_RE.exec(rest);
   if (quoted && quoteKind(quoted[1]) === quoteKind(quoted[3]) && quoted[4]!.trim()) {
     const question = stripOuterQuotes(`${quoted[1]}${quoted[2]}${quoted[3]}`) ?? quoted[2]!;
     if (!question.trim()) return null;
-    const timing: DecisionStatementModifiers = {};
     for (const modifier of quoted[4]!.trim().split(/\s+(?=[a-z_]+\s*:)/iu)) {
       const [name, value] = modifier.split(":").map((part) => part.trim().toLowerCase());
       const turns = /^\d+$/u.test(value ?? "") ? Math.min(MAX_DECISION_TIMING_TURNS, Number(value)) : NaN;
@@ -1015,7 +1109,7 @@ function statementAfterPrefix(
     return { question, timing };
   }
   const question = stripOuterQuotes(rest) ?? rest;
-  return question.trim() ? { question, timing: {} } : null;
+  return question.trim() ? { question, timing } : null;
 }
 
 /** The statement inside a `decision:"..."` operand, as written, or null for any other operand. */
@@ -1262,7 +1356,7 @@ function resolveConditionalOperand(raw: string, ctx: MacroContext, options: Reso
     default:
       if (/^var[:.]/i.test(token)) {
         const name = token.replace(/^var[:.]/i, "").trim();
-        return ctx.variables[name] ?? "";
+        return readMacroVariable(ctx.variables, name) ?? readMacroVariable(ctx.localVariables, name) ?? "";
       }
       // Resolve any other bare operand through the same flat pass used for
       // {{token}}, so every read macro valid in {{...}} is also testable bare in
@@ -1283,7 +1377,7 @@ function resolveConditionalOperand(raw: string, ctx: MacroContext, options: Reso
         });
         if (resolved !== braced) return resolved;
       }
-      return ctx.variables[token] ?? token;
+      return readMacroVariable(ctx.variables, token) ?? readMacroVariable(ctx.localVariables, token) ?? token;
   }
 }
 
@@ -1931,6 +2025,28 @@ function conditionDependsOnDeferredOperand(condition: string, predicate: (operan
   );
 }
 
+/**
+ * Whether a `{{#if}}` operand names a preset variable whose value is still
+ * pending, so the block must be deferred rather than decided from the chat's
+ * value. Accepts the `var:`/`var.` spellings as well as the bare name.
+ */
+function isDeferredPresetOperand(operand: string, ctx: MacroContext): boolean {
+  const claimed = ctx.deferredPresetVariableNames;
+  if (!claimed?.size) return false;
+  const unwrap = (value: string) =>
+    value
+      .trim()
+      .replace(/^var[:.]/i, "")
+      .trim();
+  if (claimed.has(unwrap(operand))) return true;
+  // An operand may also name the variable inside braces — `{{char1}} == "Anna"`
+  // on either side of the comparison — which is not the whole operand string.
+  for (const match of operand.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)) {
+    if (claimed.has(unwrap(match[1]!))) return true;
+  }
+  return false;
+}
+
 function branchDependsOnDeferredOperand(
   branches: ConditionalBranchPayload[],
   predicate: (operand: string) => boolean,
@@ -2323,10 +2439,16 @@ function resolveConditionalBlocks(input: string, ctx: MacroContext, options: Res
     const closeStandalone = closeLineStart && closeTrailing !== null;
 
     const deferCharacter = Boolean(options.deferCharacterMacros) && branchDependsOnCharacter(branches);
+    // A pending preset variable defers a block for the same reason a relocation
+    // operand does: its value is not knowable yet, and deciding the branch from
+    // the chat's value would contradict the bare {{name}} in the same message.
+    const deferOperand =
+      options.deferConditionalOperand !== undefined || ctx.deferredPresetVariableNames?.size
+        ? (operand: string) =>
+            options.deferConditionalOperand?.(operand) === true || isDeferredPresetOperand(operand, ctx)
+        : undefined;
     const deferRelocation =
-      !deferCharacter &&
-      options.deferConditionalOperand !== undefined &&
-      branchDependsOnDeferredOperand(branches, options.deferConditionalOperand);
+      !deferCharacter && deferOperand !== undefined && branchDependsOnDeferredOperand(branches, deferOperand);
 
     if (deferCharacter) {
       // Per-character deferral keeps its original (untrimmed) behavior.
@@ -2630,6 +2752,62 @@ function formatMacroDateTime(now: Date, requestedTimeZone?: string): MacroDateTi
   }
 }
 
+const LOREBOOK_INCLUDE_RE = /\{\{\s*include::/iu;
+
+/** Whether text uses `{{include::...}}`, so a caller loads lorebooks only when it must. */
+export function usesLorebookIncludes(text: string): boolean {
+  return LOREBOOK_INCLUDE_RE.test(text);
+}
+
+function findIncludedEntry(source: LorebookIncludeSource, currentBookIds: readonly string[], parts: string[]) {
+  const named = (name: string) => (item: { name: string }) => item.name.trim().toLowerCase() === name.toLowerCase();
+  const entryRef = parts.at(-1) ?? "";
+  if (!entryRef || parts.length > 2) return undefined;
+  let bookIds = currentBookIds;
+  if (parts.length === 2) {
+    const book = source.books.find((item) => item.id === parts[0]) ?? source.books.find(named(parts[0]!));
+    if (!book) return undefined;
+    bookIds = [book.id];
+  } else {
+    // An ID names one entry wherever it is; only a name needs the current lorebooks.
+    const byId = source.entries.find((entry) => entry.id === entryRef);
+    if (byId) return byId;
+  }
+  const inBooks = source.entries.filter((entry) => bookIds.includes(entry.lorebookId));
+  return inBooks.find((entry) => entry.id === entryRef) ?? inBooks.find(named(entryRef));
+}
+
+/**
+ * Replace `{{include::ENTRY}}` and `{{include::BOOK::ENTRY}}` with that lorebook entry's
+ * content (#6912). Books and entries are found by ID first, then by name, ignoring case;
+ * the short form looks for a name in `currentBookIds`. No match reads as empty.
+ *
+ * Included text can include more, and its own short form looks in its own lorebook. An
+ * entry already included on the way here reads as empty, so `A -> B -> A` stops.
+ */
+export function expandLorebookIncludes(
+  text: string,
+  source: LorebookIncludeSource,
+  scope: { currentBookIds?: readonly string[]; seen?: ReadonlySet<string> } = {},
+  options: ResolveMacroOptions = {},
+): string {
+  if (!usesLorebookIncludes(text)) return text;
+  return replaceBalancedMacros(text, (body, original) => {
+    const match = /^\s*include::([\s\S]*)$/iu.exec(body);
+    if (!match) return undefined;
+    if (!consumeMacroExpansion(options)) return original;
+    const parts = splitTopLevelDoubleColon(match[1]!).map((part) => part.trim());
+    const entry = findIncludedEntry(source, scope.currentBookIds ?? source.currentBookIds, parts);
+    if (!entry || scope.seen?.has(entry.id)) return "";
+    return expandLorebookIncludes(
+      stripMacroComments(entry.content),
+      source,
+      { currentBookIds: [entry.lorebookId], seen: new Set([...(scope.seen ?? []), entry.id]) },
+      options,
+    );
+  });
+}
+
 /**
  * Replace macros in a prompt string with their values.
  *
@@ -2667,6 +2845,7 @@ function formatMacroDateTime(now: Date, requestedTimeZone?: string): MacroDateTi
  *  - {{idle_duration}} — time since the last chat activity
  *  - {{outlet::name}} — activated lorebook entries assigned to a named Outlet
  *  - {{lorebooksize::ID}} — total number of entries in the lorebook with the given ID
+ *  - {{include::ENTRY}} / {{include::BOOK::ENTRY}} — content of a lorebook entry (see expandLorebookIncludes)
  *  - {{gameStoryboardKeyframeCount}} — current Game Mode Keyframes per Turn target
  *  - {{// comment}} — removed (author comments)
  *  - {{trim}} — remove surrounding whitespace
@@ -2725,6 +2904,9 @@ export function resolveMacros(template: string, ctx: MacroContext, options: Reso
 
   // ── Comments — strip first so they don't interfere ──
   result = stripMacroComments(result);
+
+  // ── Lorebook includes — before everything else, so included text goes through every pass below. ──
+  if (ctx.lorebookIncludes) result = expandLorebookIncludes(result, ctx.lorebookIncludes, {}, options);
 
   // #3104: resolve the persona fields lazily — only when {{persona}} can appear
   // in the output — instead of unconditionally on every call (the root cause of
@@ -2907,11 +3089,19 @@ export function resolveMacros(template: string, ctx: MacroContext, options: Reso
   }
 
   // ── Catch-all: resolve any remaining {{name}} from variables ──
-  // This allows preset variables like {{POV}} to resolve directly
+  // Preset variables like {{POV}} resolve directly, then the chat's own
+  // variables, so a name defined in Chat Settings works anywhere macros do —
+  // including a message the user typed. Preset values win on a name clash,
+  // matching the post-assembly merge in generate.routes.ts.
   result = result.replace(/\{\{(\w+)\}\}/g, (match, name) => {
     if (unresolvedCharacterReferences.has(name)) return match;
-    const val = ctx.variables[name];
-    return val !== undefined ? val : match; // leave unknown macros as-is
+    const presetValue = readMacroVariable(ctx.variables, name);
+    if (presetValue !== undefined) return presetValue;
+    // A preset owns this name but its value has not been merged yet: leave the
+    // tag for the later pass rather than letting the chat value win the race.
+    if (ctx.deferredPresetVariableNames?.has(name)) return match;
+    const chatValue = readMacroVariable(ctx.localVariables, name);
+    return chatValue !== undefined ? chatValue : match; // leave unknown macros as-is
   });
 
   // ── Agent data ──

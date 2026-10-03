@@ -511,7 +511,11 @@ assert.match(
 
 const generateRoutes = readFileSync(join(root, "packages/server/src/routes/generate.routes.ts"), "utf8");
 const resolutionAt = generateRoutes.indexOf("resolveSkillCheckTagsInContent(fullResponse");
-const contentReplaceAt = generateRoutes.indexOf(`type: "content_replace", data: fullResponse`);
+// The frame post-processing sends with the finished turn. A tool round may clear text it
+// streamed before that (#6951), but post-processing has not started then and sends its own frame.
+const postProcessingFrameAt = generateRoutes.indexOf("if (contentReplaced) {");
+assert.ok(postProcessingFrameAt > 0, "post-processing must still send its own content_replace frame");
+const contentReplaceAt = generateRoutes.indexOf(`type: "content_replace", data: fullResponse`, postProcessingFrameAt);
 assert.ok(resolutionAt > 0, "generation post-processing must roll the GM's checks");
 assert.ok(contentReplaceAt > 0);
 assert.ok(
@@ -722,7 +726,7 @@ assert.match(
   generateRoutes,
   // Between the two calls the route may keep what the resolver handed back, such as the purchases a
   // check paid for, but it may not roll anything else in between and it may not swallow either one.
-  /const rolled = await resolveSkillCheckTagsInContent\(fullResponse, \{[\s\S]*?\}\);(?:[^;]*;){0,3}\s*const generalRolls = resolveGameDiceRequests\(\s*rolled\.content,\s*toolDiceRollResults,\s*undefined,\s*dicePoolSession \?\? undefined,?\s*\);\s*if \(generalRolls\.content !== fullResponse\) \{/u,
+  /const rolled = await resolveSkillCheckTagsInContent\(fullResponse, \{[\s\S]*?\}\);(?:[^;]*;){0,3}\s*const generalRolls = resolveGameDiceRequests\(\s*rolled\.content,\s*toolDiceRollResults,\s*undefined,\s*dicePoolSession \?\? undefined,\s*(?:\/\/[^\n]*\n\s*)*chatMeta\.gameRuleset != null,?\s*\);\s*if \(generalRolls\.content !== fullResponse\) \{/u,
   "the resolver's own output decides the frame and the save on both paths",
 );
 

@@ -85,6 +85,8 @@ The Engine update channel also selects the official Agent channel. Stable Engine
 
 **Why this is safe.** Marinara is a local, single-user tool. The person who authors or imports a card is the same person any "injection" in that card would target — so the worst realistic outcome of an unescaped tag is the model role-playing something odd, which the user sees in their own chat and fixes by editing their own card. That is a rare, self-inflicted, self-correcting annoyance, not a security boundary. An LLM also does not parse the prompt as an XML document, so a stray `<` cannot "break out" of a section the way it would in a real parser — escaping it only corrupts text. Escaping traded that non-threat for a constant, real harm (mangled cards, broken roleplay HTML, wasted tokens).
 
+**Optional multiplayer changes the boundary.** The local-only rationale above applies to ordinary single-player use. Multiplayer peers and model output remain untrusted even after password authentication. Keep prompt leaves verbatim, review the shared persona/card text at admission, and enforce the room policy at rendering, storage, command and tool dispatch. Peer traffic uses a separate restricted listener; never proxy it into ordinary Engine routes or load the host's web client. See [multiplayer architecture and proof](docs/development/multiplayer.md).
+
 **Structure is separate from content.** The framework's own section wrappers (`<description>…</description>`, `<last_message>…`, etc.) are emitted by `wrapContent` *around* leaf content, from fixed section names. Verbatim content therefore cannot alter structural tags; it only changes what sits inside them.
 
 **What stays escaped (do not "harmonize" these back into the leaf path).** The agent value/attribute escapers — `escapeXml` / `escapeXmlAttribute` in `agent-executor.ts` and the local escaper in `knowledge-router.ts` — escape dynamic values into XML *attributes* and into strict, machine-parsed agent output (world-state documents, entry catalogs). Those are genuinely parsed downstream, where a stray `"` or `<` breaks an attribute or element, so they must stay escaped. Note that `agent-executor.ts` also escapes some of the same card fields into element *content* of that parsed document — a different consumer with different rules. It is **not** a reason to re-escape the main prompt path.
@@ -127,8 +129,14 @@ pnpm version:check
 pnpm regression
 pnpm regression:prompt
 pnpm smoke:ui
+pnpm smoke:production
 pnpm regression:ui
 ```
+
+`pnpm smoke:production` opens the compiled frontend with the compiled server in isolated test data,
+using desktop Chromium, mobile Chromium, and mobile WebKit. Run `pnpm check` first to build it. The
+required PR check runs its Chromium case; this catches startup failures that the Vite development
+server and HTTP-only container health checks cannot detect.
 
 Regression guards:
 
@@ -330,6 +338,13 @@ Release-related behavior already in the repo:
 - Built installer binaries belong on GitHub Releases and should not be committed back into the repository.
 
 Standard release flow:
+
+For the next main release after v2.4.6, also complete the coordinated
+[Quartermaster and Relationship Tracker catalog promotion](https://github.com/Pasta-Devs/Marinara-Agents/issues/1091).
+In Marinara-Agents, remove these two IDs from `STAGING_ONLY_PACKAGE_IDS`, rebuild their packages,
+and update the published catalog counts and documentation before promoting Agents `staging` to `main`
+alongside this Engine release. Copying the preview catalog to `main` alone keeps both packages hidden
+from stable Engine users. Leave other staging-only packages at their existing release tier.
 
 1. Bump the canonical version in root `package.json`.
 2. Run `pnpm version:sync -- --android-version-code <next-code>` to sync all derived version fields.

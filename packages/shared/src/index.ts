@@ -3,12 +3,14 @@
 // ──────────────────────────────────────────────
 
 // Types
+export * from "./types/multiplayer.js";
 export * from "./types/tts.js";
 export * from "./types/model-pricing.js";
 export * from "./types/import-conflict.js";
 export * from "./types/audio-connection-settings.js";
 export * from "./types/chat.js";
 export * from "./types/advanced-memory.js";
+export * from "./types/semantic-summary-retrieval.js";
 export * from "./types/roleplay-command.js";
 export * from "./types/spotify.js";
 export * from "./types/character.js";
@@ -51,8 +53,10 @@ export * from "./types/generation-integration.js";
 export * from "./types/localization.js";
 export * from "./types/personal-extension.js";
 export * from "./types/home-feed.js";
+export * from "./types/chat-insights.js";
 
 // Schemas
+export * from "./schemas/multiplayer.schema.js";
 export * from "./schemas/chat.schema.js";
 export * from "./schemas/chat-preset.schema.js";
 export * from "./schemas/character.schema.js";
@@ -82,6 +86,7 @@ export * from "./schemas/personal-extension.schema.js";
 export * from "./schemas/folder.schema.js";
 export * from "./schemas/scene-analysis.schema.js";
 export * from "./schemas/library-folder.schema.js";
+export * from "./schemas/lorebook-enabled.schema.js";
 export * from "./schemas/home-widget.schema.js";
 
 // Constants
@@ -92,6 +97,7 @@ export * from "./constants/tts-sources.js";
 export * from "./constants/defaults.js";
 export * from "./constants/chat-mode-agent-policy.js";
 export * from "./constants/model-lists.js"; // also exports IMAGE_GENERATION_SOURCES
+export * from "./constants/generation-parameter-relevance.js";
 export * from "./constants/agent-prompts.js";
 export * from "./constants/agent-activation.js";
 export * from "./constants/impersonate.js";
@@ -106,6 +112,7 @@ export * from "./constants/game-storyboard-prompts.js";
 export * from "./constants/game-storyboard-image-prompts.js";
 export * from "./constants/game-video-prompts.js";
 export * from "./constants/conversation-prompt.js";
+export * from "./constants/image-captioning-prompt.js";
 export * from "./constants/game-prompt.js";
 export * from "./constants/achievements.js";
 export * from "./constants/tracker-custom-field-icons.js";
@@ -139,9 +146,17 @@ export * from "./features/tactical-combat/index.js";
 
 // Utils
 export * from "./utils/macro-engine.js";
+export * from "./utils/chat-variables.js";
 export * from "./utils/ui-locales.js";
 export * from "./utils/xml-wrapper.js";
 export * from "./utils/music-score.js";
+export * from "./utils/game-inventory-stacks.js";
+export * from "./utils/game-inventory-coins.js";
+export * from "./utils/game-inventory-ops.js";
+export * from "./utils/game-inventory-tags.js";
+export * from "./utils/game-inventory-turns.js";
+export * from "./utils/inventory-command-tag.js";
+export * from "./utils/game-place-tag.js";
 export * from "./utils/agent-cost.js";
 export * from "./utils/token-estimator.js";
 export * from "./utils/character-token-estimator.js";
@@ -155,6 +170,9 @@ export * from "./utils/generation-guide.js";
 export * from "./utils/lorebook-keyword-matching.js";
 export * from "./utils/speaker-tags.js";
 export * from "./utils/audio-parameters.js";
+export * from "./utils/lorebook-lint.js";
+export * from "./utils/lorebook-bulk-edit.js";
+export * from "./utils/lorebook-text-format.js";
 export * from "./utils/regex-safety.js";
 export * from "./utils/regex-scoping.js";
 export * from "./utils/game-state-text.js";
@@ -175,7 +193,11 @@ export * from "./utils/game-art-style.js";
 export * from "./utils/thinking-tags.js";
 export * from "./utils/rpg-stats.js";
 export * from "./utils/lorebook-folder-tree.js";
+export * from "./utils/character-duplicates.js";
+export * from "./utils/character-tag-edits.js";
 export * from "./utils/text-matching.js";
+export * from "./utils/chat-search-query.js";
+export * from "./utils/chat-stats.js";
 export * from "./utils/character-cast.js";
 export * from "./utils/speaker-segments.js";
 export * from "./utils/sprite-labels.js";
@@ -211,8 +233,19 @@ export * from "./features/rulesets/sheet-prompt.js";
 export * from "./features/rulesets/scaled-rows.js";
 export * from "./features/rulesets/combat-bridge.js";
 export * from "./features/rulesets/layers.js";
+export * from "./features/rulesets/item-book.js";
+export * from "./features/rulesets/item-fight.js";
+export * from "./features/rulesets/check-effects.js";
+export * from "./features/rulesets/invented-items.js";
+export * from "./features/rulesets/item-use.js";
+export * from "./features/rulesets/loot.js";
+export * from "./features/rulesets/market.js";
 export * from "./features/ruleset-combat/index.js";
 
 export * from "./constants/request-timeouts.js";
 
 export * from "./utils/game-narration-text.js";
+export * from "./utils/message-marks.js";
+
+export * from "./utils/game-tag-parser.js";
+export * from "./utils/game-widget-update.js";

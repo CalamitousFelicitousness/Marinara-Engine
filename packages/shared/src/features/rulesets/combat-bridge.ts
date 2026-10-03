@@ -203,7 +203,7 @@ export function seedCombatantFromSheet(
 
 /** The average of `2d6`, `1d8+3` or a flat amount, or null when the block carries no number at all.
  *  The dice string was validated as `<count>d<sides>` with one optional adjustment. */
-function averageAmount(amount: RulesetCatalogMechanics["amount"]): number | null {
+export function averageAmount(amount: RulesetCatalogMechanics["amount"]): number | null {
   if (!amount || (amount.dice === undefined && amount.flat === undefined)) return null;
   let total = amount.flat ?? 0;
   if (amount.dice) {
@@ -225,7 +225,7 @@ function averageAmount(amount: RulesetCatalogMechanics["amount"]): number | null
  * Engine's basic skills already are (1d8+3 reads 1.07, 2d6+3 reads 1.43) and a third-level area
  * spell reaches the top of that same range (6d6 reads 3.0, and anything bigger clamps there).
  */
-const AVERAGE_AMOUNT_PER_POWER = 7;
+export const AVERAGE_AMOUNT_PER_POWER = 7;
 
 /** The same ceiling a generated skill gets, so a catalog entry can never hit harder than anything
  *  the Engine itself produces, and the same floor the heal path applies. */

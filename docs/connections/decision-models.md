@@ -15,6 +15,8 @@ Its answers control Marinara's behavior; they are not posted as replies in the c
 - **[Lorebook Decision fields](../lorebooks/entries.md#decision-activation)** check Require or Trigger during the chat's lorebook scan. With no answer, Require cannot admit a new entry and Trigger adds no activation route. Existing Sticky holds and ordinary Trigger-entry activation routes still apply.
 - **[Smart response order](../chats/group-chats.md#response-order-individual-only)** scores who should speak next in a group chat, if enabled. With no answer, Smart order makes its usual AI call.
 
+- **[Advanced Memory Recall](../agents/memory.md#optional-decision-model)** can use a separately selected Decision connection for Roleplay scene boundaries and memory selection. Enable **Use Decision model** in that chat's Advanced Memory settings. Summaries still use the Helper model. Failed decisions fall back to ordinary recall or scene checks.
+
 An activation question controls whether an agent runs; a decision statement inside its prompt controls what that running agent is told. Use `{{#if decision:"..."}}` for yes/no prompt conditions and `{{#if decision_choice:"..." == "..."}}` for a choice among answers.
 
 ## What the model sees
@@ -29,6 +31,8 @@ For activation questions and prompt/lorebook statements, the model receives the 
 - Anything checked after the reply, such as a post-processing agent's activation question or a statement in its prompt, also sees the reply just written.
 - Macros in the statement are filled in first, so `{{char}}` arrives as the character's name.
 - When the messages do not fit the model's budget, older messages are dropped first. See [Set up a Decision connection](#set-up-a-decision-connection) for the hosted budget.
+
+**Advanced Memory uses its own per-chat connection.** Scene checks read the relevant transcript window. Recall sends recent conversation text and eligible archived recaps or original-message candidates after character access checks; it does not use the fixed last-5-message rule above. Hosted providers receive these texts, potentially in multiple bounded batches. Foreground recall falls back after a combined 10 seconds. See [Optional Decision model](../agents/memory.md#optional-decision-model).
 
 ## Choosing a Decision model
 
@@ -90,8 +94,8 @@ It is asked the same way as a local model: one yes/no word per statement, read f
 ## Set up a Decision connection
 
 1. In **Connections**, create a connection with provider **Decision**.
-2. Choose **TypeSafe**, **OpenRouter**, **Custom System One endpoint**, or **OpenAI-compatible chat model**. Hosted sources need an API key. Custom accepts a System One server you already run, including Open-Jev; enter its base URL without `/v1/systemone` and use the model name it supports. A chat model server such as Ollama or LM Studio does not speak System One: use **OpenAI-compatible chat model** for it, as described in [On a server you already run](#on-a-server-you-already-run).
-3. For OpenRouter, choose a saved OpenRouter connection under **API key source**, or enter a separate key. Its editor also offers **Use this key for decisions (Jev)**. Linked keys follow later key changes automatically. Custom System One and OpenAI-compatible chat model connections may borrow a custom chat connection's key only when both URLs have the same origin (scheme, host, and port).
+2. Choose **TypeSafe**, **OpenRouter**, **Custom System One endpoint**, or **OpenAI-compatible chat model**. Hosted sources need an API key. Custom accepts a System One server you already run, including Open-Jev or [Strands decider](#run-strands-decider-yourself); enter its base URL without `/v1/systemone` and use the model name it supports. A chat model server such as Ollama or LM Studio does not speak System One: use **OpenAI-compatible chat model** for it, as described in [On a server you already run](#on-a-server-you-already-run).
+3. For OpenRouter, choose a saved OpenRouter connection under **API key source**, or enter a separate key. Its editor also offers **Use this key for decisions**, which sets up Jev through OpenRouter. Linked keys follow later key changes automatically. Custom System One and OpenAI-compatible chat model connections may borrow a custom chat connection's key only when both URLs have the same origin (scheme, host, and port).
 4. Save, then select it under **Decision model** and click **Test**. A successful result shows the probability, how long the answer took, and the connection's time limit. Test waits at least 10 seconds, and 5 seconds past a longer limit, so a slow answer is reported with its real time. If it took longer than the time limit, the result says so: during chats that answer would count as no answer.
 
 The Decision default is separate from your chat, agent, image, video, and audio defaults. Choosing **None** turns decisions off without deleting any activation questions or decision statements.
@@ -101,6 +105,25 @@ Hosted decisions send the selected recent messages and statements to the chosen 
 **Time limit (seconds)** is how long each Decision connection waits for each statement's answer during chats, from 0.5 to 30 seconds (1.5 by default, or 4 for an **OpenAI-compatible chat model** connection). A turn that asks several statements in one request gets this much for each of them. A later answer counts as no answer. Some hosted providers are sometimes slower than 1.5 seconds, which makes decisions look randomly broken, so click **Test** a few times and set the limit above the slowest answer. The trade-off: statements asked before the reply, such as decisions in a preset or an activation question for an agent that runs before the reply, can hold up the reply for up to this long each.
 
 Deleting a connection used for a linked key warns you and leaves the Decision connection needing relinking. Imported standalone connection files also need keys or links restored; they never contain API keys or borrowed connection IDs.
+
+### Run Strands decider yourself
+
+[Strands decider 2B](https://huggingface.co/StrandsAgents/strands-decider-2B-hobson-v19) is another open decision model (Apache-2.0) that speaks System One. Marinara cannot install it, but it works as a **Custom System One endpoint** while you keep it running.
+
+1. In a Python 3.10 or newer environment, install it and start its server:
+
+   ```bash
+   pip install strands-decider
+   strands-decider serve StrandsAgents/strands-decider-2B-hobson-v19 --port 8000
+   ```
+
+   It uses an NVIDIA GPU or Apple silicon when it finds one, and the processor otherwise, more slowly. The first start downloads the model and about 4.6 GB of base weights, and its Python packages take about 5.5 GB. The server has no password, so keep it on `127.0.0.1`.
+2. Create a Decision connection with the source **Custom System One endpoint** and the base URL `http://127.0.0.1:8000`. Any model name works.
+3. Select it under **Decision model** and click **Test**. Its first answer after it starts takes about 2 seconds, longer than the default **Time limit**, so test it once before you chat.
+
+Its probabilities are calibrated, so the default 0.5 threshold for a custom connection suits it, unlike a self-hosted Open-Jev (see [Thresholds](#thresholds)). In a small roleplay test of 80 statements on an RTX 5090, it answered 73 correctly against Open-Jev 2B's 74 and used about 5.1 GB (4.7 GiB) of GPU memory. One to eight statements took it 0.04 to 0.1 seconds, against 0.1 to 0.14 for Open-Jev 2B; on a long chat both took about 0.3 seconds. Its answers depend more on wording, so follow [Writing statements](../prompts/conditional-prompts.md#writing-statements) and test turns from your own chats.
+
+To switch between it and the Decision sidecar, pick either one under **Decision model**. Both stay set up.
 
 ## Let Marinara install a decision model
 

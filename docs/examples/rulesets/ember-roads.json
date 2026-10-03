@@ -170,7 +170,7 @@
         "section": "about"
       },
       {
-        "$comment": "What a blow has to beat. Two six-sided dice average seven, so a Guard of six or seven is an even fight.",
+        "$comment": "What a blow has to beat. Two six-sided dice average seven, so a Guard of six or seven is an even fight. Worn armor adds its own guard: a leather coat on the back counts, one rolled up in the pack does not.",
         "id": "guard",
         "label": "Guard",
         "op": "sum",
@@ -180,6 +180,13 @@
           },
           {
             "abilityMod": "wits"
+          },
+          {
+            "itemStat": {
+              "stat": "guard",
+              "from": "worn",
+              "pick": "sum"
+            }
           }
         ],
         "section": "about"
@@ -204,6 +211,22 @@
           [6, -2],
           [9, -3]
         ],
+        "section": "gear"
+      },
+      {
+        "$comment": "What a traveller carries before the road slows them. The items block's carry reads it.",
+        "id": "load",
+        "label": "Load",
+        "op": "sum",
+        "of": [{ "const": 6 }, { "abilityMod": "brawn" }],
+        "section": "gear"
+      },
+      {
+        "$comment": "Everything a traveller holds, worn or packed, by its bulk. From 10 the road slows anybody, whatever their Brawn: see the combat block's levels.",
+        "id": "bulk_carried",
+        "label": "Bulk carried",
+        "op": "sum",
+        "of": [{ "itemStat": { "stat": "bulk", "from": "all", "pick": "sum" } }],
         "section": "gear"
       },
       {
@@ -455,7 +478,7 @@
     "sheetGuidance": "The character sheets below are authoritative. Spend Grit when a character is hurt and Luck when they push a roll, and raise Heat when the party draws attention.",
     "sheetSummary": {
       "fields": ["calling"],
-      "derived": ["grit_max"],
+      "derived": ["grit_max", "guard"],
       "lists": [
         {
           "list": "gear",
@@ -464,6 +487,72 @@
         }
       ]
     }
+  },
+  "items": {
+    "$comment": "The words every item of Ember Roads is written in. Bulk is what an item weighs: a traveller carries their Load before the road slows them and twelve at the most. Coin and salt are two families: a moneychanger will not take salt, and a caravan will not take coin. An item the Game Master invents guards at most 1 when common, 2 when uncommon and 3 when storied, and helps a check by at most 1, or 2 when storied.",
+    "categories": [
+      { "id": "weapon", "label": "Weapon" },
+      { "id": "armor", "label": "Armor" },
+      { "id": "ammunition", "label": "Ammunition" },
+      { "id": "provisions", "label": "Provisions" },
+      { "id": "gear", "label": "Gear" }
+    ],
+    "rarities": [
+      { "id": "common", "label": "Common" },
+      { "id": "uncommon", "label": "Uncommon" },
+      { "id": "storied", "label": "Storied" }
+    ],
+    "tags": [
+      { "id": "thrown", "label": "Thrown" },
+      { "id": "ranged", "label": "Ranged" },
+      { "id": "two_handed", "label": "Two-handed" },
+      { "id": "arrow", "label": "Arrow" }
+    ],
+    "stats": [
+      { "id": "bulk", "label": "Bulk", "type": "number", "min": 0, "max": 10, "default": 0 },
+      { "id": "guard", "label": "Guard", "type": "number", "min": 0, "max": 4, "default": 0 },
+      { "id": "damage", "label": "Damage", "type": "dice", "example": "1d6" },
+      {
+        "id": "swing",
+        "label": "Rolls with",
+        "type": "enum",
+        "values": ["brawn", "wits", "heart"],
+        "default": "brawn"
+      },
+      { "id": "reach", "label": "Reach", "type": "enum", "values": ["close", "near", "far"], "default": "close" }
+    ],
+    "slots": [
+      { "id": "body", "label": "Body", "count": 1 },
+      { "id": "hands", "label": "Hands", "count": 2 }
+    ],
+    "carry": { "stat": "bulk", "encumberedAbove": { "derived": "load" }, "limit": { "const": 12 } },
+    "rarityCaps": [
+      { "rarity": "common", "stats": { "guard": 1 }, "bonus": 1 },
+      { "rarity": "uncommon", "stats": { "guard": 2 }, "bonus": 1 },
+      { "rarity": "storied", "stats": { "guard": 3 }, "bonus": 2 }
+    ],
+    "currencies": [
+      {
+        "id": "coin",
+        "label": "Coin",
+        "perWeight": 100,
+        "units": [
+          { "id": "bit", "label": "bits", "value": 1 },
+          { "id": "mark", "label": "marks", "value": 10 },
+          { "id": "sovereign", "label": "sovereigns", "value": 100 }
+        ]
+      },
+      {
+        "$comment": "Salt is heavy: ten pinches weigh one bulk, where it takes a hundred coins.",
+        "id": "salt",
+        "label": "Salt",
+        "perWeight": 10,
+        "units": [
+          { "id": "pinch", "label": "pinches", "value": 1 },
+          { "id": "cake", "label": "cakes", "value": 20 }
+        ]
+      }
+    ]
   },
   "catalogs": [
     {
@@ -1029,6 +1118,178 @@
           }
         }
       ]
+    },
+    {
+      "$comment": "What the outfitter at the last town sells. A catalog of items writes nothing onto the sheet, so it feeds no list.",
+      "id": "outfitter",
+      "label": "Outfitter",
+      "holds": "items",
+      "entries": [
+        {
+          "id": "hand-axe",
+          "label": "Hand axe",
+          "summary": "Good for kindling, and for throwing when there is no time to chop.",
+          "item": {
+            "category": "weapon",
+            "rarity": "common",
+            "tags": ["thrown"],
+            "stats": { "bulk": 1, "damage": "1d6", "swing": "brawn", "reach": "close" },
+            "slots": { "hands": 1 },
+            "cost": { "amount": 4, "unit": "mark" },
+            "attack": {
+              "$comment": "Held, it is a weapon a fight offers, swung with the stat it rolls with and dealing its own damage dice, so one made like it with other stats fights with those. A reach and a range both make it thrown: a swing close, a throw beyond.",
+              "budget": "act",
+              "toHit": { "abilities": { "stat": "swing" } },
+              "damage": { "dice": { "stat": "damage" }, "abilities": { "stat": "swing" }, "type": "cut" },
+              "reach": 2,
+              "range": { "normal": 10, "long": 20 }
+            }
+          }
+        },
+        {
+          "id": "boar-spear",
+          "label": "Boar spear",
+          "summary": "Ash shaft, a crossbar below the blade, and room on the haft for a second hand.",
+          "item": {
+            "category": "weapon",
+            "rarity": "common",
+            "tags": ["thrown"],
+            "stats": { "bulk": 2, "damage": "1d6", "swing": "brawn", "reach": "near" },
+            "slots": { "hands": 1 },
+            "cost": { "amount": 6, "unit": "mark" },
+            "attack": {
+              "$comment": "Long enough to reach two cells off, and with a hand free beside it the spear is driven in with both for 1d8.",
+              "budget": "act",
+              "toHit": { "abilities": { "stat": "swing" } },
+              "damage": { "dice": { "stat": "damage" }, "abilities": { "stat": "swing" }, "type": "cut" },
+              "reach": 4,
+              "range": { "normal": 10 },
+              "versatile": { "dice": "1d8" }
+            }
+          }
+        },
+        {
+          "id": "hunting-bow",
+          "label": "Hunting bow",
+          "summary": "Yew, waxed string, and a grip worn smooth by someone else's hand.",
+          "item": {
+            "category": "weapon",
+            "rarity": "common",
+            "tags": ["ranged", "two_handed"],
+            "stats": { "bulk": 2, "damage": "1d8", "swing": "wits", "reach": "far" },
+            "slots": { "hands": 2 },
+            "cost": { "amount": 3, "unit": "sovereign" },
+            "attack": {
+              "budget": "act",
+              "toHit": { "abilities": { "stat": "swing" } },
+              "damage": { "dice": { "stat": "damage" }, "abilities": { "stat": "swing" }, "type": "cut" },
+              "range": { "normal": 30, "long": 60 },
+              "ammo": {
+                "$comment": "One arrow a shot, drawn from whatever its archer carries tagged as arrows, and half of what was shot picked up again after a fight the party wins.",
+                "tag": "arrow",
+                "recover": 0.5
+              },
+              "modes": [
+                {
+                  "$comment": "Two arrows loosed together at up to two marks, each a little wilder.",
+                  "id": "volley",
+                  "label": "Volley",
+                  "ammo": 2,
+                  "toHit": -2,
+                  "targets": 2
+                }
+              ]
+            }
+          }
+        },
+        {
+          "id": "arrows",
+          "label": "Arrows",
+          "summary": "Goose-feathered and iron-tipped, twenty to a quiver.",
+          "item": {
+            "category": "ammunition",
+            "rarity": "common",
+            "tags": ["arrow"],
+            "stats": { "bulk": 1 },
+            "stack": 20,
+            "cost": { "amount": 1, "unit": "mark" }
+          }
+        },
+        {
+          "id": "leather-coat",
+          "label": "Leather coat",
+          "summary": "Stiff, scarred and warm, and it has turned a knife before. It creaks when you creep.",
+          "item": {
+            "category": "armor",
+            "rarity": "common",
+            "stats": { "bulk": 3, "guard": 1 },
+            "slots": { "body": 1 },
+            "cost": { "amount": 2, "unit": "sovereign" },
+            "worn": { "modifiers": [{ "to": "checks", "skills": ["sneak"], "flat": -1 }] }
+          }
+        },
+        {
+          "id": "ox-hide-gauntlets",
+          "label": "Ox-hide gauntlets",
+          "summary": "Stiff cuffs of ox hide that lend a weak grip a drover's.",
+          "item": {
+            "category": "armor",
+            "rarity": "uncommon",
+            "stats": { "bulk": 1 },
+            "slots": { "hands": 2 },
+            "cost": { "amount": 3, "unit": "sovereign" },
+            "worn": { "abilities": { "brawn": { "set": 2 } } }
+          }
+        },
+        {
+          "id": "road-rations",
+          "label": "Road rations",
+          "summary": "A day of hard bread and harder cheese.",
+          "item": {
+            "category": "provisions",
+            "rarity": "common",
+            "stats": { "bulk": 1 },
+            "stack": 7,
+            "cost": { "amount": 5, "unit": "bit" }
+          }
+        },
+        {
+          "id": "poultice",
+          "label": "Poultice",
+          "summary": "Moss, honey and ash folded in a cloth. Pressed to a cut, it closes it enough to walk on.",
+          "item": {
+            "category": "provisions",
+            "rarity": "common",
+            "stats": { "bulk": 1 },
+            "stack": 5,
+            "cost": { "amount": 2, "unit": "mark" },
+            "use": {
+              "$comment": "Used in a fight on the Action, on its holder or somebody beside them, and gone once it is. A use says what it spends and what it does as a knack's mechanics do, and consumes takes one off the stack.",
+              "kind": "heal",
+              "budget": "act",
+              "range": 0,
+              "targets": "ally",
+              "amount": { "dice": "1d4", "flat": 1 },
+              "consumes": true
+            }
+          }
+        },
+        {
+          "id": "waystone",
+          "label": "Waystone",
+          "summary": "A smooth stone from the first milestone of the old road. Caravan folk sell them for salt, never for coin, and trust whoever carries one.",
+          "item": {
+            "category": "gear",
+            "rarity": "storied",
+            "cost": { "amount": 2, "unit": "cake" },
+            "carried": {
+              "$comment": "Carried, it helps a traveller talk their way along the road, and in a fight it keeps the heat off: half of any burn.",
+              "modifiers": [{ "to": "checks", "skills": ["sway"], "flat": 1 }],
+              "resist": ["burn"]
+            }
+          }
+        }
+      ]
     }
   ],
   "battle": {
@@ -1153,7 +1414,16 @@
         "at": 3,
         "modifiers": [{ "to": "attacks", "flat": -1 }]
       },
-      { "track": "heat", "at": 5, "modifiers": [{ "to": "speed", "times": 0.5 }] }
+      { "track": "heat", "at": 5, "modifiers": [{ "to": "speed", "times": 0.5 }] },
+      {
+        "$comment": "A level off a derived value rather than a track nobody has to tick: laden with 10 bulk or more, a traveller is slower and louder.",
+        "derived": "bulk_carried",
+        "at": 10,
+        "modifiers": [
+          { "to": "speed", "flat": -2 },
+          { "to": "checks", "skills": ["sneak"], "flat": -1 }
+        ]
+      }
     ],
     "checks": [
       {

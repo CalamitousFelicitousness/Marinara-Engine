@@ -195,6 +195,31 @@ for (let split = 0; split <= whisperRaw.length; split++) {
     whisper.content,
   );
 }
+// Whispered dialogue keeps its own quotes without escaping them.
+for (const [raw, text] of [
+  ['Before [whisper: character="Bob" text=""I love you.""] after.', '"I love you."'],
+  [
+    'Before [whisper: character="Bob" text="She leans in: "Meet me at dawn," then pulls away."] after.',
+    'She leans in: "Meet me at dawn," then pulls away.',
+  ],
+  [
+    'Before [whisper: character="Bob" text="He says "It\'s [sealed]" and waits."] after.',
+    'He says "It\'s [sealed]" and waits.',
+  ],
+  // Real line breaks need no \n escape.
+  [
+    'Before [whisper: character="Bob" text=""Wait."\n\nShe is already gone."] after.',
+    '"Wait."\n\nShe is already gone.',
+  ],
+]) {
+  const nested = parseRoleplayCommands(raw);
+  assert.equal(nested.content, "Before  after.");
+  assert.deepEqual(nested.commands, [{ type: "whisper", character: "Bob", text }]);
+  for (let split = 0; split <= raw.length; split++) {
+    const filter = new RoleplayCommandStreamFilter();
+    assert.equal(filter.push(raw.slice(0, split)) + filter.push(raw.slice(split)) + filter.flush(), nested.content);
+  }
+}
 for (const raw of [
   '[whisper: character="Bob" text="unfinished',
   "[whis",

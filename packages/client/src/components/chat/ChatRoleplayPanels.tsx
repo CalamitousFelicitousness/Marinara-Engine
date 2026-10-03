@@ -489,7 +489,7 @@ export function AuthorNotesPanel({
   onClose: () => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
-  const updateMeta = useUpdateChatMetadata();
+  const updateMeta = useUpdateChatMetadata({ serialize: true });
   const { data: presets = [] } = useAuthorNotePresets();
   const createPreset = useCreateAuthorNotePreset();
   const updatePreset = useUpdateAuthorNotePreset();

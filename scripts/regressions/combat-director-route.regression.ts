@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { DirectedCombatView, DirectedCommand } from "../../packages/shared/src/features/combat-director.js";
@@ -10,6 +10,8 @@ const { default: Fastify } = await import("../../packages/server/node_modules/fa
 const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
 const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
 const { createGameStateStorage } = await import("../../packages/server/src/services/storage/game-state.storage.js");
+const { createGameRulesetsStorage } =
+  await import("../../packages/server/src/services/storage/game-rulesets.storage.js");
 const { createGameEngineStateStorage } =
   await import("../../packages/server/src/services/storage/game-engine-state.storage.js");
 const { combatDirectorRoutes, COMBAT_DIRECTOR_NAMESPACE } =
@@ -56,7 +58,14 @@ await chats.patchMetadata(chat.id, {
     tacticalBattlefield: { seed: 9, size: "small" },
   },
   gameWeather: { type: "rainy", wind: "windy", visibility: "reduced" },
-  gameInventory: [{ name: "Potion", quantity: 2 }],
+  // Two stacks of one item, as a player who split their potions leaves them.
+  gameInventory: [
+    { id: "st-first", name: "Potion", quantity: 1 },
+    { id: "st-second", name: "Potion", quantity: 1 },
+    // Two stacks whose total is past what one stack holds: a fight and its save take the total.
+    { id: "st-arrows", name: "Arrow", quantity: 999_999 },
+    { id: "st-arrows-2", name: "Arrow", quantity: 500_000 },
+  ],
 });
 const input = {
   chatId: chat.id,
@@ -144,6 +153,14 @@ try {
   const start = await post("/combat/start", input);
   assert.equal(start.statusCode, 200, start.body);
   s = start.json().session;
+  assert.deepEqual(
+    s.inventory.map((item) => [item.name, item.quantity]),
+    [
+      ["Potion", 2],
+      ["Arrow", 1_499_999],
+    ],
+    "a fight sees one line per item, however its stacks are split",
+  );
   assert.equal(s.tactical!.battlefield!.brief!.features![0]!.terrain, "forest");
   assert.equal(s.weather?.type, "rain");
   assert.equal(s.weather?.exposure, "exposed");
@@ -192,7 +209,12 @@ try {
   );
   assert.equal(item.statusCode, 200, item.body);
   s = item.json().session;
-  assert.equal(JSON.parse((await chats.getById(chat.id))!.metadata).gameInventory[0].quantity, 1);
+  // Taken from the first stack, which it empties; the second stack keeps its id and its potion.
+  assert.deepEqual(JSON.parse((await chats.getById(chat.id))!.metadata).gameInventory, [
+    { id: "st-second", name: "Potion", quantity: 1 },
+    { id: "st-arrows", name: "Arrow", quantity: 999_999 },
+    { id: "st-arrows-2", name: "Arrow", quantity: 500_000 },
+  ]);
   const repeat = await cmd(
     { type: "tactical", action: { type: "item", unitId: "hero", itemName: "Potion", targetId: "hero" } },
     itemRequest,
@@ -200,6 +222,14 @@ try {
   );
   assert.equal(repeat.json().session.revision, s.revision);
   assert.equal(JSON.parse((await chats.getById(chat.id))!.metadata).gameInventory[0].quantity, 1);
+  // The spend goes through the same save as every other inventory change, so the journal hears of it
+  // once, the duplicated request included.
+  assert.deepEqual(
+    (JSON.parse((await chats.getById(chat.id))!.metadata).gameJournal?.inventoryLog ?? []).map(
+      (entry: { item: string; action: string; quantity: number }) => [entry.item, entry.action, entry.quantity],
+    ),
+    [["Potion", "used", 1]],
+  );
   const reload = await post("/combat/start", { ...input, party: [{ ...unit("hero", "player"), hp: 1 }] });
   assert.deepEqual(reload.json().session, s, "reopening ignores stale client combatants");
   // A checkpoint restore replaces row identity even if its revision/window happen to match.
@@ -357,6 +387,291 @@ try {
     assert.equal(response.statusCode, 400);
     assert.equal(response.json().error, "Unsupported combat save.");
     assert.equal((await post("/combat/start", input)).json().error, "Unsupported combat save.");
+  }
+  // A line shown by a nickname is spent as the item it is, even when the nickname is another item's
+  // own name: a cord the player calls "Potion" is the cord, and the real potion stays.
+  {
+    const nickChat = await chats.create({ name: "Director nickname proof", mode: "game", characterIds: [] });
+    const nickAnchor = await chats.createMessage({
+      chatId: nickChat.id,
+      role: "assistant",
+      content: "[state: combat]",
+    });
+    await chats.patchMetadata(nickChat.id, {
+      gameSetupConfig: { combatDirector: true },
+      gameInventory: [
+        { id: "st-cord", name: "Cord", nickname: "Potion", quantity: 1 },
+        { id: "st-potion", name: "Potion", quantity: 1 },
+      ],
+    });
+    const nickInput = {
+      ...input,
+      chatId: nickChat.id,
+      anchor: nickAnchor.id,
+      enemies: [unit("rat", "enemy")],
+      itemEffects: [
+        ...input.itemEffects,
+        // Named as the item is in its own right: the fight finds it for the line shown as "Potion (Cord)".
+        { name: "Cord", target: "ally", type: "utility", description: "Tie", power: 1 },
+      ],
+    };
+    const started = await post("/combat/start", nickInput);
+    assert.equal(started.statusCode, 200, started.body);
+    let n: DirectedCombatView = started.json().session;
+    assert.deepEqual(
+      n.inventory.map((line) => [line.name, line.quantity, line.ownName ?? null]),
+      [
+        ["Potion (Cord)", 1, "Cord"],
+        ["Potion", 1, null],
+      ],
+      "two lines never share a name: the nickname another line goes by shows its own name too",
+    );
+    const nickCmd = async (command: DirectedCommand) => {
+      const response = await post("/combat/command", {
+        chatId: nickChat.id,
+        anchor: nickAnchor.id,
+        id: n.id,
+        instanceId: n.instanceId,
+        revision: n.revision,
+        requestId: crypto.randomUUID(),
+        command,
+      });
+      assert.equal(response.statusCode, 200, response.body);
+      n = response.json().session;
+    };
+    await nickCmd({ type: "begin", unitId: "hero" });
+    await nickCmd({
+      type: "tactical",
+      action: { type: "item", unitId: "hero", itemName: "Potion (Cord)", targetId: "hero" },
+    });
+    assert.deepEqual(JSON.parse((await chats.getById(nickChat.id))!.metadata).gameInventory, [
+      { id: "st-potion", name: "Potion", quantity: 1 },
+    ]);
+  }
+  // Once the real potion is gone mid-fight, a cord nicknamed "Potion" never stands in for it: the
+  // spend is refused and the cord stays.
+  {
+    const goneChat = await chats.create({ name: "Director gone item proof", mode: "game", characterIds: [] });
+    const goneAnchor = await chats.createMessage({
+      chatId: goneChat.id,
+      role: "assistant",
+      content: "[state: combat]",
+    });
+    await chats.patchMetadata(goneChat.id, {
+      gameSetupConfig: { combatDirector: true },
+      gameInventory: [{ id: "st-potion", name: "Potion", quantity: 1 }],
+    });
+    const started = await post("/combat/start", {
+      ...input,
+      chatId: goneChat.id,
+      anchor: goneAnchor.id,
+      enemies: [unit("rat", "enemy")],
+    });
+    assert.equal(started.statusCode, 200, started.body);
+    let g: DirectedCombatView = started.json().session;
+    const goneCmd = (command: DirectedCommand) =>
+      post("/combat/command", {
+        chatId: goneChat.id,
+        anchor: goneAnchor.id,
+        id: g.id,
+        instanceId: g.instanceId,
+        revision: g.revision,
+        requestId: crypto.randomUUID(),
+        command,
+      });
+    const begun = await goneCmd({ type: "begin", unitId: "hero" });
+    assert.equal(begun.statusCode, 200, begun.body);
+    g = begun.json().session;
+    const cordOnly = [{ id: "st-cord", name: "Cord", nickname: "Potion", quantity: 1 }];
+    await chats.patchMetadata(goneChat.id, { gameInventory: cordOnly });
+    const refused = await goneCmd({
+      type: "tactical",
+      action: { type: "item", unitId: "hero", itemName: "Potion", targetId: "hero" },
+    });
+    assert.equal(refused.statusCode, 400, refused.body);
+    assert.match(refused.body, /Inventory changed/);
+    assert.deepEqual(JSON.parse((await chats.getById(goneChat.id))!.metadata).gameInventory, cordOnly);
+  }
+  // A ruleset's item (#6795) is spent in a fight like any other: the fight's check counts the items
+  // that have the spent name as their own, a ruleset item among them.
+  {
+    const kitChat = await chats.create({ name: "Director ruleset item proof", mode: "game", characterIds: [] });
+    const kitAnchor = await chats.createMessage({ chatId: kitChat.id, role: "assistant", content: "[state: combat]" });
+    await chats.patchMetadata(kitChat.id, {
+      gameSetupConfig: { combatDirector: true },
+      gameInventory: [{ id: "st-tonic", name: "Potion", item: "kit/warming-tonic", quantity: 2 }],
+    });
+    const started = await post("/combat/start", {
+      ...input,
+      chatId: kitChat.id,
+      anchor: kitAnchor.id,
+      enemies: [unit("rat", "enemy")],
+    });
+    assert.equal(started.statusCode, 200, started.body);
+    let k: DirectedCombatView = started.json().session;
+    const kitCmd = async (command: DirectedCommand) => {
+      const response = await post("/combat/command", {
+        chatId: kitChat.id,
+        anchor: kitAnchor.id,
+        id: k.id,
+        instanceId: k.instanceId,
+        revision: k.revision,
+        requestId: crypto.randomUUID(),
+        command,
+      });
+      assert.equal(response.statusCode, 200, response.body);
+      k = response.json().session;
+    };
+    await kitCmd({ type: "begin", unitId: "hero" });
+    await kitCmd({ type: "tactical", action: { type: "item", unitId: "hero", itemName: "Potion", targetId: "hero" } });
+    assert.deepEqual(JSON.parse((await chats.getById(kitChat.id))!.metadata).gameInventory, [
+      { id: "st-tonic", name: "Potion", item: "kit/warming-tonic", quantity: 1 },
+    ]);
+  }
+  // A bound cursed item stays with whoever it is bound to (#6801): the fight cannot use up the
+  // Widow's ring the player cannot part with, and the step is refused whole, so its effect is never
+  // had for nothing. A spare ring in the bag beside it is not worn, so the fight never spends it in the
+  // worn one's place (#6909).
+  {
+    const gravewatch = {
+      ...JSON.parse(readFileSync(new URL("../../docs/examples/rulesets/gravewatch.json", import.meta.url), "utf8")),
+      id: "gravewatch-fight",
+    };
+    // A ruleset's item is offered in the Engine's own fights only when it can be used (#6905), so the
+    // ring is given a use here.
+    gravewatch.catalogs
+      .find((catalog: { id: string }) => catalog.id === "kit")
+      .entries.find((entry: { id: string }) => entry.id === "widows-ring").item.use = {
+      kind: "heal",
+      free: true,
+      targets: "self",
+      amount: { flat: 1 },
+      consumes: true,
+    };
+    await createGameRulesetsStorage(db).put({
+      rulesetId: "local/gravewatch-fight",
+      version: gravewatch.version,
+      sourceKind: "local",
+      definition: JSON.stringify(gravewatch),
+    });
+    const ringChat = await chats.create({ name: "Director cursed item proof", mode: "game", characterIds: [] });
+    const ringAnchor = await chats.createMessage({
+      chatId: ringChat.id,
+      role: "assistant",
+      content: "[state: combat]",
+    });
+    // Worn and bound, as a ring that binds is used (#6909).
+    const bound = [
+      { id: "st-ring", name: "Widow's ring", item: "kit/widows-ring", quantity: 1, equipped: true, bound: true },
+    ];
+    await chats.patchMetadata(ringChat.id, {
+      gameSetupConfig: { combatDirector: true },
+      gameRuleset: { id: "local/gravewatch-fight", version: gravewatch.version, packageId: null, options: {} },
+      gameInventory: bound,
+    });
+    const started = await post("/combat/start", {
+      ...input,
+      chatId: ringChat.id,
+      anchor: ringAnchor.id,
+      enemies: [unit("rat", "enemy")],
+      itemEffects: [{ name: "Widow's ring", target: "ally", type: "heal", description: "Heal", power: 1 }],
+    });
+    assert.equal(started.statusCode, 200, started.body);
+    let r: DirectedCombatView = started.json().session;
+    const ringCmd = (command: DirectedCommand) =>
+      post("/combat/command", {
+        chatId: ringChat.id,
+        anchor: ringAnchor.id,
+        id: r.id,
+        instanceId: r.instanceId,
+        revision: r.revision,
+        requestId: crypto.randomUUID(),
+        command,
+      });
+    const begun = await ringCmd({ type: "begin", unitId: "hero" });
+    assert.equal(begun.statusCode, 200, begun.body);
+    r = begun.json().session;
+    const use = {
+      type: "tactical",
+      action: { type: "item", unitId: "hero", itemName: "Widow's ring", targetId: "hero" },
+    } as const;
+    const refused = await ringCmd(use);
+    assert.equal(refused.statusCode, 400, refused.body);
+    assert.match(refused.body, /Widow's ring is cursed/);
+    assert.deepEqual(JSON.parse((await chats.getById(ringChat.id))!.metadata).gameInventory, bound);
+    const kept = (await store.getByChatAndMessage(ringChat.id, ringAnchor.id, 0, COMBAT_DIRECTOR_NAMESPACE))!;
+    assert.equal(JSON.parse(kept.state).revision, r.revision, "the refused step is not saved");
+    // A spare in the bag is not the ring being worn, so the step is still refused and both stay.
+    const spare = [...bound, { id: "st-spare", name: "Widow's ring", item: "kit/widows-ring", quantity: 1 }];
+    await chats.patchMetadata(ringChat.id, { gameInventory: spare });
+    const still = await ringCmd(use);
+    assert.equal(still.statusCode, 400, still.body);
+    assert.match(still.body, /Widow's ring is cursed/);
+    assert.deepEqual(JSON.parse((await chats.getById(ringChat.id))!.metadata).gameInventory, spare);
+    // Taken off since, it is no longer the ring being used: the step is refused as a change to the
+    // inventory, not as the curse.
+    const off = [{ ...bound[0]!, equipped: false }, spare[1]!];
+    await chats.patchMetadata(ringChat.id, { gameInventory: off });
+    const gone = await ringCmd(use);
+    assert.equal(gone.statusCode, 400, gone.body);
+    assert.match(gone.body, /Inventory changed/);
+  }
+  // A ruleset that turns Game Mode's own items off (#6822): the fight offers no item and uses none of
+  // what a model guessed, and the inventory stays as it was.
+  {
+    const ember = {
+      ...JSON.parse(readFileSync(new URL("../../docs/examples/rulesets/ember-roads.json", import.meta.url), "utf8")),
+      id: "ember-fight-no-items",
+    };
+    ember.items = { ...ember.items, native: false };
+    await createGameRulesetsStorage(db).put({
+      rulesetId: "local/ember-fight-no-items",
+      version: ember.version,
+      sourceKind: "local",
+      definition: JSON.stringify(ember),
+    });
+    const noItemsChat = await chats.create({ name: "Director without items", mode: "game", characterIds: [] });
+    const noItemsAnchor = await chats.createMessage({
+      chatId: noItemsChat.id,
+      role: "assistant",
+      content: "[state: combat]",
+    });
+    const potions = [{ id: "st-potion", name: "Potion", quantity: 2 }];
+    await chats.patchMetadata(noItemsChat.id, {
+      gameSetupConfig: { combatDirector: true },
+      gameRuleset: { id: "local/ember-fight-no-items", version: ember.version, packageId: null, options: {} },
+      gameInventory: potions,
+    });
+    const started = await post("/combat/start", {
+      ...input,
+      chatId: noItemsChat.id,
+      anchor: noItemsAnchor.id,
+      enemies: [unit("rat", "enemy")],
+    });
+    assert.equal(started.statusCode, 200, started.body);
+    let n: DirectedCombatView = started.json().session;
+    assert.deepEqual(n.inventory, [], "no item is offered");
+    const saved = (await store.getByChatAndMessage(noItemsChat.id, noItemsAnchor.id, 0, COMBAT_DIRECTOR_NAMESPACE))!;
+    assert.deepEqual(JSON.parse(saved.state).itemEffects, [], "nor is a guessed effect kept");
+    const noItemsCmd = (command: DirectedCommand) =>
+      post("/combat/command", {
+        chatId: noItemsChat.id,
+        anchor: noItemsAnchor.id,
+        id: n.id,
+        instanceId: n.instanceId,
+        revision: n.revision,
+        requestId: crypto.randomUUID(),
+        command,
+      });
+    const begun = await noItemsCmd({ type: "begin", unitId: "hero" });
+    assert.equal(begun.statusCode, 200, begun.body);
+    n = begun.json().session;
+    const refusedPotion = await noItemsCmd({
+      type: "tactical",
+      action: { type: "item", unitId: "hero", itemName: "Potion", targetId: "hero" },
+    });
+    assert.equal(refusedPotion.statusCode, 400, refusedPotion.body);
+    assert.deepEqual(JSON.parse((await chats.getById(noItemsChat.id))!.metadata).gameInventory, potions);
   }
   console.log(
     "Combat director route: authority, idempotency, terrain, atomic item costs, late GM output, restore identity and branch isolation passed.",

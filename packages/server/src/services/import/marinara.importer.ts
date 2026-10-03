@@ -1,3 +1,8 @@
+import {
+  decodeLorebookImages,
+  saveDecodedLorebookImages,
+  discardImportedLorebookImages,
+} from "../lorebook/lorebook-images.js";
 // ──────────────────────────────────────────────
 // Import: Marinara Engine native format (.marinara.json)
 // ──────────────────────────────────────────────
@@ -31,11 +36,14 @@ import type {
 import { createCharactersStorage } from "../storage/characters.storage.js";
 import { createCharacterGalleryStorage } from "../storage/character-gallery.storage.js";
 import { createPersonaGalleryStorage } from "../storage/persona-gallery.storage.js";
+import { createChatsStorage } from "../storage/chats.storage.js";
 import { createLorebooksStorage } from "../storage/lorebooks.storage.js";
 import { createPromptsStorage } from "../storage/prompts.storage.js";
+import { inArray } from "../../db/file-query.js";
+import { lorebookEntries, lorebookFolders } from "../../db/schema/index.js";
 import { normalizeTimestampOverrides, type TimestampOverrides } from "./import-timestamps.js";
 import { resolveLorebookEntryRole } from "./lorebook-role.js";
-import { emptyLorebookForOverwrite, emptyPresetForOverwrite } from "./import-overwrite.js";
+import { emptyPresetForOverwrite } from "./import-overwrite.js";
 import { access, mkdir, writeFile } from "fs/promises";
 import { join } from "path";
 import { DATA_DIR } from "../../utils/data-dir.js";
@@ -726,7 +734,20 @@ async function importLorebookPayload(data: unknown, db: DB, overwriteId?: string
   if (!d?.lorebook) {
     return { success: false, type: "marinara_lorebook" as const, error: "Invalid lorebook data" };
   }
+  const decodedImages = new Map<Record<string, unknown>, Awaited<ReturnType<typeof decodeLorebookImages>>>();
+  for (const entry of d.entries ?? []) decodedImages.set(entry, await decodeLorebookImages(entry.images));
+  const savedImages = new Map<Record<string, unknown>, Awaited<ReturnType<typeof saveDecodedLorebookImages>>>();
   const lb = d.lorebook;
+  // A lorebook keeps its content in child rows. Replacing one adds the new rows
+  // beside the old ones and swaps them in one transaction at the end, so a failed
+  // import leaves it as it was. Nothing snapshots a lorebook otherwise.
+  const replacingLb = overwriteId ? await storage.getById(overwriteId) : null;
+  const previousEntryIds = replacingLb
+    ? ((await storage.listEntries(overwriteId!)) as unknown as Array<{ id: string }>).map((entry) => entry.id)
+    : [];
+  const previousFolderIds = replacingLb
+    ? ((await storage.listFolders(overwriteId!)) as unknown as Array<{ id: string }>).map((folder) => folder.id)
+    : [];
   const lorebookInput = {
     name: String(lb.name ?? "Imported Lorebook"),
     description: String(lb.description ?? ""),
@@ -761,132 +782,161 @@ async function importLorebookPayload(data: unknown, db: DB, overwriteId?: string
     generatedBy: "import" as const,
     sourceAgentId: typeof lb.sourceAgentId === "string" ? lb.sourceAgentId : null,
   };
+  let newLb: Record<string, unknown> | null = null;
+  try {
+    for (const entry of d.entries ?? [])
+      savedImages.set(entry, await saveDecodedLorebookImages(decodedImages.get(entry)!));
+    newLb =
+      replacingLb ??
+      ((await storage.create(lorebookInput, readTimestampOverrides(lb))) as Record<string, unknown> | null);
 
-  // A lorebook keeps its content in child rows, so replacing one means emptying
-  // it first. Nothing snapshots that, which is what the question warned about.
-  const replacingLb = overwriteId ? await storage.getById(overwriteId) : null;
-  let newLb: Record<string, unknown> | null;
-  if (replacingLb) {
-    newLb = (await storage.update(overwriteId!, lorebookInput)) as Record<string, unknown> | null;
-    await emptyLorebookForOverwrite(storage, overwriteId!);
-  } else {
-    newLb = (await storage.create(lorebookInput, readTimestampOverrides(lb))) as Record<string, unknown> | null;
-  }
-
-  // Re-create folders in two passes so nesting survives the round-trip. A child
-  // folder can be listed before its parent, so pass 1 creates every folder at
-  // root and builds the old-ID → new-ID remap; pass 2 re-parents each folder
-  // through that remap. Every move is validated with canReparentFolder (the same
-  // guard the PATCH route uses), so a malformed/hand-edited export can never
-  // persist a cycle — an unresolvable or cyclic parent just leaves that folder at
-  // root. Older exports without `folders` skip both passes and entries land at root.
-  const folderIdRemap = new Map<string, string>();
-  if (newLb && Array.isArray(d.folders) && d.folders.length > 0) {
-    const lorebookId = newLb.id as string;
-    // Pass 1 — create at root, remembering each folder's exported parent (old ID).
-    const pendingReparents: Array<{ newId: string; oldParentId: string }> = [];
-    for (const f of d.folders) {
-      const oldId = typeof f.id === "string" ? f.id : null;
-      const created = (await storage.createFolder(lorebookId, {
-        name: String(f.name ?? "Folder"),
-        enabled: f.enabled !== false,
-        parentFolderId: null,
-        order: Number(f.order ?? 0),
-      })) as Record<string, unknown> | null;
-      const newId = created?.id;
-      if (oldId && typeof newId === "string") {
-        folderIdRemap.set(oldId, newId);
-        const oldParentId = typeof f.parentFolderId === "string" ? f.parentFolderId : null;
-        if (oldParentId) pendingReparents.push({ newId, oldParentId });
+    // Re-create folders in two passes so nesting survives the round-trip. A child
+    // folder can be listed before its parent, so pass 1 creates every folder at
+    // root and builds the old-ID → new-ID remap; pass 2 re-parents each folder
+    // through that remap. Every move is validated with canReparentFolder (the same
+    // guard the PATCH route uses), so a malformed/hand-edited export can never
+    // persist a cycle — an unresolvable or cyclic parent just leaves that folder at
+    // root. Older exports without `folders` skip both passes and entries land at root.
+    const folderIdRemap = new Map<string, string>();
+    if (newLb && Array.isArray(d.folders) && d.folders.length > 0) {
+      const lorebookId = newLb.id as string;
+      // Pass 1 — create at root, remembering each folder's exported parent (old ID).
+      const pendingReparents: Array<{ newId: string; oldParentId: string }> = [];
+      for (const f of d.folders) {
+        const oldId = typeof f.id === "string" ? f.id : null;
+        const created = (await storage.createFolder(lorebookId, {
+          name: String(f.name ?? "Folder"),
+          enabled: f.enabled !== false,
+          parentFolderId: null,
+          order: Number(f.order ?? 0),
+        })) as Record<string, unknown> | null;
+        const newId = created?.id;
+        if (oldId && typeof newId === "string") {
+          folderIdRemap.set(oldId, newId);
+          const oldParentId = typeof f.parentFolderId === "string" ? f.parentFolderId : null;
+          if (oldParentId) pendingReparents.push({ newId, oldParentId });
+        }
+      }
+      // Pass 2 — re-parent through the remap. `folderRows` mirrors the DB state so
+      // canReparentFolder sees each applied move; an invalid move (dangling or
+      // cyclic parent) is skipped, leaving that folder at root like the editor does.
+      const folderRows = Array.from(folderIdRemap.values()).map((id) => ({
+        id,
+        lorebookId,
+        parentFolderId: null as string | null,
+      }));
+      const rowById = new Map(folderRows.map((row) => [row.id, row]));
+      for (const { newId, oldParentId } of pendingReparents) {
+        const newParentId = folderIdRemap.get(oldParentId);
+        if (!newParentId) continue; // parent wasn't part of the export → leave at root
+        if (!canReparentFolder(folderRows, newId, newParentId).ok) continue;
+        await storage.updateFolder(newId, { parentFolderId: newParentId }, lorebookId);
+        const row = rowById.get(newId);
+        if (row) row.parentFolderId = newParentId;
       }
     }
-    // Pass 2 — re-parent through the remap. `folderRows` mirrors the DB state so
-    // canReparentFolder sees each applied move; an invalid move (dangling or
-    // cyclic parent) is skipped, leaving that folder at root like the editor does.
-    const folderRows = Array.from(folderIdRemap.values()).map((id) => ({
-      id,
-      lorebookId,
-      parentFolderId: null as string | null,
-    }));
-    const rowById = new Map(folderRows.map((row) => [row.id, row]));
-    for (const { newId, oldParentId } of pendingReparents) {
-      const newParentId = folderIdRemap.get(oldParentId);
-      if (!newParentId) continue; // parent wasn't part of the export → leave at root
-      if (!canReparentFolder(folderRows, newId, newParentId).ok) continue;
-      await storage.updateFolder(newId, { parentFolderId: newParentId }, lorebookId);
-      const row = rowById.get(newId);
-      if (row) row.parentFolderId = newParentId;
+
+    if (newLb && Array.isArray(d.entries) && d.entries.length > 0) {
+      const entries = [];
+      for (const e of d.entries) {
+        const oldFolderId = typeof e.folderId === "string" ? e.folderId : null;
+        const newFolderId = oldFolderId ? (folderIdRemap.get(oldFolderId) ?? null) : null;
+        entries.push({
+          name: String(e.name ?? ""),
+          content: String(e.content ?? ""),
+          images: savedImages.get(e) ?? [],
+          // CodeRabbit-flagged: description, ephemeral, locked, and recursion flags
+          // were absent from the previous map, so an exported lorebook would lose
+          // these fields on re-import. Knowledge-router matching uses description,
+          // ephemeral controls auto-disable countdown, locked protects entries
+          // from the Lorebook Keeper agent, and recursion flags gate recursive
+          // scanning — all behaviors that should round-trip.
+          description: String(e.description ?? ""),
+          keys: Array.isArray(e.keys) ? e.keys.map(String) : [],
+          secondaryKeys: Array.isArray(e.secondaryKeys) ? e.secondaryKeys.map(String) : [],
+          enabled: e.enabled !== false,
+          constant: Boolean(e.constant),
+          selective: Boolean(e.selective),
+          selectiveLogic: resolveNativeSelectiveLogic(e.selectiveLogic),
+          probability: e.probability != null ? Number(e.probability) : null,
+          scanDepth: e.scanDepth != null ? Number(e.scanDepth) : null,
+          matchWholeWords: Boolean(e.matchWholeWords),
+          caseSensitive: Boolean(e.caseSensitive),
+          useRegex: Boolean(e.useRegex),
+          characterFilterMode: readFilterMode(e.characterFilterMode),
+          characterFilterIds: Array.isArray(e.characterFilterIds) ? e.characterFilterIds.map(String) : [],
+          characterTagFilterMode: readFilterMode(e.characterTagFilterMode),
+          characterTagFilters: Array.isArray(e.characterTagFilters) ? e.characterTagFilters.map(String) : [],
+          generationTriggerFilterMode: readFilterMode(e.generationTriggerFilterMode),
+          generationTriggerFilters: Array.isArray(e.generationTriggerFilters)
+            ? e.generationTriggerFilters.map(String)
+            : [],
+          additionalMatchingSources: readMatchingSources(e.additionalMatchingSources),
+          position: resolveNativePosition(e.position),
+          outletName: String(e.outletName ?? ""),
+          depth: Number(e.depth ?? 4),
+          order: Number(e.order ?? 100),
+          role: resolveLorebookEntryRole(e.role),
+          sticky: e.sticky != null ? Number(e.sticky) : null,
+          cooldown: e.cooldown != null ? Number(e.cooldown) : null,
+          delay: e.delay != null ? Number(e.delay) : null,
+          ephemeral: e.ephemeral != null ? Number(e.ephemeral) : null,
+          group: String(e.group ?? ""),
+          groupWeight: e.groupWeight != null ? Number(e.groupWeight) : null,
+          folderId: newFolderId,
+          locked: Boolean(e.locked),
+          preventRecursion: e.preventRecursion == null ? true : Boolean(e.preventRecursion),
+          excludeRecursion: Boolean(e.excludeRecursion),
+          delayUntilRecursion: Boolean(e.delayUntilRecursion),
+          excludeFromVectorization: Boolean(e.excludeFromVectorization),
+          tag: String(e.tag ?? ""),
+          relationships: (e.relationships as any) ?? {},
+          dynamicState: (e.dynamicState as any) ?? {},
+          activationConditions: (e.activationConditions as any) ?? [],
+          schedule: (e.schedule as any) ?? null,
+          ...parseLorebookDecisionActivation(e),
+        });
+      }
+      await storage.bulkCreateEntries(newLb.id as string, entries);
     }
-  }
 
-  if (newLb && Array.isArray(d.entries) && d.entries.length > 0) {
-    const entries = d.entries.map((e) => {
-      const oldFolderId = typeof e.folderId === "string" ? e.folderId : null;
-      const newFolderId = oldFolderId ? (folderIdRemap.get(oldFolderId) ?? null) : null;
-      return {
-        name: String(e.name ?? ""),
-        content: String(e.content ?? ""),
-        // CodeRabbit-flagged: description, ephemeral, locked, and recursion flags
-        // were absent from the previous map, so an exported lorebook would lose
-        // these fields on re-import. Knowledge-router matching uses description,
-        // ephemeral controls auto-disable countdown, locked protects entries
-        // from the Lorebook Keeper agent, and recursion flags gate recursive
-        // scanning — all behaviors that should round-trip.
-        description: String(e.description ?? ""),
-        keys: Array.isArray(e.keys) ? e.keys.map(String) : [],
-        secondaryKeys: Array.isArray(e.secondaryKeys) ? e.secondaryKeys.map(String) : [],
-        enabled: e.enabled !== false,
-        constant: Boolean(e.constant),
-        selective: Boolean(e.selective),
-        selectiveLogic: resolveNativeSelectiveLogic(e.selectiveLogic),
-        probability: e.probability != null ? Number(e.probability) : null,
-        scanDepth: e.scanDepth != null ? Number(e.scanDepth) : null,
-        matchWholeWords: Boolean(e.matchWholeWords),
-        caseSensitive: Boolean(e.caseSensitive),
-        useRegex: Boolean(e.useRegex),
-        characterFilterMode: readFilterMode(e.characterFilterMode),
-        characterFilterIds: Array.isArray(e.characterFilterIds) ? e.characterFilterIds.map(String) : [],
-        characterTagFilterMode: readFilterMode(e.characterTagFilterMode),
-        characterTagFilters: Array.isArray(e.characterTagFilters) ? e.characterTagFilters.map(String) : [],
-        generationTriggerFilterMode: readFilterMode(e.generationTriggerFilterMode),
-        generationTriggerFilters: Array.isArray(e.generationTriggerFilters)
-          ? e.generationTriggerFilters.map(String)
-          : [],
-        additionalMatchingSources: readMatchingSources(e.additionalMatchingSources),
-        position: resolveNativePosition(e.position),
-        outletName: String(e.outletName ?? ""),
-        depth: Number(e.depth ?? 4),
-        order: Number(e.order ?? 100),
-        role: resolveLorebookEntryRole(e.role),
-        sticky: e.sticky != null ? Number(e.sticky) : null,
-        cooldown: e.cooldown != null ? Number(e.cooldown) : null,
-        delay: e.delay != null ? Number(e.delay) : null,
-        ephemeral: e.ephemeral != null ? Number(e.ephemeral) : null,
-        group: String(e.group ?? ""),
-        groupWeight: e.groupWeight != null ? Number(e.groupWeight) : null,
-        folderId: newFolderId,
-        locked: Boolean(e.locked),
-        preventRecursion: e.preventRecursion == null ? true : Boolean(e.preventRecursion),
-        excludeRecursion: Boolean(e.excludeRecursion),
-        delayUntilRecursion: Boolean(e.delayUntilRecursion),
-        excludeFromVectorization: Boolean(e.excludeFromVectorization),
-        tag: String(e.tag ?? ""),
-        relationships: (e.relationships as any) ?? {},
-        dynamicState: (e.dynamicState as any) ?? {},
-        activationConditions: (e.activationConditions as any) ?? [],
-        schedule: (e.schedule as any) ?? null,
-        ...parseLorebookDecisionActivation(e),
-      };
-    });
-    await storage.bulkCreateEntries(newLb.id as string, entries);
-  }
+    if (replacingLb) {
+      await createChatsStorage(db).pruneLorebookChatMetadata(async (tx) => {
+        const updated = await createLorebooksStorage(tx).update(overwriteId!, lorebookInput);
+        if (!updated) throw new Error("Failed to update lorebook");
+        if (previousEntryIds.length > 0) {
+          await tx.delete(lorebookEntries).where(inArray(lorebookEntries.id, previousEntryIds));
+        }
+        if (previousFolderIds.length > 0) {
+          await tx.delete(lorebookFolders).where(inArray(lorebookFolders.id, previousFolderIds));
+        }
+        return previousEntryIds;
+      });
+    }
 
-  return {
-    success: true,
-    type: "marinara_lorebook" as const,
-    id: newLb?.id as string,
-    name: String(lb.name ?? "Imported Lorebook"),
-  };
+    return {
+      success: true,
+      type: "marinara_lorebook" as const,
+      id: newLb?.id as string,
+      name: String(lb.name ?? "Imported Lorebook"),
+    };
+  } catch (error) {
+    if (replacingLb) {
+      // The lorebook being replaced still holds its previous rows; drop only what this import added.
+      const keepEntries = new Set(previousEntryIds);
+      const keepFolders = new Set(previousFolderIds);
+      for (const entry of (await storage.listEntries(overwriteId!)) as unknown as Array<{ id: string }>) {
+        if (!keepEntries.has(entry.id)) await storage.removeEntry(entry.id);
+      }
+      for (const folder of (await storage.listFolders(overwriteId!)) as unknown as Array<{ id: string }>) {
+        if (!keepFolders.has(folder.id)) await storage.removeFolder(folder.id, overwriteId!);
+      }
+    } else if (newLb) {
+      await storage.remove(newLb.id as string);
+    }
+    await discardImportedLorebookImages(savedImages.values(), decodedImages.values());
+    throw error;
+  }
 }
 
 // ── Preset ───────────────────────────────────

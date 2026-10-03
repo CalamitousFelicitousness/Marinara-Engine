@@ -35,6 +35,7 @@ import {
 
 import { getCurrentInputSnapshot, useChatStore } from "../../stores/chat.store";
 import { hasActiveTextSelection } from "../../lib/text-selection";
+import { readChatMetadata } from "../../lib/chat-wizard-defaults";
 import { useGenerate } from "../../hooks/use-generate";
 import { useMultiSwipeFinalize } from "../../hooks/use-multi-swipe";
 import { useGenerateGallerySelfie } from "../../hooks/use-gallery";
@@ -74,6 +75,7 @@ import {
   PROFESSOR_MARI_ID,
   buildGuidedGenerationInstructionMessage,
   normalizeAvatarCrop,
+  normalizeGroupChatMode,
   normalizeManualTrackerAgentTypes,
   type GeneratedSceneVideo,
   type SpritePlacement,
@@ -120,6 +122,7 @@ import {
   readAnnouncedChatToolbarPanelAction,
   readChatToolbarFloatingPanelAnchor,
 } from "./ChatToolbarControls";
+import { SelectionLorebookButton } from "./SelectionLorebookButton";
 import { mirrorCharacterSpritePlacements, mirrorSpritePlacements, normalizeSpritePlacements } from "./sprite-placement";
 import {
   loadLocalSpriteVisualSettings,
@@ -342,6 +345,7 @@ type AgentInjectionReviewRequest = {
 
 type IllustratorPromptReviewRequest = {
   chatId: string;
+  illustratorMessageRange?: [string, string];
   subjectOnly?: boolean;
   item: ImagePromptReviewItem;
   resultData: Record<string, unknown>;
@@ -471,7 +475,108 @@ type TTSGenerationSnapshot = {
   failed: boolean;
 };
 
+function ChatOpeningState({
+  error: chatError,
+  onRetry,
+  onBack,
+}: {
+  error: unknown;
+  onRetry: () => unknown;
+  onBack: () => void;
+}) {
+  const { t: localizeUi } = useUiTranslation();
+  const chatOpenTimedOut = isRequestTimeoutError(chatError);
+  const errorMessage = chatOpenTimedOut
+    ? localizeUi("ui.chat.chatarea.serverUnreachableHint")
+    : chatError instanceof ApiError
+      ? chatError.message
+      : chatError instanceof Error
+        ? chatError.message
+        : localizeUi("ui.chat.chatarea.openingChat");
+  const hasOpenError = !!chatError;
+
+  return (
+    <div
+      data-component="ChatArea.RestoringChat"
+      className="mari-app-background-paint flex flex-1 items-center justify-center overflow-hidden p-6"
+    >
+      <div className="flex flex-col items-center gap-3 text-center">
+        {!hasOpenError && (
+          <div className="h-7 w-7 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--primary)]" />
+        )}
+        <div className="space-y-1">
+          <p className="text-sm font-medium text-[var(--foreground)]">
+            {hasOpenError
+              ? chatOpenTimedOut
+                ? localizeUi("ui.chat.chatarea.serverUnreachable")
+                : localizeUi("ui.chat.chatarea.couldNotOpenThisChat")
+              : localizeUi("ui.chat.chatarea.openingChat")}
+          </p>
+          {hasOpenError && (
+            <p className="mari-chrome-accent-text-muted mari-accent-animated max-w-sm text-xs">{errorMessage}</p>
+          )}
+        </div>
+        {hasOpenError && (
+          <div className="flex items-center gap-2">
+            {/* The unreachable hint tells the user to try again after
+                  foregrounding Termux; with focus-refetch globally off and
+                  timeout retries disabled, this button is the recovery path. */}
+            {chatOpenTimedOut && (
+              <button
+                type="button"
+                onClick={() => void onRetry()}
+                className="mari-chrome-control mari-chrome-control--small text-xs"
+              >
+                {localizeUi("ui.chat.chatarea.tryAgain")}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => onBack()}
+              className="mari-chrome-control mari-chrome-control--small text-xs"
+            >
+              {localizeUi("ui.chat.chatarea.backToChats")}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const MultiplayerChat = lazy(() =>
+  import("../../features/multiplayer/MultiplayerChat").then((module) => ({ default: module.MultiplayerChat })),
+);
+
 export const ChatArea = memo(function ChatArea() {
+  const activeChatId = useChatStore((state) => state.activeChatId);
+  const { data: chat, error, refetch } = useChat(activeChatId);
+  useEffect(() => {
+    if (activeChatId && error instanceof ApiError && error.status === 404) {
+      useChatStore.getState().setActiveChatId(null);
+    }
+  }, [activeChatId, error]);
+  if (activeChatId && !chat)
+    return (
+      <ChatOpeningState error={error} onRetry={refetch} onBack={() => useChatStore.getState().setActiveChatId(null)} />
+    );
+  const metadata = chat ? readChatMetadata(chat) : {};
+  if (chat && (metadata.multiplayerSetup === true || metadata.multiplayer)) {
+    return (
+      <Suspense fallback={null}>
+        <MultiplayerChat key={chat.id} chat={chat} />
+      </Suspense>
+    );
+  }
+  return (
+    <>
+      <LocalChatArea />
+      <SelectionLorebookButton />
+    </>
+  );
+});
+
+const LocalChatArea = memo(function LocalChatArea() {
   const { t: localizeUi } = useUiTranslation();
   useRenderTimer("chat-area"); // [#3104 diagnostic]
   const activeChatId = useChatStore((s) => s.activeChatId);
@@ -743,11 +848,6 @@ export const ChatArea = memo(function ChatArea() {
   );
 
   useEffect(() => {
-    if (!activeChatId || !(chatError instanceof ApiError) || chatError.status !== 404) return;
-    setActiveChatId(null);
-  }, [activeChatId, chatError, setActiveChatId]);
-
-  useEffect(() => {
     if (!activeChatId || !allChats) return;
     if (listedActiveChat) return;
     if (chatDetail || !chatDetailFetched) return;
@@ -806,6 +906,7 @@ export const ChatArea = memo(function ChatArea() {
       if (!override?.prompt.trim()) return;
       setIllustratorPromptReviewSubmitting(true);
       const success = await retryAgents(illustratorPromptReview.chatId, ["illustrator"], {
+        illustratorMessageRange: illustratorPromptReview.illustratorMessageRange,
         illustratorPromptReviewOverride: {
           resultData: illustratorPromptReview.resultData,
           ...(illustratorPromptReview.subjectOnly ? { subjectOnly: true } : {}),
@@ -826,13 +927,14 @@ export const ChatArea = memo(function ChatArea() {
   }, [illustratorPromptReviewSubmitting]);
 
   const handleIllustrate = useCallback(
-    (prompt?: string) => {
+    (prompt?: string, messageRange?: [string, string]) => {
       if (!activeChatId) return;
       const resultData = { prompt, characters: [] };
       if (prompt && useUIStore.getState().reviewImagePromptsBeforeSend) {
         setIllustratorPromptReview({
           chatId: activeChatId,
           subjectOnly: true,
+          illustratorMessageRange: messageRange,
           resultData,
           item: {
             id: "roleplay-scene-illustration",
@@ -845,6 +947,7 @@ export const ChatArea = memo(function ChatArea() {
       }
       return retryAgents(activeChatId, ["illustrator"], {
         illustratorRetryTargets: ["illustration"],
+        illustratorMessageRange: messageRange,
         ...(prompt ? { illustratorPromptReviewOverride: { prompt, subjectOnly: true, resultData } } : {}),
       }).then(() => undefined);
     },
@@ -1215,7 +1318,8 @@ export const ChatArea = memo(function ChatArea() {
       return next;
     });
   }, [activeChatId, messages, visibleExpressionTurn]);
-  const groupChatMode: string | undefined = chatCharIds.length > 1 ? (chatMeta.groupChatMode ?? "merged") : undefined;
+  const groupChatMode: string | undefined =
+    chatCharIds.length > 1 ? normalizeGroupChatMode(chatMeta.groupChatMode) : undefined;
 
   const updateMeta = useUpdateChatMetadata();
   const [scheduleModalCharacterId, setScheduleModalCharacterId] = useState<string | null>(null);
@@ -2039,14 +2143,31 @@ export const ChatArea = memo(function ChatArea() {
       ) {
         return;
       }
+      // The confirmation can outlive this chat. Never consume another chat's draft.
+      if (useChatStore.getState().activeChatId !== activeChatId) return;
+      const composer = document.querySelector<HTMLTextAreaElement>("textarea[data-chat-composer]");
+      const currentInput = composer?.dataset.chatId === activeChatId ? composer.value : getCurrentInputSnapshot();
+      const isGuided = guideGenerations && currentInput.trim().length > 0;
+      const replaceGuidanceDraft = (expected: string, text: string) => {
+        const state = useChatStore.getState();
+        const input = document.querySelector<HTMLTextAreaElement>("textarea[data-chat-composer]");
+        if (state.activeChatId === activeChatId && input?.dataset.chatId === activeChatId) {
+          if (input.value !== expected) return;
+          input.value = text;
+          // Reuse each uncontrolled composer's draft debounce, sizing and input-state handling.
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+        } else if ((state.inputDrafts.get(activeChatId) ?? "") !== expected) {
+          return;
+        }
+        state.setInputDraft(activeChatId, text);
+      };
+      if (isGuided) replaceGuidanceDraft(currentInput, "");
       try {
         // Any pending multiswipe spread is committed inside generate() itself.
         // Regenerate as a new swipe on the existing message
-        const currentInput = getCurrentInputSnapshot();
-        const hasInput = currentInput ? currentInput.trim().length > 0 : false;
         const candidateCount = options?.candidateCount;
-        await generate(
-          guideGenerations && hasInput
+        const consumed = await generate(
+          isGuided
             ? {
                 chatId: activeChatId,
                 connectionId: null,
@@ -2062,7 +2183,9 @@ export const ChatArea = memo(function ChatArea() {
                 ...(candidateCount ? { candidateCount } : {}),
               },
         );
+        if (isGuided && !consumed) replaceGuidanceDraft("", currentInput);
       } catch {
+        if (isGuided) replaceGuidanceDraft("", currentInput);
         // Error toast is shown by the generate hook
       }
     },
@@ -2927,6 +3050,18 @@ export const ChatArea = memo(function ChatArea() {
   // ── /goto command: paginate older pages until target message is loaded, then scroll to it
   useEffect(() => {
     if (!gotoRequest || gotoRequest.chatId !== activeChatId) return;
+    // A message jump may switch chats while this surface still has the prior
+    // chat detail cached. Wait until the selected chat's own detail is loaded
+    // before choosing the game-specific behavior.
+    if (!chatDetailFetched || !chat || chat.id !== activeChatId) return;
+    if (chat.mode === "game") {
+      // The Game surface shows one narration beat at a time and has no
+      // per-message anchors, so paging the whole history in would only end in
+      // a silent no-op. Open the game and say where earlier turns live.
+      toast.info(localizeUi("chatInsights.gotoUnavailableInGame"));
+      useChatStore.getState().clearGotoRequest();
+      return;
+    }
     if (!messages) return;
 
     const targetNumber = gotoRequest.messageNumber;
@@ -2985,69 +3120,15 @@ export const ChatArea = memo(function ChatArea() {
     isFetchingNextPage,
     fetchNextPage,
     localizeUi,
+    chat,
+    chatDetailFetched,
   ]);
 
   // ═══════════════════════════════════════════════
   // Restoring persisted active chat
   // ═══════════════════════════════════════════════
   if (activeChatId && !chat) {
-    const chatOpenTimedOut = isRequestTimeoutError(chatError);
-    const errorMessage = chatOpenTimedOut
-      ? localizeUi("ui.chat.chatarea.serverUnreachableHint")
-      : chatError instanceof ApiError
-        ? chatError.message
-        : chatError instanceof Error
-          ? chatError.message
-          : "Opening chat...";
-    const hasOpenError = !!chatError;
-
-    return (
-      <div
-        data-component="ChatArea.RestoringChat"
-        className="mari-app-background-paint flex flex-1 items-center justify-center overflow-hidden p-6"
-      >
-        <div className="flex flex-col items-center gap-3 text-center">
-          {!hasOpenError && (
-            <div className="h-7 w-7 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--primary)]" />
-          )}
-          <div className="space-y-1">
-            <p className="text-sm font-medium text-[var(--foreground)]">
-              {hasOpenError
-                ? chatOpenTimedOut
-                  ? localizeUi("ui.chat.chatarea.serverUnreachable")
-                  : localizeUi("ui.chat.chatarea.couldNotOpenThisChat")
-                : localizeUi("ui.chat.chatarea.openingChat")}
-            </p>
-            {hasOpenError && (
-              <p className="mari-chrome-accent-text-muted mari-accent-animated max-w-sm text-xs">{errorMessage}</p>
-            )}
-          </div>
-          {hasOpenError && (
-            <div className="flex items-center gap-2">
-              {/* The unreachable hint tells the user to try again after
-                  foregrounding Termux; with focus-refetch globally off and
-                  timeout retries disabled, this button is the recovery path. */}
-              {chatOpenTimedOut && (
-                <button
-                  type="button"
-                  onClick={() => void refetchChatDetail()}
-                  className="mari-chrome-control mari-chrome-control--small text-xs"
-                >
-                  {localizeUi("ui.chat.chatarea.tryAgain")}
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => setActiveChatId(null)}
-                className="mari-chrome-control mari-chrome-control--small text-xs"
-              >
-                {localizeUi("ui.chat.chatarea.backToChats")}
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-    );
+    return <ChatOpeningState error={chatError} onRetry={refetchChatDetail} onBack={() => setActiveChatId(null)} />;
   }
 
   // ═══════════════════════════════════════════════

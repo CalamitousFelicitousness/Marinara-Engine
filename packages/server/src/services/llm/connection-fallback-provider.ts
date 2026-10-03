@@ -20,6 +20,7 @@ type ConnectionFallbackProviderArgs = Omit<
   "primary"
 > & {
   primary: BaseLLMProvider;
+  wrapProvider?: (provider: BaseLLMProvider) => BaseLLMProvider;
 };
 
 function isEnabled(value: unknown): boolean {
@@ -338,6 +339,7 @@ export class ConnectionFallbackProvider extends BaseLLMProvider {
 
 export function withConnectionFallbackProvider({
   primary,
+  wrapProvider = (provider) => provider,
   primaryConnectionId,
   fallbackConnection,
   fallbackBaseUrl,
@@ -354,7 +356,7 @@ export function withConnectionFallbackProvider({
     // Rate-limit-aware wraps outside admission so a 429 pauses/retries this connection here too —
     // the main chat/agent path builds `primary` without a connectionId, so it is added here.
     return withRateLimitAwareProvider(
-      withConnectionAdmissionProvider(primary, primaryConnectionId, admissionMode),
+      withConnectionAdmissionProvider(wrapProvider(primary), primaryConnectionId, admissionMode),
       primaryConnectionId,
     );
   }
@@ -365,22 +367,24 @@ export function withConnectionFallbackProvider({
   // admission may sit between it and the outer wrapper below.
   const primaryLeg = primary instanceof RateLimitAwareProvider ? primary.withoutTransientRetry() : primary;
   const admittedPrimary = withRateLimitAwareProvider(
-    withConnectionAdmissionProvider(primaryLeg, primaryConnectionId, primaryMode),
+    withConnectionAdmissionProvider(wrapProvider(primaryLeg), primaryConnectionId, primaryMode),
     primaryConnectionId,
     { transientRetry: false },
   );
   const fallback = withRateLimitAwareProvider(
     withConnectionAdmissionProvider(
-      createLLMProvider(
-        fallbackConnection.provider,
-        fallbackBaseUrl,
-        fallbackConnection.apiKey,
-        fallbackConnection.maxContext,
-        fallbackConnection.openrouterProvider,
-        fallbackConnection.maxTokensOverride,
-        isEnabled(fallbackConnection.claudeFastMode),
-        isEnabled(fallbackConnection.treatAsLocalEndpoint),
-        fallbackConnection.defaultParameters,
+      wrapProvider(
+        createLLMProvider(
+          fallbackConnection.provider,
+          fallbackBaseUrl,
+          fallbackConnection.apiKey,
+          fallbackConnection.maxContext,
+          fallbackConnection.openrouterProvider,
+          fallbackConnection.maxTokensOverride,
+          isEnabled(fallbackConnection.claudeFastMode),
+          isEnabled(fallbackConnection.treatAsLocalEndpoint),
+          fallbackConnection.defaultParameters,
+        ),
       ),
       fallbackConnection.id,
       fallbackMode,

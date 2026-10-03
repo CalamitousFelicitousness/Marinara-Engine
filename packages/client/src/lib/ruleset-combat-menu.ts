@@ -13,7 +13,17 @@ import { rulesetDistanceText, type RulesetBoardDistance } from "./ruleset-combat
  *  do, the contests it may start, the moves the kind implements, and finally ending the turn.
  *  Walking comes first because a turn on a board usually starts with it, and it may be taken again
  *  after an action. */
-export const RULESET_MENU_KINDS = ["move", "attack", "ability", "block", "contest", "standard", "end-turn"] as const;
+export const RULESET_MENU_KINDS = [
+  "move",
+  "attack",
+  "reload",
+  "ability",
+  "item",
+  "block",
+  "contest",
+  "standard",
+  "end-turn",
+] as const;
 
 export type RulesetMenuKind = (typeof RULESET_MENU_KINDS)[number];
 
@@ -29,8 +39,12 @@ const MOVE_OPTION_WORDS: Record<string, "walk" | "stand"> = {
 };
 
 export interface RulesetMenuStep {
-  stage: "pay" | "move" | "target" | "aim";
+  stage: "style" | "mode" | "pay" | "move" | "target" | "aim";
   option: DirectedRulesetOption;
+  /** The initiative style an attack is made in, where initiative is a number attacks move. */
+  style?: string;
+  /** The weapon's mode it is made in. */
+  mode?: string;
   payWith?: string;
   targets: string[];
 }
@@ -73,6 +87,10 @@ export function rulesetOptionLabel(option: DirectedRulesetOption, t: TFunction):
     const word = MOVE_OPTION_WORDS[option.id];
     return word ? t(`game.combat.ruleset.board.${word}`, { defaultValue: option.label }) : option.label;
   }
+  // A reload is the Engine's own move made with the weapon the ruleset named, and so is a second
+  // blow with a weapon in the off hand.
+  if (option.kind === "reload") return t("game.combat.ruleset.menu.reload", { weapon: option.label });
+  if (option.offHand) return t("game.combat.ruleset.menu.offHand", { weapon: option.label });
   if (option.kind !== "standard") return option.label;
   return t(`game.combat.ruleset.standard.${option.label}`, { defaultValue: option.label });
 }
@@ -110,7 +128,26 @@ export function rulesetOptionCostText(
     );
   }
   if (typeof option.left === "number") parts.push(t("game.combat.ruleset.option.left", { left: option.left }));
+  // What a weapon has loaded, and what its holder carries of what it shoots.
+  if (option.loaded) {
+    parts.push(t("game.combat.ruleset.option.loaded", { now: option.loaded.now, max: option.loaded.max }));
+  }
+  if (typeof option.ammo === "number") {
+    const key = option.kind === "reload" ? "game.combat.ruleset.option.ammoToLoad" : "game.combat.ruleset.option.ammo";
+    parts.push(t(key, { count: option.ammo }));
+  }
   return parts.join(" · ");
+}
+
+/** What one of a weapon's modes is expected to do, in words, and how many it may be aimed at. */
+export function rulesetModeText(
+  option: DirectedRulesetOption,
+  mode: NonNullable<DirectedRulesetOption["modes"]>[number],
+  t: TFunction,
+): string {
+  const expected = rulesetOptionForecastText({ ...option, forecast: mode.forecast }, t);
+  const aimed = mode.targets > 1 ? t("game.combat.ruleset.mode.targets", { count: mode.targets }) : "";
+  return [expected, aimed].filter(Boolean).join(" · ");
 }
 
 /** What the option is expected to do, in words. The server computed both numbers; a screen that
@@ -129,12 +166,33 @@ export function rulesetOptionForecastText(option: DirectedRulesetOption, t: TFun
       ),
     );
   }
-  if (typeof forecast?.averageDamage === "number") {
+  // An attack made in a style does what its style does, which the style step says: the weapon's
+  // own damage is neither what a taking style takes nor what a spending one throws.
+  if (typeof forecast?.averageDamage === "number" && !option.styles?.length) {
     parts.push(
       t(option.heals ? "game.combat.ruleset.option.forecastHeal" : "game.combat.ruleset.option.forecastDamage", {
         amount: Math.round(forecast.averageDamage),
       }),
     );
+  }
+  return parts.join(", ");
+}
+
+/** What one initiative style of an attack is expected to do, in words: its chance to hit, and what
+ *  it would take off the target's initiative or the harm it would do. The server computed each. */
+export function rulesetStyleForecastText(
+  style: NonNullable<DirectedRulesetOption["styles"]>[number],
+  t: TFunction,
+): string {
+  const parts: string[] = [];
+  const forecast = style.forecast;
+  if (typeof forecast?.hitChance === "number") {
+    parts.push(t("game.combat.ruleset.option.forecastHit", { percent: Math.round(forecast.hitChance * 100) }));
+  }
+  if (typeof forecast?.shift === "number") {
+    parts.push(t("game.combat.ruleset.option.forecastShift", { amount: Math.round(forecast.shift) }));
+  } else if (typeof forecast?.averageDamage === "number") {
+    parts.push(t("game.combat.ruleset.option.forecastDamage", { amount: Math.round(forecast.averageDamage) }));
   }
   return parts.join(", ");
 }

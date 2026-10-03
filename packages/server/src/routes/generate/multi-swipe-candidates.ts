@@ -16,7 +16,6 @@ import {
   normalizeMultiSwipeCandidateCount,
   type MultiSwipePendingMarker,
 } from "@marinara-engine/shared";
-import type { FastifyReply } from "fastify";
 import { logger } from "../../lib/logger.js";
 import {
   parseCharacterCommands,
@@ -43,7 +42,7 @@ import {
 } from "../../services/llm/base-provider.js";
 import { extractAssistantSpatialDirective } from "../../services/spatial-context/state-resolution.js";
 import { isAbortLikeError } from "./agent-result-capabilities.js";
-import { sendSseEvent } from "./sse.js";
+import { sendSseEvent, type GenerationOutput } from "./sse.js";
 
 /** SSE `multi_swipe_progress` payload. `current` is the candidate ordinal (2..total). */
 export interface MultiSwipeProgressEvent {
@@ -251,7 +250,7 @@ export interface MultiSwipeCandidateRunSummary {
 }
 
 export interface RunMultiSwipeCandidatesArgs {
-  reply: FastifyReply;
+  reply: GenerationOutput;
   chats: MultiSwipeChatsStorage;
   chatId: string;
   messageId: string;

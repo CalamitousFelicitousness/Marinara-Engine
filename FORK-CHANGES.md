@@ -153,6 +153,13 @@ a Top K field that never reached the request. NanoGPT's chat completion referenc
 and NanoGPT connections now send them; a value of 0 still omits them. Pinned in
 `scripts/regressions/provider-compat.regression.ts`.
 
+Upstream's table of settings each provider sends
+(`packages/shared/src/constants/generation-parameter-relevance.ts`) lists Top K as never sent by
+NanoGPT and hides the control. The fork's copy gives NanoGPT no never-sent entries and adds `topK`
+to the settings hidden for models that take no sampling, since `top_k` sits behind the same
+`isNoTemperatureModel` gate as `top_p`. The table's `generation-parameter-relevance` lane compares it
+against the real request builders, so a revert fails there.
+
 Live probe, 2026-10-01: NanoGPT accepted both on `openai/gpt-5.4-nano`,
 `anthropic/claude-haiku-4.5` and `google/gemini-3.1-flash-lite` without an error. Whether the
 upstream host applies them varies by route. With `top_k: 1` at temperature 1, `google/gemma-4-31b-it`
@@ -269,12 +276,18 @@ all, survives re-importing an updated version.
 Lorebooks and presets keep no snapshots, so replacing one is final. That
 asymmetry is carried in the contract as `recoverable` rather than left to the
 dialog to remember, and the dialog says which is which. Their content lives in
-child rows, so an overwrite empties them first through one helper both importers
-share.
+child rows. A preset is emptied first through `emptyPresetForOverwrite`. A
+lorebook gets its new folders and entries beside the old ones, and one
+transaction then updates the row and deletes the previous entries and folders,
+so a failed import leaves the lorebook as it was. The catch path removes only
+the rows the import added: upstream's rollback deletes the lorebook it was
+writing, which on an overwrite is the user's own.
 
-That helper also closed a gap in the path that already existed. `importSTLorebook`
-took an `existingLorebookId` for character re-import and cleared only the
-entries, so every re-import left the previous run's folders behind, empty.
+`importSTLorebook` already took an `existingLorebookId` for character re-import
+and cleared only the entries, so every re-import left the previous run's folders
+behind, empty. Its swap transaction now deletes those folders too. Covered by
+`scripts/regressions/lorebook-import-overwrite.regression.ts`, which forces the
+swap to fail.
 
 One dialog serves a whole batch, with a per-row choice and an apply-to-all,
 because a folder drop can collide a dozen times and answering the same question a
@@ -285,7 +298,7 @@ Upstream-hot files touched: `routes/import.routes.ts` (the lookup route, the
 conflict on the inspect response, a ninth argument on `importCharacterBuffer`,
 and the per-file targets on both character routes), `services/import/marinara.importer.ts`,
 `services/import/st-character.importer.ts`, `services/import/st-lorebook.importer.ts`
-and `ImportCharacterModal.tsx`. The lookup, the emptying helper and the dialog are
+and `ImportCharacterModal.tsx`. The lookup, the preset emptying helper and the dialog are
 fork-owned modules so a merge has small surfaces to reconcile. `importCharacterBuffer`
 gained a positional argument rather than an options object: upstream owns that
 signature and both its call sites, and reshaping them would conflict on every sync.
@@ -585,6 +598,11 @@ field ("0.95 · from connection", "1 · from preset", "1 · app default", "game 
 strikes through a value only when one would really be sent, otherwise it reads "Not sent in this
 chat".
 
+The panel offers only the settings the connection's request builder sends, read from upstream's
+`relevantGenerationParameters` with the effort the chat would send, and draws its effort and
+verbosity buttons from upstream's `reasoningEffortChoices` and `verbosityChoices`, as the connection
+editor does. With no single connection (a random pool, or none chosen) every setting is offered.
+
 Existing chats: `migrateLegacyChatParameters` runs at startup. Saved sampling values and switches are
 dropped; other saved fields equal to what the connection side would send become Connection, and the
 rest become overrides. Until it runs, `effectiveChatParameterOverrides` reads those fields as
@@ -764,6 +782,13 @@ upstream rewrites it constantly. Re-check these after every sync:
   its `if`: `agent-activation.regression.ts` pins both of those by source shape, and with the
   three inputs already false the derived expression is false anyway. The summary guard sits
   outside the `hasPostWork` block and needs its own.
+- `persistChatMacroVariables` writes the turn's chat-variable changes to every candidate swipe,
+  not only candidate 1's. Upstream records them per swipe and replays them when the active swipe
+  changes; with candidate 1 alone holding them, browsing to another candidate undid every
+  `{{setvar}}` the shared prompt ran. The candidate indices come from the run summary, keyed by
+  message id. Covered by `scripts/regressions/multi-swipe-chat-variables.regression.ts`.
+- Every fork use of the abort signal reads `generationSignal`, which also carries the multiplayer
+  room's cancellation. `abortController.signal` still compiles, so a revert would be silent.
 
 Covered by `scripts/regressions/multi-swipe-generate-route.regression.ts`, which drives the real
 `POST /api/generate` against a mock OpenAI-compatible provider and asserts the whole wiring: three
@@ -1376,6 +1401,65 @@ and `packages/client/src/localization/locales/en.json`.
 
 Covered by `scripts/regressions/chat-branch-preview.regression.ts`.
 
+### Sync with upstream, 2026-10-03
+
+564 upstream commits (324 non-merge, 82 PRs) over six days, merge base `4629eb913`, through
+`ed542bc56`. v2.4.6 and storage format 7 on both sides; upstream's two new tables
+(`message_trash`, `lorebook_entry_activation_stats`) are additive. 633 upstream-changed files, 82
+overlapping fork changes, 30 conflicts, all content. No release was cut in the window, so it ran as
+one merge.
+
+Resolutions worth remembering:
+
+- **Upstream's rollback deleted what it was writing.** The lorebook importer's new `catch` removes
+  the lorebook it created. With the fork's overwrite path inside that `try`, a failed re-import would
+  have deleted the user's lorebook. The overwrite now swaps rows in one transaction; see "Importing a
+  name you already have asks what to do with it".
+- **Upstream's parameter table met the fork's chat panel.** `relevantGenerationParameters` hides
+  settings a provider's request builder never sends. It complements the fork's
+  Connection/Override/Off states rather than duplicating them, so the chat panel now uses it too,
+  and NanoGPT Top K is no longer listed as never sent.
+- **The generation route writes to a `GenerationOutput`**, upstream's sink that a multiplayer room
+  can stand in for. The fork's `runMultiSwipeCandidates` took a `FastifyReply` and failed `tsc`;
+  the abort signal rename beside it (`generationSignal`) compiled either way and was applied by hand.
+- **Preset variable deferral kept both sides.** Upstream claims preset variable names until the
+  assembler runs so a same-named chat variable cannot win early; the fork already seeds preset
+  values before history. Keeping only the fork's side at the assembly point would have left encoded
+  `{{#if}}` tokens in the real prompt, and upstream's lane checks only the dry run.
+- **Two features combined into a bug.** Upstream's per-swipe chat-variable rollback and the fork's
+  multiswipe candidates merged without a conflict and rolled variables back when browsing
+  candidates. Fixed in the merge; see the Multiswipe section.
+- **TTS PCM output** landed in the region the fork had moved into its provider layer and was
+  re-homed there, with the format picker on the audio connection.
+- **`package.json#pnpm`.** `hono` 4.13.11, `ip-address` 10.7.1, `fast-uri` 3.1.8 and 4.1.5,
+  `sharp` 0.35.5 and the `brace-expansion` 2.1.7 and 5.0.12 ranges mirrored into
+  `pnpm-workspace.yaml`. Upstream's own workspace `overrides` pins `protobufjs` 7.5.5; the fork keeps
+  7.6.5.
+- **Author's Notes.** Upstream's fix for notes landing in the wrong chat (#6817) is one flag,
+  `useUpdateChatMetadata({ serialize: true })`, now on the fork's preset panel.
+
+Lanes adapted to the fork's shapes: `capability-gm-verbs` counts both sides' opaque writes (22),
+`nanogpt-glm-reasoning-off` seeds the chat's effort as an Override instead of `chatParameters`,
+`e2e/author-notes.e2e.ts` saves through the panel's Save button, which stays disabled while a save
+is in flight, and `e2e/tts-pcm-settings.e2e.ts` drives the audio connection editor. Upstream's new
+`termux-sharp` lane installs a fixture `--offline` with the root's `packageManager`, and pnpm 11
+verifies every lockfile entry against its release-age policy first, which needs registry metadata
+an offline install does not have; the fixture's workspace now sets `minimumReleaseAge: 0`, pnpm
+10's default. The fork's own `message-controls-position` had matched grouped messages' below-body
+controls only by finding `messageControls` inside the next `!messageControlsAbove`, which upstream's
+mark indicators pushed out of range; it now asserts the swipes and the action row directly.
+
+Regression suite after the merge, app stopped: 531/540, then 534/540 with the three lanes above
+fixed. The six failures are `launcher/update` (fork design), the Windows-only `gallery-previews`,
+`server-signal-shutdown`, `decision-sidecar-runtime` and `lorebook-images` (new upstream; its
+symlink guard is `O_NOFOLLOW`, which Windows ignores, and the fork is byte-identical to upstream on
+that path), and `ruleset-combat-director`, which passes alone in 28.5 s against a 30 s budget.
+
+Playwright, desktop: 21 of the 22 tests in the merge-touched specs pass (author's notes, TTS PCM,
+generation parameter controls, multiswipe, chat variables, message marks and trash, chat insights).
+`chat-insights.e2e.ts:72` fails identically on a clean `upstream/staging` worktree. The adapted
+specs and `generation-parameter-controls` also pass on mobile.
+
 ### Sync with upstream, 2026-09-27
 
 1141 upstream commits (865 non-merge, 133 PRs) over sixteen days, merge base `8906861ac`, v2.4.5 to
@@ -1676,6 +1760,14 @@ Every symbol the upstream regression imports is re-exported from `tts.routes.ts`
 it asserts against by source text (the PocketTTS probe body, the config-save cache invalidation
 pair, the extractor debug line) stays physically in place. That is what let roughly 24 helpers and
 the entire dispatch move without editing an upstream-owned test.
+
+Upstream's PCM output (#6709) wraps raw PCM in a WAV header inside `/speak`, and recognises it by
+the `audio/pcm` content type or by the requested format when a backend labels it only as
+octet-stream. Here the requested format is `TTSProviderRequest.responseFormat`, which the providers
+that send `response_format` fill from `resolveAudioFormat`, so the forcing above applies: an
+ElevenLabs-branded model asked for PCM still answers MP3 and is never wrapped. The PCM layout
+fallback keys on the URL actually requested. The format picker is the audio connection's
+(`AudioSynthesisDefaults`), and `e2e/tts-pcm-settings.e2e.ts` drives it there.
 
 Patches to upstream files: `packages/server/src/routes/tts.routes.ts` only; everything else is new.
 Proven by `scripts/regressions/tts/tts-provider-registry.regression.ts`.

@@ -39,7 +39,9 @@ import type { LorebookDecisionResolver } from "../lorebook/index.js";
 import { DECISION_CHOICE_NONE, type NoulQuestion } from "./system-one.client.js";
 import {
   recordDecisionCheck,
+  recordDecisionLifetime,
   recordDecisionTimer,
+  type DecisionLifetime,
   type DecisionTimerState,
   type HeldDecision,
 } from "./decision-timers.js";
@@ -57,15 +59,17 @@ export interface PlannedDecision {
   every?: number;
   /** The highest `priority:` written on any of its occurrences; unset is medium. */
   priority?: DecisionStatementPriority;
+  /** The first `until:` or `while:` written on a `decision:` statement (#6922). */
+  lasts?: DecisionLifetime;
   /** Set when sticky, cooldown or `every:` holds its answer this turn: it is not asked, and takes no slot. */
   held?: HeldDecision;
 }
 
-/** Which statements sticky, cooldown or `every:` hold this turn (see `heldDecision`). */
+/** Which statements sticky, cooldown, `every:` or until/while hold this turn (see `heldDecision`). */
 export type HeldDecisions = (
   kind: "noul" | "choice",
   key: string,
-  modifiers?: { every?: number },
+  modifiers?: { every?: number; lasts?: DecisionLifetime },
 ) => HeldDecision | undefined;
 
 /** High first, then medium (unset), then low. */
@@ -271,6 +275,11 @@ export function planPromptDecisions(
           if (collected.sticky) planned.sticky = Math.max(planned.sticky ?? 0, collected.sticky);
           if (collected.cooldown) planned.cooldown = Math.max(planned.cooldown ?? 0, collected.cooldown);
           if (collected.every) planned.every = Math.min(planned.every ?? collected.every, collected.every);
+          if (collected.lasts && collected.kind === "noul" && !planned.lasts) {
+            const conditionKey = resolveDecisionQuestionText(collected.lasts.statement, ctx);
+            if (conditionKey)
+              planned.lasts = { key: conditionKey, kind: collected.lasts.kind, mode: collected.lasts.mode };
+          }
           // The highest priority anywhere wins; an occurrence with none counts as medium.
           const rank = first
             ? priorityRank(collected.priority)
@@ -291,8 +300,21 @@ export function planPromptDecisions(
   // A Choice statement nobody compares with an option has nothing to choose between.
   const candidates = [...byKey.values()].filter((d) => d.kind === "noul" || d.options.length > 0);
   for (const decision of candidates) {
+    // Without sticky, the until/while statement alone decides how long the block lasts.
+    if (decision.lasts && !decision.sticky) decision.lasts.mode = "or";
     const held = options.held?.(decision.kind, decision.key, decision);
     if (held) decision.held = held;
+  }
+  // A block kept on by until/while is not asked this turn; its condition is, in its place.
+  for (const decision of [...candidates]) {
+    const key = decision.held?.lasts?.key;
+    if (key && !candidates.some((other) => other.kind === "noul" && other.key === key))
+      candidates.push({
+        kind: "noul",
+        key,
+        options: [],
+        ...(decision.priority ? { priority: decision.priority } : {}),
+      });
   }
   // Stable, so source order still decides within a priority.
   const ranked = [...candidates].sort((a, b) => priorityRank(a.priority) - priorityRank(b.priority));
@@ -470,6 +492,16 @@ export async function answerPromptDecisions(args: {
       requestError = "request_failed";
       logger.warn(error, "[decision] Prompt decision request failed; those branches read as no");
     }
+  }
+  // until/while (#6922): a block kept on by its condition reads that condition's answer.
+  // With no answer, it stays on and its timers are left as they are.
+  for (const decision of plan.decisions) {
+    const lasts = decision.held?.lasts;
+    const answer = lasts ? turn.noul.get(lasts.key)?.yes : undefined;
+    if (!lasts || answer === undefined) continue;
+    const stays = answer === (lasts.kind === "while");
+    turn.noul.set(decision.key, { yes: stays, held: true });
+    if (args.timers) recordDecisionLifetime(args.timers.state, args.timers.turn, decision, stays);
   }
   const answers = cachedPromptDecisionAnswers(plan, args.cacheKey, cache);
   const report: DecisionDebugResult[] = plan.decisions.map((decision) => {

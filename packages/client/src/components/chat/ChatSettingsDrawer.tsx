@@ -78,6 +78,7 @@ import { ChatSettingsSection as Section } from "../../features/chat-settings/Cha
 import { ActiveChatBackgroundPicker } from "../panels/settings/BackgroundPicker";
 import { AdvancedParametersSection } from "../../features/chat-settings/sections/AdvancedParametersSection";
 import { ChatNameSection } from "../../features/chat-settings/sections/ChatNameSection";
+import { ChatVariablesSection } from "../../features/chat-settings/sections/ChatVariablesSection";
 import { CombatStyleSection } from "../../features/chat-settings/sections/CombatStyleSection";
 import { useGameRuleset } from "../../hooks/use-game-ruleset";
 import { isRulesetCombatFight } from "../../lib/ruleset-combat-bridge";
@@ -98,6 +99,8 @@ import {
   DEFAULT_GAME_DICE_POOL_WINDOW as DEFAULT_DICE_POOL_WINDOW,
   estimateTextTokens,
   isRoleplayCommandEnabled,
+  normalizeGroupChatMode,
+  normalizeSemanticSummaryRetrievalSettings,
   resolveScopedRegexMode,
 } from "@marinara-engine/shared";
 import { cn, getAvatarCropStyle } from "../../lib/utils";
@@ -133,6 +136,10 @@ import { AdvancedMemoryInspector } from "./AdvancedMemoryInspector";
 import { useAdvancedMemoryStatus } from "../../hooks/use-advanced-memory";
 import { AgentSuiteModal } from "./AgentSuiteModal";
 import { ConversationTimeZoneSelect } from "./ConversationTimeZoneSelect";
+import {
+  SemanticSummaryRetrievalControls,
+  type SemanticSummaryRetrievalControlField,
+} from "./SemanticSummaryRetrievalControls";
 import { RoleplayMessagePreview } from "./ChatMessage";
 import { resolveChatContextBudget } from "../../lib/professor-mari-context-budget";
 import { CHAT_SETTINGS_SURFACES } from "./chat-settings-surfaces";
@@ -329,6 +336,10 @@ import {
   takePendingChatResourcePanelRestore,
 } from "../../lib/chat-resource-drag";
 import { GameWidgetFileControls, GameWidgetSetupEditor, normalizeGameHudWidgets } from "../game/GameWidgetSetupEditor";
+import {
+  MultiplayerPlayersSection,
+  type MultiplayerGameStart,
+} from "../../features/multiplayer/MultiplayerHostControls";
 
 const QuickPresetSectionsEditor = lazy(() =>
   import("../presets/PresetEditor").then((module) => ({ default: module.QuickPresetSectionsEditor })),
@@ -351,7 +362,8 @@ interface ChatSettingsDrawerProps {
   open: boolean;
   onClose: () => void;
   anchor?: ChatToolbarFloatingPanelAnchor;
-  initialSection?: "autonomous" | "memory-recall" | null;
+  initialSection?: "autonomous" | "memory-recall" | "multiplayer" | null;
+  multiplayerGameStart?: MultiplayerGameStart;
   spriteArrangeMode?: boolean;
   onToggleSpriteArrange?: () => void;
   onResetSpritePlacements?: () => void;
@@ -631,6 +643,7 @@ const CHAT_SETTINGS_ORDER = {
   cardTheming: -850,
   groupChat: -800,
   scopedRegex: -750,
+  chatVariables: -740,
   connectedChat: -700,
   connectedNotes: -690,
   lorebooks: -600,
@@ -846,6 +859,7 @@ export function ChatSettingsDrawer({
   onClose,
   anchor,
   initialSection,
+  multiplayerGameStart,
   spriteArrangeMode = false,
   onToggleSpriteArrange,
   onResetSpritePlacements,
@@ -866,6 +880,8 @@ export function ChatSettingsDrawer({
   const updateChat = useUpdateChat();
   const updateMeta = useUpdateChatMetadata();
   const updateTranslationMeta = useUpdateChatMetadata({ serialize: true });
+  // Generation waits for queued saves, so the next reply uses the narration mode shown here (#6959).
+  const updateGroupChatModeMeta = useUpdateChatMetadata({ serialize: true });
   const updateMetaMutateAsyncRef = useRef(updateMeta.mutateAsync);
   const pendingCustomAgentImageSettingsRef = useRef<{
     chatId: string;
@@ -964,9 +980,22 @@ export function ChatSettingsDrawer({
     () => (typeof chat.metadata === "string" ? JSON.parse(chat.metadata) : (chat.metadata ?? {})),
     [chat.metadata],
   );
+  const groupChatMode = normalizeGroupChatMode(metadata.groupChatMode);
+  const summaryRetrievalSettings = normalizeSemanticSummaryRetrievalSettings(metadata);
   // Package integrations only show while their package is installed and usable.
   const noodleInstalled = isCapabilityPackageAvailable(installedCapabilities, "noodle");
   const slurp2Installed = isCapabilityPackageAvailable(installedCapabilities, "slurp2");
+  // Chat variables live in the same map {{setvar}} writes, so a value a prompt
+  // or lorebook set shows up here as an editable row.
+  const chatMacroVariables = useMemo<Record<string, string>>(() => {
+    const stored: unknown = metadata.macroVariables;
+    if (!stored || typeof stored !== "object" || Array.isArray(stored)) return {};
+    return Object.fromEntries(
+      Object.entries(stored as Record<string, unknown>).filter(
+        (entry): entry is [string, string] => typeof entry[1] === "string",
+      ),
+    );
+  }, [metadata.macroVariables]);
   const noodleTimelineContextEnabled = metadata.noodleTimelineContextEnabled === true;
   const slurp2ActivityContextEnabled = metadata.slurp2ActivityContextEnabled === true;
   const renderPackageContextToggles = () => (
@@ -1259,6 +1288,13 @@ export function ChatSettingsDrawer({
     });
     return () => window.cancelAnimationFrame(frame);
   }, [initialSection, isRoleplayMode, open]);
+  useEffect(() => {
+    if (!open || initialSection !== "multiplayer") return;
+    const frame = window.requestAnimationFrame(() =>
+      panelRef.current?.querySelector('[data-chat-settings-section="multiplayer"]')?.scrollIntoView({ block: "start" }),
+    );
+    return () => window.cancelAnimationFrame(frame);
+  }, [initialSection, open]);
   const hasGeneratedConversationSchedules =
     !!metadata.characterSchedules &&
     typeof metadata.characterSchedules === "object" &&
@@ -1707,55 +1743,55 @@ export function ChatSettingsDrawer({
   );
   const lorebookKeeperAgentMeta = getAgentDisplayMeta("lorebook-keeper", {
     name: "Lorebook Keeper",
-    description: "Creates and updates durable chat lorebook entries from important story facts.",
+    description: "Saves important story facts to the chat's lorebook as you play.",
   });
   const cardEvolutionAuditorAgentMeta = getAgentDisplayMeta("card-evolution-auditor", {
     name: "Card Evolution Auditor",
-    description: "Audits durable roleplay changes against saved character cards for user approval.",
+    description: "Suggests character card updates when the story changes a character, for you to approve.",
   });
   const proseGuardianAgentMeta = getAgentDisplayMeta("prose-guardian", {
     name: "Prose Guardian",
-    description: "Post-processes the latest assistant message to remove unwanted prose habits.",
+    description: "Cleans up repetitive or unwanted writing habits in AI messages.",
   });
   const continuityAgentMeta = getAgentDisplayMeta("continuity", {
     name: "Continuity Checker",
-    description: "Post-processes the latest assistant message to fix concrete spatial and timeline errors.",
+    description: "Fixes mistakes about places, time, and physical details in AI messages.",
   });
   const htmlAgentMeta = getAgentDisplayMeta("html", {
     name: "Immersive HTML",
-    description: "Post-processes the latest assistant message with diegetic HTML/CSS/JS visuals.",
+    description: "Adds HTML/CSS/JS visual effects to AI messages.",
   });
   const directorAgentMeta = getAgentDisplayMeta("director", {
     name: "Narrative Director",
-    description: "Creates one-shot story directions when you choose to push the next response forward.",
+    description: "Gives the story a push in a new direction when you ask for it.",
   });
   const expressionAgentMeta = getAgentDisplayMeta("expression", {
     name: "Expression Engine",
-    description: "Detects character emotions and selects VN sprites/expressions.",
+    description: "Changes character sprites to match how they feel.",
   });
   const illustratorAgentMeta = getAgentDisplayMeta("illustrator", {
     name: "Illustrator",
-    description: "Responsible for image and video generations.",
+    description: "Creates images and videos for your chats.",
   });
   const echoChamberAgentMeta = getAgentDisplayMeta("echo-chamber", {
     name: "Echo Chamber",
-    description: "Simulates a live streaming-style chat reacting to your roleplay in real time.",
+    description: "Shows a live stream-style chat reacting to your roleplay.",
   });
   const musicDjAgentMeta = getAgentDisplayMeta("spotify", {
     name: "Music DJ",
-    description: "Analyzes the narrative mood and plays matching music through Spotify or YouTube.",
+    description: "Plays music that fits the mood of the story, from Spotify, YouTube, or your own Game Assets music.",
   });
   const knowledgeRetrievalAgentMeta = getAgentDisplayMeta("knowledge-retrieval", {
     name: "Knowledge Retrieval",
-    description: "Scans selected lorebooks and files for facts relevant to the current scene.",
+    description: "Finds facts in your lorebooks and files that matter for the current scene.",
   });
   const knowledgeRouterAgentMeta = getAgentDisplayMeta("knowledge-router", {
     name: "Knowledge Router",
-    description: "Routes relevant lorebook entries into the next prompt by ID.",
+    description: "Picks the lorebook entries that fit the scene and gives them to the AI.",
   });
   const hapticAgentMeta = getAgentDisplayMeta("haptic", {
     name: "Haptic Feedback",
-    description: "Analyzes narrative content and controls connected intimate toys in real time.",
+    description: "Controls connected intimate toys to match what happens in the story.",
   });
 
   // Estimate the per-turn cost of the active agent loadout — feeds the readout
@@ -4411,7 +4447,7 @@ export function ChatSettingsDrawer({
           <AdvancedMemorySettings
             chatId={chat.id}
             metadataSettings={metadata.advancedMemory}
-            individual={metadata.groupChatMode === "individual"}
+            individual={groupChatMode === "individual"}
             characters={chatCharIds.map((id) => ({ id, name: charNameMap.get(id) ?? id }))}
             connections={textConnectionsList}
             hasHistory={!!chat.lastMessageAt}
@@ -4433,7 +4469,7 @@ export function ChatSettingsDrawer({
         {advancedMemoryEnabled && memoryView === "advanced" && (
           <AdvancedMemoryInspector
             chatId={chat.id}
-            individual={metadata.groupChatMode === "individual"}
+            individual={groupChatMode === "individual"}
             characters={chatCharIds.map((id) => ({ id, name: charNameMap.get(id) ?? id }))}
           />
         )}
@@ -4859,6 +4895,13 @@ export function ChatSettingsDrawer({
           )}
         >
           {/* Settings profile bar — hidden in Game Mode. Scene chats keep it, but scene instructions stay chat-owned. */}
+          {metadata.multiplayer && (
+            <MultiplayerPlayersSection
+              chatId={chat.id}
+              forceOpen={initialSection === "multiplayer"}
+              gameStart={multiplayerGameStart}
+            />
+          )}
           {modeSettingsSurfaces.showSettingsProfiles && (
             <div
               style={{ order: CHAT_SETTINGS_ORDER.settingsPresets }}
@@ -6201,6 +6244,14 @@ export function ChatSettingsDrawer({
             </Section>
           )}
 
+          <ChatVariablesSection
+            key={chat.id}
+            sectionId={`${chatMode}-chat-variables`}
+            order={CHAT_SETTINGS_ORDER.chatVariables}
+            chatId={chat.id}
+            variables={chatMacroVariables}
+          />
+
           {/* Every existing and new multi-character chat gets this section. Missing mode metadata means Grouped. */}
           {chatCharIds.length > 1 && modeSettingsSurfaces.showGroupChatControls && (
             <Section
@@ -6221,10 +6272,10 @@ export function ChatSettingsDrawer({
                 </label>
                 <div className="flex rounded-lg ring-1 ring-[var(--border)]">
                   <button
-                    onClick={() => updateMeta.mutate({ id: chat.id, groupChatMode: "merged" })}
+                    onClick={() => updateGroupChatModeMeta.mutate({ id: chat.id, groupChatMode: "merged" })}
                     className={cn(
                       "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors rounded-l-lg",
-                      (metadata.groupChatMode ?? "merged") === "merged"
+                      groupChatMode === "merged"
                         ? "bg-[var(--primary)] text-white"
                         : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
                     )}
@@ -6235,8 +6286,8 @@ export function ChatSettingsDrawer({
                   </button>
                   <button
                     onClick={() => {
-                      if (metadata.groupChatMode === "individual") return;
-                      updateMeta.mutate({
+                      if (groupChatMode === "individual") return;
+                      updateGroupChatModeMeta.mutate({
                         id: chat.id,
                         groupChatMode: "individual",
                         ...(isConversation && metadata.groupResponseOrder === "manual"
@@ -6254,7 +6305,7 @@ export function ChatSettingsDrawer({
                     }}
                     className={cn(
                       "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors rounded-r-lg",
-                      metadata.groupChatMode === "individual"
+                      groupChatMode === "individual"
                         ? "bg-[var(--primary)] text-white"
                         : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
                     )}
@@ -6265,7 +6316,7 @@ export function ChatSettingsDrawer({
               </div>
 
               {/* Merged mode: speaker color option */}
-              {!isConversation && (metadata.groupChatMode ?? "merged") === "merged" && (
+              {!isConversation && groupChatMode === "merged" && (
                 <div className="mt-2">
                   <SettingsSwitch
                     label={localizeUi("ui.chat.chatsettingsdrawer.colorDialogues")}
@@ -6287,7 +6338,7 @@ export function ChatSettingsDrawer({
               )}
 
               {/* Individual mode: response order */}
-              {metadata.groupChatMode === "individual" && (
+              {groupChatMode === "individual" && (
                 <div className="mt-2 space-y-2">
                   <label className="text-[0.6875rem] font-medium text-[var(--muted-foreground)]">
                     {localizeUi("ui.chat.chatsettingsdrawer.responseOrder")}
@@ -6426,7 +6477,7 @@ export function ChatSettingsDrawer({
               label={localizeUi("ui.chat.chatsettingsdrawer.autonomousMessaging")}
               icon={<Bot size="0.875rem" />}
               help={localizeUi("ui.chat.chatsettingsdrawer.charactersCanMessageYouUnpromptedBasedOnTheirPersonality")}
-              forceOpen={open && initialSection === "autonomous"}
+              forceOpen={initialSection === "autonomous"}
             >
               <div className="space-y-2">
                 {/* Enable autonomous messages toggle */}
@@ -9373,6 +9424,20 @@ export function ChatSettingsDrawer({
                     labelClassName="text-xs font-medium"
                   />
                 )}
+                {import.meta.env.VITE_MARINARA_LITE !== "true" && (
+                  <SemanticSummaryRetrievalControls
+                    enabled={metadata.semanticSummaryRetrievalEnabled === true}
+                    recentCount={summaryRetrievalSettings.semanticSummaryRecentCount}
+                    olderCount={summaryRetrievalSettings.semanticSummaryOlderCount}
+                    minSimilarity={summaryRetrievalSettings.semanticSummaryMinSimilarity}
+                    recentLabel={localizeUi("ui.chat.chatsettingsdrawer.recentWeeks")}
+                    olderLabel={localizeUi("ui.chat.chatsettingsdrawer.olderWeeks")}
+                    thresholdLabel={localizeUi("ui.chat.chatsettingsdrawer.summaryRelevanceThreshold")}
+                    onChange={(field: SemanticSummaryRetrievalControlField, value) =>
+                      updateMeta.mutate({ id: chat.id, [field]: value })
+                    }
+                  />
+                )}
 
                 <div className="space-y-2 rounded-lg border border-[var(--border)] bg-[var(--secondary)]/35 p-2.5">
                   <div className="space-y-1.5">
@@ -9575,7 +9640,7 @@ export function ChatSettingsDrawer({
           {!isConversation && import.meta.env.VITE_MARINARA_LITE !== "true" && (
             <Section
               id={`${chatMode}-memory-recall`}
-              forceOpen={open && initialSection === "memory-recall"}
+              forceOpen={initialSection === "memory-recall"}
               style={{ order: CHAT_SETTINGS_ORDER.memoryRecall }}
               label={localizeUi("ui.chat.chatsettingsdrawer.memoryRecall")}
               icon={<Brain size="0.875rem" />}

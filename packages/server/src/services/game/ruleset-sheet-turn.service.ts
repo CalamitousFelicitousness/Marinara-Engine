@@ -1,3 +1,4 @@
+import { roomHostIdentity } from "../multiplayer/generation-policy.js";
 // ──────────────────────────────────────────────
 // Game: one turn of a ruleset game's live sheet state
 // ──────────────────────────────────────────────
@@ -20,6 +21,10 @@ import {
   type RulesetLiveStates,
   type SheetCommandCard,
   type SheetCommandOutcome,
+  rulesetCardItems,
+  rulesetReadsItems,
+  type GameInventoryStack,
+  type RulesetItemBook,
 } from "@marinara-engine/shared";
 import type { DB } from "../../db/connection.js";
 import { logger } from "../../lib/logger.js";
@@ -73,16 +78,34 @@ export function sheetCommandCards(
   });
 }
 
-/** One prompt block per party card, showing the sheet as it stands at the start of this turn. */
+/** One prompt block per party card, showing the sheet as it stands at the start of this turn, with
+ *  the items each one holds when the ruleset reads them (`itemStat`). */
 export function renderGameRulesetSheetBlocks(
   definition: RulesetDefinition,
   cards: unknown,
   live: RulesetLiveStates | null | undefined,
   catalogs: RulesetCatalogEntriesById = {},
+  items?: { book: Pick<RulesetItemBook, "itemOf">; stacks: readonly GameInventoryStack[]; playerName?: string | null },
 ): string[] {
   const party = Array.isArray(cards) ? (cards as Array<Record<string, unknown>>) : [];
-  return sheetCommandCards(definition, party).map((card) =>
-    renderRulesetSheetBlock(definition, card, live?.[normalizeCharacterLookupName(card.name)], catalogs),
+  const built = sheetCommandCards(definition, party);
+  const itemsOf =
+    items && rulesetReadsItems(definition)
+      ? rulesetCardItems(
+          items.book,
+          items.stacks,
+          built.map((card) => card.name),
+          items.playerName,
+        )
+      : undefined;
+  return built.map((card) =>
+    renderRulesetSheetBlock(
+      definition,
+      card,
+      live?.[normalizeCharacterLookupName(card.name)],
+      catalogs,
+      itemsOf?.(card.name),
+    ),
   );
 }
 
@@ -111,7 +134,7 @@ export async function loadGameRulesetSheetContext(
     : [];
   const setupConfig = meta.gameSetupConfig as { personaId?: string | null } | null | undefined;
   const personaId = chat.personaId || setupConfig?.personaId || null;
-  const persona = personaId ? await createCharactersStorage(db).getPersona(personaId) : null;
+  const persona = roomHostIdentity() ?? (personaId ? await createCharactersStorage(db).getPersona(personaId) : null);
   return {
     definition: pinned.definition,
     packageId: pinned.packageId,
@@ -171,6 +194,8 @@ export interface GameRulesetSheetTurn {
   content: string;
   live: RulesetLiveStates;
   outcomes: SheetCommandOutcome[];
+  /** Each rest a character took this turn, by card name. */
+  rests: Array<{ who: string; rest: string }>;
 }
 
 /** Apply a reply's sheet commands on top of the live state the turn started with. Never throws:
@@ -187,9 +212,9 @@ export function applyGameRulesetSheetTurn(
     for (const outcome of applied.outcomes) {
       if (!outcome.ok) logger.warn("[game/sheet] Refused for %s: %s (%s)", outcome.who, outcome.reason, outcome.tag);
     }
-    return { content: applied.content, live: applied.live, outcomes: applied.outcomes };
+    return { content: applied.content, live: applied.live, outcomes: applied.outcomes, rests: applied.rests };
   } catch (error) {
     logger.error(error, "[game/sheet] Could not apply sheet commands; the reply is saved as written");
-    return { content, live: baseLive ?? {}, outcomes: [] };
+    return { content, live: baseLive ?? {}, outcomes: [], rests: [] };
   }
 }

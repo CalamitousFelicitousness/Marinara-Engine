@@ -104,6 +104,7 @@ type GenerationProviderRuntimeArgs = GenerationParameterRuntimeArgs & {
   fallbackBaseUrl?: string;
   onFallback?: GenerationFallbackNotifier;
   onProviderUsed?: (origin: GenerationProviderOrigin) => void;
+  wrapProvider?: (provider: BaseLLMProvider) => BaseLLMProvider;
 };
 
 type StoredParameters = ReturnType<typeof parseStoredGenerationParameters>;
@@ -357,6 +358,7 @@ export function resolveGenerationProviderRuntime(args: GenerationProviderRuntime
   );
   const provider = withConnectionFallbackProvider({
     primary: primaryProvider,
+    wrapProvider: args.wrapProvider,
     primaryConnectionId: args.connectionId,
     fallbackConnection: args.fallbackConnection,
     fallbackBaseUrl: args.fallbackBaseUrl ?? "",

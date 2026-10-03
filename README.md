@@ -13,6 +13,8 @@
 
 ---
 
+> **Optional multiplayer:** Private shared sessions require two explicit opt-ins and a trusted client for every participant. See [multiplayer setup and limits](docs/CONFIGURATION.md#optional-multiplayer).
+
 ## Table of Contents
 
 - [🍝 Marinara Engine](#-marinara-engine)
@@ -156,7 +158,8 @@ An optional one-click catalog of 36 first-party agents and feature packages. Fre
 
 - **Writer Agents:** Prose Guardian, Continuity Checker, Narrative Director, Knowledge Retrieval, Knowledge Router, and Card Evolution Auditor.
 - **Tracker Agents:** World State, Expression Engine, Quest Tracker, Background, Character Tracker, Persona Stats, Custom Tracker, Inventory Tracker, World Maps, Beholder, and Memory Nag.
-- **Misc Agents:** Echo Chamber, Noodle, Slurp, Illustrator, Lorebook Keeper, Long-Term Memory, Combat, Immersive HTML, Music DJ, Haptic Feedback, CYOA Choices, Storyboard, Calls, UNO, Chess, Poker, 8-Ball Pool, Tic-Tac-Toe, and Rock-Paper-Scissors.
+- **Apps:** Noodle, Slurp, Gacha Forge, and Modern Life Sim, each in its own Home tab.
+- **Misc Agents:** Echo Chamber, Illustrator, Lorebook Keeper, Long-Term Memory, Combat, Immersive HTML, Music DJ, Haptic Feedback, CYOA Choices, Storyboard, Calls, UNO, Chess, Poker, 8-Ball Pool, Tic-Tac-Toe, and Rock-Paper-Scissors.
 
 See the [Downloadable Agents Reference](docs/agents/built-in-agents.md) for modes, behavior, and setup guidance for every package, or browse the [official Agent repository](https://github.com/Pasta-Devs/Marinara-Agents) directly.
 

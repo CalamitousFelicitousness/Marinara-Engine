@@ -59,6 +59,9 @@ type Task =
 type Source = "gm" | "ai" | "manual" | "fallback";
 export interface CombatDirectorState extends DirectedCombatView {
   schemaVersion: 1;
+  /** What the win dropped into the party's bags, once it is won: set on the step that wins, so a fight
+   *  drops its loot once. Empty when it dropped nothing. */
+  loot?: Array<{ name: string; quantity: number; left?: number }>;
   anchor: string;
   gm: boolean;
   difficulty: string;
@@ -72,7 +75,11 @@ export interface CombatDirectorState extends DirectedCombatView {
   defending: string[];
   skipParty: boolean;
   mechanics: CombatMechanic[];
-  inventory: Array<{ name: string; quantity: number; description?: string }>;
+  /** One line per item, shown by `name`. `ownName` is the item's own name when `name` is a nickname:
+   *  what a spend is taken by, so a nickname never spends another item. */
+  /** One line per item the fight offers. `item` names one of the ruleset's items; one that holds
+   *  charges counts its uses in `quantity` (#6909). */
+  inventory: Array<{ name: string; quantity: number; description?: string; ownName?: string; item?: string }>;
   itemEffects: CombatItemEffect[];
   itemSpends: Record<string, number>;
   requests: string[];
@@ -143,6 +150,8 @@ function sync(s: CombatDirectorState) {
         statusEffects: (u.statusEffects ?? []).map((e) => e.name),
       })),
       enemies: s.enemies.map((u) => ({ name: u.name, hp: u.hp, maxHp: u.maxHp, defeated: u.hp <= 0 })),
+      // Once a won fight has dropped its loot, even none, the summary says so: nothing drops it again.
+      ...(s.loot ? { loot: s.loot.map((drop) => ({ ...drop })) } : {}),
     };
   }
 }
@@ -499,11 +508,15 @@ function declare(s: CombatDirectorState, action: Action, source: Source, reactio
   if (itemName) {
     const item = s.inventory.find((i) => i.name === itemName)!,
       effect = s.itemEffects.find((i) => i.name === itemName)!;
-    if (effect.consumes !== false) {
+    // One of the ruleset's items that holds charges is spent a use at a time, as one used up is.
+    if (effect.consumes !== false || effect.charges) {
       item.quantity--;
       s.itemSpends[itemName] = (s.itemSpends[itemName] ?? 0) + 1;
     }
-    if (action.classic?.type === "item") action.classic.itemEffect = effect;
+    // The route rolled its gate for its user and says here when they failed it (#6909).
+    const failed = (action.classic ?? action.tactical) as { failed?: string } | undefined;
+    if (action.classic?.type === "item")
+      action.classic.itemEffect = failed?.failed ? { ...effect, failed: failed.failed } : effect;
   }
   const id = `p${++s.serial}`;
   s.pending[id] = {
@@ -770,6 +783,8 @@ function effect(s: CombatDirectorState, p: Pending) {
       }
     } else if (s.tactical && p.action.tactical?.type === "item") {
       const action = p.action.tactical;
+      const effect = s.itemEffects.find((i) => i.name === action.itemName);
+      const failed = (action as { failed?: string }).failed;
       const combatants = s.tactical.units.map((c) => ({
         ...c,
         side: side(c) === "party" ? ("player" as const) : ("enemy" as const),
@@ -781,7 +796,7 @@ function effect(s: CombatDirectorState, p: Pending) {
           type: "item",
           itemId: action.itemName,
           targetId: action.targetId,
-          itemEffect: s.itemEffects.find((i) => i.name === action.itemName),
+          itemEffect: effect && failed ? { ...effect, failed } : effect,
         },
         defendingIds: new Set(),
       });
@@ -790,10 +805,12 @@ function effect(s: CombatDirectorState, p: Pending) {
         target.hp = c.hp;
         target.statusEffects = c.statusEffects;
       }
-      log(s, `${u.name} uses ${action.itemName}.`, "item", u.id, p.source, {
-        key: "game.combat.event.item",
-        params: { actor: u.name, item: action.itemName },
-      });
+      if (failed) log(s, failed, "item", u.id, p.source);
+      else
+        log(s, `${u.name} uses ${action.itemName}.`, "item", u.id, p.source, {
+          key: "game.combat.event.item",
+          params: { actor: u.name, item: action.itemName },
+        });
     } else if (s.tactical && p.action.tactical) {
       const guarded = (p.guarded ?? []).map((id) => get(s, id) as TacticalUnit).filter(Boolean);
       const prior = guarded.map((x) => x.defending);
@@ -840,22 +857,24 @@ function effect(s: CombatDirectorState, p: Pending) {
         });
       }
       for (const a of result.actions)
-        log(
-          s,
-          `${u.name}: ${a.skillName ?? p.action.classic.type} → ${get(s, a.defenderId)?.name ?? a.defenderId} (${a.isHeal ? "+" : "−"}${a.finalDamage} HP).`,
-          "action",
-          u.id,
-          p.source,
-          {
-            key: a.skillName ? "game.combat.event.action" : "game.combat.event.attack",
-            params: {
-              actor: u.name,
-              skill: a.skillName ?? "",
-              target: get(s, a.defenderId)?.name ?? a.defenderId,
-              amount: `${a.isHeal ? "+" : "−"}${a.finalDamage}`,
+        if (a.note) log(s, a.note, "item", u.id, p.source);
+        else
+          log(
+            s,
+            `${u.name}: ${a.skillName ?? p.action.classic.type} → ${get(s, a.defenderId)?.name ?? a.defenderId} (${a.isHeal ? "+" : "−"}${a.finalDamage} HP).`,
+            "action",
+            u.id,
+            p.source,
+            {
+              key: a.skillName ? "game.combat.event.action" : "game.combat.event.attack",
+              params: {
+                actor: u.name,
+                skill: a.skillName ?? "",
+                target: get(s, a.defenderId)?.name ?? a.defenderId,
+                amount: `${a.isHeal ? "+" : "−"}${a.finalDamage}`,
+              },
             },
-          },
-        );
+          );
     }
   } else
     log(s, `${u.name}'s action is interrupted.`, "interrupted", u.id, p.source, {

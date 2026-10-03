@@ -3,6 +3,7 @@ import { showConfirmDialog } from "../lib/app-dialogs";
 // ──────────────────────────────────────────────
 // React Query: Connection hooks
 // ──────────────────────────────────────────────
+import type { ModelParameterCapabilities } from "@marinara-engine/shared";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { api, isRequestTimeoutError, requestTimeoutSignal } from "../lib/api-client";
@@ -138,6 +139,7 @@ export function useUpdateConnection() {
         qc.invalidateQueries({ queryKey: connectionKeys.detail(variables.id) }),
         qc.invalidateQueries({ queryKey: parameterBaselineKeys.all }),
         qc.invalidateQueries({ queryKey: ttsKeys.all }),
+        qc.invalidateQueries({ queryKey: [...connectionKeys.all, "models", variables.id] }),
       ]),
   });
 }
@@ -273,11 +275,38 @@ export type RemoteConnectionModel = {
   context?: number;
   maxOutput?: number;
   pricing?: TextModelPricing;
+  capabilities?: ModelParameterCapabilities;
   /** NanoGPT: whether the model is covered by the subscription. */
   subscriptionIncluded?: boolean;
   /** NanoGPT: input tokens charged per token of subscription quota (2 = 2x). */
   inputTokenMultiplier?: number;
 };
+
+/** Providers whose model list reports what each model accepts. Other providers get no background fetch. */
+const LIVE_CAPABILITY_PROVIDERS = new Set(["openrouter"]);
+
+/**
+ * The selected model's live capabilities, for the parameter panel. Loads the connection's model list once (cached
+ * for hours; the server caches too) and only for providers that report capabilities. Returns null while loading, on
+ * failure, or when the provider reports nothing, and the panel then falls back to its built-in rules.
+ */
+export function useModelParameterCapabilities(
+  connection: { id?: string | null; provider?: string | null; model?: string | null } | null | undefined,
+): ModelParameterCapabilities | null {
+  const id = connection?.id ?? "";
+  const provider = connection?.provider ?? "";
+  const enabled = !!id && id !== "random" && LIVE_CAPABILITY_PROVIDERS.has(provider);
+  const { data } = useQuery({
+    queryKey: [...connectionKeys.all, "models", id, provider],
+    queryFn: () => api.get<{ models: RemoteConnectionModel[] }>(`/connections/${id}/models`),
+    enabled,
+    staleTime: 6 * 60 * 60_000,
+    gcTime: 6 * 60 * 60_000,
+    retry: false,
+  });
+  if (!enabled || !connection?.model) return null;
+  return data?.models?.find((model) => model.id === connection.model)?.capabilities ?? null;
+}
 
 export function useFetchModels() {
   return useMutation({

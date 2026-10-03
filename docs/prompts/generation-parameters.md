@@ -135,6 +135,10 @@ Leave it on unless you have a clear reason to feed old reasoning back into the m
 
 Use this for models that cannot see images. When you turn it on, pick a connection in the **Captioning Connection** dropdown. A text-only endpoint may fail if you point it at the wrong connection. This setting is off by default.
 
+The **Captioning Prompt** box below the dropdown holds the instructions sent with each image. Edit it to change the descriptions, for example to ask for more detail. The reset button next to the label brings back the default prompt, and so does clearing the box. The prompt is saved for this chat only, and **Save as Connection Default** does not copy it.
+
+If captioning fails, for example because the captioning connection is broken, deleted, or sends back nothing, the reply stops with an **Image captioning failed** error. Marinara does not send the image itself instead. Fix or change the captioning connection, or turn Image Captioning off.
+
 ## Save as Connection Default
 
 At the bottom of **Advanced Parameters**, the **Save as Connection Default** button writes your current parameter values onto the connection itself. After that, new chats using that same connection start from these values.

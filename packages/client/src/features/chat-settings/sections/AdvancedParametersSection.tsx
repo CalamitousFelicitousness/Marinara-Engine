@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
-import { ChevronDown, Save, Settings2 } from "lucide-react";
+import { ChevronDown, RotateCcw, Save, Settings2 } from "lucide-react";
 import { HelpTooltip } from "../../../components/ui/HelpTooltip";
 import { AgentSettingsActionButton } from "../../../components/chat/AgentSettingsControls";
 import {
@@ -9,14 +9,16 @@ import {
   ROLEPLAY_PARAMETER_DEFAULTS,
 } from "../../../components/ui/GenerationParametersEditor";
 import { DraftNumberInput } from "../../../components/ui/DraftNumberInput";
+import { DraftTextarea } from "../../../components/ui/DraftTextarea";
 import { SettingsSwitch } from "../../../components/panels/settings/SettingControls";
-import { useSaveConnectionDefaults } from "../../../hooks/use-connections";
+import { useModelParameterCapabilities, useSaveConnectionDefaults } from "../../../hooks/use-connections";
 import { useGenerationParameterBaseline } from "../../../hooks/use-parameter-baseline";
 import { isLanguageGenerationConnection, type ConnectionProviderLike } from "../../../lib/connection-filters";
 import { cn } from "../../../lib/utils";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import {
   chatOverridesAsStoredParameters,
+  DEFAULT_IMAGE_CAPTIONING_PROMPT,
   effectiveChatParameterOverrides,
   parseConnectionImageCaptioningDefaults,
   stripLegacyChatParameters,
@@ -62,6 +64,7 @@ interface AdvancedParametersSectionProps {
   onImageCaptioningChange: (patch: {
     imageCaptioningEnabled?: boolean;
     imageCaptioningConnectionId?: string | null;
+    imageCaptioningPrompt?: string | null;
   }) => void;
 }
 
@@ -85,6 +88,7 @@ export function AdvancedParametersSection({
   const { t: localizeUi } = useUiTranslation();
   const modeDefaults = isConversation ? CHAT_PARAMETER_DEFAULTS : ROLEPLAY_PARAMETER_DEFAULTS;
   const conn = connectionId ? connections.find((connection) => connection.id === connectionId) : null;
+  const connectionModelCapabilities = useModelParameterCapabilities(conn);
   const canSaveConnectionDefaults = !!connectionId && connectionId !== "random" && conn?.isLocalSidecar !== true;
   const defaults = getEditableGenerationParameters(modeDefaults, conn?.defaultParameters);
   const imageCaptioningDefaults = parseConnectionImageCaptioningDefaults(conn?.defaultParameters);
@@ -110,6 +114,10 @@ export function AdvancedParametersSection({
     typeof imageCaptioningEnabled === "boolean"
       ? imageCaptioningEnabled
       : imageCaptioningDefaults.imageCaptioningEnabled === true;
+  const customCaptioningPrompt =
+    typeof metadata.imageCaptioningPrompt === "string" && metadata.imageCaptioningPrompt.trim()
+      ? metadata.imageCaptioningPrompt
+      : "";
   const chatConnectionCanCaption = !!conn && isLanguageGenerationConnection(conn);
   const connectionOptions = useMemo(
     () =>
@@ -242,9 +250,10 @@ export function AdvancedParametersSection({
           )}
           <ChatGenerationParametersFields
             value={{ ...effectiveParams, customParameters: chatCustomParameters }}
-            showServiceTier={conn?.provider === "openrouter" || conn?.provider === "nanogpt"}
-            provider={typeof conn?.provider === "string" ? conn.provider : undefined}
-            model={typeof conn?.model === "string" ? conn.model : undefined}
+            provider={conn ? (typeof conn.provider === "string" ? conn.provider : null) : undefined}
+            model={typeof conn?.model === "string" ? conn.model : null}
+            baseUrl={typeof conn?.baseUrl === "string" ? conn.baseUrl : null}
+            modelCapabilities={connectionModelCapabilities}
             sources={{
               overrides,
               baseline: baseline.data,
@@ -378,6 +387,43 @@ export function AdvancedParametersSection({
                   ))}
                 </select>
               </label>
+            )}
+            {captioningEnabled && (
+              <div className="space-y-1 px-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[0.6875rem] font-medium text-[var(--muted-foreground)]">
+                    {localizeUi("chatSettings.advanced.imageCaptioningPrompt")}
+                  </span>
+                  {customCaptioningPrompt && (
+                    <button
+                      type="button"
+                      onClick={() => onImageCaptioningChange({ imageCaptioningPrompt: null })}
+                      className="flex items-center justify-center rounded-lg bg-[var(--secondary)] px-2 py-1 text-[0.625rem] text-[var(--muted-foreground)] ring-1 ring-[var(--border)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+                      title={localizeUi("chatSettings.advanced.imageCaptioningPromptReset")}
+                      aria-label={localizeUi("chatSettings.advanced.imageCaptioningPromptReset")}
+                    >
+                      <RotateCcw size="0.625rem" />
+                    </button>
+                  )}
+                </div>
+                <DraftTextarea
+                  aria-label={localizeUi("chatSettings.advanced.imageCaptioningPrompt")}
+                  value={customCaptioningPrompt || DEFAULT_IMAGE_CAPTIONING_PROMPT}
+                  onCommit={(value) => {
+                    // Clearing the box or matching the default drops the chat's own prompt.
+                    const trimmed = value.trim();
+                    onImageCaptioningChange({
+                      imageCaptioningPrompt: trimmed && trimmed !== DEFAULT_IMAGE_CAPTIONING_PROMPT ? value : null,
+                    });
+                  }}
+                  rows={5}
+                  spellCheck={false}
+                  className="w-full resize-y rounded-lg bg-[var(--secondary)] px-3 py-2 text-xs leading-relaxed outline-none ring-1 ring-transparent transition-shadow focus:ring-[var(--primary)]/40"
+                />
+                <span className="block text-[0.625rem] text-[var(--muted-foreground)]">
+                  {localizeUi("chatSettings.advanced.imageCaptioningPromptHint")}
+                </span>
+              </div>
             )}
           </div>
           {canSaveConnectionDefaults && (

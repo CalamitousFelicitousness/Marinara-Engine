@@ -73,7 +73,7 @@ for (const theme of ["dark", "light"] as const)
       // The unanswered notice reads differently with and without a Decision model, so it
       // is found by the statement it lists.
       const unanswered = page.getByRole("status").filter({ hasText: "Mira draws a sword in the latest message" });
-      const dropped = page.getByRole("status").filter({ hasText: "past the per-turn limit, read as no: 1" });
+      const dropped = page.getByRole("status").filter({ hasText: "over the per-turn limit (counted as no): 1" });
       await expect(unanswered).toContainText(": 32.");
       await expect(dropped).toContainText("Mira is soaked by rain in the latest message");
       await expect(unanswered).not.toContainText("soaked by rain");
@@ -86,7 +86,7 @@ for (const theme of ["dark", "light"] as const)
       // Transport and isolation have a real-provider route regression. Here the browser
       // receives deterministic results without changing a shared server's model default.
       const modes: string[] = [];
-      let fixture: "normal" | "empty" | "unavailable" | "deferred" | "failed" = "normal";
+      let fixture: "normal" | "empty" | "unavailable" | "deferred" | "failed" | "memory" | "memory-empty" = "normal";
       await page.route("**/api/generate/dryRun", async (route) => {
         const body = route.request().postDataJSON();
         expect(body.chatId).toBe(ids.chat);
@@ -104,7 +104,7 @@ for (const theme of ["dark", "light"] as const)
                 createdAt: new Date().toISOString(),
                 turnId: "fixture-turn",
                 results:
-                  fixture === "empty"
+                  fixture === "empty" || fixture === "memory" || fixture === "memory-empty"
                     ? []
                     : fixture === "unavailable"
                       ? [{ statement: "The door is open.", kind: "noul", status: "unavailable" }]
@@ -128,17 +128,63 @@ for (const theme of ["dark", "light"] as const)
                               ]
                             : []),
                         ],
-                requests: [
-                  {
-                    protocol: "system_one",
-                    body: {
-                      model: "Decision fixture",
-                      state: { recent_messages: [{ role: "user", content: "I open the door." }] },
-                      questions: { d0: { type: "noul", instructions: "The door is open." } },
-                    },
-                    ...(run ? { results: [{ id: "d0", probability: 0.82 }] } : {}),
-                  },
-                ],
+                ...(fixture === "memory-empty"
+                  ? { advancedMemory: {} }
+                  : fixture === "memory"
+                    ? {
+                        advancedMemory: {
+                          recall: {
+                            createdAt: "2026-09-27T12:00:00Z",
+                            model: "Jev memory fixture",
+                            sourceEndMessageId: "fixture-source",
+                            fallback: false,
+                            threshold: 0.5,
+                            omittedCount: 2,
+                            results: [
+                              {
+                                id: "scene-1",
+                                kind: "scene",
+                                text: "The old silver compass promise.",
+                                score: 0.94,
+                                selected: true,
+                              },
+                              {
+                                id: "scene-2",
+                                kind: "scene",
+                                text: "An unrelated rainy evening.",
+                                score: 0.04,
+                                selected: false,
+                              },
+                            ],
+                          },
+                          sceneCheck: {
+                            createdAt: "2026-09-27T12:01:00Z",
+                            model: "Jev memory fixture",
+                            sourceEndMessageId: "fixture-reply",
+                            fallback: true,
+                            threshold: 0.8,
+                            omittedCount: 0,
+                            results: [
+                              { id: "ending", kind: "scene_end", text: "They parted for the night.", selected: false },
+                            ],
+                          },
+                        },
+                      }
+                    : {}),
+                requests:
+                  fixture === "memory" || fixture === "memory-empty"
+                    ? []
+                    : [
+                        {
+                          protocol: "system_one",
+                          body: {
+                            model: "Decision fixture",
+                            state: { recent_messages: [{ role: "user", content: "I open the door." }] },
+                            questions: { d0: { type: "noul", instructions: "The door is open." } },
+                          },
+                          ...(run ? { results: [{ id: "d0", probability: 0.82 }] } : {}),
+                        },
+                      ],
               },
             },
             parameters: {},
@@ -180,6 +226,24 @@ for (const theme of ["dark", "light"] as const)
       await diagnostics.getByRole("button", { name: "Preview inputs" }).click();
       await expect(diagnostics.getByText("No decision statements were found in this prompt.")).toBeVisible();
       await expect(diagnostics.getByRole("button", { name: "Test decisions", exact: true })).toBeDisabled();
+      fixture = "memory-empty";
+      await diagnostics.getByRole("button", { name: "Preview inputs" }).click();
+      await expect(diagnostics).toContainText("No Advanced Memory decisions have been recorded yet.");
+      fixture = "memory";
+      await diagnostics.getByRole("button", { name: "Preview inputs" }).click();
+      await expect(diagnostics.getByText("Advanced Memory activity", { exact: true })).toBeVisible();
+      await expect(diagnostics.getByText("No decision statements were found in this prompt.")).toHaveCount(0);
+      await expect(diagnostics.getByRole("button", { name: "Test decisions", exact: true })).toBeDisabled();
+      const recalled = diagnostics.getByRole("listitem").filter({ hasText: "The old silver compass promise." });
+      await expect(recalled).toContainText("Selected");
+      await expect(recalled).toContainText("0.94");
+      await expect(diagnostics).toContainText("Some decisions were unavailable.");
+      await expect(diagnostics).toContainText("2 more results omitted");
+      await recalled.scrollIntoViewIfNeeded();
+      const memoryPath = testInfo.outputPath(`memory-decisions-${theme}.png`);
+      await page.screenshot({ path: memoryPath, animations: "disabled" });
+      await testInfo.attach("memory-decisions", { path: memoryPath, contentType: "image/png" });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
       fixture = "unavailable";
       await diagnostics.getByRole("button", { name: "Preview inputs" }).click();
       await expect(diagnostics.getByText("Decision model unavailable or not selected")).toBeVisible();

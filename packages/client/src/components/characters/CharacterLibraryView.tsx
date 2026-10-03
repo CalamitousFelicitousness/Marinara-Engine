@@ -1,4 +1,5 @@
 import { CardLibraryPreview } from "./CardLibraryPreview";
+import { AvatarImage } from "./AvatarImage";
 import {
   Fragment,
   useCallback,
@@ -112,7 +113,7 @@ function parseCharacterRow(char: CharacterRow): ParsedCharacterRow {
       character_version: char.version,
       extensions: { fav: char.favorite, avatarCrop: char.avatarCrop, nameColor: char.nameColor },
     };
-    return { ...char, parsed: (parsed as unknown as ParsedCharacterRow["parsed"]) ?? {} };
+    return { ...char, parsed: parsed as unknown as ParsedCharacterRow["parsed"] };
   } catch {
     return { ...char, parsed: { name: "Unknown", description: "" } };
   }
@@ -235,9 +236,10 @@ function CardLibraryDetailCard({
       <div className="overflow-hidden rounded-[1.5rem] border border-[var(--marinara-chat-chrome-panel-border)] bg-[var(--background)]/70 shadow-[0_24px_70px_-40px_rgba(15,23,42,0.95)] sm:rounded-[2rem]">
         <div className={cn("mari-avatar-placeholder relative aspect-square overflow-hidden", placeholderClass)}>
           {card.avatarPath ? (
-            <img
+            <AvatarImage
               src={card.avatarPath}
               alt={card.name}
+              iconSize="2.5rem"
               className="h-full w-full object-cover"
               style={getAvatarCropStyle(card.avatarCrop)}
             />

@@ -191,7 +191,7 @@
   --marinara-conversation-gradient-from: #0a0a0e;
   --marinara-conversation-gradient-to: #1c2133;
   --muted: #1a1a2e;
-  --muted-foreground: #d4adfc;
+  --muted-foreground: #a1a1aa;
   --accent: #2a1a3e;
   --accent-foreground: #f0e8ff;
   --destructive: var(--primary);
@@ -453,7 +453,7 @@
   --marinara-conversation-gradient-from: #f2eff7;
   --marinara-conversation-gradient-to: #eae6f0;
   --muted: #f0eaf7;
-  --muted-foreground: #7a64a0;
+  --muted-foreground: #65656f;
   --accent: #ede4f7;
   --accent-foreground: #1a1025;
   --destructive: var(--primary);
@@ -1910,7 +1910,8 @@
   width: auto;
   min-width: 4rem;
   max-width: 100%;
-  flex: 0 1 auto;
+  /* The byline gives way first; the name only truncates when the line itself is too narrow. */
+  flex: 0 0 auto;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2619,7 +2620,6 @@ html[data-mari-ios-webkit] :is([data-component="RightPanelMobile"], [data-compon
 
   .mari-editor-header-main--identity .mari-editor-byline {
     max-width: 24rem;
-    flex: 0 1 24rem;
   }
 }
 
@@ -6192,7 +6192,11 @@ strong {
   .mari-gallery-image-actions .mari-chrome-accent-surface {
     @apply border-transparent bg-white/20 text-white hover:bg-white/30;
   }
+}
 
+/* Touch tablets get the phone shell (MOBILE_SHELL_MEDIA_QUERY in ui.store.ts),
+   so they also need its keyboard-aware viewport. */
+@media (max-width: 767px), (max-width: 1440px) and (hover: none) and (any-pointer: coarse) {
   /*
    * WKWebView native backing color is set by the literal background-color in
    * index.html <style> (inline critical CSS — not cached by SW, always fresh).
@@ -6293,7 +6297,9 @@ strong {
     height: var(--mari-visual-viewport-height, 100dvh);
     min-height: 0;
   }
+}
 
+@media (max-width: 767px) {
   .app-sidebar-mobile {
     position: fixed !important;
     inset: 0 !important;
@@ -6474,9 +6480,17 @@ strong {
     width: calc(100% - var(--mari-roleplay-mobile-avatar-space, 3rem));
   }
 
-  [data-component="ChatArea.Roleplay"][data-mobile-composer-active="true"] [data-roleplay-agent-window],
-  [data-component="ChatArea.Roleplay"]:has(.mari-roleplay-message-body--editing) [data-roleplay-agent-window] {
+  [data-component="ChatArea.Roleplay"][data-mobile-composer-active="true"]
+    [data-roleplay-agent-window]:not([data-roleplay-agent-window="echo"]),
+  [data-component="ChatArea.Roleplay"]:has(.mari-roleplay-message-body--editing)
+    [data-roleplay-agent-window]:not([data-roleplay-agent-window="echo"]) {
     display: none;
+  }
+
+  /* Echo keeps its layout box while hidden, so reactions revealed during typing still pin it to the newest one. */
+  [data-component="ChatArea.Roleplay"][data-mobile-composer-active="true"] [data-roleplay-agent-window="echo"],
+  [data-component="ChatArea.Roleplay"]:has(.mari-roleplay-message-body--editing) [data-roleplay-agent-window="echo"] {
+    visibility: hidden;
   }
 
   [data-chat-mode="conversation"] [data-chat-scroll]:has([data-chat-message-editor]) {
@@ -6555,6 +6569,19 @@ strong {
 
   .chat-input-container .marinara-chat-input-shell {
     border-radius: 1em !important;
+  }
+}
+
+@media (max-width: 639px) {
+  .mari-topbar {
+    gap: 0.5rem;
+  }
+
+  .mari-topbar-action {
+    flex: 0 0 auto;
+    width: 3.5rem !important;
+    height: 2.25rem !important;
+    padding: 0 !important;
   }
 }
 
@@ -7801,5 +7828,29 @@ strong {
   82% {
     transform: translateY(0.16rem);
     background: #151a22;
+  }
+}
+
+/* Short landscape screens need the chat list to share the sidebar's scroll. */
+@media (max-height: 500px) and (orientation: landscape) {
+  .mari-chat-sidebar {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .mari-chat-sidebar > * {
+    flex-shrink: 0;
+  }
+
+  .mari-chat-sidebar > .mari-sidebar-header {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+  }
+
+  .mari-chat-sidebar > [data-chat-root-drop-zone] {
+    flex: 1 0 auto;
+    min-height: 12rem;
+    overflow-y: visible;
   }
 }

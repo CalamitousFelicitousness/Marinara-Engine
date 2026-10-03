@@ -1,3 +1,8 @@
+import { withLorebookImageCompatibility } from "../../services/llm/lorebook-image-provider.js";
+import {
+  appendLorebookImageMessages,
+  type LorebookImageEntry,
+} from "../../services/generation/lorebook-image-prompt.js";
 import { withLatestMessageReply } from "../../services/generation/message-reply.js";
 import type { FastifyInstance } from "fastify";
 import {
@@ -14,13 +19,19 @@ import {
   isAgentConfigDeleted,
   isBuiltInAgentRuntimeDisabled,
   normalizeAdvancedMemorySettings,
+  applyContextMessageLimitWithPins,
+  advancedMemoryDecisionDiagnosticsSchema,
   type DecisionDebugReport,
+  type AdvancedMemoryDecisionDiagnostics,
 } from "@marinara-engine/shared";
 import {
+  appendRoleplayMessageNotes,
   appendRoleplayPromptTail,
   appendRoleplayWhispers,
   buildRoleplayCommandsReminder,
   buildRoleplayPersonalContext,
+  parseRoleplayUserCommands,
+  prepareUserRoleplayCommands,
 } from "../../services/generation/roleplay-commands.js";
 import { randomUUID } from "crypto";
 import { createChatsStorage } from "../../services/storage/chats.storage.js";
@@ -94,6 +105,8 @@ import {
   resolveMacrosWithVariableSnapshot,
   resolvePromptIdleDuration,
   resolvePromptLastGenerationType,
+  decodeDeferredPresetConditionals,
+  parsePresetVariableNames,
   resolvePromptMessageMacros,
   setLorebookEntryCounts,
   type AssemblerInput,
@@ -617,8 +630,19 @@ export async function registerDryRunRoute(app: FastifyInstance) {
     let initialMaxContext = modelAccessPolicy.effectiveMaxContext;
 
     // Pull existing messages, apply the same conversation-start + context limit filtering
-    const allChatMessages = await chats.listMessages(chatId);
     const chatMode = (chat.mode as string) ?? "roleplay";
+    const allCharacterIds: string[] = (() => {
+      try {
+        return JSON.parse((chat as any).characterIds as string);
+      } catch {
+        return [];
+      }
+    })();
+    const allChatMessages = (await chats.listMessages(chatId)).map((message) =>
+      chatMode === "roleplay" && message.role === "user"
+        ? { ...message, content: parseRoleplayUserCommands(message.content).content }
+        : message,
+    );
     const advancedMemorySettings = normalizeAdvancedMemorySettings(chatMeta.advancedMemory);
     const advancedMemoryEnabled = chatMode === "roleplay" && advancedMemorySettings.enabled;
     // Prompt inspection previews the main reply; auxiliary dry-run generations
@@ -693,12 +717,24 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       contextMessageLimit > 0 &&
       chatMessages.length > contextMessageLimit
     ) {
-      chatMessages = chatMessages.slice(-contextMessageLimit);
+      chatMessages = applyContextMessageLimitWithPins(chatMessages, contextMessageLimit);
     }
 
     // Ephemeral user line (normal dry run only): mirrors an unsaved "what if I said this" turn.
     // Impersonate mode does NOT add userMessage to history — same as POST /generate; direction is injected later.
-    const userMessage = typeof body.userMessage === "string" ? body.userMessage : "";
+    const rawUserMessage = typeof body.userMessage === "string" ? body.userMessage : "";
+    const ephemeralUser =
+      chatMode === "roleplay" && !impersonate && rawUserMessage
+        ? prepareUserRoleplayCommands({
+            content: rawUserMessage,
+            extra: body.replyTo ? { replyTo: body.replyTo } : {},
+            metadata: chatMeta,
+            characters: [...(await resolveCharacterNameMap(allCharacterIds, (id) => chars.getById(id)))].map(
+              ([id, name]) => ({ id, name }),
+            ),
+          })
+        : { content: rawUserMessage, extra: body.replyTo ? { replyTo: body.replyTo } : {} };
+    const userMessage = ephemeralUser.content;
     const lorebookGenerationTriggers = resolveDryRunLorebookGenerationTriggers(
       {
         impersonate,
@@ -719,7 +755,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
     });
     const lorebookScopeExclusions = resolveLorebookScopeExclusions(chatMode, chatMeta);
     const lorebookTokenBudget = resolveDryRunLorebookTokenBudget(chatMeta);
-    if (!impersonate && userMessage.trim()) {
+    if (!impersonate && rawUserMessage.trim()) {
       chatMessages = [
         ...chatMessages,
         {
@@ -728,7 +764,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
           role: "user",
           characterId: null,
           content: userMessage,
-          extra: body.replyTo ? JSON.stringify({ replyTo: body.replyTo }) : null,
+          extra: JSON.stringify(ephemeralUser.extra),
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
           activeSwipeIndex: 0,
@@ -785,6 +821,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
 
     // Build prompt messages
     let finalMessages: DryRunPromptMessage[] = [];
+    let lorebookImageEntries: LorebookImageEntry[] = [];
     const trackerSectionTokens = new Map<string, RuntimeAgentSectionTokens>();
     const runtimeAgentSectionTypes = new Set<string>();
     let wrapFormat: WrapFormat = "xml";
@@ -793,13 +830,6 @@ export async function registerDryRunRoute(app: FastifyInstance) {
     // If provided, we skip preset assembly and build from selected components.
     const promptParts = isRecord(body.promptParts) ? (body.promptParts as Record<string, unknown>) : null;
 
-    const allCharacterIds: string[] = (() => {
-      try {
-        return JSON.parse((chat as any).characterIds as string);
-      } catch {
-        return [];
-      }
-    })();
     const characterIds = resolveActiveCharacterIds(allCharacterIds, chatMeta, {
       mode: chatMode,
       allowEmpty: true,
@@ -961,6 +991,26 @@ export async function registerDryRunRoute(app: FastifyInstance) {
 
     const chatChoices: Record<string, string | string[]> =
       requestChoices ?? (isDifferentPresetOverride ? (presetDefaultChoices ?? {}) : chatChoicesFromMeta);
+
+    // This preset's sections, groups and choice blocks are wanted in three
+    // places: decision texts, the deferred-variable claim, and assembly. Read
+    // them once, the way the live route reuses `decisionPresetParts`.
+    const readPresetParts = async (presetId: string) => {
+      const [sections, groups, choiceBlocks] = await Promise.all([
+        presets.listSections(presetId),
+        presets.listGroups(presetId),
+        presets.listChoiceBlocksForPreset(presetId),
+      ]);
+      return { sections, groups, choiceBlocks };
+    };
+    const presetPartsCache = new Map<string, ReturnType<typeof readPresetParts>>();
+    const loadPresetParts = (presetId: string) => {
+      const cached = presetPartsCache.get(presetId);
+      if (cached) return cached;
+      const pending = readPresetParts(presetId);
+      presetPartsCache.set(presetId, pending);
+      return pending;
+    };
     const chatMacroVariables = normalizeChatMacroVariables(chatMeta.macroVariables);
     const presetVariables = await loadPresetVariables({
       presets,
@@ -987,7 +1037,17 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       macroSources: [
         ...mappedMessages.map((message) => message.content),
         promptParts ? JSON.stringify(promptParts) : "",
+        // Author's notes, a chat's own system or Game prompt, and the preset's mode prompts.
+        JSON.stringify(chatMeta),
+        effectivePreset ? JSON.stringify(effectivePreset) : "",
       ],
+      nameCharacterReferences: !(
+        !promptParts &&
+        effectivePresetId &&
+        effectivePreset &&
+        chatMode !== "conversation" &&
+        chatMode !== "game"
+      ),
     });
     const historyMacroProfilesById = (await resolveCharacterMacroData(app.db, allCharacterIds)).profilesById;
 
@@ -1005,7 +1065,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
     const previewDecisionTimers = readDecisionTimers(chatMeta[DECISION_TIMERS_METADATA_KEY]);
     const previewDecisionTurn = decisionTurnFor(previewDecisionTimers, latestTurnDecisionId(chatMessages));
     const heldDecisions: HeldDecisions = (kind, key, modifiers) =>
-      heldDecision(previewDecisionTimers, previewDecisionTurn, kind, key, modifiers?.every);
+      heldDecision(previewDecisionTimers, previewDecisionTurn, kind, key, modifiers?.every, modifiers?.lasts);
     const decisionLocalSetting = await decisionSettings.get(DECISION_SETTINGS_KEYS.localDefault);
     const decisionConnection = await connections.getDefaultForDecision();
     const decisionConnectionId = decisionConnection?.id ?? null;
@@ -1079,11 +1139,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
         preset:
           // Custom prompt parts replace the preset's sections with their own text (below).
           !promptParts && effectivePresetId && effectivePreset && chatMode !== "conversation" && chatMode !== "game"
-            ? await Promise.all([
-                presets.listSections(effectivePresetId),
-                presets.listGroups(effectivePresetId),
-                presets.listChoiceBlocksForPreset(effectivePresetId),
-              ]).then(([sections, groups, choiceBlocks]) => ({ sections, groups, choiceBlocks, choices: chatChoices }))
+            ? { ...(await loadPresetParts(effectivePresetId)), choices: chatChoices }
             : undefined,
         ctx: promptMacroContext,
         extra: [
@@ -1145,6 +1201,17 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       onDropped: (statement) => decisionDropped.add(statement),
       held: heldDecisions,
     });
+    // Same claim as the live route: preset variables outrank chat variables but
+    // their values arrive with the assembler, after history is resolved.
+    // `!promptParts`: custom prompt parts replace the preset's sections and never
+    // reach the assembler, so nothing would release a claimed name there.
+    if (!promptParts && effectivePresetId && effectivePreset && chatMode !== "conversation" && chatMode !== "game") {
+      const presetVariableNames = new Set<string>(parsePresetVariableNames(effectivePreset.variableValues));
+      for (const choiceBlock of (await loadPresetParts(effectivePresetId)).choiceBlocks) {
+        presetVariableNames.add(choiceBlock.variableName);
+      }
+      if (presetVariableNames.size > 0) promptMacroContext.deferredPresetVariableNames = presetVariableNames;
+    }
     const resolveHistoryMessageMacros = <T extends { content: string; characterId?: string | null }>(
       messages: T[],
     ): T[] => resolvePromptMessageMacros(messages, promptMacroContext, historyMacroProfilesById);
@@ -1400,6 +1467,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
               resolveContent: resolvePromptMacrosForLorebook,
               resolveDecisions: lorebookDecisions,
             });
+            lorebookImageEntries = lorebookResult.imageEntries ?? [];
             const loreContent = [lorebookResult.worldInfoBefore, lorebookResult.worldInfoAfter]
               .filter((content): content is string => typeof content === "string" && content.length > 0)
               .join("\n");
@@ -1557,11 +1625,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
     } else if (effectivePresetId && effectivePreset && usesPresetAssembly(chatMode)) {
       const preset = effectivePreset;
       wrapFormat = normalizePromptWrapFormat(preset.wrapFormat);
-      const [sections, groups, choiceBlocks] = await Promise.all([
-        presets.listSections(effectivePresetId),
-        presets.listGroups(effectivePresetId),
-        presets.listChoiceBlocksForPreset(effectivePresetId),
-      ]);
+      const { sections, groups, choiceBlocks } = await loadPresetParts(effectivePresetId);
 
       const eligibleTypes = buildRuntimeAgentSectionEligibleTypes({
         enableAgents: dryRunChatEnableAgents,
@@ -1669,11 +1733,16 @@ export async function registerDryRunRoute(app: FastifyInstance) {
 
       const assembled = await assemblePrompt(assemblerInput);
       Object.assign(promptMacroContext.variables, assembled.macroVariables);
+      // Values are in hand; deferred names resolve preset-first from here on,
+      // and conditionals encoded during history resolution are settled now.
+      delete promptMacroContext.deferredPresetVariableNames;
+      decodeDeferredPresetConditionals(mappedMessages, promptMacroContext);
       promptMacroContext.agentData = {
         ...promptMacroContext.agentData,
         ...assembled.macroAgentData,
       };
       finalMessages = assembled.messages;
+      lorebookImageEntries = assembled.lorebookScanResult?.imageEntries ?? [];
       advancedMemoryPlacements = assembled.advancedMemoryPlacements ?? [];
       parameterValues = presetGenerationParameterValues(assembled.parameters);
       initialMaxContext = mergeModelContextLimit(
@@ -1856,6 +1925,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
         resolveContent: resolvePromptMacrosForLorebook,
         resolveDecisions: lorebookDecisions,
       });
+      lorebookImageEntries = lorebookResult.imageEntries ?? [];
       const loreContent = [lorebookResult.worldInfoBefore, lorebookResult.worldInfoAfter]
         .filter((content): content is string => typeof content === "string" && content.length > 0)
         .join("\n");
@@ -1998,6 +2068,13 @@ export async function registerDryRunRoute(app: FastifyInstance) {
     // Mirror the live route's provider-boundary macro guard so Peek Prompt is
     // both accurate and incapable of exposing late raw identity macros (#3704).
     finalMessages = resolveHistoryMessageMacros(finalMessages);
+    // Blocks deferred for a pending preset variable are settled here as well:
+    // the history array decoded above is a copy taken before the assembler
+    // merge. Gated to the modes that can claim a name, so a Conversation
+    // relocation token its own decode deliberately preserved is never consumed.
+    if (chatMode !== "conversation" && chatMode !== "game") {
+      decodeDeferredPresetConditionals(finalMessages, promptMacroContext);
+    }
 
     if (chatMode === "roleplay") {
       const target = promptTargetCharacterId ?? (allCharacterIds.length === 1 ? allCharacterIds[0]! : null);
@@ -2013,6 +2090,15 @@ export async function registerDryRunRoute(app: FastifyInstance) {
           ? (chatMeta.roleplayCommandNarratorId as string)
           : null,
       );
+      if (!impersonate) {
+        appendRoleplayMessageNotes(
+          finalMessages,
+          chatMessages,
+          target && (allCharacterIds.length === 1 || dryRunGroupChatMode === "individual")
+            ? { id: target, kind: "character" }
+            : null,
+        );
+      }
     }
 
     if (chatMode === "roleplay" && !impersonate) {
@@ -2035,7 +2121,10 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       appendRoleplayPromptTail(
         finalMessages,
         buildRoleplayPersonalContext({
-          messages: endIndex >= 0 ? scopedMessages.slice(0, endIndex) : scopedMessages,
+          messages:
+            endIndex >= 0
+              ? scopedMessages.slice(0, endIndex)
+              : [...scopedMessages, ...chatMessages.filter((message) => message.id === "__dryrun_user__")],
           metadata: chatMeta,
           characters: personalCharacters,
           characterId: target,
@@ -2054,7 +2143,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       );
     }
 
-    const provider: BaseLLMProvider =
+    const rawProvider: BaseLLMProvider =
       connId === LOCAL_SIDECAR_CONNECTION_ID
         ? withConnectionAdmissionProvider(getLocalSidecarProvider() as any, LOCAL_SIDECAR_CONNECTION_ID)
         : createLLMProvider(
@@ -2069,6 +2158,18 @@ export async function registerDryRunRoute(app: FastifyInstance) {
             conn.defaultParameters,
             connId ?? undefined,
           );
+
+    const referenceImages = new Set<string>();
+    const chatImages = new Set(finalMessages.flatMap((message) => message.images ?? []));
+    await appendLorebookImageMessages(finalMessages, lorebookImageEntries, {
+      rememberImage: (dataUrl) => referenceImages.add(dataUrl),
+    });
+    const provider = withLorebookImageCompatibility(
+      rawProvider,
+      referenceImages,
+      () => logger.warn("Dry-run model rejected lorebook reference images; retrying with text"),
+      chatImages,
+    );
 
     // ── Mirror /api/generate: normalize + fit prompt to context ──
 
@@ -2155,6 +2256,26 @@ export async function registerDryRunRoute(app: FastifyInstance) {
 
     // Prompt preview mode: return the exact prompt shape that would be sent.
     if (returnPrompt) {
+      if (decisionDebug && advancedMemoryService && advancedMemorySettings.decisionEnabled) {
+        // These are historical observations, not proof that a saved prompt can be reused today.
+        let recall: AdvancedMemoryDecisionDiagnostics | undefined;
+        for (const message of [...allChatMessages].reverse()) {
+          const saved = advancedMemoryDecisionDiagnosticsSchema.safeParse(
+            parseExtra(parseExtra(message.extra).advancedMemoryReceipt).decisionRecall,
+          );
+          if (saved.success) {
+            recall = saved.data;
+            break;
+          }
+        }
+        const sceneCheck = advancedMemoryDecisionDiagnosticsSchema.safeParse(
+          parseExtra(chatMeta.advancedMemoryState).decisionSceneCheck,
+        );
+        decisionDebug.advancedMemory = {
+          ...(recall ? { recall } : {}),
+          ...(sceneCheck.success ? { sceneCheck: sceneCheck.data } : {}),
+        };
+      }
       if (decisionDebug)
         for (const statement of decisionDropped) {
           if (!decisionDebug.results.some((row) => row.statement === statement))

@@ -9,12 +9,29 @@ import {
   type RulesetLiveState,
   type RulesetSheetOp,
 } from "../rulesets/live-state.js";
+import {
+  rulesetAmmoLeft,
+  rulesetItemUseLeft,
+  rulesetLoaded,
+  rulesetModedAction,
+  rulesetShotsAvailable,
+} from "./ammo.js";
 import { parseRulesetCombatDice, rulesetAverageDamage } from "./dice.js";
+import {
+  rulesetCombatAdvantage,
+  rulesetCombatIsPool,
+  rulesetCombatPenalty,
+  rulesetDamageAverage,
+  rulesetPoolChance,
+  rulesetPoolDistribution,
+  rulesetSoakOf,
+} from "./pool.js";
 import {
   currentRulesetActor,
   rulesetActiveConditions,
   rulesetCombatant,
   rulesetCombatConditions,
+  rulesetCombatDamageKind,
   rulesetCombatEffects,
   rulesetCombatStanding,
   rulesetCheckMode,
@@ -371,9 +388,11 @@ export function rulesetDefenseAgainst(
 ): { defense: number; cover: number; guards: RulesetConditionBonus[] } {
   // What the target's own conditions add. Defense is never rolled, so each is its flat number.
   const guards = rulesetConditionModifiers(definition, combat, target, "defense", state).map(
-    ({ condition, level, modifier }) => ({
+    ({ condition, level, derived, item, modifier }) => ({
       condition,
       ...(level !== undefined ? { level } : {}),
+      ...(derived ? { derived } : {}),
+      ...(item ? { item } : {}),
       value: modifier.flat ?? 0,
     }),
   );
@@ -466,7 +485,37 @@ export function planRulesetCombatCost(
     live = result.live;
     if (step.op.op === "spend") cost.push({ pool: step.op.pool, label: step.label, amount: step.op.amount });
   }
+  // A pool the ruleset limits per turn or round cannot pay past what is left of that limit, however
+  // much is in it.
+  if (!rulesetWithinSpendLimits(combatant, cost)) return null;
   return { steps: plan.steps, live, cost };
+}
+
+/** Whether paying this would stay inside every limit on what the combatant may spend this turn or
+ *  round. A pool nothing limits is free to spend however it may. */
+export function rulesetWithinSpendLimits(
+  combatant: RulesetCombatant,
+  cost: ReadonlyArray<{ pool: string; amount: number }>,
+): boolean {
+  if (!combatant.limits) return true;
+  const paying = new Map<string, number>();
+  for (const entry of cost) paying.set(entry.pool, (paying.get(entry.pool) ?? 0) + entry.amount);
+  for (const [pool, amount] of paying) {
+    const limit = combatant.limits[pool];
+    if (limit && limit.spent + amount > limit.max) return false;
+  }
+  return true;
+}
+
+/** Count what a payment spent against the combatant's limits, once it has been made. */
+export function countRulesetSpend(
+  combatant: RulesetCombatant,
+  cost: ReadonlyArray<{ pool: string; amount: number }>,
+): void {
+  for (const entry of cost) {
+    const limit = combatant.limits?.[entry.pool];
+    if (limit) limit.spent += entry.amount;
+  }
 }
 
 /** The pools of one family, in the order the ruleset declared them. The order is the ladder a
@@ -562,7 +611,13 @@ function contestTotals(
   check: { modifier: number },
   state: RulesetEncounterState | undefined,
 ): Array<[number, number]> | null {
-  const { count, sides } = combat.attackRoll.dice;
+  if (rulesetCombatIsPool(combat)) {
+    // A side's pool is its check, what its conditions add as dice, and its wound penalty.
+    const bonus = rulesetBonusDice(rulesetConditionModifiers(definition, combat, combatant, "checks", state));
+    const dice = check.modifier + bonus.flat + rulesetCombatPenalty(definition, combatant);
+    return rulesetPoolDistribution(definition, dice, rulesetCheckMode(definition, combat, combatant, state));
+  }
+  const { count, sides } = combat.attackRoll!.dice;
   const thrown = keptDistribution(count, sides, rulesetCheckMode(definition, combat, combatant, state));
   const bonus = bonusDistribution(
     rulesetBonusDice(rulesetConditionModifiers(definition, combat, combatant, "checks", state)),
@@ -630,6 +685,8 @@ export function rulesetHitChance(
     }
     return chance;
   }
+  // A pool fight's chance is `rulesetPoolChance`'s, which needs the ruleset's own die to count.
+  if (!combat.attackRoll) return null;
   const { dice, naturals } = combat.attackRoll;
   let single: number | null = null;
   if (dice.count === 1) {
@@ -749,6 +806,10 @@ function firstAreaTarget(state: RulesetEncounterState, actor: RulesetCombatant, 
  *  the sheet instead. */
 export function rulesetActionAvailable(actor: RulesetCombatant, action: RulesetCombatAction): boolean {
   if (action.uses && (actor.uses[action.id] ?? 0) < 1) return false;
+  // A weapon with nothing loaded or nothing to shoot, and a clip that is full or has nothing to load.
+  if (!rulesetShotsAvailable(actor, action)) return false;
+  // A weapon in the off hand follows an attack made this turn with another off-hand weapon.
+  if (action.offHandOf !== undefined && (actor.flags.offHand ?? action.offHandOf) === action.offHandOf) return false;
   return !actor.spent.includes(action.id);
 }
 
@@ -803,7 +864,7 @@ function forecastFor(
         strikes = 1;
         spent.add(part.id);
       }
-      return sum + (part.damage ? strikes * rulesetAverageDamage(part.damage) : 0);
+      return sum + (part.damage ? strikes * averageHarm(definition, combat, part.damage) : 0);
     }, 0);
     if (total > 0) forecast.averageDamage = Math.round(total * 100) / 100;
     return forecast.averageDamage === undefined ? undefined : forecast;
@@ -817,20 +878,55 @@ function forecastFor(
   if (action.toHit !== undefined && target) {
     // The same number the roll will be made against: the target's own defense plus whatever the
     // ground they stand on is worth, and the same roll mode the distance between them asks for.
-    const chance = rulesetHitChance(
-      combat,
-      action.toHit,
-      rulesetDefenseAgainst(definition, combat, state, target).defense,
-      rulesetAttackMode(definition, combat, actor, target, { state, optionId: action.id }),
-      rulesetBonusDice(rulesetConditionModifiers(definition, combat, actor, "attacks", state)),
-    );
+    const defense = rulesetDefenseAgainst(definition, combat, state, target).defense;
+    const mode = rulesetAttackMode(definition, combat, actor, target, { state, optionId: action.id });
+    const bonus = rulesetBonusDice(rulesetConditionModifiers(definition, combat, actor, "attacks", state));
+    const chance = rulesetCombatIsPool(combat)
+      ? rulesetPoolChance(
+          definition,
+          action.toHit + bonus.flat + rulesetCombatPenalty(definition, actor),
+          Math.max(1, defense),
+          mode,
+          action.target,
+        )
+      : rulesetHitChance(combat, action.toHit, defense, mode, bonus);
     if (chance !== null) forecast.hitChance = Math.round(chance * 1000) / 1000;
   }
   // The whole blow, clauses and all. A clause with a save of its own is counted in full: a forecast
-  // says what a blow would do, not what a die nobody has thrown might take off it.
-  const amount = action.damage ?? action.heal;
-  if (amount) forecast.averageDamage = Math.round(rulesetAverageDamage(amount) * 100) / 100;
+  // says what a blow would do, not what a die nobody has thrown might take off it. A pool fight's
+  // harm is what its dice are worth after what the first target soaks; healing is an amount.
+  if (action.damage) {
+    const average = averageHarm(definition, combat, action.damage, target ?? undefined);
+    forecast.averageDamage = Math.round(average * 100) / 100;
+  } else if (action.heal) forecast.averageDamage = Math.round(rulesetAverageDamage(action.heal) * 100) / 100;
   return forecast.hitChance !== undefined || forecast.averageDamage !== undefined ? forecast : undefined;
+}
+
+/** What one blow's harm is worth on average. A sum is its dice and flat part; in a pool fight each
+ *  amount is its dice counted against the damage target, its automatic successes, and less what the
+ *  target soaks of its kind, thrown or taken off the dice. Never below nothing. */
+function averageHarm(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  damage: NonNullable<RulesetCombatAction["damage"]>,
+  target?: RulesetCombatant,
+): number {
+  if (!rulesetCombatIsPool(combat)) return rulesetAverageDamage(damage);
+  const one = (amount: { count: number; flat: number }, type: string | undefined) => {
+    const kind = combat.damageKinds ? rulesetCombatDamageKind(combat, type) : undefined;
+    // Soak is taken only the way the ruleset says; a fight whose pool block says nothing takes none.
+    const rule = combat.pool?.soak;
+    const soak = target && rule ? rulesetSoakOf(target, kind) : 0;
+    const roll = rule?.roll ?? true;
+    const dice = roll ? amount.count : Math.max(0, amount.count - soak);
+    // Automatic successes are never fewer than none, as the fight counts them.
+    const thrown = rulesetDamageAverage(definition, combat, dice) + Math.max(0, amount.flat);
+    return Math.max(0, thrown - (roll ? rulesetDamageAverage(definition, combat, soak) : 0));
+  };
+  return (
+    one(damage, damage.type) +
+    (damage.plus ?? []).reduce((sum, clause) => sum + one(clause, clause.type ?? damage.type), 0)
+  );
 }
 
 function optionFrom(
@@ -868,9 +964,17 @@ function optionFrom(
     targets: action.targets,
     ...(rulesetFreeStrike(actor, action) ? { strikes: actor.strikesLeft } : {}),
     ...(action.heal ? { heals: true } : {}),
+    ...(action.restore ? { restores: action.restore.pool } : {}),
   };
   if (paid.cost.length > 0) option.cost = paid.cost;
   if (action.uses) option.left = actor.uses[action.id] ?? 0;
+  if (action.ammo) option.ammo = rulesetAmmoLeft(actor, action.ammo.tag);
+  if (action.clip) option.loaded = { now: rulesetLoaded(actor, action.clip), max: action.clip.max };
+  // What an item has left to use: its stack, or its charges.
+  if (action.itemUse && (action.itemUse.consumes || action.itemUse.charges)) {
+    option.left = rulesetItemUseLeft(actor, action.itemUse);
+  }
+  if (action.offHandOf !== undefined) option.offHand = true;
   // A shape, in cells, so a screen can draw the template before the choice is made and a picker can
   // weigh it. Only in a positioned fight: without a board an area is still resolved by target ids.
   if (action.area && positioned(state)) {
@@ -889,7 +993,65 @@ function optionFrom(
   }
   const forecast = forecastFor(definition, combat, state, actor, action);
   if (forecast) option.forecast = forecast;
+  // The weapon's other ways to make this attack, each only while its holder has the shots for it,
+  // and each with what it is expected to do. Not in a window: what is taken at its moment is made
+  // as it is.
+  if (action.modes?.length && !atItsMoment) {
+    const modes = action.modes.flatMap((mode) => {
+      const moded = rulesetModedAction(definition, action, mode.id);
+      if (!moded || !rulesetShotsAvailable(actor, moded)) return [];
+      const expected = forecastFor(definition, combat, state, actor, moded);
+      return [
+        { id: mode.id, label: mode.label, targets: moded.targets.count, ...(expected ? { forecast: expected } : {}) },
+      ];
+    });
+    if (modes.length > 0) option.modes = modes;
+  }
+  // Where initiative is a number attacks move, the ways this attack may be made, each with what it
+  // would do: a style that takes would take what its damage dice are worth off the target's number,
+  // one that spends throws the actor's own number at their health.
+  // Not in a window: what is taken at its moment is made in the first style, so there is no choice.
+  const styles = atItsMoment ? [] : rulesetAttackStyles(combat, actor, action);
+  if (styles.length > 0) {
+    // A spending blow below the first target's hardness does nothing to them. An area names nobody,
+    // so it is the first combatant any legal aim would catch, as the forecast reads.
+    const aimed = firstTarget(definition, state, actor, action) ?? firstAreaTarget(state, actor, action);
+    const turned = aimed?.hardness !== undefined && actor.initiative < aimed.hardness;
+    option.styles = styles.map((style) => {
+      const hit = forecast?.hitChance !== undefined ? { hitChance: forecast.hitChance } : {};
+      const spent = turned ? 0 : Math.round(rulesetDamageAverage(definition, combat, actor.initiative) * 100) / 100;
+      const worth = style.takes
+        ? { ...hit, ...(forecast?.averageDamage !== undefined ? { shift: forecast.averageDamage } : {}) }
+        : { ...hit, averageDamage: spent };
+      return { id: style.id, label: style.label, forecast: worth };
+    });
+  }
   return option;
+}
+
+/** One of the ways an attack may be made where initiative is a number attacks move. */
+export type RulesetInitiativeStyle = NonNullable<RulesetCombat["initiative"]["resource"]>["styles"][number];
+
+/** Whether an action is an attack a style applies to: one that rolls to hit and does harm, or an
+ *  action made of other actions, whose parts are all made in its style. A reaction is taken at its
+ *  moment in the first style, like anything else made out of a turn. */
+export function rulesetActionTakesStyle(action: RulesetCombatAction): boolean {
+  if (action.contest) return false;
+  return !!action.sequence || (action.toHit !== undefined && !action.autoHit && !!action.damage);
+}
+
+/** The styles this actor may make this attack in now. A style that spends needs a number above the
+ *  crash line to spend, so a crashed actor is offered only the ones that take; and a number is spent
+ *  on one blow, so an action made of several only ever takes. */
+export function rulesetAttackStyles(
+  combat: RulesetCombat,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+): RulesetInitiativeStyle[] {
+  const resource = combat.initiative.resource;
+  if (!resource || !rulesetActionTakesStyle(action)) return [];
+  const line = resource.crash?.at ?? 0;
+  return resource.styles.filter((style) => !style.spends || (!action.sequence && actor.initiative > line));
 }
 
 /** How this attack is rolled: the actor's own conditions and their target's, the help an ally gave
@@ -904,7 +1066,7 @@ export function rulesetAttackMode(
    *  no board, and then none of them says anything. */
   where?: { state: RulesetEncounterState; optionId: string },
 ): RulesetCombatRollMode {
-  if (!combat.attackRoll.advantage) return "normal";
+  if (!rulesetCombatAdvantage(combat)) return "normal";
   const own = rulesetCombatEffects(definition, combat, actor, where?.state);
   const theirs = rulesetCombatEffects(definition, combat, target, where?.state);
   const distance = where ? distanceModes(combat, where.state, where.optionId, actor, target, theirs) : null;

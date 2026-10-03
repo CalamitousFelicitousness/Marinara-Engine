@@ -25,6 +25,11 @@ export type ChatMode = "conversation" | "roleplay" | "game";
 /** How a multi-character (group) chat is handled. */
 export type GroupChatMode = "merged" | "individual";
 
+/** The one reading of a stored group mode: anything but "individual" is the default Merged mode. */
+export function normalizeGroupChatMode(value: unknown): GroupChatMode {
+  return value === "individual" ? "individual" : "merged";
+}
+
 /** How individual-mode group chats decide response order. */
 export type GroupResponseOrder = "sequential" | "smart" | "manual";
 
@@ -254,6 +259,11 @@ export type GameStoryboardViewerDisplayMode = "floating" | "background";
 
 /** Extra metadata stored on a chat. */
 export interface ChatMetadata {
+  /** Fresh, explicitly reviewed setup for an optional shared session. */
+  multiplayerSetup?: boolean;
+  multiplayerSetupComplete?: boolean;
+  multiplayerGameSetup?: { preferences: string; gmConnectionId?: string; gameName?: string };
+  multiplayer?: import("./multiplayer.js").MultiplayerStoredRoom | import("./multiplayer.js").MultiplayerJoinedRoom;
   /** Opt-in coordinated Roleplay context and scene memory. */
   advancedMemory?: import("./advanced-memory.js").AdvancedMemorySettings;
   /** Durable maintenance checkpoint; model calls never hold a storage transaction. */
@@ -286,6 +296,9 @@ export interface ChatMetadata {
   automaticSummaryEnabled?: boolean;
   /** Keep recent automatic summaries in context while retrieving relevant older Conversation weeks or Roleplay entries. */
   semanticSummaryRetrievalEnabled?: boolean;
+  semanticSummaryRecentCount?: number;
+  semanticSummaryOlderCount?: number;
+  semanticSummaryMinSimilarity?: number;
   /** Last assistant message ID processed by the automatic Roleplay summary updater. */
   lastAutomaticSummaryMessageId?: string | null;
   /** Chat-scoped manual summary prompt templates. Missing or empty uses the built-in default. */
@@ -941,6 +954,12 @@ export interface MessageExtra {
   hiddenFromUser?: boolean;
   /** When true, the visible message is excluded from future AI prompt context */
   hiddenFromAI?: boolean;
+  /** User bookmark shown in chat tools. Never sent to the model. */
+  bookmark?: import("../utils/message-marks.js").MessageBookmark | null;
+  /** Keep this message in prompt context when the message limit would otherwise drop it. */
+  pinnedToContext?: boolean;
+  /** User-only note attached to this message. Never sent to the model. */
+  privateNote?: string | null;
   /** Character IDs whose generation context excludes this message. Global hiddenFromAI takes precedence. */
   hiddenFromAICharacterIds?: string[];
   /** When true, Roleplay renders this generated assistant turn as a fresh bubble instead of grouping with the previous assistant turn. */
@@ -1126,6 +1145,8 @@ export interface GenerateRequest {
   attachments?: MessageAttachment[];
   /** One-shot Narrative Director mode for this generation, if the user armed Push Story. */
   narrativeDirectorMode?: "natural" | "random" | null;
+  /** One-shot Smart speaker selection for an individual Roleplay group. */
+  smartResponse?: boolean;
 }
 
 /** An SSE event from the generation stream. */

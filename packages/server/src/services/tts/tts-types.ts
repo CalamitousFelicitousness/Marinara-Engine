@@ -2,6 +2,8 @@
 // TTS Provider Types
 // ──────────────────────────────────────────────
 
+import type { TTSAudioFormat } from "@marinara-engine/shared";
+
 /** Everything that varies per spoken line. Provider settings come from the config. */
 export interface TTSSpeechInput {
   text: string;
@@ -24,6 +26,8 @@ export interface TTSProviderRequest {
   body: string | FormData;
   /** ElevenLabs answers gzipped, and undici will not unwrap it for us. */
   decodeCompressedResponse: boolean;
+  /** The `response_format` the body asks for; raw PCM can arrive labelled only as octet-stream. */
+  responseFormat?: TTSAudioFormat;
   /**
    * Present when this submission may answer with a job instead of audio. Whether
    * it does is a property of the model, not the backend: NanoGPT returns bytes

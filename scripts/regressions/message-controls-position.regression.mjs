@@ -36,10 +36,22 @@ for (const [surface, source, name] of [
     new RegExp(`messageControlsAbove && [\\s\\S]{0,200}${name}`, "u"),
     `${surface} messages must offer an above-body placement`,
   );
+}
+for (const [surface, source, name] of [
+  ["roleplay", chatMessage, "roleplayMessageControls"],
+  ["texting", chatMessage, "messageControls"],
+]) {
   assert.match(
     source,
     new RegExp(`!messageControlsAbove && [\\s\\S]{0,120}${name}`, "u"),
     `${surface} messages must keep the below-body placement`,
+  );
+}
+// Grouped messages split the below-body controls around the reaction row.
+for (const part of ["<ConversationMessageSwipes", "actionsRow"]) {
+  assert.ok(
+    conversationGrouped.includes(`{!messageControlsAbove && ${part}`),
+    `conversation grouped messages must keep ${part} below the body`,
   );
 }
 

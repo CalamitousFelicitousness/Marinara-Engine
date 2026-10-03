@@ -49,6 +49,28 @@
 
 export * from "./types.js";
 export {
+  applyRulesetFightItemChanges,
+  rulesetAmmoLeft,
+  rulesetFightItemChanges,
+  rulesetLoaded,
+  type RulesetFightItemChange,
+} from "./ammo.js";
+export {
+  rulesetCombatAdvantage,
+  rulesetCombatIsPool,
+  rulesetCombatPenalty,
+  rulesetDamageAverage,
+  rulesetDamageTarget,
+  rulesetPoolAverage,
+  rulesetPoolChance,
+  rulesetPoolDie,
+  rulesetPoolDistribution,
+  rulesetSoakOf,
+  throwRulesetCombatPool,
+  throwRulesetDamageDice,
+  type RulesetCombatPoolThrow,
+} from "./pool.js";
+export {
   parseRulesetCombatDice,
   rollRulesetDice,
   rulesetAverageAmount,
@@ -88,8 +110,12 @@ export {
   rulesetCombatDamageKind,
   rulesetCombatFailsSave,
   rulesetCombatHealth,
+  rulesetCombatHide,
   rulesetCombatStanding,
   rulesetConditionModifiers,
+  rulesetInitiativeModifierNow,
+  rulesetImmuneToCondition,
+  rulesetInitiativeOrder,
   rulesetMovementAllowance,
   rulesetSaveMode,
   type RulesetActiveCondition,
@@ -138,6 +164,7 @@ export {
   rulesetStandardBudget,
   rulesetStandardName,
   rulesetTargetRefusal,
+  rulesetWithinSpendLimits,
   rulesetReactionPointsAtSource,
   rulesetReactionsAt,
   rulesetWindowMoment,
@@ -152,6 +179,7 @@ export {
 export {
   advanceRulesetTurn,
   applyRulesetCombatChoice,
+  liftRulesetCrashes,
   rulesetEncounterOutcome,
   rulesetEncounterSummary,
 } from "./resolve.js";

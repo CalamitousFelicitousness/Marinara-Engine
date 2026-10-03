@@ -58,7 +58,18 @@ function manualChunks(id: string) {
   if (id.endsWith("/components/game/game-narration-format.ts")) return "game-narration-format";
   if (id.endsWith("/components/game/GameNarrationVisuals.tsx")) return "game-narration-visuals";
   if (id.endsWith("/lib/game-tag-parser.ts")) return "game-tag-parser";
-  if (!id.includes("node_modules")) return undefined;
+  // The inventory screen grows with every kind of item a ruleset can describe, so it is its own chunk
+  // rather than weight on GameSurface's budget.
+  if (id.endsWith("/components/game/GameInventory.tsx") || id.endsWith("/components/game/RulesetItemPicker.tsx"))
+    return "game-inventory";
+  // So is the book the inventory reads a ruleset's items through, and the items the Game Master
+  // invents, rather than weight on the game tag parser's chunk, which takes the rest of the shared code.
+  if (/\/shared\/(?:dist|src)\/features\/rulesets\/(?:item-book|invented-items)\.(?:js|ts)$/u.test(id))
+    return "ruleset-items";
+  if (!id.includes("/node_modules/")) return undefined;
+  // Ignore checkout names, but keep pnpm peer suffixes so React and its consumers stay together.
+  // Removing those suffixes splits eager React imports across chunks and creates startup cycles.
+  id = id.slice(id.search(/\/(?:\.pnpm|node_modules)\//u));
 
   // Keep dynamically selected Lucide glyphs in small alphabetical chunks
   // instead of pulling the complete icon catalog into one eager vendor file.

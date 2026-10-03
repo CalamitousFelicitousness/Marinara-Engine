@@ -4,6 +4,7 @@ import { readFileSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import { createRequire } from "node:module";
+import { trackPageFetches, waitForPageFetchesToSettle } from "./page-fetch-fixture.js";
 import { seedUIState } from "./ui-state-fixture.js";
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
@@ -370,6 +371,91 @@ async function createFixture(request: APIRequestContext, baseUrl: string, names:
   };
 }
 
+for (const responseOrder of ["manual", "smart"] as const) {
+  test(`Roleplay Smart trigger chooses a speaker without changing ${responseOrder} order`, async ({
+    page,
+    request,
+  }, info) => {
+    let selectedIds: string[] = [];
+    let selections = 0;
+    const provider = createServer(async (incoming, response) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of incoming) chunks.push(Buffer.from(chunk));
+      const body = JSON.parse(Buffer.concat(chunks).toString() || "{}");
+      const selecting = JSON.stringify(body.messages ?? []).includes("hidden response orchestrator");
+      if (selecting) selections++;
+      const content = selecting ? JSON.stringify(selectedIds) : "The chosen character answers.";
+      if (body.stream) {
+        response.writeHead(200, { "content-type": "text/event-stream", connection: "close" });
+        response.end(
+          `data: ${JSON.stringify({ choices: [{ index: 0, delta: { content }, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`,
+        );
+      } else {
+        response.writeHead(200, { "content-type": "application/json", connection: "close" });
+        response.end(JSON.stringify({ choices: [{ message: { role: "assistant", content }, finish_reason: "stop" }] }));
+      }
+    });
+    await new Promise<void>((resolve) => provider.listen(0, "127.0.0.1", resolve));
+    const address = provider.address();
+    if (!address || typeof address === "string") throw new Error("Fixture did not bind");
+    const fixture = await createFixture(request, `http://127.0.0.1:${address.port}/v1`, ["Alice", "Bob"]);
+    const { chat, characters } = fixture;
+    const [alice, bob] = characters;
+    const stored = async () =>
+      (await (await request.get(`/api/chats/${chat.id}/messages`)).json()) as Array<{
+        role: string;
+        characterId: string | null;
+      }>;
+    try {
+      selectedIds = [bob.id];
+      const patched = await request.patch(`/api/chats/${chat.id}/metadata`, {
+        data: { groupResponseOrder: responseOrder },
+      });
+      expect(patched.ok(), await patched.text()).toBeTruthy();
+      await openChat(page, chat.id, {
+        theme: responseOrder === "manual" ? "dark" : "light",
+        appAccentColor: "#38bdf8",
+        trackerPanelEnabled: false,
+        trackerPanelOpen: false,
+      });
+      const trigger = page.getByRole("button", { name: "Trigger character response", exact: true });
+      await trigger.click();
+      const menu = page.getByText("Trigger Response", { exact: true }).locator("..");
+      const smart = menu.getByRole("button", { name: "Smart", exact: true });
+      await expect(menu.getByRole("button").first()).toHaveText("Smart");
+      await expect(smart.locator("svg.lucide-users")).toHaveCSS("color", "rgb(56, 189, 248)");
+      const bounds = await menu.boundingBox();
+      expect(bounds!.x).toBeGreaterThanOrEqual(0);
+      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(page.viewportSize()!.width + 1);
+      await page.screenshot({ path: info.outputPath(`smart-trigger-${responseOrder}.png`), animations: "disabled" });
+      const smartRequest = page.waitForRequest((req) => req.url().endsWith("/api/generate") && req.method() === "POST");
+      await smart.click();
+      expect((await smartRequest).postDataJSON()).toMatchObject({ chatId: chat.id, smartResponse: true });
+      await expect
+        .poll(async () => (await stored()).filter((row) => row.role === "assistant").map((row) => row.characterId))
+        .toEqual([bob.id]);
+      expect(selections).toBe(1);
+      await expect(page.locator(".mari-chat-send-btn .lucide-send")).toBeVisible();
+      await trigger.click();
+      const namedRequest = page.waitForRequest((req) => req.url().endsWith("/api/generate") && req.method() === "POST");
+      await menu.getByRole("button", { name: /Alice/u }).click();
+      const namedBody = (await namedRequest).postDataJSON();
+      expect(namedBody.forCharacterId).toBe(alice.id);
+      expect(namedBody.smartResponse).not.toBe(true);
+      await expect
+        .poll(async () => (await stored()).filter((row) => row.role === "assistant").map((row) => row.characterId))
+        .toEqual([bob.id, alice.id]);
+      expect(selections).toBe(1);
+      const savedChat = await (await request.get(`/api/chats/${chat.id}`)).json();
+      expect(extra(savedChat.metadata).groupResponseOrder).toBe(responseOrder);
+    } finally {
+      await fixture.cleanup();
+      provider.closeAllConnections();
+      await new Promise<void>((resolve) => provider.close(() => resolve()));
+    }
+  });
+}
+
 for (const presentation of ["classic", "visual-novel"] as const) {
   test(`Roleplay whispers reveal only on screen and preserve recipient privacy (${presentation})`, async ({
     page,
@@ -396,6 +482,7 @@ for (const presentation of ["classic", "visual-novel"] as const) {
         return fetch(input, init);
       };
     });
+    await trackPageFetches(page);
     const provider = createServer(async (incoming, response) => {
       incoming.resume();
       response.writeHead(200, { "content-type": "text/event-stream", connection: "close" });
@@ -422,7 +509,7 @@ for (const presentation of ["classic", "visual-novel"] as const) {
     };
     const reload = async () => {
       // Let startup requests finish before tearing down WebKit's page context.
-      await page.waitForLoadState("networkidle");
+      await waitForPageFetchesToSettle(page);
       await page.reload();
     };
 
@@ -486,17 +573,21 @@ for (const presentation of ["classic", "visual-novel"] as const) {
       const personal = bubble.locator("[data-roleplay-whisper]").filter({ hasText: "Whisper to Mari" });
       await expect(secret).toBeVisible();
       await expect(personal).toContainText("A silver door appears in your vision.");
-      await expect(personal.getByRole("button")).toHaveCount(0);
+      await expect(personal.getByRole("button", { name: "Edit whisper", exact: true })).toBeVisible();
+      await expect(secret.getByRole("button", { name: "Edit whisper", exact: true })).toHaveCount(0);
       await expect(page.locator("body")).not.toContainText("The hidden key is beneath the blue vase.");
       await expect(secret.getByRole("button")).toHaveAccessibleDescription("Whisper to Bob");
       await expect(secret.getByRole("button")).not.toHaveAttribute("aria-controls", /.+/u);
       await page.screenshot({ path: info.outputPath("whisper-concealed.png"), animations: "disabled" });
       await secret.getByRole("button", { name: "Reveal a secret", exact: true }).click();
       await expect(secret).toContainText("The hidden key is beneath the blue vase.");
-      await expect(secret.getByRole("button")).toHaveAttribute("aria-expanded", "true");
+      await expect(secret.getByRole("button", { name: "Hide the secret", exact: true })).toHaveAttribute(
+        "aria-expanded",
+        "true",
+      );
       expect(
         await secret
-          .getByRole("button")
+          .getByRole("button", { name: "Hide the secret", exact: true })
           .evaluate((button) => document.getElementById(button.getAttribute("aria-controls") ?? "")?.textContent),
       ).toBe("The hidden key is beneath the blue vase.");
       const order = await secret.evaluate((element) => {
@@ -519,12 +610,45 @@ for (const presentation of ["classic", "visual-novel"] as const) {
       expect(await preview(bob.id)).toContain("The hidden key is beneath the blue vase.");
       expect(await preview(bob.id)).not.toContain("A silver door appears in your vision.");
       expect(await preview(narrator.id)).toContain("A silver door appears in your vision.");
-      await secret.getByRole("button", { name: "Hide the secret", exact: true }).click();
-      await expect(secret).not.toContainText("The hidden key is beneath the blue vase.");
-      await secret.getByRole("button", { name: "Reveal a secret", exact: true }).click();
-      await reload();
+      const editor = page.locator('[data-component="ExpandedTextarea"]');
+      const whisperText = editor.getByRole("textbox", { name: "Edit whisper", exact: true });
+      await secret.getByRole("button", { name: "Edit whisper", exact: true }).click();
+      await expect(whisperText).toHaveValue("The hidden key is beneath the blue vase.");
+      await whisperText.fill("Discard this correction.");
+      await editor.getByRole("button", { name: "Cancel", exact: true }).last().click();
+      await expect(editor).toHaveCount(0);
+      await expect(secret).toContainText("The hidden key is beneath the blue vase.");
+      await secret.getByRole("button", { name: "Edit whisper", exact: true }).click();
+      await whisperText.fill("   ");
+      await expect(editor.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+      const corrected = "The corrected key is beneath the green vase.\nKeep it private.";
+      await whisperText.fill(corrected);
+      await page.route(
+        `**/api/chats/${chat.id}/messages/${saved.id}/extra*`,
+        (route) => route.fulfill({ status: 503, json: { error: "Fixture save failure" } }),
+        { times: 1 },
+      );
+      await editor.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(editor.getByRole("alert")).toHaveText("Could not save this change. Please try again.");
+      await expect(whisperText).toHaveValue(corrected);
+      await page.screenshot({ path: info.outputPath("whisper-edit-retry.png"), animations: "disabled" });
+      await editor.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(editor).toHaveCount(0);
+      await expect(secret).toContainText(corrected);
       await expect(secret).not.toContainText("The hidden key is beneath the blue vase.");
       await expect(personal).toContainText("A silver door appears in your vision.");
+      await secret.getByRole("button", { name: "Hide the secret", exact: true }).click();
+      await expect(secret).not.toContainText(corrected);
+      await reload();
+      await expect(secret).not.toContainText(corrected);
+      await secret.getByRole("button", { name: "Reveal a secret", exact: true }).click();
+      await expect(secret).toContainText(corrected);
+      const bobPrompt = await preview(bob.id);
+      expect(bobPrompt).toContain(corrected);
+      expect(bobPrompt).not.toContain("The hidden key is beneath the blue vase.");
+      expect(await preview(alice.id)).not.toContain(corrected);
+      expect(await preview(narrator.id)).toContain(corrected);
+      await page.screenshot({ path: info.outputPath("whisper-edited-reloaded.png"), animations: "disabled" });
       output = '[whisper: character="Bob" text="A secret without public narration."]';
       const only = await generate();
       await reload();
@@ -558,9 +682,33 @@ for (const presentation of ["classic", "visual-novel"] as const) {
         await expect(paragraph.locator("[data-roleplay-whisper]")).toHaveCount(1);
         await paragraph.getByRole("button", { name: "Reveal a secret", exact: true }).click();
         await expect(paragraph).toContainText("A secret between paragraphs.");
-        await page.getByRole("button", { name: "Next paragraph", exact: true }).click();
+        await paragraph.getByRole("button", { name: "Edit whisper", exact: true }).click();
+        await whisperText.fill("Keep this unfinished correction.");
+        await page.clock.install();
+        await page.evaluate(async () => {
+          const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+          useUIStore.getState().setRoleplayVnAutoPlayDelay(200);
+          useUIStore.getState().setRoleplayVnAutoPlay(true);
+        });
+        await page.route(
+          `**/api/chats/${chat.id}/messages/${between.id}/extra*`,
+          (route) => route.fulfill({ status: 503, json: { error: "Fixture save failure" } }),
+          { times: 1 },
+        );
+        await editor.getByRole("button", { name: "Save", exact: true }).click();
+        await expect(editor.getByRole("alert")).toHaveText("Could not save this change. Please try again.");
+        await page.clock.runFor(500);
+        await expect(whisperText).toHaveValue("Keep this unfinished correction.");
+        await expect(paragraph).toContainText("First paragraph.");
+        await editor.getByRole("button", { name: "Cancel", exact: true }).last().click();
+        await expect(editor).toHaveCount(0);
+        await page.clock.runFor(500);
         await expect(paragraph).toContainText("Second paragraph.");
         await expect(paragraph.locator("[data-roleplay-whisper]")).toHaveCount(0);
+        await page.evaluate(async () => {
+          const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+          useUIStore.getState().setRoleplayVnAutoPlay(false);
+        });
       }
       expect(errors).toEqual([]);
     } finally {
@@ -570,6 +718,166 @@ for (const presentation of ["classic", "visual-novel"] as const) {
     }
   });
 }
+
+test("Roleplay users send and edit private whispers and notes in Manual group chats", async ({
+  page,
+  request,
+}, info) => {
+  test.setTimeout(90_000);
+  const fixture = await createFixture(request, "http://127.0.0.1:9/v1", ["Alice", "Bob", "Narrator"]);
+  const { chat, characters } = fixture;
+  const [alice, bob, narrator] = characters;
+  const preview = async (forCharacterId: string) => {
+    const response = await request.post("/api/generate/dryRun", {
+      data: { chatId: chat.id, forCharacterId, returnPrompt: true },
+    });
+    expect(response.ok(), await response.text()).toBeTruthy();
+    return contentOf((await response.json()).prompt);
+  };
+  try {
+    const personaResponse = await request.post("/api/characters/personas", { data: { name: "Mari" } });
+    expect(personaResponse.ok()).toBeTruthy();
+    const persona = await personaResponse.json();
+    fixture.resources.push(`/api/characters/personas/${persona.id}`);
+    expect((await request.patch(`/api/chats/${chat.id}`, { data: { personaId: persona.id } })).ok()).toBeTruthy();
+    const metadata = await request.patch(`/api/chats/${chat.id}/metadata`, {
+      data: {
+        roleplayCommandsEnabled: true,
+        roleplayCommandToggles: { whisper: true, notes: true },
+        roleplayWhisperAudience: "narrator",
+        roleplayCommandNarratorId: narrator.id,
+      },
+    });
+    expect(metadata.ok(), await metadata.text()).toBeTruthy();
+    await openChat(page, chat.id, {
+      theme: "light",
+      trackerPanelEnabled: false,
+      trackerPanelOpen: false,
+    });
+    await page
+      .locator("textarea[data-chat-composer]")
+      .fill(
+        'I greet the room. [whisper: character="Bob", text="USER_WHISPER: meet at the gate."] [notes: content="USER_NOTE: keep the map hidden."]',
+      );
+    const sent = page.waitForResponse(
+      (response) => response.url().endsWith(`/api/chats/${chat.id}/messages`) && response.request().method() === "POST",
+    );
+    await page.locator(".mari-chat-send-btn").click();
+    const sentResponse = await sent;
+    expect(sentResponse.ok(), await sentResponse.text()).toBeTruthy();
+    const saved = await sentResponse.json();
+    expect(saved.content.trim()).toBe("I greet the room.");
+    expect(extra(saved.extra).roleplayCommandActivity).toHaveLength(2);
+    const bubble = page.locator(`[data-message-id="${saved.id}"]`);
+    const whisper = bubble.locator("[data-roleplay-whisper]");
+    await expect(whisper).toContainText("USER_WHISPER: meet at the gate.");
+    await expect(whisper.getByRole("button", { name: "Reveal a secret", exact: true })).toHaveCount(0);
+    await whisper.getByRole("button", { name: "Edit whisper", exact: true }).click();
+    const editor = page.locator('[data-component="ExpandedTextarea"]');
+    await editor
+      .getByRole("textbox", { name: "Edit whisper", exact: true })
+      .fill("USER_WHISPER_EDITED: meet at the bridge.");
+    await editor.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(editor).toBeHidden();
+    await expect(whisper).toContainText("USER_WHISPER_EDITED: meet at the bridge.");
+    const note = bubble.locator('[data-roleplay-command="notes"]');
+    await note.getByRole("button", { name: "Mari used notes command!", exact: true }).click();
+    await expect(note).toContainText("USER_NOTE: keep the map hidden.");
+    await note.getByRole("button", { name: "Edit", exact: true }).click();
+    await editor.locator("textarea").fill("USER_NOTE_EDITED: the map is in my coat.");
+    await editor.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(editor).toBeHidden();
+    await expect(note).toContainText("USER_NOTE_EDITED: the map is in my coat.");
+    await page.screenshot({ path: info.outputPath("user-private-commands.png"), animations: "disabled" });
+    const bobPrompt = await preview(bob.id);
+    expect(bobPrompt).toContain("USER_WHISPER_EDITED");
+    expect(bobPrompt).not.toContain("USER_NOTE");
+    expect(await preview(alice.id)).not.toMatch(/USER_WHISPER|USER_NOTE/u);
+    const narratorPrompt = await preview(narrator.id);
+    expect(narratorPrompt).toContain("USER_WHISPER_EDITED");
+    expect(narratorPrompt).toContain("USER_NOTE_EDITED");
+    expect(narratorPrompt).not.toContain("USER_WHISPER: meet");
+    expect(narratorPrompt).not.toContain("USER_NOTE: keep");
+    await page.reload();
+    await expect(whisper).toContainText("USER_WHISPER_EDITED");
+    await note.getByRole("button", { name: "Mari used notes command!", exact: true }).click();
+    await expect(note).toContainText("USER_NOTE_EDITED");
+    await note.getByRole("button", { name: "Delete", exact: true }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Delete", exact: true }).click();
+    await expect.poll(() => preview(narrator.id)).not.toContain("USER_NOTE");
+    expect(await preview(bob.id)).toContain("USER_WHISPER_EDITED");
+
+    // A whisper typed while editing the narrator's reply becomes a whisper, quotes and line breaks included.
+    const narrated = await request.post(`/api/chats/${chat.id}/messages`, {
+      data: { role: "assistant", characterId: narrator.id, content: "The fog rolls in." },
+    });
+    expect(narrated.ok(), await narrated.text()).toBeTruthy();
+    const narratorBubble = page.locator(`[data-message-id="${(await narrated.json()).id}"]`);
+    await page.reload();
+    await narratorBubble.getByRole("button", { name: "Edit", exact: true }).click();
+    await narratorBubble
+      .locator("textarea[data-chat-message-editor]")
+      .fill(
+        'The fog lifts. [whisper: character="Bob" text=""NARRATOR_WHISPER," a voice breathes.\nOnly you hear it."] The bells ring.',
+      );
+    await narratorBubble.getByRole("button", { name: "Save edit", exact: true }).click();
+    await expect(narratorBubble.locator("textarea[data-chat-message-editor]")).toHaveCount(0);
+    const narratorWhisper = narratorBubble.locator("[data-roleplay-whisper]").filter({ hasText: "Whisper to Bob" });
+    await expect(narratorWhisper).toBeVisible();
+    await expect(narratorBubble).not.toContainText("[whisper:");
+    await expect(narratorBubble).toContainText("The bells ring.");
+    await narratorWhisper.getByRole("button", { name: "Reveal a secret", exact: true }).click();
+    await expect(narratorWhisper).toContainText('"NARRATOR_WHISPER," a voice breathes.');
+    expect(await preview(bob.id)).toContain("NARRATOR_WHISPER");
+    expect(await preview(alice.id)).not.toContain("NARRATOR_WHISPER");
+    const sendPrivateCommand = async (content: string) => {
+      await page.locator("textarea[data-chat-composer]").fill(content);
+      const response = page.waitForResponse(
+        (result) => result.url().endsWith(`/api/chats/${chat.id}/messages`) && result.request().method() === "POST",
+      );
+      await page.locator(".mari-chat-send-btn").click();
+      const savedResponse = await response;
+      expect(savedResponse.ok()).toBeTruthy();
+      const savedMessage = await savedResponse.json();
+      expect(savedMessage.content.trim()).toBe("");
+      return page.locator(`[data-message-id="${savedMessage.id}"]`);
+    };
+    const onlyWhisper = await sendPrivateCommand('[whisper: character="Bob", text="ONLY_WHISPER_SECRET"]');
+    await expect(onlyWhisper.locator("[data-roleplay-whisper]")).toContainText("ONLY_WHISPER_SECRET");
+    await expect(onlyWhisper.getByRole("button", { name: "Edit whisper", exact: true })).toBeVisible();
+    expect(await preview(bob.id)).toContain("ONLY_WHISPER_SECRET");
+    expect(await preview(alice.id)).not.toContain("ONLY_WHISPER_SECRET");
+    const onlyNote = await sendPrivateCommand('[notes: content="ONLY_NOTE_SECRET"]');
+    await onlyNote.getByRole("button", { name: "Mari used notes command!", exact: true }).click();
+    await expect(onlyNote.locator('[data-roleplay-command="notes"]')).toContainText("ONLY_NOTE_SECRET");
+    expect(await preview(narrator.id)).toContain("ONLY_NOTE_SECRET");
+    expect(await preview(bob.id)).not.toContain("ONLY_NOTE_SECRET");
+    const malformed = await sendPrivateCommand('[whisper: character="Bob", text="UNFINISHED_PRIVATE_SECRET');
+    await malformed.getByRole("button", { name: "Mari used whisper command!", exact: true }).click();
+    await expect(malformed).toContainText(
+      "This private command could not be read. Your original text is preserved below.",
+    );
+    await expect(malformed).toContainText("UNFINISHED_PRIVATE_SECRET");
+    for (const character of characters) expect(await preview(character.id)).not.toContain("UNFINISHED_PRIVATE_SECRET");
+    for (const invalid of [
+      { enabled: true, target: "Unknown", reason: "Whispers need one unambiguous character in this chat." },
+      { enabled: false, target: "Bob", reason: "This command is disabled in this chat." },
+    ]) {
+      const changed = await request.patch(`/api/chats/${chat.id}/metadata`, {
+        data: { roleplayCommandsEnabled: invalid.enabled },
+      });
+      expect(changed.ok()).toBeTruthy();
+      const rejected = await sendPrivateCommand(`[whisper: character="${invalid.target}", text="REJECTED_SECRET"]`);
+      const failedWhisper = rejected.locator('[data-roleplay-command="whisper"]');
+      await failedWhisper.getByRole("button", { name: "Mari used whisper command!", exact: true }).click();
+      await expect(failedWhisper).toContainText(invalid.reason);
+      await expect(failedWhisper).toContainText("REJECTED_SECRET");
+      for (const character of characters) expect(await preview(character.id)).not.toContain("REJECTED_SECRET");
+    }
+  } finally {
+    await fixture.cleanup();
+  }
+});
 
 test("Roleplay continue streams inside the last reply while an empty send creates a new message", async ({
   page,

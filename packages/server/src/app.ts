@@ -44,6 +44,7 @@ import { decisionProcessService } from "./services/sidecar/decision-process.serv
 import { sidecarProcessService } from "./services/sidecar/sidecar-process.service.js";
 import { utilitySidecarService } from "./services/utility-sidecar/utility-sidecar.service.js";
 import { startServerAutonomousScheduler } from "./services/conversation/server-autonomous-scheduler.service.js";
+import { createMultiplayerAutonomyAdapter, type MultiplayerAutonomyService } from "./services/multiplayer/autonomy.js";
 import { preparePersonalExtensionTrust } from "./services/setup/personal-extension-trust.js";
 import { personalServerExtensionRuntime } from "./services/extensions/personal-server-extension-runtime.js";
 import { runWithGenerationFallbackNotifier } from "./services/generation/fallback-notification.js";
@@ -62,10 +63,12 @@ import { getLastFreeze } from "./lib/freeze-detector.js";
 import { buildSidecarHealthSection } from "./services/sidecar/sidecar-slot-report.js";
 import { getPreviousSessionStatus, getUncleanExitHistory } from "./lib/session-postmortem.js";
 import { followLogLevel, logger, protectTerminalLogger } from "./lib/logger.js";
+import { flushLorebookActivationStats } from "./services/lorebook/activation-stats.js";
 import { logRateLimited } from "./lib/log-rate-limit.js";
 import { genRequestId, registerRequestLogging, RequestLogController } from "./lib/request-logging.js";
 import { startup } from "./lib/startup-timeline.js";
 import { openCodeSessionHook } from "./utils/opencode-session.js";
+import { startMessageTrashMaintenance, sweepExpiredMessageTrash } from "./services/storage/message-trash.storage.js";
 
 const isLite = process.env.MARINARA_LITE === "true" || process.env.MARINARA_LITE === "1";
 const MAX_UPLOAD_BYTES = 256 * 1024 * 1024;
@@ -142,7 +145,9 @@ export async function buildApp(https?: { cert: Buffer; key: Buffer }) {
   // ── Storage ──
   const db = await startup.phase("storage.open", () => getDB());
   app.decorate("db", db);
+  let stopMessageTrashMaintenance: (() => Promise<void>) | undefined;
   app.addHook("onClose", async () => {
+    await stopMessageTrashMaintenance?.();
     try {
       // Same concurrent stops as before, now named and bounded: a runtime
       // whose stop() hangs must not keep closeDB() from flushing before the
@@ -155,6 +160,7 @@ export async function buildApp(https?: { cert: Buffer; key: Buffer }) {
         // not end them, and a Python model loader left behind keeps its GPU memory.
         { name: "decisionSidecar", run: () => decisionProcessService.stop() },
         { name: "utilitySidecar", run: () => utilitySidecarService.stop() },
+        { name: "lorebookActivationStats", run: () => flushLorebookActivationStats() },
       ]);
       for (const { name, reason, elapsedMs } of failed) {
         app.log.error(
@@ -334,7 +340,21 @@ export async function buildApp(https?: { cert: Buffer; key: Buffer }) {
   await startup.phase("capabilities.agents", () => initializeCapabilityAgentRegistry());
 
   // ── Server-side autonomous conversation scheduler ──
-  startServerAutonomousScheduler(app);
+  startServerAutonomousScheduler(
+    app,
+    createMultiplayerAutonomyAdapter(
+      () => (app as unknown as { multiplayer?: MultiplayerAutonomyService }).multiplayer,
+    ),
+  );
+
+  // Expired trash in chats that are never reopened still needs to be removed.
+  // Cold trash shards load only when expired; wait for active cleanup before closing the DB.
+  const messageTrashMaintenance = startMessageTrashMaintenance(() => sweepExpiredMessageTrash(db), {
+    info: (purged) => app.log.info("Purged %d expired message trash entries", purged),
+    warn: (error) =>
+      app.log.warn({ err: error }, "Expired message trash cleanup failed; it will retry on the next sweep"),
+  });
+  stopMessageTrashMaintenance = messageTrashMaintenance.stop;
 
   // ── Sidecar bootstrap (background, skipped in lite mode) ──
   if (!isLite) {

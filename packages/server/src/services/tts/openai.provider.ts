@@ -30,6 +30,7 @@ export class OpenAITTSProvider extends BaseTTSProvider {
     const instructions = openAiModelSupportsSpeechInstructions(model)
       ? buildSpeechInstructions({ speaker: input.speaker, tone: input.tone })
       : undefined;
+    const responseFormat = this.resolveAudioFormat();
 
     return {
       url: `${this.baseUrl}/audio/speech`,
@@ -39,10 +40,11 @@ export class OpenAITTSProvider extends BaseTTSProvider {
         input: input.text,
         voice: input.voice || this.defaultVoice(),
         speed: this.cfg.speed,
-        response_format: this.resolveAudioFormat(),
+        response_format: responseFormat,
         ...(instructions ? { instructions } : {}),
       }),
       decodeCompressedResponse: false,
+      responseFormat,
     };
   }
 
@@ -97,6 +99,7 @@ export class NanoGptTTSProvider extends OpenAITTSProvider {
             includeSpeaker: this.cfg.source !== "elevenlabs",
           })
         : undefined;
+    const responseFormat = this.resolveAudioFormat();
 
     return {
       url: `${nanoGptV1BaseUrl(this.baseUrl)}/audio/speech`,
@@ -106,10 +109,11 @@ export class NanoGptTTSProvider extends OpenAITTSProvider {
         input: text,
         voice: input.voice || this.defaultVoice(),
         ...(elevenLabsModel ? {} : { speed: this.cfg.speed }),
-        response_format: this.resolveAudioFormat(),
+        response_format: responseFormat,
         ...(instructions ? { instructions } : {}),
       }),
       decodeCompressedResponse: false,
+      responseFormat,
     };
   }
 }

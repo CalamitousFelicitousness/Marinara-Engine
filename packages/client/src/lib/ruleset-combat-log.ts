@@ -12,6 +12,7 @@
 import type {
   DirectedRulesetEvent,
   DirectedRulesetView,
+  RulesetCombatPoolRoll,
   RulesetCombatRollMode,
   RulesetConditionBonus,
   RulesetDefinition,
@@ -29,9 +30,13 @@ export interface RulesetCombatNames {
   save: (id: string) => string;
   /** One of the checks a contest reads. */
   check: (id: string) => string;
-  /** The label of one of the two tracks the ruleset's dying rule counts on. */
+  /** The label of a live track: one of the two the ruleset's dying rule counts on, or one a level reads. */
   track: (id: string) => string;
+  /** The label of a derived value a level reads. */
+  derived: (id: string) => string;
   tier: (id: string) => string;
+  /** One of the ways an attack may be made where initiative is a number attacks move. */
+  style: (id: string) => string;
   /** What this ruleset calls the number an attack is rolled against: "AC", "Guard", whatever the
    *  file named it. Empty when the ruleset points at something with no label of its own. */
   defense: string;
@@ -79,7 +84,9 @@ export function rulesetCombatNames(
     save: lookup(definition.sheet.saves),
     check: lookup(definition.combat?.checks),
     track: lookup(definition.sheet.live.tracks),
+    derived: lookup(definition.sheet.derived),
     tier: lookup(definition.combat?.threat?.tiers),
+    style: lookup(definition.combat?.initiative.resource?.styles),
     defense: rulesetValueLabel(definition, definition.combat?.defense),
   };
 }
@@ -139,17 +146,61 @@ export function rulesetRollText(
   });
 }
 
+/** A pool as it was thrown, for a `dice-pool` fight: how many successes, from how many dice (and what
+ *  made up that many, when anything besides the number itself did), at which target, the faces, and
+ *  whether it was the better or worse of two throws or a botch. Every number is the event's own. */
+export function rulesetPoolRollText(
+  roll: {
+    rolls: number[];
+    modifier: number;
+    total: number;
+    mode?: RulesetCombatRollMode;
+    bonuses?: RulesetConditionBonus[];
+    pool: RulesetCombatPoolRoll;
+  },
+  t: TFunction,
+  bonusName: (bonus: RulesetConditionBonus) => string = (bonus) => bonus.condition,
+): string {
+  const parts = [
+    ...(roll.bonuses ?? []).map((bonus) =>
+      t("game.combat.ruleset.roll.bonus", { value: signed(bonus.value), name: bonusName(bonus) }),
+    ),
+    ...(roll.pool.penalty ? [t("game.combat.ruleset.roll.penalty", { value: signed(roll.pool.penalty) })] : []),
+  ];
+  const dice = t("game.combat.ruleset.roll.dice", { count: roll.pool.dice });
+  const built =
+    parts.length > 0
+      ? t("game.combat.ruleset.roll.poolFrom", { dice, parts: [String(roll.modifier), ...parts].join(" ") })
+      : dice;
+  let text = t("game.combat.ruleset.roll.pool", {
+    count: roll.total,
+    dice: built,
+    target: roll.pool.target,
+    rolls: roll.rolls.join(", "),
+  }) as string;
+  if (roll.mode === "advantage") text = t("game.combat.ruleset.roll.poolAdvantage", { roll: text });
+  else if (roll.mode === "disadvantage") text = t("game.combat.ruleset.roll.poolDisadvantage", { roll: text });
+  if (roll.pool.botch) text = t("game.combat.ruleset.roll.poolBotch", { roll: text });
+  return text;
+}
+
 /** A defense in the ruleset's own word for it, when the file gave it one. */
 function defenseText(names: RulesetCombatNames, defense: number): string {
   return names.defense ? `${names.defense} ${defense}` : String(defense);
 }
 
-/** What a condition, or a level of a track, that changed a number is called in the log. */
+/** What a condition, or a level of a track or a derived value, that changed a number is called in the
+ *  log. A level is named by what it reads. */
 function bonusNamer(names: RulesetCombatNames, t: TFunction): (bonus: RulesetConditionBonus) => string {
   return (bonus) =>
     bonus.level === undefined
-      ? names.condition(bonus.condition)
-      : t("game.combat.ruleset.roll.level", { track: names.track(bonus.condition), level: bonus.level });
+      ? bonus.item
+        ? bonus.condition
+        : names.condition(bonus.condition)
+      : t("game.combat.ruleset.roll.level", {
+          track: (bonus.derived ? names.derived : names.track)(bonus.condition),
+          level: bonus.level,
+        });
 }
 
 /** The reason a step was refused, as a sentence. The server sends the same words back as the second
@@ -209,15 +260,28 @@ export function rulesetCombatEventLine(
     case "attack": {
       const named = bonusNamer(names, t);
       // The ruleset's own word for what it was rolled against, when the file gave it one, and what
-      // the target's conditions added to it.
-      const defense = defenseText(names, event.defense);
+      // the target's conditions added to it. A pool says how many successes it needed instead.
+      const pool = event.pool;
+      const defense = pool
+        ? (t("game.combat.ruleset.roll.needed", { count: event.defense }) as string)
+        : defenseText(names, event.defense);
       return key(
-        event.outcome === "critical" ? "attackCritical" : event.outcome === "hit" ? "attackHit" : "attackMiss",
+        pool
+          ? event.outcome === "miss"
+            ? "attackPoolMiss"
+            : "attackPoolHit"
+          : event.outcome === "critical"
+            ? "attackCritical"
+            : event.outcome === "hit"
+              ? "attackHit"
+              : "attackMiss",
         {
           actor: names.combatant(event.actorId),
           target: names.combatant(event.targetId),
-          label: event.label,
-          roll: rulesetRollText(event, t, named),
+          label: event.style
+            ? t("game.combat.ruleset.event.attackStyle", { label: event.label, style: names.style(event.style) })
+            : event.label,
+          roll: pool ? rulesetPoolRollText({ ...event, pool }, t, named) : rulesetRollText(event, t, named),
           defense: event.guards?.length
             ? t("game.combat.ruleset.roll.guarded", {
                 defense,
@@ -235,6 +299,14 @@ export function rulesetCombatEventLine(
       if (event.automatic) {
         return key("saveAutomatic", { actor: names.combatant(event.actorId), save: names.save(event.save) });
       }
+      if (event.pool) {
+        return key(event.success ? "savePoolSuccess" : "savePoolFailure", {
+          actor: names.combatant(event.actorId),
+          save: names.save(event.save),
+          roll: rulesetPoolRollText({ ...event, pool: event.pool }, t, bonusNamer(names, t)),
+          needed: t("game.combat.ruleset.roll.needed", { count: event.difficulty }),
+        });
+      }
       return key(event.success ? "saveSuccess" : "saveFailure", {
         actor: names.combatant(event.actorId),
         save: names.save(event.save),
@@ -242,7 +314,10 @@ export function rulesetCombatEventLine(
         difficulty: event.difficulty,
       });
     case "damage": {
-      const lines = [
+      // A pool fight's damage is its own throw: what the dice counted (and the automatic successes
+      // beside them), then what soak took off, thrown or off the dice, before the harm lands.
+      const lines = event.pool ? poolHarmLines({ ...event, pool: event.pool }, event.targetId, names, key, t) : [];
+      lines.push(
         key(event.damageType ? "damage" : "damageUntyped", {
           target: names.combatant(event.targetId),
           amount: event.dealt,
@@ -250,12 +325,38 @@ export function rulesetCombatEventLine(
           health: event.health,
           maxHealth: event.maxHealth,
         }),
-      ];
+      );
       if (event.critical) lines.push(key("damageCritical"));
+      if (event.floor !== undefined) lines.push(key("damageFloor", { floor: event.floor }));
       if (event.adjust !== "none") lines.push(key(`damage${event.adjust[0]!.toUpperCase()}${event.adjust.slice(1)}`));
       if (event.saved) lines.push(key("damageSaved"));
       if (event.toTemp > 0) lines.push(key("damageTemporary", { amount: event.toTemp }));
       return lines.join(" ");
+    }
+    case "shift": {
+      // A number attacks move. What a taking blow took is its damage throw, spelled out as damage is,
+      // before what it did to the number.
+      const actor = names.combatant(event.actorId);
+      const source = names.combatant(event.sourceId);
+      if (event.reason === "taken") {
+        const lines = event.pool
+          ? poolHarmLines(
+              { rolls: event.rolls ?? [], flat: event.flat ?? 0, pool: event.pool },
+              event.actorId,
+              names,
+              key,
+              t,
+            )
+          : [];
+        lines.push(key("shiftTaken", { actor, amount: -event.amount, total: event.total }));
+        return lines.join(" ");
+      }
+      if (event.reason === "gained") return key("shiftGained", { actor, amount: event.amount, total: event.total });
+      if (event.reason === "crash") {
+        return key("shiftCrash", { actor, source, amount: event.amount, total: event.total });
+      }
+      if (event.reason === "missed") return key("shiftMissed", { actor, amount: -event.amount, total: event.total });
+      return key(event.reason === "spent" ? "shiftSpent" : "shiftRecovered", { actor, total: event.total });
     }
     case "heal":
       return key("heal", {
@@ -266,6 +367,14 @@ export function rulesetCombatEventLine(
       });
     case "temporary":
       return key("temporary", { target: names.combatant(event.targetId), amount: event.amount });
+    case "restored":
+      return key("restored", {
+        target: names.combatant(event.targetId),
+        amount: event.amount,
+        pool: event.pool,
+        value: event.value,
+        max: event.max,
+      });
     case "condition":
       return key(`condition${event.reason[0]!.toUpperCase()}${event.reason.slice(1)}`, {
         target: names.combatant(event.targetId),
@@ -278,14 +387,16 @@ export function rulesetCombatEventLine(
       // it: the whole handful, or the better or worse of two.
       const side = (roll: (typeof event)["attacker"]) => ({
         check: names.check(roll.check),
-        roll: rulesetRollText(
-          {
-            ...roll,
-            kept: roll.total - roll.modifier - (roll.bonuses ?? []).reduce((sum, bonus) => sum + bonus.value, 0),
-          },
-          t,
-          bonusNamer(names, t),
-        ),
+        roll: roll.pool
+          ? rulesetPoolRollText({ ...roll, pool: roll.pool }, t, bonusNamer(names, t))
+          : rulesetRollText(
+              {
+                ...roll,
+                kept: roll.total - roll.modifier - (roll.bonuses ?? []).reduce((sum, bonus) => sum + bonus.value, 0),
+              },
+              t,
+              bonusNamer(names, t),
+            ),
       });
       const attacker = side(event.attacker);
       const defender = side(event.defender);
@@ -317,6 +428,25 @@ export function rulesetCombatEventLine(
       });
     case "uses":
       return key("uses", { label: event.label, left: event.left, of: event.of });
+    case "broke":
+      return key("broke", { label: event.label, roll: event.roll });
+    case "gate":
+      if (event.pool) {
+        return key(event.success ? "gatePoolSuccess" : "gatePoolFailure", {
+          actor: names.combatant(event.actorId),
+          check: event.check,
+          label: event.label,
+          roll: rulesetPoolRollText({ ...event, pool: event.pool }, t, bonusNamer(names, t)),
+          needed: t("game.combat.ruleset.roll.needed", { count: event.difficulty }),
+        });
+      }
+      return key(event.success ? "gateSuccess" : "gateFailure", {
+        actor: names.combatant(event.actorId),
+        check: event.check,
+        label: event.label,
+        roll: rulesetRollText(event, t, bonusNamer(names, t)),
+        difficulty: event.difficulty,
+      });
     case "recharge":
       return key(event.back ? "rechargeBack" : "rechargeNot", {
         label: event.label,
@@ -430,6 +560,35 @@ export function rulesetCombatEventLine(
       });
     case "cover":
       return key("cover", { target: names.combatant(event.targetId), bonus: event.bonus, defense: event.defense });
+    case "shot":
+      return event.of !== undefined
+        ? key("shotLoaded", { label: event.label, left: event.left, of: event.of })
+        : key("shot", { label: event.label, left: event.left });
+    case "reload":
+      return event.drew !== undefined
+        ? key("reloadDrew", {
+            actor: names.combatant(event.actorId),
+            label: event.label,
+            loaded: event.loaded,
+            of: event.of,
+            drew: event.drew,
+          })
+        : key("reload", {
+            actor: names.combatant(event.actorId),
+            label: event.label,
+            loaded: event.loaded,
+            of: event.of,
+          });
+    case "recovered":
+      return key("recovered", { actor: names.combatant(event.actorId), label: event.label, count: event.count });
+    case "hardness":
+      return key("hardness", {
+        actor: names.combatant(event.sourceId),
+        target: names.combatant(event.targetId),
+        label: event.label,
+        dice: event.dice,
+        hardness: event.hardness,
+      });
     case "area":
       return key("area", {
         actor: names.combatant(event.actorId),
@@ -479,6 +638,50 @@ export function rulesetCombatEventLine(
     default:
       return null;
   }
+}
+
+/** A pool's harm, thrown: what its dice counted with the automatic successes beside them, and what
+ *  the target's soak took off, thrown or off the dice. */
+function poolHarmLines(
+  harm: {
+    rolls: number[];
+    flat: number;
+    pool: { target: number; successes: number; soak?: { value: number; rolls?: number[]; taken: number } };
+  },
+  targetId: string,
+  names: RulesetCombatNames,
+  key: (name: string, params?: Record<string, unknown>) => string,
+  t: TFunction,
+): string[] {
+  const lines = [
+    key(harm.flat > 0 ? "damagePoolAuto" : "damagePool", {
+      roll: t("game.combat.ruleset.roll.pool", {
+        count: harm.pool.successes - harm.flat,
+        dice: t("game.combat.ruleset.roll.dice", { count: harm.rolls.length }),
+        target: harm.pool.target,
+        rolls: harm.rolls.join(", "),
+      }),
+      count: harm.flat,
+    }),
+  ];
+  const soak = harm.pool.soak;
+  if (soak?.rolls) {
+    lines.push(
+      key("soakRolled", {
+        target: names.combatant(targetId),
+        taken: soak.taken,
+        roll: t("game.combat.ruleset.roll.pool", {
+          count: soak.rolls.filter((face) => face >= harm.pool.target).length,
+          dice: t("game.combat.ruleset.roll.dice", { count: soak.rolls.length }),
+          target: harm.pool.target,
+          rolls: soak.rolls.join(", "),
+        }),
+      }),
+    );
+  } else if (soak) {
+    lines.push(key("soakDice", { target: names.combatant(targetId), count: soak.taken }));
+  }
+  return lines;
 }
 
 /** The lines a screen prints, newest last, for every event it has not printed yet. */

@@ -90,6 +90,12 @@ import type {
   MariWorkspaceTraceItem,
 } from "@marinara-engine/shared";
 import { getMariDbService } from "../mari-db/mari-db.service.js";
+import { isMariReviewVisibleInChat, MARI_WORKSPACE_SESSION_ID, mariWorkspaceSessionId } from "./mari-session.js";
+import {
+  elideDataUrls,
+  listCapabilityMariActions,
+  runCapabilityMariAction,
+} from "../capability-packages/capability-mari-actions.service.js";
 import { createAppSettingsStorage } from "../storage/app-settings.storage.js";
 import { getProfessorMariWorkspaceSkillsService } from "./workspace-skills.service.js";
 import { sidecarModelService } from "../sidecar/sidecar-model.service.js";
@@ -187,9 +193,12 @@ const WORKSPACE_TOOLS: MariWorkspaceToolName[] = [
   "bash",
   "dependency",
   "app_data",
+  "package_service",
 ];
 const RUNTIME_API_KEY = "local-marinara-runtime";
-const SESSION_ID = "professor-mari-workspace";
+// Security reviews (sensitive files, dependency installs) are workspace-wide gates. Database
+// reviews are per chat: see runSessionId().
+const SESSION_ID = MARI_WORKSPACE_SESSION_ID;
 const MAX_COMMAND_ROUNDS = 12;
 const MAX_PROTOCOL_REPAIR_ROUNDS = 2;
 // Local sidecar / small models fumble the JSON command protocol more often, so they get a larger
@@ -544,6 +553,20 @@ const WORKSPACE_TOOL_DEFINITIONS: WorkspaceToolDefinition[] = [
       required: ["action"],
     },
   },
+  {
+    name: "package_service",
+    description:
+      "List or run actions that installed Agent packages offer to Professor Mari. Call with no arguments to list every package's actions and their inputs, or with only package to list one package's actions. Add action and input to run one: the package validates input and may spend AI budget or change its data. Only run an action when the user asked for that change.",
+    parameters: {
+      type: "object",
+      properties: {
+        package: { type: "string", description: "Package id from the list." },
+        action: { type: "string", description: "Action name from the list. Omit to list." },
+        input: { type: "object", description: "The action's inputs as named in the list." },
+        reason: { type: "string" },
+      },
+    },
+  },
 ];
 
 const WORKSPACE_TEXTUAL_TOOL_DEFINITIONS: LLMToolDefinition[] = WORKSPACE_TOOL_DEFINITIONS.map((tool) => ({
@@ -635,6 +658,7 @@ Workspace defaults:
 
 Command families:
 - \`app_data\`: no-shell structured actions for chat reads, characters, character folders, personas, lorebooks, lorebook entries, themes, Personal Extension drafts, agents, prompt presets, and safe data-only Home widgets. Prefer this before shell commands for those objects.
+- \`package_service\`: actions that installed Agent packages offer you. Call it with no arguments to see which packages offer which actions and inputs; never guess an action name. Running one (\`package\`, \`action\`, \`input\`) acts inside that package and may spend its AI budget, so run it only for a change the user asked for. The package validates the input; on an error, fix the input or tell the user.
 - \`mari db\`: generic live app data and storage-backed rows, including customization tables such as \`agent_configs\` and \`custom_tools\` when no narrower helper exists.
 - \`mari themes\`: synced custom themes and active theme state.
 - \`mari images\`: image-generation connections, HITL image prompt previews, generated/edited preview assets, and assignment/deletion for avatars, personas, lorebooks, sprites, backgrounds, and galleries.
@@ -678,7 +702,7 @@ Required schema:
   "awaitingAuthorization": false,
   "understoodRequest": "the exact words you are treating as the request or permission, when any command mutates data",
   "commands": [
-    { "name": "docs_search|docs_read|read|grep|find|ls|edit|write|copy|move|remove|bash|dependency|app_data", "arguments": {} }
+    { "name": "docs_search|docs_read|read|grep|find|ls|edit|write|copy|move|remove|bash|dependency|app_data|package_service", "arguments": {} }
   ],
   "suggestions": [
     { "label": "short button text", "prompt": "exact message to send if tapped", "entity": "characters|lorebooks|personas|presets|connections|agents|settings|chat", "tone": "danger|caution|success" }
@@ -777,6 +801,9 @@ Revising a saved memory (read its full text, edit it, then write the whole new c
 {"say":"","commands":[{"name":"app_data","arguments":{"action":"agent.create","data":{"name":"Image Marker","description":"Turns IMG_PROMPT markers into image prompts.","resultType":"image_prompt","settings":{"activationKeywords":["IMG_PROMPT:"],"activationScanDepth":4,"customCapabilities":{"trigger_image_generation":true}}},"reason":"User requested a marker-triggered image agent","apply":true}}],"stop":false}
 {"say":"","commands":[{"name":"app_data","arguments":{"action":"lorebook.updateEntry","entryId":"entry-id","patch":{"content":"new content"},"reason":"Update requested by user","apply":true}}],"stop":false}
 {"say":"","commands":[{"name":"app_data","arguments":{"action":"lorebook.deleteEntry","entryId":"entry-id","reason":"User asked to delete this entry","apply":true}}],"stop":false}
+Running a package action (list the offered actions first, then run the one the user asked for):
+{"say":"","commands":[{"name":"package_service","arguments":{}}],"stop":false}
+{"say":"","commands":[{"name":"package_service","arguments":{"package":"package-id","action":"add-idea","input":{"accountId":"account-id","text":"A rainy-day cafe post"},"reason":"User asked me to add this idea"}}],"stop":false}
 
 Available command schemas:
 ${toolDocs}
@@ -1301,7 +1328,7 @@ function jsonPayloadStopValue(payload: Record<string, unknown>): boolean | undef
 }
 
 const COMMAND_BLOCK_RE =
-  /<(docs_search|docs_read|read|grep|find|ls|edit|write|bash|dependency|app_data)>\s*([\s\S]*?)\s*<\/\1>/gi;
+  /<(docs_search|docs_read|read|grep|find|ls|edit|write|bash|dependency|app_data|package_service)>\s*([\s\S]*?)\s*<\/\1>/gi;
 
 function parseXmlCommandCalls(content: string): WorkspaceCommandCall[] {
   const calls: WorkspaceCommandCall[] = [];
@@ -1676,8 +1703,28 @@ function isReadOnlyWorkspaceCommand(command: WorkspaceCommandCall): boolean {
   ) {
     return true;
   }
+  if (command.name === "package_service") return !isPackageServiceRun(command);
   if (command.name !== "app_data") return false;
   return appDataActionLooksReadOnly(command.arguments.action);
+}
+
+/** A package_service call with an action runs it; without one it only lists. */
+function isPackageServiceRun(command: WorkspaceCommandCall): boolean {
+  const action = command.arguments.action;
+  return typeof action === "string" && action.trim().length > 0;
+}
+
+/** The action input: absent is {}, a JSON string is parsed (text-protocol models send one), else null. */
+function packageServiceInput(args: Record<string, unknown>): Record<string, unknown> | null {
+  const input = args.input ?? {};
+  if (typeof input === "string") {
+    try {
+      return tryParseJsonRecord(input);
+    } catch {
+      return null;
+    }
+  }
+  return isRecord(input) ? input : null;
 }
 
 function appDataActionLooksReadOnly(action: unknown): boolean {
@@ -1783,6 +1830,8 @@ export function isMutatingWorkspaceCommand(command: WorkspaceCommandCall): boole
     command.name === "dependency"
   )
     return true;
+  // The Engine cannot preview or undo a package action, so every run counts as a change.
+  if (command.name === "package_service") return isPackageServiceRun(command);
   if (command.name === "app_data") {
     // Conversation bookkeeping does not edit authored content or bypass Permissions Mode.
     if (command.arguments.action === "decision.record") return false;
@@ -2001,6 +2050,9 @@ export function resolveWorkspaceMutationVerification(
     }
     if (isAppliedWorkspaceMutation(result)) {
       if (inScope) mutationSeen = true;
+      // A package action has no Engine read that could confirm it: the package's own ok answer is
+      // the only evidence there is, so it carries no debt that a meaningless read would have to pay.
+      if (result.name === "package_service") continue;
       // A store-observed persistence failure is POSITIVE knowledge and must
       // not be forgettable: unlike ordinary debt, no read clears it. Only a
       // later store-VERIFIED apply of the SAME mutation target - an
@@ -2016,6 +2068,7 @@ export function resolveWorkspaceMutationVerification(
       inScope &&
       unverifiedMutationSeen &&
       result.success &&
+      result.name !== "package_service" &&
       isReadOnlyWorkspaceCommand(commandCallForResult(result))
     ) {
       unverifiedMutationSeen = false;
@@ -2091,7 +2144,8 @@ function scopeHasOutstandingUnappliedAttempt(results: readonly WorkspaceCommandR
 function isSuccessfulStateRead(result: WorkspaceCommandResult): boolean {
   if (!result.success) return false;
   const call = commandCallForResult(result);
-  if (call.name === "docs_search" || call.name === "docs_read") return false;
+  // A package action list shows what a package offers, never what any store holds.
+  if (call.name === "docs_search" || call.name === "docs_read" || call.name === "package_service") return false;
   return isReadOnlyWorkspaceCommand(call);
 }
 
@@ -2207,6 +2261,9 @@ function workspaceCommandValidationIssue(command: WorkspaceCommandCall): string 
       return requireString("command");
     case "app_data":
       return requireString("action");
+    case "package_service":
+      if (packageServiceInput(args) === null) return "package_service input must be a JSON object";
+      return isPackageServiceRun(command) ? requireString("package") : null;
     case "ls":
       return null;
     default:
@@ -2510,7 +2567,10 @@ export class ProfessorMariWorkspaceService {
         };
       })()),
       pendingApprovals: [
-        ...getMariDbService(this.app.db).getPendingApprovals(),
+        // #6842: a chat shows its own review cards, plus ones no chat owns.
+        ...getMariDbService(this.app.db)
+          .getPendingApprovals()
+          .filter((approval) => isMariReviewVisibleInChat(approval.sessionId, chatId)),
         ...this.workspaceChangeReviews.getPendingApprovals(),
       ],
       history: await getMariDbService(this.app.db).getHistory(),
@@ -2813,7 +2873,11 @@ export class ProfessorMariWorkspaceService {
               .slice(0, 8)
               .map((command) => {
                 const label =
-                  command.name === "app_data" ? `app_data ${stringArg(command.arguments, "action")}` : command.name;
+                  command.name === "app_data"
+                    ? `app_data ${stringArg(command.arguments, "action")}`
+                    : command.name === "package_service"
+                      ? `package_service ${stringArg(command.arguments, "package")} ${stringArg(command.arguments, "action")}`
+                      : command.name;
                 // The app_data action string is model-authored and the record
                 // feeds a line-oriented diagnostics report - flatten and cap.
                 return label.replace(/\s+/gu, " ").trim().slice(0, 80);
@@ -3584,6 +3648,8 @@ ${sections.join("\n\n")}
         return this.commandDependency(command.arguments);
       case "app_data":
         return this.commandAppData(command.arguments);
+      case "package_service":
+        return this.commandPackageService(command.arguments, signal);
       case "bash":
         return this.commandBash(command.arguments, signal);
       default:
@@ -4187,7 +4253,7 @@ ${sections.join("\n\n")}
       argv,
       command,
       cwd: this.workspaceRoot,
-      sessionId: SESSION_ID,
+      sessionId: this.runSessionId(),
     });
     const printable =
       isRecord(result) && "output" in result && !("summary" in result) ? result.output : compactMutationResult(result);
@@ -4216,6 +4282,24 @@ ${sections.join("\n\n")}
     return output;
   }
 
+  private async commandPackageService(args: Record<string, unknown>, signal: AbortSignal): Promise<string> {
+    const packageId = stringArg(args, "package").trim();
+    const action = stringArg(args, "action").trim();
+    if (!action) {
+      const offered = (await listCapabilityMariActions(signal)).filter(
+        (entry) => !packageId || entry.package === packageId,
+      );
+      if (offered.length === 0) {
+        return packageId
+          ? `Package "${packageId}" offers no Mari actions, or it is not installed and enabled.`
+          : "No installed package offers Mari actions.";
+      }
+      return stringifyOutput(offered);
+    }
+    const value = await runCapabilityMariAction(packageId, action, packageServiceInput(args), signal);
+    return `${packageId} ${action} succeeded.\n${elideDataUrls(stringifyOutput(value ?? null))}`;
+  }
+
   private async commandAppData(args: Record<string, unknown>): Promise<string> {
     const action = typeof args.action === "string" ? args.action : "unknown";
     if (action === "decision.get" || action === "decision.record") {
@@ -4231,7 +4315,7 @@ ${sections.join("\n\n")}
     const result = await getMariDbService(this.app.db).executeAction({
       ...args,
       cwd: this.workspaceRoot,
-      sessionId: SESSION_ID,
+      sessionId: this.runSessionId(),
       reviewPolicy: autoKeep ? "auto-keep" : "standard",
     });
     if (result.ok !== false && (action === "personal_extension.create" || action === "personal_extension.update")) {
@@ -4314,8 +4398,16 @@ ${sections.join("\n\n")}
     return { ...fallback, apiKey: decryptApiKey(fallback.apiKeyEncrypted) };
   }
 
+  /**
+   * The session id this run's database commands carry, naming its Mari chat, so the
+   * Keep/Restore cards they create belong to that chat (#6842).
+   */
+  private runSessionId(): string {
+    return mariWorkspaceSessionId(this.activeDecisionContext?.chatId);
+  }
+
   private withMariRuntimeEnv(env: NodeJS.ProcessEnv, mariCliBinDir: string) {
-    env.MARI_WORKSPACE_SESSION_ID = SESSION_ID;
+    env.MARI_WORKSPACE_SESSION_ID = this.runSessionId();
     env.MARI_SERVER_URL = `${getServerProtocol()}://127.0.0.1:${getPort()}`;
     env.MARINARA_PI_API_KEY = RUNTIME_API_KEY;
     env.DATA_DIR = DATA_DIR;

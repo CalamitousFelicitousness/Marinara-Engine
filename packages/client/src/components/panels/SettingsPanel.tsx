@@ -29,6 +29,7 @@ import {
 } from "../../stores/ui.store";
 import { SECRET_FIELD_PROPS } from "../../lib/secret-field-props";
 import { UILanguageSetting } from "./settings/UILanguageSetting";
+import { MultiplayerSettings } from "../../features/multiplayer/MultiplayerSettings";
 import { useLocalizedUiText } from "../../localization/use-localized-ui-text";
 import { cn, copyToClipboard } from "../../lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -286,6 +287,7 @@ type SettingsSectionId =
   | "profile-marinara"
   | "sillytavern-import"
   | "admin-access"
+  | "multiplayer"
   | "features"
   | "updates"
   | "support-diagnostics"
@@ -517,6 +519,13 @@ const SETTINGS_SECTIONS: readonly SettingsSectionMeta[] = [
     label: "Admin Access",
     description: "Admin authorization for privileged actions.",
     aliases: ["admin", "secret", "access", "authorization"],
+  },
+  {
+    id: "multiplayer",
+    tab: "advanced",
+    label: "Multiplayer",
+    description: "Optional shared roleplay, conversation and game sessions.",
+    aliases: ["multiplayer", "host", "join", "players", "invite", "shared", "online"],
   },
   {
     id: "features",
@@ -1491,6 +1500,14 @@ const SETTINGS_SEARCHABLE_CONTROLS: readonly SettingsSearchableControlMeta[] = [
     label: "Include reasoning in exports",
     description: "Include hidden thinking metadata in chat exports.",
     aliases: ["reasoning", "thinking", "exports"],
+    kind: "Toggle",
+  },
+  {
+    id: "include-private-notes-in-exports",
+    sectionId: "message-tools",
+    label: "Include private notes in exports",
+    description: "Include your private message notes in chat exports.",
+    aliases: ["notes", "private", "exports"],
     kind: "Toggle",
   },
   {
@@ -4203,6 +4220,8 @@ function OverallGenerationSettings() {
 
 function ImageGenerationSettings() {
   const { t: localizeUi } = useUiTranslation();
+  const autoSaveToGalleries = useUIStore((s) => s.autoSaveGeneratedImagesToGalleries);
+  const setAutoSaveToGalleries = useUIStore((s) => s.setAutoSaveGeneratedImagesToGalleries);
   const imageBackgroundWidth = useUIStore((s) => s.imageBackgroundWidth);
   const imageBackgroundHeight = useUIStore((s) => s.imageBackgroundHeight);
   const setImageBackgroundDimensions = useUIStore((s) => s.setImageBackgroundDimensions);
@@ -4232,6 +4251,12 @@ function ImageGenerationSettings() {
       {...getSettingsSectionAnchorProps("image-generation")}
     >
       <div className="flex flex-col gap-2.5">
+        <ToggleSetting
+          label={localizeUi("settings.controls.autoSaveGeneratedImagesToGalleries.label")}
+          help={localizeUi("settings.controls.autoSaveGeneratedImagesToGalleries.help")}
+          checked={autoSaveToGalleries}
+          onChange={setAutoSaveToGalleries}
+        />
         <ImageDimensionRow
           controlId="image-background-size"
           label={localizeUi("settings.controls.backgroundGeneration.label")}
@@ -7328,6 +7353,7 @@ function ImportSettings() {
     return () => window.clearInterval(timer);
   }, [profileImportBusy]);
 
+  const profileImportInputRef = useRef<HTMLInputElement>(null);
   const handleProfileImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -7584,12 +7610,11 @@ function ImportSettings() {
         {...getSettingsSectionAnchorProps("profile-marinara")}
       >
         <div className="flex flex-col gap-2.5">
-          <label
-            className={cn(
-              SETTINGS_PRIMARY_BUTTON_CLASS,
-              "w-full cursor-pointer gap-2",
-              profileImportBusy && "pointer-events-none opacity-75",
-            )}
+          <button
+            type="button"
+            onClick={() => profileImportInputRef.current?.click()}
+            disabled={profileImportBusy}
+            className={cn(SETTINGS_PRIMARY_BUTTON_CLASS, "w-full gap-2")}
           >
             {profileImportBusy ? <Loader2 size="1rem" className="animate-spin" /> : <Download size="1rem" />}
             {profileImportBusy
@@ -7597,14 +7622,17 @@ function ImportSettings() {
                 ? localizeUi("ui.panels.importsettings.scanningProfile")
                 : localizeUi("ui.panels.importsettings.importingProfile")
               : localizeUi("ui.panels.importsettings.importProfileJsonZip")}
-            <input
-              type="file"
-              accept=".json,.zip,application/json,application/zip"
-              onChange={handleProfileImport}
-              disabled={profileImportBusy}
-              className="hidden"
-            />
-          </label>
+          </button>
+          <input
+            ref={profileImportInputRef}
+            type="file"
+            accept=".json,.zip,application/json,application/zip"
+            onChange={handleProfileImport}
+            disabled={profileImportBusy}
+            className="hidden"
+            tabIndex={-1}
+            aria-hidden="true"
+          />
 
           {profileImportProgress && (
             <div
@@ -7900,6 +7928,8 @@ function AdvancedSettings() {
   const setGuideGenerations = useUIStore((s) => s.setGuideGenerations);
   const includeReasoningInExports = useUIStore((s) => s.includeReasoningInExports);
   const setIncludeReasoningInExports = useUIStore((s) => s.setIncludeReasoningInExports);
+  const includePrivateNotesInExports = useUIStore((s) => s.includePrivateNotesInExports);
+  const setIncludePrivateNotesInExports = useUIStore((s) => s.setIncludePrivateNotesInExports);
   const debugMode = useUIStore((s) => s.debugMode);
   const setDebugMode = useUIStore((s) => s.setDebugMode);
   const clearAllData = useClearAllData();
@@ -8228,26 +8258,31 @@ function AdvancedSettings() {
     // only the timeout carve-out is new.
     retry: (failureCount, error) => !isRequestTimeoutError(error) && failureCount < 1,
   });
+  // #5740: the report includes what Mari last reported acting on. Safari only
+  // lets a tap write to the clipboard while the tap is handled, so this cannot
+  // be fetched after the tap; it reloads whenever Settings opens instead. The
+  // deadline keeps a frozen host from disabling the copy button (#5657).
+  const settingsOpen = useUIStore((s) => s.rightPanelOpen && s.rightPanel === "settings");
+  const mariStatus = useQuery<{ latestUnderstoodRequest?: SupportDiagnostics["mariActingOn"] }>({
+    queryKey: ["professor-mari", "workspace-status"],
+    queryFn: ({ signal }) =>
+      api.get("/professor-mari/workspace/status", { signal: requestTimeoutSignal(5_000, signal) }),
+    enabled: settingsOpen,
+    staleTime: 0,
+    retry: false,
+  });
   const connections = (rawConnections ?? []) as APIConnection[];
   const activeConnection = activeChat?.connectionId
     ? (connections.find((connection) => connection.id === activeChat.connectionId) ?? null)
     : (connections.find((connection) => connection.isDefault) ?? null);
   // Health is included so a copy taken before the query settles cannot label
   // pending wake-lock/freeze telemetry as genuinely absent (#5656 review).
-  const supportDiagnosticsPending = isConnectionsLoading || (!!activeChatId && isActiveChatLoading) || health.isPending;
+  const supportDiagnosticsPending =
+    isConnectionsLoading || (!!activeChatId && isActiveChatLoading) || health.isPending || mariStatus.isPending;
 
   const handleCopySupportDiagnostics = useCallback(async () => {
-    // #5740: include what Mari last reported acting on - the load-bearing
-    // triage line for "she edited something I never asked for" reports.
-    // Best-effort: a failed fetch reads as unavailable, never blocks the copy.
-    // The deadline matters most on the frozen host this button exists for
-    // (#5657) - without it the fetch pends forever and no report is copied.
-    const mariActingOn = await api
-      .get<{
-        latestUnderstoodRequest: SupportDiagnostics["mariActingOn"];
-      }>("/professor-mari/workspace/status", { signal: requestTimeoutSignal(5_000) })
-      .then((status) => status.latestUnderstoodRequest ?? null)
-      .catch(() => undefined);
+    // Best-effort: a failed status request reads as unavailable, never blocks the copy.
+    const mariActingOn = mariStatus.isError ? undefined : (mariStatus.data?.latestUnderstoodRequest ?? null);
     const report = formatSupportDiagnostics({
       clientRuntime: getClientRuntimeDiagnostics(),
       mariActingOn,
@@ -8288,7 +8323,7 @@ function AdvancedSettings() {
     } else {
       toast.error(localizeUi("ui.panels.advancedsettings.supportDiagnosticsCopyFailed"));
     }
-  }, [activeConnection, health.data, health.error, localizeUi]);
+  }, [activeConnection, health.data, health.error, localizeUi, mariStatus.data, mariStatus.isError]);
 
   const deleteBackupMutation = useMutation({
     mutationFn: (name: string) => api.delete(`/backup/${name}`),
@@ -8478,6 +8513,7 @@ function AdvancedSettings() {
       <SettingsIntro>
         {localizeUi("ui.panels.advancedsettings.serverMaintenanceMessageUtilitiesBackupsAndDataRemoval")}
       </SettingsIntro>
+      <MultiplayerSettings />
 
       <SettingsSection
         title={localizeUi("settings.sections.adminAccess.title")}
@@ -8877,6 +8913,13 @@ function AdvancedSettings() {
             checked={includeReasoningInExports}
             onChange={setIncludeReasoningInExports}
             help={localizeUi("settings.controls.includeReasoning.help")}
+          />
+          <ToggleSetting
+            anchorId={getSettingsControlAnchorId("include-private-notes-in-exports")}
+            label={localizeUi("settings.controls.includePrivateNotes.label")}
+            checked={includePrivateNotesInExports}
+            onChange={setIncludePrivateNotesInExports}
+            help={localizeUi("settings.controls.includePrivateNotes.help")}
           />
           <ToggleSetting
             anchorId={getSettingsControlAnchorId("debug-mode")}

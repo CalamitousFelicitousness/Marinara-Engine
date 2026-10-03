@@ -1,11 +1,15 @@
+import { currentRoomGeneration } from "../multiplayer/generation-policy.js";
 import {
   isRoleplayCommandEnabled,
   isRoleplayCommandAllowed,
   getRoleplayPrivateCommands,
+  getRoleplayCommandActivity,
   getRoleplayWhispers,
   getRoleplayCommandContentOffset,
   ROLEPLAY_COMMAND_KEYS,
   normalizeChatSummaryEntries,
+  readMessagePrivateNote,
+  readMessagePrivateNoteRecipientId,
   type RoleplayCommandKey,
   type RoleplayCommand,
   type RoleplayCommandActivity,
@@ -123,7 +127,10 @@ function readCommand(type: string, body: string): RoleplayCommand | null {
   }
 }
 
-export function parseRoleplayCommands(text: string): {
+function parseCommands(
+  text: string,
+  userPrivateOnly = false,
+): {
   content: string;
   commands: RoleplayCommand[];
   activity: RoleplayCommandActivity[];
@@ -135,8 +142,20 @@ export function parseRoleplayCommands(text: string): {
   let content = "";
   let cursor = 0;
   let invalid = 0;
+  const recordInvalid = (type: string, raw: string) => {
+    invalid++;
+    if (!userPrivateOnly) return;
+    const previous = activity.find((item) => item.error === "roleplay.commands.errors.invalidPrivate");
+    if (previous) previous.raw += `\n${raw}`;
+    else
+      activity.push({
+        command: type === "whisper" ? { type: "whisper", character: "", text: "" } : { type: "notes", content: "" },
+        raw,
+        error: "roleplay.commands.errors.invalidPrivate",
+      });
+  };
   let roll: { command: Extract<RoleplayCommand, { type: "roll" }>; start: number; end: number } | undefined;
-  const starts = new RegExp(COMMAND_START);
+  const starts = userPrivateOnly ? /\[(whisper|notes)(?=\s|:|\]|$)\s*:?\s*/giu : new RegExp(COMMAND_START);
   let match: RegExpExecArray | null;
   while ((match = starts.exec(text))) {
     // DMs retain their existing resolver and visible fallback for invalid targets.
@@ -144,7 +163,7 @@ export function parseRoleplayCommands(text: string): {
     content += text.slice(cursor, match.index);
     const end = commandEnd(text, match.index);
     if (end < 0) {
-      invalid++;
+      recordInvalid(match[1]!.toLowerCase(), text.slice(match.index));
       cursor = text.length;
       break;
     }
@@ -158,18 +177,70 @@ export function parseRoleplayCommands(text: string): {
         ...(command.type === "whisper" ? { contentOffset: content.length } : {}),
       });
       if (command.type === "roll" && !roll) roll = { command, start: match.index, end };
-    } else invalid++;
+    } else recordInvalid(match[1]!.toLowerCase(), text.slice(match.index, end));
     cursor = end;
     starts.lastIndex = end;
   }
   content += text.slice(cursor);
   const lastBracket = content.lastIndexOf("[");
   const suffix = content.slice(lastBracket).toLowerCase();
-  if (lastBracket >= 0 && suffix !== "[" && PREFIXES.some((prefix) => prefix !== "[dm" && prefix.startsWith(suffix))) {
+  if (
+    !userPrivateOnly &&
+    lastBracket >= 0 &&
+    suffix !== "[" &&
+    PREFIXES.some((prefix) => prefix !== "[dm" && prefix.startsWith(suffix))
+  ) {
+    recordInvalid("[whisper".startsWith(suffix) ? "whisper" : "notes", content.slice(lastBracket));
     content = content.slice(0, lastBracket);
-    invalid++;
   }
   return { content, commands, activity, invalid, roll };
+}
+
+export function parseRoleplayCommands(text: string) {
+  return parseCommands(text);
+}
+
+/** User-authored private tags are never public, including disabled, malformed, or unfinished ones. */
+export function parseRoleplayUserCommands(text: string) {
+  return parseCommands(text, true);
+}
+
+/** Preserve per-swipe activities; new user tags can only write notes or whisper to a current character. */
+export function prepareUserRoleplayCommands(args: {
+  content: string;
+  extra: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+  characters: readonly { id: string; name: string }[];
+}): { content: string; extra: Record<string, unknown> } {
+  const parsed = parseRoleplayUserCommands(args.content);
+  if (!parsed.activity.length) return { content: parsed.content, extra: args.extra };
+  for (const activity of parsed.activity) {
+    if (activity.error) continue;
+    if (!isRoleplayCommandEnabled(args.metadata, roleplayCommandKey(activity.command))) {
+      activity.error = "roleplay.commands.errors.disabled";
+    } else if (activity.command.type === "whisper") {
+      const recipientName = normalizeCharacterLookupName(activity.command.character);
+      const matches = args.characters.filter(
+        (character) => normalizeCharacterLookupName(character.name) === recipientName,
+      );
+      if (matches.length !== 1) activity.error = "roleplay.commands.errors.whisperRecipient";
+      else activity.whisperRecipient = { id: matches[0]!.id, kind: "character" };
+    }
+    if (activity.command.type === "whisper") {
+      const offset = activity.contentOffset ?? parsed.content.length;
+      activity.contentAnchor =
+        offset === 0 ? parsed.content.slice(0, 80) : parsed.content.slice(Math.max(0, offset - 80), offset);
+    }
+  }
+  return {
+    content: parsed.content,
+    extra: {
+      ...args.extra,
+      roleplayCommandActivity: [...getRoleplayCommandActivity(args.extra), ...parsed.activity],
+      roleplayPrivateCommands: null,
+      roleplayDocuments: null,
+    },
+  };
 }
 
 /** Hold possible prefixes across chunks so private command text never flashes in the chat. */
@@ -233,6 +304,8 @@ export class RoleplayCommandStreamFilter {
   }
 }
 
+const USER_NOTES_OWNER = Symbol("user personal notes");
+
 type PersonalState = { notes: string; reminders: Map<string, string> };
 type HistoryMessage = { id?: unknown; role?: unknown; characterId?: unknown; content?: unknown; extra?: unknown };
 
@@ -241,11 +314,15 @@ export function resolveRoleplayWhisperRecipient(
   characters: readonly { id: string; name: string }[],
   persona: { id: string; name: string },
 ): RoleplayWhisperRecipient | null {
+  const room = currentRoomGeneration();
+  const personas = room
+    ? room.participants.map((participant) => ({ id: participant.id, name: participant.persona.name }))
+    : [persona];
   const participants = [
     ...characters
-      .filter((character) => character.id !== persona.id)
+      .filter((character) => !personas.some((person) => person.id === character.id))
       .map((character) => ({ ...character, kind: "character" as const })),
-    { ...persona, kind: "persona" as const },
+    ...personas.map((person) => ({ ...person, kind: "persona" as const })),
   ];
   const matches = participants.filter(
     (participant) => normalizeCharacterLookupName(participant.name) === normalizeCharacterLookupName(name),
@@ -267,7 +344,7 @@ export function appendRoleplayWhispers(
   for (const message of prompt) {
     if (!message.id || message.contextKind !== "history") continue;
     const source = sources.get(message.id);
-    if (source?.role !== "assistant") continue;
+    if (source?.role !== "assistant" && source?.role !== "user") continue;
     let extra = source.extra;
     if (typeof extra === "string") {
       try {
@@ -304,12 +381,32 @@ export function appendRoleplayWhispers(
   return added;
 }
 
+/** Attach a message's private note for the one character the user shared it with. */
+export function appendRoleplayMessageNotes(
+  prompt: Array<{ id?: string | null; contextKind?: string; content: string }>,
+  history: readonly HistoryMessage[],
+  viewer: RoleplayWhisperRecipient | null,
+): boolean {
+  if (viewer?.kind !== "character") return false;
+  const sources = new Map(history.map((message) => [message.id, message]));
+  let added = false;
+  for (const message of prompt) {
+    if (!message.id || message.contextKind !== "history") continue;
+    const source = sources.get(message.id);
+    const note = readMessagePrivateNote(source?.extra);
+    if (!note || readMessagePrivateNoteRecipientId(source?.extra) !== viewer.id) continue;
+    message.content += `\n\n[The user's private note on this message, shown only to you]\n${note}\n[End of private note]`;
+    added = true;
+  }
+  return added;
+}
+
 export function readRoleplayPersonalState(
   messages: readonly HistoryMessage[],
   audienceCharacterId?: string,
   summaryHiddenIds: ReadonlySet<string> = new Set(),
-): Map<string, PersonalState> {
-  const states = new Map<string, PersonalState>();
+): Map<string | symbol, PersonalState> {
+  const states = new Map<string | symbol, PersonalState>();
   for (const message of messages) {
     let extra = message.extra;
     if (typeof extra === "string") {
@@ -336,9 +433,17 @@ export function readRoleplayPersonalState(
       metadata.hiddenFromAICharacterIds.includes(audienceCharacterId)
     )
       continue;
-    if (message.role !== "assistant" || typeof message.characterId !== "string") continue;
-    const commands = getRoleplayPrivateCommands(metadata);
-    const state = states.get(message.characterId) ?? { notes: "", reminders: new Map<string, string>() };
+    const owner = message.role === "user" ? USER_NOTES_OWNER : message.characterId;
+    if (
+      (message.role !== "assistant" && message.role !== "user") ||
+      (typeof owner !== "string" && owner !== USER_NOTES_OWNER)
+    )
+      continue;
+    const commands = getRoleplayPrivateCommands(metadata).filter(
+      (command) => message.role !== "user" || command.type === "notes" || command.type === "dismiss_notes",
+    );
+    if (message.role === "user" && !commands.length) continue;
+    const state = states.get(owner) ?? { notes: "", reminders: new Map<string, string>() };
     for (const command of commands) {
       if (!command || typeof command !== "object") continue;
       if (command.type === "notes" && typeof command.content === "string" && command.content.length <= 8_000)
@@ -356,7 +461,7 @@ export function readRoleplayPersonalState(
       }
       if (command.type === "dismiss_memory" && typeof command.id === "string") state.reminders.delete(command.id);
     }
-    states.set(message.characterId, state);
+    states.set(owner, state);
   }
   return states;
 }
@@ -370,8 +475,10 @@ export function buildRoleplayPersonalContext(args: {
   format: WrapFormat;
 }): string {
   if (!args.characterId || (args.characters.length > 1 && !args.individual)) return "";
+  const inactive = new Set(Array.isArray(args.metadata.inactiveCharacterIds) ? args.metadata.inactiveCharacterIds : []);
+  const activeCharacters = args.characters.filter((character) => !inactive.has(character.id));
   const narrator =
-    args.individual && args.characters.some((character) => character.id === args.metadata.roleplayCommandNarratorId)
+    args.individual && activeCharacters.some((character) => character.id === args.metadata.roleplayCommandNarratorId)
       ? args.metadata.roleplayCommandNarratorId
       : null;
   const summaryHiddenIds = new Set(
@@ -379,7 +486,7 @@ export function buildRoleplayPersonalContext(args: {
   );
   const states = readRoleplayPersonalState(args.messages, args.characterId, summaryHiddenIds);
   const blocks: string[] = [];
-  for (const character of args.characters) {
+  for (const character of activeCharacters) {
     if (character.id !== args.characterId && args.characterId !== narrator) continue;
     const state = states.get(character.id);
     if (!state) continue;
@@ -397,6 +504,17 @@ export function buildRoleplayPersonalContext(args: {
         : args.format === "markdown"
           ? `### ${name}\n${lines.join("\n\n")}`
           : wrapContent(lines.join("\n\n"), name, args.format, 1),
+    );
+  }
+  const userNotes = states.get(USER_NOTES_OWNER)?.notes;
+  if (args.characterId === narrator && isRoleplayCommandEnabled(args.metadata, "notes") && userNotes) {
+    const name = "User's Personal Notes";
+    blocks.push(
+      args.format === "none"
+        ? `${name}:\n${userNotes}`
+        : args.format === "markdown"
+          ? `### ${name}\n${userNotes}`
+          : wrapContent(userNotes, name, args.format, 1),
     );
   }
   if (!blocks.length) return "";
@@ -443,7 +561,7 @@ export function buildRoleplayCommandsReminder(args: {
     );
   if (args.privateAvailable && enabled("whisper"))
     lines.push(
-      '- [whisper: character="name" text="text hidden from anyone but the specified character"] Hides a part of the message and makes it available only to a selected character. No one else will be able to access it, except for the appointed narrator. This can be used to whisper secrets, show visions, etc. Name exactly one chat character or the user\'s persona. Put the command where the secret belongs in the message, and do not repeat its text in public narration.',
+      '- [whisper: character="name" text="text hidden from anyone but the specified character"] Hides a part of the message and makes it available only to a selected character. No one else will be able to access it, except for the appointed narrator. This can be used to whisper secrets, show visions, etc. Name exactly one chat character or the user\'s persona. Put the command where the secret belongs in the message, and do not repeat its text in public narration. The text may span several lines and quote dialogue as is, for example text=""I love you."".',
     );
   if (enabled("roll"))
     lines.push(

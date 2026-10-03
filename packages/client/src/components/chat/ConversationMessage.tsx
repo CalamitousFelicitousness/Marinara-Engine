@@ -38,6 +38,7 @@ import {
 } from "./ConversationMessageShared";
 import { MessageReplyPreview } from "./MessageReplyPreview";
 import { ConversationMessageActions } from "./ConversationMessageActions";
+import { MessageMarkIndicators } from "./MessageMarks";
 import { ConversationMessageGrouped } from "./ConversationMessageGrouped";
 import { ConversationMessageBubble } from "./ConversationMessageBubble";
 import { ConversationMessageLine } from "./ConversationMessageLine";
@@ -1213,6 +1214,7 @@ export const ConversationMessage = memo(function ConversationMessage({
           {!messageControlsAbove && <ConversationMessageSwipes ctx={ctx} />}
         </div>
         <div className="px-4">
+          <MessageMarkIndicators message={message} className="px-1" />
           {reactionRow}
           {!messageControlsAbove && actionsRow}
         </div>

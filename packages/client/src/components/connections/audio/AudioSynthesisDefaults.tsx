@@ -24,13 +24,14 @@ import {
   TTS_TIMEOUT_MS_MIN,
   type AudioConnectionSettings,
   type AudioGenerationSource,
+  type TTSAudioFormat,
 } from "@marinara-engine/shared";
 import { cn } from "../../../lib/utils";
 import { audioSpeedRange, honorsAudioFormat } from "./audio-catalog";
 import { INPUT_CLS, TtsDropdownIcon } from "./voice-controls";
 
 /** Container names, not copy: they are what the provider is asked for. */
-const AUDIO_FORMATS = ["mp3", "wav"] as const;
+const AUDIO_FORMATS = ["mp3", "wav", "pcm"] as const satisfies readonly TTSAudioFormat[];
 
 export interface AudioSynthesisDefaultsProps {
   source: AudioGenerationSource;
@@ -138,7 +139,7 @@ export function AudioSynthesisDefaults({ source, value, onChange }: AudioSynthes
                 <select
                   value={value.audioFormat ?? ""}
                   onChange={(event) =>
-                    patch({ audioFormat: event.target.value ? (event.target.value as "mp3" | "wav") : undefined })
+                    patch({ audioFormat: event.target.value ? (event.target.value as TTSAudioFormat) : undefined })
                   }
                   className={cn(INPUT_CLS, "appearance-none pr-10")}
                 >

@@ -12,6 +12,7 @@
 import {
   rulesetEffectiveDefinitionSchema,
   type RulesetCatalogEntry,
+  type RulesetCurrencyFamily,
   type RulesetDefinition,
   type RulesetDifficultyLadderStep,
   type RulesetEnumField,
@@ -265,6 +266,24 @@ function narrowedFields(fields: readonly RulesetField[], layers: readonly Rulese
     else delete next.default;
     return next;
   });
+}
+
+/** The ruleset's coins under the game's layers: the families and single coins a layer takes out are
+ *  gone (a family's smallest coin goes only with its family, so every family left can still pay and
+ *  give change). Like a catalog entry a layer hides, the ruleset's own currencies are never rewritten,
+ *  so a price named in a coin that is gone still reads at its worth in the coins left. */
+export function rulesetLayeredCurrencies(
+  definition: LayeredRuleset & { items?: { currencies?: readonly RulesetCurrencyFamily[] } },
+  options: RulesetLayerOptions | null | undefined,
+): RulesetCurrencyFamily[] {
+  const layers = activeRulesetLayers(definition, options);
+  const goneFamilies = new Set(layers.flatMap((layer) => layer.currencies?.removeFamilies ?? []));
+  const goneUnits = new Set(layers.flatMap((layer) => layer.currencies?.removeUnits ?? []));
+  return (definition.items?.currencies ?? [])
+    .filter((family) => !goneFamilies.has(family.id))
+    .map((family) =>
+      layers.length > 0 ? { ...family, units: family.units.filter((unit) => !goneUnits.has(unit.id)) } : family,
+    );
 }
 
 /** Whether the catalog picker leaves this entry out under the game's layers. The picker filters

@@ -68,9 +68,15 @@ try {
     return parsed.definition;
   };
   /** The shipped example, optionally edited first. */
-  const pool = (edit: (doc: Record<string, any>) => void = () => {}): RulesetDefinition => {
+  const pool = (edit?: (doc: Record<string, any>) => void): RulesetDefinition => {
     const doc = JSON.parse(gravewatchText) as Record<string, any>;
-    edit(doc);
+    if (edit) {
+      // The example's fight is written for its own ten-sided pool, three ratings and six trades, so a
+      // variant of the CHECKS leaves it out, with the bestiary written in its numbers.
+      delete doc.combat;
+      doc.catalogs = (doc.catalogs ?? []).filter((catalog: { holds?: string }) => catalog.holds !== "creatures");
+      edit(doc);
+    }
     // The example's Grave Sight charm moves the exploding face, which a ruleset may only let a check
     // do while its explode rule has a min; a variant that takes the min away takes the charm too.
     if (doc.resolution.explode?.min === undefined) {
@@ -696,6 +702,8 @@ try {
       ruleset: pool((doc) => {
         doc.sheet.abilities = doc.sheet.abilities.filter((ability: { id: string }) => ability.id === "nerve");
         doc.sheet.skills = doc.sheet.skills.filter((skill: { ability: string }) => skill.ability === "nerve");
+        // The spade asks for Sinew, which this sheet no longer has.
+        for (const catalog of doc.catalogs) for (const entry of catalog.entries ?? []) delete entry.item?.requires;
       }),
     });
     assert.doesNotMatch(oneAbility, /Add with="Ability"/);
@@ -770,6 +778,19 @@ try {
     for (const rest of document.rests) {
       rest.restore = rest.restore.filter((step: { state?: string }) => step.state === undefined);
     }
+    // And 1.49's items block, with the catalog written in it.
+    delete document.items;
+    document.catalogs = document.catalogs.filter((catalog: { holds?: string }) => catalog.holds !== "items");
+    // And 1.47's fight, with the bestiary written in its numbers and the charms it offers.
+    delete document.combat;
+    document.catalogs = (document.catalogs ?? []).filter(
+      (catalog: { holds?: string }) => catalog.holds !== "creatures",
+    );
+    for (const catalog of document.catalogs) {
+      catalog.entries = (catalog.entries ?? []).filter(
+        (entry: { mechanics?: { check?: unknown } }) => !entry.mechanics || entry.mechanics.check !== undefined,
+      );
+    }
     assert.match(
       getCapabilityPackageInstallIssue(manifest(23) as any, document) ?? "",
       /dice-pool resolution requires schemaVersion 2 and capabilityApi 1\.24 or newer/,
@@ -804,6 +825,15 @@ try {
     }));
     assert.equal(summed.checkResults[0]!.threshold, undefined);
     assert.doesNotMatch(summed.content, /threshold=/);
+
+    // In a game that pins a ruleset, a check tag is the ruleset's alone: a record it rolled with its
+    // own dice, or an ask it left, is never rolled again here, which would lose the sheet it used.
+    const record = `[skill_check: skill="Scrap" dc="8" rolls="4|5" used="9" modifier="3" total="12" result="success" mode="normal" resolution="sum" dice="2d6" who="Bram"]`;
+    const kept = resolveGameDiceRequests(`${record} [dice: 1d6]`, [], roll, undefined, true);
+    assert.ok(kept.content.startsWith(record), "the ruleset's record is left as it is");
+    assert.deepEqual([kept.checkResults, kept.rolled], [[], 1], "and only the plain dice are rolled");
+    const pooled = `[skill_check: skill="Intimidation" dc="4" dice="6d10" resolution="successes" threshold="6"]`;
+    assert.equal(resolveGameDiceRequests(pooled, [], roll, undefined, true).content, pooled);
   }
 
   // ── engine-legacy checks are untouched, prompt and record alike ──

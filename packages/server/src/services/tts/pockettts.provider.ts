@@ -43,6 +43,7 @@ export class PocketTtsProvider extends BaseTTSProvider {
       };
     }
 
+    const responseFormat = this.resolveAudioFormat();
     return {
       url: `${pocketTtsV1BaseUrl(this.baseUrl)}/audio/speech`,
       headers: openAiHeaders(this.cfg.apiKey),
@@ -51,9 +52,10 @@ export class PocketTtsProvider extends BaseTTSProvider {
         input: input.text,
         voice: input.voice || "alba",
         speed: this.cfg.speed,
-        response_format: this.resolveAudioFormat(),
+        response_format: responseFormat,
       }),
       decodeCompressedResponse: false,
+      responseFormat,
     };
   }
 }

@@ -8,6 +8,7 @@ import {
   customTrackerFieldLockPrefix,
   generationParametersSchema,
   normalizeInventoryTrackerRows,
+  normalizeGroupChatMode,
   normalizeTrackerFieldLocksForState,
   extractCharacterCardCastMembers,
   normalizeTextForMatch,
@@ -993,31 +994,39 @@ export function readPersonaSnapshotName(extra: unknown): string | null {
   return typeof name === "string" && name.trim() ? name.trim() : null;
 }
 
+interface GroupHistorySpeakerOptions {
+  personaName: string;
+  characterNamesById: ReadonlyMap<string, string>;
+  /** Individual group roles are relative to the recipient; characterId still identifies the speaker. */
+  recipientScoped?: boolean;
+}
+
+export function resolveGroupIndividualHistorySpeaker(
+  message: Omit<SpeakerPrefixMessage, "content">,
+  options: GroupHistorySpeakerOptions,
+): string | null {
+  if (options.recipientScoped && message.characterId) {
+    return (
+      options.characterNamesById.get(message.characterId) ??
+      (typeof message.name === "string" && message.name.trim() ? message.name.trim() : null)
+    );
+  }
+  if (message.role === "user") return message.personaSnapshotName?.trim() || options.personaName.trim() || "User";
+  if (message.role === "assistant") {
+    return (
+      (message.characterId ? (options.characterNamesById.get(message.characterId) ?? null) : null) ??
+      (typeof message.name === "string" && message.name.trim() ? message.name.trim() : null)
+    );
+  }
+  return null;
+}
+
 export function prefixGroupIndividualHistorySpeakers<T extends SpeakerPrefixMessage>(
   messages: T[],
-  options: {
-    personaName: string;
-    characterNamesById: ReadonlyMap<string, string>;
-    /** Individual group roles are relative to the recipient; characterId still identifies the speaker. */
-    recipientScoped?: boolean;
-  },
+  options: GroupHistorySpeakerOptions,
 ): T[] {
-  const personaName = options.personaName.trim() || "User";
-
   return messages.map((message) => {
-    let speakerName: string | null = null;
-    if (options.recipientScoped && message.characterId) {
-      speakerName =
-        options.characterNamesById.get(message.characterId) ??
-        (typeof message.name === "string" && message.name.trim() ? message.name.trim() : null);
-    } else if (message.role === "user") {
-      speakerName = message.personaSnapshotName?.trim() || personaName;
-    } else if (message.role === "assistant") {
-      speakerName =
-        (message.characterId ? (options.characterNamesById.get(message.characterId) ?? null) : null) ??
-        (typeof message.name === "string" && message.name.trim() ? message.name.trim() : null);
-    }
-
+    const speakerName = resolveGroupIndividualHistorySpeaker(message, options);
     if (!speakerName) return message;
     const content = prefixSpeakerName(message.content, speakerName);
     return content === message.content ? message : { ...message, content };
@@ -1229,7 +1238,7 @@ export function resolveGroupGenerationMode(
   _chatMode: string | null | undefined,
   configuredMode: unknown,
 ): GroupGenerationMode {
-  return configuredMode === "individual" ? "individual" : "merged";
+  return normalizeGroupChatMode(configuredMode);
 }
 
 export function shouldRestoreRegenerationCharacterTarget(

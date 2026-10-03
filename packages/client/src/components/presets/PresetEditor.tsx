@@ -1273,7 +1273,7 @@ function SectionsTab({
   sections,
   groupMap,
   choiceBlocks,
-  wrapFormat: _wrapFormat,
+  wrapFormat,
   onCreateSection,
   onUpdateSection,
   onDeleteSection,
@@ -1556,6 +1556,7 @@ function SectionsTab({
         injectionDepth: section.injectionDepth ?? 0,
         injectionOrder: section.injectionOrder ?? idx * 100,
         forbidOverrides: readBoolFlag(section.forbidOverrides),
+        skipWrap: readBoolFlag(section.skipWrap),
       });
       if (created?.id) {
         const sectionIds = sections.map((s: any) => s.id);
@@ -2197,6 +2198,24 @@ function SectionsTab({
                           </span>
                         )}
                       </div>
+
+                      {/* Prompt-block wrap opt-out; markers keep their wrapper, and NONE wraps nothing */}
+                      {!isMarker && wrapFormat !== "none" && (
+                        <SettingsSwitch
+                          label={localizeUi("ui.presets.sectionstab.sendWithoutWrapper")}
+                          description={localizeUi("ui.presets.sectionstab.sendWithoutWrapperDescription")}
+                          checked={readBoolFlag(section.skipWrap)}
+                          onChange={(checked) =>
+                            onUpdateSection.mutate({
+                              presetId,
+                              sectionId: section.id,
+                              skipWrap: checked,
+                            })
+                          }
+                          labelClassName="text-xs"
+                          className="p-0 hover:bg-transparent"
+                        />
+                      )}
                     </div>
                   )}
                 </div>

@@ -1202,6 +1202,8 @@ export function AgentEditor() {
   // The fixed rules of the server's shouldRunAgentIndividually: these agents never share a request.
   // Built-in rewrite agents still join the combined editor request, so their switch always works.
   const alwaysRunsAlone =
+    musicDjYoutubeMode ||
+    musicDjCustomMode ||
     isIllustratorAgent ||
     isLorebookKeeperAgent ||
     agentDetailId === "beholder" ||

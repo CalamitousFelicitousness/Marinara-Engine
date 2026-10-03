@@ -23,7 +23,7 @@ export interface ZipFile {
   /** The entry's path in the archive, as its directory record names it. */
   name: string;
   isDirectory: boolean;
-  /** Made on Unix as a symbolic link. Its target is never followed. */
+  /** A symbolic link, by its Unix mode. Its target is never followed. */
   isSymlink: boolean;
   /** Its size once read, as declared, and exactly what `read` returns. */
   size: number;
@@ -43,10 +43,13 @@ const fail = (message: string): never => {
 
 /** Where the end record is: the one whose comment runs exactly to the end of the file. */
 function findEndRecord(bytes: Buffer): number {
+  let trailing = false;
   for (let at = bytes.length - 22; at >= 0 && at >= bytes.length - 22 - 0xffff; at--) {
-    if (bytes.readUInt32LE(at) === END_RECORD && at + 22 + bytes.readUInt16LE(at + 20) === bytes.length) return at;
+    if (bytes.readUInt32LE(at) !== END_RECORD) continue;
+    if (at + 22 + bytes.readUInt16LE(at + 20) === bytes.length) return at;
+    trailing = true;
   }
-  return fail("The file is not a zip archive");
+  return fail(trailing ? "The zip archive has data after its end" : "The file is not a zip archive");
 }
 
 /** The archive's entries, each checked against its local record; throws `ZipReadError`. */
@@ -72,7 +75,7 @@ export function readZip(bytes: Buffer): ZipFile[] {
     compressedSize: number;
     size: number;
     offset: number;
-    mode: number | null;
+    mode: number;
     dataStart: number;
   }> = [];
   let at = directoryStart;
@@ -103,8 +106,9 @@ export function readZip(bytes: Buffer): ZipFile[] {
       compressedSize,
       size,
       offset,
-      // Made on Unix: the high half of the external attributes is the file's type and mode.
-      mode: bytes.readUInt8(at + 5) === 3 ? bytes.readUInt32LE(at + 38) >>> 16 : null,
+      // The high half of the external attributes is a Unix type and mode, read whatever the archive
+      // says made it (as adm-zip did), so a link is never missed for a maker that does not say Unix.
+      mode: bytes.readUInt32LE(at + 38) >>> 16,
       dataStart: 0,
     });
     at = next;
@@ -134,7 +138,7 @@ export function readZip(bytes: Buffer): ZipFile[] {
   return entries.map((entry) => ({
     name: entry.name,
     isDirectory: entry.name.endsWith("/"),
-    isSymlink: entry.mode !== null && (entry.mode & 0o170000) === 0o120000,
+    isSymlink: (entry.mode & 0o170000) === 0o120000,
     size: entry.size,
     read(maxBytes: number): Buffer {
       if (entry.size > maxBytes) fail(`"${entry.name}" is over the ${maxBytes}-byte limit`);

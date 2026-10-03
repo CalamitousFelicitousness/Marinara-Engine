@@ -4,7 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
-- Archives Marinara did not make itself (Agent packages, agent repositories, `.charx` character cards and `.marinara` packages) are now read by a stricter zip reader. An archive whose entries share data, misstate their sizes, or unpack past the size they declare is refused before anything in it is read. A `.charx` card file may be up to 64 MB and each image in it up to 32 MB.
+- Archives Marinara did not make itself (Agent packages, agent repositories, `.charx` character cards and `.marinara` packages) are now read by a stricter zip reader. An archive whose entries share data, misstate their sizes, or unpack past the size they declare is refused before anything in it is read.
 
 - Preset prompt blocks now have a **Send without wrapper** switch. Turn it on to send one block exactly as written, without its XML tag or Markdown heading, while the rest of the preset keeps its wrap format. A group the block belongs to still wraps it. Markers always keep their wrapper (#7006).
 - UI/UX improvements: welcome-dialog frames and settings actions follow the selected accent, Game actions keep their Marinara pink, and dark sidebars match the Home menu. Tracker edit controls align with their fields on desktop; on mobile, tap a field to edit it, with a small hint beside settings instead of pencil icons (#7000).

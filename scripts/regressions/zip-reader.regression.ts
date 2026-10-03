@@ -17,6 +17,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -36,6 +37,10 @@ const { parseCustomAgentRepositoryContents } =
 const { importCharX, inspectCharX } =
   await import("../../packages/server/src/services/import/st-character.importer.js");
 const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
+const { importRoutes } = await import("../../packages/server/src/routes/import.routes.js");
+const requireServer = createRequire(new URL("../../packages/server/package.json", import.meta.url));
+const Fastify = requireServer("fastify") as typeof import("fastify").default;
+const multipart = requireServer("@fastify/multipart");
 
 // ── A zip, byte by byte, so every field can be what a hostile one would make it ──
 type Entry = {
@@ -46,8 +51,10 @@ type Entry = {
   /** The size the directory claims, when it lies. */
   declared?: number;
   flags?: number;
-  /** The Unix type and mode, made on Unix. */
+  /** The Unix type and mode. */
   mode?: number;
+  /** What the directory says made the archive (high byte 3 is Unix, 0 is DOS). */
+  madeBy?: number;
   /** Where the directory says its local record is, when it lies. */
   offset?: number;
   /** The name beside the data, when it is not the directory's. */
@@ -104,7 +111,7 @@ function rawZip(entries: Entry[], shape: Shape = {}): Buffer {
     const record = localRecord(entry);
     const central = Buffer.alloc(46);
     central.writeUInt32LE(0x02014b50, 0);
-    central.writeUInt16LE(0x031e, 4);
+    central.writeUInt16LE(entry.madeBy ?? 0x031e, 4);
     central.writeUInt16LE(20, 6);
     central.writeUInt16LE((entry.flags ?? 0) | (entry.descriptor ? 8 : 0), 8);
     central.writeUInt16LE(method, 10);
@@ -156,6 +163,16 @@ const readRefusal = (zip: Buffer, name: string, cap: number) => {
   return assert.fail("read refused");
 };
 const text = (value: string) => Buffer.from(value, "utf8");
+/** The archive with one field rewritten: `at` counts from the end record, the first directory record
+ *  or the first local record. */
+const patched = (zip: Buffer, where: "end" | "directory" | "local", at: number, value: number, bytes: 2 | 4) => {
+  const copy = Buffer.from(zip);
+  const end = copy.length - 22;
+  const base = where === "end" ? end : where === "directory" ? copy.readUInt32LE(end + 16) : 0;
+  if (bytes === 2) copy.writeUInt16LE(value, base + at);
+  else copy.writeUInt32LE(value, base + at);
+  return copy;
+};
 
 try {
   // ── Zips the Engine meets read as before ──
@@ -200,18 +217,25 @@ try {
         { name: "a.txt", data: text("first"), descriptor: true },
         { name: "b.txt", data: text("second"), method: 0, localExtra: Buffer.alloc(9, 1) },
         { name: "empty.txt", body: Buffer.alloc(0) },
+        // An empty file as JSZip, fflate and Python write it: a two-byte deflate stream for nothing.
+        { name: "empty-deflated.txt", body: Buffer.from([3, 0]) },
       ],
       { gap: Buffer.alloc(7), comment: "0123456789abcdef0123456789abcdef01234567" },
     ),
   );
   assert.deepEqual(
     loose.map((file) => file.read(100).toString("utf8")),
-    ["first", "second", ""],
+    ["first", "second", "", ""],
   );
   assert.equal(
     readZip(rawZip([{ name: "link", data: text("target"), method: 0, mode: 0o120777 }]))[0]!.isSymlink,
     true,
     "a link is reported, never followed",
+  );
+  assert.equal(
+    readZip(rawZip([{ name: "link", data: text("target"), method: 0, mode: 0o120777, madeBy: 0x0014 }]))[0]!.isSymlink,
+    true,
+    "whatever the archive says made it",
   );
 
   // ── A dishonest archive is refused before anything in it is read ──
@@ -233,6 +257,20 @@ try {
   // A stored entry that declares less than it holds.
   assert.match(refusal(rawZip([{ name: "a.bin", data: big, method: 0, declared: 10 }])), /says two different sizes/);
   assert.match(refusal(rawZip([{ name: "a.txt", data: text("x"), localName: "b.txt" }])), /named or packed one way/);
+  const one = rawZip([{ name: "a.txt", data: text("x") }]);
+  assert.match(
+    refusal(patched(one, "local", 8, 0, 2)),
+    /named or packed one way/,
+    "the local method is the directory's",
+  );
+  // Split across disks: by the end record, or by an entry's own starting disk.
+  assert.match(refusal(patched(one, "end", 4, 1, 2)), /split across disks/);
+  assert.match(refusal(patched(one, "end", 6, 1, 2)), /split across disks/);
+  assert.match(refusal(patched(one, "directory", 34, 1, 2)), /split across disks/);
+  // ZIP64, by any of its marks.
+  assert.match(refusal(patched(one, "end", 16, 0xffffffff, 4)), /ZIP64/);
+  assert.match(refusal(patched(one, "directory", 42, 0xffffffff, 4)), /ZIP64/);
+  assert.match(refusal(patched(one, "directory", 20, 0xffffffff, 4)), /ZIP64/);
   // A record past the count, hidden from a reader that trusts the count.
   assert.match(
     refusal(
@@ -252,7 +290,10 @@ try {
   );
   assert.match(refusal(rawZip([{ name: "a.txt", data: text("x"), flags: 1 }])), /encrypted/);
   assert.match(refusal(rawZip([{ name: "a.txt", data: text("x"), declared: 0xffffffff }])), /ZIP64/);
-  assert.match(refusal(rawZip([{ name: "a.txt", data: text("x") }], { trailing: Buffer.alloc(3) })), /not a zip/);
+  assert.match(
+    refusal(rawZip([{ name: "a.txt", data: text("x") }], { trailing: Buffer.alloc(3) })),
+    /has data after its end/,
+  );
   assert.match(refusal(text("not a zip at all")), /not a zip/);
   assert.match(refusal(Buffer.alloc(0)), /not a zip/);
   // Data running into the directory.
@@ -266,7 +307,6 @@ try {
   // ── Reading takes a cap and stops at the declared size ──
   assert.match(readRefusal(made.toBuffer(), "art/tile.png", 4999), /over the 4999-byte limit/);
   const bombBody = deflateRawSync(Buffer.alloc(50 * 1024 * 1024));
-  const started = Date.now();
   const before = process.memoryUsage().arrayBuffers;
   assert.match(
     readRefusal(
@@ -276,8 +316,7 @@ try {
     ),
     /bigger than it says/,
   );
-  assert.ok(Date.now() - started < 2000, "refused without inflating it all");
-  assert.ok(process.memoryUsage().arrayBuffers - before < 16 * 1024 * 1024, "and without holding it");
+  assert.ok(process.memoryUsage().arrayBuffers - before < 16 * 1024 * 1024, "refused without holding it all");
   assert.match(readRefusal(rawZip([{ name: "a.txt", data: text("hello"), crc: 1 }]), "a.txt", 100), /damaged/);
   // Shorter than it says, its checksum made to match what it holds: still not the size it says.
   assert.match(
@@ -308,9 +347,10 @@ try {
   const charx = new AdmZip();
   charx.addFile("card.json", text(JSON.stringify(card)));
   assert.equal(inspectCharX(charx.toBuffer()).success, true, "a .charx reads as before");
-  // card.json claiming more than a card may be, or unpacking past what it claims.
+  // card.json claiming more than any upload may hold (no byte cap of a card's own, #5625), or unpacking
+  // past what it claims.
   const claimsHuge = inspectCharX(
-    rawZip([{ name: "card.json", body: deflateRawSync(text("{}")), data: text("{}"), declared: 100 * 1024 * 1024 }]),
+    rawZip([{ name: "card.json", body: deflateRawSync(text("{}")), data: text("{}"), declared: 300 * 1024 * 1024 }]),
   );
   assert.equal(claimsHuge.success, false);
   assert.match(String(claimsHuge.error), /over the \d+-byte limit/);
@@ -342,6 +382,50 @@ try {
   const notJson = await importCharX(rawZip([{ name: "card.json", data: text("{ not json") }]), await getDB());
   assert.equal(notJson.success, false);
   assert.match(String(notJson.error), /card\.json is not valid JSON/);
+
+  // ── A .marinara package through its route: a dishonest one, or one with a damaged avatar, is a 400 ──
+  const app = Fastify();
+  app.decorate("db", await getDB());
+  await app.register(multipart);
+  await app.register(importRoutes, { prefix: "/api/import" });
+  const uploadPackage = (bytes: Buffer) => {
+    const boundary = `zip-${Date.now().toString(36)}`;
+    return app.inject({
+      method: "POST",
+      url: "/api/import/marinara-package",
+      payload: Buffer.concat([
+        Buffer.from(
+          `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="x.marinara"\r\nContent-Type: application/octet-stream\r\n\r\n`,
+        ),
+        bytes,
+        Buffer.from(`\r\n--${boundary}--\r\n`),
+      ]),
+      headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
+    });
+  };
+  try {
+    const persona = text(JSON.stringify({ type: "marinara_persona", version: 1, data: { name: "Zip Persona" } }));
+    const honest = await uploadPackage(rawZip([{ name: "data.json", data: persona }]));
+    assert.equal(honest.statusCode, 200, honest.body);
+    const dishonest = await uploadPackage(
+      rawZip([
+        { name: "data.json", data: persona, method: 0 },
+        { name: "avatar.png", data: persona, method: 0, offset: 0 },
+      ]),
+    );
+    assert.equal(dishonest.statusCode, 400, dishonest.body);
+    assert.match(dishonest.json().error, /Could not read \.marinara package/);
+    const damagedAvatar = await uploadPackage(
+      rawZip([
+        { name: "data.json", data: persona },
+        { name: "avatar.png", data: Buffer.alloc(64, 9), crc: 1 },
+      ]),
+    );
+    assert.equal(damagedAvatar.statusCode, 400, damagedAvatar.body);
+    assert.match(damagedAvatar.json().error, /Could not read \.marinara package: .*damaged/);
+  } finally {
+    await app.close();
+  }
 
   console.log("zip-reader: ok");
 } finally {

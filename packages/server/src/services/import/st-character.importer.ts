@@ -492,23 +492,23 @@ export function inspectCharX(buf: Buffer): STCharacterImportPreview {
   }
 }
 
-/** The most a .charx's card.json or one image in it may unpack to: far past any real card, and the
- *  archive is read strictly, so a small file cannot claim to be small and unpack into gigabytes. */
-const CHARX_CARD_MAX_BYTES = 64 * 1024 * 1024;
-const CHARX_ASSET_MAX_BYTES = 32 * 1024 * 1024;
+/** The most one file in a .charx is read to: the import upload ceiling (`IMPORT_BODY_LIMIT_BYTES` in
+ *  import.routes.ts), never a byte cap of a card's own (#5625). The archive is read strictly, so a
+ *  small file cannot claim to be small and unpack past what it declares. */
+const CHARX_READ_LIMIT_BYTES = 256 * 1024 * 1024;
 
 function readCharXCardJson(zip: ZipFile[]): Record<string, unknown> | null {
   const cardEntry = zip.find((entry) => entry.name === "card.json");
   if (!cardEntry) return null;
-  return JSON.parse(cardEntry.read(CHARX_CARD_MAX_BYTES).toString("utf-8")) as Record<string, unknown>;
+  return JSON.parse(cardEntry.read(CHARX_READ_LIMIT_BYTES).toString("utf-8")) as Record<string, unknown>;
 }
 
-/** An image in a .charx, or null when there is none at that path or it is over the image limit. */
+/** An image in a .charx, or null when there is none at that path (or it cannot be read). */
 function readCharXAsset(zip: ZipFile[], path: string): Buffer | null {
   const entry = zip.find((candidate) => candidate.name === path && !candidate.isDirectory);
-  if (!entry || entry.size > CHARX_ASSET_MAX_BYTES) return null;
+  if (!entry) return null;
   try {
-    return entry.read(CHARX_ASSET_MAX_BYTES);
+    return entry.read(CHARX_READ_LIMIT_BYTES);
   } catch (error) {
     // A damaged image is no image: the card still imports, as with one that is missing.
     if (error instanceof ZipReadError) return null;

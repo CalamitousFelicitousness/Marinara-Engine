@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Two end-to-end tests no longer fail for reasons of their own: the Decision import notice test reads the notice's words from the English catalog (it still expected the wording before the notice was rewritten), and the coin test waits for both of a turn's toasts at once instead of one after the other on a busy machine.
+
 - Mobile screen edges and the keyboard surround match the topbar, including when switching between dark and light mode (#7017).
 
 - Sidebar headers, item action trays, and settings use a consistent background. Mobile screen edges follow the app surface, and Refresh App uses the shared settings button style (#7011).

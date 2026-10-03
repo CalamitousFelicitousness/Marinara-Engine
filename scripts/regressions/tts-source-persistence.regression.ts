@@ -12,6 +12,9 @@ import {
   splitTTSChunks,
   filterTTSText,
   findTTSCharacterIdBySpeakerName,
+  getCharacterVoiceAssignment,
+  resolveTTSVoiceForSpeaker,
+  setCharacterVoiceAssignment,
 } from "../../packages/client/src/lib/tts-dialogue.ts";
 import { buildExtractedRoleplayTTSVoiceRequests } from "../../packages/client/src/lib/tts-roleplay-speaker-extractor.ts";
 import { normalizeTTSPlaybackDelayMs, ttsService } from "../../packages/client/src/lib/tts-service.ts";
@@ -715,6 +718,65 @@ assert.equal(
   ]),
   null,
   "duplicate exact character names must not select an arbitrary voice assignment",
+);
+
+// The Character Editor's Voice section edits one character's row of the shared list (Agents#1176).
+const sharedVoiceRows = [
+  { characterId: "alice-original", characterName: "Alice", voice: "original-voice" },
+  { characterId: "dottore-id", characterName: "Dottore", voice: "dottore-voice" },
+];
+const withAuVoice = setCharacterVoiceAssignment(
+  sharedVoiceRows,
+  { characterId: "alice-au", characterName: "Alice" },
+  "au-voice",
+);
+assert.deepEqual(withAuVoice, [
+  ...sharedVoiceRows,
+  { characterId: "alice-au", characterName: "Alice", voice: "au-voice" },
+]);
+assert.equal(sharedVoiceRows.length, 2, "setting a voice must not mutate the saved list");
+assert.equal(getCharacterVoiceAssignment(withAuVoice, "alice-au"), "au-voice");
+const characterVoiceConfig = ttsConfigSchema.parse({
+  source: "openai",
+  voice: "default-voice",
+  voiceMode: "per-character",
+  voiceAssignments: withAuVoice,
+});
+assert.equal(
+  resolveTTSVoiceForSpeaker(characterVoiceConfig, "Alice", "alice-au"),
+  "au-voice",
+  "a character's own voice must win over an earlier card that only shares its name",
+);
+assert.equal(resolveTTSVoiceForSpeaker(characterVoiceConfig, "Alice", "alice-original"), "original-voice");
+assert.equal(
+  resolveTTSVoiceForSpeaker(characterVoiceConfig, "Alice", null),
+  "original-voice",
+  "speakers known only by name keep the first matching row",
+);
+const renamedDottore = setCharacterVoiceAssignment(
+  withAuVoice,
+  { characterId: "dottore-id", characterName: "Il Dottore" },
+  "new-dottore-voice",
+);
+assert.deepEqual(
+  renamedDottore.map(({ characterName, voice }) => `${characterName}:${voice}`),
+  ["Alice:original-voice", "Il Dottore:new-dottore-voice", "Alice:au-voice"],
+  "changing a voice updates the existing row in place with the current name",
+);
+const clearedDottore = setCharacterVoiceAssignment(
+  [...renamedDottore, { characterId: "dottore-id", characterName: "Dottore", voice: "" }],
+  { characterId: "dottore-id", characterName: "Il Dottore" },
+  " ",
+);
+assert.deepEqual(
+  clearedDottore.map(({ characterId }) => characterId),
+  ["alice-original", "alice-au"],
+  "a blank voice removes every row for that character",
+);
+assert.equal(
+  resolveTTSVoiceForSpeaker({ ...characterVoiceConfig, voiceAssignments: clearedDottore }, "Il Dottore", "dottore-id"),
+  "default-voice",
+  "a character without its own row falls back to the default voice",
 );
 assert.equal(buildElevenLabsTextInput('"Skill issue."', "chuckle"), '[chuckle] "Skill issue."');
 assert.equal(buildElevenLabsTextInput('[chuckle] "Skill issue."', "chuckle"), '[chuckle] "Skill issue."');

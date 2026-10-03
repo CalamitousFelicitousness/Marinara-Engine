@@ -94,6 +94,12 @@ const paint = (rows: string[], x: number, y: number, char: string) =>
 assert.deepEqual(worldBattlefieldIssues(millYard), []);
 assert.match(worldBattlefieldIssues({ ...millYard, size: "medium" })[0]!, /13 tiles across and 9 down/);
 assert.match(
+  worldBattlefieldIssues({ ...millYard, rows: [...millYard.rows, "pppppppppppp"] })[0]!,
+  /12 tiles across and 8 down/,
+  "a row too many",
+);
+assert.match(worldBattlefieldIssues({ ...millYard, rows: millYard.rows.slice(1) })[0]!, /8 down/, "a row too few");
+assert.match(
   worldBattlefieldIssues({ ...millYard, rows: paint(millYard.rows, 1, 3, "f") })[0]!,
   /two columns at each side .* must be plains/,
 );

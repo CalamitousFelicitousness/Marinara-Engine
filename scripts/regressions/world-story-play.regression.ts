@@ -551,10 +551,32 @@ try {
   assert.ok(!/greets the party warmly/.test(now), "only the directions in force");
   assert.match(now, /shown this scene as written/);
   // Its own moments it cannot mark now are named, never why: held back by their conditions, then done.
-  assert.match(now, /Story moments not open to you now \(do not mark them or tell their scenes\): betrayal\./);
-  assert.match(storyTurnPromptText(story, next), /not open to you now .*: betrayal\./, "done, and it does not repeat");
+  assert.match(now, /\nStory moments you cannot mark now: betrayal\.$/);
+  assert.match(storyTurnPromptText(story, next), /cannot mark now: betrayal\./, "done, and it does not repeat");
   const open = turnOf(dusk, { latest: null });
-  assert.ok(open.state.flags.trust === 1 && !/not open to you now/.test(storyTurnPromptText(story, open)));
+  assert.ok(open.state.flags.trust === 1 && !/cannot mark now/.test(storyTurnPromptText(story, open)));
+  // Only the marking is closed: a gm moment the Engine trips this turn still has its beats told now.
+  const both = checkStoryScript(game, {
+    storyVersion: 1,
+    // It repeats, so only being the Engine's this turn closes it.
+    events: [{ id: "toll", when: { on: "turn", turn: 1 }, gm: true, repeat: true, do: [{ cutscene: "dusk" }] }],
+    cutscenes: [{ id: "dusk", kind: "beats", beats: ["Lamps are lit."] }],
+  });
+  assert.ok(both.ok);
+  const tolled = storyTurn(both.story, {
+    game,
+    replies: [],
+    repliesBefore: 0,
+    latest: null,
+    told: [],
+    day: 0,
+    fight: null,
+  });
+  assert.deepEqual(tolled.tripped, ["toll"]);
+  assert.equal(
+    storyTurnPromptText(both.story, tolled),
+    "Narrate this scene now, in your own words, beat by beat:\n- Lamps are lit.\nStory moments you cannot mark now: toll.",
+  );
   assert.deepEqual(
     storyObjectives(story, storyState(story, [])).map((each) => each.title),
     ["Favours"],

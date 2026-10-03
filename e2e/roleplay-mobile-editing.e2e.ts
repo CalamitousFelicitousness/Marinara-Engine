@@ -18,16 +18,21 @@ test.beforeEach(async ({ page }, testInfo) => {
   }, version);
 });
 
-/** Open a Roleplay chat whose latest reply is long enough to scroll inside its editor. */
-async function withLongReply(page: Page, request: APIRequestContext, run: (latest: Locator) => Promise<void>) {
+/** Open a chat with a reply long enough to scroll inside its editor, the latest unless more messages follow it. */
+async function withLongReply(
+  page: Page,
+  request: APIRequestContext,
+  run: (reply: Locator) => Promise<void>,
+  { mode = "roleplay", messagesAfter = 0 }: { mode?: "roleplay" | "conversation"; messagesAfter?: number } = {},
+) {
   const created = await request.post("/api/chats", {
-    data: { name: "Phone editing", mode: "roleplay", characterIds: [] },
+    data: { name: "Phone editing", mode, characterIds: [] },
   });
   expect(created.ok()).toBeTruthy();
   const chat = (await created.json()) as { id: string };
   try {
-    let lastId = "";
-    for (let index = 0; index < 4; index += 1) {
+    let replyId = "";
+    for (let index = 0; index < 4 + messagesAfter; index += 1) {
       const saved = await request.post(`/api/chats/${chat.id}/messages`, {
         data: {
           role: index % 2 ? "assistant" : "user",
@@ -38,20 +43,20 @@ async function withLongReply(page: Page, request: APIRequestContext, run: (lates
         },
       });
       expect(saved.ok()).toBeTruthy();
-      lastId = ((await saved.json()) as { id: string }).id;
+      if (index === 3) replyId = ((await saved.json()) as { id: string }).id;
     }
     await page.addInitScript((id) => localStorage.setItem("marinara-active-chat-id", id), chat.id);
     await page.goto("/");
-    await run(page.locator(`[data-message-id="${lastId}"]`));
+    await run(page.locator(`[data-message-id="${replyId}"]`));
   } finally {
     await request.delete(`/api/chats/${chat.id}?force=true`);
   }
 }
 
-async function startEditing(latest: Locator) {
-  await latest.getByText(/Reply line 40 of the long answer/).tap();
-  await latest.getByRole("button", { name: "Edit", exact: true }).tap();
-  const editor = latest.locator("[data-chat-message-editor]");
+async function startEditing(reply: Locator) {
+  await reply.getByText(/Reply line 40 of the long answer/).tap();
+  await reply.getByRole("button", { name: "Edit", exact: true }).tap();
+  const editor = reply.locator("[data-chat-message-editor]");
   await expect(editor).toBeFocused();
   return editor;
 }
@@ -65,6 +70,21 @@ function firstLineTakesTouches(editor: Locator, fractions: number[]) {
   }, fractions);
 }
 
+/** Scroll the transcript until the editor's first line is level with the menu button at the top of the chat. */
+async function levelFirstLineWithMenu(page: Page, editor: Locator, chatSurface: string) {
+  const menu = page.locator(chatSurface).getByRole("button", { name: "More options", exact: true });
+  const menuBox = await menu.boundingBox();
+  expect(menuBox).not.toBeNull();
+  const menuMiddle = menuBox!.y + menuBox!.height / 2;
+  await editor.evaluate((element, buttonMiddle) => {
+    const transcript = element.closest("[data-chat-scroll]")!;
+    transcript.scrollTop += element.getBoundingClientRect().top + 16 - buttonMiddle;
+  }, menuMiddle);
+  await expect
+    .poll(() => editor.evaluate((element, y) => Math.abs(element.getBoundingClientRect().top + 16 - y), menuMiddle))
+    .toBeLessThanOrEqual(1);
+}
+
 test("a Roleplay message being edited takes touches along its first line (#6992)", async ({ page, request }) => {
   await withLongReply(page, request, async (latest) => {
     const editor = await startEditing(latest);
@@ -72,21 +92,27 @@ test("a Roleplay message being edited takes touches along its first line (#6992)
     await expect.poll(() => firstLineTakesTouches(editor, [0.1, 0.5, 0.95])).toEqual([true, true, true]);
 
     // Scrolled up level with the menu button, the line still takes touches beside it.
-    const menu = page
-      .locator('[data-component="ChatArea.Roleplay"]')
-      .getByRole("button", { name: "More options", exact: true });
-    const menuBox = await menu.boundingBox();
-    expect(menuBox).not.toBeNull();
-    const menuMiddle = menuBox!.y + menuBox!.height / 2;
-    await editor.evaluate((element, buttonMiddle) => {
-      const transcript = element.closest("[data-chat-scroll]")!;
-      transcript.scrollTop += element.getBoundingClientRect().top + 16 - buttonMiddle;
-    }, menuMiddle);
-    await expect
-      .poll(() => editor.evaluate((element, y) => Math.abs(element.getBoundingClientRect().top + 16 - y), menuMiddle))
-      .toBeLessThanOrEqual(1);
+    await levelFirstLineWithMenu(page, editor, '[data-component="ChatArea.Roleplay"]');
     expect(await firstLineTakesTouches(editor, [0.1, 0.5])).toEqual([true, true]);
   });
+});
+
+test("a Conversation message being edited takes touches under the see-through header (#6992)", async ({
+  page,
+  request,
+}) => {
+  await withLongReply(
+    page,
+    request,
+    async (reply) => {
+      const editor = await startEditing(reply);
+      // Scrolled up level with the menu button, the line takes touches beside it.
+      await levelFirstLineWithMenu(page, editor, '[data-chat-mode="conversation"]');
+      expect(await firstLineTakesTouches(editor, [0.1, 0.5])).toEqual([true, true]);
+    },
+    // Conversation keeps its editor short, so later messages give room to scroll it under the header.
+    { mode: "conversation", messagesAfter: 2 },
+  );
 });
 
 test("the end of a long Roleplay message and its Save button stay reachable above the iPhone keyboard (#6992)", async ({

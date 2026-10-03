@@ -552,9 +552,10 @@ export function ConversationView({
       />
     </>
   );
+  // Like the Roleplay strip, the see-through header lets touches through to the transcript except on its controls.
   const renderHeader = () => (
-    <div className="sticky top-0 z-30 flex items-center justify-between px-4 py-2">
-      <div data-conversation-header-identity className="flex min-w-0 items-center gap-1.5">
+    <div className="pointer-events-none sticky top-0 z-30 flex items-center justify-between px-4 py-2">
+      <div data-conversation-header-identity className="pointer-events-auto flex min-w-0 items-center gap-1.5">
         <ConversationPresenceCard
           chatId={chatId}
           chatMeta={chatMeta}
@@ -578,13 +579,14 @@ export function ConversationView({
       </div>
 
       <div className="ml-2 flex min-w-0 flex-1 items-center justify-end gap-2">
+        {/* The menu keeps its full width to decide when to collapse; only its buttons take touches. */}
         <ChatToolbarMenu
-          className="flex-1"
+          className="flex-1 [&>*]:pointer-events-auto"
           desktopChildren={renderToolbarActions()}
           mobileChildren={renderToolbarActions(true)}
         />
         {conversationToolbarPackages.map((item) => (
-          <span key={`${item.id}-toolbar`} data-chat-help="agent-controls" className="contents">
+          <span key={`${item.id}-toolbar`} data-chat-help="agent-controls" className="pointer-events-auto contents">
             <CapabilityElement
               packageId={item.id}
               view="toolbar"

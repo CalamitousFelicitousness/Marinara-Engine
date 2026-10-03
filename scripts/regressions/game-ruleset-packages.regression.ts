@@ -23,6 +23,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { crc32, deflateRawSync } from "node:zlib";
 
+import { parseRulesetCatalogFile, parseRulesetDefinition } from "../../packages/shared/src/index.js";
+
 const dataDir = mkdtempSync(join(tmpdir(), "marinara-ruleset-packages-"));
 process.env.DATA_DIR = dataDir;
 process.env.FILE_STORAGE_DIR = join(dataDir, "storage");
@@ -46,6 +48,8 @@ type Entry = {
   localExtra?: Buffer;
   /** The checksum the records claim, when it lies. */
   crc?: number;
+  /** The packed bytes as they are, instead of `data` packed by `method`. */
+  body?: Buffer;
 };
 type ZipShape = {
   /** Bytes before the first record. */
@@ -53,6 +57,8 @@ type ZipShape = {
   /** The entry count the end record claims. */
   count?: number;
   comment?: string;
+  /** Bytes between the last record and the directory. */
+  gap?: Buffer;
 };
 function rawZip(entries: Entry[], shape: ZipShape = {}): Buffer {
   const locals: Buffer[] = shape.prefix ? [shape.prefix] : [];
@@ -64,7 +70,7 @@ function rawZip(entries: Entry[], shape: ZipShape = {}): Buffer {
     const localExtra = entry.localExtra ?? Buffer.alloc(0);
     const data = entry.data ?? Buffer.alloc(0);
     const method = entry.method ?? 8;
-    const body = method === 8 ? deflateRawSync(data) : data;
+    const body = entry.body ?? (method === 8 ? deflateRawSync(data) : data);
     const crc = entry.crc ?? crc32(data);
     const size = entry.declared ?? data.length;
     const local = Buffer.alloc(30);
@@ -92,6 +98,10 @@ function rawZip(entries: Entry[], shape: ZipShape = {}): Buffer {
     locals.push(local, localName, localExtra, body);
     centrals.push(central, name);
     offset += 30 + localName.length + localExtra.length + body.length;
+  }
+  if (shape.gap) {
+    locals.push(shape.gap);
+    offset += shape.gap.length;
   }
   const directory = Buffer.concat(centrals);
   const comment = Buffer.from(shape.comment ?? "");
@@ -297,6 +307,43 @@ try {
       /not UTF-8/,
     );
     assert.match(refusal(rawZip([manifestEntry!, { ...rulesetEntry!, crc: 12345 }, catalogEntry!])), /damaged/);
+    // Data no entry names, between the last record and the directory.
+    assert.match(
+      refusal(rawZip([manifestEntry!, rulesetEntry!, catalogEntry!], { gap: Buffer.from("payload") })),
+      /data no entry names/,
+    );
+    // A deflated entry that grows far past the size it declares stops inflating at that size: 50 MB of
+    // zeros packed into about 50 KB, under a record that claims 100 bytes.
+    const bomb = deflateRawSync(Buffer.alloc(50 * 1024 * 1024));
+    assert.ok(bomb.length < 1024 * 1024, "a bomb small enough to pass the caps");
+    const bombed = rawZip([
+      manifestEntry!,
+      rulesetEntry!,
+      { name: catalogEntry!.name, method: 8, body: bomb, data: Buffer.alloc(100) },
+    ]);
+    assert.match(refusal(bombed), /bigger than it says/);
+
+    // ── The shared parsers guard their own shape, whatever reads them (a package's installed files too) ──
+    const plainDefinition = parseRulesetDefinition(packageDocs().ruleset);
+    assert.ok(plainDefinition.ok, JSON.stringify(plainDefinition).slice(0, 300));
+    const startedParse = Date.now();
+    const bombRead = parseRulesetCatalogFile(plainDefinition.definition, firstCatalog.id, {
+      schemaVersion: 1,
+      catalog: firstCatalog.id,
+      entries: Array.from({ length: 300_000 }, () => ({})),
+    });
+    assert.ok(
+      !bombRead.ok && /more than any part of a ruleset has/.test(bombRead.issues[0]!),
+      JSON.stringify(bombRead).slice(0, 200),
+    );
+    assert.ok(Date.now() - startedParse < 3000, "refused before the schema reads every item");
+    let nested: unknown = [];
+    for (let depth = 0; depth < 5000; depth++) nested = [nested];
+    const deepRead = parseRulesetDefinition({ ...packageDocs().ruleset, deep: nested });
+    assert.ok(
+      !deepRead.ok && /nested deeper than a ruleset ever is/.test(deepRead.issues[0]!),
+      "never a stack overflow",
+    );
 
     // ── A manifest that is a ruleset's and nothing more ──
     const manifestRefusal = (edit: (manifest: Manifest) => void) => refusal(zipOf(packageDocs(), edit));

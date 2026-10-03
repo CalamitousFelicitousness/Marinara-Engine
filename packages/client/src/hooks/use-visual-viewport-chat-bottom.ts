@@ -143,7 +143,9 @@ export function useKeepLatestChatMessageVisible(
           if (!scrollElement?.contains(editor) || document.activeElement !== editor) return;
           const offset = editor.getBoundingClientRect().top - scrollElement.getBoundingClientRect().top;
           const topInset = Number.parseFloat(getComputedStyle(scrollElement).scrollPaddingTop) || 8;
-          if (offset < 0 || offset + 48 > scrollElement.clientHeight) scrollElement.scrollTop += offset - topInset;
+          // Under the top controls counts as out of view, not just above the transcript.
+          if (offset < topInset || offset + 48 > scrollElement.clientHeight)
+            scrollElement.scrollTop += offset - topInset;
         };
         restoreFrame = requestAnimationFrame(() => {
           restoreFrame = 0;

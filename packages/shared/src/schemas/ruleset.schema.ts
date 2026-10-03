@@ -5193,9 +5193,40 @@ export function stripRulesetComments(input: unknown, isRoot = true): unknown {
 
 export type RulesetParseResult = { ok: true; definition: RulesetDefinition } | { ok: false; issues: string[] };
 
+/** The deepest a ruleset document nests: far past any real file (a creature's riders sit a dozen deep). */
+const RULESET_MAX_DEPTH = 64;
+
+/**
+ * Why a document cannot be a ruleset or a catalog by its shape alone, or null: nested deeper than one
+ * ever is, or a list (or an object) longer than any one has. Walked without recursion and before the
+ * schema, so a hostile document neither overflows the stack nor makes the schema check every item of a
+ * list longer than any it allows (it reads each one even after the length has failed).
+ */
+export function rulesetShapeIssue(input: unknown): string | null {
+  const stack: Array<[unknown, number, string]> = [[input, 0, ""]];
+  while (stack.length) {
+    const [value, depth, path] = stack.pop()!;
+    if (!value || typeof value !== "object") continue;
+    const where = path || "(root)";
+    if (depth > RULESET_MAX_DEPTH) return `${where}: nested deeper than a ruleset ever is`;
+    const items = Array.isArray(value)
+      ? value.map((item, index) => [String(index), item] as const)
+      : Object.entries(value);
+    if (items.length > RULESET_CATALOG_MAX_ENTRIES) {
+      return `${where}: ${items.length} ${Array.isArray(value) ? "items" : "keys"}, more than any part of a ruleset has`;
+    }
+    for (const [key, item] of items) {
+      if (item && typeof item === "object") stack.push([item, depth + 1, path ? `${path}.${key}` : key]);
+    }
+  }
+  return null;
+}
+
 /** Parse a ruleset document. Never throws: a file the Engine cannot use comes back as a list of
  *  plain `path: message` lines an author can act on. */
 export function parseRulesetDefinition(input: unknown): RulesetParseResult {
+  const shape = rulesetShapeIssue(input);
+  if (shape) return { ok: false, issues: [shape] };
   const parsed = rulesetDefinitionSchema.safeParse(stripRulesetComments(input));
   if (parsed.success) return { ok: true, definition: parsed.data };
   return {
@@ -6419,6 +6450,8 @@ export function parseRulesetCatalogFile(
 ): RulesetCatalogParseResult {
   const catalog = definition.catalogs?.find((entry) => entry.id === catalogId);
   if (!catalog) return { ok: false, issues: [`(root): "${catalogId}" is not a catalog of this ruleset`] };
+  const shape = rulesetShapeIssue(input);
+  if (shape) return { ok: false, issues: [shape] };
   const parsed = rulesetCatalogFileSchema.safeParse(stripRulesetComments(input));
   if (!parsed.success) {
     return {

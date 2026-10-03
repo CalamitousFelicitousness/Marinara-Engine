@@ -258,6 +258,8 @@ export async function gameRulesetsRoutes(app: FastifyInstance) {
   // `{ path, message }` for an editor to show where each points, with the least capability API a package
   // of it needs; a zip also comes back read, so an editor opens one through this reader and no other.
   app.post("/check", { bodyLimit: PACKAGE_BODY_LIMIT }, async (req, reply) => {
+    // Reading a package costs real work, so only the Engine's own pages (and makers in them) may ask.
+    if (!requirePrivilegedAccess(req, reply, { feature: "Ruleset check" })) return;
     const body = checkBody.safeParse(req.body);
     if (!body.success) return reply.status(400).send({ error: body.error.issues[0]?.message ?? "Nothing to check" });
     if ("zip" in body.data) {

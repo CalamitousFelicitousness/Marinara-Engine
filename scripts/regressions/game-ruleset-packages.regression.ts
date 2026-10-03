@@ -40,13 +40,26 @@ type Entry = {
   attr?: number;
   /** Where the directory says its local record is, when it lies. */
   offset?: number;
+  /** The name beside the data, when it is not the directory's. */
+  localName?: string;
+  /** Bytes in the local record's extra field. */
+  localExtra?: Buffer;
 };
-function rawZip(entries: Entry[]): Buffer {
-  const locals: Buffer[] = [];
+type ZipShape = {
+  /** Bytes before the first record. */
+  prefix?: Buffer;
+  /** The entry count the end record claims. */
+  count?: number;
+  comment?: string;
+};
+function rawZip(entries: Entry[], shape: ZipShape = {}): Buffer {
+  const locals: Buffer[] = shape.prefix ? [shape.prefix] : [];
   const centrals: Buffer[] = [];
-  let offset = 0;
+  let offset = shape.prefix?.length ?? 0;
   for (const entry of entries) {
     const name = Buffer.from(entry.name, "utf8");
+    const localName = Buffer.from(entry.localName ?? entry.name, "utf8");
+    const localExtra = entry.localExtra ?? Buffer.alloc(0);
     const data = entry.data ?? Buffer.alloc(0);
     const method = entry.method ?? 8;
     const body = method === 8 ? deflateRawSync(data) : data;
@@ -60,7 +73,8 @@ function rawZip(entries: Entry[]): Buffer {
     local.writeUInt32LE(crc, 14);
     local.writeUInt32LE(body.length, 18);
     local.writeUInt32LE(size, 22);
-    local.writeUInt16LE(name.length, 26);
+    local.writeUInt16LE(localName.length, 26);
+    local.writeUInt16LE(localExtra.length, 28);
     const central = Buffer.alloc(46);
     central.writeUInt32LE(0x02014b50, 0);
     central.writeUInt16LE(0x031e, 4);
@@ -73,18 +87,20 @@ function rawZip(entries: Entry[]): Buffer {
     central.writeUInt16LE(name.length, 28);
     central.writeUInt32LE((entry.attr ?? 0o100644 << 16) >>> 0, 38);
     central.writeUInt32LE(entry.offset ?? offset, 42);
-    locals.push(local, name, body);
+    locals.push(local, localName, localExtra, body);
     centrals.push(central, name);
-    offset += 30 + name.length + body.length;
+    offset += 30 + localName.length + localExtra.length + body.length;
   }
   const directory = Buffer.concat(centrals);
+  const comment = Buffer.from(shape.comment ?? "");
   const end = Buffer.alloc(22);
   end.writeUInt32LE(0x06054b50, 0);
-  end.writeUInt16LE(entries.length, 8);
-  end.writeUInt16LE(entries.length, 10);
+  end.writeUInt16LE(shape.count ?? entries.length, 8);
+  end.writeUInt16LE(shape.count ?? entries.length, 10);
   end.writeUInt32LE(directory.length, 12);
   end.writeUInt32LE(offset, 16);
-  return Buffer.concat([...locals, directory, end]);
+  end.writeUInt16LE(comment.length, 20);
+  return Buffer.concat([...locals, directory, end, comment]);
 }
 
 // ── A ruleset package: the ember-roads example, its first catalog in its own file ──
@@ -134,6 +150,20 @@ function packageEntries(docs: Docs, manifestEdit?: (manifest: Manifest) => void,
 }
 const zipOf = (docs: Docs, manifestEdit?: (manifest: Manifest) => void, extra: Entry[] = []) =>
   rawZip(packageEntries(docs, manifestEdit, extra));
+/** A package whose ruleset.json is exactly this text, its manifest listing it truly. */
+function zipOfTexts(rulesetText: string, catalogs: Docs["catalogs"]): Buffer {
+  const entries = packageEntries({ ruleset: packageDocs().ruleset, catalogs });
+  const data = Buffer.from(rulesetText);
+  const manifest = JSON.parse(entries[0]!.data!.toString("utf8")) as Manifest;
+  const listed = manifest.files.find((file: { path: string }) => file.path === "ruleset.json");
+  listed.sha256 = sha256(data);
+  listed.bytes = data.length;
+  return rawZip([
+    { name: "manifest.json", data: Buffer.from(JSON.stringify(manifest)) },
+    { name: "ruleset.json", data },
+    ...entries.slice(2),
+  ]);
+}
 const firstCatalog = (example.catalogs as Array<{ id: string; entries: unknown[] }>)[0]!;
 
 const { default: Fastify } = await import("../../packages/server/node_modules/fastify/fastify.js");
@@ -144,6 +174,10 @@ const { gameRulesetsRoutes } = await import("../../packages/server/src/routes/ga
 const { capabilityPackagesRoutes } = await import("../../packages/server/src/routes/capability-packages.routes.js");
 const { gameRulesetCatalogs } = await import("../../packages/server/src/db/schema/index.js");
 const { readRulesetPackageZip } = await import("../../packages/server/src/services/game/ruleset-package-zip.js");
+const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
+const { loadRulesetCatalogEntries } =
+  await import("../../packages/server/src/services/game/ruleset-catalog.service.js");
+const { readRulesetRegistry } = await import("../../packages/server/src/services/game/ruleset-registry.service.js");
 
 try {
   const db = await getDB();
@@ -228,7 +262,34 @@ try {
       /over its 1048576-byte limit/,
     );
     // Two directory records over the same bytes.
-    assert.match(refusal(rawZip([manifestEntry!, rulesetEntry!, { ...catalogEntry!, offset: 0 }])), /shares bytes/);
+    assert.match(refusal(rawZip([manifestEntry!, rulesetEntry!, { ...catalogEntry!, offset: 0 }])), /lies beside it/);
+    // A record the end count leaves out, still in the directory: refused, not skipped.
+    assert.match(
+      refusal(
+        rawZip([manifestEntry!, rulesetEntry!, catalogEntry!, { name: "payload.js", data: Buffer.from("x") }], {
+          count: 3,
+        }),
+      ),
+      /holds more than its entries/,
+    );
+    // A name beside the data that is not the directory's.
+    assert.match(
+      refusal(rawZip([manifestEntry!, { ...rulesetEntry!, localName: "evil/run.exe" }, catalogEntry!])),
+      /named or packed one way/,
+    );
+    // Data before the first record, inside a local extra field, or a comment after the end.
+    assert.match(
+      refusal(rawZip([manifestEntry!, rulesetEntry!, catalogEntry!], { prefix: Buffer.from("MZ junk") })),
+      /lies beside it/,
+    );
+    assert.equal(
+      readRulesetPackageZip(rawZip([manifestEntry!, { ...rulesetEntry!, localExtra: Buffer.alloc(8) }, catalogEntry!]))
+        .ok,
+      true,
+      "an extra field is part of its record",
+    );
+    assert.match(refusal(rawZip([manifestEntry!, rulesetEntry!, catalogEntry!], { comment: "hello" })), /comment/);
+    assert.match(refusal(Buffer.concat([good.subarray(0, 40), good])), /not a zip|lies beside|directory/);
     assert.match(
       refusal(rawZip([manifestEntry!, { name: "ruleset.json", data: Buffer.from([0xff, 0xfe, 0x00]) }, catalogEntry!])),
       /not UTF-8/,
@@ -316,6 +377,49 @@ try {
       /not a catalog the ruleset names/,
     );
     assert.match(refusal(zipOf(packageDocs((docs) => delete docs.catalogs[firstCatalog.id]))), /no catalogs\//);
+    // Nesting deeper than a ruleset is, and a list longer than any it has: refused before the schema
+    // reads them, never a crash or a long stall.
+    const plainText = JSON.stringify(packageDocs().ruleset);
+    const deepText = plainText.replace('"coverage":{', `"coverage":{"deep":${"[".repeat(5000)}${"]".repeat(5000)},`);
+    assert.match(refusal(zipOfTexts(deepText, packageDocs().catalogs)), /nested deeper than a ruleset ever is/);
+    const started = Date.now();
+    assert.match(
+      refusal(
+        zipOf(
+          packageDocs(
+            (docs) =>
+              ((docs.catalogs[firstCatalog.id] as { entries: unknown[] }).entries = Array.from(
+                { length: 300_000 },
+                () => ({}),
+              )),
+          ),
+        ),
+      ),
+      /300000 items, more than any part/,
+    );
+    assert.ok(Date.now() - started < 3000, "refused before the schema reads every item");
+    // A repeated key: only what was read is kept, never the bytes the parse dropped (a 200 KB $comment
+    // the last, short one hides).
+    const rulesetText = JSON.stringify(packageDocs().ruleset);
+    const hidden = `{"$comment":"${"x".repeat(200_000)}","$comment":"short",${rulesetText.slice(1)}`;
+    const twiceRead = readRulesetPackageZip(zipOfTexts(hidden, packageDocs().catalogs));
+    assert.ok(twiceRead.ok, JSON.stringify(twiceRead).slice(0, 300));
+    assert.ok(!twiceRead.ruleset.includes("x".repeat(1000)) && twiceRead.ruleset.length < 100_000, "kept as read");
+    // Two catalog files whose ids share a beginning (sorted one way by code unit, another by a locale).
+    const prefixed = zipOf(
+      packageDocs((docs) => {
+        const second = {
+          ...structuredClone((example.catalogs as Array<Record<string, any>>)[0]),
+          id: `${firstCatalog.id}_extra`,
+          label: "More knacks",
+        };
+        delete second.entries;
+        second.asset = `catalogs/${second.id}.json`;
+        docs.ruleset.catalogs.push(second);
+        docs.catalogs[second.id] = { schemaVersion: 1, catalog: second.id, entries: firstCatalog.entries.slice(0, 2) };
+      }),
+    );
+    assert.equal(readRulesetPackageZip(prefixed).ok, true, refusal.name);
 
     // ── Imported: privileged, behind the policy, a dry run keeps nothing ──
     const untrusted = await post("/import-package", { zip: good.toString("base64") }, { host: "evil.example" });
@@ -395,6 +499,32 @@ try {
       404,
     );
 
+    // ── Played by a game: its catalog file through the loader every turn and fight uses ──
+    const registered = (await readRulesetRegistry(db)).get("local/ember-roads-house");
+    assert.ok(registered, "registered");
+    const definition = registered.versions?.get(1) ?? registered.definition;
+    const header = definition.catalogs!.find((each) => each.id === firstCatalog.id)!;
+    const loaded = await loadRulesetCatalogEntries(null, definition, header);
+    assert.ok(loaded.ok && loaded.entries.length > 0, JSON.stringify(loaded).slice(0, 300));
+
+    // ── Another ruleset with the same catalog file: kept once, and kept while either names it ──
+    const sibling = await importZip(zipOf(packageDocs((docs) => (docs.ruleset.id = "ember-roads-sibling"))));
+    assert.equal(sibling.json().status, "added", sibling.body);
+    assert.equal(await storedCatalogs(), 2, "the sibling shares version 1's catalog file");
+
+    // ── A version a game plays on is not removed alone; one no game pins is ──
+    const chats = createChatsStorage(db);
+    const pinned = await chats.create({ name: "On version 2", mode: "game", characterIds: [] });
+    await chats.patchMetadata(pinned.id, {
+      gameRuleset: { id: "local/ember-roads-house", version: 2, packageId: null, options: {} },
+    });
+    const refusedOne = await app.inject({
+      method: "DELETE",
+      url: "/api/game-rulesets?rulesetId=local/ember-roads-house&version=2",
+    });
+    assert.equal(refusedOne.statusCode, 409);
+    assert.equal(refusedOne.json().code, "ruleset_in_use");
+
     // ── One version no game pins goes alone; the last version takes its catalog file with it ──
     const removeOne = await app.inject({
       method: "DELETE",
@@ -407,12 +537,20 @@ try {
         .statusCode,
       404,
     );
+    // Every version, the game on one of them confirmed: the file stays while the sibling names it.
     const removeAll = await app.inject({
       method: "DELETE",
-      url: "/api/game-rulesets?rulesetId=local/ember-roads-house",
+      url: "/api/game-rulesets?rulesetId=local/ember-roads-house&force=true",
     });
-    assert.equal(removeAll.json().removed, 2);
-    assert.equal(await storedCatalogs(), 0, "and the last one with the last version");
+    assert.deepEqual([removeAll.json().removed, removeAll.json().games], [2, 1]);
+    assert.equal(await storedCatalogs(), 1, "the sibling still names the shared file");
+    const siblingCatalog = await app.inject({
+      method: "GET",
+      url: `/api/capability-packages/rulesets/catalog?rulesetId=local/ember-roads-sibling&catalogId=${firstCatalog.id}&version=1`,
+    });
+    assert.equal(siblingCatalog.statusCode, 200, siblingCatalog.body);
+    await app.inject({ method: "DELETE", url: "/api/game-rulesets?rulesetId=local/ember-roads-sibling" });
+    assert.equal(await storedCatalogs(), 0, "and goes with the last version that names it");
 
     // ── The JSON import still keeps its catalogs inline ──
     const asJson = await post("/import", { definition: JSON.stringify(packageDocs().ruleset) });

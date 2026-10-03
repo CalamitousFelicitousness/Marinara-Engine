@@ -44,6 +44,8 @@ type Entry = {
   localName?: string;
   /** Bytes in the local record's extra field. */
   localExtra?: Buffer;
+  /** The checksum the records claim, when it lies. */
+  crc?: number;
 };
 type ZipShape = {
   /** Bytes before the first record. */
@@ -63,7 +65,7 @@ function rawZip(entries: Entry[], shape: ZipShape = {}): Buffer {
     const data = entry.data ?? Buffer.alloc(0);
     const method = entry.method ?? 8;
     const body = method === 8 ? deflateRawSync(data) : data;
-    const crc = crc32(data);
+    const crc = entry.crc ?? crc32(data);
     const size = entry.declared ?? data.length;
     const local = Buffer.alloc(30);
     local.writeUInt32LE(0x04034b50, 0);
@@ -294,6 +296,7 @@ try {
       refusal(rawZip([manifestEntry!, { name: "ruleset.json", data: Buffer.from([0xff, 0xfe, 0x00]) }, catalogEntry!])),
       /not UTF-8/,
     );
+    assert.match(refusal(rawZip([manifestEntry!, { ...rulesetEntry!, crc: 12345 }, catalogEntry!])), /damaged/);
 
     // ── A manifest that is a ruleset's and nothing more ──
     const manifestRefusal = (edit: (manifest: Manifest) => void) => refusal(zipOf(packageDocs(), edit));
@@ -573,6 +576,11 @@ try {
     const zipCheck = (await post("/check", { zip: good.toString("base64") })).json();
     assert.equal(zipCheck.ok, true);
     assert.deepEqual(Object.keys(zipCheck.catalogs), [firstCatalog.id], "a zip comes back read");
+    // Reading a package costs work: only the Engine's own pages may ask.
+    assert.equal(
+      (await post("/check", { definition: JSON.stringify(example) }, { host: "evil.example" })).statusCode,
+      421,
+    );
     const zipRefused = (await post("/check", { zip: many.toString("base64") })).json();
     assert.equal(zipRefused.ok, false);
     assert.equal((await post("/check", { zip: "not base64 !!" })).statusCode, 400);

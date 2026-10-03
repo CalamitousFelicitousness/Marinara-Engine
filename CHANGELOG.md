@@ -4,7 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
-- Preset prompt blocks now have a **Send without wrapper** switch. Turn it on to send one block exactly as written, without its XML tag or Markdown heading, while the rest of the preset keeps its wrap format. A group the block belongs to still wraps it. Markers always keep their wrapper.
+- Preset prompt blocks now have a **Send without wrapper** switch. Turn it on to send one block exactly as written, without its XML tag or Markdown heading, while the rest of the preset keeps its wrap format. A group the block belongs to still wraps it. Markers always keep their wrapper (#7006).
 
 - Retrying or re-running agents now runs rewrite agents one after another, each on the text the one before left, as after a new reply. Before, retrying two of them together, such as Prose Guardian and a custom **Text Rewrite** agent, kept only the last one's edits. Agent retries now also keep to the connection's **Max Parallel Agent Jobs** limit (#6977).
 

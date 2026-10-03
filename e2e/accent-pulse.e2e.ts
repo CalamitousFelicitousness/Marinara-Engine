@@ -355,6 +355,19 @@ for (const theme of ["dark", "light"] as const) {
       }
       await clickTopbarPanel(page, "settings");
       await page.getByRole("tab", { name: "Appearance", exact: true }).click();
+      await expect(page.locator(".mari-right-panel:visible")).toHaveCSS(
+        "background-color",
+        await renderedColor("var(--sidebar)"),
+      );
+      await expect(page.locator(".mari-right-panel-header:visible")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+      await expect(page.locator("#settings-section-app-style")).toHaveCSS(
+        "background-color",
+        await renderedColor("color-mix(in oklab, var(--sidebar) 35%, transparent)"),
+      );
+      await expect(page.locator("#settings-control-theme-mode select")).toHaveCSS(
+        "background-color",
+        await renderedColor("var(--sidebar)"),
+      );
       const settingsHeader = page.locator(".mari-right-panel-header:visible > div.absolute");
       await expect(settingsHeader).toHaveCSS(
         "background-color",

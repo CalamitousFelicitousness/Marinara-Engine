@@ -3899,6 +3899,11 @@ test("Character Chat actions reuse mode selection and seed the chosen setup wiza
 
     const actions = characterRow.locator("[data-character-row-actions]");
     await expect(actions).toBeVisible();
+    const sidebarSurface = await rightPanel.evaluate(
+      (panel) => getComputedStyle(panel.closest(".mari-right-panel")!).backgroundColor,
+    );
+    await expect(actions).toHaveCSS("background-color", sidebarSurface);
+    await expect(rightPanel.locator(".mari-right-panel-header")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     const duplicateButton = actions.getByRole("button", { name: "Duplicate", exact: true });
     const deleteButton = actions.getByRole("button", { name: "Delete", exact: true });
     const chatButton = actions.getByRole("button", {
@@ -21825,18 +21830,40 @@ test("mobile chat composer follows the visual viewport above the software keyboa
 
   try {
     await page.goto("/");
+    await page.evaluate(async () => {
+      const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+      useUIStore.getState().setTheme("dark");
+      useUIStore.getState().setVisualTheme("default");
+      useUIStore.getState().setAppBackgroundColor("");
+    });
     await page.locator("html").evaluate((element) => {
       element.style.setProperty("--mari-safe-area-inset-bottom", "34px");
     });
 
     const viewportMeta = page.locator('meta[name="viewport"]');
     await expect(viewportMeta).toHaveAttribute("content", /interactive-widget=resizes-content/);
+    const themeColorMeta = page.locator('meta[name="theme-color"]');
+    const safeArea = page.locator('[data-component="CenterContent"] > div').first();
+    // Chromium and WebKit round the native card composite one RGB step apart.
+    await expect(themeColorMeta).toHaveAttribute("content", /^rgb\(1[78], 17, (19|20)\)$/);
+    const defaultBacking = (await themeColorMeta.getAttribute("content"))!;
+    await expect(safeArea).toHaveCSS("background-color", defaultBacking);
+    await expect
+      .poll(() =>
+        page.evaluate(() => ({
+          html: document.documentElement.style.getPropertyValue("background-color"),
+          body: document.body.style.getPropertyValue("background-color"),
+          shell: document.documentElement.style.getPropertyValue("--marinara-shell-surface"),
+        })),
+      )
+      .toEqual({ html: defaultBacking, body: defaultBacking, shell: defaultBacking });
 
     const shell = page.locator('[data-component="AppShell"]');
     const composer = page.locator(".chat-input-container:visible");
     const textarea = composer.locator("textarea:visible");
     const transcript = page.locator(".mari-messages-scroll:visible").first();
-    await expect(transcript).toBeVisible();
+    // Wait for the cold Roleplay chunk before asserting keyboard geometry.
+    await expect(transcript).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText(/^Keyboard viewport history line 18\./)).toBeVisible();
     await expect
       .poll(() => transcript.evaluate((element) => element.scrollHeight - element.clientHeight))
@@ -21935,6 +21962,8 @@ test("mobile chat composer follows the visual viewport above the software keyboa
       )
       .toEqual({ height: "360px", top: `${expectedOffsetTop}px` });
     await expect(page.locator("html")).toHaveAttribute("data-mari-software-keyboard-open", "");
+    await expect(themeColorMeta).toHaveAttribute("content", defaultBacking);
+    await expect(safeArea).toHaveCSS("background-color", defaultBacking);
     const compactComposerStyle = await composer.evaluate((element) => {
       const style = getComputedStyle(element);
       return {
@@ -22191,6 +22220,20 @@ test("mobile chat composer follows the visual viewport above the software keyboa
     await expect(page.locator("html")).not.toHaveAttribute("data-mari-software-keyboard-open", "");
 
     await page.evaluate(async () => {
+      const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+      useUIStore.getState().setTheme("light");
+    });
+    await expect(themeColorMeta).toHaveAttribute("content", "#faf8ff");
+    await expect(page.locator("html")).toHaveCSS("background-color", "rgb(250, 248, 255)");
+    await expect(page.locator("body")).toHaveCSS("background-color", "rgb(250, 248, 255)");
+    await expect(safeArea).toHaveCSS("background-color", "rgb(250, 248, 255)");
+    await page.evaluate(async () => {
+      const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+      useUIStore.getState().setTheme("dark");
+    });
+    await expect(themeColorMeta).toHaveAttribute("content", defaultBacking);
+
+    await page.evaluate(async () => {
       const storePath = "/src/stores/ui.store.ts";
       const { useUIStore } = (await import(/* @vite-ignore */ storePath)) as {
         useUIStore: {
@@ -22210,6 +22253,8 @@ test("mobile chat composer follows the visual viewport above the software keyboa
         })),
       )
       .toEqual({ html: "rgb(18, 52, 86)", body: "rgb(18, 52, 86)" });
+    await expect(themeColorMeta).toHaveAttribute("content", "#123456");
+    await expect(safeArea).toHaveCSS("background-color", "rgb(18, 52, 86)");
 
     await page.evaluate(async () => {
       const storePath = "/src/stores/ui.store.ts";
@@ -22236,6 +22281,8 @@ test("mobile chat composer follows the visual viewport above the software keyboa
         })),
       )
       .toEqual({ html: "rgb(101, 67, 33)", body: "rgb(101, 67, 33)" });
+    await expect(themeColorMeta).toHaveAttribute("content", "rgb(101, 67, 33)");
+    await expect(safeArea).toHaveCSS("background-color", "rgb(101, 67, 33)");
 
     await page.evaluate(() => {
       Object.defineProperty(window, "scrollY", {
@@ -22285,6 +22332,28 @@ test("mobile chat composer follows the visual viewport above the software keyboa
     }, chat.id);
     await expect(shell).not.toHaveAttribute("data-chat-surface-active");
     await expect.poll(() => shell.evaluate((element) => getComputedStyle(element).transform)).toBe("none");
+
+    await page.route("**/api/themes", (route) =>
+      route.fulfill({
+        json: [
+          {
+            id: "mobile-backing-theme",
+            name: "Mobile backing fixture",
+            css: ":root { --background: #234567; --card: #abcdef80; }",
+            isActive: true,
+          },
+        ],
+      }),
+    );
+    await page.evaluate(async () => {
+      const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+      useUIStore.getState().setVisualTheme("default");
+    });
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(themeColorMeta).toHaveAttribute("content", "#234567");
+    await expect(page.locator("html")).toHaveCSS("background-color", "rgb(35, 69, 103)");
+    await expect(page.locator("body")).toHaveCSS("background-color", "rgb(35, 69, 103)");
+    await expect(safeArea).toHaveCSS("background-color", "rgb(35, 69, 103)");
   } finally {
     await page.request.delete(`/api/chats/${chat.id}`).catch(() => undefined);
   }

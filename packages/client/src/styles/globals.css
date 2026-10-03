@@ -200,7 +200,7 @@
   --input: var(--border);
   --ring: var(--primary);
   --radius: 0.75rem;
-  --sidebar: #08061a;
+  --sidebar: var(--marinara-shell-surface, #121114);
   --sidebar-foreground: #e8d4ff;
   --sidebar-border: color-mix(in srgb, var(--primary) 13%, transparent);
   --sidebar-accent: color-mix(in srgb, var(--primary) 10%, transparent);
@@ -1492,6 +1492,12 @@
   --sidebar-foreground: var(--marinara-chat-chrome-panel-text);
 }
 
+/* Settings sections and fields share their enclosing sidebar surface. */
+.mari-settings-panel-chrome {
+  --background: var(--sidebar);
+  --secondary: var(--sidebar);
+}
+
 .mari-chrome-text-accent-scope {
   --marinara-chat-chrome-accent: var(--marinara-chat-chrome-text);
 }
@@ -2184,7 +2190,7 @@ html[data-mari-ios-webkit] .mari-modal-panel {
 
 /* Full-screen mobile navigation needs no translucent copy of the covered chat. */
 html[data-mari-ios-webkit] :is([data-component="RightPanelMobile"], [data-component="ChatSidebarPanel"]) {
-  background-color: var(--background) !important;
+  background-color: var(--sidebar) !important;
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
 }
@@ -4497,10 +4503,10 @@ strong {
   }
 }
 
-/* Match the Home menu's default dark surface without changing custom theme backgrounds. */
-:where(:root:not([data-theme="light"]):not(:has(#marinara-custom-theme))) :where(.mari-sidebar, .mari-right-panel) {
-  background-color: var(--background);
-  background-image: linear-gradient(var(--card), var(--card));
+/* Use the same opaque surface as sidebar headers and item action trays.
+   Keep specificity low so authored theme backgrounds still take precedence. */
+:where(.mari-sidebar, .mari-right-panel) {
+  background-color: var(--sidebar);
 }
 
 /* Firefox on Windows can rasterize text inside large blurred/translucent layout layers,
@@ -4537,9 +4543,7 @@ strong {
   }
 
   .mari-topbar,
-  .mari-sidebar-header,
-  .mari-sidebar-footer,
-  .mari-right-panel-header {
+  .mari-sidebar-footer {
     background: var(--card) !important;
   }
 
@@ -4551,7 +4555,7 @@ strong {
 
   .mari-sidebar,
   .mari-right-panel {
-    background-color: var(--background) !important;
+    background-color: var(--sidebar) !important;
   }
 }
 

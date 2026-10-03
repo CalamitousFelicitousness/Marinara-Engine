@@ -640,10 +640,32 @@ export function App() {
       // background-color, not from resolved custom properties (see index.html).
       // Read the rendered variable so visual themes and injected custom theme
       // CSS are reflected instead of falling back to the stock scheme.
-      const computedBackground = getComputedStyle(root).getPropertyValue("--background").trim();
-      const literalBackground = getCssColorFallback(computedBackground, resolvedBackground);
+      const computedStyle = getComputedStyle(root);
+      const computedBackground = computedStyle.getPropertyValue("--background").trim();
+      let literalBackground = getCssColorFallback(computedBackground, resolvedBackground);
+      // Flatten the Home menu's card-over-background surface for browser chrome,
+      // which needs an opaque color rather than a translucent CSS layer.
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = 1;
+      const context = canvas.getContext("2d");
+      if (context) {
+        context.fillStyle = defaultBackground;
+        context.fillRect(0, 0, 1, 1);
+        context.fillStyle = literalBackground;
+        context.fillRect(0, 0, 1, 1);
+        context.fillStyle = computedStyle.getPropertyValue("--card").trim();
+        context.fillRect(0, 0, 1, 1);
+        const [red, green, blue] = context.getImageData(0, 0, 1, 1).data;
+        const shellSurface = `rgb(${red}, ${green}, ${blue})`;
+        root.style.setProperty("--marinara-shell-surface", shellSurface);
+        if (theme === "dark" && visualTheme === "default" && !background && !activeCustomTheme?.css) {
+          literalBackground = shellSurface;
+        }
+      }
+      root.style.setProperty("--marinara-page-backing", literalBackground);
       root.style.setProperty("background-color", literalBackground, "important");
       document.body.style.setProperty("background-color", literalBackground, "important");
+      document.querySelector('meta[name="theme-color"]')?.setAttribute("content", literalBackground);
     };
 
     syncLiteralBackground();

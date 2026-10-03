@@ -643,8 +643,8 @@ export function App() {
       const computedStyle = getComputedStyle(root);
       const computedBackground = computedStyle.getPropertyValue("--background").trim();
       let literalBackground = getCssColorFallback(computedBackground, resolvedBackground);
-      // Flatten the Home menu's card-over-background surface for browser chrome,
-      // which needs an opaque color rather than a translucent CSS layer.
+      // Flatten translucent shell surfaces over the app background. Browser
+      // chrome needs an opaque color, and sidebars retain the Home menu surface.
       const canvas = document.createElement("canvas");
       canvas.width = canvas.height = 1;
       const context = canvas.getContext("2d");
@@ -653,14 +653,17 @@ export function App() {
         context.fillRect(0, 0, 1, 1);
         context.fillStyle = literalBackground;
         context.fillRect(0, 0, 1, 1);
+        const backgroundPixels = context.getImageData(0, 0, 1, 1);
         context.fillStyle = computedStyle.getPropertyValue("--card").trim();
         context.fillRect(0, 0, 1, 1);
         const [red, green, blue] = context.getImageData(0, 0, 1, 1).data;
         const shellSurface = `rgb(${red}, ${green}, ${blue})`;
         root.style.setProperty("--marinara-shell-surface", shellSurface);
-        if (theme === "dark" && visualTheme === "default" && !background && !activeCustomTheme?.css) {
-          literalBackground = shellSurface;
-        }
+        context.putImageData(backgroundPixels, 0, 0);
+        context.fillStyle = computedStyle.getPropertyValue("--marinara-topbar-surface").trim();
+        context.fillRect(0, 0, 1, 1);
+        const [topbarRed, topbarGreen, topbarBlue] = context.getImageData(0, 0, 1, 1).data;
+        literalBackground = `rgb(${topbarRed}, ${topbarGreen}, ${topbarBlue})`;
       }
       root.style.setProperty("--marinara-page-backing", literalBackground);
       root.style.setProperty("background-color", literalBackground, "important");

@@ -6227,6 +6227,11 @@ strong {
 /* Touch tablets get the phone shell (MOBILE_SHELL_MEDIA_QUERY in ui.store.ts),
    so they also need its keyboard-aware viewport. */
 @media (max-width: 767px), (max-width: 1440px) and (hover: none) and (any-pointer: coarse) {
+  .mari-topbar {
+    /* Match native page backing even over gradients; also override Gecko's card fallback. */
+    background-color: var(--marinara-page-backing, var(--marinara-topbar-surface)) !important;
+  }
+
   /*
    * WKWebView native backing color is set by the literal background-color in
    * index.html <style> (inline critical CSS — not cached by SW, always fresh).
@@ -6244,6 +6249,8 @@ strong {
   body {
     position: fixed;
     inset: 0;
+    /* Keep authored gradients inside the app, not over the keyboard backing. */
+    background-image: none;
     width: 100%;
     height: 100%;
     overflow: hidden;

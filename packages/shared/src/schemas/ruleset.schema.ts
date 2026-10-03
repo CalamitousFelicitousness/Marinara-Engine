@@ -5209,12 +5209,14 @@ export function rulesetShapeIssue(input: unknown): string | null {
     if (!value || typeof value !== "object") continue;
     const where = path || "(root)";
     if (depth > RULESET_MAX_DEPTH) return `${where}: nested deeper than a ruleset ever is`;
+    // Counted before any of it is copied out.
+    const count = Array.isArray(value) ? value.length : Object.keys(value).length;
+    if (count > RULESET_CATALOG_MAX_ENTRIES) {
+      return `${where}: ${count} ${Array.isArray(value) ? "items" : "keys"}, more than any part of a ruleset has`;
+    }
     const items = Array.isArray(value)
       ? value.map((item, index) => [String(index), item] as const)
       : Object.entries(value);
-    if (items.length > RULESET_CATALOG_MAX_ENTRIES) {
-      return `${where}: ${items.length} ${Array.isArray(value) ? "items" : "keys"}, more than any part of a ruleset has`;
-    }
     for (const [key, item] of items) {
       if (item && typeof item === "object") stack.push([item, depth + 1, path ? `${path}.${key}` : key]);
     }

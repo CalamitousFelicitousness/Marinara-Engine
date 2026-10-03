@@ -5,6 +5,7 @@ import { syncCharacterBookFromLorebook } from "../lorebook/character-book-sync.j
 import type { DB } from "../../db/connection.js";
 import { characters as charactersTable } from "../../db/schema/index.js";
 import { logger } from "../../lib/logger.js";
+import { readZip, ZipReadError, type ZipFile } from "../../lib/zip-reader.js";
 import { createCharactersStorage } from "../storage/characters.storage.js";
 import { createLorebooksStorage } from "../storage/lorebooks.storage.js";
 import { createRegexScriptsStorage } from "../storage/regex-scripts.storage.js";
@@ -23,7 +24,6 @@ import { join } from "path";
 import { randomUUID } from "crypto";
 import { DATA_DIR } from "../../utils/data-dir.js";
 import { isAllowedImageBuffer } from "../../utils/security.js";
-import AdmZip from "adm-zip";
 import { normalizeTimestampOverrides, type TimestampOverrides } from "./import-timestamps.js";
 import { restoreSprites } from "./marinara.importer.js";
 
@@ -410,10 +410,18 @@ export function inspectSTCharacter(raw: Record<string, unknown>): STCharacterImp
  * Extracts card.json and the main icon asset from the zip.
  */
 export async function importCharX(buf: Buffer, db: DB, options?: STCharacterImportOptions) {
-  const zip = new AdmZip(buf);
-
-  // Extract card.json from root of the zip
-  const cardJson = readCharXCardJson(zip);
+  let zip: ZipFile[];
+  let cardJson: Record<string, unknown> | null;
+  try {
+    zip = readZip(buf);
+    // Extract card.json from root of the zip
+    cardJson = readCharXCardJson(zip);
+  } catch (error) {
+    if (error instanceof ZipReadError) return { success: false, error: `Invalid .charx file: ${error.message}` };
+    if (error instanceof SyntaxError)
+      return { success: false, error: "Invalid .charx file: card.json is not valid JSON." };
+    throw error;
+  }
   if (!cardJson) return { success: false, error: "Invalid .charx file: missing card.json at root." };
 
   // Resolve the main icon asset from the zip
@@ -440,10 +448,9 @@ export async function importCharX(buf: Buffer, db: DB, options?: STCharacterImpo
       "assets/icon/images/main.webp",
       "assets/icon/images/main.jpg",
     ]) {
-      const entry = zip.getEntry(fallback);
-      if (entry) {
+      const data = readCharXAsset(zip, fallback);
+      if (data) {
         const ext = fallback.split(".").pop() ?? "png";
-        const data = entry.getData();
         const imageInfo = isAllowedImageBuffer(data, `.${ext}`);
         if (imageInfo) {
           avatarDataUrl = `data:${imageInfo.mimeType};base64,${data.toString("base64")}`;
@@ -465,8 +472,7 @@ export async function importCharX(buf: Buffer, db: DB, options?: STCharacterImpo
 
 export function inspectCharX(buf: Buffer): STCharacterImportPreview {
   try {
-    const zip = new AdmZip(buf);
-    const cardJson = readCharXCardJson(zip);
+    const cardJson = readCharXCardJson(readZip(buf));
     if (!cardJson) {
       return {
         success: false,
@@ -486,10 +492,28 @@ export function inspectCharX(buf: Buffer): STCharacterImportPreview {
   }
 }
 
-function readCharXCardJson(zip: AdmZip): Record<string, unknown> | null {
-  const cardEntry = zip.getEntry("card.json");
+/** The most one file in a .charx is read to: the import upload ceiling (`IMPORT_BODY_LIMIT_BYTES` in
+ *  import.routes.ts), never a byte cap of a card's own (#5625). The archive is read strictly, so a
+ *  small file cannot claim to be small and unpack past what it declares. */
+const CHARX_READ_LIMIT_BYTES = 256 * 1024 * 1024;
+
+function readCharXCardJson(zip: ZipFile[]): Record<string, unknown> | null {
+  const cardEntry = zip.find((entry) => entry.name === "card.json");
   if (!cardEntry) return null;
-  return JSON.parse(cardEntry.getData().toString("utf-8")) as Record<string, unknown>;
+  return JSON.parse(cardEntry.read(CHARX_READ_LIMIT_BYTES).toString("utf-8")) as Record<string, unknown>;
+}
+
+/** An image in a .charx, or null when there is none at that path (or it cannot be read). */
+function readCharXAsset(zip: ZipFile[], path: string): Buffer | null {
+  const entry = zip.find((candidate) => candidate.name === path && !candidate.isDirectory);
+  if (!entry) return null;
+  try {
+    return entry.read(CHARX_READ_LIMIT_BYTES);
+  } catch (error) {
+    // A damaged image is no image: the card still imports, as with one that is missing.
+    if (error instanceof ZipReadError) return null;
+    throw error;
+  }
 }
 
 function normalizeCharacterData(raw: Record<string, unknown>): CharacterData {
@@ -666,7 +690,7 @@ async function filterImportedTags(
 }
 
 /** Resolve an asset URI from a CharX zip to a data URL. */
-function resolveCharXAsset(zip: AdmZip, uri: string, ext?: string): string | null {
+function resolveCharXAsset(zip: ZipFile[], uri: string, ext?: string): string | null {
   // Handle embeded:// URIs (note: spec uses "embeded" not "embedded")
   let zipPath: string | null = null;
 
@@ -685,10 +709,9 @@ function resolveCharXAsset(zip: AdmZip, uri: string, ext?: string): string | nul
 
   if (!zipPath) return null;
 
-  const entry = zip.getEntry(zipPath);
-  if (!entry) return null;
+  const data = readCharXAsset(zip, zipPath);
+  if (!data) return null;
 
-  const data = entry.getData();
   const fileExt = ext ?? zipPath.split(".").pop() ?? "png";
   const imageInfo = isAllowedImageBuffer(data, `.${fileExt}`);
   if (!imageInfo) return null;

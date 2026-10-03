@@ -30,6 +30,7 @@ import { getImportAllowedRoots } from "../config/runtime-config.js";
 import { requirePrivilegedAccess } from "../middleware/privileged-gate.js";
 import { assertInsideDir, safeCompareString, tokenForPath } from "../utils/security.js";
 import { logger } from "../lib/logger.js";
+import { readZip, ZipReadError, type ZipFile } from "../lib/zip-reader.js";
 
 const PICK_FOLDER_TIMEOUT_MS = 60_000; // 60s — prevents infinite hang on headless servers
 const FOLDER_TOKEN_TTL_MS = 15 * 60_000;
@@ -723,10 +724,10 @@ export async function importRoutes(app: FastifyInstance) {
     if (buffer.length < 4 || buffer[0] !== 0x50 || buffer[1] !== 0x4b) {
       return reply.status(400).send({ success: false, error: "Not a .marinara package (zip signature missing)" });
     }
-    const AdmZip = (await import("adm-zip")).default;
-    let zip: InstanceType<typeof AdmZip>;
+    // Read strictly: the sizes the package declares are the sizes read, so the limits below hold.
+    let entries: ZipFile[];
     try {
-      zip = new AdmZip(buffer);
+      entries = readZip(buffer);
     } catch {
       return reply.status(400).send({ success: false, error: "Could not read .marinara package" });
     }
@@ -734,14 +735,13 @@ export async function importRoutes(app: FastifyInstance) {
     // structural entry boundary, but do not reject legitimate large embedded
     // galleries or avatars by byte size.
     const MAX_PACKAGE_ENTRIES = 8;
-    const entries = zip.getEntries();
     if (entries.length > MAX_PACKAGE_ENTRIES) {
       return reply.status(400).send({ success: false, error: ".marinara package has too many entries" });
     }
     let totalUncompressedBytes = 0;
     for (const entry of entries) {
       if (entry.isDirectory) continue;
-      const size = entry.header.size;
+      const size = entry.size;
       if (!Number.isSafeInteger(size) || size < 0 || size > NATIVE_PACKAGE_ENTRY_LIMIT_BYTES) {
         return reply.status(413).send({ success: false, error: ".marinara package entry is too large" });
       }
@@ -750,19 +750,28 @@ export async function importRoutes(app: FastifyInstance) {
         return reply.status(413).send({ success: false, error: ".marinara package contents are too large" });
       }
     }
-    const dataEntry = zip.getEntry("data.json");
+    const dataEntry = entries.find((entry) => entry.name === "data.json" && !entry.isDirectory);
     if (!dataEntry) {
       return reply.status(400).send({ success: false, error: ".marinara package is missing data.json" });
     }
+    let dataBytes: Buffer;
+    let avatarBytes: Buffer | null = null;
+    const avatarEntry = entries.find((e) => /^avatar\.(png|jpe?g|webp|gif|avif)$/i.test(e.name));
+    try {
+      dataBytes = dataEntry.read(NATIVE_PACKAGE_ENTRY_LIMIT_BYTES);
+      if (avatarEntry) avatarBytes = avatarEntry.read(NATIVE_PACKAGE_ENTRY_LIMIT_BYTES);
+    } catch (error) {
+      if (!(error instanceof ZipReadError)) throw error;
+      return reply.status(400).send({ success: false, error: `Could not read .marinara package: ${error.message}` });
+    }
     let envelope: Record<string, unknown>;
     try {
-      envelope = JSON.parse(dataEntry.getData().toString("utf-8")) as Record<string, unknown>;
+      envelope = JSON.parse(dataBytes.toString("utf-8")) as Record<string, unknown>;
     } catch {
       return reply.status(400).send({ success: false, error: "data.json is not valid JSON" });
     }
-    const avatarEntry = entries.find((e) => /^avatar\.(png|jpe?g|webp|gif|avif)$/i.test(e.entryName));
-    if (avatarEntry && envelope.data && typeof envelope.data === "object") {
-      const ext = avatarEntry.entryName.split(".").pop()!.toLowerCase();
+    if (avatarEntry && avatarBytes && envelope.data && typeof envelope.data === "object") {
+      const ext = avatarEntry.name.split(".").pop()!.toLowerCase();
       const mime =
         ext === "jpg" || ext === "jpeg"
           ? "image/jpeg"
@@ -773,7 +782,7 @@ export async function importRoutes(app: FastifyInstance) {
               : ext === "avif"
                 ? "image/avif"
                 : "image/png";
-      const dataUrl = `data:${mime};base64,${avatarEntry.getData().toString("base64")}`;
+      const dataUrl = `data:${mime};base64,${avatarBytes.toString("base64")}`;
       (envelope.data as Record<string, unknown>).avatar = dataUrl;
     }
     const timestampOverrides = readTimestampOverridesFromMultipart(file as any);

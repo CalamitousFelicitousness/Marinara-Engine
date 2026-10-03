@@ -626,6 +626,12 @@ assert.doesNotMatch(
   /MAX_CHARX_ENTRIES|MAX_CHARX_ENTRY_BYTES|MAX_CHARX_TOTAL_BYTES/u,
   "CharX imports must not reject galleries by entry count or byte size",
 );
+// CharX files are read through the strict zip reader, which needs a cap per read: it is the import
+// upload ceiling itself, never a byte cap of a card's own.
+const charxReadLimit = /const CHARX_READ_LIMIT_BYTES = ([^;]+);/u.exec(stCharacterImporterSource)?.[1];
+const importUploadCeiling = /const IMPORT_BODY_LIMIT_BYTES = ([^;]+);/u.exec(importRoutesSource)?.[1];
+assert.ok(charxReadLimit && importUploadCeiling, "the CharX read limit and the upload ceiling stay discoverable");
+assert.equal(charxReadLimit, importUploadCeiling, "CharX entries are read up to the import upload ceiling, no less");
 assert.match(
   importRoutesSource,
   /app\.post\("\/marinara-package", \{ bodyLimit: NATIVE_PACKAGE_UPLOAD_LIMIT_BYTES \}[\s\S]*?req\.file\(\{[\s\S]*?fields: 1,[\s\S]*?parts: 2,[\s\S]*?files: 1,[\s\S]*?fileSize: NATIVE_PACKAGE_UPLOAD_LIMIT_BYTES[\s\S]*?\}\)/u,
@@ -648,7 +654,7 @@ assert.match(
 );
 assert.match(
   importRoutesSource,
-  /app\.post\("\/marinara-package"[\s\S]*?for \(const entry of entries\)[\s\S]*?NATIVE_PACKAGE_ENTRY_LIMIT_BYTES[\s\S]*?totalUncompressedBytes > NATIVE_PACKAGE_UPLOAD_LIMIT_BYTES[\s\S]*?package contents are too large[\s\S]*?dataEntry\.getData\(\)/u,
+  /app\.post\("\/marinara-package"[\s\S]*?for \(const entry of entries\)[\s\S]*?NATIVE_PACKAGE_ENTRY_LIMIT_BYTES[\s\S]*?totalUncompressedBytes > NATIVE_PACKAGE_UPLOAD_LIMIT_BYTES[\s\S]*?package contents are too large[\s\S]*?dataEntry\.read\(NATIVE_PACKAGE_ENTRY_LIMIT_BYTES\)/u,
   "native package imports must validate ZIP entry sizes before extraction",
 );
 assert.match(

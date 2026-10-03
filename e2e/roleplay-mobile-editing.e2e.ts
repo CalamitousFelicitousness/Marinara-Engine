@@ -23,10 +23,20 @@ async function withLongReply(
   page: Page,
   request: APIRequestContext,
   run: (reply: Locator) => Promise<void>,
-  { mode = "roleplay", messagesAfter = 0 }: { mode?: "roleplay" | "conversation"; messagesAfter?: number } = {},
+  {
+    mode = "roleplay",
+    messagesAfter = 0,
+    character,
+  }: { mode?: "roleplay" | "conversation"; messagesAfter?: number; character?: string } = {},
 ) {
+  const characterIds: string[] = [];
+  if (character) {
+    const card = await request.post("/api/characters", { data: { data: { name: character, first_mes: "" } } });
+    expect(card.ok()).toBeTruthy();
+    characterIds.push(((await card.json()) as { id: string }).id);
+  }
   const created = await request.post("/api/chats", {
-    data: { name: "Phone editing", mode, characterIds: [] },
+    data: { name: "Phone editing", mode, characterIds },
   });
   expect(created.ok()).toBeTruthy();
   const chat = (await created.json()) as { id: string };
@@ -50,6 +60,7 @@ async function withLongReply(
     await run(page.locator(`[data-message-id="${replyId}"]`));
   } finally {
     await request.delete(`/api/chats/${chat.id}?force=true`);
+    for (const id of characterIds) await request.delete(`/api/characters/${id}`);
   }
 }
 
@@ -115,12 +126,8 @@ test("a Conversation message being edited takes touches under the see-through he
   );
 });
 
-test("the end of a long Roleplay message and its Save button stay reachable above the iPhone keyboard (#6992)", async ({
-  page,
-  request,
-}, testInfo) => {
-  test.skip(testInfo.project.name !== "mobile-webkit", "Only iOS keeps the page height when its keyboard opens.");
-  // Playwright has no software keyboard, so stand in for Safari's visual viewport.
+/** Playwright has no software keyboard, so stand in for Safari's visual viewport. Call before the page loads. */
+async function standInForSafariKeyboard(page: Page) {
   await page.addInitScript(() => {
     let keyboardTop: number | null = null;
     const viewport = new EventTarget();
@@ -141,13 +148,53 @@ test("the end of a long Roleplay message and its Save button stay reachable abov
       },
     });
   });
-  await withLongReply(page, request, async (latest) => {
-    const editor = await startEditing(latest);
+}
+
+/** Open the keyboard: Android shrinks the page, while the Safari stand-in only shrinks its visual viewport. */
+async function openKeyboard(page: Page, android: boolean) {
+  if (android) await page.setViewportSize({ width: 390, height: 500 });
+  else
     await page.evaluate(() => {
       const open = (window as typeof window & { __openKeyboard: (top: number) => void }).__openKeyboard;
       open(Math.round(window.innerHeight * 0.55));
     });
-    await expect(page.locator("html")).toHaveAttribute("data-mari-software-keyboard-open", "");
+  await expect(page.locator("html")).toHaveAttribute("data-mari-software-keyboard-open", "");
+}
+
+test("opening the keyboard to edit the latest Conversation reply keeps its first line below the header (#6992)", async ({
+  page,
+  request,
+}, testInfo) => {
+  const android = testInfo.project.name === "mobile-chromium";
+  if (!android) await standInForSafariKeyboard(page);
+  await withLongReply(
+    page,
+    request,
+    async (latest) => {
+      const editor = await startEditing(latest);
+      const startTop = await editor.evaluate((element) => element.getBoundingClientRect().top);
+      await openKeyboard(page, android);
+      // The keyboard lines the editor up again, below the character card and More options instead of under them.
+      await expect
+        .poll(async () => ({
+          moved: (await editor.evaluate((element) => element.getBoundingClientRect().top)) < startTop,
+          touches: await firstLineTakesTouches(editor, [0.1, 0.5, 0.95]),
+        }))
+        .toEqual({ moved: true, touches: [true, true, true] });
+    },
+    { mode: "conversation", character: "Mira Lanternkeeper" },
+  );
+});
+
+test("the end of a long Roleplay message and its Save button stay reachable above the iPhone keyboard (#6992)", async ({
+  page,
+  request,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile-webkit", "Only iOS keeps the page height when its keyboard opens.");
+  await standInForSafariKeyboard(page);
+  await withLongReply(page, request, async (latest) => {
+    const editor = await startEditing(latest);
+    await openKeyboard(page, false);
 
     // Scrolling inside the editor brings its last line into the space above the composer.
     await editor.evaluate((element) => {

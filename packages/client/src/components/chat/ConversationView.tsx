@@ -1318,11 +1318,13 @@ export function ConversationView({
         </div>
       ) : null}
       {/* ── Messages scroll area ── */}
+      {/* The scroll padding clears the see-through header, so messages scrolled or revealed to the top land below it. */}
+      {/* ponytail: 4rem fits the one-row header (about 3.5rem on phones); measure it like Roleplay if it ever wraps. */}
       <div
         ref={scrollRef}
         data-chat-scroll
         data-chat-resource-drop-surface
-        className="mari-messages-scroll flex-1 overflow-y-auto overflow-x-hidden"
+        className="mari-messages-scroll flex-1 scroll-pt-16 overflow-y-auto overflow-x-hidden"
       >
         {/* Floating header — character info + action buttons */}
         {renderHeader()}

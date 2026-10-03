@@ -208,7 +208,7 @@ test("Chat Summary keeps a remembered range when the message count arrives late"
       const from = panel.getByRole("spinbutton", { name: "Range 1 from message", exact: true });
       const to = panel.getByRole("spinbutton", { name: "Range 1 to message", exact: true });
       await expect(from).toBeVisible();
-      return { from, to, release };
+      return { panel, from, to, release };
     };
 
     const late = await openWithLateCount();
@@ -227,6 +227,27 @@ test("Chat Summary keeps a remembered range when the message count arrives late"
     await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 50))));
     await expect.soft(edited.from).toHaveValue("2");
     await expect.soft(edited.to).toHaveValue(editedTo);
+
+    // Switching to Range starts on the Last window, the same as when the count is already known.
+    const switched = await openWithLateCount();
+    await switched.panel.getByRole("button", { name: "Last", exact: true }).click();
+    await expect(switched.from).toBeHidden();
+    await switched.panel.getByRole("button", { name: "Range", exact: true }).click();
+    await expect(switched.from).toBeVisible();
+    switched.release();
+    await expect(switched.from).toHaveAttribute("max", "12");
+    await expect.soft(switched.from).toHaveValue("1");
+    await expect.soft(switched.to).toHaveValue("12");
+
+    // Nor is resting in a field: it catches up once you leave it.
+    const focused = await openWithLateCount();
+    await focused.from.focus();
+    focused.release();
+    await expect(focused.from).toHaveAttribute("max", "12");
+    await focused.from.blur();
+    await expect.soft(focused.from).toHaveValue("7");
+    await expect.soft(focused.to).toHaveValue("10");
+    await page.screenshot({ path: info.outputPath("summary-range-late-count.png") });
   } finally {
     await request.delete(`/api/chats/${id}?force=true`);
   }

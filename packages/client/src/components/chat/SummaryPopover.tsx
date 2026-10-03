@@ -17,6 +17,7 @@ import {
 import { createPortal } from "react-dom";
 import type { TFunction } from "i18next";
 import {
+  chatKeys,
   useDeleteSummaryEntry,
   useGenerateSummary,
   useRollingSummaryBackfill,
@@ -461,6 +462,7 @@ export function SummaryPopover({
   const [batchRun, setBatchRun] = useState<SummaryBatchRunState | null>(null);
   const sizeInputFocused = useRef(false);
   const rangeInputFocused = useRef(false);
+  const [rangeInputBlurs, setRangeInputBlurs] = useState(0);
   const rangeTouched = useRef(false);
   const automaticIntervalFocused = useRef(false);
   const summaryMaxTokensFocused = useRef(false);
@@ -534,6 +536,7 @@ export function SummaryPopover({
   }, [persistedContextSize, sourceMode, totalMessageCount]);
 
   // The message count can arrive after the window opens, so a range nobody has changed yet follows it.
+  // A focused field keeps its value until blur, which runs this again.
   useEffect(() => {
     if (rangeInputFocused.current || rangeTouched.current || sourceMode !== "range") return;
     setRangeStart(untouchedRangeStart);
@@ -543,7 +546,7 @@ export function SummaryPopover({
         ? [{ ...current[0]!, start: untouchedRangeStart, end: untouchedRangeEnd }]
         : current,
     );
-  }, [sourceMode, untouchedRangeEnd, untouchedRangeStart]);
+  }, [rangeInputBlurs, sourceMode, untouchedRangeEnd, untouchedRangeStart]);
 
   // Focus textarea when entering entry edit mode.
   useEffect(() => {
@@ -813,7 +816,8 @@ export function SummaryPopover({
     (mode: SummarySourceMode) => {
       if (mode === sourceMode) return;
       if (mode === "range") {
-        rangeTouched.current = true;
+        // A fresh range is untouched, so a message count that arrives later still moves it.
+        rangeTouched.current = false;
         setRangeStart(String(rangeLow));
         setRangeEnd(String(rangeHigh));
         setBatchRanges([
@@ -825,12 +829,19 @@ export function SummaryPopover({
           },
         ]);
         batchEntryRangesRef.current = [];
-        setSummaryPopoverSettings({ sourceMode: mode, rangeStart: rangeLow, rangeEnd: rangeHigh });
+        // Until the chat's count arrives, totalMessageCount is only the loaded messages. Forget the remembered
+        // range instead, so the untouched range follows the Last window to the real count.
+        const countKnown = queryClient.getQueryData<{ count: number }>(chatKeys.messageCount(chatId)) !== undefined;
+        setSummaryPopoverSettings({
+          sourceMode: mode,
+          rangeStart: countKnown ? rangeLow : null,
+          rangeEnd: countKnown ? rangeHigh : null,
+        });
         return;
       }
       setSummaryPopoverSettings({ sourceMode: mode });
     },
-    [rangeHigh, rangeLow, setSummaryPopoverSettings, sourceMode],
+    [chatId, queryClient, rangeHigh, rangeLow, setSummaryPopoverSettings, sourceMode],
   );
 
   const handleBatchRangeChange = useCallback(
@@ -2586,6 +2597,7 @@ export function SummaryPopover({
                                 onChange={(event) => handleBatchRangeChange(range.id, "start", event.target.value)}
                                 onBlur={() => {
                                   rangeInputFocused.current = false;
+                                  setRangeInputBlurs((count) => count + 1);
                                 }}
                                 aria-invalid={validationMessage ? true : undefined}
                                 className={cn(
@@ -2619,6 +2631,7 @@ export function SummaryPopover({
                                 onChange={(event) => handleBatchRangeChange(range.id, "end", event.target.value)}
                                 onBlur={() => {
                                   rangeInputFocused.current = false;
+                                  setRangeInputBlurs((count) => count + 1);
                                 }}
                                 aria-invalid={validationMessage ? true : undefined}
                                 className={cn(

@@ -4,7 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
-- Two end-to-end tests no longer fail for reasons of their own: the Decision import notice test reads the notice's words from the English catalog (it still expected the wording before the notice was rewritten), and the coin test waits for both of a turn's toasts at once instead of one after the other on a busy machine.
+- Several end-to-end tests no longer fail for reasons of their own: the Decision import notice and one-request dice tests read their words from the English catalog (they still expected wording that has since been rewritten), the coin test waits for both of a turn's toasts at once, the combat director tests find a ruleset fight's action groups and turn order the way a phone shows them, and the game tool controls test has the time its four reloads need beside the other game tests.
 
 - End-to-end tests run Chromium with its audio output off. The first sound a page plays, such as the generation-complete chime, could freeze a headless page for many seconds on a Linux machine, so a toast could vanish before it was checked (the coin and market tests failed this way) and every game test lost the time. Audio still plays, to a device nobody hears.
 

@@ -393,9 +393,11 @@ test("Combat director ruleset: the ruleset's own menu resolves the fight and wri
     // The screen plays every turn nobody holds on its own, so the menu arrives when it is Juno's.
     const axe = page.getByRole("button", { name: /Road axe/ });
     await expect(axe).toBeVisible({ timeout: 60000 });
-    // The ruleset's contests sit in a group of their own, and breaking free is not there while
-    // nothing holds on.
-    await expect(page.getByText("Contests", { exact: true })).toBeVisible();
+    // The ruleset's contests sit in a group of their own (named on a phone too, where its heading is
+    // hidden to save room), and breaking free is not there while nothing holds on.
+    await expect(
+      page.getByRole("region", { name: "Contests", exact: true }).getByRole("button", { name: /^Grab/ }),
+    ).toBeVisible();
     // Its forecast is the chance to win it, not to hit.
     await expect(page.getByRole("button", { name: /^Grab/ })).toContainText(/\d+% to win/);
     await expect(page.getByRole("button", { name: /^Shove back/ })).toBeVisible();
@@ -610,8 +612,10 @@ test("Combat director ruleset: an attack is made in a style where initiative is 
 
     const spade = page.getByRole("button", { name: /^Spade/ });
     await expect(spade).toBeVisible({ timeout: 60000 });
-    // Everybody's number is on the status panel, since a player spends it.
+    // Everybody's number is on the status panel, since a player spends it (a phone keeps the turn
+    // order folded until it is opened).
     const fight = page.getByRole("region", { name: "Combat decisions" });
+    if (testInfo.project.name.includes("mobile")) await fight.getByText("Turn order", { exact: true }).click();
     await expect(fight.getByText(/^Initiative -?\d+$/).first()).toBeVisible();
     // The option says only its chance: what it does depends on the style.
     await expect(spade).toContainText(/\d+% to hit/);

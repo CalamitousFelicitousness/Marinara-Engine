@@ -92,6 +92,68 @@ Some visual effects have their own variables. For example, a theme can request t
 
 Custom theme CSS is cleaned before it runs, for safety. Styles that load a file from another website do not work. To use an image or a font inside a theme, embed it as a `data:` URI instead of a web link. A `data:` URI holds the file's content directly inside the CSS.
 
+## Styling chat windows and drawers
+
+**Chat Settings** opens as a window you can move and resize, and its sections are collapsible drawers. Every chat window and drawer uses the same class names, data attributes and variables, so one theme can restyle them all at once.
+
+| Part | Class |
+| --- | --- |
+| Window | `.mari-window` |
+| Title bar | `.mari-window__header` |
+| Title | `.mari-window__title` |
+| Pin, lock and close buttons | `.mari-window__controls` (each button is `.mari-window__control`) |
+| Window content | `.mari-window__body` |
+| Resize edges and corners | `.mari-window__resize-handle` |
+| Drawer | `.mari-drawer` |
+| Drawer header, title and content | `.mari-drawer__header`, `.mari-drawer__title`, `.mari-drawer__body` |
+
+These data attributes describe each window or drawer:
+
+- `data-window` names the window, for example `data-window="chat-settings"`.
+- `data-drawer` names the drawer, for example `data-drawer="chat-name"`.
+- `data-pinned` and `data-locked` are `"true"` while the window is pinned or locked.
+- `data-detached` is `"true"` when a drawer is shown in its own window.
+
+The variables below set the default look. Each one falls back to the shared chat chrome colors, so a theme only needs the ones it wants to change.
+
+| Variable | What it controls |
+| --- | --- |
+| `--mari-window-bg` | Window background |
+| `--mari-window-text` | Window text |
+| `--mari-window-border`, `--mari-window-border-width` | Window border |
+| `--mari-window-radius` | Window corner rounding |
+| `--mari-window-shadow` | Window shadow |
+| `--mari-window-backdrop-filter` | Blur behind the window |
+| `--mari-window-header-bg`, `--mari-window-header-text`, `--mari-window-header-border` | Title bar colors |
+| `--mari-window-header-padding` | Title bar spacing |
+| `--mari-window-control-color`, `--mari-window-control-color-hover`, `--mari-window-control-bg-hover` | Pin, lock and close buttons |
+| `--mari-window-control-color-active`, `--mari-window-control-bg-active` | A pinned or locked button |
+| `--mari-window-control-radius`, `--mari-window-control-gap` | Button rounding and spacing |
+| `--mari-window-focus-ring` | Keyboard focus outline |
+| `--mari-window-resize-handle-size` | Width of the resize edges |
+| `--mari-drawer-bg`, `--mari-drawer-border` | Drawer background and divider |
+| `--mari-drawer-header-bg`, `--mari-drawer-header-bg-hover` | Drawer header colors |
+| `--mari-drawer-header-padding`, `--mari-drawer-body-padding-inline`, `--mari-drawer-body-padding-bottom` | Drawer spacing |
+| `--mari-drawer-title-color`, `--mari-drawer-icon-color`, `--mari-drawer-arrow-color` | Drawer header text and icons |
+| `--mari-drawer-count-bg`, `--mari-drawer-count-text` | The count badge on a drawer |
+
+Set a variable in `:root` to change every window, or on a selector to change one:
+
+```css
+:root {
+  --mari-window-border: #f472b6;
+  --mari-window-radius: 0.5rem;
+}
+
+[data-window="chat-settings"] {
+  --mari-window-header-bg: rgb(0 0 0 / 0.25);
+}
+
+.mari-drawer[data-drawer="agents"] {
+  --mari-drawer-border: transparent;
+}
+```
+
 ## Size and name limits
 
 A theme name can be up to 200 characters. The CSS payload can be up to 256 KiB, measured in UTF-8 bytes rather than characters. A theme larger than that is rejected when you save or import it.

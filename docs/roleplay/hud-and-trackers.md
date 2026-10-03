@@ -77,6 +77,8 @@ The sparkle icon at the start of the HUD row opens the **Agents & Actions** menu
 
 The **Tracker Panel** is a larger side panel that shows the same tracker data as the compact HUD widgets. It gives the tracker cards more room and adds portrait and thought features. You set it up in **Settings**, under the **Appearance** tab, in the **Tracker Panel** section.
 
+To show or hide it in a Roleplay chat on a computer, open **Chat Settings** and use the **Tracker Panel** switch at the top. On a phone, tap the Tracker Panel button at the start of the HUD row.
+
 The controls in the panel header also let you customize tracker structure:
 
 - Click **+** to enter add mode. The World section gains **Add world field**, and each present-character card gains **Add custom field**. Field names remain visible in normal mode so their values are always understandable.

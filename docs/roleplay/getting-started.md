@@ -67,7 +67,8 @@ The toolbar sits at the top of the chat area. It has buttons that open small pan
 - **Active Context**. Lists the linked characters, lorebook entries, and preset that fed the last reply. It shows which lorebook entries matched and were injected.
 - **Author's Notes**. A free-text note added to the prompt every turn. See below.
 - **Gallery**. Opens the chat's image and video gallery, where you can generate an illustration or background.
-- **Chat Settings**. Opens the full settings drawer for this chat.
+
+**Chat Settings** opens from the button in the middle of the top bar on a computer, and from **More options** on a phone. See [Chat Settings Overview](../chats/chat-settings.md).
 
 ### Author's Notes
 

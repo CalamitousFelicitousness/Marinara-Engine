@@ -1,18 +1,39 @@
 # Chat Settings Overview
 
-This guide covers the **Chat Settings** panel, the place where you tune one chat on its own. It explains the basics you set here: chat name, connection, and saved setting bundles. It then points you to the deeper guides for everything else the panel holds.
+This guide covers the **Chat Settings** window, the place where you tune one chat on its own. It explains the basics you set here: chat name, connection, and saved setting bundles. It then points you to the deeper guides for everything else the panel holds.
 
 Every setting in this panel applies to the current chat only. Changing it does not affect your other chats.
 
-## Opening the Chat Settings panel
+## Opening Chat Settings
 
-You open the panel from inside an open chat.
+You open Chat Settings from inside an open chat.
 
 1. Open any chat.
-2. Click the chat settings gear button in the chat toolbar (its tooltip reads **Chat Settings**).
-3. The **Chat Settings** panel slides open.
+2. On a computer, click the **Chat Settings** button in the middle of the top bar. It only appears while a chat is open. On a phone, tap **More options** (the three dots) at the top of the chat, then tap **Chat Settings**.
+3. The **Chat Settings** window opens.
 
-You should see a panel titled **Chat Settings** with a gear icon. When you create a brand new chat, this panel opens automatically so you can set it up right away.
+When you create a brand new chat, Chat Settings opens automatically so you can set it up right away.
+
+## Moving, pinning and locking the window
+
+On a computer, Chat Settings is a window that floats over the chat. Its contents rearrange to fit its size.
+
+- **Move it** by dragging its title bar. With the title bar focused, the arrow keys move it too; hold Shift for bigger steps.
+- **Resize it** by dragging any edge or corner. The bottom-right corner can also be focused and resized with the arrow keys.
+- **Pin** (the pin button) keeps the window open when you click elsewhere. Unpinned, it closes when you click outside it or press Escape.
+- **Lock** (the padlock button) stops the window from moving or resizing until you unlock it.
+- **Close** (the X button) closes the window.
+
+The window stays inside the chat area, even when you resize the browser or open a sidebar. Marinara remembers its size, place, pin and lock on this device.
+
+Two controls sit at the top of the window:
+
+- **Tracker Panel** shows or hides the Tracker Panel beside a Roleplay chat. It appears in Roleplay chats when the Tracker Panel is turned on in **Settings → Appearance** and the chat uses agents or Advanced Memory.
+- **Reset View** puts the window back where it started, unpinned and unlocked.
+
+The **?** button beside the **Chat Settings** title opens the chat's Help layout, which labels each part of the chat. On a phone, Help stays in **More options**. You can hide it with **Hide chat Help button** in **Settings → General → App Behavior**.
+
+On a phone, Chat Settings opens as a full-width panel instead of a window.
 
 ## Chat Name
 

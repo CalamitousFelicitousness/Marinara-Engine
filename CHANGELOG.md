@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- On a computer, **Chat Settings** now opens from a button in the middle of the top bar, shown while a chat is open, as a window you can move, resize, pin and lock. Unpinned, it closes when you click elsewhere or press Escape; pinned, it stays open. It stays inside the chat area and remembers its place on this device. **Help** now opens from the **?** beside the Chat Settings title, and the Help layout labels the window and its buttons too. The **Tracker Panel** switch and **Reset View**, which puts the window back where it started, sit at the top of the window. The short description of each chat mode is gone. On phones, Chat Settings, Help and the Tracker Panel button stay where they were. Custom themes can restyle chat windows and their sections with shared classes and `--mari-window-*` / `--mari-drawer-*` variables (#7036).
+
 - Chats, Characters, Personas, Lorebooks, Presets, Connections, Agents, Settings and the Tracker Panel now each have a **?** at the top. Hover over it, or tap it on mobile, to read what that sidebar is for and what you can do there (#7002).
 
 - Professor Mari can now turn **Send without wrapper** on or off for an existing prompt block, instead of failing or reporting success while leaving it unchanged. Asked to do this for a marker, which always keeps its wrapper, she reports that it cannot be done (#7014).

@@ -9,7 +9,7 @@ Some agents want to write new data into your chat. A Lorebook agent can add lore
 To find the toggle:
 
 1. Open the chat you want to control.
-2. Open **Chat Settings** (the gear icon).
+2. Open **Chat Settings**.
 3. Scroll to the **Agents** section.
 4. Turn on **Review Agent Outputs**.
 
@@ -60,7 +60,7 @@ The **Agent Suite** lets you view and edit everything the agents in this chat ha
 
 To open it:
 
-1. Open **Chat Settings** (the gear icon).
+1. Open **Chat Settings**.
 2. Scroll to the **Agents** section.
 3. Click **Agent Suite**.
 

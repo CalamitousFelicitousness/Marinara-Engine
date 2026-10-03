@@ -12,7 +12,7 @@ const startsServerBuild = process.argv.slice(2).some((arg) => relative(join(SERV
 // launchers rebuild only when the version or commit changes. Rebuild before starting instead.
 // ponytail: only the server's own build records hashes, so a damaged packages/shared or client file is
 // not caught here. If that shows up, record hashes in those builds too and check them the same way.
-function rebuildChangedServer() {
+async function rebuildChangedServer() {
   const changed = startsServerBuild ? findChangedBuildFile() : null;
   if (!changed) return true;
   process.stderr.write(
@@ -23,9 +23,14 @@ function rebuildChangedServer() {
     stdio: "inherit",
   });
   if (build.status === 0) return true;
-  process.stderr.write(
-    "\n  [ERROR] Could not rebuild the server. See the error above, then reinstall Marinara Engine or run: pnpm build\n\n",
-  );
+  // Ctrl+C ends the build too, but the stop handler below can only run after this blocking call. Let it run,
+  // so a stop is not reported as a failed rebuild.
+  await new Promise((resolve) => setImmediate(resolve));
+  if (!stopping) {
+    process.stderr.write(
+      "\n  [ERROR] Could not rebuild the server. See the error above, then reinstall Marinara Engine or run: pnpm build\n\n",
+    );
+  }
   return false;
 }
 
@@ -48,8 +53,8 @@ for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
 }
 
 while (true) {
-  if (!rebuildChangedServer()) {
-    process.exitCode = 1;
+  if (!(await rebuildChangedServer())) {
+    process.exitCode = stopping ? 130 : 1;
     break;
   }
   child = spawn(process.execPath, [...process.execArgv, ...process.argv.slice(2)], {

@@ -38,8 +38,11 @@ function resolveCommit() {
 
 const hashFile = (path) => createHash("sha256").update(readFileSync(path)).digest("hex");
 
-/** Records the build's commit and the SHA-256 of every built code file, so later changes can be found (#6984). */
-export function writeBuildMeta() {
+/**
+ * Records the build's commit and the SHA-256 of every built code file, so later changes can be found (#6984).
+ * A failed build records no commit, so the launchers still treat it as stale and build again.
+ */
+export function writeBuildMeta({ failed = false } = {}) {
   const files = {};
   for (const entry of readdirSync(DIST_DIR, { recursive: true, withFileTypes: true })) {
     if (!entry.isFile() || !CODE_FILE.test(entry.name)) continue;
@@ -50,7 +53,7 @@ export function writeBuildMeta() {
   mkdirSync(join(DIST_DIR, "config"), { recursive: true });
   writeFileSync(
     join(DIST_DIR, BUILD_META_FILE),
-    `${JSON.stringify({ commit: resolveCommit(), builtAt: new Date().toISOString(), files }, null, 2)}\n`,
+    `${JSON.stringify({ commit: failed ? null : resolveCommit(), builtAt: new Date().toISOString(), files }, null, 2)}\n`,
     "utf8",
   );
 }

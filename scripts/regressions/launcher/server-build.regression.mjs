@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -53,13 +62,16 @@ try {
   const runtime = read("dist/runtime.js");
   const entry = read("dist/index.js");
 
-  // The launchers' start: a damaged module is rebuilt, named in the terminal, and the server starts.
-  damage("dist/runtime.js");
-  let result = start();
-  assertBuilt(result);
-  assert.match(result.stderr, /\[WARN\].*dist\/runtime\.js/);
-  assert.match(result.stdout, /fixture server started/);
-  assert.equal(read("dist/runtime.js"), runtime);
+  // The launchers' start: a damaged or deleted module is named in the terminal and rebuilt, and the server starts.
+  let result;
+  for (const harm of [damage, (file) => rmSync(join(server, file))]) {
+    harm("dist/runtime.js");
+    result = start();
+    assertBuilt(result);
+    assert.match(result.stderr, /\[WARN\].*dist\/runtime\.js/);
+    assert.match(result.stdout, /fixture server started/);
+    assert.equal(read("dist/runtime.js"), runtime);
+  }
 
   // The Windows installer and in-app updates rebuild without cleaning first. That rebuild must
   // rewrite a damaged file and a deleted one instead of trusting tsc's saved state.
@@ -69,13 +81,15 @@ try {
   assert.equal(read("dist/runtime.js"), runtime);
   assert.equal(read("dist/index.js"), entry);
 
-  // A private build that another tool starts is left alone.
+  // Starting a private build that another tool made leaves the launchers' build alone, even a changed one:
+  // a live engine may be running from it.
   cpSync(join(server, "dist"), join(server, "dist-private"), { recursive: true });
-  damage("dist-private/runtime.js");
+  damage("dist/runtime.js");
   result = start("dist-private/index.js");
-  assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /SyntaxError/);
+  assertBuilt(result);
+  assert.match(result.stdout, /fixture server started/);
   assert.doesNotMatch(result.stderr, /\[WARN\]/);
+  assert.notEqual(read("dist/runtime.js"), runtime);
 
   // A build from before hashes were recorded (the reported install) cannot be checked at start,
   // so it starts as before; the next build, such as an update's, writes every file again.
@@ -87,6 +101,16 @@ try {
   assertBuilt(build());
   assert.equal(read("dist/runtime.js"), runtime);
   assertBuilt(start());
+
+  // A build with type errors fails, but tsc still wrote every file. The next start runs them instead of calling
+  // them damaged. The failed build records no commit, so the launchers still build again.
+  appendFileSync(join(server, "src", "runtime.ts"), 'export const typeError: number = "text";\n');
+  result = build();
+  assert.equal(result.status, 2, `${result.stdout}\n${result.stderr}`);
+  result = start();
+  assertBuilt(result);
+  assert.doesNotMatch(result.stderr, /\[WARN\]/);
+  assert.equal(JSON.parse(read("dist/config/build-meta.json")).commit, null);
 
   console.info("Damaged server build repair regression passed.");
 } finally {

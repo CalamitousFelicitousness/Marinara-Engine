@@ -11,18 +11,6 @@ const DIST_DIR = resolve(PACKAGE_ROOT, "dist");
 const TSC_CLI = fileURLToPath(import.meta.resolve("typescript/bin/tsc"));
 const LOW_MEMORY_BUILD = process.platform === "android" || process.env.MARINARA_LOW_MEMORY_BUILD === "1";
 
-function run(command, args, options = {}) {
-  const result = spawnSync(command, args, {
-    cwd: PACKAGE_ROOT,
-    env: { ...process.env, ...options.env },
-    shell: options.shell ?? false,
-    stdio: "inherit",
-  });
-  if (result.status !== 0) {
-    process.exit(result.status ?? 1);
-  }
-}
-
 function collectTsFiles(dir) {
   const files = [];
   for (const entry of readdirSync(dir)) {
@@ -68,8 +56,12 @@ if (LOW_MEMORY_BUILD) {
   // #6984: tsc rewrites only files whose source changed, so a built file that was damaged, edited or
   // deleted after its build survived every rebuild. Without its saved state, tsc writes every file again.
   if (findChangedBuildFile() !== null) rmSync(resolve(PACKAGE_ROOT, "tsconfig.tsbuildinfo"), { force: true });
-  run(process.execPath, [TSC_CLI]);
+  const tsc = spawnSync(process.execPath, [TSC_CLI], { cwd: PACKAGE_ROOT, stdio: "inherit" });
+  // Exit 2 means type errors, but tsc still wrote every file. Record those files below so the next start does
+  // not call them damaged, and still fail the build.
+  if (tsc.status !== 0 && tsc.status !== 2) process.exit(tsc.status ?? 1);
+  process.exitCode = tsc.status;
 }
 
 copyRuntimeAssets();
-writeBuildMeta();
+writeBuildMeta({ failed: Boolean(process.exitCode) });

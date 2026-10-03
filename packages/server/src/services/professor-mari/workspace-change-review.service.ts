@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, dirname, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { nanoid } from "nanoid";
 import type {
   MariDependencyInstallApproval,
@@ -179,9 +179,33 @@ export function workspacePathAccessPolicy(
   return "normal";
 }
 
-const escapeSensitiveName = (name: string) => name.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-const PACKAGE_CONTROL_NAME_PATTERN = [...PACKAGE_CONTROL_FILES].map(escapeSensitiveName).join("|");
-const ROOT_LAUNCHER_NAME_PATTERN = [...ROOT_LAUNCHER_FILES].map(escapeSensitiveName).join("|");
+/** #6984: what Professor Mari is told, to pass on, when a change would land in build output. */
+export const BUILD_OUTPUT_WRITE_REFUSAL =
+  "Build files are generated and must not be edited; change the source and rebuild instead.";
+
+// Windows ignores trailing dots and spaces in a name and reads "name:stream" as the name itself, so
+// "dist." and "dist::$INDEX_ALLOCATION" open dist there. Folding them, and case, everywhere costs nothing.
+const fileSystemName = (segment = "") =>
+  segment
+    .toLowerCase()
+    .replace(/:.*$/su, "")
+    .replace(/[. ]+$/u, "");
+
+/**
+ * #6984: build output is every package's dist folder and the private server builds beside it, such as
+ * dist-sandbox. A build writes those files, so Professor Mari may read them but never change them. Every write
+ * path asks this about each path it would really touch: the requested one and, through links, the real one.
+ */
+export function isBuildOutputPath(workspaceRoot: string, absolutePath: string): boolean {
+  const rel = relative(resolve(workspaceRoot), resolve(absolutePath));
+  if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) return false;
+  const [top, , output] = normalizeRelativePath(rel).split("/").map(fileSystemName);
+  return top === "packages" && output !== undefined && /^dist(?:-|$)/u.test(output);
+}
+
+export const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+const PACKAGE_CONTROL_NAME_PATTERN = [...PACKAGE_CONTROL_FILES].map(escapeRegExp).join("|");
+const ROOT_LAUNCHER_NAME_PATTERN = [...ROOT_LAUNCHER_FILES].map(escapeRegExp).join("|");
 // Mirrors workspacePathAccessPolicy's scoping: package-control names are
 // sensitive at ANY depth (they may take a path prefix), while launcher names
 // and the workflow/installer/gradle paths are sensitive only at the workspace
@@ -232,6 +256,43 @@ const SENSITIVE_PATH_WRITER_PATTERNS = [
 export function bashCommandTargetsSensitivePath(command: string): boolean {
   const normalized = command.replace(/\\/gu, "/").toLowerCase();
   return SENSITIVE_PATH_WRITER_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+// #6984: a path into build output (see isBuildOutputPath) inside a shell command, after any prefix. It must
+// start a word: without that anchor a long one-line command costs quadratic time on the server's event loop.
+const BUILD_OUTPUT_TARGET = String.raw`(?<![^\s"'\x60=(<>;&|])(?:[^\s"'<>;&|]*/)?packages/[^/\s"'<>;&|]+/dist(?:-[^/\s"'<>;&|]*)?(?![^/\s"'<>;&|])`;
+const COMMAND_START = String.raw`(?:^|[;&|]\s*|\s)`;
+const BUILD_OUTPUT_WRITER_PATTERNS = [
+  // Commands that change every path they name; a move empties its source too.
+  new RegExp(
+    String.raw`${COMMAND_START}(?:mv|rm|rmdir|mkdir|touch|truncate|tee)\b[^;&|\n]*${BUILD_OUTPUT_TARGET}`,
+    "u",
+  ),
+  // Copies and links write only their last path, so copying a build file out stays a read.
+  new RegExp(
+    String.raw`${COMMAND_START}(?:cp|ln|install|rsync)\b[^;&|\n]*\s["']?${BUILD_OUTPUT_TARGET}[^\s"';&|]*["']?\s*(?:\d*>[^;&|\n]*)?(?:$|[;&|\n])`,
+    "u",
+  ),
+  new RegExp(
+    String.raw`${COMMAND_START}(?:sed|perl)\b[^;&|\n]*\s-(?:[a-z]*i|-in-place)[^;&|\n]*${BUILD_OUTPUT_TARGET}`,
+    "u",
+  ),
+  new RegExp(String.raw`>>?\s*["']?${BUILD_OUTPUT_TARGET}`, "u"),
+  new RegExp(
+    String.raw`${COMMAND_START}(?:node|python(?:3)?)\b[^;&|\n]*(?:writefile|appendfile|rmsync|unlink|rename|mkdir|copyfile|cpsync|\bopen\()[^;&|\n]*${BUILD_OUTPUT_TARGET}`,
+    "u",
+  ),
+  new RegExp(String.raw`${COMMAND_START}dd\b[^;&|\n]*of=["']?${BUILD_OUTPUT_TARGET}`, "u"),
+];
+
+/**
+ * #6984: the shell sandbox keeps build output read-only, but a refused write inside an error-tolerant compound
+ * (`x; echo done`) still exits 0 and would read as done. Refusing the common write shapes before running makes
+ * the refusal loud. Best effort, like bashCommandTargetsSensitivePath: the sandbox rule is what enforces it.
+ */
+export function bashCommandWritesBuildOutput(command: string): boolean {
+  const normalized = command.replace(/\\/gu, "/").toLowerCase();
+  return BUILD_OUTPUT_WRITER_PATTERNS.some((pattern) => pattern.test(normalized));
 }
 
 export function isPackageManagerMutationCommand(command: string) {
@@ -460,6 +521,8 @@ export class WorkspaceChangeReviewService {
     sessionId: string;
   }): Promise<MariSensitiveFileApproval> {
     const absolutePath = resolve(input.absolutePath);
+    // #6984: an approved review writes the file, so build output cannot be staged either.
+    if (isBuildOutputPath(this.workspaceRoot, absolutePath)) throw new Error(BUILD_OUTPUT_WRITE_REFUSAL);
     if (workspacePathAccessPolicy(this.workspaceRoot, absolutePath) !== "sensitive") {
       throw new Error("Only dependency, launcher, installer, and workflow files use the sensitive-change review.");
     }

@@ -434,13 +434,13 @@ const withoutMarket = (doc: Record<string, any>) => {
       partyInventory: [{ items: [{ name: "crowns", quantity: 1 }] }],
       inventoryPurses: { "": "Coin worth 60 pennies" },
     }),
-    /PLAYER INVENTORY \(Coin worth 60 pennies\): crowns\nAnyone not listed carries nothing, coins included\./,
+    /PLAYER INVENTORY \(Coin worth 60 pennies\): crowns\nParty members not listed carry nothing, coins included\./,
   );
   // With money in the game, an empty bag is still listed with its empty purse, and so is the player's
   // in a party where only others carry anything.
   assert.match(
     reminder(gravewatch, { playerInventory: [], partyInventory: [], inventoryPurses: { "": "no coins" } }),
-    /\nPLAYER INVENTORY \(no coins\): nothing\nAnyone not listed carries nothing, coins included\./,
+    /\nPLAYER INVENTORY \(no coins\): nothing\nParty members not listed carry nothing, coins included\./,
   );
   assert.match(
     reminder(gravewatch, {
@@ -449,13 +449,16 @@ const withoutMarket = (doc: Record<string, any>) => {
       partyInventory: [{ holder: "Bram", items: [{ name: "cakes", quantity: 2 }] }],
       inventoryPurses: { "": "no coins", [gameInventoryBagKey("Bram")]: "no coins" },
     }),
-    /\nPARTY INVENTORY:\n- Ada \(no coins\): nothing\n- Bram \(no coins\): cakes ×2\nAnyone not listed carries nothing, coins included\./,
+    /\nPARTY INVENTORY:\n- Ada \(no coins\): nothing\n- Bram \(no coins\): cakes ×2\nParty members not listed carry nothing, coins included\./,
   );
   // A game without money says nothing of an empty bag, as before.
-  assert.doesNotMatch(reminder(coinless, { playerInventory: [], partyInventory: [] }), /INVENTORY|Anyone not listed/);
+  assert.doesNotMatch(
+    reminder(coinless, { playerInventory: [], partyInventory: [] }),
+    /INVENTORY|Party members not listed/,
+  );
   const lampOnly = reminder(coinless, { playerInventory: [{ name: "Lamp", quantity: 1 }], partyInventory: [] });
   assert.match(lampOnly, /\nPLAYER INVENTORY: Lamp\n/);
-  assert.doesNotMatch(lampOnly, /Anyone not listed/, "nor of anyone else's coins");
+  assert.doesNotMatch(lampOnly, /Party members not listed/, "nor of anyone else's coins");
 }
 
 // ── Layers hide coins, never rewrite them ──

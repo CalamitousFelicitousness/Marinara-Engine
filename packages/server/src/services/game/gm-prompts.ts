@@ -1317,7 +1317,7 @@ export function buildGmFormatReminder(
   // In a game with money every purse is said, an empty one too, so the player's bag is listed even with
   // nothing in it: a Game Master never told a purse is empty narrates a buy the Engine then refuses.
   const withMoney = Boolean(normalizePromptText(ctx.inventoryPurses?.[gameInventoryBagKey(undefined)]));
-  const nobodyElse = withMoney ? [`Anyone not listed carries nothing, coins included.`] : [];
+  const nobodyElse = withMoney ? [`Party members not listed carry nothing, coins included.`] : [];
 
   // ── Current State (closest to generation) ──
   lines.push(

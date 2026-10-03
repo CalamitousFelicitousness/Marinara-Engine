@@ -757,7 +757,7 @@ try {
     );
     assert.match(block, /- Bram \(load 12 of 9, most 12, encumbered; Body 0 of 1, Hands 0 of 2; no coins\): /);
     // Through the route too: with money in the game an empty purse is said, and so is anyone left out.
-    assert.match(block, /\nAnyone not listed carries nothing, coins included\.(\n|$)/);
+    assert.match(block, /\nParty members not listed carry nothing, coins included\.(\n|$)/);
     // And each sheet reads what its character wears (#6826): Guard is 6 + Wits, and Ada's coat adds 1.
     assert.match(text, /\nAda\nBRN \+0, WIT \+0, HRT \+0\nGrit maximum 6, Guard 7\n/);
     assert.match(text, /\nBram\nBRN \+3, WIT \+0, HRT \+0\nGrit maximum \d+, Guard 6\n/);

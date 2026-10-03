@@ -91,6 +91,7 @@ import {
   type SemanticSummaryRetrievalControlField,
 } from "./SemanticSummaryRetrievalControls";
 import { useTouchFolderDrag } from "../../hooks/use-touch-folder-drag";
+import { useKeepFocusedFieldAboveKeyboard } from "../../hooks/use-keep-focused-field-above-keyboard";
 import { getTouchReorderDropIndex } from "../../lib/touch-reorder";
 import {
   CHAT_SUMMARY_BATCH_MAX_MESSAGES,
@@ -482,6 +483,7 @@ export function SummaryPopover({
   const [draggingEntryIndex, setDraggingEntryIndex] = useState<number | null>(null);
   const [dragReadyEntryIndex, setDragReadyEntryIndex] = useState<number | null>(null);
   const [summaryDropIndex, setSummaryDropIndex] = useState<number | null>(null);
+  useKeepFocusedFieldAboveKeyboard(panelRef);
 
   const { startBackfill, stopBackfill } = useRollingSummaryBackfill();
   const backfillState = useRollingBackfillStore();

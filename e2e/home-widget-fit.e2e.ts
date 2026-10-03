@@ -54,7 +54,9 @@ async function homeWidgetFit(page: Page) {
       (button) => button.textContent?.trim() === "Open character library",
     )!;
     const message = link.previousElementSibling!;
-    link.scrollIntoView({ block: "center" });
+    // Scroll the page to the card, not the link: the card clips, and scrolling a cut-off link into view
+    // would scroll the card's own content and hide the defect.
+    encounter.scrollIntoView({ block: "center" });
     const linkBox = link.getBoundingClientRect();
     const hit = document.elementFromPoint(linkBox.left + linkBox.width / 2, linkBox.top + linkBox.height / 2);
 
@@ -118,6 +120,67 @@ test("Home widgets: Daily Encounter empty state fits and Professor Mari is shown
       }),
     )
     .toBe(true);
+});
+
+test("Home widgets: a large UI font never pushes the empty message over its title or cuts Mari's text early (#7032)", async ({
+  page,
+}, testInfo) => {
+  const mobile = testInfo.project.name.includes("mobile");
+  await page.setViewportSize(mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 });
+  await page.goto("/");
+  const encounter = page.locator('[data-home-widget-id="character"]');
+  await expect(encounter.getByRole("button", { name: "Open character library" })).toBeVisible({ timeout: 30_000 });
+
+  // The grid's minimum row height does not grow with the font, so at the largest size the empty state cannot fit.
+  // It may then be cut at the card's bottom, but it must never be pushed up over the title.
+  const sizes = mobile ? { fits: 26, tooBig: 30 } : { fits: 30, tooBig: 34 };
+  for (const fontSize of [sizes.fits, sizes.tooBig]) {
+    await page.evaluate(async (size) => {
+      const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+      useUIStore.getState().setFontSize(size);
+    }, fontSize);
+    const fit = () =>
+      encounter.evaluate((widget) => {
+        const within = (child: DOMRect, parent: DOMRect, inset = 0) =>
+          child.top >= parent.top + inset - 0.5 && child.bottom <= parent.bottom - inset + 0.5;
+        const card = widget.querySelector(":scope > section")!;
+        card.scrollIntoView({ block: "center" });
+        const title = card.querySelector("header h2")!.getBoundingClientRect();
+        const link = Array.from(card.querySelectorAll("button")).find(
+          (button) => button.textContent?.trim() === "Open character library",
+        )!;
+        // Mari's text column clips its own overflow, so its box must reach the card's padding edge (where the
+        // card's own clip used to cut) without passing the border, and hold her whole text.
+        const guide = document.querySelector('[data-component="HomeBrowserHub.ProfessorWidget"]')!;
+        const column = guide.querySelector("[data-home-professor-content]")!;
+        const columnBox = column.getBoundingClientRect();
+        const guideBox = guide.getBoundingClientRect();
+        const border = Number.parseFloat(getComputedStyle(guide).borderTopWidth);
+        return {
+          rootFontSize: getComputedStyle(document.documentElement).fontSize,
+          emptyStateBelowTitle: Array.from(link.parentElement!.children)
+            .map((child) => child.getBoundingClientRect())
+            .every((box) => box.height <= 0.5 || box.top >= title.bottom - 0.5),
+          emptyLinkInside: within(link.getBoundingClientRect(), card.getBoundingClientRect(), 8),
+          mariTextWhole:
+            Math.abs(columnBox.top - (guideBox.top + border)) <= 0.5 &&
+            Math.abs(columnBox.bottom - (guideBox.bottom - border)) <= 0.5 &&
+            [column.firstElementChild!, column.querySelector("[data-home-professor-action]")!].every((element) =>
+              within(element.getBoundingClientRect(), columnBox),
+            ),
+        };
+      });
+    await expect.poll(fit, { message: `UI font ${fontSize}px` }).toMatchObject({
+      rootFontSize: `${fontSize}px`,
+      emptyStateBelowTitle: true,
+      ...(fontSize === sizes.fits ? { emptyLinkInside: true } : {}),
+      mariTextWhole: true,
+    });
+    await encounter.screenshot({ path: testInfo.outputPath(`daily-encounter-font-${fontSize}.png`) });
+    await page
+      .locator('[data-home-widget-id="professor"]')
+      .screenshot({ path: testInfo.outputPath(`professor-mari-font-${fontSize}.png`) });
+  }
 });
 
 test("Home widgets: the hover glow is a faded box-shadow layer, not an animated drop-shadow filter (#7032)", async ({

@@ -3192,7 +3192,8 @@ body {
 @container (max-width: 19rem) {
   .mari-home-professor-widget {
     grid-template-columns: minmax(0, 1fr) minmax(4.5rem, 34%);
-    padding: 0.65rem;
+    /* The card's padding; its text column reaches into it by the same amount. */
+    --mari-home-professor-pad: 0.65rem;
   }
 
   .mari-home-professor-widget [data-home-professor-description] {

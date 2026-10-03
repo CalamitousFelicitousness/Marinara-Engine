@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Chats, Characters, Personas, Lorebooks, Presets, Connections, Agents, Settings and the Tracker Panel now each have a **?** at the top. Hover over it, or tap it on mobile, to read what that sidebar is for and what you can do there (#7002).
+
 - Mobile screen edges and the keyboard surround match the topbar, including when switching between dark and light mode (#7017).
 
 - Sidebar headers, item action trays, and settings use a consistent background. Mobile screen edges follow the app surface, and Refresh App uses the shared settings button style (#7011).

@@ -4,6 +4,7 @@ import {
   isInstalledCapabilityReady,
   replaceBuiltInAgentDefinitions,
   type CapabilityCatalog,
+  type CapabilityPackageManifest,
   type CapabilityPackageUpdate,
   type CapabilityPackageVersionNote,
   type BuiltInAgentManifest,
@@ -192,6 +193,11 @@ export function isCapabilityPackageAvailable(installed: InstalledCapabilityPacka
   return installed.some(
     (item) => item.id === packageId && (item.status === "active" || isCapabilityPackageAvailableUntilRestart(item)),
   );
+}
+
+/** A package with its own Home tab is a standalone app, not an agent you add to a chat. */
+export function isAppCapabilityPackage(manifest: CapabilityPackageManifest): boolean {
+  return Boolean(manifest.contributions?.slots?.includes("home-browser-tab"));
 }
 
 /** Installed destinations that Home can safely expose as browser tabs. */

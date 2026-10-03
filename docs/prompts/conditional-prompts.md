@@ -258,6 +258,40 @@ Keep combat pacing rules in effect.
 
 Together, they suit anything that should come in once and then rest: a scene transition, a one-time reminder, or a mood that should last a few turns. For a lorebook entry activated by its **Decision** field, use the entry's own **Sticky** and **Cooldown** instead: a sticky entry stays in without its statement being asked, and an entry on cooldown is not asked about.
 
+### Until and while
+
+Some blocks should stay on for as long as something lasts, such as a fight, rather than for a set number of turns. Write `until:` or `while:` with a second statement after the first:
+
+```
+{{#if decision:"A fight starts in the latest message" until:"The fight ends in the latest message"}}
+Keep combat pacing rules in effect.
+{{/if}}
+```
+
+- After a yes, the block stays on, and the first statement is not asked while it is on. The `until` statement is asked each turn in its place, and the block turns off on the turn it is true.
+- `while:` works the other way round: the block stays on while its statement is true, and turns off on the turn it is false.
+- Use one or the other. If both are written, only the first one counts.
+- Once the block turns off, cooldown starts as usual, and then the first statement is asked again.
+- If the `until` or `while` statement gets no answer on a turn, the block stays on.
+- The `until` or `while` statement counts toward **Decision statements per turn**. The first statement does not, while the block is on.
+- This works with `decision:`, not with `decision_choice:`.
+
+With **sticky**, add `:and` or `:or` right after the second statement to choose how the two work together:
+
+| Written | After the yes, the block stays on |
+| --- | --- |
+| `until:"..." sticky:5` or `until:"...":and sticky:5` | For up to 5 more turns, and turns off sooner if the until statement is true. |
+| `until:"...":or sticky:5` | For at least 5 more turns, then until the until statement is true. |
+| `while:"..." sticky:5` or `while:"...":or sticky:5` | For at least 5 more turns, then while the while statement is true. |
+| `while:"...":and sticky:5` | For up to 5 more turns, and turns off sooner if the while statement is false. |
+
+`:restrict` means the same as `:and`, and `:extend` the same as `:or`. Without sticky, they make no difference. For example:
+
+```
+{{#if decision:"{{user}} casts a stealth spell in the latest message" while:"{{user}} stays still":extend sticky:5}}...{{/if}}
+{{#if decision:"{{user}} casts a stealth spell in the latest message" until:"{{user}} is spotted":restrict sticky:5}}...{{/if}}
+```
+
 ### Checking every few turns
 
 Some statements do not need asking every turn. Write `every:` after the statement to ask it only every N turns:

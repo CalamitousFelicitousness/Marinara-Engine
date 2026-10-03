@@ -28,6 +28,64 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - A Game Mode world now has its people: each settlement's residents are drawn by the seed, named from the brief's own lists for each culture (never the few names models overuse), with a job suited to the place, a temperament and a look. The Game Master is offered the people of the place it has not met, someone it names in full joins the tracked characters, and two people who share a name are told apart. The brief also names the groups the present day turns on.
 - With a setting kit chosen, a new Game Mode game can **Make a world**: regions, settlements of every size and the ways between them, laid out from a seed in the kit's words, with a preview. It can start from the places your lorebooks state (kept exactly, or with nothing invented beside them), and the model writes the rest of the brief, which you can change. The Game Master always knows where the party is and where it can go, and a place it names that the world lists takes the world's size, on a ruleset's market ladder too.
 - Game Mode has an optional **Setting kit** on the World step of a new game: the words a kind of world is written in (its places and settlement sizes, groups, travel, calendar and how its peoples are named) and which kinds of change it has, such as crime or wars, and how fast. Pick one of eight starters, from high fantasy and wuxia to modern day and space opera, have the model write it for your setting, and change any word. The Game Master reads it every turn and keeps out the kinds of change the world does not have, so a cozy modern-day game stays cozy.
+
+- Mobile screen edges and the keyboard surround match the topbar, including when switching between dark and light mode (#7017).
+
+- Sidebar headers, item action trays, and settings use a consistent background. Mobile screen edges follow the app surface, and Refresh App uses the shared settings button style (#7011).
+
+- Preset prompt blocks now have a **Send without wrapper** switch. Turn it on to send one block exactly as written, without its XML tag or Markdown heading, while the rest of the preset keeps its wrap format. A group the block belongs to still wraps it. Markers always keep their wrapper (#7006).
+- UI/UX improvements: welcome-dialog frames and settings actions follow the selected accent, Game actions keep their Marinara pink, and dark sidebars match the Home menu. Tracker edit controls align with their fields on desktop; on mobile, tap a field to edit it, with a small hint beside settings instead of pencil icons (#7000).
+- A damaged server file no longer keeps Marinara from starting until you reinstall. If a built server file changes after the build, the launcher names it and rebuilds the server before starting. Updating through the Windows installer or the in-app updater repairs it too. The Windows installer can also update an existing install again, instead of stopping with "Repository update did not land on the expected commit" (#6984).
+- The Character Editor has a new **Voice** section where you pick the voice Text to Speech uses for that character and hear it with **Preview**. It changes the same setting as **Connections → Text to Speech**, so the two always match, and the **Phonetic name** field now lives there too. Two cards with the same name, such as an AU version, can now each keep their own voice instead of one card's voice being used for both. Until a copy gets its own voice, its **Voice** section names the voice it still uses from the other card (#6997).
+- Professor Mari can no longer create, edit, move or delete Marinara's built app files (the `dist` folders the app runs from), so she can no longer leave a broken file there by mistake. She can still read them, and changes the source instead. A very long shell command from her also no longer freezes Marinara for minutes (#7003).
+
+- Retrying or re-running agents now runs rewrite agents one after another, each on the text the one before left, as after a new reply. Before, retrying two of them together, such as Prose Guardian and a custom **Text Rewrite** agent, kept only the last one's edits. Agent retries now also keep to the connection's **Max Parallel Agent Jobs** limit (#6977).
+
+- The agent editor has a new **Share requests with other agents** switch under **Connection Override**. Turn it off to send that agent in its own request instead of together with other agents, which helps local models that mix up their tasks. This also works for Prose Guardian, Continuity Checker and Immersive HTML, which otherwise rewrite the reply together. It is on by default, and agents that always run on their own show it as off (#6977).
+
+- Updated the multipart upload parser to fix two denial-of-service vulnerabilities triggered by malformed upload headers or oversized boundaries (#6995).
+
+- `decision_choice:` statements now get answers from System One servers that need a description for every option, such as Strands decider. Before, those servers refused the whole request, so every Choice comparison read as no. Open-Jev's answers stayed the same in testing. The Decision Models guide now explains how to run Strands decider yourself as a Decision connection (#6981).
+
+- Reinstalling the local model's runtime, or installing a new llama.cpp runtime, no longer deletes an installed decision model such as Open-Jev 2B along with the old runtime (#6982).
+
+- Advanced Memory, the OpenRouter connection editor and the Decision diagnostics now say **Decision model** instead of "Jev", which is only one of the models a Decision connection can use (#6983).
+
+- In group chats, replying to a character's message now makes that character answer, the same as mentioning them with @. Before, the reply did not count when choosing who speaks next, and since a character rarely speaks twice in a row, replying to the message they just sent almost always got an answer from someone else (#6978).
+
+- Professor Mari, and other background calls on slow local models, no longer give up when the first token takes more than two minutes. They now wait as long as the **Text generation** request timeout allows (Settings, or `CHAT_GENERATION_TIMEOUT_MS`; 5 minutes by default) (#6970).
+- With streaming on, a reply no longer starts with the raw `<tool_call>…</tool_call>` text when the model writes its tool calls as text, as some KoboldCPP or Gemma setups do. Once Marinara recognises and runs the call, that text disappears from the message on screen and is not saved, the same as with streaming off (#6951).
+
+- `{{<character ID>}}` macros now become the character's name in Conversation and Game chats, and in Roleplay chats without a preset, instead of staying as raw text. In these chats the macro gives only the name; the referenced card is not added to the prompt (#6956).
+
+- Switching a Roleplay group between **Merged (Narrator)** and **Individual** now changes the whole prompt at once. Continuing a reply in Merged mode no longer makes the model speak as that reply's character, a message sent right after switching waits for the new mode to be saved, and Chat Settings always shows the mode replies actually use (#6959).
+
+- **Image Captioning** in Chat Settings now shows its prompt in a box under the toggle, so you can change how images are described (for example, ask for more detail) or reset it to the default. If captioning fails, the reply now stops with an error instead of quietly sending the image to the chat model (#6960).
+
+- GLM models on NanoGPT, such as GLM 4.7 and 5.1, now stop reasoning when Reasoning Effort is **Off**, whether the chat sets Off itself or takes it from the connection's Default Chat Parameters. Before, they kept reasoning anyway and could spend the whole reply budget on it, ending with a message to raise Max Tokens (#6961).
+
+- In the Android app, picking a picture now offers the camera too, on Android 10 and newer, as Chrome does. Photos you take are saved to Pictures/Marinara (#6953).
+
+- On iPad, tapping a chat in the chat list now opens it instead of leaving the list on top, and buttons that start a chat or open a page from a full-screen panel close that panel too. The keyboard no longer covers a message you are editing, and **Copy Support Diagnostics** now copies (#6944).
+
+- Removing a chat variable in Chat Settings now asks first, so one stray tap on a phone no longer deletes it. Cancel, or tap outside the question, and the variable stays (#6942).
+
+- Chat variables that `{{setvar}}`, `{{decvar}}` and the other variable macros change now go back with the reply that changed them, as tracker values do. A new swipe starts from the values before that reply, showing another swipe brings back its values, and deleting the reply undoes its changes, so a lorebook countdown no longer drops again on every swipe. Values you typed in Chat Settings since stay as they are (#6923).
+
+- Agents and Download Agents now show Noodle, Slurp, Gacha Forge, Life Sim and other apps that open in their own Home tab in a separate **Apps** group at the top, instead of mixing them into Misc Agents (#6943).
+- The character and persona editors now show the whole name at the top whenever there is room for it, instead of cutting it short next to the creator and version (#6946).
+
+- A decision block can now stay on for as long as something lasts: `{{#if decision:"A fight starts" until:"The fight ends"}}` stays on after a yes and asks the until statement each turn instead, turning off when it is true. `while:"..."` turns off when its statement is false. With sticky, add `:and` to stop at whichever ends first or `:or` for whichever ends last, and cooldown starts once the block turns off (#6922).
+- The new `{{include::Entry name}}` macro puts in the text of a lorebook entry, so shared text can live in one entry and be reused in other entries, presets and cards. Inside an entry it looks in that entry's lorebook, and elsewhere in the chat's lorebooks. `{{include::Lorebook name::Entry name}}` reads from any lorebook, even one the chat does not use. IDs work too, and an include that loops back to itself becomes empty (#6912).
+- A character ID macro now turns into the character's name even when that character is already in the chat, instead of staying as raw `{{ID}}` text. Their card is still sent only once (#6924).
+
+- Image Generation connections have a new **ChatGPT (Codex login)** service that makes images with your ChatGPT plan, using the `codex login` session on the computer running Marinara, so no API key or API credits are needed. Selfies, illustrations, avatars, sprites, reference images and the gallery work with it like with any other image service. Based on prisoner310's prototype (#6884).
+
+- In Roleplay, a `roll_dice` added under **Function Calling** now reaches the model and actually rolls when called, the same as with the **Rolls** command. If **Rolls** is also on, its **Who can roll dice** choice still applies (#6945).
+
+- Many tooltips and help texts in Chat Settings, Settings, lorebooks, connections, and the agent editor now use plain words, so it is easier to tell what each setting does (#6947).
+
+- On phones, the top bar now looks like a small version of the desktop one: Home and Chats sit at the left and a hamburger menu sits at the right, with wider, finger-sized buttons, instead of every control stretching across the bar.
 - Updated Sharp (with libvips 8.18.7), DOMPurify, @fastify/static, dotenv and nanoid, and Android APK builds now use Gradle 9.8.0. Termux installs keep Sharp's matching WebAssembly fallback for image processing. Hono, which the MCP SDK pulls in, moves to 4.13.11 for an upstream XSS fix in its JSX renderer.
 - In Roleplay, a `[whisper: character="name" text="..."]` command typed while editing a character's or the narrator's message now becomes a whisper when you save, as it already did in your own messages. Whisper text can span several lines and quote dialogue as is, like `text=""I love you.""`, and the command description now says so (#6918).
 - Select a word or short phrase in a chat message to get an **Add to lorebook** button, on desktop and mobile. Pick a lorebook and it opens on a new entry named after the selection, with the selection as its keyword, ready for you to write the content (#6899).

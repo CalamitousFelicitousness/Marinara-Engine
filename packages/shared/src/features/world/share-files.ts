@@ -156,17 +156,17 @@ export function readWorldFile(
     }
     edits = fightable.edits;
     const unfit = worldEditIssues(inputs, edits);
-    // Towns laid out by hand that no longer fit their towns are left out on their own, too (W9h).
+    // A town laid out by hand that does not fit its town is left out on its own, too (W9h).
     if (!unfit.length && edits.towns?.length) {
-      const townsUnfit = worldTownEditIssues(
-        { ...inputs, edits, world: compileGameWorld({ ...inputs, edits }) },
-        edits,
-      );
-      if (townsUnfit.length) {
-        notes.unshift(`The towns laid out by hand do not fit them, so they were left out: ${townsUnfit[0]}`);
-        const { towns: _towns, ...rest } = edits;
-        edits = rest;
-      }
+      const whole = edits;
+      const game = { ...inputs, edits: whole, world: compileGameWorld({ ...inputs, edits: whole }) };
+      const kept = whole.towns!.filter((town) => {
+        const issues = worldTownEditIssues(game, { ...whole, towns: [town] });
+        if (issues.length) notes.unshift(`A town laid out by hand does not fit it, so it was left out: ${issues[0]}`);
+        return !issues.length;
+      });
+      const { towns: _towns, ...rest } = whole;
+      edits = kept.length ? { ...rest, towns: kept } : rest;
     }
     if (unfit.length) {
       // First, so it is never cut off behind the brief's own notes.

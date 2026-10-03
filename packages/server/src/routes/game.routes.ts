@@ -6024,7 +6024,10 @@ export type SetupGameRequest = z.input<typeof setupSchema>;
 function editIssues(game: Omit<GameWorld, "world" | "edits">, edits: unknown): string[] {
   const parsed = worldEditsSchema.safeParse(edits);
   if (!parsed.success) return [parsed.error.issues[0]?.message ?? "The edits do not read."];
-  return worldEditIssues(game, parsed.data);
+  const issues = worldEditIssues(game, parsed.data);
+  // And its towns laid out by hand (worldgen W9h), against the towns the world with these edits makes.
+  if (issues.length || !parsed.data.towns?.length) return issues;
+  return worldTownEditIssues({ ...game, world: compileGameWorld(game) }, parsed.data);
 }
 
 export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions = {}) {

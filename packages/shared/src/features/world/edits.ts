@@ -85,8 +85,8 @@ export const worldEditsSchema = z
       .optional(),
     /** Tactical boards painted for places (worldgen W9g): `b<n>` ids. */
     battlefields: z.array(worldBattlefieldMapSchema).max(WORLD_BATTLEFIELDS_MAX).optional(),
-    /** Towns laid out by hand (worldgen W9h): buildings moved between the town's lots (a lot's top-left
-     *  corner), and its ground painted: "." as laid out, else s street, q square, o open ground, t a
+    /** Towns laid out by hand (worldgen W9h): buildings moved between the town's lots (a lot by its
+     *  top-left corner and its width, as two lots can share a corner), in turn, and its ground painted: "." as laid out, else s street, q square, o open ground, t a
      *  tree, w a well. Checked against the town when saved (`worldTownEditIssues`). */
     towns: z
       .array(
@@ -100,6 +100,7 @@ export const worldEditsSchema = z
                     building: z.string().min(1).max(16),
                     x: z.number().int().min(0).max(255),
                     y: z.number().int().min(0).max(255),
+                    w: z.number().int().min(1).max(16),
                   })
                   .strict(),
               )
@@ -107,7 +108,8 @@ export const worldEditsSchema = z
               .optional(),
             ground: z
               .string()
-              .max(64 * 64)
+              // The biggest town, a city's 52 by 36 cells.
+              .max(52 * 36)
               .regex(/^[.sqotw]*$/, "A town's painted ground is one of . s q o t w per cell")
               .optional(),
           })

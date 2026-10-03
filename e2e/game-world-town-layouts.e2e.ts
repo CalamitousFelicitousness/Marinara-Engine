@@ -51,7 +51,7 @@ const edits = {
   towns: [
     {
       settlement: thornmere.id,
-      moves: [{ building: "hall", x: lot.x, y: lot.y }],
+      moves: [{ building: "hall", x: lot.x, y: lot.y, w: lot.w }],
       ground: Array.from({ length: asMade.ground.length }, (_, index) => (index === treeAt ? "t" : ".")).join(""),
     },
   ],
@@ -104,10 +104,20 @@ test("a town laid out by hand stands as laid out, and its walks are timed from t
     });
     const cell = placed.width / lot.w;
     expect([placed.left / cell, placed.top / cell]).toEqual([lot.x, lot.y]);
+    // And nothing stands where it stood.
+    const oldHall = asMade.buildings.find((building) => building.id === "hall")!;
+    const corners = await page
+      .locator('[data-component="TownView"] button[aria-pressed]')
+      .evaluateAll((nodes) => nodes.map((node) => [(node as HTMLElement).style.left, (node as HTMLElement).style.top]));
+    expect(corners).not.toContainEqual([`${oldHall.x * cell}px`, `${oldHall.y * cell}px`]);
+    expect(corners.length).toBeGreaterThan(asMade.buildings.length - 1);
 
     // A walk there is timed from its new door (picked from the list: the town's edges sit under the bar).
     await page.getByRole("button", { name: "Places in town", exact: true }).click();
-    await page.getByRole("list", { name: "Places in town" }).getByRole("button", { name: /The hall/u }).click();
+    await page
+      .getByRole("list", { name: "Places in town" })
+      .getByRole("button", { name: /The hall/u })
+      .click();
     await expect(page.locator('[data-component="TownView.Card"]')).toContainText(
       `${minutes} minute${minutes === 1 ? "" : "s"} away`,
     );

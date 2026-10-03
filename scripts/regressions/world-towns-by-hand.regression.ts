@@ -99,7 +99,10 @@ assert.ok(first && second);
 
 // ── Moved to a free lot: the same building, its door the lot's, its walks timed from there ──
 const target = free[free.length - 1]!;
-const moved = worldTown(withEdits(layer({ moves: [{ building: first.id, x: target.x, y: target.y }] })), ashford.id)!;
+const moved = worldTown(
+  withEdits(layer({ moves: [{ building: first.id, x: target.x, y: target.y, w: target.w }] })),
+  ashford.id,
+)!;
 const movedHome = moved.buildings.find((building) => building.id === first.id)!;
 assert.deepEqual(
   { x: movedHome.x, y: movedHome.y, w: movedHome.w, h: movedHome.h, door: movedHome.door },
@@ -119,7 +122,10 @@ wellLaidOut(moved);
 assert.deepEqual(worldTown(withEdits(layer({ moves: [] })), ashford.id, undefined, { byHand: false }), asMade);
 
 // ── Moved onto another building's lot: the two swap ──
-const swapped = worldTown(withEdits(layer({ moves: [{ building: first.id, x: second.x, y: second.y }] })), ashford.id)!;
+const swapped = worldTown(
+  withEdits(layer({ moves: [{ building: first.id, x: second.x, y: second.y, w: second.w }] })),
+  ashford.id,
+)!;
 const [a, b] = [first.id, second.id].map((id) => swapped.buildings.find((building) => building.id === id)!);
 assert.ok(sameRect(a!, second) && sameRect(b!, first));
 assert.deepEqual([a!.door, b!.door], [second.door, first.door]);
@@ -154,35 +160,171 @@ assert.ok(
 );
 wellLaidOut(painted);
 
+// ── A building moves again; swaps chain ──
+const third = asMade.buildings.find(
+  (building) => building.kind === "home" && building !== first && building !== second,
+)!;
+const byId = (town: WorldTown, id: string) => town.buildings.find((building) => building.id === id)!;
+// The first to the free lot, then onto the second's lot: it ends there, the second where the first went.
+const again = worldTown(
+  withEdits(
+    layer({
+      moves: [
+        { building: first.id, x: target.x, y: target.y, w: target.w },
+        { building: first.id, x: second.x, y: second.y, w: second.w },
+      ],
+    }),
+  ),
+  ashford.id,
+)!;
+assert.ok(sameRect(byId(again, first.id), second) && sameRect(byId(again, second.id), target), "moved again");
+wellLaidOut(again);
+// The first onto the second's lot, then the second (now on the first's) onto the third's.
+const chained = worldTown(
+  withEdits(
+    layer({
+      moves: [
+        { building: first.id, x: second.x, y: second.y, w: second.w },
+        { building: second.id, x: third.x, y: third.y, w: third.w },
+      ],
+    }),
+  ),
+  ashford.id,
+)!;
+assert.ok(
+  sameRect(byId(chained, first.id), second) &&
+    sameRect(byId(chained, second.id), third) &&
+    sameRect(byId(chained, third.id), first),
+  "a chain of swaps",
+);
+wellLaidOut(chained);
+
+// ── Two lots can share a corner: the width says which ──
+const starterWorld = (kitId: string, seed: number): GameWorld => {
+  const starter = parseWorldKit(WORLD_STARTER_KITS.find((each) => each.id === kitId)!);
+  assert.ok(starter.ok);
+  const checkedBrief = checkWorldBrief(starter.kit, { briefVersion: 1, premise: "x" });
+  assert.ok(checkedBrief.ok);
+  const here = { kit: starter.kit, seed, grounding: "expand" as const, brief: checkedBrief.brief };
+  return { ...here, world: compileGameWorld(here) };
+};
+const sharing = (() => {
+  for (const each of WORLD_STARTER_KITS) {
+    for (const seed of [1, 2, 3, 4, 5]) {
+      const world = starterWorld(each.id, seed);
+      for (const place of world.world.places.filter((one) => one.rank !== undefined)) {
+        const town = worldTown(world, place.id)!;
+        const pair = town.lots.find((lot, index) =>
+          town.lots.some((other, at) => at !== index && other.x === lot.x && other.y === lot.y),
+        );
+        if (!pair) continue;
+        const lots = town.lots.filter((lot) => lot.x === pair.x && lot.y === pair.y);
+        // Whatever stands on the pair stands on one of them exactly, and can be moved off to a lot apart.
+        const occupants = town.buildings.filter((building) => lots.some((lot) => overlaps(building, lot)));
+        if (!occupants.every((building) => lots.some((lot) => sameRect(building, lot)))) continue;
+        const away = town.lots.filter(
+          (lot) =>
+            town.buildings.every((building) => !overlaps(building, lot)) && lots.every((one) => !overlaps(one, lot)),
+        );
+        if (away.length < occupants.length) continue;
+        return { world, town, settlement: place.id, lots, occupants, away };
+      }
+    }
+  }
+  return null;
+})();
+assert.ok(sharing, "two lots sharing a corner somewhere among the starter worlds");
+{
+  const { world, town, settlement, lots, occupants, away } = sharing;
+  assert.equal(new Set(lots.map((lot) => lot.w)).size, lots.length, "told apart by their widths");
+  const clear = occupants.map((building, index) => ({
+    building: building.id,
+    x: away[index]!.x,
+    y: away[index]!.y,
+    w: away[index]!.w,
+  }));
+  const mover = town.buildings.find((building) => !occupants.includes(building))!;
+  for (const lot of lots) {
+    const entry = { settlement, moves: [...clear, { building: mover.id, x: lot.x, y: lot.y, w: lot.w }] };
+    const laid = worldTown(
+      { ...world, edits: worldEditsSchema.parse({ editsVersion: 1, towns: [entry] }) },
+      settlement,
+    )!;
+    assert.ok(sameRect(byId(laid, mover.id), lot), `the lot ${lot.w} wide`);
+    wellLaidOut(laid);
+  }
+}
+
+// ── Every starter world's towns, moved and painted at random, stay well laid out ──
+{
+  let state = 20261003;
+  const random = () => {
+    state = (state + 0x6d2b79f5) | 0;
+    let value = Math.imul(state ^ (state >>> 15), 1 | state);
+    value = (value + Math.imul(value ^ (value >>> 7), 61 | value)) ^ value;
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+  };
+  const pick = <T>(items: readonly T[]) => items[Math.floor(random() * items.length)]!;
+  let layouts = 0;
+  for (const each of WORLD_STARTER_KITS) {
+    for (const seed of [7, 8]) {
+      const world = starterWorld(each.id, seed);
+      for (const place of world.world.places.filter((one) => one.rank !== undefined).slice(0, 4)) {
+        const town = worldTown(world, place.id)!;
+        const moves = Array.from({ length: 1 + Math.floor(random() * 12) }, () => {
+          const lot = pick(town.lots);
+          return { building: pick(town.buildings).id, x: lot.x, y: lot.y, w: lot.w };
+        });
+        const ground = Array.from({ length: town.ground.length }, () =>
+          random() < 0.3 ? pick([..."sqotw"]) : ".",
+        ).join("");
+        const edits = worldEditsSchema.parse({ editsVersion: 1, towns: [{ settlement: place.id, moves, ground }] });
+        const laid = worldTown({ ...world, edits }, place.id)!;
+        wellLaidOut(laid);
+        for (const building of laid.buildings)
+          for (let y = building.y; y < building.y + building.h; y++)
+            for (let x = building.x; x < building.x + building.w; x++)
+              assert.equal(
+                laid.ground[y * laid.width + x],
+                town.ground[y * town.width + x],
+                "under a roof, as laid out",
+              );
+        assert.deepEqual(worldTownEditIssues(world, edits), worldTownEditIssues(world, edits), "the same issues twice");
+        layouts++;
+      }
+    }
+  }
+  assert.ok(layouts > 30, `${layouts} layouts`);
+}
+
 // ── Each refusal says why ──
 const issues = (town: Record<string, unknown>) => worldTownEditIssues(game, layer(town));
 const roof = first.y * asMade.width + first.x;
 const door = first.door.y * asMade.width + first.door.x;
-assert.deepEqual(issues({ moves: [{ building: first.id, x: target.x, y: target.y }] }), []);
-assert.deepEqual(issues({ moves: [{ building: "h999", x: target.x, y: target.y }] }), [
+assert.deepEqual(issues({ moves: [{ building: first.id, x: target.x, y: target.y, w: target.w }] }), []);
+assert.deepEqual(issues({ moves: [{ building: "h999", x: target.x, y: target.y, w: target.w }] }), [
   'Ashford: no building "h999" in town.',
 ]);
-assert.deepEqual(
-  issues({
-    moves: [
-      { building: first.id, x: target.x, y: target.y },
-      { building: first.id, x: second.x, y: second.y },
-    ],
-  }),
-  [`Ashford: "${first.id}" is moved twice.`],
-);
-assert.deepEqual(issues({ moves: [{ building: first.id, x: 0, y: 0 }] }), ["Ashford: no lot at 0, 0."]);
+assert.deepEqual(issues({ moves: [{ building: first.id, x: 0, y: 0, w: 4 }] }), [
+  "Ashford: no lot 4 wide at column 1, row 1.",
+]);
 const partly = asMade.lots.find((lot) =>
   asMade.buildings.some((building) => overlaps(building, lot) && !sameRect(building, lot)),
 );
 assert.ok(partly, "a lot partly under a building");
-assert.match(issues({ moves: [{ building: first.id, x: partly.x, y: partly.y }] })[0]!, /is partly under/);
+assert.match(issues({ moves: [{ building: first.id, x: partly.x, y: partly.y, w: partly.w }] })[0]!, /is partly under/);
 assert.deepEqual(issues({ ground: "t" }), [
-  `Ashford: the painted ground has 1 cells; the town has ${asMade.ground.length}.`,
+  `Ashford: the painted ground has 1 cell; the town has ${asMade.ground.length}.`,
 ]);
+// The middle of the square (its well, where walks to it end) is never painted.
+const middle =
+  (asMade.square.y + Math.floor(asMade.square.h / 2)) * asMade.width +
+  asMade.square.x +
+  Math.floor(asMade.square.w / 2);
+assert.match(issues({ ground: paint({ [middle]: "t" }) })[0]!, /the middle of the square or a stall is painted over/);
 assert.match(
   issues({ ground: paint({ [roof]: "t" }) })[0]!,
-  /a building or the street before its door is painted over/,
+  /a building, the street before a door, the middle of the square or a stall is painted over/,
 );
 assert.match(issues({ ground: paint({ [door]: "o" }) })[0]!, /painted over at column \d+, row \d+/);
 assert.deepEqual(
@@ -203,7 +345,7 @@ const secondRoof = second.y * asMade.width + second.x;
 const partlyFits = worldTown(
   withEdits(
     layer({
-      moves: [{ building: first.id, x: target.x, y: target.y }],
+      moves: [{ building: first.id, x: target.x, y: target.y, w: target.w }],
       ground: paint({ [secondRoof]: "t", [treeAt!]: "t" }),
     }),
   ),
@@ -221,7 +363,7 @@ assert.equal(partlyFits.ground[secondRoof], asMade.ground[secondRoof], "never un
 // ── The story's places still find their lots, the hand layout holding ──
 const present = worldPresent(game, readWorldLedger([`[world: fact="place" name="The Gull" in="Ashford" result="ok"]`]));
 const storied = worldTown(
-  withEdits(layer({ moves: [{ building: first.id, x: target.x, y: target.y }] })),
+  withEdits(layer({ moves: [{ building: first.id, x: target.x, y: target.y, w: target.w }] })),
   ashford.id,
   present,
 )!;
@@ -237,20 +379,30 @@ assert.ok(
   "the move holds",
 );
 wellLaidOut(storied);
+// Paint over where the story's place stands is never applied to it.
+const gull = storied.buildings.find((building) => building.name === "The Gull")!;
+const underGull: Record<number, string> = {};
+for (let y = gull.y; y < gull.y + gull.h; y++)
+  for (let x = gull.x; x < gull.x + gull.w; x++) underGull[y * asMade.width + x] = "t";
+const storiedPainted = worldTown(withEdits(layer({ ground: paint(underGull) })), ashford.id, present)!;
+assert.ok(
+  Object.keys(underGull).every((cell) => storiedPainted.ground[Number(cell)] !== "t"),
+  "the story's roof",
+);
 
 // ── A world file brings a layout that does not fit: it is left out, alone ──
 const renamed = { id: ashford.id, name: "Ashford Keep" };
 const unfitLayer = worldEditsSchema.parse({
   editsVersion: 1,
   places: [renamed],
-  towns: [{ settlement: ashford.id, moves: [{ building: "h999", x: 1, y: 1 }] }],
+  towns: [{ settlement: ashford.id, moves: [{ building: "h999", x: 1, y: 1, w: 4 }] }],
 });
 const unfitFile = readWorldFile(JSON.stringify(worldFile("Unfit", kit, { ...stored, edits: unfitLayer })));
 assert.ok(unfitFile.ok);
 assert.deepEqual(unfitFile.world.edits, { editsVersion: 1, places: [renamed] });
 assert.match(
   unfitFile.notes[0]!,
-  /towns laid out by hand do not fit them, so they were left out: Ashford Keep: no building "h999"/,
+  /A town laid out by hand does not fit it, so it was left out: Ashford Keep: no building "h999"/,
 );
 
 const { default: Fastify } = await import("../../packages/server/node_modules/fastify/fastify.js");
@@ -277,12 +429,12 @@ try {
       });
     const layout = {
       settlement: ashford.id,
-      moves: [{ building: first.id, x: target.x, y: target.y }],
+      moves: [{ building: first.id, x: target.x, y: target.y, w: target.w }],
       ground: paint({ [treeAt!]: "t" }),
     };
 
     // Refused with the reason; saved; the play view lays the town out by hand.
-    const refusedSave = await save([{ settlement: ashford.id, moves: [{ building: "h999", x: 1, y: 1 }] }]);
+    const refusedSave = await save([{ settlement: ashford.id, moves: [{ building: "h999", x: 1, y: 1, w: 4 }] }]);
     assert.equal(refusedSave.statusCode, 400);
     assert.match(refusedSave.json().error, /Ashford: no building "h999" in town/);
     assert.equal((await save([layout])).statusCode, 200);
@@ -325,13 +477,37 @@ try {
       })
     ).json();
     assert.deepEqual(libraryTown.layout, layout);
+    assert.deepEqual([libraryTown.town.lots, libraryTown.town.buildings], [asMade.lots, asMade.buildings]);
     const libraryRefused = await app.inject({
       method: "PUT",
       url: `/api/game-worlds/${kept.json().world.id}/world/edits`,
       payload: { edits: { editsVersion: 1, towns: [{ settlement: ashford.id, ground: "t" }] } },
     });
     assert.equal(libraryRefused.statusCode, 400);
-    assert.match(libraryRefused.json().error, /the painted ground has 1 cells/);
+    assert.match(libraryRefused.json().error, /the painted ground has 1 cell;/);
+
+    // A new game is set up with a town laid out that does not fit: refused, with the reason.
+    const setUp = await app.inject({
+      method: "POST",
+      url: "/api/game/create",
+      payload: {
+        name: "Unfit town",
+        setupConfig: {
+          genre: "Fantasy",
+          setting: "A river kingdom",
+          tone: "Grim",
+          difficulty: "normal",
+          rating: "sfw",
+          playerGoals: "",
+          gmMode: "standalone",
+          partyCharacterIds: [],
+          worldKit: kit,
+          world: { ...stored, edits: { editsVersion: 1, towns: [{ settlement: ashford.id, ground: "t" }] } },
+        },
+      },
+    });
+    assert.equal(setUp.statusCode, 400, setUp.body);
+    assert.match(setUp.body, /the painted ground has 1 cell/);
   } finally {
     await app.close();
     await closeDB();

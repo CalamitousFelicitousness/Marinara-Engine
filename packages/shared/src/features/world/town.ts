@@ -319,7 +319,7 @@ function layOutTown(
         for (let xx = lot.x; xx < lot.x + lot.w; xx++) if (at(xx, yy) !== ".") return false;
       return true;
     });
-  const issues = entry ? layOutByHand(entry, buildings, standable, cells, width) : [];
+  const issues = entry ? layOutByHand(entry, buildings, standable, cells, width, [square, ...stalls]) : [];
 
   return {
     town: {
@@ -341,8 +341,9 @@ function layOutTown(
 
 /**
  * A town's hand layout applied to it as laid out: each move in turn (a building to a free lot, or the
- * two swapped when another stands on it), then the painted ground, sparing every building and the street
- * before its door. What does not fit is skipped, and said.
+ * two swapped when another stands on it; a building may move again later), then the painted ground,
+ * sparing every building and the street before its door, the middle of the square (its well, where walks
+ * to it end) and the market's stalls. What does not fit is skipped, and said. Places count from 1.
  */
 function layOutByHand(
   entry: WorldTownEdit,
@@ -350,30 +351,26 @@ function layOutByHand(
   lots: WorldTownLot[],
   cells: string[],
   width: number,
+  [square, ...stalls]: [WorldTown["square"], ...WorldTown["stalls"]],
 ): string[] {
   const issues: string[] = [];
   const overlaps = (a: WorldTownLot, b: WorldTownLot) =>
     a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
-  const moved = new Set<string>();
+  const where = (x: number, y: number) => `column ${x + 1}, row ${y + 1}`;
   for (const move of entry.moves ?? []) {
     const building = buildings.find((each) => each.id === move.building);
     if (!building) {
       issues.push(`no building "${move.building}" in town.`);
       continue;
     }
-    if (moved.has(building.id)) {
-      issues.push(`"${building.name ?? building.id}" is moved twice.`);
-      continue;
-    }
-    moved.add(building.id);
-    const lot = lots.find((each) => each.x === move.x && each.y === move.y);
+    const lot = lots.find((each) => each.x === move.x && each.y === move.y && each.w === move.w);
     if (!lot) {
-      issues.push(`no lot at ${move.x}, ${move.y}.`);
+      issues.push(`no lot ${move.w} wide at ${where(move.x, move.y)}.`);
       continue;
     }
     const there = buildings.find((each) => each !== building && overlaps(each, lot));
     if (there && !(there.x === lot.x && there.y === lot.y && there.w === lot.w && there.h === lot.h)) {
-      issues.push(`the lot at ${lot.x}, ${lot.y} is partly under "${there.name ?? there.id}".`);
+      issues.push(`the lot at ${where(lot.x, lot.y)} is partly under "${there.name ?? there.id}".`);
       continue;
     }
     const from = { x: building.x, y: building.y, w: building.w, h: building.h, door: { ...building.door } };
@@ -383,7 +380,9 @@ function layOutByHand(
   const ground = entry.ground;
   if (ground) {
     if (ground.length !== cells.length) {
-      issues.push(`the painted ground has ${ground.length} cells; the town has ${cells.length}.`);
+      issues.push(
+        `the painted ground has ${ground.length} cell${ground.length === 1 ? "" : "s"}; the town has ${cells.length}.`,
+      );
       return issues;
     }
     const kept = new Set<number>();
@@ -392,13 +391,15 @@ function layOutByHand(
         for (let xx = building.x; xx < building.x + building.w; xx++) kept.add(yy * width + xx);
       kept.add(building.door.y * width + building.door.x);
     }
+    kept.add((square.y + Math.floor(square.h / 2)) * width + square.x + Math.floor(square.w / 2));
+    for (const stall of stalls) kept.add(stall.y * width + stall.x);
     for (let cell = 0; cell < cells.length; cell++) {
       const painted = ground[cell]!;
       if (painted === ".") continue;
       if (kept.has(cell)) {
-        if (!issues.some((issue) => issue.startsWith("a building or the street before its door")))
+        if (!issues.some((issue) => issue.startsWith("a building, the street before a door")))
           issues.push(
-            `a building or the street before its door is painted over at column ${(cell % width) + 1}, row ${Math.floor(cell / width) + 1}.`,
+            `a building, the street before a door, the middle of the square or a stall is painted over at ${where(cell % width, Math.floor(cell / width))}.`,
           );
         continue;
       }

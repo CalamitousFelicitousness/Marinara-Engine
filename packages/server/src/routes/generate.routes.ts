@@ -328,7 +328,11 @@ import {
   type ChatOptions,
   type LLMUsage,
 } from "../services/llm/base-provider.js";
-import { executeToolCalls, formatToolExecutionResultForModel } from "../services/tools/tool-executor.js";
+import {
+  executeToolCalls,
+  formatToolExecutionResultForModel,
+  toolRoundsAsText,
+} from "../services/tools/tool-executor.js";
 import { createAgentPipeline, type ResolvedAgent, type AgentInjection } from "../services/agents/agent-pipeline.js";
 import { DATA_DIR } from "../utils/data-dir.js";
 import {
@@ -8528,7 +8532,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               if (round === maxToolRounds - 1) {
                 // Reset per-character accumulator for final round content
                 const prevLen = fullResponse.length;
-                loopMessages = await fitPromptForSend(loopMessages);
+                // Sent without tools, so the exchange so far goes as text (toolRoundsAsText).
+                loopMessages = await fitPromptForSend(toolRoundsAsText(loopMessages));
                 rememberMainPromptPreviewForAgents(loopMessages);
                 logPromptSentToModel(loopMessages, "Prompt sent to model (final tool follow-up)");
                 const finalResult = await withLlmRequestTimeout(chatGenerationTimeoutMs, () =>

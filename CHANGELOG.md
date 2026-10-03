@@ -4,7 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
-- A Game Mode turn now gets at most four rounds of tool calls (such as dice rolls) before the Game Master has to narrate. A model that kept asking for a roll, for example through a proxy that loses the results, could otherwise make up to a hundred paid requests in one turn. `MAX_TOOL_ROUNDS` still applies when it is lower.
+- The Game Master's reply in a Game Mode turn now gets at most four rounds of tool calls (such as dice rolls), then narrates with the results it has. A model that kept asking for a roll, for example through a proxy that loses the results, could otherwise make up to a hundred paid requests in one turn. `MAX_TOOL_ROUNDS` still applies when it is lower. The last request of a tool loop now gives the model the tools' results as text, which native Anthropic and Gemini connections need when no tools are sent.
 
 - Expanded text editors, including message command results and preset variable values, now use the same background as the sidebars in dark and light mode (#7037).
 

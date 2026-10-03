@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- A damaged server file no longer keeps Marinara from starting until you reinstall. If a built server file changes after the build, the launcher names it and rebuilds the server before starting. Updating through the Windows installer or the in-app updater repairs it too. The Windows installer can also update an existing install again, instead of stopping with "Repository update did not land on the expected commit" (#6984).
 - The Character Editor has a new **Voice** section where you pick the voice Text to Speech uses for that character and hear it with **Preview**. It changes the same setting as **Connections → Text to Speech**, so the two always match, and the **Phonetic name** field now lives there too. Two cards with the same name, such as an AU version, can now each keep their own voice instead of one card's voice being used for both. Until a copy gets its own voice, its **Voice** section names the voice it still uses from the other card (#6997).
 - Professor Mari can no longer create, edit, move or delete Marinara's built app files (the `dist` folders the app runs from), so she can no longer leave a broken file there by mistake. She can still read them, and changes the source instead. A very long shell command from her also no longer freezes Marinara for minutes (#7003).
 

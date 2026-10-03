@@ -375,6 +375,7 @@ An entry's **Content** is expanded like any other prompt text: prompt macros res
 - `{{random::a::b::c}}` and `{{roll:1d6}}` — pick a random option or roll dice, for flavor that varies each time the entry fires. Add `@` weights, as in `{{random::common@3::rare@1}}`, to make some options more likely than others.
 - `{{#if ...}}...{{else}}...{{/if}}` — change the text based on who is speaking, a variable, or the active character.
 - `{{getvar::name}}` and `{{setvar::name::value}}` — read or set a chat-local persistent variable, so an entry can react to or drive state across later turns without leaking into other chats.
+- `{{include::Entry name}}` — put in the text of another entry from the same lorebook, even one that is turned off, so shared text lives in one place. See [Lorebook include macro](../prompts/macros.md#lorebook-include-macro).
 
 Weighted random pairs well with **Probability** to fold a whole table into a single entry. Instead of a group of twenty monster entries, give one "wandering encounter" entry a low **Probability** (so an encounter is only occasional) and a weighted list of what appears:
 

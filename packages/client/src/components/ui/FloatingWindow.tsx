@@ -39,6 +39,7 @@ import {
 import { isModalOverlayOpen } from "../../lib/modal-overlay-registry";
 import {
   FLOATING_WINDOW_Z_BASE,
+  takeFloatingWindowFocusRequest,
   takeFloatingWindowOpener,
   useFloatingWindowStore,
 } from "../../stores/floating-window.store";
@@ -197,9 +198,12 @@ export function FloatingWindow({
     });
   }, []);
 
-  // Focus moves into the window when it opens and back to its opener when it closes.
+  // Focus moves into the window when it opens and back to its opener when it closes. A remount (a
+  // chat switch, or the loading placeholder giving way) only takes focus if nothing else has it.
   useEffect(() => {
-    if (!sheet) rootRef.current?.focus({ preventScroll: true });
+    const requested = takeFloatingWindowFocusRequest(id);
+    const focusIsFree = !document.activeElement || document.activeElement === document.body;
+    if (!sheet && (requested || focusIsFree)) rootRef.current?.focus({ preventScroll: true });
     return () => {
       // A placeholder swapped for the real window unmounts without a close request and keeps the opener.
       if (!restoreFocusOnUnmountRef.current) return;

@@ -13,6 +13,7 @@ import {
 } from "../../packages/client/src/lib/floating-window-layout.js";
 import {
   CHAT_SETTINGS_WINDOW_ID,
+  takeFloatingWindowFocusRequest,
   useFloatingWindowStore,
 } from "../../packages/client/src/stores/floating-window.store.js";
 
@@ -104,6 +105,10 @@ const flushMicrotasks = () => new Promise<void>((resolve) => queueMicrotask(reso
 store.getState().openWindow(id);
 store.getState().openWindow("other");
 assert.deepEqual(store.getState().stack, [id, "other"]);
+assert.equal(takeFloatingWindowFocusRequest(id), true, "opening a window asks it to take focus");
+assert.equal(takeFloatingWindowFocusRequest(id), false, "only once, so a remount leaves focus alone");
+store.getState().openWindow(id);
+assert.equal(takeFloatingWindowFocusRequest(id), false, "reopening an open window does not move focus");
 store.getState().bringToFront(id);
 assert.deepEqual(store.getState().stack, ["other", id], "the last pressed window is in front");
 store.getState().toggleWindow("other");

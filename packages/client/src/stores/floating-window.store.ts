@@ -62,6 +62,8 @@ function writeStoredLayouts(layouts: Record<FloatingWindowId, WindowLayout>) {
 
 // The element that opened each window, so closing it can return focus there.
 const openers = new Map<FloatingWindowId, HTMLElement>();
+// Windows the user just opened; a window that only remounts (a chat switch) leaves focus alone.
+const focusRequests = new Set<FloatingWindowId>();
 
 function withoutKey<T>(record: Record<string, T>, key: string): Record<string, T> {
   if (!(key in record)) return record;
@@ -78,6 +80,7 @@ export const useFloatingWindowStore = create<FloatingWindowState>()((set, get) =
   resetRevision: 0,
   openWindow: (id, opener) => {
     if (opener) openers.set(id, opener);
+    if (!get().open[id]) focusRequests.add(id);
     set((state) => ({
       open: state.open[id] ? state.open : { ...state.open, [id]: true },
       stack: [...state.stack.filter((entry) => entry !== id), id],
@@ -128,6 +131,11 @@ if (typeof window !== "undefined") {
 export function isFloatingWindowPinned(id: FloatingWindowId): boolean {
   if (typeof window !== "undefined" && window.matchMedia?.("(max-width: 767px)").matches) return false;
   return useFloatingWindowStore.getState().layouts[id]?.pinned === true;
+}
+
+/** True once after a window is opened, so it takes focus then and not on later remounts. */
+export function takeFloatingWindowFocusRequest(id: FloatingWindowId): boolean {
+  return focusRequests.delete(id);
 }
 
 /** Returns (and forgets) the element that opened a window, while it is still on the page. */

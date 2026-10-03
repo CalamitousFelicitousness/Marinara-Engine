@@ -21,13 +21,16 @@ function acceptsText(element: Element | null): element is HTMLElement {
  * Scroll the scroll areas between `field` and `root` (never the page) so the field sits in
  * the part of the screen the keyboard leaves visible, moving each area as little as it can.
  * ponytail: this reveals the field, not its caret. A field taller than the space left shows
- * from its nearer edge, and the browser scrolls to the caret once you type. Upgrade path:
- * measure the caret with a mirror element and reveal that line instead.
+ * from its top while the caret is at its start (where Edit and Write leave it) or when it
+ * reaches past both edges, otherwise from its nearer edge, and the browser scrolls to the
+ * caret once you type. Upgrade path: measure the caret with a mirror element and reveal
+ * that line instead.
  */
 function revealFieldAboveKeyboard(field: HTMLElement, root: HTMLElement): void {
   const viewport = window.visualViewport;
   const screenTop = viewport?.offsetTop ?? 0;
   const screenBottom = screenTop + (viewport?.height ?? window.innerHeight);
+  const caretAtStart = "selectionStart" in field && field.selectionStart === 0;
   for (let area = field.parentElement; area && root.contains(area); area = area.parentElement) {
     if (area.scrollHeight <= area.clientHeight || !/auto|scroll/.test(getComputedStyle(area).overflowY)) continue;
     const frame = area.getBoundingClientRect();
@@ -36,10 +39,11 @@ function revealFieldAboveKeyboard(field: HTMLElement, root: HTMLElement): void {
     const box = field.getBoundingClientRect();
     const above = box.top < top;
     const below = box.bottom > bottom;
-    if (above === below) continue; // already in view, or filling all of it
+    if (!above && !below) continue; // already in view
     // Like scrollIntoView "nearest": a field that fits shows whole, a taller one from its nearer edge.
     const fits = box.height <= bottom - top;
-    area.scrollTop += above === fits ? box.top - top : box.bottom - bottom;
+    const fromTop = fits ? above : below || caretAtStart;
+    area.scrollTop += fromTop ? box.top - top : box.bottom - bottom;
   }
 }
 

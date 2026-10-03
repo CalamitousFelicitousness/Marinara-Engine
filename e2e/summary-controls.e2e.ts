@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Locator, type Page, type TestInfo } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { createChatSummaryEntry } from "@marinara-engine/shared";
 import { seedUIState } from "./ui-state-fixture.js";
@@ -105,7 +105,14 @@ async function installIphoneKeyboard(page: Page) {
   });
 }
 
-test("Chat Summary keeps the field being edited above the phone keyboard", async ({ page, request }, info) => {
+test("Chat Summary keeps the field being edited above the phone keyboard", ({ page, request }, info) =>
+  keepsFieldAboveKeyboard(page, request, info, false));
+
+// Turned sideways, a summary is taller than the room left above the keyboard.
+test("Chat Summary keeps the field being edited above the phone keyboard in landscape", ({ page, request }, info) =>
+  keepsFieldAboveKeyboard(page, request, info, true));
+
+async function keepsFieldAboveKeyboard(page: Page, request: APIRequestContext, info: TestInfo, landscape: boolean) {
   test.skip(!info.project.name.startsWith("mobile"), "Only phones have an on-screen keyboard.");
   const iPhone = info.project.name === "mobile-webkit";
   const created = await request.post("/api/chats", { data: { name: "Summary keyboard", mode: "roleplay" } });
@@ -143,8 +150,11 @@ test("Chat Summary keeps the field being edited above the phone keyboard", async
       { id, version },
     );
     if (iPhone) await installIphoneKeyboard(page);
+    const upright = page.viewportSize()!;
+    if (landscape) await page.setViewportSize({ width: upright.height, height: upright.width });
     await page.goto("/");
-    await page.getByRole("button", { name: "More options", exact: true }).click();
+    // Sideways, the Android phone is wide enough to show Chat Summary in the top bar.
+    if (!landscape || iPhone) await page.getByRole("button", { name: "More options", exact: true }).click();
     await page
       .getByRole("button", { name: "Chat Summary (4 active summaries)", exact: true })
       .filter({ visible: true })
@@ -153,7 +163,8 @@ test("Chat Summary keeps the field being edited above the phone keyboard", async
     await expect(panel).toBeVisible();
 
     const phone = page.viewportSize()!;
-    const keyboardTop = Math.round(phone.height * 0.6);
+    // The keyboard covers about half of a phone turned sideways.
+    const keyboardTop = Math.round(phone.height * (landscape ? 0.5 : 0.6));
     // Android shrinks the page for the keyboard; iPhone shrinks only what is visible.
     const setKeyboard = async (open: boolean) => {
       if (iPhone) {
@@ -217,6 +228,8 @@ test("Chat Summary keeps the field being edited above the phone keyboard", async
       panel.getByRole("textbox", { name: "Prompt instructions for summary generation...", exact: true }),
     );
 
+    // Sideways, message ranges fill the window before the keyboard opens, so they are checked upright.
+    if (landscape) return;
     // Message ranges stay listed under the summaries after a run, and with several of them those
     // controls alone are taller than the room the keyboard leaves. They are hidden while you type.
     await panel.getByRole("button", { name: "Range", exact: true }).click();
@@ -239,4 +252,4 @@ test("Chat Summary keeps the field being edited above the phone keyboard", async
   } finally {
     await request.delete(`/api/chats/${id}?force=true`);
   }
-});
+}

@@ -35,6 +35,7 @@
     2.  Dark Theme Variables .............. colors, palette, fonts
     3.  Light Theme Variables ............. light-mode overrides
     4.  Light Theme Component Overrides ... glass, grid, scrollbar tweaks
+    4a2. Floating Windows & Drawers ..... .mari-window, .mari-drawer, --mari-window-*
     5.  Base Reset & Body ................. border reset, body defaults
     6.  Custom Cursors .................... Y2K SVG cursors
     7.  Scrollbars ........................ retro scrollbar styling
@@ -609,7 +610,8 @@
   color: var(--marinara-chat-chrome-button-text-active);
 }
 
-[data-marinara-chat-chrome-accent-mode="gradient"] .marinara-chat-popover {
+/* Windows take these colours from --mari-window-* so custom themes can override them. */
+[data-marinara-chat-chrome-accent-mode="gradient"] .marinara-chat-popover:not(.mari-window) {
   border-color: var(--marinara-chat-chrome-panel-border);
   background: var(--marinara-chat-chrome-panel-bg);
 }
@@ -647,6 +649,223 @@
 
 .marinara-chat-popover.marinara-chat-toolbar-overflow-menu {
   border-radius: 0.5rem;
+}
+
+/* ─────────────────────────────────────────────
+   4a2. FLOATING WINDOWS AND DRAWERS
+   Every chat window (Chat Settings, and later popped-out drawers and tracker
+   windows) renders through <FloatingWindow>, and every collapsible section
+   through <Drawer>, so custom themes can restyle them all at once.
+
+   Classes:     .mari-window, .mari-window__header, .mari-window__title,
+                .mari-window__controls, .mari-window__control, .mari-window__body,
+                .mari-window__resize-handle; .mari-drawer, .mari-drawer__header,
+                .mari-drawer__icon, .mari-drawer__title, .mari-drawer__count,
+                .mari-drawer__help, .mari-drawer__actions, .mari-drawer__arrow,
+                .mari-drawer__body
+   Attributes:  [data-window="<id>"], [data-drawer="<id>"], [data-pinned],
+                [data-locked], [data-detached], [data-presentation="window|sheet"],
+                [data-window-control="pin|lock|close"], [data-edge]
+   Variables:   set them on :root (every window) or on a selector such as
+                [data-window="chat-settings"]. Unset, each falls back to the
+                theme token shown, read where the window or drawer is drawn.
+     --mari-window-bg                   var(--marinara-chat-chrome-panel-bg)
+     --mari-window-text                 var(--marinara-chat-chrome-panel-text)
+     --mari-window-border               var(--marinara-chat-chrome-panel-border)
+     --mari-window-border-width         1px
+     --mari-window-radius               calc(var(--radius) + 0.25rem)
+     --mari-window-shadow               0 25px 50px -12px rgb(0 0 0 / 0.4)
+     --mari-window-backdrop-filter      blur(12px)
+     --mari-window-header-bg            transparent
+     --mari-window-header-text          var(--marinara-chat-chrome-panel-title)
+     --mari-window-header-border        var(--marinara-chat-chrome-panel-divider)
+     --mari-window-header-padding       0.625rem 0.75rem
+     --mari-window-control-color        var(--marinara-chat-chrome-panel-muted)
+     --mari-window-control-color-hover  var(--marinara-chat-chrome-panel-text)
+     --mari-window-control-bg-hover     var(--marinara-chat-chrome-highlight-bg)
+     --mari-window-control-color-active var(--marinara-chat-chrome-button-text-active)
+     --mari-window-control-bg-active    var(--marinara-chat-chrome-highlight-bg)
+     --mari-window-control-radius       var(--radius)
+     --mari-window-control-gap          0.125rem
+     --mari-window-focus-ring           var(--marinara-chat-chrome-focus-ring)
+     --mari-window-resize-handle-size   0.5rem
+     --mari-drawer-bg                   transparent
+     --mari-drawer-border               var(--border)
+     --mari-drawer-header-bg            transparent
+     --mari-drawer-header-bg-hover      color-mix(in oklab, var(--accent) 50%, transparent)
+     --mari-drawer-header-padding       0.75rem 1rem
+     --mari-drawer-title-color          inherit
+     --mari-drawer-icon-color           var(--muted-foreground)
+     --mari-drawer-arrow-color          var(--muted-foreground)
+     --mari-drawer-count-bg             color-mix(in oklab, var(--primary) 15%, transparent)
+     --mari-drawer-count-text           var(--primary)
+     --mari-drawer-body-padding-inline  1rem
+     --mari-drawer-body-padding-bottom  0.75rem
+   ───────────────────────────────────────────── */
+.mari-window {
+  border: var(--mari-window-border-width, 1px) solid
+    var(--mari-window-border, var(--marinara-chat-chrome-panel-border));
+  border-radius: var(--mari-window-radius, calc(var(--radius) + 0.25rem));
+  background: var(--mari-window-bg, var(--marinara-chat-chrome-panel-bg));
+  color: var(--mari-window-text, var(--marinara-chat-chrome-panel-text));
+  box-shadow: var(--mari-window-shadow, 0 25px 50px -12px rgb(0 0 0 / 0.4));
+  -webkit-backdrop-filter: var(--mari-window-backdrop-filter, blur(12px));
+  backdrop-filter: var(--mari-window-backdrop-filter, blur(12px));
+}
+
+.mari-window__header {
+  border-bottom: 1px solid var(--mari-window-header-border, var(--marinara-chat-chrome-panel-divider));
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+  background: var(--mari-window-header-bg, transparent);
+  padding: var(--mari-window-header-padding, 0.625rem 0.75rem);
+}
+
+.mari-window__header:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--mari-window-focus-ring, var(--marinara-chat-chrome-focus-ring));
+}
+
+.mari-window__title {
+  color: var(--mari-window-header-text, var(--marinara-chat-chrome-panel-title));
+}
+
+.mari-window__controls {
+  gap: var(--mari-window-control-gap, 0.125rem);
+}
+
+.mari-window__control {
+  display: inline-flex;
+  width: 1.75rem;
+  height: 1.75rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--mari-window-control-radius, var(--radius));
+  color: var(--mari-window-control-color, var(--marinara-chat-chrome-panel-muted));
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.mari-window__control[aria-pressed="true"] {
+  background: var(--mari-window-control-bg-active, var(--marinara-chat-chrome-highlight-bg));
+  color: var(--mari-window-control-color-active, var(--marinara-chat-chrome-button-text-active));
+}
+
+@media (hover: hover) {
+  .mari-window__control:hover {
+    background: var(--mari-window-control-bg-hover, var(--marinara-chat-chrome-highlight-bg));
+    color: var(--mari-window-control-color-hover, var(--marinara-chat-chrome-panel-text));
+  }
+}
+
+.mari-window__control:focus-visible,
+.mari-window__resize-handle:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--mari-window-focus-ring, var(--marinara-chat-chrome-focus-ring));
+}
+
+/* The body clips its content to the window's rounded corners; the root does not
+   clip, so the resize handles can sit on the border, clear of the scrollbar. */
+.mari-window__body {
+  overflow: hidden;
+  border-bottom-left-radius: inherit;
+  border-bottom-right-radius: inherit;
+}
+
+.mari-window__resize-handle {
+  --mari-window-resize-hit: var(--mari-window-resize-handle-size, 0.5rem);
+  --mari-window-resize-offset: calc(2px - var(--mari-window-resize-hit));
+  position: absolute;
+  z-index: 1;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  touch-action: none;
+}
+
+.mari-window__resize-handle[data-edge="n"],
+.mari-window__resize-handle[data-edge="s"] {
+  left: var(--mari-window-resize-hit);
+  right: var(--mari-window-resize-hit);
+  height: var(--mari-window-resize-hit);
+  cursor: ns-resize;
+}
+
+.mari-window__resize-handle[data-edge="e"],
+.mari-window__resize-handle[data-edge="w"] {
+  top: var(--mari-window-resize-hit);
+  bottom: var(--mari-window-resize-hit);
+  width: var(--mari-window-resize-hit);
+  cursor: ew-resize;
+}
+
+.mari-window__resize-handle:is([data-edge="ne"], [data-edge="nw"], [data-edge="se"], [data-edge="sw"]) {
+  width: calc(var(--mari-window-resize-hit) * 1.5);
+  height: calc(var(--mari-window-resize-hit) * 1.5);
+}
+
+.mari-window__resize-handle:is([data-edge="n"], [data-edge="ne"], [data-edge="nw"]) {
+  top: var(--mari-window-resize-offset);
+}
+
+.mari-window__resize-handle:is([data-edge="s"], [data-edge="se"], [data-edge="sw"]) {
+  bottom: var(--mari-window-resize-offset);
+}
+
+.mari-window__resize-handle:is([data-edge="e"], [data-edge="ne"], [data-edge="se"]) {
+  right: var(--mari-window-resize-offset);
+}
+
+.mari-window__resize-handle:is([data-edge="w"], [data-edge="nw"], [data-edge="sw"]) {
+  left: var(--mari-window-resize-offset);
+}
+
+.mari-window__resize-handle:is([data-edge="ne"], [data-edge="sw"]) {
+  cursor: nesw-resize;
+}
+
+.mari-window__resize-handle:is([data-edge="nw"], [data-edge="se"]) {
+  cursor: nwse-resize;
+}
+
+.mari-drawer {
+  border-bottom: 1px solid var(--mari-drawer-border, var(--border));
+  background: var(--mari-drawer-bg, transparent);
+}
+
+.mari-drawer__header {
+  padding: var(--mari-drawer-header-padding, 0.75rem 1rem);
+  background: var(--mari-drawer-header-bg, transparent);
+}
+
+@media (hover: hover) {
+  .mari-drawer__header:hover {
+    background: var(--mari-drawer-header-bg-hover, color-mix(in oklab, var(--accent) 50%, transparent));
+  }
+}
+
+.mari-drawer__icon {
+  color: var(--mari-drawer-icon-color, var(--muted-foreground));
+}
+
+.mari-drawer__title {
+  color: var(--mari-drawer-title-color, inherit);
+}
+
+.mari-drawer__count {
+  background: var(--mari-drawer-count-bg, color-mix(in oklab, var(--primary) 15%, transparent));
+  color: var(--mari-drawer-count-text, var(--primary));
+}
+
+.mari-drawer__arrow {
+  color: var(--mari-drawer-arrow-color, var(--muted-foreground));
+}
+
+.mari-drawer__body {
+  padding-inline: var(--mari-drawer-body-padding-inline, 1rem);
+  padding-bottom: var(--mari-drawer-body-padding-bottom, 0.75rem);
 }
 
 /* ─────────────────────────────────────────────
@@ -6664,6 +6883,17 @@ strong {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* Floating windows open in place without the entrance animation. */
+@media (prefers-reduced-motion: reduce) {
+  .mari-window {
+    animation: none;
+  }
+}
+
+html[data-marinara-reduced-effects="true"] .mari-window {
+  animation: none;
 }
 
 /* ─────────────────────────────────────────────

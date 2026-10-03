@@ -11782,5 +11782,13 @@
   "ui.ui.trackercardcolorcontrols.stage": "Stage",
   "ui.ui.trackercardcolorcontrols.stageFinishMGC": "stage, finish M/G/C",
   "ui.ui.trackercardcolorcontrols.strength": "strength",
-  "ui.ui.trackercardcolorcontrols.value1ChannelIsOff": "{{value1}} channel is off."
+  "ui.ui.trackercardcolorcontrols.value1ChannelIsOff": "{{value1}} channel is off.",
+  "window.controls.lock": "Lock window",
+  "window.controls.lockHint": "Stop this window from moving or resizing.",
+  "window.controls.move": "Move window with the arrow keys",
+  "window.controls.pin": "Pin window",
+  "window.controls.pinHint": "Keep this window open when you click elsewhere.",
+  "window.controls.resize": "Resize window with the arrow keys",
+  "window.controls.unlockHint": "Let this window move and resize again.",
+  "window.controls.unpinHint": "Let this window close when you click elsewhere."
 }

@@ -6908,12 +6908,22 @@ const CSS_TEMPLATE = `/* ══════════════════�
   /* --marinara-chat-chrome-highlight-bg-hover: color-mix(in srgb, var(--marinara-chat-chrome-accent) 13%, transparent); */
   /* --marinara-chat-chrome-highlight-text: color-mix(in srgb, var(--marinara-chat-chrome-highlight-text-base) 94%, transparent); */
   /* --marinara-chat-chrome-input-bg: var(--marinara-chat-chrome-surface-bg); */
+
+  /* ── Chat windows and drawers (Chat Settings and its sections) ── */
+  /* --mari-window-bg: var(--marinara-chat-chrome-panel-bg); */
+  /* --mari-window-border: var(--marinara-chat-chrome-panel-border); */
+  /* --mari-window-radius: calc(var(--radius) + 0.25rem); */
+  /* --mari-window-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.4); */
+  /* --mari-window-header-bg: transparent; */
+  /* --mari-drawer-border: var(--border); */
+  /* --mari-drawer-header-bg-hover: color-mix(in oklab, var(--accent) 50%, transparent); */
 }
 
 /* Uncomment and edit the variables above.
    You can also target shared chrome directly:
    .marinara-chat-toolbar-button { border-radius: 0.5rem; }
    .marinara-chat-popover { box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.4); }
+   [data-window="chat-settings"] .mari-window__header { background: rgb(0 0 0 / 0.2); }
 
    You can also add any custom CSS below: */
 `;

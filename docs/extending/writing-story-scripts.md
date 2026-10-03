@@ -144,7 +144,11 @@ on. The Game Master is told the scene was shown and carries on from it.
 { "id": "dusk", "kind": "beats", "beats": ["Lamps are lit.", "A bell tolls."] }
 ```
 
-A `beats` cutscene is narrated by the Game Master in its own words, beat by beat, on that turn.
+A `beats` cutscene is narrated by the Game Master in its own words, beat by beat, on that turn. A
+`gm` event's beats are told to the Game Master with the event, and it narrates them in the reply
+that marks the moment. So a beats scene a `gm` event uses is known to the Game Master from the start,
+even when an Engine event plays it too. Since it is told them on every turn, the beats of all `gm`
+events together are kept to 16,000 characters.
 
 ## How a story plays
 
@@ -159,7 +163,8 @@ game's next session.
 
 Each turn the Game Master is told the story's values (hidden from the player) and the directions in
 force. Of the rest of the script it is told only what the script makes its own: the `gm` events (with
-their `note`) and the `gm` flags. It marks them in its reply:
+their `note` and any `beats` to narrate with them) and the `gm` flags, and which of those events it
+cannot mark now (done, or held back by their conditions). It marks them in its reply:
 
 - `[story: event="<id>"]` trips a `gm` event whose conditions hold (once, unless it repeats).
 - `[story: flag="<id>" value="<value>"]`, or `add="<number>"` for a number flag, sets a `gm` flag.
@@ -167,7 +172,8 @@ their `note`) and the `gm` flags. It marks them in its reply:
 The Engine answers each tag in place, an event at most once a turn, and refuses anything else with the
 reason. In a game with no story, every story tag is refused. What the Game Master
 trips takes effect at once (its flags, its deeds); its scenes and what it asks come at the start of the
-next reply.
+next reply, its `beats` excepted (it was asked to narrate them with the moment). Write a `gm`
+event's `pages` as what follows the moment, since the Game Master has already told the moment itself.
 
 ## Trying a story
 

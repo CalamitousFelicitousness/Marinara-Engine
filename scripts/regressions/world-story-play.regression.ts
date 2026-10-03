@@ -126,6 +126,7 @@ const input: StoryScriptInput = {
       if: [{ flag: "trust", is: ">=", value: 1 }],
       do: [
         { cutscene: "turn" },
+        { cutscene: "dusk" },
         { tell: "The guards close in." },
         { world: { deed: "hinder", group: "The Red Hand" } },
       ],
@@ -496,11 +497,52 @@ try {
   assert.match(next.prepend, /The mayor's smile slips\./);
   assert.ok(!/deed="hinder"/.test(next.prepend));
   assert.deepEqual(next.tells, ["The guards close in."]);
+  // Its beats were told with the moment (below), so they never come again after it.
+  assert.deepEqual(next.beats, []);
+  assert.ok(!/Narrate this scene now/.test(storyTurnPromptText(story, next)));
   assert.deepEqual(turnOf([...dusk, answered, "Later."]).tells, [], "and only then");
+
+  // A gm event's beats: each scene once, and all of them kept to what a prompt can carry every turn.
+  const long = Array.from({ length: 20 }, (_, n) => `${n} ${"a".repeat(590)}`);
+  const beatsStory = (events: Array<{ id: string; scenes: string[]; engine?: true }>) =>
+    checkStoryScript(game, {
+      storyVersion: 1,
+      events: events.map((event) => ({
+        id: event.id,
+        ...(event.engine ? { when: { on: "turn", turn: 2 } } : { when: { on: "gm" }, gm: true }),
+        do: event.scenes.map((scene) => ({ cutscene: scene })),
+      })),
+      cutscenes: [{ id: "long", kind: "beats", beats: long }],
+    });
+  const once = beatsStory([{ id: "twice", scenes: ["long", "long"] }]);
+  assert.ok(once.ok, "a scene used twice is counted once");
+  assert.equal((storyScriptPromptText(once.story).match(/ {2}- 0 a/g) ?? []).length, 1, "and told once");
+  const tooMany = beatsStory([
+    { id: "one", scenes: ["long"] },
+    { id: "two", scenes: ["long"] },
+  ]);
+  assert.ok(
+    beatsStory([
+      { id: "one", scenes: ["long"] },
+      { id: "two", scenes: ["long"], engine: true },
+    ]).ok,
+    "an Engine event's beats are told only when it happens",
+  );
+  assert.ok(!tooMany.ok);
+  assert.ok(
+    tooMany.issues.includes(
+      `The Game Master's own events have ${2 * long.join("").length} characters of beats, told on every turn; keep them to 16000.`,
+    ),
+    tooMany.issues.join("; "),
+  );
 
   // ── What the Game Master and the player are told ──
   const script = storyScriptPromptText(story);
-  assert.match(script, /- betrayal: The mayor turns on the party/);
+  assert.match(
+    script,
+    /- betrayal: The mayor turns on the party\n {2}When you mark it, narrate this with it, in your own words, beat by beat:\n {2}- Lamps are lit\.\n {2}- A bell tolls\./,
+    "with the beats it narrates as it marks it",
+  );
   assert.match(script, /- trust \(a number\): How far the town trusts the party/);
   assert.ok(!/gates|Welcome|arrived/.test(script), "nothing else of the script");
   const now = storyTurnPromptText(story, there);
@@ -508,6 +550,11 @@ try {
   assert.match(now, /The town is wary of strangers\./);
   assert.ok(!/greets the party warmly/.test(now), "only the directions in force");
   assert.match(now, /shown this scene as written/);
+  // Its own moments it cannot mark now are named, never why: held back by their conditions, then done.
+  assert.match(now, /Story moments not open to you now \(do not mark them or tell their scenes\): betrayal\./);
+  assert.match(storyTurnPromptText(story, next), /not open to you now .*: betrayal\./, "done, and it does not repeat");
+  const open = turnOf(dusk, { latest: null });
+  assert.ok(open.state.flags.trust === 1 && !/not open to you now/.test(storyTurnPromptText(story, open)));
   assert.deepEqual(
     storyObjectives(story, storyState(story, [])).map((each) => each.title),
     ["Favours"],

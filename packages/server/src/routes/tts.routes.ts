@@ -13,6 +13,7 @@ import {
   ttsSourceProfileFromConfig,
   ttsVoiceAssignmentInputSchema,
   setCharacterVoiceAssignment,
+  TTS_VOICE_MAX_LENGTH,
   normalizeMusicEnemyTier,
   TTS_SETTINGS_KEY,
   TTS_API_KEY_MASK,
@@ -149,7 +150,7 @@ const speakSchema = z.object({
   text: z.string().min(1).max(4096),
   speaker: z.string().max(120).optional(),
   tone: z.string().max(80).optional(),
-  voice: z.string().max(200).optional(),
+  voice: z.string().max(TTS_VOICE_MAX_LENGTH).optional(),
   /** Optional audio-connection override (#5146); absent = default/legacy resolution. */
   audioConnectionId: z.string().optional(),
 });
@@ -486,13 +487,18 @@ function withoutTemperatureCustomParameter(value: Record<string, unknown> | unde
   return Object.fromEntries(Object.entries(value).filter(([key]) => key.toLowerCase() !== "temperature"));
 }
 
-function parseStoredConfig(raw: string | null) {
+/** The stored config, or null when one is stored that this version cannot read. */
+function readStoredConfig(raw: string | null): TTSConfig | null {
   if (!raw) return ttsConfigSchema.parse({});
   try {
     return ttsConfigSchema.parse(JSON.parse(raw));
   } catch {
-    return ttsConfigSchema.parse({});
+    return null;
   }
+}
+
+function parseStoredConfig(raw: string | null) {
+  return readStoredConfig(raw) ?? ttsConfigSchema.parse({});
 }
 
 function withActiveSourceProfile(config: TTSConfig): TTSConfig {
@@ -1358,8 +1364,10 @@ export async function ttsRoutes(app: FastifyInstance) {
    */
   app.put("/config/voice-assignment", async (req, reply) => {
     const { characterId, characterName, voice } = ttsVoiceAssignmentInputSchema.parse(req.body);
-    await withConfigWriteLock(async () => {
-      const existing = parseStoredConfig(await storage.get(TTS_SETTINGS_KEY));
+    const saved = await withConfigWriteLock(async () => {
+      const existing = readStoredConfig(await storage.get(TTS_SETTINGS_KEY));
+      // Settings this version cannot read (a newer version's, or edited by hand) stay as stored, not replaced by defaults.
+      if (!existing) return false;
       const voiceAssignments = setCharacterVoiceAssignment(
         existing.voiceAssignments,
         { characterId, characterName },
@@ -1367,7 +1375,9 @@ export async function ttsRoutes(app: FastifyInstance) {
       );
       // Keys stay exactly as stored (already encrypted); the active source profile mirrors the list, as on PUT /config.
       await storage.set(TTS_SETTINGS_KEY, JSON.stringify(withActiveSourceProfile({ ...existing, voiceAssignments })));
+      return true;
     });
+    if (!saved) return reply.status(409).send({ error: "The saved Text to Speech settings could not be read." });
     return reply.status(204).send();
   });
 

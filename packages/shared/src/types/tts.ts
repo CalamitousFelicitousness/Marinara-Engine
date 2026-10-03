@@ -31,11 +31,15 @@ export const ttsVoiceAssignmentSchema = z.object({
 });
 export type TTSVoiceAssignment = z.infer<typeof ttsVoiceAssignmentSchema>;
 
+/** Longest voice POST /api/tts/speak accepts; a longer saved voice could never be spoken. */
+export const TTS_VOICE_MAX_LENGTH = 200;
+
 /** Body of PUT /api/tts/config/voice-assignment: one character's voice; a blank voice removes its row. */
 export const ttsVoiceAssignmentInputSchema = z.object({
   characterId: z.string().min(1).max(200),
-  characterName: z.string().max(500),
-  voice: z.string().max(2000),
+  // Card names have no length limit, so the name kept on the row has none either.
+  characterName: z.string(),
+  voice: z.string().max(TTS_VOICE_MAX_LENGTH),
 });
 export type TTSVoiceAssignmentInput = z.infer<typeof ttsVoiceAssignmentInputSchema>;
 

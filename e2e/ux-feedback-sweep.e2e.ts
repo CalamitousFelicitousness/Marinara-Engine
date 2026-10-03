@@ -262,6 +262,21 @@ test("UX sweep: Character Voice names a same-name card's voice and keeps typing 
     heldSaves[1]!();
     await expect(cardInput).toHaveValue("abcd");
     await expect(input).toHaveValue("abcd");
+
+    // A failed save shows an error and the saved voice again, and does not stop the next pick from saving.
+    await page.unroute("**/api/tts/config/voice-assignment");
+    await page.route(
+      "**/api/tts/config/voice-assignment",
+      (route) => route.fulfill({ status: 500, json: { error: "Internal Server Error" } }),
+      { times: 1 },
+    );
+    await input.fill("fable");
+    await expect(
+      page.locator('[data-sonner-toast][data-type="error"]').filter({ hasText: "Could not save the voice." }),
+    ).toBeVisible();
+    await expect(input).toHaveValue("abcd");
+    await input.fill("sage");
+    await expect(cardInput).toHaveValue("sage");
   } finally {
     for (const release of heldSaves) release();
     await request.put("/api/tts/config", { data: original });

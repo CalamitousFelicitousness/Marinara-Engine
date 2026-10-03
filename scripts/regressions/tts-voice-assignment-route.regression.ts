@@ -28,7 +28,14 @@ const { decryptApiKey } = await import("../../packages/server/src/utils/crypto.j
 const { errorHandler } = await import("../../packages/server/src/middleware/error-handler.js");
 const { ttsRoutes } = await import("../../packages/server/src/routes/tts.routes.js");
 
-const db = await createFileNativeDB();
+let failNextWrite = false;
+const db = await createFileNativeDB({
+  afterWritableTurn: () => {
+    if (!failNextWrite) return;
+    failNextWrite = false;
+    throw new Error("injected storage write failure");
+  },
+});
 const settings = createAppSettingsStorage(db);
 const app = Fastify();
 app.decorate("db", db);
@@ -117,8 +124,8 @@ try {
     { characterId: "alice", characterName: "Alice" },
     { characterId: "alice", characterName: "Alice", voice: 7 },
     { characterId: "x".repeat(201), characterName: "Alice", voice: "nova" },
-    { characterId: "alice", characterName: "A".repeat(501), voice: "nova" },
-    { characterId: "alice", characterName: "Alice", voice: "v".repeat(2001) },
+    // POST /speak takes at most 200 characters, so a longer voice could never be spoken.
+    { characterId: "alice", characterName: "Alice", voice: "v".repeat(201) },
   ]) {
     const rejected = await putVoice(body);
     assert.equal(rejected.statusCode, 400, `rejects ${JSON.stringify(body).slice(0, 80)}`);
@@ -155,6 +162,26 @@ try {
     ],
     "the settings save must not overwrite the voice saved after it",
   );
+
+  // A failed write answers 500 and stores nothing, and the saves after it still go through.
+  failNextWrite = true;
+  assert.equal((await putVoice({ characterId: "dottore", characterName: "Il Dottore", voice: "ash" })).statusCode, 500);
+  assert.deepEqual(await stored(), raced);
+  assert.equal((await putConfig({ ...(await readConfig()), speed: 3 })).statusCode, 204);
+  assert.equal((await putVoice({ characterId: "dottore", characterName: "Il Dottore", voice: "ash" })).statusCode, 204);
+  const recovered = await stored();
+  assert.equal(recovered.speed, 3);
+  assert.deepEqual(recovered.voiceAssignments[0], {
+    characterId: "dottore",
+    characterName: "Il Dottore",
+    voice: "ash",
+  });
+
+  // Settings this version cannot read, such as a newer version's provider, are kept instead of replaced by defaults.
+  const unreadable = JSON.stringify({ ...recovered, source: "newer-provider" });
+  await settings.set(TTS_SETTINGS_KEY, unreadable);
+  assert.equal((await putVoice({ characterId: "alice", characterName: "Alice", voice: "nova" })).statusCode, 409);
+  assert.equal(await settings.get(TTS_SETTINGS_KEY), unreadable);
 } finally {
   await app.close();
   await db._fileStore.close();

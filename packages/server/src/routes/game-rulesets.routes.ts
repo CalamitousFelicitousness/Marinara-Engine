@@ -12,8 +12,11 @@
 //
 // A ruleset package zip (RM) is imported the same way, as data: read in memory by the one hardened
 // reader, its ruleset and catalog files kept, nothing in it ever run. A ruleset editor checks a ruleset
-// (or a zip) without saving it, and opens an installed ruleset's files from its source.
+// (or a zip) without saving it, opens an installed ruleset's files from its source, and builds its
+// forms from the ruleset schema the Engine publishes.
 // ──────────────────────────────────────────────
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
@@ -27,6 +30,7 @@ import {
   supportedCapabilityApi,
   type RulesetDefinition,
 } from "@marinara-engine/shared";
+import { getMonorepoRoot } from "../config/runtime-config.js";
 import { logger } from "../lib/logger.js";
 import { requirePrivilegedAccess } from "../middleware/privileged-gate.js";
 import { getCustomAgentImportPolicy } from "../services/agents/custom-agent-import-policy.service.js";
@@ -286,6 +290,19 @@ export async function gameRulesetsRoutes(app: FastifyInstance) {
     const parsed = parseRulesetDefinition(document);
     if (!parsed.ok) return { ok: false, issues: issueObjects(parsed.issues), capabilityApi: null };
     return { ok: true, issues: [], capabilityApi: leastCapabilityApi(document, parsed.definition, {}) };
+  });
+
+  // The ruleset JSON Schema the Engine publishes for authors (docs/extending/ruleset.schema.json, kept
+  // current by `pnpm ruleset:schema`), so an editor builds its forms from the Engine's own idea of a
+  // ruleset instead of a copy of it. An install without the docs has none to give.
+  app.get("/schema", async (_req, reply) => {
+    let text: string;
+    try {
+      text = await readFile(join(getMonorepoRoot(), "docs", "extending", "ruleset.schema.json"), "utf8");
+    } catch {
+      return reply.status(404).send({ error: "This install has no ruleset schema" });
+    }
+    return reply.type("application/json; charset=utf-8").send(text);
   });
 
   // An installed ruleset's files, as written: a stored one's texts (its catalog files from its row), or a

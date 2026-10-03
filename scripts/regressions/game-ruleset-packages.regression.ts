@@ -560,6 +560,14 @@ try {
         .statusCode,
       404,
     );
+    // ── The schema an editor builds its forms from: exactly the one the Engine publishes ──
+    const schemaRead = await app.inject({ method: "GET", url: "/api/game-rulesets/schema" });
+    assert.equal(schemaRead.statusCode, 200, schemaRead.body);
+    assert.match(String(schemaRead.headers["content-type"]), /application\/json/);
+    assert.deepEqual(
+      schemaRead.json(),
+      JSON.parse(readFileSync(new URL("../../docs/extending/ruleset.schema.json", import.meta.url), "utf8")),
+    );
 
     // ── Played by a game: its catalog file through the loader every turn and fight uses ──
     const registered = (await readRulesetRegistry(db)).get("local/ember-roads-house");

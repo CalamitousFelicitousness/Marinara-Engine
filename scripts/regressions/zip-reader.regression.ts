@@ -279,6 +279,15 @@ try {
   assert.ok(Date.now() - started < 2000, "refused without inflating it all");
   assert.ok(process.memoryUsage().arrayBuffers - before < 16 * 1024 * 1024, "and without holding it");
   assert.match(readRefusal(rawZip([{ name: "a.txt", data: text("hello"), crc: 1 }]), "a.txt", 100), /damaged/);
+  // Shorter than it says, its checksum made to match what it holds: still not the size it says.
+  assert.match(
+    readRefusal(
+      rawZip([{ name: "a.txt", body: deflateRawSync(text("hello")), data: text("hello"), declared: 10 }]),
+      "a.txt",
+      100,
+    ),
+    /not the size it says/,
+  );
   assert.match(
     readRefusal(rawZip([{ name: "a.txt", data: text("hello"), method: 12, body: text("hello") }]), "a.txt", 100),
     /compressed in a way/,
@@ -286,6 +295,10 @@ try {
 
   // ── The callers ──
   assert.throws(() => validatePackageArchiveEntries(shared), /shares its data/);
+  assert.throws(
+    () => validatePackageArchiveEntries(rawZip([{ name: "client.js", data: text("/etc/passwd"), mode: 0o120777 }])),
+    /links are not allowed/,
+  );
   const repositoryShared = rawZip([
     { name: "repo-main/agents.json", data: text("[]"), method: 0 },
     ...Array.from({ length: 5 }, () => ({ name: "repo-main/agents.json", data: text("[]"), method: 0, offset: 0 })),
@@ -325,6 +338,10 @@ try {
   ]);
   const imported = await importCharX(damagedIcon, await getDB());
   assert.equal(imported.success, true, JSON.stringify(imported));
+  // A card.json that is not JSON is a failed import, said, never a thrown error.
+  const notJson = await importCharX(rawZip([{ name: "card.json", data: text("{ not json") }]), await getDB());
+  assert.equal(notJson.success, false);
+  assert.match(String(notJson.error), /card\.json is not valid JSON/);
 
   console.log("zip-reader: ok");
 } finally {

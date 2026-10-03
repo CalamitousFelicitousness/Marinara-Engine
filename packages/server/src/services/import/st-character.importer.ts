@@ -418,6 +418,8 @@ export async function importCharX(buf: Buffer, db: DB, options?: STCharacterImpo
     cardJson = readCharXCardJson(zip);
   } catch (error) {
     if (error instanceof ZipReadError) return { success: false, error: `Invalid .charx file: ${error.message}` };
+    if (error instanceof SyntaxError)
+      return { success: false, error: "Invalid .charx file: card.json is not valid JSON." };
     throw error;
   }
   if (!cardJson) return { success: false, error: "Invalid .charx file: missing card.json at root." };

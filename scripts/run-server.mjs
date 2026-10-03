@@ -1,4 +1,4 @@
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { constants } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,20 +18,28 @@ async function rebuildChangedServer() {
   process.stderr.write(
     `\n  [WARN] A server file was changed or damaged after it was built: dist/${changed}\n  [..] Rebuilding the server. This can take a minute...\n\n`,
   );
-  const build = spawnSync(process.execPath, [join(SERVER_ROOT, "scripts", "build.mjs")], {
+  // The build is the current child, so a stop reaches it the same way it reaches the server.
+  child = spawn(process.execPath, [join(SERVER_ROOT, "scripts", "build.mjs")], {
     cwd: SERVER_ROOT,
     stdio: "inherit",
   });
-  if (build.status === 0) return true;
-  // Ctrl+C ends the build too, but the stop handler below can only run after this blocking call. Let it run,
-  // so a stop is not reported as a failed rebuild.
-  await new Promise((resolve) => setImmediate(resolve));
-  if (!stopping) {
-    process.stderr.write(
-      "\n  [ERROR] Could not rebuild the server. See the error above, then reinstall Marinara Engine or run: pnpm build\n\n",
-    );
-  }
+  const code = await exitCode(child);
+  if (stopping) return false;
+  if (code === 0) return true;
+  process.stderr.write(
+    "\n  [ERROR] Could not rebuild the server. See the error above, then reinstall Marinara Engine or run: pnpm build\n\n",
+  );
   return false;
+}
+
+function exitCode(proc) {
+  return new Promise((resolve) => {
+    proc.once("error", (error) => {
+      process.stderr.write(`Could not start Marinara Engine: ${error.message}\n`);
+      resolve(1);
+    });
+    proc.once("close", (status, signal) => resolve(status ?? 128 + (constants.signals[signal] ?? 0)));
+  });
 }
 
 // Keep restart ownership in the launcher's console. Start the replacement only
@@ -61,13 +69,7 @@ while (true) {
     stdio: "inherit",
     env: { ...process.env, MARINARA_RESTART_SUPERVISOR: String(process.pid) },
   });
-  const code = await new Promise((resolve) => {
-    child.once("error", (error) => {
-      process.stderr.write(`Could not start Marinara Engine: ${error.message}\n`);
-      resolve(1);
-    });
-    child.once("close", (status, signal) => resolve(status ?? 128 + (constants.signals[signal] ?? 0)));
-  });
+  const code = await exitCode(child);
   if (stopping || code !== 75) {
     clearTimeout(stopTimer);
     process.exitCode ??= code;

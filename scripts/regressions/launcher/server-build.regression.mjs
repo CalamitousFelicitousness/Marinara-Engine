@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   appendFileSync,
   cpSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -11,6 +12,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 // #6984: one built server file damaged after its build stopped every start, and rebuilds kept the damage.
@@ -111,6 +113,53 @@ try {
   assertBuilt(result);
   assert.doesNotMatch(result.stderr, /\[WARN\]/);
   assert.equal(JSON.parse(read("dist/config/build-meta.json")).commit, null);
+
+  // A stop sent only to the launcher during its repair build (as a supervisor sends it) ends the build and its
+  // tsc right away, and the server does not start. A tsc that waits stands in for a slow build. Windows has no
+  // such signal; console Ctrl+C reaches every process there.
+  if (process.platform !== "win32") {
+    const tscPidFile = join(root, "tsc.pid");
+    put("packages/server/node_modules/typescript/package.json", '{ "name": "typescript" }\n');
+    put(
+      "packages/server/node_modules/typescript/bin/tsc",
+      `require("node:fs").writeFileSync(${JSON.stringify(tscPidFile)}, String(process.pid));\nsetTimeout(() => {}, 60_000);\n`,
+    );
+    damage("dist/runtime.js");
+    const launcher = spawn(process.execPath, ["../../scripts/run-server.mjs", "dist/index.js"], { cwd: server });
+    let output = "";
+    launcher.stdout.on("data", (chunk) => (output += chunk));
+    launcher.stderr.on("data", (chunk) => (output += chunk));
+    const exited = new Promise((resolve) => launcher.once("exit", resolve));
+    const closed = new Promise((resolve) => launcher.once("close", resolve));
+    const isRunning = (pid) => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    let tscPid;
+    try {
+      for (let waited = 0; !existsSync(tscPidFile); waited += 50) {
+        assert.ok(waited < 30_000, `The repair build never started tsc.\n${output}`);
+        await sleep(50);
+      }
+      tscPid = Number(readFileSync(tscPidFile, "utf8"));
+      launcher.kill("SIGTERM");
+      const status = await Promise.race([exited, sleep(10_000).then(() => "still running")]);
+      assert.equal(status, 130, output);
+      for (let waited = 0; isRunning(tscPid); waited += 50) {
+        assert.ok(waited < 5_000, "tsc kept running after the launcher stopped.");
+        await sleep(50);
+      }
+      await closed; // all output is in once nothing holds the launcher's pipes
+      assert.doesNotMatch(output, /fixture server started|\[ERROR\]/);
+    } finally {
+      launcher.kill("SIGKILL");
+      if (tscPid && isRunning(tscPid)) process.kill(tscPid, "SIGKILL");
+    }
+  }
 
   console.info("Damaged server build repair regression passed.");
 } finally {

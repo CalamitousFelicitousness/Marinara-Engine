@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { lstat, mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, extname, join, resolve, sep } from "node:path";
-import AdmZip from "adm-zip";
 import { z } from "zod";
 import {
   APP_VERSION,
@@ -36,6 +35,7 @@ import {
 import { DATA_DIR } from "../../utils/data-dir.js";
 import { safeFetch } from "../../utils/security.js";
 import { logger } from "../../lib/logger.js";
+import { readZip, type ZipFile } from "../../lib/zip-reader.js";
 import { getBuildBranch } from "../../config/build-info.js";
 import { sidecarSpeechService } from "../sidecar/sidecar-speech.service.js";
 
@@ -256,26 +256,24 @@ function tryNormalizeArchivePath(path: string): string | null {
   }
 }
 
-function isSymlink(entry: AdmZip.IZipEntry): boolean {
-  return ((entry.attr >>> 16) & 0o170000) === 0o120000;
-}
-
-export function validatePackageArchiveEntries(zip: AdmZip, maximumExpandedBytes = MAX_EXPANDED_BYTES) {
-  const archiveEntries = zip.getEntries();
+/** The archive's files, read strictly (`readZip`: its declared sizes are honest, so the budget below is
+ *  a real one), with their paths, names and total checked. */
+export function validatePackageArchiveEntries(archive: Buffer, maximumExpandedBytes = MAX_EXPANDED_BYTES): ZipFile[] {
+  const archiveEntries = readZip(archive);
   if (archiveEntries.length > MAX_ARCHIVE_ENTRIES) throw new Error("Package contains too many files");
   const entries = archiveEntries.filter((item) => !item.isDirectory);
   const names = new Set<string>();
   let expandedBytes = 0;
   for (const item of entries) {
-    const name = normalizeArchivePath(item.entryName);
+    const name = normalizeArchivePath(item.name);
     // Case-insensitive: NTFS/APFS collapse case, so `Tiles.PNG` and `tiles.png`
     // would extract onto one on-disk file and one of the two declared hashes
     // could never verify again.
     const nameKey = name.toLowerCase();
     if (names.has(nameKey)) throw new Error(`Package contains duplicate file ${name}`);
-    if (isSymlink(item)) throw new Error("Package links are not allowed");
+    if (item.isSymlink) throw new Error("Package links are not allowed");
     names.add(nameKey);
-    expandedBytes += item.header.size;
+    expandedBytes += item.size;
     if (expandedBytes > maximumExpandedBytes) throw new Error("Expanded package is too large");
   }
   return entries;
@@ -1764,13 +1762,13 @@ async function installCatalogPackage(entry: CapabilityCatalogPackage, activateDu
   const digest = createHash("sha256").update(archive).digest("hex");
   if (digest !== artifact.sha256) throw new Error("Downloaded package checksum does not match the catalog");
 
-  const zip = new AdmZip(archive);
-  const entries = validatePackageArchiveEntries(zip);
-  const manifestEntry = entries.find((item) => item.entryName === "manifest.json");
-  if (!manifestEntry || manifestEntry.header.size > MAX_MANIFEST_BYTES) {
+  const entries = validatePackageArchiveEntries(archive);
+  const manifestEntry = entries.find((item) => item.name === "manifest.json");
+  if (!manifestEntry || manifestEntry.size > MAX_MANIFEST_BYTES) {
     throw new Error("Package manifest is missing or too large");
   }
-  const installedManifest = capabilityPackageManifestSchema.parse(JSON.parse(manifestEntry.getData().toString("utf8")));
+  const manifestBytes = manifestEntry.read(MAX_MANIFEST_BYTES);
+  const installedManifest = capabilityPackageManifestSchema.parse(JSON.parse(manifestBytes.toString("utf8")));
   if (JSON.stringify(installedManifest) !== JSON.stringify(manifest)) {
     throw new Error("Artifact manifest does not match the catalog");
   }
@@ -1783,15 +1781,15 @@ async function installCatalogPackage(entry: CapabilityCatalogPackage, activateDu
   const caseFoldedPaths = new Set(installedManifest.files.map((file) => normalizeArchivePath(file.path).toLowerCase()));
   if (caseFoldedPaths.size !== installedManifest.files.length)
     throw new Error("Package manifest declares files that collide on case-insensitive filesystems");
-  const payloadEntries = entries.filter((item) => item.entryName !== "manifest.json");
+  const payloadEntries = entries.filter((item) => item.name !== "manifest.json");
   if (payloadEntries.length !== declaredFiles.size) throw new Error("Package contains undeclared or missing files");
   const verifiedFiles = new Map<string, Buffer>();
   for (const item of payloadEntries) {
-    const name = normalizeArchivePath(item.entryName);
+    const name = normalizeArchivePath(item.name);
     const declaration = declaredFiles.get(name);
     if (!declaration) throw new Error(`Package contains undeclared file ${name}`);
-    const data = item.getData();
-    if (data.byteLength !== declaration.bytes) throw new Error(`Package file size mismatch for ${name}`);
+    if (item.size !== declaration.bytes) throw new Error(`Package file size mismatch for ${name}`);
+    const data = item.read(declaration.bytes);
     if (createHash("sha256").update(data).digest("hex") !== declaration.sha256) {
       throw new Error(`Package file checksum mismatch for ${name}`);
     }
@@ -1851,7 +1849,7 @@ async function installCatalogPackage(entry: CapabilityCatalogPackage, activateDu
   await rm(temporary, { recursive: true, force: true });
   await mkdir(temporary, { recursive: true });
   try {
-    await writeFile(join(temporary, "manifest.json"), manifestEntry.getData(), { mode: 0o600 });
+    await writeFile(join(temporary, "manifest.json"), manifestBytes, { mode: 0o600 });
     for (const [name, data] of verifiedFiles) {
       const output = inside(temporary, join(temporary, name));
       await mkdir(dirname(output), { recursive: true });

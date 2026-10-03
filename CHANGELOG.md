@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- A Game Mode turn now gets at most four rounds of tool calls (such as dice rolls) before the Game Master has to narrate. A model that kept asking for a roll, for example through a proxy that loses the results, could otherwise make up to a hundred paid requests in one turn. `MAX_TOOL_ROUNDS` still applies when it is lower.
+
 - Expanded text editors, including message command results and preset variable values, now use the same background as the sidebars in dark and light mode (#7037).
 
 - Chats, Characters, Personas, Lorebooks, Presets, Connections, Agents, Settings and the Tracker Panel now each have a **?** at the top. Hover over it, or tap it on mobile, to read what that sidebar is for and what you can do there (#7002).

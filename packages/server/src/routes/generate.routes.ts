@@ -639,7 +639,12 @@ import {
   resolveChatSummaryPrompt,
   withoutRetiredChatSummaryAgentIds,
 } from "../services/generation/roleplay-summary-runtime.js";
-import { getChatGenerationTimeoutMs, getMaxToolRounds, isDebugAgentsEnabled } from "../config/runtime-config.js";
+import {
+  GAME_TURN_MAX_TOOL_ROUNDS,
+  getChatGenerationTimeoutMs,
+  getMaxToolRounds,
+  isDebugAgentsEnabled,
+} from "../config/runtime-config.js";
 import {
   isReviewableWriterAgentType,
   buildRuntimeAgentSectionEligibleTypes,
@@ -8139,7 +8144,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               : null;
           if (generationSignal.aborted) return null;
           if (responderToolsAttached && (gameToolPlan || (!gameToolConnection && provider.chatComplete))) {
-            const maxToolRounds = gameToolPlan ? 1 : getMaxToolRounds();
+            // A game turn rolls a check or two, so it gets a few rounds, never the general limit: a
+            // model that keeps asking for a roll (a proxy that loses the results makes Claude re-roll
+            // forever) costs a few calls, not a hundred. MAX_TOOL_ROUNDS still wins when lower.
+            const maxToolRounds = gameToolPlan
+              ? 1
+              : chatMode === "game"
+                ? Math.min(getMaxToolRounds(), GAME_TURN_MAX_TOOL_ROUNDS)
+                : getMaxToolRounds();
             let loopMessages: ChatMessage[] = [...initialProviderMessages];
             let rollRequestAbort: AbortController | null = null;
             // Stream tokens in real-time via onToken callback.

@@ -40,6 +40,8 @@ let lockBeforeSave = false;
 let emptyFollowup = false;
 let forceToolLimit = false;
 let omitFollowupUsage = false;
+// A chat outside Game Mode is refused the game-state tool, so its receipt is not a game's.
+let anyReceipt = false;
 let lockedSnapshotId: string | undefined;
 OpenAIProvider.prototype.chatComplete = async (messages, options) => {
   const result = messages.findLast((message) => message.role === "tool");
@@ -62,7 +64,8 @@ OpenAIProvider.prototype.chatComplete = async (messages, options) => {
     };
   const receipt = JSON.parse(result.content);
   assert.notEqual(receipt.applied, true, "the model must not receive an applied receipt before its message is saved");
-  if (expectedSuccess) assert.equal(receipt.pending, true);
+  if (anyReceipt) assert.ok(receipt);
+  else if (expectedSuccess) assert.equal(receipt.pending, true);
   else assert.match(receipt.error, /locked/);
   if (failBeforeSave) throw new Error("Fixture narration failed before save");
   if (lockBeforeSave) {
@@ -346,6 +349,35 @@ try {
       );
       assert.equal(info.tokensReasoning, missingUsage ? 16 : 28, "all reported requests contribute reasoning");
     }
+    // Left at its default, the general limit is far above what a game turn needs: a model that keeps
+    // asking for tools in a game turn gets four rounds, then narrates.
+    omitFollowupUsage = false;
+    delete process.env.MAX_TOOL_ROUNDS;
+    await chats.createMessage({ chatId: chat.id, role: "user", content: "Keep rolling forever." });
+    const capped = await app.inject({ method: "POST", url: "/api/generate/", payload: { chatId: chat.id } });
+    assert.ok(!capped.body.includes('"type":"error"'), capped.body);
+    const cappedInfo = JSON.parse((await chats.listMessages(chat.id)).at(-1)!.extra).generationInfo;
+    assert.equal(cappedInfo.requestCount, 5, "four tool rounds plus the forced final request");
+    // Only a game turn: a roleplay with tools keeps the general limit.
+    process.env.MAX_TOOL_ROUNDS = "6";
+    anyReceipt = true;
+    const talk = (await chats.create({
+      name: "Tools talk",
+      mode: "roleplay",
+      characterIds: [],
+      connectionId: connection.id,
+      promptPresetId: null,
+    }))!;
+    await chats.patchMetadata(talk.id, {
+      enableAgents: false,
+      enableTools: true,
+      activeToolIds: ["update_game_state"],
+    });
+    await chats.createMessage({ chatId: talk.id, role: "user", content: "Keep calling tools." });
+    const talked = await app.inject({ method: "POST", url: "/api/generate/", payload: { chatId: talk.id } });
+    assert.ok(!talked.body.includes('"type":"error"'), talked.body);
+    const talkInfo = JSON.parse((await chats.listMessages(talk.id)).at(-1)!.extra).generationInfo;
+    assert.equal(talkInfo.requestCount, 7, "six tool rounds plus the forced final request");
   } finally {
     if (previousMaxRounds === undefined) delete process.env.MAX_TOOL_ROUNDS;
     else process.env.MAX_TOOL_ROUNDS = previousMaxRounds;

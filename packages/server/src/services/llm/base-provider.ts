@@ -16,13 +16,17 @@ export const ASSISTANT_CONTINUATION_PROMPT =
   "Continue the assistant's reply from where it stopped, without repeating existing text.";
 
 /**
- * Shared undici Agent settings. The headers timeout (time to first byte) follows
- * CHAT_GENERATION_TIMEOUT_MS so slow local models get the same budget on background
- * generation (Noodle, agents) as on the chat routes. The inter-chunk body timeout
- * stays finite so half-open streams cannot hang forever.
+ * Shared undici Agent settings. Both the headers timeout (time to first byte) and the
+ * wait between streamed chunks follow CHAT_GENERATION_TIMEOUT_MS, so slow local models
+ * get the same budget on background generation (Professor Mari, Noodle, agents) as on
+ * the chat routes. A local server often sends headers at once and then spends minutes
+ * on a long prompt before the first token; a fixed 2-minute chunk wait cut those calls
+ * off (#6970). The wait stays finite so half-open streams cannot hang forever.
  */
-const LLM_BODY_TIMEOUT = 120 * 1000; // 2 minutes between body chunks
-const llmAgentOptions = () => ({ bodyTimeout: LLM_BODY_TIMEOUT, headersTimeout: getChatGenerationTimeoutMs() });
+const llmAgentOptions = () => {
+  const timeoutMs = getChatGenerationTimeoutMs();
+  return { bodyTimeout: timeoutMs, headersTimeout: timeoutMs };
+};
 const llmRequestTimeout = new AsyncLocalStorage<number>();
 
 /** Scope a provider request timeout without changing background/agent generation behavior. */

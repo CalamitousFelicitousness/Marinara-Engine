@@ -22358,13 +22358,12 @@ test("mobile chat composer follows the visual viewport above the software keyboa
       useUIStore.getState().setVisualTheme("default");
     });
     await page.reload({ waitUntil: "domcontentloaded" });
-    await expect(page.locator("#marinara-custom-theme")).toContainText("#234567");
+    await expect
+      .poll(() =>
+        page.locator("html").evaluate((element) => getComputedStyle(element).getPropertyValue("--background").trim()),
+      )
+      .toBe("#234567");
     await expect(topbar).not.toHaveCSS("background-color", defaultBacking);
-    expect(
-      await page
-        .locator("html")
-        .evaluate((element) => getComputedStyle(element).getPropertyValue("--background").trim()),
-    ).toBe("#234567");
     await expectMatchingMobileBacking();
   } finally {
     await page.request.delete(`/api/chats/${chat.id}`).catch(() => undefined);

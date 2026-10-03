@@ -1598,6 +1598,7 @@ function normalizePromptPresetChildInserts(payload: Row, presetId: string): Arra
         wrapInXml: "false",
         xmlTagName: "",
         forbidOverrides: boolText(firstBoolean(rawSection, ["forbidOverrides"]) ?? false),
+        skipWrap: boolText(firstBoolean(rawSection, ["skipWrap"]) ?? false),
       },
     });
   }
@@ -1764,6 +1765,7 @@ function buildPromptSectionInsertRow(
     wrapInXml: "false",
     xmlTagName: "",
     forbidOverrides: boolText(firstBoolean(data, ["forbidOverrides"]) ?? false),
+    skipWrap: boolText(firstBoolean(data, ["skipWrap"]) ?? false),
   };
 }
 

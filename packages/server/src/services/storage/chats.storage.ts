@@ -63,7 +63,7 @@ import {
 } from "../import/import-timestamps.js";
 import { type CharacterSchedules, type WeekSchedule } from "../conversation/schedule.service.js";
 import type { ConversationStatusOverride } from "@marinara-engine/shared";
-import { MESSAGE_MARK_EXTRA_KEYS } from "@marinara-engine/shared";
+import { MESSAGE_MARK_EXTRA_KEYS, redoChatVariableChanges, undoChatVariableChanges } from "@marinara-engine/shared";
 import { resolveConversationTimeZone } from "../conversation/timezone.js";
 import { parseConversationStatusOverrides } from "../generation/conversation-context-utils.js";
 import { logger } from "../../lib/logger.js";
@@ -765,6 +765,31 @@ export function createChatsStorage(db: DB) {
   const readMessage = async (id: string) => (await db.select().from(messages).where(eq(messages.id, id)))[0] ?? null;
   const readSwipes = (id: string) =>
     db.select().from(messageSwipes).where(eq(messageSwipes.messageId, id)).orderBy(messageSwipes.index);
+
+  // Deleting a reply puts back the chat variables it changed (#6923). The changes live on its
+  // swipes, so they are read before the rows go and undone once the message queues are released.
+  // ponytail: two deletes running at the same moment can undo in the wrong order and leave a deleted
+  // reply's value. The UI deletes one at a time and bulk deletes undo in one sorted batch; if this ever
+  // matters, hold the message and metadata queues together in one fixed order for delete and replay.
+  type VariableChanges = { chatId: string; createdAt: string; index: number; changes: unknown };
+  async function readVariableChanges(rows: MessageRow[]): Promise<VariableChanges[]> {
+    if (rows.length === 0) return [];
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    const swipes = await db
+      .select()
+      .from(messageSwipes)
+      .where(inArray(messageSwipes.messageId, [...byId.keys()]));
+    return swipes.flatMap((swipe) => {
+      const row = byId.get(swipe.messageId)!;
+      // Only the swipe on screen holds the values in place; a hidden swipe's changes were already undone.
+      if (swipe.index !== row.activeSwipeIndex) return [];
+      const changes = parseExtraRecord(swipe.extra).macroVariableChanges;
+      return changes ? [{ chatId: row.chatId, createdAt: row.createdAt, index: swipe.index, changes }] : [];
+    });
+  }
+  // Each undo then meets the values the next newer reply left.
+  const newestFirst = (a: VariableChanges, b: VariableChanges) =>
+    b.createdAt.localeCompare(a.createdAt) || b.index - a.index;
 
   async function userRoleplayPreparer(chatId: string) {
     const [chat] = await db.select().from(chats).where(eq(chats.id, chatId)).limit(1);
@@ -3155,33 +3180,69 @@ export function createChatsStorage(db: DB) {
       // mutation (#5599): an in-flight edit either completes before the
       // delete or starts after it and sees a consistent world, instead of
       // having its writes silently vanish mid-flight into a 404.
-      const removedEntries = await withInterruptionQueue([id], async (locked) => {
+      const { removedEntries, variableChanges } = await withInterruptionQueue([id], async (locked) => {
         const existing = await this.getMessage(id);
         await reconcileEffects(existing, true, locked);
         if (existing) await deleteGameStateForMessages([id], [existing.chatId]);
+        const variableChanges = existing ? await readVariableChanges([existing]) : [];
         await db.delete(messages).where(eq(messages.id, id));
         if (existing) {
           const removed = await cascadeAgentLorebookEntriesForMessages([id]);
           await invalidateMemoryChunksFrom(db, existing.chatId, existing.createdAt);
           await refreshChatLastMessageAt(existing.chatId);
-          return removed;
+          return { removedEntries: removed, variableChanges };
         }
-        return [];
+        return { removedEntries: [], variableChanges };
       });
       forgetDeletedLorebookScanKeep([id]);
       if (removedEntries.length > 0) await this.pruneLorebookChatMetadata(async (_tx) => removedEntries);
+      const chatId = variableChanges[0]?.chatId;
+      if (chatId)
+        await this.replayVariableChanges(
+          chatId,
+          variableChanges.sort(newestFirst).map((e) => e.changes),
+        );
+    },
+
+    /**
+     * Take back the chat-variable changes `undo` recorded, then apply `redo`'s (#6923): a reply
+     * that is deleted or swapped for another swipe takes its changes with it. A value someone
+     * changed since, the user or a later reply, stays as it is.
+     */
+    async replayVariableChanges(
+      chatId: string,
+      undo: unknown[],
+      redo: unknown[] = [],
+      options: { metadataQueueHeld?: boolean } = {},
+    ) {
+      if (!undo.some(Boolean) && !redo.some(Boolean)) return;
+      await this.patchMetadata(
+        chatId,
+        (current) => ({
+          macroVariables: redoChatVariableChanges(undoChatVariableChanges(current.macroVariables, undo), redo),
+        }),
+        { touchUpdatedAt: false, ...options },
+      );
     },
 
     async removeMessages(ids: string[], chatId?: string, beforeDelete?: (rows: MessageRow[]) => Promise<void>) {
       if (ids.length === 0) return;
       const earliestByChat = new Map<string, string>();
       const removedEntryIds: string[] = [];
+      const variableChanges: VariableChanges[] = [];
       const finishDeletion = async () => {
         forgetDeletedLorebookScanKeep(ids);
         if (removedEntryIds.length > 0) await this.pruneLorebookChatMetadata(async (_tx) => removedEntryIds);
         for (const [affectedChatId, createdAt] of earliestByChat) {
           await invalidateMemoryChunksFrom(db, affectedChatId, createdAt);
           await refreshChatLastMessageAt(affectedChatId);
+        }
+        variableChanges.sort(newestFirst);
+        for (const affectedChatId of new Set(variableChanges.map((entry) => entry.chatId))) {
+          const records = variableChanges
+            .filter((entry) => entry.chatId === affectedChatId)
+            .map((entry) => entry.changes);
+          await this.replayVariableChanges(affectedChatId, records);
         }
       };
       const CHUNK = 500;
@@ -3208,12 +3269,14 @@ export function createChatsStorage(db: DB) {
               existingRows.map((row) => row.id),
               existingRows.map((row) => row.chatId),
             );
+            const chunkVariableChanges = await readVariableChanges(existingRows);
             await db.delete(messages).where(condition);
             // Cascade only the ids this scoped deletion actually removed — a
             // requested id excluded by the chatId filter (or nonexistent) keeps
             // its message, so its lore must keep its anchors too.
             return {
               rows: existingRows,
+              variableChanges: chunkVariableChanges,
               // ponytail: one lore scan per 500-message chunk keeps deletion atomic;
               // index source refs if large history deletions outgrow this path.
               entryIds: await cascadeAgentLorebookEntriesForMessages(existingRows.map((row) => row.id)),
@@ -3222,6 +3285,7 @@ export function createChatsStorage(db: DB) {
           // Forget a deleted kept message now, so saves made while later chunks run are not compared against it.
           forgetDeletedLorebookScanKeep(removed.rows.map((row) => row.id));
           removedEntryIds.push(...removed.entryIds);
+          variableChanges.push(...removed.variableChanges);
           for (const row of removed.rows) {
             const current = earliestByChat.get(row.chatId);
             if (!current || row.createdAt < current) earliestByChat.set(row.chatId, row.createdAt);
@@ -3303,7 +3367,7 @@ export function createChatsStorage(db: DB) {
     },
 
     async setActiveSwipe(messageId: string, index: number) {
-      return withInterruptionQueue([messageId], async (locked) => {
+      const switched = await withInterruptionQueue([messageId], async (locked) => {
         const swipes = await this.getSwipes(messageId);
         const target = swipes.find((s: any) => s.index === index);
         if (!target) return null;
@@ -3336,12 +3400,24 @@ export function createChatsStorage(db: DB) {
           await invalidateMemoryChunksFrom(db, msg.chatId, msg.createdAt);
         }
         await reconcileEffects(await readMessage(messageId), false, locked);
-        return this.getMessage(messageId);
+        // The chat variables follow the swipe that is shown.
+        const variables =
+          msg && msg.activeSwipeIndex !== index
+            ? {
+                chatId: msg.chatId,
+                undo: parseExtraRecord(msg.extra).macroVariableChanges,
+                redo: swipeExtra.macroVariableChanges,
+              }
+            : null;
+        return { message: await this.getMessage(messageId), variables };
       });
+      const variables = switched?.variables;
+      if (variables) await this.replayVariableChanges(variables.chatId, [variables.undo], [variables.redo]);
+      return switched?.message ?? null;
     },
 
     async removeSwipe(messageId: string, index: number) {
-      return withInterruptionQueue([messageId], async (locked) => {
+      const removed = await withInterruptionQueue([messageId], async (locked) => {
         const msg = await this.getMessage(messageId);
         if (!msg) return null;
 
@@ -3505,8 +3581,15 @@ export function createChatsStorage(db: DB) {
           await reconcileEffects(await readMessage(messageId), false, locked);
         }
 
-        return this.getMessage(messageId);
+        // The chat variables follow the swipe that is shown.
+        const variables = activeSwipeRemoved
+          ? { chatId: msg.chatId, undo: currentExtra.macroVariableChanges, redo: nextExtra.macroVariableChanges }
+          : null;
+        return { message: await this.getMessage(messageId), variables };
       });
+      const variables = removed?.variables;
+      if (variables) await this.replayVariableChanges(variables.chatId, [variables.undo], [variables.redo]);
+      return removed?.message ?? null;
     },
 
     /** Merge partial data into a swipe's extra JSON field. */

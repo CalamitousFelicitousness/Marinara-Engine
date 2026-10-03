@@ -64,7 +64,7 @@ type ConversationSurfaceProps = {
   onOpenSettings: ComponentProps<typeof ConversationView>["onOpenSettings"];
   onOpenGallery: ComponentProps<typeof ConversationView>["onOpenGallery"];
   onOpenScheduleEditor?: ComponentProps<typeof ConversationView>["onOpenScheduleEditor"];
-  onCloseSettings: () => void;
+  onCloseSettings: (options?: { force?: boolean }) => void;
   onCloseGallery: () => void;
   onIllustrate?: (prompt?: string, messageRange?: [string, string]) => void;
   onIllustrateWithAgent?: (agentType: string) => void | Promise<void>;

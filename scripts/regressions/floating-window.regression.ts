@@ -166,7 +166,9 @@ assert.match(
   "gradient chrome must not override the window variables",
 );
 
-// Chat Settings sections render through the shared drawer.
+// Chat Settings renders through the shared window and its sections through the shared drawer.
+assert.match(read("packages/client/src/components/chat/ChatSettingsDrawer.tsx"), /<FloatingWindow\b/u);
+assert.match(read("packages/client/src/components/chat/ChatCommonOverlays.tsx"), /<FloatingWindow\b/u);
 assert.match(read("packages/client/src/features/chat-settings/ChatSettingsSection.tsx"), /<Drawer\b/u);
 
 console.log("floating window regression passed");

@@ -514,9 +514,10 @@ export function ConversationView({
     item.manifest.contributions?.slots?.includes("conversation-surface"),
   );
   const conversationCapabilityProps = { chatId, metadata: chatMeta, characterMap, chatCharIds, personaInfo };
+  // Desktop opens Help and Chat Settings from the Chat Settings window and the topbar.
   const renderToolbarActions = (compact = false) => (
     <>
-      <ChatHelpButton mode="conversation" compact={compact} />
+      <ChatHelpButton mode="conversation" compact={compact} className="md:hidden" />
       <ChatBranchSelector
         activeChatId={chatId}
         activeChatName={chatName}
@@ -549,6 +550,7 @@ export function ConversationView({
         title={t("chat.toolbar.settings")}
         panelAction="settings"
         onClick={onOpenSettings}
+        className="md:hidden"
       />
     </>
   );

@@ -52,6 +52,29 @@ function collectUnexpectedErrors(page: Page) {
 }
 
 /** Check a sidebar's header help: named after the sidebar, right after its title, its own text on screen, closable. */
+/** Phones show the Tracker Panel from the Roleplay HUD; desktop uses the switch in Chat Settings (#7036). */
+async function showTrackerPanel(page: Page, testInfo: TestInfo) {
+  if (testInfo.project.name.includes("mobile")) {
+    const toggle = page.locator('[data-tracker-panel-toggle="roleplay-hud"]:visible').first();
+    await expect(toggle).toBeVisible();
+    await toggle.click();
+    return;
+  }
+  await page.locator('[data-component="TopBar"]').getByRole("button", { name: "Chat Settings", exact: true }).click();
+  const settingsWindow = page.locator('[data-window="chat-settings"]');
+  const trackerSwitch = settingsWindow
+    .locator('[data-tracker-panel-toggle="chat-settings"]')
+    .getByRole("checkbox", { name: "Tracker Panel", exact: true });
+  await expect(trackerSwitch).not.toBeChecked();
+  await settingsWindow
+    .locator('[data-tracker-panel-toggle="chat-settings"]')
+    .getByText("Tracker Panel", { exact: true })
+    .click();
+  await expect(trackerSwitch).toBeChecked();
+  await settingsWindow.getByRole("button", { name: "Close chat settings", exact: true }).click();
+  await expect(settingsWindow).toHaveCount(0);
+}
+
 async function expectSidebarHelp(
   page: Page,
   header: Locator,
@@ -8077,9 +8100,7 @@ test("Roleplay Tracker preserves named characters with missing or malformed card
       }
       if (pass === 0) await page.goto("/");
       else await page.reload();
-      const toggle = page.locator('[data-tracker-panel-toggle="roleplay-hud"]:visible').first();
-      await expect(toggle).toBeVisible();
-      await toggle.click();
+      await showTrackerPanel(page, testInfo);
       const tracker = page.locator('[data-component="TrackerDataSidebar"]:visible');
       await expect(tracker).toBeVisible();
       if (pass === 0) {
@@ -8179,9 +8200,7 @@ test("desktop Tracker scales into either Roleplay gutter without shifting chat",
     const main = page.locator('[data-component="CenterContent"]');
     const chatColumn = page.locator('[data-roleplay-chat-column="true"]');
     const chatScroll = page.locator("[data-chat-scroll]");
-    const trackerToggle = page.locator('[data-tracker-panel-toggle="roleplay-hud"]:visible').first();
     await expect(chatColumn).toBeVisible();
-    await expect(trackerToggle).toBeVisible();
     const [chatColumnBefore, chatScrollBefore] = await Promise.all([
       chatColumn.boundingBox(),
       chatScroll.boundingBox(),
@@ -8189,7 +8208,7 @@ test("desktop Tracker scales into either Roleplay gutter without shifting chat",
     expect(chatColumnBefore).not.toBeNull();
     expect(chatScrollBefore).not.toBeNull();
 
-    await trackerToggle.click();
+    await showTrackerPanel(page, testInfo);
     const tracker = page.locator('[data-component="TrackerDataSidebarDesktop.left"]');
     await expect(tracker).toBeVisible();
     await tracker.evaluate(async (element) => {
@@ -9650,11 +9669,28 @@ test("chat Help overlay labels visible controls in every mode", async ({ page, r
         );
       }
     };
+    // On desktop Help opens from the ? beside the Chat Settings window title.
+    const openChatSettingsWindow = async () => {
+      const settingsWindow = page.locator('[data-window="chat-settings"]');
+      if (!(await settingsWindow.isVisible())) {
+        await page
+          .locator('[data-component="TopBar"]')
+          .getByRole("button", { name: "Chat Settings", exact: true })
+          .click();
+      }
+      await expect(
+        settingsWindow.locator(".mari-window__header").getByRole("button", { name: "Help", exact: true }),
+      ).toBeVisible();
+    };
     const openHelp = async (mode: "conversation" | "roleplay" | "game") => {
       let helpButton = page.getByRole("button", { name: "Help", exact: true }).filter({ visible: true });
       if ((await helpButton.count()) === 0) {
-        const overflowName = mode === "game" ? "Game actions" : "More options";
-        await page.getByRole("button", { name: overflowName, exact: true }).filter({ visible: true }).click();
+        if (mobile) {
+          const overflowName = mode === "game" ? "Game actions" : "More options";
+          await page.getByRole("button", { name: overflowName, exact: true }).filter({ visible: true }).click();
+        } else {
+          await openChatSettingsWindow();
+        }
         helpButton = page.getByRole("button", { name: "Help", exact: true }).filter({ visible: true });
       }
       await expect(helpButton).toHaveCount(1);
@@ -9684,6 +9720,8 @@ test("chat Help overlay labels visible controls in every mode", async ({ page, r
       if (mobile) {
         const overflowName = chat.mode === "game" ? "Game actions" : "More options";
         await page.getByRole("button", { name: overflowName, exact: true }).filter({ visible: true }).click();
+      } else {
+        await openChatSettingsWindow();
       }
 
       const helpButton = page.getByRole("button", { name: "Help", exact: true }).filter({ visible: true });
@@ -9693,14 +9731,10 @@ test("chat Help overlay labels visible controls in every mode", async ({ page, r
           page.locator("[data-chat-toolbar-overflow-menu]").getByRole("button").first(),
         ).toHaveAccessibleName("Help");
       } else {
-        const helpBox = await helpButton.boundingBox();
-        const branchesBox = await page
-          .locator(`[data-chat-mode="${chat.mode}"] [data-chat-help="branches"]`)
-          .filter({ visible: true })
-          .boundingBox();
-        expect(helpBox).not.toBeNull();
-        expect(branchesBox).not.toBeNull();
-        expect(helpBox!.x).toBeLessThan(branchesBox!.x);
+        await expect(page.locator(`[data-chat-mode="${chat.mode}"] [data-chat-help="help"]:visible`)).toHaveCount(0);
+        await expect(
+          page.locator('[data-window="chat-settings"] .mari-window__header [data-chat-help="help"]'),
+        ).toBeVisible();
       }
       await helpButton.click();
 
@@ -9824,15 +9858,17 @@ test("chat Help overlay labels visible controls in every mode", async ({ page, r
           const rootBox = await page.locator('[data-chat-mode="roleplay"]').boundingBox();
           const columnBox = await page.locator("[data-roleplay-chat-column]").boundingBox();
           const messagesBox = await overlay.locator('[data-chat-help-highlight="messages"]').boundingBox();
+          const settingsWindowBox = await page.locator('[data-window="chat-settings"]').boundingBox();
           expect(rootBox).not.toBeNull();
           expect(columnBox).not.toBeNull();
           expect(messagesBox).not.toBeNull();
+          expect(settingsWindowBox).not.toBeNull();
           expect(messagesBox!.width).toBeLessThan(rootBox!.width);
           expect(messagesBox!.x).toBeGreaterThanOrEqual(columnBox!.x - 1);
           expect(messagesBox!.x + messagesBox!.width).toBeLessThanOrEqual(columnBox!.x + columnBox!.width + 1);
-          expect(
-            Math.abs(messagesBox!.x + messagesBox!.width / 2 - (columnBox!.x + columnBox!.width / 2)),
-          ).toBeLessThan(4);
+          // The callout stops short of the open Chat Settings window instead of drawing over it.
+          expect(messagesBox!.x + messagesBox!.width).toBeLessThanOrEqual(settingsWindowBox!.x + 1);
+          expect(messagesBox!.x).toBeLessThanOrEqual(columnBox!.x + 8);
         }
 
         await overlay.dispatchEvent("pointerdown");
@@ -9886,7 +9922,10 @@ test("the first conversation opens Help once after setup", async ({ page, reques
     });
     const overlay = page.locator('[data-chat-help-overlay="conversation"]');
     await expect(overlay).toBeVisible({ timeout: 5_000 });
-    await expect(overlay.locator('[data-chat-help-highlight="help"]')).toBeVisible();
+    // Phones point at the Help button; desktop points at Chat Settings, whose window holds Help.
+    await expect(
+      overlay.locator(`[data-chat-help-highlight="${testInfo.project.name.includes("mobile") ? "help" : "settings"}"]`),
+    ).toBeVisible();
     if (testInfo.project.name.includes("mobile")) {
       await expect(page.locator("[data-chat-toolbar-overflow-menu]")).toBeVisible();
     }
@@ -9940,8 +9979,16 @@ test("chat Help can be hidden permanently from the overlay or App Behavior", asy
   try {
     await page.goto("/");
     await expect(page.locator('[data-chat-mode="conversation"]')).toBeVisible();
-    if (testInfo.project.name.includes("mobile")) {
+    const mobile = testInfo.project.name.includes("mobile");
+    const settingsWindowHelp = page.locator('[data-window="chat-settings"] [data-chat-help="help"]');
+    if (mobile) {
       await page.getByRole("button", { name: "More options", exact: true }).filter({ visible: true }).click();
+    } else {
+      await page
+        .locator('[data-component="TopBar"]')
+        .getByRole("button", { name: "Chat Settings", exact: true })
+        .click();
+      await expect(settingsWindowHelp).toBeVisible();
     }
 
     await page.getByRole("button", { name: "Help", exact: true }).filter({ visible: true }).click();
@@ -9950,6 +9997,7 @@ test("chat Help can be hidden permanently from the overlay or App Behavior", asy
     await overlay.getByRole("button", { name: "Hide Help button permanently", exact: true }).click();
     await expect(overlay).toHaveCount(0);
     await expect(page.locator('[data-chat-mode="conversation"] [data-chat-help="help"]')).toHaveCount(0);
+    await expect(settingsWindowHelp).toHaveCount(0);
 
     await clickTopbarPanel(page, "settings");
     const settingRow = page.locator("#settings-control-hide-chat-help-button");
@@ -9965,6 +10013,14 @@ test("chat Help can be hidden permanently from the overlay or App Behavior", asy
     await settingRow.getByText("Hide chat Help button", { exact: true }).click();
     await expect(settingToggle).not.toBeChecked();
     await expect(page.locator('[data-chat-mode="conversation"] [data-chat-help="help"]')).toHaveCount(1);
+    if (!mobile) {
+      // Pressing the setting is a press outside Chat Settings, which closed the window.
+      await page
+        .locator('[data-component="TopBar"]')
+        .getByRole("button", { name: "Chat Settings", exact: true })
+        .click();
+      await expect(settingsWindowHelp).toBeVisible();
+    }
 
     await settingRow.getByText("Hide chat Help button", { exact: true }).click();
     await expect(settingToggle).toBeChecked();
@@ -10020,11 +10076,14 @@ test("message search stays before Chat Settings and jumps to unloaded history", 
         .locator("[data-chat-scroll]")
         .getByText("Ancient clue: needle.* is a literal phrase.", { exact: true });
       await expect(targetMessage).toHaveCount(0);
+      // Phones keep Chat Settings right after Search; desktop moved it to the topbar.
       expect(
-        await searchButton.evaluate(
-          (button) => button.nextElementSibling?.getAttribute("data-chat-toolbar-panel-action") ?? null,
-        ),
-      ).toBe("settings");
+        await searchButton.evaluate((button) => {
+          let next = button.nextElementSibling;
+          while (next && next.getClientRects().length === 0) next = next.nextElementSibling;
+          return next?.getAttribute("data-chat-toolbar-panel-action") ?? null;
+        }),
+      ).toBe((page.viewportSize()?.width ?? 0) < 768 ? "settings" : null);
 
       await searchButton.click();
       const searchPanel = page.getByRole("dialog", { name: "Search messages", exact: true });

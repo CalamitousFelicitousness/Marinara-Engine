@@ -31,43 +31,9 @@ import {
   readChatHelpEventMode,
   requestChatHelp,
 } from "../../lib/chat-help-events";
+import { getChatHelpTargets, type ChatHelpTargetDefinition, type ChatHelpTargetId } from "../../lib/chat-help-targets";
 import { useUIStore } from "../../stores/ui.store";
 import { NEUTRAL_PANEL_SHELL } from "../ui/neutral-surface-styles";
-
-type HelpTargetId =
-  | "identity"
-  | "agents"
-  | "branches"
-  | "call"
-  | "agent-controls"
-  | "summary"
-  | "context"
-  | "author-notes"
-  | "gallery"
-  | "connected-chat"
-  | "search"
-  | "settings"
-  | "help"
-  | "messages"
-  | "composer"
-  | "map"
-  | "party"
-  | "scene-media"
-  | "retry"
-  | "session"
-  | "volume"
-  | "assets"
-  | "widgets"
-  | "dialogue";
-
-interface HelpTargetDefinition {
-  id: HelpTargetId;
-  titleKey: string;
-  bodyKey: string;
-  selector?: string;
-  mergeMatches?: boolean;
-  virtual?: "messages" | "composer";
-}
 
 interface Rect {
   top: number;
@@ -76,7 +42,7 @@ interface Rect {
   height: number;
 }
 
-interface MeasuredTarget extends HelpTargetDefinition {
+interface MeasuredTarget extends ChatHelpTargetDefinition {
   rect: Rect;
 }
 
@@ -85,197 +51,12 @@ interface HelpActionDefinition {
   labelKey: string;
 }
 
-const HELP_TARGET: HelpTargetDefinition = {
-  id: "help",
-  selector: '[data-chat-help="help"]',
-  titleKey: "chat.help.targets.help.title",
-  bodyKey: "chat.help.targets.help.body",
-};
-
-const COMMON_TOOLBAR_TARGETS: HelpTargetDefinition[] = [
-  {
-    id: "branches",
-    selector: '[data-chat-help="branches"]',
-    titleKey: "chat.help.targets.branches.title",
-    bodyKey: "chat.help.targets.branches.body",
-  },
-  {
-    id: "agent-controls",
-    selector: '[data-chat-help="agent-controls"]',
-    titleKey: "chat.help.targets.agentControls.title",
-    bodyKey: "chat.help.targets.agentControls.body",
-  },
-  {
-    id: "context",
-    selector: '[data-chat-help="context"]',
-    titleKey: "chat.help.targets.context.title",
-    bodyKey: "chat.help.targets.context.body",
-  },
-  {
-    id: "gallery",
-    selector: '[data-chat-help="gallery"]',
-    titleKey: "chat.help.targets.gallery.title",
-    bodyKey: "chat.help.targets.gallery.body",
-  },
-  {
-    id: "connected-chat",
-    selector: '[data-chat-help="connected-chat"]',
-    titleKey: "chat.help.targets.connectedChat.title",
-    bodyKey: "chat.help.targets.connectedChat.body",
-  },
-  {
-    id: "search",
-    selector: '[data-chat-help="search"]',
-    titleKey: "chat.help.targets.search.title",
-    bodyKey: "chat.help.targets.search.body",
-  },
-  {
-    id: "settings",
-    selector: '[data-chat-help="settings"]',
-    titleKey: "chat.help.targets.settings.title",
-    bodyKey: "chat.help.targets.settings.body",
-  },
-];
-
-function commonToolbarTargets(...ids: HelpTargetId[]): HelpTargetDefinition[] {
-  return ids.map((id) => {
-    const target = COMMON_TOOLBAR_TARGETS.find((candidate) => candidate.id === id);
-    if (!target) throw new Error(`Unknown common toolbar help target: ${id}`);
-    return target;
-  });
-}
-
-const TARGETS_BY_MODE: Record<ChatMode, HelpTargetDefinition[]> = {
-  conversation: [
-    {
-      id: "identity",
-      selector: '[data-chat-help="identity"]',
-      titleKey: "chat.help.targets.identity.title",
-      bodyKey: "chat.help.targets.identity.body",
-    },
-    HELP_TARGET,
-    ...COMMON_TOOLBAR_TARGETS,
-    {
-      id: "call",
-      selector: '[data-chat-help="call"]',
-      titleKey: "chat.help.targets.call.title",
-      bodyKey: "chat.help.targets.call.body",
-    },
-    {
-      id: "messages",
-      virtual: "messages",
-      titleKey: "chat.help.targets.conversationMessages.title",
-      bodyKey: "chat.help.targets.conversationMessages.body",
-    },
-    {
-      id: "composer",
-      virtual: "composer",
-      titleKey: "chat.help.targets.composer.title",
-      bodyKey: "chat.help.targets.composer.body",
-    },
-  ],
-  roleplay: [
-    {
-      id: "agents",
-      selector: '[data-chat-help="agents"]',
-      titleKey: "chat.help.targets.agents.title",
-      bodyKey: "chat.help.targets.agents.body",
-    },
-    HELP_TARGET,
-    ...commonToolbarTargets("branches", "agent-controls"),
-    {
-      id: "summary",
-      selector: '[data-chat-help="summary"]',
-      titleKey: "chat.help.targets.summary.title",
-      bodyKey: "chat.help.targets.summary.body",
-    },
-    ...commonToolbarTargets("context"),
-    {
-      id: "author-notes",
-      selector: '[data-chat-help="author-notes"]',
-      titleKey: "chat.help.targets.authorNotes.title",
-      bodyKey: "chat.help.targets.authorNotes.body",
-    },
-    ...commonToolbarTargets("gallery", "connected-chat", "search", "settings"),
-    {
-      id: "messages",
-      virtual: "messages",
-      titleKey: "chat.help.targets.roleplayMessages.title",
-      bodyKey: "chat.help.targets.roleplayMessages.body",
-    },
-    {
-      id: "composer",
-      virtual: "composer",
-      titleKey: "chat.help.targets.composer.title",
-      bodyKey: "chat.help.targets.composer.body",
-    },
-  ],
-  game: [
-    {
-      id: "map",
-      selector: '[data-tour="game-map"]',
-      titleKey: "chat.help.targets.map.title",
-      bodyKey: "chat.help.targets.map.body",
-    },
-    {
-      id: "party",
-      selector: '[data-tour="game-party"]',
-      titleKey: "chat.help.targets.party.title",
-      bodyKey: "chat.help.targets.party.body",
-    },
-    {
-      id: "scene-media",
-      selector: '[data-chat-help="scene-media"]',
-      titleKey: "chat.help.targets.sceneMedia.title",
-      bodyKey: "chat.help.targets.sceneMedia.body",
-    },
-    HELP_TARGET,
-    ...commonToolbarTargets("branches"),
-    {
-      id: "retry",
-      selector: '[data-chat-help="retry"]',
-      titleKey: "chat.help.targets.retry.title",
-      bodyKey: "chat.help.targets.retry.body",
-    },
-    {
-      id: "session",
-      selector: '[data-chat-help="session"]',
-      titleKey: "chat.help.targets.session.title",
-      bodyKey: "chat.help.targets.session.body",
-    },
-    {
-      id: "volume",
-      selector: '[data-chat-help="volume"]',
-      titleKey: "chat.help.targets.volume.title",
-      bodyKey: "chat.help.targets.volume.body",
-    },
-    {
-      id: "assets",
-      selector: '[data-chat-help="assets"]',
-      titleKey: "chat.help.targets.assets.title",
-      bodyKey: "chat.help.targets.assets.body",
-    },
-    ...commonToolbarTargets("context", "gallery", "connected-chat", "settings"),
-    {
-      id: "widgets",
-      selector: "[data-game-widget-rail]",
-      mergeMatches: true,
-      titleKey: "chat.help.targets.widgets.title",
-      bodyKey: "chat.help.targets.widgets.body",
-    },
-    {
-      id: "dialogue",
-      selector: '[data-tour="game-dialogue"]',
-      titleKey: "chat.help.targets.dialogue.title",
-      bodyKey: "chat.help.targets.dialogue.body",
-    },
-  ],
-};
-
+const HELP_OVERLAY_SELECTOR = "[data-chat-help-overlay]";
+const FLOATING_WINDOW_SELECTOR = ".mari-window";
 const TARGET_PADDING = 5;
 const HIGHLIGHT_GAP = 5;
 const MOBILE_TOOLBAR_HIGHLIGHT_SIZE = 32;
-const PADDED_TARGET_IDS = new Set<HelpTargetId>([
+const PADDED_TARGET_IDS = new Set<ChatHelpTargetId>([
   "agents",
   "messages",
   "composer",
@@ -418,7 +199,65 @@ function clipRect(rect: Rect, viewportWidth: number, viewportHeight: number): Re
   return { top, left, width: right - left, height: bottom - top };
 }
 
-function findTargetRect(definition: HelpTargetDefinition, root: HTMLElement, mode: ChatMode): Rect | null {
+function containsDeep(ancestor: Element, node: Element): boolean {
+  let current: Element | null = node;
+  while (current) {
+    if (ancestor.contains(current)) return true;
+    const rootNode = current.getRootNode();
+    current = rootNode instanceof ShadowRoot ? rootNode.host : null;
+  }
+  return false;
+}
+
+/** True when something else, such as a floating window or an open menu, sits over the middle of a control. */
+function isCoveredAtCenter(element: Element, rect: Rect): boolean {
+  const x = rect.left + rect.width / 2;
+  const y = rect.top + rect.height / 2;
+  if (x < 0 || y < 0 || x >= window.innerWidth || y >= window.innerHeight) return false;
+  const hit = document.elementsFromPoint(x, y).find((candidate) => !closestDeep(candidate, HELP_OVERLAY_SELECTOR));
+  return !!hit && !containsDeep(element, hit) && !containsDeep(hit, element);
+}
+
+function visibleFloatingWindowRects(): Rect[] {
+  return Array.from(document.querySelectorAll(FLOATING_WINDOW_SELECTOR))
+    .map((element) => rectFromDomRect(element.getBoundingClientRect()))
+    .filter((rect) => rect.width > 1 && rect.height > 1);
+}
+
+/** The largest part of `rect` that `cut` leaves uncovered, or null when too little is left to point at. */
+function subtractRect(rect: Rect, cut: Rect): Rect | null {
+  const right = rect.left + rect.width;
+  const bottom = rect.top + rect.height;
+  const cutLeft = Math.max(rect.left, cut.left);
+  const cutTop = Math.max(rect.top, cut.top);
+  const cutRight = Math.min(right, cut.left + cut.width);
+  const cutBottom = Math.min(bottom, cut.top + cut.height);
+  if (cutRight <= cutLeft || cutBottom <= cutTop) return rect;
+  const remaining = [
+    { top: rect.top, left: rect.left, width: cutLeft - rect.left, height: rect.height },
+    { top: rect.top, left: cutRight, width: right - cutRight, height: rect.height },
+    { top: rect.top, left: rect.left, width: rect.width, height: cutTop - rect.top },
+    { top: cutBottom, left: rect.left, width: rect.width, height: bottom - cutBottom },
+  ].sort((first, second) => second.width * second.height - first.width * first.height)[0]!;
+  return remaining.width * remaining.height >= rect.width * rect.height * 0.25 ? remaining : null;
+}
+
+function inflateRect(rect: Rect, amount: number): Rect {
+  return {
+    top: rect.top - amount,
+    left: rect.left - amount,
+    width: rect.width + amount * 2,
+    height: rect.height + amount * 2,
+  };
+}
+
+function rectContainsCenter(bounds: Rect, rect: Rect): boolean {
+  const x = rect.left + rect.width / 2;
+  const y = rect.top + rect.height / 2;
+  return x >= bounds.left && x <= bounds.left + bounds.width && y >= bounds.top && y <= bounds.top + bounds.height;
+}
+
+function findTargetRect(definition: ChatHelpTargetDefinition, root: HTMLElement, mode: ChatMode): Rect | null {
   if (definition.virtual === "composer") {
     const composer = root.querySelector<HTMLElement>("[data-chat-composer]");
     const shell = composer?.closest<HTMLElement>("[data-chat-resource-drop-exclude]") ?? composer;
@@ -458,10 +297,13 @@ function findTargetRect(definition: HelpTargetDefinition, root: HTMLElement, mod
       ...querySelectorAllDeep(document, definition.selector),
     ]),
   ];
+  // Large regions are trimmed around windows later; a covered control is left out instead.
+  const skipCovered = !PADDED_TARGET_IDS.has(definition.id) && !definition.mergeMatches;
   const rects = elements
     .map((element) => {
       const rect = readVisibleRect(element, preferInteractive);
-      return rect ? normalizeMobileToolbarRect(element, rect) : null;
+      if (!rect || (skipCovered && isCoveredAtCenter(element, rect))) return null;
+      return normalizeMobileToolbarRect(element, rect);
     })
     .filter((rect): rect is Rect => rect !== null);
   return definition.mergeMatches ? unionRects(rects) : (rects[0] ?? null);
@@ -476,9 +318,15 @@ function expandRectWithin(rect: Rect, bounds: Rect, padding: number): Rect {
 }
 
 function separateHighlightRects(targets: MeasuredTarget[], bounds: Rect, padding = TARGET_PADDING): MeasuredTarget[] {
+  // Controls outside the chat, such as the topbar button and the Chat Settings window, stay within the viewport.
+  const viewport = { top: 0, left: 0, width: window.innerWidth, height: window.innerHeight };
   const separated = targets.map((target) => ({
     ...target,
-    rect: expandRectWithin(target.rect, bounds, PADDED_TARGET_IDS.has(target.id) ? padding : 0),
+    rect: expandRectWithin(
+      target.rect,
+      rectContainsCenter(bounds, target.rect) ? bounds : viewport,
+      PADDED_TARGET_IDS.has(target.id) ? padding : 0,
+    ),
   }));
   for (let firstIndex = 0; firstIndex < separated.length; firstIndex += 1) {
     for (let secondIndex = firstIndex + 1; secondIndex < separated.length; secondIndex += 1) {
@@ -537,14 +385,23 @@ function measureTargets(mode: ChatMode) {
     const rect = element.getBoundingClientRect();
     return rect.width > 1 && rect.height > 1;
   });
-  if (!root) return { rootRect: null, targets: [] as MeasuredTarget[] };
+  if (!root) return { rootRect: null, surfaces: [] as Rect[], targets: [] as MeasuredTarget[] };
 
   const viewportWidth = window.innerWidth;
   const viewportHeight = window.innerHeight;
   const rootRect = clipRect(rectFromDomRect(root.getBoundingClientRect()), viewportWidth, viewportHeight);
-  let targets = TARGETS_BY_MODE[mode].flatMap((definition) => {
+  const highlightPadding = window.innerWidth < 768 ? 0 : TARGET_PADDING;
+  const windowRects = visibleFloatingWindowRects();
+  let targets = getChatHelpTargets(mode).flatMap((definition) => {
     const measured = findTargetRect(definition, root, mode);
-    const rect = measured ? clipRect(measured, viewportWidth, viewportHeight) : null;
+    let rect = measured ? clipRect(measured, viewportWidth, viewportHeight) : null;
+    if (rect && PADDED_TARGET_IDS.has(definition.id)) {
+      // Leave room for the highlight padding, so a large region stops at a window's edge.
+      rect = windowRects.reduce<Rect | null>(
+        (visible, windowRect) => visible && subtractRect(visible, inflateRect(windowRect, highlightPadding)),
+        rect,
+      );
+    }
     return rect ? [{ ...definition, rect }] : [];
   });
   const mobileOverflowRect =
@@ -565,8 +422,7 @@ function measureTargets(mode: ChatMode) {
         : target;
     });
   }
-  const highlightPadding = window.innerWidth < 768 ? 0 : TARGET_PADDING;
-  if (!rootRect) return { rootRect, targets };
+  if (!rootRect) return { rootRect, surfaces: [], targets };
 
   const fixedMobileToolbarRects = new Map(
     mobileOverflowRect
@@ -589,6 +445,8 @@ function measureTargets(mode: ChatMode) {
   const separated = separateHighlightRects(targets, rootRect, highlightPadding);
   return {
     rootRect,
+    // The overlay dims the chat and any open window around the labelled controls.
+    surfaces: [rootRect, ...windowRects.flatMap((rect) => clipRect(rect, viewportWidth, viewportHeight) ?? [])],
     targets: separated.map((target) => ({
       ...target,
       rect: fixedMobileToolbarRects.get(target.id) ?? target.rect,
@@ -624,7 +482,7 @@ function getHoverCardStyle(point: { x: number; y: number }): CSSProperties {
   };
 }
 
-function targetIncludesActionLegend(mode: ChatMode, id: HelpTargetId): boolean {
+function targetIncludesActionLegend(mode: ChatMode, id: ChatHelpTargetId): boolean {
   return id === "messages" || (mode === "game" && id === "dialogue");
 }
 
@@ -655,11 +513,12 @@ function MessageActionLegend({ mode }: { mode: ChatMode }) {
   );
 }
 
-function measurementsSignature(rootRect: Rect | null, targets: MeasuredTarget[]) {
+function measurementsSignature(rootRect: Rect | null, surfaces: Rect[], targets: MeasuredTarget[]) {
   return JSON.stringify([
     window.innerWidth,
     window.innerHeight,
     rootRect,
+    surfaces,
     targets.map(({ id, rect }) => [
       id,
       Math.round(rect.top),
@@ -688,9 +547,10 @@ export function ChatHelpOverlay({
   const setChatHelpButtonHidden = useUIStore((state) => state.setChatHelpButtonHidden);
   const [open, setOpen] = useState(false);
   const [rootRect, setRootRect] = useState<Rect | null>(null);
+  const [surfaces, setSurfaces] = useState<Rect[]>([]);
   const [targets, setTargets] = useState<MeasuredTarget[]>([]);
-  const [selectedTargetId, setSelectedTargetId] = useState<HelpTargetId | null>(null);
-  const [hoveredTargetId, setHoveredTargetId] = useState<HelpTargetId | null>(null);
+  const [selectedTargetId, setSelectedTargetId] = useState<ChatHelpTargetId | null>(null);
+  const [hoveredTargetId, setHoveredTargetId] = useState<ChatHelpTargetId | null>(null);
   const [hoverPoint, setHoverPoint] = useState<{ x: number; y: number } | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
@@ -738,10 +598,11 @@ export function ChatHelpOverlay({
     let frame = 0;
     const measure = () => {
       const next = measureTargets(mode);
-      const signature = measurementsSignature(next.rootRect, next.targets);
+      const signature = measurementsSignature(next.rootRect, next.surfaces, next.targets);
       if (signature !== measurementSignatureRef.current) {
         measurementSignatureRef.current = signature;
         setRootRect(next.rootRect);
+        setSurfaces(next.surfaces);
         setTargets(next.targets);
       }
     };
@@ -826,6 +687,17 @@ export function ChatHelpOverlay({
   }, [open]);
 
   if (!open || !rootRect || typeof document === "undefined") return null;
+  const hideHelpButtonControl = (
+    <button
+      type="button"
+      className="mari-chrome-control pointer-events-auto min-h-7 px-2.5 text-[0.625rem] shadow-lg"
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={hideHelpButton}
+    >
+      <EyeOff size="0.6875rem" />
+      {t("chat.help.hidePermanently")}
+    </button>
+  );
 
   return createPortal(
     <div
@@ -844,17 +716,26 @@ export function ChatHelpOverlay({
       <svg className="pointer-events-none fixed inset-0 h-full w-full" aria-hidden="true">
         <defs>
           <mask id={maskId} maskUnits="userSpaceOnUse">
-            <rect x={rootRect.left} y={rootRect.top} width={rootRect.width} height={rootRect.height} fill="white" />
+            {surfaces.map((surface, index) => (
+              <rect
+                key={index}
+                x={surface.left}
+                y={surface.top}
+                width={surface.width}
+                height={surface.height}
+                fill="white"
+              />
+            ))}
             {targets.map(({ id, rect }) => (
               <rect key={id} x={rect.left} y={rect.top} width={rect.width} height={rect.height} rx="8" fill="black" />
             ))}
           </mask>
         </defs>
         <rect
-          x={rootRect.left}
-          y={rootRect.top}
-          width={rootRect.width}
-          height={rootRect.height}
+          x={0}
+          y={0}
+          width="100%"
+          height="100%"
           mask={`url(#${maskId})`}
           style={{ fill: "color-mix(in srgb, var(--background) 82%, transparent)" }}
         />
@@ -932,15 +813,15 @@ export function ChatHelpOverlay({
         </div>
       )}
 
-      <div
-        className="pointer-events-none fixed flex max-w-[calc(100vw-1.5rem)] flex-col items-center gap-1.5"
-        style={{
-          top: rootRect.top + 10,
-          left: Math.max(rootRect.left + 12, rootRect.left + rootRect.width / 2),
-          transform: "translateX(-50%)",
-        }}
-      >
-        {mobile ? (
+      {mobile && (
+        <div
+          className="pointer-events-none fixed flex max-w-[calc(100vw-1.5rem)] flex-col items-center gap-1.5"
+          style={{
+            top: rootRect.top + 10,
+            left: Math.max(rootRect.left + 12, rootRect.left + rootRect.width / 2),
+            transform: "translateX(-50%)",
+          }}
+        >
           <button
             type="button"
             className="pointer-events-auto flex max-w-[calc(100vw-1.5rem)] items-center gap-2 rounded-lg border border-[var(--marinara-chat-chrome-button-border-active)] bg-[var(--card)] px-3 py-2 text-left text-xs font-semibold leading-4 text-[var(--foreground)] shadow-lg"
@@ -950,22 +831,9 @@ export function ChatHelpOverlay({
             <CircleHelp size="0.875rem" className="shrink-0 text-[var(--marinara-chat-chrome-button-text-active)]" />
             <span>{t("chat.help.mobileInstruction")}</span>
           </button>
-        ) : (
-          <div className="flex items-center gap-2 rounded-lg border border-[var(--marinara-chat-chrome-button-border-active)] bg-[var(--card)] px-3 py-2 text-xs font-semibold text-[var(--foreground)] shadow-lg">
-            <CircleHelp size="0.875rem" className="shrink-0 text-[var(--marinara-chat-chrome-button-text-active)]" />
-            <span>{t("chat.help.exitInstruction")}</span>
-          </div>
-        )}
-        <button
-          type="button"
-          className="mari-chrome-control pointer-events-auto min-h-7 px-2.5 text-[0.625rem] shadow-lg"
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={hideHelpButton}
-        >
-          <EyeOff size="0.6875rem" />
-          {t("chat.help.hidePermanently")}
-        </button>
-      </div>
+          {hideHelpButtonControl}
+        </div>
+      )}
 
       {!mobile && (
         <div
@@ -1000,6 +868,13 @@ export function ChatHelpOverlay({
               ))}
             </ol>
             <MessageActionLegend mode={mode} />
+          </div>
+          {/* On desktop the exit hint lives here, so it never covers the chat's controls or an open window. */}
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-[var(--marinara-chat-chrome-panel-divider)] px-3 py-2">
+            <span className="text-[0.6875rem] font-medium leading-4 text-[var(--marinara-chat-chrome-panel-muted)]">
+              {t("chat.help.exitInstruction")}
+            </span>
+            {hideHelpButtonControl}
           </div>
         </div>
       )}

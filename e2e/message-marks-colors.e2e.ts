@@ -122,7 +122,11 @@ for (const mode of ["conversation", "roleplay"] as const) {
       }
       await page.keyboard.press("Escape");
       const help = page.getByRole("button", { name: "Help", exact: true }).filter({ visible: true });
-      if (!(await help.count())) await page.getByRole("button", { name: "More options", exact: true }).click();
+      if (!(await help.count())) {
+        // Phones keep Help in More options; desktop shows it beside the Chat Settings window title.
+        const opener = info.project.name.includes("mobile") ? "More options" : "Chat Settings";
+        await page.getByRole("button", { name: opener, exact: true }).filter({ visible: true }).click();
+      }
       await help.click();
       const overlay = page.locator(`[data-chat-help-overlay="${mode}"]`);
       if (info.project.name.includes("mobile")) {

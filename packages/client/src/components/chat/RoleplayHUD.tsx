@@ -314,8 +314,11 @@ export function RoleplayHUD({
       onUpdateHiddenFields={updateHiddenTrackerFields}
     >
       <div className={cn("rpg-hud", "flex items-center", CHAT_TOOLBAR_ICON_GAP_CLASS, mobileCompact && "min-w-0")}>
+        {/* Desktop shows and hides the Tracker Panel from Chat Settings. */}
         {trackerPanelEnabled && !trackerPanelOpen && (
-          <TrackerPanelToggleButton onToggle={() => toggleTrackerPanel(chatId)} />
+          <span className="contents md:hidden">
+            <TrackerPanelToggleButton onToggle={() => toggleTrackerPanel(chatId)} />
+          </span>
         )}
 
         {beholderTrackerPackages.map((item) => (

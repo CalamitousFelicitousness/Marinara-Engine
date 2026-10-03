@@ -13,6 +13,7 @@ import {
   VenetianMask,
   Menu,
   Check,
+  Settings2,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -31,6 +32,8 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useUIStore } from "../../stores/ui.store";
 import { useChatStore } from "../../stores/chat.store";
+import { CHAT_SETTINGS_WINDOW_ID, useFloatingWindowStore } from "../../stores/floating-window.store";
+import { announceChatToolbarAction } from "../chat/ChatToolbarControls";
 import { cn } from "../../lib/utils";
 import { SpotifyMiniPlayer } from "../spotify/SpotifyMiniPlayer";
 import { YouTubePlayer } from "../chat/YouTubePlayer";
@@ -103,8 +106,15 @@ const TOPBAR_ACTIVE_BUTTON_CLASS = "bg-[var(--accent)] shadow-sm";
 const TOPBAR_FORCE_HOVER_CLASS = "bg-[var(--accent)]";
 const TOPBAR_ACCENT_ICON_CLASS = "mari-topbar-accent-icon mari-accent-animated";
 const CHAT_TOPBAR_GRADIENT_ID = "mari-topbar-chats-gradient";
+/** Half the centred Chat Settings button plus breathing room. */
+const TOPBAR_CENTER_RESERVE = 32;
+
+function preloadChatSettings() {
+  void import("../chat/ChatSettingsDrawer");
+}
 
 export function TopBar({ mobileTopbarNavigation }: { mobileTopbarNavigation: boolean }) {
+  const { t } = useTranslation();
   const localize = useLocalizedUiText();
   const { contributions } = usePersonalExtensionContributions();
   const sidebarOpen = useUIStore((s) => s.sidebarOpen);
@@ -128,7 +138,11 @@ export function TopBar({ mobileTopbarNavigation }: { mobileTopbarNavigation: boo
   const botBrowserOpen = useUIStore((s) => s.botBrowserOpen);
   const gameAssetsBrowserOpen = useUIStore((s) => s.gameAssetsBrowserOpen);
   const characterLibraryOpen = useUIStore((s) => s.characterLibraryOpen);
+  const agentCatalogOpen = useUIStore((s) => s.agentCatalogOpen);
   const cardLibraryKind = useUIStore((s) => s.cardLibraryKind);
+  const chatSettingsHosted = useFloatingWindowStore((s) => (s.hosts[CHAT_SETTINGS_WINDOW_ID] ?? 0) > 0);
+  const chatSettingsOpen = useFloatingWindowStore((s) => s.open[CHAT_SETTINGS_WINDOW_ID] === true);
+  const toggleFloatingWindow = useFloatingWindowStore((s) => s.toggleWindow);
   const headerRef = useRef<HTMLElement | null>(null);
   const leftControlsRef = useRef<HTMLDivElement | null>(null);
   const rightNavRef = useRef<HTMLElement | null>(null);
@@ -173,6 +187,24 @@ export function TopBar({ mobileTopbarNavigation }: { mobileTopbarNavigation: boo
     !botBrowserOpen &&
     !gameAssetsBrowserOpen &&
     !characterLibraryOpen;
+
+  // Chat Settings sits in the middle of the topbar while a chat is on screen.
+  const showChatSettingsButton =
+    chatSettingsHosted &&
+    !botBrowserOpen &&
+    !gameAssetsBrowserOpen &&
+    !characterLibraryOpen &&
+    !agentCatalogOpen &&
+    !characterDetailId &&
+    !lorebookDetailId &&
+    !presetDetailId &&
+    !connectionDetailId &&
+    !agentDetailId &&
+    !toolDetailId &&
+    !personaDetailId &&
+    !regexDetailId;
+  const showChatSettingsButtonRef = useRef(showChatSettingsButton);
+  showChatSettingsButtonRef.current = showChatSettingsButton;
 
   const isTopbarHovered = (key: string) => hoveredTopbarKey === key;
   const phoneTopbar = usePhoneTopbar();
@@ -275,10 +307,12 @@ export function TopBar({ mobileTopbarNavigation }: { mobileTopbarNavigation: boo
       const minPlayerWidth = window.matchMedia("(min-width: 1024px)").matches
         ? SPOTIFY_TOPBAR_MIN_WIDTH_WITH_VOLUME
         : SPOTIFY_TOPBAR_MIN_WIDTH;
+      // The centred Chat Settings button keeps the left section to its own half of the topbar.
+      const playerSpace = showChatSettingsButtonRef.current
+        ? Math.min(headerWidth / 2 - TOPBAR_CENTER_RESERVE, headerWidth - rightNavWidth) - leftControlsWidth
+        : headerWidth - leftControlsWidth - rightNavWidth;
 
-      setSpotifyUseFloatingFallback(
-        headerWidth < leftControlsWidth + rightNavWidth + minPlayerWidth + SPOTIFY_TOPBAR_LAYOUT_BUFFER,
-      );
+      setSpotifyUseFloatingFallback(playerSpace < minPlayerWidth + SPOTIFY_TOPBAR_LAYOUT_BUFFER);
     };
 
     measureSpotifyFit();
@@ -298,7 +332,7 @@ export function TopBar({ mobileTopbarNavigation }: { mobileTopbarNavigation: boo
       observer?.disconnect();
       window.removeEventListener("resize", measureSpotifyFit);
     };
-  }, []);
+  }, [showChatSettingsButton]);
 
   useEffect(() => {
     const clearWhenHidden = () => {
@@ -388,7 +422,12 @@ export function TopBar({ mobileTopbarNavigation }: { mobileTopbarNavigation: boo
       <div className="absolute inset-x-0 bottom-0 h-px bg-[var(--marinara-topbar-border)]" />
 
       {/* Left section: window controls + chat info */}
-      <div className="mari-topbar-left flex min-w-0 flex-1 items-center gap-2">
+      <div
+        className={cn(
+          "mari-topbar-left flex min-w-0 flex-1 items-center gap-2",
+          showChatSettingsButton && "md:max-w-[calc(50%-2rem)]",
+        )}
+      >
         <div
           ref={leftControlsRef}
           className="mari-topbar-left-controls mari-rgb-icon-scope flex shrink-0 items-center gap-2"
@@ -403,6 +442,42 @@ export function TopBar({ mobileTopbarNavigation }: { mobileTopbarNavigation: boo
           </>
         ) : null}
       </div>
+
+      {showChatSettingsButton && (
+        <button
+          type="button"
+          data-chat-help="settings"
+          data-chat-toolbar-panel-action="settings"
+          data-window-opener={CHAT_SETTINGS_WINDOW_ID}
+          data-topbar-hover-key="chat-settings"
+          aria-label={t("chat.toolbar.settings")}
+          aria-expanded={chatSettingsOpen}
+          aria-haspopup="dialog"
+          title={t("chat.toolbar.settings")}
+          onPointerEnter={preloadChatSettings}
+          onFocus={preloadChatSettings}
+          onClick={(event) => {
+            announceChatToolbarAction("settings");
+            toggleFloatingWindow(CHAT_SETTINGS_WINDOW_ID, event.currentTarget);
+          }}
+          className={cn(
+            TOPBAR_BUTTON_CLASS,
+            "absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 md:flex",
+            chatSettingsOpen
+              ? TOPBAR_ACTIVE_BUTTON_CLASS
+              : cn(
+                  "text-[var(--muted-foreground)] hover:text-[var(--marinara-chat-chrome-button-text-hover)]",
+                  isTopbarHovered("chat-settings") &&
+                    cn(TOPBAR_FORCE_HOVER_CLASS, "text-[var(--marinara-chat-chrome-button-text-hover)]"),
+                ),
+          )}
+        >
+          <Settings2 size={15} className={TOPBAR_ACCENT_ICON_CLASS} />
+          {chatSettingsOpen && (
+            <span className="mari-topbar-active-underline absolute -bottom-0.5 left-1/2 h-0.5 w-3 -translate-x-1/2 rounded-full" />
+          )}
+        </button>
+      )}
 
       {/* Right section - Panel toggles */}
       <nav

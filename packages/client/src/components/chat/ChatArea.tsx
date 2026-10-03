@@ -156,6 +156,11 @@ import {
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { ChatResourceDropOverlay } from "./ChatResourceDropOverlay";
 import { ChatHelpOverlay } from "./ChatHelpOverlay";
+import {
+  CHAT_SETTINGS_WINDOW_ID,
+  isFloatingWindowPinned,
+  useFloatingWindowStore,
+} from "../../stores/floating-window.store";
 import { readChatHelpMode } from "../../lib/chat-help-events";
 
 export type { CharacterMap };
@@ -603,7 +608,8 @@ const LocalChatArea = memo(function LocalChatArea() {
   // After the first render with messages, new/re-mounted messages
   // skip the entry animation to avoid a visible flash on refetch.
   const hasAnimatedRef = useRef(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsOpen = useFloatingWindowStore((s) => s.open[CHAT_SETTINGS_WINDOW_ID] === true);
+  const settingsPinned = useFloatingWindowStore((s) => s.layouts[CHAT_SETTINGS_WINDOW_ID]?.pinned === true);
   const [settingsInitialSection, setSettingsInitialSection] = useState<ChatSettingsInitialSection>(null);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [settingsAnchor, setSettingsAnchor] = useState<FloatingPanelAnchor>(null);
@@ -669,32 +675,38 @@ const LocalChatArea = memo(function LocalChatArea() {
   const handleOpenSettingsPanel = useCallback(
     (event?: ReactMouseEvent<HTMLElement>, options?: OpenSettingsOptions) => {
       void preloadChatSettingsDrawer();
-      const nextOpen = event ? !settingsOpen : true;
+      const windows = useFloatingWindowStore.getState();
+      const nextOpen = event ? !windows.open[CHAT_SETTINGS_WINDOW_ID] : true;
       setGalleryOpen(false);
       setGalleryAnchor(null);
       setSettingsAnchor(nextOpen ? readFloatingPanelAnchor(event) : null);
       setSettingsInitialSection(nextOpen ? (options?.initialSection ?? null) : null);
-      setSettingsOpen(nextOpen);
+      if (nextOpen) windows.openWindow(CHAT_SETTINGS_WINDOW_ID, event?.currentTarget ?? null);
+      else windows.closeWindow(CHAT_SETTINGS_WINDOW_ID);
     },
-    [readFloatingPanelAnchor, settingsOpen],
+    [readFloatingPanelAnchor],
   );
+  // Other chat panels and toolbar actions dismiss Chat Settings unless it is pinned; `force` (its own
+  // close button) always closes it.
+  const handleCloseSettingsPanel = useCallback((options?: { force?: boolean }) => {
+    if (!options?.force && isFloatingWindowPinned(CHAT_SETTINGS_WINDOW_ID)) return;
+    blurActiveChatFloatingUiControl();
+    useFloatingWindowStore.getState().closeWindow(CHAT_SETTINGS_WINDOW_ID);
+  }, []);
+  useEffect(() => {
+    if (settingsOpen) return;
+    setSettingsAnchor(null);
+    setSettingsInitialSection(null);
+  }, [settingsOpen]);
   const handleOpenGalleryPanel = useCallback(
     (event?: ReactMouseEvent<HTMLElement>) => {
       const nextOpen = event ? !galleryOpen : true;
-      setSettingsOpen(false);
-      setSettingsAnchor(null);
-      setSettingsInitialSection(null);
+      handleCloseSettingsPanel();
       setGalleryAnchor(nextOpen ? readFloatingPanelAnchor(event) : null);
       setGalleryOpen(nextOpen);
     },
-    [galleryOpen, readFloatingPanelAnchor],
+    [galleryOpen, handleCloseSettingsPanel, readFloatingPanelAnchor],
   );
-  const handleCloseSettingsPanel = useCallback(() => {
-    blurActiveChatFloatingUiControl();
-    setSettingsOpen(false);
-    setSettingsAnchor(null);
-    setSettingsInitialSection(null);
-  }, []);
 
   const handleCloseGalleryPanel = useCallback(() => {
     blurActiveChatFloatingUiControl();
@@ -708,21 +720,20 @@ const LocalChatArea = memo(function LocalChatArea() {
     setHomeProfessorChatOpen(false);
     setHomeProfessorChatActive(false);
   }, [activeChatId]);
-  const closeFloatingChatDrawers = useCallback((event?: Event) => {
-    const preservedPanel = event ? readAnnouncedChatToolbarPanelAction(event) : null;
-    blurActiveChatFloatingUiControl();
-    if (preservedPanel !== "settings") {
-      setSettingsOpen(false);
-      setSettingsAnchor(null);
-      setSettingsInitialSection(null);
-    }
-    if (preservedPanel !== "gallery") {
-      setGalleryOpen(false);
-      setGalleryAnchor(null);
-    }
-    setPeekPromptData(null);
-    setDeleteDialogMessageId(null);
-  }, []);
+  const closeFloatingChatDrawers = useCallback(
+    (event?: Event) => {
+      const preservedPanel = event ? readAnnouncedChatToolbarPanelAction(event) : null;
+      if (preservedPanel !== "settings") handleCloseSettingsPanel();
+      blurActiveChatFloatingUiControl();
+      if (preservedPanel !== "gallery") {
+        setGalleryOpen(false);
+        setGalleryAnchor(null);
+      }
+      setPeekPromptData(null);
+      setDeleteDialogMessageId(null);
+    },
+    [handleCloseSettingsPanel],
+  );
   // A dropped agent parks a setup request; open chat settings so its modal can run.
   useEffect(() => {
     const openAgentSetup = (event: Event) => {
@@ -753,6 +764,12 @@ const LocalChatArea = memo(function LocalChatArea() {
     };
   }, [closeFloatingChatDrawers]);
   const chat = chatDetail ?? null;
+  // While a chat is open here, the topbar shows the Chat Settings button.
+  const hostsChatSettings = Boolean(activeChatId && chat);
+  useEffect(() => {
+    if (!hostsChatSettings) return;
+    return useFloatingWindowStore.getState().registerHost(CHAT_SETTINGS_WINDOW_ID);
+  }, [hostsChatSettings]);
   const rawMode = (chat as unknown as { mode?: string })?.mode;
   // Remember the last known chat mode so that a transient `undefined` from
   // React Query (cache invalidation, Suspense remount, concurrent batching)
@@ -2412,7 +2429,7 @@ const LocalChatArea = memo(function LocalChatArea() {
   }, [messages]);
 
   const intuitiveSwipeBlocked =
-    settingsOpen ||
+    (settingsOpen && !settingsPinned) ||
     galleryOpen ||
     wizardOpen ||
     spriteArrangeMode ||

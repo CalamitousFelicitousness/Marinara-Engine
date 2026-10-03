@@ -1333,7 +1333,7 @@ type RoleplaySurfaceProps = {
   onOpenSettings: (event?: ReactMouseEvent<HTMLElement>) => void;
   onOpenGallery: (event?: ReactMouseEvent<HTMLElement>) => void;
   onOpenScheduleEditor?: ComponentProps<typeof ChatCommonOverlays>["onOpenScheduleEditor"];
-  onCloseSettings: () => void;
+  onCloseSettings: (options?: { force?: boolean }) => void;
   onCloseGallery: () => void;
   onIllustrate?: (prompt?: string, messageRange?: [string, string]) => void;
   onIllustrateWithAgent?: (agentType: string) => void | Promise<void>;
@@ -2243,7 +2243,6 @@ export function ChatRoleplaySurface({
                       CHAT_TOOLBAR_ICON_GAP_CLASS,
                     )}
                   >
-                    <ChatHelpButton mode="roleplay" className="hidden md:flex" />
                     {conversationToolbarPackages.map((item) => (
                       <span key={`${item.id}-toolbar`} data-chat-help="agent-controls" className="contents">
                         <CapabilityElement
@@ -2264,7 +2263,6 @@ export function ChatRoleplaySurface({
                       variant="roleplay"
                     />
                     <ChatToolbarMenu openSummaryOnRequest>
-                      <ChatHelpButton mode="roleplay" className="md:hidden" />
                       <SummaryButton
                         chatId={chat?.id ?? null}
                         summary={chatMeta.summary ?? null}
@@ -2333,12 +2331,6 @@ export function ChatRoleplaySurface({
                         />
                       )}
                       <ChatMessageSearch chatId={activeChatId} />
-                      <ChatToolbarButton
-                        icon={<Settings2 size="0.875rem" />}
-                        title={t("chat.toolbar.settings")}
-                        panelAction="settings"
-                        onClick={onOpenSettings}
-                      />
                     </ChatToolbarMenu>
                   </div>
                 </div>
@@ -2386,7 +2378,6 @@ export function ChatRoleplaySurface({
                         CHAT_TOOLBAR_ICON_GAP_CLASS,
                       )}
                     >
-                      <ChatHelpButton mode="roleplay" compact className="hidden md:flex" />
                       {conversationToolbarPackages.map((item) => (
                         <span key={`${item.id}-compact-toolbar`} data-chat-help="agent-controls" className="contents">
                           <CapabilityElement
@@ -2477,11 +2468,13 @@ export function ChatRoleplaySurface({
                           />
                         )}
                         <ChatMessageSearch chatId={activeChatId} />
+                        {/* Desktop opens Chat Settings from the topbar. */}
                         <ChatToolbarButton
                           icon={<Settings2 size="0.875rem" />}
                           title={t("chat.toolbar.settings")}
                           panelAction="settings"
                           onClick={onOpenSettings}
+                          className="md:hidden"
                         />
                       </ChatToolbarMenu>
                     </div>
@@ -2491,7 +2484,6 @@ export function ChatRoleplaySurface({
                   <div
                     className={cn("flex w-full items-center justify-end px-2 pb-1 pt-2", CHAT_TOOLBAR_ICON_GAP_CLASS)}
                   >
-                    <ChatHelpButton mode="roleplay" compact className="pointer-events-auto hidden md:flex" />
                     <ChatToolbarMenu openSummaryOnRequest className="pointer-events-auto">
                       <ChatHelpButton mode="roleplay" compact className="md:hidden" />
                       <ChatBranchSelector
@@ -2567,11 +2559,13 @@ export function ChatRoleplaySurface({
                         />
                       )}
                       <ChatMessageSearch chatId={activeChatId} />
+                      {/* Desktop opens Chat Settings from the topbar. */}
                       <ChatToolbarButton
                         icon={<Settings2 size="0.875rem" />}
                         title={t("chat.toolbar.settings")}
                         panelAction="settings"
                         onClick={onOpenSettings}
+                        className="md:hidden"
                       />
                     </ChatToolbarMenu>
                   </div>

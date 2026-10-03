@@ -1,7 +1,7 @@
 // ──────────────────────────────────────────────
 // Chat: Settings Drawer — per-chat configuration
 // ──────────────────────────────────────────────
-import { Fragment, lazy, Suspense, useState, useRef, useEffect, useMemo, useCallback, type CSSProperties } from "react";
+import { Fragment, lazy, Suspense, useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useQuery, useQueryClient, useQueries } from "@tanstack/react-query";
 import { useTranslation, useTranslation as useUiTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -29,6 +29,7 @@ import {
   Camera,
   Clapperboard,
   RefreshCw,
+  RotateCcw,
   Settings2,
   Info,
   ArrowRightLeft,
@@ -59,19 +60,9 @@ import {
   Map as MapIcon,
   VenetianMask,
 } from "lucide-react";
-import {
-  NEUTRAL_PANEL_CLOSE_BUTTON,
-  NEUTRAL_PANEL_CLOSE_ICON_SIZE,
-  NEUTRAL_PANEL_HEADER,
-  NEUTRAL_PANEL_SCROLL_AREA,
-  NEUTRAL_PANEL_SHELL,
-  NEUTRAL_PANEL_TITLE,
-} from "../ui/neutral-surface-styles";
-import {
-  getChatFloatingPanelDesktopRight,
-  isChatToolbarPanelTrigger,
-  type ChatToolbarFloatingPanelAnchor,
-} from "./ChatToolbarControls";
+import { NEUTRAL_PANEL_SCROLL_AREA } from "../ui/neutral-surface-styles";
+import { FloatingWindow } from "../ui/FloatingWindow";
+import { isChatToolbarPanelTrigger, type ChatToolbarFloatingPanelAnchor } from "./ChatToolbarControls";
 import { PickerDropdown } from "../../features/chat-settings/PickerDropdown";
 import { PersonaHistoryReassignDropdown } from "../../features/chat-settings/sections/PersonaHistoryReassignDropdown";
 import { ChatSettingsSection as Section } from "../../features/chat-settings/ChatSettingsSection";
@@ -210,6 +201,10 @@ import { addSilentGreetingSwipes } from "../../lib/message-swipes";
 import { useUIStore } from "../../stores/ui.store";
 import { abortGenerationForChat, useChatStore } from "../../stores/chat.store";
 import { blurActiveChatFloatingUiControl, isDesktopShellNavigationTarget } from "../../lib/chat-floating-ui-events";
+import { requestChatHelp } from "../../lib/chat-help-events";
+import { CHAT_SETTINGS_WINDOW_ID, useFloatingWindowStore } from "../../stores/floating-window.store";
+import { getChatSettingsWindowProps } from "./chat-settings-window";
+import { useMatchMedia } from "../../hooks/use-match-media";
 import { useDialogFocusScope } from "../../hooks/use-dialog-focus-scope";
 import { useTouchFolderDrag } from "../../hooks/use-touch-folder-drag";
 import {
@@ -359,8 +354,11 @@ const BeholderChatSettingsPanel = lazy(() => import("./BeholderChatSettingsPanel
 interface ChatSettingsDrawerProps {
   chat: Chat;
   open: boolean;
-  onClose: () => void;
+  /** `force` closes a pinned window too; without it, a pinned window stays open. */
+  onClose: (options?: { force?: boolean }) => void;
   anchor?: ChatToolbarFloatingPanelAnchor;
+  /** Show the Help Layout button beside the title (chats that mount the Help overlay). */
+  showHelpLayout?: boolean;
   initialSection?: "autonomous" | "memory-recall" | "multiplayer" | null;
   multiplayerGameStart?: MultiplayerGameStart;
   spriteArrangeMode?: boolean;
@@ -620,18 +618,11 @@ function isConversationCommandToggleEnabled(
   return toggles[command] !== false;
 }
 
-const MODE_INTRO_KEYS: Record<ChatMode, string> = {
-  conversation: "settings.chat.modeIntro.conversation",
-  roleplay: "settings.chat.modeIntro.roleplay",
-  game: "settings.chat.modeIntro.game",
-};
-
 const MARINARA_UNIVERSAL_PRESET_NAME = "Marinara's Universal Preset";
 const MARINARA_UNIVERSAL_PRESET_AUTHOR = "Marinara";
 
 const CHAT_SETTINGS_ORDER = {
   settingsPresets: -1600,
-  modeIntro: -1500,
   chatName: -1400,
   connection: -1300,
   promptPreset: -1200,
@@ -857,6 +848,7 @@ export function ChatSettingsDrawer({
   open,
   onClose,
   anchor,
+  showHelpLayout = false,
   initialSection,
   multiplayerGameStart,
   spriteArrangeMode = false,
@@ -928,6 +920,13 @@ export function ChatSettingsDrawer({
   const callsSettingsOpen = useUIStore((s) => s.chatSettingsExpandedSections[callsSettingsMenuId] ?? false);
   const setChatSettingsSectionExpanded = useUIStore((s) => s.setChatSettingsSectionExpanded);
   const showContextUsage = useUIStore((s) => s.showContextUsage);
+  const chatHelpButtonHidden = useUIStore((s) => s.chatHelpButtonHidden ?? false);
+  const trackerPanelEnabled = useUIStore((s) => s.trackerPanelEnabled);
+  const trackerPanelOpen = useUIStore((s) => s.trackerPanelOpen);
+  const setTrackerPanelOpen = useUIStore((s) => s.setTrackerPanelOpen);
+  const resetView = useFloatingWindowStore((s) => s.resetView);
+  // Phones keep today's full-width sheet until the mobile step of the window redesign.
+  const phoneLayout = useMatchMedia("(max-width: 767px)");
 
   const { data: allCharacters } = useCharacters({ includeBuiltIn: true });
   const { data: characterGroups } = useCharacterGroups();
@@ -980,6 +979,11 @@ export function ChatSettingsDrawer({
     [chat.metadata],
   );
   const groupChatMode = normalizeGroupChatMode(metadata.groupChatMode);
+  // Same place the Roleplay HUD offered its Tracker Panel launcher.
+  const trackerPanelToggleAvailable =
+    isRoleplayMode &&
+    trackerPanelEnabled &&
+    (metadata.enableAgents === true || metadata.advancedMemory?.enabled === true);
   const summaryRetrievalSettings = normalizeSemanticSummaryRetrievalSettings(metadata);
   // Package integrations only show while their package is installed and usable.
   const noodleInstalled = isCapabilityPackageAvailable(installedCapabilities, "noodle");
@@ -3594,7 +3598,7 @@ export function ChatSettingsDrawer({
       if (!canCloseAgentSuite) return false;
       if (!(await flushProseGuardianDrafts())) return false;
       setShowAgentSuiteModal(false);
-      onClose();
+      onClose({ force: true });
       return true;
     } finally {
       drawerClosingRef.current = false;
@@ -4145,7 +4149,7 @@ export function ChatSettingsDrawer({
           <span className="text-[0.625rem] font-medium text-[var(--muted-foreground)]">
             {localizeUi("ui.agents.agenteditor.musicFolderOnThisDevice")}
           </span>
-          <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="flex flex-col gap-2 @lg:flex-row">
             <input
               key={`${chat.id}-${surface}-custom-music-folder-${customMusicExternalFolder}`}
               defaultValue={customMusicExternalFolder}
@@ -4646,7 +4650,7 @@ export function ChatSettingsDrawer({
                       }
                     />
                     {backfillEnabled && (
-                      <div className="flex flex-col gap-2 rounded-lg bg-[var(--background)]/45 px-2.5 py-2 ring-1 ring-[var(--border)] sm:flex-row sm:items-end">
+                      <div className="flex flex-col gap-2 rounded-lg bg-[var(--background)]/45 px-2.5 py-2 ring-1 ring-[var(--border)] @lg:flex-row @lg:items-end">
                         <label className="min-w-0 flex-1 text-[0.625rem] text-[var(--muted-foreground)]">
                           <span className="mb-1 block font-medium text-[var(--foreground)]">
                             {localizeUi("ui.agents.agenteditor.backfillChunkSize")}
@@ -4805,86 +4809,85 @@ export function ChatSettingsDrawer({
     );
   };
 
-  useEffect(() => {
-    if (!open || typeof document === "undefined") return;
-
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target;
-      if (isDesktopShellNavigationTarget(target)) return;
-      if (isChatToolbarPanelTrigger(target, "settings")) return;
-      if (!(target instanceof Node)) return;
-      if (panelRef.current?.contains(target)) return;
-      if (target instanceof Element && target.closest("[data-chat-floating-panel]")) return;
-      // The expanded prompt editor and the macro reference render in a portal
-      // outside the drawer panel; interacting with them must not close Chat
-      // Settings — only their own close controls should.
-      if (target instanceof Element && target.closest("[data-macro-modal]")) return;
-      requestClose();
-    };
-
-    document.addEventListener("pointerdown", handlePointerDown, true);
-    return () => document.removeEventListener("pointerdown", handlePointerDown, true);
-  }, [open, requestClose]);
+  const ignoreOutsidePointer = useCallback(
+    (target: Element) =>
+      isDesktopShellNavigationTarget(target) ||
+      isChatToolbarPanelTrigger(target, "settings") ||
+      // The expanded prompt editor and the macro reference render in a portal outside the window;
+      // using them must not close Chat Settings, only their own close controls should.
+      !!target.closest("[data-chat-floating-panel], [data-macro-modal]"),
+    [],
+  );
 
   if (!open) return null;
-  const anchoredOnMobile = !!anchor && typeof window !== "undefined" && window.innerWidth < 768;
-  const panelStyle: CSSProperties | undefined = anchor
-    ? anchoredOnMobile
-      ? {
-          bottom: "auto",
-          left: "auto",
-          maxHeight: `min(42rem, calc(100dvh - ${anchor.top}px - 0.75rem - var(--mari-safe-area-inset-bottom,env(safe-area-inset-bottom))))`,
-          right: `${anchor.right}px`,
-          top: `${anchor.top}px`,
-          width: `min(34rem, calc(100vw - ${anchor.right}px - 0.75rem))`,
-        }
-      : {
-          right: getChatFloatingPanelDesktopRight(anchor),
-          top: `${anchor.top}px`,
-        }
-    : undefined;
+  const helpLayoutButton =
+    showHelpLayout && !phoneLayout && !chatHelpButtonHidden ? (
+      <span data-chat-help="help" className="inline-flex">
+        <HelpTooltip
+          text={localizeUi("chat.settings.helpLayoutHint")}
+          ariaLabel={localizeUi("chat.help.button")}
+          side="bottom"
+          buttonClassName="h-6 w-6 justify-center"
+          onActivate={() => requestChatHelp(chatMode)}
+        />
+      </span>
+    ) : null;
 
   return (
     <>
-      {/* Floating panel */}
-      <div
-        ref={panelRef}
-        data-chat-floating-panel
-        className={cn(
-          NEUTRAL_PANEL_SHELL,
-          "mari-chat-settings-popover",
-          "mari-chat-settings-drawer",
-          "fixed bottom-3 z-[70] flex min-h-0 w-[min(34rem,calc(100vw-var(--mari-chat-ui-inset-left,0px)-var(--mari-chat-ui-inset-right,0px)-1.5rem))] flex-col overflow-hidden max-md:inset-x-2 max-md:bottom-[calc(0.75rem+var(--mari-safe-area-inset-bottom,env(safe-area-inset-bottom)))] max-md:top-[calc(3.5rem+env(safe-area-inset-top))] max-md:w-auto",
-          anchor ? "" : "right-[calc(var(--mari-chat-ui-inset-right,0px)+0.75rem)] top-14",
-        )}
-        style={panelStyle}
+      <FloatingWindow
+        id={CHAT_SETTINGS_WINDOW_ID}
+        presentation={phoneLayout ? "sheet" : "window"}
+        title={localizeUi("chat.toolbar.settings")}
+        titleIcon={<Settings2 size="0.8125rem" className="shrink-0 text-[var(--muted-foreground)]" />}
+        titleAccessory={helpLayoutButton}
+        closeLabel={localizeUi("ui.chat.chatsettingsdrawer.closeChatSettings")}
+        {...getChatSettingsWindowProps(anchor)}
+        bodyRef={panelRef}
+        ignoreOutsidePointer={ignoreOutsidePointer}
+        onRequestClose={() => requestClose()}
       >
-        {/* Header */}
-        <div className={cn(NEUTRAL_PANEL_HEADER, "flex shrink-0 items-center justify-between")}>
-          <h3 className={NEUTRAL_PANEL_TITLE}>
-            <Settings2 size="0.8125rem" className="shrink-0 text-[var(--muted-foreground)]" />
-            {localizeUi("chat.toolbar.settings")}
-          </h3>
-          <button
-            type="button"
-            onClick={requestClose}
-            aria-label={localizeUi("ui.chat.chatsettingsdrawer.closeChatSettings")}
-            className={NEUTRAL_PANEL_CLOSE_BUTTON}
-          >
-            <X size={NEUTRAL_PANEL_CLOSE_ICON_SIZE} />
-          </button>
-        </div>
+        {!phoneLayout && (
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-3 py-1.5">
+            {trackerPanelToggleAvailable ? (
+              <div data-tracker-panel-toggle="chat-settings" className="min-w-0">
+                <SettingsSwitch
+                  label={localizeUi("ui.panels.trackerpanelappearancedrawer.trackerPanel")}
+                  help={localizeUi("chat.settings.trackerPanelHelp")}
+                  checked={trackerPanelOpen}
+                  onChange={(checked) => setTrackerPanelOpen(checked, chat.id)}
+                  labelPosition="start"
+                  className="gap-2 p-1"
+                  labelClassName="text-xs font-medium"
+                />
+              </div>
+            ) : (
+              <span aria-hidden="true" />
+            )}
+            <button
+              type="button"
+              data-chat-help="reset-view"
+              onClick={resetView}
+              title={localizeUi("chat.settings.resetViewHelp")}
+              className="mari-chrome-control mari-chrome-control--small px-2.5 text-[0.6875rem]"
+            >
+              <RotateCcw size="0.75rem" />
+              {localizeUi("chat.settings.resetView")}
+            </button>
+          </div>
+        )}
 
         {/* Desktop-only: drag-and-drop hint (sidebar drag is disabled on mobile overlays) */}
         <div className="flex shrink-0 items-start gap-2 border-b border-[var(--border)] px-4 py-2 text-[0.6875rem] leading-snug text-[var(--muted-foreground)] max-md:hidden">
           <Info size="0.8125rem" className="mt-px shrink-0" />
-          <span>{localizeUi("chat.settings.dragDropHint")}</span>
+          {/* The slash-joined list has no spaces, so let it wrap in a narrow window. */}
+          <span className="min-w-0 [overflow-wrap:anywhere]">{localizeUi("chat.settings.dragDropHint")}</span>
         </div>
 
         <div
           className={cn(
             NEUTRAL_PANEL_SCROLL_AREA,
-            "flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain pb-[calc(1rem+var(--mari-safe-area-inset-bottom,env(safe-area-inset-bottom)))]",
+            "@container flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain pb-[calc(1rem+var(--mari-safe-area-inset-bottom,env(safe-area-inset-bottom)))]",
           )}
         >
           {/* Settings profile bar — hidden in Game Mode. Scene chats keep it, but scene instructions stay chat-owned. */}
@@ -5048,18 +5051,6 @@ export function ChatSettingsDrawer({
                   <Trash2 size="0.875rem" />
                 </button>
               </div>
-            </div>
-          )}
-
-          {/* Keep this display tied to the runtime defaults below. */}
-          {MODE_INTRO_KEYS[chatMode] && (
-            <div
-              style={{ order: CHAT_SETTINGS_ORDER.modeIntro }}
-              className="border-b border-[var(--border)] px-4 py-2.5"
-            >
-              <p className="text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]">
-                {localizeUi(MODE_INTRO_KEYS[chatMode])}
-              </p>
             </div>
           )}
 
@@ -6713,7 +6704,7 @@ export function ChatSettingsDrawer({
                       />
 
                       {conversationCommandsEnabled && (
-                        <div className="grid gap-2 sm:grid-cols-2">
+                        <div className="grid gap-2 @lg:grid-cols-2">
                           {availableConversationCommandOptions.map((command) => {
                             const enabled = isConversationCommandToggleEnabled(conversationCommandToggles, command.id);
                             return (
@@ -7844,19 +7835,19 @@ export function ChatSettingsDrawer({
                           order={getRoleplayAgentSettingsOrder("lorebook-keeper")}
                           onRemove={getRoleplayAgentMenuRemoveHandler("lorebook-keeper", lorebookKeeperAgentMeta.name)}
                         >
-                          <div className="flex flex-col items-stretch gap-2 rounded-lg bg-[var(--background)]/75 px-3 py-2 ring-1 ring-[var(--border)] sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex flex-col items-stretch gap-2 rounded-lg bg-[var(--background)]/75 px-3 py-2 ring-1 ring-[var(--border)] @lg:flex-row @lg:items-center @lg:justify-between">
                             <p className="min-w-0 flex-1 text-[0.625rem] leading-snug text-[var(--muted-foreground)]">
                               {localizeUi(
                                 "ui.chat.chatsettingsdrawer.chatLorebookKeeperRunsAfterAssistantRepliesGameMode",
                               )}
                             </p>
-                            <div className="flex w-full min-w-0 flex-col items-stretch gap-1.5 sm:w-auto sm:shrink-0 sm:flex-row sm:items-center">
+                            <div className="flex w-full min-w-0 flex-col items-stretch gap-1.5 @lg:w-auto @lg:shrink-0 @lg:flex-row @lg:items-center">
                               <AgentSettingsActionButton
                                 onClick={() => {
                                   onClose();
                                   useUIStore.getState().openAgentDetail("lorebook-keeper");
                                 }}
-                                className="!h-8 !min-h-8 w-full whitespace-nowrap !py-0 sm:w-auto"
+                                className="!h-8 !min-h-8 w-full whitespace-nowrap !py-0 @lg:w-auto"
                               >
                                 <Settings2 size="0.75rem" />
                                 <span>{localizeUi("ui.chat.chatsettingsdrawer.openSetup")}</span>
@@ -7864,7 +7855,7 @@ export function ChatSettingsDrawer({
                               <AgentSettingsActionButton
                                 onClick={handleLorebookKeeperBackfill}
                                 disabled={agentProcessing}
-                                className="!h-8 !min-h-8 w-full whitespace-nowrap !py-0 sm:w-auto"
+                                className="!h-8 !min-h-8 w-full whitespace-nowrap !py-0 @lg:w-auto"
                                 variant="primary"
                               >
                                 <RefreshCw size="0.75rem" className={cn(agentProcessing && "animate-spin")} />
@@ -7872,7 +7863,7 @@ export function ChatSettingsDrawer({
                               </AgentSettingsActionButton>
                             </div>
                           </div>
-                          <div className="grid gap-2 sm:grid-cols-2">
+                          <div className="grid gap-2 @lg:grid-cols-2">
                             <label className="flex min-w-0 flex-col gap-1 text-[0.625rem] text-[var(--muted-foreground)]">
                               <span className="font-medium text-[var(--foreground)]">
                                 {localizeUi("ui.chat.agentaddsetupfields.targetLorebook")}
@@ -9682,7 +9673,7 @@ export function ChatSettingsDrawer({
             </div>
           )}
         </div>
-      </div>
+      </FloatingWindow>
 
       {/* Choice selection modal for preset variables */}
       <ChoiceSelectionModal

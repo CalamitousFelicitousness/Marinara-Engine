@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Settings2 } from "lucide-react";
 import {
@@ -20,6 +20,11 @@ import {
 } from "../../hooks/use-multiplayer";
 import { useChatStore } from "../../stores/chat.store";
 import { useUIStore } from "../../stores/ui.store";
+import {
+  CHAT_SETTINGS_WINDOW_ID,
+  isFloatingWindowPinned,
+  useFloatingWindowStore,
+} from "../../stores/floating-window.store";
 import { useUpdateChatMetadata } from "../../hooks/use-chats";
 import { useCharacters } from "../../hooks/use-characters";
 import { parseCharacterDisplayData } from "../../lib/character-display";
@@ -181,7 +186,13 @@ function HostedMultiplayerChat({ chat }: { chat: Chat }) {
   const host = hostQuery.data?.chatId === chat.id ? hostQuery.data : null;
   const metadata = readChatMetadata(chat);
   const [setupComplete, setSetupComplete] = useState(metadata.multiplayerSetupComplete === true);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsOpen = useFloatingWindowStore((state) => state.open[CHAT_SETTINGS_WINDOW_ID] === true);
+  // A hosted chat shows Chat Settings, so the topbar offers its button.
+  const hosting = Boolean(host);
+  useEffect(() => {
+    if (!hosting) return;
+    return useFloatingWindowStore.getState().registerHost(CHAT_SETTINGS_WINDOW_ID);
+  }, [hosting]);
   const [initialSection, setInitialSection] = useState<"multiplayer" | null>(null);
   const [participantOpen, setParticipantOpen] = useState(false);
   const [gameStart, setGameStart] = useState<MultiplayerGameStart | undefined>(() =>
@@ -243,10 +254,16 @@ function HostedMultiplayerChat({ chat }: { chat: Chat }) {
       setSetupSaving(false);
     }
   };
-  const openPlayers = () => {
-    setInitialSection("multiplayer");
-    setSettingsOpen(true);
+  const openSettings = (section: "multiplayer" | null, opener?: HTMLElement) => {
+    setInitialSection(section);
+    useFloatingWindowStore.getState().openWindow(CHAT_SETTINGS_WINDOW_ID, opener);
   };
+  const closeSettings = (options?: { force?: boolean }) => {
+    if (options?.force || !isFloatingWindowPinned(CHAT_SETTINGS_WINDOW_ID)) {
+      useFloatingWindowStore.getState().closeWindow(CHAT_SETTINGS_WINDOW_ID);
+    }
+  };
+  const openPlayers = () => openSettings("multiplayer");
   if (status.isLoading || hostQuery.isLoading)
     return (
       <p role="status" className="p-4 text-sm">
@@ -328,14 +345,13 @@ function HostedMultiplayerChat({ chat }: { chat: Chat }) {
             >
               {t(participantOpen ? "multiplayer.closeControls" : "multiplayer.yourCharacters")}
             </button>
+            {/* Desktop opens Chat Settings from the topbar. */}
             <ChatToolbarButton
               icon={<Settings2 size={16} />}
               title={t("chat.toolbar.settings")}
               panelAction="settings"
-              onClick={() => {
-                setInitialSection(null);
-                setSettingsOpen(true);
-              }}
+              className="md:hidden"
+              onClick={(event) => openSettings(null, event.currentTarget)}
             />
           </div>
           {participantOpen && (
@@ -403,7 +419,7 @@ function HostedMultiplayerChat({ chat }: { chat: Chat }) {
               <ChatSettingsDrawer
                 chat={chat}
                 open
-                onClose={() => setSettingsOpen(false)}
+                onClose={closeSettings}
                 initialSection={initialSection}
                 multiplayerGameStart={gameStart}
               />

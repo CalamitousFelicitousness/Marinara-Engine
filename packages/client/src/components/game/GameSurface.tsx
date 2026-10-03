@@ -2886,7 +2886,8 @@ function GameSurfaceComponent({
   useEffect(() => {
     const handleHelpOpen = (event: Event) => {
       if (readChatHelpEventMode(event) !== "game") return;
-      dismissOtherFloatingWindows();
+      // Help opens from the Chat Settings window, which stays open under the overlay.
+      closeLocalFloatingWindows();
       setChatHelpOpen(true);
       if (window.innerWidth < 768) setMobileActionsOpen(true);
     };
@@ -2901,7 +2902,7 @@ function GameSurfaceComponent({
       window.removeEventListener(CHAT_HELP_OPEN_REQUEST_EVENT, handleHelpOpen);
       window.removeEventListener(CHAT_HELP_CLOSE_EVENT, handleHelpClose);
     };
-  }, [dismissOtherFloatingWindows]);
+  }, [closeLocalFloatingWindows]);
   const handleOpenGalleryPanel = useCallback(
     (event?: ReactMouseEvent<HTMLElement>) => {
       const nextOpen = !resolvedGalleryOpen;
@@ -12572,7 +12573,6 @@ function GameSurfaceComponent({
               >
                 {/* Desktop controls */}
                 <div className={cn("pointer-events-auto hidden items-center md:flex", CHAT_TOOLBAR_ICON_GAP_CLASS)}>
-                  <ChatHelpButton mode="game" />
                   {renderStoryboardBackgroundControls()}
                   <ChatBranchSelector
                     activeChatId={activeChatId}
@@ -12777,16 +12777,6 @@ function GameSurfaceComponent({
                       <ArrowRightLeft size={14} />
                     </button>
                   ) : null}
-                  <button
-                    data-chat-help="settings"
-                    data-chat-toolbar-panel-action="settings"
-                    onClick={handleOpenSettingsPanel}
-                    className={GAME_TOP_ICON_BUTTON}
-                    title={t("chat.toolbar.settings")}
-                    aria-label={t("chat.toolbar.settings")}
-                  >
-                    <Settings2 size={14} />
-                  </button>
                 </div>
 
                 {/* Mobile controls */}

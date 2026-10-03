@@ -6,6 +6,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - Two end-to-end tests no longer fail for reasons of their own: the Decision import notice test reads the notice's words from the English catalog (it still expected the wording before the notice was rewritten), and the coin test waits for both of a turn's toasts at once instead of one after the other on a busy machine.
 
+- End-to-end tests run Chromium with its audio output off. The first sound a page plays, such as the generation-complete chime, could freeze a headless page for many seconds on a Linux machine, so a toast could vanish before it was checked (the coin and market tests failed this way) and every game test lost the time. Audio still plays, to a device nobody hears.
+
 - Expanded text editors, including message command results and preset variable values, now use the same background as the sidebars in dark and light mode (#7037).
 
 - Chats, Characters, Personas, Lorebooks, Presets, Connections, Agents, Settings and the Tracker Panel now each have a **?** at the top. Hover over it, or tap it on mobile, to read what that sidebar is for and what you can do there (#7002).

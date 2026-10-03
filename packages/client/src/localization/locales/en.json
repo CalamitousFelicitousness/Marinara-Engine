@@ -11224,7 +11224,7 @@
   "ui.presets.sectionstab.rendersTheCompiledChatSummaryForThisChatIncluding": "Adds this chat's summary here, including your own summaries and the automatic ones that are turned on.",
   "ui.presets.sectionstab.sections": "sections",
   "ui.presets.sectionstab.sendWithoutWrapper": "Send without wrapper",
-  "ui.presets.sectionstab.sendWithoutWrapperDescription": "Sends this block as written, without the preset's XML tag or Markdown heading. Its group still wraps it.",
+  "ui.presets.sectionstab.sendWithoutWrapperDescription": "Sends this block without its own tag or heading.",
   "ui.presets.sectionstab.system": "System",
   "ui.presets.sectionstab.the": "The",
   "ui.presets.sectionstab.thisIsWhereActiveLorebookEntriesAreInserted": "This is where active lorebook entries are inserted.",

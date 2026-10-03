@@ -12,6 +12,7 @@ import {
   ttsConfigSchema,
   ttsSourceProfileFromConfig,
   ttsVoiceAssignmentInputSchema,
+  ttsVoiceModeInputSchema,
   setCharacterVoiceAssignment,
   TTS_VOICE_MAX_LENGTH,
   normalizeMusicEnemyTier,
@@ -1357,6 +1358,18 @@ export async function ttsRoutes(app: FastifyInstance) {
     return reply.status(204).send();
   });
 
+  // Changes part of the stored settings and leaves everything else as stored. False when they cannot be read.
+  const updateStoredConfig = (change: (config: TTSConfig) => TTSConfig) =>
+    withConfigWriteLock(async () => {
+      const existing = readStoredConfig(await storage.get(TTS_SETTINGS_KEY));
+      // Settings this version cannot read (a newer version's, or edited by hand) stay as stored, not replaced by defaults.
+      if (!existing) return false;
+      // Keys stay exactly as stored (already encrypted); the active source profile mirrors the change, as on PUT /config.
+      await storage.set(TTS_SETTINGS_KEY, JSON.stringify(withActiveSourceProfile(change(existing))));
+      return true;
+    });
+  const UNREADABLE_SETTINGS = { error: "The saved Text to Speech settings could not be read." };
+
   /**
    * PUT /api/tts/config/voice-assignment
    * Sets or clears one character's voice and leaves every other setting as stored,
@@ -1364,20 +1377,23 @@ export async function ttsRoutes(app: FastifyInstance) {
    */
   app.put("/config/voice-assignment", async (req, reply) => {
     const { characterId, characterName, voice } = ttsVoiceAssignmentInputSchema.parse(req.body);
-    const saved = await withConfigWriteLock(async () => {
-      const existing = readStoredConfig(await storage.get(TTS_SETTINGS_KEY));
-      // Settings this version cannot read (a newer version's, or edited by hand) stay as stored, not replaced by defaults.
-      if (!existing) return false;
-      const voiceAssignments = setCharacterVoiceAssignment(
-        existing.voiceAssignments,
-        { characterId, characterName },
-        voice,
-      );
-      // Keys stay exactly as stored (already encrypted); the active source profile mirrors the list, as on PUT /config.
-      await storage.set(TTS_SETTINGS_KEY, JSON.stringify(withActiveSourceProfile({ ...existing, voiceAssignments })));
-      return true;
-    });
-    if (!saved) return reply.status(409).send({ error: "The saved Text to Speech settings could not be read." });
+    const saved = await updateStoredConfig((existing) => ({
+      ...existing,
+      voiceAssignments: setCharacterVoiceAssignment(existing.voiceAssignments, { characterId, characterName }, voice),
+    }));
+    if (!saved) return reply.status(409).send(UNREADABLE_SETTINGS);
+    return reply.status(204).send();
+  });
+
+  /**
+   * PUT /api/tts/config/voice-mode
+   * Switches between one shared voice and a voice per character and leaves every other setting
+   * as stored, so the Character Editor's "Use a voice per character" cannot undo a newer save.
+   */
+  app.put("/config/voice-mode", async (req, reply) => {
+    const { voiceMode } = ttsVoiceModeInputSchema.parse(req.body);
+    const saved = await updateStoredConfig((existing) => ({ ...existing, voiceMode }));
+    if (!saved) return reply.status(409).send(UNREADABLE_SETTINGS);
     return reply.status(204).send();
   });
 

@@ -43,6 +43,10 @@ export const ttsVoiceAssignmentInputSchema = z.object({
 });
 export type TTSVoiceAssignmentInput = z.infer<typeof ttsVoiceAssignmentInputSchema>;
 
+/** Body of PUT /api/tts/config/voice-mode: one shared voice, or a voice per character. */
+export const ttsVoiceModeInputSchema = z.object({ voiceMode: ttsVoiceModeSchema });
+export type TTSVoiceModeInput = z.infer<typeof ttsVoiceModeInputSchema>;
+
 /**
  * Give one character its own voice, or drop its rows when the voice is blank so
  * it falls back to the default voice. Other characters' rows keep their order.

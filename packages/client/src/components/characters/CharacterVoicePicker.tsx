@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { Loader2, Play, RefreshCw, Settings2, Square, Volume2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { setCharacterVoiceAssignment } from "@marinara-engine/shared";
-import { useTTSConfig, useTTSVoices, useUpdateTTSConfig, useUpdateTTSVoiceAssignment } from "../../hooks/use-tts";
+import { useTTSConfig, useTTSVoices, useUpdateTTSVoiceAssignment, useUpdateTTSVoiceMode } from "../../hooks/use-tts";
 import { getCharacterNameVoice, getCharacterVoiceAssignment, resolveTTSVoiceForSpeaker } from "../../lib/tts-dialogue";
 import { ttsService } from "../../lib/tts-service";
 import { cn } from "../../lib/utils";
@@ -33,7 +33,7 @@ export function CharacterVoicePicker({
 }) {
   const { t } = useTranslation();
   const { data: config, isLoading: configLoading, dataUpdatedAt } = useTTSConfig();
-  const updateConfig = useUpdateTTSConfig();
+  const updateVoiceMode = useUpdateTTSVoiceMode();
   const updateVoiceAssignment = useUpdateTTSVoiceAssignment();
   const perCharacter = config?.enabled === true && config.voiceMode === "per-character";
   const voicesQuery = useTTSVoices(config?.source ?? "openai", config?.baseUrl ?? "", perCharacter);
@@ -131,9 +131,8 @@ export function CharacterVoicePicker({
   };
 
   const switchToPerCharacterVoices = () => {
-    if (!config) return;
-    updateConfig
-      .mutateAsync({ ...config, voiceMode: "per-character" })
+    updateVoiceMode
+      .mutateAsync({ voiceMode: "per-character" })
       .catch(() => toast.error(t("ui.characters.voice.saveFailed")));
   };
 
@@ -163,10 +162,14 @@ export function CharacterVoicePicker({
             <button
               type="button"
               onClick={switchToPerCharacterVoices}
-              disabled={updateConfig.isPending}
+              disabled={updateVoiceMode.isPending}
               className={ACTION_CLS}
             >
-              {updateConfig.isPending ? <Loader2 size="0.8rem" className="animate-spin" /> : <Volume2 size="0.8rem" />}
+              {updateVoiceMode.isPending ? (
+                <Loader2 size="0.8rem" className="animate-spin" />
+              ) : (
+                <Volume2 size="0.8rem" />
+              )}
               {t("ui.characters.voice.usePerCharacter")}
             </button>
           )}

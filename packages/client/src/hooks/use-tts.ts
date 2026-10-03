@@ -7,6 +7,7 @@ import type {
   TTSConfig,
   TTSModelsResponse,
   TTSVoiceAssignmentInput,
+  TTSVoiceModeInput,
   TTSVoicesResponse,
   TTSSource,
 } from "@marinara-engine/shared";
@@ -47,6 +48,15 @@ export function useUpdateTTSVoiceAssignment() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: TTSVoiceAssignmentInput) => api.put<void>("/tts/config/voice-assignment", input),
+    onSuccess: () => invalidateTTSSettings(qc),
+  });
+}
+
+/** Switches between one shared voice and a voice per character on the server, leaving every other TTS setting as stored. */
+export function useUpdateTTSVoiceMode() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: TTSVoiceModeInput) => api.put<void>("/tts/config/voice-mode", input),
     onSuccess: () => invalidateTTSSettings(qc),
   });
 }

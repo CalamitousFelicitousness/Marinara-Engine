@@ -1,6 +1,7 @@
 // PUT /api/tts/config/voice-assignment changes one character's voice row and nothing else, so a
 // voice saved from the Character Editor cannot undo a Text to Speech setting saved after the
-// page last read the config (another tab, or the settings card).
+// page last read the config (another tab, or the settings card). PUT /api/tts/config/voice-mode,
+// behind the Voice section's "Use a voice per character", changes only the voice mode.
 //
 // Both config writes also run one at a time. Storage holds plain writes while a transaction is
 // open, and reads are not held, so without that a save that read the old settings could land
@@ -47,6 +48,8 @@ const readConfig = async () => (await app.inject({ method: "GET", url: "/api/tts
 const putConfig = (config: unknown) => app.inject({ method: "PUT", url: "/api/tts/config", payload: config as object });
 const putVoice = (body: unknown) =>
   app.inject({ method: "PUT", url: "/api/tts/config/voice-assignment", payload: body as object });
+const putVoiceMode = (body: unknown) =>
+  app.inject({ method: "PUT", url: "/api/tts/config/voice-mode", payload: body as object });
 
 try {
   // Saved the way the Text to Speech card saves: a whole config with a plain key, encrypted on the server.
@@ -177,10 +180,28 @@ try {
     voice: "ash",
   });
 
+  // "Use a voice per character" changes only the voice mode, so it cannot undo a newer save either.
+  assert.equal((await putVoiceMode({ voiceMode: "single" })).statusCode, 204);
+  const expectedSingle = structuredClone(recovered);
+  expectedSingle.voiceMode = "single";
+  expectedSingle.sourceProfiles.openai!.voiceMode = "single";
+  assert.deepEqual(
+    await stored(),
+    expectedSingle,
+    "only the voice mode changes, in the settings and the active profile",
+  );
+  assert.equal((await putVoiceMode({ voiceMode: "per-character" })).statusCode, 204);
+  assert.deepEqual(await stored(), recovered);
+  for (const body of [{}, { voiceMode: "both" }, { voiceMode: 1 }]) {
+    assert.equal((await putVoiceMode(body)).statusCode, 400, `rejects ${JSON.stringify(body)}`);
+  }
+  assert.deepEqual(await stored(), recovered);
+
   // Settings this version cannot read, such as a newer version's provider, are kept instead of replaced by defaults.
   const unreadable = JSON.stringify({ ...recovered, source: "newer-provider" });
   await settings.set(TTS_SETTINGS_KEY, unreadable);
   assert.equal((await putVoice({ characterId: "alice", characterName: "Alice", voice: "nova" })).statusCode, 409);
+  assert.equal((await putVoiceMode({ voiceMode: "single" })).statusCode, 409);
   assert.equal(await settings.get(TTS_SETTINGS_KEY), unreadable);
 } finally {
   await app.close();

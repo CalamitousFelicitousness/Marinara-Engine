@@ -4,7 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
-- **Auto-Translate Responses** works in Game mode again. Translations of Game turns with character dialogue or game tags no longer stay hidden, including ones already made, and the translator no longer sees Marinara's internal dialogue tags (#7010).
+- **Auto-Translate Responses** works in Game mode again. Translations of Game turns with character dialogue or game tags no longer stay hidden, including ones already made, and the translator no longer sees Marinara's internal dialogue tags. A runaway Game reply with long stretches of blank space no longer stalls the Game screen or the server (#7010).
 
 - Mobile screen edges and the keyboard surround match the topbar, including when switching between dark and light mode (#7017).
 

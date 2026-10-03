@@ -141,6 +141,18 @@ for (const [format, translationSource, translation] of [
       // A bounded quiet interval: the saved translation must not be requested again.
       await page.waitForTimeout(1_000);
       expect(requested).toEqual([]);
+      // Hiding it must hide it, not translate the turn again.
+      await panel.getByRole("button", { name: "Hide translation", exact: true }).click();
+      await expect(panel).toContainText("Welcome, traveler.");
+      await expect(panel).not.toContainText("Client translation.");
+      await expect
+        .poll(async () => {
+          const messages = await (await request.get(`/api/chats/${chat.id}/messages`)).json();
+          const row = messages.find((entry: { id: string }) => entry.id === message.id);
+          return (typeof row.extra === "string" ? JSON.parse(row.extra) : row.extra).translationHidden;
+        })
+        .toBe(true);
+      expect(requested).toEqual([]);
     } finally {
       await page.close();
       await request.delete(`/api/chats/${chat.id}?force=true`);

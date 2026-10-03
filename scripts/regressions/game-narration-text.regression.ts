@@ -68,6 +68,25 @@ assert.equal(
   "player messages are only stripped of their address prefix",
 );
 
+// The server builds this source for every auto-translated Game turn, so a runaway reply's long whitespace
+// or `[` runs must not rescan the rest of the turn and stall the server.
+const gap = " \t".repeat(20_000);
+for (const [content, expected] of [
+  [`a${gap}b`, `a${gap}b`],
+  ["a [".repeat(20_000), "a [".repeat(20_000).trim()],
+  [`Dialogue [Alice]${gap}x`, `Dialogue [Alice]${gap}x`],
+  [`[Alice] [main] [happy]${gap}x`, `[Alice] [main] [happy]${gap}x`],
+  [
+    `The door opens.${gap}[Alice] [main] [happy]${gap}:${gap}"Welcome."${gap}She smiles.`,
+    'The door opens.\n\n[Alice]: "Welcome."\n\nShe smiles.',
+  ],
+] as const) {
+  const started = performance.now();
+  const result = buildGameTranslationSource({ id: "runaway", role: "assistant", content });
+  assert.ok(performance.now() - started < 2_000, "the Game translation source must be built without rescanning runs");
+  assert.equal(result, expected);
+}
+
 console.info(
   "Game narration stripping preserves readables, builds the shared translation source, and handles repeated unclosed tags in bounded time.",
 );

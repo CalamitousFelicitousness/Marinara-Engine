@@ -221,13 +221,15 @@ function humanizeName(name: string): string {
 }
 
 function normalizeInlineVnDialogueLines(source: string): string {
+  // The server runs this on every auto-translated Game turn. A non-space lead, `[`-free bracket bodies and
+  // one whitespace run around the optional sprite keep long whitespace or `[` runs from rescanning the rest.
   return source
     .replace(
-      /([^\n])\s+(\[[^\]]+\]\s*\[(?:main|side|extra|action|thought|whisper(?::[^\]]+)?)\]\s*(?:\[[^\]]+\])?\s*:)/gi,
+      /(\S)\s+(\[[^[\]]+\]\s*\[(?:main|side|extra|action|thought|whisper(?::[^[\]]+)?)\]\s*(?:\[[^[\]]+\]\s*)?:)/gi,
       "$1\n$2",
     )
     .replace(
-      /(\[[^\]]+\]\s*\[(?:main|side|extra|whisper(?::[^\]]+)?)\]\s*(?:\[[^\]]+\])?\s*:\s*(?:"[^"]*"|“[^”]*”|«[^»]*»))\s+(?=\S)/gi,
+      /(\[[^[\]]+\]\s*\[(?:main|side|extra|whisper(?::[^[\]]+)?)\]\s*(?:\[[^[\]]+\]\s*)?:\s*(?:"[^"]*"|“[^”]*”|«[^»]*»))\s+(?=\S)/gi,
       "$1\n",
     );
 }
@@ -281,14 +283,14 @@ export function parseGameNarrationSegments(
   // Legacy format (backward compat): Narration: text
   const narrationRegex = /^\s*Narration\s*:\s*(.+)$/i;
   // Legacy format (backward compat): Dialogue [Name] [expression]: "text"
-  const legacyDialogueRegex = /^\s*Dialogue\s*\[([^\]]+)\]\s*(?:\[([^\]]+)\])?\s*:\s*(.+)$/i;
+  const legacyDialogueRegex = /^\s*Dialogue\s*\[([^\]]+)\]\s*(?:\[([^\]]+)\]\s*)?:\s*(.+)$/i;
   // New compact format: [Name]: "text", [Name] [expression]: "text", plus any extra
   // bracket groups a translator may add (e.g. [Name] [main] [patient]: "text").
   // Group 1 = speaker, group 2 = sprite/expression (last bracket), group 3 = dialogue text.
-  const compactDialogueRegex = /^\s*\[([^\]]+)\](?:\s*\[[^\]]+\])*?\s*(?:\[([^\]]+)\])?\s*:\s*(.+)$/;
+  const compactDialogueRegex = /^\s*\[([^\]]+)\]\s*(?:\[[^\]]+\]\s*)*?(?:\[([^\]]+)\]\s*)?:\s*(.+)$/;
   // Party dialogue lines — parsed inline as VN segments
   const partyLineRegex =
-    /^\s*\[([^\]]+)\]\s*\[(main|side|extra|action|thought|whisper(?::([^\]]+))?)\]\s*(?:\[([^\]]+)\])?\s*:\s*(.+)$/i;
+    /^\s*\[([^\]]+)\]\s*\[(main|side|extra|action|thought|whisper(?::([^\]]+))?)\]\s*(?:\[([^\]]+)\]\s*)?:\s*(.+)$/i;
 
   let fallbackText = "";
 

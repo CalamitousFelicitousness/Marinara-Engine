@@ -610,6 +610,18 @@ function hasGameSegmentOverrides(
   return false;
 }
 
+/** Older sources a saved translation of an unedited turn may still carry: the raw reply, and the
+ *  tag-stripped reply the server saved before #7010. */
+function getGameTranslationSourceAliases(
+  message: NarrationMessage,
+  segmentEdits?: Map<string, GameSegmentEdit>,
+  segmentDeletes?: Set<string>,
+): string[] {
+  return hasGameSegmentOverrides(message.id, segmentEdits, segmentDeletes)
+    ? []
+    : [message.content, stripGmTagsKeepReadables(message.content)];
+}
+
 function getGameTranslationSource(
   message: NarrationMessage,
   segmentEdits?: Map<string, GameSegmentEdit>,
@@ -1513,9 +1525,7 @@ export function GameNarration({
     (message: NarrationMessage, source: string | undefined) =>
       source !== undefined &&
       (source === gameTranslationSources.get(message.id) ||
-        (!hasGameSegmentOverrides(message.id, segmentEdits, segmentDeletes) &&
-          // Server translations saved before #7010 used the tag-stripped reply as their source.
-          (source === message.content || source === stripGmTagsKeepReadables(message.content)))),
+        getGameTranslationSourceAliases(message, segmentEdits, segmentDeletes).includes(source)),
     [gameTranslationSources, segmentEdits, segmentDeletes],
   );
 
@@ -1569,7 +1579,7 @@ export function GameNarration({
       latestAssistant.id,
       source,
       latestAssistant.chatId,
-      hasGameSegmentOverrides(latestAssistant.id, segmentEdits, segmentDeletes) ? [] : [latestAssistant.content],
+      getGameTranslationSourceAliases(latestAssistant, segmentEdits, segmentDeletes),
     );
   }, [
     parsedActiveChatMetadata.autoTranslate,
@@ -4292,9 +4302,7 @@ export function GameNarration({
             activeSourceMessage.id,
             gameTranslationSources.get(activeSourceMessage.id) ?? "",
             activeSourceMessage.chatId,
-            hasGameSegmentOverrides(activeSourceMessage.id, segmentEdits, segmentDeletes)
-              ? []
-              : [activeSourceMessage.content],
+            getGameTranslationSourceAliases(activeSourceMessage, segmentEdits, segmentDeletes),
           )
         }
         disabled={activeIsTranslating}
@@ -4468,7 +4476,12 @@ export function GameNarration({
           onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
-            void translate(sourceMessageId, gameTranslationSources.get(sourceMessage.id) ?? "", sourceMessage.chatId);
+            void translate(
+              sourceMessageId,
+              gameTranslationSources.get(sourceMessage.id) ?? "",
+              sourceMessage.chatId,
+              getGameTranslationSourceAliases(sourceMessage, segmentEdits, segmentDeletes),
+            );
           }}
           disabled={isTranslating}
           className={stackedActionButtonClass}
@@ -5858,6 +5871,7 @@ export function GameNarration({
                                 sourceMessageId,
                                 gameTranslationSources.get(segmentSourceMessage.id) ?? "",
                                 segmentSourceMessage.chatId,
+                                getGameTranslationSourceAliases(segmentSourceMessage, segmentEdits, segmentDeletes),
                               );
                             }}
                             disabled={isTranslating}

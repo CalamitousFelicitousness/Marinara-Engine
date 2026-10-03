@@ -39,7 +39,8 @@ export const RULESET_PACKAGE_ZIP_MAX_BYTES = 8 * 1024 * 1024;
 const MAX_ENTRIES = 14;
 const MANIFEST_MAX_BYTES = 64 * 1024;
 const TOTAL_MAX_BYTES = 16 * 1024 * 1024;
-const COMMENT_MAX_CHARS = 500;
+// Past the longest note in any ruleset the project ships (5e-2014 has one of 1,016 characters).
+const COMMENT_MAX_CHARS = 2000;
 /** The `$schema` an author may point at: the Engine's own published schema. */
 const OWN_SCHEMA =
   /^https:\/\/raw\.githubusercontent\.com\/Pasta-Devs\/Marinara-Engine\/(?:main|staging)\/docs\/extending\/ruleset\.schema\.json$/;
@@ -67,10 +68,12 @@ function capOf(name: string): number | null {
 
 /** Why a document carries more than a ruleset: a long `$comment` anywhere, a `$schema` not the Engine's. */
 function extraContent(document: unknown, file: string): string | null {
-  const walk = (value: unknown, root: boolean): string | null => {
+  // Each issue names where it is, as a schema issue does, so an editor shows it there.
+  const walk = (value: unknown, path: string): string | null => {
+    const at = (key: string | number) => (path ? `${path}.${key}` : String(key));
     if (Array.isArray(value)) {
-      for (const item of value) {
-        const issue = walk(item, false);
+      for (const [index, item] of value.entries()) {
+        const issue = walk(item, at(index));
         if (issue) return issue;
       }
       return null;
@@ -78,17 +81,17 @@ function extraContent(document: unknown, file: string): string | null {
     if (!value || typeof value !== "object") return null;
     for (const [key, item] of Object.entries(value)) {
       if (key === "$comment" && (typeof item !== "string" || item.length > COMMENT_MAX_CHARS)) {
-        return `${file}: a $comment is a note of at most ${COMMENT_MAX_CHARS} characters`;
+        return `${file} ${at(key)}: a $comment is a note of at most ${COMMENT_MAX_CHARS} characters`;
       }
-      if (key === "$schema" && (!root || typeof item !== "string" || !OWN_SCHEMA.test(item))) {
-        return `${file}: $schema may only name the Engine's own ruleset schema`;
+      if (key === "$schema" && (path || typeof item !== "string" || !OWN_SCHEMA.test(item))) {
+        return `${file} ${at(key)}: $schema may only name the Engine's own ruleset schema`;
       }
-      const issue = walk(item, false);
+      const issue = walk(item, at(key));
       if (issue) return issue;
     }
     return null;
   };
-  return walk(document, true);
+  return walk(document, "");
 }
 
 /** One file of the zip, as its directory and local records agree it is. */

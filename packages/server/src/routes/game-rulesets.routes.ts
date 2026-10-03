@@ -154,6 +154,7 @@ export async function gameRulesetsRoutes(app: FastifyInstance) {
       return reply.status(403).send({
         error: "Custom Agent imports are disabled",
         message: "Enable Agent imports in Advanced Settings → Danger Zone first.",
+        code: "custom_agent_imports_disabled",
       });
     }
     const { definition } = importRulesetBody.parse(req.body);
@@ -210,6 +211,7 @@ export async function gameRulesetsRoutes(app: FastifyInstance) {
       return reply.status(403).send({
         error: "Custom Agent imports are disabled",
         message: "Enable Agent imports in Advanced Settings → Danger Zone first.",
+        code: "custom_agent_imports_disabled",
       });
     }
     const { zip, dryRun } = importPackageBody.parse(req.body);

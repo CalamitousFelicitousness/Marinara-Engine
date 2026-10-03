@@ -18,7 +18,7 @@
  */
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { crc32, deflateRawSync } from "node:zlib";
@@ -392,9 +392,18 @@ try {
     // ── The ruleset and its catalogs, read strictly, and nothing more than a ruleset ──
     assert.match(refusal(zipOf(packageDocs((docs) => delete docs.ruleset.sheet))), /ruleset.json/);
     assert.match(
-      refusal(zipOf(packageDocs((docs) => (docs.ruleset.$comment = "x".repeat(501))))),
-      /a \$comment is a note of at most 500/,
+      refusal(zipOf(packageDocs((docs) => (docs.ruleset.combat = { $comment: "x".repeat(2001) })))),
+      /^ruleset\.json combat\.\$comment: a \$comment is a note of at most 2000/,
     );
+    // A note as long as the cap reads, and every example the docs ship travels as a package (their
+    // notes run to 878 characters; 5e-2014's to 1,016).
+    assert.ok(readRulesetPackageZip(zipOf(packageDocs((docs) => (docs.ruleset.$comment = "x".repeat(2000))))).ok);
+    const examplesDir = new URL("../../docs/examples/rulesets/", import.meta.url);
+    for (const file of readdirSync(examplesDir).filter((name) => name.endsWith(".json"))) {
+      const ruleset = JSON.parse(readFileSync(new URL(file, examplesDir), "utf8")) as Record<string, unknown>;
+      const read = readRulesetPackageZip(zipOf({ ruleset, catalogs: {} }));
+      assert.ok(read.ok, `${file}: ${JSON.stringify(read).slice(0, 300)}`);
+    }
     assert.match(
       refusal(zipOf(packageDocs((docs) => (docs.ruleset.$schema = "https://evil.example/s.json")))),
       /\$schema may only name/,
@@ -475,7 +484,10 @@ try {
     const untrusted = await post("/import-package", { zip: good.toString("base64") }, { host: "evil.example" });
     assert.equal(untrusted.statusCode, 421);
     await setCustomAgentImportsEnabled(db, false);
-    assert.equal((await importZip(good)).statusCode, 403);
+    const refusedByPolicy = await importZip(good);
+    assert.equal(refusedByPolicy.statusCode, 403);
+    // Its own code, so an editor tells it from the privileged gate's 403.
+    assert.equal(refusedByPolicy.json().code, "custom_agent_imports_disabled");
     await setCustomAgentImportsEnabled(db, true);
     const dry = await importZip(good, true);
     assert.equal(dry.statusCode, 200, dry.body);

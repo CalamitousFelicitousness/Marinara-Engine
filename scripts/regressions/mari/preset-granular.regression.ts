@@ -591,8 +591,11 @@ try {
       "false",
       "top-level forbidOverrides:false is applied",
     );
+    // `=true` / `=false` set the switch explicitly; before, any value counted as on.
     for (const [flag, expected] of [
       ["--skip-wrap", "true"],
+      ["--skip-wrap=false", "false"],
+      ["--no-skip-wrap=false", "true"],
       ["--no-skip-wrap", "false"],
     ] as const) {
       const cliToggle = await mari.executeCli({ argv: ["presets", "update-section", style.id, flag, "--apply"] });
@@ -608,6 +611,11 @@ try {
         `\`mari presets update-section ${flag}\` sets skipWrap to ${expected}`,
       );
     }
+    const cliOddValue = await mari.executeCli({
+      argv: ["presets", "update-section", style.id, "--skip-wrap=maybe", "--apply"],
+    });
+    assert.equal(cliOddValue.ok, false, "an on/off flag refuses a value other than true or false");
+    assert.equal(await sectionField(style.id, "skipWrap"), "false", "a refused flag changes nothing");
     for (const [name, args] of [
       ["Raw Top-level", { name: "Raw Top-level", content: "Sent bare.", skipWrap: true }],
       ["Raw Nested", { data: { name: "Raw Nested", content: "Sent bare.", skipWrap: true } }],

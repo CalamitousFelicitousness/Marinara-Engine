@@ -885,6 +885,18 @@ function hasFlag(flags: Map<string, string | boolean>, name: string): boolean {
   return flags.has(name) && flags.get(name) !== false;
 }
 
+// An on/off flag: bare means on, `--flag=true|false` sets it, anything else is refused. Before, any
+// value counted as on, so `--skip-wrap=false` turned the switch on.
+function switchFlag(flags: Map<string, string | boolean>, name: string): boolean | undefined {
+  const value = flags.get(name);
+  if (value === undefined || value === false) return undefined;
+  if (value === true) return true;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "true") return true;
+  if (normalized === "false") return false;
+  throw new Error(`--${name} takes no value, or =true / =false; got "${value}"`);
+}
+
 // #4812: map `mari presets` CLI flags to the data object the preset.* app_data actions accept, so
 // the CLI delegates to executePresetAction instead of reimplementing every child edit. Extra keys
 // are harmless — each action's field list keeps only what it uses.
@@ -917,13 +929,17 @@ function presetDataFromFlags(flags: Map<string, string | boolean>): Row {
   setStr("display-mode", "displayMode");
   setStr("option-sort", "optionSort");
   setNum("sort-order", "sortOrder");
-  if (hasFlag(flags, "enable")) data.enabled = true;
-  if (hasFlag(flags, "disable")) data.enabled = false;
-  if (hasFlag(flags, "marker")) data.isMarker = true;
-  if (hasFlag(flags, "skip-wrap")) data.skipWrap = true;
-  if (hasFlag(flags, "no-skip-wrap")) data.skipWrap = false;
-  if (hasFlag(flags, "multi-select")) data.multiSelect = true;
-  if (hasFlag(flags, "random-pick")) data.randomPick = true;
+  const setSwitch = (flag: string, key: string, onMeans: boolean) => {
+    const value = switchFlag(flags, flag);
+    if (value !== undefined) data[key] = value === onMeans;
+  };
+  setSwitch("enable", "enabled", true);
+  setSwitch("disable", "enabled", false);
+  setSwitch("marker", "isMarker", true);
+  setSwitch("skip-wrap", "skipWrap", true);
+  setSwitch("no-skip-wrap", "skipWrap", false);
+  setSwitch("multi-select", "multiSelect", true);
+  setSwitch("random-pick", "randomPick", true);
   const options = flagString(flags, "options");
   if (options !== undefined) {
     let parsed: unknown;

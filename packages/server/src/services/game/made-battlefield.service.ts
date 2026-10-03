@@ -13,6 +13,7 @@ import {
   worldWalkFromMetadata,
 } from "@marinara-engine/shared";
 import type { DB } from "../../db/connection.js";
+import { logger } from "../../lib/logger.js";
 import { resolveOwnerSpatialProjection } from "../spatial-context/projection.js";
 import { gameRepliesBefore } from "./game-market.service.js";
 
@@ -26,6 +27,16 @@ import { gameRepliesBefore } from "./game-market.service.js";
  * is generated.
  */
 export async function gameBattlefieldHere(db: DB, chatId: string, meta: Record<string, unknown>, seed: number) {
+  // A board is never worth a fight that does not start: a lookup that fails generates one.
+  try {
+    return await battlefieldHere(db, chatId, meta, seed);
+  } catch (err) {
+    logger.warn(err, "Hand-made battlefield lookup failed for chat %s; generating the board", chatId);
+    return null;
+  }
+}
+
+async function battlefieldHere(db: DB, chatId: string, meta: Record<string, unknown>, seed: number) {
   const world = gameWorldFromMetadata(meta);
   if (!world?.edits?.battlefields?.length) return null;
   const replies = await gameRepliesBefore(db, chatId);

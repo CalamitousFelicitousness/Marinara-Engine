@@ -360,7 +360,7 @@ test("OpenRouter decision shortcut links a key and warns before its deletion", a
   try {
     await page.goto("/");
     await open(source.id);
-    await page.getByRole("button", { name: "Use this key for decisions (Jev)", exact: true }).click();
+    await page.getByRole("button", { name: "Use this key for decisions", exact: true }).click();
     await expect(page.getByLabel("Decision source", { exact: true })).toHaveValue("openrouter");
     await expect(page.getByLabel("API key source", { exact: true })).toHaveValue(source.id);
     const rows = await (await request.get("/api/connections")).json();

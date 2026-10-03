@@ -74,6 +74,7 @@ import {
   PROFESSOR_MARI_ID,
   buildGuidedGenerationInstructionMessage,
   normalizeAvatarCrop,
+  normalizeGroupChatMode,
   normalizeManualTrackerAgentTypes,
   type GeneratedSceneVideo,
   type SpritePlacement,
@@ -1310,7 +1311,8 @@ const LocalChatArea = memo(function LocalChatArea() {
       return next;
     });
   }, [activeChatId, messages, visibleExpressionTurn]);
-  const groupChatMode: string | undefined = chatCharIds.length > 1 ? (chatMeta.groupChatMode ?? "merged") : undefined;
+  const groupChatMode: string | undefined =
+    chatCharIds.length > 1 ? normalizeGroupChatMode(chatMeta.groupChatMode) : undefined;
 
   const updateMeta = useUpdateChatMetadata();
   const [scheduleModalCharacterId, setScheduleModalCharacterId] = useState<string | null>(null);

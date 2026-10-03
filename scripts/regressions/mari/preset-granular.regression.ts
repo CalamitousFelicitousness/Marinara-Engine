@@ -413,6 +413,19 @@ try {
       assert.ok(addedId, `addSection created ${name}`);
       assert.equal(await sectionField(addedId, "skipWrap"), "true", `addSection keeps skipWrap:true (${name})`);
     }
+    // Markers always keep their wrapper, so skipWrap:true on a marker is refused instead of reported as done.
+    assert.equal((await mari.executeAction({ action: "preset.addSection", presetId, apply: true, name: "Bare Marker", isMarker: true, skipWrap: true })).ok, false, "addSection refuses skipWrap on a marker");
+    const markerAdded = await mari.executeAction({ action: "preset.addSection", presetId, apply: true, name: "History Marker", isMarker: true });
+    await drainKeep(mari);
+    assert.equal(markerAdded.ok, true, `addSection marker succeeds: ${String(markerAdded.error ?? "")}`);
+    const markerId = ((await mari.executeAction({ action: "preset.sections", presetId })).output as Array<{ id: string; name: string }>).find(
+      (section) => section.name === "History Marker",
+    )?.id;
+    assert.ok(markerId, "addSection created the marker");
+    const markerSkip = await mari.executeAction({ action: "preset.updateSection", sectionId: markerId, apply: true, skipWrap: true });
+    assert.equal(markerSkip.ok, false, "updateSection refuses skipWrap:true on a marker");
+    assert.match(String(markerSkip.error ?? ""), /marker/iu);
+    assert.equal(await sectionField(markerId, "skipWrap"), "false", "the refused marker update leaves skipWrap off");
 
     // (6) CLOBBER GUARD: a preset.create whose child section reuses an existing id is refused.
     const clobber = await mari.executeAction({

@@ -4705,6 +4705,12 @@ export class MariDbService {
             `Section ${sectionId} is a marker; its content is generated from markerConfig at assembly, so a content edit has no effect. Edit markerConfig instead.`,
           );
         }
+        // #7014: the assembler ignores skipWrap on markers, so turning it on would report a no-op as success.
+        if (patch.skipWrap === "true" && String(patch.isMarker ?? existing.isMarker) === "true") {
+          throw new Error(
+            `Section ${sectionId} is a marker; markers always keep their wrapper, so skipWrap has no effect.`,
+          );
+        }
         // #4812: a section may only join a group in its OWN preset, or it drops out of its preset's
         // group tree. validateTouchedRows only checks the group row exists, not its presetId.
         if (typeof patch.groupId === "string" && patch.groupId) {
@@ -4858,6 +4864,9 @@ export class MariDbService {
           ],
         );
         requiredString(data, ["name", "title", "label"], "section name");
+        if (firstBoolean(data, ["isMarker", "marker"]) === true && firstBoolean(data, ["skipWrap"]) === true) {
+          throw new Error("Markers always keep their wrapper, so skipWrap has no effect on a marker.");
+        }
         // #4812: a section may only be filed under a group in its OWN preset (same reason as
         // updateSection) — validateTouchedRows only checks the group row exists, not its presetId.
         if (typeof data.groupId === "string" && data.groupId) {

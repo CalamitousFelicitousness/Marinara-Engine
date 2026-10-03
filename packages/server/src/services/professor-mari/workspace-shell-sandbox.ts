@@ -237,8 +237,8 @@ export async function workspacePolicyPaths(workspaceRoot: string) {
   };
   await visit(workspaceRoot);
   // #6984: build output is read-only too. It sits at packages/<pkg>/dist*, so two directory reads find all of
-  // it. The folders holding it are listed as well: a macOS rule follows the path, so a command could otherwise
-  // move a package folder away, write its build, and move it back.
+  // it. The folders holding it are listed as well, so neither sandbox lets a command move a package folder away
+  // and write a new build in its place.
   const packagesDir = join(workspaceRoot, "packages");
   const buildOutputs: string[] = [];
   const buildOutputHolders: string[] = [];
@@ -259,10 +259,10 @@ export async function workspacePolicyPaths(workspaceRoot: string) {
     packageStores: uniqueExistingPaths(packageStores),
     nodeModulesStores: uniqueExistingPaths(nodeModulesStores),
     storeLinks,
-    // A linked dist is protected at its real folder, but only inside the workspace: binding a folder from
-    // elsewhere would let the sandbox read it.
+    // Linked folders are protected at their real path, but only inside the workspace: binding a folder from
+    // elsewhere would let the sandbox reach it.
     buildOutputs: uniqueExistingPaths(buildOutputs).filter((path) => path.startsWith(workspaceRoot + sep)),
-    buildOutputHolders: uniqueExistingPaths(buildOutputHolders),
+    buildOutputHolders: uniqueExistingPaths(buildOutputHolders).filter((path) => path.startsWith(workspaceRoot + sep)),
     packagesDir: existsSync(packagesDir) ? realpathSync(packagesDir) : packagesDir,
   };
 }
@@ -753,6 +753,10 @@ export async function linuxBubblewrapArgs(
     args.push("--ro-bind", root, root);
   }
   args.push(writableWorkspace ? "--bind" : "--ro-bind", workspaceRoot, workspaceRoot);
+  // #6984: binding the folders that hold build output onto themselves makes them mount points, which cannot be
+  // renamed, so a command cannot move a package away and build a new dist in its place. They come before every
+  // other bind inside the workspace, because a bind hides the ones already made beneath it.
+  if (writableWorkspace) for (const holder of policyPaths.buildOutputHolders) args.push("--bind", holder, holder);
   args.push("--bind", sandboxTemp, sandboxTemp);
   for (const path of policyPaths.sensitive) {
     args.push("--ro-bind", path, path);
@@ -766,8 +770,8 @@ export async function linuxBubblewrapArgs(
     for (const cache of await packageStoreCacheCarveouts(policyPaths.nodeModulesStores)) {
       args.push("--bind", cache, cache);
     }
-    // #6984: build output stays read-only. A mount needs an existing folder, so one a command creates is not
-    // covered here; the pre-run shell check refuses the usual ways to create one.
+    // #6984: build output stays read-only. A mount needs an existing folder, so a dist a command creates in a
+    // package that has none yet is not covered here; the pre-run shell check refuses the usual ways to create one.
     for (const output of policyPaths.buildOutputs) args.push("--ro-bind", output, output);
   }
   for (const path of policyPaths.forbidden) {

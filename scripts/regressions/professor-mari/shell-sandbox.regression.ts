@@ -21,6 +21,7 @@ import {
 } from "../../../packages/server/src/services/professor-mari/workspace-shell-sandbox.js";
 import {
   BUILD_OUTPUT_WRITE_REFUSAL,
+  bashCommandTargetsSensitivePath,
   bashCommandWritesBuildOutput,
   isBuildOutputPath,
   isPackageManagerMutationCommand,
@@ -158,6 +159,11 @@ try {
     // Windows opens dist for these names.
     "packages/server/dist./index.js",
     "packages/server/dist::$INDEX_ALLOCATION/index.js",
+    // APFS folds the long s and the ligature, and HFS+ skips the zero-width mark.
+    "packages/server/diſt/index.js",
+    "packages/server/diﬆ/index.js",
+    "packageſ/server/dist/index.js",
+    "packages/server/di\u200cst/index.js",
   ]) {
     assert.equal(isBuildOutput(path), true, `build output: ${path}`);
   }
@@ -203,6 +209,7 @@ try {
   });
   await refused("write", { path: "packages/server/src/../dist/new.js", content: "new" });
   await refused("write", { path: "packages/server/DIST/new.js", content: "new" });
+  await refused("write", { path: "packages/server/diſt/index.js", content: "if(, raw) { }" });
   await refused("write", { path: "packages/server/dist-sandbox/index.js", content: "new" });
   await refused("write", { path: "packages/client/dist/index.html", content: "new" });
   await refused("copy", { source: "packages/server/src/index.ts", destination: "packages/server/dist/copy.js" });
@@ -227,6 +234,24 @@ try {
   if (linked) {
     await refused("write", { path: "dist-link/index.js", content: "tampered" });
     await refused("write", { path: "node_modules/@marinara-engine/server/dist/index.js", content: "tampered" });
+    // An approved review is written where it was staged, so neither a link at staging nor one added afterwards can
+    // carry it into dist.
+    const reviews = new WorkspaceChangeReviewService(buildWorkspace);
+    await assert.rejects(
+      reviews.stageSensitiveFileChange({
+        absolutePath: join(buildWorkspace, "dist-link", "package.json"),
+        afterContent: '{"type":"commonjs"}',
+        sessionId: "build-output-regression",
+      }),
+      { message: BUILD_OUTPUT_WRITE_REFUSAL },
+    );
+    const staged = await reviews.stageSensitiveFileChange({
+      absolutePath: join(buildWorkspace, "packages", "server", "src", "gen", "package.json"),
+      afterContent: '{"type":"commonjs"}',
+      sessionId: "build-output-regression",
+    });
+    symlinkSync(serverDist, join(buildWorkspace, "packages", "server", "src", "gen"), "junction");
+    assert.equal((await reviews.approve(staged.id))?.outcome, "state_changed");
   }
   assert.equal(readFileSync(builtFile, "utf8"), "built");
   assert.deepEqual(readdirSync(serverDist), ["index.js"]);
@@ -285,25 +310,43 @@ try {
   ]) {
     assert.equal(bashCommandWritesBuildOutput(allowed), false, `should allow: ${allowed}`);
   }
-  // The check runs on the server's event loop, so a long one-line command must stay cheap (quadratic: ~10s).
-  const longCommandStarted = performance.now();
-  assert.equal(bashCommandWritesBuildOutput(`rm -f ${"x".repeat(100_000)}`), false);
-  assert.ok(performance.now() - longCommandStarted < 250, "a long command must not stall the server");
+  // Both shell checks run on the server's event loop before every command, so a long one-line command must stay
+  // cheap. Each of these took seconds or minutes while a regex was retried from every word or every "/".
+  for (const command of [
+    `rm -f ${"x".repeat(100_000)}`,
+    "rm ".repeat(10_000),
+    "node writefile ".repeat(400),
+    `cp ${"a/".repeat(20_000)}b`,
+  ]) {
+    const started = performance.now();
+    assert.equal(bashCommandWritesBuildOutput(command) || bashCommandTargetsSensitivePath(command), false);
+    assert.ok(performance.now() - started < 250, `a long command must not stall the server: ${command.slice(0, 20)}`);
+  }
 
-  // The sandbox makes build output read-only on both backends. Seatbelt rules follow paths, so they also cover a
-  // dist that does not exist yet and moving a package folder away; a bubblewrap mount needs an existing folder.
+  // The sandbox makes build output read-only on both backends and pins the folders holding it, so a command cannot
+  // move a package away and build a new dist in its place. Seatbelt rules follow paths, so they also cover a dist
+  // that does not exist yet; a bubblewrap mount needs an existing folder.
   const literal = (path: string) => JSON.stringify(path);
+  const serverPackage = join(buildWorkspace, "packages", "server");
   const profile = await buildMacosWorkspaceShellProfile(buildWorkspace, {}, tmpdir(), true, "/bin/bash", true);
-  const buildOutputRule = profile.slice(profile.lastIndexOf("(deny file-write*"));
+  const ruleStart = profile.indexOf("(deny file-write*\n    (regex ");
+  const buildOutputRule = profile.slice(ruleStart, profile.indexOf("\n(", ruleStart));
   assert.match(buildOutputRule, /\(regex "[^"\n]*packages\/\[\^\/\]\+\/dist\(-\[\^\/\]\*\)\?\(\/\|\$\)"\)/u);
   assert.ok(buildOutputRule.includes(`(subpath ${literal(serverDist)})`));
-  assert.ok(buildOutputRule.includes(`(literal ${literal(join(buildWorkspace, "packages", "server"))})`));
-  const bwrapArgs = (await linuxBubblewrapArgs(buildWorkspace, {}, tmpdir(), "/bin/bash", ["-c", "true"], true)).join(
-    "\u0000",
-  );
+  assert.ok(buildOutputRule.includes(`(literal ${literal(serverPackage)})`));
+  const bwrap = async (writable: boolean) =>
+    (await linuxBubblewrapArgs(buildWorkspace, {}, tmpdir(), "/bin/bash", ["-c", "true"], writable)).join("\u0000");
+  const bwrapArgs = await bwrap(true);
   for (const output of [serverDist, join(buildWorkspace, "packages", "server", "dist-sandbox")]) {
     assert.ok(bwrapArgs.includes(`--ro-bind\u0000${output}\u0000${output}`), `read-only mount: ${output}`);
   }
+  const pinned = (path: string) => `--bind\u0000${path}\u0000${path}\u0000`;
+  for (const holder of [join(buildWorkspace, "packages"), serverPackage]) {
+    // Before the read-only mounts inside it, which a later bind would hide.
+    const at = bwrapArgs.indexOf(pinned(holder));
+    assert.ok(at >= 0 && at < bwrapArgs.indexOf(`--ro-bind\u0000${serverDist}`), `pinned first: ${holder}`);
+  }
+  assert.ok(!(await bwrap(false)).includes(pinned(serverPackage)), "a read-only workspace stays read-only");
 
   const sandbox = getWorkspaceShellSandboxStatus();
   if (sandbox.available) {
@@ -313,12 +356,8 @@ try {
         "printf tampered > packages/server/dist/index.js 2>/dev/null && exit 60",
         "rm -f packages/server/dist/index.js 2>/dev/null; test -f packages/server/dist/index.js || exit 61",
         "printf new > packages/server/dist-sandbox/new.js 2>/dev/null && exit 62",
-        ...(seatbelt
-          ? [
-              "mkdir packages/client/dist 2>/dev/null && exit 63",
-              "mv packages/server packages/moved 2>/dev/null && exit 64",
-            ]
-          : []),
+        ...(seatbelt ? ["mkdir packages/client/dist 2>/dev/null && exit 63"] : []),
+        "mv packages/server packages/moved 2>/dev/null && exit 64",
         "printf ok > packages/server/src/ok.ts || exit 65",
         "cat packages/server/dist/index.js",
       ].join("; "),

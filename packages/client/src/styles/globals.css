@@ -6329,11 +6329,13 @@ strong {
 
   /* A footer pinned under a panel's scroll area can fill all the room left
      above the keyboard and hide the field being typed in. It is hidden until
-     the keyboard closes, unless that field is in it. */
+     the keyboard closes, unless that field is in it. The panel attribute comes
+     from useKeepFocusedFieldAboveKeyboard and follows the field typed in, not
+     live focus, so a tap does not show or hide the footer under the finger. */
   html[data-mari-software-keyboard-open]
     body
-    > [data-chat-floating-panel]
-    [data-chat-floating-footer]:not(:focus-within) {
+    > [data-chat-floating-panel][data-keyboard-hides-footer]
+    [data-chat-floating-footer] {
     display: none;
   }
 

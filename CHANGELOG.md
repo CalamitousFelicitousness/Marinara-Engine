@@ -4,7 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
-- On phones, **Chat Summary** now keeps the text box you are typing in visible when the keyboard opens, for the summary prompts and for every summary. Before, the window shrank to the space above the keyboard and pushed that text box out of sight, or the controls at the bottom of the window, such as a list of message ranges, filled all of that space. Those controls are now hidden while you type and come back when the keyboard closes. With the phone turned sideways, a summary taller than the space left shows from its first lines. You can still scroll to the rest of the window (#6993).
+- On phones, **Chat Summary** keeps the summary or prompt you are typing in visible above the keyboard, including sideways. The controls at the bottom of the window are hidden while you type in it and come back when the keyboard closes. A tap while the keyboard is open no longer lands on a different setting (#6993).
 
 - Mobile screen edges and the keyboard surround match the topbar, including when switching between dark and light mode (#7017).
 

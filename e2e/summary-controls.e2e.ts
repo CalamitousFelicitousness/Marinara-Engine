@@ -215,8 +215,33 @@ async function keepsFieldAboveKeyboard(page: Page, request: APIRequestContext, i
       await setKeyboard(false);
     };
 
-    await panel.getByRole("button", { name: "Edit summary entry", exact: true }).last().click();
     const summaryField = panel.getByRole("textbox", { name: "Write or paste a summary of this chat...", exact: true });
+    // A finger tap, as a phone sends it, while typing in the controls at the bottom. It lands where
+    // the finger is, even when it moves focus out of them. WebKit blurs the field on mousedown and
+    // the window leaves its keyboard layout before the click, so there the tap is dropped, but it
+    // must not press what moves under the finger.
+    const tap = async (target: Locator) => {
+      const box = (await target.boundingBox())!;
+      await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+      await expect(panel.getByRole("checkbox", { checked: true })).toHaveCount(0);
+    };
+    if (!landscape) {
+      // Here the tap moves focus into the summary list, scrolled to its end.
+      await panel.getByLabel("Messages", { exact: true }).focus();
+      await setKeyboard(true);
+      await panel.evaluate((element) => {
+        const area = [...element.querySelectorAll("*")].find(
+          (node) => node.scrollHeight > node.clientHeight && /auto|scroll/.test(getComputedStyle(node).overflowY),
+        )!;
+        area.scrollTop = area.scrollHeight;
+      });
+      await tap(panel.getByRole("button", { name: "Edit summary entry", exact: true }).last());
+      if (!iPhone) await expect(summaryField).toBeFocused();
+      await setKeyboard(false);
+      if (!iPhone) await panel.getByRole("button", { name: "Cancel", exact: true }).click();
+    }
+
+    await panel.getByRole("button", { name: "Edit summary entry", exact: true }).last().click();
     await expect(summaryField).toBeFocused();
     await typeIn("summary", summaryField);
     await typeIn("title", panel.getByPlaceholder("Summary title", { exact: true }));
@@ -233,10 +258,14 @@ async function keepsFieldAboveKeyboard(page: Page, request: APIRequestContext, i
     // Message ranges stay listed under the summaries after a run, and with several of them those
     // controls alone are taller than the room the keyboard leaves. They are hidden while you type.
     await panel.getByRole("button", { name: "Range", exact: true }).click();
+    const addRange = panel.getByRole("button", { name: "Add range", exact: true });
     await panel.getByRole("spinbutton", { name: "Range 1 to message", exact: true }).fill("1");
-    for (let added = 0; added < 4; added += 1) {
-      await panel.getByRole("button", { name: "Add range", exact: true }).click();
-    }
+    await setKeyboard(true);
+    await tap(addRange);
+    if (!iPhone) await expect(panel.getByRole("spinbutton", { name: "Range 2 to message", exact: true })).toBeVisible();
+    await setKeyboard(false);
+    const rangeEnds = panel.getByRole("spinbutton", { name: /^Range \d+ to message$/ });
+    while ((await rangeEnds.count()) < 5) await addRange.click();
     await panel.getByRole("button", { name: "Edit summary entry", exact: true }).last().click();
     await expect(summaryField).toBeFocused();
     await setKeyboard(true);

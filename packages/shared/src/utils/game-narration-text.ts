@@ -525,7 +525,8 @@ export function formatGameTranslationSegment(
   if (segment.type === "dialogue" && segment.speaker) {
     // Keep single-line dialogue: a newline inside the body would split this line into
     // an extra segment when parseGameNarrationSegments reads the rebuilt text back.
-    const body = segment.content.replace(/\s*\n\s*/g, " ").trim();
+    // One pass over each whitespace run (no backtracking): a run that holds a newline becomes one space.
+    const body = segment.content.replace(/\s+/g, (run) => (run.includes("\n") ? " " : run)).trim();
     // Use strictly single-bracket format `[Speaker]: "text"` so external translators
     // cannot translate internal tags (e.g. `[main] [patient]` -> `[главный] [пациент]`),
     // which would otherwise break reverse parsing and desync segment indices.

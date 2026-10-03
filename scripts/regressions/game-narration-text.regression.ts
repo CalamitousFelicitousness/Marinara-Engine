@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   buildGameTranslationSource,
+  formatGameTranslationSegment,
   stripBalancedTag,
   stripGmTagsKeepReadables,
   stripMapUpdateTag,
@@ -84,6 +85,22 @@ for (const [content, expected] of [
   const started = performance.now();
   const result = buildGameTranslationSource({ id: "runaway", role: "assistant", content });
   assert.ok(performance.now() - started < 2_000, "the Game translation source must be built without rescanning runs");
+  assert.equal(result, expected);
+}
+
+// A dialogue beat keeps to one line: a whitespace run with a newline becomes one space, and a long run
+// without one (CodeQL js/polynomial-redos on the old /\s*\n\s*/) is kept, in linear time.
+const tabs = "\t".repeat(100_000);
+for (const [content, expected] of [
+  [`Hi${tabs}there`, `[Alice]: "Hi${tabs}there"`],
+  ["Hi \n\t\n there\n", '[Alice]: "Hi there"'],
+] as const) {
+  const started = performance.now();
+  const result = formatGameTranslationSegment({ type: "dialogue", speaker: "Alice", content });
+  assert.ok(
+    performance.now() - started < 2_000,
+    "a dialogue beat must be flattened without rescanning whitespace runs",
+  );
   assert.equal(result, expected);
 }
 

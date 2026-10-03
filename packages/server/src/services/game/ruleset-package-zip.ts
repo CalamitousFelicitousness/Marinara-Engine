@@ -5,23 +5,19 @@
 // the reasons it was refused. Nothing else in a zip is accepted, and nothing in one is ever run, served
 // or loaded as code: a ruleset is data.
 //
-// The zip is parsed here, strictly, and by nothing else (adm-zip parses a whole directory before any
-// check, trusts an entry's own sizes, and reads past records it does not list):
-//   - the end record has no comment, and the directory it names ends right where it starts;
-//   - the entry count comes from it, BEFORE the directory is read, and the directory's records must fill
-//     exactly the size it names, so no record hides past the count;
-//   - each local record's name and method are its directory record's, and the records lie back to back
-//     from the first byte to the directory: no data before, between or after them, none shared;
+// The zip is read by the Engine's strict zip reader (lib/zip-reader.ts, which every archive the Engine
+// did not make goes through: honest sizes, no shared data, inflating stopped at the declared size, the
+// CRC checked, no ZIP64, encryption or split archives), and held here to what a ruleset package is:
+//   - the end record has no comment, and the entry count is capped before the directory is read;
+//   - the records lie back to back from the first byte to the directory: no data before, between or
+//     after them;
 //   - names are matched exactly against the few a ruleset package has; the only directory accepted is
-//     an empty `catalogs/`;
-//   - every size is capped before a byte is inflated, a stored entry's two sizes agree, inflating stops
-//     at the declared size, and the CRC is checked;
-//   - no ZIP64, encryption or links.
+//     an empty `catalogs/`, and no entry is a link;
+//   - every file is capped by its kind before a byte of it is read.
 // What comes out is each document as it was parsed (`JSON.stringify` of what was read), so a repeated
 // key, a byte-order mark or padding in a file never reaches the store.
 // ──────────────────────────────────────────────
 import { createHash } from "node:crypto";
-import { crc32, inflateRawSync } from "node:zlib";
 import {
   capabilityPackageManifestSchema,
   isRulesetCatalogAssetPath,
@@ -32,6 +28,7 @@ import {
   RULESET_MAX_BYTES,
   type RulesetDefinition,
 } from "@marinara-engine/shared";
+import { readZip, ZipReadError, type ZipFile } from "../../lib/zip-reader.js";
 
 /** The most a ruleset package zip may be. */
 export const RULESET_PACKAGE_ZIP_MAX_BYTES = 8 * 1024 * 1024;
@@ -94,128 +91,65 @@ function extraContent(document: unknown, file: string): string | null {
   return walk(document, "");
 }
 
-/** One file of the zip, as its directory and local records agree it is. */
-interface ZipEntry {
-  name: string;
-  method: number;
-  flags: number;
-  crc: number;
-  compressedSize: number;
-  size: number;
-  /** Unix file type and mode, when the zip was made on Unix. */
-  mode: number | null;
-  dataStart: number;
-}
-
-/** The zip's entries, by its directory, each checked against its local record; or why it is refused. */
-function zipEntries(bytes: Buffer): { entries: ZipEntry[] } | { issue: string } {
-  const decoder = new TextDecoder("utf-8", { fatal: true });
+/** The zip's files, read by the Engine's strict reader (`readZip`: honest sizes, no shared data, no
+ *  ZIP64, encryption or split archives), held to what a ruleset package is besides: no comment, at
+ *  most its few entries, and its records back to back from the first byte to the directory, with
+ *  nothing before, between or after them. */
+function zipFiles(bytes: Buffer): { files: ZipFile[] } | { issue: string } {
   const end = bytes.length - 22;
   if (end < 0 || bytes.readUInt32LE(end) !== 0x06054b50)
     return { issue: "The file is not a zip (or carries a comment)" };
   if (bytes.readUInt16LE(end + 20) !== 0) return { issue: "The zip carries a comment" };
   const count = bytes.readUInt16LE(end + 10);
-  if (bytes.readUInt16LE(end + 4) !== 0 || bytes.readUInt16LE(end + 6) !== 0 || bytes.readUInt16LE(end + 8) !== count) {
-    return { issue: "The zip is split across disks" };
-  }
   if (count > MAX_ENTRIES)
     return { issue: `The package has ${count} entries; a ruleset package has at most ${MAX_ENTRIES}` };
-  const directorySize = bytes.readUInt32LE(end + 12);
-  const directoryStart = bytes.readUInt32LE(end + 16);
-  if (directoryStart + directorySize !== end) return { issue: "The zip has data where its directory should end" };
-  const entries: ZipEntry[] = [];
-  const names: Buffer[] = [];
-  let at = directoryStart;
-  for (let index = 0; index < count; index++) {
-    if (at + 46 > end || bytes.readUInt32LE(at) !== 0x02014b50) return { issue: "The zip's directory does not read" };
-    const nameLength = bytes.readUInt16LE(at + 28);
-    const extraLength = bytes.readUInt16LE(at + 30);
-    const commentLength = bytes.readUInt16LE(at + 32);
-    const compressedSize = bytes.readUInt32LE(at + 20);
-    const size = bytes.readUInt32LE(at + 24);
-    const offset = bytes.readUInt32LE(at + 42);
-    if (compressedSize === 0xffffffff || size === 0xffffffff || offset === 0xffffffff) {
-      return { issue: "The zip is a ZIP64, which a ruleset package never needs" };
-    }
-    if (bytes.readUInt16LE(at + 34) !== 0) return { issue: "The zip is split across disks" };
-    const nameBytes = bytes.subarray(at + 46, at + 46 + nameLength);
-    let name: string;
-    try {
-      name = decoder.decode(nameBytes);
-    } catch {
-      return { issue: "A name in the zip is not UTF-8" };
-    }
-    const madeOnUnix = bytes.readUInt8(at + 5) === 3;
-    entries.push({
-      name,
-      method: bytes.readUInt16LE(at + 10),
-      flags: bytes.readUInt16LE(at + 8),
-      crc: bytes.readUInt32LE(at + 16),
-      compressedSize,
-      size,
-      mode: madeOnUnix ? bytes.readUInt32LE(at + 38) >>> 16 : null,
-      dataStart: offset,
-    });
-    names.push(Buffer.from(nameBytes));
-    at += 46 + nameLength + extraLength + commentLength;
+  let files: ZipFile[];
+  try {
+    files = readZip(bytes);
+  } catch (error) {
+    if (error instanceof ZipReadError) return { issue: error.message };
+    throw error;
   }
-  // The directory's records fill exactly the size it names: no record past the count.
-  if (at !== end) return { issue: "The zip's directory holds more than its entries" };
-  // Each local record matches its directory record, and they lie back to back from the first byte.
-  const order = entries.map((entry, index) => ({ entry, index })).sort((a, b) => a.entry.dataStart - b.entry.dataStart);
   let next = 0;
-  for (const { entry, index } of order) {
-    const start = entry.dataStart;
-    if (start !== next || start + 30 > directoryStart || bytes.readUInt32LE(start) !== 0x04034b50) {
-      return { issue: `"${entry.name}" is not where the zip's directory says, or something lies beside it` };
+  for (const file of [...files].sort((a, b) => a.span.start - b.span.start)) {
+    if (file.span.start !== next) {
+      return { issue: `"${file.name}" is not where the zip's directory says, or something lies beside it` };
     }
-    const localName = bytes.subarray(start + 30, start + 30 + bytes.readUInt16LE(start + 26));
-    if (!localName.equals(names[index]!) || bytes.readUInt16LE(start + 8) !== entry.method) {
-      return { issue: `"${entry.name}" is named or packed one way in the zip's directory and another beside its data` };
-    }
-    entry.dataStart = start + 30 + localName.length + bytes.readUInt16LE(start + 28);
-    let recordEnd = entry.dataStart + entry.compressedSize;
-    // A data descriptor follows the data when the record says so: 12 bytes, 16 with its signature.
-    if (entry.flags & 8)
-      recordEnd += recordEnd + 4 <= directoryStart && bytes.readUInt32LE(recordEnd) === 0x08074b50 ? 16 : 12;
-    if (recordEnd > directoryStart) return { issue: `"${entry.name}" runs into the zip's directory` };
-    next = recordEnd;
+    next = file.span.end;
   }
-  if (next !== directoryStart) return { issue: "The zip has data no entry names" };
-  return { entries };
+  if (next !== bytes.readUInt32LE(end + 16)) return { issue: "The zip has data no entry names" };
+  return { files };
 }
 
 /** A ruleset package zip, read and checked whole; nothing in it is kept unless all of it reads. Never
  *  throws: anything unexpected is a package that does not read. */
 export function readRulesetPackageZip(bytes: Buffer): RulesetPackageRead {
   try {
-    return readZip(bytes);
+    return readPackage(bytes);
   } catch {
     return refused("The package does not read");
   }
 }
 
-function readZip(bytes: Buffer): RulesetPackageRead {
+function readPackage(bytes: Buffer): RulesetPackageRead {
   if (bytes.length > RULESET_PACKAGE_ZIP_MAX_BYTES) {
     return refused(`The package is ${bytes.length} bytes, over the ${RULESET_PACKAGE_ZIP_MAX_BYTES}-byte limit`);
   }
-  const listed = zipEntries(bytes);
+  const listed = zipFiles(bytes);
   if ("issue" in listed) return refused(listed.issue);
 
   // ── Every entry, by its records, before any is read ──
   const issues: string[] = [];
-  const files: ZipEntry[] = [];
+  const files: Array<{ file: ZipFile; cap: number }> = [];
   const seen = new Set<string>();
   let total = 0;
-  for (const entry of listed.entries) {
-    const { name } = entry;
+  for (const file of listed.files) {
+    const { name } = file;
     if (seen.has(name.toLowerCase())) issues.push(`"${name}" is in the package twice`);
     seen.add(name.toLowerCase());
-    if (entry.mode !== null && (entry.mode & 0o170000) === 0o120000) issues.push(`"${name}" is a link, not a file`);
-    if (entry.flags & 1) issues.push(`"${name}" is encrypted`);
+    if (file.isSymlink) issues.push(`"${name}" is a link, not a file`);
     if (name.endsWith("/") || name.endsWith("\\")) {
-      if (name !== "catalogs/" || entry.size !== 0 || entry.compressedSize !== 0)
-        issues.push(`"${name}" is not a file a ruleset package has`);
+      if (name !== "catalogs/" || file.size !== 0) issues.push(`"${name}" is not a file a ruleset package has`);
       continue;
     }
     const cap = capOf(name);
@@ -223,12 +157,9 @@ function readZip(bytes: Buffer): RulesetPackageRead {
       issues.push(`"${name}" is not a file a ruleset package has (manifest.json, ruleset.json, catalogs/<id>.json)`);
       continue;
     }
-    if (entry.method !== 0 && entry.method !== 8)
-      issues.push(`"${name}" is compressed in a way the Engine does not read`);
-    if (entry.size > cap || entry.compressedSize > cap) issues.push(`"${name}" is over its ${cap}-byte limit`);
-    if (entry.method === 0 && entry.compressedSize !== entry.size) issues.push(`"${name}" says two sizes`);
-    total += entry.size;
-    files.push(entry);
+    if (file.size > cap) issues.push(`"${name}" is over its ${cap}-byte limit`);
+    total += file.size;
+    files.push({ file, cap });
   }
   if (total > TOTAL_MAX_BYTES) issues.push(`The package holds over ${TOTAL_MAX_BYTES} bytes`);
   if (issues.length) return refused(...issues.slice(0, 20));
@@ -236,21 +167,18 @@ function readZip(bytes: Buffer): RulesetPackageRead {
   // ── Each file, read one at a time, exactly its declared size, its CRC checked, as UTF-8 ──
   const decoder = new TextDecoder("utf-8", { fatal: true });
   const texts = new Map<string, { text: string; data: Buffer }>();
-  for (const entry of files) {
-    const packed = bytes.subarray(entry.dataStart, entry.dataStart + entry.compressedSize);
+  for (const { file, cap } of files) {
     let data: Buffer;
     try {
-      data =
-        entry.method === 0 ? Buffer.from(packed) : inflateRawSync(packed, { maxOutputLength: Math.max(1, entry.size) });
-    } catch {
-      return refused(`"${entry.name}" does not read, or is bigger than it says`);
+      data = file.read(cap);
+    } catch (error) {
+      if (error instanceof ZipReadError) return refused(error.message);
+      throw error;
     }
-    if (data.length !== entry.size) return refused(`"${entry.name}" is not the size it says`);
-    if (crc32(data) !== entry.crc) return refused(`"${entry.name}" is damaged (its checksum does not match)`);
     try {
-      texts.set(entry.name, { text: decoder.decode(data), data });
+      texts.set(file.name, { text: decoder.decode(data), data });
     } catch {
-      return refused(`"${entry.name}" is not UTF-8 text`);
+      return refused(`"${file.name}" is not UTF-8 text`);
     }
   }
 

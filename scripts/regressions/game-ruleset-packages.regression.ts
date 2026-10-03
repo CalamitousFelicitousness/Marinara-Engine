@@ -252,7 +252,7 @@ try {
     const [manifestEntry, rulesetEntry, catalogEntry] = packageEntries(packageDocs());
     assert.match(
       refusal(rawZip([manifestEntry!, { ...rulesetEntry!, flags: 1 }, catalogEntry!])),
-      /"ruleset.json" is encrypted/,
+      /"ruleset.json" in the zip archive is encrypted/,
     );
     assert.match(
       refusal(rawZip([manifestEntry!, { ...rulesetEntry!, attr: (0o120777 << 16) >>> 0 }, catalogEntry!])),
@@ -263,10 +263,11 @@ try {
       refusal(rawZip([manifestEntry!, { ...rulesetEntry!, method: 12 }, catalogEntry!])),
       /compressed in a way/,
     );
-    // A STORED entry whose directory claims a small size returns all its bytes in adm-zip: refused.
+    // A STORED entry whose directory claims a small size returns all its bytes in adm-zip: refused (by the
+    // Engine's strict zip reader, which this one reads through).
     assert.match(
       refusal(rawZip([manifestEntry!, { ...rulesetEntry!, method: 0, declared: 10 }, catalogEntry!])),
-      /says two sizes/,
+      /says two different sizes/,
     );
     // A deflated entry claiming more than its file may hold.
     assert.match(
@@ -274,7 +275,7 @@ try {
       /over its 1048576-byte limit/,
     );
     // Two directory records over the same bytes.
-    assert.match(refusal(rawZip([manifestEntry!, rulesetEntry!, { ...catalogEntry!, offset: 0 }])), /lies beside it/);
+    assert.match(refusal(rawZip([manifestEntry!, rulesetEntry!, { ...catalogEntry!, offset: 0 }])), /shares its data/);
     // A record the end count leaves out, still in the directory: refused, not skipped.
     assert.match(
       refusal(

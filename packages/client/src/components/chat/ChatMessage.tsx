@@ -95,7 +95,11 @@ import { api } from "../../lib/api-client";
 import { applyTextareaQuoteFormat } from "../../lib/textarea-quotes";
 import { ttsService } from "../../lib/tts-service";
 import { useTTSConfig } from "../../hooks/use-tts";
-import { buildTTSVoiceRequests, normalizeTTSCharacterName, withTTSVoiceRequestCacheKeys } from "../../lib/tts-dialogue";
+import {
+  buildTTSVoiceRequests,
+  findTTSCharacterIdBySpeakerName,
+  withTTSVoiceRequestCacheKeys,
+} from "../../lib/tts-dialogue";
 import { DIALOGUE_QUOTE_PATTERN_SOURCE, HTML_SAFE_DIALOGUE_QUOTE_PATTERN_SOURCE } from "../../lib/dialogue-quotes";
 import { resolveMessageRewriteVersions } from "../../lib/message-rewrite-versions";
 import { convertChatHtmlNewlines } from "../../lib/chat-html-newlines";
@@ -2076,15 +2080,9 @@ export const ChatMessage = memo(function ChatMessage({
       : message.characterId
         ? characterMap?.get(message.characterId)?.name
         : undefined;
+  // Same lookup as autoplay in ChatArea, so replaying a message uses the voice it autoplayed with.
   const resolveTTSCharacterId = useCallback(
-    (speaker?: string | null) => {
-      const normalizedSpeaker = normalizeTTSCharacterName(speaker);
-      if (!normalizedSpeaker || !characterMap) return null;
-      for (const [characterId, character] of characterMap) {
-        if (normalizeTTSCharacterName(character.name) === normalizedSpeaker) return characterId;
-      }
-      return null;
-    },
+    (speaker?: string | null) => (characterMap ? findTTSCharacterIdBySpeakerName(speaker, characterMap) : null),
     [characterMap],
   );
   const ttsVoiceRequests = useMemo(() => {

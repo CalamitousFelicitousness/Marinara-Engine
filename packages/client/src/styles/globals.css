@@ -200,7 +200,7 @@
   --input: var(--border);
   --ring: var(--primary);
   --radius: 0.75rem;
-  --sidebar: #08061a;
+  --sidebar: var(--marinara-shell-surface, #121114);
   --sidebar-foreground: #e8d4ff;
   --sidebar-border: color-mix(in srgb, var(--primary) 13%, transparent);
   --sidebar-accent: color-mix(in srgb, var(--primary) 10%, transparent);
@@ -236,6 +236,7 @@
   --mari-logo-title-cyan: #22d3ee;
   --mari-logo-title-orange: #fb923c;
   --mari-logo-title-pink: #ec4899;
+  --marinara-mode-game-accent: #ec4b97;
   --marinara-app-accent-solid: var(--primary);
   --marinara-app-accent-static: var(--primary);
   --marinara-app-accent-gradient: linear-gradient(90deg, #ec4b97, #f29744, #36cdde);
@@ -840,9 +841,9 @@
 }
 
 .mari-chat-logo-mode--game {
-  --mari-chat-logo-mode-color: var(--marinara-app-accent-solid);
-  --mari-chat-logo-mode-color-deep: color-mix(in srgb, var(--marinara-app-accent-solid) 85%, var(--background));
-  --mari-chat-logo-mode-text: var(--primary-foreground);
+  --mari-chat-logo-mode-color: var(--marinara-mode-game-accent);
+  --mari-chat-logo-mode-color-deep: color-mix(in srgb, var(--marinara-mode-game-accent) 85%, var(--background));
+  --mari-chat-logo-mode-text: #260d19;
 }
 
 .mari-chat-mode-action {
@@ -1460,6 +1461,26 @@
   color: var(--marinara-chat-chrome-panel-muted);
 }
 
+/* Older social-app bundles copy Engine's default accent into their scoped CSS.
+   Forward the live host accent while allowing explicit inline package themes. */
+:root
+  :is(
+    marinara-capability-noodle,
+    marinara-capability-slurp,
+    marinara-capability-slurp2,
+    [data-marinara-capability-scope="noodle"],
+    [data-marinara-capability-scope="slurp"],
+    [data-marinara-capability-scope="slurp2"]
+  ) {
+  --primary: inherit;
+  --marinara-app-accent-solid: inherit;
+  --marinara-app-accent-static: inherit;
+  --marinara-app-accent-gradient: inherit;
+  --marinara-app-accent-static-gradient: inherit;
+  --marinara-chat-chrome-accent: inherit;
+  --marinara-chat-chrome-accent-gradient: inherit;
+}
+
 .mari-chrome-token-scope,
 .mari-settings-panel-chrome {
   --accent: var(--marinara-chat-chrome-highlight-bg);
@@ -1469,6 +1490,12 @@
   --sidebar-accent: var(--marinara-chat-chrome-highlight-bg);
   --sidebar-accent-foreground: var(--marinara-chat-chrome-panel-title);
   --sidebar-foreground: var(--marinara-chat-chrome-panel-text);
+}
+
+/* Settings sections and fields share their enclosing sidebar surface. */
+.mari-settings-panel-chrome {
+  --background: var(--sidebar);
+  --secondary: var(--sidebar);
 }
 
 .mari-chrome-text-accent-scope {
@@ -2163,7 +2190,7 @@ html[data-mari-ios-webkit] .mari-modal-panel {
 
 /* Full-screen mobile navigation needs no translucent copy of the covered chat. */
 html[data-mari-ios-webkit] :is([data-component="RightPanelMobile"], [data-component="ChatSidebarPanel"]) {
-  background-color: var(--background) !important;
+  background-color: var(--sidebar) !important;
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
 }
@@ -4476,6 +4503,12 @@ strong {
   }
 }
 
+/* Use the same opaque surface as sidebar headers and item action trays.
+   Keep specificity low so authored theme backgrounds still take precedence. */
+:where(.mari-sidebar, .mari-right-panel) {
+  background-color: var(--sidebar);
+}
+
 /* Firefox on Windows can rasterize text inside large blurred/translucent layout layers,
    which shows up most clearly on high-DPI displays. Fall back to opaque shell chrome there. */
 @supports (-moz-appearance: none) {
@@ -4510,9 +4543,7 @@ strong {
   }
 
   .mari-topbar,
-  .mari-sidebar-header,
-  .mari-sidebar-footer,
-  .mari-right-panel-header {
+  .mari-sidebar-footer {
     background: var(--card) !important;
   }
 
@@ -4524,7 +4555,7 @@ strong {
 
   .mari-sidebar,
   .mari-right-panel {
-    background: var(--background) !important;
+    background-color: var(--sidebar) !important;
   }
 }
 
@@ -6196,6 +6227,11 @@ strong {
 /* Touch tablets get the phone shell (MOBILE_SHELL_MEDIA_QUERY in ui.store.ts),
    so they also need its keyboard-aware viewport. */
 @media (max-width: 767px), (max-width: 1440px) and (hover: none) and (any-pointer: coarse) {
+  .mari-topbar {
+    /* Match native page backing even over gradients; also override Gecko's card fallback. */
+    background-color: var(--marinara-page-backing, var(--marinara-topbar-surface)) !important;
+  }
+
   /*
    * WKWebView native backing color is set by the literal background-color in
    * index.html <style> (inline critical CSS — not cached by SW, always fresh).
@@ -6213,6 +6249,8 @@ strong {
   body {
     position: fixed;
     inset: 0;
+    /* Keep authored gradients inside the app, not over the keyboard backing. */
+    background-image: none;
     width: 100%;
     height: 100%;
     overflow: hidden;

@@ -34,6 +34,10 @@ for (const theme of ["light", "dark"] as const) {
               date: "Unknown",
               temperature: "Warm",
               weather: "Dry",
+              worldCustomFields: Array.from({ length: 24 }, (_, index) => ({
+                name: `Detail ${index + 1}`,
+                value: "A recorded observation along the riverbank.",
+              })),
             },
           })
         ).ok(),
@@ -48,6 +52,9 @@ for (const theme of ["light", "dark"] as const) {
         trackerPanelOpen: true,
         trackerPanelOpenByChatId: { [chat.id]: true },
         trackerPanelSide: theme === "light" ? "left" : "right",
+        ...(theme === "light" && {
+          trackerPanelBackgroundColor: "linear-gradient(135deg, #243447, #415a77)",
+        }),
         theme,
         appAccentPulseMode: false,
       });
@@ -59,10 +66,39 @@ for (const theme of ["light", "dark"] as const) {
         { id: chat.id, version },
       );
       await page.goto("/");
+      const tracker = page.locator('[data-component="TrackerDataSidebar"]:visible');
+      await expect(tracker).toBeVisible({ timeout: 30_000 });
       const temperature = page.getByRole("button", { name: /^Temperature: Warm/ });
       const weather = page.getByRole("button", { name: /^Weather: Dry/ });
       await expect(temperature).toBeVisible();
       await expect(weather).toBeVisible();
+      const surfaces = await tracker.evaluate((panel) => {
+        const header = panel.querySelector(".mari-tracker-panel-header")!;
+        const paint = (element: Element) => {
+          const style = getComputedStyle(element);
+          return { color: style.backgroundColor, image: style.backgroundImage };
+        };
+        return { panel: paint(panel), header: paint(header) };
+      });
+      expect(surfaces.header).toEqual(surfaces.panel);
+      if (theme === "light") expect(surfaces.panel.image).toContain("linear-gradient");
+      const scrollLayout = await tracker.evaluate(async (panel) => {
+        const header = panel.querySelector(".mari-tracker-panel-header")!;
+        const scroller =
+          panel.querySelector<HTMLElement>(".overflow-y-auto") ??
+          panel.closest<HTMLElement>(".mari-tracker-panel-scroll")!;
+        const before = header.getBoundingClientRect().top;
+        scroller.scrollTop = 80;
+        await new Promise(requestAnimationFrame);
+        const result = {
+          scrolled: scroller.scrollTop,
+          headerOffset: Math.abs(header.getBoundingClientRect().top - before),
+        };
+        scroller.scrollTop = 0;
+        return result;
+      });
+      expect(scrollLayout.scrolled).toBeGreaterThan(0);
+      expect(scrollLayout.headerOffset).toBeLessThanOrEqual(1);
       const tapHint = page.getByText("Tap field to edit it", { exact: true });
       if (isMobile) {
         await expect(tapHint).toBeVisible();
@@ -137,6 +173,11 @@ for (const theme of ["light", "dark"] as const) {
       await expect.poll(async () => (await state()).weather).toBe(longWeather);
       await expectControlBeforeValue(page.getByRole("button", { name: /^Weather: Dry, with occasional/ }));
       await page.getByRole("button", { name: "Open tracker settings", exact: true }).click();
+      await expect(page.getByRole("toolbar", { name: "Tracker panel settings", exact: true })).toHaveCSS(
+        "background-color",
+        "rgba(0, 0, 0, 0)",
+      );
+      await page.screenshot({ path: info.outputPath(`world-controls-${theme}-settings.png`) });
       await page.getByRole("button", { name: "Enter tracker lock mode", exact: true }).click();
       await expect(page.getByRole("button", { name: "Exit tracker lock mode", exact: true })).toHaveAttribute(
         "aria-pressed",

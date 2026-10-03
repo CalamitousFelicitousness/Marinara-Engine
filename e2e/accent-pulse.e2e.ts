@@ -321,7 +321,8 @@ for (const theme of ["dark", "light"] as const) {
     }, version);
     await page.goto("/");
     const home = page.locator('[data-component="HomeBrowserHub"]');
-    await expect(home).toBeVisible();
+    // Wait for the cold Home chunk before checking the rendered shell surfaces.
+    await expect(home).toBeVisible({ timeout: 30_000 });
     await expect.poll(async () => (await readAccentPreferences(page)).ready).toBe(true);
     await page.screenshot({ path: info.outputPath(`home-borders-${theme}.png`), animations: "disabled" });
     const renderedColor = (expression: string) =>
@@ -355,6 +356,19 @@ for (const theme of ["dark", "light"] as const) {
       }
       await clickTopbarPanel(page, "settings");
       await page.getByRole("tab", { name: "Appearance", exact: true }).click();
+      await expect(page.locator(".mari-right-panel:visible")).toHaveCSS(
+        "background-color",
+        await renderedColor("var(--sidebar)"),
+      );
+      await expect(page.locator(".mari-right-panel-header:visible")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+      await expect(page.locator("#settings-section-app-style")).toHaveCSS(
+        "background-color",
+        await renderedColor("color-mix(in oklab, var(--sidebar) 35%, transparent)"),
+      );
+      await expect(page.locator("#settings-control-theme-mode select")).toHaveCSS(
+        "background-color",
+        await renderedColor("var(--sidebar)"),
+      );
       const settingsHeader = page.locator(".mari-right-panel-header:visible > div.absolute");
       await expect(settingsHeader).toHaveCSS(
         "background-color",
@@ -388,6 +402,15 @@ for (const theme of ["dark", "light"] as const) {
         path: info.outputPath(`settings-borders-${theme}-${color.slice(1)}.png`),
         animations: "disabled",
       });
+      if (!info.project.name.includes("mobile")) {
+        const pointerSetting = page.locator("#settings-control-custom-cursor");
+        await pointerSetting.hover();
+        await expect(pointerSetting).toHaveCSS(
+          "background-color",
+          await renderedColor("color-mix(in oklab, var(--marinara-chat-chrome-highlight-bg) 50%, transparent)"),
+        );
+        await page.mouse.move(0, 0);
+      }
       await clickTopbarPanel(page, "settings");
     }
   });

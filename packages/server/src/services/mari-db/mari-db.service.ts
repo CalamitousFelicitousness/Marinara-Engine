@@ -235,12 +235,14 @@ const BOOLEAN_FLAGS = new Set([
   "no-global",
   "no-match-whole-words",
   "no-selective",
+  "no-skip-wrap",
   "no-use-regex",
   "parsed",
   "patch",
   "raw",
   "resume",
   "selective",
+  "skip-wrap",
   "staged",
   "strict",
   "tail",
@@ -918,6 +920,8 @@ function presetDataFromFlags(flags: Map<string, string | boolean>): Row {
   if (hasFlag(flags, "enable")) data.enabled = true;
   if (hasFlag(flags, "disable")) data.enabled = false;
   if (hasFlag(flags, "marker")) data.isMarker = true;
+  if (hasFlag(flags, "skip-wrap")) data.skipWrap = true;
+  if (hasFlag(flags, "no-skip-wrap")) data.skipWrap = false;
   if (hasFlag(flags, "multi-select")) data.multiSelect = true;
   if (hasFlag(flags, "random-pick")) data.randomPick = true;
   const options = flagString(flags, "options");
@@ -1675,6 +1679,10 @@ function buildPromptSectionPatch(data: Row): Row {
   if (injectionDepth !== undefined) patch.injectionDepth = injectionDepth;
   const injectionOrder = firstNumber(data, ["injectionOrder", "order", "sortOrder"]);
   if (injectionOrder !== undefined) patch.injectionOrder = injectionOrder;
+  const forbidOverrides = firstBoolean(data, ["forbidOverrides"]);
+  if (forbidOverrides !== undefined) patch.forbidOverrides = boolText(forbidOverrides);
+  const skipWrap = firstBoolean(data, ["skipWrap"]);
+  if (skipWrap !== undefined) patch.skipWrap = boolText(skipWrap);
   return patch;
 }
 
@@ -2309,6 +2317,7 @@ function summarizePromptSectionRow(row: Row): Row {
     injectionPosition: parsed.injectionPosition,
     injectionDepth: parsed.injectionDepth,
     injectionOrder: parsed.injectionOrder,
+    skipWrap: parsed.skipWrap,
     content: typeof parsed.content === "string" ? truncateStr(parsed.content, 200) : "",
   };
 }
@@ -4681,12 +4690,14 @@ export class MariDbService {
             "injectionPosition",
             "injectionDepth",
             "injectionOrder",
+            "forbidOverrides",
+            "skipWrap",
           ],
         );
         const patch = buildPromptSectionPatch(data);
         if (Object.keys(patch).length === 0) {
           throw new Error(
-            "preset.updateSection needs sectionId plus a field such as content, name, role, enabled, groupId, or injectionOrder",
+            "preset.updateSection needs sectionId plus a field such as content, name, role, enabled, groupId, injectionOrder, or skipWrap",
           );
         }
         if (String(existing.isMarker) === "true" && typeof patch.content === "string") {
@@ -4842,6 +4853,8 @@ export class MariDbService {
             "injectionPosition",
             "injectionDepth",
             "injectionOrder",
+            "forbidOverrides",
+            "skipWrap",
           ],
         );
         requiredString(data, ["name", "title", "label"], "section name");
@@ -6714,7 +6727,7 @@ export class MariDbService {
         return run("addsection", {
           presetId: need(
             0,
-            "Usage: mari presets add-section <preset-id> --name <name> [--content <text>] [--role <system|user|assistant>] [--group-id <id>] [--apply]",
+            "Usage: mari presets add-section <preset-id> --name <name> [--content <text>] [--role <system|user|assistant>] [--group-id <id>] [--skip-wrap] [--apply]",
           ),
           data: presetDataFromFlags(flags),
           apply,
@@ -6724,7 +6737,7 @@ export class MariDbService {
         return run("updatesection", {
           sectionId: need(
             0,
-            "Usage: mari presets update-section <section-id> [--content <text>] [--name <name>] [--enable|--disable] [--group-id <id>] [--injection-order <n>] [--apply]",
+            "Usage: mari presets update-section <section-id> [--content <text>] [--name <name>] [--enable|--disable] [--group-id <id>] [--injection-order <n>] [--skip-wrap|--no-skip-wrap] [--apply]",
           ),
           data: presetDataFromFlags(flags),
           apply,
@@ -6822,7 +6835,7 @@ export class MariDbService {
     return [
       "Usage: mari presets <command>",
       "Reads:    list [--search <q>] [--limit <n>] | get <preset-id> | sections <preset-id> [--section-id <id>] | get-section <section-id> | groups <preset-id> | get-group <group-id> | choice-blocks <preset-id> | get-choice-block <id>",
-      "Sections: add-section <preset-id> --name <n> [--content <t>] [--role <system|user|assistant>] [--group-id <id>] | update-section <section-id> [--content <t>] [--name <n>] [--enable|--disable] [--injection-order <n>] | delete-section <section-id>",
+      "Sections: add-section <preset-id> --name <n> [--content <t>] [--role <system|user|assistant>] [--group-id <id>] [--skip-wrap] | update-section <section-id> [--content <t>] [--name <n>] [--enable|--disable] [--injection-order <n>] [--skip-wrap|--no-skip-wrap] | delete-section <section-id>",
       "Groups:   add-group <preset-id> --name <n> [--parent-group-id <id>] | update-group <group-id> [--name <n>] [--enable|--disable] [--order <n>] | delete-group <group-id>",
       "Choices:  add-choice-block <preset-id> --variable-name <n> --question <t> --options <a,b,c> [--multi-select] | update-choice-block <id> [--question <t>] [--options <a,b,c>] | delete-choice-block <id>",
       "Whole:    create --json '<preset-json>' | update <preset-id> --json '<partial-json>'",

@@ -368,6 +368,52 @@ try {
     await drainKeep(mari);
     assert.equal((await mari.executeAction({ action: "preset.getChoiceBlock", choiceBlockId: tone.id })).ok, false, "deleteChoiceBlock removes the block");
 
+    // (5d) #7014: Mari can turn "Send without wrapper" (skipWrap) on AND off for an existing block, nested in
+    // `data` or top-level, and addSection keeps a top-level skipWrap instead of dropping it.
+    const sectionField = async (sectionId: string, field: string) =>
+      ((await mari.executeAction({ action: "preset.getSection", sectionId })).output as Record<string, unknown> | null)?.[field];
+    const updateStyle = async (args: Record<string, unknown>) => {
+      const result = await mari.executeAction({ action: "preset.updateSection", sectionId: style.id, apply: true, ...args });
+      await drainKeep(mari);
+      assert.equal(result.ok, true, `updateSection ${JSON.stringify(args)} succeeds: ${String(result.error ?? "")}`);
+    };
+    await updateStyle({ data: { skipWrap: true } });
+    assert.equal(await sectionField(style.id, "skipWrap"), "true", "nested skipWrap:true alone turns the switch on");
+    const indexedStyle = ((await mari.executeAction({ action: "preset.sections", presetId })).output as Array<{ id: string; skipWrap?: string }>).find(
+      (section) => section.id === style.id,
+    );
+    assert.equal(indexedStyle?.skipWrap, "true", "the preset.sections index shows skipWrap");
+    await updateStyle({ data: { content: "Write in a clipped voice.", skipWrap: false } });
+    assert.equal(await sectionContent(mari, style.id), "Write in a clipped voice.", "the content edit beside skipWrap lands");
+    assert.equal(await sectionField(style.id, "skipWrap"), "false", "nested skipWrap:false beside a content edit turns the switch off");
+    await updateStyle({ skipWrap: true });
+    assert.equal(await sectionField(style.id, "skipWrap"), "true", "top-level skipWrap:true turns the switch on");
+    await updateStyle({ skipWrap: false });
+    assert.equal(await sectionField(style.id, "skipWrap"), "false", "top-level skipWrap:false turns the switch off");
+    await updateStyle({ data: { forbidOverrides: true } });
+    assert.equal(await sectionField(style.id, "forbidOverrides"), "true", "nested forbidOverrides:true is applied");
+    await updateStyle({ forbidOverrides: false });
+    assert.equal(await sectionField(style.id, "forbidOverrides"), "false", "top-level forbidOverrides:false is applied");
+    for (const [flag, expected] of [["--skip-wrap", "true"], ["--no-skip-wrap", "false"]] as const) {
+      const cliToggle = await mari.executeCli({ argv: ["presets", "update-section", style.id, flag, "--apply"] });
+      await drainKeep(mari);
+      assert.equal(cliToggle.ok, true, `\`mari presets update-section ${flag}\` succeeds: ${String(cliToggle.error ?? "")}`);
+      assert.equal(await sectionField(style.id, "skipWrap"), expected, `\`mari presets update-section ${flag}\` sets skipWrap to ${expected}`);
+    }
+    for (const [name, args] of [
+      ["Raw Top-level", { name: "Raw Top-level", content: "Sent bare.", skipWrap: true }],
+      ["Raw Nested", { data: { name: "Raw Nested", content: "Sent bare.", skipWrap: true } }],
+    ] as const) {
+      const added = await mari.executeAction({ action: "preset.addSection", presetId, apply: true, ...args });
+      await drainKeep(mari);
+      assert.equal(added.ok, true, `addSection ${name} succeeds: ${String(added.error ?? "")}`);
+      const addedId: string | undefined = ((await mari.executeAction({ action: "preset.sections", presetId })).output as Array<{ id: string; name: string }>).find(
+        (section) => section.name === name,
+      )?.id;
+      assert.ok(addedId, `addSection created ${name}`);
+      assert.equal(await sectionField(addedId, "skipWrap"), "true", `addSection keeps skipWrap:true (${name})`);
+    }
+
     // (6) CLOBBER GUARD: a preset.create whose child section reuses an existing id is refused.
     const clobber = await mari.executeAction({
       action: "preset.create",

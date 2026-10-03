@@ -297,6 +297,38 @@ assert.ok(sharing, "two lots sharing a corner somewhere among the starter worlds
   assert.ok(layouts > 30, `${layouts} layouts`);
 }
 
+// ── Every lot a building may be moved to is clear of the streets and the square ──
+for (const lot of asMade.lots) {
+  for (let y = lot.y; y < lot.y + lot.h; y++)
+    for (let x = lot.x; x < lot.x + lot.w; x++)
+      assert.equal(asMade.ground[y * asMade.width + x], ".", "a lot on open ground");
+}
+
+// ── A market's stalls are never painted over ──
+{
+  const marketBrief = checkWorldBrief(kit, {
+    briefVersion: 1,
+    premise: "A market town",
+    places: [
+      { name: "Marketon", layer: settlementLayer.id, size: kit.sizes.at(-1)!.id, tags: ["market"], start: true },
+    ],
+  });
+  assert.ok(marketBrief.ok);
+  const here = { kit, seed: 5, grounding: "expand" as const, brief: marketBrief.brief };
+  const market: GameWorld = { ...here, world: compileGameWorld(here) };
+  const marketon = market.world.places.find((place) => place.name === "Marketon")!;
+  const town = worldTown(market, marketon.id)!;
+  assert.ok(town.stalls.length > 0, "stalls in the square");
+  const overStalls = Array.from({ length: town.ground.length }, (_, index) =>
+    town.stalls.some((stall) => stall.y * town.width + stall.x === index) ? "t" : ".",
+  ).join("");
+  const entry = worldEditsSchema.parse({ editsVersion: 1, towns: [{ settlement: marketon.id, ground: overStalls }] });
+  assert.match(worldTownEditIssues(market, entry)[0]!, /or a stall is painted over/);
+  const laid = worldTown({ ...market, edits: entry }, marketon.id)!;
+  for (const stall of town.stalls)
+    assert.equal(laid.ground[stall.y * town.width + stall.x], town.ground[stall.y * town.width + stall.x], "a stall");
+}
+
 // ── Each refusal says why ──
 const issues = (town: Record<string, unknown>) => worldTownEditIssues(game, layer(town));
 const roof = first.y * asMade.width + first.x;

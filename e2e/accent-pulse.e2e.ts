@@ -401,6 +401,15 @@ for (const theme of ["dark", "light"] as const) {
         path: info.outputPath(`settings-borders-${theme}-${color.slice(1)}.png`),
         animations: "disabled",
       });
+      if (!info.project.name.includes("mobile")) {
+        const pointerSetting = page.locator("#settings-control-custom-cursor");
+        await pointerSetting.hover();
+        await expect(pointerSetting).toHaveCSS(
+          "background-color",
+          await renderedColor("color-mix(in oklab, var(--marinara-chat-chrome-highlight-bg) 50%, transparent)"),
+        );
+        await page.mouse.move(0, 0);
+      }
       await clickTopbarPanel(page, "settings");
     }
   });

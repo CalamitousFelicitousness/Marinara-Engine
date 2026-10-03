@@ -6,6 +6,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - A damaged server file no longer keeps Marinara from starting until you reinstall. When a built server file changes after the build, the launcher now names it and rebuilds the server before starting, and rebuilds from the Windows installer and in-app updates repair it too. Running the Windows installer over an existing install also no longer always stops with "Repository update did not land on the expected commit" (#6984).
 
+- Updated the multipart upload parser to fix two denial-of-service vulnerabilities triggered by malformed upload headers or oversized boundaries (#6995).
+
 - `decision_choice:` statements now get answers from System One servers that need a description for every option, such as Strands decider. Before, those servers refused the whole request, so every Choice comparison read as no. Open-Jev's answers stayed the same in testing. The Decision Models guide now explains how to run Strands decider yourself as a Decision connection (#6981).
 
 - Reinstalling the local model's runtime, or installing a new llama.cpp runtime, no longer deletes an installed decision model such as Open-Jev 2B along with the old runtime (#6982).

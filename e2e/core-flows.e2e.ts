@@ -12465,6 +12465,8 @@ test("installed Home destinations appear as browser tabs without returning to th
 });
 
 test("Home recent chats use mode colors and show character sprites", async ({ page }, testInfo) => {
+  await page.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: "" } }));
+  await seedUIState(page, { appAccentColor: "#3b82f6", appAccentPulseMode: false }, "merge");
   await page.addInitScript(() => localStorage.removeItem("marinara-active-chat-id"));
   const now = new Date().toISOString();
   const chatFixtures = [

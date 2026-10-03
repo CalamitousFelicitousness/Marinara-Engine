@@ -5,7 +5,7 @@
 import type { DB } from "../../db/connection.js";
 import { inArray } from "../../db/file-query.js";
 import { messages as messagesTable } from "../../db/schema/index.js";
-import { LIMITS, estimateTextTokens } from "@marinara-engine/shared";
+import { LIMITS, estimateTextTokens, expandLorebookIncludes, usesLorebookIncludes } from "@marinara-engine/shared";
 import { logger } from "../../lib/logger.js";
 import { isFeatureEnabled } from "../features/feature-settings.js";
 import type {
@@ -14,10 +14,13 @@ import type {
   Lorebook,
   LorebookEntry,
   LorebookEntryTimingState,
+  LorebookIncludeSource,
   LorebookMatchingSource,
 } from "@marinara-engine/shared";
 import { createCharactersStorage } from "../storage/characters.storage.js";
+import { createChatsStorage } from "../storage/chats.storage.js";
 import { createLorebooksStorage } from "../storage/lorebooks.storage.js";
+import { resolveLorebookScopeExclusions } from "./game-lorebook-scope.js";
 import {
   recursiveScan,
   scanForActivatedEntries,
@@ -363,6 +366,44 @@ export function filterRelevantLorebooks(lorebooks: RelevantLorebook[], filters?:
     if (book.chatId && book.chatId === filters.chatId) return true;
     return false;
   });
+}
+
+function parseJsonValue(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Every lorebook and entry `{{include::...}}` can read (#6912). With a chat, the short
+ * form looks for names in the lorebooks that chat uses: its own and the ones added to it,
+ * its characters' and persona's, and global ones. Loaded only when some text uses it.
+ */
+export async function loadLorebookIncludes(db: DB, chatId?: string): Promise<LorebookIncludeSource> {
+  const storage = createLorebooksStorage(db);
+  const books = (await storage.list()) as unknown as RelevantLorebook[];
+  const entries = (await storage.listEntriesByLorebooks(books.map((book) => book.id))) as unknown as LorebookEntry[];
+  const chat = chatId ? await createChatsStorage(db).getById(chatId) : null;
+  const metadata = parseJsonValue(chat?.metadata);
+  const meta = metadata && typeof metadata === "object" ? (metadata as Record<string, unknown>) : {};
+  const characterIds = parseJsonValue(chat?.characterIds);
+  const chatBooks = chat
+    ? filterRelevantLorebooks(books, {
+        chatId: chat.id,
+        characterIds: Array.isArray(characterIds) ? characterIds.map(String) : [],
+        personaId: chat.personaId,
+        activeLorebookIds: Array.isArray(meta.activeLorebookIds) ? meta.activeLorebookIds.map(String) : [],
+        ...resolveLorebookScopeExclusions(chat.mode, meta),
+      })
+    : [];
+  return {
+    books: books.map(({ id, name }) => ({ id, name })),
+    entries: entries.map(({ id, lorebookId, name, content }) => ({ id, lorebookId, name, content })),
+    currentBookIds: chatBooks.map((book) => book.id),
+  };
 }
 
 function readLorebookScope(value: unknown): { mode: "all" | "disabled" | "specific"; chatIds: string[] } {
@@ -1299,6 +1340,26 @@ export async function processLorebooks(
         }
         return e;
       });
+  }
+
+  // `{{include::...}}` in an entry (#6912): the short form looks in the entry's own
+  // lorebook, and an entry never includes itself. Done before the scan, so recursion,
+  // budgets and macros all see the included text.
+  if (allEntries.some((entry) => usesLorebookIncludes(entry.content))) {
+    try {
+      // ponytail: reads every lorebook once per scan, and only when an entry uses include. If chats
+      // with includes get slow, load this once per request and pass it in through the scan options.
+      const includes = await loadLorebookIncludes(db);
+      allEntries = allEntries.map((entry) => ({
+        ...entry,
+        content: expandLorebookIncludes(entry.content, includes, {
+          currentBookIds: [entry.lorebookId],
+          seen: new Set([entry.id]),
+        }),
+      }));
+    } catch (err) {
+      logger.warn(err, "Failed to load lorebooks for include macros; leaving them as written");
+    }
   }
 
   const activeEntriesById = new Map(allEntries.map((entry) => [entry.id, entry]));

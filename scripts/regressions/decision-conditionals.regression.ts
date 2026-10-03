@@ -440,6 +440,10 @@ try {
     ["angry", "none of these", "sad"],
     "a Choice question offers its compared options plus none",
   );
+  assert.ok(
+    Object.values(choiceQuestion.criteria ?? {}).every((description) => typeof description === "string"),
+    "every option carries a text description, which some System One servers require (#6981)",
+  );
 
   // 2. A regeneration of the same turn reuses the answers.
   const assistant = (await chats.listMessages(chat.id)).filter((m: { role: string }) => m.role === "assistant").at(-1)!;

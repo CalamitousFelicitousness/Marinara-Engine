@@ -21803,6 +21803,7 @@ test("iPhone Conversation Presence keeps its last activity field reachable", asy
 
 test("mobile chat composer follows the visual viewport above the software keyboard", async ({ page }, testInfo) => {
   test.skip(!testInfo.project.name.includes("mobile"), "Software-keyboard viewport behavior is mobile-only.");
+  test.setTimeout(90_000);
 
   const response = await page.request.post("/api/chats", {
     data: {

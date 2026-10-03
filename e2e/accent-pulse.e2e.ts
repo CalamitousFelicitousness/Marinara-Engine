@@ -321,7 +321,8 @@ for (const theme of ["dark", "light"] as const) {
     }, version);
     await page.goto("/");
     const home = page.locator('[data-component="HomeBrowserHub"]');
-    await expect(home).toBeVisible();
+    // Wait for the cold Home chunk before checking the rendered shell surfaces.
+    await expect(home).toBeVisible({ timeout: 30_000 });
     await expect.poll(async () => (await readAccentPreferences(page)).ready).toBe(true);
     await page.screenshot({ path: info.outputPath(`home-borders-${theme}.png`), animations: "disabled" });
     const renderedColor = (expression: string) =>

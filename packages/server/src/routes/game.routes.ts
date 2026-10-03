@@ -19,6 +19,7 @@ import {
   type StoryScript,
   worldEditsEmpty,
   worldEditIssues,
+  worldTownEditIssues,
   worldEditsSchema,
   worldFile,
   worldKitFile,
@@ -50,6 +51,7 @@ import {
   storyNamesOf,
   worldForEditor,
   worldPeopleOf,
+  worldTownForEditor,
 } from "../services/game/world-editor.service.js";
 import { logger, logDebugOverride } from "../lib/logger.js";
 import {
@@ -11003,6 +11005,17 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     return { world: worldForEditor(game), edits: game.edits ?? null, links: game.world.links };
   });
 
+  // GET /game/:chatId/world/town?settlement=: a settlement's town for a town editor (worldgen W9h).
+  app.get<{ Params: { chatId: string } }>("/:chatId/world/town", async (req, reply) => {
+    const { settlement } = z.object({ settlement: z.string().min(1).max(16) }).parse(req.query);
+    const chat = await createChatsStorage(app.db).getById(req.params.chatId);
+    if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    const game = chat.mode === "game" ? gameWorldFromMetadata(parseMeta(chat.metadata)) : null;
+    if (!game) return reply.status(404).send({ error: "This game has no world." });
+    const found = worldTownForEditor(game, settlement);
+    return found ?? reply.status(404).send({ error: "No such settlement in this world." });
+  });
+
   // PUT /game/:chatId/world/edits: the whole edit layer, checked against the world; an empty one clears it.
   app.put<{ Params: { chatId: string } }>("/:chatId/world/edits", async (req, reply) => {
     const { chatId } = req.params;
@@ -11016,7 +11029,9 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
     const game = chat.mode === "game" ? gameWorldFromMetadata(parseMeta(chat.metadata)) : null;
     if (!game) return reply.status(404).send({ error: "This game has no world." });
-    const issues = worldEditIssues(game, parsed.data);
+    // The layer against the world, then its towns laid out by hand against the towns it makes (W9h).
+    const worldIssues = worldEditIssues(game, parsed.data);
+    const issues = worldIssues.length ? worldIssues : worldTownEditIssues(game, parsed.data);
     if (issues.length) return reply.status(400).send({ error: issues.join(" "), issues });
     const edits = worldEditsEmpty(parsed.data) ? undefined : parsed.data;
     // The game's story (worldgen W10) names places and people: edits that take one away are refused, as

@@ -12,6 +12,7 @@ import type { WorldEdits } from "./edits.js";
 import { compileGameWorld, gameWorldSchema, worldEditIssues, type WORLD_GROUNDINGS } from "./game-world.js";
 import { checkStoryScript, type StoryScript } from "./story.js";
 import { worldEditsFightable } from "./battlefield-maps.js";
+import { worldTownEditIssues } from "./town.js";
 
 export const WORLD_KIT_FILE_FORMAT = "marinara-world-kit";
 export const WORLD_FILE_FORMAT = "marinara-world";
@@ -155,6 +156,18 @@ export function readWorldFile(
     }
     edits = fightable.edits;
     const unfit = worldEditIssues(inputs, edits);
+    // Towns laid out by hand that no longer fit their towns are left out on their own, too (W9h).
+    if (!unfit.length && edits.towns?.length) {
+      const townsUnfit = worldTownEditIssues(
+        { ...inputs, edits, world: compileGameWorld({ ...inputs, edits }) },
+        edits,
+      );
+      if (townsUnfit.length) {
+        notes.unshift(`The towns laid out by hand do not fit them, so they were left out: ${townsUnfit[0]}`);
+        const { towns: _towns, ...rest } = edits;
+        edits = rest;
+      }
+    }
     if (unfit.length) {
       // First, so it is never cut off behind the brief's own notes.
       notes.unshift(`The world's hand edits do not fit it, so they were left out: ${unfit[0]}`);

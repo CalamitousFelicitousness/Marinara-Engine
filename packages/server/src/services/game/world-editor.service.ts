@@ -13,6 +13,7 @@ import {
   worldKitArtFamily,
   worldPersonByHand,
   worldTerrainEntries,
+  worldTown,
   type CompiledWorld,
   type GameWorld,
   type StoryScript,
@@ -53,6 +54,16 @@ export function worldForEditor(game: GameWorld) {
     placeTags: game.kit.placeTags.map((tag) => ({ id: tag.id, label: tag.label })),
     family: worldKitArtFamily(game.kit) ?? null,
   };
+}
+
+/** A settlement's town as a town editor lays it out (worldgen W9h): as the world lays it out, without its
+ *  own hand layout (which the editor applies as it edits), with its lots; and that layout. Null for a
+ *  place that is not a settlement. */
+export function worldTownForEditor(game: GameWorld, settlementId: string) {
+  const town = worldTown(game, settlementId, undefined, { byHand: false });
+  if (!town) return null;
+  const { people: _people, homeOf: _homeOf, workOf: _workOf, ...drawn } = town;
+  return { town: drawn, layout: game.edits?.towns?.find((each) => each.settlement === settlementId) ?? null };
 }
 
 /** A place's people as the world has them, its hand edits applied. */

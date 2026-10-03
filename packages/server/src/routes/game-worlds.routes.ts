@@ -18,6 +18,7 @@ import {
   parseWorldKit,
   readWorldFile,
   worldEditIssues,
+  worldTownEditIssues,
   worldEditsEmpty,
   worldEditsSchema,
   worldFile,
@@ -33,6 +34,7 @@ import {
   storyNamesOf,
   worldForEditor,
   worldPeopleOf,
+  worldTownForEditor,
 } from "../services/game/world-editor.service.js";
 import { createGameWorldsStorage, type GameWorldRow } from "../services/storage/game-worlds.storage.js";
 
@@ -189,6 +191,14 @@ export async function gameWorldsRoutes(app: FastifyInstance) {
     return { world: worldForEditor(world.game), edits: world.game.edits ?? null, links: world.game.world.links };
   });
 
+  app.get<{ Params: { id: string } }>("/:id/world/town", async (req, reply) => {
+    const { settlement } = z.object({ settlement: z.string().min(1).max(16) }).parse(req.query);
+    const world = await worldOr404(req.params.id, reply);
+    if (!world) return;
+    const found = worldTownForEditor(world.game, settlement);
+    return found ?? reply.status(404).send({ error: "No such settlement in this world." });
+  });
+
   app.get<{ Params: { id: string } }>("/:id/world/people", async (req, reply) => {
     const { place } = z.object({ place: z.string().min(1).max(16) }).parse(req.query);
     const world = await worldOr404(req.params.id, reply);
@@ -208,7 +218,8 @@ export async function gameWorldsRoutes(app: FastifyInstance) {
     const updated = await store.update(req.params.id, (row) => {
       const read = readRow(row);
       if (!read) return { refused: "This world no longer reads." };
-      const issues = edits ? worldEditIssues(read.game, edits) : [];
+      const worldIssues = edits ? worldEditIssues(read.game, edits) : [];
+      const issues = worldIssues.length || !edits ? worldIssues : worldTownEditIssues(read.game, edits);
       if (issues.length) return { refused: issues.join(" "), issues };
       const storyRefusal = editsStoryRefusal(read.game, edits, read.story);
       if (storyRefusal) return { refused: storyRefusal.error, issues: storyRefusal.issues };

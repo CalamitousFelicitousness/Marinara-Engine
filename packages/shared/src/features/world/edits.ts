@@ -3,7 +3,8 @@
 // compile so every reader of the world (the Game Master's prompt, the World tab, the overworld, towns,
 // the atlas) sees the edited world. A world stays its seed, kit and brief plus this small layer: the
 // ground painted cell by cell, compiled places renamed or moved, places added, drawn people renamed,
-// people added, and tactical boards painted for places (W9g). Nothing compiled is removed.
+// people added, tactical boards painted for places (W9g), and towns laid out by hand (W9h). Nothing
+// compiled is removed.
 //
 // A layer is checked strictly when it is saved (an unknown place, a cell off the map, a name another
 // place has is refused with the reason), and again when its world is read: one that does not fit (written
@@ -84,6 +85,36 @@ export const worldEditsSchema = z
       .optional(),
     /** Tactical boards painted for places (worldgen W9g): `b<n>` ids. */
     battlefields: z.array(worldBattlefieldMapSchema).max(WORLD_BATTLEFIELDS_MAX).optional(),
+    /** Towns laid out by hand (worldgen W9h): buildings moved between the town's lots (a lot's top-left
+     *  corner), and its ground painted: "." as laid out, else s street, q square, o open ground, t a
+     *  tree, w a well. Checked against the town when saved (`worldTownEditIssues`). */
+    towns: z
+      .array(
+        z
+          .object({
+            settlement: placeId,
+            moves: z
+              .array(
+                z
+                  .object({
+                    building: z.string().min(1).max(16),
+                    x: z.number().int().min(0).max(255),
+                    y: z.number().int().min(0).max(255),
+                  })
+                  .strict(),
+              )
+              .max(WORLD_EDITS_MAX_PEOPLE)
+              .optional(),
+            ground: z
+              .string()
+              .max(64 * 64)
+              .regex(/^[.sqotw]*$/, "A town's painted ground is one of . s q o t w per cell")
+              .optional(),
+          })
+          .strict(),
+      )
+      .max(WORLD_EDITS_MAX_ADDED)
+      .optional(),
   })
   .strict();
 export type WorldEdits = z.infer<typeof worldEditsSchema>;
@@ -101,7 +132,8 @@ export function worldEditsEmpty(edits: WorldEdits | null | undefined): boolean {
       !edits.added?.length &&
       !edits.people?.length &&
       !edits.addedPeople?.length &&
-      !edits.battlefields?.length)
+      !edits.battlefields?.length &&
+      !edits.towns?.length)
   );
 }
 

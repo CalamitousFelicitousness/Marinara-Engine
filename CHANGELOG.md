@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- In **Chat Summary**, each message range now gets its own row across the window, and its number fields show message numbers up to five digits. A range that needs fixing keeps the same quiet border as the rest of the window, with a warning note under it instead of a flashing accent outline. Range mode no longer opens on a range left over from a longer chat, which showed "This range is outside the chat history." right away; it starts on this chat's latest messages instead (#7029).
+
 - Chats, Characters, Personas, Lorebooks, Presets, Connections, Agents, Settings and the Tracker Panel now each have a **?** at the top. Hover over it, or tap it on mobile, to read what that sidebar is for and what you can do there (#7002).
 
 - Professor Mari can now turn **Send without wrapper** on or off for an existing prompt block, instead of failing or reporting success while leaving it unchanged. Asked to do this for a marker, which always keeps its wrapper, she reports that it cannot be done (#7014).

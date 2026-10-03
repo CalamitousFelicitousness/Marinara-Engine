@@ -81,6 +81,80 @@ test("summary toggles keep other entries usable and toggle all in one save", asy
   }
 });
 
+// #7029: the range fields showed two or three digits, in half the footer, behind an accent border.
+test("Chat Summary range fields fit long message numbers in a quiet box", async ({ page, request }, info) => {
+  const created = await request.post("/api/chats", { data: { name: "Summary ranges", mode: "roleplay" } });
+  expect(created.ok()).toBeTruthy();
+  const { id } = await created.json();
+  for (let index = 0; index < 3; index += 1) {
+    const message = { role: index % 2 ? "assistant" : "user", content: `Line ${index + 1}` };
+    expect((await request.post(`/api/chats/${id}/messages`, { data: message })).ok()).toBeTruthy();
+  }
+  try {
+    await page.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: "" } }));
+    await seedUIState(page, {
+      hasCompletedOnboarding: true,
+      sidebarOpen: false,
+      rightPanelOpen: false,
+      chatHelpSeenModes: ["conversation", "roleplay", "game"],
+      // Range mode remembers one range for every chat; this one was picked in a longer chat.
+      summaryPopoverSettings: {
+        sourceMode: "range",
+        contextSize: null,
+        rangeStart: 559,
+        rangeEnd: 679,
+        hideSummarisedMessages: false,
+        collapseHiddenMessages: false,
+      },
+    });
+    await page.addInitScript(
+      ({ id, version }) => {
+        localStorage.setItem("marinara-active-chat-id", id);
+        localStorage.setItem("marinara:whats-new:seen-version", version);
+      },
+      { id, version },
+    );
+    await page.goto("/");
+    if (info.project.name.includes("mobile"))
+      await page.getByRole("button", { name: "More options", exact: true }).click();
+    await page.getByRole("button", { name: "Chat Summary", exact: true }).filter({ visible: true }).click();
+    const panel = page.locator("[data-chat-floating-panel]").filter({ hasText: "Chat Summary" });
+    const range = panel.getByRole("group", { name: "Range 1", exact: true });
+    const from = range.getByRole("spinbutton", { name: "Range 1 from message", exact: true });
+    const to = range.getByRole("spinbutton", { name: "Range 1 to message", exact: true });
+    const outside = range.getByText("This range is outside the chat history.", { exact: true });
+    // It opens on this chat's messages, not as an error.
+    await expect.soft(from).toHaveValue("1");
+    await expect.soft(to).toHaveValue("3");
+    await expect.soft(outside).toBeHidden();
+
+    await from.fill("1234");
+    await to.fill("12345");
+    await expect(outside).toBeVisible();
+    for (const field of [from, to]) {
+      expect.soft(await field.evaluate((input) => input.scrollWidth <= input.clientWidth)).toBe(true);
+    }
+    const layout = await range.evaluate((box) => {
+      const footer = box.closest("[data-chat-floating-footer]")!;
+      const scope = [...document.querySelectorAll("[data-chat-floating-panel] p")].find(
+        (label) => label.textContent === "Summary Scope",
+      )!.parentElement!;
+      return {
+        border: getComputedStyle(box).borderTopColor,
+        sectionBorder: getComputedStyle(scope).borderTopColor,
+        widthShare: box.getBoundingClientRect().width / footer.getBoundingClientRect().width,
+      };
+    });
+    // The same quiet border as the window's sections, even for a range that needs fixing,
+    // and the range spans the footer instead of its left half.
+    expect.soft(layout.border).toBe(layout.sectionBorder);
+    expect.soft(layout.widthShare).toBeGreaterThan(0.8);
+    await page.screenshot({ path: info.outputPath("summary-range-fields.png") });
+  } finally {
+    await request.delete(`/api/chats/${id}?force=true`);
+  }
+});
+
 /** Playwright has no software keyboard. iPhone Safari shrinks only the visual viewport for it. */
 async function installIphoneKeyboard(page: Page) {
   await page.addInitScript(() => {

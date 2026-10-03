@@ -1582,6 +1582,20 @@ assert.equal(
   2,
   "rewrite editors should count as one call separate from the tracker call",
 );
+assert.equal(
+  estimateAgentLoadCost(
+    ["notes-a", "notes-b", "notes-solo"].map((type) => ({
+      type,
+      phase: "post_processing" as const,
+      connectionId: "connection-1",
+      promptTemplate: `${type} prompt`,
+      ownRequest: type === "notes-solo",
+    })),
+    null,
+  ).extraCalls,
+  2,
+  "#6977: an agent with its own request counts as a call of its own",
+);
 
 class CountingTrackerBatchProvider extends BaseLLMProvider {
   calls = 0;

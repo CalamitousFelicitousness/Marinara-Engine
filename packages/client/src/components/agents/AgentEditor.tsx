@@ -1199,6 +1199,20 @@ export function AgentEditor() {
   const isContinuityAgent = agentDetailId === "continuity" || dbConfig?.type === "continuity";
   // Immersive HTML agent — shares the rewrite reveal timing control.
   const isHtmlAgent = agentDetailId === "html" || dbConfig?.type === "html";
+  // The fixed rules of the server's shouldRunAgentIndividually: these agents never share a request.
+  // Built-in rewrite agents still join the combined editor request, so their switch always works.
+  const alwaysRunsAlone =
+    isIllustratorAgent ||
+    isLorebookKeeperAgent ||
+    agentDetailId === "beholder" ||
+    dbConfig?.type === "beholder" ||
+    (localContextSources.previousOutput && !isProseGuardianAgent && !isContinuityAgent && !isHtmlAgent) ||
+    ((isCustomAgent || isNewCustomAgent) &&
+      (localResultType === "text_rewrite" ||
+        localOutputOptions.jsonContextOutput ||
+        localTriggerLorebooksForAgentCalls ||
+        localCustomCapabilities.trigger_image_generation === true ||
+        localCustomCapabilities.access_vectors === true));
 
   // Detect when both knowledge agents are configured. Actual activation is
   // chat-scoped, but saving both with overlapping sources can still bloat the
@@ -2666,13 +2680,16 @@ export function AgentEditor() {
                 ? localizeUi("ui.agents.agenteditor.usesTheBuiltInLocalModelFromTheConnections")
                 : localizeUi("ui.agents.agenteditor.whenEmptyUsesTheAgentDefaultConnectionIfOne")}
             </p>
-            {/* ponytail: this switch can only keep an agent apart. It still shows "on" for agents the server
-                always runs alone (shouldRunAgentIndividually); showing that needs that rule moved into shared. */}
+            {/* ponytail: alwaysRunsAlone copies the server's fixed rules and misses agents that run alone only
+                because of the chat's tools or music source. Upgrade: move the rules into shared for both sides. */}
             <EditorSwitchRow
               className="mt-3"
               label={localizeUi("agents.batching.label")}
-              description={localizeUi("agents.batching.description")}
-              checked={localBatchWithOtherAgents}
+              description={
+                alwaysRunsAlone ? localizeUi("agents.batching.alwaysAlone") : localizeUi("agents.batching.description")
+              }
+              checked={localBatchWithOtherAgents && !alwaysRunsAlone}
+              disabled={alwaysRunsAlone}
               onChange={(checked) => {
                 setLocalBatchWithOtherAgents(checked);
                 markDirty();

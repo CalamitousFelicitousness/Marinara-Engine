@@ -4,7 +4,9 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
-- The agent editor has a new **Share requests with other agents** switch under **Connection Override**. Turn it off to send that agent in its own request instead of together with other agents, which helps local models that mix up their tasks. This also works for Prose Guardian, Continuity Checker and Immersive HTML, which otherwise rewrite the reply together. It is on by default, and agents that already ran on their own still do (#6977).
+- Retrying or re-running agents now runs rewrite agents one after another, each on the text the one before left, as after a new reply. Before, retrying two of them together, such as Prose Guardian and a custom **Text Rewrite** agent, kept only the last one's edits. Agent retries now also keep to the connection's **Max Parallel Agent Jobs** limit (#6977).
+
+- The agent editor has a new **Share requests with other agents** switch under **Connection Override**. Turn it off to send that agent in its own request instead of together with other agents, which helps local models that mix up their tasks. This also works for Prose Guardian, Continuity Checker and Immersive HTML, which otherwise rewrite the reply together. It is on by default, and agents that always run on their own show it as off (#6977).
 
 - In group chats, replying to a character's message now makes that character answer, the same as mentioning them with @. Before, the reply did not count when choosing who speaks next, and since a character rarely speaks twice in a row, replying to the message they just sent almost always got an answer from someone else (#6978).
 

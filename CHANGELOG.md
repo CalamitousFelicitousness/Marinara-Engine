@@ -6,6 +6,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - **Auto-Translate Responses** works in Game mode again. Translations of Game turns with character dialogue or game tags no longer stay hidden, including ones already made, and the translator no longer sees Marinara's internal dialogue tags. A runaway Game reply with long stretches of blank space no longer stalls the Game screen or the server (#7010).
 
+- On phones, editing a Roleplay message now starts below the buttons at the top of the chat, and while you edit, the strip around those buttons no longer blocks taps on the text beneath it, so words along the top edge can be selected again. In Conversation mode, opening the keyboard while editing a message now keeps its first line below the bar at the top of the chat, and text that scrolls under that bar can be pressed and selected too, except right under its buttons. On iPad, opening the keyboard while editing a long Roleplay message now brings its first line back below the buttons at the top instead of under them. On iPhone, a long message being edited now fits above the keyboard together with its Save button, so scrolling inside it reaches the last lines (#6992).
+
 - Mobile screen edges and the keyboard surround match the topbar, including when switching between dark and light mode (#7017).
 
 - Sidebar headers, item action trays, and settings use a consistent background. Mobile screen edges follow the app surface, and Refresh App uses the shared settings button style (#7011).

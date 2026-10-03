@@ -7,8 +7,9 @@
 import type { CSSProperties } from "react";
 import { WINDOW_MARGIN_PX, type WindowBounds, type WindowLayout } from "../../lib/floating-window-layout";
 import { cn } from "../../lib/utils";
+import { isDesktopShellNavigationTarget } from "../../lib/chat-floating-ui-events";
 import { NEUTRAL_SURFACE_VARIABLES } from "../ui/neutral-surface-styles";
-import type { ChatToolbarFloatingPanelAnchor } from "./ChatToolbarControls";
+import { isChatToolbarPanelTrigger, type ChatToolbarFloatingPanelAnchor } from "./ChatToolbarControls";
 
 const CHAT_SETTINGS_WINDOW_WIDTH_REM = 34;
 const CHAT_SETTINGS_WINDOW_GAP_PX = 12;
@@ -47,6 +48,17 @@ export function getChatSettingsDefaultLayout(bounds: WindowBounds): WindowLayout
   return { x: right - width, y: top, width, height: bottom - top, pinned: false, locked: false };
 }
 
+/** Presses that do not count as "outside" Chat Settings. */
+function ignoreChatSettingsOutsidePointer(target: Element) {
+  return (
+    isDesktopShellNavigationTarget(target) ||
+    isChatToolbarPanelTrigger(target, "settings") ||
+    // The expanded prompt editor, the macro reference and other chat panels render in portals
+    // outside the window; using them must not close Chat Settings, only their own close controls.
+    !!target.closest("[data-chat-floating-panel], [data-macro-modal]")
+  );
+}
+
 /** Props both the window and its loading placeholder pass to <FloatingWindow>. */
 export function getChatSettingsWindowProps(anchor: ChatToolbarFloatingPanelAnchor | undefined) {
   // On phones the sheet opens beside the toolbar menu it came from, as it always has.
@@ -63,10 +75,7 @@ export function getChatSettingsWindowProps(anchor: ChatToolbarFloatingPanelAncho
       : undefined;
   return {
     getDefaultLayout: getChatSettingsDefaultLayout,
-    className: cn(
-      "marinara-chat-popover mari-chat-settings-popover mari-chat-settings-drawer animate-message-in",
-      NEUTRAL_SURFACE_VARIABLES,
-    ),
+    className: cn("marinara-chat-popover animate-message-in", NEUTRAL_SURFACE_VARIABLES),
     sheetClassName: cn(
       "fixed bottom-3 z-[70] w-[min(34rem,calc(100vw-var(--mari-chat-ui-inset-left,0px)-var(--mari-chat-ui-inset-right,0px)-1.5rem))] overflow-hidden max-md:inset-x-2 max-md:bottom-[calc(0.75rem+var(--mari-safe-area-inset-bottom,env(safe-area-inset-bottom)))] max-md:top-[calc(3.5rem+env(safe-area-inset-top))] max-md:w-auto",
       anchor ? "" : "right-[calc(var(--mari-chat-ui-inset-right,0px)+0.75rem)] top-14",
@@ -75,5 +84,6 @@ export function getChatSettingsWindowProps(anchor: ChatToolbarFloatingPanelAncho
     headerClassName: "marinara-chat-popover__header",
     titleClassName: "marinara-chat-popover__title text-xs font-semibold leading-tight",
     rootAttributes: { "data-chat-floating-panel": true } as Record<`data-${string}`, boolean>,
+    ignoreOutsidePointer: ignoreChatSettingsOutsidePointer,
   };
 }

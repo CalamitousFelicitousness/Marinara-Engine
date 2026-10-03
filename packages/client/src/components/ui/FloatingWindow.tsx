@@ -77,7 +77,9 @@ export interface FloatingWindowProps {
 const DEFAULT_MIN_WIDTH = 320;
 const DEFAULT_MIN_HEIGHT = 240;
 const NO_DRAG_SELECTOR = "button, a, input, select, textarea, [contenteditable='true'], [data-window-no-drag]";
-const TEXT_ENTRY_SELECTOR = "input, textarea, select, [contenteditable='true']";
+// Escape stays with these: text fields, and drawer contents, whose menus and editors close on Escape
+// through their own document listeners.
+const KEEPS_ESCAPE_SELECTOR = "input, textarea, select, [contenteditable='true'], .mari-drawer__body";
 
 const CENTER_CONTENT_SELECTOR = '[data-component="CenterContent"]';
 
@@ -223,13 +225,15 @@ export function FloatingWindow({
       const target = event.target;
       if (!(target instanceof Element)) return;
       if (rootRef.current?.contains(target)) return;
+      // The window's own toggle closes it on click; closing here too would let that click reopen it.
+      if (target.closest(`[data-window-opener="${id}"]`)) return;
       if (target.closest(".mari-window, [data-chat-help-overlay], [role='dialog'][aria-modal='true']")) return;
       if (ignoreOutsidePointerRef.current?.(target)) return;
       requestClose("outside-pointer");
     };
     document.addEventListener("pointerdown", handlePointerDown, true);
     return () => document.removeEventListener("pointerdown", handlePointerDown, true);
-  }, [pinned, requestClose]);
+  }, [id, pinned, requestClose]);
 
   useEffect(() => () => cancelAnimationFrame(frameRef.current), []);
 
@@ -315,7 +319,7 @@ export function FloatingWindow({
     const target = event.target;
     // Portalled dialogs bubble through this component in React; only presses inside the window count.
     if (!(target instanceof Element) || !rootRef.current?.contains(target)) return;
-    if (pinned || target.closest(TEXT_ENTRY_SELECTOR) || isModalOverlayOpen()) return;
+    if (pinned || target.closest(KEEPS_ESCAPE_SELECTOR) || isModalOverlayOpen()) return;
     event.preventDefault();
     requestClose("escape");
   };

@@ -306,6 +306,16 @@ test.describe("Chat Settings window on desktop", () => {
       await expect(settings).toHaveCount(0);
       await expect(button).toBeFocused();
 
+      // Inside a section, Escape belongs to that section's own menus and editors.
+      await openSettingsWindow(page);
+      const chatNameHeader = settings.locator('[data-chat-settings-section="chat-name"] > [role="button"]');
+      if ((await chatNameHeader.getAttribute("aria-expanded")) !== "true") await chatNameHeader.click();
+      await settings.getByRole("button", { name: "Copy chat ID", exact: true }).focus();
+      await page.keyboard.press("Escape");
+      await expect(settings).toBeVisible();
+      await settings.getByRole("button", { name: "Close chat settings", exact: true }).click();
+      await expect(settings).toHaveCount(0);
+
       // Reset View puts the window back where it started, unpinned and unlocked.
       await openSettingsWindow(page);
       await settings.getByRole("button", { name: "Pin window", exact: true }).click();

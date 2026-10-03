@@ -615,14 +615,19 @@ export function ChatHelpOverlay({
     };
     measure();
     const observer = new ResizeObserver(scheduleMeasure);
-    for (const element of document.querySelectorAll<HTMLElement>(`[data-chat-mode="${mode}"]`)) {
+    // Controls can move without the chat resizing, e.g. a toolbar expanding after a window resize
+    // or Chat Settings mounting, so re-measure when the chat or a window changes too.
+    const mutations = new MutationObserver(scheduleMeasure);
+    for (const element of document.querySelectorAll<HTMLElement>(`[data-chat-mode="${mode}"], .mari-window`)) {
       observer.observe(element);
+      mutations.observe(element, { attributes: true, childList: true, subtree: true });
     }
     window.addEventListener("resize", scheduleMeasure);
     window.addEventListener("scroll", scheduleMeasure, true);
     return () => {
       if (frame) window.cancelAnimationFrame(frame);
       observer.disconnect();
+      mutations.disconnect();
       window.removeEventListener("resize", scheduleMeasure);
       window.removeEventListener("scroll", scheduleMeasure, true);
     };

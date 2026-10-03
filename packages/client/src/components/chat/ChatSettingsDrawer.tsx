@@ -62,7 +62,7 @@ import {
 } from "lucide-react";
 import { NEUTRAL_PANEL_SCROLL_AREA } from "../ui/neutral-surface-styles";
 import { FloatingWindow } from "../ui/FloatingWindow";
-import { isChatToolbarPanelTrigger, type ChatToolbarFloatingPanelAnchor } from "./ChatToolbarControls";
+import { type ChatToolbarFloatingPanelAnchor } from "./ChatToolbarControls";
 import { PickerDropdown } from "../../features/chat-settings/PickerDropdown";
 import { PersonaHistoryReassignDropdown } from "../../features/chat-settings/sections/PersonaHistoryReassignDropdown";
 import { ChatSettingsSection as Section } from "../../features/chat-settings/ChatSettingsSection";
@@ -200,7 +200,7 @@ import { isLorebookScopeActiveForChat } from "../../lib/lorebook-scope";
 import { addSilentGreetingSwipes } from "../../lib/message-swipes";
 import { useUIStore } from "../../stores/ui.store";
 import { abortGenerationForChat, useChatStore } from "../../stores/chat.store";
-import { blurActiveChatFloatingUiControl, isDesktopShellNavigationTarget } from "../../lib/chat-floating-ui-events";
+import { blurActiveChatFloatingUiControl } from "../../lib/chat-floating-ui-events";
 import { requestChatHelp } from "../../lib/chat-help-events";
 import { CHAT_SETTINGS_WINDOW_ID, useFloatingWindowStore } from "../../stores/floating-window.store";
 import { getChatSettingsWindowProps } from "./chat-settings-window";
@@ -4809,17 +4809,9 @@ export function ChatSettingsDrawer({
     );
   };
 
-  const ignoreOutsidePointer = useCallback(
-    (target: Element) =>
-      isDesktopShellNavigationTarget(target) ||
-      isChatToolbarPanelTrigger(target, "settings") ||
-      // The expanded prompt editor and the macro reference render in a portal outside the window;
-      // using them must not close Chat Settings, only their own close controls should.
-      !!target.closest("[data-chat-floating-panel], [data-macro-modal]"),
-    [],
-  );
-
   if (!open) return null;
+  // Only the loaded settings add the Chat Settings classes below; themes and select styling target them.
+  const windowProps = getChatSettingsWindowProps(anchor);
   const helpLayoutButton =
     showHelpLayout && !phoneLayout && !chatHelpButtonHidden ? (
       <span data-chat-help="help" className="inline-flex">
@@ -4842,9 +4834,9 @@ export function ChatSettingsDrawer({
         titleIcon={<Settings2 size="0.8125rem" className="shrink-0 text-[var(--muted-foreground)]" />}
         titleAccessory={helpLayoutButton}
         closeLabel={localizeUi("ui.chat.chatsettingsdrawer.closeChatSettings")}
-        {...getChatSettingsWindowProps(anchor)}
+        {...windowProps}
+        className={cn(windowProps.className, "mari-chat-settings-popover mari-chat-settings-drawer")}
         bodyRef={panelRef}
-        ignoreOutsidePointer={ignoreOutsidePointer}
         onRequestClose={() => requestClose()}
       >
         {!phoneLayout && (

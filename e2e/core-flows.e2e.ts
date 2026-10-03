@@ -67,11 +67,15 @@ async function expectSidebarHelp(
     const placement = await button.evaluate((element) => {
       const title = element.parentElement!.previousElementSibling!;
       const gap = element.querySelector("svg")!.getBoundingClientRect().left - title.getBoundingClientRect().right;
-      return { tag: title.tagName, title: title.textContent, gap };
+      const titleGroup = element.parentElement!.parentElement!;
+      const overhang = element.getBoundingClientRect().right - titleGroup.getBoundingClientRect().right;
+      return { tag: title.tagName, title: title.textContent, gap, overhang };
     });
     expect(placement).toMatchObject({ tag: "H2", title: help.name });
     expect(placement.gap).toBeGreaterThanOrEqual(0);
     expect(placement.gap).toBeLessThanOrEqual(16);
+    // The tap area stays inside the title group, so a cut-off title cannot push it over the Close button.
+    expect(placement.overhang).toBeLessThanOrEqual(0.5);
   }
   const toggle = () => (testInfo.project.name.includes("mobile") ? button.tap() : button.click());
   await toggle();

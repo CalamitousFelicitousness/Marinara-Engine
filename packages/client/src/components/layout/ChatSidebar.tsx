@@ -1303,7 +1303,7 @@ export function ChatSidebar() {
             ariaLabel={t("navigation.sidebarHelp.button", { sidebar: localize("Chats") })}
             side="bottom"
             wide
-            className="shrink-0 [@media(pointer:coarse)]:-mx-3"
+            className="shrink-0 [@media(pointer:coarse)]:-ml-3"
             buttonClassName="justify-center [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9"
           />
         </div>

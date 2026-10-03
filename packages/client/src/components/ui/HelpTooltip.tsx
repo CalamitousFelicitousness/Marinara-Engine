@@ -187,12 +187,14 @@ export function HelpTooltip({
         onClick={(event) => {
           event.preventDefault();
           event.stopPropagation();
-          setPinned((current) => {
-            const nextPinned = !current;
-            if (nextPinned) openSelf();
-            else closeSelf();
-            return nextPinned;
-          });
+          // Toggle from the rendered state: React may call a state updater twice, so opening or closing
+          // inside one could reopen the tip right after a click closed it.
+          if (pinned) {
+            closeSelf();
+            return;
+          }
+          openSelf();
+          setPinned(true);
         }}
       >
         {localizedLabel && <span>{localizedLabel}</span>}

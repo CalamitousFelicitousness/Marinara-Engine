@@ -123,6 +123,10 @@ test("Chat Summary keeps the field being edited above the phone keyboard", async
     }),
   );
   expect((await request.patch(`/api/chats/${id}/metadata`, { data: { summaryEntries: entries } })).ok()).toBeTruthy();
+  for (let index = 0; index < 5; index += 1) {
+    const message = { role: index % 2 ? "assistant" : "user", content: `Line ${index + 1}` };
+    expect((await request.post(`/api/chats/${id}/messages`, { data: message })).ok()).toBeTruthy();
+  }
   try {
     await page.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: "" } }));
     await seedUIState(page, {
@@ -164,6 +168,15 @@ test("Chat Summary keeps the field being edited above the phone keyboard", async
       if (open) await expect(html).toHaveAttribute("data-mari-software-keyboard-open", "");
       else await expect(html).not.toHaveAttribute("data-mari-software-keyboard-open");
     };
+    // The field's first lines show above the keyboard, not scrolled out of the window around them.
+    const showsAboveKeyboard = (field: Locator) =>
+      field.evaluate((element, top) => {
+        const box = element.getBoundingClientRect();
+        return [box.top + 8, box.top + Math.min(box.height - 8, 56)].every((y) => {
+          const hit = y > 0 && y < top && document.elementFromPoint(box.left + box.width / 2, y);
+          return !!hit && (hit === element || element.contains(hit));
+        });
+      }, keyboardTop);
     // Focus a field low on the screen, where the keyboard will appear, then open the keyboard.
     const typeIn = async (name: string, field: Locator) => {
       await field.evaluate((element) => element.scrollIntoView({ block: "end" }));
@@ -171,18 +184,7 @@ test("Chat Summary keeps the field being edited above the phone keyboard", async
       const before = (await field.boundingBox())!;
       expect(before.y + before.height, "the keyboard would cover the field").toBeGreaterThan(keyboardTop);
       await setKeyboard(true);
-      // Its first lines must show above the keyboard, not scrolled out of the window around them.
-      await expect
-        .poll(() =>
-          field.evaluate((element, top) => {
-            const box = element.getBoundingClientRect();
-            return [box.top + 8, box.top + Math.min(box.height - 8, 56)].every((y) => {
-              const hit = y > 0 && y < top && document.elementFromPoint(box.left + box.width / 2, y);
-              return !!hit && (hit === element || element.contains(hit));
-            });
-          }, keyboardTop),
-        )
-        .toBe(true);
+      await expect.poll(() => showsAboveKeyboard(field)).toBe(true);
       await page.screenshot({ path: info.outputPath(`keyboard-${name}.png`) });
       // The window fits above the keyboard, and scrolling it away from the field is not undone
       // by the next viewport update, so everything else is still a scroll away.
@@ -206,6 +208,7 @@ test("Chat Summary keeps the field being edited above the phone keyboard", async
     const summaryField = panel.getByRole("textbox", { name: "Write or paste a summary of this chat...", exact: true });
     await expect(summaryField).toBeFocused();
     await typeIn("summary", summaryField);
+    await typeIn("title", panel.getByPlaceholder("Summary title", { exact: true }));
     await panel.getByRole("button", { name: "Cancel", exact: true }).click();
 
     await panel.getByRole("button", { name: "Edit", exact: true }).click();
@@ -213,6 +216,26 @@ test("Chat Summary keeps the field being edited above the phone keyboard", async
       "prompt",
       panel.getByRole("textbox", { name: "Prompt instructions for summary generation...", exact: true }),
     );
+
+    // Message ranges stay listed under the summaries after a run, and with several of them those
+    // controls alone are taller than the room the keyboard leaves. They are hidden while you type.
+    await panel.getByRole("button", { name: "Range", exact: true }).click();
+    await panel.getByRole("spinbutton", { name: "Range 1 to message", exact: true }).fill("1");
+    for (let added = 0; added < 4; added += 1) {
+      await panel.getByRole("button", { name: "Add range", exact: true }).click();
+    }
+    await panel.getByRole("button", { name: "Edit summary entry", exact: true }).last().click();
+    await expect(summaryField).toBeFocused();
+    await setKeyboard(true);
+    await expect.poll(() => showsAboveKeyboard(summaryField)).toBe(true);
+    await page.screenshot({ path: info.outputPath("keyboard-summary-ranges.png") });
+    // A field in those controls keeps them in view.
+    await setKeyboard(false);
+    const lastRangeEnd = panel.getByRole("spinbutton", { name: "Range 5 to message", exact: true });
+    await lastRangeEnd.focus();
+    await setKeyboard(true);
+    await expect(lastRangeEnd).toBeFocused();
+    await expect.poll(() => showsAboveKeyboard(lastRangeEnd)).toBe(true);
   } finally {
     await request.delete(`/api/chats/${id}?force=true`);
   }

@@ -76,6 +76,13 @@ const createChat = async (request: import("@playwright/test").APIRequestContext,
 const storedVariables = async (request: import("@playwright/test").APIRequestContext, chatId: string) =>
   record((await (await request.get(`/api/chats/${chatId}`)).json()).metadata).macroVariables ?? {};
 
+// Removing asks first (#6942); this answers the question.
+const confirmRemoval = async (page: import("@playwright/test").Page) =>
+  page
+    .getByRole("dialog", { name: "Remove variable", exact: true })
+    .getByRole("button", { name: "Remove", exact: true })
+    .click();
+
 test("a new variable row validates only after the user starts editing", async ({ page, request }) => {
   const chat = await createChat(request, "New variable validation");
   const drawer = await openChatVariables(page, chat.id);
@@ -86,6 +93,59 @@ test("a new variable row validates only after the user starts editing", async ({
   await expect(name).toHaveAttribute("aria-invalid", "true");
   await name.fill("hero");
   await expect(name).toHaveAttribute("aria-invalid", "false");
+});
+
+test("removing a variable asks first, and only a confirmed removal is saved", async ({ page, request }) => {
+  const chat = await createChat(request, "Confirm variable removal");
+  try {
+    await request.patch(`/api/chats/${chat.id}/metadata`, { data: { macroVariables: { char1: "Mary" } } });
+    const drawer = await openChatVariables(page, chat.id);
+    const row = drawer.locator('[data-chat-variable-row="char1"]');
+    const dialog = page.getByRole("dialog", { name: "Remove variable", exact: true });
+
+    // A stray tap only opens the question, and backing out keeps the variable.
+    await row.getByRole("button", { name: "Remove variable" }).click();
+    await expect(dialog).toContainText('Remove "char1" from this chat?');
+    await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(dialog).toBeHidden();
+    await expect(row).toBeVisible();
+    expect(await storedVariables(request, chat.id)).toEqual({ char1: "Mary" });
+
+    await row.getByRole("button", { name: "Remove variable" }).click();
+    await confirmRemoval(page);
+    await expect(row).toBeHidden();
+    await expect.poll(async () => storedVariables(request, chat.id)).toEqual({});
+  } finally {
+    await request.delete(`/api/chats/${chat.id}?force=true`);
+  }
+});
+
+test("a variable saved while the removal question is open is still removed", async ({ page, request }) => {
+  const chat = await createChat(request, "Remove while saving");
+  let gate: Gate | undefined;
+  try {
+    const drawer = await openChatVariables(page, chat.id);
+    await drawer.getByRole("button", { name: "Add variable", exact: true }).click();
+    const row = drawer.locator("[data-chat-variable-row]").first();
+    await row.getByLabel("Variable value").fill("Mary");
+    const name = row.getByLabel("Variable name");
+    await name.fill("hero");
+    gate = await holdFirstMetadataPatch(page, chat.id);
+    await name.press("Enter");
+    await expect.poll(gate.started).toBe(true);
+    await row.getByRole("button", { name: "Remove variable" }).click();
+    await expect(page.getByRole("dialog", { name: "Remove variable", exact: true })).toContainText('"hero"');
+
+    // The save lands while the question is open; the answer must remove what it saved.
+    gate.release();
+    await expect.poll(async () => storedVariables(request, chat.id)).toEqual({ hero: "Mary" });
+    await confirmRemoval(page);
+    await expect.poll(async () => storedVariables(request, chat.id)).toEqual({});
+    await expect(drawer.locator("[data-chat-variable-row]")).toHaveCount(0);
+  } finally {
+    gate?.release();
+    await request.delete(`/api/chats/${chat.id}?force=true`);
+  }
 });
 
 test("a delete queued behind a rename targets the renamed variable", async ({ page, request }) => {
@@ -103,6 +163,7 @@ test("a delete queued behind a rename targets the renamed variable", async ({ pa
 
   // The rename is still in flight; removing the row must drop `lead`, not `char1`.
   await drawer.locator("[data-chat-variable-row]").first().getByRole("button", { name: "Remove variable" }).click();
+  await confirmRemoval(page);
   gate.release();
 
   await expect.poll(async () => await storedVariables(request, chat.id)).toEqual({});
@@ -187,6 +248,7 @@ for (const action of ["delete", "rename"] as const) {
           .first()
           .getByRole("button", { name: "Remove variable" })
           .click();
+        await confirmRemoval(page);
       } else {
         await name.fill("hero");
         await name.press("Enter");
@@ -220,6 +282,7 @@ test("a queued delete preserves an independently recreated original name", async
     await name.press("Enter");
     await expect.poll(gate.started).toBe(true);
     await drawer.locator("[data-chat-variable-row]").first().getByRole("button", { name: "Remove variable" }).click();
+    await confirmRemoval(page);
     gate.release();
     await expect.poll(async () => storedVariables(request, chat.id)).toEqual({ char1: "Another character" });
   } finally {

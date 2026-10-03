@@ -443,10 +443,12 @@ export function SummaryPopover({
     Math.max(summaryPopoverSettings.rangeStart ?? 0, summaryPopoverSettings.rangeEnd ?? 0) <= totalMessageCount
       ? summaryPopoverSettings
       : null;
-  const [rangeStart, setRangeStart] = useState(() =>
-    String(rememberedRange?.rangeStart ?? Math.max(1, totalMessageCount - persistedContextSize + 1)),
+  const untouchedRangeStart = String(
+    rememberedRange?.rangeStart ?? Math.max(1, totalMessageCount - persistedContextSize + 1),
   );
-  const [rangeEnd, setRangeEnd] = useState(() => String(rememberedRange?.rangeEnd ?? Math.max(1, totalMessageCount)));
+  const untouchedRangeEnd = String(rememberedRange?.rangeEnd ?? Math.max(1, totalMessageCount));
+  const [rangeStart, setRangeStart] = useState(untouchedRangeStart);
+  const [rangeEnd, setRangeEnd] = useState(untouchedRangeEnd);
   const [batchRanges, setBatchRanges] = useState<SummaryBatchRangeRow[]>(() => [
     {
       id: generateClientId(),
@@ -459,6 +461,7 @@ export function SummaryPopover({
   const [batchRun, setBatchRun] = useState<SummaryBatchRunState | null>(null);
   const sizeInputFocused = useRef(false);
   const rangeInputFocused = useRef(false);
+  const rangeTouched = useRef(false);
   const automaticIntervalFocused = useRef(false);
   const summaryMaxTokensFocused = useRef(false);
   const combinePromptFocused = useRef(false);
@@ -530,6 +533,18 @@ export function SummaryPopover({
     setRangeEnd(String(Math.max(1, totalMessageCount)));
   }, [persistedContextSize, sourceMode, totalMessageCount]);
 
+  // The message count can arrive after the window opens, so a range nobody has changed yet follows it.
+  useEffect(() => {
+    if (rangeInputFocused.current || rangeTouched.current || sourceMode !== "range") return;
+    setRangeStart(untouchedRangeStart);
+    setRangeEnd(untouchedRangeEnd);
+    setBatchRanges((current) =>
+      current.length === 1 && (current[0]!.start !== untouchedRangeStart || current[0]!.end !== untouchedRangeEnd)
+        ? [{ ...current[0]!, start: untouchedRangeStart, end: untouchedRangeEnd }]
+        : current,
+    );
+  }, [sourceMode, untouchedRangeEnd, untouchedRangeStart]);
+
   // Focus textarea when entering entry edit mode.
   useEffect(() => {
     if (editingEntryId) {
@@ -580,7 +595,6 @@ export function SummaryPopover({
     (sourceMode === "last" || (!batchRangeHasInvalid && batchRunnableRanges.length > 0));
   const displayedRangeStart = firstBatchRange?.normalizedStart ?? rangeLow;
   const displayedRangeEnd = firstBatchRange?.normalizedEnd ?? rangeHigh;
-  const displayedRangeCount = displayedRangeEnd - displayedRangeStart + 1;
   const sourceSummary =
     sourceMode === "range"
       ? batchRanges.length > 1
@@ -591,7 +605,7 @@ export function SummaryPopover({
     sourceMode === "range"
       ? batchRanges.length > 1
         ? localizeUi("chat.summary.source.batchMessages", { count: batchMessageTotal, ranges: batchRanges.length })
-        : localizeUi("chat.summary.source.selectedMessages", { count: displayedRangeCount })
+        : localizeUi("chat.summary.source.selectedMessages", { count: batchMessageTotal })
       : totalMessageCount > 0
         ? localizeUi("chat.summary.source.usingMessages", {
             count: Math.min(normalizedLastSize, totalMessageCount),
@@ -799,6 +813,7 @@ export function SummaryPopover({
     (mode: SummarySourceMode) => {
       if (mode === sourceMode) return;
       if (mode === "range") {
+        rangeTouched.current = true;
         setRangeStart(String(rangeLow));
         setRangeEnd(String(rangeHigh));
         setBatchRanges([
@@ -820,6 +835,7 @@ export function SummaryPopover({
 
   const handleBatchRangeChange = useCallback(
     (rangeId: string, field: "start" | "end", value: string) => {
+      rangeTouched.current = true;
       setBatchRanges((current) =>
         current.map((range) =>
           range.id === rangeId
@@ -848,6 +864,7 @@ export function SummaryPopover({
     if (!previous) return;
     const next = createNextChatSummaryBatchRange(previous, totalMessageCount);
     if (!next) return;
+    rangeTouched.current = true;
     setBatchRanges((current) => [
       ...current,
       {
@@ -907,6 +924,7 @@ export function SummaryPopover({
         return row.status !== "success";
       });
       if (selected.length === 0) return;
+      rangeTouched.current = true;
 
       try {
         await persistSummaryMaxTokens(summaryMaxTokensDraft);
@@ -2526,7 +2544,7 @@ export function SummaryPopover({
               </label>
             ) : (
               <div className="space-y-1.5">
-                <div className="max-h-64 overflow-y-auto pr-1">
+                <div className="max-h-[min(16rem,30dvh)] overflow-y-auto pr-1">
                   <div className="space-y-1.5">
                     {batchRanges.map((range, rangeIndex) => {
                       const inspection = inspectedBatchRanges.find((candidate) => candidate.id === range.id);
@@ -2546,7 +2564,8 @@ export function SummaryPopover({
                           })}
                           className="min-w-0 space-y-1 rounded-md border border-[var(--border)] bg-[var(--background)]/25 px-2 py-1"
                         >
-                          <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
+                          {/* ponytail: a 320px phone fits four digits per field; five need a tighter row or smaller font there. */}
+                          <div className="flex min-w-0 items-center gap-1 sm:gap-2">
                             <span
                               className="w-4 shrink-0 text-center text-sm font-bold tabular-nums text-[var(--foreground)]"
                               aria-hidden="true"
@@ -2570,7 +2589,7 @@ export function SummaryPopover({
                                 }}
                                 aria-invalid={validationMessage ? true : undefined}
                                 className={cn(
-                                  "h-7 w-[5.5rem] max-w-full rounded-md bg-[var(--card)] px-1 text-center text-xs tabular-nums text-[var(--foreground)] ring-1 focus:outline-none focus:ring-2 focus:ring-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-60",
+                                  "h-7 w-[5.5rem] max-w-full rounded-md bg-[var(--card)] px-1 text-center text-xs tabular-nums text-[var(--foreground)] ring-1 focus:outline-none focus:ring-2 focus:ring-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-60 max-sm:[appearance:textfield] max-sm:[&::-webkit-inner-spin-button]:appearance-none max-sm:[&::-webkit-outer-spin-button]:appearance-none",
                                   validationMessage || inspection?.overlaps
                                     ? "ring-amber-500/70"
                                     : "ring-[var(--border)]",
@@ -2603,7 +2622,7 @@ export function SummaryPopover({
                                 }}
                                 aria-invalid={validationMessage ? true : undefined}
                                 className={cn(
-                                  "h-7 w-[5.5rem] max-w-full rounded-md bg-[var(--card)] px-1 text-center text-xs tabular-nums text-[var(--foreground)] ring-1 focus:outline-none focus:ring-2 focus:ring-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-60",
+                                  "h-7 w-[5.5rem] max-w-full rounded-md bg-[var(--card)] px-1 text-center text-xs tabular-nums text-[var(--foreground)] ring-1 focus:outline-none focus:ring-2 focus:ring-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-60 max-sm:[appearance:textfield] max-sm:[&::-webkit-inner-spin-button]:appearance-none max-sm:[&::-webkit-outer-spin-button]:appearance-none",
                                   validationMessage || inspection?.overlaps
                                     ? "ring-amber-500/70"
                                     : "ring-[var(--border)]",
@@ -2613,45 +2632,48 @@ export function SummaryPopover({
                                 })}
                               />
                             </label>
-                            {range.status === "success" && (
-                              <Check size="0.8125rem" className="text-emerald-500" aria-label={statusMessage} />
-                            )}
-                            {range.status === "failed" && (
-                              <div
-                                className="relative flex h-5 w-4 items-center justify-center p-0"
-                                onMouseEnter={() => setBatchErrorInfoId(range.id)}
-                                onMouseLeave={() => setBatchErrorInfoId(null)}
-                              >
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setBatchErrorInfoId((current) => (current === range.id ? null : range.id))
-                                  }
-                                  className="rounded-full p-0 text-[var(--destructive)] transition-colors hover:bg-[var(--destructive)]/10 focus:outline-none focus:ring-1 focus:ring-[var(--destructive)]"
-                                  aria-label={localizeUi("ui.chat.summarypopover.batchShowError", {
-                                    number: rangeIndex + 1,
-                                  })}
-                                  aria-expanded={batchErrorInfoId === range.id}
+                            {/* One slot for every row, so a status icon never narrows its row's fields. */}
+                            <div className="flex w-4 shrink-0 justify-center">
+                              {range.status === "success" && (
+                                <Check size="0.8125rem" className="text-emerald-500" aria-label={statusMessage} />
+                              )}
+                              {range.status === "failed" && (
+                                <div
+                                  className="relative flex h-5 w-4 items-center justify-center p-0"
+                                  onMouseEnter={() => setBatchErrorInfoId(range.id)}
+                                  onMouseLeave={() => setBatchErrorInfoId(null)}
                                 >
-                                  <AlertTriangle size="0.875rem" />
-                                </button>
-                                {batchErrorInfoId === range.id && (
-                                  <div
-                                    role="tooltip"
-                                    className="absolute right-0 top-full z-20 mt-1 w-48 rounded-md border border-[var(--border)] bg-[var(--popover)] p-2 text-left text-[0.625rem] leading-snug text-[var(--popover-foreground)] shadow-lg"
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setBatchErrorInfoId((current) => (current === range.id ? null : range.id))
+                                    }
+                                    className="rounded-full p-0 text-[var(--destructive)] transition-colors hover:bg-[var(--destructive)]/10 focus:outline-none focus:ring-1 focus:ring-[var(--destructive)]"
+                                    aria-label={localizeUi("ui.chat.summarypopover.batchShowError", {
+                                      number: rangeIndex + 1,
+                                    })}
+                                    aria-expanded={batchErrorInfoId === range.id}
                                   >
-                                    {range.error ?? statusMessage}
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                            {range.status === "running" && (
-                              <Loader2
-                                size="0.8125rem"
-                                className="h-4 w-4 shrink-0 animate-spin text-[var(--primary)]"
-                                aria-label={statusMessage}
-                              />
-                            )}
+                                    <AlertTriangle size="0.875rem" />
+                                  </button>
+                                  {batchErrorInfoId === range.id && (
+                                    <div
+                                      role="tooltip"
+                                      className="absolute right-0 top-full z-20 mt-1 w-48 rounded-md border border-[var(--border)] bg-[var(--popover)] p-2 text-left text-[0.625rem] leading-snug text-[var(--popover-foreground)] shadow-lg"
+                                    >
+                                      {range.error ?? statusMessage}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              {range.status === "running" && (
+                                <Loader2
+                                  size="0.8125rem"
+                                  className="h-4 w-4 shrink-0 animate-spin text-[var(--primary)]"
+                                  aria-label={statusMessage}
+                                />
+                              )}
+                            </div>
                             <button
                               type="button"
                               onClick={() => handleRemoveBatchRange(range.id)}

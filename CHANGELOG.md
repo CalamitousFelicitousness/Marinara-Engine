@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- **Auto-Translate Responses** works in Game mode again. Translations of Game turns with character dialogue or game tags no longer stay hidden, including ones already made, and the translator no longer sees Marinara's internal dialogue tags (#7010).
+
 - Mobile screen edges and the keyboard surround match the topbar, including when switching between dark and light mode (#7017).
 
 - Sidebar headers, item action trays, and settings use a consistent background. Mobile screen edges follow the app surface, and Refresh App uses the shared settings button style (#7011).

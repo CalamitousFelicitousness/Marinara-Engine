@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  buildGameTranslationSource,
   stripBalancedTag,
   stripGmTagsKeepReadables,
   stripMapUpdateTag,
@@ -37,4 +38,36 @@ for (const tag of ["[combat_result]", "[map_update:", "[choices:", "[unknown:"])
   assert.equal(result, tag === "[map_update:" ? "" : input);
 }
 
-console.info("Game narration stripping preserves readables and handles repeated unclosed tags in bounded time.");
+// The server's automatic translation and the Game screen share this text (#7010):
+// GM turns lose internal tags, and dialogue keeps only its speaker.
+assert.equal(
+  buildGameTranslationSource({
+    id: "turn",
+    role: "assistant",
+    content: [
+      "[music: calm] A lamp burns.",
+      '[Alice] [main] [patient]: "Stay here."',
+      '[Alice] [whisper:Bob] [calm]: "Keep quiet."',
+      "[Alice] [thought] [worried]: I should go.",
+      'Before the note. [Note: Remember the bridge.] After the note. [choices: ["Go", "Stay"]]',
+    ].join("\n\n"),
+  }),
+  [
+    "A lamp burns.",
+    '[Alice]: "Stay here."',
+    '[Alice]: "Keep quiet."',
+    '[Alice]: "I should go."',
+    "Before the note.",
+    "[Note: Remember the bridge.]",
+    "After the note.",
+  ].join("\n\n"),
+);
+assert.equal(
+  buildGameTranslationSource({ id: "player", role: "user", content: "[To the party] [Alice] [main]: Hi" }),
+  "[Alice] [main]: Hi",
+  "player messages are only stripped of their address prefix",
+);
+
+console.info(
+  "Game narration stripping preserves readables, builds the shared translation source, and handles repeated unclosed tags in bounded time.",
+);

@@ -4619,9 +4619,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   },
                 ).start
               : normalizeGameInventoryStacks(chatMeta.gameInventory);
-          // What each ruleset item the party holds is, for the Game Master: only read when one is held.
+          // What each ruleset item the party holds is, for the Game Master: read when one is held, or
+          // when the ruleset has coins, so an empty purse is said too (never told one is empty, the
+          // Game Master narrates a buy the Engine then refuses).
           const promptItemBook =
-            pinnedGameRuleset?.status === "ok" && promptInventoryStacks.some((stack) => stack.item)
+            pinnedGameRuleset?.status === "ok" &&
+            (promptInventoryStacks.some((stack) => stack.item) ||
+              Boolean(pinnedGameRuleset.definition.items?.currencies?.length))
               ? await loadGameInventoryItemBook(
                   app.db,
                   { metadata: chatMeta, resolved: pinnedGameRuleset, playerName: personaName || null },

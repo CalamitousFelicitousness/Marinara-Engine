@@ -6,6 +6,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - Home widgets: the **Daily Encounter** message for an empty library and its **Open character library** link now fit inside the widget on any screen, Professor Mari's head is no longer cut off in **Your guide** (she can now reach over the widget's top edge instead), and hovering a widget no longer makes its glow and edges pop in after the card lifts (#7032).
 
+- Expanded text editors, including message command results and preset variable values, now use the same background as the sidebars in dark and light mode (#7037).
+
 - Chats, Characters, Personas, Lorebooks, Presets, Connections, Agents, Settings and the Tracker Panel now each have a **?** at the top. Hover over it, or tap it on mobile, to read what that sidebar is for and what you can do there (#7002).
 
 - Professor Mari can now turn **Send without wrapper** on or off for an existing prompt block, instead of failing or reporting success while leaving it unchanged. Asked to do this for a marker, which always keeps its wrapper, she reports that it cannot be done (#7014).

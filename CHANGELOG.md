@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- UI/UX improvements: welcome-dialog frames and settings actions follow the selected accent, Game actions keep their Marinara pink, dark sidebars match the Home menu, and Tracker edit controls align with their fields on desktop and mobile (#7000).
+
 - Updated the multipart upload parser to fix two denial-of-service vulnerabilities triggered by malformed upload headers or oversized boundaries (#6995).
 
 - `decision_choice:` statements now get answers from System One servers that need a description for every option, such as Strands decider. Before, those servers refused the whole request, so every Choice comparison read as no. Open-Jev's answers stayed the same in testing. The Decision Models guide now explains how to run Strands decider yourself as a Decision connection (#6981).

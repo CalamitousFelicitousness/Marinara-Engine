@@ -3047,11 +3047,11 @@ export function HomeBrowserHub({
                   >
                     <HomeWidgetFrame {...widgetFrameProps("professor")}>
                       <section
-                        className="mari-chrome-accent-frame mari-chrome-accent-panel mari-accent-animated mari-home-professor-widget relative grid h-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)_minmax(5.5rem,40%)] overflow-hidden rounded-2xl border p-3 sm:p-[clamp(0.85rem,1vw,1.2rem)]"
+                        className="mari-chrome-accent-frame mari-chrome-accent-panel mari-accent-animated mari-home-professor-widget relative grid h-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)_minmax(5.5rem,40%)] rounded-2xl border p-3 sm:p-[clamp(0.85rem,1vw,1.2rem)]"
                         data-component="HomeBrowserHub.ProfessorWidget"
                       >
                         <div
-                          className="relative z-[2] flex min-h-0 min-w-0 flex-col items-start justify-center"
+                          className="relative z-[2] flex min-h-0 min-w-0 flex-col items-start justify-center overflow-y-clip"
                           data-home-professor-content
                         >
                           <p className="mari-chrome-accent-icon mari-accent-animated text-[0.625rem] font-extrabold uppercase tracking-[0.16em]">
@@ -3077,11 +3077,11 @@ export function HomeBrowserHub({
                           </button>
                         </div>
                         <div
-                          className="pointer-events-none relative z-[1] h-full min-h-0 w-full self-end overflow-hidden"
+                          className="pointer-events-none relative z-[1] h-full min-h-0 w-full self-end"
                           data-home-professor-art
                           aria-hidden="true"
                         >
-                          <div className="absolute bottom-0 right-0 w-[clamp(7rem,38cqw,11rem)] max-w-full">
+                          <div className="absolute bottom-0 right-0" data-home-professor-scene>
                             <ProfessorMariPixelScene active={false} />
                           </div>
                         </div>
@@ -3300,15 +3300,15 @@ export function HomeBrowserHub({
                             </div>
                           </div>
                         ) : (
-                          <div className="flex min-h-32 flex-col justify-end">
-                            <LibraryBig className="mb-2 text-[var(--home-module-accent)]" size="1.1rem" />
+                          <div className="flex h-full min-h-0 flex-col justify-end">
+                            <LibraryBig className="mb-2 min-h-0 text-[var(--home-module-accent)]" size="1.1rem" />
                             <p className="text-sm font-bold text-[var(--foreground)]">
                               {t("home.characterOfDay.emptyTitle")}
                             </p>
                             <button
                               type="button"
                               onClick={() => useUIStore.getState().openCharacterLibrary()}
-                              className="mt-2 self-start text-xs font-bold text-[var(--home-module-accent)] hover:underline"
+                              className="mt-1 inline-flex min-h-8 items-center self-start text-xs font-bold text-[var(--home-module-accent)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--home-module-accent)]"
                             >
                               {t("home.characterOfDay.emptyAction")}
                             </button>

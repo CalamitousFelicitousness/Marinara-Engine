@@ -27,6 +27,9 @@ export interface ZipFile {
   isSymlink: boolean;
   /** Its size once read, as declared, and exactly what `read` returns. */
   size: number;
+  /** Where its record lies in the archive: from its local record to the end of its data (and of the
+   *  data descriptor after it, when it has one), for a caller that wants nothing between records. */
+  span: { start: number; end: number };
   /** Its bytes: exactly `size` of them, their CRC checked. Refused, unread, when `size` is over
    *  `maxBytes`, so every caller says what it will take. */
   read(maxBytes: number): Buffer;
@@ -35,6 +38,7 @@ export interface ZipFile {
 const END_RECORD = 0x06054b50;
 const DIRECTORY_RECORD = 0x02014b50;
 const LOCAL_RECORD = 0x04034b50;
+const DESCRIPTOR_RECORD = 0x08074b50;
 const ZIP64_MARK = 0xffffffff;
 
 const fail = (message: string): never => {
@@ -77,6 +81,7 @@ export function readZip(bytes: Buffer): ZipFile[] {
     offset: number;
     mode: number;
     dataStart: number;
+    end: number;
   }> = [];
   let at = directoryStart;
   for (let index = 0; index < count; index++) {
@@ -110,6 +115,7 @@ export function readZip(bytes: Buffer): ZipFile[] {
       // says made it (as adm-zip did), so a link is never missed for a maker that does not say Unix.
       mode: bytes.readUInt32LE(at + 38) >>> 16,
       dataStart: 0,
+      end: 0,
     });
     at = next;
   }
@@ -133,6 +139,11 @@ export function readZip(bytes: Buffer): ZipFile[] {
     entry.dataStart = start + 30 + nameLength + bytes.readUInt16LE(start + 28);
     free = entry.dataStart + entry.compressedSize;
     if (free > directoryStart) fail(`"${entry.name}" in the zip archive runs into its directory`);
+    // A data descriptor follows the data when the record says so: 12 bytes, 16 with its signature.
+    entry.end =
+      entry.flags & 8
+        ? free + (free + 4 <= directoryStart && bytes.readUInt32LE(free) === DESCRIPTOR_RECORD ? 16 : 12)
+        : free;
   }
 
   return entries.map((entry) => ({
@@ -140,6 +151,7 @@ export function readZip(bytes: Buffer): ZipFile[] {
     isDirectory: entry.name.endsWith("/"),
     isSymlink: (entry.mode & 0o170000) === 0o120000,
     size: entry.size,
+    span: { start: entry.offset, end: entry.end },
     read(maxBytes: number): Buffer {
       if (entry.size > maxBytes) fail(`"${entry.name}" is over the ${maxBytes}-byte limit`);
       if (entry.method !== 0 && entry.method !== 8) {

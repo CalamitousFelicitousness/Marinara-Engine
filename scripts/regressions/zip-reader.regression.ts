@@ -223,6 +223,10 @@ try {
       { gap: Buffer.alloc(7), comment: "0123456789abcdef0123456789abcdef01234567" },
     ),
   );
+  // Each record's span: from its local record through its data, and its data descriptor when it has one.
+  const firstLocal = localRecord({ name: "a.txt", data: text("first"), descriptor: true });
+  assert.deepEqual({ ...loose[0]!.span }, { start: 0, end: firstLocal.length });
+  assert.equal(loose[1]!.span.start, firstLocal.length);
   assert.deepEqual(
     loose.map((file) => file.read(100).toString("utf8")),
     ["first", "second", "", ""],

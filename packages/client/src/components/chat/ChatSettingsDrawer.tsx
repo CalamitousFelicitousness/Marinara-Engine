@@ -99,6 +99,7 @@ import {
   DEFAULT_GAME_DICE_POOL_WINDOW as DEFAULT_DICE_POOL_WINDOW,
   estimateTextTokens,
   isRoleplayCommandEnabled,
+  normalizeGroupChatMode,
   normalizeSemanticSummaryRetrievalSettings,
   resolveScopedRegexMode,
 } from "@marinara-engine/shared";
@@ -878,6 +879,8 @@ export function ChatSettingsDrawer({
   const updateChat = useUpdateChat();
   const updateMeta = useUpdateChatMetadata();
   const updateTranslationMeta = useUpdateChatMetadata({ serialize: true });
+  // Generation waits for queued saves, so the next reply uses the narration mode shown here (#6959).
+  const updateGroupChatModeMeta = useUpdateChatMetadata({ serialize: true });
   const updateMetaMutateAsyncRef = useRef(updateMeta.mutateAsync);
   const pendingCustomAgentImageSettingsRef = useRef<{
     chatId: string;
@@ -976,6 +979,7 @@ export function ChatSettingsDrawer({
     () => (typeof chat.metadata === "string" ? JSON.parse(chat.metadata) : (chat.metadata ?? {})),
     [chat.metadata],
   );
+  const groupChatMode = normalizeGroupChatMode(metadata.groupChatMode);
   const summaryRetrievalSettings = normalizeSemanticSummaryRetrievalSettings(metadata);
   // Package integrations only show while their package is installed and usable.
   const noodleInstalled = isCapabilityPackageAvailable(installedCapabilities, "noodle");
@@ -1731,55 +1735,55 @@ export function ChatSettingsDrawer({
   );
   const lorebookKeeperAgentMeta = getAgentDisplayMeta("lorebook-keeper", {
     name: "Lorebook Keeper",
-    description: "Creates and updates durable chat lorebook entries from important story facts.",
+    description: "Saves important story facts to the chat's lorebook as you play.",
   });
   const cardEvolutionAuditorAgentMeta = getAgentDisplayMeta("card-evolution-auditor", {
     name: "Card Evolution Auditor",
-    description: "Audits durable roleplay changes against saved character cards for user approval.",
+    description: "Suggests character card updates when the story changes a character, for you to approve.",
   });
   const proseGuardianAgentMeta = getAgentDisplayMeta("prose-guardian", {
     name: "Prose Guardian",
-    description: "Post-processes the latest assistant message to remove unwanted prose habits.",
+    description: "Cleans up repetitive or unwanted writing habits in AI messages.",
   });
   const continuityAgentMeta = getAgentDisplayMeta("continuity", {
     name: "Continuity Checker",
-    description: "Post-processes the latest assistant message to fix concrete spatial and timeline errors.",
+    description: "Fixes mistakes about places, time, and physical details in AI messages.",
   });
   const htmlAgentMeta = getAgentDisplayMeta("html", {
     name: "Immersive HTML",
-    description: "Post-processes the latest assistant message with diegetic HTML/CSS/JS visuals.",
+    description: "Adds HTML/CSS/JS visual effects to AI messages.",
   });
   const directorAgentMeta = getAgentDisplayMeta("director", {
     name: "Narrative Director",
-    description: "Creates one-shot story directions when you choose to push the next response forward.",
+    description: "Gives the story a push in a new direction when you ask for it.",
   });
   const expressionAgentMeta = getAgentDisplayMeta("expression", {
     name: "Expression Engine",
-    description: "Detects character emotions and selects VN sprites/expressions.",
+    description: "Changes character sprites to match how they feel.",
   });
   const illustratorAgentMeta = getAgentDisplayMeta("illustrator", {
     name: "Illustrator",
-    description: "Responsible for image and video generations.",
+    description: "Creates images and videos for your chats.",
   });
   const echoChamberAgentMeta = getAgentDisplayMeta("echo-chamber", {
     name: "Echo Chamber",
-    description: "Simulates a live streaming-style chat reacting to your roleplay in real time.",
+    description: "Shows a live stream-style chat reacting to your roleplay.",
   });
   const musicDjAgentMeta = getAgentDisplayMeta("spotify", {
     name: "Music DJ",
-    description: "Analyzes the narrative mood and plays matching music through Spotify or YouTube.",
+    description: "Plays music that fits the mood of the story, from Spotify, YouTube, or your own Game Assets music.",
   });
   const knowledgeRetrievalAgentMeta = getAgentDisplayMeta("knowledge-retrieval", {
     name: "Knowledge Retrieval",
-    description: "Scans selected lorebooks and files for facts relevant to the current scene.",
+    description: "Finds facts in your lorebooks and files that matter for the current scene.",
   });
   const knowledgeRouterAgentMeta = getAgentDisplayMeta("knowledge-router", {
     name: "Knowledge Router",
-    description: "Routes relevant lorebook entries into the next prompt by ID.",
+    description: "Picks the lorebook entries that fit the scene and gives them to the AI.",
   });
   const hapticAgentMeta = getAgentDisplayMeta("haptic", {
     name: "Haptic Feedback",
-    description: "Analyzes narrative content and controls connected intimate toys in real time.",
+    description: "Controls connected intimate toys to match what happens in the story.",
   });
 
   // Estimate the per-turn cost of the active agent loadout — feeds the readout
@@ -1804,6 +1808,7 @@ export function ChatSettingsDrawer({
           connectionId: cfg?.connectionId ?? null,
           promptTemplate,
           resultType: typeof settings.resultType === "string" ? settings.resultType : undefined,
+          ownRequest: settings.batchWithOtherAgents === false,
         },
       ];
     });
@@ -4435,7 +4440,7 @@ export function ChatSettingsDrawer({
           <AdvancedMemorySettings
             chatId={chat.id}
             metadataSettings={metadata.advancedMemory}
-            individual={metadata.groupChatMode === "individual"}
+            individual={groupChatMode === "individual"}
             characters={chatCharIds.map((id) => ({ id, name: charNameMap.get(id) ?? id }))}
             connections={textConnectionsList}
             hasHistory={!!chat.lastMessageAt}
@@ -4457,7 +4462,7 @@ export function ChatSettingsDrawer({
         {advancedMemoryEnabled && memoryView === "advanced" && (
           <AdvancedMemoryInspector
             chatId={chat.id}
-            individual={metadata.groupChatMode === "individual"}
+            individual={groupChatMode === "individual"}
             characters={chatCharIds.map((id) => ({ id, name: charNameMap.get(id) ?? id }))}
           />
         )}
@@ -6260,10 +6265,10 @@ export function ChatSettingsDrawer({
                 </label>
                 <div className="flex rounded-lg ring-1 ring-[var(--border)]">
                   <button
-                    onClick={() => updateMeta.mutate({ id: chat.id, groupChatMode: "merged" })}
+                    onClick={() => updateGroupChatModeMeta.mutate({ id: chat.id, groupChatMode: "merged" })}
                     className={cn(
                       "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors rounded-l-lg",
-                      (metadata.groupChatMode ?? "merged") === "merged"
+                      groupChatMode === "merged"
                         ? "bg-[var(--primary)] text-white"
                         : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
                     )}
@@ -6274,8 +6279,8 @@ export function ChatSettingsDrawer({
                   </button>
                   <button
                     onClick={() => {
-                      if (metadata.groupChatMode === "individual") return;
-                      updateMeta.mutate({
+                      if (groupChatMode === "individual") return;
+                      updateGroupChatModeMeta.mutate({
                         id: chat.id,
                         groupChatMode: "individual",
                         ...(isConversation && metadata.groupResponseOrder === "manual"
@@ -6293,7 +6298,7 @@ export function ChatSettingsDrawer({
                     }}
                     className={cn(
                       "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors rounded-r-lg",
-                      metadata.groupChatMode === "individual"
+                      groupChatMode === "individual"
                         ? "bg-[var(--primary)] text-white"
                         : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
                     )}
@@ -6304,7 +6309,7 @@ export function ChatSettingsDrawer({
               </div>
 
               {/* Merged mode: speaker color option */}
-              {!isConversation && (metadata.groupChatMode ?? "merged") === "merged" && (
+              {!isConversation && groupChatMode === "merged" && (
                 <div className="mt-2">
                   <SettingsSwitch
                     label={localizeUi("ui.chat.chatsettingsdrawer.colorDialogues")}
@@ -6326,7 +6331,7 @@ export function ChatSettingsDrawer({
               )}
 
               {/* Individual mode: response order */}
-              {metadata.groupChatMode === "individual" && (
+              {groupChatMode === "individual" && (
                 <div className="mt-2 space-y-2">
                   <label className="text-[0.6875rem] font-medium text-[var(--muted-foreground)]">
                     {localizeUi("ui.chat.chatsettingsdrawer.responseOrder")}

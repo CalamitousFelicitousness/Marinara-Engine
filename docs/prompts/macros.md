@@ -69,7 +69,7 @@ In a chat with one character, these resolve against that character. In a group c
 
 The Phonetic name field has two jobs. It sets how the name is pronounced by text-to-speech. It also feeds `{{charNamePhonetic}}` and `{{userNamePhonetic}}`. You will find it in both the **Character Editor** and the **Persona Editor**.
 
-To reference a character who is not part of the current chat, copy that card's ID and place it directly inside double braces, such as `{{V1StGXR8_Z5jdHi6B-myT}}`. Do not include literal `<` or `>` characters. Marinara replaces the macro with the character's name and adds the referenced card's Description, Personality, Appearance, Backstory, Scenario, and Example Dialogue to the system prompt. This works in chat messages, prompt fields, and activated lorebook entries. The referenced card's initial greetings are excluded. Enabled lorebooks attached to that card remain subject to their normal keyword, constant, filter, probability, and token-budget rules.
+To reference a character who is not part of the current chat, copy that card's ID and place it directly inside double braces, such as `{{V1StGXR8_Z5jdHi6B-myT}}`. Do not include literal `<` or `>` characters. Marinara replaces the macro with the character's name. In Roleplay chats that use a prompt preset, it also adds the referenced card's Description, Personality, Appearance, Backstory, Scenario, and Example Dialogue to the system prompt; in other chats the macro only becomes the name. This works in chat messages and prompt fields, and in Roleplay chats with a preset also in activated lorebook entries. The referenced card's initial greetings are excluded. Enabled lorebooks attached to that card remain subject to their normal keyword, constant, filter, probability, and token-budget rules. If the character is already in the chat, the macro still turns into their name, and their card is not added a second time.
 
 To reference a persona other than the active one, prefix its copied ID with `persona-`, such as `{{persona-P1StGXR8_Z5jdHi6B-myT}}`. Marinara replaces the macro with the persona's name and adds that card's Description, Personality, Appearance, Backstory, and Scenario to the same ID Macro Cards context. Enabled lorebooks attached to that persona keep their normal activation rules.
 
@@ -136,6 +136,25 @@ Use Outlet macros in prompt sections in Conversation, Roleplay, or Game mode. Th
 Unknown lorebook IDs resolve to `0`. The count includes all entries regardless of whether they are enabled, disabled, or in folders.
 
 Use this macro in prompt sections, character card fields, lorebook entry content, or anywhere else macros are resolved.
+
+## Lorebook include macro
+
+`{{include::ENTRY}}` puts the text of a lorebook entry where you write it. Keep a shared piece of text, such as house rules, in one entry and reuse it in other entries, prompt sections, or cards, so there is only one copy to edit. Replace `ENTRY` with the entry's ID or its name. Names ignore uppercase and lowercase.
+
+- Inside a lorebook entry, a name is looked up in that entry's own lorebook.
+- Anywhere else, a name is looked up in the lorebooks this chat uses: the ones added to the chat, the ones linked to its characters and persona, and global ones.
+- An ID finds the entry in any lorebook.
+
+`{{include::BOOK::ENTRY}}` takes the entry from the lorebook you name, by its ID or name. That lorebook does not have to be added to the chat or even turned on.
+
+```text
+{{include::Rules of the arena}}
+{{include::Shared lore::Rules of the arena}}
+```
+
+The included entry does not have to activate, and it can be turned off, so you can keep entries that exist only to be included. Macros in the included text work as usual, and it can include other entries too. If an include leads back to an entry it is already inside, such as an entry that includes itself, that include becomes nothing instead of repeating forever. An entry or lorebook that is not found also becomes nothing.
+
+Write names and IDs as plain text. Macros inside them, such as `{{include::{{char}}}}`, are not filled in.
 
 ## Time macros
 
@@ -251,7 +270,7 @@ You can also type `/macros` in the chat box (the short form `/macro` works too).
 
 Conditional blocks can combine comparisons with `||` (OR), `&&` (AND), and parentheses. Equality lists may use the compact form `{{#if character == "Maukie" || "Pantalone"}}`. See [Conditional Prompts](conditional-prompts.md) for precedence, group-chat examples, and the full operator list.
 
-A condition can also ask your Decision model about the scene: `{{#if decision:"The latest message moves the scene to a new place"}}` for yes or no, and `{{#if decision_choice:"The kind of scene in the latest message" == "combat"}}` to pick one option. With no Decision model, or no answer, these read as no. See [Asking the Decision model](conditional-prompts.md#asking-the-decision-model). Add `sticky:3 cooldown:5` after a statement to keep a yes for three turns and then rest it for five; see [Sticky and cooldown](conditional-prompts.md#sticky-and-cooldown). `every:3` asks a statement only every three turns, and `priority:high` or `priority:low` chooses which statements fit within a prompt plan; see [Checking every few turns](conditional-prompts.md#checking-every-few-turns), [Priority](conditional-prompts.md#priority), and [Limits and cost](conditional-prompts.md#limits-and-cost).
+A condition can also ask your Decision model about the scene: `{{#if decision:"The latest message moves the scene to a new place"}}` for yes or no, and `{{#if decision_choice:"The kind of scene in the latest message" == "combat"}}` to pick one option. With no Decision model, or no answer, these read as no. See [Asking the Decision model](conditional-prompts.md#asking-the-decision-model). Add `sticky:3 cooldown:5` after a statement to keep a yes for three turns and then rest it for five; see [Sticky and cooldown](conditional-prompts.md#sticky-and-cooldown). Add `until:"..."` or `while:"..."` to keep a yes for as long as a second statement allows; see [Until and while](conditional-prompts.md#until-and-while). `every:3` asks a statement only every three turns, and `priority:high` or `priority:low` chooses which statements fit within a prompt plan; see [Checking every few turns](conditional-prompts.md#checking-every-few-turns), [Priority](conditional-prompts.md#priority), and [Limits and cost](conditional-prompts.md#limits-and-cost).
 
 ## Common mistakes
 

@@ -147,7 +147,7 @@ try {
       }
       tscPid = Number(readFileSync(tscPidFile, "utf8"));
       launcher.kill("SIGTERM");
-      const status = await Promise.race([exited, sleep(10_000).then(() => "still running")]);
+      const status = await Promise.race([exited, sleep(10_000, "still running", { ref: false })]);
       assert.equal(status, 130, output);
       for (let waited = 0; isRunning(tscPid); waited += 50) {
         assert.ok(waited < 5_000, "tsc kept running after the launcher stopped.");

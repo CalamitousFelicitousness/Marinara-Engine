@@ -4,7 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
-- A damaged server file no longer keeps Marinara from starting until you reinstall. When a built server file changes after the build, the launcher now names it and rebuilds the server before starting, and rebuilds from the Windows installer and in-app updates repair it too. Running the Windows installer over an existing install also no longer always stops with "Repository update did not land on the expected commit" (#6984).
+- A damaged server file no longer keeps Marinara from starting until you reinstall. If a built server file changes after the build, the launcher names it and rebuilds the server before starting. Updating through the Windows installer or the in-app updater repairs it too. The Windows installer can also update an existing install again, instead of stopping with "Repository update did not land on the expected commit" (#6984).
 
 - Retrying or re-running agents now runs rewrite agents one after another, each on the text the one before left, as after a new reply. Before, retrying two of them together, such as Prose Guardian and a custom **Text Rewrite** agent, kept only the last one's edits. Agent retries now also keep to the connection's **Max Parallel Agent Jobs** limit (#6977).
 

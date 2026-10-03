@@ -720,7 +720,7 @@ test("Advanced Memory stays in Chat Settings with confirmed knowledge, resumable
     await expect.poll(() => status.records[0]?.enabled).toBe(false);
     const saveButton = inspector.getByRole("button", { name: "Save correction", exact: true });
     const sourceButton = inspector.getByRole("button", { name: "Inspect source messages", exact: true });
-    await expect(inspector.getByText(/Review the source messages, summary text and character access/)).toBeVisible();
+    await expect(inspector.getByText(/Check the source messages, the summary, and which characters know it/)).toBeVisible();
     await expect(saveButton).toBeEnabled();
     await saveButton.scrollIntoViewIfNeeded();
     await captureThemes(page, info, "advanced-memory-review-correction");
@@ -730,7 +730,7 @@ test("Advanced Memory stays in Chat Settings with confirmed knowledge, resumable
     await saveButton.click();
     expect((await correctionRequest).postDataJSON()).toEqual({ content: "Correction: the notebook is green." });
     await expect(saveButton).toBeDisabled();
-    await expect(inspector.getByText(/Review the source messages, summary text and character access/)).toHaveCount(0);
+    await expect(inspector.getByText(/Check the source messages, the summary, and which characters know it/)).toHaveCount(0);
     const saveBounds = await saveButton.boundingBox();
     const sourceBounds = await sourceButton.boundingBox();
     expect(saveBounds).not.toBeNull();
@@ -1397,7 +1397,7 @@ test("Advanced Memory Decision connection is optional and persists for its chat"
     await expect(toggle).not.toBeChecked();
     await expect(settings.getByRole("combobox", { name: "Memory Decision connection", exact: true })).toHaveCount(0);
     await captureThemes(page, info, "memory-decision-off");
-    await settings.getByText("Use Decision model (Jev)", { exact: true }).click();
+    await settings.getByText("Use Decision model", { exact: true }).click();
     const picker = settings.getByRole("combobox", { name: "Memory Decision connection", exact: true });
     await expect(picker).toBeEnabled();
     await expect(picker).toHaveValue("");
@@ -1418,7 +1418,7 @@ test("Advanced Memory Decision connection is optional and persists for its chat"
     await expect(page.locator("textarea[data-chat-composer]")).toBeVisible();
     settings = await openMemory();
     await expect(settings.getByText(/Choose a usable Decision connection/)).toBeVisible();
-    await settings.getByText("Use Decision model (Jev)", { exact: true }).click();
+    await settings.getByText("Use Decision model", { exact: true }).click();
     await expect.poll(async () => (await status()).settings.decisionEnabled).toBe(false);
     await expect(settings.getByRole("combobox", { name: "Memory Decision connection", exact: true })).toHaveCount(0);
   } finally {

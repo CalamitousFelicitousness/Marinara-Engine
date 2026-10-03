@@ -6,6 +6,12 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - A damaged server file no longer keeps Marinara from starting until you reinstall. When a built server file changes after the build, the launcher now names it and rebuilds the server before starting, and rebuilds from the Windows installer and in-app updates repair it too. Running the Windows installer over an existing install also no longer always stops with "Repository update did not land on the expected commit" (#6984).
 
+- `decision_choice:` statements now get answers from System One servers that need a description for every option, such as Strands decider. Before, those servers refused the whole request, so every Choice comparison read as no. Open-Jev's answers stayed the same in testing. The Decision Models guide now explains how to run Strands decider yourself as a Decision connection (#6981).
+
+- Reinstalling the local model's runtime, or installing a new llama.cpp runtime, no longer deletes an installed decision model such as Open-Jev 2B along with the old runtime (#6982).
+
+- Advanced Memory, the OpenRouter connection editor and the Decision diagnostics now say **Decision model** instead of "Jev", which is only one of the models a Decision connection can use (#6983).
+
 - In group chats, replying to a character's message now makes that character answer, the same as mentioning them with @. Before, the reply did not count when choosing who speaks next, and since a character rarely speaks twice in a row, replying to the message they just sent almost always got an answer from someone else (#6978).
 
 - Professor Mari, and other background calls on slow local models, no longer give up when the first token takes more than two minutes. They now wait as long as the **Text generation** request timeout allows (Settings, or `CHAT_GENERATION_TIMEOUT_MS`; 5 minutes by default) (#6970).

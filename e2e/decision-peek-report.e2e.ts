@@ -73,7 +73,7 @@ for (const theme of ["dark", "light"] as const)
       // The unanswered notice reads differently with and without a Decision model, so it
       // is found by the statement it lists.
       const unanswered = page.getByRole("status").filter({ hasText: "Mira draws a sword in the latest message" });
-      const dropped = page.getByRole("status").filter({ hasText: "past the per-turn limit, read as no: 1" });
+      const dropped = page.getByRole("status").filter({ hasText: "over the per-turn limit (counted as no): 1" });
       await expect(unanswered).toContainText(": 32.");
       await expect(dropped).toContainText("Mira is soaked by rain in the latest message");
       await expect(unanswered).not.toContainText("soaked by rain");
@@ -228,7 +228,7 @@ for (const theme of ["dark", "light"] as const)
       await expect(diagnostics.getByRole("button", { name: "Test decisions", exact: true })).toBeDisabled();
       fixture = "memory-empty";
       await diagnostics.getByRole("button", { name: "Preview inputs" }).click();
-      await expect(diagnostics).toContainText("No Jev memory decisions have been recorded yet.");
+      await expect(diagnostics).toContainText("No Advanced Memory decisions have been recorded yet.");
       fixture = "memory";
       await diagnostics.getByRole("button", { name: "Preview inputs" }).click();
       await expect(diagnostics.getByText("Advanced Memory activity", { exact: true })).toBeVisible();

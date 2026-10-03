@@ -21843,21 +21843,34 @@ test("mobile chat composer follows the visual viewport above the software keyboa
 
     const viewportMeta = page.locator('meta[name="viewport"]');
     await expect(viewportMeta).toHaveAttribute("content", /interactive-widget=resizes-content/);
-    const themeColorMeta = page.locator('meta[name="theme-color"]');
-    const safeArea = page.locator('[data-component="CenterContent"] > div').first();
+    const topbar = page.locator(".mari-topbar:visible");
+    const expectMatchingMobileBacking = async () => {
+      await expect(topbar).toHaveCSS("background-color", /^rgb\(\d+, \d+, \d+\)$/);
+      await expect
+        .poll(() =>
+          topbar.evaluate((element) => {
+            const color = getComputedStyle(element).backgroundColor;
+            const safeArea = document.querySelector('[data-component="CenterContent"] > div')!;
+            return {
+              html: getComputedStyle(document.documentElement).backgroundColor === color,
+              body: getComputedStyle(document.body).backgroundColor === color,
+              bodyImage: getComputedStyle(document.body).backgroundImage,
+              safeArea: getComputedStyle(safeArea).backgroundColor === color,
+              themeColor: document.querySelector('meta[name="theme-color"]')?.getAttribute("content") === color,
+            };
+          }),
+        )
+        .toEqual({ html: true, body: true, bodyImage: "none", safeArea: true, themeColor: true });
+      return topbar.evaluate((element) => getComputedStyle(element).backgroundColor);
+    };
+    const defaultBacking = await expectMatchingMobileBacking();
+    // Preserve the separate sidebar card composite when the TopBar backing changes.
+    const sidebarSurface = await page
+      .locator("html")
+      .evaluate((element) => element.style.getPropertyValue("--marinara-shell-surface"));
     // Chromium and WebKit round the native card composite one RGB step apart.
-    await expect(themeColorMeta).toHaveAttribute("content", /^rgb\(1[78], 17, (19|20)\)$/);
-    const defaultBacking = (await themeColorMeta.getAttribute("content"))!;
-    await expect(safeArea).toHaveCSS("background-color", defaultBacking);
-    await expect
-      .poll(() =>
-        page.evaluate(() => ({
-          html: document.documentElement.style.getPropertyValue("background-color"),
-          body: document.body.style.getPropertyValue("background-color"),
-          shell: document.documentElement.style.getPropertyValue("--marinara-shell-surface"),
-        })),
-      )
-      .toEqual({ html: defaultBacking, body: defaultBacking, shell: defaultBacking });
+    expect(sidebarSurface).toMatch(/^rgb\(1[78], 17, (19|20)\)$/);
+    expect(defaultBacking).not.toBe(sidebarSurface);
 
     const shell = page.locator('[data-component="AppShell"]');
     const composer = page.locator(".chat-input-container:visible");
@@ -21963,8 +21976,19 @@ test("mobile chat composer follows the visual viewport above the software keyboa
       )
       .toEqual({ height: "360px", top: `${expectedOffsetTop}px` });
     await expect(page.locator("html")).toHaveAttribute("data-mari-software-keyboard-open", "");
-    await expect(themeColorMeta).toHaveAttribute("content", defaultBacking);
-    await expect(safeArea).toHaveCSS("background-color", defaultBacking);
+    expect(await expectMatchingMobileBacking()).toBe(defaultBacking);
+    let currentBacking = defaultBacking;
+    for (const theme of ["light", "dark"] as const) {
+      await page.evaluate(async (theme) => {
+        const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+        useUIStore.getState().setTheme(theme);
+      }, theme);
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      await expect(topbar).not.toHaveCSS("background-color", currentBacking);
+      currentBacking = await expectMatchingMobileBacking();
+      await expect(page.locator("html")).toHaveAttribute("data-mari-software-keyboard-open", "");
+    }
+    expect(currentBacking).toBe(defaultBacking);
     const compactComposerStyle = await composer.evaluate((element) => {
       const style = getComputedStyle(element);
       return {
@@ -22221,20 +22245,6 @@ test("mobile chat composer follows the visual viewport above the software keyboa
     await expect(page.locator("html")).not.toHaveAttribute("data-mari-software-keyboard-open", "");
 
     await page.evaluate(async () => {
-      const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
-      useUIStore.getState().setTheme("light");
-    });
-    await expect(themeColorMeta).toHaveAttribute("content", "#faf8ff");
-    await expect(page.locator("html")).toHaveCSS("background-color", "rgb(250, 248, 255)");
-    await expect(page.locator("body")).toHaveCSS("background-color", "rgb(250, 248, 255)");
-    await expect(safeArea).toHaveCSS("background-color", "rgb(250, 248, 255)");
-    await page.evaluate(async () => {
-      const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
-      useUIStore.getState().setTheme("dark");
-    });
-    await expect(themeColorMeta).toHaveAttribute("content", defaultBacking);
-
-    await page.evaluate(async () => {
       const storePath = "/src/stores/ui.store.ts";
       const { useUIStore } = (await import(/* @vite-ignore */ storePath)) as {
         useUIStore: {
@@ -22246,16 +22256,15 @@ test("mobile chat composer follows the visual viewport above the software keyboa
       };
       useUIStore.getState().setAppBackgroundColor("#123456");
     });
-    await expect
-      .poll(() =>
-        page.evaluate(() => ({
-          html: document.documentElement.style.getPropertyValue("background-color"),
-          body: document.body.style.getPropertyValue("background-color"),
-        })),
-      )
-      .toEqual({ html: "rgb(18, 52, 86)", body: "rgb(18, 52, 86)" });
-    await expect(themeColorMeta).toHaveAttribute("content", "#123456");
-    await expect(safeArea).toHaveCSS("background-color", "rgb(18, 52, 86)");
+    await expect(topbar).not.toHaveCSS("background-color", defaultBacking);
+    const customSolidBacking = await expectMatchingMobileBacking();
+    await page.evaluate(async () => {
+      const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+      useUIStore.getState().setAppBackgroundColor("linear-gradient(135deg, #345678, #987654)");
+    });
+    await expect(topbar).not.toHaveCSS("background-color", customSolidBacking);
+    const gradientBacking = await expectMatchingMobileBacking();
+    await expect(shell).toHaveCSS("background-image", /^linear-gradient\(/);
 
     await page.evaluate(async () => {
       const storePath = "/src/stores/ui.store.ts";
@@ -22274,16 +22283,14 @@ test("mobile chat composer follows the visual viewport above the software keyboa
       useUIStore.getState().setAppBackgroundColor("");
       useUIStore.getState().setVisualTheme("sillytavern");
     });
-    await expect
-      .poll(() =>
-        page.evaluate(() => ({
-          html: document.documentElement.style.getPropertyValue("background-color"),
-          body: document.body.style.getPropertyValue("background-color"),
-        })),
-      )
-      .toEqual({ html: "rgb(101, 67, 33)", body: "rgb(101, 67, 33)" });
-    await expect(themeColorMeta).toHaveAttribute("content", "rgb(101, 67, 33)");
-    await expect(safeArea).toHaveCSS("background-color", "rgb(101, 67, 33)");
+    await expect(page.locator("html")).toHaveAttribute("data-visual-theme", "sillytavern");
+    await expect(topbar).not.toHaveCSS("background-color", gradientBacking);
+    expect(
+      await page
+        .locator("html")
+        .evaluate((element) => getComputedStyle(element).getPropertyValue("--background").trim()),
+    ).toBe("rgb(101, 67, 33)");
+    await expectMatchingMobileBacking();
 
     await page.evaluate(() => {
       Object.defineProperty(window, "scrollY", {
@@ -22351,10 +22358,13 @@ test("mobile chat composer follows the visual viewport above the software keyboa
       useUIStore.getState().setVisualTheme("default");
     });
     await page.reload({ waitUntil: "domcontentloaded" });
-    await expect(themeColorMeta).toHaveAttribute("content", "#234567");
-    await expect(page.locator("html")).toHaveCSS("background-color", "rgb(35, 69, 103)");
-    await expect(page.locator("body")).toHaveCSS("background-color", "rgb(35, 69, 103)");
-    await expect(safeArea).toHaveCSS("background-color", "rgb(35, 69, 103)");
+    await expect
+      .poll(() =>
+        page.locator("html").evaluate((element) => getComputedStyle(element).getPropertyValue("--background").trim()),
+      )
+      .toBe("#234567");
+    await expect(topbar).not.toHaveCSS("background-color", defaultBacking);
+    await expectMatchingMobileBacking();
   } finally {
     await page.request.delete(`/api/chats/${chat.id}`).catch(() => undefined);
   }

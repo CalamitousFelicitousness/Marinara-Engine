@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- Chats, Characters, Personas, Lorebooks, Presets, Connections, Agents, Settings and the Tracker Panel now each have a **?** at the top. Hover over it, or tap it on mobile, to read what that sidebar is for and what you can do there (#7002).
+
 - Professor Mari can now turn **Send without wrapper** on or off for an existing prompt block, instead of failing or reporting success while leaving it unchanged. Asked to do this for a marker, which always keeps its wrapper, she reports that it cannot be done (#7014).
 
 - On phones, **Chat Summary** keeps the summary or prompt you are typing in visible above the keyboard, including sideways. The controls at the bottom of the window are hidden while you type in it and come back when the keyboard closes. A tap while the keyboard is open no longer lands on a different setting (#6993).

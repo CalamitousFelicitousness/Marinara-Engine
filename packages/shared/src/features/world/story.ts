@@ -967,7 +967,8 @@ export function storyTurnPromptText(story: StoryScript, turn: StoryTurn): string
   }
   if (turn.tells.length) lines.push("The story asks this of you now:", ...turn.tells.map((tell) => `- ${tell}`));
   // Its own moments it cannot mark now (done, held back by their conditions, or the Engine's this turn),
-  // so it never tells a moment, or its beats, that the Engine would refuse.
+  // so it never marks, and tells the beats of, a moment the Engine would refuse. Only the marking is
+  // closed: a scene the Engine asks for this turn is still told, even one such a moment shares.
   const closed = story.events.filter(
     (event) =>
       event.gm &&
@@ -976,9 +977,7 @@ export function storyTurnPromptText(story: StoryScript, turn: StoryTurn): string
         !storyConditionsHold(event.if, turn.state.flags)),
   );
   if (closed.length) {
-    lines.push(
-      `Story moments not open to you now (do not mark them or tell their scenes): ${closed.map((event) => event.id).join(", ")}.`,
-    );
+    lines.push(`Story moments you cannot mark now: ${closed.map((event) => event.id).join(", ")}.`);
   }
   return lines.join("\n");
 }

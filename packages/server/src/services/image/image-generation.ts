@@ -4,7 +4,7 @@
 // Calls image generation APIs (OpenAI DALL-E, Pollinations, Stability, etc.)
 // based on a user's configured image_generation connection.
 
-import { createHash, createHmac, randomBytes } from "crypto";
+import { createHash, createHmac, randomBytes, randomUUID } from "crypto";
 import { existsSync, mkdirSync, readdirSync, renameSync, unlinkSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import { inflateRawSync } from "zlib";
@@ -12,6 +12,7 @@ import { WebSocket } from "undici";
 import { DATA_DIR } from "../../utils/data-dir.js";
 import { newId } from "../../utils/id-generator.js";
 import {
+  CODEX_IMAGE_MODEL,
   COMFYUI_PLACEHOLDER_REFERENCE_BASE64,
   buildComfyUiLoraWorkflowReplacements,
   DEFAULT_AUTOMATIC1111_DEFAULTS,
@@ -63,6 +64,11 @@ import { buildVeniceApiUrl, buildVeniceImageRequest, parseVeniceImageResponse } 
 import { buildZaiImageRequest, buildZaiImageUrl, parseZaiImageUrl } from "./zai-image.js";
 import { buildFalImageUrl } from "./fal-image.js";
 import { buildAtlasCloudImageRequest, runAtlasCloudPrediction } from "../media/atlas-cloud.js";
+import {
+  OPENAI_CHATGPT_CODEX_BASE_URL,
+  buildOpenAIChatGPTHeaders,
+  getOpenAIChatGPTAuth,
+} from "../llm/openai-chatgpt-auth.js";
 
 // sharp is an optional native module (no prebuilds on some platforms like Termux).
 // Lazy-load so the server boots even when sharp is missing. The Draw Things img2img
@@ -117,6 +123,7 @@ export type { ImageGenRequest, ImageGenResult } from "@marinara-engine/shared";
 
 const EXPLICIT_IMAGE_SOURCES = new Set([
   "openai",
+  "codex_chatgpt",
   "arli",
   "nanogpt",
   "openrouter",
@@ -265,6 +272,8 @@ async function generateImageUncapped(
         switch (resolvedSource) {
           case "openai":
             return generateOpenAI(normalizedBaseUrl, apiKey, scopedRequest);
+          case "codex_chatgpt":
+            return generateChatGPTImage(scopedRequest);
           case "arli":
             return generateArli(normalizedBaseUrl, apiKey, scopedRequest);
           case "nanogpt":
@@ -949,10 +958,11 @@ async function readOpenAIImageResult(
   resp: Response,
   request: ImageGenRequest,
   operation: "generation" | "edit",
+  provider = "OpenAI",
 ): Promise<ImageGenResult> {
   if (!resp.ok) {
     const errText = await resp.text().catch(() => "Unknown error");
-    throw new Error(`OpenAI image ${operation} failed (${resp.status}): ${sanitizeErrorText(errText)}`);
+    throw new Error(`${provider} image ${operation} failed (${resp.status}): ${sanitizeErrorText(errText)}`);
   }
 
   const data = (await resp.json()) as {
@@ -967,7 +977,7 @@ async function readOpenAIImageResult(
       : data && typeof data === "object"
         ? Object.keys(data).join(", ")
         : "none";
-    throw new Error(`No image data in OpenAI response (fields: ${fields || "none"})`);
+    throw new Error(`No image data in ${provider} response (fields: ${fields || "none"})`);
   }
 
   return { base64: b64, mimeType: "image/png", ext: "png" };
@@ -1241,6 +1251,84 @@ async function generateOpenAI(baseUrl: string, apiKey: string, request: ImageGen
   );
 
   return readOpenAIImageResult(resp, request, "generation");
+}
+
+// ponytail: ChatGPT's image endpoint does not reliably keep the requested `size` (a square
+// request came back portrait in the contributor's tests), so the wanted shape is also stated in
+// the prompt. Remove this once the endpoint honors `size`.
+function chatGPTCanvasHint(request: ImageGenRequest, hasReferences: boolean): string | null {
+  const { width, height } = request;
+  if (!(width && height && Number.isSafeInteger(width) && Number.isSafeInteger(height) && width > 0 && height > 0)) {
+    return null;
+  }
+  let divisor = width;
+  let rest = height;
+  while (rest) [divisor, rest] = [rest, divisor % rest];
+  const shape = width === height ? "square" : width < height ? "portrait" : "landscape";
+  return [
+    ...(hasReferences
+      ? ["Do not inherit the canvas dimensions or aspect ratio of the attached reference images."]
+      : []),
+    `Target canvas: ${shape}, ${width / divisor}:${height / divisor} aspect ratio (nominal size ${width} x ${height} pixels).`,
+    "Compose the final image for this aspect ratio.",
+  ].join("\n");
+}
+
+/**
+ * Image generation with the ChatGPT plan behind the local `codex login`, through the same
+ * endpoint Codex's own image tool uses. The login token only ever goes to that fixed endpoint;
+ * the connection's API key and base URL are not used. `fetchImpl` is replaceable for tests.
+ */
+export async function generateChatGPTImage(
+  request: ImageGenRequest,
+  fetchImpl: typeof imageFetch = imageFetch,
+): Promise<ImageGenResult> {
+  const auth = await getOpenAIChatGPTAuth();
+  const references = openAIReferenceImages(request);
+  const endpoint = references.length > 0 ? "edits" : "generations";
+  const model = request.model?.trim() || CODEX_IMAGE_MODEL;
+  const canvasHint = chatGPTCanvasHint(request, references.length > 0);
+  const body = withImageCustomParameters(request, {
+    ...(references.length > 0
+      ? {
+          images: references.map((reference) => {
+            const decoded = decodeReferenceImage(reference);
+            return { image_url: `data:${decoded.mimeType};base64,${decoded.base64}` };
+          }),
+        }
+      : {}),
+    model,
+    prompt: canvasHint ? `${openAITextPrompt(request)}\n\n${canvasHint}` : openAITextPrompt(request),
+    background: request.transparentBackground ? "transparent" : "opaque",
+    quality: "auto",
+    size: openAIImageSize({ ...request, model }),
+  });
+  logDebugOverride(
+    request.debugMode === true,
+    "[debug/image/chatgpt] final request payload:\n%s",
+    imagePayloadForLog(body),
+  );
+  const resp = await fetchImpl(
+    `${OPENAI_CHATGPT_CODEX_BASE_URL}/images/${endpoint}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${auth.accessToken}`,
+        ...buildOpenAIChatGPTHeaders(auth),
+        "x-codex-image-turn-id": randomUUID(),
+      },
+      body: JSON.stringify(body),
+      signal: imageRequestSignal(request),
+    },
+    { allowLocal: false, allowLoopback: false, allowedOrigins: [OPENAI_CHATGPT_CODEX_BASE_URL] },
+  );
+  if (resp.status === 401) {
+    throw new Error(
+      "ChatGPT did not accept the Codex login. Run `codex login` again on the computer running Marinara.",
+    );
+  }
+  return readOpenAIImageResult(resp, request, endpoint === "edits" ? "edit" : "generation", "ChatGPT");
 }
 
 function xAIImagesUrl(baseUrl: string, endpoint: "generations" | "edits"): string {

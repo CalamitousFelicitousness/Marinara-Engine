@@ -8,6 +8,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - The agent editor has a new **Share requests with other agents** switch under **Connection Override**. Turn it off to send that agent in its own request instead of together with other agents, which helps local models that mix up their tasks. This also works for Prose Guardian, Continuity Checker and Immersive HTML, which otherwise rewrite the reply together. It is on by default, and agents that always run on their own show it as off (#6977).
 
+- Updated the multipart upload parser to fix two denial-of-service vulnerabilities triggered by malformed upload headers or oversized boundaries (#6995).
+
 - `decision_choice:` statements now get answers from System One servers that need a description for every option, such as Strands decider. Before, those servers refused the whole request, so every Choice comparison read as no. Open-Jev's answers stayed the same in testing. The Decision Models guide now explains how to run Strands decider yourself as a Decision connection (#6981).
 
 - Reinstalling the local model's runtime, or installing a new llama.cpp runtime, no longer deletes an installed decision model such as Open-Jev 2B along with the old runtime (#6982).

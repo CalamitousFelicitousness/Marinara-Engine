@@ -124,7 +124,7 @@ test("UX sweep: achievement highlights stay inside the widget with padding", asy
 });
 
 for (const spec of [
-  { kind: "Character", path: "/api/characters", sections: 9, last: "Advanced", lastId: "advanced" },
+  { kind: "Character", path: "/api/characters", sections: 10, last: "Advanced", lastId: "advanced" },
   { kind: "Persona", path: "/api/characters/personas", sections: 8, last: "Stats", lastId: "stats" },
   { kind: "Lorebook", path: "/api/lorebooks", sections: 2, last: "Entries", lastId: "entries" },
   { kind: "Preset", path: "/api/prompts", sections: 5, last: "Regex", lastId: "regex" },
@@ -193,6 +193,68 @@ for (const spec of [
     }
   });
 }
+
+test("UX sweep: Character Voice names a same-name card's voice and keeps typing through a slow save", async ({
+  page,
+  request,
+}, testInfo) => {
+  test.skip(testInfo.project.name.includes("mobile"), "The Text to Speech card beside the editor shows each refetch.");
+  const original = await (await request.get("/api/tts/config")).json();
+  const name = `UX Voice ${Date.now()}`;
+  const ids: string[] = [];
+  for (let index = 0; index < 2; index += 1) {
+    const created = await request.post("/api/characters", { data: { data: { name } } });
+    expect(created.ok()).toBeTruthy();
+    ids.push(((await created.json()) as { id: string }).id);
+  }
+  const [originalId, auId] = ids as [string, string];
+  const heldSaves: Array<() => void> = [];
+  try {
+    const voiceAssignments = [{ characterId: originalId, characterName: name, voice: "echo" }];
+    const configured = await request.put("/api/tts/config", {
+      data: { ...original, enabled: true, source: "openai", voiceMode: "per-character", voiceAssignments },
+    });
+    expect(configured.ok()).toBeTruthy();
+    await page.route("**/api/tts/voices", (route) =>
+      route.fulfill({ json: { voices: ["echo"], voiceOptions: [{ id: "echo", name: "echo" }], fromProvider: false } }),
+    );
+    await page.goto("/");
+    await clickTopbarPanel(page, "connections");
+    const ttsCard = page
+      .locator('[data-component="RightPanel"]')
+      .getByText("Text to Speech", { exact: true })
+      .locator("xpath=../../..");
+    await ttsCard.getByTitle("Expand").click();
+    await openEditor(page, "Character", auId);
+    const editor = page.locator(".mari-editor-shell");
+    await openSection(editor, "Voice");
+    const input = editor.locator('[data-editor-section="voice"]').getByTestId("character-voice-input");
+    // Without a voice of its own, the copy speaks with the original card's voice, so it must not say "Default voice".
+    await expect(input).toHaveAttribute("placeholder", "echo (from a card with a matching name)");
+
+    // Hold each save so the first save's refetch lands while the second one is still unanswered.
+    await page.route("**/api/tts/config", async (route) => {
+      if (route.request().method() === "PUT") await new Promise<void>((release) => heldSaves.push(release));
+      await route.continue();
+    });
+    await input.pressSequentially("abc");
+    await expect.poll(() => heldSaves.length).toBe(1);
+    await input.pressSequentially("d");
+    await expect.poll(() => heldSaves.length).toBe(2);
+    // The settings card shows each refetch as it lands; the typed "abcd" must outlive the older "abc" one.
+    const cardInput = ttsCard.getByTestId(`tts-custom-voice-input-character-${auId}`);
+    heldSaves[0]!();
+    await expect(cardInput).toHaveValue("abc");
+    await expect(input).toHaveValue("abcd");
+    heldSaves[1]!();
+    await expect(cardInput).toHaveValue("abcd");
+    await expect(input).toHaveValue("abcd");
+  } finally {
+    for (const release of heldSaves) release();
+    await request.put("/api/tts/config", { data: original });
+    for (const id of ids) await request.delete(`/api/characters/${id}`);
+  }
+});
 
 test("UX sweep: Appearance groups, quick access, width and hidden-panel state", async ({ page }, testInfo) => {
   await page.goto("/");

@@ -236,6 +236,7 @@
   --mari-logo-title-cyan: #22d3ee;
   --mari-logo-title-orange: #fb923c;
   --mari-logo-title-pink: #ec4899;
+  --marinara-mode-game-accent: #ec4b97;
   --marinara-app-accent-solid: var(--primary);
   --marinara-app-accent-static: var(--primary);
   --marinara-app-accent-gradient: linear-gradient(90deg, #ec4b97, #f29744, #36cdde);
@@ -840,9 +841,9 @@
 }
 
 .mari-chat-logo-mode--game {
-  --mari-chat-logo-mode-color: var(--marinara-app-accent-solid);
-  --mari-chat-logo-mode-color-deep: color-mix(in srgb, var(--marinara-app-accent-solid) 85%, var(--background));
-  --mari-chat-logo-mode-text: var(--primary-foreground);
+  --mari-chat-logo-mode-color: var(--marinara-mode-game-accent);
+  --mari-chat-logo-mode-color-deep: color-mix(in srgb, var(--marinara-mode-game-accent) 85%, var(--background));
+  --mari-chat-logo-mode-text: #260d19;
 }
 
 .mari-chat-mode-action {
@@ -1458,6 +1459,26 @@
 
 .mari-chrome-text-muted {
   color: var(--marinara-chat-chrome-panel-muted);
+}
+
+/* Older social-app bundles copy Engine's default accent into their scoped CSS.
+   Forward the live host accent while allowing explicit inline package themes. */
+:root
+  :is(
+    marinara-capability-noodle,
+    marinara-capability-slurp,
+    marinara-capability-slurp2,
+    [data-marinara-capability-scope="noodle"],
+    [data-marinara-capability-scope="slurp"],
+    [data-marinara-capability-scope="slurp2"]
+  ) {
+  --primary: inherit;
+  --marinara-app-accent-solid: inherit;
+  --marinara-app-accent-static: inherit;
+  --marinara-app-accent-gradient: inherit;
+  --marinara-app-accent-static-gradient: inherit;
+  --marinara-chat-chrome-accent: inherit;
+  --marinara-chat-chrome-accent-gradient: inherit;
 }
 
 .mari-chrome-token-scope,
@@ -4476,6 +4497,12 @@ strong {
   }
 }
 
+/* Match the Home menu's default dark surface without changing custom theme backgrounds. */
+:where(:root:not([data-theme="light"]):not(:has(#marinara-custom-theme))) :where(.mari-sidebar, .mari-right-panel) {
+  background-color: var(--background);
+  background-image: linear-gradient(var(--card), var(--card));
+}
+
 /* Firefox on Windows can rasterize text inside large blurred/translucent layout layers,
    which shows up most clearly on high-DPI displays. Fall back to opaque shell chrome there. */
 @supports (-moz-appearance: none) {
@@ -4524,7 +4551,7 @@ strong {
 
   .mari-sidebar,
   .mari-right-panel {
-    background: var(--background) !important;
+    background-color: var(--background) !important;
   }
 }
 

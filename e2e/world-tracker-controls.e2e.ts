@@ -9,6 +9,7 @@ for (const theme of ["light", "dark"] as const) {
   test(`World forecast controls sit beside date and time without covering values (${theme})`, async ({
     page,
     request,
+    isMobile,
   }, info) => {
     const response = await request.post("/api/chats", {
       data: { name: "World controls fixture", mode: "roleplay", characterIds: [] },
@@ -46,6 +47,7 @@ for (const theme of ["light", "dark"] as const) {
         trackerPanelEnabled: true,
         trackerPanelOpen: true,
         trackerPanelOpenByChatId: { [chat.id]: true },
+        trackerPanelSide: theme === "light" ? "left" : "right",
         theme,
         appAccentPulseMode: false,
       });
@@ -61,8 +63,40 @@ for (const theme of ["light", "dark"] as const) {
       const weather = page.getByRole("button", { name: /^Weather: Dry/ });
       await expect(temperature).toBeVisible();
       await expect(weather).toBeVisible();
+      const tapHint = page.getByText("Tap field to edit it", { exact: true });
+      if (isMobile) {
+        await expect(tapHint).toBeVisible();
+        const hintBox = await tapHint.boundingBox();
+        const settingsBox = await page
+          .getByRole("button", { name: "Open tracker settings", exact: true })
+          .boundingBox();
+        expect(hintBox!.x + hintBox!.width).toBeLessThanOrEqual(settingsBox!.x);
+        expect(settingsBox!.x).toBeGreaterThan(page.viewportSize()!.width / 2);
+      } else {
+        await expect(tapHint).toBeHidden();
+      }
       await page.screenshot({ path: info.outputPath(`world-controls-${theme}.png`) });
-      const expectControlBeforeValue = async (field: Locator) => {
+      const expectControlCentered = async (field: Locator, editHint = true) => {
+        const control = field.locator(":scope > span[aria-hidden='true']");
+        if (isMobile && editHint) {
+          await expect(control).toBeHidden();
+          return;
+        }
+        if (editHint) {
+          await field.hover();
+          await expect(control).toHaveCSS("opacity", "0.7");
+        }
+        await expect(control).toBeVisible();
+        const centerOffset = await field.evaluate((element) => {
+          const control = element.querySelector(":scope > span[aria-hidden='true']")!.getBoundingClientRect();
+          const button = element.getBoundingClientRect();
+          return Math.abs(control.top + control.height / 2 - (button.top + button.height / 2));
+        });
+        expect(centerOffset).toBeLessThanOrEqual(1);
+      };
+      const expectControlBeforeValue = async (field: Locator, editHint = true) => {
+        await expectControlCentered(field, editHint);
+        if (isMobile && editHint) return;
         const boxes = await field.evaluate((element) => {
           const control = element.querySelector(":scope > span[aria-hidden='true']")!.getBoundingClientRect();
           const value = element.firstElementChild!.getBoundingClientRect();
@@ -78,16 +112,23 @@ for (const theme of ["light", "dark"] as const) {
         expect(boxes.controlLeft - boxes.buttonLeft).toBeLessThan(boxes.buttonWidth / 4);
         expect(boxes.controlRight).toBeLessThanOrEqual(boxes.valueLeft);
       };
+      for (const name of [/^Location: A quiet riverside camp/, /^Time: Later evening/, /^Date: Unknown/]) {
+        await expectControlCentered(page.getByRole("button", { name }));
+      }
       await expectControlBeforeValue(temperature);
       await expectControlBeforeValue(weather);
-      const timeIcon = await page
-        .getByRole("button", { name: /^Time: Later evening/ })
-        .locator(":scope > span[aria-hidden='true']")
-        .boundingBox();
-      const temperatureIcon = await temperature.locator(":scope > span[aria-hidden='true']").boundingBox();
-      expect(temperatureIcon!.x).toBeGreaterThan(timeIcon!.x + timeIcon!.width);
-      expect(temperatureIcon!.x - timeIcon!.x - timeIcon!.width).toBeLessThan(24);
-      await weather.click();
+      if (!isMobile) {
+        const timeIcon = await page
+          .getByRole("button", { name: /^Time: Later evening/ })
+          .locator(":scope > span[aria-hidden='true']")
+          .boundingBox();
+        const temperatureIcon = await temperature.locator(":scope > span[aria-hidden='true']").boundingBox();
+        expect(temperatureIcon!.x).toBeGreaterThan(timeIcon!.x + timeIcon!.width);
+        expect(temperatureIcon!.x - timeIcon!.x - timeIcon!.width).toBeLessThan(24);
+        await page.screenshot({ path: info.outputPath(`world-controls-${theme}-desktop-edit.png`) });
+      }
+      if (isMobile) await weather.tap();
+      else await weather.click();
       const input = page.getByRole("textbox", { name: "Weather", exact: true });
       const longWeather = "Dry, with occasional gusts sweeping across the riverside camp";
       await input.fill(longWeather);
@@ -101,12 +142,13 @@ for (const theme of ["light", "dark"] as const) {
         "aria-pressed",
         "true",
       );
+      await expect(tapHint).toBeHidden();
       const lockTemperature = page.getByRole("button", { name: "Lock temperature", exact: true });
-      await expectControlBeforeValue(lockTemperature);
+      await expectControlBeforeValue(lockTemperature, false);
       await lockTemperature.click();
       const unlockTemperature = page.getByRole("button", { name: "Unlock temperature", exact: true });
       await expect(unlockTemperature).toHaveAttribute("aria-pressed", "true");
-      await expectControlBeforeValue(unlockTemperature);
+      await expectControlBeforeValue(unlockTemperature, false);
       await expect
         .poll(async () =>
           Object.entries((await state()).fieldLocks ?? {}).some(

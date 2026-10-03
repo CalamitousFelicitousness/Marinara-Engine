@@ -392,3 +392,84 @@ for (const theme of ["dark", "light"] as const) {
     }
   });
 }
+
+for (const theme of ["dark", "light"] as const) {
+  test(`legacy package frames inherit the host accent without replacing app branding (${theme})`, async ({ page }) => {
+    await page.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: null } }));
+    await seedUIState(page, {
+      hasCompletedOnboarding: true,
+      sidebarOpen: false,
+      rightPanelOpen: false,
+      appAccentColor: "#20b080",
+      appAccentPulseMode: false,
+      appAccentRgbMode: false,
+      theme,
+    });
+    await page.goto("/");
+    await expect.poll(async () => (await readAccentPreferences(page)).ready).toBe(true);
+    await page.evaluate(() => {
+      const fixture = document.createElement("div");
+      fixture.id = "legacy-package-accent-proof";
+      // Old published bundles append this scoped copy of Engine defaults after the host stylesheet.
+      fixture.innerHTML = ["noodle", "slurp", "slurp2"]
+        .map(
+          (id) => `
+          <style>@scope (marinara-capability-${id}, [data-marinara-capability-scope="${id}"]) {
+            :scope {
+              --primary: #ec4b97;
+              --marinara-app-accent-solid: var(--primary);
+              --marinara-chat-chrome-accent: var(--marinara-app-accent-solid);
+              --marinara-chat-chrome-panel-border: color-mix(in srgb, var(--marinara-chat-chrome-accent) 16%, transparent);
+            }
+          }</style>
+          <marinara-capability-${id} class="legacy-accent-frame" style="border:1px solid var(--marinara-chat-chrome-panel-border)"></marinara-capability-${id}>
+          <div data-marinara-capability-scope="${id}" class="legacy-accent-frame" style="border:1px solid var(--marinara-chat-chrome-panel-border)">
+            <span class="legacy-brand" style="--noodle-accent:${id === "noodle" ? "#7ea7ff" : "#ff7ec1"};color:var(--noodle-accent)"></span>
+          </div>`,
+        )
+        .join("");
+      document.body.append(fixture);
+    });
+    for (const accent of ["#20b080", "#8060ff"]) {
+      await page.evaluate(async (color) => {
+        const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+        useUIStore.getState().setAppAccentColor(color);
+      }, accent);
+      const border = await page.evaluate((color) => {
+        const reference = document.createElement("span");
+        reference.style.border = `1px solid color-mix(in srgb, ${color} 16%, transparent)`;
+        document.body.append(reference);
+        const rendered = getComputedStyle(reference).borderTopColor;
+        reference.remove();
+        return rendered;
+      }, accent);
+      await expect
+        .poll(() =>
+          page.locator("#legacy-package-accent-proof .legacy-accent-frame").evaluateAll((frames) =>
+            frames.map((frame) => ({
+              accent: getComputedStyle(frame).getPropertyValue("--marinara-chat-chrome-accent").trim(),
+              border: getComputedStyle(frame).borderTopColor,
+            })),
+          ),
+        )
+        .toEqual(
+          Array.from({ length: 6 }, () => ({
+            accent,
+            border,
+          })),
+        );
+    }
+    await expect(page.locator(".legacy-brand").nth(0)).toHaveCSS("color", "rgb(126, 167, 255)");
+    await expect(page.locator(".legacy-brand").nth(1)).toHaveCSS("color", "rgb(255, 126, 193)");
+    await expect(page.locator(".legacy-brand").nth(2)).toHaveCSS("color", "rgb(255, 126, 193)");
+    const explicitTheme = page.locator('#legacy-package-accent-proof [data-marinara-capability-scope="slurp2"]');
+    await explicitTheme.evaluate((element) => {
+      (element as HTMLElement).style.setProperty("--marinara-chat-chrome-accent", "#ff7ec1");
+    });
+    expect(
+      await explicitTheme.evaluate((element) =>
+        getComputedStyle(element).getPropertyValue("--marinara-chat-chrome-accent").trim(),
+      ),
+    ).toBe("#ff7ec1");
+  });
+}

@@ -209,7 +209,8 @@ test.describe("Pop-out drawers on desktop", () => {
       await expect(header).toHaveAttribute("aria-expanded", expanded ?? "false");
 
       // Past the window's edge it pops out, with its title bar where it was dropped.
-      const drop = { x: settingsBox.x - 260, y: headerBox.y + 120 };
+      // High enough that the popped-out window fits below its title bar without being moved up.
+      const drop = { x: settingsBox.x - 260, y: settingsBox.y + 160 };
       await drag(page, centre(headerBox), drop);
       const popped = page.locator(`[data-window="${CHAT_NAME_WINDOW}"]`);
       await settle(popped);

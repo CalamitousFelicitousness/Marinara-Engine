@@ -167,9 +167,12 @@ test("chat tools live in Chat Settings in every mode and their top buttons are g
         expect(order, `${chat.mode} drawer order`).toEqual([...order].sort((a, b) => a - b));
       }
 
-      // Each drawer opens its content.
+      // Each drawer opens its content and, on a computer, can pop out like the other sections.
       for (const tool of TOOLS[chat.mode]) {
         const drawer = await openChatSettingsTool(page, tool);
+        await expect(drawer.locator(':scope > .mari-drawer__header [data-drawer-control="pop-out"]')).toHaveCount(
+          mobile ? 0 : 1,
+        );
         const body = drawer.locator(":scope > .mari-drawer__body");
         await expect(body).toBeVisible();
         if (tool === "chat-branches") await expect(body.getByRole("button", { name: "Stats" })).toBeVisible();

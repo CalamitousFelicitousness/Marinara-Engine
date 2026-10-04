@@ -589,7 +589,12 @@ const capabilityPackageManifestBaseSchema = z
 //        (combat C6a-2). Not a soft seam, for the same reason as 1.20 through 1.65: an Engine that cannot
 //        read these refuses the whole ruleset or catalog file, so a package that ships any of them
 //        declares 1.69. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 69 } as const);
+// 1.70: a ruleset's `combat.elevation` says what a board's height does in its fights: how high a level
+//        is, what higher ground gives an attack and a shot, and what a fall does (combat C6b). Boards
+//        may have height whatever a ruleset says. Not a soft seam, for the same reason as 1.20 through
+//        1.69: an Engine that cannot read it refuses the whole ruleset file, so a package that ships it
+//        declares 1.70. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 70 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

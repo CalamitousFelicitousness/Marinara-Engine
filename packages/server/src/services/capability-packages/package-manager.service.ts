@@ -1581,6 +1581,10 @@ export function getCapabilityPackageInstallIssue(
   const cover = plainRecord(plainRecord(ruleset?.combat)?.cover);
   const graded = ["threeQuarters", "saves", "creatures"].some((key) => cover?.[key] !== undefined);
   if (!declaresApi(69) && (graded || carriesCoverlessSaves)) return COVER_ISSUE;
+  // Height, 1.70 (combat C6b): a new key on the strict combat block.
+  if (!declaresApi(70) && plainRecord(ruleset?.combat)?.elevation !== undefined) {
+    return "A ruleset that says what a board's height does requires schemaVersion 2 and capabilityApi 1.70 or newer";
+  }
   return null;
 }
 

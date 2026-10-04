@@ -157,6 +157,8 @@ export interface DirectedRulesetView {
     width: number;
     height: number;
     tiles: TacticalTerrain[][];
+    /** How high each cell stands (combat C6b), elevation[y][x]; absent on a flat board. */
+    elevation?: number[][];
     distance: { label: string; perCell: number };
     /** The scene a board painted for the place (worldgen W9g) looks like, drawn instead of the fight's own. */
     scene?: TacticalEnvironment;

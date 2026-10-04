@@ -47,7 +47,7 @@ import {
   rulesetPositionOf,
   rulesetReachableCells,
 } from "./grid.js";
-import { coverTier } from "../tactical-combat/math.js";
+import { coverTier, elevationAt } from "../tactical-combat/math.js";
 import type {
   RulesetConditionBonus,
   RulesetCombatAction,
@@ -251,7 +251,13 @@ export function rulesetTargetRefusal(
   if (!from || !to || !grid) return null;
   if (actorId === targetId) return null;
   const away = rulesetCellDistance(from, to);
-  if (away > reach.max) return "out-of-reach";
+  // A shot carries further down from higher ground when the ruleset says so (combat C6b).
+  const target = rulesetCombatant(state, targetId);
+  const further =
+    reach.shot && target && rulesetAbove(state, rulesetCombatant(state, actorId), target)
+      ? (state.board?.rangeBonus ?? 0)
+      : 0;
+  if (away > reach.max + further) return "out-of-reach";
   if (away > 1 && !rulesetLineOfSight(grid, from, to)) return "no-line-of-sight";
   return null;
 }
@@ -409,9 +415,22 @@ export function rulesetCoverBonus(
   return tier === "half" || (against === "attack" && rulesetCellCover(grid, at) > 0) ? cover.bonus : 0;
 }
 
+/** Whether one combatant stands on higher ground than another (combat C6b). Never without a board. */
+export function rulesetAbove(
+  state: RulesetEncounterState,
+  actor: RulesetCombatant | undefined,
+  target: RulesetCombatant,
+): boolean {
+  const grid = state.board?.grid;
+  const from = rulesetPositionOf(actor);
+  const at = rulesetPositionOf(target);
+  return !!grid && !!from && !!at && elevationAt(grid, from.x, from.y) > elevationAt(grid, at.x, at.y);
+}
+
 /**
  * What an attack against this combatant is rolled against: their own defense, plus the cover between
- * them and the one attacking, when the ruleset says cover adds anything.
+ * them and the one attacking, when the ruleset says cover adds anything, less what striking down from
+ * higher ground is worth when the ruleset gives it a number (combat C6b).
  *
  * One answer, so a forecast and the roll that follows it can never disagree about the number.
  */
@@ -434,7 +453,9 @@ export function rulesetDefenseAgainst(
   );
   const defense = target.defense + guards.reduce((total, guard) => total + guard.value, 0);
   const cover = rulesetCoverBonus(combat, state, target, rulesetPositionOf(attacker));
-  return { defense: defense + cover, cover, guards };
+  const highGround = combat.elevation?.highGround;
+  const above = typeof highGround === "object" && rulesetAbove(state, attacker, target) ? highGround.bonus : 0;
+  return { defense: defense + cover - above, cover, guards };
 }
 
 /** What conditions add to one roll, as a forecast reads it: the flat part, and every die with the
@@ -1107,7 +1128,8 @@ export function rulesetAttackMode(
     own.has("own-attacks-advantage") ||
     theirs.has("attacks-against-advantage") ||
     !!actor.flags.helped ||
-    !!distance?.advantage;
+    !!distance?.advantage ||
+    (combat.elevation?.highGround === "advantage" && !!where && rulesetAbove(where.state, actor, target));
   const disadvantage =
     own.has("own-attacks-disadvantage") ||
     theirs.has("attacks-against-disadvantage") ||

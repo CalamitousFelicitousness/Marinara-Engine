@@ -31,12 +31,15 @@ export { decideTacticalAction, runEnemyPhase, runInitiativeTurns, applyTacticalT
 export { summarizeTacticalBattlefield } from "./battlefield-summary.js";
 
 export {
+  climbCost,
   coverTier,
   deriveMovement,
+  elevationAt,
   elementMultiplier,
   DIFFICULTY_DAMAGE_MULT,
   hasLineOfSight,
   inReach,
+  reachFrom,
   type CoverTier,
 } from "./math.js";
 export { CLASS_PROFILES, deriveClass, normalizeClass, type ClassProfile } from "./classes.js";
@@ -45,6 +48,7 @@ export {
   generateTacticalBattlefield,
   gridDimensions,
   madeTacticalBattlefield,
+  foothillElevation,
   tacticalMadeBoardIssues,
   placeSpawns,
   validateTacticalBattlefieldBrief,

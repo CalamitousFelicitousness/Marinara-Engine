@@ -59,6 +59,8 @@ import {
   currentTacticalActor,
   forecastAttack,
   hasLineOfSight,
+  reachFrom,
+  elevationAt,
   buildTacticalSummary,
   type CombatWeather,
   type Combatant,
@@ -86,6 +88,7 @@ import {
   resolveTerrainIcon,
   ringColorFor,
   tileShadow,
+  heightWash,
 } from "../../lib/tactical-board-look";
 
 // ── Props ──
@@ -529,12 +532,15 @@ export function TacticalCombatUI({
       if (e.side !== "enemy" || e.hp <= 0) continue;
       const reach = [{ x: e.x, y: e.y }, ...getMovementRange(liveState, e.id)];
       for (const tile of reach) {
-        for (let dy = -e.attackRange.max; dy <= e.attackRange.max; dy++) {
-          for (let dx = -e.attackRange.max; dx <= e.attackRange.max; dx++) {
+        // One cell further for a ranged attack shot down from higher ground (combat C6b).
+        const far = e.attackRange.max + 1;
+        for (let dy = -far; dy <= far; dy++) {
+          for (let dx = -far; dx <= far; dx++) {
             const d = Math.abs(dx) + Math.abs(dy);
-            if (d < e.attackRange.min || d > e.attackRange.max) continue;
             const tx = tile.x + dx;
             const ty = tile.y + dy;
+            if (d < e.attackRange.min || d > reachFrom(liveState.grid, tile, { x: tx, y: ty }, e.attackRange.max))
+              continue;
             if (tx < 0 || ty < 0 || tx >= liveState.grid.width || ty >= liveState.grid.height) continue;
             if (!hasLineOfSight(liveState.grid, tile, { x: tx, y: ty })) continue;
             keys.add(`${tx},${ty}`);
@@ -1384,6 +1390,7 @@ export function TacticalCombatUI({
                 const isMoveOrigin = !!stagedMove && !!selectedUnit && selectedUnit.x === x && selectedUnit.y === y;
                 const isInspected = inspectTile?.x === x && inspectTile?.y === y;
                 const icon = resolveTerrainIcon(activeEnvironment, terrain);
+                const height = elevationAt(liveState.grid, x, y);
                 return (
                   <button
                     type="button"
@@ -1395,11 +1402,15 @@ export function TacticalCombatUI({
                     )}
                     style={{ backgroundColor: palette[terrain] + TILE_ALPHA, boxShadow: tileShadow(terrain) }}
                     title={tileWords?.[terrain] ?? localizeUi(`ui.game.tacticalcombatui.terrain.${terrain}`)}
-                    aria-label={localizeUi("ui.game.tacticalcombatui.tileLabel", {
-                      terrain: tileWords?.[terrain] ?? localizeUi(`ui.game.tacticalcombatui.terrain.${terrain}`),
-                      row: y + 1,
-                      column: x + 1,
-                    })}
+                    aria-label={localizeUi(
+                      height > 0 ? "ui.game.tacticalcombatui.tileLabelHeight" : "ui.game.tacticalcombatui.tileLabel",
+                      {
+                        terrain: tileWords?.[terrain] ?? localizeUi(`ui.game.tacticalcombatui.terrain.${terrain}`),
+                        height,
+                        row: y + 1,
+                        column: x + 1,
+                      },
+                    )}
                   >
                     {/* Painted terrain texture (rotated per-tile for variety) */}
                     <span
@@ -1418,6 +1429,14 @@ export function TacticalCombatUI({
                     />
                     {/* Top-light depth gradient */}
                     <span className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/10 via-transparent to-black/25" />
+                    {/* Raised ground (combat C6b): lighter a level, marked in the corner. */}
+                    {height > 0 && (
+                      <span className="pointer-events-none absolute inset-0" style={heightWash(height)}>
+                        <span className="absolute right-0.5 top-0 text-[0.5em] font-bold leading-none text-white/75">
+                          {"▲".repeat(Math.min(height, 3))}
+                        </span>
+                      </span>
+                    )}
                     {/* Water shimmer (CSS only) */}
                     {terrain === "water" && (
                       <span
@@ -2300,6 +2319,9 @@ function TileInspect({
         </button>
       </div>
       <div className="flex gap-2 text-[0.65rem] text-white/60">
+        {elevationAt(state.grid, tile.x, tile.y) > 0 && (
+          <span>{localizeUi("ui.game.tileinspect.height", { height: elevationAt(state.grid, tile.x, tile.y) })}</span>
+        )}
         {info.impassable ? (
           <span className="font-semibold text-red-300/80">{localizeUi("ui.game.tileinspect.blocksWalking")}</span>
         ) : (

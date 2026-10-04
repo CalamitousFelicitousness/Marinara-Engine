@@ -43,6 +43,8 @@ export interface RulesetCombatNames {
   /** A count of cells in the ruleset's own distance: "20 ft", "8 paces". A fight with no board has
    *  no unit to say it in, so the count is printed as it stands. */
   distance: (cells: number) => string;
+  /** A drop of so many levels of the board in the ruleset's own distance (combat C6b): "10 ft". */
+  height: (levels: number) => string;
 }
 
 function lookup(entries: Array<{ id: string; label: string }> | undefined) {
@@ -78,6 +80,14 @@ export function rulesetCombatNames(
   const distance = view.grid?.distance;
   return {
     distance: (cells) => rulesetDistanceText(cells, distance, t),
+    height: (levels) => {
+      // The ruleset's own words for both, so a fall reads the same wherever the line is printed.
+      const levelHeight = definition.combat?.elevation?.levelHeight;
+      const unit = definition.combat?.distance?.label;
+      return levelHeight && unit
+        ? (t("game.combat.ruleset.board.distance", { amount: levels * levelHeight, unit }) as string)
+        : String(levels);
+    },
     combatant: (id) => (id ? (combatants.get(id) ?? "") : ""),
     condition: lookup(definition.sheet.live.conditions),
     budget: lookup(definition.combat?.economy.budgets),
@@ -410,6 +420,8 @@ export function rulesetCombatEventLine(
         targetCheck: defender.check,
       });
     }
+    case "fell":
+      return key("fell", { target: names.combatant(event.targetId), distance: names.height(event.levels) });
     case "pushed":
       return key("pushed", {
         actor: names.combatant(event.actorId),

@@ -1982,6 +1982,8 @@ function placeRulesetCombatants(
   state.board = {
     grid,
     ...(board.battlefield ? { battlefield: board.battlefield as RulesetCombatBoard["battlefield"] } : {}),
+    // What a shot gains from higher ground, as the ruleset said at the start (combat C6b).
+    ...(combat.elevation?.rangeBonus ? { rangeBonus: combat.elevation.rangeBonus } : {}),
   };
 }
 

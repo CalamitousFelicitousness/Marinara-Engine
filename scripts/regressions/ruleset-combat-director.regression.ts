@@ -1147,6 +1147,8 @@ for (const setup of [
       const encounter = state.rulesetFight!.encounter;
       const grid = encounter.board!.grid;
       grid.tiles = grid.tiles.map((row) => row.map(() => "plains" as (typeof row)[number]));
+      // A bare board is level ground too: clear the generated foothills (combat C6b).
+      delete grid.elevation;
       const brenna = rulesetCombatant(encounter, "brenna")!;
       const hound = rulesetCombatant(encounter, "hound")!;
       Object.assign(brenna, { x: 0, y: 0 });
@@ -1219,6 +1221,8 @@ for (const setup of [
     const encounter = state.rulesetFight!.encounter;
     const grid = encounter.board!.grid;
     grid.tiles = grid.tiles.map((row) => row.map(() => "plains" as (typeof row)[number]));
+    // A bare board is level ground too: clear the generated foothills (combat C6b).
+    delete grid.elevation;
     Object.assign(rulesetCombatant(encounter, "brenna")!, { x: 0, y: 0 });
     Object.assign(rulesetCombatant(encounter, "lurker")!, { x: grid.width - 1, y: 0 });
     const allowance = rulesetCombatant(encounter, "lurker")!.movement!;

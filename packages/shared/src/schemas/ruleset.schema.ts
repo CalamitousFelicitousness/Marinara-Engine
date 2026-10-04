@@ -3155,6 +3155,36 @@ const combatSchema = z
       })
       .strict()
       .optional(),
+    /**
+     * What this system makes of a board's height (Capability API 1.70, combat C6b). Height is always
+     * walked and seen by, whatever this says: climbing a level costs one more cell, nobody walks a step
+     * of two levels or more, and ground higher than both ends blocks sight. This says what the system
+     * adds: how high one level is in its own distance (`levelHeight`), what striking down from higher
+     * ground gives (`highGround`: advantage, or a bonus taken off the defense the attack is rolled
+     * against), how many cells further a shot carries from it (`rangeBonus`), and what a fall does
+     * (`falling`): `dice` for every `per` of the drop, at most `max` of them, of `type`, and `prone`
+     * after it when the system says so.
+     */
+    elevation: z
+      .object({
+        levelHeight: z.number().finite().gt(0),
+        highGround: z
+          .union([z.literal("advantage"), z.object({ bonus: z.number().int().min(1).max(100) }).strict()])
+          .optional(),
+        rangeBonus: z.number().int().min(1).max(10).optional(),
+        falling: z
+          .object({
+            per: z.number().finite().gt(0),
+            dice: combatDiceSchema,
+            max: z.number().int().min(1).max(100),
+            type: promptSafeText(40).optional(),
+            prone: sheetId.optional(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .optional(),
     /** The budget a strike at somebody leaving one's reach is paid out of. A ruleset that declares
      *  none has no such strikes. */
     opportunity: z.object({ budget: sheetId }).strict().optional(),
@@ -4656,7 +4686,9 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
     // Everything below means nothing without a cell to measure in, so a ruleset that declares one
     // of them and no `distance` is told here rather than carrying a rule no fight could ever read.
     if (!combat.distance) {
-      const needsDistance = (["ranged", "cover", "opportunity"] as const).find((key) => combat[key] !== undefined);
+      const needsDistance = (["ranged", "cover", "elevation", "opportunity"] as const).find(
+        (key) => combat[key] !== undefined,
+      );
       if (needsDistance) {
         issue(at(needsDistance), `"${needsDistance}" is measured in cells, so the block declares "distance" too`);
       }
@@ -4809,6 +4841,10 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
     combat.cover?.saves?.forEach((save, index) => {
       if (!saves.has(save)) issue(at("cover", "saves", index), `Unknown save "${save}"`);
     });
+    const prone = combat.elevation?.falling?.prone;
+    if (prone !== undefined && !conditions.has(prone)) {
+      issue(at("elevation", "falling", "prone"), `Unknown condition "${prone}"`);
+    }
 
     const mapped = new Set<string>();
     combat.conditions?.forEach((entry, index) => {

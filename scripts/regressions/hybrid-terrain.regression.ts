@@ -33,7 +33,7 @@ const hybrid = generateTacticalBattlefield(2, deterministicRng(71, 0), "forest",
 assert.equal(hybrid.ok, true, "an omitted brief must produce a generated battlefield");
 if (!hybrid.ok) throw new Error(hybrid.error);
 assert.deepEqual(hybrid.grid, legacy, "an omitted brief must preserve legacy seeded terrain output");
-assert.equal(hybrid.battlefield.generatorVersion, 1);
+assert.equal(hybrid.battlefield.generatorVersion, 2);
 assert.equal(hybrid.battlefield.size, "small");
 
 for (const [unitCount, size, width, height] of [

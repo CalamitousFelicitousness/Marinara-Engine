@@ -89,6 +89,8 @@ s.tactical!.units[0]!.y = 1;
 s.tactical!.units[1]!.x = 2;
 s.tactical!.units[1]!.y = 1;
 s.tactical!.grid.tiles = s.tactical!.grid.tiles.map((row) => row.map(() => "plains"));
+// A bare board is level ground too: clear the generated foothills (combat C6b).
+delete s.tactical!.grid.elevation;
 commandCombatDirector(s, {
   type: "tactical",
   action: { type: "skill", unitId: "hero", skillName: "Fireball", targetId: "boss" },
@@ -163,6 +165,8 @@ s.tactical!.units[0]!.y = 1;
 s.tactical!.units[1]!.x = 2;
 s.tactical!.units[1]!.y = 1;
 s.tactical!.grid.tiles = s.tactical!.grid.tiles.map((row) => row.map(() => "plains"));
+// A bare board is level ground too: clear the generated foothills (combat C6b).
+delete s.tactical!.grid.elevation;
 s.tactical!.units[1]!.tactics!.adjective = "patient";
 s.tactical!.units[0]!.attack = 1;
 commandCombatDirector(s, {
@@ -201,6 +205,8 @@ s = createCombatDirector({
   seed: 11,
 });
 s.tactical!.grid.tiles = s.tactical!.grid.tiles.map((row) => row.map(() => "plains"));
+// A bare board is level ground too: clear the generated foothills (combat C6b).
+delete s.tactical!.grid.elevation;
 for (const [i, u] of s.tactical!.units.entries()) {
   u.x = i + 1;
   u.y = 1;
@@ -235,6 +241,8 @@ s.tactical!.units[0]!.y = 1;
 s.tactical!.units[1]!.x = 2;
 s.tactical!.units[1]!.y = 1;
 s.tactical!.grid.tiles = s.tactical!.grid.tiles.map((row) => row.map(() => "plains"));
+// A bare board is level ground too: clear the generated foothills (combat C6b).
+delete s.tactical!.grid.elevation;
 s.tactical!.units[1]!.skills.find((k) => k.id === "counter")!.slotLevel = 3;
 s.tactical!.units[1]!.spellSlots = { "3": 1 };
 s.tactical!.units[1]!.mp = 0;
@@ -294,6 +302,8 @@ const witnessed = (walled: boolean) => {
       { x, y },
     );
   fight.tactical!.grid.tiles = fight.tactical!.grid.tiles.map((row) => row.map(() => "plains"));
+  // A bare board is level ground too: clear the generated foothills (combat C6b).
+  delete fight.tactical!.grid.elevation;
   at("hero", 1, 1);
   at("foe", 5, 1);
   at("witch", 5, 3);
@@ -328,6 +338,8 @@ const guarded = (walled: boolean) => {
     seed: 11,
   });
   fight.tactical!.grid.tiles = fight.tactical!.grid.tiles.map((row) => row.map(() => "plains"));
+  // A bare board is level ground too: clear the generated foothills (combat C6b).
+  delete fight.tactical!.grid.elevation;
   const at = (id: string, x: number, y: number) =>
     Object.assign(
       fight.tactical!.units.find((u) => u.id === id)!,

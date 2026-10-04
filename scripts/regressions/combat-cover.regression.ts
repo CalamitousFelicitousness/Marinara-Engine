@@ -231,6 +231,10 @@ const arena = (paint: Record<string, TacticalTerrain>) => {
       feat.item = { use: { save: { save: "dex_save", onSuccess: "negates", ignoresCover: true } } };
     });
     assert.match(issue(68, scroll) ?? "", gate, "an item use's save that ignores cover");
+    // And height, 1.70 (combat C6b).
+    const high = doc((d) => (d.combat.elevation = { levelHeight: 5 }));
+    assert.match(issue(69, high) ?? "", /what a board's height does requires .*capabilityApi 1\.70/);
+    assert.equal(issue(70, high), null);
   } finally {
     rmSync(dataDir, { recursive: true, force: true });
   }

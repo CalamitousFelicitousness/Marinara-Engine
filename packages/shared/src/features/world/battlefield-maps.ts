@@ -41,14 +41,28 @@ export const worldBattlefieldMapSchema = z
       .array(z.string().regex(/^[pfmrw#]{1,14}$/, "A battlefield row is p, f, m, r, w or # per tile"))
       .min(1)
       .max(10),
+    /** How high each tile stands (combat C6b), a row of digits 0 to 3 each, the same shape as `rows`.
+     *  Left out on level ground. A step of two levels or more is a cliff nobody walks. */
+    heights: z
+      .array(z.string().regex(/^[0-3]{1,14}$/, "A battlefield's height row is a digit from 0 to 3 per tile"))
+      .min(1)
+      .max(10)
+      .optional(),
   })
   .strict();
 export type WorldBattlefieldMap = z.infer<typeof worldBattlefieldMapSchema>;
 
 /** A painted board as the tactical engine reads it. */
-export function worldBattlefieldGrid(map: Pick<WorldBattlefieldMap, "rows">): TacticalGrid {
+export function worldBattlefieldGrid(map: Pick<WorldBattlefieldMap, "rows" | "heights">): TacticalGrid {
   const tiles = map.rows.map((row) => [...row].map((char) => TERRAIN_OF.get(char) ?? "plains"));
-  return { width: tiles[0]?.length ?? 0, height: tiles.length, tiles };
+  const elevation = map.heights?.map((row) => [...row].map(Number));
+  return {
+    width: tiles[0]?.length ?? 0,
+    height: tiles.length,
+    tiles,
+    // Whenever painted, so its shape is checked against the tiles' with them.
+    ...(elevation ? { elevation } : {}),
+  };
 }
 
 /** Why a painted board cannot be fought on, or nothing (`tacticalMadeBoardIssues`). */

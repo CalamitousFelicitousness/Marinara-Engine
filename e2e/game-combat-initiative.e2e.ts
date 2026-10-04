@@ -110,6 +110,8 @@ for (const turnOrder of ["initiative", "side"] as const) {
         expect(state.initiative).toBeUndefined();
       }
       state.grid.tiles = state.grid.tiles.map((row) => row.map(() => "plains" as TacticalTerrain));
+      // A bare board is level ground too: clear the generated foothills (combat C6b).
+      delete state.grid.elevation;
       const message = await request.post(`/api/chats/${chatId}/messages`, {
         data: { role: "assistant", content: "The raider waits at the gate. [state: combat]" },
       });

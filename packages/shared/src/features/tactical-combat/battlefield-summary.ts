@@ -37,7 +37,9 @@ export function summarizeTacticalBattlefield(value: unknown): string | undefined
   if (
     !(
       madeName ||
-      (provenance.kind === "generated" && provenance.generatorVersion === TACTICAL_BATTLEFIELD_GENERATOR_VERSION)
+      // Either generator: version 1 boards are flat, version 2 ones may have foothills (combat C6b).
+      (provenance.kind === "generated" &&
+        (provenance.generatorVersion === 1 || provenance.generatorVersion === TACTICAL_BATTLEFIELD_GENERATOR_VERSION))
     ) ||
     !BATTLEFIELD_SIZES.has(provenance.size as string)
   ) {
@@ -81,6 +83,26 @@ export function summarizeTacticalBattlefield(value: unknown): string | undefined
         .map(([terrain, count]) => `${terrain} ${count}`)
         .join(", ")}`,
     );
+  }
+  // Raised ground (combat C6b), counted by level, so the Game Master can tell it: higher ground hits
+  // harder and sees further, and a step of two levels or more is a cliff.
+  const elevation = (value.grid as { elevation?: unknown }).elevation;
+  if (Array.isArray(elevation)) {
+    const levels = new Map<number, number>();
+    for (const row of elevation) {
+      if (!Array.isArray(row)) continue;
+      for (const level of row) {
+        if (Number.isInteger(level) && level > 0 && level <= 3) levels.set(level, (levels.get(level) ?? 0) + 1);
+      }
+    }
+    if (levels.size) {
+      lines.push(
+        `Raised ground: ${[...levels.entries()]
+          .sort(([a], [b]) => a - b)
+          .map(([level, count]) => `height ${level} ${count}`)
+          .join(", ")}`,
+      );
+    }
   }
   return lines.join("\n").slice(0, MAX_SUMMARY_LENGTH);
 }

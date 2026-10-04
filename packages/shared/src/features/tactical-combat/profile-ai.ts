@@ -1,7 +1,7 @@
 import { combatWeatherEffects, normalizeGameDifficulty } from "../combat-conditions.js";
 import { chooseCombatCandidate, type CombatAiCandidate } from "../combat-ai.js";
 import { aliveUnits, canTraverseTile, forecastFrom, getMovementRange, occupantAt, skillReady } from "./engine.js";
-import { computeHeal, hasLineOfSight, inReach, manhattan, terrainInfoAt } from "./math.js";
+import { climbCost, computeHeal, hasLineOfSight, inReach, manhattan, reachFrom, terrainInfoAt } from "./math.js";
 import type { TacticalAction, TacticalCombatState, TacticalCoord, TacticalUnit } from "./types.js";
 
 /** Mindless pursuit ranks spatial steps; other profiles also consider movement costs. */
@@ -36,10 +36,16 @@ export function pursueOpponent(
         if (length === 0 || length > radius) continue;
         const next = { x: tile.x + dx, y: tile.y + dy };
         if (!canTraverseTile(state, unit, next)) continue;
+        // A walker never takes a cliff (combat C6b), mindless or not; only the cost it plans by differs.
+        const climb =
+          unit.movementMode === "fly" || unit.movementMode === "teleport" ? 0 : climbCost(state.grid, tile, next);
+        if (climb === null) continue;
         const stepCost =
           unit.tactics?.adjective === "mindless" || unit.movementMode === "fly" || unit.movementMode === "teleport"
             ? length
-            : terrainInfoAt(state.grid, next.x, next.y).moveCost + combatWeatherEffects(state.weather).walkingCost;
+            : terrainInfoAt(state.grid, next.x, next.y).moveCost +
+              combatWeatherEffects(state.weather).walkingCost +
+              climb;
         const distance = distances.get(key(tile))! + stepCost;
         if (distance >= (distances.get(key(next)) ?? Infinity)) continue;
         const seen = distances.has(key(next));
@@ -62,7 +68,9 @@ export function pursueOpponent(
     budget -=
       unit.movementMode === "fly" || unit.movementMode === "teleport"
         ? manhattan(previous, tile)
-        : terrainInfoAt(state.grid, tile.x, tile.y).moveCost + combatWeatherEffects(state.weather).walkingCost;
+        : terrainInfoAt(state.grid, tile.x, tile.y).moveCost +
+          combatWeatherEffects(state.weather).walkingCost +
+          (climbCost(state.grid, previous, tile) ?? 0);
     if (budget < 0) break;
     previous = tile;
     if (!occupantAt(state, tile.x, tile.y, unit.id)) to = tile;
@@ -94,7 +102,7 @@ export function decideProfileAction(
     if (dangerAt.has(key)) return dangerAt.get(key)!;
     const value = opponents.reduce((sum, enemy) => {
       // Observable one-activation reach estimate. No future rolls or player command.
-      if (manhattan(enemy, tile) > enemy.movement + enemy.attackRange.max) return sum;
+      if (manhattan(enemy, tile) > enemy.movement + enemy.attackRange.max + 1) return sum;
       const forecast = forecastFrom(state, enemy, { ...unit, ...tile }, enemy);
       return sum + (forecast.damage * forecast.hitChance) / 100 / Math.max(1, unit.hp);
     }, 0);
@@ -112,7 +120,10 @@ export function decideProfileAction(
       ]) {
         if (
           distance < (skill ? 1 : unit.attackRange.min) ||
-          distance > (skill ? (skill.range ?? Math.max(2, unit.attackRange.max)) : unit.attackRange.max) ||
+          distance >
+            (skill
+              ? (skill.range ?? Math.max(2, unit.attackRange.max))
+              : reachFrom(state.grid, tile, target, unit.attackRange.max)) ||
           !hasLineOfSight(state.grid, tile, target)
         )
           continue;

@@ -21,6 +21,7 @@ import {
   spendRulesetShots,
 } from "./ammo.js";
 import { parseRulesetCombatDice, rollRulesetDice, sumOf } from "./dice.js";
+import { elevationAt } from "../tactical-combat/math.js";
 import {
   rulesetCombatIsPool,
   rulesetCombatPenalty,
@@ -57,6 +58,7 @@ import {
   rulesetAreaCells,
   rulesetCellDistance,
   rulesetCellEnterCost,
+  rulesetStepCost,
   rulesetOpportunityAttack,
   rulesetPositionOf,
   rulesetPushPath,
@@ -1464,7 +1466,45 @@ function resolveContest(
       target.x = to.x;
       target.y = to.y;
       ctx.events.push({ type: "pushed", actorId: actor.id, targetId: target.id, from, to: { ...to }, path });
+      // Shoved off a step of two levels or more, which is where a push stops: a fall (combat C6b).
+      const grid = ctx.state.board?.grid;
+      const edge = path.length > 1 ? path[path.length - 2]! : from;
+      const levels = grid ? elevationAt(grid, edge.x, edge.y) - elevationAt(grid, to.x, to.y) : 0;
+      if (levels >= 2) fall(ctx, actor, target, levels);
     }
+  }
+}
+
+/**
+ * A fall of `levels` levels (combat C6b), by the ruleset's `elevation.falling`: its dice for every `per`
+ * of the drop, at most `max` of them, of its type, and its prone condition after. A ruleset that says
+ * nothing about falling only notes it.
+ */
+function fall(ctx: RulesetCombatContext, actor: RulesetCombatant, target: RulesetCombatant, levels: number): void {
+  ctx.events.push({ type: "fell", targetId: target.id, levels });
+  const elevation = ctx.combat.elevation;
+  const falling = elevation?.falling;
+  if (!elevation || !falling) return;
+  const count = Math.min(falling.max, Math.floor((levels * elevation.levelHeight) / falling.per) * falling.dice.count);
+  if (count > 0) {
+    const rolls = rollRulesetDice(ctx.roll, count, falling.dice.sides);
+    applyDamage(ctx, target, {
+      sourceId: actor.id,
+      label: "fall",
+      ...(falling.type ? { damageType: falling.type } : {}),
+      rolls,
+      flat: 0,
+      amount: sumOf(rolls),
+    });
+  }
+  if (falling.prone && rulesetCombatStanding(target)) {
+    applyConditionId(
+      ctx,
+      target,
+      falling.prone,
+      { condition: falling.prone, duration: "instant" },
+      { sourceId: actor.id },
+    );
   }
 }
 
@@ -1851,7 +1891,9 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
       }
     }
     rest.shift();
-    spent += grid ? rulesetCellEnterCost(grid, cell.x, cell.y) : 1;
+    // What the menu showed for the same step: entering the cell, and climbing up to it (combat C6b). The
+    // path came from that menu, so a cliff is never on it; a saved one that has one costs a plain step.
+    spent += grid ? (rulesetStepCost(grid, at, cell) ?? rulesetCellEnterCost(grid, cell.x, cell.y)) : 1;
     walked.push(cell);
     at = cell;
     actor.x = cell.x;

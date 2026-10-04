@@ -15250,6 +15250,100 @@
           ],
           "additionalProperties": false
         },
+        "elevation": {
+          "type": "object",
+          "properties": {
+            "levelHeight": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "highGround": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "advantage"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "bonus": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100
+                    },
+                    "$comment": {}
+                  },
+                  "required": [
+                    "bonus"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "rangeBonus": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10
+            },
+            "falling": {
+              "type": "object",
+              "properties": {
+                "per": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "dice": {
+                  "type": "object",
+                  "properties": {
+                    "count": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 10
+                    },
+                    "sides": {
+                      "type": "integer",
+                      "minimum": 2,
+                      "maximum": 1000
+                    },
+                    "$comment": {}
+                  },
+                  "required": [
+                    "count",
+                    "sides"
+                  ],
+                  "additionalProperties": false
+                },
+                "max": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100
+                },
+                "type": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 40
+                },
+                "prone": {
+                  "type": "string",
+                  "maxLength": 40,
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "$comment": {}
+              },
+              "required": [
+                "per",
+                "dice",
+                "max"
+              ],
+              "additionalProperties": false
+            },
+            "$comment": {}
+          },
+          "required": [
+            "levelHeight"
+          ],
+          "additionalProperties": false
+        },
         "opportunity": {
           "type": "object",
           "properties": {
@@ -17747,6 +17841,9 @@
           "distance"
         ],
         "cover": [
+          "distance"
+        ],
+        "elevation": [
           "distance"
         ],
         "opportunity": [

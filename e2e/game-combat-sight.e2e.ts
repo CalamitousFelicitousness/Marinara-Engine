@@ -93,6 +93,8 @@ for (const walled of [false, true]) {
       const state = (await started.json()).state as TacticalCombatState;
       // A bare board: the caster three cells from the guard on one row, a wall between them or not.
       state.grid.tiles = state.grid.tiles.map((row) => row.map(() => "plains" as TacticalTerrain));
+      // A bare board is level ground too: clear the generated foothills (combat C6b).
+      delete state.grid.elevation;
       if (walled) state.grid.tiles[2]![2] = "wall";
       for (const unit of state.units) {
         Object.assign(

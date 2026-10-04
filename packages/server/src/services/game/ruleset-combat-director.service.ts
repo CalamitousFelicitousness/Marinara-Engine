@@ -24,6 +24,7 @@ import {
   fillRulesetSheetChoices,
   generateTacticalBattlefield,
   madeTacticalBattlefield,
+  foothillElevation,
   holdRulesetCombatant,
   holdRulesetSheetHealth,
   liftRulesetCrashes,
@@ -423,6 +424,11 @@ function buildRulesetBoard(
     !placeSpawns(grid, stands, normalizeTacticalFormation(input.formation ?? undefined), rng, generated.protectedTiles)
   )
     return { error: "Battlefield features prevent a connected deployment." };
+  // A generated board's foothills, read off the tiles as deployment left them (combat C6b).
+  if (!input.made) {
+    const elevation = foothillElevation(grid);
+    if (elevation) grid.elevation = elevation;
+  }
   const placements: Record<string, { x: number; y: number }> = {};
   for (const stand of stands) placements[stand.id] = { x: stand.x, y: stand.y };
   return { grid, placements, battlefield: generated.battlefield };
@@ -624,6 +630,7 @@ export function directedRulesetView(
             width: grid.width,
             height: grid.height,
             tiles: grid.tiles.map((row) => [...row]),
+            ...(grid.elevation ? { elevation: grid.elevation.map((row) => [...row]) } : {}),
             distance: { ...distance },
             ...(made ? { scene: made.scene } : {}),
           },

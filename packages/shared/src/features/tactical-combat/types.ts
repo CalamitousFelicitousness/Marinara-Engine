@@ -55,7 +55,8 @@ export interface TacticalBattlefieldBrief {
 export type TacticalBattlefieldProvenance =
   | {
       kind: "generated";
-      generatorVersion: 1;
+      /** 1: flat; 2: with foothills (combat C6b). A saved fight keeps the board it was fought on. */
+      generatorVersion: 1 | 2;
       size: TacticalBattlefieldSize;
       brief?: TacticalBattlefieldBrief;
     }
@@ -121,6 +122,9 @@ export interface TacticalGrid {
   height: number;
   /** tiles[y][x] — row-major. */
   tiles: TacticalTerrain[][];
+  /** How high each cell stands (combat C6b), elevation[y][x] from 0 to 3. Absent on a flat board, which
+   *  every board before it was. */
+  elevation?: number[][];
 }
 
 export interface TacticalCoord {

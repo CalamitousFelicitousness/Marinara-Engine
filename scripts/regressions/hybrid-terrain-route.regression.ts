@@ -183,7 +183,7 @@ try {
   assert.equal(state.units[0].movementMode, "fly");
   assert.deepEqual(state.battlefield, {
     kind: "generated",
-    generatorVersion: 1,
+    generatorVersion: 2,
     size: "large",
     brief: {
       size: "large",

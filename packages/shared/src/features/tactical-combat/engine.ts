@@ -18,9 +18,10 @@ import { assignCombatTactics } from "../combat-ai.js";
 import type { Combatant, CombatSkill, CombatStatusEffect, CombatSummary } from "../../types/game.js";
 import { summarizeTacticalBattlefield } from "./battlefield-summary.js";
 import { CLASS_PROFILES, deriveClass } from "./classes.js";
-import { generateTacticalBattlefield, madeTacticalBattlefield, placeSpawns } from "./grid-gen.js";
+import { foothillElevation, generateTacticalBattlefield, madeTacticalBattlefield, placeSpawns } from "./grid-gen.js";
 import {
   clamp,
+  climbCost,
   computeDamage,
   computeHeal,
   critChance,
@@ -34,6 +35,7 @@ import {
   terrainInfoAt,
   hasLineOfSight,
   inReach,
+  reachFrom,
 } from "./math.js";
 import { deterministicRng } from "./rng.js";
 import { TACTICAL_ENVIRONMENTS } from "./environments.js";
@@ -165,6 +167,11 @@ export function createTacticalCombat(
   if (!placeSpawns(grid, units, formation, setupRng, generated.protectedTiles)) {
     throw new Error("Battlefield features prevent a connected unit deployment.");
   }
+  // A generated board's foothills, read off the tiles as deployment left them (combat C6b).
+  if (!opts.made) {
+    const elevation = foothillElevation(grid);
+    if (elevation) grid.elevation = elevation;
+  }
 
   const state: TacticalCombatState = {
     schemaVersion: 1,
@@ -289,7 +296,10 @@ export function getMovementRange(state: TacticalCombatState, unitId: string): Ta
       const nx = cx + dx;
       const ny = cy + dy;
       if (!canTraverseTile(state, unit, { x: nx, y: ny })) continue;
-      const enterCost = terrainInfoAt(grid, nx, ny).moveCost + combatWeatherEffects(state.weather).walkingCost;
+      // A walker climbs a level for one more, comes down for nothing, and never takes a cliff (combat C6b).
+      const climb = climbCost(grid, { x: cx, y: cy }, { x: nx, y: ny });
+      if (climb === null) continue;
+      const enterCost = terrainInfoAt(grid, nx, ny).moveCost + combatWeatherEffects(state.weather).walkingCost + climb;
       const newCost = bestCost + enterCost;
       if (newCost > unit.movement) continue;
       const key = `${nx},${ny}`;
@@ -393,10 +403,10 @@ export function forecastAttack(
   );
   const forecast: TacticalForecast = { ...main, hits: 1 };
 
-  // Counter: defender survives an expected hit and can reach back at basic range.
+  // Counter: defender survives an expected hit and can reach back at basic range, by the same test the
+  // counter itself is made by (sight, and the reach higher ground gives).
   const expected = defender.hp - main.damage;
-  const dist = manhattan(attacker, defender);
-  if (expected > 0 && dist >= defender.attackRange.min && dist <= defender.attackRange.max) {
+  if (expected > 0 && canCounter(state, attacker, defender)) {
     forecast.counter = {
       ...forecastFrom(state, defender, attacker, { x: defender.x, y: defender.y }, { hitPenalty: 10 }),
     };
@@ -917,7 +927,7 @@ export function validateTacticalUnitAction(
       if (!target || target.hp <= 0) return { ok: false, error: "Invalid attack target." };
       if (target.side === unit.side) return { ok: false, error: "Cannot attack an ally." };
       const d = manhattan(fromTile, target);
-      if (d < unit.attackRange.min || d > unit.attackRange.max) {
+      if (d < unit.attackRange.min || d > reachFrom(next.grid, fromTile, target, unit.attackRange.max)) {
         return { ok: false, error: `${target.name} is out of attack range.` };
       }
       if (!hasLineOfSight(next.grid, fromTile, target)) return { ok: false, error: `${target.name} is out of sight.` };

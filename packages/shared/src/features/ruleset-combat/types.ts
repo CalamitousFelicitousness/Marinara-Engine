@@ -693,6 +693,9 @@ export interface RulesetWalkResume {
 export interface RulesetCombatBoard {
   grid: TacticalGrid;
   battlefield?: TacticalBattlefieldProvenance;
+  /** Cells a shot carries further down from higher ground (combat C6b), as the ruleset said when the
+   *  fight began. */
+  rangeBonus?: number;
 }
 
 /** Why a choice changed nothing. */
@@ -968,6 +971,8 @@ export type RulesetCombatEvent =
     }
   /** Somebody pushed across the board by somebody else. Forced, so it spends nothing of their own
    *  allowance and draws no strike on the way. */
+  /** Somebody shoved off a step of two levels or more (combat C6b), before what the fall does. */
+  | { type: "fell"; targetId: string; levels: number }
   | {
       type: "pushed";
       actorId: string;

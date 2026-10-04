@@ -24,6 +24,7 @@ import {
   resolveTerrainIcon,
   ringColorFor,
   tileShadow,
+  heightWash,
 } from "../../lib/tactical-board-look";
 import {
   rulesetBoardCells,
@@ -329,6 +330,14 @@ export function RulesetCombatBoard({
                         animation: "tc-shimmer 3.5s linear infinite",
                       }}
                     />
+                  )}
+                  {/* Raised ground (combat C6b): lighter a level, marked in the corner. */}
+                  {cell.height > 0 && (
+                    <span className="pointer-events-none absolute inset-0" style={heightWash(cell.height)}>
+                      <span className="absolute right-0.5 top-0 text-[0.5em] font-bold leading-none text-white/75">
+                        {"▲".repeat(Math.min(cell.height, 3))}
+                      </span>
+                    </span>
                   )}
                   {/* Nothing walks in and nothing sees through: drawn solid rather than merely dark. */}
                   {cell.solid && (

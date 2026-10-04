@@ -53,6 +53,7 @@ import {
   rulesetOptionReach,
   rulesetOptionTargets,
   rulesetReachableCells,
+  rulesetWalkingDistances,
   rulesetSheetBuildSchema,
   supportedCapabilityApi,
   type RulesetCatalogEntry,
@@ -937,6 +938,102 @@ const cellsOf = (cells: Array<{ x: number; y: number }>) =>
       }),
     ),
     /Unknown save "luck_save"/,
+  );
+}
+
+// ── Height (combat C6b): walked by every fight, and what a ruleset adds ──
+{
+  const raised = (rows: string[], heights: string[]) => {
+    const grid = drawn(...rows);
+    grid.elevation = heights.map((row) => [...row].map(Number));
+    return grid;
+  };
+  // Climbing a level costs one more cell; a step of two levels or more is a cliff nobody walks.
+  const hill = raised([".....", ".....", "....."], ["01100", "00300", "00000"]);
+  const state = fight(fiveE, [fighter(), snag()], [12, 9, 9], {
+    grid: hill,
+    placements: { brenna: { x: 0, y: 0 }, snag: { x: 4, y: 2 } },
+  });
+  const cells = new Map(rulesetReachableCells(fiveE, state, "brenna").map((cell) => [`${cell.x},${cell.y}`, cell]));
+  assert.equal(cells.get("1,0")!.cost, 2, "up a level: a step and a climb");
+  assert.equal(cells.get("2,0")!.cost, 3, "and along the top for a step");
+  assert.ok(!cells.has("2,1"), "a cliff, from every side");
+  assert.equal(cells.get("1,1")!.cost, 1, "level ground beside it is an ordinary step");
+  // The walk spends what the menu said.
+  const move = optionNamed(fiveE, state, "brenna", "Move");
+  const walked = act(fiveE, state, { actorId: "brenna", optionId: move.id, targetIds: [], to: { x: 2, y: 0 } });
+  assert.equal(firstOf(walked.events, "move").cost, 3);
+  // Distance walked toward somebody is not the same both ways on a slope.
+  const slope = raised(["....."], ["01230"]);
+  const toTop = rulesetWalkingDistances(slope, [{ x: 4, y: 0 }]).get("0,0");
+  const toFoot = rulesetWalkingDistances(slope, [{ x: 0, y: 0 }]).get("4,0");
+  // A walk ends beside its goal: up the ramp to stand next to the far end is fine, while from the far
+  // end the only way on is the cliff (0 up to 3).
+  assert.equal(toTop, 3 + 3, "three steps and three climbs to stand beside it");
+  assert.equal(toFoot, undefined, "the far end is cut off by the cliff");
+  const ramp = raised(["....."], ["01232"]);
+  const up = rulesetWalkingDistances(ramp, [{ x: 4, y: 0 }]).get("0,0")!;
+  const down = rulesetWalkingDistances(ramp, [{ x: 0, y: 0 }]).get("4,0")!;
+  assert.ok(up > down, `up the ramp costs more than down it: ${up} against ${down}`);
+
+  // What the ruleset adds: advantage from higher ground, or a number off the defense; a shot further.
+  const withElevation = (elevation: Record<string, unknown>) =>
+    parsedOrThrow(
+      variant(fiveEText, (doc) => {
+        doc.combat.elevation = { levelHeight: 5, ...elevation };
+      }),
+      "the 5e example with height",
+    );
+  const advantage = withElevation({ highGround: "advantage", rangeBonus: 2 });
+  const above = (definition: RulesetDefinition, brennaHeight: number) =>
+    fight(definition, [fighter(), mote()], [12, 9], {
+      grid: raised([".........."], [`${brennaHeight}000000000`]),
+      placements: { brenna: { x: 0, y: 0 }, mote: { x: 3, y: 0 } },
+    });
+  const javelinMode = (state: RulesetEncounterState, definition: RulesetDefinition) =>
+    rulesetAttackMode(definition, definition.combat!, who(state, "brenna"), who(state, "mote"), {
+      state,
+      optionId: optionNamed(definition, state, "brenna", "Javelin").id,
+    });
+  assert.equal(javelinMode(above(advantage, 1), advantage), "advantage", "from above");
+  assert.equal(javelinMode(above(advantage, 0), advantage), "normal", "level");
+  assert.equal(javelinMode(above(fiveE, 1), fiveE), "normal", "a ruleset that gives nothing");
+  const bonus = withElevation({ highGround: { bonus: 2 } });
+  const defenseOf = (state: RulesetEncounterState) =>
+    rulesetDefenseAgainst(bonus, bonus.combat!, state, who(state, "mote"), who(state, "brenna")).defense;
+  assert.equal(defenseOf(above(bonus, 1)), defenseOf(above(bonus, 0)) - 2, "two off the defense from above");
+  // A javelin carries 24 cells at the most (120 ft); a mote 26 cells away is out of reach, unless from
+  // above with 2 more.
+  const far = (definition: RulesetDefinition, height: number) =>
+    fight(definition, [fighter(), mote()], [12, 9], {
+      grid: raised([".".repeat(30)], [`${height}${"0".repeat(29)}`]),
+      placements: { brenna: { x: 0, y: 0 }, mote: { x: 26, y: 0 } },
+    });
+  const reaches = (state: RulesetEncounterState, definition: RulesetDefinition) =>
+    rulesetOptionTargets(definition, state, "brenna", optionNamed(definition, state, "brenna", "Javelin"));
+  assert.deepEqual(reaches(far(advantage, 0), advantage), [], "level: too far");
+  assert.deepEqual(reaches(far(advantage, 1), advantage), ["mote"], "from above, two cells more");
+  // The block needs a cell to measure in, and a fall's condition must be one the ruleset has.
+  assert.match(
+    refusalOf(
+      variant(fiveEText, (doc) => {
+        for (const key of ["distance", "ranged", "cover", "opportunity"]) delete doc.combat[key];
+        for (const source of doc.combat.attacks ?? []) (delete source.reach, delete source.range);
+        doc.combat.elevation = { levelHeight: 5 };
+      }),
+    ),
+    /"elevation" is measured in cells/,
+  );
+  assert.match(
+    refusalOf(
+      variant(fiveEText, (doc) => {
+        doc.combat.elevation = {
+          levelHeight: 5,
+          falling: { per: 10, dice: { count: 1, sides: 6 }, max: 20, prone: "flat" },
+        };
+      }),
+    ),
+    /Unknown condition "flat"/,
   );
 }
 

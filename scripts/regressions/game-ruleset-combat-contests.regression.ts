@@ -484,6 +484,48 @@ try {
       },
     });
     assert.deepEqual(eventsOf(shove(crowded, 6, 6, 1, 1).events, "pushed")[0]!.to, { x: 3, y: 2 });
+
+    // Height (combat C6b): a shove up a step of two levels or more stops short of it; a shove off one is a
+    // fall where it lands, by the ruleset's own falling rule (here two paces a level, a d6 for every two
+    // paces of the drop, shaken after).
+    const falling = parsedOrThrow(
+      (() => {
+        const doc = JSON.parse(emberText);
+        doc.combat.elevation = {
+          levelHeight: 2,
+          falling: { per: 2, dice: { count: 1, sides: 6 }, max: 5, type: "fall", prone: "shaken" },
+        };
+        return doc;
+      })(),
+      "the 2d6 example with falls",
+    );
+    const ledge = (heights: number[]) => {
+      const grid = drawn(".......", ".......", ".......", ".......", ".......", ".......");
+      grid.elevation = grid.tiles.map((row, y) => row.map((_, x) => (y === 2 ? heights[x]! : 0)));
+      return fight(falling, [hound({ brawn: 2 })], { grid, placements: { juno: { x: 1, y: 2 }, ash: { x: 2, y: 2 } } });
+    };
+    const shoved = (state: RulesetEncounterState, ...faces: number[]) =>
+      act(falling, state, { actorId: "juno", optionId: "contest:shove", targetIds: ["ash"] }, ...faces);
+    const off = shoved(ledge([2, 2, 2, 0, 0, 0, 0]), 6, 6, 1, 1, 3, 4);
+    assert.deepEqual(eventsOf(off.events, "pushed")[0]!.to, { x: 3, y: 2 }, "it stops where it lands");
+    assert.deepEqual(eventsOf(off.events, "fell"), [{ type: "fell", targetId: "ash", levels: 2 }]);
+    const hurt = eventsOf(off.events, "damage").find((event) => event.targetId === "ash")!;
+    assert.deepEqual([hurt.rolls, hurt.amount], [[3, 4], 7], "two levels of two paces: two dice");
+    assert.ok(rulesetCombatant(off.state, "ash")!.tracked.some((entry) => entry.condition === "shaken"));
+    const up = shoved(ledge([0, 0, 0, 2, 2, 2, 2]), 6, 6, 1, 1);
+    assert.deepEqual(eventsOf(up.events, "pushed"), [], "nobody is shoved up a cliff");
+    const gentle = shoved(ledge([0, 0, 0, 1, 2, 0, 0]), 6, 6, 1, 1);
+    assert.deepEqual(eventsOf(gentle.events, "pushed")[0]!.to, { x: 4, y: 2 }, "up gentle steps, the whole way");
+    // A ruleset that says nothing about falling notes the fall and nothing more.
+    const plainLedge = drawn(".......", ".......", ".......", ".......", ".......", ".......");
+    plainLedge.elevation = plainLedge.tiles.map((row, y) => row.map((_, x) => (y === 2 && x < 3 ? 2 : 0)));
+    const noRule = shove(at({ x: 1, y: 2 }, { x: 2, y: 2 }, plainLedge), 6, 6, 1, 1);
+    assert.deepEqual(eventsOf(noRule.events, "fell"), [{ type: "fell", targetId: "ash", levels: 2 }]);
+    assert.deepEqual(
+      eventsOf(noRule.events, "damage").filter((event) => event.targetId === "ash"),
+      [],
+      "no rule, no harm",
+    );
     // Reach: the next cell unless the contest says further.
     const apart = at({ x: 1, y: 2 }, { x: 3, y: 2 });
     assert.deepEqual(

@@ -2112,7 +2112,29 @@ only by what lies between it and the effect.
   `"ignoresCover": true` (1.69), on an entry's `mechanics.save`, a creature action's `save` or an
   item use's `save`.
 
-There is no elevation yet.
+**Height.** A board can have height, up to three levels, and every positioned fight walks and sees by
+it whatever the ruleset says: climbing a level costs one more cell, coming down costs nothing, a step
+of two levels or more is a cliff nobody walks (and nobody is shoved up), and ground higher than both
+ends blocks sight. Shooting down from higher ground, low cover between hides nothing. A ruleset says
+what its system adds with `elevation` (Capability API 1.70, and it needs `distance`):
+
+```json
+"elevation": {
+  "levelHeight": 5,
+  "highGround": "advantage",
+  "rangeBonus": 1,
+  "falling": { "per": 10, "dice": { "count": 1, "sides": 6 }, "max": 20, "type": "bludgeoning", "prone": "prone" }
+}
+```
+
+- `levelHeight` is how high one level is in the ruleset's own distance.
+- `highGround` is what striking down from higher ground gives an attack roll: `"advantage"`, or
+  `{ "bonus": n }`, taken off the defense the attack is rolled against. Left out, it gives nothing.
+- `rangeBonus` is how many cells further a shot carries from higher ground.
+- `falling` is what a fall does: somebody shoved off a step of two levels or more lands below and takes
+  `dice` for every `per` of the drop (levels times `levelHeight`), at most `max` dice, of `type`, and
+  takes the `prone` condition after, when there is one. The log says how far they fell. Without
+  `falling` the fall is noted and does nothing.
 
 **Strikes at somebody walking away.** Declare `opportunity.budget` and, when a combatant walks out
 of the reach of a standing enemy who can act, has that budget and has something melee to strike
@@ -2370,7 +2392,7 @@ needs 1.44. One that waits for `hit` needs 1.46.
 
 Said plainly, because a ruleset should not claim what the Engine does not do:
 
-- **Beyond the modest board**: no elevation, no flying over
+- **Beyond the modest board**: no flying over
   obstacles, no squeezing, no mounts, no hiding or surprise, and nothing moves anybody but their own
   walk and a contest's push. Nobody drags a creature they hold.
 - **A contest is plain.** It has no size limits and opens no window (nobody may answer one).

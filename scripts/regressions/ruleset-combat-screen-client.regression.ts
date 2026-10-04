@@ -731,6 +731,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
         path: [{ x: 4, y: 2 }],
       }),
     ],
+    ["fell", say({ type: "fell", targetId: "lurker", levels: 2 })],
     ["shift", say({ type: "shift", actorId: "brenna", amount: 3, total: 9, reason: "gained", sourceId: "lurker" })],
     ["shot", say({ type: "shot", actorId: "brenna", optionId: "item:0", label: "Longbow", left: 11 })],
     [
@@ -878,6 +879,10 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     }),
     "Brenna is stopped at 2, 2.",
   );
+
+  // A fall is told in the ruleset's own distance, levels times what one level is (combat C6b).
+  const highGround = { ...fiveE, combat: { ...fiveE.combat!, elevation: { levelHeight: 5 } } };
+  assert.equal(line(highGround, state, { type: "fell", targetId: "lurker", levels: 2 }), "Thorn Lurker falls 10 ft.");
 
   // A fight that is still going says nothing, so nobody prints "ongoing" at a player.
   assert.equal(line(fiveE, state, { type: "outcome", outcome: "ongoing" }), null);

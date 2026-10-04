@@ -372,6 +372,7 @@ import {
 import {
   buildAutonomousDailyBudgetPatch,
   clearGenerationInProgress,
+  isAutonomousDailyBudgetExhausted,
   markGenerationInProgress,
   recordAssistantActivity,
   recordUserActivity,
@@ -10724,7 +10725,20 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             if (routeCharacterMentions) {
               // Reuse this turn's queue: prioritize mentions, but never revisit a speaker.
               const visited = new Set(respondingCharIds.slice(0, ci + 1));
-              const mentioned = getExplicitlyMentionedCharacterIds(genResult.response).filter((id) => !visited.has(id));
+              let mentioned = getExplicitlyMentionedCharacterIds(genResult.response).filter((id) => !visited.has(id));
+              if (shouldAccountAutonomousGeneration && mentioned.length > 0) {
+                // Every autonomous reply counts, so handoffs must fit the daily
+                // limit together with the replies already queued (#7055).
+                const { schedules } = await chats.resolveConversationPresenceState(input.chatId);
+                let projectedMeta = chatMeta;
+                const reserve = (id: string) => {
+                  if (isAutonomousDailyBudgetExhausted(id, schedules[id], projectedMeta)) return false;
+                  projectedMeta = { ...projectedMeta, ...buildAutonomousDailyBudgetPatch(projectedMeta, id) };
+                  return true;
+                };
+                for (const id of respondingCharIds.slice(ci + 1)) if (id && !mentioned.includes(id)) reserve(id);
+                mentioned = mentioned.filter(reserve);
+              }
               if (mentioned.length > 0) {
                 for (const id of mentioned) {
                   const delay = conversationMentionResponderDelays.get(id);

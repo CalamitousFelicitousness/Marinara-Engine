@@ -161,6 +161,8 @@ Marinara paces autonomous messages so a character never spams you. The rules bel
 
 If several characters are ready at once, the one with the highest talkativeness and best timing goes first.
 
+In a group chat set to **Individual**, the characters share one daily check-in limit, so they also share this pacing. After any character checks in, the next check-in from anyone waits like a follow-up, and the character with the fewest check-ins that day goes first.
+
 ## Your presence status
 
 Your own status tells characters whether you are around. The status control sits in the sidebar footer and stays visible in every chat mode. Its effect on messaging applies only in Conversation Mode.

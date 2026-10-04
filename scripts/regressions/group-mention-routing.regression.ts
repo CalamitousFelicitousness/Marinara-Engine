@@ -174,6 +174,12 @@ try {
         [alice!.id],
         "autonomous mentions respect the recipient's daily limit",
       );
+      await chats.patchMetadata(chat.id, { autonomousDailyCapOverride: 2, autonomousDailyBudget: null });
+      assert.deepEqual(
+        await turn(chat.id, ["Hi @Bob and @Charlie Brown!", "Hello."], { autonomous: true }),
+        [alice!.id, bob!.id],
+        "autonomous handoffs stop at the Individual group's shared daily limit (#7055)",
+      );
       await chats.patchMetadata(chat.id, { autonomousDailyCapOverride: null, autonomousDailyBudget: null });
     }
     await chats.patchMetadata(chat.id, { inactiveCharacterIds: [bob!.id] });

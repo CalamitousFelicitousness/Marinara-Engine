@@ -128,6 +128,11 @@ export function dailyCapForCharacter(schedule: WeekSchedule | undefined, chatMet
   return 2;
 }
 
+/** Individual-mode groups share one daily check-in count across their characters (#3887). */
+export function sharesAutonomousDailyBudget(chatMeta: Record<string, unknown>): boolean {
+  return chatMeta.groupChatMode === "individual";
+}
+
 export function isAutonomousDailyBudgetExhausted(
   characterId: string,
   schedule: WeekSchedule | undefined,
@@ -135,10 +140,9 @@ export function isAutonomousDailyBudgetExhausted(
   now: Date = new Date(),
 ): boolean {
   const budget = getAutonomousDailyBudget(chatMeta, now);
-  const checkInCount =
-    chatMeta.groupChatMode === "individual"
-      ? Object.values(budget.counts).reduce((total, count) => total + count, 0)
-      : (budget.counts[characterId] ?? 0);
+  const checkInCount = sharesAutonomousDailyBudget(chatMeta)
+    ? Object.values(budget.counts).reduce((total, count) => total + count, 0)
+    : (budget.counts[characterId] ?? 0);
   return checkInCount >= dailyCapForCharacter(schedule, chatMeta);
 }
 
@@ -359,6 +363,12 @@ export function checkAutonomousMessaging(
     statusOverrides?: Record<string, ConversationStatusOverride>;
     actualNow?: Date;
     scheduleNow?: Date;
+    /**
+     * Pace the whole chat like one character: once anyone checks in, the next
+     * check-in from any character waits the doubled follow-up time. Used where
+     * the daily limit is shared, so it is not spent in one burst (#7055).
+     */
+    sharedCadence?: boolean;
   } = {},
 ): AutonomousCheckResult {
   const noTrigger: AutonomousCheckResult = {
@@ -400,6 +410,15 @@ export function checkAutonomousMessaging(
   const actualNow = opts.actualNow ?? new Date();
   const scheduleNow = opts.scheduleNow ?? actualNow;
 
+  let chatSentCount = 0;
+  let chatLastSentAt = 0;
+  if (opts.sharedCadence) {
+    for (const sent of state.autonomousMessages.values()) {
+      chatSentCount += sent.count;
+      chatLastSentAt = Math.max(chatLastSentAt, sent.lastSentAt);
+    }
+  }
+
   for (const [charId, schedule] of Object.entries(characterSchedules)) {
     const { status } = getEffectiveCurrentStatus(
       schedule,
@@ -419,7 +438,9 @@ export function checkAutonomousMessaging(
         : schedule.inactivityThresholdMinutes * 60 * 1000;
 
     const prevAutonomous = state.autonomousMessages.get(charId);
-    const sentCount = prevAutonomous?.count ?? 0;
+    const ownSentCount = prevAutonomous?.count ?? 0;
+    const sentCount = opts.sharedCadence ? chatSentCount : ownSentCount;
+    const lastSentAt = opts.sharedCadence ? chatLastSentAt : (prevAutonomous?.lastSentAt ?? 0);
 
     // Cap follow-ups — don't spam the user endlessly
     if (sentCount >= maxFollowups) continue;
@@ -448,12 +469,12 @@ export function checkAutonomousMessaging(
       // accelerate follow-ups (keeps characters un-needy after the first reach-out).
       const cooldownMultiplier = Math.pow(2, sentCount);
       const followUpThresholdMs = baseThresholdMs * cooldownMultiplier;
-      const timeSinceLastAutonomous = now - (prevAutonomous?.lastSentAt ?? 0);
+      const timeSinceLastAutonomous = now - lastSentAt;
 
       if (timeSinceLastAutonomous >= followUpThresholdMs) {
         eligibleCharacters.push({
           id: charId,
-          priority: schedule.talkativeness + (status === "online" ? 20 : 0) - sentCount * 10, // Lower priority for repeat messages
+          priority: schedule.talkativeness + (status === "online" ? 20 : 0) - ownSentCount * 10, // Lower priority for repeat messages
           reactionDriven: false,
         });
       }

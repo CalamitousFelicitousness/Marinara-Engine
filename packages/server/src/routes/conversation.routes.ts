@@ -31,7 +31,9 @@ import {
   checkAutonomousMessaging,
   checkCharacterExchange,
   getActivityState,
+  getAutonomousDailyBudget,
   isAutonomousDailyBudgetExhausted,
+  sharesAutonomousDailyBudget,
   recordUserActivity,
   recordAssistantActivity,
   recordAutonomousClientPresence,
@@ -209,12 +211,17 @@ function resolveLongAbsenceCandidate(
   meta: Record<string, unknown>,
   now = new Date(),
   scheduleNow = now,
+  sharedCadence = false,
 ):
   | { characterId: string; intent: AutonomousIntentPayload }
   | { blockedReason: "daily_budget_exhausted" | "intent_cooldown" }
   | null {
   const state = getActivityState(chatId);
   if (!state?.lastUserMessageAt || state.lastUserMessageAt > state.lastAssistantMessageAt) return null;
+  // A shared-limit group checks in after a long absence once, not once per character (#7055).
+  if (sharedCadence && Object.keys(schedules).some((id) => isIntentOnCooldown(meta, id, "long_absence_check_in"))) {
+    return { blockedReason: "intent_cooldown" };
+  }
 
   const candidates = Object.entries(schedules)
     .filter(([characterId, schedule]) => {
@@ -999,6 +1006,7 @@ export async function conversationRoutes(app: FastifyInstance) {
     const characterIds: string[] =
       typeof chat.characterIds === "string" ? JSON.parse(chat.characterIds) : chat.characterIds;
     const isGroup = characterIds.length > 1;
+    const sharedCadence = isGroup && sharesAutonomousDailyBudget(meta);
     const hasRoutineSchedules = hasSchedules(schedules);
 
     const autonomySchedules: CharacterSchedules = { ...schedules };
@@ -1097,13 +1105,19 @@ export async function conversationRoutes(app: FastifyInstance) {
       statusOverrides,
       actualNow: nowInstant,
       scheduleNow: promptNow,
+      sharedCadence,
     });
     if (result.reason === "generation_in_progress") return reply.send(result);
 
     if (result.shouldTrigger) {
       if (await turnGameBlocks()) return turnGameActiveResponse();
       let blockedReason: "daily_budget_exhausted" | "intent_cooldown" | null = null;
-      for (const characterId of result.characterIds) {
+      // With a shared limit, whoever has checked in least today goes first.
+      const todayCounts = getAutonomousDailyBudget(meta).counts;
+      const candidateIds = sharedCadence
+        ? [...result.characterIds].sort((a, b) => (todayCounts[a] ?? 0) - (todayCounts[b] ?? 0))
+        : result.characterIds;
+      for (const characterId of candidateIds) {
         const evaluation = evaluateAutonomousCandidate(
           chatId,
           characterId,
@@ -1128,6 +1142,7 @@ export async function conversationRoutes(app: FastifyInstance) {
       meta,
       nowInstant,
       promptNow,
+      sharedCadence,
     );
     if (longAbsence) {
       if ("blockedReason" in longAbsence) return reply.send(blockedAutonomousResponse(longAbsence.blockedReason));

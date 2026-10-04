@@ -10727,6 +10727,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               // Reuse this turn's queue: prioritize mentions, but never revisit a speaker.
               const visited = new Set(respondingCharIds.slice(0, ci + 1));
               let mentioned = getExplicitlyMentionedCharacterIds(genResult.response).filter((id) => !visited.has(id));
+              let remaining = respondingCharIds.slice(ci + 1).filter((id) => !mentioned.includes(id!));
+              let queueChanged = false;
               if (shouldAccountAutonomousGeneration && mentioned.length > 0) {
                 // Every autonomous reply counts, so handoffs must fit the daily
                 // limit together with the replies already queued (#7055).
@@ -10744,15 +10746,17 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   projectedMeta = next;
                   return true;
                 };
-                for (const id of respondingCharIds.slice(ci + 1)) if (id && !mentioned.includes(id)) reserve(id);
+                // Queued replies keep their place first; any that no longer fit the limit leave the queue.
+                const kept = remaining.filter((id) => !id || reserve(id));
+                queueChanged = kept.length !== remaining.length;
+                remaining = kept;
                 mentioned = mentioned.filter(reserve);
               }
-              if (mentioned.length > 0) {
+              if (mentioned.length > 0 || queueChanged) {
                 for (const id of mentioned) {
                   const delay = conversationMentionResponderDelays.get(id);
                   if (delay && !conversationResponderDelays.has(id)) conversationResponderDelays.set(id, delay);
                 }
-                const remaining = respondingCharIds.slice(ci + 1).filter((id) => !mentioned.includes(id!));
                 respondingCharIds.splice(ci + 1, respondingCharIds.length, ...mentioned, ...remaining);
                 const pending = respondingCharIds.slice(ci + 1);
                 sendSseEvent(reply, {

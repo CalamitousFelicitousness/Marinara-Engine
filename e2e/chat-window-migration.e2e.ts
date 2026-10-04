@@ -22,6 +22,8 @@ async function createChat(request: APIRequestContext, mode: Mode): Promise<ChatR
       await request.patch(`/api/chats/${chat.id}/metadata`, {
         data: {
           enableAgents: false,
+          // Already saved in a real older chat; avoid an unrelated default-background write on first load.
+          ...(mode === "roleplay" ? { background: "Black.jpg" } : {}),
           ...(mode === "game"
             ? {
                 gameId: "window-migration",

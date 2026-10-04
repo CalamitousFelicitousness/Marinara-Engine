@@ -118,7 +118,7 @@ for (const theme of ["dark", "light"] as const) {
       await activityHeader.click();
       const action = activity.getByRole("button", { name: "Clear Trackers", exact: true });
       await expect(action).toBeVisible();
-      const rowText = await typography(custom.getByText("Fine", { exact: true }));
+      const rowText = await typography(custom.getByText("Fine", { exact: true }).filter({ visible: true }));
       expect((await typography(action)).fontSize).toBe(rowText.fontSize);
       expect((await typography(action)).lineHeight).toBe(rowText.lineHeight);
       const trackerInset = await customHeader

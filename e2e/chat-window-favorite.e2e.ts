@@ -43,7 +43,7 @@ for (const mode of ["conversation", "roleplay", "game"] as const) {
   test(`${mode}: starring a layout affects new chats only and profiles remain independent`, async ({
     page,
     request,
-  }) => {
+  }, testInfo) => {
     const otherMode: Mode = mode === "conversation" ? "roleplay" : "conversation";
     const original = await readFavorite(request, mode);
     const otherOriginal = await readFavorite(request, otherMode);
@@ -118,6 +118,10 @@ for (const mode of ["conversation", "roleplay", "game"] as const) {
       ).toBeTruthy();
       await prepare(page, source);
       await page.goto("/");
+      // This fixture is pinned: let desktop auto-restore it before an opener can toggle it closed.
+      if (testInfo.project.name.includes("desktop")) {
+        await expect(page.locator('[data-window="chat-settings"]')).toBeVisible();
+      }
       const settings = await openChatSettings(page);
       const star = settings.locator('[data-chat-settings-control="favorite-layout"]');
       await expect(star).toBeEnabled();
@@ -233,6 +237,6 @@ test("the upgraded default stays starred until an automatically placed button is
     await expect(star).toHaveAttribute("aria-pressed", "true");
   } finally {
     if (chatId) await request.delete(`/api/chats/${chatId}?force=true`);
-    await request.put(favoritePath(mode), { data: { value: original ?? "" } });
+    await request.put(favoritePath(mode), { data: { value: original ?? "null" } });
   }
 });

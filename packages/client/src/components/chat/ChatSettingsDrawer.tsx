@@ -3917,12 +3917,13 @@ export function ChatSettingsDrawer({
   }, [chat.id]);
 
   useEffect(() => {
-    if (!open || !shouldApplyModePromptDefault || chat.promptPresetId || !fallbackPromptPreset?.id) return;
+    // A hidden host may only be mounted to render detached tools; that must not change AI settings.
+    if (!windowOpen || !shouldApplyModePromptDefault || chat.promptPresetId || !fallbackPromptPreset?.id) return;
     const fallbackKey = `${chat.id}:${fallbackPromptPreset.id}`;
     if (modePromptDefaultAppliedRef.current === fallbackKey) return;
     modePromptDefaultAppliedRef.current = fallbackKey;
     updateChat.mutate({ id: chat.id, promptPresetId: fallbackPromptPreset.id });
-  }, [chat.id, chat.promptPresetId, fallbackPromptPreset?.id, open, shouldApplyModePromptDefault, updateChat]);
+  }, [chat.id, chat.promptPresetId, fallbackPromptPreset?.id, windowOpen, shouldApplyModePromptDefault, updateChat]);
 
   useEffect(() => {
     setGameSpecialInstructionsDraft((metadata.gameSpecialInstructions as string) ?? "");

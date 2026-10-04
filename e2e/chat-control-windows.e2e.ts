@@ -119,6 +119,9 @@ test.describe("chat control windows on desktop", () => {
       await page.goto("/");
       const settings = await openChatSettings(page);
       await settings.locator('[data-window-control="pin"]').click();
+      // Its below-button starting position may cover Inventory; move the pinned window aside first.
+      const header = settings.locator(".mari-window__header");
+      for (let step = 0; step < 10; step++) await header.press("Shift+ArrowRight");
       await page.getByRole("button", { name: "Inventory", exact: true }).first().click();
       const inventory = page.getByRole("dialog", { name: "Inventory", exact: true });
       await expect(inventory).toBeVisible();
@@ -401,7 +404,7 @@ test("Game controls dock as usable Settings sections, persist and pop out again"
     await expect(
       settings
         .locator(`[data-docked-chat-control="${GAME_CONTROLS}"]`)
-        .getByRole("button", { name: "Retry Turn", exact: true }),
+        .getByRole("button", { name: "Retry turn", exact: true }),
     ).toBeVisible();
     const master = volumeSection.getByRole("slider").first();
     await master.press("End");

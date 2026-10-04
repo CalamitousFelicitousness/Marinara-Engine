@@ -666,19 +666,23 @@ test.describe("Chat Settings window on desktop", () => {
       await expect(tip).toHaveText(
         "Drag and drop Chat Settings wherever you want. All sections within it can be moved out into separate buttons and windows for you to customize freely.",
       );
-      // It leaves focus alone, sits just under the button and stays clear of the window's buttons.
+      // It leaves focus alone and sits just under the button; the window's controls stay above it.
       await expect(tip.locator(":focus")).toHaveCount(0);
       const tipBox = await box(tip);
       const buttonBox = await box(chatSettingsButton(page));
       expect(tipBox.y).toBeGreaterThanOrEqual(buttonBox.y + buttonBox.height);
       expect(tipBox.y - (buttonBox.y + buttonBox.height)).toBeLessThan(16);
-      const controlsBox = await box(settings.locator(".mari-window__controls"));
-      const overlapsControls =
-        tipBox.x < controlsBox.x + controlsBox.width &&
-        controlsBox.x < tipBox.x + tipBox.width &&
-        tipBox.y < controlsBox.y + controlsBox.height &&
-        controlsBox.y < tipBox.y + tipBox.height;
-      expect(overlapsControls).toBe(false);
+      await expect
+        .poll(() =>
+          settings.locator(".mari-window__controls button").evaluateAll((buttons) =>
+            buttons.every((button) => {
+              const rect = button.getBoundingClientRect();
+              const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+              return hit !== null && button.contains(hit);
+            }),
+          ),
+        )
+        .toBe(true);
       await page.screenshot({ path: test.info().outputPath("move-tip.png"), animations: "disabled" });
 
       // Not in other modes.

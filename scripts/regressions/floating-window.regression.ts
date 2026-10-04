@@ -349,7 +349,11 @@ for (const attribute of ["data-drawer={id}", "data-detached="]) assert.ok(drawer
 const variables = [...globals.matchAll(/^\s+(--mari-(?:window|drawer)-[a-z-]+)\s/gmu)].map((match) => match[1]!);
 assert.ok(variables.length >= 30, "globals.css must document the window and drawer variables");
 for (const variable of variables) {
-  assert.match(globals, new RegExp(`var\\(${variable},`, "u"), `${variable} must be read with a theme-token fallback`);
+  assert.match(
+    globals,
+    new RegExp(`var\\(\\s*${variable}\\s*,`, "u"),
+    `${variable} must be read with a theme-token fallback`,
+  );
 }
 assert.match(
   globals,

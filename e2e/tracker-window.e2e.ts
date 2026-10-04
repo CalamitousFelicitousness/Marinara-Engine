@@ -3,7 +3,7 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { seedUIState } from "./ui-state-fixture.js";
-import { resetChatView } from "./chat-settings-tools.js";
+import { openChatSettings, resetChatView } from "./chat-settings-tools.js";
 
 const APP_VERSION = (
   JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }
@@ -56,13 +56,6 @@ async function prepare(page: Page, chatId: string, ui: Record<string, unknown>) 
     },
     { chatId, version: APP_VERSION },
   );
-}
-
-async function openChatSettings(page: Page) {
-  await page.locator("[data-chat-settings-button]").click();
-  const settings = page.locator('[data-window="chat-settings"]');
-  await expect(settings.locator("[data-chat-settings-section]").first()).toBeVisible();
-  return settings;
 }
 
 async function typography(locator: Locator) {

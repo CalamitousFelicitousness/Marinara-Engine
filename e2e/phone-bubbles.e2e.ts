@@ -416,7 +416,7 @@ test.describe("phone bubbles", () => {
         ["control:game", (window) => window.getByRole("button", { name: "Retry Turn" })],
         ["control:session", (window) => window.getByRole("button", { name: /history/iu }).first()],
         ["control:volume", (window) => window.getByRole("slider").first()],
-        ["control:assets", (window) => window.locator("button").nth(1)],
+        ["control:assets", (window) => window.getByRole("button", { name: "Generate background", exact: true })],
         [CONNECTED, (window) => window.getByRole("button", { name: /^Switch to/u })],
       ];
       for (const [id, content] of opens) {

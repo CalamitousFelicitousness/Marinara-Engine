@@ -26,7 +26,6 @@ import { Lock, Minus, Pin, Unlock, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../../lib/utils";
 import {
-  PHONE_BUBBLE_GAP_PX,
   PHONE_BUBBLE_SIZE_PX,
   RESIZE_EDGES,
   WINDOW_KEYBOARD_LARGE_STEP_PX,
@@ -37,7 +36,6 @@ import {
   clampWindowGeometry,
   getPhoneBubbleSlot,
   moveWindowGeometry,
-  placeWindowBesideBubble,
   resizeWindowGeometry,
   type FloatingWindowId,
   type WindowPoint,
@@ -48,6 +46,7 @@ import {
 } from "../../lib/floating-window-layout";
 import { isModalOverlayOpen } from "../../lib/modal-overlay-registry";
 import { CHAT_VISUAL_VIEWPORT_CHANGE_EVENT } from "../../hooks/use-visual-viewport-chat-bottom";
+import { BUBBLE_SNAP_GAP_PX } from "../../lib/window-bubble-snap";
 import { DrawerHostContext, type DrawerHost } from "./drawer-host";
 import { WindowBubble } from "./WindowBubble";
 import {
@@ -66,6 +65,10 @@ export interface FloatingWindowProps {
   titleIcon?: ReactNode;
   /** Rendered after the title, outside the heading (a help button, for example). */
   titleAccessory?: ReactNode;
+  /** The window's own buttons in the title bar, before minimize, pin, lock and close (`mari-window__control`). */
+  headerControls?: ReactNode;
+  /** A title bar button just before close (a popped-out drawer's Put back). */
+  closeAccessory?: ReactNode;
   closeLabel: string;
   /** Where the window opens before the user moves it, and where Reset View puts it back. */
   getDefaultLayout: (bounds: WindowBounds) => WindowLayout;
@@ -131,27 +134,32 @@ export const PHONE_FULL_SHEET_CLASS =
   "bottom-[calc(0.75rem+var(--mari-safe-area-inset-bottom,env(safe-area-inset-bottom)))]";
 
 /**
- * The first free place for a new phone bubble: along the top row from the right edge, then the rows
- * below it, skipping the bubbles already on screen (`except` is the bubble being placed).
+ * The first free place for a new bubble: just left of the row of bubbles along the top (the chat's
+ * control bubbles), a snapping gap away; otherwise the first free spot along the top rows from the
+ * right edge. `except` is the bubble being placed.
  */
-export function findFreePhoneBubble(bounds: WindowBounds, except?: FloatingWindowId): WindowPoint {
+export function findFreeBubble(
+  bounds: WindowBounds,
+  { size, except }: { size: number; except?: FloatingWindowId },
+): WindowPoint {
+  const gap = BUBBLE_SNAP_GAP_PX;
   const taken = Array.from(document.querySelectorAll<HTMLElement>(".mari-window-bubble"))
     .filter((element) => element.dataset.window !== except && element.getClientRects().length > 0)
     .map((element) => element.getBoundingClientRect());
-  const step = PHONE_BUBBLE_SIZE_PX + PHONE_BUBBLE_GAP_PX;
-  for (let y = bounds.top; y + PHONE_BUBBLE_SIZE_PX <= bounds.bottom; y += step) {
-    for (let x = bounds.right - PHONE_BUBBLE_SIZE_PX; x >= bounds.left; x -= step) {
-      const free = taken.every(
-        (rect) =>
-          rect.right <= x ||
-          rect.left >= x + PHONE_BUBBLE_SIZE_PX ||
-          rect.bottom <= y ||
-          rect.top >= y + PHONE_BUBBLE_SIZE_PX,
-      );
-      if (free) return { x, y };
+  const free = (x: number, y: number) =>
+    x >= bounds.left &&
+    taken.every((rect) => rect.right <= x || rect.left >= x + size || rect.bottom <= y || rect.top >= y + size);
+  const topRow = taken.filter((rect) => Math.abs(rect.top - bounds.top) <= 1);
+  if (topRow.length > 0) {
+    const x = Math.min(...topRow.map((rect) => rect.left)) - gap - size;
+    if (free(x, bounds.top)) return { x, y: bounds.top };
+  }
+  for (let y = bounds.top; y + size <= bounds.bottom; y += size + gap) {
+    for (let x = bounds.right - size; x >= bounds.left; x -= size + gap) {
+      if (free(x, y)) return { x, y };
     }
   }
-  return getPhoneBubbleSlot(bounds, 0);
+  return { x: bounds.right - size, y: bounds.top };
 }
 
 const DEFAULT_MIN_WIDTH = 320;
@@ -287,6 +295,8 @@ export function FloatingWindow({
   title,
   titleIcon,
   titleAccessory,
+  headerControls,
+  closeAccessory,
   closeLabel,
   getDefaultLayout,
   defaultLayoutKey,
@@ -398,7 +408,9 @@ export function FloatingWindow({
   const needsPhonePlace = phoneBubble && minimized && !hidden && !savedPhoneBubble && !minimizable?.getPhoneBubble;
   useLayoutEffect(() => {
     if (!needsPhonePlace) return;
-    useFloatingWindowStore.getState().savePhoneBubble(id, findFreePhoneBubble(readPhoneBubbleBounds(), id));
+    useFloatingWindowStore
+      .getState()
+      .savePhoneBubble(id, findFreeBubble(readPhoneBubbleBounds(), { size: PHONE_BUBBLE_SIZE_PX, except: id }));
   }, [id, needsPhonePlace]);
 
   // Re-clamp whenever the viewport or the chat area changes, so a window can never be lost off-screen.
@@ -431,7 +443,12 @@ export function FloatingWindow({
   minimizeRef.current = (focusBubble) => {
     restoreFocusOnUnmountRef.current = false;
     focusBubbleRef.current = focusBubble;
-    saveLayout(id, { ...layoutRef.current, minimized: true });
+    const current = layoutRef.current;
+    // A window with no bubble place of its own (a popped-out drawer) gets one beside the other bubbles.
+    const bubble =
+      current.bubble ??
+      (defaultLayout.bubble ? undefined : findFreeBubble(bounds, { size: WINDOW_BUBBLE_SIZE_PX, except: id }));
+    saveLayout(id, { ...current, minimized: true, ...(bubble ? { bubble } : {}) });
     useFloatingWindowStore.getState().closeWindow(id);
   };
 
@@ -457,12 +474,9 @@ export function FloatingWindow({
     [canMinimize, id, phoneBubble],
   );
 
-  // An unpinned window opens next to its bubble; a pinned or locked one where it was left.
+  // The window opens where it was last left; its bubble's place is its own.
   const restoreFromBubble = (bubble: HTMLButtonElement) => {
-    const current = layoutRef.current;
-    const placed =
-      current.pinned || current.locked ? current : placeWindowBesideBubble(current, bubblePoint, bounds, limits);
-    saveLayout(id, { ...current, ...placed, minimized: false });
+    saveLayout(id, { ...layoutRef.current, minimized: false });
     useFloatingWindowStore.getState().openWindow(id, bubble);
   };
 
@@ -702,6 +716,7 @@ export function FloatingWindow({
           {titleAccessory}
         </span>
         <div className="mari-window__controls flex shrink-0 items-center">
+          {headerControls}
           {canMinimize && (
             <button
               type="button"
@@ -740,6 +755,7 @@ export function FloatingWindow({
               </button>
             </>
           )}
+          {closeAccessory}
           <button
             type="button"
             data-window-control="close"
@@ -774,7 +790,10 @@ export function FloatingWindow({
               onPointerUp={endPointerSession}
               onPointerCancel={endPointerSession}
               onKeyDown={handleResizeKeyDown}
-            />
+            >
+              {/* Shown while the pointer or focus is in the window: a cue that it resizes from here. */}
+              <span aria-hidden="true" className="mari-window__resize-grip" />
+            </button>
           ) : (
             <div
               key={edge}

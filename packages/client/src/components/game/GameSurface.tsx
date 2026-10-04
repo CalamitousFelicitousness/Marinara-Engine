@@ -2021,6 +2021,7 @@ import {
   Volume2,
   VolumeX,
   X,
+  Gamepad2,
 } from "lucide-react";
 
 /** Randomly sample up to `max` items from an array (Fisher-Yates shuffle). */
@@ -13375,7 +13376,7 @@ function GameSurfaceComponent({
             id={CHAT_CONTROL_WINDOW_IDS.gameControls}
             title={t("chat.controls.gameControls")}
             icon={
-              <RotateCcw size={14} className={sceneAnalysis.isPending || spotifyRetryPending ? "animate-spin" : ""} />
+              <Gamepad2 size={14} className={sceneAnalysis.isPending || spotifyRetryPending ? "animate-pulse" : ""} />
             }
             slot={4}
             width={288}

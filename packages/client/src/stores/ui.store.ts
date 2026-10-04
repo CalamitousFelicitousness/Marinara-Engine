@@ -976,6 +976,8 @@ interface UIState {
 
   // ── Dismissals ──
   linkApiBannerDismissed: boolean;
+  /** The Chat Settings "drag to place it" tip was dismissed on this device. */
+  chatSettingsMoveTipDismissed: boolean;
 
   // ── EchoChamber ──
   echoChamberOpen: boolean;
@@ -1270,6 +1272,7 @@ interface UIState {
   markChatHelpSeen: (mode: ChatModeShortcut) => void;
   setChatHelpButtonHidden: (v: boolean) => void;
   dismissLinkApiBanner: () => void;
+  dismissChatSettingsMoveTip: () => void;
   toggleEchoChamber: () => void;
   setEchoChamberSide: (side: EchoChamberSide) => void;
   setEchoChamberSideForChat: (chatId: string, side: EchoChamberSide) => void;
@@ -1687,6 +1690,7 @@ export function pickPersistedUIState(state: UIState) {
     chatHelpSeenModes: state.chatHelpSeenModes,
     chatHelpButtonHidden: state.chatHelpButtonHidden,
     linkApiBannerDismissed: state.linkApiBannerDismissed,
+    chatSettingsMoveTipDismissed: state.chatSettingsMoveTipDismissed,
     echoChamberOpen: state.echoChamberOpen,
     echoChamberSide: state.echoChamberSide,
     echoChamberSideByChatId: state.echoChamberSideByChatId,
@@ -1958,6 +1962,7 @@ export const useUIStore = create<UIState>()(
         chatHelpSeenModes: [],
         chatHelpButtonHidden: false,
         linkApiBannerDismissed: false,
+        chatSettingsMoveTipDismissed: false,
         echoChamberOpen: true,
         echoChamberSide: "bottom-right" as EchoChamberSide,
         echoChamberSideByChatId: {},
@@ -2952,6 +2957,7 @@ export const useUIStore = create<UIState>()(
             chatHelpSeenModes: v ? ["conversation", "roleplay", "game"] : state.chatHelpSeenModes,
           })),
         dismissLinkApiBanner: () => set({ linkApiBannerDismissed: true }),
+        dismissChatSettingsMoveTip: () => set({ chatSettingsMoveTipDismissed: true }),
         toggleEchoChamber: () => set((s) => ({ echoChamberOpen: !s.echoChamberOpen })),
         setEchoChamberSide: (side) => set({ echoChamberSide: side }),
         setEchoChamberSideForChat: (chatId, side) => {

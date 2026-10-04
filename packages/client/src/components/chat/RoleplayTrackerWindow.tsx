@@ -1,7 +1,7 @@
 // ──────────────────────────────────────────────
 // Tracker window: a Roleplay chat's trackers in a movable window
 //
-// Shown on a computer when the Tracker Panel is off in Settings. Each tracker is
+// Shown on a computer while the Tracker Panel is off (its dice in Chat Settings). Each tracker is
 // a drawer: collapsed it shows the tracker's miniature display, expanded its full
 // box. Agent activity sits at the bottom. Closing the window hides it until it
 // is turned back on in Chat Settings (or Reset View restores it). Each drawer
@@ -9,7 +9,18 @@
 // Beholder's launcher gets a control window of its own (a bubble), Tracker Panel or not.
 // ──────────────────────────────────────────────
 import { useCallback, useEffect, useRef, type ReactNode } from "react";
-import { BarChart3, Backpack, Eye, MapPin, RefreshCw, Scroll, SlidersHorizontal, Sparkles, Users } from "lucide-react";
+import {
+  BarChart3,
+  Backpack,
+  Eye,
+  MapPin,
+  RefreshCw,
+  Scroll,
+  SlidersHorizontal,
+  ListChecks,
+  PackageOpen,
+  PersonStanding,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { InstalledCapabilityPackage, Message } from "@marinara-engine/shared";
 import { FloatingWindow } from "../ui/FloatingWindow";
@@ -95,7 +106,7 @@ export interface RoleplayTrackerWindowProps {
 }
 
 /**
- * Decides whether the Tracker window shows (never on phones or with the Tracker Panel on), and gives
+ * Decides whether the Tracker window shows (never on phones or while the Tracker Panel shows), and gives
  * each Beholder package its control window, with its bubble at `beholderSlot` (`beholderPhoneSlot`).
  */
 export function RoleplayTrackerWindow({
@@ -104,7 +115,8 @@ export function RoleplayTrackerWindow({
   ...props
 }: RoleplayTrackerWindowProps & { beholderSlot: number; beholderPhoneSlot: number }) {
   const phoneLayout = useMatchMedia("(max-width: 767px)");
-  const trackerPanelEnabled = useUIStore((s) => s.trackerPanelEnabled);
+  // The Tracker Panel shows only while it is on (enabled) and open; otherwise this window holds the trackers.
+  const trackerPanelShown = useUIStore((s) => s.trackerPanelEnabled && s.trackerPanelOpen);
   const trackerWindowOpen = useUIStore((s) => s.trackerWindowOpen);
   const setTrackerWindowOpen = useUIStore((s) => s.setTrackerWindowOpen);
   const trackersPoppedOut = useHostHasDetachedDrawers(TRACKER_WINDOW_ID);
@@ -129,7 +141,7 @@ export function RoleplayTrackerWindow({
     setTrackerWindowOpen(true);
   }, [resetRevision, setTrackerWindowOpen]);
 
-  const showWindow = !phoneLayout && !trackerPanelEnabled && hasTrackers && (trackerWindowOpen || trackersPoppedOut);
+  const showWindow = !phoneLayout && !trackerPanelShown && hasTrackers && (trackerWindowOpen || trackersPoppedOut);
   return (
     <>
       {packages.beholder.map((item, index) => (
@@ -228,7 +240,7 @@ function PackageTrackerDrawer(props: PackageTrackerProps) {
     <TrackerDrawer
       id={`tracker-${item.id}`}
       title={item.manifest.name}
-      icon={<TrackerPanelIcon size="0.75rem" />}
+      icon={<PackageOpen size="0.75rem" />}
       summary={<PackageMiniature {...props} />}
     >
       {() =>
@@ -393,7 +405,7 @@ function TrackerWindow({
             <TrackerDrawer
               id="tracker-characters"
               title={t("ui.chat.characterswidget.presentCharacters")}
-              icon={<Users size="0.75rem" />}
+              icon={<PersonStanding size="0.75rem" />}
               summary={
                 <span className={TRACKER_MINIATURE_TILE}>
                   <CharactersMiniature />
@@ -493,7 +505,7 @@ function TrackerWindow({
           <TrackerDrawer
             id="agent-activity"
             title={t("agents.activity.title")}
-            icon={<Sparkles size="0.75rem" />}
+            icon={<ListChecks size="0.75rem" />}
             defaultOpen={false}
           >
             {() => <AgentActivitySection chatId={chatId} messages={messages} />}

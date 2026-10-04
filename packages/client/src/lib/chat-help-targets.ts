@@ -25,6 +25,9 @@ export type ChatHelpTargetId =
   | "window-close"
   | "tracker-panel"
   | "tracker-panel-bubble"
+  | "agent-activity"
+  | "drawer-bubble"
+  | "window-put-back"
   | "reset-view"
   | "messages"
   | "composer"
@@ -95,6 +98,20 @@ const TARGETS = {
     titleKey: "chat.help.targets.trackerPanel.title",
   },
   "reset-view": { ...chatHelpTarget("reset-view", "resetView"), bodyKey: "chat.settings.resetViewHelp" },
+  // Roleplay's Agent activity section, right below Agents in Chat Settings.
+  "agent-activity": {
+    ...chatHelpTarget(
+      "agent-activity",
+      "agentActivity",
+      `${CHAT_SETTINGS_WINDOW} [data-drawer$="-agent-activity"] > .mari-drawer__header`,
+    ),
+    titleKey: "chat.settings.agentActivity",
+    bodyKey: "chat.settings.agentActivityHelp",
+  },
+  // A section popped out of Chat Settings or the Trackers window, shrunk to its button.
+  "drawer-bubble": chatHelpTarget("drawer-bubble", "drawerBubble", ".mari-window-bubble[data-drawer-host]"),
+  // The button beside a popped-out section's X that puts it back.
+  "window-put-back": chatHelpTarget("window-put-back", "windowPutBack", '[data-window-control="put-back"]'),
   map: chatHelpTarget("map", "map", '[data-tour="game-map"]'),
   party: chatHelpTarget("party", "party", '[data-tour="game-party"]'),
   "scene-media": chatHelpTarget("scene-media", "sceneMedia"),
@@ -117,6 +134,8 @@ const CHAT_SETTINGS_TARGETS: ChatHelpTargetDefinition[] = [
   TARGETS["window-close"],
   TARGETS["tracker-panel"],
   TARGETS["reset-view"],
+  TARGETS["drawer-bubble"],
+  TARGETS["window-put-back"],
 ];
 
 const COMPOSER_TARGET: ChatHelpTargetDefinition = {
@@ -147,6 +166,7 @@ const TARGETS_BY_MODE: Record<ChatMode, ChatHelpTargetDefinition[]> = {
     TARGETS["agent-controls"],
     TARGETS["connected-chat"],
     ...CHAT_SETTINGS_TARGETS,
+    TARGETS["agent-activity"],
     {
       id: "messages",
       virtual: "messages",

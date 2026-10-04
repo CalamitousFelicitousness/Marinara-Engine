@@ -597,11 +597,23 @@ function migrateLiveState(
 ): RulesetLiveState {
   const steps = rulesetSheetMigrationSteps(definition).flatMap((step) => ("routeLive" in step ? [step] : []));
   if (steps.length === 0) return state;
+  const own = (record: object, key: string) => Object.prototype.hasOwnProperty.call(record, key);
+  const trackOf = (id: string) => definition.sheet.live.tracks.find((entry) => entry.id === id);
   let shownPools: Set<string> | null = null;
   for (const step of steps) {
-    const bag = step.routeLive === "pool" ? state.pools : state.tracks;
-    if (!bag || !Object.prototype.hasOwnProperty.call(bag, step.from)) continue;
-    const value = bag[step.from]!;
+    const cases = [...new Set(step.cases)];
+    // A wound track keeps marks and a plain one a number, so a track's value goes where the targets
+    // keep theirs (the import holds the targets to one shape). A source of the other shape has nowhere
+    // to go, and is dropped all the same.
+    const wound = step.routeLive === "track" && isRulesetWoundTrackId(trackOf(step.else));
+    if (step.routeLive === "track") {
+      const other = wound ? state.tracks : state.wounds;
+      if (other && own(other, step.from)) delete other[step.from];
+    }
+    const bag = (step.routeLive === "pool" ? state.pools : wound ? state.wounds : state.tracks) as
+      Record<string, unknown> | undefined;
+    if (!bag || !own(bag, step.from)) continue;
+    const value = bag[step.from];
     delete bag[step.from];
     let shown: string[];
     if (step.routeLive === "pool") {
@@ -610,17 +622,21 @@ function migrateLiveState(
           .filter((spec) => spec.max > 0)
           .map((spec) => spec.key),
       );
-      shown = step.cases.filter((id) => shownPools!.has(id));
+      shown = cases.filter((id) => shownPools!.has(id));
     } else {
-      shown = step.cases.filter((id) => {
-        const track = definition.sheet.live.tracks.find((entry) => entry.id === id);
+      shown = cases.filter((id) => {
+        const track = trackOf(id);
         return !!track && !isRulesetItemHidden(track, build, definition);
       });
     }
     const target = shown.length === 1 ? shown[0]! : step.else;
-    if (!Object.prototype.hasOwnProperty.call(bag, target)) (bag as Record<string, typeof value>)[target] = value;
+    if (!own(bag, target)) bag[target] = value;
   }
   return state;
+}
+
+function isRulesetWoundTrackId(track: RulesetLiveTrack | undefined): boolean {
+  return !!track && isRulesetWoundTrack(track);
 }
 
 function readStoredLiveStateAsIs(stored: unknown): RulesetLiveState {

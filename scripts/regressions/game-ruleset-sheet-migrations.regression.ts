@@ -72,7 +72,7 @@ const layoutTwo = (edit: (doc: Record<string, any>) => void = () => {}) => {
     {
       from: 1,
       steps: [
-        { route: "level", by: "class", cases: CLASS_CASES, else: "level_other", default: 1 },
+        { route: "level", by: "class", cases: structuredClone(CLASS_CASES), else: "level_other", default: 1 },
         { routeLive: "pool", from: "hit_dice", cases: DICE.map(([id]) => id), else: "hit_dice_d8" },
       ],
     },
@@ -95,6 +95,8 @@ const stored = (fields: Record<string, unknown>, v = 1) => ({ v, build: { fields
   const both = readRulesetSheetEnvelope(two, stored({ level: 5, class: "Fighter 3 / Wizard 2" }))!;
   assert.deepEqual([both.build.fields.level_other, both.build.fields.level_fighter], [5, undefined]);
   assert.equal(readRulesetSheetEnvelope(two, stored({ level: 3, class: "Firefighter" }))!.build.fields.level_other, 3);
+  // Only letters join a word: a level written straight after the class still names it.
+  assert.equal(readRulesetSheetEnvelope(two, stored({ level: 3, class: "Fighter3" }))!.build.fields.level_fighter, 3);
   // A sheet that never stored a level takes the step's default, not nothing.
   assert.equal(readRulesetSheetEnvelope(two, stored({ class: "Fighter" }))!.build.fields.level_fighter, 1);
   // A target already there is never overwritten.
@@ -189,6 +191,76 @@ const stored = (fields: Record<string, unknown>, v = 1) => ({ v, build: { fields
   assert.deepEqual(split.live.pools, { hit_dice_d8: { value: 1 }, hit_dice_d6: { value: 1 } });
 }
 
+// ── A wound track's marks travel with it ──
+{
+  const harm = {
+    id: "harm",
+    label: "Harm",
+    min: 0,
+    max: 4,
+    levels: [
+      { label: "Scuffed", penalty: 0 },
+      { label: "Winded", penalty: -1 },
+      { label: "Bleeding", penalty: -3 },
+      { label: "Down", penalty: -99 },
+    ],
+    kinds: [
+      { id: "knock", label: "Knock", severity: 0 },
+      { id: "tear", label: "Tear", severity: 1 },
+    ],
+  };
+  const wounded = parsedOrThrow(
+    layoutTwo((doc) => {
+      doc.sheet.live.tracks.push(harm);
+      doc.sheet.migrations[0].steps.push({ routeLive: "track", from: "wounds", cases: ["harm"], else: "harm" });
+    }),
+  );
+  const build = readRulesetSheetEnvelope(wounded, stored({ level: 5, class: "Fighter" }))!.build;
+  const old = { wounds: { wounds: { marks: ["tear", "knock"] } } };
+  const read = readRulesetLive(wounded, build, old).tracks.find((track) => track.id === "harm")!;
+  assert.deepEqual(read.wound?.marks, ["tear", "knock"]);
+  const written = applyRulesetSheetOp(wounded, build, old, { op: "spend", pool: "hp", amount: 1 });
+  assert.ok(written.ok);
+  assert.deepEqual(written.live.wounds, { harm: { marks: ["tear", "knock"] } });
+  // A plain number under the old id has nowhere to go on a wound track, and is dropped.
+  const plain = applyRulesetSheetOp(wounded, build, { tracks: { wounds: 2 } }, { op: "spend", pool: "hp", amount: 1 });
+  assert.ok(plain.ok);
+  assert.equal(plain.live.tracks?.wounds, undefined);
+  // The tracks a value goes to are of one shape.
+  assert.match(
+    refusal(
+      layoutTwo((doc) => {
+        doc.sheet.live.tracks.push(harm);
+        doc.sheet.migrations[0].steps.push({
+          routeLive: "track",
+          from: "wounds",
+          cases: ["harm"],
+          else: "exhaustion",
+        });
+      }),
+    ),
+    /all wound tracks or all plain tracks/,
+  );
+}
+
+// ── Chains through routes: a field renamed and then routed on, a target a later hop renames ──
+{
+  const chained = parsedOrThrow(
+    layoutTwo((doc) => {
+      doc.sheet.version = 3;
+      const fighter = doc.sheet.fields.find((field: { id: string }) => field.id === "level_fighter");
+      fighter.id = "fighter_level";
+      doc.sheet.live.pools.find((pool: { id: string }) => pool.id === "hit_dice_d10").max = { field: "fighter_level" };
+      // Layout 1 called the total "lvl"; layout 2 routes "level"; layout 3 renames the fighter's field.
+      doc.sheet.migrations[0].steps.unshift({ rename: "field", from: "lvl", to: "level" });
+      doc.sheet.migrations[0].steps[1].route = "level";
+      doc.sheet.migrations.push({ from: 2, steps: [{ rename: "field", from: "level_fighter", to: "fighter_level" }] });
+    }),
+  );
+  const moved = readRulesetSheetEnvelope(chained, stored({ lvl: 4, class: "Fighter" }))!;
+  assert.equal(moved.build.fields.fighter_level, 4);
+}
+
 // ── Import checks ──
 {
   const hop = (doc: Record<string, any>) => doc.sheet.migrations[0];
@@ -211,6 +283,18 @@ const stored = (fields: Record<string, unknown>, v = 1) => ({ v, build: { fields
     [(doc: Record<string, any>) => (hop(doc).steps[0].else = "nobody"), /Unknown field "nobody"/],
     [(doc: Record<string, any>) => (hop(doc).steps[1].from = "hp"), /"hp" is still a pool/],
     [(doc: Record<string, any>) => (hop(doc).steps[1].cases[0] = "hit_dice_d20"), /Unknown pool "hit_dice_d20"/],
+    [(doc: Record<string, any>) => hop(doc).steps[1].cases.push("hit_dice_d10"), /Duplicate case "hit_dice_d10"/],
+    [(doc: Record<string, any>) => (hop(doc).steps[0].by = "clas"), /Unknown field "clas"/],
+    [
+      (doc: Record<string, any>) => (hop(doc).steps[0].cases[0].to = "hit_die"),
+      /"hit_die" is a number or text field with no default, or a default of 0 or empty/,
+    ],
+    [
+      (doc: Record<string, any>) => {
+        doc.sheet.fields.find((field: { id: string }) => field.id === "level_wizard").default = 1;
+      },
+      /"level_wizard" is a number or text field with no default/,
+    ],
   ] as const) {
     assert.match(refusal(layoutTwo(edit)), message);
   }

@@ -3811,6 +3811,23 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       .flatMap(({ hop, index }) =>
         hop.steps.map((step, stepIndex) => ({ step, path: [...hopPath(index), "steps", stepIndex] })),
       );
+    // Where a field id ends up through the field renames after a step: a value routed to one, or
+    // renamed into one, that a later hop renames again is still on the sheet.
+    const fieldEnd = (id: string, position: number) => {
+      let end = id;
+      for (const later of ordered.slice(position + 1)) {
+        if ("rename" in later.step && later.step.rename === "field" && later.step.from === end) end = later.step.to;
+      }
+      return end;
+    };
+    const fieldById = new Map(sheet.fields.map((field) => [field.id, field]));
+    const renamedFields = new Set(
+      ordered.flatMap(({ step }) => ("rename" in step && step.rename === "field" ? [step.from] : [])),
+    );
+    const isWound = (id: string) => {
+      const track = sheet.live.tracks.find((entry) => entry.id === id);
+      return !!track && (!!track.levels || !!track.boxes) && !!track.kinds;
+    };
     ordered.forEach(({ step, path }, position) => {
       if ("rename" in step) {
         if (current[step.rename].has(step.from))
@@ -3820,19 +3837,50 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           if ("rename" in later.step && later.step.rename === step.rename && later.step.from === end)
             end = later.step.to;
         }
-        if (!current[step.rename].has(end)) issue([...path, "to"], `"${end}" is not a ${step.rename} of this sheet`);
+        // A field renamed and then routed on by a later step has gone where the route sends it.
+        const routedOn =
+          step.rename === "field" &&
+          ordered.slice(position + 1).some((later) => "route" in later.step && later.step.route === end);
+        if (!current[step.rename].has(end) && !routedOn)
+          issue([...path, "to"], `"${end}" is not a ${step.rename} of this sheet`);
       } else if ("route" in step) {
-        step.cases.forEach((entry, caseIndex) => {
-          if (!fields.has(entry.to)) issue([...path, "cases", caseIndex, "to"], `Unknown field "${entry.to}"`);
-        });
-        if (!fields.has(step.else)) issue([...path, "else"], `Unknown field "${step.else}"`);
+        // Read off the stored build, so `by` is a field the sheet has or one an earlier layout had.
+        if (!fields.has(step.by) && !renamedFields.has(step.by)) issue([...path, "by"], `Unknown field "${step.by}"`);
+        const targets: Array<[string, (string | number)[]]> = [
+          ...step.cases.map((entry, caseIndex): [string, (string | number)[]] => [
+            entry.to,
+            [...path, "cases", caseIndex, "to"],
+          ]),
+          [step.else, [...path, "else"]],
+        ];
+        for (const [id, where] of targets) {
+          const end = fieldEnd(id, position);
+          const field = fieldById.get(end);
+          if (!field) {
+            issue(where, `Unknown field "${end}"`);
+            continue;
+          }
+          // The routed value lands in one target and every other keeps its default, so a target
+          // that is not empty by default would read as a level, a class or a name nobody gave it.
+          const empty = field.default === undefined || field.default === 0 || field.default === "";
+          if (!["number", "text", "longtext"].includes(field.type) || !empty) {
+            issue(where, `"${end}" is a number or text field with no default, or a default of 0 or empty`);
+          }
+        }
       } else {
         const kind = step.routeLive;
         if (current[kind].has(step.from)) issue([...path, "from"], `"${step.from}" is still a ${kind} of this sheet`);
+        const seen = new Set<string>();
         step.cases.forEach((id, caseIndex) => {
+          if (seen.has(id)) issue([...path, "cases", caseIndex], `Duplicate case "${id}"`);
+          seen.add(id);
           if (!current[kind].has(id)) issue([...path, "cases", caseIndex], `Unknown ${kind} "${id}"`);
         });
         if (!current[kind].has(step.else)) issue([...path, "else"], `Unknown ${kind} "${step.else}"`);
+        // A wound track keeps marks and a plain one a number: the targets are all of one shape.
+        if (kind === "track" && new Set([...step.cases, step.else].map(isWound)).size > 1) {
+          issue([...path, "cases"], "The tracks a value goes to are all wound tracks or all plain tracks");
+        }
       }
     });
   }

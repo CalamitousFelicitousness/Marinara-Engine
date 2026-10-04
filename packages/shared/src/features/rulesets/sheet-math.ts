@@ -98,13 +98,14 @@ export function rulesetSheetMigrationSteps(definition: RulesetDefinition, v = 1)
     .flatMap((hop) => hop.steps);
 }
 
-/** Whether `phrase` is in `text` as whole words, ignoring case. */
+/** Whether `phrase` is in `text` as whole words, ignoring case. Only letters join a word, so a level
+ *  written straight after a class ("Fighter3") still names it. */
 function namesPhrase(text: string, phrase: string): boolean {
   const escaped = phrase
     .trim()
     .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
     .replace(/\s+/g, "\\s+");
-  return new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}($|[^\\p{L}\\p{N}])`, "iu").test(text);
+  return new RegExp(`(^|[^\\p{L}])${escaped}($|[^\\p{L}])`, "iu").test(text);
 }
 
 /** A build stored at version `v`, as the current layout reads it. The same object when nothing moves. */

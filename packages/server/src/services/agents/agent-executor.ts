@@ -3,7 +3,11 @@ import { roomAgentAllowed } from "../multiplayer/generation-policy.js";
 // Agent Executor — Single & Batched LLM execution
 // ──────────────────────────────────────────────
 import { existsSync, readdirSync, statSync, type Dirent } from "node:fs";
-import { buildCharacterAppearanceReferenceBlock } from "../image/character-prompts.js";
+import {
+  buildCharacterAppearanceReferenceBlock,
+  personaEntityId,
+  readIllustratorImageAppearanceOverride,
+} from "../image/character-prompts.js";
 import { basename, extname, join, relative, resolve } from "node:path";
 import type { BaseLLMProvider, ChatMessage, LLMToolDefinition, LLMToolCall, LLMUsage } from "../llm/base-provider.js";
 import type {
@@ -1697,6 +1701,7 @@ function buildBatchSystemPrompt(
     context,
     configs.map((c) => c.type),
     contextSources,
+    anyAgentProducesImagePrompt(configs),
   );
   if (extras) {
     parts.push(``);
@@ -2195,7 +2200,7 @@ function buildStandardAgentMessages(config: AgentExecConfig, template: string, c
   systemParts.push(`Fulfill the requested task here and return the output in the format specified:`);
   systemParts.push(template);
   systemParts.push(`</agents>`);
-  const extras = buildAgentExtras(context, [config.type], contextSources);
+  const extras = buildAgentExtras(context, [config.type], contextSources, agentProducesImagePrompt(config));
   if (extras) {
     systemParts.push(``);
     systemParts.push(extras);
@@ -2256,7 +2261,7 @@ function buildKnowledgeRetrievalAgentMessages(
   systemParts.push(`<agents>`);
   systemParts.push(template);
   systemParts.push(`</agents>`);
-  const extras = buildAgentExtras(context, [config.type]);
+  const extras = buildAgentExtras(context, [config.type], ALL_AGENT_CONTEXT_SOURCES, agentProducesImagePrompt(config));
   if (extras) {
     systemParts.push(``);
     systemParts.push(extras);
@@ -2971,6 +2976,20 @@ function buildAvailableSpritesBlock(context: AgentContext): string {
 }
 
 /**
+ * Whether an agent's output feeds an image prompt (#7053). The built-in
+ * Illustrator reports type "illustrator"; a CUSTOM image agent keeps its own
+ * type id and is identified by the `trigger_image_generation` capability, the
+ * same pairing the runtime already uses elsewhere (e.g. shouldRunAgentIndividually).
+ */
+function agentProducesImagePrompt(config: AgentExecConfig): boolean {
+  return config.type === "illustrator" || customAgentHasCapability(config.settings, "trigger_image_generation");
+}
+
+function anyAgentProducesImagePrompt(configs: readonly AgentExecConfig[]): boolean {
+  return configs.some((config) => agentProducesImagePrompt(config));
+}
+
+/**
  * Build agent-specific context blocks (sprites, backgrounds, source material, etc.)
  * that go into the system message after lore.
  */
@@ -2978,6 +2997,7 @@ function buildAgentExtras(
   context: AgentContext,
   agentTypes: string[] = [],
   sources: CustomAgentContextSources = ALL_AGENT_CONTEXT_SOURCES,
+  imageCapable = agentTypes.includes("illustrator"),
 ): string {
   const parts: string[] = [];
   const wrapFormat = normalizeAgentContextWrapFormat(context.wrapFormat);
@@ -3071,19 +3091,40 @@ function buildAgentExtras(
       ? context.memory._gameImageStylePrompt.trim()
       : "";
 
-  if (agentTypes.includes("illustrator") && !gameImageStylePrompt) {
+  if (imageCapable && !gameImageStylePrompt) {
     const illustratorStyleBlock = buildIllustratorImageStyleInstructionBlock(
       context.memory._illustratorImageStyleInstruction,
     );
     if (illustratorStyleBlock) parts.push(illustratorStyleBlock);
   }
 
-  if (agentTypes.includes("illustrator")) {
+  if (imageCapable) {
+    // #7053: an enabled, non-empty card override replaces the card appearance
+    // for IMAGE prompts only. Confined to this illustrator block on purpose —
+    // `context.characters[].appearance` is shared with buildLoreBlock and the
+    // `{{appearance}}` macros, which must keep the normal appearance.
     const appearanceReference =
       context.memory._illustratorCaptionAppearanceReference === true
         ? buildCharacterAppearanceReferenceBlock([
-            ...context.characters.map((char) => ({ name: char.name, appearance: char.appearance ?? "" })),
-            ...(context.persona ? [{ name: context.persona.name, appearance: context.persona.appearance ?? "" }] : []),
+            ...context.characters.map((char) => ({
+              name: char.name,
+              appearance: readIllustratorImageAppearanceOverride(context.memory, char.id) ?? char.appearance ?? "",
+            })),
+            ...(context.persona
+              ? [
+                  {
+                    name: context.persona.name,
+                    // Personas are keyed by their own id, exactly like characters
+                    // (#7053) — omitting this made the persona half asymmetric.
+                    // The id lives on memory because AgentContext["persona"] has
+                    // no id field.
+                    appearance:
+                      readIllustratorImageAppearanceOverride(context.memory, personaEntityId(context.memory)) ??
+                      context.persona.appearance ??
+                      "",
+                  },
+                ]
+              : []),
           ])
         : "";
     const characterPromptBlock = buildIllustratorCharacterPromptInstructionBlock(
@@ -3102,7 +3143,7 @@ function buildAgentExtras(
     parts.push(`</character_tracker_history>`);
   }
 
-  if (agentTypes.includes("illustrator") && gameImageStylePrompt) {
+  if (imageCapable && gameImageStylePrompt) {
     parts.push(`<game_image_instructions>`);
     parts.push(
       `This chat is in Game Mode. Follow the selected Illustrator prompt mode exactly: Background stays an environment-only plate, Illustration produces a scene CG, and Selfie, Comic Page, or manga modes keep their requested framing and text behavior.`,
@@ -3120,7 +3161,7 @@ function buildAgentExtras(
     parts.push(`</game_image_instructions>`);
   }
 
-  if (agentTypes.includes("illustrator") && context.memory._forceIllustratorImageGeneration === true) {
+  if (imageCapable && context.memory._forceIllustratorImageGeneration === true) {
     parts.push(`<illustrator_manual_image_request>`);
     parts.push(
       `The user explicitly requested an illustration. Set the Illustrator JSON field "shouldGenerate" to true and provide the best fitting image prompt for the current scene.`,
@@ -3140,7 +3181,7 @@ function buildAgentExtras(
     parts.push(`</manual_image_request>`);
   }
 
-  if (agentTypes.includes("illustrator") && context.memory._illustratorBackgroundGenerationEnabled === true) {
+  if (imageCapable && context.memory._illustratorBackgroundGenerationEnabled === true) {
     parts.push(`<illustrator_background_generation enabled="true">`);
     parts.push(
       `Independently set the Illustrator JSON field "generateBackground" to true only when the latest assistant scene enters a meaningfully different reusable location or setting. This decision is separate from "shouldGenerate"; both may be true on the same turn.`,

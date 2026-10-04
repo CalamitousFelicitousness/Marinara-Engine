@@ -221,6 +221,10 @@ interface PersonaFormData {
   scenario: string;
   backstory: string;
   appearance: string;
+  /** Mirrors the card's image-prompt override: `imageAppearance` is used instead of
+   *  `appearance` in image prompts while `imageAppearanceEnabled` is on. */
+  imageAppearanceEnabled: boolean;
+  imageAppearance: string;
   characterSheetImageId: string | null;
   useCharacterSheetAsReference: boolean;
   nameColor: string;
@@ -332,6 +336,8 @@ function personaFormFromPersona(persona: Persona): PersonaFormData {
     scenario: persona.scenario ?? "",
     backstory: persona.backstory ?? "",
     appearance: persona.appearance ?? "",
+    imageAppearanceEnabled: persona.imageAppearanceEnabled === true,
+    imageAppearance: persona.imageAppearance ?? "",
     characterSheetImageId: persona.characterSheetImageId ?? null,
     useCharacterSheetAsReference: persona.useCharacterSheetAsReference === true,
     nameColor: persona.nameColor ?? "",
@@ -1271,6 +1277,8 @@ function createCharacterDataFromPersona(formData: PersonaFormData): CharacterDat
       depth_prompt: { prompt: "", depth: 4, role: "system" },
       backstory: formData.backstory ?? "",
       appearance: formData.appearance ?? "",
+      imageAppearanceEnabled: formData.imageAppearanceEnabled,
+      imageAppearance: formData.imageAppearance || undefined,
       versioningEnabled: formData.versioningEnabled,
       phoneticName: formData.phoneticName.trim() || undefined,
       nameColor: formData.nameColor || undefined,
@@ -3927,6 +3935,8 @@ const PERSONA_VERSION_COMPARE_FIELDS: Array<{ key: keyof PersonaCardSnapshot; la
   { key: "scenario", label: "Scenario" },
   { key: "backstory", label: "Backstory" },
   { key: "appearance", label: "Appearance" },
+  { key: "imageAppearance", label: "Image Appearance Override" },
+  { key: "imageAppearanceEnabled", label: "Use Image Appearance Override" },
   { key: "characterSheetImageId", label: "Character Sheet" },
   { key: "useCharacterSheetAsReference", label: "Use Character Sheet as Reference" },
   { key: "avatarCrop", label: "Avatar Crop" },
@@ -3952,6 +3962,8 @@ function buildCurrentPersonaSnapshot(formData: PersonaFormData): PersonaCardSnap
     scenario: formData.scenario,
     backstory: formData.backstory,
     appearance: formData.appearance,
+    imageAppearanceEnabled: String(formData.imageAppearanceEnabled),
+    imageAppearance: formData.imageAppearance,
     characterSheetImageId: formData.characterSheetImageId ?? "",
     useCharacterSheetAsReference: String(formData.useCharacterSheetAsReference),
     avatarCrop: formData.avatarCrop ? JSON.stringify(formData.avatarCrop) : "",
@@ -3974,6 +3986,13 @@ function buildCurrentPersonaSnapshot(formData: PersonaFormData): PersonaCardSnap
 function formatPersonaVersionValue(data: PersonaCardSnapshot, key: keyof PersonaCardSnapshot): string {
   const value = data[key];
   if (typeof value !== "string") return "";
+  // #7053: the image-appearance switch is snapshotted as the string "true"/"false".
+  // Render it as On/Off so a comparison shows the toggle change that decides which
+  // text image prompts use, instead of the raw storage string. Resolve this BEFORE
+  // the generic empty-value bail-out: a snapshot written before this field existed
+  // has "" here, and that means Off — rendering it blank would make an old version
+  // look unchanged against a new one that explicitly stores "false".
+  if (key === "imageAppearanceEnabled") return value === "true" ? "On" : "Off";
   if (!value.trim()) return "";
   if (key === "avatarCrop" || key === "trackerCardColors" || key === "personaStats" || key === "tags") {
     try {
@@ -4404,6 +4423,32 @@ function PersonaCardTab({
             )}
             rows={8}
           />
+          <div className="mt-3">
+            <SettingsSwitch
+              label={
+                <span className="font-medium">
+                  {localizeUi("ui.characters.charactercardtab.imageAppearanceToggle")}
+                </span>
+              }
+              description={localizeUi("ui.characters.charactercardtab.imageAppearanceToggleHelp")}
+              checked={formData.imageAppearanceEnabled}
+              onChange={(enabled) => updateField("imageAppearanceEnabled", enabled)}
+              labelPosition="start"
+              className="justify-between rounded-xl border border-[var(--border)] bg-[var(--card)] p-4"
+            />
+          </div>
+          {formData.imageAppearanceEnabled && (
+            <div className="mt-3">
+              <TextareaTab
+                title={localizeUi("ui.characters.charactercardtab.imageAppearanceToggle")}
+                subtitle={localizeUi("ui.characters.charactercardtab.imageAppearanceSubtitle")}
+                value={formData.imageAppearance}
+                onChange={(v) => updateField("imageAppearance", v)}
+                placeholder={localizeUi("ui.characters.charactercardtab.imageAppearancePlaceholder")}
+                rows={6}
+              />
+            </div>
+          )}
         </EditorSectionAnchor>
         <EditorSectionAnchor id="persona-card-scenario">
           <TextareaTab

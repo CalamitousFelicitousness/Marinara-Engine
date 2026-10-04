@@ -1,4 +1,4 @@
-import { stripMacroComments } from "@marinara-engine/shared";
+import { readImageAppearanceOverride, stripMacroComments } from "@marinara-engine/shared";
 import { readPreferredFullBodySpriteBase64 } from "../game/sprite.service.js";
 import { readAvatarBase64 } from "../game/game-asset-generation.js";
 import { readFile } from "node:fs/promises";
@@ -17,6 +17,8 @@ type CharacterReferenceSource = {
   name: string;
   avatarPath: string | null;
   appearance: string | null;
+  /** Normalized `extensions.imageAppearance` when the toggle is on (#7053); wins over `appearance`. */
+  appearanceOverride?: string | null;
   aliases: string[];
   promptAliases: string[];
   sourceOrder: number;
@@ -46,6 +48,12 @@ export type IllustratorChatCharacterReference = {
   name: string;
   avatarPath?: string | null;
   appearance?: string | null;
+  /**
+   * Image-prompt appearance override (#7053). When set it wins over BOTH the
+   * caller `appearance` and the DB row, because the card's explicit override is
+   * authoritative for image prompts regardless of which caller supplied text.
+   */
+  appearanceOverride?: string | null;
 };
 
 export type IllustratorReferenceResolution = {
@@ -299,9 +307,19 @@ export function normalizeIllustratorAppearance(value: unknown): string | null {
   return `${(wordBoundary > 0 ? clipped.slice(0, wordBoundary) : clipped).trimEnd()}...`;
 }
 
+/**
+ * Resolves the appearance text used for IMAGE prompts (#7053): the card's
+ * `extensions.imageAppearance` wins over `extensions.appearance`/`appearance`
+ * when the toggle is on and the override is non-empty. Both candidates go
+ * through `normalizeIllustratorAppearance` so macro-stripping and clipping are
+ * unchanged; the helper only picks override-vs-fallback.
+ */
 export function readIllustratorAppearance(data: Record<string, unknown>): string | null {
   const extensions = parseRecord(data.extensions);
-  return normalizeIllustratorAppearance(extensions.appearance) ?? normalizeIllustratorAppearance(data.appearance);
+  const stored =
+    normalizeIllustratorAppearance(extensions.appearance) ?? normalizeIllustratorAppearance(data.appearance);
+  // The helper is trim-only, so the override is normalized here too.
+  return normalizeIllustratorAppearance(readImageAppearanceOverride(extensions, stored));
 }
 
 function textContainsAlias(normalizedText: string, alias: string): boolean {
@@ -319,6 +337,7 @@ function characterRowToSource(row: CharacterRowLike, sourceOrder: number): Chara
     name: rawName,
     avatarPath: typeof row.avatarPath === "string" ? row.avatarPath : null,
     appearance: readIllustratorAppearance(data),
+    appearanceOverride: readImageAppearanceOverride(extensions, null),
     aliases: buildNameAliases(rawName),
     promptAliases: buildNameAliases(rawName, { includeStandaloneTokens: false }),
     sourceOrder,
@@ -473,11 +492,18 @@ export async function resolveIllustratorCharacterReferences(args: {
   const sourcesById = new Map<string, CharacterReferenceSource>();
   args.chatCharacters.forEach((character, index) => {
     const fromDb = allSourcesById.get(character.id);
+    // #7053: an explicit override wins over BOTH the caller appearance and the
+    // DB row — the card's override is authoritative for image prompts no matter
+    // which caller supplied text.
+    const override =
+      normalizeIllustratorAppearance(character.appearanceOverride) ??
+      normalizeIllustratorAppearance(fromDb?.appearanceOverride) ??
+      null;
     sourcesById.set(character.id, {
       id: character.id,
       name: character.name,
       avatarPath: character.avatarPath ?? fromDb?.avatarPath ?? null,
-      appearance: normalizeIllustratorAppearance(character.appearance) ?? fromDb?.appearance ?? null,
+      appearance: override ?? normalizeIllustratorAppearance(character.appearance) ?? fromDb?.appearance ?? null,
       aliases: buildNameAliases(character.name),
       promptAliases: buildNameAliases(character.name, { includeStandaloneTokens: false }),
       sourceOrder: index,

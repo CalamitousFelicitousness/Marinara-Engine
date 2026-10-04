@@ -293,8 +293,12 @@ import {
 import { persistGeneratedImageToEntityGalleries } from "../services/image/generated-image-entity-gallery.js";
 import { resolveImageConnectionFallback } from "../services/generation/media-connection-fallback.js";
 import {
+  buildIllustratorImageAppearanceOverrides,
   buildUncaptionedCharacterAppearanceBlock,
+  IMAGE_APPEARANCE_OVERRIDES_MEMORY_KEY,
+  personaEntityId,
   readCharacterPrompts,
+  readIllustratorImageAppearanceOverride,
   resolveNovelAiCharacterPromptLimit,
   supportsNovelAiCharacterPrompts,
 } from "../services/image/character-prompts.js";
@@ -5310,6 +5314,12 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
 
         if (personaId) {
           agentContext.memory._personaId = personaId;
+          // #7053: the persona's image-prompt override, read once from the
+          // resolved identity so every image path keys it consistently. Set
+          // unconditionally: the retry path reads this key without a guard, so
+          // leaving it unset when the override is cleared would let a stale
+          // value survive on a reused memory object.
+          agentContext.memory._personaImageAppearanceOverride = identity?.imageAppearanceOverride ?? "";
         }
         if (userIdentityId) {
           agentContext.memory._userIdentityId = userIdentityId;
@@ -5424,6 +5434,17 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   ? chatMeta.illustratorIncludeCharacterAppearance
                   : illustratorPromptAgent.settings.includeCharacterAppearance === true;
               if (attachCardAppearance) agentContext.memory._illustratorCaptionAppearanceReference = true;
+              // #7053: image-prompt appearance overrides, applied ONLY to the
+              // illustrator's caption appearance reference so roleplay lore and
+              // `{{appearance}}` macros keep the normal card appearance. Personas
+              // are keyed by their own id so both halves stay symmetric.
+              const imageAppearanceOverrides = buildIllustratorImageAppearanceOverrides(charInfo, {
+                id: personaId,
+                imageAppearanceOverride: identity?.imageAppearanceOverride || undefined,
+              });
+              if (imageAppearanceOverrides) {
+                agentContext.memory[IMAGE_APPEARANCE_OVERRIDES_MEMORY_KEY] = imageAppearanceOverrides;
+              }
             }
           } catch (error) {
             logger.warn(error, "[illustrator] Failed to resolve character prompt instruction for the prompt writer");
@@ -13126,6 +13147,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                             name: character.name,
                             avatarPath: character.avatarPath,
                             appearance: character.appearance,
+                            appearanceOverride: character.imageAppearanceOverride ?? null,
                           })),
                           ...(identity?.source === "character" &&
                           !charInfo.some((character) => character.id === identity.id)
@@ -13135,6 +13157,10 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                                   name: identity.name,
                                   avatarPath: identity.avatarPath,
                                   appearance: identity.appearance,
+                                  // #7053: mirror the charInfo entries above so a
+                                  // character used as the user identity keeps its
+                                  // image-prompt override.
+                                  appearanceOverride: identity.imageAppearanceOverride || null,
                                 },
                               ]
                             : []),
@@ -13171,8 +13197,29 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                           illustratorCharacterPrompts.length > 0
                             ? buildUncaptionedCharacterAppearanceBlock(
                                 [
-                                  ...agentContext.characters,
-                                  ...(agentContext.persona ? [agentContext.persona] : []),
+                                  ...agentContext.characters.map((character) => ({
+                                    name: character.name,
+                                    // #7053: image-only override; the shared
+                                    // `appearance` stays untouched for lore.
+                                    appearance:
+                                      readIllustratorImageAppearanceOverride(agentContext.memory, character.id) ??
+                                      character.appearance ??
+                                      "",
+                                  })),
+                                  ...(agentContext.persona
+                                    ? [
+                                        {
+                                          name: agentContext.persona.name,
+                                          appearance:
+                                            readIllustratorImageAppearanceOverride(
+                                              agentContext.memory,
+                                              personaEntityId(agentContext.memory),
+                                            ) ??
+                                            agentContext.persona.appearance ??
+                                            "",
+                                        },
+                                      ]
+                                    : []),
                                   ...referenceResolution.appearanceSources,
                                 ],
                                 illCharacters.filter((name): name is string => typeof name === "string"),

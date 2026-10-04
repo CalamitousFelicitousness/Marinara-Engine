@@ -1,5 +1,6 @@
 import { stripMacroComments, type SceneIllustrationCharacterPrompt } from "@marinara-engine/shared";
 import { normalizeAvatarLookupName } from "../game/npc-avatar-utils.js";
+import { normalizeIllustratorAppearance } from "./illustrator-references.js";
 
 /**
  * Native NovelAI per-character captions shared by the Storyboard planner and the
@@ -174,6 +175,58 @@ export function readCharacterPrompts(
 }
 
 export type CharacterAppearanceSource = { name: string; appearance: string };
+
+/**
+ * Per-character image-prompt appearance overrides (#7053), keyed by character id
+ * and carried on `AgentContext.memory`. Built by the generate/retry routes from
+ * each card's enabled, non-empty `extensions.imageAppearance`.
+ */
+export const IMAGE_APPEARANCE_OVERRIDES_MEMORY_KEY = "_illustratorImageAppearanceOverrides";
+
+/**
+ * Reads one entity's normalized image-prompt appearance override. Returns null
+ * when it has no override, so callers fall back to the normal appearance.
+ * Normalization keeps macro-stripping and clipping identical to the normal
+ * appearance path (the shared helper is trim-only).
+ */
+export function readIllustratorImageAppearanceOverride(
+  memory: Record<string, unknown> | undefined,
+  entityId: string | null | undefined,
+): string | null {
+  if (!entityId) return null;
+  const overrides = memory?.[IMAGE_APPEARANCE_OVERRIDES_MEMORY_KEY];
+  if (!overrides || typeof overrides !== "object") return null;
+  return normalizeIllustratorAppearance((overrides as Record<string, unknown>)[entityId]);
+}
+
+/**
+ * Builds the override map from card infos plus an optional persona, or null when
+ * nothing overrides. Personas are keyed by their own id, exactly like
+ * characters, so both halves of Attach Card Appearance stay symmetric (#7053).
+ */
+export function buildIllustratorImageAppearanceOverrides(
+  characters: Array<{ id: string; imageAppearanceOverride?: string }>,
+  persona?: { id?: string | null; imageAppearanceOverride?: string } | null,
+): Record<string, string> | null {
+  const entries = characters
+    .filter((character) => character.imageAppearanceOverride)
+    .map((character) => [character.id, character.imageAppearanceOverride!] as const);
+  if (persona?.id && persona.imageAppearanceOverride) {
+    entries.push([persona.id, persona.imageAppearanceOverride] as const);
+  }
+  return entries.length > 0 ? Object.fromEntries(entries) : null;
+}
+
+/**
+ * The persona id used as the override-map key. `AgentContext["persona"]` has no
+ * id field, so the routes carry it on memory (`_personaId`, set alongside
+ * `_userIdentityId`). Returns null for character identities and anonymous users,
+ * which have no persona override.
+ */
+export function personaEntityId(memory: Record<string, unknown> | undefined): string | null {
+  const id = memory?.["_personaId"];
+  return typeof id === "string" && id ? id : null;
+}
 
 const ENSEMBLE_SEGMENT = /\[([^\]]+)\]\s*([^[]*)/g;
 const MAX_APPEARANCE_REFERENCE_CHARS = 8000;

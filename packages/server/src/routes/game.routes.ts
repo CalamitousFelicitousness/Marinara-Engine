@@ -7,7 +7,12 @@ import {
 } from "../services/multiplayer/generation-policy.js";
 import { rejectGenerationOutput, type GenerationOutput } from "./generate/sse.js";
 import { resolveStoredChatOptions, resolveStoredMaxTokens } from "../services/generation/generation-parameters.js";
-import { normalizeGameDifficulty, normalizeWeatherType, combatWeatherSchema } from "@marinara-engine/shared";
+import {
+  normalizeGameDifficulty,
+  normalizeWeatherType,
+  combatWeatherSchema,
+  readImageAppearanceOverride,
+} from "@marinara-engine/shared";
 import { resolveCombatWeather } from "../services/game/weather.service.js";
 import { resolveGameConnection } from "../services/game/connection.service.js";
 import { combatAiHintsSchema, combatTacticsSchema, combatInterruptFields } from "@marinara-engine/shared";
@@ -373,6 +378,7 @@ import {
 import { loadGameFightItems, loadGameInventoryItemBook } from "../services/game/game-inventory.service.js";
 import { rollGameFightItemGate } from "../services/game/game-item-use.service.js";
 import {
+  normalizeIllustratorAppearance,
   readIllustratorAppearance,
   readPreferredCharacterReferenceImage,
   readPreferredPersonaReferenceImage,
@@ -553,6 +559,9 @@ async function addPersonaIllustrationAssets(
         name?: string | null;
         avatarPath?: string | null;
         appearance?: string | null;
+        /** Text-column override (#7053); "true"/"false" like its siblings. */
+        imageAppearanceEnabled?: string | null;
+        imageAppearance?: string | null;
         characterSheetImageId?: string | null;
         useCharacterSheetAsReference?: string;
       }
@@ -577,7 +586,16 @@ async function addPersonaIllustrationAssets(
   }
   if (persona.avatarPath) addNameLookupEntry(maps.charAvatarByName, name, persona.avatarPath);
 
-  const appearanceText = extractCharacterAppearanceText({ appearance: persona.appearance });
+  // #7053: the persona row carries the image-prompt override as TOP-LEVEL text
+  // columns (no extensions bag), so feed them through the shared helper. Without
+  // this the override reached conversation image prompts but not Game mode.
+  const appearanceText = readImageAppearanceOverride(
+    {
+      imageAppearanceEnabled: persona.imageAppearanceEnabled === "true",
+      imageAppearance: persona.imageAppearance,
+    },
+    normalizeIllustratorAppearance(persona.appearance),
+  );
   if (appearanceText) addNameLookupEntry(maps.charDescriptionByName, name, appearanceText);
   return name;
 }

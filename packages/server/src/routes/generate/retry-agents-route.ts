@@ -73,6 +73,7 @@ import { buildUtilitySidecarEntry } from "../../services/utility-sidecar/utility
 import {
   DECISION_PROMPT_QUESTION_LIMIT_SETTINGS_KEY,
   parseDecisionPromptQuestionLimit,
+  readImageAppearanceOverride,
   UTILITY_SIDECAR_CONNECTION_ID,
 } from "@marinara-engine/shared";
 import { buildSpotifyDjConstraints } from "../../services/spotify/spotify-dj-constraints.js";
@@ -131,7 +132,10 @@ import { generateIllustratorImageVariants } from "../../services/image/illustrat
 import {
   buildCharacterAppearanceReferenceBlock,
   buildUncaptionedCharacterAppearanceBlock,
+  IMAGE_APPEARANCE_OVERRIDES_MEMORY_KEY,
+  personaEntityId,
   readCharacterPrompts,
+  readIllustratorImageAppearanceOverride,
   resolveNovelAiCharacterPromptLimit,
   supportsNovelAiCharacterPrompts,
 } from "../../services/image/character-prompts.js";
@@ -290,6 +294,8 @@ type PersonaContext = {
   personaName: string;
   personaDescription: string;
   personaFields: { personality?: string; scenario?: string; backstory?: string; appearance?: string };
+  /** Image-prompt appearance override (#7053); empty when the user has none. */
+  imageAppearanceOverride: string;
   personaAvatarPath?: string | null;
   personaStats: any;
   rpgStats: any;
@@ -631,9 +637,27 @@ async function executeManualIllustratorPromptRequest(args: {
         ? [
             characterPromptInstruction,
             buildCharacterAppearanceReferenceBlock([
-              ...args.agentContext.characters.map((char) => ({ name: char.name, appearance: char.appearance ?? "" })),
+              ...args.agentContext.characters.map((char) => ({
+                name: char.name,
+                // #7053: the image override replaces the card appearance for the
+                // manual illustrator prompt only.
+                appearance:
+                  readIllustratorImageAppearanceOverride(args.agentContext.memory, char.id) ?? char.appearance ?? "",
+              })),
               ...(args.agentContext.persona
-                ? [{ name: args.agentContext.persona.name, appearance: args.agentContext.persona.appearance ?? "" }]
+                ? [
+                    {
+                      name: args.agentContext.persona.name,
+                      // Personas are keyed by their own id, like characters (#7053).
+                      appearance:
+                        readIllustratorImageAppearanceOverride(
+                          args.agentContext.memory,
+                          personaEntityId(args.agentContext.memory),
+                        ) ??
+                        args.agentContext.persona.appearance ??
+                        "",
+                    },
+                  ]
                 : []),
             ]),
           ]
@@ -690,6 +714,7 @@ async function resolvePersonaContext(
   let personaFields: PersonaContext["personaFields"] = {};
   let personaStats: any = null;
   let rpgStats: any = null;
+  let imageAppearanceOverride = "";
 
   const chatMode = ((chat as { mode?: ChatMode }).mode ?? "conversation") as ChatMode;
   const persona = await resolveChatUserIdentity(chars, {
@@ -708,6 +733,7 @@ async function resolvePersonaContext(
       personaFields,
       personaStats,
       rpgStats,
+      imageAppearanceOverride,
     };
   }
 
@@ -717,6 +743,7 @@ async function resolvePersonaContext(
   personaName = persona.name;
   personaDescription = cardPromptText(persona.description);
   const personaAvatarPath = typeof persona.avatarPath === "string" ? persona.avatarPath : null;
+  imageAppearanceOverride = persona.imageAppearanceOverride ?? "";
   personaFields = {
     personality: cardPromptText(persona.personality),
     scenario: cardPromptText(persona.scenario),
@@ -744,6 +771,7 @@ async function resolvePersonaContext(
     personaAvatarPath,
     personaStats,
     rpgStats,
+    imageAppearanceOverride,
   };
 }
 
@@ -1220,6 +1248,10 @@ async function buildRetryAgentContext(args: {
   }
   if (personaContext.personaId) {
     agentContext.memory._personaId = personaContext.personaId;
+    // #7053: set unconditionally (mirrors the generate route). The reader treats
+    // this key as authoritative, so leaving it unset when the override is empty
+    // would let a stale value survive on a reused memory object.
+    agentContext.memory._personaImageAppearanceOverride = personaContext.imageAppearanceOverride ?? "";
   }
   if (personaContext.identityId) {
     agentContext.memory._userIdentityId = personaContext.identityId;
@@ -3691,6 +3723,7 @@ async function applyRetryResultEffects(args: {
                   id: character.id,
                   name: character.name,
                   appearance: character.appearance,
+                  appearanceOverride: readIllustratorImageAppearanceOverride(agentContext.memory, character.id),
                 })),
                 ...(retryCharacterIdentity &&
                 !agentContext.characters.some((character) => character.id === retryCharacterIdentity.id)
@@ -3735,8 +3768,27 @@ async function applyRetryResultEffects(args: {
                 illustratorCharacterPrompts.length > 0
                   ? buildUncaptionedCharacterAppearanceBlock(
                       [
-                        ...agentContext.characters,
-                        ...(agentContext.persona ? [agentContext.persona] : []),
+                        ...agentContext.characters.map((character) => ({
+                          name: character.name,
+                          appearance:
+                            readIllustratorImageAppearanceOverride(agentContext.memory, character.id) ??
+                            character.appearance ??
+                            "",
+                        })),
+                        ...(agentContext.persona
+                          ? [
+                              {
+                                name: agentContext.persona.name,
+                                appearance:
+                                  readIllustratorImageAppearanceOverride(
+                                    agentContext.memory,
+                                    personaEntityId(agentContext.memory),
+                                  ) ??
+                                  agentContext.persona.appearance ??
+                                  "",
+                              },
+                            ]
+                          : []),
                         ...referenceResolution.appearanceSources,
                       ],
                       illCharacters.filter((name): name is string => typeof name === "string"),
@@ -4986,9 +5038,53 @@ export async function registerRetryAgentsRoute(
                 : retryIllustratorPromptAgent.resolved.settings.includeCharacterAppearance === true;
             agentContext.memory._illustratorCharacterPromptInstruction = characterPromptInstruction;
             if (attachCardAppearance) agentContext.memory._illustratorCaptionAppearanceReference = true;
+            // #7053: per-character image-prompt appearance overrides, read from
+            // each card's extensions. Built here because the retry path resolves
+            // its own character info.
+            const retryImageAppearanceOverrides: Record<string, string> = {};
+            // Fetch concurrently: this runs inside the request path and each
+            // lookup touches storage, so a sequential await per character adds
+            // up on a large cast. A miss or failure is a no-op (no override).
+            const retryCharRows = await Promise.all(
+              agentContext.characters.map((character) => chars.getById(character.id).catch(() => null)),
+            );
+            agentContext.characters.forEach((character, index) => {
+              const charRow = retryCharRows[index];
+              if (!charRow) return;
+              // `parseSettingsRecord` is the file's tolerant record parse: a
+              // malformed card row degrades to "no override" instead of throwing
+              // out of override-building, which is a no-op for this feature.
+              const charData = parseSettingsRecord(charRow.data) as Record<string, unknown>;
+              const override = readImageAppearanceOverride(
+                charData.extensions && typeof charData.extensions === "object"
+                  ? (charData.extensions as Record<string, unknown>)
+                  : {},
+                null,
+              );
+              if (override) retryImageAppearanceOverrides[character.id] = override;
+            });
+            // Personas are keyed by their own id so both halves stay symmetric.
+            const retryPersonaIdForOverride = personaEntityId(agentContext.memory);
+            const retryPersonaOverride = agentContext.memory._personaImageAppearanceOverride;
+            if (
+              retryPersonaIdForOverride &&
+              agentContext.persona &&
+              typeof retryPersonaOverride === "string" &&
+              retryPersonaOverride
+            ) {
+              retryImageAppearanceOverrides[retryPersonaIdForOverride] = retryPersonaOverride;
+            }
+            const imageAppearanceOverrides =
+              Object.keys(retryImageAppearanceOverrides).length > 0 ? retryImageAppearanceOverrides : null;
+            if (imageAppearanceOverrides) {
+              agentContext.memory[IMAGE_APPEARANCE_OVERRIDES_MEMORY_KEY] = imageAppearanceOverrides;
+            }
             if (preGenerationAgentContext) {
               preGenerationAgentContext.memory._illustratorCharacterPromptInstruction = characterPromptInstruction;
               if (attachCardAppearance) preGenerationAgentContext.memory._illustratorCaptionAppearanceReference = true;
+              if (imageAppearanceOverrides) {
+                preGenerationAgentContext.memory[IMAGE_APPEARANCE_OVERRIDES_MEMORY_KEY] = imageAppearanceOverrides;
+              }
             }
           }
         } catch (error) {

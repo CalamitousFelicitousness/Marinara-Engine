@@ -1349,6 +1349,32 @@ function CharacterCardTab({
             placeholder={localizeUi("ui.characters.charactercardtab.tallAndWillowyWithSilverStreakedDarkHairWears")}
             rows={8}
           />
+          <div className="mt-3">
+            <SettingsSwitch
+              label={
+                <span className="font-medium">
+                  {localizeUi("ui.characters.charactercardtab.imageAppearanceToggle")}
+                </span>
+              }
+              description={localizeUi("ui.characters.charactercardtab.imageAppearanceToggleHelp")}
+              checked={formData.extensions.imageAppearanceEnabled === true}
+              onChange={(enabled) => updateExtension("imageAppearanceEnabled", enabled)}
+              labelPosition="start"
+              className="justify-between rounded-xl border border-[var(--border)] bg-[var(--card)] p-4"
+            />
+          </div>
+          {formData.extensions.imageAppearanceEnabled === true && (
+            <div className="mt-3">
+              <TextareaTab
+                title={localizeUi("ui.characters.charactercardtab.imageAppearanceToggle")}
+                subtitle={localizeUi("ui.characters.charactercardtab.imageAppearanceSubtitle")}
+                value={(formData.extensions.imageAppearance as string) ?? ""}
+                onChange={(v) => updateExtension("imageAppearance", v)}
+                placeholder={localizeUi("ui.characters.charactercardtab.imageAppearancePlaceholder")}
+                rows={6}
+              />
+            </div>
+          )}
         </EditorSectionAnchor>
         <EditorSectionAnchor id="character-card-scenario">
           <TextareaTab
@@ -1933,15 +1959,21 @@ const VERSION_COMPARE_FIELDS: Array<{ key: string; label: string }> = [
   { key: "mes_example", label: "Example Dialogue" },
   { key: "extensions.backstory", label: "Backstory" },
   { key: "extensions.appearance", label: "Appearance" },
+  { key: "extensions.imageAppearance", label: "Image Appearance Override" },
+  { key: "extensions.imageAppearanceEnabled", label: "Use Image Appearance Override" },
   { key: "creator_notes", label: "Creator Notes" },
   { key: "system_prompt", label: "System Prompt" },
   { key: "post_history_instructions", label: "Post-History Instructions" },
 ];
 
 function getVersionFieldValue(data: CharacterData, key: string): string {
-  if (key === "extensions.backstory" || key === "extensions.appearance") {
+  if (key.startsWith("extensions.")) {
     const extensionKey = key.split(".")[1] ?? "";
     const value = data.extensions?.[extensionKey];
+    // #7053: the image-appearance switch is a boolean. Render it as On/Off so a
+    // comparison shows the toggle change that decides which text image prompts
+    // use, instead of collapsing to "" and hiding it.
+    if (typeof value === "boolean") return value ? "On" : "Off";
     return typeof value === "string" ? value : "";
   }
   const value = data[key as keyof CharacterData];

@@ -233,10 +233,12 @@ async function setGradientColors(controls: Locator) {
 
 async function paintedImages(element: Locator) {
   return element.evaluate((node) =>
-    [null, "::before", "::after"].flatMap((pseudo) => {
-      const style = getComputedStyle(node, pseudo);
-      return [style.backgroundImage, style.borderImageSource];
-    }),
+    [node, ...node.querySelectorAll(":scope > .mari-window-bubble__paint")].flatMap((layer) =>
+      [null, "::before", "::after"].flatMap((pseudo) => {
+        const style = getComputedStyle(layer, pseudo);
+        return [style.backgroundImage, style.borderImageSource];
+      }),
+    ),
   );
 }
 
@@ -282,7 +284,7 @@ async function expectGradientWidgets(page: Page, settings: Locator, bubble: Loca
   await expect(title).toHaveCSS("-webkit-text-fill-color", "rgba(0, 0, 0, 0)");
 }
 
-async function exerciseColorControls(page: Page, preset: "dottore" | "mari", theme: "dark" | "light") {
+async function exerciseColorControls(page: Page, preset: Preset, theme: "dark" | "light") {
   let controls = await openAppearance(page);
   const untouched = [];
   for (const other of ["default", "dottore", "mari"] as const) {
@@ -335,6 +337,28 @@ async function exerciseColorControls(page: Page, preset: "dottore" | "mari", the
     remaining[role] = "";
     await expect.poll(async () => (await readPreferences(page)).colors).toEqual(remaining);
     await expect(page.locator("html")).not.toHaveAttribute("data-chat-widget-colors", new RegExp(`\\b${role}\\b`));
+  }
+  if (preset === "dottore") {
+    const textPicker = controls.locator('[data-chat-widget-color="text"]');
+    const trigger = textPicker.locator(":scope > div > button");
+    await trigger.click();
+    await textPicker.getByRole("button", { name: "Solid", exact: true }).click();
+    await textPicker.getByRole("textbox").fill("#2d9f73");
+    await trigger.click();
+    await clickTopbarPanel(page, "settings");
+    const solidSettings = await openChatSettings(page);
+    const nameSection = solidSettings.locator('[data-drawer="chat-name"]');
+    const toggle = nameSection.locator("[data-drawer-toggle]");
+    const wasOpen = (await toggle.getAttribute("aria-expanded")) === "true";
+    if (!wasOpen) await toggle.click();
+    // This real body caption has a muted utility color; the chosen solid paint must still win.
+    await expect(nameSection.getByText("Chat ID", { exact: true })).toHaveCSS(
+      "-webkit-text-fill-color",
+      await resolvedStyle(page, "color", "#2d9f73"),
+    );
+    if (!wasOpen) await toggle.click();
+    await closeChatSettings(page);
+    controls = await openAppearance(page);
   }
   await setGradientColors(controls);
   await controls.locator(`[data-chat-widget-preset-option="${preset}"]`).click();
@@ -565,6 +589,10 @@ for (const theme of ["dark", "light"] as const) {
       expect(appearances[0]).not.toEqual(appearances[1]);
       await choosePreset(page, "default");
       expect(await measureWidgets(page)).toEqual(baseline);
+      if (theme === "light" && testInfo.project.name.includes("desktop")) {
+        await exerciseColorControls(page, "default", theme);
+        expect(await measureWidgets(page)).toEqual(baseline);
+      }
     } finally {
       await request.delete(`/api/chats/${chat.id}?force=true`);
     }

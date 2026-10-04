@@ -185,6 +185,44 @@ const sword = (state: RulesetEncounterState) => menu(state).find((option) => opt
   assert.ok(!menu(state).some((option) => option.budget === "bonus"));
 }
 
+// ── A sequence stops at the cap: a slowed creature's multiattack makes one attack ──
+{
+  const brute = (conditions: string[]): RulesetCombatantInput => ({
+    id: "brute",
+    name: "Brute",
+    side: "enemy",
+    block: {
+      health: 200,
+      defense: 5,
+      initiativeModifier: 20,
+      speed: 30,
+      actions: [
+        { id: "claw", name: "Claw", budget: "action", toHit: 4, damage: { count: 1, sides: 6, flat: 0 } },
+        { id: "maul", name: "Multiattack", budget: "action", sequence: [{ action: "claw", times: 3 }] },
+      ],
+    },
+    ...(conditions.length ? { conditions } : {}),
+  });
+  const mauled = (conditions: string[]) => {
+    const state = createRulesetEncounter({
+      definition: fiveE,
+      seed: 3,
+      combatants: [brenna(), brute(conditions)],
+      roller: dice(1, 20),
+    });
+    if (conditions.length) rulesetCombatant(state, "brute")!.tracked.push({ condition: "sluggish", rounds: null });
+    const step = applyRulesetCombatChoice(
+      fiveE,
+      state,
+      { actorId: "brute", optionId: "maul", targetIds: ["brenna", "brenna", "brenna"] },
+      dice(15, 3, 15, 3, 15, 3),
+    );
+    return eventsOf(step.events, "attack").length;
+  };
+  assert.equal(mauled([]), 3, "three claws");
+  assert.equal(mauled(["sluggish"]), 1, "one, slowed");
+}
+
 // ── No reactions (Slow): a foe walking away is struck at by the fighter, not by a slowed one ──
 {
   const walkAway = (conditions: string[]) => {

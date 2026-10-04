@@ -235,6 +235,14 @@ const arena = (paint: Record<string, TacticalTerrain>) => {
     const high = doc((d) => (d.combat.elevation = { levelHeight: 5 }));
     assert.match(issue(69, high) ?? "", /what a board's height does requires .*capabilityApi 1\.70/);
     assert.equal(issue(70, high), null);
+    // And the action economy conditions change, 1.71 (combat C6d): any of the new condition keys, or a
+    // budget of no count.
+    const economyGate = /change the action economy, or with a budget of no count, requires .*capabilityApi 1\.71/;
+    const slowed = doc((d) => d.combat.conditions.push({ condition: "prone", attacksPerTurn: 1 }));
+    assert.match(issue(70, slowed) ?? "", economyGate);
+    assert.equal(issue(71, slowed), null);
+    const spare = doc((d) => d.combat.economy.budgets.push({ id: "spare", label: "Spare", per: "turn", count: 0 }));
+    assert.match(issue(70, spare) ?? "", economyGate);
   } finally {
     rmSync(dataDir, { recursive: true, force: true });
   }

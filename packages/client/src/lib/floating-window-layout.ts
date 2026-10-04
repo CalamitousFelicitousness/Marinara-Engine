@@ -7,6 +7,7 @@
 // viewport grows again.
 // ──────────────────────────────────────────────
 import { DRAWER_WINDOW_PREFIX } from "@marinara-engine/shared";
+import { BUBBLE_SNAP_GAP_PX, type BubbleRect } from "./window-bubble-snap";
 export { getDrawerWindowId } from "@marinara-engine/shared";
 
 export const FLOATING_WINDOW_LAYOUT_VERSION = 1 as const;
@@ -65,6 +66,61 @@ export function clampWindowBubble(
     x: clamp(finiteOr(point.x, bounds.left), bounds.left, bounds.right - size),
     y: clamp(finiteOr(point.y, bounds.top), bounds.top, bounds.bottom - size),
   };
+}
+
+/** Temporary visible positions: a closing sidebar restores the saved points, even for locked buttons. */
+export function placeWindowBubbles(
+  bubbles: ReadonlyMap<string, { point: WindowPoint; bounds: WindowBounds; size: number }>,
+): Map<string, WindowPoint> {
+  const placed = new Map<string, WindowPoint>();
+  const occupied: BubbleRect[] = [];
+  const entries = [...bubbles].map(([id, bubble]) => {
+    const point = clampWindowBubble(bubble.point, bubble.bounds, bubble.size);
+    return {
+      id,
+      ...bubble,
+      clamped: point,
+      movable: bubble.point.automatic || point.x !== bubble.point.x || point.y !== bubble.point.y,
+    };
+  });
+  // Keep buttons that still fit exactly where they were. Squeezed buttons find nearby free space.
+  entries.sort((a, b) => Number(a.movable) - Number(b.movable) || a.id.localeCompare(b.id));
+  for (const { id, clamped, bounds, size, movable } of entries) {
+    let next = clamped;
+    const free = (candidate: WindowPoint) =>
+      occupied.every(
+        (other) =>
+          candidate.x + size <= other.x ||
+          candidate.x >= other.x + other.width ||
+          candidate.y + size <= other.y ||
+          candidate.y >= other.y + other.height,
+      );
+    if (movable && !free(next)) {
+      const xs = new Set([clamped.x, bounds.left, bounds.right - size]);
+      const ys = new Set([clamped.y, bounds.top, bounds.bottom - size]);
+      for (const other of occupied) {
+        xs.add(other.x - size - BUBBLE_SNAP_GAP_PX);
+        xs.add(other.x + other.width + BUBBLE_SNAP_GAP_PX);
+        ys.add(other.y - size - BUBBLE_SNAP_GAP_PX);
+        ys.add(other.y + other.height + BUBBLE_SNAP_GAP_PX);
+      }
+      const candidates = [...xs].flatMap((x) => [...ys].map((y) => ({ x, y })));
+      const distance = (candidate: WindowPoint) => (candidate.x - clamped.x) ** 2 + (candidate.y - clamped.y) ** 2;
+      candidates.sort((a, b) => distance(a) - distance(b));
+      next =
+        candidates.find(
+          (candidate) =>
+            candidate.x >= bounds.left &&
+            candidate.x + size <= bounds.right &&
+            candidate.y >= bounds.top &&
+            candidate.y + size <= bounds.bottom &&
+            free(candidate),
+        ) ?? clamped;
+    }
+    placed.set(id, next);
+    occupied.push({ ...next, width: size, height: size });
+  }
+  return placed;
 }
 
 /** The Chat Settings button's default place: the top-right slot of the chat area. */

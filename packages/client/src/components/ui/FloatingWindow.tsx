@@ -490,11 +490,11 @@ export function FloatingWindow({
   const geometry = clampWindowGeometry(liveGeometry ?? layout, bounds, limits);
   const canMinimize = !!minimizable && !sheet;
   const minimized = canMinimize ? layout.minimized === true : phoneBubble && !openInStore;
-  const bubblePoint = clampWindowBubble(
-    savedDesktopBubble ?? layout.bubble ?? defaultLayout.bubble ?? { x: bounds.right - bubbleSize, y: bounds.top },
-    bounds,
-    bubbleSize,
-  );
+  const bubblePoint = savedDesktopBubble ??
+    savedLayout?.bubble ?? {
+      ...(defaultLayout.bubble ?? { x: bounds.right - bubbleSize, y: bounds.top }),
+      automatic: true as const,
+    };
 
   // A phone bubble with no saved place and no default (a popped-out drawer) takes the first free spot.
   const needsPhonePlace = phoneBubble && minimized && !hidden && !savedPhoneBubble && !minimizable?.getPhoneBubble;
@@ -739,9 +739,11 @@ export function FloatingWindow({
           buttonRef={bubbleRef}
           id={id}
           point={
-            savedPhoneBubble ??
-            minimizable.getPhoneBubble?.(phoneBounds, bubbleSize) ??
-            getPhoneBubbleSlot(phoneBounds, 0, bubbleSize)
+            savedPhoneBubble ?? {
+              ...(minimizable.getPhoneBubble?.(phoneBounds, bubbleSize) ??
+                getPhoneBubbleSlot(phoneBounds, 0, bubbleSize)),
+              automatic: true,
+            }
           }
           bounds={phoneBounds}
           size={PHONE_BUBBLE_SIZE_PX}

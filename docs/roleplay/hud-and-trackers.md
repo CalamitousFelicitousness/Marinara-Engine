@@ -60,7 +60,7 @@ At the bottom, **Agent activity** shows what the chat's agents did. From there y
 
 ## Editing values in a popover
 
-On a phone, tap any widget to open its popover. On a computer, the same editors are inside the drawers of the Trackers window. A popover is a small floating panel. Every field in it is editable, so you can correct a value the AI got wrong. Your edits save right away.
+On a phone, drag the **World State** and **Player & Tracker** buttons wherever you want in the chat. Tap a button to open its panel, and use **X** to close it. The buttons and panels follow your **Chat widget style** in **Settings → Appearance → App**. Your chat remembers where you put each button. On a computer, the same editors are inside the drawers of the Trackers window. Every field is editable, so you can correct a value the AI got wrong. Your edits save right away.
 
 Here is what each popover lets you edit:
 

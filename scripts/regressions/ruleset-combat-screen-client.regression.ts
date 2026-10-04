@@ -585,6 +585,16 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["uses", say({ type: "uses", actorId: "lurker", optionId: "thorns", label: "Thorns", left: 1, of: 3 })],
     ["broke", say({ type: "broke", actorId: "corwin", optionId: "use:0", label: "Wand of sparks", roll: 1 })],
     [
+      "fake",
+      say({
+        type: "fake",
+        actorId: "corwin",
+        optionId: "use:0",
+        label: "Potion of healing",
+        truly: "Potion of poison",
+      }),
+    ],
+    [
       "gate",
       say({
         type: "gate",
@@ -749,6 +759,18 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(printed.get("window"), "Brenna breaks away, and Thorn Lurker may strike.");
   assert.equal(printed.get("restored"), "Corwin gets back 2 Ki, and is on 5 of 7.");
   assert.equal(printed.get("broke"), "Wand of sparks breaks (a 1 on its die).");
+  assert.equal(printed.get("fake"), "The Potion of healing was really Potion of poison.");
+  assert.equal(
+    say({
+      type: "fake",
+      actorId: "corwin",
+      optionId: "use:0",
+      label: "Bag of holding",
+      truly: "Bag of devouring",
+      dud: true,
+    }),
+    "The Bag of holding was really Bag of devouring, and it did nothing.",
+  );
   assert.equal(
     printed.get("gate"),
     "Corwin rolls Arcana to use Scroll of fireball: 6 + 3 = 9 against 13, a failure. It is used up for nothing.",

@@ -1087,7 +1087,9 @@ export function rulesetListRollNotation(
     const other = definition.sheet.lists
       .find((list) => list.columns.includes(column))
       ?.columns.find((each) => each.id === id);
-    return other?.default ?? (other?.type === "enum" ? other.values[0] : undefined);
+    if (other?.default !== undefined) return other.default;
+    if (other?.type === "enum") return other.values[0];
+    return other?.type === "number" ? Math.min(Math.max(0, other.min), other.max) : undefined;
   };
   const read =
     typeof sides === "number"

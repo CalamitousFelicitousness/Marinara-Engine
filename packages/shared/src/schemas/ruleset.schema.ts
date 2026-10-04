@@ -567,11 +567,7 @@ export interface RulesetListRoll {
 export const rulesetListRollSchema: z.ZodType<RulesetListRoll, z.ZodTypeDef, unknown> = z
   .object({
     count: z.number().int().min(1).max(10).default(1),
-    sides: z.union([
-      z.number().int().min(2).max(100),
-      z.object({ column: sheetId }).strict(),
-      rulesetValueRefSchema,
-    ]),
+    sides: z.union([z.number().int().min(2).max(100), z.object({ column: sheetId }).strict(), rulesetValueRefSchema]),
   })
   .strict();
 export const rulesetListColumnSchema = z.discriminatedUnion("type", [
@@ -2404,6 +2400,8 @@ export const RULESET_ITEM_CHARGES_MAX = 100;
 export const rulesetItemUseSchema = catalogMechanicsObject
   .omit({
     kind: true,
+    // A sheet value added to an amount is a catalog entry's (1.78): an item's use reads its own stats.
+    amountAdd: true,
     cost: true,
     perCostStep: true,
     check: true,

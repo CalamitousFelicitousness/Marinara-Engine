@@ -100,6 +100,12 @@ try {
       issues({ ...secondWind, mechanics: { ...secondWind.mechanics, amountAdd: { field: "nope" } } }),
       /nope/,
     );
+    // An item's use reads its own stats, never the sheet's: amountAdd is not an item's.
+    const gravewatch = JSON.parse(read("../../docs/examples/rulesets/gravewatch.json"));
+    gravewatch.catalogs
+      .find((catalog: { id: string }) => catalog.id === "kit")
+      .entries.find((entry: { id: string }) => entry.id === "warming-tonic").item.use.amountAdd = { const: 1 };
+    assert.equal(parseRulesetDefinition(gravewatch).ok, false, "an item's use cannot add a sheet value");
     const t = ((key: string, params?: Record<string, unknown>) =>
       key === "game.ruleset.catalog.mechanics.amountAdd" ? `${params!.amount} + ${params!.value}` : key) as never;
     const line = formatCatalogMechanics(
@@ -146,6 +152,14 @@ try {
     const twice = parsed(rolled({ column: "die" }, (doc) => (doc.sheet.lists.at(-1).columns[2].roll.count = 2)));
     const twiceColumn = twice.sheet.lists.find((entry) => entry.id === "hp_rolls")!.columns[2]!;
     assert.equal(rulesetListRollNotation(twice, build, twiceColumn, { die: "d8" }), "2d8", "its count of dice");
+    // A number die column left empty reads as the editor shows it: its default, else its minimum.
+    const numbered = parsed(
+      rolled({ column: "die" }, (doc) => {
+        doc.sheet.lists.at(-1).columns[1] = { id: "die", label: "Die", type: "number", min: 4, max: 12 };
+      }),
+    );
+    const numberedColumn = numbered.sheet.lists.find((entry) => entry.id === "hp_rolls")!.columns[2]!;
+    assert.equal(rulesetListRollNotation(numbered, build, numberedColumn, {}), "1d4");
     const fixed = parsed(rolled(8));
     const fixedColumn = fixed.sheet.lists.find((entry) => entry.id === "hp_rolls")!.columns[2]!;
     assert.equal(rulesetListRollNotation(fixed, build, fixedColumn, {}), "1d8");

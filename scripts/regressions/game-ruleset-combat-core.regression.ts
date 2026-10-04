@@ -948,6 +948,44 @@ const labels = (definition: RulesetDefinition, state: RulesetEncounterState, id:
   assert.equal(swing(champion({ const: 25 }), 19), "hit", "held to the die's top face");
   assert.equal(swing(champion({ const: 25 }), 20), "critical");
   assert.equal(who(fight(champion({ const: 19 }), [fighter(), mote()], 20, 1), "brenna").criticalFrom, 19);
+  // Held for a reaction to the hit, a natural 19 that would miss the defense stays the critical it was.
+  {
+    const definition = champion({ const: 19 });
+    // A stat block behind a defense no 19 meets, who parries what hits it.
+    const warded = foe("warded", "Warded", {
+      health: 60,
+      defense: 30,
+      initiativeModifier: -2,
+      actions: [
+        {
+          id: "parry",
+          name: "Parry",
+          budget: "reaction",
+          self: true,
+          reaction: { on: "hit" },
+          applies: [{ condition: "prone", duration: { rounds: 1 } }],
+        },
+      ],
+    } as RulesetStatBlock);
+    const state = fight(definition, [fighter(), warded], 20, 1);
+    const sword = rulesetCombatOptions(definition, state, "brenna").find((option) => option.label === "Longsword")!;
+    assert.ok(
+      (sword.forecast?.hitChance ?? 0) >= 0.1,
+      `the range is in the forecast: ${JSON.stringify(sword.forecast)}`,
+    );
+    const held = act(definition, state, { actorId: "brenna", optionId: sword.id, targetIds: ["warded"] }, 19);
+    assert.ok(held.state.window, JSON.stringify(held.events));
+    const through = act(
+      definition,
+      held.state,
+      { actorId: "warded", optionId: RULESET_PASS_OPTION, targetIds: [], window: held.state.window!.id },
+      5,
+      6,
+      5,
+      6,
+    );
+    assert.equal(eventsOf(through.events, "damage")[0]?.critical, true, JSON.stringify(through.events));
+  }
   // Refused where it means nothing: no critical face, or several dice.
   assert.match(
     refusal(

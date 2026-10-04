@@ -2643,7 +2643,7 @@ function resolveAction(
               total,
               defense: guarded.defense,
               critical,
-              natural: single && kept === dice.sides && naturals.max !== "none",
+              natural: single && kept >= criticalFrom && naturals.max !== "none",
             },
             mine: used.mine.map((entry) => entry.condition),
             hurt: [],

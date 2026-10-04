@@ -369,6 +369,14 @@ function parseImageTilePack(value: unknown): TilePackRead {
     });
     tiles[id] = variants;
   }
+  // The characters' blocks are drawn from one canvas of their own (2048 pixels wide, at most 8192 tall):
+  // packs whose blocks could not fit on it are refused here, so none is drawn as the plain fallback.
+  const blockPixels = (pack.characters ?? []).reduce(
+    (sum, character) => sum + 3 * (character.w ?? 1) * 4 * (character.h ?? 2) * pack.tileSize ** 2,
+    0,
+  );
+  if (blockPixels > 2048 * 6144)
+    issues.push("The characters' frames take more room than a pack can draw; use fewer or smaller characters.");
   const characterIds = new Set<string>();
   for (const character of pack.characters ?? []) {
     if (characterIds.has(character.id)) issues.push(`Two characters are called "${character.id}".`);

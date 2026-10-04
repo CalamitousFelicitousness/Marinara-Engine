@@ -4,7 +4,6 @@ import { useTranslation, useTranslation as useUiTranslation } from "react-i18nex
 import { ChevronUp, ChevronDown, Layers, ListChecks, Loader2, Trash2, X } from "lucide-react";
 import type { PeekPromptData } from "./chat-area.types";
 import type { LocalSpriteVisualSettings } from "./local-sprite-visual-settings";
-import type { ChatImage } from "../../hooks/use-gallery";
 import { cn } from "../../lib/utils";
 import { Modal } from "../ui/Modal";
 import { NEUTRAL_PANEL_SHELL } from "../ui/neutral-surface-styles";
@@ -28,11 +27,6 @@ export function preloadChatSettingsDrawer() {
 
 const ChatSettingsDrawer = lazy(preloadChatSettingsDrawer);
 
-const ChatGalleryDrawer = lazy(async () => {
-  const module = await import("./ChatGalleryDrawer");
-  return { default: module.ChatGalleryDrawer };
-});
-
 const ChatSetupWizard = lazy(async () => {
   const module = await import("./ChatSetupWizard");
   return { default: module.ChatSetupWizard };
@@ -46,6 +40,7 @@ const PeekPromptModal = lazy(async () => {
 type ChatData = ComponentProps<typeof ChatSettingsDrawer>["chat"];
 export type ChatFloatingPanelAnchor = ChatToolbarFloatingPanelAnchor;
 export type ChatSettingsInitialSection = ComponentProps<typeof ChatSettingsDrawer>["initialSection"];
+export type ChatSettingsTools = NonNullable<ComponentProps<typeof ChatSettingsDrawer>["chatTools"]>;
 
 type SharedSceneSettingsProps = {
   spriteArrangeMode: boolean;
@@ -246,8 +241,8 @@ type ChatCommonOverlaysProps = {
   settingsOpen: boolean;
   settingsAnchor: ChatFloatingPanelAnchor;
   settingsInitialSection?: ChatSettingsInitialSection;
-  galleryOpen: boolean;
-  galleryAnchor: ChatFloatingPanelAnchor;
+  /** Drawers only the chat surface can fill (Roleplay's summary, notes, context and agent activity). */
+  chatTools?: ChatSettingsTools;
   wizardOpen: boolean;
   peekPromptData: PeekPromptData | null;
   deleteDialogMessageId: string | null;
@@ -259,24 +254,7 @@ type ChatCommonOverlaysProps = {
   selectedMessageCount: number;
   sceneSettings: SharedSceneSettingsProps;
   onCloseSettings: (options?: { force?: boolean }) => void;
-  onCloseGallery: () => void;
   onOpenScheduleEditor?: (characterId: string, options?: { initialDay?: string | null }) => void;
-  /** Manually trigger the Illustrator agent */
-  onIllustrate?: () => void;
-  onIllustrateWithAgent?: (agentType: string) => void | Promise<void>;
-  /** Generate an on-demand Conversation selfie. */
-  onGenerateSelfie?: (characterId?: string) => void | Promise<void>;
-  selfieCharacters?: Array<{ id: string; name: string }>;
-  /** Run Illustrator in its background prompt mode. */
-  onGenerateBackground?: () => void | Promise<void>;
-  /** Generate a storyboard for the latest completed Game or Roleplay episode. */
-  onGenerateStoryboard?: () => void | Promise<void>;
-  /** Show the latest Game Mode storyboard viewer. */
-  onViewStoryboard?: () => void;
-  /** Generate a scene video from the latest gallery image. */
-  onGenerateVideo?: () => void | Promise<void>;
-  /** Generate a scene video from a specific gallery image. */
-  onAnimateImage?: (image: ChatImage) => void | Promise<void>;
   onWizardFinish: () => void;
   onClosePeekPrompt: () => void;
   onDeleteConfirm: () => void;
@@ -296,8 +274,7 @@ export function ChatCommonOverlays({
   settingsOpen,
   settingsAnchor,
   settingsInitialSection,
-  galleryOpen,
-  galleryAnchor,
+  chatTools,
   wizardOpen,
   peekPromptData,
   deleteDialogMessageId,
@@ -309,17 +286,7 @@ export function ChatCommonOverlays({
   selectedMessageCount,
   sceneSettings,
   onCloseSettings,
-  onCloseGallery,
   onOpenScheduleEditor,
-  onIllustrate,
-  onIllustrateWithAgent,
-  onGenerateSelfie,
-  selfieCharacters,
-  onGenerateBackground,
-  onGenerateStoryboard,
-  onViewStoryboard,
-  onGenerateVideo,
-  onAnimateImage,
   onWizardFinish,
   onClosePeekPrompt,
   onDeleteConfirm,
@@ -344,6 +311,7 @@ export function ChatCommonOverlays({
             anchor={settingsAnchor}
             showHelpLayout
             initialSection={settingsInitialSection}
+            chatTools={chatTools ?? {}}
             spriteArrangeMode={sceneSettings.spriteArrangeMode}
             onToggleSpriteArrange={sceneSettings.onToggleSpriteArrange}
             onResetSpritePlacements={sceneSettings.onResetSpritePlacements}
@@ -353,27 +321,6 @@ export function ChatCommonOverlays({
             onSpriteVisualSettingsChange={sceneSettings.onSpriteVisualSettingsChange}
             onOpenScheduleEditor={onOpenScheduleEditor}
           />
-        </Suspense>
-      )}
-      {chat && (
-        <Suspense fallback={null}>
-          {galleryOpen && (
-            <ChatGalleryDrawer
-              chat={chat}
-              open={galleryOpen}
-              onClose={onCloseGallery}
-              anchor={galleryAnchor}
-              onIllustrate={onIllustrate}
-              onIllustrateWithAgent={onIllustrateWithAgent}
-              onGenerateSelfie={onGenerateSelfie}
-              selfieCharacters={selfieCharacters}
-              onGenerateStoryboard={onGenerateStoryboard}
-              onViewStoryboard={onViewStoryboard}
-              onGenerateVideo={onGenerateVideo}
-              onAnimateImage={onAnimateImage}
-              onGenerateBackground={onGenerateBackground}
-            />
-          )}
         </Suspense>
       )}
       {chat && (

@@ -10,8 +10,6 @@ interface SemanticSummaryRetrievalControlsProps {
   olderLabel: string;
   thresholdLabel: string;
   onChange: (field: SemanticSummaryRetrievalControlField, value: number) => void;
-  /** Lay out by the surrounding container's width (the Chat Settings window) instead of the screen's. */
-  containerQueries?: boolean;
 }
 
 export function SemanticSummaryRetrievalControls({
@@ -23,7 +21,6 @@ export function SemanticSummaryRetrievalControls({
   olderLabel,
   thresholdLabel,
   onChange,
-  containerQueries = false,
 }: SemanticSummaryRetrievalControlsProps) {
   if (!enabled) return null;
 
@@ -55,7 +52,8 @@ export function SemanticSummaryRetrievalControls({
   ] as const;
 
   return (
-    <div className={containerQueries ? "grid gap-2 @lg:grid-cols-3" : "grid gap-2 sm:grid-cols-3"}>
+    // Lays out by the Chat Settings window's width, not the screen's.
+    <div className="grid gap-2 @lg:grid-cols-3">
       {controls.map((control) => (
         <label
           key={control.field}

@@ -11,15 +11,9 @@ import { CHAT_SETTINGS_WINDOW_ID } from "../stores/floating-window.store";
 export type ChatHelpTargetId =
   | "identity"
   | "agents"
-  | "branches"
   | "call"
   | "agent-controls"
-  | "summary"
-  | "context"
-  | "author-notes"
-  | "gallery"
   | "connected-chat"
-  | "search"
   | "settings"
   | "help"
   | "window-title"
@@ -63,15 +57,9 @@ const CHAT_SETTINGS_WINDOW = `[data-window="${CHAT_SETTINGS_WINDOW_ID}"]`;
 const TARGETS = {
   identity: chatHelpTarget("identity", "identity"),
   agents: chatHelpTarget("agents", "agents"),
-  branches: chatHelpTarget("branches", "branches"),
   call: chatHelpTarget("call", "call"),
   "agent-controls": chatHelpTarget("agent-controls", "agentControls"),
-  summary: chatHelpTarget("summary", "summary"),
-  context: chatHelpTarget("context", "context"),
-  "author-notes": chatHelpTarget("author-notes", "authorNotes"),
-  gallery: chatHelpTarget("gallery", "gallery"),
   "connected-chat": chatHelpTarget("connected-chat", "connectedChat"),
-  search: chatHelpTarget("search", "search"),
   // The topbar button on desktop, the toolbar button on phones.
   settings: chatHelpTarget("settings", "settings"),
   // The ? beside the Chat Settings title on desktop, the toolbar button on phones.
@@ -129,12 +117,8 @@ const COMPOSER_TARGET: ChatHelpTargetDefinition = {
 const TARGETS_BY_MODE: Record<ChatMode, ChatHelpTargetDefinition[]> = {
   conversation: [
     TARGETS.identity,
-    TARGETS.branches,
     TARGETS["agent-controls"],
-    TARGETS.context,
-    TARGETS.gallery,
     TARGETS["connected-chat"],
-    TARGETS.search,
     TARGETS.call,
     ...CHAT_SETTINGS_TARGETS,
     {
@@ -147,14 +131,8 @@ const TARGETS_BY_MODE: Record<ChatMode, ChatHelpTargetDefinition[]> = {
   ],
   roleplay: [
     TARGETS.agents,
-    TARGETS.branches,
     TARGETS["agent-controls"],
-    TARGETS.summary,
-    TARGETS.context,
-    TARGETS["author-notes"],
-    TARGETS.gallery,
     TARGETS["connected-chat"],
-    TARGETS.search,
     ...CHAT_SETTINGS_TARGETS,
     {
       id: "messages",
@@ -168,13 +146,10 @@ const TARGETS_BY_MODE: Record<ChatMode, ChatHelpTargetDefinition[]> = {
     TARGETS.map,
     TARGETS.party,
     TARGETS["scene-media"],
-    TARGETS.branches,
     TARGETS.retry,
     TARGETS.session,
     TARGETS.volume,
     TARGETS.assets,
-    TARGETS.context,
-    TARGETS.gallery,
     TARGETS["connected-chat"],
     ...CHAT_SETTINGS_TARGETS,
     TARGETS.widgets,

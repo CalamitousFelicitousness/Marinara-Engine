@@ -1,11 +1,14 @@
 // ──────────────────────────────────────────────
 // Chat: Settings Drawer — per-chat configuration
 // ──────────────────────────────────────────────
-import { Fragment, lazy, Suspense, useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { Fragment, lazy, Suspense, useState, useRef, useEffect, useMemo, useCallback, type ReactNode } from "react";
 import { useQuery, useQueryClient, useQueries } from "@tanstack/react-query";
 import { useTranslation, useTranslation as useUiTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { RoleplayCommandsSettings } from "./RoleplayCommandsSettings";
+import { ChatBranchesPanel } from "./ChatBranchesPanel";
+import { ChatMessageSearch } from "./ChatMessageSearch";
+import { useKeepFocusedFieldAboveKeyboard } from "../../hooks/use-keep-focused-field-above-keyboard";
 import {
   X,
   Users,
@@ -59,6 +62,9 @@ import {
   Wrench,
   Map as MapIcon,
   VenetianMask,
+  GitBranch,
+  ScrollText,
+  PenLine,
 } from "lucide-react";
 import { NEUTRAL_PANEL_SCROLL_AREA } from "../ui/neutral-surface-styles";
 import { FloatingWindow } from "../ui/FloatingWindow";
@@ -163,6 +169,7 @@ import {
   useDeleteChatNote,
   useClearChatNotes,
   useGenerationStatus,
+  useChatGroup,
   chatKeys,
 } from "../../hooks/use-chats";
 import { useUpdateGameWidgets } from "../../hooks/use-game";
@@ -280,6 +287,7 @@ import {
   normalizeAgentPromptTemplateSelectionMap,
   resolveDefaultAgentPromptTemplateId,
   resolveAgentPromptTemplate,
+  normalizeChatSummaryEntries,
 } from "@marinara-engine/shared";
 import type {
   Chat,
@@ -349,7 +357,25 @@ const InlineLorebookEntriesEditor = lazy(() =>
   })),
 );
 const StoryboardChatSettingsPanel = lazy(() => import("./StoryboardChatSettingsPanel"));
+const ChatGalleryPanel = lazy(() =>
+  import("./ChatGalleryPanel").then((module) => ({ default: module.ChatGalleryPanel })),
+);
+const ActiveLorebookEntriesContent = lazy(() =>
+  import("./ChatRoleplayPanels").then((module) => ({ default: module.ActiveLorebookEntriesContent })),
+);
 const BeholderChatSettingsPanel = lazy(() => import("./BeholderChatSettingsPanel"));
+
+/** Chat tools that used to be top buttons, which only the chat surface can fill. */
+export interface ChatSettingsTools {
+  /** Roleplay: the Chat Summary drawer. */
+  summary?: ReactNode;
+  /** Roleplay: the cards, lorebooks and preset in use. Without it, Active Context lists the active lorebook entries. */
+  activeContext?: ReactNode;
+  /** Roleplay: the Author's Notes drawer. */
+  authorNotes?: ReactNode;
+  /** Roleplay with agents or Advanced Memory: Agent activity, inside the Agents drawer. */
+  agentActivity?: ReactNode;
+}
 
 interface ChatSettingsDrawerProps {
   chat: Chat;
@@ -359,7 +385,12 @@ interface ChatSettingsDrawerProps {
   anchor?: ChatToolbarFloatingPanelAnchor;
   /** Show the Help Layout button beside the title (chats that mount the Help overlay). */
   showHelpLayout?: boolean;
-  initialSection?: "autonomous" | "memory-recall" | "multiplayer" | null;
+  initialSection?: "autonomous" | "memory-recall" | "multiplayer" | "summary" | null;
+  /**
+   * Chat Branches, Search, Active Context, Gallery and the drawers in `ChatSettingsTools`. Regular chats
+   * pass it; multiplayer hosting does not.
+   */
+  chatTools?: ChatSettingsTools;
   multiplayerGameStart?: MultiplayerGameStart;
   spriteArrangeMode?: boolean;
   onToggleSpriteArrange?: () => void;
@@ -623,7 +654,9 @@ const MARINARA_UNIVERSAL_PRESET_AUTHOR = "Marinara";
 
 const CHAT_SETTINGS_ORDER = {
   settingsPresets: -1600,
+  search: -1500,
   chatName: -1400,
+  chatBranches: -1350,
   connection: -1300,
   promptPreset: -1200,
   advancedParameters: -1100,
@@ -637,8 +670,12 @@ const CHAT_SETTINGS_ORDER = {
   connectedChat: -700,
   connectedNotes: -690,
   lorebooks: -600,
+  chatSummary: -590,
+  activeContext: -580,
   agents: -500,
+  authorNotes: -495,
   background: -490,
+  gallery: -480,
   widgets: -450,
   impersonate: -400,
   memoryRecall: -300,
@@ -850,6 +887,7 @@ export function ChatSettingsDrawer({
   anchor,
   showHelpLayout = false,
   initialSection,
+  chatTools,
   multiplayerGameStart,
   spriteArrangeMode = false,
   onToggleSpriteArrange,
@@ -864,6 +902,8 @@ export function ChatSettingsDrawer({
   const { t } = useTranslation();
   const qc = useQueryClient();
   const panelRef = useRef<HTMLDivElement | null>(null);
+  // On phones the sheet keeps the field being typed in (a summary, the notes) above the keyboard.
+  useKeepFocusedFieldAboveKeyboard(panelRef);
   const scheduleControlsRef = useRef<HTMLDivElement | null>(null);
   const modePromptDefaultAppliedRef = useRef<string | null>(null);
   const agentSuiteCloseGuardRef = useRef<(() => Promise<boolean>) | null>(null);
@@ -1270,6 +1310,15 @@ export function ChatSettingsDrawer({
     [chatCharIds, inactiveCharacterIds],
   );
   const supportsCharacterActivityToggle = chatCharIds.length > 1 && !isGame;
+  const { data: chatBranches } = useChatGroup(chatTools ? (chat.groupId ?? null) : null);
+  const branchCount = Math.max(1, chatBranches?.length ?? 0);
+  const enabledSummaryCount = useMemo(
+    () =>
+      normalizeChatSummaryEntries(Array.isArray(metadata.summaryEntries) ? metadata.summaryEntries : [], {
+        legacySummary: typeof metadata.summary === "string" ? metadata.summary : null,
+      }).filter((entry) => entry.enabled).length,
+    [metadata.summary, metadata.summaryEntries],
+  );
   useEffect(() => {
     if (!open || initialSection !== "autonomous" || !isConversation) return;
     const frame = window.requestAnimationFrame(() => {
@@ -1286,6 +1335,15 @@ export function ChatSettingsDrawer({
     });
     return () => window.cancelAnimationFrame(frame);
   }, [initialSection, isRoleplayMode, open]);
+  useEffect(() => {
+    if (!open || initialSection !== "summary") return;
+    const frame = window.requestAnimationFrame(() =>
+      panelRef.current
+        ?.querySelector(`[data-chat-settings-section="${chatMode}-chat-summary"]`)
+        ?.scrollIntoView({ block: "start" }),
+    );
+    return () => window.cancelAnimationFrame(frame);
+  }, [chatMode, initialSection, open]);
   useEffect(() => {
     if (!open || initialSection !== "multiplayer") return;
     const frame = window.requestAnimationFrame(() =>
@@ -4844,7 +4902,10 @@ export function ChatSettingsDrawer({
         onRequestClose={() => requestClose()}
       >
         {!phoneLayout && (
-          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-3 py-1.5">
+          <div
+            data-chat-settings-top-row
+            className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-3 py-1.5"
+          >
             {trackerPanelToggleAvailable ? (
               <div data-tracker-panel-toggle="chat-settings" className="min-w-0">
                 <SettingsSwitch
@@ -4874,7 +4935,10 @@ export function ChatSettingsDrawer({
         )}
 
         {/* Desktop-only: drag-and-drop hint (sidebar drag is disabled on mobile overlays) */}
-        <div className="flex shrink-0 items-start gap-2 border-b border-[var(--border)] px-4 py-2 text-[0.6875rem] leading-snug text-[var(--muted-foreground)] max-md:hidden">
+        <div
+          data-chat-settings-top-row
+          className="flex shrink-0 items-start gap-2 border-b border-[var(--border)] px-4 py-2 text-[0.6875rem] leading-snug text-[var(--muted-foreground)] max-md:hidden"
+        >
           <Info size="0.8125rem" className="mt-px shrink-0" />
           {/* The slash-joined list has no spaces, so let it wrap in a narrow window. */}
           <span className="min-w-0 [overflow-wrap:anywhere]">{localizeUi("chat.settings.dragDropHint")}</span>
@@ -5050,6 +5114,16 @@ export function ChatSettingsDrawer({
             </div>
           )}
 
+          {chatTools && !isGame && (
+            <div
+              data-chat-settings-search
+              style={{ order: CHAT_SETTINGS_ORDER.search }}
+              className="shrink-0 border-b border-[var(--border)]"
+            >
+              <ChatMessageSearch chatId={chat.id} />
+            </div>
+          )}
+
           <div style={{ order: CHAT_SETTINGS_ORDER.chatName }}>
             <ChatNameSection
               chatId={chat.id}
@@ -5064,6 +5138,19 @@ export function ChatSettingsDrawer({
               onSaveName={saveName}
             />
           </div>
+
+          {chatTools && (
+            <Section
+              id={`${chatMode}-chat-branches`}
+              style={{ order: CHAT_SETTINGS_ORDER.chatBranches }}
+              label={localizeUi("chat.settings.branches")}
+              icon={<GitBranch size="0.875rem" />}
+              count={branchCount}
+              help={localizeUi("chat.settings.branchesHelp")}
+            >
+              <ChatBranchesPanel activeChatId={chat.id} activeChatName={chat.name} groupId={chat.groupId ?? null} />
+            </Section>
+          )}
 
           <div style={{ order: CHAT_SETTINGS_ORDER.connection }}>
             <ConnectionSection
@@ -7336,6 +7423,63 @@ export function ChatSettingsDrawer({
             />
           </div>
 
+          {chatTools?.summary && (
+            <Section
+              id={`${chatMode}-chat-summary`}
+              style={{ order: CHAT_SETTINGS_ORDER.chatSummary }}
+              label={localizeUi("chat.settings.summary")}
+              icon={<ScrollText size="0.875rem" />}
+              count={enabledSummaryCount}
+              help={localizeUi("chat.settings.summaryHelp")}
+              forceOpen={initialSection === "summary"}
+            >
+              {chatTools.summary}
+            </Section>
+          )}
+
+          {chatTools && (
+            <Section
+              id={`${chatMode}-active-context`}
+              style={{ order: CHAT_SETTINGS_ORDER.activeContext }}
+              label={localizeUi("chat.settings.activeContext")}
+              icon={<BookOpen size="0.875rem" />}
+              help={localizeUi("chat.settings.activeContextHelp")}
+            >
+              {chatTools.activeContext ?? (
+                <Suspense fallback={<ChatToolLoading />}>
+                  <ActiveLorebookEntriesContent chatId={chat.id} />
+                </Suspense>
+              )}
+            </Section>
+          )}
+
+          {chatTools?.authorNotes && (
+            <Section
+              id={`${chatMode}-author-notes`}
+              style={{ order: CHAT_SETTINGS_ORDER.authorNotes }}
+              label={localizeUi("chat.settings.authorNotes")}
+              icon={<PenLine size="0.875rem" />}
+              help={localizeUi("chat.settings.authorNotesHelp")}
+            >
+              {chatTools.authorNotes}
+            </Section>
+          )}
+
+          {chatTools && (
+            <Section
+              id={`${chatMode}-gallery`}
+              style={{ order: CHAT_SETTINGS_ORDER.gallery }}
+              label={localizeUi("chat.settings.gallery")}
+              icon={<Image size="0.875rem" />}
+              help={localizeUi("chat.settings.galleryHelp")}
+              contentClassName="pt-2"
+            >
+              <Suspense fallback={<ChatToolLoading />}>
+                <ChatGalleryPanel chat={chat} />
+              </Suspense>
+            </Section>
+          )}
+
           {/* Agents */}
           {modeSettingsSurfaces.agentSettingsSurface === "generation" && (
             <Section
@@ -7346,6 +7490,16 @@ export function ChatSettingsDrawer({
               count={isGame ? gameAgentFeatureCount : visibleActiveAgentIds.length}
               help={localizeUi("ui.chat.chatsettingsdrawer.whenEnabledAiAgentsRunAutomaticallyDuringGenerationTo")}
             >
+              {chatTools?.agentActivity && (
+                <Section
+                  id={`${chatMode}-agent-activity`}
+                  label={localizeUi("chat.settings.agentActivity")}
+                  icon={<Activity size="0.875rem" />}
+                  help={localizeUi("chat.settings.agentActivityHelp")}
+                >
+                  {chatTools.agentActivity}
+                </Section>
+              )}
               {isRoleplayMode && (
                 <RoleplayCommandsSettings
                   chat={chat}
@@ -9393,7 +9547,6 @@ export function ChatSettingsDrawer({
                 )}
                 {import.meta.env.VITE_MARINARA_LITE !== "true" && (
                   <SemanticSummaryRetrievalControls
-                    containerQueries
                     enabled={metadata.semanticSummaryRetrievalEnabled === true}
                     recentCount={summaryRetrievalSettings.semanticSummaryRecentCount}
                     olderCount={summaryRetrievalSettings.semanticSummaryOlderCount}
@@ -10800,5 +10953,15 @@ function ConversationNotesSection({ chatId }: { chatId: string }) {
         )}
       </div>
     </Section>
+  );
+}
+
+function ChatToolLoading() {
+  const { t: localizeUi } = useUiTranslation();
+  return (
+    <div className="flex items-center gap-2 py-3 text-xs text-[var(--muted-foreground)]">
+      <Loader2 size="0.75rem" className="animate-spin" />
+      {localizeUi("chat.settings.toolLoading")}
+    </div>
   );
 }

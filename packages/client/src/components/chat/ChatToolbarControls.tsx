@@ -10,7 +10,6 @@ import {
 } from "react";
 import { MoreHorizontal } from "lucide-react";
 import { cn } from "../../lib/utils";
-import { CHAT_SUMMARY_OPEN_REQUEST_EVENT, requestChatSummaryOpen } from "../../lib/chat-floating-ui-events";
 import { CHAT_HELP_CLOSE_EVENT, CHAT_HELP_OPEN_REQUEST_EVENT, readChatHelpEventMode } from "../../lib/chat-help-events";
 import { useLocalizedUiText } from "../../localization/use-localized-ui-text";
 import { NEUTRAL_PANEL_SHELL } from "../ui/neutral-surface-styles";
@@ -24,7 +23,7 @@ type ChatToolbarButtonClassInput = {
   sizeClassName?: string;
 };
 
-export type ChatToolbarPanelAction = "gallery" | "search" | "settings" | "summary";
+export type ChatToolbarPanelAction = "settings";
 
 export const CHAT_TOOLBAR_ICON_GAP_CLASS = "gap-0.5";
 export const CHAT_TOOLBAR_DEFAULT_BUTTON_SIZE_CLASS = "h-8 w-8";
@@ -63,13 +62,13 @@ function readChatToolbarPanelAction(target: EventTarget | null): ChatToolbarPane
   const value = target
     .closest(`[${CHAT_TOOLBAR_PANEL_ACTION_ATTRIBUTE}]`)
     ?.getAttribute(CHAT_TOOLBAR_PANEL_ACTION_ATTRIBUTE);
-  return value === "gallery" || value === "search" || value === "settings" || value === "summary" ? value : null;
+  return value === "settings" ? value : null;
 }
 
 export function readAnnouncedChatToolbarPanelAction(event: Event): ChatToolbarPanelAction | null {
   if (!(event instanceof CustomEvent)) return null;
   const value = (event.detail as { panelAction?: unknown } | null)?.panelAction;
-  return value === "gallery" || value === "search" || value === "settings" || value === "summary" ? value : null;
+  return value === "settings" ? value : null;
 }
 
 export function isChatToolbarPanelTrigger(target: EventTarget | null, panelAction: ChatToolbarPanelAction) {
@@ -82,9 +81,9 @@ export function announceChatToolbarAction(panelAction: ChatToolbarPanelAction | 
 }
 
 function announceToolbarPointerDown(event: ReactPointerEvent<HTMLElement>) {
-  // React also runs this for presses in panels opened from the toolbar, such as Chat Summary, which
-  // render elsewhere on the page. Those are not toolbar actions: announcing one would blur the field
-  // being edited there and lose the tap.
+  // React also runs this for presses in panels opened from the toolbar, which render elsewhere on
+  // the page. Those are not toolbar actions: announcing one would blur the field being edited there
+  // and lose the tap.
   if (!(event.target instanceof Node) || !event.currentTarget.contains(event.target)) return;
   announceChatToolbarAction(readChatToolbarPanelAction(event.target));
 }
@@ -183,13 +182,11 @@ export function ChatToolbarMenu({
   className,
   desktopChildren,
   mobileChildren,
-  openSummaryOnRequest = false,
 }: {
   children?: ReactNode;
   className?: string;
   desktopChildren?: ReactNode;
   mobileChildren?: ReactNode;
-  openSummaryOnRequest?: boolean;
 }) {
   const { t: localizeUi } = useUiTranslation();
   const [open, setOpen] = useState(false);
@@ -198,7 +195,6 @@ export function ChatToolbarMenu({
   const desktopRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLDivElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
-  const pendingSummaryChatIdRef = useRef<string | null>(null);
   const neededDesktopWidthRef = useRef(0);
   const lastViewportWidthRef = useRef(typeof window === "undefined" ? 0 : window.innerWidth);
   const [pos, setPos] = useState<{ top: number; right: number }>({ top: 0, right: 0 });
@@ -217,8 +213,7 @@ export function ChatToolbarMenu({
         setOverflowCollapsed(false);
         // Close the overflow menu only when the viewport WIDTH changes (orientation
         // or window resize). The on-screen keyboard shrinks only the height and also
-        // fires resize; closing here would unmount an open child panel — the Author's
-        // Notes or Summary editor — mid-edit (#2868).
+        // fires resize; closing here would unmount an open child panel mid-edit (#2868).
         if (widthChanged) setOpen(false);
         return;
       }
@@ -268,9 +263,7 @@ export function ChatToolbarMenu({
     const handle = (event: MouseEvent) => {
       const target = event.target as Node;
       if (target instanceof Element && target.closest("[data-chat-help-overlay]")) return;
-      if (target instanceof Element && target.closest(`[data-chat-branch-popover],${CHAT_FLOATING_PANEL_SELECTOR}`)) {
-        return;
-      }
+      if (target instanceof Element && target.closest(CHAT_FLOATING_PANEL_SELECTOR)) return;
       if (btnRef.current?.contains(target) || popRef.current?.contains(target)) return;
       setOpen(false);
     };
@@ -297,30 +290,6 @@ export function ChatToolbarMenu({
       window.removeEventListener(CHAT_HELP_CLOSE_EVENT, handleHelpClose);
     };
   }, [overflowCollapsed]);
-
-  useEffect(() => {
-    const handleSummaryOpenRequest = (event: Event) => {
-      if (!openSummaryOnRequest || !(event instanceof CustomEvent)) return;
-      const chatId = (event.detail as { chatId?: unknown } | null)?.chatId;
-      const root = rootRef.current;
-      if (typeof chatId !== "string" || !root || root.getBoundingClientRect().width <= 0) return;
-      const hasVisibleSummaryAction = Array.from(
-        document.querySelectorAll<HTMLElement>('[data-chat-toolbar-panel-action="summary"]'),
-      ).some((action) => action.getBoundingClientRect().width > 0);
-      if (hasVisibleSummaryAction) return;
-      pendingSummaryChatIdRef.current = chatId;
-      setOpen(true);
-    };
-    window.addEventListener(CHAT_SUMMARY_OPEN_REQUEST_EVENT, handleSummaryOpenRequest);
-    return () => window.removeEventListener(CHAT_SUMMARY_OPEN_REQUEST_EVENT, handleSummaryOpenRequest);
-  }, [openSummaryOnRequest]);
-
-  useEffect(() => {
-    const chatId = pendingSummaryChatIdRef.current;
-    if (!open || !chatId) return;
-    pendingSummaryChatIdRef.current = null;
-    requestAnimationFrame(() => requestChatSummaryOpen(chatId));
-  }, [open]);
 
   return (
     <div

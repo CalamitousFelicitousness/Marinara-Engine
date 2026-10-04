@@ -6550,15 +6550,18 @@ strong {
     flex: 1 1 auto !important;
   }
 
-  /* A footer pinned under a panel's scroll area can fill all the room left
-     above the keyboard and hide the field being typed in. It is hidden until
-     the keyboard closes, unless that field is in it. The panel attribute comes
-     from useKeepFocusedFieldAboveKeyboard and follows the field typed in, not
-     live focus, so a tap does not show or hide the footer under the finger. */
-  html[data-mari-software-keyboard-open]
-    body
-    > [data-chat-floating-panel][data-keyboard-hides-footer]
-    [data-chat-floating-footer] {
+  /* A window you type in on a touch screen (the phone Chat Settings sheet, or the window on a phone
+     turned sideways) fits the same visible screen; its scroll area keeps the field in view. */
+  html[data-mari-software-keyboard-open] .mari-window:focus-within {
+    top: calc(var(--mari-visual-viewport-offset-top, 0px) + 0.5rem) !important;
+    bottom: auto !important;
+    height: calc(var(--mari-visual-viewport-height, 100dvh) - 1rem) !important;
+    max-height: none !important;
+  }
+
+  /* Chat Settings' rows above its sections (Tracker Panel, Reset View, the drag-and-drop hint) step
+     aside while you type, so a phone turned sideways still shows the field. */
+  html[data-mari-software-keyboard-open] .mari-window:focus-within [data-chat-settings-top-row] {
     display: none;
   }
 

@@ -15,14 +15,11 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { useTranslation, useTranslation as useUiTranslation } from "react-i18next";
-import { Loader2, ChevronUp, Settings2, Image as ImageIcon, ArrowRightLeft } from "lucide-react";
+import { Loader2, ChevronUp, Settings2, ArrowRightLeft } from "lucide-react";
 import { ConversationMessage } from "./ConversationMessage";
 import { ConversationInput } from "./ConversationInput";
 import { ConversationGamesPicker } from "./ConversationGamesPicker";
 import { SceneBanner, EndSceneBar } from "./SceneBanner";
-import { ChatBranchSelector } from "./ChatBranchSelector";
-import { ChatMessageSearch } from "./ChatMessageSearch";
-import { ActiveLorebookEntriesButton } from "./ActiveLorebookEntriesButton";
 import {
   CHAT_TOOLBAR_OVERFLOW_BUTTON_SIZE_CLASS,
   ChatToolbarButton,
@@ -87,8 +84,6 @@ interface ConversationViewProps {
   characterNames: string[];
   personaInfo?: PersonaInfo;
   chatMeta: Record<string, any>;
-  chatName?: string;
-  chatGroupId?: string | null;
   chatCharIds: string[];
   onDelete: (messageId: string) => void;
   onRegenerate: (messageId: string) => void;
@@ -101,7 +96,6 @@ interface ConversationViewProps {
   lastAssistantMessageId: string | null;
   onOpenSettings: (event?: ReactMouseEvent<HTMLElement>, options?: { initialSection?: "autonomous" | null }) => void;
   onOpenScheduleEditor?: (characterId: string, options?: { initialDay?: string | null }) => void;
-  onOpenGallery: (event?: ReactMouseEvent<HTMLElement>) => void;
   onBranch?: (messageId: string) => void;
   multiSelectMode?: boolean;
   selectedMessageIds?: Set<string>;
@@ -332,8 +326,6 @@ export function ConversationView({
   characterNames,
   personaInfo,
   chatMeta,
-  chatName,
-  chatGroupId,
   chatCharIds,
   onDelete,
   onRegenerate,
@@ -346,7 +338,6 @@ export function ConversationView({
   lastAssistantMessageId,
   onOpenSettings,
   onOpenScheduleEditor,
-  onOpenGallery,
   onBranch,
   multiSelectMode,
   selectedMessageIds,
@@ -518,20 +509,6 @@ export function ConversationView({
   const renderToolbarActions = (compact = false) => (
     <>
       <ChatHelpButton mode="conversation" compact={compact} className="md:hidden" />
-      <ChatBranchSelector
-        activeChatId={chatId}
-        activeChatName={chatName}
-        groupId={chatGroupId}
-        variant="roleplay"
-        compact={compact}
-      />
-      <ActiveLorebookEntriesButton chatId={chatId} />
-      <ChatToolbarButton
-        icon={<ImageIcon size="0.875rem" />}
-        title={t("chat.toolbar.gallery")}
-        panelAction="gallery"
-        onClick={onOpenGallery}
-      />
       {onSwitchChat && (
         <ChatToolbarButton
           icon={<ArrowRightLeft size="0.875rem" />}
@@ -544,7 +521,6 @@ export function ConversationView({
           onClick={onSwitchChat}
         />
       )}
-      <ChatMessageSearch chatId={chatId} />
       <ChatToolbarButton
         icon={<Settings2 size="0.875rem" />}
         title={t("chat.toolbar.settings")}

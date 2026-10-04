@@ -113,7 +113,11 @@ import {
 } from "../../lib/tts-autoplay";
 import { CHAT_SCROLL_TO_BOTTOM_EVENT, type ChatScrollToBottomDetail } from "../../lib/chat-scroll-events";
 import { CHAT_RESOURCE_AGENT_SETUP_EVENT } from "../../lib/chat-resource-drag";
-import { blurActiveChatFloatingUiControl, CHAT_FLOATING_UI_DISMISS_EVENT } from "../../lib/chat-floating-ui-events";
+import {
+  blurActiveChatFloatingUiControl,
+  CHAT_FLOATING_UI_DISMISS_EVENT,
+  CHAT_SUMMARY_OPEN_REQUEST_EVENT,
+} from "../../lib/chat-floating-ui-events";
 import {
   CHAT_TOOLBAR_ACTION_EVENT,
   readAnnouncedChatToolbarPanelAction,
@@ -607,9 +611,7 @@ const LocalChatArea = memo(function LocalChatArea() {
   const settingsOpen = useFloatingWindowStore((s) => s.open[CHAT_SETTINGS_WINDOW_ID] === true);
   const settingsPinned = useFloatingWindowStore((s) => s.layouts[CHAT_SETTINGS_WINDOW_ID]?.pinned === true);
   const [settingsInitialSection, setSettingsInitialSection] = useState<ChatSettingsInitialSection>(null);
-  const [galleryOpen, setGalleryOpen] = useState(false);
   const [settingsAnchor, setSettingsAnchor] = useState<FloatingPanelAnchor>(null);
-  const [galleryAnchor, setGalleryAnchor] = useState<FloatingPanelAnchor>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [spriteArrangeMode, setSpriteArrangeMode] = useState(false);
   const [agentInjectionReview, setAgentInjectionReview] = useState<AgentInjectionReviewRequest | null>(null);
@@ -673,8 +675,6 @@ const LocalChatArea = memo(function LocalChatArea() {
       void preloadChatSettingsDrawer();
       const windows = useFloatingWindowStore.getState();
       const nextOpen = event ? !windows.open[CHAT_SETTINGS_WINDOW_ID] : true;
-      setGalleryOpen(false);
-      setGalleryAnchor(null);
       setSettingsAnchor(nextOpen ? readFloatingPanelAnchor(event) : null);
       setSettingsInitialSection(nextOpen ? (options?.initialSection ?? null) : null);
       if (nextOpen) windows.openWindow(CHAT_SETTINGS_WINDOW_ID, event?.currentTarget ?? null);
@@ -695,22 +695,6 @@ const LocalChatArea = memo(function LocalChatArea() {
     setSettingsAnchor(null);
     setSettingsInitialSection(null);
   }, [settingsOpen]);
-  const handleOpenGalleryPanel = useCallback(
-    (event?: ReactMouseEvent<HTMLElement>) => {
-      const nextOpen = event ? !galleryOpen : true;
-      handleCloseSettingsPanel();
-      setGalleryAnchor(nextOpen ? readFloatingPanelAnchor(event) : null);
-      setGalleryOpen(nextOpen);
-    },
-    [galleryOpen, handleCloseSettingsPanel, readFloatingPanelAnchor],
-  );
-
-  const handleCloseGalleryPanel = useCallback(() => {
-    blurActiveChatFloatingUiControl({ keepWindowFocus: true });
-    setGalleryOpen(false);
-    setGalleryAnchor(null);
-  }, []);
-
   useEffect(() => {
     if (!activeChatId) return;
     homeProfessorChatOpenRef.current = false;
@@ -722,10 +706,6 @@ const LocalChatArea = memo(function LocalChatArea() {
       const preservedPanel = event ? readAnnouncedChatToolbarPanelAction(event) : null;
       if (preservedPanel !== "settings") handleCloseSettingsPanel();
       blurActiveChatFloatingUiControl({ keepWindowFocus: true });
-      if (preservedPanel !== "gallery") {
-        setGalleryOpen(false);
-        setGalleryAnchor(null);
-      }
       setPeekPromptData(null);
       setDeleteDialogMessageId(null);
     },
@@ -750,6 +730,17 @@ const LocalChatArea = memo(function LocalChatArea() {
     };
     window.addEventListener(ADVANCED_MEMORY_SETTINGS_EVENT, openMemorySettings);
     return () => window.removeEventListener(ADVANCED_MEMORY_SETTINGS_EVENT, openMemorySettings);
+  }, [handleOpenSettingsPanel]);
+
+  // The Chat Summary agent's "open summaries" link lands on the Chat Summary drawer.
+  useEffect(() => {
+    const openSummary = (event: Event) => {
+      const chatId = (event as CustomEvent<{ chatId?: string }>).detail?.chatId;
+      if (chatId !== useChatStore.getState().activeChatId) return;
+      handleOpenSettingsPanel(undefined, { initialSection: "summary" });
+    };
+    window.addEventListener(CHAT_SUMMARY_OPEN_REQUEST_EVENT, openSummary);
+    return () => window.removeEventListener(CHAT_SUMMARY_OPEN_REQUEST_EVENT, openSummary);
   }, [handleOpenSettingsPanel]);
 
   useEffect(() => {
@@ -933,6 +924,12 @@ const LocalChatArea = memo(function LocalChatArea() {
     setIllustratorPromptReview(null);
   }, [illustratorPromptReviewSubmitting]);
 
+  const handleIllustrateWithAgent = useCallback(
+    async (agentType: string) => {
+      if (activeChatId) await retryAgents(activeChatId, [agentType], { forceImageGeneration: true });
+    },
+    [activeChatId, retryAgents],
+  );
   const handleIllustrate = useCallback(
     (prompt?: string, messageRange?: [string, string]) => {
       if (!activeChatId) return;
@@ -2427,7 +2424,6 @@ const LocalChatArea = memo(function LocalChatArea() {
 
   const intuitiveSwipeBlocked =
     (settingsOpen && !settingsPinned) ||
-    galleryOpen ||
     wizardOpen ||
     spriteArrangeMode ||
     multiSelectMode ||
@@ -3196,12 +3192,7 @@ const LocalChatArea = memo(function LocalChatArea() {
         activeChatId={chat.id}
         isFirstChat={(allChats ?? []).filter((candidate) => candidate.mode === chatMode).length === 1}
         autoOpenBlocked={
-          wizardOpen ||
-          settingsOpen ||
-          galleryOpen ||
-          !!pendingNewChatMode ||
-          !!peekPromptData ||
-          !!deleteDialogMessageId
+          wizardOpen || settingsOpen || !!pendingNewChatMode || !!peekPromptData || !!deleteDialogMessageId
         }
       />
     ) : null;
@@ -3232,9 +3223,6 @@ const LocalChatArea = memo(function LocalChatArea() {
             connectedChatName={connectedChatName}
             onOpenSettings={handleOpenSettingsPanel}
             onCloseSettings={handleCloseSettingsPanel}
-            externalGalleryOpen={galleryOpen}
-            externalGalleryAnchor={galleryAnchor}
-            onCloseExternalGallery={handleCloseGalleryPanel}
             onSwitchChat={chat.connectedChatId ? () => setActiveChatId(chat.connectedChatId!) : undefined}
             onDeleteMessage={handleDelete}
             onPeekPrompt={handlePeekPrompt}
@@ -3246,8 +3234,6 @@ const LocalChatArea = memo(function LocalChatArea() {
             chat={chat}
             settingsOpen={settingsOpen}
             settingsAnchor={settingsAnchor}
-            galleryOpen={false}
-            galleryAnchor={galleryAnchor}
             wizardOpen={wizardOpen}
             peekPromptData={peekPromptData}
             deleteDialogMessageId={deleteDialogMessageId}
@@ -3266,7 +3252,6 @@ const LocalChatArea = memo(function LocalChatArea() {
               onSpriteVisualSettingsChange: patchLocalSpriteVisualSettings,
             }}
             onCloseSettings={handleCloseSettingsPanel}
-            onCloseGallery={handleCloseGalleryPanel}
             onOpenScheduleEditor={handleOpenScheduleEditor}
             onWizardFinish={() => {
               setWizardOpen(false);
@@ -3320,8 +3305,6 @@ const LocalChatArea = memo(function LocalChatArea() {
             settingsOpen={settingsOpen}
             settingsAnchor={settingsAnchor}
             settingsInitialSection={settingsInitialSection}
-            galleryOpen={galleryOpen}
-            galleryAnchor={galleryAnchor}
             wizardOpen={wizardOpen}
             peekPromptData={peekPromptData}
             deleteDialogMessageId={deleteDialogMessageId}
@@ -3344,14 +3327,10 @@ const LocalChatArea = memo(function LocalChatArea() {
             onConcludeScene={chatMeta.sceneStatus === "active" ? () => concludeScene(activeChatId) : undefined}
             onAbandonScene={chatMeta.sceneStatus === "active" ? () => abandonScene(activeChatId) : undefined}
             onOpenSettings={handleOpenSettingsPanel}
-            onOpenGallery={handleOpenGalleryPanel}
             onOpenScheduleEditor={handleOpenScheduleEditor}
             onCloseSettings={handleCloseSettingsPanel}
-            onCloseGallery={handleCloseGalleryPanel}
             onIllustrate={handleIllustrate}
-            onIllustrateWithAgent={async (agentType) => {
-              await retryAgents(activeChatId, [agentType], { forceImageGeneration: true });
-            }}
+            onIllustrateWithAgent={handleIllustrateWithAgent}
             onGenerateSelfie={handleGenerateConversationSelfie}
             onWizardFinish={() => {
               setWizardOpen(false);
@@ -3456,8 +3435,6 @@ const LocalChatArea = memo(function LocalChatArea() {
           settingsOpen={settingsOpen}
           settingsAnchor={settingsAnchor}
           settingsInitialSection={settingsInitialSection}
-          galleryOpen={galleryOpen}
-          galleryAnchor={galleryAnchor}
           wizardOpen={wizardOpen}
           peekPromptData={peekPromptData}
           deleteDialogMessageId={deleteDialogMessageId}
@@ -3491,14 +3468,10 @@ const LocalChatArea = memo(function LocalChatArea() {
           onForkScene={forkScene}
           isForkingScene={isForking || isStreaming}
           onOpenSettings={handleOpenSettingsPanel}
-          onOpenGallery={handleOpenGalleryPanel}
           onCloseSettings={handleCloseSettingsPanel}
-          onCloseGallery={handleCloseGalleryPanel}
           onOpenScheduleEditor={handleOpenScheduleEditor}
           onIllustrate={handleIllustrate}
-          onIllustrateWithAgent={async (agentType) => {
-            await retryAgents(activeChatId, [agentType], { forceImageGeneration: true });
-          }}
+          onIllustrateWithAgent={handleIllustrateWithAgent}
           onGenerateBackground={handleGenerateRoleplayBackground}
           onGenerateVideo={() => handleGenerateRoleplaySceneVideo()}
           onAnimateImage={(image) => handleGenerateRoleplaySceneVideo({ galleryImageId: image.id })}

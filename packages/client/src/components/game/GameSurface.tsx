@@ -51,6 +51,9 @@ import {
 import { cleanNpcAvatarDisplayName, normalizeNpcAvatarName } from "../../lib/game-npc-avatar";
 import { useChatStore } from "../../stores/chat.store";
 import { useUIStore } from "../../stores/ui.store";
+import { CHAT_SETTINGS_WINDOW_ID, useFloatingWindowStore } from "../../stores/floating-window.store";
+import { useProvideChatGalleryActions } from "../../hooks/use-chat-gallery-actions";
+import type { ChatImage } from "../../hooks/use-gallery";
 import { useGameStateStore } from "../../stores/game-state.store";
 import { useGalleryStore } from "../../stores/gallery.store";
 import { useAgentStore } from "../../stores/agent.store";
@@ -156,7 +159,6 @@ import { useSidecarStore } from "../../stores/sidecar.store";
 import { parsePartyDialogue } from "../../lib/party-dialogue-parser";
 import { dispatchSpotifySceneTrackChange } from "../../lib/spotify-playback-events";
 import { ttsService } from "../../lib/tts-service";
-import { ActiveLorebookEntriesButton } from "../chat/ActiveLorebookEntriesButton";
 import type {
   PartyDialogueLine,
   CombatSummary,
@@ -268,7 +270,6 @@ import {
   type SceneAssetNpcAvatarCandidate,
 } from "./game-asset-generation-payload";
 import { PinnedImageOverlay } from "../chat/PinnedImageOverlay";
-import { ChatBranchSelector } from "../chat/ChatBranchSelector";
 import {
   CHAT_FLOATING_PANEL_SELECTOR,
   CHAT_TOOLBAR_ACTION_EVENT,
@@ -1594,11 +1595,6 @@ const GameSessionReplay = lazy(async () => {
   return { default: module.GameSessionReplay };
 });
 
-const ChatGalleryDrawer = lazy(async () => {
-  const module = await import("../chat/ChatGalleryDrawer");
-  return { default: module.ChatGalleryDrawer };
-});
-
 const GameAssetsBrowserView = lazy(async () => {
   const module = await import("../game-assets/GameAssetsBrowserView");
   return { default: module.GameAssetsBrowserView };
@@ -2230,9 +2226,6 @@ interface GameSurfaceProps {
   connectedChatName?: string;
   onOpenSettings: (event?: ReactMouseEvent<HTMLElement>) => void;
   onCloseSettings: () => void;
-  externalGalleryOpen?: boolean;
-  externalGalleryAnchor?: ChatToolbarFloatingPanelAnchor;
-  onCloseExternalGallery?: () => void;
   onSwitchChat?: () => void;
   onDeleteMessage: (messageId: string) => void;
   onPeekPrompt?: (messageId: string) => void;
@@ -2253,9 +2246,6 @@ function GameSurfaceComponent({
   connectedChatName,
   onOpenSettings,
   onCloseSettings,
-  externalGalleryOpen = false,
-  externalGalleryAnchor = null,
-  onCloseExternalGallery,
   onSwitchChat,
   onDeleteMessage,
   onPeekPrompt,
@@ -2838,15 +2828,10 @@ function GameSurfaceComponent({
 
   const [sessionPanelOpen, setSessionPanelOpen] = useState(false);
   const [sessionPanelTab, setSessionPanelTab] = useState<"history" | "journal">("history");
-  const [galleryOpen, setGalleryOpen] = useState(false);
-  const [galleryAnchor, setGalleryAnchor] = useState<ChatToolbarFloatingPanelAnchor>(null);
-  const resolvedGalleryOpen = galleryOpen || externalGalleryOpen;
-  const resolvedGalleryAnchor = externalGalleryOpen ? externalGalleryAnchor : galleryAnchor;
-  const resetGalleryState = useCallback(() => {
-    setGalleryOpen(false);
-    setGalleryAnchor(null);
-    onCloseExternalGallery?.();
-  }, [onCloseExternalGallery]);
+  // The Gallery drawer in an open Chat Settings window counts as an open game panel.
+  const chatSettingsOpen = useFloatingWindowStore((state) => state.open[CHAT_SETTINGS_WINDOW_ID] === true);
+  const galleryDrawerExpanded = useUIStore((state) => state.chatSettingsExpandedSections["game-gallery"] === true);
+  const galleryDrawerOpen = chatSettingsOpen && galleryDrawerExpanded;
   const [mobileRetryMenuAnchor, setMobileRetryMenuAnchor] = useState<ChatToolbarFloatingPanelAnchor>(null);
   const [mobileSessionPanelAnchor, setMobileSessionPanelAnchor] = useState<ChatToolbarFloatingPanelAnchor>(null);
   const [mobileVolumePopoverAnchor, setMobileVolumePopoverAnchor] = useState<ChatToolbarFloatingPanelAnchor>(null);
@@ -2879,8 +2864,7 @@ function GameSurfaceComponent({
     setMobileRetryMenuAnchor(null);
     setVolumePopoverOpen(false);
     setMobileVolumePopoverAnchor(null);
-    resetGalleryState();
-  }, [resetGalleryState]);
+  }, []);
   const dismissOtherFloatingWindows = useCallback(() => {
     closeLocalFloatingWindows();
     onCloseSettings();
@@ -2913,16 +2897,6 @@ function GameSurfaceComponent({
     window.addEventListener(CHAT_TOOLBAR_ACTION_EVENT, handleToolbarAction);
     return () => window.removeEventListener(CHAT_TOOLBAR_ACTION_EVENT, handleToolbarAction);
   }, [closeLocalFloatingWindows]);
-  const handleOpenGalleryPanel = useCallback(
-    (event?: ReactMouseEvent<HTMLElement>) => {
-      const nextOpen = !resolvedGalleryOpen;
-      closeLocalFloatingWindows();
-      onCloseSettings();
-      setGalleryAnchor(nextOpen ? readFloatingPanelAnchor(event) : null);
-      setGalleryOpen(nextOpen);
-    },
-    [closeLocalFloatingWindows, onCloseSettings, readFloatingPanelAnchor, resolvedGalleryOpen],
-  );
   const handleOpenSettingsPanel = useCallback(
     (event?: ReactMouseEvent<HTMLElement>) => {
       closeLocalFloatingWindows();
@@ -2934,13 +2908,9 @@ function GameSurfaceComponent({
     dismissOtherFloatingWindows();
     onSwitchChat?.();
   }, [dismissOtherFloatingWindows, onSwitchChat]);
-  const handleCloseGalleryPanel = useCallback(() => {
-    resetGalleryState();
-  }, [resetGalleryState]);
   const closeChatDrawers = useCallback(() => {
-    resetGalleryState();
     onCloseSettings();
-  }, [onCloseSettings, resetGalleryState]);
+  }, [onCloseSettings]);
   const [activeChoices, setActiveChoices] = useState<string[] | null>(null);
   const [experienceChoiceSlotEl, setExperienceChoiceSlotEl] = useState<HTMLDivElement | null>(null);
   const [activeQte, setActiveQte] = useState<{ actions: string[]; timer: number } | null>(null);
@@ -3276,8 +3246,6 @@ function GameSurfaceComponent({
   const closeGameFloatingPanels = useCallback(() => {
     setSessionPanelOpen(false);
     setGameAssetsPanelOpen(false);
-    setGalleryOpen(false);
-    setGalleryAnchor(null);
     setCombatLogsOpen(false);
     setMobileRetryMenuOpen(false);
     setMobileRetryMenuAnchor(null);
@@ -3287,8 +3255,7 @@ function GameSurfaceComponent({
     setVolumePopoverOpen(false);
     setRetryMenuOpen(false);
     setInventoryOpen(false);
-    resetGalleryState();
-  }, [resetGalleryState]);
+  }, []);
 
   useEffect(() => {
     window.addEventListener(CHAT_FLOATING_UI_DISMISS_EVENT, closeGameFloatingPanels);
@@ -3318,7 +3285,7 @@ function GameSurfaceComponent({
     !!activeQte ||
     sessionPanelOpen ||
     gameAssetsPanelOpen ||
-    resolvedGalleryOpen ||
+    galleryDrawerOpen ||
     combatLogsOpen ||
     inventoryOpen ||
     chatHelpOpen ||
@@ -3328,7 +3295,7 @@ function GameSurfaceComponent({
     !!activeReadable ||
     sessionPanelOpen ||
     gameAssetsPanelOpen ||
-    resolvedGalleryOpen ||
+    galleryDrawerOpen ||
     combatLogsOpen ||
     inventoryOpen ||
     chatHelpOpen ||
@@ -3997,8 +3964,8 @@ function GameSurfaceComponent({
   }, [storyboardViewerWidth]);
   const handleViewStoryboardFromGallery = useCallback(() => {
     handleReopenStoryboardViewer();
-    handleCloseGalleryPanel();
-  }, [handleCloseGalleryPanel, handleReopenStoryboardViewer]);
+    onCloseSettings();
+  }, [handleReopenStoryboardViewer, onCloseSettings]);
   useEffect(() => {
     if (!activeStoryboardKeyframe?.video?.id) {
       setStoryboardViewerPlayingVideoId(null);
@@ -6734,6 +6701,39 @@ function GameSurfaceComponent({
 
   // Message sending via generate hook
   const { generate, retryAgents } = useGenerate();
+  const handleIllustrateWithAgent = useCallback(
+    async (agentType: string) => {
+      await retryAgents(activeChatId, [agentType], { forceImageGeneration: true });
+    },
+    [activeChatId, retryAgents],
+  );
+  const handleAnimateGalleryImage = useCallback(
+    (image: ChatImage) => handleGenerateSceneVideo({ galleryImageId: image.id }),
+    [handleGenerateSceneVideo],
+  );
+  const showStoryboardViewerAction = !!latestTurnStoryboard || storyboardGenerating;
+  const galleryActions = useMemo(
+    () => ({
+      onIllustrate: handleManualSceneIllustration,
+      onIllustrateWithAgent: handleIllustrateWithAgent,
+      onGenerateStoryboard: handleGenerateTurnStoryboard,
+      onViewStoryboard: showStoryboardViewerAction ? handleViewStoryboardFromGallery : undefined,
+      onGenerateVideo: handleGenerateSceneVideo,
+      onAnimateImage: handleAnimateGalleryImage,
+      onGenerateBackground: handleManualSceneBackground,
+    }),
+    [
+      handleAnimateGalleryImage,
+      handleGenerateSceneVideo,
+      handleGenerateTurnStoryboard,
+      handleIllustrateWithAgent,
+      handleManualSceneBackground,
+      handleManualSceneIllustration,
+      handleViewStoryboardFromGallery,
+      showStoryboardViewerAction,
+    ],
+  );
+  useProvideChatGalleryActions(activeChatId, galleryActions);
 
   const retryGeneration = useCallback(() => {
     setGenerationFailed(false);
@@ -12584,13 +12584,6 @@ function GameSurfaceComponent({
                 {/* Desktop controls */}
                 <div className={cn("pointer-events-auto hidden items-center md:flex", CHAT_TOOLBAR_ICON_GAP_CLASS)}>
                   {renderStoryboardBackgroundControls()}
-                  <ChatBranchSelector
-                    activeChatId={activeChatId}
-                    activeChatName={chat.name}
-                    groupId={chat.groupId ?? null}
-                    variant="roleplay"
-                    onOpen={dismissOtherFloatingWindows}
-                  />
                   <div className="relative" ref={retryMenuRef}>
                     <button
                       data-chat-help="retry"
@@ -12752,22 +12745,6 @@ function GameSurfaceComponent({
                     </button>
                     {gameAssetsPanelOpen && renderGameAssetsPanel(false)}
                   </div>
-                  <ActiveLorebookEntriesButton
-                    chatId={activeChatId}
-                    iconSize={14}
-                    buttonClassName={GAME_TOP_ICON_BUTTON}
-                    onOpen={dismissOtherFloatingWindows}
-                  />
-                  <button
-                    data-chat-help="gallery"
-                    data-chat-toolbar-panel-action="gallery"
-                    onClick={handleOpenGalleryPanel}
-                    className={GAME_TOP_ICON_BUTTON}
-                    title={t("chat.toolbar.gallery")}
-                    aria-label={t("chat.toolbar.gallery")}
-                  >
-                    <Image size={14} />
-                  </button>
                   {onSwitchChat ? (
                     <button
                       data-chat-help="connected-chat"
@@ -12821,14 +12798,6 @@ function GameSurfaceComponent({
                       <div data-chat-toolbar-overflow-menu className={GAME_MOBILE_ACTIONS_MENU}>
                         <ChatHelpButton mode="game" compact />
                         {renderStoryboardBackgroundControls(true)}
-                        <ChatBranchSelector
-                          activeChatId={activeChatId}
-                          activeChatName={chat.name}
-                          groupId={chat.groupId ?? null}
-                          variant="roleplay"
-                          compact
-                          onOpen={dismissOtherFloatingWindows}
-                        />
                         <div>
                           <button
                             data-chat-help="retry"
@@ -13030,30 +12999,6 @@ function GameSurfaceComponent({
                           </button>
                           {gameAssetsPanelOpen && renderGameAssetsPanel(true)}
                         </div>
-                        <ActiveLorebookEntriesButton
-                          chatId={activeChatId}
-                          iconSize={14}
-                          buttonClassName={({ open }) =>
-                            getChatToolbarButtonClass({
-                              compact: true,
-                              open,
-                            })
-                          }
-                          title={t("chat.toolbar.activeContext")}
-                          onOpen={dismissOtherFloatingWindows}
-                        />
-                        <button
-                          data-chat-help="gallery"
-                          data-chat-toolbar-panel-action="gallery"
-                          onClick={(event) => {
-                            handleOpenGalleryPanel(event);
-                          }}
-                          className={GAME_MOBILE_ICON_BUTTON}
-                          title={t("chat.toolbar.gallery")}
-                          aria-label={t("chat.toolbar.gallery")}
-                        >
-                          <Image size={14} />
-                        </button>
                         {onSwitchChat ? (
                           <button
                             data-chat-help="connected-chat"
@@ -13841,26 +13786,6 @@ function GameSurfaceComponent({
                 }}
               />
 
-              {/* Gallery drawer */}
-              <Suspense fallback={null}>
-                <ChatGalleryDrawer
-                  chat={chat}
-                  open={resolvedGalleryOpen}
-                  onClose={handleCloseGalleryPanel}
-                  anchor={resolvedGalleryAnchor}
-                  onIllustrate={handleManualSceneIllustration}
-                  onIllustrateWithAgent={async (agentType) => {
-                    await retryAgents(activeChatId, [agentType], { forceImageGeneration: true });
-                  }}
-                  onGenerateStoryboard={handleGenerateTurnStoryboard}
-                  onViewStoryboard={
-                    latestTurnStoryboard || storyboardGenerating ? handleViewStoryboardFromGallery : undefined
-                  }
-                  onGenerateVideo={handleGenerateSceneVideo}
-                  onAnimateImage={(image) => handleGenerateSceneVideo({ galleryImageId: image.id })}
-                  onGenerateBackground={handleManualSceneBackground}
-                />
-              </Suspense>
               <PinnedImageOverlay activeChatId={activeChatId} includeSceneVideos />
 
               {/* Inventory overlay */}

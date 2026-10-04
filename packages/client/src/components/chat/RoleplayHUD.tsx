@@ -6,30 +6,15 @@
 // ──────────────────────────────────────────────
 import { Suspense, lazy, useState, useEffect, useRef, useCallback, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
-import {
-  MapPin,
-  Users,
-  Backpack,
-  Scroll,
-  Sparkles,
-  Swords,
-  RefreshCw,
-  BarChart3,
-  SlidersHorizontal,
-  Loader2,
-} from "lucide-react";
+import { MapPin, Users, Backpack, Scroll, Swords, RefreshCw, BarChart3, SlidersHorizontal } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { api } from "../../lib/api-client";
-import type { AgentFailure } from "../../lib/agent-failures";
 import { TrackerPanelIcon } from "../ui/TrackerPanelIcon";
 import { WorldCalendarIcon } from "../ui/WorldCalendarIcon";
 import { WorldClockIcon, WorldThermometerIcon } from "../ui/WorldStateInstruments";
 import { useGameStateStore } from "../../stores/game-state.store";
-import { useAgentStore, EMPTY_AGENT_TYPES, EMPTY_AGENT_FAILURES } from "../../stores/agent.store";
-import { useAgentConfigs, useCustomAgentRuns, type AgentConfigRow } from "../../hooks/use-agents";
-import { useUpdateMessageExtra } from "../../hooks/use-chats";
-import { useAdvancedMemoryStatus } from "../../hooks/use-advanced-memory";
-import { discardPendingGameStatePatch, useGameStatePatcher } from "../../hooks/use-game-state-patcher";
+import { useAgentStore } from "../../stores/agent.store";
+import { useGameStatePatcher } from "../../hooks/use-game-state-patcher";
 import { useUIStore } from "../../stores/ui.store";
 import { useReducedAmbientEffects } from "../../hooks/use-reduced-ambient-effects";
 import {
@@ -63,8 +48,6 @@ import type {
   QuestProgress,
   CustomTrackerField,
   WorldCustomField,
-  Message,
-  AdvancedMemoryStatus,
   TrackerHiddenFields,
 } from "@marinara-engine/shared";
 import {
@@ -76,28 +59,20 @@ import {
 import type { TrackerTemperatureUnit } from "../../stores/ui.store";
 import { useTranslation as useUiTranslation } from "react-i18next";
 
-const ACTIONS_DROPDOWN_WIDTH_PX = 288;
 const EMPTY_AGENT_TYPE_SET = new Set<string>();
 
 interface RoleplayHUDProps {
   chatId: string;
-  advancedMemoryEnabled?: boolean;
   isStreaming: boolean;
   onRetriggerTrackers?: () => void;
   /** Re-run one tracker agent only (same pipeline as full tracker run). */
   onRerunSingleTracker?: (agentType: string) => void;
-  onRetryFailedAgents?: () => void;
   /** When true, tracker agents are manual — show a trigger button in the widget strip */
   manualTrackers?: boolean;
   /** When provided, overrides the globally-computed set so that only per-chat agents show widgets. */
   enabledAgentTypes?: Set<string>;
-  /** Chat messages (chronological) — used to resolve cached prompt injections on the latest assistant reply */
-  injectionSourceMessages?: Message[];
 }
 
-const RoleplayHUDActionsMenu = lazy(async () =>
-  import("./RoleplayHUDActionsMenu").then((module) => ({ default: module.RoleplayHUDActionsMenu })),
-);
 const CombinedPlayerPanel = lazy(async () =>
   import("./RoleplayHUDPanels").then((module) => ({ default: module.CombinedPlayerPanel })),
 );
@@ -120,26 +95,20 @@ const CombinedWorldPanel = lazy(async () =>
 
 export function RoleplayHUD({
   chatId,
-  advancedMemoryEnabled = false,
   isStreaming,
   onRetriggerTrackers,
   onRerunSingleTracker,
-  onRetryFailedAgents,
   manualTrackers,
   mobileCompact,
   enabledAgentTypes: enabledAgentTypesProp,
-  injectionSourceMessages,
 }: RoleplayHUDProps & { mobileCompact?: boolean }) {
   const { t: localizeUi } = useUiTranslation();
-  const [agentsOpen, setAgentsOpen] = useState(false);
   const [lockMode, setLockMode] = useState(false);
   const gameState = useGameStateStore((s) => s.current);
   const gameStateRefreshing = useGameStateStore((s) => s.isRefreshing);
   const setGameState = useGameStateStore((s) => s.setGameState);
   const { patchField, patchPlayerStats, patchPlayerStatsMany } = useGameStatePatcher(chatId, "roleplay-hud");
 
-  const { data: agentConfigs } = useAgentConfigs();
-  const { data: advancedMemoryStatus } = useAdvancedMemoryStatus(chatId, advancedMemoryEnabled);
   const enabledAgentTypes = enabledAgentTypesProp ?? EMPTY_AGENT_TYPE_SET;
   const { data: installedCapabilities = [] } = useInstalledCapabilityPackages();
   const roleplayTrackerPackages = installedCapabilities.filter(
@@ -155,24 +124,12 @@ export function RoleplayHUD({
     other: otherRoleplayTrackerPackages,
   } = partitionTrackerCapabilityPackages(roleplayTrackerPackages);
 
-  const thoughtBubbles = useAgentStore((s) => s.thoughtBubbles);
   const isAgentProcessing = useAgentStore((s) => s.processingChatIds.includes(chatId));
-  const failedAgentTypes = useAgentStore((s) =>
-    s.failedAgentChatId && s.failedAgentChatId !== chatId ? EMPTY_AGENT_TYPES : s.failedAgentTypes,
-  );
-  const failedAgentFailures = useAgentStore((s) =>
-    s.failedAgentChatId && s.failedAgentChatId !== chatId ? EMPTY_AGENT_FAILURES : s.failedAgentFailures,
-  );
-  const dismissThoughtBubble = useAgentStore((s) => s.dismissThoughtBubble);
-  const clearThoughtBubbles = useAgentStore((s) => s.clearThoughtBubbles);
-  const resetAgentStore = useAgentStore((s) => s.reset);
-  const updateMessageExtra = useUpdateMessageExtra(chatId);
   const trackerPanelEnabled = useUIStore((s) => s.trackerPanelEnabled);
   const trackerPanelOpen = useUIStore((s) => s.trackerPanelOpen);
   const trackerPanelHideHudWidgets = useUIStore((s) => s.trackerPanelHideHudWidgets);
   const trackerTemperatureUnit = useUIStore((s) => s.trackerTemperatureUnit);
   const toggleTrackerPanel = useUIStore((s) => s.toggleTrackerPanel);
-  const showInjectionsTab = useUIStore((s) => s.debugMode);
 
   const isTrackerBusy = isAgentProcessing || isStreaming || gameStateRefreshing;
   const showHudTrackerWidgets = !(trackerPanelEnabled && trackerPanelHideHudWidgets);
@@ -195,61 +152,6 @@ export function RoleplayHUD({
       cancelled = true;
     };
   }, [chatId, setGameState]);
-
-  const clearGameState = useCallback(() => {
-    const cleared = {
-      date: null,
-      time: null,
-      location: null,
-      weather: null,
-      temperature: null,
-      worldCustomFields: [],
-      presentCharacters: [],
-      recentEvents: [],
-      playerStats: {
-        stats: [],
-        attributes: null,
-        skills: {},
-        inventory: [],
-        inventoryTrackerCurrencies: [],
-        inventoryTrackerEquipped: [],
-        inventoryTrackerInventory: [],
-        activeQuests: [],
-        status: "",
-      },
-      personaStats: [],
-      fieldLocks: null,
-      hiddenTrackerFields: null,
-    };
-    discardPendingGameStatePatch(chatId);
-    const prev = useGameStateStore.getState().current;
-    if (prev?.chatId === chatId) {
-      setGameState({ ...prev, ...cleared } as GameState);
-    } else {
-      setGameState({
-        id: "",
-        chatId,
-        messageId: "",
-        swipeIndex: 0,
-        createdAt: "",
-        ...cleared,
-      } as GameState);
-    }
-    api.patch(`/chats/${chatId}/game-state`, { ...cleared, manual: true, clearOverrides: true }).catch(() => {});
-    // Clear committed agent runs & memory from DB + reset client state
-    api.delete(`/agents/runs/${chatId}`).catch(() => {});
-    const latestAssistantMessage = [...(injectionSourceMessages ?? [])]
-      .reverse()
-      .find((message) => message.role === "assistant");
-    if (latestAssistantMessage) {
-      updateMessageExtra.mutate({ messageId: latestAssistantMessage.id, extra: { cyoaChoices: [] } });
-    }
-    resetAgentStore();
-  }, [chatId, injectionSourceMessages, resetAgentStore, setGameState, updateMessageExtra]);
-  const stopAgents = useCallback(async () => {
-    const result = await api.post<{ aborted: boolean }>("/generate/abort", { chatId, agentsOnly: true });
-    if (!result.aborted) throw new Error("No active agent run was found");
-  }, [chatId]);
 
   const date = gameState?.date ?? null;
   const time = gameState?.time ?? null;
@@ -331,29 +233,6 @@ export function RoleplayHUD({
             isTrackerRetryBusy={isTrackerBusy}
           />
         ))}
-
-        {/* Actions (Agents + Clear) */}
-        <ActionsGroup
-          chatId={chatId}
-          advancedMemoryStatus={advancedMemoryEnabled ? advancedMemoryStatus : undefined}
-          injectionSourceMessages={injectionSourceMessages}
-          agentConfigs={agentConfigs}
-          agentsOpen={agentsOpen}
-          setAgentsOpen={setAgentsOpen}
-          isAgentProcessing={isAgentProcessing}
-          isGenerationBusy={isTrackerBusy}
-          thoughtBubbles={thoughtBubbles}
-          clearThoughtBubbles={clearThoughtBubbles}
-          dismissThoughtBubble={dismissThoughtBubble}
-          enabledAgentTypes={enabledAgentTypes}
-          clearGameState={clearGameState}
-          onRetriggerTrackers={onRetriggerTrackers}
-          onRetryFailedAgents={onRetryFailedAgents}
-          onStopAgents={stopAgents}
-          failedAgentTypes={failedAgentTypes}
-          failedAgentFailures={failedAgentFailures}
-          showInjectionsTab={showInjectionsTab}
-        />
 
         {/* ── Mobile: combined widgets, grouped with tracker and agent controls ── */}
         {showHudTrackerWidgets && (
@@ -565,10 +444,6 @@ export function RoleplayHUD({
   );
 }
 
-// ═══════════════════════════════════════════════
-// Actions Group (Agents dropdown, Echo Chamber toggle, Clear)
-// ═══════════════════════════════════════════════
-
 /** Common mobile HUD button sizing – used by all four strip buttons */
 const HUD_ICON_BUTTON = getChatToolbarButtonClass({ compact: true });
 const MOBILE_HUD_BTN = cn(HUD_ICON_BUTTON, CHAT_TOOLBAR_MOBILE_OVERFLOW_HEIGHT_CLASS, "cursor-pointer select-none");
@@ -615,21 +490,6 @@ function DeferredHUDPanelFallback({ label }: { label: string }) {
   return <div className="px-3 py-4 text-center text-[0.625rem] text-[var(--muted-foreground)]/60">{label}</div>;
 }
 
-function DeferredActionsFallback({ isAgentProcessing }: { isAgentProcessing: boolean }) {
-  const { t: localizeUi } = useUiTranslation();
-  return (
-    <div className="px-3 py-4 text-center text-[0.625rem] text-[var(--muted-foreground)]/60">
-      {isAgentProcessing
-        ? localizeUi("ui.chat.deferredactionsfallback.loadingAgentActivity")
-        : localizeUi("ui.chat.deferredactionsfallback.loadingActions")}
-    </div>
-  );
-}
-
-function customAgentRunIdentity(run: { agentType?: string | null; id?: string | null }) {
-  return run.agentType?.trim() || run.id?.trim() || "custom-agent";
-}
-
 function TrackerPanelToggleButton({ onToggle }: { onToggle: () => void }) {
   const { t: localizeUi } = useUiTranslation();
   return (
@@ -643,213 +503,6 @@ function TrackerPanelToggleButton({ onToggle }: { onToggle: () => void }) {
       <TrackerPanelIcon size="1.05rem" className="shrink-0" />
       <span className="sr-only">{localizeUi("ui.panels.trackerpanelappearancedrawer.trackerPanel")}</span>
     </button>
-  );
-}
-
-interface ActionsGroupProps {
-  chatId: string;
-  advancedMemoryStatus?: AdvancedMemoryStatus;
-  injectionSourceMessages?: Message[];
-  agentConfigs?: AgentConfigRow[];
-  agentsOpen: boolean;
-  setAgentsOpen: (v: boolean) => void;
-  isAgentProcessing: boolean;
-  isGenerationBusy: boolean;
-  thoughtBubbles: Array<{ agentId: string; agentName: string; content: string; timestamp: number }>;
-  clearThoughtBubbles: () => void;
-  dismissThoughtBubble: (i: number) => void;
-  enabledAgentTypes: Set<string>;
-  clearGameState: () => void;
-  onRetriggerTrackers?: () => void;
-  onRetryFailedAgents?: () => void;
-  onStopAgents?: () => Promise<void>;
-  failedAgentTypes: string[];
-  failedAgentFailures: AgentFailure[];
-  showInjectionsTab?: boolean;
-}
-
-function ActionsGroup({
-  chatId,
-  advancedMemoryStatus,
-  injectionSourceMessages,
-  agentConfigs,
-  agentsOpen,
-  setAgentsOpen,
-  isAgentProcessing,
-  isGenerationBusy,
-  thoughtBubbles,
-  clearThoughtBubbles,
-  dismissThoughtBubble,
-  enabledAgentTypes,
-  clearGameState,
-  onRetriggerTrackers,
-  onRetryFailedAgents,
-  onStopAgents,
-  failedAgentTypes,
-  failedAgentFailures,
-  showInjectionsTab,
-}: ActionsGroupProps) {
-  const btnRef = useRef<HTMLButtonElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
-  const echoMessages = useAgentStore((s) => s.echoMessages);
-  const { data: customAgentRuns = [], isLoading: customAgentRunsLoading } = useCustomAgentRuns(chatId, agentsOpen);
-
-  const computeActionsPosition = useCallback(() => {
-    if (!btnRef.current) return null;
-    const rect = btnRef.current.getBoundingClientRect();
-    const dropdownWidth = dropdownRef.current?.offsetWidth ?? ACTIONS_DROPDOWN_WIDTH_PX;
-    const dropdownHeight = dropdownRef.current?.offsetHeight ?? Math.min(320, window.innerHeight - 16);
-    const belowTop = rect.bottom + 4;
-    const aboveTop = rect.top - dropdownHeight - 4;
-    const preferredTop = belowTop + dropdownHeight > window.innerHeight - 8 ? aboveTop : belowTop;
-    const top = Math.max(8, Math.min(preferredTop, window.innerHeight - dropdownHeight - 8));
-    // Center with layout coordinates: the panel's entrance animation owns transform.
-    const left =
-      window.innerWidth < 768
-        ? Math.max(8, Math.round((window.innerWidth - dropdownWidth) / 2))
-        : Math.max(8, Math.min(rect.left, window.innerWidth - dropdownWidth - 8));
-    return { top, left };
-  }, []);
-
-  // Position with fixed layout to avoid overflow clipping
-  useLayoutEffect(() => {
-    if (!agentsOpen) return;
-    setPos(computeActionsPosition());
-  }, [agentsOpen, computeActionsPosition]);
-
-  useEffect(() => {
-    if (!agentsOpen) return;
-    const update = () => setPos(computeActionsPosition());
-    window.addEventListener("scroll", update, true);
-    window.addEventListener("resize", update);
-    const observer = new ResizeObserver(update);
-    if (dropdownRef.current) observer.observe(dropdownRef.current);
-    return () => {
-      window.removeEventListener("scroll", update, true);
-      window.removeEventListener("resize", update);
-      observer.disconnect();
-    };
-  }, [agentsOpen, computeActionsPosition]);
-
-  // Close on outside click or Escape
-  useEffect(() => {
-    if (!agentsOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (btnRef.current?.contains(e.target as Node) || dropdownRef.current?.contains(e.target as Node)) return;
-      setAgentsOpen(false);
-    };
-    const keyHandler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setAgentsOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    document.addEventListener("keydown", keyHandler);
-    return () => {
-      document.removeEventListener("mousedown", handler);
-      document.removeEventListener("keydown", keyHandler);
-    };
-  }, [agentsOpen, setAgentsOpen]);
-
-  // Badge count — unique agent types that produced results
-  const generatedAgentIds = new Set([
-    ...thoughtBubbles.map((bubble) => bubble.agentId),
-    ...customAgentRuns.map(customAgentRunIdentity),
-  ]);
-  if (echoMessages.length > 0 && !generatedAgentIds.has("echo-chamber")) generatedAgentIds.add("echo-chamber");
-  const memoryActive = advancedMemoryStatus?.settings.enabled && advancedMemoryStatus.job.id;
-  const memoryRunning = memoryActive && advancedMemoryStatus.job.status === "running";
-  if (memoryActive) generatedAgentIds.add("advanced-recall");
-  const generatedAgentCount = generatedAgentIds.size;
-  const agentsLabel = `Agents & Actions${generatedAgentCount > 0 ? ` - ${generatedAgentCount} generated` : ""}${
-    failedAgentTypes.length > 0 ? ` - ${failedAgentTypes.length} failed` : ""
-  }`;
-  const hasAgentCount = generatedAgentCount > 0 || failedAgentTypes.length > 0;
-
-  // ── Shared dropdown portal (used by both desktop & mobile) ──
-  const dropdownContent =
-    agentsOpen &&
-    pos &&
-    createPortal(
-      <div
-        ref={dropdownRef}
-        className={cn(
-          NEUTRAL_PANEL_SHELL,
-          NEUTRAL_PANEL_SCROLL_AREA,
-          "fixed z-[9999] max-h-80 w-72 max-w-[calc(100vw-1rem)] overflow-y-auto",
-        )}
-        style={{ top: pos.top, left: pos.left }}
-      >
-        <Suspense fallback={<DeferredActionsFallback isAgentProcessing={isAgentProcessing} />}>
-          <RoleplayHUDActionsMenu
-            chatId={chatId}
-            advancedMemoryStatus={memoryActive ? advancedMemoryStatus : undefined}
-            injectionSourceMessages={injectionSourceMessages}
-            isAgentProcessing={isAgentProcessing}
-            isGenerationBusy={isGenerationBusy}
-            thoughtBubbles={thoughtBubbles}
-            clearThoughtBubbles={clearThoughtBubbles}
-            dismissThoughtBubble={dismissThoughtBubble}
-            customAgentRuns={customAgentRuns}
-            customAgentRunsLoading={customAgentRunsLoading}
-            agentConfigs={agentConfigs}
-            enabledAgentTypes={enabledAgentTypes}
-            clearGameState={clearGameState}
-            onRetriggerTrackers={onRetriggerTrackers}
-            onRetryFailedAgents={onRetryFailedAgents}
-            onStopAgents={onStopAgents}
-            failedAgentTypes={failedAgentTypes}
-            failedAgentFailures={failedAgentFailures}
-            onClose={() => setAgentsOpen(false)}
-            showInjectionsTab={showInjectionsTab}
-          />
-        </Suspense>
-      </div>,
-      document.body,
-    );
-
-  return (
-    <div className={cn("relative flex items-center", CHAT_TOOLBAR_ICON_GAP_CLASS)}>
-      <button
-        ref={btnRef}
-        onClick={() => setAgentsOpen(!agentsOpen)}
-        className={cn(
-          getChatToolbarButtonClass({
-            compact: true,
-            open: agentsOpen,
-            className: cn(CHAT_TOOLBAR_MOBILE_OVERFLOW_HEIGHT_CLASS, hasAgentCount && "w-auto min-w-8 gap-1.5 px-2"),
-          }),
-          "group cursor-pointer select-none",
-        )}
-        title={agentsLabel}
-        aria-label={agentsLabel}
-      >
-        {isAgentProcessing || memoryRunning ? (
-          <Loader2 size="0.875rem" strokeWidth={2.5} className="shrink-0 animate-spin transition-colors" />
-        ) : (
-          <Sparkles size="0.875rem" strokeWidth={2.5} className="shrink-0 transition-colors" />
-        )}
-        {generatedAgentCount > 0 && (
-          <span
-            className={cn(
-              "shrink-0 rounded-full bg-[var(--marinara-chat-chrome-highlight-bg)] px-1.5 py-0.5 text-[0.625rem] font-medium tabular-nums text-[var(--marinara-chat-chrome-button-text-hover)]",
-              agentsOpen && "bg-[var(--marinara-chat-chrome-highlight-bg-hover)]",
-            )}
-            aria-hidden="true"
-          >
-            {generatedAgentCount}
-          </span>
-        )}
-        {failedAgentTypes.length > 0 && (
-          <span
-            className="shrink-0 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[0.625rem] font-medium tabular-nums text-amber-200"
-            aria-hidden="true"
-          >
-            {failedAgentTypes.length}
-          </span>
-        )}
-      </button>
-      {dropdownContent}
-    </div>
   );
 }
 

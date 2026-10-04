@@ -7,7 +7,9 @@
 //   - the next quiet stretch still checks in, from another character,
 //   - with mixed talkativeness, the chattiest character does not take every turn,
 //   - a long-absence check-in is not repeated by every character, even after a restart,
-//   - Grouped mode, which counts each character separately, is unchanged.
+//   - Grouped mode, which counts each character separately, is unchanged,
+//   - Character Exchanges work with schedules off, skip offline characters and never
+//     take the day's last check-in, so a later check-in can still happen.
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -156,6 +158,49 @@ try {
     const grouped = await pollQuietStretch(chatId, 2);
     assert.equal(grouped.speakers.length, 2, "Grouped mode keeps each character's own check-in rhythm");
     assert.notEqual(grouped.speakers[0], grouped.speakers[1]);
+  }
+
+  {
+    const offline = await createCharactersStorage(db).create(
+      characterDataSchema.parse({
+        name: "Asleep",
+        extensions: { conversationStatusOverride: { status: "offline", createdAt: new Date().toISOString() } },
+      }),
+    );
+    const chatId = await createChat("individual", [cast[0]!, cast[1]!, offline!.id]);
+    await chats.patchMetadata(chatId, { characterExchanges: true });
+    recordUserActivity(chatId, { occurredAt: Date.now() - 4 * HOUR });
+    const checkIn = await pollQuietStretch(chatId, 1);
+    assert.equal(checkIn.speakers.length, 1);
+    // Every exchange roll succeeds, so only the limit can end the chain.
+    const realRandom = Math.random;
+    Math.random = () => 0;
+    try {
+      const speakers = [...checkIn.speakers];
+      let exchange: CheckResult | null = null;
+      for (let hop = 0; hop < 10; hop++) {
+        const response = await app.inject({
+          method: "POST",
+          url: "/autonomous/exchange",
+          payload: { chatId, lastSpeakerCharId: speakers.at(-1) },
+        });
+        assert.equal(response.statusCode, 200, response.body);
+        exchange = response.json() as CheckResult;
+        if (!exchange.shouldTrigger) break;
+        speakers.push(exchange.characterIds[0]!);
+        await saveCheckIn(chatId, exchange);
+      }
+      assert.ok(speakers.length > 1, `exchanges should work with schedules off (got ${exchange?.reason})`);
+      assert.ok(!speakers.includes(offline!.id), "an offline character does not join exchanges");
+      assert.equal(exchange?.reason, "daily_budget_exhausted");
+      // Default talkativeness allows 5 check-ins a day.
+      assert.equal(await usedToday(chatId), 4, "a check-in and its exchanges leave the day's last check-in");
+    } finally {
+      Math.random = realRandom;
+    }
+    recordUserActivity(chatId, { occurredAt: Date.now() - 4 * HOUR });
+    const later = await pollQuietStretch(chatId, 1);
+    assert.equal(later.speakers.length, 1, "a later check-in can still use the last one");
   }
 } finally {
   Date.now = realNow;

@@ -9,6 +9,7 @@ import {
   followGameInventoryDetails,
   normalizeCharacterLookupName,
   forgetGameInventoryTelling,
+  applyGameInventoryOps,
   gameFightItems,
   gameFightUseEffect,
   gameInventoryChargeStack,
@@ -247,16 +248,19 @@ export async function loadGameFightUseEffects(
   const book = await loadGameInventoryItemBook(db, { metadata }, "player");
   if (!book) return null;
   return {
-    // One that holds charges spends them from the stack a charge takes them from, the next use only:
-    // a stack keeps its charges between uses.
-    effectOf: (name, effect, nth = 0) =>
-      gameFightUseEffect(
+    // One that holds charges spends them from the stack a charge takes them from: the `nth` use from now
+    // is read after the uses before it spent theirs (a stack run dry passes to the next).
+    effectOf: (name, effect, nth = 0) => {
+      if (!effect.charges)
+        return gameFightUseEffect(effect, gameInventoryFightSpendStack(stacks, name, book, nth), book);
+      const before =
+        nth > 0 ? applyGameInventoryOps(stacks, [{ op: "charge", name, count: nth }], undefined, book).stacks : stacks;
+      return gameFightUseEffect(
         effect,
-        effect.charges
-          ? gameInventoryChargeStack(stacks, gameInventoryItemsOwnNamed(stacks, name), book)
-          : gameInventoryFightSpendStack(stacks, name, book, nth),
+        gameInventoryChargeStack(before, gameInventoryItemsOwnNamed(before, name), book),
         book,
-      ),
+      );
+    },
   };
 }
 

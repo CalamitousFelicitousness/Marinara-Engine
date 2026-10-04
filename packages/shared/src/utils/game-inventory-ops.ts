@@ -171,11 +171,6 @@ export interface GameInventoryOpsOutcome {
 }
 
 /**
- * Every operation in order, each on the stacks the one before it left. One that cannot happen is
- * refused and changes nothing, and the rest still apply, the way the Game Master's sheet commands do.
- * `rules` are what the game's ruleset says about its items; without them every item is plain.
- */
-/**
  * The stack a charge op spends its next use from: of these items, one its holder may use it from (worn
  * where it takes slots, bound where it binds) with charges enough for a use, the player's own bag
  * first, then the party's in the order the stacks are kept. Undefined when none has a use left.
@@ -195,6 +190,11 @@ export function gameInventoryChargeStack(
   return usable.find((each) => !each.holder) ?? usable[0];
 }
 
+/**
+ * Every operation in order, each on the stacks the one before it left. One that cannot happen is
+ * refused and changes nothing, and the rest still apply, the way the Game Master's sheet commands do.
+ * `rules` are what the game's ruleset says about its items; without them every item is plain.
+ */
 export function applyGameInventoryOps(
   stacks: GameInventoryStack[],
   ops: readonly GameInventoryEngineOp[],

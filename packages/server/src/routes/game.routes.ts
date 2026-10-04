@@ -10434,9 +10434,9 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         if (!worked) continue;
         // ponytail: an order whose member falls before acting is not spent by the screen, so later uses of its
         // line in that round read one stack on. Upgrade: work the effect out as each use resolves. One that
-        // holds charges reads the stack its next charge comes from, as a stack keeps its charges between uses.
+        // holds charges reads the stack its charge comes from once the round's earlier uses spent theirs.
         const nth = spent.get(line.name) ?? 0;
-        if (worked.consumes !== false && !worked.charges) spent.set(line.name, nth + 1);
+        if (worked.consumes !== false || worked.charges) spent.set(line.name, nth + 1);
         const does = uses ? uses.effectOf(line.ownName ?? line.name, worked, nth) : worked;
         const who = combatants.find((c) => c.id === user)?.name ?? "";
         const gate = line.item ? await rollGameFightItemGate(app.db, chatId, who, line.item) : null;

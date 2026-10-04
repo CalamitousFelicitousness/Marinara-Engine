@@ -1093,6 +1093,30 @@ try {
         /really Grave spade, and it did nothing/,
         JSON.stringify(rang.json().result.actions),
       );
+      // Two uses in one round: the fake's last charge goes first, then the real bell's.
+      await chats.patchMetadata(fakeBell.chatId, {
+        gameInventory: [
+          { ...kit[1]!, id: "st-fake-last", truly: "kit/grave-spade", charges: 1 },
+          { ...kit[1]!, id: "st-real-full", charges: 3 },
+        ],
+      });
+      const twice = await app.inject({
+        method: "POST",
+        url: "/game/combat/round",
+        payload: {
+          chatId: fakeBell.chatId,
+          round: 1,
+          combatants: [...combatants, { ...combatants[0]!, id: "bram", name: "Bram" }],
+          playerAction: { type: "item", itemId: "Dawn bell", targetId: "rat" },
+          partyActions: { bram: { type: "item", itemId: "Dawn bell", targetId: "rat" } },
+        },
+      });
+      assert.equal(twice.statusCode, 200, twice.body);
+      const rung = (
+        twice.json().result.actions as Array<{ attackerId: string; skillName?: string; note?: string }>
+      ).filter((action) => action.skillName === "Dawn bell");
+      assert.match(rung.find((action) => action.attackerId === "bram")?.note ?? "", /really Grave spade/);
+      assert.equal(rung.find((action) => action.attackerId === "ada")?.note, undefined, JSON.stringify(rung));
       const charged = applyGameInventoryOps(
         stacks as never,
         [{ op: "charge", name: "Dawn bell", count: 1 }],

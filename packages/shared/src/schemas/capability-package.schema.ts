@@ -638,7 +638,11 @@ const capabilityPackageManifestBaseSchema = z
 // 1.79: a sheet may have up to 120 derived values (60 before). Not a soft seam: an Engine that cannot
 //        read it refuses the whole ruleset file, so a package with more than 60 declares 1.79.
 //        No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 79 } as const);
+// 1.80: a sheet list's number column may be filled by a `roll` (count, and sides as a number, another
+//        column of the row, or a value off the sheet); the sheet editor rolls it with the Engine's own
+//        dice. Not a soft seam: an Engine that cannot read it refuses the whole ruleset file, so a
+//        package that ships it declares 1.80. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 80 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

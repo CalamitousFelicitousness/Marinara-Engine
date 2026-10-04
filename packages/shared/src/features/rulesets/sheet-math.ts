@@ -18,6 +18,8 @@ import {
   type RulesetSheetMigrationStep,
   type RulesetUntrained,
   type RulesetValueRef,
+  rulesetDieSides,
+  type RulesetListColumn,
 } from "../../schemas/ruleset.schema.js";
 
 type StepTable = ReadonlyArray<readonly [number, number]>;
@@ -1062,4 +1064,27 @@ export function rulesetLadderTargetFor(definition: RulesetDefinition, successes:
   if (resolution.kind !== "dice-pool") return undefined;
   const found = resolution.difficultyLadder.filter((step) => step.successes === successes);
   return found.length === 1 ? found[0]!.target : undefined;
+}
+
+/**
+ * What a rolled list column throws for one row (Capability API 1.80), as dice notation (`1d8`): its
+ * count of dice, of the sides it names, read from the row's own column or off the sheet. Null for a
+ * column that is not rolled, or sides that do not read as a die (a row whose die is not picked yet).
+ */
+export function rulesetListRollNotation(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  column: RulesetListColumn,
+  row: Readonly<Record<string, unknown>>,
+  evaluated?: EvaluatedRulesetSheet,
+): string | null {
+  if (column.type !== "number" || !column.roll) return null;
+  const { count, sides } = column.roll;
+  const read =
+    typeof sides === "number"
+      ? sides
+      : "column" in sides
+        ? rulesetDieSides(row[sides.column])
+        : rulesetDieSides(Math.trunc(resolveRulesetValueRef(definition, build, sides, evaluated)));
+  return read === null ? null : `${count}d${read}`;
 }

@@ -18,6 +18,8 @@ import {
   rulesetUntrainedRule,
   scaledRowColumns,
   RULESET_CATALOG_ROW_KEY,
+  rulesetListRollNotation,
+  type DiceRollResult,
   type RulesetCatalogEntriesById,
   type RulesetCatalogPayload,
   type RulesetDefinition,
@@ -34,6 +36,7 @@ import { rulesetCatalogQuery } from "../../hooks/use-capability-packages";
 import { applyCatalogRefresh, planCatalogRefresh, type CatalogRefreshRow } from "../../lib/ruleset-catalog";
 import { rulesetCheckValueText } from "../../lib/ruleset-resolution";
 import { DraftNumberInput } from "../ui/DraftNumberInput";
+import { api } from "../../lib/api-client";
 import { DraftTextarea } from "../ui/DraftTextarea";
 
 type Scalar = number | string | boolean;
@@ -299,6 +302,44 @@ function TrainedRows({
         )}
       />
     </div>
+  );
+}
+
+/** A rolled list cell's button (Capability API 1.80): the Engine's own dice, so the number is thrown,
+ *  not typed. Disabled while the row does not say what to throw (its die is not picked yet). */
+function RollCellButton({
+  notation,
+  ariaLabel,
+  onRolled,
+}: {
+  notation: string | null;
+  /** The cell it fills, which its accessible name says. */
+  ariaLabel: string;
+  onRolled: (total: number) => void;
+}) {
+  const { t } = useUiTranslation();
+  const [rolling, setRolling] = useState(false);
+  return (
+    <button
+      type="button"
+      disabled={!notation || rolling}
+      onClick={async () => {
+        if (!notation) return;
+        setRolling(true);
+        try {
+          const { result } = await api.post<{ result: DiceRollResult }>("/game/dice/roll", { notation });
+          onRolled(result.total);
+        } catch {
+          // Nothing is written when the roll did not happen; the button can be pressed again.
+        } finally {
+          setRolling(false);
+        }
+      }}
+      aria-label={t("ui.rulesets.sheet.rollCell", { cell: ariaLabel, notation: notation ?? "" })}
+      className="self-start rounded-lg border border-[var(--border)] px-2 py-0.5 text-[0.6875rem] text-[var(--foreground)] hover:bg-[var(--accent)] disabled:opacity-50"
+    >
+      {notation ? t("ui.rulesets.sheet.roll", { notation }) : t("ui.rulesets.sheet.rollNeedsDie")}
+    </button>
   );
 }
 
@@ -629,6 +670,15 @@ export function RulesetSheetEditor({
                               title={setByRuleset ? t("ui.rulesets.sheet.scaledHint") : undefined}
                               describedBy={hintId}
                             />
+                            {column.type === "number" && column.roll && !setByRuleset && (
+                              <RollCellButton
+                                notation={rulesetListRollNotation(definition, build, column, row, evaluated)}
+                                ariaLabel={`${list.label} ${index + 1}: ${column.label}`}
+                                onRolled={(total) =>
+                                  updateRow(list.id, rows, index, column.id, clamp(total, column.min, column.max))
+                                }
+                              />
+                            )}
                             {hintId && (
                               <span id={hintId} className="text-[0.625rem] text-[var(--muted-foreground)]">
                                 {t("ui.rulesets.sheet.scaledHint")}

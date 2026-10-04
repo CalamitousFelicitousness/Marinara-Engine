@@ -1749,6 +1749,17 @@ export function getCapabilityPackageInstallIssue(
   if (!declaresApi(79) && Array.isArray(derivedValues) && derivedValues.length > RULESET_DERIVED_MAX_BEFORE_179) {
     return `A ruleset with more than ${RULESET_DERIVED_MAX_BEFORE_179} derived values requires schemaVersion 2 and capabilityApi 1.79 or newer`;
   }
+  // A list column a player fills by rolling, 1.80: a new key on the strict column.
+  const lists = plainRecord(ruleset?.sheet)?.lists;
+  const rolled =
+    Array.isArray(lists) &&
+    lists.some((list) => {
+      const columns = plainRecord(list)?.columns;
+      return Array.isArray(columns) && columns.some((column) => plainRecord(column)?.roll !== undefined);
+    });
+  if (!declaresApi(80) && rolled) {
+    return "A ruleset with a list column filled by a roll requires schemaVersion 2 and capabilityApi 1.80 or newer";
+  }
   return null;
 }
 

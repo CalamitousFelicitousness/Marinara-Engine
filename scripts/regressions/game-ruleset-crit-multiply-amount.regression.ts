@@ -1,5 +1,5 @@
 /**
- * Ruleset keys 5e needed (Capability API 1.76 to 1.79):
+ * Ruleset keys 5e needed (Capability API 1.76 to 1.80):
  *
  *   - 1.76 `combat.attackRoll.criticalFrom`: a critical range off the attacker's sheet (its fight is
  *     proven in game-ruleset-combat-core). Gated here.
@@ -9,6 +9,8 @@
  *     fighter's level; its fight is proven in game-ruleset-combat-core). Refused without an amount and
  *     on a rider; the catalog's line names it; gated inline and in a catalog file.
  *   - 1.79 up to 120 derived values on a sheet (60 before); more than 60 is gated.
+ *   - 1.80 a list's number column filled by a roll: its dice read off the row's own column, a number
+ *     or the sheet; refused where the sides cannot be read; gated.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -21,6 +23,8 @@ import {
   evaluateRulesetSheet,
   parseRulesetDefinition,
   rulesetCatalogEntryIssues,
+  rulesetDieSides,
+  rulesetListRollNotation,
   type RulesetDefinition,
 } from "../../packages/shared/src/index.js";
 import { catalogMechanicsLabels, formatCatalogMechanics } from "../../packages/client/src/lib/ruleset-catalog.js";
@@ -107,6 +111,68 @@ try {
     assert.ok(line.includes(`1d10 + ${level}`), line);
   }
 
+  // ── 1.80 a list column filled by a roll ──
+  const rolled = (sides: unknown, edit: (doc: Record<string, any>) => void = () => {}) =>
+    variant((doc) => {
+      doc.sheet.lists.push({
+        id: "hp_rolls",
+        label: "Hit point rolls",
+        maxItems: 20,
+        columns: [
+          { id: "level", label: "Level", type: "text", maxLength: 20 },
+          { id: "die", label: "Die", type: "enum", values: ["d6", "d8", "d10", "d12"] },
+          { id: "roll", label: "Roll", type: "number", min: 1, max: 12, roll: { sides } },
+        ],
+      });
+      edit(doc);
+    });
+  {
+    const byColumn = parsed(rolled({ column: "die" }));
+    const list = byColumn.sheet.lists.find((entry) => entry.id === "hp_rolls")!;
+    const column = list.columns.find((entry) => entry.id === "roll")!;
+    const build = defaultRulesetSheetBuild(byColumn);
+    assert.equal(rulesetListRollNotation(byColumn, build, column, { die: "d10" }), "1d10", "the row's own die");
+    assert.equal(rulesetListRollNotation(byColumn, build, column, {}), null, "no die picked yet");
+    assert.equal(
+      rulesetListRollNotation(byColumn, build, list.columns[0]!, { die: "d10" }),
+      null,
+      "not a rolled column",
+    );
+    const fixed = parsed(rolled(8));
+    const fixedColumn = fixed.sheet.lists.find((entry) => entry.id === "hp_rolls")!.columns[2]!;
+    assert.equal(rulesetListRollNotation(fixed, build, fixedColumn, {}), "1d8");
+    const fromSheet = parsed(
+      rolled({ derived: "hp_die_sides" }, (doc) =>
+        doc.sheet.derived.push({ id: "hp_die_sides", label: "Hit die sides", op: "sum", of: [{ const: 12 }] }),
+      ),
+    );
+    const sheetColumn = fromSheet.sheet.lists.find((entry) => entry.id === "hp_rolls")!.columns[2]!;
+    assert.equal(rulesetListRollNotation(fromSheet, defaultRulesetSheetBuild(fromSheet), sheetColumn, {}), "1d12");
+    assert.deepEqual(
+      [
+        rulesetDieSides("d8"),
+        rulesetDieSides("D12"),
+        rulesetDieSides(6),
+        rulesetDieSides("d1"),
+        rulesetDieSides("big"),
+      ],
+      [8, 12, 6, null, null],
+    );
+    const refused = (sides: unknown, edit?: (doc: Record<string, any>) => void) => {
+      const result = parseRulesetDefinition(rolled(sides, edit));
+      assert.equal(result.ok, false, JSON.stringify(sides));
+      return result.ok ? "" : result.issues.join("; ");
+    };
+    assert.match(refused({ column: "nope" }), /not another column of this list/);
+    assert.match(refused({ column: "roll" }), /not another column of this list/);
+    assert.match(refused({ column: "level" }), /Sides read a number column or an enum of dice/);
+    assert.match(
+      refused({ column: "die" }, (doc) => doc.sheet.lists.at(-1).columns[1].values.push("lots")),
+      /"lots" does not read as a die/,
+    );
+    assert.match(refused({ derived: "no_such" }), /no_such/);
+  }
+
   // ── The gates ──
   {
     const manifest = (minor: number) => ({
@@ -164,6 +230,8 @@ try {
     assert.match(issue(78, many(61)) ?? "", /more than 60 derived values.*1\.79/);
     assert.equal(issue(79, many(61)), null);
     assert.equal(issue(78, many(60)), null, "60 is still 1.78's");
+    assert.match(issue(79, rolled({ column: "die" })) ?? "", /list column filled by a roll.*1\.80/);
+    assert.equal(issue(80, rolled({ column: "die" })), null);
   }
 
   console.log(

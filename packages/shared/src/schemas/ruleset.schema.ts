@@ -554,8 +554,28 @@ export const rulesetFieldSchema = z.discriminatedUnion("type", [
 const sheetScalar = z.union([z.number().finite(), z.string().max(4000), z.boolean()]);
 
 const columnBase = { id: sheetId, label, required: z.boolean().default(false) };
+/** A number column a player fills by rolling (Capability API 1.80): `count` dice of `sides`, where
+ *  sides is a number, another column of the same row (a number, or an enum whose values read as
+ *  numbers such as "d8"), or a value read off the sheet. The sheet editor rolls them with the Engine's
+ *  own dice and writes the total, held to the column's min and max. */
+export interface RulesetListRoll {
+  count: number;
+  sides: number | { column: string } | RulesetValueRef;
+}
+// Typed by hand: inferred, the value ref inside it makes every type holding a list column too long for
+// the compiler to write out.
+export const rulesetListRollSchema: z.ZodType<RulesetListRoll, z.ZodTypeDef, unknown> = z
+  .object({
+    count: z.number().int().min(1).max(10).default(1),
+    sides: z.union([
+      z.number().int().min(2).max(100),
+      z.object({ column: sheetId }).strict(),
+      rulesetValueRefSchema,
+    ]),
+  })
+  .strict();
 export const rulesetListColumnSchema = z.discriminatedUnion("type", [
-  z.object({ ...columnBase, ...numberFieldShape }).strict(),
+  z.object({ ...columnBase, ...numberFieldShape, roll: rulesetListRollSchema.optional() }).strict(),
   z.object({ ...columnBase, ...textFieldShape }).strict(),
   z.object({ ...columnBase, ...longtextFieldShape }).strict(),
   z.object({ ...columnBase, ...booleanFieldShape }).strict(),
@@ -4450,6 +4470,20 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
     const path = ["sheet", "lists", index];
     const columns = unique(list.columns, [...path, "columns"], "column");
     list.columns.forEach((column, columnIndex) => checkTyped(column, [...path, "columns", columnIndex]));
+    // A rolled column's sides: another column of the row that reads as a number, or the sheet's.
+    list.columns.forEach((column, columnIndex) => {
+      if (column.type !== "number" || !column.roll || typeof column.roll.sides === "number") return;
+      const at = [...path, "columns", columnIndex, "roll", "sides"];
+      const sides = column.roll.sides;
+      if ("column" in sides) {
+        const other = list.columns.find((each) => each.id === sides.column);
+        if (!other || other.id === column.id) issue(at, `"${sides.column}" is not another column of this list`);
+        else if (other.type === "enum") {
+          const unread = other.values.filter((value) => rulesetDieSides(value) === null);
+          if (unread.length) issue(at, `"${unread[0]}" does not read as a die (d6, 8)`);
+        } else if (other.type !== "number") issue(at, "Sides read a number column or an enum of dice");
+      } else checkRef(sides, at, derivedIds);
+    });
     checkSection(list.section, path);
     checkHideWhen(list.hideWhen, path);
     if (list.pools) {
@@ -5649,6 +5683,15 @@ export function rulesetPoolMaxSuccesses(
 export type RulesetSheetSchema = RulesetDefinition["sheet"];
 export type RulesetField = z.infer<typeof rulesetFieldSchema>;
 export type RulesetListColumn = z.infer<typeof rulesetListColumnSchema>;
+
+/** A die's sides as a list cell writes them: 8, "8" or "d8" (any case). Null for anything else. */
+export function rulesetDieSides(value: unknown): number | null {
+  if (typeof value === "number") return Number.isInteger(value) && value >= 2 && value <= 100 ? value : null;
+  if (typeof value !== "string") return null;
+  const match = /^\s*d?(\d{1,3})\s*$/i.exec(value);
+  const sides = match ? Number(match[1]) : NaN;
+  return Number.isInteger(sides) && sides >= 2 && sides <= 100 ? sides : null;
+}
 export type RulesetDerived = z.infer<typeof rulesetDerivedSchema>;
 export type RulesetLiveTrack = RulesetSheetSchema["live"]["tracks"][number];
 /** One rung of a wound track. Absent on a plain track, which is a bounded integer. */

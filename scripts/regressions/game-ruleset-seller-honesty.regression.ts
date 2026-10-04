@@ -351,6 +351,9 @@ try {
       ],
       handed.content,
     );
+    // The whole fake stack handed over keeps its id (a selection follows it), beside the real one.
+    const whole = run('[inventory: action="give" item="Warming tonic" count="2" to="Juno"]', realForJuno);
+    assert.equal(whole.stacks.find((stack) => stack.id === fake.id)?.holder, "Juno", whole.content);
     // Given one of two, the fake stays a fake in the other bag.
     const given = run('[inventory: action="give" item="Warming tonic" count="1" to="Juno"]', bought.stacks);
     const junos = given.stacks.find((stack) => stack.holder === "Juno")!;

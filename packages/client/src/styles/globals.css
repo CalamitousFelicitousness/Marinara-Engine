@@ -671,7 +671,7 @@
                 .mari-window-snap-guide (the line shown while a bubble snaps)
    Attributes:  [data-window="<id>"], [data-drawer="<id>"], [data-pinned],
                 [data-locked], [data-detached], [data-presentation="window|sheet"],
-                [data-window-control="minimize|pin|lock|close"], [data-edge],
+                [data-window-control="pin|lock|close"], [data-edge],
                 [data-minimized="true"] with [data-window] on a bubble, [data-axis="x|y"]
                 on a snap guide,
                 [data-drawer-control="pop-out"], [data-drawer-host="<id>"] and

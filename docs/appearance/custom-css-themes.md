@@ -126,7 +126,7 @@ The classes, data attributes and variables below let a theme style these parts t
 | Title bar | `.mari-window__header` |
 | Title and its icon | `.mari-window__title-row` |
 | Title | `.mari-window__title` |
-| Title bar buttons (Reset View, favorite layout star, Tracker Panel, minimize, pin, lock, close, Put back) | `.mari-window__controls` (each button is `.mari-window__control`) |
+| Title bar buttons (Reset View, favorite layout star, Tracker Panel, pin, lock, close, Put back) | `.mari-window__controls` (each button is `.mari-window__control`) |
 | Window content | `.mari-window__body` |
 | Resize edges and corners | `.mari-window__resize-handle` |
 | The corner mark shown while the pointer or focus is in a window | `.mari-window__resize-grip` |
@@ -147,7 +147,7 @@ The classes, data attributes and variables below let a theme style these parts t
 - `data-drawer` names a drawer, for example `chat-name`. Some names start with the chat mode, such as `roleplay-agents` or `conversation-agents`. Trackers use `tracker-world`, `tracker-persona`, `tracker-characters`, `tracker-quests`, `tracker-inventory`, `tracker-custom` and `agent-activity`.
 - `data-presentation` is `"window"` on a desktop window or `"sheet"` on a phone panel.
 - `data-pinned` and `data-locked` are `"true"` while the window is pinned or locked.
-- `data-window-control` names each title bar button: `"minimize"`, `"pin"`, `"lock"`, `"close"` or `"put-back"`. A pressed pin or lock button also has `aria-pressed="true"`.
+- `data-window-control` names each title bar button: `"pin"`, `"lock"`, `"close"` or `"put-back"`. A pressed pin or lock button also has `aria-pressed="true"`.
 - `data-chat-settings-control` identifies Chat Settings' extra title bar buttons: `"reset-view"`, `"favorite-layout"` and `"tracker-panel"`. The favorite star has `aria-pressed="true"` and a filled icon when the current layout matches the saved favorite.
 - `data-edge` is `"n"`, `"s"`, `"e"`, `"w"`, `"ne"`, `"nw"`, `"se"` or `"sw"` on each resize handle.
 - An open drawer's toggle button inside `.mari-drawer__header` has `aria-expanded="true"`.

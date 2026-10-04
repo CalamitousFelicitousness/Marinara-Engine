@@ -82,8 +82,8 @@ function readDetachedSize(drawer: DOMRect, open: boolean, bounds: WindowBounds) 
 }
 
 function popOutLayout(geometry: WindowGeometry): WindowLayout {
-  // Popped-out drawers start pinned, so they stay while the user works elsewhere.
-  return { ...geometry, pinned: true, locked: false };
+  // Start unpinned; users can pin the detached window to keep it open elsewhere.
+  return { ...geometry, pinned: false, locked: false };
 }
 
 /** Detached drawers render their body even when their original section is collapsed. */

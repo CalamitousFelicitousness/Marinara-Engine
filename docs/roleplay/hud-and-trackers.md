@@ -46,7 +46,7 @@ You can move the window by its title bar, resize it from its edges, and use the 
 
 - **Pin** keeps it open when you click elsewhere. It starts pinned.
 - **Lock** stops it from moving or resizing and fixes its button in place. The button still opens the window, where you can unlock it again.
-- **Minimize** or **Close** shrinks it to the movable **Trackers** button. Click that button to reopen it where you left it.
+- **Close** shrinks it to the movable **Trackers** button. Click that button to reopen it where you left it.
 
 To use the Tracker Panel instead, click the die in the Chat Settings title bar. When the panel is not shown, the trackers remain available through their window or button. **Reset View** in Chat Settings clears the saved arrangement and chooses the starting window or button to fit the available space.
 
@@ -54,7 +54,7 @@ While agents are working on the chat, a small dot shows beside the window's titl
 
 Each tracker has its own collapsible section, called a drawer. Click a drawer's header to collapse it to the tracker's small widget preview, and click it again to see the whole tracker. Marinara remembers which drawers you collapsed.
 
-A tracker can also get its own window: click the pop-out button beside its arrow, or drag its title out of the Trackers window. The new window starts pinned and stays open when you minimize the Trackers window. Its **X** shrinks it to a small button with the tracker's icon, which reopens it where you left it. Click **Put back in Trackers** (the curved arrow just left of **X**), or drag it back onto the Trackers window, to return it. Each chat remembers which trackers are out and where.
+A tracker can also get its own window: click the pop-out button beside its arrow, or drag its title out of the Trackers window. The new window starts unpinned. Pin it to keep it open when you click elsewhere or close the Trackers window. Its **X** shrinks it to a small button with the tracker's icon, which reopens it where you left it. Click **Put back in Trackers** (the curved arrow just left of **X**), or drag it back onto the Trackers window, to return it. Each chat remembers which trackers are out and where.
 
 At the bottom, **Agent activity** shows what the chat's agents did. From there you can re-run the trackers, retry agents that failed, stop running agents, and **Clear Trackers**. The Tracker Panel has the same section at its bottom.
 

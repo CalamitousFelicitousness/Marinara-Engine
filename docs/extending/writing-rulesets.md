@@ -1058,6 +1058,44 @@ Your `currencies` are the party's money. A coin is an item in the bags, a stack 
 - The Game Master pays with `[inventory: action="pay" amount="3 shillings" who="Ada"]` and is paid with `action="earn"`. `amount` is a count and a coin, by its id or label, one of it or many, in any case (`1 penny`, `12 pennies`). A payment comes out of one bag (the player's without `who=`), in the coin's own family only: the largest coins that fit go first, then the smallest coin left that covers what is still owed is broken, and the change comes back in the family's smaller coins, largest first. The answer says what was paid and what came back: 3 shillings out of a purse holding one crown is `Paid with crowns ×1; shillings ×2 back.` A payment the bag cannot meet is refused (`cannot-afford`), and so is a coin you do not have (`unknown-coin`) and any payment in a ruleset without currencies (`no-currencies`). An earning is an add of that coin, into `who`'s bag or shared out by the carrying rule. The journal lists what was spent and earned, and a notification shows it. Its instructions list your coins, and only a ruleset with some has them.
 - Buying is a payment and then an add, or, in a ruleset with a market, a `buy` (below). There is no shop screen.
 
+### Starting gear
+
+`items.startingGear` (Capability API 1.73) lists gear a character may take into their bag at the start: a class's kit, a background's, a calling's. It is never given on its own. The inventory shows a **Starting gear** row, and the player picks a gear, an option for each of its choices and an item from each list, then takes it into the bag in view. Gear the character's sheet `fits` is listed first; every gear is offered, because a character's concept is the player's and the Game Master's to agree.
+
+```json
+"startingGear": [
+  {
+    "id": "fighter", "label": "Fighter", "group": "class",
+    "fits": { "value": { "field": "level_fighter" }, "atLeast": 1 },
+    "lines": [{ "item": "equipment/shield", "equip": true }],
+    "choices": [
+      {
+        "label": "Armor",
+        "options": [
+          { "label": "Chain mail", "lines": [{ "item": "equipment/chain-mail", "equip": true }] },
+          { "label": "Leather armor and a longbow", "lines": [
+            { "item": "equipment/leather-armor", "equip": true },
+            { "item": "equipment/longbow" }, { "item": "equipment/arrow", "count": 20 }
+          ] }
+        ]
+      },
+      { "label": "A martial weapon", "options": [
+        { "label": "Pick one", "lines": [{ "oneOf": ["equipment/longsword", "equipment/battleaxe"] }] },
+        { "label": "A greataxe", "lines": [{ "item": "equipment/greataxe" }] }
+      ] }
+    ]
+  },
+  { "id": "acolyte", "label": "Acolyte", "group": "background", "lines": [{ "coins": "gp", "count": 15 }, { "name": "Vestments" }] }
+]
+```
+
+- A line is one of the ruleset's items (`item`), coins (`coins`, a unit id), one item the player picks from a fixed list (`oneOf`, 2 to 48 items), or a plain item by name (`name`, where `freeform` allows plain items). `count` is 1 to 999; `equip: true` puts an item on as it is taken, where its slots are free, so armor counts from the start.
+- `choices` are 0 to 8, each with 2 to 6 options of their own lines.
+- `group`: the gear a character takes once of each group (a class's and a background's). Taking the same group again is a choice the player makes in the dialog. Gear with no group is its own group.
+- `fits` reads the sheet without its live state, as carrying does. It only orders the list.
+- Taking is all or nothing: gear too heavy for its bearer is refused whole, and the dialog says what it weighs against what they can still carry. An item a layer takes out of the game is left out and named; coins of a coin a layer takes out are paid in the largest coin left of the same worth.
+- The import checks every item (in an inline catalog; a catalog in its own file is checked when the gear is taken), coin, plain item and `fits` reference, refuses a service, and refuses a count that would need more stacks than a bag takes at once.
+
 ### Markets
 
 A `market` in the `items` block (Capability API 1.65) says what a place sells and at what price, instead of every shop selling everything at its list price. Gravewatch's, a little shortened:

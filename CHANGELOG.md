@@ -4,6 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- A ruleset can offer **starting gear**: a class's or a background's kit, with its choices, that a player may take into a character's bag from the inventory, never on their own. Gear the character's sheet fits is listed first, the dialog shows what it weighs against what they can carry, and each kind of gear is taken once unless the player asks again (Capability API 1.73).
 - A ruleset can now say how a sheet made on an older layout reads on a new one (**sheet migrations**): a renamed field keeps its value, one level can move to the level of the class the character's class text names, and a pool split in several (one per hit die, say) keeps what was left in it. Characters in the library, in games and in old saves keep their numbers when the ruleset changes shape (Capability API 1.72).
 - A ruleset's rest can restore a share of a whole group of pools rather than of each one alone, as 5e's long rest gives back half of all your hit dice when you keep one pool per die (Capability API 1.72).
 - A ruleset's conditions can now change the **action economy**, as Haste and Slow do: an extra action limited to some things (one weapon attack, dashing, hiding, using an item, or only items with a given tag), two actions of which a turn takes only one, a cap of one attack a turn, and something left behind when a condition ends, such as Haste's lethargy (Capability API 1.71).

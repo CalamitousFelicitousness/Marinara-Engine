@@ -21,6 +21,7 @@ import {
   type GameInventoryOpResult,
   type GameInventoryWear,
   type RulesetItemBookSheets,
+  type RulesetStartingGearSelection,
   type GameInventoryStack,
   type PlayerStats,
   type RulesetLiveStates,
@@ -273,6 +274,7 @@ import { DirectionEngine } from "./DirectionEngine";
 import { GameWidgetPanel, GameWidgetSessionPrepModal, MobileWidgetPanel } from "./GameWidgetPanel";
 import { WeatherEffects } from "../chat/WeatherEffects";
 import { GameInventory } from "./GameInventory";
+import type { StartingGearTaken } from "./StartingGearPicker";
 import { GameReadableDisplay } from "./GameReadableDisplay";
 import {
   buildMissingSceneAssetGenerationPayload,
@@ -8965,6 +8967,92 @@ function GameSurfaceComponent({
     [activeChatId, gameRuleset.status, inventoryItemBook, localizeUi, sendInventory, sendMessage],
   );
 
+  // Starting gear (Capability API 1.73): what each bag has taken, kept in the chat's metadata.
+  const startingGearTaken = useMemo<StartingGearTaken>(() => {
+    const raw = chatMeta.gameStartingGearTaken;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+    return Object.fromEntries(
+      Object.entries(raw as Record<string, unknown>).flatMap(([key, ids]) =>
+        Array.isArray(ids) ? [[key, ids.filter((id): id is string => typeof id === "string")]] : [],
+      ),
+    );
+  }, [chatMeta.gameStartingGearTaken]);
+  const handleTakeStartingGear = useCallback(
+    async (holder: string | undefined, selection: RulesetStartingGearSelection, again: boolean) => {
+      const gearLabel =
+        gameRuleset.status === "ok"
+          ? (gameRuleset.definition.items?.startingGear?.find((each) => each.id === selection.gear)?.label ??
+            selection.gear)
+          : selection.gear;
+      if (activeChatId) claimChatMetadataFields(activeChatId, ["gameStartingGearTaken"]);
+      let answer: { taken: StartingGearTaken; added: Array<{ name: string; count: number }>; dropped: string[] } | null;
+      try {
+        answer = await sendInventory((chatId) =>
+          api.post<{
+            inventory: GameInventoryStack[];
+            added: Array<{ name: string; count: number }>;
+            dropped: string[];
+            taken: StartingGearTaken;
+            playerStats?: PlayerStats;
+          }>("/game/inventory/starting-gear", {
+            chatId,
+            ...(holder ? { holder } : {}),
+            selection,
+            ...(again ? { again: true } : {}),
+          }),
+        );
+      } catch (error) {
+        const payload =
+          error instanceof ApiError && error.payload && typeof error.payload === "object"
+            ? (error.payload as { reason?: unknown; error?: unknown })
+            : undefined;
+        const reason = typeof payload?.reason === "string" ? payload.reason : undefined;
+        toast.error(
+          reason === "too-heavy" && typeof payload?.error === "string"
+            ? payload.error
+            : localizeUi(
+                reason === "taken"
+                  ? "game.ruleset.startingGear.refusedTaken"
+                  : reason === "pick" || reason === "choice"
+                    ? "game.ruleset.startingGear.refusedChoice"
+                    : "game.ruleset.startingGear.refused",
+                { gear: gearLabel },
+              ),
+        );
+        return false;
+      }
+      if (!answer) return false;
+      // The marker follows the saved inventory into the chat's cached metadata, so the row and the
+      // modal read what was just taken without waiting for the chat to be read again.
+      if (activeChatId) {
+        const detailKey = chatKeys.detail(activeChatId);
+        const patchedChat = patchChatMetadata(queryClient.getQueryData<Chat>(detailKey), {
+          gameStartingGearTaken: answer.taken,
+        });
+        if (patchedChat) queryClient.setQueryData(detailKey, patchedChat);
+        const chatStore = useChatStore.getState();
+        if (chatStore.activeChatId === activeChatId) {
+          const patchedActiveChat = patchChatMetadata(chatStore.activeChat, { gameStartingGearTaken: answer.taken });
+          if (patchedActiveChat) chatStore.setActiveChat(patchedActiveChat);
+        }
+      }
+      const count = answer.added.reduce((total, add) => total + add.count, 0);
+      showInventoryNotification(localizeUi("game.ruleset.startingGear.takenNotice", { gear: gearLabel, count }), true);
+      if (answer.dropped.length > 0) {
+        toast.info(localizeUi("game.ruleset.startingGear.dropped", { items: answer.dropped.join(", ") }));
+      }
+      return true;
+    },
+    [activeChatId, gameRuleset, localizeUi, queryClient, sendInventory, showInventoryNotification],
+  );
+  const inventoryStartingGear = useMemo(
+    () =>
+      gameRuleset.status === "ok" && gameRuleset.definition.items?.startingGear?.length
+        ? { taken: startingGearTaken, sheets: inventorySheets, onTake: handleTakeStartingGear }
+        : undefined,
+    [gameRuleset, handleTakeStartingGear, inventorySheets, startingGearTaken],
+  );
+
   // Who an item added in the shared view may go to, in order: the player, then the party.
   const inventoryPlaceAmong = useMemo(
     () => ["", ...partyMembers.filter((member) => !member.id.startsWith("persona:")).map((member) => member.name)],
@@ -14089,6 +14177,7 @@ function GameSurfaceComponent({
                 onSwapItems={handleSwapInventoryStacks}
                 canInteract={sessionInteractive && narrationDone && !isStreaming}
                 onUseItem={handleUseInventoryStack}
+                startingGear={inventoryStartingGear}
               />
 
               {/* Readable document display (Notes / Books) */}

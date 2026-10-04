@@ -49,6 +49,8 @@ import {
   getRoleplayCommandActivity,
   TRANSLATOR_DEFAULTS_SETTINGS_KEY,
   normalizeTranslatorSettings,
+  getChatWindowDefaultSettingsKey,
+  parseChatWindowDefault,
   type CreateChatInput,
   type CreateMessageInput,
   type RoleplayCommandActivity,
@@ -1538,8 +1540,10 @@ export function createChatsStorage(db: DB) {
         : undefined;
       const inheritedSchedules =
         input.mode === "conversation" ? await collectConversationSchedules(input.characterIds) : {};
+      const appSettings = createAppSettingsStorage(db);
+      const windowDefault = parseChatWindowDefault(await appSettings.get(getChatWindowDefaultSettingsKey(input.mode)));
       const metadata: MetadataPatch = {
-        ...normalizeTranslatorSettings(await createAppSettingsStorage(db).get(TRANSLATOR_DEFAULTS_SETTINGS_KEY)),
+        ...normalizeTranslatorSettings(await appSettings.get(TRANSLATOR_DEFAULTS_SETTINGS_KEY)),
         summary: null,
         tags: [],
         enableAgents: true,
@@ -1548,6 +1552,7 @@ export function createChatsStorage(db: DB) {
         activeToolIds: [],
         // Missing means a pre-window chat whose toolbar needs migrating; null selects the new defaults.
         windowLayout: null,
+        ...windowDefault,
       };
       if (hasConversationSchedules(inheritedSchedules)) {
         metadata.conversationSchedulesEnabled = true;

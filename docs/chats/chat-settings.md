@@ -18,7 +18,7 @@ You can drag the sliders button to a convenient spot. It lines up with nearby ch
 
 The small reminder beside the sliders button in Roleplay only needs to be dismissed once. Its **X** keeps it hidden across chats and page refreshes.
 
-On a computer, click the **X** beside the layout tips (**Hide these tips for this chat**) to keep them hidden in this chat, even after a refresh or Reset View. New chats show the tips unless their settings profile saved them as hidden.
+On a computer, click the **X** beside the layout tips (**Hide these tips for this chat**) to keep them hidden in this chat, even after a refresh or Reset View. You can also save this choice for new chats with the favorite layout star or a settings profile.
 
 ## Moving, pinning and locking the window
 
@@ -40,6 +40,7 @@ The title bar has a few other useful buttons:
 
 - **Help** (the **?** beside the title) shows labels explaining the chat's controls. On a phone, it closes Chat Settings first so you can see the chat. You can hide this button in **Settings → General → App Behavior → Hide chat Help button**.
 - **Reset View** (the circular arrow) asks for confirmation, then restores this chat's starting layout. It puts popped-out sections back and restores the default window sizes, positions, pins and locks.
+- **Favorite layout** (the star beside Reset View) saves this arrangement for new chats in the current mode. See [Choosing a layout for new chats](#choosing-a-layout-for-new-chats).
 - **Tracker Panel** (the die) turns the panel on or off in a Roleplay chat that uses agents or Advanced Memory. On a computer, the panel opens beside the chat. On a phone, a movable button opens it. This setting also changes the Tracker Panel preference in **Settings → Appearance**.
 
 When the Tracker Panel is not shown, desktop trackers use the [Trackers window](../roleplay/hud-and-trackers.md#the-trackers-window). When there is not enough room beside your messages, it starts as a small **Trackers** button. Closing the window returns it to that button. Use the die in the Chat Settings title bar to show the Tracker Panel again.
@@ -73,6 +74,20 @@ Drag a button to move it. Nearby buttons line up as you drag; on a computer, hol
 Each chat remembers window sizes and positions, pins and locks, popped-out sections, and button positions. Phone button positions are saved separately from desktop positions. Switching chats restores the layout for that chat.
 
 A [settings profile](#settings-profiles) can save the layout for use in other chats. **Reset View** restores the starting layout for the current chat.
+
+## Choosing a layout for new chats
+
+Use the star beside **Reset View** to make your current arrangement the starting layout for new chats in the same mode. Conversation, Roleplay and Game each have their own favorite.
+
+1. Arrange the windows and buttons the way you want them. Put tools inside Chat Settings or pop them out as needed.
+2. Hide the layout tips if you want new chats to hide them too.
+3. Click the star beside **Reset View**. It fills in when the current layout and tips match your saved favorite.
+
+The favorite saves window and button positions, sizes, pins, locks, popped-out or docked tools, and the layout tips choice. Your characters, connection, AI settings and messages stay with the chat.
+
+To replace the favorite, change the arrangement and click the star again. To stop using it, click the filled star. New chats then use the standard layout. Saving, replacing or clearing a favorite only affects chats you create afterward; your existing chats keep their layouts.
+
+A settings profile with its own saved layout takes priority over the favorite when that profile is applied. A profile without a saved layout leaves the favorite arrangement in place. Profiles still apply their own layout tips setting.
 
 ## Chat Name
 

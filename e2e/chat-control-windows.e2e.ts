@@ -447,3 +447,39 @@ test("Game controls dock as usable Settings sections, persist and pop out again"
     await request.delete(`/api/chats/${partnerId}?force=true`);
   }
 });
+
+test("phone docking and pop-out preserve a control's desktop geometry, pin and lock", async ({
+  page,
+  request,
+}, testInfo) => {
+  test.skip(testInfo.project.name.includes("desktop"), "Phone sheets keep the desktop layout unchanged.");
+  const { gameId, partnerId } = await createGameWithConnectedChat(request);
+  const desktopLayout = { x: 460, y: 180, width: 330, height: 290, pinned: true, locked: true, minimized: false };
+  try {
+    expect(
+      (
+        await request.patch(`/api/chats/${gameId}/metadata`, {
+          data: { windowLayout: { version: 1, windows: { [VOLUME]: desktopLayout } } },
+        })
+      ).ok(),
+    ).toBeTruthy();
+    await prepare(page, gameId);
+    await page.goto("/");
+    await bubble(page, VOLUME).click();
+    await controlWindow(page, VOLUME).getByRole("button", { name: "Put back in Chat Settings", exact: true }).click();
+    const section = page.locator(`[data-docked-chat-control="${VOLUME}"]`);
+    await section.getByRole("button", { name: "Open Volume in its own window", exact: true }).click();
+    await expect(bubble(page, VOLUME)).toBeVisible();
+    await expect
+      .poll(async () => (await savedWindowLayout(request, gameId))?.windows[VOLUME])
+      .toEqual({
+        ...desktopLayout,
+        docked: false,
+      });
+    await bubble(page, VOLUME).click();
+    await expect(controlWindow(page, VOLUME).getByRole("slider").first()).toBeVisible();
+  } finally {
+    await request.delete(`/api/chats/${gameId}?force=true`);
+    await request.delete(`/api/chats/${partnerId}?force=true`);
+  }
+});

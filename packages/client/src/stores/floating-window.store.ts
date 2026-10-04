@@ -222,9 +222,13 @@ export function selectHasDetachedDrawers(state: Pick<FloatingWindowState, "detac
   return Object.keys(state.detached).some((id) => isHostDrawerWindowId(id, hostId));
 }
 
-/** True while a minimizable window shows as a window rather than its bubble (on a phone, as an open sheet). */
-export function selectWindowRestored(state: Pick<FloatingWindowState, "layouts" | "open">, id: FloatingWindowId) {
-  if (state.layouts[id]?.docked) return state.open[CHAT_SETTINGS_WINDOW_ID] === true;
+/** True while a control's content shows in its window, phone sheet or expanded Settings section. */
+export function selectWindowRestored(
+  state: Pick<FloatingWindowState, "layouts" | "open">,
+  id: FloatingWindowId,
+  dockedSectionExpanded = true,
+) {
+  if (state.layouts[id]?.docked) return dockedSectionExpanded && state.open[CHAT_SETTINGS_WINDOW_ID] === true;
   return isPhoneWindowLayout() ? state.open[id] === true : state.layouts[id]?.minimized === false;
 }
 

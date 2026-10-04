@@ -65,6 +65,16 @@ Its tooltips describe the current state:
 - **This profile is the default for new chats in this mode**
 - **Select a profile to mark it as default**
 
+## Favorite window layouts
+
+The star beside **Reset View** in the Chat Settings title bar saves a favorite window layout for new chats in the current mode. It also remembers whether you hid the layout tips. You can use this star in Conversation, Roleplay and Game. The star beside the **Profile** dropdown still chooses the default settings profile.
+
+Arrange your windows and buttons, then click the title-bar star to save them. The star fills in while the current arrangement and tips match the favorite. If you move a window or change the arrangement, click the star again to replace the favorite. Click the filled star to clear it and use the standard layout for future chats. These changes leave existing chats as they are.
+
+When a new chat uses a default settings profile, that profile's saved layout takes priority over the favorite layout. Profiles without a saved layout keep the chat's arrangement, including one supplied by a favorite. A profile still applies its own layout tips setting; older profiles without that setting show the tips.
+
+See [Choosing a layout for new chats](chat-settings.md#choosing-a-layout-for-new-chats) for the steps.
+
 ## Importing and exporting profiles
 
 **Export settings profile (.json)** downloads a `.marinara-settings-profile.json` file that you can keep as a backup or share. **Import settings profile (.json)** creates a new profile from a compatible file without overwriting an existing one. Older profile exports remain importable.

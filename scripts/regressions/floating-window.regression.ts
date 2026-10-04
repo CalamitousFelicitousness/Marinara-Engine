@@ -541,6 +541,38 @@ assert.equal(
   true,
   "a docked control follows host visibility",
 );
+assert.equal(
+  selectWindowRestored(store.getState(), "control:session", false),
+  false,
+  "collapsing a docked Session lets Game narration continue while Settings stays open",
+);
+const dockedWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, "window");
+Object.defineProperty(globalThis, "window", { configurable: true, value: { matchMedia: () => ({ matches: true }) } });
+try {
+  assert.equal(selectWindowRestored(store.getState(), "control:session", false), false);
+  assert.equal(selectWindowRestored(store.getState(), "control:session", true), true);
+  store.getState().closeWindow(CHAT_SETTINGS_WINDOW_ID);
+  assert.equal(
+    selectWindowRestored(store.getState(), "control:session", true),
+    false,
+    "an expanded docked section in a closed phone sheet does not pause narration",
+  );
+  store.getState().saveLayout("control:session", { ...dockedControl, docked: false });
+  store.getState().openWindow("control:session");
+  assert.equal(
+    selectWindowRestored(store.getState(), "control:session", false),
+    true,
+    "an open undocked phone sheet pauses narration regardless of its old section state",
+  );
+} finally {
+  if (dockedWindowDescriptor) Object.defineProperty(globalThis, "window", dockedWindowDescriptor);
+  else Reflect.deleteProperty(globalThis, "window");
+}
+assert.equal(
+  selectWindowRestored(store.getState(), "control:session", false),
+  true,
+  "a restored desktop window pauses narration regardless of its old section state",
+);
 store.getState().resetView();
 
 // Resolved theme sizes govern default rows, opening geometry and clamping, not only pointer dragging.

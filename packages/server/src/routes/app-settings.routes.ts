@@ -17,6 +17,8 @@ import {
   featureSettingsSchema,
   type FeatureSettingsResponse,
   impersonatePromptTemplateCatalogSchema,
+  getChatWindowDefaultSettingsKey,
+  parseChatWindowDefault,
 } from "@marinara-engine/shared";
 import { logger } from "../lib/logger.js";
 import {
@@ -34,6 +36,9 @@ const ALLOWED_KEYS = new Set([
   CUSTOM_GENERATION_PARAMETERS_SETTINGS_KEY,
   STORAGE_MIGRATION_NOTICE_SETTINGS_KEY,
   VIDEO_GENERATION_SETTINGS_KEY,
+  getChatWindowDefaultSettingsKey("conversation"),
+  getChatWindowDefaultSettingsKey("roleplay"),
+  getChatWindowDefaultSettingsKey("game"),
 ]);
 
 export async function appSettingsRoutes(app: FastifyInstance) {
@@ -95,6 +100,14 @@ export async function appSettingsRoutes(app: FastifyInstance) {
       return reply.status(404).send({ error: "Unknown settings key" });
     }
     const input = appSettingsUpdateSchema.parse(req.body);
+    if (req.params.key.startsWith("chat-window-default-")) {
+      const favorite = parseChatWindowDefault(input.value);
+      if (favorite === null && input.value.trim() !== "null") {
+        return reply.status(400).send({ error: "Invalid chat window default" });
+      }
+      // Store only layout and hint preferences, never chat-specific content sent alongside them.
+      input.value = JSON.stringify(favorite);
+    }
     await storage.set(req.params.key, input.value);
     return { value: input.value };
   });

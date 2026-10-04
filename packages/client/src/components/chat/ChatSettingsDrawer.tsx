@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { RoleplayCommandsSettings } from "./RoleplayCommandsSettings";
 import { ChatBranchesPanel } from "./ChatBranchesPanel";
 import { ChatMessageSearch } from "./ChatMessageSearch";
+import { ChatWindowFavoriteButton } from "./ChatWindowFavoriteButton";
 import { AgentActivitySection } from "../agents/AgentActivitySection";
 import { useKeepFocusedFieldAboveKeyboard } from "../../hooks/use-keep-focused-field-above-keyboard";
 import {
@@ -4930,7 +4931,7 @@ export function ChatSettingsDrawer({
     if (confirmed) resetView();
     if (button.isConnected) button.focus({ preventScroll: true });
   };
-  // Reset View, then the Tracker Panel dice, before the window's pin, lock and close.
+  // Reset View and the favorite arrangement, then the Tracker Panel dice and window controls.
   const headerControls = (
     <>
       <button
@@ -4944,6 +4945,7 @@ export function ChatSettingsDrawer({
       >
         <RotateCcw size="0.8125rem" />
       </button>
+      <ChatWindowFavoriteButton mode={chatMode} hintsDismissed={metadata.chatSettingsHintDismissed === true} />
       {trackerPanelToggleAvailable && (
         <button
           type="button"
@@ -4991,7 +4993,8 @@ export function ChatSettingsDrawer({
             <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
               {localizeUi("chat.settings.dragDropHint")} {localizeUi("chat.settings.moveResizeHint")}{" "}
               {localizeUi("chat.settings.dragOutHint")}
-              {modeSettingsSurfaces.showSettingsProfiles && <> {localizeUi("chat.settings.profilesHint")}</>}
+              {modeSettingsSurfaces.showSettingsProfiles && <> {localizeUi("chat.settings.profilesHint")}</>}{" "}
+              {localizeUi("chat.settings.favoriteLayout.hint")}
             </span>
             <button
               type="button"

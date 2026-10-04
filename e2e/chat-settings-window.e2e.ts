@@ -458,7 +458,13 @@ test.describe("Chat Settings window on desktop", () => {
               element.getAttribute("data-chat-settings-control") ?? element.getAttribute("data-window-control"),
           ),
         );
-      expect(controls.filter((control) => control !== "tracker-panel")).toEqual(["reset-view", "pin", "lock", "close"]);
+      expect(controls.filter((control) => control !== "tracker-panel")).toEqual([
+        "reset-view",
+        "favorite-layout",
+        "pin",
+        "lock",
+        "close",
+      ]);
       const resetIcon = settings.getByRole("button", { name: "Reset View", exact: true });
       await expect(resetIcon).toHaveAttribute("title", "Reset View");
       const lockedBox = await box(settings);

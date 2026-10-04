@@ -6,7 +6,7 @@
 // bubble). They start minimized, their bubbles in a row at the chat's top right where
 // the buttons (and a phone's menu button) used to be. On a phone each opens as a sheet.
 // ──────────────────────────────────────────────
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ArrowRightLeft, Undo2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -117,7 +117,8 @@ export function ChatControlWindow({
   const phoneLayout = useMatchMedia("(max-width: 767px)");
   const savedLayout = useFloatingWindowStore((state) => state.layouts[id]);
   const dockHost = useChatControlDockStore((state) => state.element);
-  const [sectionOpen, setSectionOpen] = useState(true);
+  const sectionOpen = useUIStore((state) => state.chatSettingsExpandedSections[id] !== false);
+  const setSectionExpanded = useUIStore((state) => state.setChatSettingsSectionExpanded);
   const focusDockRef = useRef(false);
   const docked = savedLayout?.docked === true;
 
@@ -133,14 +134,20 @@ export function ChatControlWindow({
       windows.layouts[id] ??
       getChatControlDefaultLayout(readFloatingWindowBounds(), slot, { width, height }, rowOffset);
     focusDockRef.current = true;
-    setSectionOpen(true);
+    setSectionExpanded(id, true);
     windows.saveLayout(id, { ...layout, docked: true });
     windows.closeWindow(id);
     windows.openWindow(CHAT_SETTINGS_WINDOW_ID, null, { focus: false });
   };
   const popOut = (layout: WindowLayout) => {
     const windows = useFloatingWindowStore.getState();
-    windows.saveLayout(id, { ...savedLayout, ...layout, docked: false, minimized: phoneLayout });
+    // A phone sheet has no desktop geometry: moving through it must preserve the computer's layout.
+    windows.saveLayout(
+      id,
+      phoneLayout && savedLayout
+        ? { ...savedLayout, docked: false }
+        : { ...savedLayout, ...layout, docked: false, minimized: phoneLayout },
+    );
     if (phoneLayout) {
       windows.closeWindow(id);
       windows.dismissWindow(CHAT_SETTINGS_WINDOW_ID, { force: true });
@@ -169,7 +176,7 @@ export function ChatControlWindow({
             title={title}
             icon={icon}
             open={sectionOpen}
-            onOpenChange={setSectionOpen}
+            onOpenChange={(open) => setSectionExpanded(id, open)}
             onPopOut={popOut}
             bodyClassName={cn("pt-3", !scroll && "flex h-96 min-h-0 flex-col")}
             rootAttributes={{ "data-chat-settings-section": id, "data-docked-chat-control": id }}

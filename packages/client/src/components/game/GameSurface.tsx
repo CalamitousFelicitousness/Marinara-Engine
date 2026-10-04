@@ -3159,12 +3159,18 @@ function GameSurfaceComponent({
   const [pendingNpcPortraitUploadName, setPendingNpcPortraitUploadName] = useState<string | null>(null);
   const [generatingNpcPortraitNames, setGeneratingNpcPortraitNames] = useState<Set<string>>(() => new Set());
 
-  // An open Session or Assets window (a sheet on a phone) pauses narration.
+  // Visible Session or Assets content pauses narration; collapsed docked sections leave it playing.
+  const sessionSectionExpanded = useUIStore(
+    (state) => state.chatSettingsExpandedSections[CHAT_CONTROL_WINDOW_IDS.session] !== false,
+  );
+  const assetsSectionExpanded = useUIStore(
+    (state) => state.chatSettingsExpandedSections[CHAT_CONTROL_WINDOW_IDS.assets] !== false,
+  );
   const sessionWindowRestored = useFloatingWindowStore((state) =>
-    selectWindowRestored(state, CHAT_CONTROL_WINDOW_IDS.session),
+    selectWindowRestored(state, CHAT_CONTROL_WINDOW_IDS.session, sessionSectionExpanded),
   );
   const assetsWindowRestored = useFloatingWindowStore((state) =>
-    selectWindowRestored(state, CHAT_CONTROL_WINDOW_IDS.assets),
+    selectWindowRestored(state, CHAT_CONTROL_WINDOW_IDS.assets, assetsSectionExpanded),
   );
   const narrationAutoPlayBlocked =
     !!activeReadable ||

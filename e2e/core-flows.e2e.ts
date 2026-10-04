@@ -10645,6 +10645,9 @@ test("roleplay quick preset editor uses chat settings spacing, surfaces, and saf
     await expect(quickEditor.getByRole("button", { name: "ID Macro Cards", exact: true })).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(quickEditor.getByRole("button", { name: "ID Macro Cards", exact: true })).toBeHidden();
+    // The menu claims that Escape, so the unpinned Chat Settings window around it stays open.
+    await page.waitForTimeout(50);
+    await expect(drawer).toBeVisible();
 
     const toolbar = quickEditor.locator(".mari-editor-toolbar");
     const firstToolbarControl = toolbar.locator("button").first();

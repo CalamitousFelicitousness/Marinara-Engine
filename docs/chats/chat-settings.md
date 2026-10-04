@@ -20,7 +20,7 @@ On a computer, Chat Settings is a window that floats over the chat. Its contents
 
 - **Move it** by dragging its title bar. With the title bar focused, the arrow keys move it too; hold Shift for bigger steps.
 - **Resize it** by dragging any edge or corner. The bottom-right corner can also be focused and resized with the arrow keys.
-- **Pin** (the pin button) keeps the window open when you click elsewhere. Unpinned, it closes when you click outside it, or when you press Escape anywhere except a text box.
+- **Pin** (the pin button) keeps the window open when you click elsewhere. Unpinned, it closes when you click outside it, or when you press Escape anywhere except a text box or an open menu.
 - **Lock** (the padlock button) stops the window from moving or resizing until you unlock it.
 - **Close** (the X button) closes the window.
 

@@ -332,8 +332,12 @@ export function FloatingWindow({
     // Portalled dialogs bubble through this component in React; only presses inside the window count.
     if (!(target instanceof Element) || !rootRef.current?.contains(target)) return;
     if (pinned || target.closest(KEEPS_ESCAPE_SELECTOR) || isModalOverlayOpen()) return;
-    event.preventDefault();
-    requestClose("escape");
+    // Menus inside the window close on Escape through document listeners, which run after this one.
+    // Wait until the press has reached them all, and close only if none of them claimed it.
+    const pressed = event.nativeEvent;
+    window.setTimeout(() => {
+      if (!pressed.defaultPrevented) requestClose("escape");
+    }, 0);
   };
 
   const rootStyle: CSSProperties | undefined = sheet

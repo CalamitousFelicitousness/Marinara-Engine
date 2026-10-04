@@ -152,7 +152,7 @@ When on, you get the same **Spotify**, **YouTube**, and **Custom** choices and t
 
 Spotify works a little differently in Game Mode. After each scene, the server builds a short list of real candidate songs from your chosen source. The AI then picks one song from that list. This stops the AI from inventing a song that does not exist. Game Mode picks one looping song at a time.
 
-On a turn, the action menu includes a **Retry Music DJ** button that forces a fresh pick for the current scene.
+On a computer, the Game's **Game controls** window has a **Retry Music DJ** button that forces a fresh pick for the current scene. See [The Game's controls](../game/getting-started.md#the-games-controls).
 
 ## The Conversation Music command
 

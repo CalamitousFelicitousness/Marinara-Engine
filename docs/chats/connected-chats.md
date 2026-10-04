@@ -72,9 +72,11 @@ If no character has saved a note yet, the section explains that notes wrapped in
 
 ## Switching between connected chats
 
-When a chat has a linked chat, its toolbar shows a switch button. It uses a double-arrow icon. Its tooltip reads "Switch to" followed by the other chat's name.
+On a computer, a chat with a linked chat shows a **Connected chat** button with a double-arrow icon. It starts in the row of buttons at the top right of the chat, and you can drag it anywhere. Click it to open the **Connected chat** window, then click **Switch to** followed by the other chat's name.
 
-Click it to jump straight to the connected chat. This saves you from finding the other chat in the chat list by hand. The button appears on both the Conversation side and the Roleplay side of a link.
+<!-- TODO(#7034 mobile): switching to the connected chat on a phone -->
+
+This jumps straight to the connected chat, so you do not have to find it in the chat list by hand. The button appears on both sides of a link.
 
 ## Other controls in this section
 

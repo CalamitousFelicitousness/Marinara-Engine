@@ -90,7 +90,7 @@ A few notes:
 
 ## Cached prompt injections panel
 
-Before your reply is generated, some writer agents add text to the prompt. This is common for **Prose Guardian**, **Narrative Director**, and custom injection agents. The **Cached prompt injections** panel is a troubleshooting view of that added text. You find it in the Agents menu of a Roleplay chat. It covers the most recent reply.
+Before your reply is generated, some writer agents add text to the prompt. This is common for **Prose Guardian**, **Narrative Director**, and custom injection agents. The **Cached prompt injections** panel is a troubleshooting view of that added text. You find it on the **Injections** tab of **Agent activity** in a Roleplay chat, which shows while **Debug mode** is on. See [Agent activity](../roleplay/getting-started.md#agent-activity). It covers the most recent reply.
 
 For each cached injection you can:
 

@@ -25,7 +25,7 @@ After that, the scene backdrop updates on its own as your story moves between pl
 
 You can also make a new backdrop yourself, without the agent. Marinara builds an image prompt from the scene (its genre, setting, current location, weather, and time) and creates a fresh backdrop.
 
-1. Open the **Gallery** (the image icon in the chat toolbar).
+1. Open **Chat Settings** and expand the **Gallery** section.
 2. Click the **Background** button.
 3. Wait for the button to finish. It shows **Generating...** while it works.
 

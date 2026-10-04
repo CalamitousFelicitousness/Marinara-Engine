@@ -10,7 +10,7 @@ On a computer, the trackers are not in the HUD row. They show in the **Tracker P
 
 The values come from tracker agents. An agent is a small AI helper that runs in the background. Each tracker agent watches the story and updates one part of the HUD after each message. You do not have to ask for it.
 
-A widget only appears when its tracker agent is turned on for the chat. You turn agents on and off in **Chat Settings**, under the **Agents** section. If no tracker agents are on, the HUD shows only the **Agents & Actions** button and no widgets.
+A widget only appears when its tracker agent is turned on for the chat. You turn agents on and off in **Chat Settings**, under the **Agents** section. If no tracker agents are on, the HUD shows no widgets.
 
 ## The HUD widgets
 
@@ -87,13 +87,15 @@ Inside each popover there is a small refresh (circular arrow) button. Click it t
 
 In **Chat Settings → Agents**, **Manual Trackers** moves every enabled tracker to manual control. You can instead leave that switch off and set only selected agents to manual under **Individual tracker schedule**. A refresh button appears whenever at least one tracker is manual: in the HUD row on a phone, and next to the title of the Trackers window on a computer. Click it to run the manual tracker set for the current turn. The refresh button inside each tracker still runs that individual tracker directly.
 
-The sparkle icon at the start of the HUD row opens the **Agents & Actions** menu. From there, or from **Agent activity** in the Trackers window or the Tracker Panel, you can re-run all trackers, retry any agents that failed, and use **Clear Trackers** to wipe all tracked world state for the chat. **Clear Trackers** cannot be undone, so use it with care.
+**Agent activity** sits at the top of **Chat Settings → Agents**, at the bottom of the Tracker Panel, and on a computer at the bottom of the Trackers window. From there you can re-run all trackers, retry any agents that failed, and use **Clear Trackers** to wipe all tracked world state for the chat. **Clear Trackers** cannot be undone, so use it with care.
 
 ## The Tracker Panel
 
 The **Tracker Panel** is a larger side panel that shows the same tracker data as the compact HUD widgets. It gives the tracker cards more room and adds portrait and thought features. You set it up in **Settings**, under the **Appearance** tab, in the **Tracker Panel** section.
 
-To show or hide it in a Roleplay chat on a computer, open **Chat Settings** and use the **Tracker Panel** switch at the top. On a phone, tap the Tracker Panel button at the start of the HUD row.
+To show or hide it in a Roleplay chat on a computer, open **Chat Settings** and use the **Tracker Panel** switch at the top.
+
+<!-- TODO(#7034 mobile): showing and hiding the Tracker Panel on a phone -->
 
 The controls in the panel header also let you customize tracker structure:
 
@@ -106,8 +108,8 @@ Custom field names define the structure and remain stable across tracker runs. T
 
 These settings control it:
 
-- **Tracker Panel**: the master on or off toggle. It is on by default. When on, the label reads "Shown in the Roleplay HUD". When off, trackers show in the Trackers window on a computer.
-- **Replace tracker HUD icons**: hides the compact icon strip on phones and lets the panel dock to the screen edge instead. The **Agents & Actions** button stays visible.
+- **Tracker Panel**: the master on or off toggle. It is on by default. When on, the label reads "Shown in the Roleplay HUD". When off, it reads "Trackers show in a movable window instead", and trackers show in the Trackers window on a computer.
+- **Replace tracker HUD icons**: hides the compact icon strip on phones and lets the panel dock to the screen edge instead.
 - **Use expression sprites for tracker portraits**: lets tracker portraits use a character's expression sprite (their current emotion portrait) instead of the plain avatar, when one exists. Expression sprites are explained in [Character Sprites](../characters/sprites.md).
 - **Panel background**: a color or gradient picker for the panel's background.
 - **Desktop size**: choose the panel width. The options are **Compact**, **Standard**, and **Expanded**.

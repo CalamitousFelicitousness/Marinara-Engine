@@ -153,7 +153,7 @@ test.describe("Pop-out drawers on desktop", () => {
       const popped = page.locator(`.mari-window[data-window="${CHAT_NAME_WINDOW}"]`);
       await settle(popped);
       await expect.poll(async () => (await box(popped)).y).toBeCloseTo(moved.y + moved.height + 8, 0);
-      await expect(popped).toHaveAttribute("data-pinned", "true");
+      await expect(popped).toHaveAttribute("data-pinned", "false");
       await popped.locator('[data-window-control="put-back"]').click();
       await expect(popped).toHaveCount(0);
       const settings = await openSettingsWindow(page);
@@ -163,7 +163,7 @@ test.describe("Pop-out drawers on desktop", () => {
     }
   });
 
-  test("a section pops out with its button, starts pinned, stays alone and goes back when closed", async ({
+  test("a section starts unpinned, hides outside, and remembers an explicit pin after refresh", async ({
     page,
     request,
   }) => {
@@ -191,11 +191,11 @@ test.describe("Pop-out drawers on desktop", () => {
       const drawerBox = await box(drawer);
       await button.click();
 
-      const popped = page.locator(`[data-window="${CHAT_NAME_WINDOW}"]`);
+      const popped = page.locator(`.mari-window[data-window="${CHAT_NAME_WINDOW}"]`);
       await settle(popped);
       await expect(page.getByRole("dialog", { name: "Chat Name", exact: true })).toBeVisible();
       await expect(popped).toHaveAttribute("data-detached", "true");
-      await expect(popped).toHaveAttribute("data-pinned", "true");
+      await expect(popped).toHaveAttribute("data-pinned", "false");
       await expect(popped).toHaveAttribute("data-locked", "false");
       await expect(popped).toHaveClass(/\bmari-window\b/u);
       await expect.poll(() => popped.evaluate((element) => element.contains(document.activeElement))).toBe(true);
@@ -214,16 +214,33 @@ test.describe("Pop-out drawers on desktop", () => {
         .evaluate((element) => (element.closest(".chat-input-container") ?? element).getBoundingClientRect().top);
       expect(poppedBox.y + poppedBox.height).toBeLessThanOrEqual(composerTop);
 
-      // Pinned: a press elsewhere closes the unpinned Chat Settings but not the popped-out section.
+      // New pop-outs are unpinned: an outside press hides the window, leaving its button.
+      const bubble = page.locator(`.mari-window-bubble[data-window="${CHAT_NAME_WINDOW}"]`);
       await page.locator("[data-chat-scroll]").click({ position: { x: 40, y: 200 } });
       await expect(settings).toBeHidden();
+      await expect(popped).toHaveCount(0);
+      await expect(bubble).toBeVisible();
+      await bubble.click();
+      await settle(popped);
+      await expect(popped).toHaveAttribute("data-pinned", "false");
+
+      // An explicit pin keeps it open outside and remains the user's choice after refresh.
+      await popped.locator('[data-window-control="pin"]').click();
+      await expect(popped).toHaveAttribute("data-pinned", "true");
+      await expect
+        .poll(async () => (await readSavedLayout(request, chat.id))?.windows?.[CHAT_NAME_WINDOW])
+        .toMatchObject({ pinned: true, minimized: false });
+      await page.locator("[data-chat-scroll]").click({ position: { x: 40, y: 200 } });
       await expect(popped).toBeVisible();
+      await page.reload();
+      await settle(popped);
+      await expect(popped).toHaveAttribute("data-pinned", "true");
       // Reopening Chat Settings does not show the section twice.
       await openSettingsWindow(page);
       await expect(settings.locator('[data-drawer="chat-name"]')).toHaveCount(0);
       await expect(page.locator('[data-drawer="chat-name"]')).toHaveCount(1);
 
-      // Lock and pin work as in every window; unpinned, it goes back on a press elsewhere.
+      // Locking remains available after restoring the saved pin.
       await popped.locator('[data-window-control="lock"]').click();
       await expect(popped).toHaveAttribute("data-locked", "true");
       await popped.locator('[data-window-control="lock"]').click();
@@ -278,7 +295,7 @@ test.describe("Pop-out drawers on desktop", () => {
       const controls = await popped
         .locator("[data-window-control]")
         .evaluateAll((elements) => elements.map((element) => element.getAttribute("data-window-control")));
-      expect(controls).toEqual(["minimize", "pin", "lock", "put-back", "close"]);
+      expect(controls).toEqual(["pin", "lock", "put-back", "close"]);
       await expect(popped.locator('[data-window-control="put-back"]')).toHaveAttribute(
         "title",
         "Put back in Chat Settings",
@@ -307,7 +324,6 @@ test.describe("Pop-out drawers on desktop", () => {
       expectSameBox(await box(popped), left, "reopened where it was left");
 
       // Unpinned, a press elsewhere or Escape only minimizes it again; it never goes back on its own.
-      await popped.locator('[data-window-control="pin"]').click();
       await expect(popped).toHaveAttribute("data-pinned", "false");
       await page.locator("[data-chat-scroll]").click({ position: { x: 40, y: 200 } });
       await expect(popped).toHaveCount(0);
@@ -381,9 +397,9 @@ test.describe("Pop-out drawers on desktop", () => {
       // High enough that the popped-out window fits below its title bar without being moved up.
       const drop = { x: settingsBox.x - 260, y: settingsBox.y + 160 };
       await drag(page, centre(headerBox), drop);
-      const popped = page.locator(`[data-window="${CHAT_NAME_WINDOW}"]`);
+      const popped = page.locator(`.mari-window[data-window="${CHAT_NAME_WINDOW}"]`);
       await settle(popped);
-      await expect(popped).toHaveAttribute("data-pinned", "true");
+      await expect(popped).toHaveAttribute("data-pinned", "false");
       await expect(settings.locator('[data-drawer="chat-name"]')).toHaveCount(0);
       const titleBar = await box(popped.locator(".mari-window__header"));
       expect(drop.x).toBeGreaterThanOrEqual(titleBar.x);
@@ -425,10 +441,12 @@ test.describe("Pop-out drawers on desktop", () => {
       const world = trackerWindow.locator('[data-drawer="tracker-world"]');
       await world.getByRole("button", { name: "Open World State in its own window", exact: true }).click();
 
-      const popped = page.locator(`[data-window="${WORLD_WINDOW}"]`);
+      const popped = page.locator(`.mari-window[data-window="${WORLD_WINDOW}"]`);
       await expect(popped).toBeVisible();
-      await expect(popped).toHaveAttribute("data-pinned", "true");
+      await expect(popped).toHaveAttribute("data-pinned", "false");
       await expect(popped).toHaveAttribute("data-drawer-host", "trackers");
+      await popped.locator('[data-window-control="pin"]').click();
+      await expect(popped).toHaveAttribute("data-pinned", "true");
       await expect(popped.getByText("Harbor market", { exact: true })).toBeVisible();
       await expect(trackerWindow.locator('[data-drawer="tracker-world"]')).toHaveCount(0);
       await expect(trackerWindow.locator('[data-drawer="tracker-custom"]')).toBeVisible();
@@ -475,8 +493,10 @@ test.describe("Pop-out drawers on desktop", () => {
         .locator('[data-drawer="chat-name"]')
         .getByRole("button", { name: "Open Chat Name in its own window", exact: true })
         .click();
-      const popped = page.locator(`[data-window="${CHAT_NAME_WINDOW}"]`);
+      const popped = page.locator(`.mari-window[data-window="${CHAT_NAME_WINDOW}"]`);
       await settle(popped);
+      // Explicitly pin it so the saved window reopens across chat switches and refresh.
+      await popped.locator('[data-window-control="pin"]').click();
       // Move it, so its place is the first chat's own.
       const moved = await box(popped);
       await drag(page, centre(await box(popped.locator(".mari-window__title"))), {
@@ -671,6 +691,7 @@ test.describe("Pop-out drawers on desktop", () => {
       );
       await advanced.locator('[data-drawer-control="pop-out"]').click();
       const popped = page.locator('.mari-window[data-window="drawer:chat-settings:advanced-parameters"]');
+      await popped.locator('[data-window-control="pin"]').click();
 
       for (const topP of ["0.9", "0.8"]) {
         await settle(popped);
@@ -716,11 +737,12 @@ test.describe("Pop-out drawers on desktop", () => {
         .locator('[data-drawer="chat-name"]')
         .getByRole("button", { name: "Open Chat Name in its own window", exact: true })
         .click();
-      const popped = page.locator(`[data-window="${CHAT_NAME_WINDOW}"]`);
+      const popped = page.locator(`.mari-window[data-window="${CHAT_NAME_WINDOW}"]`);
       await settle(popped);
       const placed = await box(popped);
 
-      // Save As stores the layout as shown, even before the chat has saved it.
+      // Save As stores the layout, including the user's explicit pin.
+      await popped.locator('[data-window-control="pin"]').click();
       await settings.getByRole("button", { name: "Hide these tips for this chat", exact: true }).click();
       await expect(settings.locator("[data-chat-settings-top-row]")).toHaveCount(0);
       await settings.locator('button[title="Save current chat settings as a new profile"]').click();

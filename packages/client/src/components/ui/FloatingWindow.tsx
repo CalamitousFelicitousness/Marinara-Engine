@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// Shared floating window: move, resize, minimize, pin, lock, close
+// Shared floating window: move, resize, pin, lock, close
 //
 // Every chat window (Chat Settings, popped-out drawers, the Trackers window, the
 // chat's control windows) renders through this component so they behave and theme
@@ -22,7 +22,7 @@ import {
   type ReactNode,
   type Ref,
 } from "react";
-import { Lock, Minus, Pin, Unlock, X } from "lucide-react";
+import { Lock, Pin, Unlock, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../../lib/utils";
 import {
@@ -834,18 +834,6 @@ export function FloatingWindow({
           </span>
           <div className="mari-window__controls flex shrink-0 items-center">
             {headerControls}
-            {canMinimize && (
-              <button
-                type="button"
-                data-window-control="minimize"
-                aria-label={t("window.controls.minimize")}
-                title={t("window.controls.minimizeHint")}
-                className="mari-window__control"
-                onClick={() => minimizeRef.current(true)}
-              >
-                <Minus size="0.875rem" />
-              </button>
-            )}
             {!sheet && (
               <button
                 type="button"

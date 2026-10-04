@@ -57,7 +57,7 @@ When the Tracker Panel is not shown, desktop trackers use the [Trackers window](
 
 To keep a section close at hand, click its **Pop out** button (the box with an arrow beside its **?**). This gives the section its own window and removes it from Chat Settings until you put it back.
 
-On a computer, you can also drag a section's title out of Chat Settings. The new window starts pinned, so it stays open while you use the chat. Move, resize or lock it just like Chat Settings.
+On a computer, you can also drag a section's title out of Chat Settings. The new window starts unpinned, so clicking elsewhere shrinks it to its button. Pin it if you want it to stay open while you use the chat. Move, resize or lock it just like Chat Settings.
 
 - **Close** (**X**) shrinks the section to a small button with its icon. Drag the button where you want it, then click it to reopen the window where you left it.
 - **Put back in Chat Settings** (the curved arrow beside **X**) returns the section to Chat Settings. You can also drag its window onto Chat Settings.
@@ -71,7 +71,7 @@ Trackers can pop out of the Trackers window in the same way. Their return button
 
 Some tools open their own small windows: a Game's **Game controls**, **Session**, **Volume** and **Game Assets**; **Connected chat**; and controls added by installed packages.
 
-These buttons start near the top right of the chat. Click or tap one to open its window. Closing or minimizing the window brings the button back. On a phone, the window opens as a full-width panel.
+These buttons start near the top right of the chat. Click or tap one to open its window. Closing the window brings the button back. On a phone, the window opens as a full-width panel.
 
 To keep one of these tools inside Chat Settings, open its window and choose **Put back in Chat Settings**. It becomes an expandable section there. Use that section's pop-out button to give it its own window again, or drag its title out on a computer. **Reset View** returns these tools to their starting buttons.
 

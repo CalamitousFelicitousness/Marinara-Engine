@@ -52,6 +52,8 @@ export interface GameRepliesBefore {
   /** For each of `scoped`, the market place its turn was at when the world put the party there and no
    *  place tag began a day (`GAME_MARKET_PLACE_EXTRA` on the reply), else null. */
   marketPlaces: Array<string | null>;
+  /** For each of `scoped`, the reply's message id (null for what earlier sessions carried in). */
+  replyIds: Array<string | null>;
 }
 
 /** The reply's extra that says which world-set market place its turn was at (`gameMarketDayFor`). */
@@ -84,6 +86,7 @@ export async function gameRepliesBefore(db: DB, chatId: string, replacing?: stri
   const carried = worldLedgerCarry(meta.gameLedgerCarry);
   const all: string[] = carried?.tags ? [carried.tags] : [];
   const places: Array<string | null> = carried?.tags ? [null] : [];
+  const ids: Array<string | null> = carried?.tags ? [null] : [];
   let scopedFrom = all.length;
   let player: string | null = null;
   // A world given to a game made without one (worldgen W12) starts after the message it was given at: the
@@ -101,13 +104,22 @@ export async function gameRepliesBefore(db: DB, chatId: string, replacing?: stri
       all.push(message.content);
       const stamp = parseExtra(message.extra)[GAME_MARKET_PLACE_EXTRA];
       places.push(typeof stamp === "string" ? stamp : null);
+      ids.push(message.id);
       // Answered: a later reply answers only what the player writes after it.
       if (message.content.trim()) player = null;
     }
   }
   const own = all.slice(carried?.tags ? 1 : 0);
   const ledger = fold ? [{ from: fold }, ...readWorldLedger(own)] : readWorldLedger(all);
-  return { scoped: all.slice(scopedFrom), all, carried, player, ledger, marketPlaces: places.slice(scopedFrom) };
+  return {
+    scoped: all.slice(scopedFrom),
+    all,
+    carried,
+    player,
+    ledger,
+    marketPlaces: places.slice(scopedFrom),
+    replyIds: ids.slice(scopedFrom),
+  };
 }
 
 /**
@@ -203,7 +215,9 @@ export async function gameMarketDayFor(
     count({ text: first, end: 0 });
     return {
       place: inForce,
-      day: { key: `${chatId}|${worldPlace}|${first}`, bought, stockBought, paidOut },
+      // Named by the reply before the run (it is there before and after each turn of the day, so a reply
+      // deleted inside the run does not move it), or the start when the run is the first.
+      day: { key: `${chatId}|${worldPlace}|${replies.replyIds[first - 1] ?? "start"}`, bought, stockBought, paidOut },
       worldPlace,
     };
   }

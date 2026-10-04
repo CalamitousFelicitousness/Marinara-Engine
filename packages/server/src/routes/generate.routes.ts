@@ -9718,8 +9718,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           const turnWorld =
             chatMode === "game" && !input.impersonate ? await loadGameWorld(app.db, input.chatId, chatMeta) : null;
           let turnPresent: WorldPresent | undefined;
+          // The Game Master's replies before this one (a regeneration's before the telling it replaces).
+          let turnReplies: Awaited<ReturnType<typeof gameRepliesBefore>> | undefined;
           if (turnMarket || turnWorld) {
             const replies = await gameRepliesBefore(app.db, input.chatId, input.regenerateMessageId ?? null);
+            turnReplies = replies;
             turnPlace = worldPlaceInForce(
               turnWorld,
               lastGamePlace(replies.scoped),
@@ -10681,9 +10684,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             // The world-set market place this turn was at (a ruleset's market where the world put the party
             // and no place tag began a day), saved on the reply so the market day there runs across turns.
             const marketWorldPlace =
-              chatMode === "game" && turnMarket && !turnKitItems
-                ? // The reply is saved by now, so it is among the replies read.
-                  gameMarketWorldPlace((await gameRepliesBefore(app.db, input.chatId)).scoped, undefined, turnPlace)
+              chatMode === "game" && turnMarket && !turnKitItems && turnReplies && typeof savedMsg.content === "string"
+                ? gameMarketWorldPlace(turnReplies.scoped, savedMsg.content, turnPlace)
                 : undefined;
             const extraUpdate: Record<string, unknown> = {
               ...(chatMode === "game" ? { gameOutcomeNarrationFailed } : {}),

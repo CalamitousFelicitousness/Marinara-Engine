@@ -1335,14 +1335,14 @@ try {
     const fresh = await worldDay();
     assert.deepEqual(
       [fresh.place, fresh.worldPlace, seen(fresh.day)],
-      [town, at, [`${mapped.id}|${at}|0`, [], [], []]],
+      [town, at, [`${mapped.id}|${at}|start`, [], [], []]],
     );
     await reply(`We arrive. ${pistol}`, at);
     const bought = await reply(`Still here. ${nail}`, at);
     const held = await worldDay();
     assert.deepEqual(
       seen(held.day),
-      [`${mapped.id}|${at}|0`, [["silver coffin nail", 1]], [["smith|watch pistol", 1]], []],
+      [`${mapped.id}|${at}|start`, [["silver coffin nail", 1]], [["smith|watch pistol", 1]], []],
       "the day keeps its name and counts every turn's buys there",
     );
     assert.deepEqual(
@@ -1351,18 +1351,27 @@ try {
       "a regeneration",
     );
     // A turn somewhere else ends the day; back again, a new one begins with nothing bought.
-    await reply("On the road.", null);
+    const road = await reply("On the road.", null);
     const back = await worldDay();
-    assert.deepEqual(seen(back.day), [`${mapped.id}|${at}|3`, [], [], []]);
+    assert.deepEqual(seen(back.day), [`${mapped.id}|${at}|${road.id}`, [], [], []], "named by the reply before it");
     // A place tag answered while the world keeps the party here begins a day of its own: the world's day
     // runs on from after it.
-    await reply('They call it Millbrook. [place: name="Millbrook" size="town" result="ok"]', at);
-    assert.deepEqual(seen((await worldDay()).day)[0], `${mapped.id}|${at}|4`);
+    const named = await reply('They call it Millbrook. [place: name="Millbrook" size="town" result="ok"]', at);
+    assert.deepEqual(seen((await worldDay()).day)[0], `${mapped.id}|${at}|${named.id}`);
     await reply(`Back in town. ${pistol}`, at);
     assert.deepEqual(seen((await worldDay()).day).slice(0, 3), [
-      `${mapped.id}|${at}|4`,
+      `${mapped.id}|${at}|${named.id}`,
       [],
       [["smith|watch pistol", 1]],
+    ]);
+    // A reply deleted inside the day neither renames it nor loses the others' buys.
+    const idle = await reply("They wait.", at);
+    await reply(`Another. ${pistol}`, at);
+    await chats.removeMessage(idle.id);
+    assert.deepEqual(seen((await worldDay()).day).slice(0, 3), [
+      `${mapped.id}|${at}|${named.id}`,
+      [],
+      [["smith|watch pistol", 2]],
     ]);
   }
 } finally {

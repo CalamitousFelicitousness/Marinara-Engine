@@ -6,7 +6,7 @@ This guide covers what Roleplay Mode is, how to start a roleplay, and what you s
 
 Roleplay Mode is one of Marinara Engine's chat modes. The others are Conversation and Game. Roleplay gives you an immersive scene view built around a story.
 
-A roleplay scene can show a background image, character sprites, and a heads-up display of world state. A sprite is a character picture that changes with emotion. A heads-up display, or HUD, shows that state: small widgets at the top of the chat on a phone, and the Tracker Panel or the Trackers window on a computer.
+A roleplay scene can show a background image, character sprites, and a heads-up display of world state. A sprite is a character picture that changes with emotion. A heads-up display, or HUD, shows that state: movable **World State** and **Player & Tracker** buttons on a phone, and the Tracker Panel or the Trackers window on a computer.
 
 Roleplay also uses helpers called agents. An agent is a small automatic task that runs alongside the AI reply. Agents track world state, pick sprites, choose backgrounds, and more.
 

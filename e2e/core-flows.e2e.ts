@@ -9610,7 +9610,16 @@ test("chat Help overlay labels visible controls in every mode", async ({ page, r
       }, chatId);
     };
     const expectDesktopToolbarHighlightsAligned = async (overlay: Locator) => {
-      const toolbarTargetIds = ["help", "connected-chat", "settings", "retry", "session", "volume", "assets"];
+      const toolbarTargetIds = [
+        "help",
+        "connected-chat",
+        "settings",
+        "game-controls",
+        "retry",
+        "session",
+        "volume",
+        "assets",
+      ];
       for (const targetId of toolbarTargetIds) {
         const source = page.locator(`[data-chat-help="${targetId}"]`).filter({ visible: true }).first();
         const highlight = overlay.locator(`[data-chat-help-highlight="${targetId}"]`);
@@ -9744,7 +9753,10 @@ test("chat Help overlay labels visible controls in every mode", async ({ page, r
         await expect(overlay.locator('[data-chat-help-highlight="messages"]')).toBeVisible();
         await expect(overlay.locator('[data-chat-help-highlight="composer"]')).toBeVisible();
       } else {
-        await expect(overlay.locator('[data-chat-help-highlight="retry"]')).toBeVisible();
+        // On a computer Retry lives in the Game controls window, pointed at through its button.
+        await expect(
+          overlay.locator(`[data-chat-help-highlight="${mobile ? "retry" : "game-controls"}"]`),
+        ).toBeVisible();
         await expect(overlay.locator('[data-chat-help-highlight="session"]')).toBeVisible();
         await expect(overlay.locator('[data-chat-help-highlight="dialogue"]')).toBeVisible();
       }

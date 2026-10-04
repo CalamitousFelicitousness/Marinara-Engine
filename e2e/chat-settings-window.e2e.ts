@@ -634,26 +634,23 @@ test.describe("Chat Settings window on desktop", () => {
     }
   });
 
-  test("the topbar button closes the chat's popovers, as the old toolbar button did", async ({ page, request }) => {
+  test("the topbar button sends an open control window back to its button, as it closed popovers", async ({
+    page,
+    request,
+  }) => {
     const chat = await createChat(request, "game");
-    const popovers = page.locator("[data-chat-floating-panel]:not(.mari-window)").filter({ visible: true });
     try {
       await prepare(page, chat.id);
       await page.goto("/");
-      const game = page.locator('[data-chat-mode="game"]');
-      await expect(game).toBeVisible();
-      for (const activate of ["pointer", "keyboard"] as const) {
-        await game.getByRole("button", { name: "Session", exact: true }).filter({ visible: true }).click();
-        await expect(popovers).toHaveCount(1);
-        if (activate === "pointer") await topbarSettings(page).click();
-        else {
-          await topbarSettings(page).focus();
-          await page.keyboard.press("Enter");
-        }
-        await expect(settingsWindow(page)).toBeVisible();
-        await expect(popovers, `Game Session closes (${activate})`).toHaveCount(0);
-        await settingsWindow(page).getByRole("button", { name: "Close chat settings", exact: true }).click();
-      }
+      await expect(page.locator('[data-chat-mode="game"]')).toBeVisible();
+      const sessionBubble = page.locator('.mari-window-bubble[data-window="control:session"]');
+      const sessionWindow = page.locator('.mari-window[data-window="control:session"]');
+      await sessionBubble.click();
+      await expect(sessionWindow).toBeVisible();
+      await topbarSettings(page).click();
+      await expect(settingsWindow(page)).toBeVisible();
+      await expect(sessionWindow).toHaveCount(0);
+      await expect(sessionBubble).toBeVisible();
     } finally {
       await request.delete(`/api/chats/${chat.id}?force=true`);
     }

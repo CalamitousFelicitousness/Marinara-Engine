@@ -55,6 +55,8 @@ const to = { x: 4, y: 2 };
   const thicket: Record<string, TacticalTerrain> = {};
   for (let x = 1; x < 4; x++) for (let y = 0; y < 3; y++) thicket[`${x},${y}`] = "forest";
   assert.equal(coverTier(board(7, 5, thicket), from, to), "half", "a whole wood between them is still half");
+  // A terrain word this Engine does not know is seen across and is no cover, rather than a crash.
+  assert.equal(coverTier(board(5, 1, { "2,0": "lava" as TacticalTerrain }), from, { x: 4, y: 0 }), "none");
   // Neighbours: nothing is between them, even with walls all round.
   assert.equal(coverTier(board(3, 3, { "1,0": "wall", "0,1": "wall" }), from, { x: 1, y: 1 }), "none");
 }

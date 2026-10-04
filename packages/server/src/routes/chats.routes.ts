@@ -4727,7 +4727,9 @@ export async function chatsRoutes(app: FastifyInstance) {
     try {
       await createGameWorldSnapshotsStorage(app.db).copy(sourceChat.id, newChat.id);
     } catch (err) {
-      await storage.remove(newChat.id);
+      await storage.remove(newChat.id).catch((cleanup: unknown) => {
+        logger.error(cleanup, "Could not remove branch %s after its world snapshot failed", newChat.id);
+      });
       throw err;
     }
 

@@ -11,7 +11,7 @@ import type { DB } from "../../db/connection.js";
 import { gameWorldSnapshots } from "../../db/schema/index.js";
 import { now } from "../../utils/id-generator.js";
 import { logger } from "../../lib/logger.js";
-import { readWorldSnapshot, type WorldSnapshot } from "@marinara-engine/shared";
+import { readWorldSnapshot, type WorldFold, type WorldSnapshot } from "@marinara-engine/shared";
 
 const parsed = new Map<string, { text: string; snapshot: WorldSnapshot }>();
 const PARSED_KEPT = 16;
@@ -28,6 +28,7 @@ export function createGameWorldSnapshotsStorage(db: DB) {
       (await db.select().from(gameWorldSnapshots).where(eq(gameWorldSnapshots.chatId, chatId))) as Array<{
         id: string;
         snapshot: string;
+        fold: string | null;
         createdAt: string;
       }>
     )[0];
@@ -64,15 +65,36 @@ export function createGameWorldSnapshotsStorage(db: DB) {
       remember(chatId, text, snapshot);
     },
 
-    /** Gives one chat another's snapshot (a new session, a branch); nothing when it has none. */
+    /** Gives one chat another's snapshot and fold (a new session, a branch); nothing when it has none. */
     async copy(fromChatId: string, toChatId: string): Promise<boolean> {
       const row = await rowOf(fromChatId);
       if (!row) return false;
       await db
         .insert(gameWorldSnapshots)
-        .values({ id: toChatId, chatId: toChatId, snapshot: row.snapshot, createdAt: now() })
-        .onConflictDoUpdate({ target: gameWorldSnapshots.id, set: { snapshot: row.snapshot } });
+        .values({ id: toChatId, chatId: toChatId, snapshot: row.snapshot, fold: row.fold ?? null, createdAt: now() })
+        .onConflictDoUpdate({ target: gameWorldSnapshots.id, set: { snapshot: row.snapshot, fold: row.fold ?? null } });
       return true;
+    },
+
+    /** The living world as the chat's earlier sessions left it, or null (a first session, or none kept). */
+    async getFold(chatId: string): Promise<WorldFold | null> {
+      const text = (await rowOf(chatId))?.fold;
+      if (!text) return null;
+      try {
+        const fold = JSON.parse(text) as WorldFold;
+        return fold && typeof fold === "object" && fold.present && typeof fold.present === "object" ? fold : null;
+      } catch {
+        return null;
+      }
+    },
+
+    /** Keeps the living world a session starts from; nothing for a chat with no snapshot. */
+    async setFold(chatId: string, fold: WorldFold): Promise<void> {
+      if (!(await rowOf(chatId))) return;
+      await db
+        .update(gameWorldSnapshots)
+        .set({ fold: JSON.stringify(fold) })
+        .where(eq(gameWorldSnapshots.chatId, chatId));
     },
 
     /** The stored text as it is, for an export that carries it. */

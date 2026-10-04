@@ -70,6 +70,16 @@ export interface WorldLedgerEntry {
   release?: string;
   /** Where an answered place tag put the party, read from the replies, never written. */
   at?: string;
+  /** Only ever the first entry: the living world a session starts from (W11), folded on from. */
+  from?: WorldFold;
+}
+
+/** The living world as a game's earlier sessions left it (worldgen W11): the present, and the settlement
+ *  the party was in. A session folds its own turns on from it, so a change to how the world steps never
+ *  remakes the weeks earlier sessions played. */
+export interface WorldFold {
+  present: WorldPresent;
+  partyAt?: string;
 }
 
 /** The world as the story has left it. */
@@ -336,13 +346,22 @@ export function worldPresent(game: GameWorld, ledger: readonly WorldLedgerEntry[
   presentCache.set(game.world, folds);
   const hit = folds.get(key);
   if (hit) return structuredClone(hit);
-  const present = foldPresent(game, ledger);
+  const { present } = foldPresent(game, ledger);
   folds.set(key, present);
   if (folds.size > PRESENT_CACHE_SIZE) folds.delete(folds.keys().next().value!);
   return structuredClone(present);
 }
 
-function foldPresent(game: GameWorld, ledger: readonly WorldLedgerEntry[]): WorldPresent {
+/** The living world after a ledger, to start the next session from (W11). */
+export function worldFold(game: GameWorld, ledger: readonly WorldLedgerEntry[]): WorldFold {
+  const { present, partyAt } = foldPresent(game, ledger);
+  return { present, ...(partyAt ? { partyAt } : {}) };
+}
+
+function foldPresent(
+  game: GameWorld,
+  ledger: readonly WorldLedgerEntry[],
+): { present: WorldPresent; partyAt?: string } {
   const history = worldHistory(game);
   const byName = new Map([
     ...game.world.places.flatMap((place) =>
@@ -350,27 +369,32 @@ function foldPresent(game: GameWorld, ledger: readonly WorldLedgerEntry[]): Worl
     ),
     ...game.world.places.map((place) => [place.name.toLowerCase(), place] as const),
   ]);
-  const present: WorldPresent = {
-    day: 0,
-    fortune: Object.fromEntries(
-      game.world.places.filter((place) => place.prosperity).map((place) => [place.id, FORTUNE_OF[place.prosperity!]]),
-    ),
-    prosperity: {},
-    ruined: [],
-    keepers: { ...history.keepers },
-    leaders: { ...history.leaders },
-    relations: { ...history.relations },
-    standing: {},
-    gone: [],
-    places: [],
-    groups: [],
-    done: {},
-    news: [],
-    pending: [],
-    raised: 0,
-    renown: 0,
-    taken: {},
-  };
+  const from = ledger[0]?.from;
+  const present: WorldPresent = from
+    ? structuredClone(from.present)
+    : {
+        day: 0,
+        fortune: Object.fromEntries(
+          game.world.places
+            .filter((place) => place.prosperity)
+            .map((place) => [place.id, FORTUNE_OF[place.prosperity!]]),
+        ),
+        prosperity: {},
+        ruined: [],
+        keepers: { ...history.keepers },
+        leaders: { ...history.leaders },
+        relations: { ...history.relations },
+        standing: {},
+        gone: [],
+        places: [],
+        groups: [],
+        done: {},
+        news: [],
+        pending: [],
+        raised: 0,
+        renown: 0,
+        taken: {},
+      };
   const placeId = (name: string | undefined) => {
     if (!name) return undefined;
     return (
@@ -391,8 +415,8 @@ function foldPresent(game: GameWorld, ledger: readonly WorldLedgerEntry[]): Worl
     present.fortune[id] = Math.max(0, Math.min(100, (present.fortune[id] ?? 50) + by));
   };
   // Where the party is, for the scene-first rule: the settlement the replies last put it in.
-  let partyAt = worldSettlementOf(game, game.world.startId)?.id;
-  for (const entry of ledger) {
+  let partyAt = from ? from.partyAt : worldSettlementOf(game, game.world.startId)?.id;
+  for (const entry of from ? ledger.slice(1) : ledger) {
     if (entry.at !== undefined) {
       partyAt = worldSettlementOf(game, worldPlaceId(entry.at))?.id;
       continue;
@@ -498,7 +522,7 @@ function foldPresent(game: GameWorld, ledger: readonly WorldLedgerEntry[]): Worl
   present.prosperity = Object.fromEntries(
     Object.entries(present.fortune).map(([id, fortune]) => [id, worldFortuneBand(fortune)]),
   );
-  return present;
+  return { present, partyAt };
 }
 
 /** A place the story added, by name, as the place tag reads it. */

@@ -14,12 +14,15 @@ import {
   type RulesetItemBook,
   type RulesetLiveStates,
   type WorldKitItems,
+  readWorldLedger,
   type WorldLedgerCarry,
+  type WorldLedgerEntry,
   worldLedgerCarry,
 } from "@marinara-engine/shared";
 import type { DB } from "../../db/connection.js";
 import { parseExtra } from "../generation/prompt-attachments.js";
 import { createChatsStorage } from "../storage/chats.storage.js";
+import { createGameWorldSnapshotsStorage } from "../storage/game-world-snapshots.storage.js";
 import type { ResolvedGameRuleset } from "./ruleset-registry.service.js";
 import { gameRulesetLayerOptions, readMetadata } from "./game-inventory.service.js";
 import { loadGameRulesetSheetContext } from "./ruleset-sheet-turn.service.js";
@@ -36,6 +39,9 @@ export interface GameRepliesBefore {
   carried: WorldLedgerCarry | null;
   /** The player's message the reply answers: the last one before it (worldgen W10, a fight's recap). */
   player: string | null;
+  /** The world's ledger to fold (worldgen W4): from the living world earlier sessions left (W11) when the
+   *  session keeps one, then this session's replies; else every reply in `all`. */
+  ledger: WorldLedgerEntry[];
 }
 
 /** A Game Master's own reply: an assistant message that is not a party's turn (a tag a party's model
@@ -53,7 +59,11 @@ export function isGameMasterReply(message: { role: string; content: unknown }): 
 
 export async function gameRepliesBefore(db: DB, chatId: string, replacing?: string | null): Promise<GameRepliesBefore> {
   const chats = createChatsStorage(db);
-  const [messages, chat] = await Promise.all([chats.listMessages(chatId), chats.getById(chatId)]);
+  const [messages, chat, fold] = await Promise.all([
+    chats.listMessages(chatId),
+    chats.getById(chatId),
+    createGameWorldSnapshotsStorage(db).getFold(chatId),
+  ]);
   const end = replacing ? messages.findIndex((message) => message.id === replacing) : -1;
   const before = end >= 0 ? messages.slice(0, end) : messages;
   // Each session is its own chat: what the earlier ones did to the world comes first, as one reply.
@@ -70,7 +80,9 @@ export async function gameRepliesBefore(db: DB, chatId: string, replacing?: stri
       if (message.content.trim()) player = null;
     }
   }
-  return { scoped: all.slice(scopedFrom), all, carried, player };
+  const own = all.slice(carried?.tags ? 1 : 0);
+  const ledger = fold ? [{ from: fold }, ...readWorldLedger(own)] : readWorldLedger(all);
+  return { scoped: all.slice(scopedFrom), all, carried, player, ledger };
 }
 
 /**

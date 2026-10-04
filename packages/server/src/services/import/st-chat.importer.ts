@@ -14,6 +14,10 @@ import {
   SPATIAL_CONTEXT_LIMITS,
   type ChatMode,
   readWorldSnapshot,
+  gameWorldFromSnapshot,
+  readWorldLedger,
+  worldFold,
+  worldLedgerCarry,
 } from "@marinara-engine/shared";
 import { copyAdvancedMemoryRecords, remapAdvancedMemoryMetadata } from "../advanced-memory-transfer.js";
 import {
@@ -467,11 +471,18 @@ export async function importSTChat(jsonlContent: string, db: DB, opts?: ImportST
     // A game's world (worldgen W11): the snapshot it came with, checked whole, kept before the metadata
     // that names the world; else, for a world this Engine's generator made, made now from its recipe.
     if (importedMetadata.gameWorld != null) {
+      const snapshots = createGameWorldSnapshotsStorage(db);
       const read = readWorldSnapshot(marinaraMetadata.gameWorldSnapshot);
-      if (read.ok) await createGameWorldSnapshotsStorage(db).put(chat.id, read.snapshot);
-      else if (!(await saveGameWorldSnapshot(db, chat.id, importedMetadata))) {
-        logger.warn("Imported game chat %s has a world this Engine cannot read: %s", chat.id, read.issues[0]);
+      if (read.ok) await snapshots.put(chat.id, read.snapshot);
+      const game = read.ok
+        ? gameWorldFromSnapshot(read.snapshot)
+        : await saveGameWorldSnapshot(db, chat.id, importedMetadata);
+      if (!game) {
+        logger.warn("Imported game chat %s has a world this Engine cannot read: %s", chat.id, read.ok ? "" : read.issues[0]);
       }
+      // The living world earlier sessions left, folded again from what they carried (W11).
+      const carried = worldLedgerCarry(importedMetadata.gameLedgerCarry);
+      if (game && carried?.tags) await snapshots.setFold(chat.id, worldFold(game, readWorldLedger([carried.tags])));
     }
     await storage.patchMetadata(
       chat.id,

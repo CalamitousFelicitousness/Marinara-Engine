@@ -256,8 +256,8 @@ import {
   gameWorldSchema,
   gameWorldFromMetadata,
   worldMadeByThisGenerator,
+  worldFold,
   lastGamePlace,
-  readWorldLedger,
   carryWorldLedger,
   worldLedgerCarry,
   worldJournal,
@@ -7705,8 +7705,16 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
             }
           : {}),
       };
-      // The new session plays in the same world: its snapshot comes with it (W11).
-      await createGameWorldSnapshotsStorage(app.db).copy(latestSession.id, newChat.id);
+      // The new session plays in the same world: its snapshot comes with it (W11), and the living world as
+      // the sessions so far left it, which the new one folds on from.
+      const worldSnapshots = createGameWorldSnapshotsStorage(app.db);
+      if (await worldSnapshots.copy(latestSession.id, newChat.id)) {
+        const sessionWorld = await loadGameWorld(app.db, latestSession.id, prevMeta);
+        if (sessionWorld) {
+          const sessionLedger = (await gameRepliesBefore(app.db, latestSession.id)).ledger;
+          await worldSnapshots.setFold(newChat.id, worldFold(sessionWorld, sessionLedger));
+        }
+      }
       await chats.updateMetadata(newChat.id, updatedNewMeta);
 
       let recapMessageId = "";
@@ -10883,7 +10891,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const story = gameStoryFromMetadata(meta, world);
     return {
       journal: {
-        ...worldJournal(world, worldPresent(world, readWorldLedger(replies.all)), { name: place?.name }),
+        ...worldJournal(world, worldPresent(world, replies.ledger), { name: place?.name }),
         ...(story ? { story: storyObjectives(story, storyState(story, readStoryLedger(replies.all))) } : {}),
       },
     };
@@ -10894,7 +10902,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
   // force, as a turn reads it.
   const overworldPlace = async (chatId: string, meta: Record<string, unknown>, world: GameWorld) => {
     const replies = await gameRepliesBefore(app.db, chatId);
-    const present = worldPresent(world, readWorldLedger(replies.all));
+    const present = worldPresent(world, replies.ledger);
     const walk = worldWalkFromMetadata(meta);
     if (walk) return { here: walk.to, walk, present, placeName: undefined };
     const place = worldPlaceInForce(

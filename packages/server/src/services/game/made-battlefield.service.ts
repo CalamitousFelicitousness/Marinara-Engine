@@ -1,7 +1,6 @@
 // Hand-made battlefields (worldgen W9g): the board painted for where a fight starts.
 import {
   lastGamePlace,
-  readWorldLedger,
   worldAddedPlace,
   worldBattlefieldHere,
   worldPlaceByName,
@@ -40,7 +39,7 @@ async function battlefieldHere(db: DB, chatId: string, meta: Record<string, unkn
   const world = await loadGameWorld(db, chatId, meta);
   if (!world?.edits?.battlefields?.length) return null;
   const replies = await gameRepliesBefore(db, chatId);
-  const present = () => worldPresent(world, readWorldLedger(replies.all));
+  const present = () => worldPresent(world, replies.ledger);
   const walk = worldWalkFromMetadata(meta);
   const visit = worldTownVisitFromMetadata(meta);
   const visited =

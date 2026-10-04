@@ -8,6 +8,10 @@
 //
 // A table rather than chat metadata: a snapshot is tens to a hundred-odd kilobytes, and metadata is
 // copied into every session and read on every turn and chat list.
+//
+// `fold` is the living world as the game's earlier sessions left it (`WorldFold`), made when the session
+// starts: the session's turns fold on from it, so a change to how the world steps never remakes the
+// weeks earlier sessions played. Kept here rather than in metadata, which the client may write.
 // ──────────────────────────────────────────────
 
 import { fileTable, text } from "../file-schema.js";
@@ -21,5 +25,7 @@ export const gameWorldSnapshots = fileTable("game_world_snapshots", {
     .references(() => chats.id, { onDelete: "cascade" }),
   /** Serialized `WorldSnapshot`. */
   snapshot: text("snapshot").notNull(),
+  /** Serialized `WorldFold`, for a session after the first. */
+  fold: text("fold"),
   createdAt: text("created_at").notNull(),
 });

@@ -1951,7 +1951,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 const replies = await gameRepliesBefore(app.db, input.chatId, input.regenerateMessageId ?? null);
                 const walk = await turnWalkPromise;
                 const visit = await turnVisitPromise;
-                const before = readWorldLedger(replies.all);
+                const before = replies.ledger;
                 const town = visit ? worldTown(game, visit.settlementId, worldPresent(game, before)) : null;
                 // The walk and the visit this turn tells, as their tags will stand before the reply.
                 const walkTags = walk ? worldWalkTags(game, walk) : "";
@@ -4770,7 +4770,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 ? worldTown(
                     promptWorld!,
                     visit.settlementId,
-                    worldPresent(promptWorld!, readWorldLedger((await promptRepliesAll()).all)),
+                    worldPresent(promptWorld!, (await promptRepliesAll()).ledger),
                   )?.buildings.find((building) => building.id === visit.to)
                 : undefined;
             if (visited?.placeId && visited.name) {
@@ -4803,7 +4803,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           const promptWhereYouAre = promptWorld
             ? await (async () => {
                 // The world as the story has left it (worldgen W4): the ledger in all the replies.
-                const present = worldPresent(promptWorld, readWorldLedger((await promptRepliesAll()).all));
+                const present = worldPresent(promptWorld, (await promptRepliesAll()).ledger);
                 const before = await promptPlace();
                 const walk = await turnWalkPromise;
                 const visit = await turnVisitPromise;
@@ -9698,7 +9698,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               const walk = await turnWalkPromise;
               const visit = await turnVisitPromise;
               const visitTown = visit
-                ? worldTown(turnWorld, visit.settlementId, worldPresent(turnWorld, readWorldLedger(replies.all)))
+                ? worldTown(turnWorld, visit.settlementId, worldPresent(turnWorld, replies.ledger))
                 : null;
               let walkTags = "";
               let visitTags = "";
@@ -9740,7 +9740,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 contentReplaced = true;
               }
               if (storyPrefix) turnShownScenes = storyTurnTold!.turn.shown;
-              const ledger = readWorldLedger(replies.all);
+              const ledger = replies.ledger;
               if (/\[world:/i.test(fullResponse)) {
                 const answered = applyWorldTags(fullResponse, turnWorld, ledger);
                 if (answered !== fullResponse) {

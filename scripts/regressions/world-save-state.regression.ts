@@ -40,6 +40,9 @@ import {
   worldSnapshot,
   worldTown,
   worldTownEditIssues,
+  worldFold,
+  type WorldFold,
+  type WorldLedgerEntry,
   worldWhereYouAreText,
   type GameWorld,
   type WorldEdits,
@@ -213,12 +216,33 @@ assert.ok(storyPlaced >= WORLD_STARTER_KITS.length / 2, `the story's place stood
   story.places.push({ id: "x1", name: "The Gilded Gull", parentId: city.id } as never);
   const treedTown = worldTown(stored(treed), city.id, story)!;
   const gullAt = treedTown.buildings.find((building) => building.id === "x1");
-  if (gullAt)
-    assert.match(
-      treedTown.ground[gullAt.door.y * treedTown.width + gullAt.door.x]!,
-      /[sq]/,
-      "its door is on the street",
+  assert.ok(gullAt, "the story's place stands in town");
+  assert.match(treedTown.ground[gullAt.door.y * treedTown.width + gullAt.door.x]!, /[sq]/, "its door is on the street");
+}
+
+// ── The living world folds on from a session's checkpoint exactly as from the start ──
+for (const raw of WORLD_STARTER_KITS) {
+  const parsed = parseWorldKit(raw);
+  assert.ok(parsed.ok);
+  for (const seed of [11, 12]) {
+    const game = made(parsed.kit, seed);
+    const settlements = game.world.places.filter((place) => place.rank !== undefined);
+    const [home, away] = [settlements[0]!, settlements.at(-1)!];
+    const earlier: WorldLedgerEntry[] = [
+      { at: home.name },
+      { days: "20" },
+      { event: "A fire takes the granary", kind: "catastrophe", place: away.name },
+      { at: away.name },
+      { days: "16" },
+    ];
+    const later: WorldLedgerEntry[] = [{ days: "9" }, { at: home.name }, { days: "30" }];
+    const checkpoint = JSON.parse(JSON.stringify(worldFold(game, earlier))) as WorldFold;
+    assert.deepEqual(
+      worldPresent(game, [{ from: checkpoint }, ...later]),
+      worldPresent(game, [...earlier, ...later]),
+      `${raw.id} ${seed}: from the checkpoint, the same present`,
     );
+  }
 }
 
 // ── Two worlds of one recipe keep their own present: one read from its snapshot, one made now ──
@@ -286,6 +310,7 @@ const { createConnectionsStorage } = await import("../../packages/server/src/ser
 const { createGameWorldSnapshotsStorage } =
   await import("../../packages/server/src/services/storage/game-world-snapshots.storage.js");
 const { importSTChat } = await import("../../packages/server/src/services/import/st-chat.importer.js");
+const { gameRepliesBefore } = await import("../../packages/server/src/services/game/game-market.service.js");
 const { gameRoutes } = await import("../../packages/server/src/routes/game.routes.js");
 const { chatsRoutes } = await import("../../packages/server/src/routes/chats.routes.js");
 const { generateRoutes } = await import("../../packages/server/src/routes/generate.routes.js");
@@ -427,6 +452,13 @@ try {
   assert.equal(turn.statusCode, 200, turn.body);
   assert.ok(prompts.join("\n").includes(named.name), "the prompt's people are the snapshot's");
 
+  // Twenty days pass in the first session.
+  await chats.createMessage({
+    chatId,
+    role: "assistant",
+    characterId: null,
+    content: 'Three weeks on the road. [world: days="20" result="ok"]',
+  });
   // A new session plays in the same world.
   await chats.patchMetadata(chatId, {
     gameSessionStatus: "concluded",
@@ -435,6 +467,29 @@ try {
   const started = await app.inject({ method: "POST", url: "/api/game/session/start", payload: { gameId } });
   assert.equal(started.statusCode, 200, started.body);
   const second = started.json().sessionChat.id as string;
+  // It folds on from the living world the first session left (W11), not from the carried tags: with them
+  // wiped, the twenty days still stand.
+  const fold = await snapshots.getFold(second);
+  assert.equal(fold?.present.day, 20, "the session starts from the first one's living world");
+  const carriedIn = JSON.parse((await chats.getById(second))!.metadata as string).gameLedgerCarry;
+  await chats.patchMetadata(second, { gameLedgerCarry: { replies: 3, tags: "" } });
+  const secondWorld = gameWorldFromSnapshot((await snapshots.get(second))!);
+  assert.equal(
+    worldPresent(secondWorld, (await gameRepliesBefore(db, second)).ledger).day,
+    20,
+    "folded on from the checkpoint",
+  );
+  // A later session exported and imported again starts from the same living world, folded again from
+  // what it carried.
+  await chats.patchMetadata(second, { gameLedgerCarry: carriedIn });
+  const secondExport = await app.inject({ method: "GET", url: `/api/chats/${second}/export?format=jsonl` });
+  const secondImported = (await importSTChat(secondExport.body, db)) as { chatId?: string; chat?: { id: string } };
+  const secondImportedId = (secondImported.chatId ?? secondImported.chat?.id)!;
+  assert.equal(
+    (await snapshots.getFold(secondImportedId))?.present.day,
+    20,
+    "an imported session keeps its checkpoint",
+  );
   assert.deepEqual((await get(second, "world")).world, asMade.world, "the new session's world");
 
   // A branch, and an export imported again, too.

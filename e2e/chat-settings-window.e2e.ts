@@ -10,7 +10,6 @@ type Box = { x: number; y: number; width: number; height: number };
 const APP_VERSION = (
   JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }
 ).version;
-const LAYOUT_STORAGE_KEY = "marinara-floating-windows";
 const MARGIN = 8;
 
 async function createChat(request: APIRequestContext, mode: ChatMode, metadata: Record<string, unknown> = {}) {
@@ -58,6 +57,15 @@ async function prepare(page: Page, chatId: string | null, ui: Record<string, unk
     },
     { chatId, version: APP_VERSION },
   );
+}
+
+/** The window layout the chat saved (#7034 step 4: layouts belong to the chat). */
+async function readSavedLayout(request: APIRequestContext, chatId: string) {
+  const chat = (await (await request.get(`/api/chats/${chatId}`)).json()) as { metadata: unknown };
+  const metadata = (typeof chat.metadata === "string" ? JSON.parse(chat.metadata) : chat.metadata) as {
+    windowLayout?: { windows?: Record<string, { x: number; y: number; width: number; height: number }> } | null;
+  };
+  return metadata.windowLayout ?? null;
 }
 
 async function setActiveChat(page: Page, chatId: string | null) {
@@ -246,7 +254,10 @@ test.describe("Chat Settings window on desktop", () => {
         "keyboard resize",
       );
 
-      // The layout is remembered.
+      // The layout is remembered with the chat.
+      await expect
+        .poll(async () => (await readSavedLayout(request, chat.id))?.windows?.["chat-settings"]?.width)
+        .toBeCloseTo(keyResized.width, 0);
       await page.reload();
       await expect(page.locator('[data-chat-mode="roleplay"]')).toBeVisible();
       await openSettingsWindow(page);
@@ -328,7 +339,7 @@ test.describe("Chat Settings window on desktop", () => {
       await expect(settings).toHaveAttribute("data-pinned", "false");
       await expect(settings).toHaveAttribute("data-locked", "false");
       expectSameBox(await box(settings), defaultBox, "reset view");
-      await expect.poll(() => page.evaluate((key) => localStorage.getItem(key), LAYOUT_STORAGE_KEY)).toBeNull();
+      await expect.poll(() => readSavedLayout(request, chat.id)).toBeNull();
     } finally {
       await request.delete(`/api/chats/${chat.id}?force=true`);
     }
@@ -364,6 +375,11 @@ test.describe("Chat Settings window on desktop", () => {
       await expect.poll(async () => (await box(settings)).height).toBeGreaterThan(beforeShrink.height - 2);
       expectSameBox(await box(settings), beforeShrink, "back in place after pinning while squeezed");
       await pin.click();
+      await expect
+        .poll(async () => (await readSavedLayout(request, chat.id))?.windows?.["chat-settings"])
+        .toMatchObject({
+          pinned: false,
+        });
 
       const badLayouts = [
         "{not json",
@@ -380,7 +396,8 @@ test.describe("Chat Settings window on desktop", () => {
         }),
       ];
       for (const raw of badLayouts) {
-        await page.evaluate(([key, value]) => localStorage.setItem(key, value), [LAYOUT_STORAGE_KEY, raw] as const);
+        const windowLayout = raw.startsWith("{not") ? raw : JSON.parse(raw);
+        expect((await request.patch(`/api/chats/${chat.id}/metadata`, { data: { windowLayout } })).ok()).toBeTruthy();
         await page.reload();
         await expect(page.locator('[data-chat-mode="conversation"]')).toBeVisible();
         await openSettingsWindow(page);

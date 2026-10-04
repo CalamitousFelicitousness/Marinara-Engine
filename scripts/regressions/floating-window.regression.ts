@@ -1,4 +1,5 @@
 // #7036: shared floating windows keep a valid, on-screen layout and a stable theming contract.
+// #7034 step 4: drawers pop out into windows, and each chat saves its own layout.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -6,13 +7,21 @@ import { fileURLToPath } from "node:url";
 import {
   FLOATING_WINDOW_LAYOUT_VERSION,
   clampWindowGeometry,
+  getDrawerWindowId,
+  isEmptyWindowLayoutSnapshot,
+  isHostDrawerWindowId,
   moveWindowGeometry,
   parseWindowLayoutSnapshot,
+  placeDetachedDrawer,
   resizeWindowGeometry,
+  serializeWindowLayoutSnapshot,
   toWindowLayoutSnapshot,
 } from "../../packages/client/src/lib/floating-window-layout.js";
 import {
   CHAT_SETTINGS_WINDOW_ID,
+  TRACKER_WINDOW_ID,
+  selectHasDetachedDrawers,
+  selectWindowLayoutSnapshot,
   takeFloatingWindowFocusRequest,
   useFloatingWindowStore,
 } from "../../packages/client/src/stores/floating-window.store.js";
@@ -98,6 +107,81 @@ assert.deepEqual(parseWindowLayoutSnapshot(JSON.parse(JSON.stringify(toWindowLay
   windows: { good: valid },
 });
 
+// ── Popped-out drawers: ids per host, and a saved list that never trusts bad entries ──
+const settingsDrawer = getDrawerWindowId(CHAT_SETTINGS_WINDOW_ID, "chat-name");
+const trackerDrawer = getDrawerWindowId(TRACKER_WINDOW_ID, "agent-activity");
+assert.equal(settingsDrawer, "drawer:chat-settings:chat-name");
+assert.notEqual(
+  getDrawerWindowId(CHAT_SETTINGS_WINDOW_ID, "agent-activity"),
+  trackerDrawer,
+  "hosts may share drawer ids",
+);
+assert.equal(isHostDrawerWindowId(settingsDrawer, CHAT_SETTINGS_WINDOW_ID), true);
+assert.equal(isHostDrawerWindowId(trackerDrawer, CHAT_SETTINGS_WINDOW_ID), false);
+assert.equal(isHostDrawerWindowId(CHAT_SETTINGS_WINDOW_ID, CHAT_SETTINGS_WINDOW_ID), false);
+const withDrawers = {
+  version: FLOATING_WINDOW_LAYOUT_VERSION,
+  windows: { [settingsDrawer]: valid, [trackerDrawer]: valid, [CHAT_SETTINGS_WINDOW_ID]: valid },
+  detached: [
+    settingsDrawer,
+    settingsDrawer,
+    trackerDrawer,
+    CHAT_SETTINGS_WINDOW_ID,
+    getDrawerWindowId(CHAT_SETTINGS_WINDOW_ID, "no-layout"),
+    42,
+    null,
+  ],
+};
+assert.deepEqual(
+  parseWindowLayoutSnapshot(withDrawers).detached,
+  [settingsDrawer, trackerDrawer],
+  "only drawer windows with a saved place stay popped out, once each",
+);
+assert.equal(parseWindowLayoutSnapshot({ ...withDrawers, detached: "all" }).detached, undefined);
+assert.equal(
+  parseWindowLayoutSnapshot({ version: FLOATING_WINDOW_LAYOUT_VERSION, windows: { good: valid } }).detached,
+  undefined,
+  "a layout saved before pop-out existed loads with every drawer in place",
+);
+assert.deepEqual(
+  parseWindowLayoutSnapshot(
+    JSON.parse(JSON.stringify(toWindowLayoutSnapshot({ [settingsDrawer]: valid }, [settingsDrawer]))),
+  ),
+  { version: FLOATING_WINDOW_LAYOUT_VERSION, windows: { [settingsDrawer]: valid }, detached: [settingsDrawer] },
+);
+assert.equal(isEmptyWindowLayoutSnapshot(parseWindowLayoutSnapshot(null)), true);
+assert.equal(isEmptyWindowLayoutSnapshot(parseWindowLayoutSnapshot(withDrawers)), false);
+assert.equal(
+  serializeWindowLayoutSnapshot({
+    version: FLOATING_WINDOW_LAYOUT_VERSION,
+    windows: { good: { locked: false, pinned: true, height: 300, width: 400, y: 20, x: 10 } },
+  }),
+  serializeWindowLayoutSnapshot(toWindowLayoutSnapshot({ good: valid })),
+  "the same layout compares equal whatever order its fields were saved in",
+);
+assert.equal(serializeWindowLayoutSnapshot("{broken"), serializeWindowLayoutSnapshot(null));
+
+// A drawer popped out with its button opens beside its host, level with where it was.
+const host = { x: 900, y: 80, width: 520, height: 700 };
+const source = { x: 916, y: 300, width: 488, height: 200 };
+const size = { width: 400, height: 320 };
+assert.deepEqual(placeDetachedDrawer(source, host, size, bounds, limits), { x: 488, y: 300, ...size }, "left first");
+assert.deepEqual(
+  placeDetachedDrawer({ ...source, x: 24 }, { ...host, x: 8 }, size, bounds, limits),
+  { x: 540, y: 300, ...size },
+  "right when the left is full",
+);
+assert.deepEqual(
+  placeDetachedDrawer(source, { ...host, x: 300, width: 900 }, size, bounds, limits),
+  { x: 940, y: 300, ...size },
+  "over the host, a little offset, when neither side has room",
+);
+assert.deepEqual(
+  placeDetachedDrawer({ ...source, y: 800 }, host, size, bounds, limits),
+  { x: 488, y: 572, ...size },
+  "kept on screen",
+);
+
 // ── Store: open state, hosts, pinning and Reset View ──
 const store = useFloatingWindowStore;
 const id = CHAT_SETTINGS_WINDOW_ID;
@@ -130,14 +214,53 @@ release();
 await flushMicrotasks();
 assert.equal(store.getState().open[id], true, "a pinned window waits for a host to come back");
 
+// Popping a drawer out opens its window in front, with focus; putting it back forgets the window.
+store.getState().detachDrawer(settingsDrawer, valid);
+assert.equal(store.getState().detached[settingsDrawer], true);
+assert.equal(store.getState().open[settingsDrawer], true);
+assert.equal(store.getState().stack.at(-1), settingsDrawer);
+assert.equal(takeFloatingWindowFocusRequest(settingsDrawer), true);
+assert.equal(selectHasDetachedDrawers(store.getState(), CHAT_SETTINGS_WINDOW_ID), true);
+assert.equal(selectHasDetachedDrawers(store.getState(), TRACKER_WINDOW_ID), false);
+store.getState().detachDrawer(trackerDrawer, valid, { focus: false });
+assert.equal(
+  takeFloatingWindowFocusRequest(trackerDrawer),
+  false,
+  "a drawer restored with its chat leaves focus alone",
+);
+assert.deepEqual(selectWindowLayoutSnapshot(store.getState()).detached, [settingsDrawer, trackerDrawer]);
+store.getState().dockDrawer(trackerDrawer);
+assert.equal(store.getState().detached[trackerDrawer], undefined);
+assert.equal(store.getState().layouts[trackerDrawer], undefined);
+assert.equal(store.getState().open[trackerDrawer], undefined);
+assert.equal(selectHasDetachedDrawers(store.getState(), TRACKER_WINDOW_ID), false);
+
 const revision = store.getState().resetRevision;
 store.getState().resetView();
 assert.deepEqual(store.getState().layouts, {});
+assert.deepEqual(store.getState().detached, {}, "Reset View puts every drawer back");
 assert.equal(store.getState().resetRevision, revision + 1);
+assert.equal(isEmptyWindowLayoutSnapshot(selectWindowLayoutSnapshot(store.getState())), true);
+
+// A chat's saved layout replaces the previous one; bad data loads as the defaults.
+store.getState().hydrate(withDrawers);
+assert.deepEqual(Object.keys(store.getState().detached), [settingsDrawer, trackerDrawer]);
+assert.equal(
+  serializeWindowLayoutSnapshot(selectWindowLayoutSnapshot(store.getState())),
+  serializeWindowLayoutSnapshot(withDrawers),
+  "what a chat loads is what it saves back",
+);
 store
   .getState()
   .hydrate({ version: FLOATING_WINDOW_LAYOUT_VERSION, windows: { [id]: valid, bad: { ...valid, x: "?" } } } as never);
 assert.deepEqual(store.getState().layouts, { [id]: valid });
+assert.deepEqual(store.getState().detached, {}, "the next chat's drawers start in place");
+for (const bad of [undefined, null, "{broken", 7, [], { version: 99, windows: { [id]: valid } }]) {
+  store.getState().hydrate(bad);
+  assert.deepEqual(store.getState().layouts, {});
+  assert.deepEqual(store.getState().detached, {});
+}
+store.getState().hydrate({ version: FLOATING_WINDOW_LAYOUT_VERSION, windows: { [id]: valid } });
 
 // Other panels dismiss an unpinned window only; its own close button forces it shut.
 store.getState().openWindow(id);
@@ -183,9 +306,24 @@ assert.match(
 );
 assert.match(
   globals,
-  /@layer components \{\s*\.mari-window \{[\s\S]*?\.mari-drawer__body \{[^}]*\}\s*\}/u,
+  /@layer components \{\s*\.mari-window \{[\s\S]*?\.mari-drawer__body \{[^}]*\}[^@]*?\.mari-window\[data-drop-target="true"\] \{[^}]*\}\s*\}/u,
   "window and drawer defaults sit in the components layer, so classes passed to them win",
 );
+// Every drawer in a host gets the pop-out button in the slot between its help tip and its arrow.
+assert.match(
+  drawer,
+  /mari-drawer__help[\s\S]*?mari-drawer__actions[\s\S]*?data-drawer-control="pop-out"[\s\S]*?mari-drawer__arrow/u,
+);
+for (const host of [
+  "packages/client/src/components/chat/ChatSettingsDrawer.tsx",
+  "packages/client/src/components/chat/RoleplayTrackerWindow.tsx",
+]) {
+  assert.match(
+    read(host),
+    /<FloatingWindow\b(?:(?!>\n)[\s\S])*?\bhidden=\{[\s\S]*?\bdrawerHost=\{\{/u,
+    `${host} hosts pop-out drawers`,
+  );
+}
 
 // Chat Settings renders through the shared window and its sections through the shared drawer.
 assert.match(read("packages/client/src/components/chat/ChatSettingsDrawer.tsx"), /<FloatingWindow\b/u);

@@ -297,12 +297,14 @@ async function expectCompactFramedWidgets(page: Page, preset: "dottore" | "mari"
   });
 
   if (preset === "mari") {
-    const ornament = await page.locator("[data-chat-settings-button]").evaluate((element) => {
-      const style = getComputedStyle(element, "::after");
-      return { images: style.backgroundImage, position: style.backgroundPosition };
-    });
-    expect(ornament.images.match(/url\(/gu)).toHaveLength(1);
-    expect(ornament.position).toBe("50% 0%");
+    expect(
+      await page
+        .locator("[data-chat-settings-button]")
+        .evaluate((element) => getComputedStyle(element, "::after").backgroundImage),
+    ).toBe("none");
+    expect(await header.evaluate((element) => getComputedStyle(element, "::after").backgroundImage)).toContain(
+      "mari-primogem.svg",
+    );
   }
 }
 

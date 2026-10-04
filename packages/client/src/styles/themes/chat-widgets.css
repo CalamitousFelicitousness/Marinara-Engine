@@ -103,7 +103,7 @@
   --mari-widget-drawer-radius: 0.5rem;
   --mari-widget-frame-shadow: inset 0 0 0 3px var(--mari-widget-bg), inset 0 0 0 4px var(--mari-widget-gold);
   --mari-widget-bubble-bg: linear-gradient(150deg, oklch(0.62 0.13 12), oklch(0.4 0.13 9));
-  --mari-widget-button-crest: url("/images/chat-widgets/mari-primogem.svg");
+  --mari-widget-button-crest: none;
   --mari-widget-button-text: oklch(0.97 0.021 73);
   --mari-widget-button-shadow:
     inset 0 0 0 2px var(--mari-widget-bg), inset 0 0 0 3px var(--mari-widget-gold), 0 3px 8px rgb(0 0 0 / 0.3);

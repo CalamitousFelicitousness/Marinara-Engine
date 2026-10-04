@@ -7,19 +7,25 @@ import {
   ChevronsLeftRight,
   CircleHelp,
   Copy,
+  ExternalLink,
   Headphones,
   EyeOff,
   Flag,
   GitBranch,
   Languages,
+  Lock,
   Pencil,
   RefreshCw,
   Reply,
+  RotateCcw,
   ScrollText,
   Search,
   Shield,
   SmilePlus,
+  Star,
   Trash2,
+  Unlock,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -34,6 +40,7 @@ import {
 import { getChatHelpTargets, type ChatHelpTargetDefinition, type ChatHelpTargetId } from "../../lib/chat-help-targets";
 import { useUIStore } from "../../stores/ui.store";
 import { NEUTRAL_PANEL_SHELL } from "../ui/neutral-surface-styles";
+import { TrackerPanelIcon } from "../ui/TrackerPanelIcon";
 
 interface Rect {
   top: number;
@@ -530,6 +537,54 @@ function MessageActionLegend({ mode }: { mode: ChatMode }) {
   );
 }
 
+function SettingsActionLegend({ mode }: { mode: ChatMode }) {
+  const { t } = useTranslation();
+  const actions = [
+    { icon: <RotateCcw size="0.875rem" />, labelKey: "chat.help.settings.resetView" },
+    { icon: <Star size="0.875rem" />, labelKey: "chat.help.settings.favoriteLayout" },
+    ...(mode === "roleplay"
+      ? [{ icon: <TrackerPanelIcon size="0.875rem" />, labelKey: "chat.help.settings.trackerPanel" }]
+      : []),
+    {
+      icon: (
+        <>
+          <Lock size="0.875rem" />
+          <Unlock size="0.875rem" />
+        </>
+      ),
+      labelKey: "chat.help.settings.lock",
+    },
+    { icon: <X size="0.875rem" />, labelKey: "chat.help.settings.close" },
+    { icon: <ExternalLink size="0.875rem" />, labelKey: "chat.help.settings.popOut" },
+  ];
+  return (
+    <section
+      data-chat-help-settings-legend={mode}
+      className="border-t border-[var(--marinara-chat-chrome-panel-divider)] px-3 py-2.5"
+    >
+      <h3 className="mb-2 text-xs font-semibold text-[var(--marinara-chat-chrome-panel-title)]">
+        {t("chat.help.settings.iconsTitle")}
+      </h3>
+      <ul className="space-y-2">
+        {actions.map(({ icon, labelKey }) => (
+          <li
+            key={labelKey}
+            className="flex min-w-0 items-start gap-2 text-xs leading-4 text-[var(--marinara-chat-chrome-panel-muted)]"
+          >
+            <span
+              aria-hidden="true"
+              className="mt-0.5 flex h-4 w-8 shrink-0 items-center justify-center gap-0.5 text-[var(--marinara-chat-chrome-button-text-active)]"
+            >
+              {icon}
+            </span>
+            <span>{t(labelKey)}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function measurementsSignature(rootRect: Rect | null, surfaces: Rect[], targets: MeasuredTarget[]) {
   return JSON.stringify([
     window.innerWidth,
@@ -926,9 +981,10 @@ export function ChatHelpOverlay({
               {t(selectedTarget.titleKey)}
             </h2>
             <p className="mt-1 text-xs leading-4 text-[var(--marinara-chat-chrome-panel-muted)]">
-              {t(selectedTarget.bodyKey)}
+              {t(selectedTarget.id === "settings" ? "chat.help.settings.introduction" : selectedTarget.bodyKey)}
             </p>
           </div>
+          {selectedTarget.id === "settings" && <SettingsActionLegend mode={mode} />}
           {targetIncludesActionLegend(mode, selectedTarget.id) && <MessageActionLegend mode={mode} />}
         </div>
       )}

@@ -88,6 +88,7 @@ for (const theme of ["dark", "light"] as const) {
     try {
       await prepare(page, chat.id, {
         theme,
+        chatSettingsMoveTipDismissed: true,
         appAccentColor: "linear-gradient(90deg, #ff0000, #00ff00, #0000ff)",
         appAccentPulseMode: true,
         appAccentRgbMode: false,
@@ -140,6 +141,15 @@ for (const theme of ["dark", "light"] as const) {
       });
       const output = activity.locator("[data-agent-output]");
       await expect(output).toContainText("The harbor is calm.");
+      const panelNameColor = await output.evaluate((element) => {
+        const probe = document.createElement("span");
+        probe.style.color = "color-mix(in oklab, var(--foreground) 75%, transparent)";
+        element.appendChild(probe);
+        const color = getComputedStyle(probe).color;
+        probe.remove();
+        return color;
+      });
+      await expect(output.getByText("World State", { exact: true })).toHaveCSS("color", panelNameColor);
       expect((await typography(output)).fontSize).toBe(rowText.fontSize);
       await expect(output).toHaveCSS("padding-left", trackerInset);
       await expect(output).toHaveCSS(

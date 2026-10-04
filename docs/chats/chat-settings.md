@@ -38,7 +38,7 @@ On a phone, Chat Settings opens as a full-width panel. The panel fits above the 
 
 The title bar has a few other useful buttons:
 
-- **Help** (the **?** beside the title) shows labels explaining the chat's controls. On a phone, it closes Chat Settings first so you can see the chat. You can hide this button in **Settings → General → App Behavior → Hide chat Help button**.
+- **Help** (the **?** beside the title) shows labels explaining the chat's controls. On a phone, it closes Chat Settings first so you can see the chat. Tap the highlighted **Chat Settings** button for a guide to its icons: Reset View, favorite layout, the Roleplay Tracker Panel, lock/unlock, close and moving a section out. Scroll inside the guide to read every item. You can hide the Help button in **Settings → General → App Behavior → Hide chat Help button**.
 - **Reset View** (the circular arrow) asks for confirmation, then restores this chat's starting layout. It puts popped-out sections back and restores the default window sizes, positions, pins and locks.
 - **Favorite layout** (the star beside Reset View) saves this arrangement for new chats in the current mode. See [Choosing a layout for new chats](#choosing-a-layout-for-new-chats).
 - **Tracker Panel** (the die) turns the panel on or off in a Roleplay chat that uses agents or Advanced Memory. On a computer, the panel opens beside the chat. On a phone, a movable button opens it. This setting also changes the Tracker Panel preference in **Settings → Appearance**.

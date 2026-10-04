@@ -84,6 +84,12 @@ for (const mode of ["conversation", "roleplay", "game"] as const) {
         legacyResponse = false;
         await route.fulfill({ response, json: body });
       });
+      const migrationResponse = page.waitForResponse((response) => {
+        const req = response.request();
+        if (req.method() !== "PATCH" || !req.url().endsWith(`/api/chats/${chat.id}/metadata`)) return false;
+        const body = req.postDataJSON() as Record<string, unknown>;
+        return Object.keys(body).length === 1 && Object.hasOwn(body, "windowLayout");
+      });
       await page.goto("/");
       await expect(page.locator(`[data-chat-mode="${mode}"]`)).toBeVisible();
       const sections = ["chat-branches", "active-context", "gallery"];
@@ -97,9 +103,12 @@ for (const mode of ["conversation", "roleplay", "game"] as const) {
       await expect
         .poll(async () => ((await readChat(request, chat.id)).metadata.windowLayout as Layout)?.detached)
         .toEqual(expect.arrayContaining(ids));
-      expect((await readChat(request, chat.id)).updatedAt, "migration does not reorder the chat list").toBe(
-        chat.updatedAt,
-      );
+      // Game narration can persist its progress independently after this request.
+      // Assert the real migration response so that unrelated activity cannot race this check.
+      const migratedResponse = await migrationResponse;
+      expect(migratedResponse.ok()).toBeTruthy();
+      const migratedChat = (await migratedResponse.json()) as ChatRow;
+      expect(migratedChat.updatedAt, "migration does not reorder the chat list").toBe(chat.updatedAt);
 
       const branchesId = windowId(mode, "chat-branches");
       await bubble(page, branchesId).click();

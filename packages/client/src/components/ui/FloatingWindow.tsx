@@ -784,7 +784,7 @@ export function FloatingWindow({
         top: geometry.y,
         width: geometry.width,
         height: geometry.height,
-        zIndex: FLOATING_WINDOW_Z_BASE + Math.max(0, stackIndex),
+        zIndex: FLOATING_WINDOW_Z_BASE + 1 + Math.max(0, stackIndex),
       };
 
   return (

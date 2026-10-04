@@ -280,10 +280,15 @@ test.describe("phone bubbles", () => {
       // this test always covers that path, rather than consuming the drag guard.
       await target.evaluate((element) => {
         const omitReleaseClick = (event: Event) => event.stopImmediatePropagation();
+        element.setAttribute("data-test-release-click-blocker", "true");
         element.addEventListener("click", omitReleaseClick, true);
         element.addEventListener(
           "pointerup",
-          () => window.setTimeout(() => element.removeEventListener("click", omitReleaseClick, true), 0),
+          () =>
+            window.setTimeout(() => {
+              element.removeEventListener("click", omitReleaseClick, true);
+              element.removeAttribute("data-test-release-click-blocker");
+            }, 0),
           { once: true },
         );
       });
@@ -295,6 +300,7 @@ test.describe("phone bubbles", () => {
       expect(moved.x).toBeLessThan(start.x - 100);
       expect(moved.y).toBeGreaterThan(start.y + 150);
       await expectComposerClearAndNoSideScroll(page);
+      await expect(target).not.toHaveAttribute("data-test-release-click-blocker", "true");
       // The first deliberate tap after the drag must open, without a second tap.
       const nextX = moved.x + moved.width / 2;
       const nextY = moved.y + moved.height / 2;

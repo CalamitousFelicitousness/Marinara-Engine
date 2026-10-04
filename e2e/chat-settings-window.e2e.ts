@@ -1097,6 +1097,27 @@ test("phones open Chat Settings from its button as a sheet with Help and the Tra
     await expect(sheet).toHaveCount(0);
     await expect(page.locator('[data-chat-help-overlay="roleplay"]')).toBeVisible();
     await expect(page.locator('[data-chat-help-highlight="settings"]')).toBeVisible();
+    await page.locator('[data-chat-help-highlight="settings"]').click();
+    const detail = page.locator('[data-chat-help-mobile-detail="settings"]');
+    await expect(detail.getByRole("heading", { name: "Chat Settings", exact: true })).toBeVisible();
+    await expect(detail).toContainText("Chat Settings contains all the settings for this chat.");
+    const icons = detail.locator('[data-chat-help-settings-legend="roleplay"]');
+    await expect(icons.getByRole("listitem")).toContainText([
+      "Reset View:",
+      "Favorite layout:",
+      "Tracker Panel:",
+      "Lock or unlock:",
+      "Close window:",
+      "Move a section out:",
+    ]);
+    await expect(icons).toContainText("A profile with its own layout takes priority.");
+    await icons.getByRole("listitem").last().scrollIntoViewIfNeeded();
+    await expect(icons.getByRole("listitem").last()).toBeInViewport({ ratio: 1 });
+    const detailBox = await box(detail);
+    expect(detailBox.x).toBeGreaterThanOrEqual(0);
+    expect(detailBox.x + detailBox.width).toBeLessThanOrEqual(viewport.width);
+    expect(detailBox.y + detailBox.height).toBeLessThanOrEqual(viewport.height);
+    await page.screenshot({ path: testInfo.outputPath("mobile-settings-help-icons.png"), animations: "disabled" });
   } finally {
     await request.delete(`/api/chats/${chat.id}?force=true`);
   }

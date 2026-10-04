@@ -183,7 +183,7 @@ export function RoleplayHUDActionsMenu({
         <X size="0.625rem" />
       </button>
       <div className="pr-4">
-        <span className="font-semibold text-foreground/75">{bubble.agentName}</span>
+        <span className="font-semibold text-[var(--foreground)]/75">{bubble.agentName}</span>
         {bubble.agentId === "continuity" ? (
           <ContinuityIssueChecklist content={bubble.content} compact />
         ) : (
@@ -483,7 +483,7 @@ function CustomAgentRunsSection({
   const heading = (
     <>
       <span className="flex items-center gap-1 text-[0.625rem] text-[var(--muted-foreground)]">
-        <Code2 size="0.6875rem" className="text-foreground/55" />
+        <Code2 size="0.6875rem" className="text-[var(--foreground)]/55" />
         {title}
       </span>
       <span className="ml-auto text-[0.5625rem] text-[var(--muted-foreground)]/70">{countLabel}</span>
@@ -694,7 +694,7 @@ function CustomAgentRunContent({ run, trackerPanel }: { run: AgentRunRow; tracke
       )}
     >
       <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-        <span className="font-semibold text-foreground/75">{run.agentName}</span>
+        <span className="font-semibold text-[var(--foreground)]/75">{run.agentName}</span>
         <span className="rounded bg-[var(--secondary)]/55 px-1 py-0.5 text-[0.5rem] uppercase tracking-wide text-[var(--muted-foreground)]">
           {run.resultType.replace(/_/g, " ")}
         </span>
@@ -831,7 +831,7 @@ function AgentRunField({
               type="button"
               onClick={save}
               disabled={pending}
-              className="inline-flex min-h-7 items-center gap-1 rounded-md border border-foreground/15 bg-foreground/10 px-2 py-1 text-[0.5625rem] font-medium text-foreground/70 transition-colors hover:bg-foreground/15 hover:text-foreground/85 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--ring)] disabled:opacity-50"
+              className="inline-flex min-h-7 items-center gap-1 rounded-md border border-[var(--foreground)]/15 bg-[var(--foreground)]/10 px-2 py-1 text-[0.5625rem] font-medium text-[var(--foreground)]/70 transition-colors hover:bg-[var(--foreground)]/15 hover:text-[var(--foreground)]/85 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--ring)] disabled:opacity-50"
             >
               <Check size="0.625rem" />
               {pending ? localizeUi("ui.noodle.stageprofileform.saving") : localizeUi("ui.noodle.noodlehome.save")}

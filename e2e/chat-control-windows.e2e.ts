@@ -431,12 +431,16 @@ test("Game controls dock as usable Settings sections, persist and pop out again"
       const drawerHeader = await box(volumeSection.locator(".mari-drawer__header"));
       await page.mouse.move(drawerHeader.x + 60, drawerHeader.y + drawerHeader.height / 2);
       await page.mouse.down();
-      await page.mouse.move(target.x + target.width + 80, target.y + 100, { steps: 12 });
+      await page.mouse.move(target.x - 80, drawerHeader.y + drawerHeader.height / 2, { steps: 12 });
       await page.mouse.up();
       await expect(volume).toBeVisible();
       await expect(volumeSection).toHaveCount(0);
     }
     await expect.poll(async () => (await savedWindowLayout(request, gameId))?.windows[VOLUME]?.docked).toBe(false);
+    if (!desktop) {
+      await volume.locator('[data-window-control="close"]').click();
+      await expect(volume).toBeHidden();
+    }
     await openChatSettings(page);
     await resetChatView(page);
     await settings.locator('[data-window-control="close"]').click();

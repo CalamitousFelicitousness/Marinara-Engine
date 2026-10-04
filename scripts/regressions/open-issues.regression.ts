@@ -5991,7 +5991,7 @@ assert.equal(
   "The dedicated Roleplay Inventory Tracker widget must suppress mount animations with reduced ambient effects",
 );
 assert.match(
-  roleplayHudSource,
+  readFileSync(new URL("../../packages/client/src/hooks/use-agent-activity.ts", import.meta.url), "utf8"),
   /latestAssistantMessage[\s\S]{0,240}extra: \{ cyoaChoices: \[\] \}/u,
   "clearing Roleplay tracker state must also clear the persisted active CYOA prompt",
 );

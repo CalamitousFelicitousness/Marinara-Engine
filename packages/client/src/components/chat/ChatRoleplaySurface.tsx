@@ -125,6 +125,10 @@ import {
 
 type ChatData = ComponentProps<typeof ChatCommonOverlays>["chat"];
 
+const RoleplayTrackerWindow = lazy(async () => {
+  const module = await import("./RoleplayTrackerWindow");
+  return { default: module.RoleplayTrackerWindow };
+});
 const RoleplayHUD = lazy(async () => {
   const module = await import("./RoleplayHUD");
   return { default: module.RoleplayHUD };
@@ -2958,6 +2962,21 @@ export function ChatRoleplaySurface({
           <EchoChamberPanel hiddenOnMobile={hideEchoChamberOnMobile} />
         </Suspense>
       </div>
+
+      {/* Outside the isolated chat area, so it stacks with Chat Settings and the other chat windows. */}
+      {chat && chatMeta.enableAgents && (
+        <Suspense fallback={null}>
+          <RoleplayTrackerWindow
+            chatId={chat.id}
+            enabledAgentTypes={enabledAgentTypes}
+            isStreaming={isStreaming}
+            manualTrackers={manualTrackersActive}
+            onRerunTrackers={onRerunTrackers}
+            onRerunSingleTracker={onRerunSingleTracker}
+            messages={messages}
+          />
+        </Suspense>
+      )}
 
       <ChatCommonOverlays
         chat={chat}

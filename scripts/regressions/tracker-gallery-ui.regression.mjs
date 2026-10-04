@@ -14,6 +14,7 @@ const trackerSectionControls = readSource(
 );
 const trackerSectionList = readSource("packages/client/src/features/tracker-panel/components/TrackerSectionList.tsx");
 const roleplayHud = readSource("packages/client/src/components/chat/RoleplayHUD.tsx");
+const trackerWindow = readSource("packages/client/src/components/chat/RoleplayTrackerWindow.tsx");
 const chatToolbarControls = readSource("packages/client/src/components/chat/ChatToolbarControls.tsx");
 const roleplayPanels = readSource("packages/client/src/components/chat/RoleplayHUDPanels.tsx");
 const appShell = readSource("packages/client/src/components/layout/AppShell.tsx");
@@ -122,8 +123,13 @@ assert.match(
 );
 assert.match(
   roleplayHud,
-  /function InventoryTrackerWidget[\s\S]*?className=\{WIDGET\}[\s\S]*?total > 0 \?[\s\S]*?<Backpack/u,
-  "the Inventory launcher must reuse the shared toolbar treatment and only show its backpack while empty",
+  /function InventoryTrackerMiniature[\s\S]*?total > 0 \?[\s\S]*?<Backpack/u,
+  "the Inventory miniature must only show its backpack while empty",
+);
+assert.match(
+  trackerWindow,
+  /<span className=\{TRACKER_MINIATURE_TILE\}>\s*<InventoryTrackerMiniature/u,
+  "the Inventory miniature must sit in the shared toolbar tile in the Tracker window",
 );
 assert.match(
   roleplayPanels,

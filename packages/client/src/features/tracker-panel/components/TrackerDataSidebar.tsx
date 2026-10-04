@@ -25,6 +25,7 @@ import { TrackerSectionList } from "./TrackerSectionList";
 import { TrackerSkeleton } from "./TrackerSkeleton";
 import { TrackerSidebarHeader } from "./TrackerSidebarHeader";
 import { TrackerLockProvider } from "./TrackerLockContext";
+import { TrackerAgentActivitySection } from "./TrackerAgentActivitySection";
 import { Translation, useTranslation as useUiTranslation } from "react-i18next";
 import {
   partitionTrackerCapabilityPackages,
@@ -328,6 +329,8 @@ export function TrackerDataSidebar({
           ) : !hasFixedTrackerPanel ? (
             <EmptySection>{localizeUi("ui.trackerPanel.trackerdatasidebar.noEnabledTrackerPanels")}</EmptySection>
           ) : null}
+
+          {activeChatId ? <TrackerAgentActivitySection chatId={activeChatId} /> : null}
         </div>
       </TrackerLockProvider>
     </section>

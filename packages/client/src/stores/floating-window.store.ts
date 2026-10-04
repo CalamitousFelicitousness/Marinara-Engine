@@ -16,6 +16,7 @@ import {
 } from "../lib/floating-window-layout";
 
 export const CHAT_SETTINGS_WINDOW_ID = "chat-settings";
+export const TRACKER_WINDOW_ID = "trackers";
 /** Above the chat HUD (z-40/50), below menus (9000+), modals (10000) and the Help overlay (10050). */
 export const FLOATING_WINDOW_Z_BASE = 70;
 
@@ -29,7 +30,8 @@ interface FloatingWindowState {
   stack: FloatingWindowId[];
   /** Bumped by Reset View so open windows recompute their default layout. */
   resetRevision: number;
-  openWindow: (id: FloatingWindowId, opener?: HTMLElement | null) => void;
+  /** `focus: false` shows a window without moving focus into it (one the app opens by itself). */
+  openWindow: (id: FloatingWindowId, opener?: HTMLElement | null, options?: { focus?: boolean }) => void;
   closeWindow: (id: FloatingWindowId) => void;
   /** Closes a window unless it is pinned (`force` closes it anyway). Returns whether it closed. */
   dismissWindow: (id: FloatingWindowId, options?: { force?: boolean }) => boolean;
@@ -80,9 +82,9 @@ export const useFloatingWindowStore = create<FloatingWindowState>()((set, get) =
   hosts: {},
   stack: [],
   resetRevision: 0,
-  openWindow: (id, opener) => {
+  openWindow: (id, opener, options) => {
     if (opener) openers.set(id, opener);
-    if (!get().open[id]) focusRequests.add(id);
+    if (!get().open[id] && options?.focus !== false) focusRequests.add(id);
     set((state) => ({
       open: state.open[id] ? state.open : { ...state.open, [id]: true },
       stack: [...state.stack.filter((entry) => entry !== id), id],

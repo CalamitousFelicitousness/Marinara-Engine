@@ -983,7 +983,6 @@ function spendBudget(ctx: RulesetCombatContext, combatant: RulesetCombatant, bud
   }
 }
 
-/** An attack made, which a condition's cap on attacks a turn counts (combat C6d). */
 /** An attack made on the attacker's own turn, which is the only place a cap on attacks a turn (as
  *  Slow's "during its turn") counts it. A reaction on somebody else's turn is not counted. */
 function countAttack(ctx: RulesetCombatContext, combatant: RulesetCombatant): void {

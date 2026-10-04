@@ -1053,7 +1053,7 @@ assert.doesNotMatch(groupHistory, /<\/?script/i, "nested markup must not reassem
     assert.equal(provider.options.at(-1)?.tools, undefined);
     assert.ok(!last.some((message) => message.role === "tool" || message.tool_calls?.length));
     assert.equal(
-      (String(last.at(-1)?.content).match(/look_up: \{"found":"nothing"\}/g) ?? []).length,
+      (String(last.at(-1)?.content).match(/look_up\(\{"round":\d+\}\): \{"found":"nothing"\}/g) ?? []).length,
       16,
       "every round retold",
     );

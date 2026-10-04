@@ -56,12 +56,23 @@ export interface ToolExecutionResult {
  * message, and the last of them says the tools are done (`done`: narration by default, or what the
  * caller needs instead, such as an agent's formatted answer).
  */
+/** The most of a call's arguments `toolRoundsAsText` repeats. */
+const TOLD_ARGUMENTS_MAX = 300;
+
 export function toolRoundsAsText(
   messages: readonly ChatMessage[],
   done = "No more tool calls this turn: continue your reply from where it stopped and narrate with these results, without repeating what you already wrote.",
 ): ChatMessage[] {
   const told: ChatMessage[] = [];
-  const names = new Map<string, string>();
+  // Each call as it was asked for, so a result that is only a receipt ({"ok":true}) still says what it
+  // was for. Long arguments (a whole lorebook entry) are cut: the call needs naming, not repeating.
+  const calls = new Map<string, string>();
+  const asked = (name: string, args: unknown) => {
+    // A provider may hand a call no arguments at all.
+    const trimmed = typeof args === "string" ? args.trim() : "";
+    if (!trimmed || trimmed === "{}") return name;
+    return `${name}(${trimmed.length > TOLD_ARGUMENTS_MAX ? `${trimmed.slice(0, TOLD_ARGUMENTS_MAX)}…` : trimmed})`;
+  };
   let results: string[] = [];
   const tell = () => {
     if (!results.length) return;
@@ -73,12 +84,12 @@ export function toolRoundsAsText(
   };
   for (const message of messages) {
     if (message.role === "tool") {
-      const name = message.tool_call_id ? names.get(message.tool_call_id) : undefined;
-      results.push(`${name ?? "tool"}: ${message.content}`);
+      const call = message.tool_call_id ? calls.get(message.tool_call_id) : undefined;
+      results.push(`${call ?? "tool"}: ${message.content}`);
       continue;
     }
     if (message.role === "assistant" && message.tool_calls?.length) {
-      for (const call of message.tool_calls) names.set(call.id, call.function.name);
+      for (const call of message.tool_calls) calls.set(call.id, asked(call.function.name, call.function.arguments));
       const { tool_calls: _calls, providerMetadata: _parts, ...prose } = message;
       // A round with no prose leaves nothing between its results and the next round's: one message.
       if (!prose.content.trim()) continue;

@@ -261,6 +261,7 @@ import {
   readWorldSnapshot,
   gameWorldFromSnapshot,
   type WorldSnapshot,
+  type WorldKit,
   lastGamePlace,
   carryWorldLedger,
   worldLedgerCarry,
@@ -6044,6 +6045,93 @@ function editIssues(game: Omit<GameWorld, "world" | "edits">, edits: unknown): s
   return worldTownEditIssues({ ...game, world: compileGameWorld(game) }, parsed.data);
 }
 
+/** A new world as sent with a game's setup, or added to an older game (worldgen W12), checked: made in its
+ *  kit's words by this Engine's generator, or another generator's world with its snapshot (W11), its hand
+ *  edits fitting it, and its story (W10) fitting the world. `worldKit` is the snapshot's when one is kept. */
+function readNewGameWorld(input: {
+  worldKit?: WorldKit;
+  world?: GameWorldInputRead;
+  worldSnapshot?: unknown;
+  story?: unknown;
+}):
+  | {
+      ok: true;
+      worldKit?: WorldKit;
+      gameWorld: GameWorldInputRead | null;
+      snapshot: WorldSnapshot | null;
+      story: StoryScript | null;
+    }
+  | { ok: false; error: string; code: "world_invalid" | "story_invalid" } {
+  const requestedWorld = input.world;
+  let worldKit = input.worldKit;
+  let gameWorld: GameWorldInputRead | null = null;
+  // A world another generator made comes with its snapshot (W11) and is played as it was made: its kit,
+  // recipe and edits are the snapshot's.
+  let snapshot: WorldSnapshot | null = null;
+  if (requestedWorld && requestedWorld.generatorVersion !== WORLD_GENERATOR_VERSION) {
+    const read = input.worldSnapshot != null ? readWorldSnapshot(input.worldSnapshot) : null;
+    if (read && !read.ok) {
+      return { ok: false, error: `The world's snapshot does not read: ${read.issues[0]}`, code: "world_invalid" };
+    }
+    if (read?.ok) {
+      snapshot = read.snapshot;
+      worldKit = snapshot.kit;
+      gameWorld = {
+        seed: snapshot.seed,
+        generatorVersion: snapshot.generatorVersion,
+        grounding: snapshot.grounding,
+        brief: snapshot.brief,
+        ...(snapshot.edits ? { edits: snapshot.edits } : {}),
+      };
+    }
+  }
+  if (requestedWorld && !snapshot) {
+    const checked = worldKit ? checkWorldBrief(worldKit, requestedWorld.brief) : null;
+    if (!worldKit || !checked?.ok || requestedWorld.generatorVersion !== WORLD_GENERATOR_VERSION) {
+      return {
+        ok: false,
+        error: !worldKit
+          ? "A world needs a setting kit."
+          : requestedWorld.generatorVersion !== WORLD_GENERATOR_VERSION
+            ? "This world was made by another version of the generator."
+            : `The world's brief does not hold together: ${checked && !checked.ok ? checked.issues[0] : ""}`,
+        code: "world_invalid",
+      };
+    }
+    // Hand edits (worldgen W9c) sent with a world are held to what a saved edit layer is.
+    const unfit = requestedWorld.edits
+      ? editIssues(
+          { kit: worldKit, seed: requestedWorld.seed, grounding: requestedWorld.grounding, brief: checked.brief },
+          requestedWorld.edits,
+        )
+      : [];
+    if (unfit.length)
+      return { ok: false, error: `The world's hand edits do not fit it: ${unfit[0]}`, code: "world_invalid" };
+    gameWorld = { ...requestedWorld, brief: checked.brief };
+  }
+  // A story script (worldgen W10) names the world's places and people, so it is checked against it.
+  let story: StoryScript | null = null;
+  if (input.story != null) {
+    const inputs = gameWorld && worldKit ? { kit: worldKit, ...gameWorld, edits: gameWorld.edits } : null;
+    const storyWorld = snapshot
+      ? gameWorldFromSnapshot(snapshot)
+      : inputs
+        ? { ...inputs, world: compileGameWorld(inputs) }
+        : null;
+    const checked = storyWorld ? checkStoryScript(storyWorld, input.story) : null;
+    if (!checked?.ok) {
+      return {
+        ok: false,
+        error: checked ? `The world's story does not fit it: ${checked.issues[0]}` : "A story needs a world.",
+        code: "story_invalid",
+      };
+    }
+    story = checked.story;
+  }
+  return { ok: true, ...(worldKit ? { worldKit } : {}), gameWorld, snapshot, story };
+}
+type GameWorldInputRead = z.infer<typeof gameWorldSchema>;
+
 /** Why a world from an earlier generator cannot be edited or shared as a recipe (W11). */
 const OLD_GENERATOR_REFUSAL =
   "This world was made by an earlier version of the world generator. It plays on as it was made, but it can no longer be edited.";
@@ -6621,85 +6709,12 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       }
       gameRuleset = { ...createRulesetRef(registered), options: requestedOptions };
     }
-    // A world (worldgen W1) is made in its kit's words, by this Engine's generator: a world without a
-    // kit, made by another generator version, or whose brief does not read against its kit is refused
-    // rather than stored as a world nothing can read.
-    const requestedWorld = parsedCreateGameInput.setupConfig.world;
-    let gameWorld: (typeof requestedWorld & {}) | null = null;
-    // A world another generator made comes with its snapshot (W11) and is played as it was made: its kit,
-    // recipe and edits are the snapshot's.
-    let sentSnapshot: WorldSnapshot | null = null;
-    if (requestedWorld && requestedWorld.generatorVersion !== WORLD_GENERATOR_VERSION) {
-      const read =
-        parsedCreateGameInput.setupConfig.worldSnapshot != null
-          ? readWorldSnapshot(parsedCreateGameInput.setupConfig.worldSnapshot)
-          : null;
-      if (read && !read.ok) {
-        return rejectGenerationOutput(reply, 400, {
-          error: `The world's snapshot does not read: ${read.issues[0]}`,
-          code: "world_invalid",
-        });
-      }
-      if (read?.ok) {
-        sentSnapshot = read.snapshot;
-        parsedCreateGameInput.setupConfig.worldKit = sentSnapshot.kit;
-        gameWorld = {
-          seed: sentSnapshot.seed,
-          generatorVersion: sentSnapshot.generatorVersion,
-          grounding: sentSnapshot.grounding,
-          brief: sentSnapshot.brief,
-          ...(sentSnapshot.edits ? { edits: sentSnapshot.edits } : {}),
-        };
-      }
-    }
-    if (requestedWorld && !sentSnapshot) {
-      const kit = parsedCreateGameInput.setupConfig.worldKit;
-      const checked = kit ? checkWorldBrief(kit, requestedWorld.brief) : null;
-      if (!kit || !checked?.ok || requestedWorld.generatorVersion !== WORLD_GENERATOR_VERSION) {
-        return rejectGenerationOutput(reply, 400, {
-          error: !kit
-            ? "A world needs a setting kit."
-            : requestedWorld.generatorVersion !== WORLD_GENERATOR_VERSION
-              ? "This world was made by another version of the generator."
-              : `The world's brief does not hold together: ${checked && !checked.ok ? checked.issues[0] : ""}`,
-          code: "world_invalid",
-        });
-      }
-      // Hand edits (worldgen W9c) sent with a world are held to what a saved edit layer is.
-      const unfit = requestedWorld.edits
-        ? editIssues(
-            { kit, seed: requestedWorld.seed, grounding: requestedWorld.grounding, brief: checked.brief },
-            requestedWorld.edits,
-          )
-        : [];
-      if (unfit.length) {
-        return rejectGenerationOutput(reply, 400, {
-          error: `The world's hand edits do not fit it: ${unfit[0]}`,
-          code: "world_invalid",
-        });
-      }
-      gameWorld = { ...requestedWorld, brief: checked.brief };
-    }
-    // A story script (worldgen W10) names the world's places and people, so it is checked against it.
-    let gameStory: StoryScript | null = null;
-    const requestedStory = parsedCreateGameInput.setupConfig.story;
-    if (requestedStory != null) {
-      const kit = parsedCreateGameInput.setupConfig.worldKit;
-      const inputs = gameWorld && kit ? { kit, ...gameWorld, edits: gameWorld.edits } : null;
-      const storyWorld = sentSnapshot
-        ? gameWorldFromSnapshot(sentSnapshot)
-        : inputs
-          ? { ...inputs, world: compileGameWorld(inputs) }
-          : null;
-      const checked = storyWorld ? checkStoryScript(storyWorld, requestedStory) : null;
-      if (!checked?.ok) {
-        return rejectGenerationOutput(reply, 400, {
-          error: checked ? `The world's story does not fit it: ${checked.issues[0]}` : "A story needs a world.",
-          code: "story_invalid",
-        });
-      }
-      gameStory = checked.story;
-    }
+    // A world (worldgen W1) is made in its kit's words, by this Engine's generator, or kept as another
+    // generator made it (W11); with its story (W10). The same checks as a world added to an older game.
+    const newWorld = readNewGameWorld(parsedCreateGameInput.setupConfig);
+    if (!newWorld.ok) return rejectGenerationOutput(reply, 400, { error: newWorld.error, code: newWorld.code });
+    const { gameWorld, snapshot: sentSnapshot, story: gameStory } = newWorld;
+    if (newWorld.worldKit) parsedCreateGameInput.setupConfig.worldKit = newWorld.worldKit;
     // An Experience's map pack (worldgen W9e) locks the game to its kit, and to one of its worlds when
     // it ships any; a pack that does not read keeps the Experience from starting a game, with the reason.
     let mapPack: MapPack | null = null;
@@ -11304,6 +11319,55 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
     const game = chat.mode === "game" ? await loadGameWorld(app.db, chat.id, parseMeta(chat.metadata)) : null;
     if (!game) return { world: null };
+    const { frozen: _frozen, compiled: _compiled, ...shown } = game;
+    return { world: shown };
+  });
+
+  // ── POST /game/:chatId/world {worldKit, world, worldSnapshot?, story?} ── a world for a game made without
+  // one (worldgen W12), only ever when the player asks: checked as a new game's world is, kept as its
+  // snapshot, then named in the session's metadata, so later sessions take it as they take any world. It
+  // starts now: the game's past turns, map and people are left as they are.
+  app.post<{ Params: { chatId: string } }>("/:chatId/world", async (req, reply) => {
+    const body = z
+      .object({
+        worldKit: worldKitSchema,
+        world: gameWorldSchema,
+        worldSnapshot: z.unknown().optional(),
+        story: z.unknown().optional(),
+      })
+      .safeParse(req.body);
+    if (!body.success) {
+      const issue = body.error.issues[0];
+      return reply.status(400).send({ error: `The world does not read: ${issue?.path.join(".")}: ${issue?.message}` });
+    }
+    const chats = createChatsStorage(app.db);
+    const chat = await chats.getById(req.params.chatId);
+    if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    if (chat.mode !== "game") return reply.status(400).send({ error: "Only a game has a world." });
+    assertRoomGameOperation(chat);
+    const meta = parseMeta(chat.metadata);
+    if (meta.gameWorld != null) return reply.status(409).send({ error: "This game has a world already." });
+    if (meta.gameExperienceId) {
+      return reply.status(409).send({ error: "This game's Experience decides its world." });
+    }
+    const read = readNewGameWorld(body.data);
+    if (!read.ok) return reply.status(400).send({ error: read.error, code: read.code });
+    const worldKit = read.worldKit ?? body.data.worldKit;
+    // The world is kept before the metadata names it, as at a game's creation; a chat that keeps a world
+    // already is never given another over it.
+    const snapshots = createGameWorldSnapshotsStorage(app.db);
+    if (await snapshots.raw(chat.id)) return reply.status(409).send({ error: "This game has a world already." });
+    if (read.snapshot) await snapshots.put(chat.id, read.snapshot);
+    else await saveGameWorldSnapshot(app.db, chat.id, { gameWorld: read.gameWorld, gameWorldKit: worldKit });
+    const updated = await chats.patchMetadata(chat.id, (fresh) => {
+      if (fresh.gameWorld != null)
+        throw Object.assign(new Error("This game has a world already."), { statusCode: 409 });
+      return { gameWorldKit: worldKit, gameWorld: read.gameWorld, ...(read.story ? { gameStory: read.story } : {}) };
+    });
+    if (!updated) return reply.status(404).send({ error: "Chat not found" });
+    logger.info("[game/world] %s: a world was made for this game", chat.id);
+    const game = await loadGameWorld(app.db, chat.id, parseMeta(updated.metadata));
+    if (!game) return reply.status(500).send({ error: "The world could not be read back." });
     const { frozen: _frozen, compiled: _compiled, ...shown } = game;
     return { world: shown };
   });

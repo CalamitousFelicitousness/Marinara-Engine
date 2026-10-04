@@ -4,9 +4,19 @@ This guide explains how to change the whole look of Marinara Engine with a custo
 
 ## Ready-made chat window styles
 
-For a quick change without writing CSS, open **Settings > Appearance > App** and find **Chat widget style** at the bottom of **App Style**. **Dottore** gives your chat controls cyan instrument frames and cut corners. **Mari** adds rose-and-gold frames with Primogem ornaments. Each has its own font, works in light and dark mode, and styles buttons, windows and expandable sections together.
+For a quick change without writing CSS, open **Settings > Appearance > App** and find **Chat widget style** at the bottom of **App Style**. **Dottore** gives your chat controls cyan instrument frames and cut corners. **Mari** adds rose-and-gold frames with Primogems on window titles. Its buttons use the same background as its windows. Each preset has its own font, works in light and dark mode, and styles buttons, windows and expandable sections together.
 
-The **Font** and **Shape** controls let you change those details separately. **Preset font** and **Preset shape** follow the selected style. Choosing a preset resets these controls, and **Default** brings back the original look. Your window positions stay as you arranged them.
+The **Font** and **Shape** controls let you change those details separately. **Preset font** and **Preset shape** follow the selected style.
+
+Below them are three color controls. Each has a color picker for a solid color and a gradient option for blending colors:
+
+- **Border & Buttons Color** changes outlines and button icons. Icons use the first color of a gradient.
+- **Background Color** fills buttons, windows, expandable sections and editable fields.
+- **Text Color** changes widget text. Gradients appear on headings and labels; text in editable fields uses the first color.
+
+The color controls leave decorative crests in their original colors.
+
+Use **Reset color** beside a control to follow the preset's light or dark colors again. Choosing a preset resets **Font**, **Shape** and all three colors. **Default** brings back the original look. Your window positions stay as you arranged them.
 
 Custom CSS themes can still override these presets. The public window and drawer variables below take precedence over the preset colors. Use `--mari-window-font-family` for window lettering, `--mari-drawer-radius` for section corners, and `--mari-window-ornament: none` to hide the title ornament. To remove all preset decoration, choose **Default** first.
 
@@ -116,7 +126,7 @@ The classes, data attributes and variables below let a theme style these parts t
 | Title bar | `.mari-window__header` |
 | Title and its icon | `.mari-window__title-row` |
 | Title | `.mari-window__title` |
-| Title bar buttons (Reset View, favorite layout star, Tracker Panel, minimize, pin, lock, close, Put back) | `.mari-window__controls` (each button is `.mari-window__control`) |
+| Title bar buttons (Reset View, favorite layout star, Tracker Panel, pin, lock, close, Put back) | `.mari-window__controls` (each button is `.mari-window__control`) |
 | Window content | `.mari-window__body` |
 | Resize edges and corners | `.mari-window__resize-handle` |
 | The corner mark shown while the pointer or focus is in a window | `.mari-window__resize-grip` |
@@ -137,7 +147,7 @@ The classes, data attributes and variables below let a theme style these parts t
 - `data-drawer` names a drawer, for example `chat-name`. Some names start with the chat mode, such as `roleplay-agents` or `conversation-agents`. Trackers use `tracker-world`, `tracker-persona`, `tracker-characters`, `tracker-quests`, `tracker-inventory`, `tracker-custom` and `agent-activity`.
 - `data-presentation` is `"window"` on a desktop window or `"sheet"` on a phone panel.
 - `data-pinned` and `data-locked` are `"true"` while the window is pinned or locked.
-- `data-window-control` names each title bar button: `"minimize"`, `"pin"`, `"lock"`, `"close"` or `"put-back"`. A pressed pin or lock button also has `aria-pressed="true"`.
+- `data-window-control` names each title bar button: `"pin"`, `"lock"`, `"close"` or `"put-back"`. A pressed pin or lock button also has `aria-pressed="true"`.
 - `data-chat-settings-control` identifies Chat Settings' extra title bar buttons: `"reset-view"`, `"favorite-layout"` and `"tracker-panel"`. The favorite star has `aria-pressed="true"` and a filled icon when the current layout matches the saved favorite.
 - `data-edge` is `"n"`, `"s"`, `"e"`, `"w"`, `"ne"`, `"nw"`, `"se"` or `"sw"` on each resize handle.
 - An open drawer's toggle button inside `.mari-drawer__header` has `aria-expanded="true"`.

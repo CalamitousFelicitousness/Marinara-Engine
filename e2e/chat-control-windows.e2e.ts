@@ -219,7 +219,7 @@ test.describe("chat control windows on desktop", () => {
       await expect.poll(async () => (await box(volume)).y).toBeCloseTo(placed.y + placed.height + 8, 0);
       const opened = await box(volume);
       expect(opened.x + opened.width).toBeCloseTo(placed.x + placed.width, 0);
-      await volume.locator('[data-window-control="minimize"]').click();
+      await volume.locator('[data-window-control="close"]').click();
       await dragBubble(page, launcher, { x: placed.x - 200, y: placed.y + 100 });
       await launcher.click();
       await expect.poll(async () => (await box(volume)).y).toBeCloseTo(opened.y, 0);
@@ -262,7 +262,7 @@ test.describe("chat control windows on desktop", () => {
       await page.addStyleTag({ content: ":root { --mari-window-bubble-bg: rgb(255, 0, 0); }" });
       await expect(bubble(page, VOLUME)).toHaveCSS("background-color", "rgb(255, 0, 0)");
 
-      // Clicking a bubble opens its window beside it; minimize sends it back, with focus on the bubble.
+      // Clicking a bubble opens its window beside it; Close sends it back, with focus on the bubble.
       await bubble(page, VOLUME).click();
       const volume = controlWindow(page, VOLUME);
       await expect(volume).toBeVisible();
@@ -271,8 +271,8 @@ test.describe("chat control windows on desktop", () => {
       const controls = await volume
         .locator("[data-window-control]")
         .evaluateAll((elements) => elements.map((element) => element.getAttribute("data-window-control")));
-      expect(controls).toEqual(["minimize", "pin", "lock", "put-back", "close"]);
-      await volume.locator('[data-window-control="minimize"]').click();
+      expect(controls).toEqual(["pin", "lock", "put-back", "close"]);
+      await volume.locator('[data-window-control="close"]').click();
       await expect(volume).toHaveCount(0);
       await expect(bubble(page, VOLUME)).toBeFocused();
       // Enter opens it again; an unpinned window goes back to its bubble on a press elsewhere.

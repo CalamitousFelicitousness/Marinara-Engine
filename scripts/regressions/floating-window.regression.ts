@@ -687,8 +687,9 @@ assert.match(
 );
 assert.match(
   floatingWindowSource,
-  /data-window-control="minimize"[\s\S]*data-window-control="pin"[\s\S]*data-window-control="lock"[\s\S]*data-window-control="close"/u,
+  /data-window-control="pin"[\s\S]*data-window-control="lock"[\s\S]*data-window-control="close"/u,
 );
+assert.doesNotMatch(floatingWindowSource, /data-window-control="minimize"/u);
 assert.match(read("packages/client/src/styles/globals.css"), /--mari-window-bubble-bg[\s\S]*--mari-window-snap-guide/u);
 
 console.log("floating window regression passed");

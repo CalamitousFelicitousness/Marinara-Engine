@@ -143,10 +143,11 @@ try {
   assert.equal((await give(experience, { worldKit: kit, world })).statusCode, 409, "an Experience decides its world");
   // A brief whose places the kit does not have is repaired as a new game's is, never stored as written.
   const repaired = await olderGame();
-  await give(repaired, {
+  const repairedSave = await give(repaired, {
     worldKit: kit,
     world: { ...world, brief: { ...world.brief, places: [{ name: "X", layer: "nowhere" }] } },
   });
+  assert.ok([200, 400].includes(repairedSave.statusCode), repairedSave.body);
   const repairedWorld = JSON.parse((await chats.getById(repaired))!.metadata as string).gameWorld;
   assert.ok(!repairedWorld || !JSON.stringify(repairedWorld).includes('"nowhere"'), "the brief as checked");
   const unread = await olderGame();
@@ -220,6 +221,11 @@ try {
   });
   assert.equal(swapped.statusCode, 409, "another kit for a game with its own");
   assert.equal((await give(kitted, { worldKit: kit, world })).statusCode, 200, "its own kit");
+
+  // A game chat outside any session group takes a world too.
+  const loose = (await chats.create({ name: "Loose", mode: "game", characterIds: [], connectionId: connection!.id }))!;
+  await chats.patchMetadata(loose.id, { gameId: "loose-game", gameSessionStatus: "active", gameIntroPresented: true });
+  assert.equal((await give(loose.id, { worldKit: kit, world })).statusCode, 200, "a chat in no group");
 
   // Two saves at once: one world, in the snapshot and the metadata alike.
   const raced = await olderGame();

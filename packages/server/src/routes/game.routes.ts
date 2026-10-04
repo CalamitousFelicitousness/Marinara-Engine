@@ -11363,9 +11363,10 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     }
     // Only the game's latest session takes a world, and only while no session has one: the next session
     // starts from the latest, so a world given to another would be lost, and a second one could follow.
-    const gameId = readTrimmedString(meta.gameId) ?? chat.groupId ?? null;
-    if (gameId) {
-      const sessions = await chats.listByGroup(gameId);
+    // A game's sessions share the chat group its first session made.
+    const groupId = chat.groupId ?? readTrimmedString(meta.gameId);
+    const sessions = groupId ? await chats.listByGroup(groupId) : [];
+    if (sessions.some((session) => session.id === chat.id)) {
       if (sessions.some((session) => parseMeta(session.metadata).gameWorld != null)) {
         return reply.status(409).send({ error: "This game has a world already." });
       }

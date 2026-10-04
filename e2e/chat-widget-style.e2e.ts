@@ -324,9 +324,14 @@ async function exerciseColorControls(page: Page, preset: Preset, theme: "dark" |
     await resolvedStyle(page, "background-image", GRADIENT_COLORS.background),
   );
   await expect(profile).toHaveCSS("-webkit-text-fill-color", await resolvedStyle(page, "color", "#6c5ce7"));
-  await expect(profile.locator("option").first()).toHaveCSS(
+  await expect(profile.locator("option:not(:checked)").first()).toHaveCSS(
     "background-color",
     await resolvedStyle(page, "background-color", "#667eea"),
+  );
+  const selectedOption = profile.locator("option:checked");
+  await expect(selectedOption).toHaveCSS(
+    "-webkit-text-fill-color",
+    await selectedOption.evaluate((element) => getComputedStyle(element).color),
   );
   expect(
     await settings

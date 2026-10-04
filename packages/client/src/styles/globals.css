@@ -728,6 +728,8 @@
    bodyClassName…) override these defaults; custom theme CSS, which is not layered, overrides both. */
 @layer components {
   .mari-window {
+    --mari-widget-field-option-bg: var(--mari-widget-custom-background-solid);
+    --mari-widget-field-option-text: var(--mari-widget-custom-text-solid);
     border: var(--mari-window-border-width, 1px) solid
       var(
         --mari-widget-shell-border,
@@ -1856,8 +1858,8 @@
 .mari-chat-settings-popover select optgroup,
 .mari-chat-settings-drawer select option,
 .mari-chat-settings-drawer select optgroup {
-  background-color: var(--marinara-chat-chrome-panel-bg);
-  color: var(--marinara-chat-chrome-panel-text);
+  background-color: var(--mari-widget-field-option-bg, var(--marinara-chat-chrome-panel-bg));
+  color: var(--mari-widget-field-option-text, var(--marinara-chat-chrome-panel-text));
 }
 
 .mari-preset-native-select {
@@ -1872,8 +1874,14 @@
 
 .mari-preset-native-select option,
 .mari-preset-native-select optgroup {
-  background-color: var(--marinara-preset-select-option-bg, var(--marinara-chat-chrome-panel-bg)) !important;
-  color: var(--marinara-preset-select-option-text, var(--marinara-chat-chrome-panel-text)) !important;
+  background-color: var(
+    --marinara-preset-select-option-bg,
+    var(--mari-widget-field-option-bg, var(--marinara-chat-chrome-panel-bg))
+  ) !important;
+  color: var(
+    --marinara-preset-select-option-text,
+    var(--mari-widget-field-option-text, var(--marinara-chat-chrome-panel-text))
+  ) !important;
 }
 
 .mari-preset-native-select option:checked {

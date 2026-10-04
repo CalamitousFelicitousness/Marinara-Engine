@@ -471,9 +471,10 @@
     background-image: var(--mari-widget-custom-background-image);
   }
 
-  :root[data-chat-widget-colors~="background"] .mari-window option:not([data-chat-widget-preview] *),
-  [data-chat-widget-preview][data-chat-widget-colors~="background"] .mari-window option {
-    background-color: var(--mari-widget-custom-background-solid);
+  .mari-window :is(option, optgroup) {
+    background-color: var(--mari-widget-field-option-bg);
+    color: var(--mari-widget-field-option-text);
+    -webkit-text-fill-color: currentColor;
   }
 
   /* Text gradients belong on captions, never on a container: inherited

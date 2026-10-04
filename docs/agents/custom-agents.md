@@ -192,7 +192,7 @@ Tools only work if the chat itself allows them. In **Chat Settings**, open the *
 
 Imported agent files do not grant tool access. After importing an agent, inspect its prompt and settings, then select any tools you want it to use yourself.
 
-An agent gets at most 16 rounds of tool calls in one run (fewer if the server's `MAX_TOOL_ROUNDS` is lower), then gives its answer with what it has. A model that calls one tool at a time spends a round on each call, so an agent that saves many entries should save several in one call where its tools allow it.
+An agent gets at most 16 rounds of tool calls in one run (fewer if the server's `MAX_TOOL_ROUNDS` is lower), then gives its answer with what it has. A model that calls one tool at a time spends a round on each call, so an agent that saves many entries should make several calls in one response where the model supports parallel tool calls. A lorebook backfill run, which only saves entries, gets up to 64 rounds.
 
 ## Named prompt options
 

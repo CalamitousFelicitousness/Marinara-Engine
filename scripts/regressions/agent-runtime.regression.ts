@@ -1069,6 +1069,21 @@ assert.doesNotMatch(groupHistory, /<\/?script/i, "nested markup must not reassem
       executeToolCall: async () => JSON.stringify({ found: "nothing" }),
     });
     assert.equal(fewer.calls, 3);
+    // A run that asks for more rounds (a lorebook backfill) gets them, under MAX_TOOL_ROUNDS still.
+    const saver = { ...makeAgent("tool-looper"), settings: { ...makeAgent("tool-looper").settings, toolRounds: 20 } };
+    const capped = new ToolLoopingProvider();
+    await executeAgent(saver, context, capped, "agent-model", {
+      tools: [{ type: "function", function: { name: "look_up", description: "look up", parameters: {} } }],
+      executeToolCall: async () => JSON.stringify({ found: "nothing" }),
+    });
+    assert.equal(capped.calls, 3, "MAX_TOOL_ROUNDS still wins");
+    delete process.env.MAX_TOOL_ROUNDS;
+    const longer = new ToolLoopingProvider();
+    await executeAgent(saver, context, longer, "agent-model", {
+      tools: [{ type: "function", function: { name: "look_up", description: "look up", parameters: {} } }],
+      executeToolCall: async () => JSON.stringify({ found: "nothing" }),
+    });
+    assert.equal(longer.calls, 21, "twenty tool rounds, then the answer");
   } finally {
     if (previousMaxRounds === undefined) delete process.env.MAX_TOOL_ROUNDS;
     else process.env.MAX_TOOL_ROUNDS = previousMaxRounds;

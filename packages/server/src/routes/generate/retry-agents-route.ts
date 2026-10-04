@@ -202,7 +202,7 @@ import {
   filterGameInternalAgentIds,
   resolveLorebookScopeExclusions,
 } from "../../services/lorebook/game-lorebook-scope.js";
-import { isDebugAgentsEnabled } from "../../config/runtime-config.js";
+import { isDebugAgentsEnabled, LOREBOOK_BACKFILL_MAX_TOOL_ROUNDS } from "../../config/runtime-config.js";
 import {
   finalizeCapabilityAgentResults,
   prepareCapabilityAgentContexts,
@@ -4878,6 +4878,8 @@ export async function registerRetryAgentsRoute(
             agent.settings = {
               ...agent.settings,
               enabledTools: enabledTools.filter((toolName) => toolName === "save_lorebook_entry"),
+              // Every round saves an entry, so a chunk with many to save gets the rounds for them.
+              toolRounds: LOREBOOK_BACKFILL_MAX_TOOL_ROUNDS,
             };
           }
         }

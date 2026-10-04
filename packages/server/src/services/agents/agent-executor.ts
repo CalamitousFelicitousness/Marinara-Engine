@@ -1185,7 +1185,10 @@ async function executeAgentWithTools(
   // An agent works with its tools, then answers: enough rounds for one that saves an entry per call on a
   // backend that calls one tool a round, never the general limit, so a model that keeps calling tools
   // (a proxy that loses the results) costs a bounded number of calls, not a hundred.
-  const maxToolRounds = Math.min(getMaxToolRounds(), AGENT_MAX_TOOL_ROUNDS);
+  // A run that only saves (a lorebook backfill) may ask for more in its settings' `toolRounds`.
+  const asked = config.settings.toolRounds;
+  const agentRounds = typeof asked === "number" && Number.isInteger(asked) && asked > 0 ? asked : AGENT_MAX_TOOL_ROUNDS;
+  const maxToolRounds = Math.min(getMaxToolRounds(), agentRounds);
   const loopMessages = [...initialMessages];
   let totalTokens = 0;
   const debugAgentsEnabled = isDebugAgentsEnabled() && logger.isLevelEnabled("debug");
@@ -1294,6 +1297,9 @@ async function executeAgentWithTools(
     }
   }
 
+  // Said where support can see it: a run that ends here may have had more to do (a proxy that loses tool
+  // results, or more entries than rounds).
+  logger.warn(`[agents] ${config.name} used all ${maxToolRounds} tool rounds; it answers now without tools`);
   // Exhausted tool rounds: one final call without tools for the answer, its tool exchange as text
   // (a provider's plain path cannot carry tool calls or results; see toolRoundsAsText).
   const finalProviderMessages = prepareAgentProviderMessages(

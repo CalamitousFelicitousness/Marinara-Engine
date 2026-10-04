@@ -478,7 +478,11 @@ export async function importSTChat(jsonlContent: string, db: DB, opts?: ImportST
         ? gameWorldFromSnapshot(read.snapshot)
         : await saveGameWorldSnapshot(db, chat.id, importedMetadata);
       if (!game) {
-        logger.warn("Imported game chat %s has a world this Engine cannot read: %s", chat.id, read.ok ? "" : read.issues[0]);
+        logger.warn(
+          "Imported game chat %s has a world this Engine cannot read: %s",
+          chat.id,
+          read.ok ? "" : read.issues[0],
+        );
       }
       // The living world earlier sessions left, folded again from what they carried (W11).
       const carried = worldLedgerCarry(importedMetadata.gameLedgerCarry);

@@ -132,7 +132,12 @@ try {
     const column = list.columns.find((entry) => entry.id === "roll")!;
     const build = defaultRulesetSheetBuild(byColumn);
     assert.equal(rulesetListRollNotation(byColumn, build, column, { die: "d10" }), "1d10", "the row's own die");
-    assert.equal(rulesetListRollNotation(byColumn, build, column, {}), null, "no die picked yet");
+    assert.equal(
+      rulesetListRollNotation(byColumn, build, column, {}),
+      "1d6",
+      "an empty die reads as the editor shows it",
+    );
+    assert.equal(rulesetListRollNotation(byColumn, build, column, { die: "huge" }), null, "a die that does not read");
     assert.equal(
       rulesetListRollNotation(byColumn, build, list.columns[0]!, { die: "d10" }),
       null,

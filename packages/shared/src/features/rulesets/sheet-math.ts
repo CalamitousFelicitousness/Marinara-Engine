@@ -1069,7 +1069,8 @@ export function rulesetLadderTargetFor(definition: RulesetDefinition, successes:
 /**
  * What a rolled list column throws for one row (Capability API 1.80), as dice notation (`1d8`): its
  * count of dice, of the sides it names, read from the row's own column or off the sheet. Null for a
- * column that is not rolled, or sides that do not read as a die (a row whose die is not picked yet).
+ * column that is not rolled, or sides that do not read as a die. A cell left empty reads as the editor
+ * shows it.
  */
 export function rulesetListRollNotation(
   definition: RulesetDefinition,
@@ -1080,11 +1081,19 @@ export function rulesetListRollNotation(
 ): string | null {
   if (column.type !== "number" || !column.roll) return null;
   const { count, sides } = column.roll;
+  // A cell left empty reads as the editor shows it: its column's default, or an enum's first value.
+  const cell = (id: string) => {
+    if (row[id] !== undefined && row[id] !== null && row[id] !== "") return row[id];
+    const other = definition.sheet.lists
+      .find((list) => list.columns.includes(column))
+      ?.columns.find((each) => each.id === id);
+    return other?.default ?? (other?.type === "enum" ? other.values[0] : undefined);
+  };
   const read =
     typeof sides === "number"
       ? sides
       : "column" in sides
-        ? rulesetDieSides(row[sides.column])
+        ? rulesetDieSides(cell(sides.column))
         : rulesetDieSides(Math.trunc(resolveRulesetValueRef(definition, build, sides, evaluated)));
   return read === null ? null : `${count}d${read}`;
 }

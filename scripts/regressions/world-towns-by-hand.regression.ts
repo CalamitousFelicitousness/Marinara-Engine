@@ -509,6 +509,15 @@ try {
       })
     ).json();
     assert.deepEqual(libraryTown.layout, layout);
+    // A library world's rooms (worldgen W13b) open in a room editor as a game's do.
+    const home = libraryTown.town.buildings.find((building: { kind: string }) => building.kind === "home");
+    const libraryRooms = await app.inject({
+      method: "GET",
+      url: `/api/game-worlds/${kept.json().world.id}/world/interior?settlement=${ashford.id}&building=${home.id}`,
+    });
+    assert.equal(libraryRooms.statusCode, 200, libraryRooms.body);
+    assert.equal(libraryRooms.json().interior.use, "home");
+    assert.equal(libraryRooms.json().edit, null);
     assert.deepEqual([libraryTown.town.lots, libraryTown.town.buildings], [asMade.lots, asMade.buildings]);
     const libraryRefused = await app.inject({
       method: "PUT",

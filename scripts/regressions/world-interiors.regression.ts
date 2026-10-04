@@ -39,6 +39,7 @@ import {
   worldInteriorWords,
   worldTown,
   worldTownWhere,
+  worldEditsEmpty,
   type GameWorld,
   type WorldInterior,
   type WorldTown,
@@ -395,6 +396,102 @@ try {
       "told what is inside",
     );
     assert.match(said, /That time is counted already/);
+
+    // ── Rooms furnished by hand (W13b), through the world editor's routes ──
+    const editor = (building: string, place = settlement.id) =>
+      app.inject({
+        method: "GET",
+        url: `/api/game/${chatId}/world/interior?settlement=${place}&building=${encodeURIComponent(building)}`,
+      });
+    const read = await editor(tavern.id);
+    assert.equal(read.statusCode, 200, read.body);
+    const laid = read.json().interior;
+    assert.deepEqual(read.json().edit, null, "nothing furnished by hand yet");
+    assert.deepEqual(
+      { ...laid, seats: tavernRooms.seats },
+      tavernRooms,
+      "the editor's rooms are the building's as laid out (with no one placed)",
+    );
+    assert.ok(read.json().furniture.includes("bed"));
+    assert.equal((await editor("nowhere")).statusCode, 404);
+    assert.equal((await editor(tavern.id, "zz")).statusCode, 404);
+    const save = (interiors: unknown[]) =>
+      app.inject({
+        method: "PUT",
+        url: `/api/game/${chatId}/world/edits`,
+        payload: { edits: { editsVersion: 1, interiors } },
+      });
+    const floor: Array<{ x: number; y: number }> = [];
+    for (let y = 0; y < laid.height; y++)
+      for (let x = 0; x < laid.width; x++) if (laid.ground[y * laid.width + x] === ".") floor.push({ x, y });
+    const entry = { x: laid.door.x, y: laid.door.y - 1 };
+    const spot = floor.find((cell) => cell.y === 1 && (cell.x !== entry.x || cell.y !== entry.y))!;
+    const sized = { settlement: settlement.id, building: tavern.id, width: laid.width, height: laid.height };
+    // Furnished with a bed in the top row and a table beside it.
+    const furniture = [
+      { ...spot, kind: "bed" },
+      { x: spot.x + 1, y: spot.y, kind: "table" },
+    ];
+    assert.ok(
+      floor.some((cell) => cell.x === spot.x + 1 && cell.y === spot.y),
+      "(room for the table)",
+    );
+    const saved = await save([{ ...sized, furniture }]);
+    assert.equal(saved.statusCode, 200, saved.body);
+    const meta = JSON.parse((await chats.getById(chatId))!.metadata as string);
+    assert.deepEqual(meta.gameWorld.edits.interiors[0].furniture, furniture, "kept with the world's hand edits");
+    assert.ok(
+      !worldEditsEmpty({ editsVersion: 1, interiors: [{ ...sized, furniture: [] }] }),
+      "a layer of rooms is no empty layer",
+    );
+    // The game's rooms are furnished as laid out by hand; whoever works there stands on open floor.
+    const now = await rooms(tavern.id);
+    assert.deepEqual(now.json().interior.furniture, furniture);
+    for (const [id, seat] of Object.entries(now.json().interior.seats as Record<string, { x: number; y: number }>)) {
+      const on = furniture.find((piece) => piece.x === seat.x && piece.y === seat.y);
+      assert.ok(!on || on.kind === "bed", `${id} stands on open floor or lies in a bed`);
+      assert.equal(laid.ground[seat.y * laid.width + seat.x], ".", `${id} is on the floor`);
+    }
+    assert.deepEqual((await editor(tavern.id)).json().edit.furniture, furniture, "the editor reads it back");
+    // Refused, with the reason: off the floor, in the way in, two in one place, walling off a room, the
+    // wrong size, no such building, a part of town, furnished twice.
+    const refused = async (interiors: unknown[], pattern: RegExp, label: string) => {
+      const answer = await save(interiors);
+      assert.equal(answer.statusCode, 400, `${label}: ${answer.body}`);
+      assert.match(answer.json().error, pattern, label);
+    };
+    await refused([{ ...sized, furniture: [{ x: 0, y: 0, kind: "crate" }] }], /not on the floor/, "on a wall");
+    await refused([{ ...sized, furniture: [{ ...entry, kind: "crate" }] }], /stands in the way in/, "in the way in");
+    await refused(
+      [
+        {
+          ...sized,
+          furniture: [
+            { ...spot, kind: "crate" },
+            { ...spot, kind: "barrel" },
+          ],
+        },
+      ],
+      /two pieces stand/,
+      "two in one place",
+    );
+    const wall = floor
+      .filter((cell) => cell.y === entry.y - 1 && (cell.x !== entry.x || true))
+      .map((cell) => ({ ...cell, kind: "crate" }));
+    await refused([{ ...sized, furniture: wall }], /walls off/, "a row of crates across the room");
+    await refused([{ ...sized, width: laid.width + 1, furniture: [] }], /furnished for rooms/, "the wrong size");
+    await refused([{ ...sized, building: "nowhere", furniture: [] }], /No building "nowhere"/, "no such building");
+    await refused(
+      [
+        { ...sized, furniture },
+        { ...sized, furniture: [] },
+      ],
+      /furnished twice/,
+      "furnished twice",
+    );
+    // Cleared: the rooms are as laid out again.
+    assert.equal((await save([])).statusCode, 200);
+    assert.deepEqual((await rooms(tavern.id)).json().interior, tavernRooms, "back as laid out");
   } finally {
     await app.close();
     await closeDB();

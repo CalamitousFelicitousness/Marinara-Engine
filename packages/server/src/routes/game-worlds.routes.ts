@@ -38,6 +38,7 @@ import {
   worldForEditor,
   worldPeopleOf,
   worldTownForEditor,
+  worldInteriorForEditor,
 } from "../services/game/world-editor.service.js";
 import { createGameWorldsStorage, type GameWorldRow } from "../services/storage/game-worlds.storage.js";
 
@@ -222,6 +223,17 @@ export async function gameWorldsRoutes(app: FastifyInstance) {
     if (!worldMadeByThisGenerator(world.game)) return reply.status(409).send({ error: OLD_GENERATOR_REFUSAL });
     const found = worldTownForEditor(world.game, settlement);
     return found ?? reply.status(404).send({ error: "No such settlement in this world." });
+  });
+
+  app.get<{ Params: { id: string } }>("/:id/world/interior", async (req, reply) => {
+    const { settlement, building } = z
+      .object({ settlement: z.string().min(1).max(16), building: z.string().min(1).max(16) })
+      .parse(req.query);
+    const world = await worldOr404(req.params.id, reply);
+    if (!world) return;
+    if (!worldMadeByThisGenerator(world.game)) return reply.status(409).send({ error: OLD_GENERATOR_REFUSAL });
+    const found = worldInteriorForEditor(world.game, settlement, building);
+    return found ?? reply.status(404).send({ error: "No building with rooms there." });
   });
 
   app.get<{ Params: { id: string } }>("/:id/world/people", async (req, reply) => {

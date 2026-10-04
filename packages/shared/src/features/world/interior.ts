@@ -13,6 +13,7 @@
 // version on purpose. Rooms laid out by hand (W13b) are kept in the world's hand edits.
 // ──────────────────────────────────────────────
 import { worldStream } from "./compile.js";
+import type { WorldFurniture } from "./furniture.js";
 import type { GameWorld } from "./game-world.js";
 import type { WorldPerson } from "./people.js";
 import { worldTownWhere, type WorldTown, type WorldTownBuilding } from "./town.js";
@@ -36,28 +37,7 @@ export const WORLD_INTERIOR_USES = Object.freeze([
 ] as const);
 export type WorldInteriorUse = (typeof WORLD_INTERIOR_USES)[number];
 
-/** Furniture, by what it is; each setting family's tiles draw their own look of it. */
-export const WORLD_FURNITURE = Object.freeze([
-  "bed",
-  "table",
-  "chair",
-  "counter",
-  "shelf",
-  "hearth",
-  "crate",
-  "barrel",
-  "altar",
-  "bench",
-  "workbench",
-  "furnace",
-  "desk",
-  "bookshelf",
-  "rack",
-  "rug",
-  "plant",
-  "lamp",
-] as const);
-export type WorldFurniture = (typeof WORLD_FURNITURE)[number];
+export { WORLD_FURNITURE, type WorldFurniture } from "./furniture.js";
 
 export const WORLD_INTERIOR_ROOMS = Object.freeze(["main", "sleep", "back"] as const);
 export type WorldInteriorRoom = (typeof WORLD_INTERIOR_ROOMS)[number];
@@ -164,7 +144,149 @@ export function worldBuildingHasRooms(game: GameWorld, building: WorldTownBuildi
 export function worldInterior(game: GameWorld, town: WorldTown, buildingId: string): WorldInterior | null {
   const building = town.buildings.find((each) => each.id === buildingId);
   if (!building || !worldBuildingHasRooms(game, building)) return null;
-  return layOutInterior(game, town, building);
+  const laidOut = layOutInterior(game, town, building);
+  const edit = game.edits?.interiors?.find(
+    (each) => each.settlement === town.settlementId && each.building === buildingId,
+  );
+  // Furnished by hand (W13b) when the rooms are still the size they were furnished at; a hand layout
+  // that no longer fits is not applied (the editor says why).
+  return edit && interiorEditIssues(laidOut, edit).length === 0
+    ? furnishByHand(town, building, laidOut, edit)
+    : laidOut;
+}
+
+/** A building's furniture as laid out by hand (worldgen W13b). */
+export type WorldInteriorEdit = NonNullable<GameWorld["edits"]>["interiors"] extends Array<infer T> | undefined
+  ? T
+  : never;
+
+/** Whether every bit of open floor in the rooms is reached from the step inside the way out, walking
+ *  round the furniture, and every bed has open floor beside it. */
+export function worldInteriorOpen(interior: Pick<WorldInterior, "width" | "ground" | "door" | "furniture">): boolean {
+  const { width, ground } = interior;
+  const blocked = new Set(interior.furniture.map((piece) => piece.y * width + piece.x));
+  const seen = new Set<number>();
+  const queue = [(interior.door.y - 1) * width + interior.door.x];
+  if (blocked.has(queue[0]!)) return false;
+  while (queue.length) {
+    const at = queue.pop()!;
+    if (seen.has(at)) continue;
+    seen.add(at);
+    for (const next of [at + 1, at - 1, at + width, at - width]) {
+      const c = ground[next];
+      if ((c === "." || c === "d") && !blocked.has(next) && !seen.has(next)) queue.push(next);
+    }
+  }
+  for (let at = 0; at < ground.length; at++) {
+    if (ground[at] !== "." && ground[at] !== "d") continue;
+    if (!blocked.has(at) && !seen.has(at)) return false;
+  }
+  return interior.furniture.every(
+    (piece) =>
+      piece.kind !== "bed" || [1, -1, width, -width].some((step) => seen.has(piece.y * width + piece.x + step)),
+  );
+}
+
+/** Why a hand furnishing does not fit the rooms as laid out, or nothing. Places count from 1. */
+function interiorEditIssues(laidOut: WorldInterior, edit: WorldInteriorEdit): string[] {
+  if (edit.width !== laidOut.width || edit.height !== laidOut.height) {
+    return [
+      `it was furnished for rooms ${edit.width} by ${edit.height}; they are now ${laidOut.width} by ${laidOut.height}.`,
+    ];
+  }
+  const issues: string[] = [];
+  const taken = new Set<number>();
+  const entry = (laidOut.door.y - 1) * laidOut.width + laidOut.door.x;
+  for (const piece of edit.furniture) {
+    const at = piece.y * laidOut.width + piece.x;
+    const where = `column ${piece.x + 1}, row ${piece.y + 1}`;
+    if (piece.x >= laidOut.width || piece.y >= laidOut.height || laidOut.ground[at] !== ".") {
+      issues.push(`the ${piece.kind} at ${where} is not on the floor.`);
+    } else if (at === entry) {
+      issues.push(`the ${piece.kind} at ${where} stands in the way in.`);
+    } else if (taken.has(at)) {
+      issues.push(`two pieces stand at ${where}.`);
+    }
+    taken.add(at);
+  }
+  if (!issues.length && !worldInteriorOpen({ ...laidOut, furniture: edit.furniture })) {
+    issues.push("the furniture walls off part of the rooms (or a bed) from the way in.");
+  }
+  return issues;
+}
+
+/** The rooms with their furniture as laid out by hand, and where everyone who belongs there is: each who
+ *  lives there in a bed (in turn), each who works there where they stood if it is still open floor, else
+ *  the open floor nearest it. */
+function furnishByHand(
+  town: WorldTown,
+  building: WorldTownBuilding,
+  laidOut: WorldInterior,
+  edit: WorldInteriorEdit,
+): WorldInterior {
+  const { width, height } = laidOut;
+  const furniture = edit.furniture.map((piece) => ({ ...piece }));
+  const covered = new Set(furniture.map((piece) => piece.y * width + piece.x));
+  const used = new Set<number>();
+  const seats: WorldInterior["seats"] = {};
+  const residents = building.people.filter((id) => town.homeOf[id] === building.id).slice(0, MOST_PEOPLE);
+  const beds = furniture.filter((piece) => piece.kind === "bed");
+  const open = (at: number) => laidOut.ground[at] === "." && !covered.has(at) && !used.has(at);
+  const nearest = (from: { x: number; y: number }) => {
+    let best: { x: number; y: number } | null = null;
+    let distance = Infinity;
+    for (let y = 0; y < height; y++)
+      for (let x = 0; x < width; x++) {
+        const d = Math.abs(x - from.x) + Math.abs(y - from.y);
+        if (d < distance && open(y * width + x) && y * width + x !== (laidOut.door.y - 1) * width + laidOut.door.x) {
+          [best, distance] = [{ x, y }, d];
+        }
+      }
+    return best;
+  };
+  residents.forEach((id, index) => {
+    const bed = beds[index];
+    if (bed) seats[id] = { x: bed.x, y: bed.y };
+  });
+  for (const [id, seat] of Object.entries(laidOut.seats)) {
+    if (seats[id]) continue;
+    const spot = open(seat.y * width + seat.x) ? seat : nearest(seat);
+    if (!spot) continue;
+    seats[id] = spot;
+    used.add(spot.y * width + spot.x);
+  }
+  return { ...laidOut, furniture, seats };
+}
+
+/**
+ * Why buildings furnished by hand do not fit, or nothing: each against its rooms as the world with these
+ * edits lays them out (its town laid out by hand too). `townOf` gives a settlement's town in that world.
+ */
+export function worldInteriorEditIssues(
+  game: GameWorld,
+  edits: NonNullable<GameWorld["edits"]>,
+  townOf: (settlementId: string) => WorldTown | null,
+): string[] {
+  const issues: string[] = [];
+  const seen = new Set<string>();
+  for (const edit of edits.interiors ?? []) {
+    const key = `${edit.settlement}/${edit.building}`;
+    if (seen.has(key)) issues.push(`The rooms of "${edit.building}" in "${edit.settlement}" are furnished twice.`);
+    seen.add(key);
+    const town = townOf(edit.settlement);
+    const building = town?.buildings.find((each) => each.id === edit.building);
+    if (!town || !building) {
+      issues.push(`No building "${edit.building}" in the town of "${edit.settlement}".`);
+      continue;
+    }
+    if (!worldBuildingHasRooms(game, building)) {
+      issues.push(`"${building.name ?? edit.building}" is a part of town, with no rooms to furnish.`);
+      continue;
+    }
+    for (const issue of interiorEditIssues(layOutInterior(game, town, building), edit))
+      issues.push(`The rooms of "${building.name ?? edit.building}": ${issue}`);
+  }
+  return [...new Set(issues)].slice(0, 20);
 }
 
 type Item = { kind: WorldFurniture; where: "wall" | "floor" | "side"; for?: string; seat?: "below" | "above" | "on" };

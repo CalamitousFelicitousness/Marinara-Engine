@@ -11,7 +11,7 @@
 // image pack as they carry a drawn one.
 // ──────────────────────────────────────────────
 import { z } from "zod";
-import { WORLD_FURNITURE } from "./interior.js";
+import { WORLD_FURNITURE } from "./furniture.js";
 import { WORLD_GROUND_LOOKS } from "./overworld.js";
 
 /** Pixels across and down a tile. */

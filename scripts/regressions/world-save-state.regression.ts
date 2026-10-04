@@ -494,6 +494,7 @@ try {
   for (const [method, path, payload] of [
     ["GET", "world/edit", undefined],
     ["GET", `world/town?settlement=${settlement.id}`, undefined],
+    ["GET", `world/interior?settlement=${settlement.id}&building=h0`, undefined],
     ["PUT", "world/edits", { edits: { editsVersion: 1 } }],
   ] as const) {
     const refused = await app.inject({ method, url: `/api/game/${chatId}/${path}`, payload });

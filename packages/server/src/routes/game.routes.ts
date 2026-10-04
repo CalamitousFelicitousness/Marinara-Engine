@@ -52,6 +52,7 @@ import {
   worldForEditor,
   worldPeopleOf,
   worldTownForEditor,
+  worldInteriorForEditor,
 } from "../services/game/world-editor.service.js";
 import { logger, logDebugOverride } from "../lib/logger.js";
 import {
@@ -6045,7 +6046,7 @@ function editIssues(game: Omit<GameWorld, "world" | "edits">, edits: unknown): s
   if (!parsed.success) return [parsed.error.issues[0]?.message ?? "The edits do not read."];
   const issues = worldEditIssues(game, parsed.data);
   // And its towns laid out by hand (worldgen W9h), against the towns the world with these edits makes.
-  if (issues.length || !parsed.data.towns?.length) return issues;
+  if (issues.length || (!parsed.data.towns?.length && !parsed.data.interiors?.length)) return issues;
   return worldTownEditIssues({ ...game, world: compileGameWorld(game) }, parsed.data);
 }
 
@@ -11138,6 +11139,20 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     if (!worldMadeByThisGenerator(game)) return reply.status(409).send({ error: OLD_GENERATOR_REFUSAL });
     const found = worldTownForEditor(game, settlement);
     return found ?? reply.status(404).send({ error: "No such settlement in this world." });
+  });
+
+  // GET /game/:chatId/world/interior?settlement=&building=: a building's rooms for a room editor (W13b).
+  app.get<{ Params: { chatId: string } }>("/:chatId/world/interior", async (req, reply) => {
+    const { settlement, building } = z
+      .object({ settlement: z.string().min(1).max(16), building: z.string().min(1).max(16) })
+      .parse(req.query);
+    const chat = await createChatsStorage(app.db).getById(req.params.chatId);
+    if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    const game = chat.mode === "game" ? await loadGameWorld(app.db, chat.id, parseMeta(chat.metadata)) : null;
+    if (!game) return reply.status(404).send({ error: "This game has no world." });
+    if (!worldMadeByThisGenerator(game)) return reply.status(409).send({ error: OLD_GENERATOR_REFUSAL });
+    const found = worldInteriorForEditor(game, settlement, building);
+    return found ?? reply.status(404).send({ error: "No building with rooms there." });
   });
 
   // PUT /game/:chatId/world/edits: the whole edit layer, checked against the world; an empty one clears it.

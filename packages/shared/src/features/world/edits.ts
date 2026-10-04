@@ -16,10 +16,13 @@ import type { WorldKit } from "../../schemas/world-kit.schema.js";
 import { promptSafeText } from "../../schemas/ruleset.schema.js";
 import { compileLinks, worldTerrainEntries, type CompiledWorld, type WorldPlace } from "./compile.js";
 import { WORLD_BATTLEFIELDS_MAX, worldBattlefieldIssues, worldBattlefieldMapSchema } from "./battlefield-maps.js";
+import { WORLD_FURNITURE } from "./furniture.js";
 
 /** The most places a layer adds, people it renames or adds, and compiled places it changes. */
 export const WORLD_EDITS_MAX_ADDED = 200;
 export const WORLD_EDITS_MAX_PEOPLE = 500;
+/** The most pieces of furniture a building's rooms hold by hand. */
+export const WORLD_INTERIOR_EDIT_PIECES = 256;
 /** The largest ground a world has (the world scale's 96 by 64 cells). */
 const MAX_CELLS = 96 * 64;
 
@@ -117,6 +120,33 @@ export const worldEditsSchema = z
       )
       .max(WORLD_EDITS_MAX_ADDED)
       .optional(),
+    /** Buildings' rooms furnished by hand (worldgen W13): a building's furniture in place of the pieces
+     *  its rooms were laid out with, for rooms of the size they were laid out at (the walls never move).
+     *  Checked against the rooms when saved (`worldInteriorEditIssues`). */
+    interiors: z
+      .array(
+        z
+          .object({
+            settlement: placeId,
+            building: z.string().min(1).max(16),
+            width: z.number().int().min(3).max(64),
+            height: z.number().int().min(3).max(64),
+            furniture: z
+              .array(
+                z
+                  .object({
+                    x: z.number().int().min(0).max(63),
+                    y: z.number().int().min(0).max(63),
+                    kind: z.enum(WORLD_FURNITURE),
+                  })
+                  .strict(),
+              )
+              .max(WORLD_INTERIOR_EDIT_PIECES),
+          })
+          .strict(),
+      )
+      .max(WORLD_EDITS_MAX_PEOPLE)
+      .optional(),
   })
   .strict();
 export type WorldEdits = z.infer<typeof worldEditsSchema>;
@@ -135,7 +165,8 @@ export function worldEditsEmpty(edits: WorldEdits | null | undefined): boolean {
       !edits.people?.length &&
       !edits.addedPeople?.length &&
       !edits.battlefields?.length &&
-      !edits.towns?.length)
+      !edits.towns?.length &&
+      !edits.interiors?.length)
   );
 }
 

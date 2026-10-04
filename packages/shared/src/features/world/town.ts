@@ -20,7 +20,7 @@ import { worldPersonByHand, type WorldEdits } from "./edits.js";
 import type { GameWorld } from "./game-world.js";
 import type { WorldPresent } from "./ledger.js";
 import { WORLD_PEOPLE_DEFAULTS, worldCast, type WorldPerson } from "./people.js";
-import { worldInteriorUse } from "./interior.js";
+import { worldInteriorEditIssues, worldInteriorUse } from "./interior.js";
 
 export const WORLD_TOWN_KINDS = Object.freeze(["landmark", "place", "work", "home"] as const);
 export type WorldTownKind = (typeof WORLD_TOWN_KINDS)[number];
@@ -203,6 +203,10 @@ export function worldTownEditIssues(game: GameWorld, edits: WorldEdits): string[
       continue;
     }
     for (const issue of laidOut.issues) issues.push(`${settlement!.name}: ${issue}`);
+  }
+  // Buildings furnished by hand (W13b), against their rooms in the towns these edits lay out.
+  if (edits.interiors?.length) {
+    issues.push(...worldInteriorEditIssues(next, edits, (settlementId) => worldTownBase(next, settlementId)));
   }
   return [...new Set(issues)].slice(0, 20);
 }

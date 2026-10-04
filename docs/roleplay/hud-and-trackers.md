@@ -4,7 +4,7 @@ This guide explains the Roleplay trackers: the small widgets on phones, the **Tr
 
 ## What the HUD is
 
-The HUD (heads-up display) is the row of buttons at the top of the chat area. On a phone it includes a small icon widget for each tracker. Each widget shows a piece of live story state, such as the time, your stats, or who is present. Marinara keeps these values up to date for you as the story moves.
+On a phone, the HUD (heads-up display) is a row of small tracker widgets at the top of the chat. Each widget shows a piece of live story state, such as the time, your stats, or who is present. Marinara keeps these values up to date for you as the story moves.
 
 On a computer, the trackers are not in the HUD row. They appear in the **Tracker Panel** while it is shown, and otherwise in the **Trackers** window described below.
 

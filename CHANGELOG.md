@@ -13,6 +13,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
   - Custom themes can restyle every chat window, section, button and snap guide with shared `mari-window` and `mari-drawer` classes, data attributes and `--mari-window-*` / `--mari-drawer-*` variables, listed in the theming guide (#7034, #7036).
 
   <!-- TODO(#7034 mobile): phone behaviour for popped-out sections, the Tracker Panel icon and control buttons -->
+- The Chats sidebar status prompt now reads **What's up?** to fit its field, and Advanced Settings labels the multiplayer section **Multiplayer WIP** (#7051).
 
 - In Roleplay **Advanced Memory**, you can now edit and save a scene summary's **Story timeframe**, or clear it when the story date is unknown (#7047).
 

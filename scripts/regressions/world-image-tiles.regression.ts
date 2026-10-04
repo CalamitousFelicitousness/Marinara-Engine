@@ -17,10 +17,13 @@ import { join } from "node:path";
 
 import {
   TILE_PACK_IMAGE_MAX_BYTES,
+  WORLD_EDGE_PIECE_BY_MASK,
   characterFacing,
   characterFrameAt,
   parseTilePack,
   pngDataUrlCheck,
+  worldEdgeMask,
+  worldRoadCells,
   type ImageTilePack,
   type TilePack,
 } from "../../packages/shared/src/index.js";
@@ -212,6 +215,62 @@ try {
   assert.equal(characterFacing(5, 5, "left"), "right", "on the diagonal, a sideways walk stays sideways");
   assert.equal(characterFacing(5, 5, "up"), "down", "on the diagonal, an up-and-down walk stays so");
   assert.equal(characterFacing(0, 0, "left"), "left", "standing still keeps the facing");
+
+  // ── Edge tiles: a terrain's blocks of sixteen pieces, four cells by four ──
+  const blocks = pngBytes(192, 192, () => [10, 60, 250, 255]);
+  const withEdges = (tiles: Record<string, unknown[]>) =>
+    imageTilePack({
+      sheets: [...imageTilePack().sheets, { id: "edges", png: pngDataUrl(blocks), width: 192, height: 192 }],
+      tiles: { ...imageTilePack().tiles, ...tiles },
+    } as Partial<ImageTilePack>);
+  assert.ok(parseTilePack(withEdges({ edge_water: [{ sheet: "edges", x: 0, y: 0, w: 4, h: 4 }] })).ok, "a 4 x 4 block");
+  refused(
+    withEdges({ edge_water: [{ sheet: "edges", x: 0, y: 0, w: 4, h: 3 }] }),
+    /an edge tile's block is 4 by 4/,
+    "a block of the wrong size",
+  );
+  // A drawn pack has no edge tiles (their blocks are image sprites): left out and noted.
+  const drawnEdges = parseTilePack({
+    tilePackVersion: 1,
+    id: "drawn-edges",
+    name: "Drawn",
+    family: "fantasy",
+    version: 1,
+    palette: ["#336633"],
+    tiles: { edge_water: [Array.from({ length: 16 }, () => "0".repeat(16))] },
+  });
+  assert.ok(drawnEdges.ok && !("edge_water" in drawnEdges.pack.tiles));
+  // The corner masks: a corner's four cells, outside the map counting as the nearest cell on its edge.
+  const lake = new Set(["2,2", "3,2", "2,3", "3,3"]);
+  const inLake = (x: number, y: number) => lake.has(`${x},${y}`);
+  assert.equal(worldEdgeMask(inLake, 2, 2, 6, 6), 8, "the lake's top-left corner: only its bottom-right cell");
+  assert.equal(worldEdgeMask(inLake, 3, 3, 6, 6), 15, "its middle: all four");
+  assert.equal(worldEdgeMask(inLake, 4, 3, 6, 6), 5, "its right side: the two cells to the left");
+  assert.equal(worldEdgeMask(inLake, 0, 0, 6, 6), 0, "away from it: none");
+  const sea = (x: number) => x === 0;
+  assert.equal(
+    worldEdgeMask((x) => sea(x), 0, 0, 6, 6),
+    15,
+    "past the map's edge the sea runs on",
+  );
+  assert.equal(
+    worldEdgeMask((x) => sea(x), 1, 3, 6, 6),
+    5,
+  );
+  assert.deepEqual(
+    [0, 15].map((mask) => WORLD_EDGE_PIECE_BY_MASK[mask]),
+    [-1, 6],
+    "nothing, and the middle",
+  );
+  assert.equal(new Set(WORLD_EDGE_PIECE_BY_MASK.slice(1)).size, 15, "every mask its own piece");
+  // A road's cells: four-connected (no corner-to-corner step), ends included, skipped cells left out.
+  const road = worldRoadCells({ x: 0, y: 0 }, { x: 4, y: 2 }, () => false);
+  assert.deepEqual(road[0], { x: 0, y: 0 });
+  assert.deepEqual(road.at(-1), { x: 4, y: 2 });
+  assert.equal(road.length, 4 + 2 + 1, "one cell a step");
+  for (let at = 1; at < road.length; at++)
+    assert.equal(Math.abs(road[at]!.x - road[at - 1]!.x) + Math.abs(road[at]!.y - road[at - 1]!.y), 1, "4-connected");
+  assert.ok(!worldRoadCells({ x: 0, y: 0 }, { x: 4, y: 0 }, (x) => x === 2).some((cell) => cell.x === 2), "skipped");
 
   // ── The library ──
   const db = await getDB();

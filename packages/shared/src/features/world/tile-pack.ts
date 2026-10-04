@@ -12,6 +12,7 @@
 // ──────────────────────────────────────────────
 import { z } from "zod";
 import { WORLD_FURNITURE } from "./furniture.js";
+import { WORLD_EDGE_TERRAINS } from "./edges.js";
 import { WORLD_GROUND_LOOKS } from "./overworld.js";
 
 /** Pixels across and down a tile. */
@@ -70,10 +71,17 @@ export const WORLD_TILE_IDS = Object.freeze([
   "in_wall",
   "in_door",
   ...WORLD_FURNITURE.map((kind) => `in_${kind}` as const),
+  // Edge tiles (image packs): each variant a block of sixteen pieces, four cells by four, for a terrain
+  // that blends into the ground around it.
+  ...WORLD_EDGE_TERRAINS.map((terrain) => `edge_${terrain}` as const),
 ] as const);
 export type WorldTileId = (typeof WORLD_TILE_IDS)[number];
 /** Tiles only an image pack draws (whole buildings as sprites); a drawn pack's roofs and fronts stand in. */
-export const WORLD_IMAGE_ONLY_TILE_IDS: readonly WorldTileId[] = Object.freeze(["house", "hall"]);
+export const WORLD_IMAGE_ONLY_TILE_IDS: readonly WorldTileId[] = Object.freeze([
+  "house",
+  "hall",
+  ...WORLD_EDGE_TERRAINS.map((terrain) => `edge_${terrain}` as const),
+]);
 
 const colour = z.string().regex(/^#[0-9a-f]{6}([0-9a-f]{2})?$/i, "A colour is #rrggbb or #rrggbbaa");
 const row = z.string().length(TILE_PACK_SIZE);
@@ -355,6 +363,9 @@ function parseImageTilePack(value: unknown): TilePackRead {
       const [w, h] = [tile.w ?? 1, tile.h ?? 1];
       if ((tile.x + w) * pack.tileSize > sheet.width || (tile.y + h) * pack.tileSize > sheet.height)
         issues.push(`${id} variant ${index + 1} reaches past the edge of the sheet "${sheet.id}".`);
+      // An edge tile is a block of sixteen pieces, four cells by four.
+      if (id.startsWith("edge_") && (w !== 4 || h !== 4))
+        issues.push(`${id} variant ${index + 1} is ${w} by ${h} cells; an edge tile's block is 4 by 4.`);
     });
     tiles[id] = variants;
   }

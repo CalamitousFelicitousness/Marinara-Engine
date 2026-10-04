@@ -11,6 +11,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
   worldBuildingHasRooms,
+  worldEdgeMask,
   worldTownDoor,
   worldTownMinutes,
   worldTownPeopleAt,
@@ -124,12 +125,18 @@ export function TownView({
       ctx.fillRect(x, y, T, T);
     };
     const standing: Array<{ bottom: number; draw: () => void }> = [];
+    const streetEdges = drawTile.hasEdges("street");
+    const squareEdges = drawTile.hasEdges("square");
     for (let y = 0; y < town.height; y++) {
       for (let x = 0; x < town.width; x++) {
         const cell = town.ground[y * town.width + x];
         const pick = cellNoise(x, y)(5);
-        const [id, colour] =
-          cell === "s"
+        // With street edge tiles, streets and the square are under-painted as open ground and drawn by
+        // the edge pieces, so they blend into it.
+        const paved = (cell === "s" && streetEdges) || (cell === "q" && (streetEdges || squareEdges));
+        const [id, colour] = paved
+          ? ["town_ground", PLAIN.ground]
+          : cell === "s"
             ? ["street", PLAIN.street]
             : cell === "q"
               ? ["square", PLAIN.square]
@@ -142,6 +149,17 @@ export function TownView({
         if (cell === "w") standing.push({ bottom: y, draw: () => drawTile(ctx, "well", x * T, y * T) });
       }
     }
+    // The streets (the square counted as street), then the square over them, as dual-grid passes.
+    const cellOf = (x: number, y: number) => town.ground[y * town.width + x];
+    const edgePass = (terrain: "street" | "square", filled: (x: number, y: number) => boolean) => {
+      for (let y = 0; y <= town.height; y++)
+        for (let x = 0; x <= town.width; x++) {
+          const mask = worldEdgeMask(filled, x, y, town.width, town.height);
+          if (mask) drawTile.edge(ctx, terrain, mask, x * T, y * T, cellNoise(x, y)(terrain === "street" ? 75 : 77));
+        }
+    };
+    if (streetEdges) edgePass("street", (x, y) => cellOf(x, y) === "s" || cellOf(x, y) === "q");
+    if (squareEdges) edgePass("square", (x, y) => cellOf(x, y) === "q");
     for (const building of town.buildings) {
       standing.push({ bottom: building.y + building.h - 1, draw: () => drawBuilding(building) });
     }

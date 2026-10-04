@@ -8,6 +8,8 @@ import {
   OVERWORLD_SECONDS_PER_GAME_MINUTE,
   tilePackPixels,
   CHARACTER_FACINGS,
+  WORLD_EDGE_PIECE_BY_MASK,
+  type WorldEdgeTerrain,
   type CharacterFacing,
   type ImageCharacter,
   type ImageTile,
@@ -155,6 +157,20 @@ export type OverworldTileDrawer = ((
     frame?: number,
     lying?: boolean,
   ) => boolean;
+  /** Whether the pack has edge tiles for a terrain (water, road, street, square). */
+  hasEdges: (terrain: WorldEdgeTerrain) => boolean;
+  /**
+   * Draws the edge piece for a corner's mask (1-15) centred on the corner at (x, y) (in units, where four
+   * cells meet), from the variant `pick` (0..1) chooses. False when the pack has none for the terrain.
+   */
+  edge: (
+    ctx: CanvasRenderingContext2D,
+    terrain: WorldEdgeTerrain,
+    mask: number,
+    x: number,
+    y: number,
+    pick?: number,
+  ) => boolean;
 };
 
 /** The tiles a family is drawn with: the pack chosen for it, else the Engine's own for the family, laid
@@ -290,6 +306,17 @@ export function useOverworldAtlas(family: string | undefined, own?: TilePack | n
         ctx.drawImage(sheet, sx, sy, fw, fh, x + (OVERWORLD_TILE - dw) / 2, y + OVERWORLD_TILE - dh, dw, dh);
         return true;
       };
+      draw.hasEdges = (terrain) => Boolean(ready?.edges?.[`edge_${terrain}`]?.length);
+      draw.edge = (ctx, terrain, mask, x, y, pick = 0) => {
+        const variants = ready?.edges?.[`edge_${terrain}`];
+        const piece = WORLD_EDGE_PIECE_BY_MASK[mask] ?? -1;
+        if (!variants?.length || piece < 0 || !ready?.canvas) return false;
+        const block = variants[Math.min(variants.length - 1, Math.floor(pick * variants.length))]!;
+        const at = block[piece]!;
+        const half = OVERWORLD_TILE / 2;
+        ctx.drawImage(ready.canvas, at.sx, at.sy, size, size, x - half, y - half, OVERWORLD_TILE, OVERWORLD_TILE);
+        return true;
+      };
       return draw;
     }
     const draw = ((ctx, id, x, y, pick = 0) => {
@@ -309,6 +336,8 @@ export function useOverworldAtlas(family: string | undefined, own?: TilePack | n
       (!own && Boolean(family) && (libraryPending || (Boolean(chosen) && !fetched && !fetchFailed)));
     draw.sprite = () => null;
     draw.character = () => false;
+    draw.hasEdges = () => false;
+    draw.edge = () => false;
     return draw;
   }, [atlas, chosen, family, fetchFailed, fetched, image, libraryPending, own, ready]);
 }
@@ -350,6 +379,9 @@ interface ImageAtlas {
   /** Each tile's variants: where it is on the atlas, and its cells across and down. */
   tiles: Record<string, Array<{ sx: number; sy: number; w: number; h: number }>>;
   size: number;
+  /** Each edge tile's variants, each its sixteen pieces (extruded by a pixel, so smoothing never
+   *  pulls in a neighbouring piece): where each piece's own pixels start on the atlas. */
+  edges?: Record<string, Array<Array<{ sx: number; sy: number }>>>;
   /** The characters' walking blocks, on a canvas of their own (so many big blocks never crowd the
    *  tiles out), each where it is and its frame's cells. */
   charactersCanvas?: HTMLCanvasElement | null;
@@ -377,8 +409,19 @@ async function buildImageAtlas(pack: ImageTilePack): Promise<ImageAtlas> {
   const ROW = 2048;
   const placed: Array<{ id: string; index: number; tile: ImageTile; sx: number; sy: number }> = [];
   let [x, y, rowHeight] = [0, 0, 0];
+  // Edge tiles' pieces, each on its own with a pixel of its own edge around it.
+  const pieces: Array<{ id: string; index: number; piece: number; tile: ImageTile; sx: number; sy: number }> = [];
   for (const [id, variants] of Object.entries(pack.tiles)) {
     variants.forEach((tile, index) => {
+      if (id.startsWith("edge_")) {
+        for (let piece = 0; piece < 16; piece++) {
+          if (x + size + 2 > ROW) [x, y, rowHeight] = [0, y + rowHeight, 0];
+          pieces.push({ id, index, piece, tile, sx: x + 1, sy: y + 1 });
+          x += size + 2;
+          rowHeight = Math.max(rowHeight, size + 2);
+        }
+        return;
+      }
       const [w, h] = [(tile.w ?? 1) * size, (tile.h ?? 1) * size];
       if (x + w > ROW) [x, y, rowHeight] = [0, y + rowHeight, 0];
       placed.push({ id, index, tile, sx: x, sy: y });
@@ -400,6 +443,19 @@ async function buildImageAtlas(pack: ImageTilePack): Promise<ImageAtlas> {
     const [w, h] = [tile.w ?? 1, tile.h ?? 1];
     ctx.drawImage(source, tile.x * size, tile.y * size, w * size, h * size, sx, sy, w * size, h * size);
     (tiles[id] ??= [])[index] = { sx, sy, w, h };
+  }
+  const edges: NonNullable<ImageAtlas["edges"]> = {};
+  for (const { id, index, piece, tile, sx, sy } of pieces) {
+    const source = images.get(tile.sheet);
+    if (!source) continue;
+    const [px, py] = [(tile.x + (piece % 4)) * size, (tile.y + Math.floor(piece / 4)) * size];
+    ctx.drawImage(source, px, py, size, size, sx, sy, size, size);
+    // The piece's own edge pixels, one more each side.
+    ctx.drawImage(canvas, sx, sy, 1, size, sx - 1, sy, 1, size);
+    ctx.drawImage(canvas, sx + size - 1, sy, 1, size, sx + size, sy, 1, size);
+    ctx.drawImage(canvas, sx - 1, sy, size + 2, 1, sx - 1, sy - 1, size + 2, 1);
+    ctx.drawImage(canvas, sx - 1, sy + size - 1, size + 2, 1, sx - 1, sy + size, size + 2, 1);
+    ((edges[id] ??= [])[index] ??= [])[piece] = { sx, sy };
   }
   // The characters' blocks (3 frames by 4 rows each), packed the same way on their own canvas.
   let charactersCanvas: HTMLCanvasElement | null = null;
@@ -430,7 +486,7 @@ async function buildImageAtlas(pack: ImageTilePack): Promise<ImageAtlas> {
     }
   }
   images.clear();
-  return { canvas, tiles, size, charactersCanvas, characters };
+  return { canvas, tiles, size, charactersCanvas, characters, edges };
 }
 
 /** The view's offset in screen pixels so `at` (world pixels) sits at the middle across and a little above

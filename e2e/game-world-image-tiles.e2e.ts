@@ -74,6 +74,7 @@ test("an image pack chosen for its setting draws the overworld and the town", as
     const people = pngOf(144, 384, (x, y) =>
       x % 48 < 8 || x % 48 >= 40 ? [0, 0, 0, 0] : y < 96 ? [20, 200, 220, 255] : [220, 200, 20, 255],
     );
+    const edges = pngOf(384, 192, (x) => (x < 192 ? [10, 60, 250, 255] : [240, 120, 10, 255]));
     const pack = {
       tilePackVersion: 2,
       id: "e2e-art",
@@ -85,6 +86,8 @@ test("an image pack chosen for its setting draws the overworld and the town", as
         { id: "town", png: `data:image/png;base64,${sheet.toString("base64")}`, width: 336, height: 144 },
         // One walking person: its facing-down row a colour of its own, the other rows another.
         { id: "people", png: `data:image/png;base64,${people.toString("base64")}`, width: 144, height: 384 },
+        // Edge blocks: water (left) and streets (right), each four cells by four in a colour of its own.
+        { id: "edges", png: `data:image/png;base64,${edges.toString("base64")}`, width: 384, height: 192 },
       ],
       characters: [{ id: "walker", sheet: "people", x: 0, y: 0 }],
       tiles: {
@@ -93,6 +96,8 @@ test("an image pack chosen for its setting draws the overworld and the town", as
         street: [{ sheet: "town", x: 1, y: 0 }],
         square: [{ sheet: "town", x: 2, y: 0 }],
         house: [{ sheet: "town", x: 3, y: 0, w: 4, h: 3 }],
+        edge_water: [{ sheet: "edges", x: 0, y: 0, w: 4, h: 4 }],
+        edge_street: [{ sheet: "edges", x: 4, y: 0, w: 4, h: 4 }],
       },
     };
     const imported = await request.post("/api/game-tile-packs/import", { data: { definition: JSON.stringify(pack) } });
@@ -130,11 +135,26 @@ test("an image pack chosen for its setting draws the overworld and the town", as
     const overworld = page.getByRole("region", { name: "Overworld", exact: true });
     await expect(overworld).toHaveAttribute("data-tiles", "image", { timeout: 40_000 });
     await page.screenshot({ path: testInfo.outputPath("image-overworld.png") });
+    const hasColour = (region: typeof overworld, rgb: number[]) =>
+      region
+        .locator("canvas")
+        .first()
+        .evaluate((canvas: HTMLCanvasElement, [r, g, b]) => {
+          const { data } = canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height);
+          for (let at = 0; at < data.length; at += 4 * 3)
+            if (Math.abs(data[at]! - r!) < 6 && Math.abs(data[at + 1]! - g!) < 6 && Math.abs(data[at + 2]! - b!) < 6)
+              return true;
+          return false;
+        }, rgb);
+    // The water drawn by its edge pieces.
+    await expect.poll(() => hasColour(overworld, [10, 60, 250])).toBe(true);
     await page.getByRole("button", { name: /^Thornmere, .*: the party is here$/u }).click();
     await page.getByRole("button", { name: "Enter Thornmere", exact: true }).click();
     const town = page.getByRole("region", { name: "Town", exact: true });
     await expect(town).toHaveAttribute("data-tiles", "image");
     await page.screenshot({ path: testInfo.outputPath("image-town.png") });
+    // The streets drawn by their edge pieces.
+    await expect.poll(() => hasColour(town, [240, 120, 10])).toBe(true);
     // Townsfolk drawn as the pack's walking person, facing down.
     await expect
       .poll(async () =>

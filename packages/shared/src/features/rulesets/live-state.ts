@@ -616,11 +616,8 @@ function migrateLiveState(
     delete bag[step.from];
     let shown: string[];
     if (step.routeLive === "pool") {
-      shownPools ??= new Set(
-        listRulesetLivePools(definition, build)
-          .filter((spec) => spec.max > 0)
-          .map((spec) => spec.key),
-      );
+      // Only a pool the sheet has (a maximum above 0) is listed at all.
+      shownPools ??= new Set(listRulesetLivePools(definition, build).map((spec) => spec.key));
       shown = step.cases.filter((id) => shownPools!.has(id));
     } else {
       shown = step.cases.filter((id) => {

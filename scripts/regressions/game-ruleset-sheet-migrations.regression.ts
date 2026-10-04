@@ -148,6 +148,9 @@ const stored = (fields: Record<string, unknown>, v = 1) => ({ v, build: { fields
   })!;
   assert.equal(moved.build.fields.experience, 300);
   assert.deepEqual([moved.build.skills.lore, moved.build.bonuses.lore], ["proficient", 2]);
+  // A rename never overwrites a value the new id already holds.
+  const already = readRulesetSheetEnvelope(three, { v: 1, build: { fields: { xp: 300, experience: 12 } } })!;
+  assert.equal(already.build.fields.experience, 12);
   // Stored on layout 2, only the second hop runs.
   const second = readRulesetSheetEnvelope(three, { v: 2, build: { fields: { exp: 40, xp: 9 } } })!;
   assert.equal(second.build.fields.experience, 40);
@@ -251,9 +254,10 @@ const stored = (fields: Record<string, unknown>, v = 1) => ({ v, build: { fields
       const fighter = doc.sheet.fields.find((field: { id: string }) => field.id === "level_fighter");
       fighter.id = "fighter_level";
       doc.sheet.live.pools.find((pool: { id: string }) => pool.id === "hit_dice_d10").max = { field: "fighter_level" };
-      // Layout 1 called the total "lvl"; layout 2 routes "level"; layout 3 renames the fighter's field.
-      doc.sheet.migrations[0].steps.unshift({ rename: "field", from: "lvl", to: "level" });
-      doc.sheet.migrations[0].steps[1].route = "level";
+      // Layout 1 called the total "lvl", which layout 2 renames to "total" (no longer a field of the
+      // sheet) and routes on; layout 3 renames the fighter's field.
+      doc.sheet.migrations[0].steps.unshift({ rename: "field", from: "lvl", to: "total" });
+      doc.sheet.migrations[0].steps[1].route = "total";
       doc.sheet.migrations.push({ from: 2, steps: [{ rename: "field", from: "level_fighter", to: "fighter_level" }] });
     }),
   );

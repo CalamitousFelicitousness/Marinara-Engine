@@ -23,6 +23,7 @@ import { api } from "../lib/api-client";
 import { normalizeConversationTimeZone } from "../lib/conversation-time-zone";
 import { normalizeChatWidgetFont } from "../lib/font-family";
 import {
+  normalizeChatWidgetColor,
   normalizeChatWidgetPreset,
   normalizeChatWidgetShape,
   normalizeTrackerPanelCollapsedSections,
@@ -299,6 +300,15 @@ export function useSettingsSync() {
               }
               if ("chatWidgetShape" in parsed.settings) {
                 parsed.settings.chatWidgetShape = normalizeChatWidgetShape(parsed.settings.chatWidgetShape);
+              }
+              for (const key of [
+                "chatWidgetBorderColor",
+                "chatWidgetBackgroundColor",
+                "chatWidgetTextColor",
+              ] as const) {
+                if (key in parsed.settings) {
+                  parsed.settings[key] = normalizeChatWidgetColor(parsed.settings[key]);
+                }
               }
 
               // Dismissal is permanent, even if it happened while this request was pending.

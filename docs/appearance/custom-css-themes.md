@@ -4,9 +4,19 @@ This guide explains how to change the whole look of Marinara Engine with a custo
 
 ## Ready-made chat window styles
 
-For a quick change without writing CSS, open **Settings > Appearance > App** and find **Chat widget style** at the bottom of **App Style**. **Dottore** gives your chat controls cyan instrument frames and cut corners. **Mari** adds rose-and-gold frames with Primogem ornaments. Each has its own font, works in light and dark mode, and styles buttons, windows and expandable sections together.
+For a quick change without writing CSS, open **Settings > Appearance > App** and find **Chat widget style** at the bottom of **App Style**. **Dottore** gives your chat controls cyan instrument frames and cut corners. **Mari** adds rose-and-gold frames with Primogems on window titles. Its buttons use the same background as its windows. Each preset has its own font, works in light and dark mode, and styles buttons, windows and expandable sections together.
 
-The **Font** and **Shape** controls let you change those details separately. **Preset font** and **Preset shape** follow the selected style. Choosing a preset resets these controls, and **Default** brings back the original look. Your window positions stay as you arranged them.
+The **Font** and **Shape** controls let you change those details separately. **Preset font** and **Preset shape** follow the selected style.
+
+Below them are three color controls. Each has a color picker for a solid color and a gradient option for blending colors:
+
+- **Border & Buttons Color** changes outlines and button icons. Icons use the first color of a gradient.
+- **Background Color** fills buttons, windows and expandable sections.
+- **Text Color** changes widget text. Gradients appear on headings and labels; text in editable fields uses the first color.
+
+The color controls leave decorative crests in their original colors.
+
+Use **Reset color** beside a control to follow the preset's light or dark colors again. Choosing a preset resets **Font**, **Shape** and all three colors. **Default** brings back the original look. Your window positions stay as you arranged them.
 
 Custom CSS themes can still override these presets. The public window and drawer variables below take precedence over the preset colors. Use `--mari-window-font-family` for window lettering, `--mari-drawer-radius` for section corners, and `--mari-window-ornament: none` to hide the title ornament. To remove all preset decoration, choose **Default** first.
 

@@ -78,6 +78,10 @@ export function normalizeChatWidgetPreset(value: unknown): ChatWidgetPreset {
 export function normalizeChatWidgetShape(value: unknown): ChatWidgetShape {
   return value === "rounded" || value === "square" || value === "cut-corner" || value === "arched" ? value : "preset";
 }
+
+export function normalizeChatWidgetColor(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
 export type ConversationMessageStyle = "classic" | "bubble";
 export type ConversationAvatarShape = "circle" | "square";
 export type TrackerPanelSide = "left" | "right";
@@ -765,6 +769,9 @@ interface UIState {
   chatWidgetPreset: ChatWidgetPreset;
   chatWidgetFont: string;
   chatWidgetShape: ChatWidgetShape;
+  chatWidgetBorderColor: string;
+  chatWidgetBackgroundColor: string;
+  chatWidgetTextColor: string;
   enableStreaming: boolean;
   debugMode: boolean;
   /** When true, warn when an agent uses the configured default connection. */
@@ -1163,6 +1170,9 @@ interface UIState {
   setChatWidgetPreset: (preset: ChatWidgetPreset) => void;
   setChatWidgetFont: (font: string) => void;
   setChatWidgetShape: (shape: ChatWidgetShape) => void;
+  setChatWidgetBorderColor: (color: string) => void;
+  setChatWidgetBackgroundColor: (color: string) => void;
+  setChatWidgetTextColor: (color: string) => void;
   setEnableStreaming: (v: boolean) => void;
   setDebugMode: (v: boolean) => void;
   setShowPaidAgentConnectionWarning: (v: boolean) => void;
@@ -1402,6 +1412,9 @@ export function pickSyncedSettings(state: UIState) {
     chatWidgetPreset: state.chatWidgetPreset,
     chatWidgetFont: state.chatWidgetFont,
     chatWidgetShape: state.chatWidgetShape,
+    chatWidgetBorderColor: state.chatWidgetBorderColor,
+    chatWidgetBackgroundColor: state.chatWidgetBackgroundColor,
+    chatWidgetTextColor: state.chatWidgetTextColor,
     enableStreaming: state.enableStreaming,
     streamingSpeed: state.streamingSpeed,
     showPaidAgentConnectionWarning: state.showPaidAgentConnectionWarning,
@@ -1615,6 +1628,9 @@ export function pickPersistedUIState(state: UIState) {
     chatWidgetPreset: state.chatWidgetPreset,
     chatWidgetFont: state.chatWidgetFont,
     chatWidgetShape: state.chatWidgetShape,
+    chatWidgetBorderColor: state.chatWidgetBorderColor,
+    chatWidgetBackgroundColor: state.chatWidgetBackgroundColor,
+    chatWidgetTextColor: state.chatWidgetTextColor,
     enableStreaming: state.enableStreaming,
     debugMode: state.debugMode,
     showPaidAgentConnectionWarning: state.showPaidAgentConnectionWarning,
@@ -1871,6 +1887,9 @@ export const useUIStore = create<UIState>()(
         chatWidgetPreset: "default" as ChatWidgetPreset,
         chatWidgetFont: "",
         chatWidgetShape: "preset" as ChatWidgetShape,
+        chatWidgetBorderColor: "",
+        chatWidgetBackgroundColor: "",
+        chatWidgetTextColor: "",
         enableStreaming: true,
         debugMode: false,
         showPaidAgentConnectionWarning: true,
@@ -2652,9 +2671,19 @@ export const useUIStore = create<UIState>()(
         setChatFontSize: (size) => set({ chatFontSize: size }),
         setFontFamily: (family) => set({ fontFamily: family }),
         setChatWidgetPreset: (preset) =>
-          set({ chatWidgetPreset: normalizeChatWidgetPreset(preset), chatWidgetFont: "", chatWidgetShape: "preset" }),
+          set({
+            chatWidgetPreset: normalizeChatWidgetPreset(preset),
+            chatWidgetFont: "",
+            chatWidgetShape: "preset",
+            chatWidgetBorderColor: "",
+            chatWidgetBackgroundColor: "",
+            chatWidgetTextColor: "",
+          }),
         setChatWidgetFont: (font) => set({ chatWidgetFont: normalizeChatWidgetFont(font) }),
         setChatWidgetShape: (shape) => set({ chatWidgetShape: normalizeChatWidgetShape(shape) }),
+        setChatWidgetBorderColor: (color) => set({ chatWidgetBorderColor: normalizeChatWidgetColor(color) }),
+        setChatWidgetBackgroundColor: (color) => set({ chatWidgetBackgroundColor: normalizeChatWidgetColor(color) }),
+        setChatWidgetTextColor: (color) => set({ chatWidgetTextColor: normalizeChatWidgetColor(color) }),
         setEnableStreaming: (v) => set({ enableStreaming: v }),
         setDebugMode: (v) => set({ debugMode: v }),
         setShowPaidAgentConnectionWarning: (v) => set({ showPaidAgentConnectionWarning: v }),
@@ -2881,6 +2910,9 @@ export const useUIStore = create<UIState>()(
             chatWidgetPreset: "default" as ChatWidgetPreset,
             chatWidgetFont: "",
             chatWidgetShape: "preset" as ChatWidgetShape,
+            chatWidgetBorderColor: "",
+            chatWidgetBackgroundColor: "",
+            chatWidgetTextColor: "",
             conversationMessageStyle: "classic" as ConversationMessageStyle,
             conversationAvatarShape: "circle" as ConversationAvatarShape,
             chatFontColor: "",
@@ -3692,6 +3724,9 @@ export const useUIStore = create<UIState>()(
           chatWidgetPreset: normalizeChatWidgetPreset(persisted.chatWidgetPreset),
           chatWidgetFont: normalizeChatWidgetFont(persisted.chatWidgetFont),
           chatWidgetShape: normalizeChatWidgetShape(persisted.chatWidgetShape),
+          chatWidgetBorderColor: normalizeChatWidgetColor(persisted.chatWidgetBorderColor),
+          chatWidgetBackgroundColor: normalizeChatWidgetColor(persisted.chatWidgetBackgroundColor),
+          chatWidgetTextColor: normalizeChatWidgetColor(persisted.chatWidgetTextColor),
         };
       },
       partialize: pickPersistedUIState,

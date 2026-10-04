@@ -159,6 +159,7 @@ import { useInstalledCapabilityPackages } from "../../hooks/use-capability-packa
 import { useDocsLanguage, useFixDocsLanguage, useSetDocsLanguage } from "../../hooks/use-docs-language";
 import { HelpTooltip } from "../ui/HelpTooltip";
 import { ColorPicker } from "../ui/ColorPicker";
+import { getChatWidgetColorRoles, getChatWidgetColorStyle, type ChatWidgetColors } from "../../lib/chat-widget-colors";
 import { EmojiPicker } from "../ui/EmojiPicker";
 import { TrackerPanelIcon } from "../ui/TrackerPanelIcon";
 import { TrackerSizeTierIcon } from "../ui/TrackerSizeTierIcon";
@@ -1070,9 +1071,33 @@ const SETTINGS_SEARCHABLE_CONTROLS: readonly SettingsSearchableControlMeta[] = [
     sectionId: "app-style",
     label: "Chat widget style",
     description:
-      "Choose a look for movable chat buttons, windows and sections. Picking a preset resets Font and Shape. Professor Mari can create custom themes for you.",
+      "Choose a look for movable chat buttons, windows and sections. Picking a preset resets Font, Shape and Colors. Professor Mari can create custom themes for you.",
     aliases: ["dottore", "mari", "preset", "window", "drawer", "button", "sci-fi", "fantasy"],
     kind: "Button group",
+  },
+  {
+    id: "chat-widget-border-color",
+    sectionId: "app-style",
+    label: "Border & Buttons Color",
+    description: "Set chat widget outlines and button icon colors.",
+    aliases: ["widget", "window", "drawer", "color", "gradient"],
+    kind: "Picker",
+  },
+  {
+    id: "chat-widget-background-color",
+    sectionId: "app-style",
+    label: "Widget Background Color",
+    description: "Set backgrounds for chat windows, sections and buttons.",
+    aliases: ["widget", "window", "drawer", "color", "gradient"],
+    kind: "Picker",
+  },
+  {
+    id: "chat-widget-text-color",
+    sectionId: "app-style",
+    label: "Widget Text Color",
+    description: "Set chat widget text colors and gradients.",
+    aliases: ["widget", "window", "drawer", "color", "gradient"],
+    kind: "Picker",
   },
   {
     id: "chat-widget-font",
@@ -4674,22 +4699,32 @@ function ChatWidgetStylePreview({
   preset,
   font,
   shape,
+  colors,
 }: {
   preset: ChatWidgetPreset;
   font: string;
   shape: ChatWidgetShape;
+  colors?: ChatWidgetColors;
 }) {
   const { t } = useUiTranslation();
-  const presetIconClassName = preset === "default" ? undefined : "mari-rgb-static-icon";
+  const colorStyle = getChatWidgetColorStyle(colors);
+  const presetIconClassName =
+    preset !== "default" || colorStyle["--mari-widget-custom-border"] ? "mari-rgb-static-icon" : undefined;
   return (
     <span
       aria-hidden="true"
       data-chat-widget-preview
+      data-chat-widget-colors={getChatWidgetColorRoles(colorStyle) || undefined}
       data-chat-widget-preset={preset}
       data-chat-widget-font={font}
       data-chat-widget-shape={shape}
       className="mari-widget-style-preview pointer-events-none block min-w-0 w-full"
-      style={{ "--mari-widget-font-override": getChatWidgetFontFamily(font) ?? "initial" } as React.CSSProperties}
+      style={
+        {
+          "--mari-widget-font-override": getChatWidgetFontFamily(font) ?? "initial",
+          ...colorStyle,
+        } as React.CSSProperties
+      }
     >
       <span className="mari-window mari-widget-style-preview__window relative flex min-w-0 flex-col">
         <span className="mari-window__header flex min-w-0 items-center justify-between gap-1">
@@ -4699,8 +4734,8 @@ function ChatWidgetStylePreview({
             className={cn(
               "shrink-0",
               presetIconClassName,
-              preset !== "default" &&
-                "text-[var(--mari-window-control-color,var(--mari-widget-accent,var(--marinara-chat-chrome-panel-muted)))]",
+              presetIconClassName &&
+                "text-[var(--mari-window-control-color,var(--mari-widget-custom-border-solid,var(--mari-widget-accent,var(--marinara-chat-chrome-panel-muted))))]",
             )}
           />
         </span>
@@ -4716,6 +4751,7 @@ function ChatWidgetStylePreview({
       </span>
       <span className="flex justify-center pt-3">
         <span className="mari-window-bubble relative">
+          <span className="mari-window-bubble__paint pointer-events-none" aria-hidden="true" />
           <SlidersHorizontal size="0.875rem" className={presetIconClassName} />
         </span>
       </span>
@@ -4757,6 +4793,12 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
   const setChatWidgetFont = useUIStore((s) => s.setChatWidgetFont);
   const chatWidgetShape = useUIStore((s) => s.chatWidgetShape);
   const setChatWidgetShape = useUIStore((s) => s.setChatWidgetShape);
+  const chatWidgetBorderColor = useUIStore((s) => s.chatWidgetBorderColor);
+  const setChatWidgetBorderColor = useUIStore((s) => s.setChatWidgetBorderColor);
+  const chatWidgetBackgroundColor = useUIStore((s) => s.chatWidgetBackgroundColor);
+  const setChatWidgetBackgroundColor = useUIStore((s) => s.setChatWidgetBackgroundColor);
+  const chatWidgetTextColor = useUIStore((s) => s.chatWidgetTextColor);
+  const setChatWidgetTextColor = useUIStore((s) => s.setChatWidgetTextColor);
   const chatBackground = useUIStore((s) => s.chatBackground);
   const setChatBackgroundRaw = useUIStore((s) => s.setChatBackground);
   const defaultRoleplayBackground = useUIStore((s) => s.defaultRoleplayBackground);
@@ -5323,6 +5365,15 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                           preset={preset.id}
                           font={selected ? chatWidgetFont : ""}
                           shape={selected ? chatWidgetShape : "preset"}
+                          colors={
+                            selected
+                              ? {
+                                  border: chatWidgetBorderColor,
+                                  background: chatWidgetBackgroundColor,
+                                  text: chatWidgetTextColor,
+                                }
+                              : undefined
+                          }
                         />
                         <span
                           id={descriptionId}
@@ -5382,6 +5433,56 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                       <option value="arched">{localizeUi("settings.controls.chatWidgetShape.arched")}</option>
                     </select>
                   </label>
+                </div>
+                <div className="mt-4 flex flex-col gap-4">
+                  <p className="text-[0.6875rem] leading-relaxed text-[var(--muted-foreground)]">
+                    {localizeUi("settings.controls.chatWidgetColors.help")}
+                  </p>
+                  <SearchableSettingTarget controlId="chat-widget-border-color">
+                    <div data-chat-widget-color="border">
+                      <ColorPicker
+                        value={chatWidgetBorderColor}
+                        onChange={setChatWidgetBorderColor}
+                        gradient
+                        compact
+                        label={localizeUi("settings.controls.chatWidgetBorderColor.label")}
+                        helpText={localizeUi("settings.controls.chatWidgetBorderColor.help")}
+                        emptyText={localizeUi("settings.controls.chatWidgetColors.preset")}
+                        emptyPreviewValue="var(--mari-widget-accent, var(--marinara-chat-chrome-button-text))"
+                        clearLabel={localizeUi("settings.controls.chatWidgetColors.reset")}
+                      />
+                    </div>
+                  </SearchableSettingTarget>
+                  <SearchableSettingTarget controlId="chat-widget-background-color">
+                    <div data-chat-widget-color="background">
+                      <ColorPicker
+                        value={chatWidgetBackgroundColor}
+                        onChange={setChatWidgetBackgroundColor}
+                        gradient
+                        compact
+                        label={localizeUi("settings.controls.chatWidgetBackgroundColor.label")}
+                        helpText={localizeUi("settings.controls.chatWidgetBackgroundColor.help")}
+                        emptyText={localizeUi("settings.controls.chatWidgetColors.preset")}
+                        emptyPreviewValue="var(--mari-widget-bg, var(--marinara-chat-chrome-panel-bg))"
+                        clearLabel={localizeUi("settings.controls.chatWidgetColors.reset")}
+                      />
+                    </div>
+                  </SearchableSettingTarget>
+                  <SearchableSettingTarget controlId="chat-widget-text-color">
+                    <div data-chat-widget-color="text">
+                      <ColorPicker
+                        value={chatWidgetTextColor}
+                        onChange={setChatWidgetTextColor}
+                        gradient
+                        compact
+                        label={localizeUi("settings.controls.chatWidgetTextColor.label")}
+                        helpText={localizeUi("settings.controls.chatWidgetTextColor.help")}
+                        emptyText={localizeUi("settings.controls.chatWidgetColors.preset")}
+                        emptyPreviewValue="var(--mari-widget-text, var(--marinara-chat-chrome-panel-text))"
+                        clearLabel={localizeUi("settings.controls.chatWidgetColors.reset")}
+                      />
+                    </div>
+                  </SearchableSettingTarget>
                 </div>
               </fieldset>
             </div>

@@ -10,6 +10,12 @@ const APP_VERSION = (
 const UI_SETTINGS_PATH = "/api/app-settings/ui";
 const CHAT_NAME_WINDOW = "drawer:chat-settings:chat-name";
 type Preset = "default" | "dottore" | "mari";
+const EMPTY_COLORS = { border: "", background: "", text: "" };
+const GRADIENT_COLORS = {
+  border: "linear-gradient(90deg, #ff6b6b, #ffd93d)",
+  background: "linear-gradient(135deg, #667eea, #764ba2)",
+  text: "linear-gradient(90deg, #6c5ce7, #00cec9)",
+};
 const PALETTES = {
   dark: {
     dottore: { background: "oklch(0.205 0.023 224)", accent: "oklch(0.86 0.083 202)", field: "oklch(0.26 0.027 221)" },
@@ -76,6 +82,11 @@ async function readPreferences(page: Page) {
       preset: state.chatWidgetPreset,
       font: state.chatWidgetFont,
       shape: state.chatWidgetShape,
+      colors: {
+        border: state.chatWidgetBorderColor,
+        background: state.chatWidgetBackgroundColor,
+        text: state.chatWidgetTextColor,
+      },
       ready: state.settingsSyncReady,
     };
   });
@@ -119,7 +130,10 @@ async function openAppearance(page: Page) {
   try {
     for (const preset of ["dottore", "mari"] as const) {
       const preview = controls.locator(`[data-chat-widget-preview][data-chat-widget-preset="${preset}"]`);
-      const accent = await resolvedStyle(page, "color", PALETTES[theme][preset].accent);
+      const customBorder = await preview.evaluate((element) =>
+        getComputedStyle(element).getPropertyValue("--mari-widget-custom-border-solid").trim(),
+      );
+      const accent = await resolvedStyle(page, "color", customBorder || PALETTES[theme][preset].accent);
       for (const selector of [".mari-window__header > svg", ".mari-drawer__icon", ".mari-drawer__arrow"]) {
         await expect(preview.locator(selector)).toHaveCSS("color", accent);
       }
@@ -143,7 +157,9 @@ async function choosePreset(page: Page, preset: Preset) {
   const button = controls.locator(`[data-chat-widget-preset-option="${preset}"]`);
   await button.click();
   await expect(button).toHaveAttribute("aria-pressed", "true");
-  await expect.poll(() => readPreferences(page)).toEqual({ preset, font: "", shape: "preset", ready: true });
+  await expect
+    .poll(() => readPreferences(page))
+    .toEqual({ preset, font: "", shape: "preset", colors: EMPTY_COLORS, ready: true });
   if (preset === "default") await expect(page.locator("html")).not.toHaveAttribute("data-chat-widget-preset");
   else await expect(page.locator("html")).toHaveAttribute("data-chat-widget-preset", preset);
   if (preset !== "default") {
@@ -189,6 +205,142 @@ async function resolvedStyle(page: Page, property: string, value: string) {
     },
     { property, value },
   );
+}
+
+async function expectColorPaintValidation(page: Page) {
+  const result = await page.evaluate(async () => {
+    const { getChatWidgetPaint, getChatWidgetColorStyle } = await import("/src/lib/chat-widget-colors.ts" as string);
+    const conic = getChatWidgetColorStyle({ border: "conic-gradient(from 45deg, #123456, #abcdef)" });
+    return {
+      rejected: ["url(https://example.invalid/image.png)", "red; color: blue", "not-a-color"].map(getChatWidgetPaint),
+      solid: getChatWidgetPaint(" #123456 "),
+      conicFirstStop: conic["--mari-widget-custom-border-solid"],
+    };
+  });
+  expect(result).toEqual({ rejected: ["", "", ""], solid: "#123456", conicFirstStop: "#123456" });
+}
+
+async function setGradientColors(controls: Locator) {
+  for (const role of ["border", "background", "text"] as const) {
+    const picker = controls.locator(`[data-chat-widget-color="${role}"]`);
+    const trigger = picker.locator(":scope > div > button");
+    await trigger.click();
+    await picker.getByRole("button", { name: "Gradient", exact: true }).click();
+    await picker.getByTitle(GRADIENT_COLORS[role], { exact: true }).click();
+    await trigger.click();
+  }
+}
+
+async function paintedImages(element: Locator) {
+  return element.evaluate((node) =>
+    [null, "::before", "::after"].flatMap((pseudo) => {
+      const style = getComputedStyle(node, pseudo);
+      return [style.backgroundImage, style.borderImageSource];
+    }),
+  );
+}
+
+async function previewAppearance(preview: Locator) {
+  return {
+    window: await computedAppearance(preview.locator(".mari-window")),
+    frame: await paintedImages(preview.locator(".mari-window")),
+    title: await computedAppearance(preview.locator(".mari-window__title")),
+    icon: await computedAppearance(preview.locator(".mari-drawer__icon")),
+    bubble: await computedAppearance(preview.locator(".mari-window-bubble")),
+    bubblePaint: await paintedImages(preview.locator(".mari-window-bubble")),
+  };
+}
+
+async function expectGradientWidgets(page: Page, settings: Locator, bubble: Locator) {
+  for (const role of ["border", "background", "text"] as const) {
+    await expect(page.locator("html")).toHaveAttribute("data-chat-widget-colors", new RegExp(`\\b${role}\\b`));
+    await expect
+      .poll(() =>
+        page
+          .locator("html")
+          .evaluate(
+            (element, key) => getComputedStyle(element).getPropertyValue(`--mari-widget-custom-${key}`).trim(),
+            role,
+          ),
+      )
+      .toBe(GRADIENT_COLORS[role]);
+  }
+  for (const target of [settings, bubble]) {
+    for (const role of ["border", "background"] as const) {
+      const expected = await resolvedStyle(page, "background-image", GRADIENT_COLORS[role]);
+      await expect.poll(async () => (await paintedImages(target)).join("\n")).toContain(expected);
+    }
+  }
+  const iconColor = await resolvedStyle(page, "color", "#ff6b6b");
+  await expect(bubble.locator("svg").first()).toHaveCSS("color", iconColor);
+  await expect(settings.locator(".mari-drawer__icon").first()).toHaveCSS("color", iconColor);
+  const title = settings.locator(".mari-window__title");
+  await expect(title).toHaveCSS(
+    "background-image",
+    await resolvedStyle(page, "background-image", GRADIENT_COLORS.text),
+  );
+  await expect(title).toHaveCSS("-webkit-text-fill-color", "rgba(0, 0, 0, 0)");
+}
+
+async function exerciseColorControls(page: Page, preset: "dottore" | "mari", theme: "dark" | "light") {
+  let controls = await openAppearance(page);
+  const untouched = [];
+  for (const other of ["default", "dottore", "mari"] as const) {
+    if (other !== preset) {
+      const preview = controls.locator(`[data-chat-widget-preview][data-chat-widget-preset="${other}"]`);
+      untouched.push({ preset: other, appearance: await previewAppearance(preview) });
+    }
+  }
+  const selected = controls.locator(`[data-chat-widget-preview][data-chat-widget-preset="${preset}"]`);
+  const crest = await selected
+    .locator(".mari-window__header")
+    .evaluate((element) => getComputedStyle(element, "::after").backgroundImage);
+  await setGradientColors(controls);
+  await expect.poll(async () => (await readPreferences(page)).colors).toEqual(GRADIENT_COLORS);
+  await page.screenshot({
+    path: test.info().outputPath(`chat-widget-color-controls-${preset}-${theme}.png`),
+    animations: "disabled",
+  });
+  for (const { preset: other, appearance } of untouched) {
+    await expect
+      .poll(() => previewAppearance(controls.locator(`[data-chat-widget-preview][data-chat-widget-preset="${other}"]`)))
+      .toEqual(appearance);
+  }
+  await expectGradientWidgets(page, selected.locator(".mari-window"), selected.locator(".mari-window-bubble"));
+  expect(
+    await selected
+      .locator(".mari-window__header")
+      .evaluate((element) => getComputedStyle(element, "::after").backgroundImage),
+  ).toBe(crest);
+  await clickTopbarPanel(page, "settings");
+  const settings = await openChatSettings(page);
+  await expectGradientWidgets(page, settings, page.locator("[data-chat-settings-button]"));
+  expect(
+    await settings
+      .locator(".mari-window__header")
+      .evaluate((element) => getComputedStyle(element, "::after").backgroundImage),
+  ).toBe(crest);
+  await page.screenshot({
+    path: test.info().outputPath(`chat-widget-colors-${preset}-${theme}.png`),
+    animations: "disabled",
+  });
+  await closeChatSettings(page);
+  controls = await openAppearance(page);
+  const remaining = { ...GRADIENT_COLORS };
+  for (const role of ["border", "background", "text"] as const) {
+    await controls
+      .locator(`[data-chat-widget-color="${role}"]`)
+      .getByRole("button", { name: "Reset color", exact: true })
+      .click();
+    remaining[role] = "";
+    await expect.poll(async () => (await readPreferences(page)).colors).toEqual(remaining);
+    await expect(page.locator("html")).not.toHaveAttribute("data-chat-widget-colors", new RegExp(`\\b${role}\\b`));
+  }
+  await setGradientColors(controls);
+  await controls.locator(`[data-chat-widget-preset-option="${preset}"]`).click();
+  await expect.poll(async () => (await readPreferences(page)).colors).toEqual(EMPTY_COLORS);
+  await expect(page.locator("html")).not.toHaveAttribute("data-chat-widget-colors");
+  await clickTopbarPanel(page, "settings");
 }
 
 async function measureWidgets(page: Page) {
@@ -252,8 +404,11 @@ async function expectCustomColorsKeepCutCorners(page: Page) {
       await header.evaluate((element) => ({
         fill: getComputedStyle(element, "::before").backgroundColor,
         clip: getComputedStyle(element, "::before").clipPath,
+        top: getComputedStyle(element, "::before").top,
+        left: getComputedStyle(element, "::before").left,
+        right: getComputedStyle(element, "::before").right,
       })),
-    ).toEqual({ fill: "rgb(231, 250, 255)", clip: expect.stringContaining("polygon(") });
+    ).toEqual({ fill: "rgb(231, 250, 255)", clip: "none", top: "7px", left: "7px", right: "7px" });
   } finally {
     await customTheme.evaluate((element) => element.parentNode?.removeChild(element));
     await closeChatSettings(page);
@@ -352,6 +507,7 @@ for (const theme of ["dark", "light"] as const) {
     page,
     request,
   }, testInfo) => {
+    test.setTimeout(120_000);
     const chat = await createChat(request);
     try {
       await page.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: "" } }));
@@ -359,9 +515,10 @@ for (const theme of ["dark", "light"] as const) {
       await page.goto("/");
       await expect(page.locator('[data-chat-mode="conversation"]')).toBeVisible();
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      await expectColorPaintValidation(page);
       await expect
         .poll(() => readPreferences(page))
-        .toEqual({ preset: "default", font: "", shape: "preset", ready: true });
+        .toEqual({ preset: "default", font: "", shape: "preset", colors: EMPTY_COLORS, ready: true });
       const baseline = await measureWidgets(page);
       // Default keeps the existing theme hooks, including the transparent drawer/title-bar surfaces.
       expect(baseline.window.background).toBe(
@@ -403,6 +560,7 @@ for (const theme of ["dark", "light"] as const) {
           animations: "disabled",
         });
         await closeChatSettings(page);
+        await exerciseColorControls(page, preset, theme);
       }
       expect(appearances[0]).not.toEqual(appearances[1]);
       await choosePreset(page, "default");
@@ -413,7 +571,7 @@ for (const theme of ["dark", "light"] as const) {
   });
 }
 
-test("widget font and shape choices survive reload and a fresh browser, and Reset Appearance restores Default", async ({
+test("widget font, shape and color choices survive reload and a fresh browser, and Reset Appearance restores Default", async ({
   page,
   request,
   browser,
@@ -422,6 +580,7 @@ test("widget font and shape choices survive reload and a fresh browser, and Rese
     !testInfo.project.name.includes("desktop"),
     "One real-server proof covers the shared appearance preferences.",
   );
+  test.setTimeout(120_000);
   const original = (await (await request.get(UI_SETTINGS_PATH)).json()) as { value: string | null };
   const chat = await createChat(request);
   const freshContext = await browser.newContext({ viewport: page.viewportSize()! });
@@ -435,28 +594,37 @@ test("widget font and shape choices survive reload and a fresh browser, and Rese
     await page.goto("/");
     await expect
       .poll(() => readPreferences(page))
-      .toEqual({ preset: "default", font: "", shape: "preset", ready: true });
+      .toEqual({ preset: "default", font: "", shape: "preset", colors: EMPTY_COLORS, ready: true });
     const baseline = await measureWidgets(page);
     await choosePreset(page, "dottore");
     const preset = await measureWidgets(page);
     let controls = await openAppearance(page);
     await controls.locator("#chat-widget-font").selectOption("@serif");
     await controls.locator("#chat-widget-shape").selectOption("square");
+    await setGradientColors(controls);
     await clickTopbarPanel(page, "settings");
     const square = await measureWidgets(page);
     expect(square.title.font).toContain("serif");
     expect(square.title.font).not.toBe(preset.title.font);
     expect(square.window.radius).toBe("0px");
     expect(square.bubble.radius).toBe("0px");
-    expect(square.frame.background).toBe(preset.frame.background);
-    const expected = { preset: "dottore", font: "@serif", shape: "square", ready: true };
+    const expected = { preset: "dottore", font: "@serif", shape: "square", colors: GRADIENT_COLORS, ready: true };
     await expect.poll(() => readPreferences(page)).toEqual(expected);
     await expect
       .poll(async () => {
         const saved = await readSaved();
-        return { preset: saved.chatWidgetPreset, font: saved.chatWidgetFont, shape: saved.chatWidgetShape };
+        return {
+          preset: saved.chatWidgetPreset,
+          font: saved.chatWidgetFont,
+          shape: saved.chatWidgetShape,
+          colors: {
+            border: saved.chatWidgetBorderColor,
+            background: saved.chatWidgetBackgroundColor,
+            text: saved.chatWidgetTextColor,
+          },
+        };
       })
-      .toEqual({ preset: "dottore", font: "@serif", shape: "square" });
+      .toEqual({ preset: "dottore", font: "@serif", shape: "square", colors: GRADIENT_COLORS });
     await page.reload();
     await expect.poll(() => readPreferences(page)).toEqual(expected);
     expect(await measureWidgets(page)).toEqual(square);
@@ -487,7 +655,7 @@ test("widget font and shape choices survive reload and a fresh browser, and Rese
     await page.getByRole("button", { name: "Reset Appearance", exact: true }).click();
     await expect
       .poll(() => readPreferences(page))
-      .toEqual({ preset: "default", font: "", shape: "preset", ready: true });
+      .toEqual({ preset: "default", font: "", shape: "preset", colors: EMPTY_COLORS, ready: true });
     await clickTopbarPanel(page, "settings");
     const reset = await measureWidgets(page);
     expect(reset.title.font).toBe(baseline.title.font);
@@ -496,9 +664,16 @@ test("widget font and shape choices survive reload and a fresh browser, and Rese
     await expect
       .poll(async () => {
         const saved = await readSaved();
-        return [saved.chatWidgetPreset, saved.chatWidgetFont, saved.chatWidgetShape];
+        return [
+          saved.chatWidgetPreset,
+          saved.chatWidgetFont,
+          saved.chatWidgetShape,
+          saved.chatWidgetBorderColor,
+          saved.chatWidgetBackgroundColor,
+          saved.chatWidgetTextColor,
+        ];
       })
-      .toEqual(["default", "", "preset"]);
+      .toEqual(["default", "", "preset", "", "", ""]);
   } finally {
     await freshContext.close();
     // Stop its debounced persistence before restoring the shared server fixture.

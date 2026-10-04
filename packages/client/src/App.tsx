@@ -48,6 +48,11 @@ import {
   RAINBOW_GRADIENT_PRESET,
 } from "./lib/css-colors";
 import { normalizeThemeCss } from "./lib/theme-css";
+import {
+  CHAT_WIDGET_COLOR_PROPERTIES,
+  getChatWidgetColorRoles,
+  getChatWidgetColorStyle,
+} from "./lib/chat-widget-colors";
 import { getChatWidgetFontFamily, stripFontFamilyQuotes, toCssFontFamilyValue } from "./lib/font-family";
 import { useLegacyThemeMigration, useThemes } from "./hooks/use-themes";
 import { useSettingsSync } from "./hooks/use-settings-sync";
@@ -479,6 +484,9 @@ export function App() {
   const chatWidgetPreset = useUIStore((s) => s.chatWidgetPreset);
   const chatWidgetFont = useUIStore((s) => s.chatWidgetFont);
   const chatWidgetShape = useUIStore((s) => s.chatWidgetShape);
+  const chatWidgetBorderColor = useUIStore((s) => s.chatWidgetBorderColor);
+  const chatWidgetBackgroundColor = useUIStore((s) => s.chatWidgetBackgroundColor);
+  const chatWidgetTextColor = useUIStore((s) => s.chatWidgetTextColor);
   const appBackgroundColor = useUIStore((s) => s.appBackgroundColor);
   const appAccentColor = useUIStore((s) => s.appAccentColor);
   const appAccentPulseMode = useUIStore((s) => s.appAccentPulseMode);
@@ -1056,6 +1064,22 @@ export function App() {
     if (font) root.style.setProperty("--mari-widget-font-override", font);
     else root.style.removeProperty("--mari-widget-font-override");
   }, [chatWidgetPreset, chatWidgetFont, chatWidgetShape]);
+
+  useEffect(() => {
+    const colors = getChatWidgetColorStyle({
+      border: chatWidgetBorderColor,
+      background: chatWidgetBackgroundColor,
+      text: chatWidgetTextColor,
+    });
+    const roles = getChatWidgetColorRoles(colors);
+    if (roles) document.documentElement.dataset.chatWidgetColors = roles;
+    else delete document.documentElement.dataset.chatWidgetColors;
+    for (const property of CHAT_WIDGET_COLOR_PROPERTIES) {
+      const value = colors[property];
+      if (value) document.documentElement.style.setProperty(property, value);
+      else document.documentElement.style.removeProperty(property);
+    }
+  }, [chatWidgetBorderColor, chatWidgetBackgroundColor, chatWidgetTextColor]);
 
   // Register custom font faces without forcing every shard to load at startup.
   const { data: customFonts } = useQuery<CustomFontFace[]>({

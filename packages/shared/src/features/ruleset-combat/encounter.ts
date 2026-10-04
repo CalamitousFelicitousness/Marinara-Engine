@@ -743,29 +743,21 @@ function itemUseActions(
     const counted = item.charges ? whole(read(item.charges.max)) : undefined;
     const max = counted === undefined ? undefined : Math.min(RULESET_ITEM_CHARGES_MAX, counted);
     if (use.charges !== undefined && !(max !== undefined && max >= 1)) return;
-    const aim = use.toHit ? itemToHit(definition, build, evaluated, item, use.toHit, pooled) : { toHit: 0 };
-    const difficulty = whole(read(use.saveDifficulty));
-    // A save's number read off a stat the item does not give is a save against nothing.
-    if (use.saveDifficulty !== undefined && difficulty === undefined) return;
     const label =
       held.name ??
       definition.items?.categories.find((category) => category.id === item.category)?.label ??
       item.category;
-    const action = mechanicsAction(definition, use, {
-      id: `use:${index}`,
-      kind: "item",
-      label,
-      budget: use.budget ?? "",
-      toHit: aim.toHit,
-      ...(difficulty !== undefined ? { saveDifficulty: difficulty } : {}),
+    const action = itemUseMechanics(
+      definition,
+      item,
+      use,
+      { id: `use:${index}`, label },
       build,
       evaluated,
       perCell,
-    });
+      pooled,
+    );
     if (!action) return;
-    if (aim.target !== undefined) action.target = aim.target;
-    const restored = amountOf(use.restore?.amount);
-    if (use.restore && restored) action.restore = { pool: use.restore.pool, amount: restored };
     // A fake (1.74) is offered as what it passes for, aimed, timed and spent as that is, so nothing on
     // the menu tells them apart; what it does is what it truly does. One whose true item does nothing a
     // fight can use is spent for nothing.
@@ -831,6 +823,40 @@ export function rulesetActionAsUsed(action: RulesetCombatAction): RulesetCombatA
   return { ...used, ...does };
 }
 
+/** What an item's use does, as an action: its own to-hit and save difficulty in place of a sheet row's,
+ *  and what it restores. Null for a use no menu holds, or one whose save reads a stat the item does
+ *  not give (a save against nothing). */
+function itemUseMechanics(
+  definition: RulesetDefinition,
+  item: RulesetCatalogItem,
+  use: NonNullable<RulesetCatalogItem["use"]>,
+  from: { id: string; label: string },
+  build: RulesetSheetBuild,
+  evaluated: EvaluatedRulesetSheet,
+  perCell: number | undefined,
+  pooled: boolean,
+): RulesetCombatAction | null {
+  const read = itemAttackValue(item, use.saveDifficulty);
+  const difficulty = typeof read === "number" && Number.isFinite(read) ? Math.trunc(read) : undefined;
+  if (use.saveDifficulty !== undefined && difficulty === undefined) return null;
+  const aim = use.toHit ? itemToHit(definition, build, evaluated, item, use.toHit, pooled) : { toHit: 0 };
+  const action = mechanicsAction(definition, use, {
+    ...from,
+    kind: "item",
+    budget: use.budget ?? "",
+    toHit: aim.toHit,
+    ...(difficulty !== undefined ? { saveDifficulty: difficulty } : {}),
+    build,
+    evaluated,
+    perCell,
+  });
+  if (!action) return null;
+  if (aim.target !== undefined) action.target = aim.target;
+  const restored = amountOf(use.restore?.amount);
+  if (use.restore && restored) action.restore = { pool: use.restore.pool, amount: restored };
+  return action;
+}
+
 /** What a fake's use truly does: its true item's use, read off that item, as the parts of an action
  *  in `RULESET_FAKE_EFFECT_KEYS`; null where it does nothing a fight can use (no use, one no menu holds, or a
  *  save whose number reads a stat the item does not give). */
@@ -842,27 +868,10 @@ function fakeUseAction(
   perCell: number | undefined,
   pooled: boolean,
 ): Partial<RulesetCombatAction> | null {
-  const use = item.use;
-  if (!use) return null;
-  const read = itemAttackValue(item, use.saveDifficulty);
-  const difficulty = typeof read === "number" && Number.isFinite(read) ? Math.trunc(read) : undefined;
-  if (use.saveDifficulty !== undefined && difficulty === undefined) return null;
-  const aim = use.toHit ? itemToHit(definition, build, evaluated, item, use.toHit, pooled) : { toHit: 0 };
-  const action = mechanicsAction(definition, use, {
-    id: "fake",
-    kind: "item",
-    label: "",
-    budget: "",
-    toHit: aim.toHit,
-    ...(difficulty !== undefined ? { saveDifficulty: difficulty } : {}),
-    build,
-    evaluated,
-    perCell,
-  });
+  const action = item.use
+    ? itemUseMechanics(definition, item, item.use, { id: "fake", label: "" }, build, evaluated, perCell, pooled)
+    : null;
   if (!action) return null;
-  if (aim.target !== undefined) action.target = aim.target;
-  const restored = amountOf(use.restore?.amount);
-  if (use.restore && restored) action.restore = { pool: use.restore.pool, amount: restored };
   const does: Partial<RulesetCombatAction> = {};
   for (const key of RULESET_FAKE_EFFECT_KEYS)
     if (action[key] !== undefined) Object.assign(does, { [key]: action[key] });

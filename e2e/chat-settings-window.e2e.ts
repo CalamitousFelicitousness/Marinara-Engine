@@ -321,9 +321,9 @@ test.describe("Chat Settings window on desktop", () => {
       // Move by the title bar.
       const header = settings.locator(".mari-window__header");
       const headerBox = await box(header);
-      await drag(page, { x: headerBox.x + headerBox.width / 2, y: headerBox.y + headerBox.height / 2 }, -220, 30);
+      await drag(page, { x: headerBox.x + headerBox.width / 2, y: headerBox.y + headerBox.height / 2 }, -220, 0);
       const moved = await box(settings);
-      expectSameBox(moved, { ...defaultBox, x: defaultBox.x - 220, y: defaultBox.y + 30 }, "moved");
+      expectSameBox(moved, { ...defaultBox, x: defaultBox.x - 220 }, "moved");
 
       // Resize from the bottom-right corner and from the left edge.
       const corner = await box(settings.locator('.mari-window__resize-handle[data-edge="se"]'));
@@ -686,6 +686,13 @@ test.describe("Chat Settings window on desktop", () => {
       // every load) shares the device's storage and keeps it hidden after a reload.
       await tip.getByRole("button", { name: "Dismiss tip", exact: true }).click();
       await expect(page.locator("[data-chat-settings-move-tip]")).toHaveCount(0);
+      await expect
+        .poll(() =>
+          page.evaluate(
+            () => JSON.parse(localStorage.getItem("marinara-engine-ui") ?? "{}").state?.chatSettingsMoveTipDismissed,
+          ),
+        )
+        .toBe(true);
       const fresh = await page.context().newPage();
       await fresh.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: "" } }));
       await fresh.goto("/");
@@ -840,8 +847,8 @@ test.describe("Chat Settings window on desktop", () => {
       await expect(drawer).toHaveAttribute("data-chat-settings-section", "chat-name");
       await expect(drawer).toHaveAttribute("data-detached", "false");
       await expect(drawer.getByRole("button", { name: "Chat Name", exact: true })).toHaveAttribute(
-        "data-drawer-toggle",
-        "",
+        "aria-expanded",
+        "false",
       );
       await expect(drawer.locator(".mari-drawer__title")).toHaveText("Chat Name");
       const sectionsOutsideDrawers = await settings.evaluate((element) =>

@@ -1,6 +1,6 @@
 // #7034 step 5: with the Tracker Panel on, a Roleplay chat's trackers live only in the panel; with it off they
 // live in a movable Tracker window (one drawer per tracker). Both carry an Agent activity section.
-import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { seedUIState } from "./ui-state-fixture.js";
 import { resetChatView } from "./chat-settings-tools.js";
@@ -63,6 +63,108 @@ async function openChatSettings(page: Page) {
   const settings = page.locator('[data-window="chat-settings"]');
   await expect(settings.locator("[data-chat-settings-section]").first()).toBeVisible();
   return settings;
+}
+
+async function typography(locator: Locator) {
+  return locator.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      fontFamily: style.fontFamily,
+      fontSize: style.fontSize,
+      fontWeight: style.fontWeight,
+      lineHeight: style.lineHeight,
+      letterSpacing: style.letterSpacing,
+      textTransform: style.textTransform,
+    };
+  });
+}
+
+for (const theme of ["dark", "light"] as const) {
+  test(`Tracker Panel activity matches nearby sections and its border follows a pulsing gradient in ${theme} mode`, async ({
+    page,
+    request,
+  }, testInfo) => {
+    const chat = await createTrackerChat(request);
+    try {
+      await prepare(page, chat.id, {
+        theme,
+        appAccentColor: "linear-gradient(90deg, #ff0000, #00ff00, #0000ff)",
+        appAccentPulseMode: true,
+        appAccentRgbMode: false,
+        trackerPanelEnabled: true,
+        trackerPanelOpen: true,
+        trackerPanelOpenByChatId: { [chat.id]: true },
+      });
+      await page.goto("/");
+      await expect(page.locator('[data-chat-mode="roleplay"]')).toBeVisible({ timeout: 30_000 });
+      if (testInfo.project.name.includes("mobile")) {
+        await page.locator('.mari-window-bubble[data-tracker-panel-toggle="bubble"]').click();
+      }
+      const panel = page.locator('[data-component="TrackerDataSidebar"]:visible');
+      await expect(panel).toBeVisible();
+      const activity = panel.locator('[data-tracker-section="agent-activity"]');
+      const activityHeader = activity.getByRole("button", { name: /Agent activity/i });
+      const customHeader = panel.getByRole("button", { name: /Custom Stats/i }).first();
+      const custom = customHeader.locator("xpath=ancestor::section[1]");
+      expect(await typography(activityHeader.locator("span").last())).toEqual(
+        await typography(customHeader.locator("span").last()),
+      );
+      const surface = (locator: Locator) =>
+        locator.evaluate((element) => {
+          const style = getComputedStyle(element);
+          return { background: style.backgroundColor, border: style.borderBottomColor, shadow: style.boxShadow };
+        });
+      expect(await surface(activity)).toEqual(await surface(custom));
+      await activityHeader.click();
+      const action = activity.getByRole("button", { name: "Clear Trackers", exact: true });
+      await expect(action).toBeVisible();
+      const rowText = await typography(custom.getByText("Fine", { exact: true }));
+      expect((await typography(action)).fontSize).toBe(rowText.fontSize);
+      expect((await typography(action)).lineHeight).toBe(rowText.lineHeight);
+      await expect(action).toHaveCSS("padding-left", "4px");
+      await expect(action).toHaveCSS("padding-top", "4px");
+
+      // Exercise a real output card, not only the empty activity state.
+      await page.evaluate(async () => {
+        const module = (await import("/src/stores/agent.store.ts" as string)) as {
+          useAgentStore: { setState: (state: Record<string, unknown>) => void };
+        };
+        module.useAgentStore.setState({
+          thoughtBubbles: [
+            { agentId: "world-state", agentName: "World State", content: "The harbor is calm.", timestamp: Date.now() },
+          ],
+        });
+      });
+      const output = activity.locator("[data-agent-output]");
+      await expect(output).toContainText("The harbor is calm.");
+      expect((await typography(output)).fontSize).toBe(rowText.fontSize);
+      await expect(output).toHaveCSS("padding-left", "4px");
+      await expect(output).toHaveCSS(
+        "border-radius",
+        await customHeader.evaluate((element) => getComputedStyle(element).borderRadius),
+      );
+
+      const shell = page.locator(".mari-tracker-panel:visible");
+      await expect(page.locator("html")).toHaveAttribute("data-marinara-accent-animation", "gradient");
+      const ring = () => shell.evaluate((element) => getComputedStyle(element).boxShadow);
+      const firstRing = await ring();
+      await expect.poll(ring).not.toBe(firstRing);
+      const followsLiveAccent = await shell.evaluate((element) => {
+        const probe = document.createElement("span");
+        probe.style.color = "var(--marinara-app-accent-solid)";
+        element.appendChild(probe);
+        const color = getComputedStyle(probe).color;
+        const shadow = getComputedStyle(element).boxShadow;
+        probe.remove();
+        return shadow.includes(color);
+      });
+      expect(followsLiveAccent).toBe(true);
+      await activity.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: testInfo.outputPath(`tracker-activity-${theme}.png`), animations: "disabled" });
+    } finally {
+      await request.delete(`/api/chats/${chat.id}?force=true`);
+    }
+  });
 }
 
 test.describe("Roleplay trackers on desktop", () => {

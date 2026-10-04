@@ -276,6 +276,17 @@ test.describe("phone bubbles", () => {
       expect(unchanged.x).toBeCloseTo(start.x, 0);
       expect(unchanged.y).toBeCloseTo(start.y, 0);
       // A real drag moves it and opens nothing.
+      // Some touch browsers omit the release click. Suppress it here if emitted so
+      // this test always covers that path, rather than consuming the drag guard.
+      await target.evaluate((element) => {
+        const omitReleaseClick = (event: Event) => event.stopImmediatePropagation();
+        element.addEventListener("click", omitReleaseClick, true);
+        element.addEventListener(
+          "pointerup",
+          () => window.setTimeout(() => element.removeEventListener("click", omitReleaseClick, true), 0),
+          { once: true },
+        );
+      });
       await touch("touchStart", cx, cy);
       for (let step = 1; step <= 6; step += 1) await touch("touchMove", cx - step * 20, cy + step * 30);
       await touch("touchEnd", cx - 120, cy + 180);
@@ -284,6 +295,12 @@ test.describe("phone bubbles", () => {
       expect(moved.x).toBeLessThan(start.x - 100);
       expect(moved.y).toBeGreaterThan(start.y + 150);
       await expectComposerClearAndNoSideScroll(page);
+      // The first deliberate tap after the drag must open, without a second tap.
+      const nextX = moved.x + moved.width / 2;
+      const nextY = moved.y + moved.height / 2;
+      await touch("touchStart", nextX, nextY);
+      await touch("touchEnd", nextX, nextY);
+      await expect(sheet(page, CONNECTED)).toBeVisible();
     } finally {
       await chat.remove();
     }
@@ -563,6 +580,8 @@ test.describe("chat windows on desktop (step 6)", () => {
       await expect(page.locator('[data-chat-mode="roleplay"]')).toBeVisible({ timeout: 30_000 });
       const button = chatSettingsButton(page);
       const trackers = sheet(page, "trackers");
+      await expect(bubble(page, "trackers")).toBeVisible();
+      await bubble(page, "trackers").click();
       await expect(trackers).toBeVisible();
       await expect(button.locator("[data-agents-running]")).toHaveCount(0);
       await expect(trackers.locator("[data-agents-running]")).toHaveCount(0);

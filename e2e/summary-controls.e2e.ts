@@ -131,18 +131,18 @@ test("Chat Summary range fields fit long message numbers in a quiet box", async 
       expect.soft(await field.evaluate((input) => input.scrollWidth <= input.clientWidth)).toBe(true);
     }
     const layout = await range.evaluate((box) => {
-      const footer = box.closest("[data-chat-floating-footer]")!;
-      const scope = [...document.querySelectorAll("[data-chat-floating-panel] p")].find(
+      const summary = box.closest("[data-chat-summary]")!;
+      const scope = [...summary.querySelectorAll("p")].find(
         (label) => label.textContent === "Summary Scope",
       )!.parentElement!;
       return {
         border: getComputedStyle(box).borderTopColor,
         sectionBorder: getComputedStyle(scope).borderTopColor,
-        widthShare: box.getBoundingClientRect().width / footer.getBoundingClientRect().width,
+        widthShare: box.getBoundingClientRect().width / summary.getBoundingClientRect().width,
       };
     });
     // The same quiet border as the window's sections, even for a range that needs fixing,
-    // and the range spans the footer instead of its left half.
+    // and the range spans the summary section instead of its left half.
     expect.soft(layout.border).toBe(layout.sectionBorder);
     expect.soft(layout.widthShare).toBeGreaterThan(0.8);
     await page.screenshot({ path: info.outputPath("summary-range-fields.png") });

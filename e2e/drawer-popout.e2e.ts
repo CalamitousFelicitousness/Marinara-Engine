@@ -151,12 +151,17 @@ test.describe("Pop-out drawers on desktop", () => {
       const body = popped.locator('.mari-drawer[data-drawer="chat-name"]');
       await expect(body).toHaveAttribute("data-detached", "true");
       await expect(body.getByRole("button", { name: "Copy chat ID", exact: true })).toBeVisible();
-      // It leaves Chat Settings, and opens beside it, level with where it was.
+      // It leaves Chat Settings and opens beside it, adjusted to stay above the message box.
       await expect(settings.locator('[data-drawer="chat-name"]')).toHaveCount(0);
       await expect(page.locator('[data-drawer="chat-name"]')).toHaveCount(1);
       const poppedBox = await box(popped);
       expect(poppedBox.x + poppedBox.width).toBeLessThanOrEqual(settingsBox.x);
-      expect(Math.abs(poppedBox.y - drawerBox.y)).toBeLessThanOrEqual(2);
+      expect(poppedBox.y).toBeLessThanOrEqual(drawerBox.y + 2);
+      const composerTop = await page
+        .locator("[data-chat-composer]")
+        .first()
+        .evaluate((element) => (element.closest(".chat-input-container") ?? element).getBoundingClientRect().top);
+      expect(poppedBox.y + poppedBox.height).toBeLessThanOrEqual(composerTop);
 
       // Pinned: a press elsewhere closes the unpinned Chat Settings but not the popped-out section.
       await page.locator("[data-chat-scroll]").click({ position: { x: 40, y: 200 } });
@@ -373,6 +378,18 @@ test.describe("Pop-out drawers on desktop", () => {
       await trackerWindow.getByRole("button", { name: "Close Trackers", exact: true }).click();
       await expect(trackerWindow).toBeHidden();
       await expect(popped).toBeVisible();
+      await expect(popped.getByText("Harbor market", { exact: true })).toBeVisible();
+
+      // Reload keeps the parent minimized while its pinned, popped-out tracker remains open.
+      await expect
+        .poll(
+          async () =>
+            (await readSavedLayout(request, chat.id))?.windows?.trackers as { minimized?: boolean } | undefined,
+        )
+        .toMatchObject({ minimized: true });
+      await page.reload();
+      await expect(trackerBubble).toBeVisible();
+      await expect(trackerWindow).toBeHidden();
       await expect(popped.getByText("Harbor market", { exact: true })).toBeVisible();
 
       // Put back returns it; turning the Trackers window on shows it there.

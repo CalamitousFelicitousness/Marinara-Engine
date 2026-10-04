@@ -52,7 +52,7 @@
   --mari-widget-border: oklch(0.7 0.048 218);
   --mari-widget-gold: oklch(0.58 0.065 83);
   --mari-widget-soft: oklch(0.87 0.037 210);
-  --mari-widget-font-preset: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --mari-widget-font-preset: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
   --mari-widget-header-bg: linear-gradient(110deg, transparent, oklch(0.85 0.04 197 / 0.22));
   --mari-widget-corner: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2040%22%3E%3Cpath%20d%3D%22M12%201%2022%2020%2012%2039%202%2020Z%22%20fill%3D%22%23baaa7c%22%20stroke%3D%22%236c6c58%22%2F%3E%3Cpath%20d%3D%22m12%206%206%2014-6%2014-6-14Z%22%20fill%3D%22%2364c8dc%22%20stroke%3D%22%23486a7c%22%2F%3E%3Cpath%20d%3D%22m12%206-6%2014%206-4Z%22%20fill%3D%22%23d5f6ef%22%2F%3E%3Cpath%20d%3D%22m12%2016%206%204-6%2014Z%22%20fill%3D%22%234f9bc4%22%2F%3E%3Cpath%20d%3D%22M0%2012%205%2017M24%2012l-5%205M0%2028l5-5m19%205-5-5%22%20stroke%3D%22%23baaa7c%22%2F%3E%3C%2Fsvg%3E");
   --mari-widget-header-padding: 0.75rem 1.75rem;

@@ -317,6 +317,13 @@ export function createChatPresetsStorage(db: DB) {
         if (!Object.prototype.hasOwnProperty.call(presetMetadata, "customAgentImageSettings")) {
           preserved.customAgentImageSettings = sanitizePresetAgentMap(currentMetadata.customAgentImageSettings);
         }
+        // Profiles saved before window layouts existed leave the chat's layout as it is.
+        if (
+          !Object.prototype.hasOwnProperty.call(presetMetadata, "windowLayout") &&
+          Object.prototype.hasOwnProperty.call(currentMetadata, "windowLayout")
+        ) {
+          preserved.windowLayout = currentMetadata.windowLayout;
+        }
 
         const baseDefaults: Record<string, unknown> = {
           ...normalizeTranslatorSettings(await createAppSettingsStorage(db).get(TRANSLATOR_DEFAULTS_SETTINGS_KEY)),

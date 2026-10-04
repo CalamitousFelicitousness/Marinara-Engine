@@ -274,6 +274,11 @@ export interface ChatMetadata {
   };
   /** Roleplay presentation only; omitted chats use the Appearance default. */
   roleplayDisplayStyle?: "classic" | "visual-novel";
+  /**
+   * This chat's window layout on a computer (window places and sizes, pinned and locked state,
+   * popped-out drawers), owned and validated by the client. Absent or null means the defaults.
+   */
+  windowLayout?: unknown;
   /** Chat-local tracker icon overrides keyed by persona id, unique character id, or tracker character slot. */
   trackerStatIconOverrides?: Record<string, import("../constants/stat-icons.js").TrackerStatIconAssignment[]>;
   /** Compiled enabled rolling summary text for context injection. Derived from summaryEntries when present. */

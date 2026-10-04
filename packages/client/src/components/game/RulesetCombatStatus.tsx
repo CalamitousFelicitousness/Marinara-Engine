@@ -67,14 +67,17 @@ export function RulesetCombatStatus({
             {t("game.combat.ruleset.status.round", { round: view.round })}
           </span>
           {actor &&
-            budgets.map((budget) => (
-              <span key={budget.id}>
-                {t("game.combat.ruleset.status.budget", {
-                  label: budget.label,
-                  left: actor.budgets[budget.id] ?? 0,
-                })}
-              </span>
-            ))}
+            budgets
+              // A budget of no count (combat C6d) is shown only while a condition gives the actor some.
+              .filter((budget) => budget.count > 0 || (actor.budgets[budget.id] ?? 0) > 0)
+              .map((budget) => (
+                <span key={budget.id}>
+                  {t("game.combat.ruleset.status.budget", {
+                    label: budget.label,
+                    left: actor.budgets[budget.id] ?? 0,
+                  })}
+                </span>
+              ))}
           {/* What is left of this turn's walking, in the ruleset's own unit. Only a fight on a
               board has any, and then everybody on it does. */}
           {actor && typeof actor.movementLeft === "number" && (

@@ -1382,6 +1382,22 @@ same keys for a d20 system:
     can see it needs. Naming an effect the condition does not have is refused. Without a board there
     is no line to break, so everything counts either way.
   - `endsWhenSourceDown`: it comes off the moment whoever applied it goes down.
+  - The action economy (Capability API 1.71), as Haste and Slow change it:
+    - `budgets`: `[{ "budget": "haste", "flat": 1 }]` gives its holder that many more (or fewer) of a
+      turn budget each turn, never below none. A budget may be declared with `"count": 0` for one
+      only a condition fills, and the screen shows it only while somebody has some.
+    - `grants`: `{ "budget": "haste", "standard": ["dash", "disengage", "hide"], "attacks": true,
+      "items": true }` says what that budget may be spent on: the standard actions named (from the
+      ruleset's own `standard` list), one weapon attack of a single strike (whatever strikes an
+      action would otherwise put in hand), and an item's use. They are offered once the budget they
+      would usually spend is gone.
+    - `exclusive`: `["action", "bonus"]`, two budgets of which a turn spends only one: spending
+      either empties the other.
+    - `attacksPerTurn`: how many attacks (actions that roll to hit, and each attacking part of a
+      sequence) its holder makes in a turn, whatever an action would give.
+    - `onEnd`: `{ "applies": [{ "condition": "lethargic", "duration": { "rounds": 1 } }] }`, what it
+      leaves behind when it ends for good (it runs out, a save or damage ends it, concentration
+      breaks), never when it is put on again.
 
   `own-saves-advantage` and its opposite roll the save twice and keep one, exactly as an attack is
   rolled, and they cancel each other out. `own-checks-advantage` and its opposite do the same to the

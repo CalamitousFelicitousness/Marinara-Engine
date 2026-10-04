@@ -653,11 +653,16 @@ function reactionThreat(
     } else if (skill?.type === "buff" || skill?.type === "debuff") {
       value += (allied === (skill.type === "debuff") ? 1 : -1) * 0.5;
     } else {
+      // An area's cover is read from where it lands, as the engine rolls it.
+      const action = p.action.tactical;
+      const aimed =
+        skill?.areaRadius && action && "targetId" in action && action.targetId ? get(s, action.targetId) : undefined;
       const forecast = s.tactical
         ? forecastTacticalAttack(s.tactical, caster as TacticalUnit, target as TacticalUnit, caster as TacticalUnit, {
             power: skill ? Math.max(1, skill.power) : 1,
             element: skill?.element ?? caster.element,
             traits: skill ?? caster,
+            ...(aimed ? { coverFrom: { x: (aimed as TacticalUnit).x, y: (aimed as TacticalUnit).y } } : {}),
           })
         : undefined;
       const estimate = forecast

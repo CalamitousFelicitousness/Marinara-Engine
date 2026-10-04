@@ -590,7 +590,7 @@ export function TacticalCombatUI({
     if (ui.kind !== "target") return null;
     if (ui.action === "item") return null;
     if (ui.action === "skill" && ui.skill && ui.skill.type !== "attack") return null;
-    return forecastAttack(stagedState, selectedUnit.id, forecastTargetId);
+    return forecastAttack(stagedState, selectedUnit.id, forecastTargetId, ui.action === "skill" ? ui.skill : undefined);
   }, [stagedState, selectedUnit, forecastTargetId, ui]);
 
   const spawnPopup = useCallback(

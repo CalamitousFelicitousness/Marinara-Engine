@@ -112,6 +112,8 @@ export interface RulesetCombatSaveRider {
   save: string;
   difficulty: number;
   onSuccess: "none" | "half" | "negates";
+  /** Cover does not help the target with this save (combat C6a-2). */
+  ignoresCover?: true;
 }
 
 /** How often something can be done at all, and over what stretch. `day` outlives one fight, so the

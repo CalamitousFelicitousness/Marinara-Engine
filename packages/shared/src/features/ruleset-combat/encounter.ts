@@ -1090,7 +1090,12 @@ function mechanicsAction(
   if (mechanics.attackRoll) action.toHit = from.toHit;
   if (mechanics.autoHit) action.autoHit = true;
   if (mechanics.save) {
-    action.save = { save: mechanics.save.save, onSuccess: mechanics.save.onSuccess, difficulty: sourceDifficulty };
+    action.save = {
+      save: mechanics.save.save,
+      onSuccess: mechanics.save.onSuccess,
+      difficulty: sourceDifficulty,
+      ...(mechanics.save.ignoresCover ? { ignoresCover: true as const } : {}),
+    };
   }
   if (from.saveDifficulty !== undefined) action.saveDifficulty = sourceDifficulty;
   if (mechanics.applies?.length) action.applies = mechanics.applies.map((entry2) => ({ ...entry2 }));

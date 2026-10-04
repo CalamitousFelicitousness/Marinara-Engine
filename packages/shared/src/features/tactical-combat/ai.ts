@@ -58,6 +58,8 @@ function buildAttackOptions(state: TacticalCombatState, unit: TacticalUnit): Att
       rangeMin: number;
       rangeMax: number;
       traits?: import("../combat-conditions.js").CombatAttackTraits;
+      /** An area: cover is read from where it lands, the target itself. */
+      area?: boolean;
     },
   ): void => {
     if (!inReach(state.grid, tile, target, opts.rangeMin, opts.rangeMax)) return;
@@ -65,6 +67,7 @@ function buildAttackOptions(state: TacticalCombatState, unit: TacticalUnit): Att
       power: opts.power,
       element: opts.element,
       traits: opts.traits,
+      ...(opts.area ? { coverFrom: target } : {}),
     });
     const hitP = fc.hitChance / 100;
     const expValue = hitP * fc.damage;
@@ -106,6 +109,7 @@ function buildAttackOptions(state: TacticalCombatState, unit: TacticalUnit): Att
           skillName: skill.name,
           rangeMin: 1,
           rangeMax: skill.range ?? Math.max(unit.attackRange.max, 2),
+          area: (skill.areaRadius ?? 0) > 0,
         });
       }
     }

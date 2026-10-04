@@ -116,10 +116,13 @@ export function decideProfileAction(
           !hasLineOfSight(state.grid, tile, target)
         )
           continue;
+        // An area's cover is read from where it lands, the target it is aimed at, as its roll reads it.
+        const coverFrom = skill?.areaRadius ? { x: target.x, y: target.y } : undefined;
         const fc = forecastFrom(state, unit, target, tile, {
           power: skill ? Math.max(1, skill.power) : undefined,
           element: skill?.element,
           traits: skill ?? unit,
+          ...(coverFrom ? { coverFrom } : {}),
         });
         const counter = forecastFrom(state, target, { ...unit, ...tile }, target, { hitPenalty: 10 });
         const counterRisk =
@@ -139,6 +142,7 @@ export function decideProfileAction(
             power: skill ? Math.max(1, skill.power) : undefined,
             element: skill?.element,
             traits: skill ?? unit,
+            ...(coverFrom ? { coverFrom } : {}),
           });
           return sum + ((t.side === unit.side ? -2 : 1) * hit.damage * hit.hitChance) / 100 / Math.max(1, t.maxHp);
         }, 0);

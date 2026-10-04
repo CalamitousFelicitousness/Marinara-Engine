@@ -306,11 +306,19 @@ function forecastFrom(
   attacker: TacticalUnit,
   defender: TacticalUnit,
   from: TacticalCoord,
-  opts: { power?: number; element?: string; hitPenalty?: number; traits?: CombatAttackTraits } = {},
+  opts: {
+    power?: number;
+    element?: string;
+    hitPenalty?: number;
+    traits?: CombatAttackTraits;
+    /** Where cover is measured from when it is not `from`: where an area lands, as its roll does. */
+    coverFrom?: TacticalCoord;
+  } = {},
 ): { damage: number; hitChance: number; critChance: number } {
   // The attacker as standing on `from`: its own ground changes nothing it deals, but the cover between
   // it and the defender does (combat C6a-2). computeDamage reads the defender's ground from its coords.
-  const placed = { ...attacker, x: from.x, y: from.y };
+  const at = opts.coverFrom ?? from;
+  const placed = { ...attacker, x: at.x, y: at.y };
   const hc = Math.max(
     0,
     hitChance(state.grid, placed, defender, state.weather, opts.traits ?? attacker) - (opts.hitPenalty ?? 0),
@@ -332,13 +340,27 @@ function forecastFrom(
 }
 
 /** FE-style forecast from the attacker's CURRENT tile. Matches `applyAction` statistically. */
-export function forecastAttack(state: TacticalCombatState, attackerId: string, defenderId: string): TacticalForecast {
+export function forecastAttack(
+  state: TacticalCombatState,
+  attackerId: string,
+  defenderId: string,
+  /** The skill it is made with, when one: an area's cover is read from where it lands. */
+  skill?: CombatSkill,
+): TacticalForecast {
   const attacker = getUnit(state, attackerId);
   const defender = getUnit(state, defenderId);
   if (!attacker || !defender) {
     return { damage: 0, hitChance: 0, critChance: 0, hits: 0 };
   }
-  const main = forecastFrom(state, attacker, defender, { x: attacker.x, y: attacker.y });
+  const main = forecastFrom(
+    state,
+    attacker,
+    defender,
+    { x: attacker.x, y: attacker.y },
+    {
+      ...(skill?.areaRadius ? { coverFrom: { x: defender.x, y: defender.y } } : {}),
+    },
+  );
   const forecast: TacticalForecast = { ...main, hits: 1 };
 
   // Counter: defender survives an expected hit and can reach back at basic range.

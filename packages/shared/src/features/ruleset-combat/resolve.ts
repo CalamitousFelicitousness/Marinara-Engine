@@ -730,7 +730,9 @@ function rollSave(
   }
   // Cover helps the saves the ruleset names, said before the roll it changes (combat C6a-2).
   const cover =
-    from && ctx.combat.cover?.saves?.includes(save) ? rulesetCoverBonus(ctx.combat, ctx.state, combatant, from) : 0;
+    from && ctx.combat.cover?.saves?.includes(save)
+      ? rulesetCoverBonus(ctx.combat, ctx.state, combatant, from, "save")
+      : 0;
   if (cover > 0) ctx.events.push({ type: "cover", targetId: combatant.id, bonus: cover, save });
   const modifier = own + cover;
   const mode = rulesetSaveMode(ctx.definition, ctx.combat, combatant, save, ctx.state);
@@ -2493,7 +2495,14 @@ function resolveAction(
 
     let saved = false;
     if (action.save) {
-      saved = rollSave(ctx, target, action.save.save, action.save.difficulty, actor.id, saveFrom);
+      saved = rollSave(
+        ctx,
+        target,
+        action.save.save,
+        action.save.difficulty,
+        actor.id,
+        action.save.ignoresCover ? null : saveFrom,
+      );
       if (saved && action.save.onSuccess === "negates") {
         spendUsed();
         continue;

@@ -888,6 +888,47 @@ const cellsOf = (cells: Array<{ x: number; y: number }>) =>
   );
   assert.deepEqual(eventsOf(letGo.events, "cover"), [], "the resumed ball keeps its aim");
   assert.equal(firstOf(letGo.events, "save").modifier, 0);
+  // A spell aimed at somebody takes cover from its caster; one whose text says the target gains no
+  // benefit from cover (5e's Sacred Flame) takes none; and the ground under the target, which is cover
+  // against an attack, is no help on a save: nothing lies between him and the spell.
+  const ray = (id: string, label: string, ignoresCover: boolean) => ({
+    id,
+    label,
+    rows: [{ list: "spells", values: { name: label, level: 0, prepared: false } }],
+    mechanics: {
+      kind: "attack",
+      amount: { dice: "1d8" },
+      damageType: "radiant",
+      save: { save: "dex_save", onSuccess: "negates", ...(ignoresCover ? { ignoresCover: true } : {}) },
+      range: 60,
+    },
+  });
+  const rays = [ray("glare", "Glare", false), ray("holy-glow", "Holy Glow", true)] as unknown as RulesetCatalogEntry[];
+  const priest = (): RulesetCombatantInput => {
+    const sheet = wizardBuild();
+    const rows = rays.flatMap((entry) => rowsFromCatalogEntry("spells", entry).map((row) => row.row));
+    return {
+      ...wizard(),
+      build: { ...sheet, lists: { ...sheet.lists, spells: [...(sheet.lists?.spells ?? []), ...rows] } },
+      catalogs: { spells: [...spellEntries, ...rays] },
+    };
+  };
+  const aimed = (label: string, ...rows: string[]) => {
+    const state = fight(graded, [priest(), mote()], [12, 9], {
+      grid: drawn(...rows),
+      placements: { corwin: { x: 0, y: 0 }, mote: { x: 4, y: 2 } },
+    });
+    const option = optionNamed(graded, state, "corwin", label);
+    const step = act(graded, state, { actorId: "corwin", optionId: option.id, targetIds: ["mote"] }, 4, 10);
+    return { cover: eventsOf(step.events, "cover"), modifier: firstOf(step.events, "save").modifier };
+  };
+  const halfHidden = [".......", "....#..", "......."];
+  assert.deepEqual(aimed("Glare", ...halfHidden), {
+    cover: [{ type: "cover", targetId: "mote", bonus: 2, save: "dex_save" }],
+    modifier: 2,
+  });
+  assert.deepEqual(aimed("Holy Glow", ...halfHidden), { cover: [], modifier: 0 }, "a save that ignores cover");
+  assert.deepEqual(aimed("Glare", ".......", ".......", "....r.."), { cover: [], modifier: 0 }, "his ground");
   // And a save the ruleset does not name is not helped: cover names saves, never all of them.
   assert.match(
     refusalOf(

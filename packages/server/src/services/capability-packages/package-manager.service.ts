@@ -1036,6 +1036,26 @@ function rulesetCarriesMoney164(ruleset: { layers?: unknown; items?: unknown } |
   );
 }
 
+const COVER_ISSUE =
+  "A ruleset that grades cover (three-quarters, saves, creatures) or has a save that ignores cover requires schemaVersion 2 and capabilityApi 1.69 or newer";
+
+/** A save that ignores cover, on an entry's mechanics or a creature's action, which is 1.69: a new key
+ *  on the strict save. */
+function entriesCarryCoverlessSaves(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) &&
+    entries.some((entry) => {
+      const record = plainRecord(entry);
+      const actions = plainRecord(record?.creature)?.actions;
+      return (
+        plainRecord(plainRecord(record?.mechanics)?.save)?.ignoresCover !== undefined ||
+        (Array.isArray(actions) &&
+          actions.some((action) => plainRecord(plainRecord(action)?.save)?.ignoresCover !== undefined))
+      );
+    })
+  );
+}
+
 const MARKET_ISSUE =
   "A ruleset with a market, or whose items name where they are sold or are services, requires schemaVersion 2 and capabilityApi 1.65 or newer";
 
@@ -1239,6 +1259,7 @@ export function getCapabilityPackageInstallIssue(
   /** Whether a catalog, inline or in its own file, gives a creature its loot: 1.63, asked last. */
   let carriesLoot = false;
   let carriesMarket = false;
+  let carriesCoverlessSaves = false;
   const catalogs = ruleset?.catalogs;
   if (Array.isArray(catalogs) && catalogs.length > 0) {
     if (!declaresApi(21)) {
@@ -1312,6 +1333,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryItemGate(header.entries) && !declaresApi(62)) return ITEM_GATE_ISSUE;
       if (entriesCarryCreatureLoot(header.entries)) carriesLoot = true;
       if (entriesCarryMarket(header.entries)) carriesMarket = true;
+      if (entriesCarryCoverlessSaves(header.entries)) carriesCoverlessSaves = true;
       const asset = header.asset;
       if (typeof asset !== "string") continue;
       // A path that does not normalize is never a declared one, whatever else failed to normalize.
@@ -1349,6 +1371,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryItemGate(fileEntries) && !declaresApi(62)) return ITEM_GATE_ISSUE;
       if (entriesCarryCreatureLoot(fileEntries)) carriesLoot = true;
       if (entriesCarryMarket(fileEntries)) carriesMarket = true;
+      if (entriesCarryCoverlessSaves(fileEntries)) carriesCoverlessSaves = true;
     }
   }
   // The battle block lives inside the ruleset file too, so it is read the same way and for the same
@@ -1553,6 +1576,10 @@ export function getCapabilityPackageInstallIssue(
   if (!declaresApi(63) && (carriesLoot || plainRecord(ruleset?.items)?.lootTables !== undefined)) return LOOT_ISSUE;
   if (!declaresApi(64) && rulesetCarriesMoney164(ruleset)) return MONEY_ISSUE;
   if (!declaresApi(65) && (carriesMarket || plainRecord(ruleset?.items)?.market !== undefined)) return MARKET_ISSUE;
+  // Cover by degrees, 1.69: new keys on the strict cover object and the strict save.
+  const cover = plainRecord(plainRecord(ruleset?.combat)?.cover);
+  const graded = ["threeQuarters", "saves", "creatures"].some((key) => cover?.[key] !== undefined);
+  if (!declaresApi(69) && (graded || carriesCoverlessSaves)) return COVER_ISSUE;
   return null;
 }
 

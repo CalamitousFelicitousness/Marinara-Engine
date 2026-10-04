@@ -726,8 +726,8 @@ C4a is the board, on the shared and server sides. C4b is the screen that draws i
 - **Proven** in `scripts/regressions/game-ruleset-combat-grid.regression.ts` (hand-drawn boards,
   scripted dice, both example rulesets, and the byte-for-byte comparison), plus positioned cases in
   `ruleset-combat-director.regression.ts` and `ruleset-combat-director-route.regression.ts`.
-- **Left for later**: three-quarter and total cover, elevation, flying over obstacles, squeezing,
-  hiding and forced movement. The reaction window itself is C5b.
+- **Left for later**: elevation, flying over obstacles, squeezing, hiding and forced movement (cover
+  by degrees came with combat C6a-2). The reaction window itself is C5b.
 
 ### What C4b settled
 

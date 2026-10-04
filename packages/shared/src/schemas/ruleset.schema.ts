@@ -1218,8 +1218,14 @@ const catalogMechanicsObject = z
     /** More amounts on the same blow, beside `amount`, each rolled and typed on its own. */
     plus: z.array(catalogPlusClauseSchema).max(RULESET_DAMAGE_MAX_PLUS).optional(),
     attackRoll: z.boolean().optional(),
+    /** `ignoresCover` (Capability API 1.69): the target gains nothing from cover on this save, as a
+     *  spell whose text says so (5e's Sacred Flame). */
     save: z
-      .object({ save: sheetId, onSuccess: z.enum(["none", "half", "negates"]) })
+      .object({
+        save: sheetId,
+        onSuccess: z.enum(["none", "half", "negates"]),
+        ignoresCover: z.literal(true).optional(),
+      })
       .strict()
       .optional(),
     /** What using the entry spends, named by a live pool or by a pool group. */
@@ -1475,6 +1481,8 @@ const creatureSaveSchema = z
     save: sheetId,
     difficulty: z.number().int().min(0).max(1000),
     onSuccess: z.enum(["none", "half", "negates"]),
+    /** The target gains nothing from cover on this save (Capability API 1.69). */
+    ignoresCover: z.literal(true).optional(),
   })
   .strict();
 

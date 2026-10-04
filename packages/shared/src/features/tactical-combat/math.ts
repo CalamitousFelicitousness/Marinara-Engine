@@ -89,25 +89,51 @@ export function hasLineOfSight(grid: TacticalGrid, a: TacticalCoord, b: Tactical
 /** How much of a target the ground between it and a strike hides (combat C6a-2). */
 export type CoverTier = "none" | "half" | "three-quarters" | "total";
 
-/** Whether the segment from (x0, y0) to (x1, y1) passes through the inside of cell (x, y): along an
- *  edge or through a corner does not count. Cells span [x, x + 1] by [y, y + 1]. */
-function crossesCell(x0: number, y0: number, x1: number, y1: number, x: number, y: number): boolean {
-  let low = 0;
-  let high = 1;
-  for (const [start, delta, min] of [
-    [x0, x1 - x0, x],
-    [y0, y1 - y0, y],
-  ] as const) {
-    if (delta === 0) {
-      if (start <= min || start >= min + 1) return false;
-      continue;
+/**
+ * What one line from a grid point to another passes through the inside of, between the two end cells:
+ * 2 for a cell that blocks sight, 1 for low cover (a cell with a defense bonus, or one `screens`
+ * names), 0 for nothing. Along an edge or through a corner does not count. Cells span [x, x + 1] by
+ * [y, y + 1]. Stepped from one grid line to the next, so it costs the length of the line.
+ */
+function lineCover(
+  grid: TacticalGrid,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  ends: readonly [TacticalCoord, TacticalCoord],
+  screens?: ReadonlySet<string>,
+): 0 | 1 | 2 {
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  const sx = Math.sign(dx);
+  const sy = Math.sign(dy);
+  let nextX = x0 + sx;
+  let nextY = y0 + sy;
+  let t = 0;
+  let found: 0 | 1 = 0;
+  while (t < 1 - 1e-9) {
+    const tx = dx === 0 ? Infinity : (nextX - x0) / dx;
+    const ty = dy === 0 ? Infinity : (nextY - y0) / dy;
+    const step = Math.min(tx, ty, 1);
+    // Between two grid lines the line is inside one cell, unless it runs along a grid line itself.
+    const mx = x0 + dx * ((t + step) / 2);
+    const my = y0 + dy * ((t + step) / 2);
+    if (step - t > 1e-9 && Math.abs(mx - Math.round(mx)) > 1e-9 && Math.abs(my - Math.round(my)) > 1e-9) {
+      const x = Math.floor(mx);
+      const y = Math.floor(my);
+      if (!ends.some((end) => end.x === x && end.y === y)) {
+        if (blocksSight(grid, x, y)) return 2;
+        const terrain = grid.tiles[y]?.[x];
+        if ((terrain !== undefined && (TERRAIN_DATA[terrain]?.defenseBonus ?? 0) > 0) || screens?.has(`${x},${y}`))
+          found = 1;
+      }
     }
-    const a = (min - start) / delta;
-    const b = (min + 1 - start) / delta;
-    low = Math.max(low, Math.min(a, b));
-    high = Math.min(high, Math.max(a, b));
+    if (tx <= step + 1e-9) nextX += sx;
+    if (ty <= step + 1e-9) nextY += sy;
+    t = step;
   }
-  return high - low > 1e-9;
+  return found;
 }
 
 /**
@@ -129,31 +155,19 @@ export function coverTier(
   screens?: ReadonlySet<string>,
 ): CoverTier {
   if (!hasLineOfSight(grid, from, to)) return "total";
-  const corners = (cell: TacticalCoord) =>
-    [
-      [cell.x, cell.y],
-      [cell.x + 1, cell.y],
-      [cell.x, cell.y + 1],
-      [cell.x + 1, cell.y + 1],
-    ] as const;
+  // Neighbours share a corner, and nothing lies between that corner and the other cell.
+  if (Math.abs(from.x - to.x) <= 1 && Math.abs(from.y - to.y) <= 1) return "none";
+  const ends = [from, to] as const;
   let best = { solid: 5, low: 5 };
-  for (const [cx, cy] of corners(from)) {
+  for (let corner = 0; corner < 4 && best.solid + best.low > 0; corner++) {
+    const cx = from.x + (corner & 1);
+    const cy = from.y + (corner >> 1);
     let solid = 0;
     let low = 0;
-    for (const [tx, ty] of corners(to)) {
-      let line: "solid" | "low" | undefined;
-      for (let y = Math.min(from.y, to.y); y <= Math.max(from.y, to.y) && line !== "solid"; y++)
-        for (let x = Math.min(from.x, to.x); x <= Math.max(from.x, to.x); x++) {
-          if ((x === from.x && y === from.y) || (x === to.x && y === to.y) || !crossesCell(cx, cy, tx, ty, x, y))
-            continue;
-          if (blocksSight(grid, x, y)) {
-            line = "solid";
-            break;
-          }
-          if (terrainInfoAt(grid, x, y).defenseBonus > 0 || screens?.has(`${x},${y}`)) line = "low";
-        }
-      if (line === "solid") solid++;
-      else if (line === "low") low++;
+    for (let other = 0; other < 4; other++) {
+      const line = lineCover(grid, cx, cy, to.x + (other & 1), to.y + (other >> 1), ends, screens);
+      if (line === 2) solid++;
+      else if (line === 1) low++;
     }
     if (solid < best.solid || (solid === best.solid && low < best.low)) best = { solid, low };
   }

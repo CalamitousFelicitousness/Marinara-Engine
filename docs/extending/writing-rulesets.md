@@ -2096,8 +2096,9 @@ Cover is read from where the attacker stands, by the corner lines of the DMG's o
 from the attacker's best corner, one line to each corner of the target's cell. Three or four lines
 through a wall or a mountain are three-quarters cover; any line through one, or through ground worth
 something as cover (woods, ruins), is half; low ground alone is never more than half. A target the
-attacker cannot see at all has total cover and is not on the menu. A target standing on ground worth
-something as cover has at least half, as it always had.
+attacker cannot see at all has total cover and is not on the menu. Against an attack, a target
+standing on ground worth something as cover has at least half, as it always had; a save is helped
+only by what lies between it and the effect.
 
 - `cover.bonus` is what half cover adds to the defense an attack is rolled against, and the log says
   so.
@@ -2107,6 +2108,8 @@ something as cover has at least half, as it always had.
   that ends a condition or keeps concentration): from where a burst lands, and from its maker for
   anything else. The log says that too.
 - `cover.creatures` (1.69) makes anybody standing in the way half cover, friend or foe.
+- A save whose text says the target gains nothing from cover (5e's Sacred Flame) says
+  `"ignoresCover": true` (1.69), on an entry's `mechanics.save` or a creature action's `save`.
 
 There is no elevation yet.
 
@@ -2366,7 +2369,7 @@ needs 1.44. One that waits for `hit` needs 1.46.
 
 Said plainly, because a ruleset should not claim what the Engine does not do:
 
-- **Beyond the modest board**: no three-quarter or total cover, no elevation, no flying over
+- **Beyond the modest board**: no elevation, no flying over
   obstacles, no squeezing, no mounts, no hiding or surprise, and nothing moves anybody but their own
   walk and a contest's push. Nobody drags a creature they hold.
 - **A contest is plain.** It has no size limits and opens no window (nobody may answer one).

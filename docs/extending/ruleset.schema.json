@@ -6647,6 +6647,10 @@
                             "negates"
                           ]
                         },
+                        "ignoresCover": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "$comment": {}
                       },
                       "required": [
@@ -7757,6 +7761,10 @@
                                   "half",
                                   "negates"
                                 ]
+                              },
+                              "ignoresCover": {
+                                "type": "boolean",
+                                "const": true
                               },
                               "$comment": {}
                             },
@@ -11149,6 +11157,10 @@
                                 "half",
                                 "negates"
                               ]
+                            },
+                            "ignoresCover": {
+                              "type": "boolean",
+                              "const": true
                             },
                             "$comment": {}
                           },

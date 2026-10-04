@@ -377,15 +377,17 @@ export function rulesetAreaTargets(
 
 /**
  * What cover adds for this combatant against something coming from `from` (combat C6a-2): half
- * cover's bonus, or three-quarters' when the ruleset has one, graded by corner lines from `from`. Ground
- * worth something as cover under the target is always at least half, as it was before cover had
- * degrees. Nothing without a board, a position or a cover rule.
+ * cover's bonus, or three-quarters' when the ruleset has one, graded by corner lines from `from`.
+ * Against an attack, ground worth something as cover under the target is at least half, as it was
+ * before cover had degrees; a save is helped only by what lies between it and the effect, since cover
+ * counts against an effect from its other side. Nothing without a board, a position or a cover rule.
  */
 export function rulesetCoverBonus(
   combat: RulesetCombat,
   state: RulesetEncounterState,
   target: RulesetCombatant,
   from: RulesetCombatCell | null,
+  against: "attack" | "save" = "attack",
 ): number {
   const cover = combat.cover;
   const grid = state.board?.grid;
@@ -404,7 +406,7 @@ export function rulesetCoverBonus(
     : undefined;
   const tier = from ? coverTier(grid, from, at, screens) : "none";
   if (tier === "three-quarters" || tier === "total") return cover.threeQuarters ?? cover.bonus;
-  return tier === "half" || rulesetCellCover(grid, at) > 0 ? cover.bonus : 0;
+  return tier === "half" || (against === "attack" && rulesetCellCover(grid, at) > 0) ? cover.bonus : 0;
 }
 
 /**

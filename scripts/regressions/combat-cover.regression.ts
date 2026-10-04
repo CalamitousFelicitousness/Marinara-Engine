@@ -11,6 +11,10 @@
  *     reads the attacker where it would strike from, and an area hit reads cover from where it lands.
  */
 import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   applyAction,
@@ -97,6 +101,12 @@ const arena = (paint: Record<string, TacticalTerrain>) => {
   // The better of the ground and the cover counts, never both.
   assert.equal(chance({ "4,2": "forest" }), open - 15, "trees underfoot");
   assert.equal(chance({ "4,2": "forest", "4,1": "wall" }), open - 15, "trees underfoot and a wall beside");
+  // An area's forecast reads cover from where it lands, as its roll does: trees between the caster and
+  // the foe it is aimed at take nothing off, though they do off a plain shot.
+  const wooded = arena({ "2,1": "forest" });
+  const blast = { name: "Blast", mpCost: 5, power: 20, type: "attack" as const, range: 6, areaRadius: 2 };
+  assert.equal(forecastAttack(wooded, "archer", "foe").hitChance, open - 15, "a shot through the trees");
+  assert.equal(forecastAttack(wooded, "archer", "foe", blast).hitChance, open, "a blast landing on it");
   // A forecast from another cell reads the cover from there: right beside the foe, nothing is between.
   const walled = arena({ "4,1": "wall" });
   const [archer, foe] = ["archer", "foe"].map((id) => walled.units.find((u) => u.id === id)!);
@@ -144,6 +154,78 @@ const arena = (paint: Record<string, TacticalTerrain>) => {
   assert.equal(coverTier(fight.grid, hero, { x: 3, y: 0 }), "half", "the answer to it is not");
   const choice = decideTacticalAction(fight, shooter, () => 0);
   assert.deepEqual(choice.type === "attack" ? choice.to : choice, { x: 3, y: 0 }, JSON.stringify(choice));
+}
+
+// ── Install gate: 1.69 ──
+{
+  const dataDir = mkdtempSync(join(tmpdir(), "marinara-cover-"));
+  process.env.DATA_DIR = dataDir;
+  process.env.MARINARA_DATA_DIR = dataDir;
+  try {
+    const { getCapabilityPackageInstallIssue } =
+      await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
+    const manifest = (minor: number) => ({
+      schemaVersion: 2,
+      capabilityApi: { major: 1, minor },
+      builtAgainst: { engineVersion: "2.4.6", engineCommit: "0".repeat(40) },
+      id: "ruleset-cover",
+      name: "Cover",
+      version: "0.1.0",
+      description: "A packaged ruleset with cover by degrees.",
+      engine: { min: "2.4.6", maxExclusive: "4.0.0" },
+      kind: ["ruleset"],
+      entrypoints: {},
+      contributions: { assets: { paths: ["ruleset.json"] } },
+      files: [{ path: "ruleset.json", sha256: "0".repeat(64), bytes: 10 }],
+      permissions: [],
+      restartRequired: false,
+    });
+    const fiveE = readFileSync(
+      fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
+      "utf8",
+    );
+    const doc = (edit: (doc: Record<string, any>) => void) => {
+      const parsed = JSON.parse(fiveE) as Record<string, any>;
+      edit(parsed);
+      return parsed;
+    };
+    const issue = (minor: number, document: Record<string, any>) =>
+      getCapabilityPackageInstallIssue(manifest(minor) as never, document);
+    const gate = /grades cover .* or has a save that ignores cover requires .*capabilityApi 1\.69/;
+    assert.equal(
+      issue(
+        68,
+        doc(() => {}),
+      ),
+      null,
+      "half cover alone is what 1.28 already read",
+    );
+    for (const key of ["threeQuarters", "saves", "creatures"]) {
+      const graded = doc(
+        (d) => (d.combat.cover[key] = { threeQuarters: 5, saves: ["dex_save"], creatures: true }[key]),
+      );
+      assert.match(issue(68, graded) ?? "", gate, key);
+      assert.equal(issue(69, graded), null, key);
+    }
+    // A creature's action whose save ignores cover (the example's creatures carry two such saves).
+    const coverless = doc((d) => {
+      const action = d.catalogs
+        .flatMap((catalog: { entries?: Array<Record<string, any>> }) => catalog.entries ?? [])
+        .flatMap((one: Record<string, any>) => one.creature?.actions ?? [])
+        .find((one: Record<string, any>) => one.save);
+      action.save.ignoresCover = true;
+    });
+    assert.match(issue(68, coverless) ?? "", gate, "a save that ignores cover");
+    assert.equal(issue(69, coverless), null);
+    // And an entry's own save, as a spell's.
+    const spell = doc((d) => {
+      const feat = d.catalogs.find((catalog: { id: string }) => catalog.id === "feats").entries[0];
+      feat.mechanics = { ...feat.mechanics, save: { save: "dex_save", onSuccess: "negates", ignoresCover: true } };
+    });
+    assert.match(issue(68, spell) ?? "", gate, "an entry's save that ignores cover");
+  } finally {
+    rmSync(dataDir, { recursive: true, force: true });
+  }
 }
 
 console.log("Combat cover: corner lines grade cover, and the Engine's own fights take it off the hit chance.");

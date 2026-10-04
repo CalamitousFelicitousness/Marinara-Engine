@@ -2171,6 +2171,9 @@ const marketSchema = z
             /** One of the ruleset's loot tables, rolled once a market day for what this seller has in
              *  stock on top of what they sell (#6934). */
             stock: z.object({ table: sheetId }).strict().optional(),
+            /** A dishonest seller (Capability API 1.74) passes fakes off as what they pass for, from
+             *  their stock, and buys a fake as what it seems. Sellers are honest unless they say so. */
+            honest: z.literal(false).optional(),
             only: z
               .object({ value: rulesetValueRefSchema, atLeast: z.number().finite(), label: promptSafeText(80) })
               .strict()
@@ -2441,6 +2444,12 @@ const catalogItemSchema = z
       .optional(),
     /** Lodging, passage, a blessing: bought like an item, never carried. Buying it only pays. */
     service: z.literal(true).optional(),
+    /** What an honest seller warns of before selling it, for an item whose chance can turn on the
+     *  buyer (Capability API 1.74). */
+    risky: promptSafeText(160).optional(),
+    /** A fake (Capability API 1.74): the ruleset item it passes for, "<catalog>/<entry>". A dishonest
+     *  seller sells it as that item, at that item's price; an honest one never sells it. */
+    passesFor: rulesetItemRefSchema.optional(),
     /** The item has to be bound (attuned, invested) before it does anything while worn. */
     binds: z
       .object({ restriction: catalogText(200).optional(), cursed: z.boolean().optional() })
@@ -6140,6 +6149,30 @@ function effectNameIssues(
   });
 }
 
+/** Why a fake cannot pass for its target (Capability API 1.74), or null when it can: the target is
+ *  another real, sellable item of the same kind, worn the same way. `target` undefined is an item the
+ *  ruleset does not have. Read at import (inline and same-file targets), at install (every catalog
+ *  file) and when a market offers the fake (a target a layer hides is never offered). */
+export function rulesetFakeIssue(
+  fakeRef: string,
+  fake: RulesetCatalogItem,
+  target: RulesetCatalogItem | undefined,
+): string | null {
+  const to = fake.passesFor!;
+  if (to === fakeRef) return "A fake does not pass for itself";
+  if (!target) return `No item "${to}" for it to pass for`;
+  if (target.passesFor !== undefined || target.binds?.cursed) return `"${to}" is itself a fake or cursed`;
+  if (target.service) return `"${to}" is a service, which is never carried`;
+  if (!target.cost) return `"${to}" has no cost, so it is never sold`;
+  if (target.category !== fake.category) return `"${to}" is a different kind of item`;
+  const slots = (item: RulesetCatalogItem) =>
+    JSON.stringify(Object.entries(item.slots ?? {}).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+  if (slots(target) !== slots(fake)) return `"${to}" is worn in other slots`;
+  if (Boolean(target.binds) !== Boolean(fake.binds))
+    return `"${to}" ${target.binds ? "binds" : "does not bind"} and the fake ${fake.binds ? "does" : "does not"}`;
+  return null;
+}
+
 /** Everything an entry must satisfy against the ruleset that declares it. */
 /** An item against the ruleset's `items` block: every name it uses is one the block declares, and
  *  every stat value is one that stat could hold. */
@@ -6192,6 +6225,7 @@ function itemIssues(
       add([...at, "sold", "place"], `Unknown place "${item.sold.place}"`);
     }
   }
+  if (item.passesFor !== undefined && item.service) add([...at, "passesFor"], "A service is never a fake");
   if (item.service) {
     // Bought and never carried: it costs something, and nothing about carrying or using it applies.
     if (!item.cost) add([...at, "service"], "A service is bought, so it has a cost");
@@ -6621,9 +6655,28 @@ export function rulesetCatalogEntryIssues(
   // A header read straight from a file, rather than through the schema, has no default filled in.
   const holds = catalog.holds ?? "rows";
 
+  // What a fake may pass for, where it can be read now: this catalog's items and every inline one's.
+  // A target in another catalog file is checked at install and when a market offers the fake.
+  const itemsByRef = new Map<string, RulesetCatalogItem>();
+  for (const other of definition.catalogs ?? []) {
+    if (other.id === catalog.id) continue;
+    for (const each of other.entries ?? []) if (each.item) itemsByRef.set(`${other.id}/${each.id}`, each.item);
+  }
+  for (const each of entries) if (each.item) itemsByRef.set(`${catalog.id}/${each.id}`, each.item);
+  const readable = (ref: string) => {
+    const catalogId = ref.slice(0, ref.indexOf("/"));
+    return (
+      catalogId === catalog.id || (definition.catalogs ?? []).some((each) => each.id === catalogId && each.entries)
+    );
+  };
+
   const seen = new Set<string>();
   entries.forEach((entry, index) => {
     if (seen.has(entry.id)) add([index, "id"], `Duplicate entry id "${entry.id}"`);
+    if (entry.item?.passesFor !== undefined && readable(entry.item.passesFor)) {
+      const issue = rulesetFakeIssue(`${catalog.id}/${entry.id}`, entry.item, itemsByRef.get(entry.item.passesFor));
+      if (issue) add([index, "item", "passesFor"], issue);
+    }
     seen.add(entry.id);
 
     // One catalog, one kind of entry: the picker reads a catalog of rows, a fight a catalog of

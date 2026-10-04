@@ -3559,6 +3559,24 @@ function GameSurfaceComponent({
   const announceInventoryUpdates = useCallback(
     (updates: InventoryTag[]) => {
       const describe = (update: InventoryTag, item: string) => {
+        // A fake found out (Capability API 1.74): by a reveal or a use, or by an honest buyer.
+        if (update.revealed) {
+          const truly = update.revealed;
+          if (update.action === "sell") {
+            if (!update.ok) return localizeUi("ui.game.gamesurfacecomponent.inventorySaleSawThrough", { truly });
+            const price = update.price ?? "";
+            return update.who
+              ? localizeUi("ui.game.gamesurfacecomponent.inventoryWhoSoldSeenThrough", {
+                  who: update.who,
+                  truly,
+                  price,
+                })
+              : localizeUi("ui.game.gamesurfacecomponent.inventoryYouSoldSeenThrough", { truly, price });
+          }
+          return update.who
+            ? localizeUi("ui.game.gamesurfacecomponent.inventoryWhoRevealed", { who: update.who, item, truly })
+            : localizeUi("ui.game.gamesurfacecomponent.inventoryYouRevealed", { item, truly });
+        }
         if (update.action === "give") {
           return update.who
             ? localizeUi("ui.game.gamesurfacecomponent.inventoryWhoGave", {
@@ -3612,7 +3630,7 @@ function GameSurfaceComponent({
       };
       // Putting something on or binding it is shown like a gain; nothing is lost by either.
       const notifications = updates.flatMap((update) =>
-        update.ok && update.count > 0
+        (update.ok && update.count > 0) || (update.revealed && update.action === "sell")
           ? [
               {
                 gain:
@@ -8927,7 +8945,7 @@ function GameSurfaceComponent({
         return;
       }
       const usedIn = activeChatId;
-      let used: { rulesetLive: RulesetLiveStates; line: string } | null;
+      let used: { rulesetLive: RulesetLiveStates; line: string; revealed?: string } | null;
       try {
         // A sheet edit still waiting to be saved lands first, so the use starts from it and is not
         // written over by it afterwards.
@@ -8937,6 +8955,7 @@ function GameSurfaceComponent({
             inventory: GameInventoryStack[];
             rulesetLive: RulesetLiveStates;
             line: string;
+            revealed?: string;
             playerStats?: PlayerStats;
           }>("/game/inventory/use", { chatId, stackId }),
         );
@@ -8963,6 +8982,13 @@ function GameSurfaceComponent({
         return;
       }
       if (!used) return;
+      // A fake used shows itself for what it truly is (Capability API 1.74).
+      if (used.revealed) {
+        showInventoryNotification(
+          localizeUi("ui.game.gamesurfacecomponent.inventoryYouRevealed", { item: label, truly: used.revealed }),
+          false,
+        );
+      }
       // The item is used either way. When the Game Master cannot be told (the player moved to another
       // chat meanwhile, or the message did not go), the player is, so it is never spent in silence.
       const sent =
@@ -8971,7 +8997,15 @@ function GameSurfaceComponent({
           false;
       if (!sent) toast.error(localizeUi("ui.game.gamesurfacecomponent.itemUsedNotSent", { item: label }));
     },
-    [activeChatId, gameRuleset.status, inventoryItemBook, localizeUi, sendInventory, sendMessage],
+    [
+      activeChatId,
+      gameRuleset.status,
+      inventoryItemBook,
+      localizeUi,
+      sendInventory,
+      sendMessage,
+      showInventoryNotification,
+    ],
   );
 
   // Starting gear (Capability API 1.73): what each bag has taken, kept in the chat's metadata.

@@ -31,6 +31,8 @@ import {
   type CapabilityPackageVersionNote,
   type CapabilityReleaseNotes,
   type InstalledCapabilityPackage,
+  rulesetFakeIssue,
+  type RulesetCatalogItem,
 } from "@marinara-engine/shared";
 import { WORLD_SHARE_FILE_MAX_BYTES } from "@marinara-engine/shared";
 import { DATA_DIR } from "../../utils/data-dir.js";
@@ -1113,6 +1115,20 @@ function rulesetCarriesMarketDay166(ruleset: { items?: unknown } | undefined): b
   );
 }
 
+const HONESTY_ISSUE =
+  "A ruleset with risky items, fakes or a dishonest seller requires schemaVersion 2 and capabilityApi 1.74 or newer";
+
+/** Seller honesty's item keys (1.74): `risky` and `passesFor`, new keys on the strict item. */
+function entriesCarryHonesty(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) &&
+    entries.some((entry) => {
+      const item = plainRecord(plainRecord(entry)?.item);
+      return item?.risky !== undefined || item?.passesFor !== undefined;
+    })
+  );
+}
+
 const LOOT_ISSUE =
   "A ruleset with loot tables, or creatures that carry loot, requires schemaVersion 2 and capabilityApi 1.63 or newer";
 
@@ -1305,6 +1321,22 @@ export function getCapabilityPackageInstallIssue(
   let carriesMarket = false;
   let carriesCoverlessSaves = false;
   let carriesMarketDay = false;
+  let carriesHonesty = false;
+  // Every item by "<catalog>/<entry>", inline and in files, and the fakes among them, so a fake whose
+  // target is in another catalog file is checked here, where every file can be read.
+  const itemsByRef = new Map<string, RulesetCatalogItem>();
+  const fakes: Array<{ ref: string; item: RulesetCatalogItem }> = [];
+  const collectItems = (catalogId: unknown, entries: unknown) => {
+    if (typeof catalogId !== "string" || !Array.isArray(entries)) return;
+    for (const entry of entries) {
+      const record = plainRecord(entry);
+      const item = plainRecord(record?.item);
+      if (typeof record?.id !== "string" || !item) continue;
+      const ref = `${catalogId}/${record.id}`;
+      itemsByRef.set(ref, item as RulesetCatalogItem);
+      if (typeof item.passesFor === "string") fakes.push({ ref, item: item as RulesetCatalogItem });
+    }
+  };
   const catalogs = ruleset?.catalogs;
   if (Array.isArray(catalogs) && catalogs.length > 0) {
     if (!declaresApi(21)) {
@@ -1346,7 +1378,7 @@ export function getCapabilityPackageInstallIssue(
     for (const catalog of catalogs) {
       const header =
         catalog && typeof catalog === "object"
-          ? (catalog as { asset?: unknown; entries?: unknown; holds?: unknown })
+          ? (catalog as { id?: unknown; asset?: unknown; entries?: unknown; holds?: unknown })
           : {};
       if (header.holds === "creatures" && !declaresApi(27)) return creatureIssue;
       if (header.holds === "items" && !declaresApi(49)) return ITEMS_ISSUE;
@@ -1381,6 +1413,8 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryMarket(header.entries)) carriesMarket = true;
       if (entriesCarryCoverlessSaves(header.entries)) carriesCoverlessSaves = true;
       if (entriesCarryMarketDay(header.entries)) carriesMarketDay = true;
+      if (entriesCarryHonesty(header.entries)) carriesHonesty = true;
+      collectItems(header.id, header.entries);
       const asset = header.asset;
       if (typeof asset !== "string") continue;
       // A path that does not normalize is never a declared one, whatever else failed to normalize.
@@ -1421,7 +1455,13 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryMarket(fileEntries)) carriesMarket = true;
       if (entriesCarryCoverlessSaves(fileEntries)) carriesCoverlessSaves = true;
       if (entriesCarryMarketDay(fileEntries)) carriesMarketDay = true;
+      if (entriesCarryHonesty(fileEntries)) carriesHonesty = true;
+      collectItems(header.id, fileEntries);
     }
+  }
+  for (const fake of fakes) {
+    const issue = rulesetFakeIssue(fake.ref, fake.item, itemsByRef.get(fake.item.passesFor!));
+    if (issue) return `The fake "${fake.ref}" cannot pass for "${fake.item.passesFor}": ${issue}`;
   }
   // The battle block lives inside the ruleset file too, so it is read the same way and for the same
   // reason: an Engine that does not know the key refuses the whole file, and the package would be
@@ -1667,6 +1707,10 @@ export function getCapabilityPackageInstallIssue(
   if (!declaresApi(73) && plainRecord(ruleset?.items)?.startingGear !== undefined) {
     return "A ruleset with starting gear requires schemaVersion 2 and capabilityApi 1.73 or newer";
   }
+  // Seller honesty, 1.74 (P1-7): risky items and fakes in any catalog, and a seller that is not honest.
+  const sellers = plainRecord(plainRecord(ruleset?.items)?.market)?.sellers;
+  const dishonest = Array.isArray(sellers) && sellers.some((seller) => plainRecord(seller)?.honest !== undefined);
+  if (!declaresApi(74) && (carriesHonesty || dishonest)) return HONESTY_ISSUE;
   return null;
 }
 

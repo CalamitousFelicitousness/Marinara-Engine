@@ -38,23 +38,27 @@ export function readGameInventoryTurn(raw: unknown): GameInventoryTurn | null {
 }
 
 /** Whether two stack lists are the same inventory: the same stacks, in the same order, bags, names,
- *  items, and what is worn or bound. */
+ *  items, what is worn or bound, and what a fake truly is. */
 export function sameGameInventory(
   first: readonly GameInventoryStack[],
   second: readonly GameInventoryStack[],
 ): boolean {
   const key = (stacks: readonly GameInventoryStack[]) =>
     JSON.stringify(
-      normalizeGameInventoryStacks(stacks).map(({ id, name, nickname, item, quantity, holder, equipped, bound }) => [
-        id,
-        name,
-        nickname ?? null,
-        item ?? null,
-        quantity,
-        holder ?? null,
-        equipped ?? false,
-        bound ?? false,
-      ]),
+      normalizeGameInventoryStacks(stacks).map(
+        ({ id, name, nickname, item, quantity, holder, equipped, bound, truly }) => [
+          id,
+          name,
+          nickname ?? null,
+          item ?? null,
+          quantity,
+          holder ?? null,
+          equipped ?? false,
+          bound ?? false,
+          // A fake found out is another inventory, though it shows the same until then.
+          truly ?? null,
+        ],
+      ),
     );
   return key(first) === key(second);
 }

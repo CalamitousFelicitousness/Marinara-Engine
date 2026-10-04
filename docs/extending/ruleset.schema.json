@@ -8820,6 +8820,16 @@
                       "type": "boolean",
                       "const": true
                     },
+                    "risky": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 160
+                    },
+                    "passesFor": {
+                      "type": "string",
+                      "maxLength": 81,
+                      "pattern": "^[a-z][a-z0-9_]{0,39}\\/[a-z0-9]+(?:-[a-z0-9]+)*$"
+                    },
                     "binds": {
                       "type": "object",
                       "properties": {
@@ -13642,6 +13652,10 @@
                       "table"
                     ],
                     "additionalProperties": false
+                  },
+                  "honest": {
+                    "type": "boolean",
+                    "const": false
                   },
                   "only": {
                     "type": "object",

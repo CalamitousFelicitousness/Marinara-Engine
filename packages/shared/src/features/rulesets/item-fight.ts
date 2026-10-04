@@ -136,7 +136,11 @@ export function gameFightItems(
   const all = gameInventoryFightLines(stacks);
   const worked = book
     ? all.flatMap((line) => {
-        const effect = line.item ? rulesetItemFightEffect(line.name, book.itemOf(line.item)) : null;
+        // A fake does what it truly does, under the name it is shown by (1.74).
+        // ponytail: a fake spent in a fight is not marked as found out, and one whose true item has no
+        // fight use is not offered at all; none of the 5e fakes has one. Upgrade: reveal it on the spend.
+        const ref = line.truly ?? line.item;
+        const effect = ref ? rulesetItemFightEffect(line.name, book.itemOf(ref)) : null;
         return effect ? [effect] : [];
       })
     : [];

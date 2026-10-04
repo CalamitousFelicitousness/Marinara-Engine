@@ -39,6 +39,7 @@ import {
   type GameInventoryItemRules,
   type GameInventoryStack,
   type GameInventoryWearRefusal,
+  revealGameInventoryFake,
 } from "./game-inventory-stacks.js";
 
 /** The most operations one request applies. */
@@ -108,6 +109,10 @@ export const gameInventoryOpSchema = z.discriminatedUnion("op", [
 
 export type GameInventoryOp = z.infer<typeof gameInventoryOpSchema>;
 
+/** An op the Engine applies itself: an add may also say what a fake truly is (a dishonest seller's
+ *  sale, Capability API 1.74), which no op a client sends can, since the schema above is strict. */
+export type GameInventoryEngineOp = GameInventoryOp | (Extract<GameInventoryOp, { op: "add" }> & { truly?: string });
+
 export const gameInventoryOpsRequestSchema = z
   .object({
     chatId: z.string().trim().min(1).max(200),
@@ -166,7 +171,7 @@ export interface GameInventoryOpsOutcome {
  */
 export function applyGameInventoryOps(
   stacks: GameInventoryStack[],
-  ops: readonly GameInventoryOp[],
+  ops: readonly GameInventoryEngineOp[],
   newId?: () => string,
   rules?: GameInventoryItemRules,
   /** Throws a die of that many sides, for an item that may break as its last charge is spent. Without
@@ -187,8 +192,11 @@ export function applyGameInventoryOps(
         // The item first: a ruleset item by its id only while the game offers it, or whatever the name
         // finds.
         const known = op.item ? (rules?.offers(op.item) ? rules.itemOf(op.item) : undefined) : undefined;
+        // A fake is shown as the item it passes for and keeps what it truly is, a ruleset item too.
+        const truly =
+          "truly" in op && op.truly && op.truly !== op.item && rules?.itemOf(op.truly) ? op.truly : undefined;
         const like = op.item
-          ? known && { name: known.name, item: known.item }
+          ? known && { name: known.name, item: known.item, ...(truly ? { truly } : {}) }
           : gameInventoryAddedItem(current, op.name, bag.holder, rules);
         if (!like) {
           refuse("not-ruleset-item");
@@ -408,6 +416,8 @@ export function applyGameInventoryOps(
       case "unequip":
       case "bind":
       case "unbind": {
+        // A fake bound is found out (1.74): binding is attuning, and a curse shows itself.
+        if (op.op === "bind" && stackOf(op.id)?.truly) current = revealGameInventoryFake(current, op.id, rules);
         const worn = wearGameInventoryStack(current, op.id, op.op, makeId, rules);
         if (!worn || "refused" in worn) {
           refuse(worn ? worn.refused : "missing-stack");

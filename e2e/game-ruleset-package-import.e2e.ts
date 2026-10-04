@@ -80,7 +80,7 @@ const manifestOf = (contents: typeof files) =>
       })),
       permissions: [],
       restartRequired: false,
-      capabilityApi: { major: 1, minor: 73 },
+      capabilityApi: { major: 1, minor: 74 },
       builtAgainst: { engineVersion: "2.4.6", engineCommit: "0".repeat(40) },
     }),
   );

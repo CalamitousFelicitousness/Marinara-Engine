@@ -1,0 +1,419 @@
+/**
+ * Honest and dishonest sellers (P1-7, Capability API 1.74).
+ *
+ *   - Schema: an item's `risky` and `passesFor`, a seller's `honest: false`; a fake's target is a real,
+ *     sellable item of the same kind, worn the same way. Gated at 1.74, catalog files read at install.
+ *   - Market: a cursed item or a fake is never among anybody's wares nor in an honest seller's stock; a
+ *     dishonest seller's stock offers a fake as what it passes for, and only a buy naming that seller
+ *     gets it. Honest sellers warn about risky wares in the MARKET block.
+ *   - A fake in the bag: shown as what it passes for in every answer, journal line and total, kept apart
+ *     from the real thing, kept through a give; the Game Master's block marks it.
+ *   - Found out: a reveal (which never adds), binding it, using it, or an honest buyer (who pays its
+ *     true worth); a dishonest buyer takes it as it seems.
+ */
+import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import {
+  applyGameInventoryOps,
+  applyGameInventoryTags,
+  defaultRulesetSheetBuild,
+  gameInventoryTotals,
+  parseRulesetDefinition,
+  readResolvedInventoryTags,
+  rulesetItemBook,
+  rulesetItemPromptFacts,
+  rulesetMarketPlace,
+  rulesetMarketPromptText,
+  rulesetMarketQuoter,
+  rulesetMarketShelf,
+  sameGameInventory,
+  type GameInventoryStack,
+  type RulesetCatalogEntry,
+  type RulesetDefinition,
+} from "../../packages/shared/src/index.js";
+
+const dataDir = mkdtempSync(join(tmpdir(), "marinara-seller-honesty-"));
+process.env.DATA_DIR = dataDir;
+process.env.MARINARA_DATA_DIR = dataDir;
+
+const { getCapabilityPackageInstallIssue } =
+  await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
+const { buildGmFormatReminder } = await import("../../packages/server/src/services/game/gm-prompts.js");
+const { gameInventoryItemUser } = await import("../../packages/server/src/services/game/game-item-use.service.js");
+
+try {
+  const read = (path: string) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8");
+  const gravewatchText = read("../../docs/examples/rulesets/gravewatch.json");
+  /** Gravewatch with a fake tonic, a cursed ring that passes for the dawn bell, a risky tonic, and a
+   *  fence whose stock is always two of the fake. */
+  const honesty = (edit: (doc: Record<string, any>) => void = () => {}) => {
+    const doc = JSON.parse(gravewatchText) as Record<string, any>;
+    const kit = doc.catalogs.find((catalog: { id: string }) => catalog.id === "kit");
+    kit.entries.find((entry: { id: string }) => entry.id === "dawn-bell").item.cost = { amount: 2, unit: "crown" };
+    kit.entries.push(
+      {
+        id: "bitter-tonic",
+        label: "Bitter tonic",
+        item: { category: "tonic", passesFor: "kit/warming-tonic", cost: { amount: 1, unit: "penny" } },
+      },
+      {
+        id: "hexed-ring",
+        label: "Hexed ring",
+        item: {
+          category: "token",
+          slots: { worn: 1 },
+          stack: 1,
+          binds: { cursed: true },
+          passesFor: "kit/dawn-bell",
+          cost: { amount: 1, unit: "penny" },
+        },
+      },
+      {
+        id: "wild-tonic",
+        label: "Wild tonic",
+        item: { category: "tonic", cost: { amount: 6, unit: "penny" }, risky: "a sip can sour into a fever" },
+      },
+    );
+    doc.items.lootTables.push({
+      id: "fences_lot",
+      label: "A fence's lot",
+      rolls: 1,
+      entries: [{ item: "kit/bitter-tonic", weight: 1, count: 2 }],
+    });
+    doc.items.market.sellers.push({
+      id: "fence",
+      label: "fence",
+      sells: [{ category: "tonic" }],
+      place: "town",
+      honest: false,
+      stock: { table: "fences_lot" },
+    });
+    edit(doc);
+    return doc;
+  };
+  const parsedOrThrow = (document: unknown): RulesetDefinition => {
+    const parsed = parseRulesetDefinition(document);
+    assert.ok(parsed.ok, parsed.ok ? "" : parsed.issues.join("; "));
+    return parsed.definition;
+  };
+  const refusal = (document: unknown) => {
+    const parsed = parseRulesetDefinition(document);
+    assert.ok(!parsed.ok, "this document was supposed to be refused");
+    return parsed.issues.join("; ");
+  };
+  const entriesOf = (definition: RulesetDefinition): Record<string, RulesetCatalogEntry[]> =>
+    Object.fromEntries(
+      (definition.catalogs ?? []).flatMap((catalog) =>
+        catalog.entries && catalog.holds === "items" ? [[catalog.id, catalog.entries]] : [],
+      ),
+    );
+
+  // ── Schema ──
+  const definition = parsedOrThrow(honesty());
+  const book = rulesetItemBook(definition, entriesOf(definition));
+  {
+    const fake = (doc: Record<string, any>) =>
+      doc.catalogs
+        .find((catalog: { id: string }) => catalog.id === "kit")
+        .entries.find((entry: { id: string }) => entry.id === "bitter-tonic").item;
+    for (const [edit, message] of [
+      [(doc: Record<string, any>) => (fake(doc).passesFor = "kit/bitter-tonic"), /does not pass for itself/],
+      [(doc: Record<string, any>) => (fake(doc).passesFor = "kit/bottled-sunlight"), /No item "kit\/bottled-sunlight"/],
+      [
+        (doc: Record<string, any>) => (fake(doc).passesFor = "kit/watch-house-bed"),
+        /is a different kind of item|is a service/,
+      ],
+      [(doc: Record<string, any>) => (fake(doc).passesFor = "kit/lantern-coat"), /is a different kind of item/],
+      [(doc: Record<string, any>) => (fake(doc).passesFor = "kit/widows-ring"), /is itself a fake or cursed/],
+      [
+        (doc: Record<string, any>) => {
+          fake(doc).category = "token";
+          fake(doc).passesFor = "kit/hexed-ring";
+        },
+        /is itself a fake or cursed/,
+      ],
+      [
+        (doc: Record<string, any>) =>
+          delete doc.catalogs
+            .find((catalog: { id: string }) => catalog.id === "kit")
+            .entries.find((entry: { id: string }) => entry.id === "warming-tonic").item.cost,
+        /has no cost, so it is never sold/,
+      ],
+      [
+        (doc: Record<string, any>) => {
+          const ring = doc.catalogs
+            .find((catalog: { id: string }) => catalog.id === "kit")
+            .entries.find((entry: { id: string }) => entry.id === "hexed-ring").item;
+          ring.slots = { worn: 1, hands: 1 };
+        },
+        /worn in other slots|slot "hands"/,
+      ],
+      [(doc: Record<string, any>) => (fake(doc).risky = "[ominous]"), /square brackets/],
+    ] as const) {
+      assert.match(refusal(honesty(edit)), message);
+    }
+  }
+
+  // ── The 1.74 gate ──
+  {
+    const manifest = (minor: number) => ({
+      schemaVersion: 2,
+      capabilityApi: { major: 1, minor },
+      builtAgainst: { engineVersion: "2.4.6", engineCommit: "0".repeat(40) },
+      id: "ruleset-honesty",
+      name: "Honesty",
+      version: "0.1.0",
+      description: "A packaged ruleset with honest and dishonest sellers.",
+      engine: { min: "2.4.6", maxExclusive: "4.0.0" },
+      kind: ["ruleset"],
+      entrypoints: {},
+      contributions: { assets: { paths: ["ruleset.json"] } },
+      files: [{ path: "ruleset.json", sha256: "0".repeat(64), bytes: 10 }],
+      permissions: [],
+      restartRequired: false,
+    });
+    const gate = /risky items, fakes or a dishonest seller.*capabilityApi 1\.74/;
+    const issue = (minor: number, doc: Record<string, any>) =>
+      getCapabilityPackageInstallIssue(manifest(minor) as any, doc);
+    assert.match(issue(73, honesty()) ?? "", gate);
+    assert.equal(issue(74, honesty()), null);
+    // Each key alone is 1.74's: a dishonest seller, a risky item, a fake.
+    const without = (doc: Record<string, any>) => {
+      const kit = doc.catalogs.find((catalog: { id: string }) => catalog.id === "kit");
+      kit.entries = kit.entries.filter(
+        (entry: { id: string }) => !["bitter-tonic", "hexed-ring", "wild-tonic"].includes(entry.id),
+      );
+      doc.items.lootTables = doc.items.lootTables.filter((table: { id: string }) => table.id !== "fences_lot");
+      doc.items.market.sellers = doc.items.market.sellers.filter((seller: { id: string }) => seller.id !== "fence");
+    };
+    assert.equal(issue(73, honesty(without)), null);
+    assert.match(
+      issue(
+        73,
+        honesty((doc) => {
+          without(doc);
+          doc.items.market.sellers[0].honest = false;
+        }),
+      ) ?? "",
+      gate,
+    );
+    // A fake's target in another catalog file is checked at install, where every file can be read.
+    const filed = honesty((doc) => {
+      const kit = doc.catalogs.find((catalog: { id: string }) => catalog.id === "kit");
+      kit.entries.find((entry: { id: string }) => entry.id === "bitter-tonic").item.passesFor = "kit/lantern-coat";
+      kit.asset = "catalogs/kit.json";
+      (globalThis as { kitEntries?: unknown }).kitEntries = kit.entries;
+      delete kit.entries;
+    });
+    const files = new Map([["catalogs/kit.json", { entries: (globalThis as { kitEntries?: unknown }).kitEntries }]]);
+    const filedManifest = {
+      ...manifest(74),
+      contributions: { assets: { paths: ["ruleset.json", "catalogs/kit.json"] } },
+    };
+    assert.match(
+      getCapabilityPackageInstallIssue(filedManifest as any, filed, files as any) ?? "",
+      /The fake "kit\/bitter-tonic" cannot pass for "kit\/lantern-coat": .*different kind of item/,
+    );
+  }
+
+  // ── The market ──
+  const market = definition.items!.market!;
+  const town = rulesetMarketPlace(market, "market town")!;
+  const day = { key: "honesty-day", bought: new Map(), stockBought: new Map(), paidOut: new Map() };
+  {
+    const shelf = rulesetMarketShelf(definition, book, town, day.key);
+    // The fence passes two bitter tonics off as warming tonics; nobody honest keeps a fake.
+    assert.deepEqual(shelf.stock.get("fence"), [
+      {
+        item: "kit/warming-tonic",
+        name: "Warming tonic",
+        count: 2,
+        truly: "kit/bitter-tonic",
+        trulyName: "Bitter tonic",
+      },
+    ]);
+    const block = rulesetMarketPromptText(
+      definition,
+      book,
+      { name: "Barrowmere", size: "market town" },
+      undefined,
+      day,
+    )!;
+    assert.match(
+      block,
+      /- fence \(dishonest\): .*in stock today: Warming tonic ×2 4 pennies \(FAKE: really Bitter tonic; this seller passes it off as the real thing\)/,
+    );
+    // A risky ware: the honest chandler warns, the fence says nothing.
+    assert.match(block, /- chandler: [^\n]*Wild tonic 6 pennies \(warn the buyer first: a sip can sour into a fever\)/);
+    assert.doesNotMatch(
+      block.split("\n").find((line) => line.startsWith("- fence"))!,
+      /warn the buyer/,
+    );
+    // Nobody's wares list a fake or a cursed item by its true name.
+    assert.doesNotMatch(block, /Bitter tonic \d|Hexed ring|Widow's ring/);
+    assert.match(block, /A dishonest seller buys a fake as what it seems; an honest one sees through it/);
+  }
+
+  const party = { members: ["Juno"] };
+  const coins = (count: number): GameInventoryStack[] => [
+    { id: "c0", name: "shillings", item: "coin:shilling", quantity: count },
+  ];
+  const quoter = () => rulesetMarketQuoter(definition, book, town, () => true, undefined, day);
+  const run = (tag: string, stacks: GameInventoryStack[], market = quoter()) =>
+    applyGameInventoryTags(tag, stacks, party, undefined, book, undefined, undefined, market);
+  const leaks = (text: string) => /bitter/i.test(text);
+
+  // Buying from the fence: the fake, shown as a warming tonic everywhere the player looks.
+  const bought = run('[inventory: action="buy" item="Warming tonic" count="2" seller="fence"]', coins(5));
+  const [buyAnswer] = readResolvedInventoryTags(bought.content);
+  assert.equal(buyAnswer?.ok, true, bought.content);
+  assert.ok(!leaks(bought.content), `the answered tag never names the fake: ${bought.content}`);
+  assert.ok(!bought.journal.some((entry) => leaks(entry.item)), "nor does the journal");
+  const fake = bought.stacks.find((stack) => stack.item === "kit/warming-tonic")!;
+  assert.deepEqual([fake.name, fake.quantity, fake.truly], ["Warming tonic", 2, "kit/bitter-tonic"]);
+  const totals = gameInventoryTotals(bought.stacks);
+  assert.ok(!totals.some((total) => leaks(total.name)), "nor does a total's name");
+  assert.equal(totals.find((total) => total.item === "kit/warming-tonic")?.truly, "kit/bitter-tonic");
+  {
+    // A buy that names no seller never gets a fake; the true name is never for sale.
+    const honestBuy = run('[inventory: action="buy" item="Warming tonic"]', coins(5));
+    assert.equal(honestBuy.stacks.find((stack) => stack.item === "kit/warming-tonic")?.truly, undefined);
+    const trueName = run('[inventory: action="buy" item="Bitter tonic" seller="fence"]', coins(5));
+    assert.equal(readResolvedInventoryTags(trueName.content)[0]?.reason, "not-for-sale");
+    // A real tonic bought beside the fake stays its own stack.
+    const both = run('[inventory: action="buy" item="Warming tonic" seller="chandler"]', bought.stacks);
+    const tonics = both.stacks.filter((stack) => stack.item === "kit/warming-tonic");
+    assert.deepEqual(
+      tonics.map((stack) => [stack.quantity, stack.truly ?? null]),
+      [
+        [2, "kit/bitter-tonic"],
+        [1, null],
+      ],
+    );
+    // Given one of two, the fake stays a fake in the other bag.
+    const given = run('[inventory: action="give" item="Warming tonic" count="1" to="Juno"]', bought.stacks);
+    const junos = given.stacks.find((stack) => stack.holder === "Juno")!;
+    assert.deepEqual([junos.item, junos.quantity, junos.truly], ["kit/warming-tonic", 1, "kit/bitter-tonic"]);
+    assert.ok(!leaks(given.content));
+    // A fake found out is another inventory, though it shows the same until then.
+    const revealedCopy = bought.stacks.map((stack) => (stack.truly ? { ...stack, truly: undefined } : stack));
+    assert.equal(sameGameInventory(bought.stacks, revealedCopy), false);
+  }
+
+  // The Game Master sees the truth beside it.
+  {
+    const known = book.itemOf("kit/bitter-tonic")!;
+    const text = buildGmFormatReminder({
+      ruleset: definition,
+      playerInventory: gameInventoryTotals(bought.stacks),
+      inventoryItemFacts: { "kit/bitter-tonic": rulesetItemPromptFacts(known.facts) },
+      inventoryFakeNames: { "kit/bitter-tonic": "Bitter tonic" },
+    } as Parameters<typeof buildGmFormatReminder>[0]);
+    assert.match(text, /Warming tonic[^\n]*\[FAKE: really Bitter tonic\]/);
+    assert.match(text, /A line marked FAKE is not what the party thinks it is/);
+  }
+
+  // ── Found out ──
+  {
+    // A reveal: the stack becomes its true item. A reveal of something not held adds nothing.
+    const revealed = run('[inventory: action="reveal" item="Warming tonic"]', bought.stacks);
+    const [answer] = readResolvedInventoryTags(revealed.content);
+    assert.deepEqual([answer?.ok, answer?.revealed], [true, "Bitter tonic"]);
+    assert.deepEqual(
+      revealed.stacks
+        .filter((stack) => !stack.item?.startsWith("coin:"))
+        .map((stack) => [stack.item, stack.quantity, stack.truly ?? null]),
+      [["kit/bitter-tonic", 2, null]],
+    );
+    const nothing = run('[inventory: action="reveal" item="Bottled sunlight"]', bought.stacks);
+    assert.equal(readResolvedInventoryTags(nothing.content)[0]?.ok, false);
+    assert.equal(nothing.stacks.length, bought.stacks.length, "a reveal never adds");
+    const real = run('[inventory: action="reveal" item="shillings"]', bought.stacks);
+    assert.equal(readResolvedInventoryTags(real.content)[0]?.count, 0, "what is what it seems stays so");
+  }
+  {
+    // Sold to the honest chandler: seen through, paid its true worth (1 penny, at half: still a penny).
+    const sold = run('[inventory: action="sell" item="Warming tonic" count="1" seller="chandler"]', bought.stacks);
+    const [answer] = readResolvedInventoryTags(sold.content);
+    assert.deepEqual([answer?.ok, answer?.revealed, answer?.price], [true, "Bitter tonic", "1 pennies"]);
+    assert.deepEqual(
+      sold.stacks
+        .filter((stack) => stack.item?.startsWith("kit/"))
+        .map((stack) => [stack.item, stack.quantity, stack.truly ?? null]),
+      [["kit/bitter-tonic", 1, null]],
+    );
+    // Sold to the fence: taken as what it seems, at a warming tonic's half price.
+    const fenced = run('[inventory: action="sell" item="Warming tonic" count="1" seller="fence"]', bought.stacks);
+    const [fenceAnswer] = readResolvedInventoryTags(fenced.content);
+    assert.deepEqual([fenceAnswer?.ok, fenceAnswer?.revealed, fenceAnswer?.price], [true, undefined, "2 pennies"]);
+    assert.ok(!leaks(fenced.content));
+  }
+  {
+    // Bound, a fake is found out: a cursed ring that passed for the dawn bell, which the player
+    // cannot take off again.
+    const ringFake: GameInventoryStack[] = [
+      { id: "r1", name: "Dawn bell", item: "kit/dawn-bell", quantity: 1, truly: "kit/hexed-ring", equipped: true },
+    ];
+    const bound = applyGameInventoryOps(ringFake, [{ op: "bind", id: "r1" }], undefined, { ...book, actor: "player" });
+    assert.equal(bound.results[0]?.ok, true);
+    assert.deepEqual(
+      bound.stacks.map((stack) => [stack.item, stack.name, stack.bound ?? false, stack.truly ?? null]),
+      [["kit/hexed-ring", "Hexed ring", true, null]],
+    );
+    const unbound = applyGameInventoryOps(bound.stacks, [{ op: "unbind", id: "r1" }], undefined, {
+      ...book,
+      actor: "player",
+    });
+    assert.equal(unbound.results[0]?.ok, false, "the curse holds it");
+  }
+  {
+    // Used, a fake does what it truly does; a bitter tonic does nothing the rules work out, so it is
+    // found out and the Game Master tells it.
+    const user = gameInventoryItemUser(
+      {
+        definition,
+        packageId: null,
+        cards: [{ name: "Ada", build: defaultRulesetSheetBuild(definition) }],
+        playerName: "Ada",
+      },
+      book.itemOf,
+      {},
+      1,
+    );
+    const tagged = applyGameInventoryTags(
+      '[inventory: action="use" item="Warming tonic"]',
+      bought.stacks,
+      party,
+      undefined,
+      book,
+      user.useItem,
+    );
+    const [answer] = readResolvedInventoryTags(tagged.content);
+    assert.equal(answer?.revealed, "Bitter tonic", tagged.content);
+    assert.ok(tagged.stacks.some((stack) => stack.item === "kit/bitter-tonic" && !stack.truly));
+  }
+  // A client op can never make a fake: the strict schema refuses `truly`.
+  {
+    const { gameInventoryOpSchema } = await import("../../packages/shared/src/index.js");
+    assert.equal(
+      gameInventoryOpSchema.safeParse({
+        op: "add",
+        name: "Warming tonic",
+        item: "kit/warming-tonic",
+        count: 1,
+        truly: "kit/bitter-tonic",
+      }).success,
+      false,
+    );
+  }
+
+  console.log(
+    "Seller honesty: schema and gate, honest and dishonest stock, fakes that hold, and every way one is found out.",
+  );
+} finally {
+  rmSync(dataDir, { recursive: true, force: true });
+}

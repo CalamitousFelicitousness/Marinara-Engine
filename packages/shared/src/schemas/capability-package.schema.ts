@@ -619,7 +619,13 @@ const capabilityPackageManifestBaseSchema = z
 //        never on its own, with choices and lists to pick from. Not a soft seam, for the same reason as
 //        1.20 through 1.72: an Engine that cannot read it refuses the whole ruleset file, so a package
 //        that ships it declares 1.73. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 73 } as const);
+// 1.74: seller honesty (P1-7): a catalog item may be `risky` (what an honest seller warns of) or a fake
+//        that `passesFor` another item, and a market seller may be `honest: false`. A fake bought from
+//        a dishonest seller is a stack that shows as what it passes for and keeps what it truly is.
+//        Not a soft seam, for the same reason as 1.20 through 1.73: an Engine that cannot read these
+//        refuses the whole ruleset or catalog file, so a package that ships any of them declares 1.74.
+//        No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 74 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

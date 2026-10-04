@@ -237,6 +237,7 @@ export function WindowBubble({
         onClick={handleClick}
         onKeyDown={handleKeyDown}
       >
+        <span className="mari-window-bubble__paint pointer-events-none" aria-hidden="true" />
         {icon}
         {children}
       </button>

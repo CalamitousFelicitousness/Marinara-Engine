@@ -148,7 +148,7 @@ Turn on **Character Exchanges** to let characters talk to each other on their ow
 
 When it is on, the characters can reply to each other while you are away, not only to you. This runs only while Marinara is open in your browser. If you close the app, the exchanges stop. It also shares the same daily message limit that autonomous messages use.
 
-Exchanges work whether or not character schedules are on. In a group set to **Individual**, an exchange never uses the group's last check-in of the day, so a later check-in can still use it.
+Exchanges work whether or not character schedules are on. In a group set to **Individual**, exchanges and @mention replies between characters never use the group's last check-in of the day, so a later check-in can still use it.
 
 ## Turn handling at a glance
 

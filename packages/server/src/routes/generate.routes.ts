@@ -376,6 +376,7 @@ import {
   markGenerationInProgress,
   recordAssistantActivity,
   recordUserActivity,
+  sharesAutonomousDailyBudget,
 } from "../services/conversation/autonomous.service.js";
 import { buildIntentCooldownPatch, isMessageIntent } from "../services/conversation/intent.service.js";
 import { buildImpersonateInstruction } from "../services/conversation/impersonate-prompt.js";
@@ -10736,8 +10737,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   const capSchedule = schedules[id] ?? {
                     talkativeness: Math.round((charInfo.find((c) => c.id === id)?.talkativeness ?? 0.5) * 100),
                   };
-                  if (isAutonomousDailyBudgetExhausted(id, capSchedule, projectedMeta)) return false;
-                  projectedMeta = { ...projectedMeta, ...buildAutonomousDailyBudgetPatch(projectedMeta, id) };
+                  const next = { ...projectedMeta, ...buildAutonomousDailyBudgetPatch(projectedMeta, id) };
+                  // Like /autonomous/exchange, a handoff never takes a shared limit's last check-in.
+                  const capMeta = sharesAutonomousDailyBudget(projectedMeta) ? next : projectedMeta;
+                  if (isAutonomousDailyBudgetExhausted(id, capSchedule, capMeta)) return false;
+                  projectedMeta = next;
                   return true;
                 };
                 for (const id of respondingCharIds.slice(ci + 1)) if (id && !mentioned.includes(id)) reserve(id);

@@ -40,6 +40,7 @@ type AutonomousCheckResult = {
   reason?: string;
   inactivityMs?: number;
   generationStartedAt?: number;
+  autonomousIntentKey?: string;
 };
 
 function resolveAvailableIntent(
@@ -202,6 +203,7 @@ export function startServerAutonomousScheduler(app: FastifyInstance, multiplayer
     schedule: WeekSchedule | null,
     chatMeta: Record<string, unknown>,
     claimedAt?: number,
+    checkIntentKey?: string,
   ): Promise<boolean> => {
     const promptTimeZone = resolveConversationTimeZone(chatMeta);
     const promptNow = toZonedWallClockDate(new Date(), promptTimeZone);
@@ -210,13 +212,16 @@ export function startServerAutonomousScheduler(app: FastifyInstance, multiplayer
       clearGenerationInProgress(chatId, claimedAt);
       return false;
     }
+    // Without a schedule only the check knows why this message is due; forwarding it records
+    // the intent's cooldown, so a long-absence check-in is not repeated every poll (#7055).
+    const autonomousIntentKey = intent ?? checkIntentKey ?? "";
     if (chatMeta.multiplayer) {
       try {
         if (!multiplayer || !(await multiplayer.canGenerate(chatId))) return false;
         const generated = await multiplayer.generate({
           chatId,
           characterId,
-          autonomousIntentKey: intent ?? "",
+          autonomousIntentKey,
           userTimeZone: promptTimeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
         });
         if (generated) {
@@ -245,7 +250,7 @@ export function startServerAutonomousScheduler(app: FastifyInstance, multiplayer
         userActivity: "away or offline",
         autonomous: true,
         skipPresenceDelay: true,
-        autonomousIntentKey: intent ?? "",
+        autonomousIntentKey,
         userTimeZone: promptTimeZone,
       },
     });
@@ -401,7 +406,14 @@ export function startServerAutonomousScheduler(app: FastifyInstance, multiplayer
         }
       }
 
-      const generated = await generateAutonomousMessage(chat.id, characterId, schedule, freshMeta, generationStartedAt);
+      const generated = await generateAutonomousMessage(
+        chat.id,
+        characterId,
+        schedule,
+        freshMeta,
+        generationStartedAt,
+        result.autonomousIntentKey,
+      );
       if (generated) {
         logger.info("[autonomous-scheduler] Generated autonomous message for chat %s", chat.id);
       }

@@ -53,6 +53,7 @@ try {
     gameInventory: stacks,
     gameInventoryTurn: { messageId: "prior", before: stacks, swipes: { "0": stacks } },
     gamePartyArcs: [{ name: "Rowan", arc: "Rowan searches for home." }],
+    gameStartingGearTaken: { "": ["fighter"], rowan: ["acolyte"], companion: ["fighter"] },
   });
   const message = await chats.createMessage({ chatId: chat.id, role: "assistant", content: "Rowan takes watch." });
   const human = {
@@ -125,6 +126,8 @@ try {
   assert.equal(after.gameInventoryTurn.before[1].holder, "Ash");
   assert.equal(after.gameInventoryTurn.swipes["0"][1].holder, "Ash");
   assert.equal(after.gamePartyArcs[0].name, "Ash");
+  // The starting gear Rowan took follows them to their new name, so it is not offered again.
+  assert.deepEqual(after.gameStartingGearTaken, { "": ["fighter"], ash: ["acolyte"], companion: ["fighter"] });
   assert.equal(after.gamePartyArcs[0].arc, "Rowan searches for home.", "story prose is not rewritten");
   const state = parseGameStateRow((await states.getLatest(chat.id))!);
   assert.deepEqual(state.rulesetLive, {

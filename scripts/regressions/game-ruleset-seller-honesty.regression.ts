@@ -210,14 +210,15 @@ try {
       gate,
     );
     // A fake's target in another catalog file is checked at install, where every file can be read.
+    let kitEntries: unknown;
     const filed = honesty((doc) => {
       const kit = doc.catalogs.find((catalog: { id: string }) => catalog.id === "kit");
       kit.entries.find((entry: { id: string }) => entry.id === "bitter-tonic").item.passesFor = "kit/lantern-coat";
       kit.asset = "catalogs/kit.json";
-      (globalThis as { kitEntries?: unknown }).kitEntries = kit.entries;
+      kitEntries = kit.entries;
       delete kit.entries;
     });
-    const files = new Map([["catalogs/kit.json", { entries: (globalThis as { kitEntries?: unknown }).kitEntries }]]);
+    const files = new Map([["catalogs/kit.json", { entries: kitEntries }]]);
     const filedManifest = {
       ...manifest(74),
       contributions: { assets: { paths: ["ruleset.json", "catalogs/kit.json"] } },

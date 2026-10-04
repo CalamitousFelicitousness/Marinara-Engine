@@ -8162,7 +8162,7 @@
   "ui.game.gamesurfacecomponent.inventoryWhoPaid": "{{who}} paid {{item}}.",
   "ui.game.gamesurfacecomponent.inventoryWhoRevealed": "{{who}}'s {{item}} was really {{truly}}.",
   "ui.game.gamesurfacecomponent.inventoryWhoSold": "{{who}} sold {{item}} for {{price}}.",
-  "ui.game.gamesurfacecomponent.inventoryWhoSoldSeenThrough": "The buyer saw {{who}}'s was really {{truly}} and paid {{price}}.",
+  "ui.game.gamesurfacecomponent.inventoryWhoSoldSeenThrough": "The buyer saw that {{who}}'s item was really {{truly}} and paid {{price}}.",
   "ui.game.gamesurfacecomponent.inventoryWhoUnbound": "{{who}} unbound {{item}}.",
   "ui.game.gamesurfacecomponent.inventoryWhoUnequipped": "{{who}} took off {{item}}.",
   "ui.game.gamesurfacecomponent.inventoryWhoUsed": "{{who}} used {{item}}.",

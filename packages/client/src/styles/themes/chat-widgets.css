@@ -307,9 +307,9 @@
     pointer-events: none;
   }
 
-  /* Phone panels clip their contents. Keep the crest inside the title bar and
+  /* Phone panels and the tools menu sit near the viewport edge. Keep the crest inside the title bar and
      beside the title, clear of the actions on the right. */
-  .mari-window[data-presentation="sheet"] .mari-window__header::after {
+  .mari-window:is([data-presentation="sheet"], [data-presentation="menu"]) .mari-window__header::after {
     left: 0.25rem;
     top: calc(50% - 1rem);
     width: 1.25rem;
@@ -580,7 +580,10 @@
   );
   --background: var(--mari-widget-custom-background-solid, var(--mari-widget-bg, var(--marinara-chat-chrome-panel-bg)));
   --popover: var(--background);
-  --muted: var(--mari-widget-custom-background-solid, var(--mari-widget-soft, var(--marinara-chat-chrome-highlight-bg)));
+  --muted: var(
+    --mari-widget-custom-background-solid,
+    var(--mari-widget-soft, var(--marinara-chat-chrome-highlight-bg))
+  );
   --accent: var(--muted);
 }
 

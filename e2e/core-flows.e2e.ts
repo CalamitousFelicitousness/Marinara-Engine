@@ -11364,7 +11364,7 @@ test("Game combat sheet helpers preserve ability types, card matches, and zero H
   expect(result.invalidEnemyHp).toBe(9);
 });
 
-test("Game character sheet Retry remains a draft until Save", async ({ page, request }, testInfo) => {
+test("Game character sheet Retry remains a draft until Save", async ({ page, request }) => {
   const suffix = Date.now().toString(36);
   const characterName = `Retry Sheet Character ${suffix}`;
   const personaName = `Retry Sheet Persona ${suffix}`;
@@ -11540,9 +11540,7 @@ test("Game character sheet Retry remains a draft until Save", async ({ page, req
     };
 
     await page.goto("/");
-    if (testInfo.project.name.includes("mobile")) {
-      await page.getByTitle("Open party members").click();
-    }
+    await page.locator('.mari-window-bubble[data-window="control:character-profiles"]').click();
     await page.getByTitle(`${characterName} - Click to open character sheet`).filter({ visible: true }).click();
     const sheet = page.locator('[data-component="GameCharacterSheet"]');
     await expect(sheet).toBeVisible();
@@ -23449,8 +23447,8 @@ test("mobile Game keeps CYOA usable above four HUD widgets", async ({ page, requ
 
     const viewport = { width: 390, height: 700 };
     await page.setViewportSize(viewport);
-    await expect(page.locator('.mari-window-bubble[data-window="control:game"]')).toBeVisible();
-    await expect(page.locator('[data-tour="game-map"]').getByRole("button", { name: "Open map" })).toBeVisible();
+    await expect(page.locator("[data-chat-tools-menu-button]")).toBeVisible();
+    await expect(page.locator('.mari-window-bubble[data-window="control:map"]')).toBeVisible();
 
     await expect
       .poll(async () => {

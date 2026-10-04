@@ -96,26 +96,32 @@ export function placeWindowBubbles(
           candidate.y >= other.y + other.height,
       );
     if (movable && !free(next)) {
-      const xs = new Set([clamped.x, bounds.left, bounds.right - size]);
-      const ys = new Set([clamped.y, bounds.top, bounds.bottom - size]);
-      for (const other of occupied) {
-        xs.add(other.x - size - BUBBLE_SNAP_GAP_PX);
-        xs.add(other.x + other.width + BUBBLE_SNAP_GAP_PX);
-        ys.add(other.y - size - BUBBLE_SNAP_GAP_PX);
-        ys.add(other.y + other.height + BUBBLE_SNAP_GAP_PX);
-      }
-      const candidates = [...xs].flatMap((x) => [...ys].map((y) => ({ x, y })));
-      const distance = (candidate: WindowPoint) => (candidate.x - clamped.x) ** 2 + (candidate.y - clamped.y) ** 2;
-      candidates.sort((a, b) => distance(a) - distance(b));
-      next =
-        candidates.find(
+      // Keep the snapping gap when possible; a tight space should not hide a button just to keep the gap.
+      for (const gap of [BUBBLE_SNAP_GAP_PX, 0]) {
+        const xs = new Set([clamped.x, bounds.left, bounds.right - size]);
+        const ys = new Set([clamped.y, bounds.top, bounds.bottom - size]);
+        for (const other of occupied) {
+          xs.add(other.x - size - gap);
+          xs.add(other.x + other.width + gap);
+          ys.add(other.y - size - gap);
+          ys.add(other.y + other.height + gap);
+        }
+        const candidates = [...xs].flatMap((x) => [...ys].map((y) => ({ x, y })));
+        const distance = (candidate: WindowPoint) => (candidate.x - clamped.x) ** 2 + (candidate.y - clamped.y) ** 2;
+        candidates.sort((a, b) => distance(a) - distance(b));
+        const available = candidates.find(
           (candidate) =>
             candidate.x >= bounds.left &&
             candidate.x + size <= bounds.right &&
             candidate.y >= bounds.top &&
             candidate.y + size <= bounds.bottom &&
             free(candidate),
-        ) ?? clamped;
+        );
+        if (available) {
+          next = available;
+          break;
+        }
+      }
     }
     placed.set(id, next);
     occupied.push({ ...next, width: size, height: size });
@@ -162,6 +168,26 @@ export interface WindowLayoutSnapshot {
   phoneBubbles?: Record<FloatingWindowId, WindowPoint>;
   /** Buttons with no window layout of their own (the Chat Settings button) on a computer. Older snapshots have none. */
   bubbles?: Record<FloatingWindowId, WindowPoint>;
+  /** Phone tools menu preferences; old individual bubble positions remain available. */
+  phoneMenu?: PhoneMenuLayout;
+}
+
+export interface PhoneMenuLayout {
+  locked: boolean;
+  order: FloatingWindowId[];
+}
+
+/** Keep future tool ids, but reject corrupt or unbounded imported orders. */
+export function readPhoneMenuLayout(value: unknown): PhoneMenuLayout | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const source = value as { locked?: unknown; order?: unknown };
+  const order = Array.isArray(source.order) ? [...new Set(source.order.filter(isStoredWindowId))].slice(0, 256) : [];
+  return source.locked === true || order.length > 0 ? { locked: source.locked === true, order } : undefined;
+}
+
+/** Reordering visible tools keeps saved positions for tools that are temporarily unavailable. */
+export function mergePhoneMenuOrder(visible: string[], previous: string[]): string[] {
+  return readPhoneMenuLayout({ order: [...visible, ...previous] })?.order ?? [];
 }
 
 /** The area a window may occupy, with the margin already applied. */
@@ -295,6 +321,7 @@ export function parseWindowLayoutSnapshot(raw: unknown): WindowLayoutSnapshot {
     detached?: unknown;
     phoneBubbles?: unknown;
     bubbles?: unknown;
+    phoneMenu?: unknown;
   };
   if (source.version !== FLOATING_WINDOW_LAYOUT_VERSION) return empty;
   if (!source.windows || typeof source.windows !== "object" || Array.isArray(source.windows)) return empty;
@@ -316,6 +343,7 @@ export function parseWindowLayoutSnapshot(raw: unknown): WindowLayoutSnapshot {
     detached,
     readStoredPoints(source.phoneBubbles),
     readStoredPoints(source.bubbles),
+    readPhoneMenuLayout(source.phoneMenu),
   );
 }
 
@@ -338,11 +366,14 @@ export function toWindowLayoutSnapshot(
   detached: FloatingWindowId[] = [],
   phoneBubbles: Record<FloatingWindowId, WindowPoint> = {},
   bubbles: Record<FloatingWindowId, WindowPoint> = {},
+  phoneMenu?: PhoneMenuLayout,
 ): WindowLayoutSnapshot {
   const snapshot: WindowLayoutSnapshot = { version: FLOATING_WINDOW_LAYOUT_VERSION, windows };
   if (detached.length > 0) snapshot.detached = detached;
   if (Object.keys(phoneBubbles).length > 0) snapshot.phoneBubbles = phoneBubbles;
   if (Object.keys(bubbles).length > 0) snapshot.bubbles = bubbles;
+  const menu = readPhoneMenuLayout(phoneMenu);
+  if (menu) snapshot.phoneMenu = menu;
   return snapshot;
 }
 
@@ -352,7 +383,8 @@ export function isEmptyWindowLayoutSnapshot(snapshot: WindowLayoutSnapshot): boo
     Object.keys(snapshot.windows).length === 0 &&
     !snapshot.detached?.length &&
     Object.keys(snapshot.phoneBubbles ?? {}).length === 0 &&
-    Object.keys(snapshot.bubbles ?? {}).length === 0
+    Object.keys(snapshot.bubbles ?? {}).length === 0 &&
+    !snapshot.phoneMenu
   );
 }
 

@@ -45,6 +45,12 @@ Two toggles change how the Accent Color behaves:
 
 You can only use one of these at a time. Turning on **RGB Mode** turns off **Accent Pulse**, and turning on **Accent Pulse** turns off **RGB Mode**. Accent Pulse previews live while the Appearance tab is open. If your device is set to reduce motion, both animations are skipped.
 
+## Chat widget style
+
+At the bottom of **App Style**, choose **Default**, **Dottore** or **Mari** for movable chat buttons, windows and sections. You can change the font, frame shape and three main colors separately. Color pickers also support gradients.
+
+Below the color pickers, **Apply preset font**, **Apply preset shape** and **Apply preset colors** let the rest of the chat match. They start off and work independently. They cover messages, input boxes and chat controls; Conversation messages get the optional font and colors while keeping their own shape. Your custom font, shape and color choices are included. For examples and custom themes, see [Custom CSS Themes](custom-css-themes.md#ready-made-chat-window-styles).
+
 ## Custom Mouse Pointer
 
 **Custom Mouse Pointer** (default on) uses Marinara's accent-colored cursor across the app. Turn it off to use your normal system cursor, or to let a custom CSS theme control the cursor.

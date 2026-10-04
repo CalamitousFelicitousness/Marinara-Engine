@@ -2029,7 +2029,7 @@ export function ChatRoleplaySurface({
                       </button>
                     </div>
                     {!vnHistoryOpen && (
-                      <div className="rounded-xl border border-[var(--border)] bg-[var(--marinara-chat-chrome-panel-bg)] shadow-lg">
+                      <div className="mari-chat-style-surface rounded-xl border border-[var(--border)] bg-[var(--marinara-chat-chrome-panel-bg)] shadow-lg">
                         {hasLiveStream ? (
                           inlineStreamingMessageId &&
                           messages?.find((message) => message.id === inlineStreamingMessageId) ? (

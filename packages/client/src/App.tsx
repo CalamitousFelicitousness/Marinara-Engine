@@ -487,6 +487,9 @@ export function App() {
   const chatWidgetBorderColor = useUIStore((s) => s.chatWidgetBorderColor);
   const chatWidgetBackgroundColor = useUIStore((s) => s.chatWidgetBackgroundColor);
   const chatWidgetTextColor = useUIStore((s) => s.chatWidgetTextColor);
+  const chatWidgetApplyFont = useUIStore((s) => s.chatWidgetApplyFont);
+  const chatWidgetApplyShape = useUIStore((s) => s.chatWidgetApplyShape);
+  const chatWidgetApplyColors = useUIStore((s) => s.chatWidgetApplyColors);
   const appBackgroundColor = useUIStore((s) => s.appBackgroundColor);
   const appAccentColor = useUIStore((s) => s.appAccentColor);
   const appAccentPulseMode = useUIStore((s) => s.appAccentPulseMode);
@@ -1080,6 +1083,18 @@ export function App() {
       else document.documentElement.style.removeProperty(property);
     }
   }, [chatWidgetBorderColor, chatWidgetBackgroundColor, chatWidgetTextColor]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    for (const [attribute, enabled] of [
+      ["data-chat-widget-apply-font", chatWidgetApplyFont],
+      ["data-chat-widget-apply-shape", chatWidgetApplyShape],
+      ["data-chat-widget-apply-colors", chatWidgetApplyColors],
+    ] as const) {
+      if (enabled) root.setAttribute(attribute, "true");
+      else root.removeAttribute(attribute);
+    }
+  }, [chatWidgetApplyFont, chatWidgetApplyShape, chatWidgetApplyColors]);
 
   // Register custom font faces without forcing every shard to load at startup.
   const { data: customFonts } = useQuery<CustomFontFace[]>({

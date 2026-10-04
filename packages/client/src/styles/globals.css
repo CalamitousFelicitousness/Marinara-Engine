@@ -2,6 +2,7 @@
 @source "./capability-package-safelist.html";
 @import "./themes/sillytavern.css";
 @import "./themes/chat-widgets.css";
+@import "./themes/chat-widget-surfaces.css";
 
 /* World state & tracker widgets: equal flex sizing on mobile */
 @media (max-width: 767px) {

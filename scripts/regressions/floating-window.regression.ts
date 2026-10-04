@@ -483,6 +483,21 @@ assert.deepEqual(
   originalButtonPositions,
   "temporary placement never rewrites saved points",
 );
+// The remaining space can fit a button even when it cannot also fit the usual snapping gap.
+const tightBounds = { left: 0, top: 0, right: 100, bottom: 32 };
+const tightPositions = placeWindowBubbles(
+  new Map([
+    ["left", { point: { x: 0, y: 0 }, bounds: tightBounds, size: 32 }],
+    ["right", { point: { x: 68, y: 0 }, bounds: tightBounds, size: 32 }],
+    ["overflow", { point: { x: 200, y: 0 }, bounds: tightBounds, size: 32 }],
+  ]),
+);
+assert.equal(tightPositions.get("left")?.x, 0);
+assert.equal(tightPositions.get("right")?.x, 68);
+assert.ok(
+  tightPositions.get("overflow")!.x >= 32 && tightPositions.get("overflow")!.x <= 36,
+  "use the remaining narrow gap before overlapping a button",
+);
 const defaultCollisionBounds = { left: 8, top: 56, right: 960, bottom: 700 };
 const defaultCollision = placeWindowBubbles(
   new Map([
@@ -724,6 +739,57 @@ assert.deepEqual(selectWindowLayoutSnapshot(useFloatingWindowStore.getState()).b
 useFloatingWindowStore.getState().resetView();
 assert.deepEqual(useFloatingWindowStore.getState().phoneBubbles, {}, "Reset View puts phone bubbles back too");
 assert.deepEqual(useFloatingWindowStore.getState().bubbles, {}, "Reset View puts the Chat Settings button back");
+
+// Phone menu preferences round-trip without discarding old individual or desktop placements.
+const menuSnapshot = parseWindowLayoutSnapshot({
+  ...withPhoneBubbles,
+  windows: { "control:volume": valid },
+  bubbles: { "control:volume": { x: 80, y: 90 } },
+  phoneMenu: { locked: true, order: ["control:volume", "future:tool", "control:volume", null, "", "x".repeat(1000)] },
+});
+assert.deepEqual(menuSnapshot.phoneMenu, { locked: true, order: ["control:volume", "future:tool"] });
+store.getState().hydrate(menuSnapshot);
+store.getState().savePhoneMenuOrder(["future:tool", "control:volume"]);
+assert.deepEqual(
+  selectWindowLayoutSnapshot(store.getState()),
+  menuSnapshot,
+  "locking blocks reordering without changing any positions",
+);
+store.getState().setPhoneMenuLocked(false);
+store.getState().savePhoneMenuOrder(["control:session", "control:volume"]);
+store.getState().savePhoneBubble("chat-tools-menu", { x: 70, y: 120 });
+const reorderedMenuSnapshot = selectWindowLayoutSnapshot(store.getState());
+assert.deepEqual(reorderedMenuSnapshot.phoneMenu, {
+  locked: false,
+  order: ["control:session", "control:volume", "future:tool"],
+});
+assert.deepEqual(reorderedMenuSnapshot.windows, menuSnapshot.windows);
+assert.deepEqual(reorderedMenuSnapshot.bubbles, menuSnapshot.bubbles);
+assert.deepEqual(reorderedMenuSnapshot.phoneBubbles, {
+  ...menuSnapshot.phoneBubbles,
+  "chat-tools-menu": { x: 70, y: 120 },
+});
+store.getState().hydrate(JSON.parse(serializeWindowLayoutSnapshot(reorderedMenuSnapshot)));
+assert.deepEqual(
+  selectWindowLayoutSnapshot(store.getState()),
+  reorderedMenuSnapshot,
+  "chat/profile hydration preserves menu preferences",
+);
+assert.equal(
+  parseWindowLayoutSnapshot({ version: 1, windows: {}, phoneMenu: { locked: "false", order: "invalid" } }).phoneMenu,
+  undefined,
+);
+assert.equal(
+  parseWindowLayoutSnapshot({
+    version: 1,
+    windows: {},
+    phoneMenu: { order: Array.from({ length: 300 }, (_, index) => `future:${index}`) },
+  }).phoneMenu?.order.length,
+  256,
+);
+store.getState().resetView();
+assert.equal(store.getState().phoneMenu, undefined, "Reset View clears the menu's order and lock");
+assert.equal(isEmptyWindowLayoutSnapshot(selectWindowLayoutSnapshot(store.getState())), true);
 
 // The bubble draws with its theming hooks; the window keeps the header controls in order.
 const floatingWindowSource = read("packages/client/src/components/ui/FloatingWindow.tsx");

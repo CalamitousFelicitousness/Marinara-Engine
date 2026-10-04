@@ -14,6 +14,9 @@ const stored = new Map<string, string>([
         chatWidgetBorderColor: 42,
         chatWidgetBackgroundColor: { color: "red" },
         chatWidgetTextColor: false,
+        chatWidgetApplyFont: "true",
+        chatWidgetApplyShape: 1,
+        chatWidgetApplyColors: {},
       },
       version: UI_PERSISTENCE.version,
     }),
@@ -46,6 +49,9 @@ try {
       chatWidgetBorderColor,
       chatWidgetBackgroundColor,
       chatWidgetTextColor,
+      chatWidgetApplyFont,
+      chatWidgetApplyShape,
+      chatWidgetApplyColors,
     } = useUIStore.getState();
     return {
       chatWidgetPreset,
@@ -54,6 +60,9 @@ try {
       chatWidgetBorderColor,
       chatWidgetBackgroundColor,
       chatWidgetTextColor,
+      chatWidgetApplyFont,
+      chatWidgetApplyShape,
+      chatWidgetApplyColors,
     };
   };
   const defaults = {
@@ -63,6 +72,9 @@ try {
     chatWidgetBorderColor: "",
     chatWidgetBackgroundColor: "",
     chatWidgetTextColor: "",
+    chatWidgetApplyFont: false,
+    chatWidgetApplyShape: false,
+    chatWidgetApplyColors: false,
   };
   assert.deepEqual(
     selection(),
@@ -90,6 +102,15 @@ try {
     "quotes, backslashes and CSS punctuation remain inside one family name",
   );
 
+  useUIStore.getState().setChatWidgetApplyFont(true);
+  assert.deepEqual(
+    selection(),
+    { ...defaults, chatWidgetApplyFont: true },
+    "applying the widget font leaves shape and colors disabled",
+  );
+  useUIStore.getState().setChatWidgetApplyShape(true);
+  useUIStore.getState().setChatWidgetApplyColors(true);
+  const applied = { chatWidgetApplyFont: true, chatWidgetApplyShape: true, chatWidgetApplyColors: true };
   useUIStore.getState().setChatWidgetPreset("dottore");
   useUIStore.getState().setChatWidgetFont("custom: Times New Roman ");
   useUIStore.getState().setChatWidgetShape("square");
@@ -103,6 +124,7 @@ try {
     chatWidgetBorderColor: "#123456",
     chatWidgetBackgroundColor: "linear-gradient(135deg, #112233, #445566)",
     chatWidgetTextColor: "#ABCDEF",
+    ...applied,
   };
   assert.deepEqual(selection(), selected);
   for (const pick of [pickPersistedUIState, pickSyncedSettings]) {
@@ -116,14 +138,18 @@ try {
   useUIStore.getState().setChatWidgetPreset("mari");
   assert.deepEqual(
     selection(),
-    { ...defaults, chatWidgetPreset: "mari" },
-    "preset changes clear font, shape and color overrides",
+    { ...defaults, ...applied, chatWidgetPreset: "mari" },
+    "preset changes clear overrides and retain the independent application switches",
   );
   stored.set(UI_PERSISTENCE.name, saved);
   await useUIStore.persist.rehydrate();
   assert.deepEqual(selection(), selected, "the selected preset and overrides survive hydration");
   useUIStore.getState().setChatWidgetPreset("default");
-  assert.deepEqual(selection(), defaults, "choosing Default restores the original appearance");
+  assert.deepEqual(
+    selection(),
+    { ...defaults, ...applied },
+    "choosing Default restores the original appearance without changing its scope",
+  );
   useUIStore.getState().setChatWidgetPreset("mari");
   useUIStore.getState().setChatWidgetFont("@mono");
   useUIStore.getState().setChatWidgetShape("arched");

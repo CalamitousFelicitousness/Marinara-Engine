@@ -301,6 +301,9 @@ export function useSettingsSync() {
               if ("chatWidgetShape" in parsed.settings) {
                 parsed.settings.chatWidgetShape = normalizeChatWidgetShape(parsed.settings.chatWidgetShape);
               }
+              for (const key of ["chatWidgetApplyFont", "chatWidgetApplyShape", "chatWidgetApplyColors"] as const) {
+                if (key in parsed.settings) parsed.settings[key] = parsed.settings[key] === true;
+              }
               for (const key of [
                 "chatWidgetBorderColor",
                 "chatWidgetBackgroundColor",

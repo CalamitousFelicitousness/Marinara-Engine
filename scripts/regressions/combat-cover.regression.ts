@@ -16,7 +16,9 @@ import {
   applyAction,
   coverTier,
   createTacticalCombat,
+  decideTacticalAction,
   forecastAttack,
+  forecastTacticalAttack,
   type Combatant,
   type TacticalGrid,
   type TacticalTerrain,
@@ -95,6 +97,11 @@ const arena = (paint: Record<string, TacticalTerrain>) => {
   // The better of the ground and the cover counts, never both.
   assert.equal(chance({ "4,2": "forest" }), open - 15, "trees underfoot");
   assert.equal(chance({ "4,2": "forest", "4,1": "wall" }), open - 15, "trees underfoot and a wall beside");
+  // A forecast from another cell reads the cover from there: right beside the foe, nothing is between.
+  const walled = arena({ "4,1": "wall" });
+  const [archer, foe] = ["archer", "foe"].map((id) => walled.units.find((u) => u.id === id)!);
+  assert.equal(forecastTacticalAttack(walled, archer!, foe!, { x: 0, y: 0 }).hitChance, open - 15);
+  assert.equal(forecastTacticalAttack(walled, archer!, foe!, { x: 3, y: 2 }).hitChance, open, "from beside it");
   // A blast reads cover from where it lands: a second foe beside where it lands, half hidden from the
   // caster by a wall but with nothing between it and the blast, is struck every time.
   const struck = (seed: number) => {
@@ -118,6 +125,25 @@ const arena = (paint: Record<string, TacticalTerrain>) => {
     Array.from({ length: 30 }, (_, seed) => struck(seed)).every(Boolean),
     "the blast never misses it for cover it does not have from where it lands",
   );
+}
+
+// The plain AI weighs the counter it risks from the tile it would shoot from: of the cells three away
+// from the hero, it takes the one a wall half hides from the hero's answer, though its own shot from
+// there is as open as from any other.
+{
+  const fight = arena({ "3,1": "wall" });
+  const hero = fight.units.find((u) => u.id === "archer")!;
+  Object.assign(hero, { x: 4, y: 2, attackRange: { min: 1, max: 3 } });
+  const shooter = fight.units.find((u) => u.id === "foe")!;
+  Object.assign(shooter, { x: 5, y: 0, movement: 4, attackRange: { min: 3, max: 3 }, tactics: undefined, skills: [] });
+  Object.assign(
+    fight.units.find((u) => u.id === "other")!,
+    { hp: 0 },
+  );
+  assert.equal(coverTier(fight.grid, { x: 3, y: 0 }, hero), "none", "its shot from there is open");
+  assert.equal(coverTier(fight.grid, hero, { x: 3, y: 0 }), "half", "the answer to it is not");
+  const choice = decideTacticalAction(fight, shooter, () => 0);
+  assert.deepEqual(choice.type === "attack" ? choice.to : choice, { x: 3, y: 0 }, JSON.stringify(choice));
 }
 
 console.log("Combat cover: corner lines grade cover, and the Engine's own fights take it off the hit chance.");

@@ -36,6 +36,7 @@ import {
 import { getCurrentInputSnapshot, useChatStore } from "../../stores/chat.store";
 import { hasActiveTextSelection } from "../../lib/text-selection";
 import { readChatMetadata } from "../../lib/chat-wizard-defaults";
+import { useChatWindowLayout } from "../../hooks/use-chat-window-layout";
 import { useGenerate } from "../../hooks/use-generate";
 import { useGenerateGallerySelfie } from "../../hooks/use-gallery";
 import {
@@ -542,6 +543,8 @@ const MultiplayerChat = lazy(() =>
 export const ChatArea = memo(function ChatArea() {
   const activeChatId = useChatStore((state) => state.activeChatId);
   const { data: chat, error, refetch } = useChat(activeChatId);
+  // Windows and popped-out drawers follow the open chat's saved layout.
+  useChatWindowLayout(activeChatId && chat?.id === activeChatId ? chat : null);
   useEffect(() => {
     if (activeChatId && error instanceof ApiError && error.status === 404) {
       useChatStore.getState().setActiveChatId(null);

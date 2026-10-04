@@ -653,19 +653,25 @@
 
 /* ─────────────────────────────────────────────
    4a2. FLOATING WINDOWS AND DRAWERS
-   Every chat window (Chat Settings, the Trackers window, and later popped-out
-   drawers) renders through <FloatingWindow>, and every collapsible section
-   through <Drawer>, so custom themes can restyle them all at once.
+   Every chat window (Chat Settings, the Trackers window, popped-out drawers)
+   renders through <FloatingWindow>, and every collapsible section through
+   <Drawer>, so custom themes can restyle them all at once.
 
    Classes:     .mari-window, .mari-window__header, .mari-window__title,
                 .mari-window__controls, .mari-window__control, .mari-window__body,
                 .mari-window__resize-handle; .mari-drawer, .mari-drawer__header,
                 .mari-drawer__icon, .mari-drawer__title, .mari-drawer__count,
                 .mari-drawer__summary, .mari-drawer__help, .mari-drawer__actions,
-                .mari-drawer__arrow, .mari-drawer__body
+                .mari-drawer__popout, .mari-drawer__arrow, .mari-drawer__body;
+                .mari-drawer-ghost (the preview while a drawer is dragged out)
    Attributes:  [data-window="<id>"], [data-drawer="<id>"], [data-pinned],
                 [data-locked], [data-detached], [data-presentation="window|sheet"],
-                [data-window-control="pin|lock|close"], [data-edge]
+                [data-window-control="pin|lock|close"], [data-edge],
+                [data-drawer-control="pop-out"], [data-drawer-host="<id>"] and
+                [data-detached="true"] on a popped-out drawer's window
+                (data-window="drawer:<host id>:<drawer id>"), [data-dragging]
+                on a drawer being dragged, [data-outside] on its preview, and
+                [data-drop-target] on a window a drawer will dock back into
    Variables:   set them on :root (every window) or on a selector such as
                 [data-window="chat-settings"]. Unset, each falls back to the
                 theme token shown, read where the window or drawer is drawn.
@@ -869,6 +875,34 @@
   .mari-drawer__body {
     padding-inline: var(--mari-drawer-body-padding-inline, 1rem);
     padding-bottom: var(--mari-drawer-body-padding-bottom, 0.75rem);
+  }
+
+  /* A popped-out drawer is the only thing in its window, so it needs no divider. */
+  .mari-drawer[data-detached="true"] {
+    border-bottom: 0;
+  }
+
+  .mari-drawer[data-dragging="true"] > .mari-drawer__header {
+    opacity: 0.5;
+  }
+
+  .mari-drawer-ghost {
+    border: var(--mari-window-border-width, 1px) solid
+      var(--mari-window-border, var(--marinara-chat-chrome-panel-border));
+    border-radius: var(--mari-window-radius, calc(var(--radius) + 0.25rem));
+    background: var(--mari-window-bg, var(--marinara-chat-chrome-panel-bg));
+    color: var(--mari-window-header-text, var(--marinara-chat-chrome-panel-title));
+    box-shadow: var(--mari-window-shadow, 0 25px 50px -12px rgb(0 0 0 / 0.4));
+    opacity: 0.6;
+  }
+
+  .mari-drawer-ghost[data-outside="true"] {
+    opacity: 1;
+  }
+
+  .mari-window[data-drop-target="true"] {
+    outline: 2px solid var(--mari-window-focus-ring, var(--marinara-chat-chrome-focus-ring));
+    outline-offset: 2px;
   }
 }
 

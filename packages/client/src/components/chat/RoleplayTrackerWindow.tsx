@@ -4,7 +4,8 @@
 // Shown on a computer when the Tracker Panel is off in Settings. Each tracker is
 // a drawer: collapsed it shows the tracker's miniature display, expanded its full
 // box. Agent activity sits at the bottom. Closing the window hides it until it
-// is turned back on in Chat Settings (or Reset View restores it).
+// is turned back on in Chat Settings (or Reset View restores it). Each drawer
+// can pop out into its own window, which stays while the Trackers window is closed.
 // ──────────────────────────────────────────────
 import { useCallback, useEffect, useRef, type ReactNode } from "react";
 import { BarChart3, Backpack, MapPin, RefreshCw, Scroll, SlidersHorizontal, Sparkles, Users } from "lucide-react";
@@ -15,6 +16,7 @@ import { Drawer } from "../ui/Drawer";
 import { NEUTRAL_PANEL_SCROLL_AREA, NEUTRAL_SURFACE_VARIABLES } from "../ui/neutral-surface-styles";
 import { CapabilityElement } from "../capabilities/CapabilityElement";
 import { TrackerPanelIcon } from "../ui/TrackerPanelIcon";
+import { useHostHasDetachedDrawers } from "../ui/drawer-host";
 import { AgentActivitySection } from "../agents/AgentActivitySection";
 import { TrackerLockProvider } from "../../features/tracker-panel/components/TrackerLockContext";
 import {
@@ -95,6 +97,7 @@ export function RoleplayTrackerWindow(props: RoleplayTrackerWindowProps) {
   const trackerPanelEnabled = useUIStore((s) => s.trackerPanelEnabled);
   const trackerWindowOpen = useUIStore((s) => s.trackerWindowOpen);
   const setTrackerWindowOpen = useUIStore((s) => s.setTrackerWindowOpen);
+  const trackersPoppedOut = useHostHasDetachedDrawers(TRACKER_WINDOW_ID);
   const resetRevision = useFloatingWindowStore((s) => s.resetRevision);
   const { data: installedCapabilities = [] } = useInstalledCapabilityPackages();
   // Beholder keeps its launcher in the HUD row, so it alone does not need the window.
@@ -113,8 +116,9 @@ export function RoleplayTrackerWindow(props: RoleplayTrackerWindowProps) {
     setTrackerWindowOpen(true);
   }, [resetRevision, setTrackerWindowOpen]);
 
-  if (phoneLayout || trackerPanelEnabled || !trackerWindowOpen || !hasTrackers) return null;
-  return <TrackerWindow {...props} onClose={() => setTrackerWindowOpen(false)} />;
+  if (phoneLayout || trackerPanelEnabled || !hasTrackers || !(trackerWindowOpen || trackersPoppedOut)) return null;
+  // Popped-out trackers render from inside the window, so it stays mounted, hidden, while it is closed.
+  return <TrackerWindow {...props} hidden={!trackerWindowOpen} onClose={() => setTrackerWindowOpen(false)} />;
 }
 
 function useRememberedDrawer(id: string, defaultOpen: boolean) {
@@ -212,8 +216,9 @@ function TrackerWindow({
   onRerunTrackers,
   onRerunSingleTracker,
   messages,
+  hidden,
   onClose,
-}: RoleplayTrackerWindowProps & { onClose: () => void }) {
+}: RoleplayTrackerWindowProps & { hidden: boolean; onClose: () => void }) {
   const { t } = useTranslation();
   const tracker = useRoleplayTrackerState(chatId, enabledAgentTypes, "tracker-window");
   const trackerTemperatureUnit = useUIStore((s) => s.trackerTemperatureUnit);
@@ -237,9 +242,10 @@ function TrackerWindow({
 
   // The window joins the stacking order while it shows; it opens by itself, so it leaves focus alone.
   useEffect(() => {
+    if (hidden) return;
     useFloatingWindowStore.getState().openWindow(TRACKER_WINDOW_ID, null, { focus: false });
     return () => useFloatingWindowStore.getState().closeWindow(TRACKER_WINDOW_ID);
-  }, []);
+  }, [hidden]);
 
   const packageProps = (item: InstalledCapabilityPackage) => ({ item, chatId, onRerunSingleTracker, busy });
   const runTrackersLabel = busy ? t("ui.chat.roleplayhud.trackersRunning") : t("ui.chat.roleplayhud.runTrackers");
@@ -247,6 +253,11 @@ function TrackerWindow({
   return (
     <FloatingWindow
       id={TRACKER_WINDOW_ID}
+      hidden={hidden}
+      drawerHost={{
+        title: t("chat.trackerWindow.title"),
+        scrollClassName: cn(NEUTRAL_PANEL_SCROLL_AREA, "@container"),
+      }}
       title={t("chat.trackerWindow.title")}
       titleIcon={<TrackerPanelIcon size="0.8125rem" className="shrink-0 text-[var(--muted-foreground)]" />}
       titleAccessory={

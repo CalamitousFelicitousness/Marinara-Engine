@@ -37,6 +37,7 @@ import {
   type WindowLayout,
 } from "../../lib/floating-window-layout";
 import { isModalOverlayOpen } from "../../lib/modal-overlay-registry";
+import { DrawerHostContext, type DrawerHost } from "./drawer-host";
 import {
   FLOATING_WINDOW_Z_BASE,
   takeFloatingWindowFocusRequest,
@@ -63,6 +64,16 @@ export interface FloatingWindowProps {
   presentation?: "window" | "sheet";
   /** False: the window takes focus only when the user opens it, never just because focus is free. */
   autoFocus?: boolean;
+  /**
+   * Keeps a closed window mounted but out of sight, so drawers popped out of it (rendered from inside
+   * it) stay open. Showing it again counts as opening it.
+   */
+  hidden?: boolean;
+  /**
+   * Drawers inside can pop out into their own windows, which copy this window's look. `title` names
+   * this window on their close buttons; `scrollClassName` styles their scrolling body.
+   */
+  drawerHost?: { title: string; scrollClassName?: string };
   className?: string;
   sheetClassName?: string;
   sheetStyle?: CSSProperties;
@@ -75,6 +86,8 @@ export interface FloatingWindowProps {
   ignoreOutsidePointer?: (target: Element) => boolean;
   /** May resolve to `false` when a guard keeps the window open; focus then stays where it is. */
   onRequestClose: (reason: FloatingWindowCloseReason) => void | Promise<boolean>;
+  /** Follows the pointer while the title bar is dragged; returning true at "end" keeps the window where it was. */
+  onDragMove?: (point: { x: number; y: number }, phase: "move" | "end") => boolean | void;
   children: ReactNode;
 }
 
@@ -129,6 +142,8 @@ export function FloatingWindow({
   minHeight = DEFAULT_MIN_HEIGHT,
   presentation = "window",
   autoFocus = true,
+  hidden = false,
+  drawerHost,
   className,
   sheetClassName,
   sheetStyle,
@@ -139,6 +154,7 @@ export function FloatingWindow({
   rootAttributes,
   ignoreOutsidePointer,
   onRequestClose,
+  onDragMove,
   children,
 }: FloatingWindowProps) {
   const { t } = useTranslation();
@@ -161,8 +177,38 @@ export function FloatingWindow({
   onRequestCloseRef.current = onRequestClose;
   const ignoreOutsidePointerRef = useRef(ignoreOutsidePointer);
   ignoreOutsidePointerRef.current = ignoreOutsidePointer;
+  const onDragMoveRef = useRef(onDragMove);
+  onDragMoveRef.current = onDragMove;
 
   const limits = useMemo(() => ({ minWidth, minHeight }), [minHeight, minWidth]);
+  // Phones show every drawer in place, so a sheet hosts none.
+  const hostTitle = sheet ? undefined : drawerHost?.title;
+  const hostScrollClassName = drawerHost?.scrollClassName;
+  const drawerHostValue = useMemo<DrawerHost | null>(
+    () =>
+      hostTitle === undefined
+        ? null
+        : {
+            id,
+            title: hostTitle,
+            windowClassName: className,
+            headerClassName,
+            titleClassName,
+            scrollClassName: hostScrollClassName,
+            rootAttributes,
+            ignoreOutsidePointer,
+          },
+    [
+      className,
+      headerClassName,
+      hostScrollClassName,
+      hostTitle,
+      id,
+      ignoreOutsidePointer,
+      rootAttributes,
+      titleClassName,
+    ],
+  );
   // Bumped after a defaultLayoutKey change has rendered, so the default reads the updated page.
   const [defaultRevision, setDefaultRevision] = useState(0);
   const defaultLayoutKeyRef = useRef(defaultLayoutKey);
@@ -217,7 +263,10 @@ export function FloatingWindow({
 
   // Focus moves into the window when it opens and back to its opener when it closes. A remount (a
   // chat switch, or the loading placeholder giving way) only takes focus if nothing else has it.
+  // Hiding and showing a kept-mounted window count as closing and opening it.
   useEffect(() => {
+    if (hidden) return;
+    restoreFocusOnUnmountRef.current = false;
     const requested = takeFloatingWindowFocusRequest(id);
     const focusIsFree = !document.activeElement || document.activeElement === document.body;
     if (!sheet && (requested || (autoFocus && focusIsFree))) rootRef.current?.focus({ preventScroll: true });
@@ -231,11 +280,11 @@ export function FloatingWindow({
     };
     // Mount and unmount only; switching presentation keeps focus where it is.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [id, hidden]);
 
   // An unpinned window closes when the user presses anywhere else.
   useEffect(() => {
-    if (pinned) return;
+    if (pinned || hidden) return;
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target;
       if (!(target instanceof Element)) return;
@@ -248,7 +297,7 @@ export function FloatingWindow({
     };
     document.addEventListener("pointerdown", handlePointerDown, true);
     return () => document.removeEventListener("pointerdown", handlePointerDown, true);
-  }, [id, pinned, requestClose]);
+  }, [id, pinned, hidden, requestClose]);
 
   useEffect(() => () => cancelAnimationFrame(frameRef.current), []);
 
@@ -280,6 +329,7 @@ export function FloatingWindow({
     const next = session.edge
       ? resizeWindowGeometry(session.start, session.edge, dx, dy, bounds, limits)
       : moveWindowGeometry(session.start, dx, dy, bounds, limits);
+    if (!session.edge) onDragMoveRef.current?.({ x: event.clientX, y: event.clientY }, "move");
     cancelAnimationFrame(frameRef.current);
     frameRef.current = requestAnimationFrame(() => setLiveGeometry(next));
   };
@@ -295,6 +345,7 @@ export function FloatingWindow({
       ? resizeWindowGeometry(session.start, session.edge, dx, dy, bounds, limits)
       : moveWindowGeometry(session.start, dx, dy, bounds, limits);
     setLiveGeometry(null);
+    if (!session.edge && onDragMoveRef.current?.({ x: event.clientX, y: event.clientY }, "end") === true) return;
     if (!sameGeometry(next, session.start)) commitLayout(next);
   };
 
@@ -360,6 +411,7 @@ export function FloatingWindow({
       aria-modal="false"
       aria-labelledby={titleId}
       tabIndex={-1}
+      hidden={hidden}
       data-window={id}
       data-pinned={pinned ? "true" : "false"}
       data-locked={locked ? "true" : "false"}
@@ -435,7 +487,11 @@ export function FloatingWindow({
         </div>
       </div>
       <div ref={bodyRef} className={cn("mari-window__body flex min-h-0 flex-1 flex-col", bodyClassName)}>
-        {children}
+        {drawerHost ? (
+          <DrawerHostContext.Provider value={drawerHostValue}>{children}</DrawerHostContext.Provider>
+        ) : (
+          children
+        )}
       </div>
       {!sheet &&
         !locked &&

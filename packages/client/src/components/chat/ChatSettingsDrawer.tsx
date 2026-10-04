@@ -205,6 +205,8 @@ import { requestChatHelp } from "../../lib/chat-help-events";
 import { CHAT_SETTINGS_WINDOW_ID, useFloatingWindowStore } from "../../stores/floating-window.store";
 import { getChatSettingsWindowProps, useTrackerPanelClearance } from "./chat-settings-window";
 import { useMatchMedia } from "../../hooks/use-match-media";
+import { readCurrentWindowLayout } from "../../hooks/use-chat-window-layout";
+import { useHostHasDetachedDrawers } from "../ui/drawer-host";
 import { useDialogFocusScope } from "../../hooks/use-dialog-focus-scope";
 import { useTouchFolderDrag } from "../../hooks/use-touch-folder-drag";
 import {
@@ -351,8 +353,11 @@ const InlineLorebookEntriesEditor = lazy(() =>
 const StoryboardChatSettingsPanel = lazy(() => import("./StoryboardChatSettingsPanel"));
 const BeholderChatSettingsPanel = lazy(() => import("./BeholderChatSettingsPanel"));
 
+const DRAWER_WINDOW_SCROLL_AREA = cn(NEUTRAL_PANEL_SCROLL_AREA, "@container");
+
 interface ChatSettingsDrawerProps {
   chat: Chat;
+  /** The window shows. While it is closed, popped-out sections keep it mounted out of sight. */
   open: boolean;
   /** `force` closes a pinned window too; without it, a pinned window stays open. */
   onClose: (options?: { force?: boolean }) => void;
@@ -845,7 +850,7 @@ function getChatActiveAgentIds(chat: Chat): string[] {
 
 export function ChatSettingsDrawer({
   chat,
-  open,
+  open: windowOpen,
   onClose,
   anchor,
   showHelpLayout = false,
@@ -863,6 +868,9 @@ export function ChatSettingsDrawer({
   const { t: localizeUi } = useUiTranslation();
   const { t } = useTranslation();
   const qc = useQueryClient();
+  // Popped-out sections render from here, so the settings stay live while any of them is open.
+  const sectionsPoppedOut = useHostHasDetachedDrawers(CHAT_SETTINGS_WINDOW_ID);
+  const open = windowOpen || sectionsPoppedOut;
   const panelRef = useRef<HTMLDivElement | null>(null);
   const scheduleControlsRef = useRef<HTMLDivElement | null>(null);
   const modePromptDefaultAppliedRef = useRef<string | null>(null);
@@ -4297,7 +4305,8 @@ export function ChatSettingsDrawer({
     return {
       connectionId: chat.connectionId ?? null,
       promptPresetId: chat.promptPresetId ?? null,
-      metadata: { ...metadata },
+      // The window layout as shown, even if its save to the chat is still waiting.
+      metadata: { ...metadata, windowLayout: readCurrentWindowLayout() },
     };
   }, [chat.connectionId, chat.promptPresetId, metadata]);
 
@@ -4835,6 +4844,9 @@ export function ChatSettingsDrawer({
     <>
       <FloatingWindow
         id={CHAT_SETTINGS_WINDOW_ID}
+        hidden={!windowOpen}
+        // Sections pop out into windows that look like this one.
+        drawerHost={{ title: localizeUi("chat.toolbar.settings"), scrollClassName: DRAWER_WINDOW_SCROLL_AREA }}
         presentation={phoneLayout ? "sheet" : "window"}
         title={localizeUi("chat.toolbar.settings")}
         titleIcon={<Settings2 size="0.8125rem" className="shrink-0 text-[var(--muted-foreground)]" />}
@@ -4893,7 +4905,9 @@ export function ChatSettingsDrawer({
         <div className="flex shrink-0 items-start gap-2 border-b border-[var(--border)] px-4 py-2 text-[0.6875rem] leading-snug text-[var(--muted-foreground)] max-md:hidden">
           <Info size="0.8125rem" className="mt-px shrink-0" />
           {/* The slash-joined list has no spaces, so let it wrap in a narrow window. */}
-          <span className="min-w-0 [overflow-wrap:anywhere]">{localizeUi("chat.settings.dragDropHint")}</span>
+          <span className="min-w-0 [overflow-wrap:anywhere]">
+            {localizeUi("chat.settings.dragDropHint")} {localizeUi("chat.settings.dragOutHint")}
+          </span>
         </div>
 
         <div

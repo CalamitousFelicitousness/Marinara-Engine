@@ -13,6 +13,7 @@ import { FloatingWindow } from "../ui/FloatingWindow";
 import { useMatchMedia } from "../../hooks/use-match-media";
 import { CHAT_SETTINGS_WINDOW_ID } from "../../stores/floating-window.store";
 import { getChatSettingsWindowProps } from "./chat-settings-window";
+import { useHostHasDetachedDrawers } from "../ui/drawer-host";
 
 const loadChatSettingsDrawer = async () => {
   const module = await import("./ChatSettingsDrawer");
@@ -333,10 +334,16 @@ export function ChatCommonOverlays({
   onSelectAllAboveSelection,
   onSelectAllBelowSelection,
 }: ChatCommonOverlaysProps) {
+  // Popped-out sections render from inside Chat Settings, so it stays mounted (hidden) while any is out.
+  const settingsSectionsPoppedOut = useHostHasDetachedDrawers(CHAT_SETTINGS_WINDOW_ID);
   return (
     <>
-      {chat && settingsOpen && (
-        <Suspense fallback={<ChatSettingsLoadingFallback anchor={settingsAnchor} onClose={onCloseSettings} />}>
+      {chat && (settingsOpen || settingsSectionsPoppedOut) && (
+        <Suspense
+          fallback={
+            settingsOpen ? <ChatSettingsLoadingFallback anchor={settingsAnchor} onClose={onCloseSettings} /> : null
+          }
+        >
           <ChatSettingsDrawer
             chat={chat}
             open={settingsOpen}

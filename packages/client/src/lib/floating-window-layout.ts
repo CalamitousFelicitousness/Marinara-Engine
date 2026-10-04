@@ -8,14 +8,25 @@
 // ──────────────────────────────────────────────
 
 export const FLOATING_WINDOW_LAYOUT_VERSION = 1 as const;
-export const FLOATING_WINDOW_STORAGE_KEY = "marinara-floating-windows";
 /** Gap kept between a window and the viewport edges. */
 export const WINDOW_MARGIN_PX = 8;
 export const WINDOW_KEYBOARD_STEP_PX = 10;
 export const WINDOW_KEYBOARD_LARGE_STEP_PX = 50;
 
-/** "chat-settings" today; later "drawer:<id>", "trackers", … */
+/** "chat-settings", "trackers", or a popped-out drawer: "drawer:<host window id>:<drawer id>". */
 export type FloatingWindowId = string;
+
+const DRAWER_WINDOW_PREFIX = "drawer:";
+
+/** The window a drawer pops out into. Hosts keep their own ids, so two hosts may reuse a drawer id. */
+export function getDrawerWindowId(hostId: FloatingWindowId, drawerId: string): FloatingWindowId {
+  return `${DRAWER_WINDOW_PREFIX}${hostId}:${drawerId}`;
+}
+
+/** True for the popped-out drawers of one host window. */
+export function isHostDrawerWindowId(id: FloatingWindowId, hostId: FloatingWindowId): boolean {
+  return id.startsWith(`${DRAWER_WINDOW_PREFIX}${hostId}:`);
+}
 
 export interface WindowGeometry {
   x: number;
@@ -29,9 +40,12 @@ export interface WindowLayout extends WindowGeometry {
   locked: boolean;
 }
 
+/** Saved with each chat (`chat.metadata.windowLayout`) and in chat settings profiles. */
 export interface WindowLayoutSnapshot {
   version: typeof FLOATING_WINDOW_LAYOUT_VERSION;
   windows: Record<FloatingWindowId, WindowLayout>;
+  /** Drawers popped out into their own windows (their window ids). Older snapshots have none. */
+  detached?: FloatingWindowId[];
 }
 
 /** The area a window may occupy, with the margin already applied. */
@@ -138,18 +152,66 @@ function readStoredLayout(value: unknown): WindowLayout | null {
 export function parseWindowLayoutSnapshot(raw: unknown): WindowLayoutSnapshot {
   const empty: WindowLayoutSnapshot = { version: FLOATING_WINDOW_LAYOUT_VERSION, windows: {} };
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return empty;
-  const source = raw as { version?: unknown; windows?: unknown };
+  const source = raw as { version?: unknown; windows?: unknown; detached?: unknown };
   if (source.version !== FLOATING_WINDOW_LAYOUT_VERSION) return empty;
   if (!source.windows || typeof source.windows !== "object" || Array.isArray(source.windows)) return empty;
   const windows: Record<FloatingWindowId, WindowLayout> = {};
   for (const [id, value] of Object.entries(source.windows as Record<string, unknown>)) {
-    if (!id || id.length > MAX_WINDOW_ID_LENGTH) continue;
+    if (!isStoredWindowId(id)) continue;
     const layout = readStoredLayout(value);
     if (layout) windows[id] = layout;
   }
-  return { version: FLOATING_WINDOW_LAYOUT_VERSION, windows };
+  // A popped-out drawer needs its place; one without a valid layout goes back to its host.
+  const detached = Array.isArray(source.detached)
+    ? (source.detached as unknown[]).filter(
+        (id, index, list): id is FloatingWindowId =>
+          isStoredWindowId(id) && id.startsWith(DRAWER_WINDOW_PREFIX) && !!windows[id] && list.indexOf(id) === index,
+      )
+    : [];
+  return toWindowLayoutSnapshot(windows, detached);
 }
 
-export function toWindowLayoutSnapshot(windows: Record<FloatingWindowId, WindowLayout>): WindowLayoutSnapshot {
-  return { version: FLOATING_WINDOW_LAYOUT_VERSION, windows };
+function isStoredWindowId(id: unknown): id is FloatingWindowId {
+  return typeof id === "string" && id.length > 0 && id.length <= MAX_WINDOW_ID_LENGTH;
+}
+
+export function toWindowLayoutSnapshot(
+  windows: Record<FloatingWindowId, WindowLayout>,
+  detached: FloatingWindowId[] = [],
+): WindowLayoutSnapshot {
+  return detached.length > 0
+    ? { version: FLOATING_WINDOW_LAYOUT_VERSION, windows, detached }
+    : { version: FLOATING_WINDOW_LAYOUT_VERSION, windows };
+}
+
+/** True when a snapshot holds nothing, so the chat can store no layout at all. */
+export function isEmptyWindowLayoutSnapshot(snapshot: WindowLayoutSnapshot): boolean {
+  return Object.keys(snapshot.windows).length === 0 && !snapshot.detached?.length;
+}
+
+/** One string per layout, so two snapshots compare equal whatever order their fields were written in. */
+export function serializeWindowLayoutSnapshot(raw: unknown): string {
+  return JSON.stringify(parseWindowLayoutSnapshot(raw));
+}
+
+const DETACHED_GAP_PX = 12;
+
+/**
+ * Where a drawer popped out with its button opens: beside its host window (left first, then right),
+ * level with where the drawer was. With no room on either side it overlaps the host, a little offset.
+ */
+export function placeDetachedDrawer(
+  source: WindowGeometry,
+  host: WindowGeometry | null,
+  size: { width: number; height: number },
+  bounds: WindowBounds,
+  limits: WindowSizeLimits,
+): WindowGeometry {
+  const { width, height } = size;
+  let x = source.x + 24;
+  if (host && host.x - DETACHED_GAP_PX - width >= bounds.left) x = host.x - DETACHED_GAP_PX - width;
+  else if (host && host.x + host.width + DETACHED_GAP_PX + width <= bounds.right) {
+    x = host.x + host.width + DETACHED_GAP_PX;
+  }
+  return clampWindowGeometry({ x, y: source.y, width, height }, bounds, limits);
 }

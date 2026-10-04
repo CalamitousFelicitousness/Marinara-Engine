@@ -286,6 +286,13 @@ for (const raw of WORLD_STARTER_KITS) {
   assert.throws(() => parseGameSetupShareFileJson(setupText({})), "another generator's world without its snapshot");
   const carried = resolveGameSetupImport(parseGameSetupShareFileJson(setupText({ worldSnapshot: older })), resources);
   assert.deepEqual(carried.config.worldSnapshot, older, "a setup file carries the world as it was made");
+  assert.throws(
+    () =>
+      parseGameSetupShareFileJson(
+        setupText({ worldSnapshot: { ...older, kit: { ...older.kit, label: "Another kit" } } }),
+      ),
+    "a snapshot of another kit than the file's",
+  );
   const current = resolveGameSetupImport(
     parseGameSetupShareFileJson(
       setupText({ world: { ...recipe, generatorVersion: WORLD_GENERATOR_VERSION }, worldSnapshot: older }),

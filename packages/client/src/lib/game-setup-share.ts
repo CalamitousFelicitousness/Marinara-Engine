@@ -356,6 +356,13 @@ function parseShareConfig(value: unknown): GameSetupConfig {
   // made again by this generator as another world, so the file is refused instead.
   const worldSnapshot = value.worldSnapshot == null ? undefined : readWorldSnapshot(value.worldSnapshot);
   if (worldSnapshot && !worldSnapshot.ok) throw new Error(translate("game.world.setup.invalidImport"));
+  // The snapshot is the world of the file's own kit, or the file does not hold together.
+  if (
+    worldSnapshot?.ok &&
+    (!worldKit?.ok || JSON.stringify(worldSnapshot.snapshot.kit) !== JSON.stringify(worldKit.kit))
+  ) {
+    throw new Error(translate("game.world.setup.invalidImport"));
+  }
   if (world?.success && world.data.generatorVersion !== WORLD_GENERATOR_VERSION && !worldSnapshot?.ok) {
     throw new Error(translate("game.world.setup.otherGeneratorImport"));
   }

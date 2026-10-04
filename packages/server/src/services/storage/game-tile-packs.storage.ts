@@ -29,6 +29,9 @@ export class TilePackVersionConflictError extends Error {
   }
 }
 
+/** The newest versions of an image pack kept (older ones are dropped as a new one is saved). */
+export const IMAGE_PACK_VERSIONS_KEPT = 8;
+
 export function createGameTilePacksStorage(db: DB) {
   const all = async () => (await db.select().from(gameTilePacks)) as GameTilePackRow[];
   return {
@@ -74,6 +77,16 @@ export function createGameTilePacksStorage(db: DB) {
           createdAt: now(),
         };
         await tx.insert(gameTilePacks).values(row);
+        // An image pack keeps its newest versions only: each can be megabytes, and every row stays in
+        // memory and in every backup.
+        if (pack.tilePackVersion === 2) {
+          const versions = (await tx
+            .select()
+            .from(gameTilePacks)
+            .where(eq(gameTilePacks.packId, pack.id))) as GameTilePackRow[];
+          const dropped = versions.sort((a, b) => b.version - a.version).slice(IMAGE_PACK_VERSIONS_KEPT);
+          for (const old of dropped) await tx.delete(gameTilePacks).where(eq(gameTilePacks.id, old.id));
+        }
         return { status: "added" as const, row };
       });
     },

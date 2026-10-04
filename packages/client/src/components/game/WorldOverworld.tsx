@@ -28,6 +28,7 @@ import {
 import { useOverworld, useOverworldWalk } from "../../hooks/use-game";
 import {
   overworldCamera,
+  overworldBaseResolution,
   useOverworldAtlas,
   useOverworldClock,
   type OverworldClockHandle,
@@ -138,12 +139,24 @@ export function WorldOverworld({
   const drawTile = useOverworldAtlas(family, tilePack);
 
   // ── What is drawn once: the ground and its ways, then the settlements ──
+  // In world units (16 a cell) at `resolution` canvas pixels a unit (an image pack's detail, as far as
+  // the two canvases' size allows).
+  const worldSize = { width: world.width * OVERWORLD_TILE, height: world.height * OVERWORLD_TILE };
+  const resolution = overworldBaseResolution(
+    drawTile,
+    2 * worldSize.width * worldSize.height,
+    scale * (typeof window === "undefined" ? 1 : window.devicePixelRatio || 1),
+  );
   const ground = useMemo(() => {
     const canvas = document.createElement("canvas");
-    canvas.width = world.width * OVERWORLD_TILE;
-    canvas.height = world.height * OVERWORLD_TILE;
+    if (drawTile.loading) return canvas;
+    canvas.width = world.width * OVERWORLD_TILE * resolution;
+    canvas.height = world.height * OVERWORLD_TILE * resolution;
     const ctx = canvas.getContext("2d");
     if (!ctx) return canvas;
+    ctx.scale(resolution, resolution);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
     const looks = worldGroundLooks(game);
     const cells = worldGroundCells(world);
     const water = world.terrain.map(
@@ -175,13 +188,17 @@ export function WorldOverworld({
       paintWay(ctx, from.at, to.at, kit.travel.find((way) => way.id === link.way)?.crosses ?? "open");
     }
     return canvas;
-  }, [byId, drawTile, game, kit.travel, world]);
+  }, [byId, drawTile, game, kit.travel, resolution, world]);
   const markers = useMemo(() => {
     const canvas = document.createElement("canvas");
-    canvas.width = world.width * OVERWORLD_TILE;
-    canvas.height = world.height * OVERWORLD_TILE;
+    if (drawTile.loading) return canvas;
+    canvas.width = world.width * OVERWORLD_TILE * resolution;
+    canvas.height = world.height * OVERWORLD_TILE * resolution;
     const ctx = canvas.getContext("2d");
     if (!ctx) return canvas;
+    ctx.scale(resolution, resolution);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
     for (const { place } of settlements) {
       const [x, y] = [place.at.x * OVERWORLD_TILE, place.at.y * OVERWORLD_TILE];
       // After dark, a warm glow of lit windows under each place still standing.
@@ -198,7 +215,7 @@ export function WorldOverworld({
       }
     }
     return canvas;
-  }, [drawTile, lit, ruined, settlements, top, world.height, world.width]);
+  }, [drawTile, lit, resolution, ruined, settlements, top, world.height, world.width]);
 
   // Beyond the world's edge, the ground its edge has most of (the sea around an island, open space).
   const beyond = useMemo(() => {
@@ -225,8 +242,12 @@ export function WorldOverworld({
   const homeAt = here ? byId.get(here) : undefined;
   const partyRef = useRef<Point | null>(null);
   if (!walkingRef.current) partyRef.current = homeAt ? centre(homeAt) : null;
-  const camera = useCallback((at: Point) => overworldCamera(at, ground, size, scale), [ground, scale, size]);
-  const restingCamera = camera(lookAt ?? partyRef.current ?? { x: ground.width / 2, y: ground.height / 2 });
+  const camera = useCallback(
+    (at: Point) => overworldCamera(at, worldSize, size, scale),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [worldSize.width, worldSize.height, scale, size],
+  );
+  const restingCamera = camera(lookAt ?? partyRef.current ?? { x: worldSize.width / 2, y: worldSize.height / 2 });
   const [cameraX, cameraY] = [restingCamera.x, restingCamera.y];
 
   const draw = useCallback(
@@ -256,8 +277,11 @@ export function WorldOverworld({
           size.height / scale + OVERWORLD_TILE * 3,
         );
       }
-      ctx.drawImage(ground, 0, 0);
-      ctx.drawImage(markers, 0, 0);
+      // Smooth only where the base is shown smaller than it was drawn (an image pack's art).
+      ctx.imageSmoothingEnabled = drawTile.image && resolution > scale * dpr;
+      ctx.drawImage(ground, 0, 0, ground.width / resolution, ground.height / resolution);
+      ctx.drawImage(markers, 0, 0, markers.width / resolution, markers.height / resolution);
+      ctx.imageSmoothingEnabled = false;
       const party = partyRef.current;
       if (party) {
         const [x, y] = [Math.round(party.x) - 8, Math.round(party.y) - 14 - (step ? 1 : 0)];
@@ -272,7 +296,7 @@ export function WorldOverworld({
       }
       if (layerRef.current) layerRef.current.style.transform = `translate(${-cam.x}px, ${-cam.y}px)`;
     },
-    [beyond, darkness, drawTile, ground, markers, scale, size.height, size.width],
+    [beyond, darkness, drawTile, ground, markers, resolution, scale, size.height, size.width],
   );
 
   useEffect(() => {
@@ -319,7 +343,7 @@ export function WorldOverworld({
   const dragRef = useRef<{ x: number; y: number; from: Point; moved: boolean } | null>(null);
   const onPointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     if (walkingRef.current) return;
-    const from = lookAt ?? partyRef.current ?? { x: ground.width / 2, y: ground.height / 2 };
+    const from = lookAt ?? partyRef.current ?? { x: worldSize.width / 2, y: worldSize.height / 2 };
     dragRef.current = { x: event.clientX, y: event.clientY, from, moved: false };
     event.currentTarget.setPointerCapture(event.pointerId);
   };

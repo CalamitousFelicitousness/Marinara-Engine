@@ -21,6 +21,7 @@ import {
   WORLD_ART_FAMILIES,
   WORLD_DAYS_CAP,
   WORLD_GENERATOR_VERSION,
+  WORLD_IMAGE_ONLY_TILE_IDS,
   WORLD_TILE_IDS,
   parseTilePack,
   WORLD_STARTER_KITS,
@@ -125,7 +126,8 @@ try {
     const read = packOf(repo, family);
     assert.ok(read.ok, `${family}: its pack reads`);
     assert.deepEqual(read.notes, [], `${family}: nothing in it the Engine does not draw`);
-    for (const id of WORLD_TILE_IDS) assert.ok(read.pack.tiles[id]?.length, `${family}: ${id}`);
+    for (const id of WORLD_TILE_IDS)
+      if (!WORLD_IMAGE_ONLY_TILE_IDS.includes(id)) assert.ok(read.pack.tiles[id]?.length, `${family}: ${id}`);
   }
   for (const kit of WORLD_STARTER_KITS) {
     assert.ok(

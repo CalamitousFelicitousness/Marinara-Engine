@@ -23,8 +23,9 @@ export const WORLD_FILE_FORMAT = "marinara-world";
 export const WORLD_SHARE_FILE_VERSION = 1;
 /** A world file's format: 2 carries the world's snapshot (W11); 1 is still read. */
 export const WORLD_FILE_VERSION = 2;
-/** The largest share file read. */
-export const WORLD_SHARE_FILE_MAX_BYTES = 2_000_000;
+/** The largest share file read: room for a large world with its snapshot (W11) and many towns laid out
+ *  by hand. */
+export const WORLD_SHARE_FILE_MAX_BYTES = 8_000_000;
 
 export interface WorldKitFile {
   format: typeof WORLD_KIT_FILE_FORMAT;
@@ -144,9 +145,14 @@ export function readWorldFile(
   if (!file.ok) return file;
   const name =
     typeof file.value.name === "string" && file.value.name.trim() ? file.value.name.trim().slice(0, 120) : undefined;
-  // Another generator's world is read from its snapshot (W11), as it was made.
+  // Another generator's world is read from its snapshot (W11), as it was made, when the file's recipe and
+  // snapshot name the same generator; one that says otherwise does not hold together.
   const recipe = file.value.world as { generatorVersion?: unknown } | undefined;
+  const madeBy = (file.value.snapshot as { generatorVersion?: unknown } | null | undefined)?.generatorVersion;
   if (recipe?.generatorVersion !== WORLD_GENERATOR_VERSION && file.value.snapshot != null) {
+    if (madeBy !== recipe?.generatorVersion) {
+      return { ok: false, issues: ["The world file's snapshot and recipe name different generators."] };
+    }
     return readSnapshotWorld(file.value.snapshot, name, file.value.story);
   }
   const kit = parseWorldKit(file.value.kit);

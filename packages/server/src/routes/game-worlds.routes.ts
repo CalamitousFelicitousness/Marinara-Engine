@@ -79,6 +79,15 @@ function fileOf(name: string, game: GameWorld | Omit<GameWorld, "world">, story:
   );
 }
 
+/** A library world's new file, or why it cannot be kept: one larger than a share file can be would no
+ *  longer read, and the world would be lost. */
+function kept(name: string, game: GameWorld | Omit<GameWorld, "world">, story: StoryScript | null) {
+  const file = fileOf(name, game, story);
+  return Buffer.byteLength(file) > WORLD_SHARE_FILE_MAX_BYTES
+    ? { refused: "This world would be larger than a world file can be, so it was not saved." }
+    : { name, file };
+}
+
 /** Why a library world from an earlier generator cannot be edited (W11). */
 const OLD_GENERATOR_REFUSAL =
   "This world was made by an earlier version of the world generator. It plays on as it was made, but it can no longer be edited.";
@@ -161,7 +170,9 @@ export async function gameWorldsRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: `The world file does not read: ${read.issues[0]}`, issues: read.issues });
     // Another generator's world is kept as its snapshot has it (W11), never made again from the recipe.
     const game = read.snapshot ? gameWorldFromSnapshot(read.snapshot) : { kit: read.kit, ...read.world };
-    const row = await store.create(read.name, fileOf(read.name, game, read.story ?? null));
+    const file = kept(read.name, game, read.story ?? null);
+    if ("refused" in file) return reply.status(400).send({ error: file.refused });
+    const row = await store.create(read.name, file.file);
     logger.info("[game/worlds] %s: imported", row.id);
     return { world: summary(row), notes: read.notes };
   });
@@ -174,7 +185,7 @@ export async function gameWorldsRoutes(app: FastifyInstance) {
     const updated = await store.update(req.params.id, (row) => {
       const read = readRow(row);
       if (!read) return { refused: "This world no longer reads." };
-      return { name: name.data, file: fileOf(name.data, read.game, read.story) };
+      return kept(name.data, read.game, read.story);
     });
     if (!updated) return reply.status(404).send({ error: "No such world." });
     if ("refused" in updated) return reply.status(409).send({ error: updated.refused });
@@ -239,11 +250,12 @@ export async function gameWorldsRoutes(app: FastifyInstance) {
       const storyRefusal = editsStoryRefusal(read.game, edits, read.story);
       if (storyRefusal) return { refused: storyRefusal.error, issues: storyRefusal.issues };
       const { edits: _old, world: _compiled, frozen: _frozen, compiled: _preEdit, ...inputs } = read.game;
-      return { name: row.name, file: fileOf(row.name, { ...inputs, ...(edits ? { edits } : {}) }, read.story) };
+      return kept(row.name, { ...inputs, ...(edits ? { edits } : {}) }, read.story);
     });
     if (!updated) return reply.status(404).send({ error: "No such world." });
     if ("refused" in updated) return reply.status(400).send({ error: updated.refused, issues: updated.issues ?? [] });
-    const game = readRow(updated.row)!.game;
+    const game = readRow(updated.row)?.game;
+    if (!game) return reply.status(409).send({ error: "This world no longer reads." });
     return { edits: game.edits ?? null, links: game.world.links };
   });
 
@@ -265,11 +277,11 @@ export async function gameWorldsRoutes(app: FastifyInstance) {
       const checked = checkStoryScript(read.game, input);
       if (!checked.ok)
         return { refused: `The story does not fit this world: ${checked.issues[0]}`, issues: checked.issues };
-      return { name: row.name, file: fileOf(row.name, read.game, checked.story) };
+      return kept(row.name, read.game, checked.story);
     });
     if (!updated) return reply.status(404).send({ error: "No such world." });
     if ("refused" in updated) return reply.status(400).send({ error: updated.refused, issues: updated.issues ?? [] });
-    return { story: readRow(updated.row)!.story };
+    return { story: readRow(updated.row)?.story ?? null };
   });
 
   app.delete<{ Params: { id: string } }>("/:id/story", async (req, reply) => {
@@ -277,7 +289,7 @@ export async function gameWorldsRoutes(app: FastifyInstance) {
     const updated = await store.update(req.params.id, (row) => {
       const read = readRow(row);
       if (!read) return { refused: "This world no longer reads." };
-      return { name: row.name, file: fileOf(row.name, read.game, null) };
+      return kept(row.name, read.game, null);
     });
     if (!updated) return reply.status(404).send({ error: "No such world." });
     if ("refused" in updated) return reply.status(409).send({ error: updated.refused });

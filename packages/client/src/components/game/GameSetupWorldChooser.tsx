@@ -130,9 +130,14 @@ export function worldDraftConfig(
   | { ok: false; issues: string[] } {
   const seed = parseExperienceSeed(draft.seed);
   if (seed === null) return { ok: false, issues: ["seed"] };
-  // A world another generator made is the snapshot's while the draft keeps its seed and brief (W11).
+  // A world another generator made is the snapshot's while the draft keeps its seed, brief and kit (W11);
+  // another kit, like another seed, makes a new world with this Engine's generator.
   const snapshot = draft.snapshot;
-  if (snapshot && draft.editsFor === editsKey(seed, draft.grounding, draft.brief)) {
+  if (
+    snapshot &&
+    draft.editsFor === editsKey(seed, draft.grounding, draft.brief) &&
+    JSON.stringify(snapshot.kit) === JSON.stringify(kit)
+  ) {
     const storyFits = draft.story && checkStoryScript(gameWorldFromSnapshot(snapshot), draft.story).ok;
     return {
       ok: true,

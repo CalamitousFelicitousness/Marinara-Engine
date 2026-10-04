@@ -17,6 +17,11 @@
  *     one chat leaves the others' worlds.
  */
 import assert from "node:assert/strict";
+import {
+  buildGameSetupShareFile,
+  parseGameSetupShareFileJson,
+  resolveGameSetupImport,
+} from "../../packages/client/src/lib/game-setup-share.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
@@ -32,6 +37,7 @@ import {
   gameWorldFromSnapshot,
   parseWorldKit,
   readWorldFile,
+  worldFile,
   readWorldSnapshot,
   worldCast,
   worldEditsSchema,
@@ -244,6 +250,49 @@ for (const raw of WORLD_STARTER_KITS) {
       `${raw.id} ${seed}: from the checkpoint, the same present`,
     );
   }
+}
+
+// ── Files from another generator: a world file names one generator, and a setup file carries the snapshot ──
+{
+  const parsed = parseWorldKit(WORLD_STARTER_KITS.find((each) => each.id === "high_fantasy")!);
+  assert.ok(parsed.ok);
+  const live = made(parsed.kit, 9);
+  const older = { ...worldSnapshot(live), generatorVersion: WORLD_GENERATOR_VERSION + 1 };
+  const recipe = {
+    seed: live.seed,
+    generatorVersion: WORLD_GENERATOR_VERSION + 1,
+    grounding: live.grounding,
+    brief: live.brief,
+  };
+  const mixed = readWorldFile(JSON.stringify(worldFile("Mixed", live.kit, recipe, null, worldSnapshot(live))));
+  assert.ok(!mixed.ok && /different generators/.test(mixed.issues[0]!), "a recipe and snapshot of two generators");
+  const setupBase = {
+    genre: "Fantasy",
+    setting: "A river kingdom",
+    tone: "Grim",
+    difficulty: "normal",
+    rating: "sfw",
+    playerGoals: "",
+    gmMode: "standalone",
+    partyCharacterIds: [],
+    worldKit: live.kit,
+    world: recipe,
+  } as unknown as Parameters<typeof buildGameSetupShareFile>[0]["config"];
+  const resources = { characters: [], connections: [], lorebooks: [], personas: [], promptPresets: [] };
+  const setupText = (config: Record<string, unknown>) =>
+    JSON.stringify(
+      buildGameSetupShareFile({ gameName: "Old", config: { ...setupBase, ...config } as typeof setupBase }),
+    );
+  assert.throws(() => parseGameSetupShareFileJson(setupText({})), "another generator's world without its snapshot");
+  const carried = resolveGameSetupImport(parseGameSetupShareFileJson(setupText({ worldSnapshot: older })), resources);
+  assert.deepEqual(carried.config.worldSnapshot, older, "a setup file carries the world as it was made");
+  const current = resolveGameSetupImport(
+    parseGameSetupShareFileJson(
+      setupText({ world: { ...recipe, generatorVersion: WORLD_GENERATOR_VERSION }, worldSnapshot: older }),
+    ),
+    resources,
+  );
+  assert.equal(current.config.worldSnapshot, undefined, "this generator's world is made from its recipe");
 }
 
 // ── Two worlds of one recipe keep their own present: one read from its snapshot, one made now ──

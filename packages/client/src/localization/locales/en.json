@@ -1869,6 +1869,7 @@
   "game.world.setup.help": "Optional. Lays out a world of places in the setting kit's words from a seed: its regions, settlements of every size, and the ways between them. The Game Master always knows where the party is in it.",
   "game.world.setup.invalid": "This world cannot be made yet:",
   "game.world.setup.invalidImport": "This file has a world that does not hold together.",
+  "game.world.setup.otherGeneratorImport": "This file's world was made by an earlier version of the world generator, and the file does not carry it as it was made. Import the world's own file instead (Download the world, on the game's World tab).",
   "game.world.setup.label": "Make a world",
   "game.world.setup.lore": "Start from this lore",
   "game.world.setup.loreRead": "Places found: {{count}}, in {{read}} entries.",

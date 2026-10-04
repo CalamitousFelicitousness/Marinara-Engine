@@ -6004,9 +6004,13 @@ async function serializeGameTurnStoryboard(args: {
 const ITEM_NOT_IN_FIGHT = "That item does nothing in this fight.";
 
 export function parseRoomGameConfig(value: unknown): GameSetupConfig {
-  const config = gameSetupConfigSchema.parse(value);
+  const { worldSnapshot, ...config } = gameSetupConfigSchema.parse(value);
   if (config.gameExperienceId) throw new Error("Package Game Experiences are unavailable in shared rooms.");
-  return config;
+  // A world another generator made comes with its snapshot (W11), checked whole here as at creation.
+  if (worldSnapshot == null) return config;
+  const read = readWorldSnapshot(worldSnapshot);
+  if (!read.ok) throw new Error(`The world's snapshot does not read: ${read.issues[0]}`);
+  return { ...config, worldSnapshot: read.snapshot };
 }
 
 function assertRoomGameOperation(chat: { id: string; metadata: unknown; characterIds: unknown }) {

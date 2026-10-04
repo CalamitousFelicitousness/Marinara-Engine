@@ -226,7 +226,8 @@ function HostedMultiplayerChat({ chat }: { chat: Chat }) {
         multiplayerSetupComplete: true,
         ...(setup
           ? {
-              gameSetupConfig: setup.config,
+              // A world's snapshot (W11) travels with the start, never in the room's metadata.
+              gameSetupConfig: { ...setup.config, worldSnapshot: undefined },
               multiplayerGameSetup: {
                 preferences: setup.preferences,
                 gmConnectionId: setup.gmConnectionId,

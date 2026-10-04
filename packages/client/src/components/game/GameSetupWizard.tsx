@@ -1217,7 +1217,7 @@ export function GameSetupWizard({
       const config = imported.config;
       setRulesetId(config.ruleset?.id ?? null);
       setWorldKit(config.worldKit ?? null);
-      setWorldDraft(config.world ? worldDraftFromWorld(config.world, config.story) : null);
+      setWorldDraft(config.world ? worldDraftFromWorld(config.world, config.story, config.worldSnapshot) : null);
       // The layers the file chose, against the definition installed HERE: an id this version of the
       // ruleset no longer has is dropped rather than sent to a create call that would refuse it.
       const importedRuleset = rulesets.find((entry) => entry.definition.id === config.ruleset?.id);

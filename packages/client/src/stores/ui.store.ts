@@ -829,6 +829,8 @@ interface UIState {
   /** When true, character cards are available in Persona pickers. */
   showCharactersInPersonaPickers: boolean;
   guideGenerations: boolean;
+  /** When true, guided regeneration leaves its guidance in the composer instead of clearing it. */
+  keepGuidanceAfterRegenerate: boolean;
   showQuickRepliesMenu: boolean;
   showQuickReplyPostOnly: boolean;
   showQuickReplyGuide: boolean;
@@ -1196,6 +1198,7 @@ interface UIState {
   setShowMessageNumbers: (v: boolean) => void;
   setShowCharactersInPersonaPickers: (v: boolean) => void;
   setGuideGenerations: (v: boolean) => void;
+  setKeepGuidanceAfterRegenerate: (v: boolean) => void;
   setShowQuickRepliesMenu: (v: boolean) => void;
   setShowQuickReplyPostOnly: (v: boolean) => void;
   setShowQuickReplyGuide: (v: boolean) => void;
@@ -1440,6 +1443,7 @@ export function pickSyncedSettings(state: UIState) {
     showMessageNumbers: state.showMessageNumbers,
     showCharactersInPersonaPickers: state.showCharactersInPersonaPickers,
     guideGenerations: state.guideGenerations,
+    keepGuidanceAfterRegenerate: state.keepGuidanceAfterRegenerate,
     showQuickRepliesMenu: state.showQuickRepliesMenu,
     showQuickReplyPostOnly: state.showQuickReplyPostOnly,
     showQuickReplyGuide: state.showQuickReplyGuide,
@@ -1654,6 +1658,7 @@ export function pickPersistedUIState(state: UIState) {
     showMessageNumbers: state.showMessageNumbers,
     showCharactersInPersonaPickers: state.showCharactersInPersonaPickers,
     guideGenerations: state.guideGenerations,
+    keepGuidanceAfterRegenerate: state.keepGuidanceAfterRegenerate,
     showQuickRepliesMenu: state.showQuickRepliesMenu,
     showQuickReplyPostOnly: state.showQuickReplyPostOnly,
     showQuickReplyGuide: state.showQuickReplyGuide,
@@ -1910,6 +1915,7 @@ export const useUIStore = create<UIState>()(
         showMessageNumbers: false,
         showCharactersInPersonaPickers: false,
         guideGenerations: false,
+        keepGuidanceAfterRegenerate: true,
         showQuickRepliesMenu: false,
         showQuickReplyPostOnly: true,
         showQuickReplyGuide: true,
@@ -2712,6 +2718,7 @@ export const useUIStore = create<UIState>()(
         setShowMessageNumbers: (v) => set({ showMessageNumbers: v }),
         setShowCharactersInPersonaPickers: (v) => set({ showCharactersInPersonaPickers: v }),
         setGuideGenerations: (v) => set({ guideGenerations: v }),
+        setKeepGuidanceAfterRegenerate: (v) => set({ keepGuidanceAfterRegenerate: v }),
         setShowQuickRepliesMenu: (v) => set({ showQuickRepliesMenu: v }),
         setShowQuickReplyPostOnly: (v) => set({ showQuickReplyPostOnly: v }),
         setShowQuickReplyGuide: (v) => set({ showQuickReplyGuide: v }),

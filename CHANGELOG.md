@@ -179,7 +179,9 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - Regenerating a reply no longer shows the previous swipe's translation under the new text while it streams, and the new swipe does not inherit it. Swiping back shows that translation again.
 
-- Guided regeneration clears the direction it consumes from the chat composer and restores it after a failed attempt without replacing a newer draft (#6815).
+- Guided regeneration keeps your direction in the chat box, so you can adjust it and regenerate once more; turn off **Keep guidance after regenerating** in Settings → General → Input & Editing to clear it instead. Sending a message still clears the box (#7060).
+
+- In Conversation chats, a message sent right after typing no longer comes back in the chat box when you return to the chat or reload (#7060).
 
 - In a Game Mode game with a ruleset, the Game Master can invent items in the ruleset's own words, such as a named blade: the Engine keeps only the categories, rarities, tags, stats and slots the ruleset has, holds each bonus to what its rarity allows (the new `rarityCaps`), and says what it changed, in its answer and in the item's details. The game keeps the item, and a ruleset can forbid invention with `propose: false`. Rulesets using either key need Capability API 1.51 (#6814).
 

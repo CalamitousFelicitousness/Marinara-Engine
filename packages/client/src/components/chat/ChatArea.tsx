@@ -627,6 +627,7 @@ const LocalChatArea = memo(function LocalChatArea({
   const messagesPerPage = useUIStore((s) => s.messagesPerPage);
   const centerCompact = useUIStore((s) => s.centerCompact);
   const guideGenerations = useUIStore((s) => s.guideGenerations);
+  const keepGuidanceAfterRegenerate = useUIStore((s) => s.keepGuidanceAfterRegenerate);
   const intuitiveSwipeNavigation = useUIStore((s) => s.intuitiveSwipeNavigation);
   const intuitiveSwipeRerollLatest = useUIStore((s) => s.intuitiveSwipeRerollLatest);
   const editLastMessageOnArrowUp = useUIStore((s) => s.editLastMessageOnArrowUp);
@@ -2175,11 +2176,14 @@ const LocalChatArea = memo(function LocalChatArea({
       ) {
         return;
       }
-      // The confirmation can outlive this chat. Never consume another chat's draft.
+      // The confirmation can outlive this chat. Never use another chat's draft as guidance.
       if (useChatStore.getState().activeChatId !== activeChatId) return;
       const composer = document.querySelector<HTMLTextAreaElement>("textarea[data-chat-composer]");
       const currentInput = composer?.dataset.chatId === activeChatId ? composer.value : getCurrentInputSnapshot();
       const isGuided = guideGenerations && currentInput.trim().length > 0;
+      // By default guidance stays in the composer so it can be adjusted for another regeneration (#7060).
+      // With the setting off it is consumed so it cannot go out later as a chat message (#6815).
+      const clearsGuidance = isGuided && !keepGuidanceAfterRegenerate;
       const replaceGuidanceDraft = (expected: string, text: string) => {
         const state = useChatStore.getState();
         const input = document.querySelector<HTMLTextAreaElement>("textarea[data-chat-composer]");
@@ -2193,7 +2197,7 @@ const LocalChatArea = memo(function LocalChatArea({
         }
         state.setInputDraft(activeChatId, text);
       };
-      if (isGuided) replaceGuidanceDraft(currentInput, "");
+      if (clearsGuidance) replaceGuidanceDraft(currentInput, "");
       try {
         // Regenerate as a new swipe on the existing message
         const consumed = await generate(
@@ -2207,13 +2211,13 @@ const LocalChatArea = memo(function LocalChatArea({
               }
             : { chatId: activeChatId, connectionId: null, regenerateMessageId: messageId },
         );
-        if (isGuided && !consumed) replaceGuidanceDraft("", currentInput);
+        if (clearsGuidance && !consumed) replaceGuidanceDraft("", currentInput);
       } catch {
-        if (isGuided) replaceGuidanceDraft("", currentInput);
+        if (clearsGuidance) replaceGuidanceDraft("", currentInput);
         // Error toast is shown by the generate hook
       }
     },
-    [activeChatId, isStreaming, generate, guideGenerations, localizeUi],
+    [activeChatId, isStreaming, generate, guideGenerations, keepGuidanceAfterRegenerate, localizeUi],
   );
 
   const handleRerunTrackers = useCallback(async () => {

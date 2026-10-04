@@ -789,6 +789,14 @@ const SETTINGS_SEARCHABLE_CONTROLS: readonly SettingsSearchableControlMeta[] = [
     kind: "Input",
   },
   {
+    id: "keep-guidance-after-regenerating",
+    sectionId: "input-editing",
+    label: "Keep guidance after regenerating",
+    description: "Leave your direction in the chat box after a guided regenerate, so you can adjust it and try again.",
+    aliases: ["guided", "regenerate", "draft", "clear"],
+    kind: "Toggle",
+  },
+  {
     id: "speech-to-text",
     sectionId: "input-editing",
     label: "Speech-to-text microphone",
@@ -3602,6 +3610,8 @@ function GeneralSettings() {
   const setEnterToSendGame = useUIStore((s) => s.setEnterToSendGame);
   const enterToSendProfessorMari = useUIStore((s) => s.enterToSendProfessorMari);
   const setEnterToSendProfessorMari = useUIStore((s) => s.setEnterToSendProfessorMari);
+  const keepGuidanceAfterRegenerate = useUIStore((s) => s.keepGuidanceAfterRegenerate);
+  const setKeepGuidanceAfterRegenerate = useUIStore((s) => s.setKeepGuidanceAfterRegenerate);
   const confirmBeforeDelete = useUIStore((s) => s.confirmBeforeDelete);
   const setConfirmBeforeDelete = useUIStore((s) => s.setConfirmBeforeDelete);
   const chatHelpButtonHidden = useUIStore((s) => s.chatHelpButtonHidden ?? false);
@@ -3889,6 +3899,14 @@ function GeneralSettings() {
               </button>
             </div>
           </div>
+
+          <ToggleSetting
+            anchorId={getSettingsControlAnchorId("keep-guidance-after-regenerating")}
+            label={localizeUi("settings.controls.keepGuidanceAfterRegenerate.label")}
+            checked={keepGuidanceAfterRegenerate}
+            onChange={setKeepGuidanceAfterRegenerate}
+            help={localizeUi("settings.controls.keepGuidanceAfterRegenerate.help")}
+          />
 
           <QuickRepliesSetting />
 

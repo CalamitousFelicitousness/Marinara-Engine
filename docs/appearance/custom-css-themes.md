@@ -108,7 +108,7 @@ The classes, data attributes and variables below let a theme style these parts t
 | Title bar | `.mari-window__header` |
 | Title and its icon | `.mari-window__title-row` |
 | Title | `.mari-window__title` |
-| Title bar buttons (Reset View, Tracker Panel, minimize, pin, lock, close) | `.mari-window__controls` (each button is `.mari-window__control`) |
+| Title bar buttons (Reset View, favorite layout star, Tracker Panel, minimize, pin, lock, close, Put back) | `.mari-window__controls` (each button is `.mari-window__control`) |
 | Window content | `.mari-window__body` |
 | Resize edges and corners | `.mari-window__resize-handle` |
 | The corner mark shown while the pointer or focus is in a window | `.mari-window__resize-grip` |
@@ -130,6 +130,7 @@ The classes, data attributes and variables below let a theme style these parts t
 - `data-presentation` is `"window"` on a desktop window or `"sheet"` on a phone panel.
 - `data-pinned` and `data-locked` are `"true"` while the window is pinned or locked.
 - `data-window-control` names each title bar button: `"minimize"`, `"pin"`, `"lock"`, `"close"` or `"put-back"`. A pressed pin or lock button also has `aria-pressed="true"`.
+- `data-chat-settings-control` identifies Chat Settings' extra title bar buttons: `"reset-view"`, `"favorite-layout"` and `"tracker-panel"`. The favorite star has `aria-pressed="true"` and a filled icon when the current layout matches the saved favorite.
 - `data-edge` is `"n"`, `"s"`, `"e"`, `"w"`, `"ne"`, `"nw"`, `"se"` or `"sw"` on each resize handle.
 - An open drawer's header has `aria-expanded="true"`.
 - `data-drawer-control="pop-out"` marks a drawer's pop-out button.
@@ -138,6 +139,7 @@ The classes, data attributes and variables below let a theme style these parts t
 - `data-detached` is `"true"` when a drawer is shown in its own window, on both that window and the drawer inside it. A popped-out drawer's window is named `data-window="drawer:<window>:<drawer>"`, for example `data-window="drawer:chat-settings:chat-name"`, and `data-drawer-host` names the window it came from.
 - `data-dragging` is `"true"` on a drawer while its title is dragged, and `data-drop-target` is `"true"` on a window while a popped-out drawer is held over it, ready to go back.
 - A bubble has the `data-window` of its window and `data-minimized="true"`, for example `.mari-window-bubble[data-window="control:volume"]`. Control windows are named `control:game`, `control:session`, `control:volume`, `control:assets`, `control:connected-chat`, `control:package:<package>` and `control:beholder:<package>`. `data-dragging` is `"true"` on a bubble while it is dragged.
+- A locked bubble has `data-locked="true"`, including the Chat Settings button. It still opens its window, but cannot be moved until the window is unlocked. Use `.mari-window-bubble[data-locked="true"]` to give these buttons a distinct appearance.
 - On a phone, windows have `data-presentation="sheet"`, and so do their bubbles, which are slightly larger. The Tracker Panel's bubble is `.mari-window-bubble[data-tracker-panel-toggle="bubble"]`.
 - The Chat Settings button is a bubble too: `.mari-window-bubble[data-chat-settings-button]`, with `data-open="true"` while Chat Settings is open.
 - A popped-out section shrinks to a bubble with `data-drawer-host` (the window it came from), and its window's **Put back** button is `[data-window-control="put-back"]`.
@@ -156,8 +158,8 @@ Each variable falls back to the shared chat chrome colors, so a theme only needs
 | `--mari-window-backdrop-filter` | Blur behind the window |
 | `--mari-window-header-bg`, `--mari-window-header-text`, `--mari-window-header-border` | Title bar colors |
 | `--mari-window-header-padding` | Title bar spacing |
-| `--mari-window-control-color`, `--mari-window-control-color-hover`, `--mari-window-control-bg-hover` | Minimize, pin, lock and close buttons |
-| `--mari-window-control-color-active`, `--mari-window-control-bg-active` | A pinned or locked button |
+| `--mari-window-control-color`, `--mari-window-control-color-hover`, `--mari-window-control-bg-hover` | Title bar buttons, including the favorite star |
+| `--mari-window-control-color-active`, `--mari-window-control-bg-active` | Pressed title bar buttons, including pin, lock and a filled favorite star |
 | `--mari-window-control-radius`, `--mari-window-control-gap` | Button rounding and spacing |
 | `--mari-window-focus-ring` | Keyboard focus outline, and the outline of a window a drawer will go back into |
 | `--mari-window-resize-handle-size` | Width of the resize edges |

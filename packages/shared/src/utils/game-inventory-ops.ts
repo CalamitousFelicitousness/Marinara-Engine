@@ -146,6 +146,8 @@ export type GameInventoryOpResult =
       count?: number;
       /** How many of the item that bag holds afterwards (the party's total for a take from anyone). */
       now?: number;
+      /** A take of something used that took fakes: what each truly was, by name (1.74). */
+      revealed?: string[];
       /** An add into the shared view: how many went into whose bag, and how many that bag now holds. */
       placed?: Array<{ holder?: string; count: number; now: number }>;
       /** How many of an add nobody could carry, which were left behind. */
@@ -264,8 +266,23 @@ export function applyGameInventoryOps(
           break;
         }
         current = taken.stacks;
-        results.push({ ok: true, count: taken.taken, now: gameInventoryCountItems(current, items, from) });
-        if (op.as) journal.push({ item: op.name.trim(), action: op.as, quantity: taken.taken });
+        // A fake used is found out as it goes (1.74): the journal writes it by its true name, and the
+        // answer says what it truly was. Lost, sold or removed, it goes as what it seemed.
+        const used = op.as === "used" && taken.fakes ? taken.fakes : undefined;
+        const revealed = used ? [...used.keys()].map((truly) => rules?.itemOf(truly)?.name ?? truly) : undefined;
+        results.push({
+          ok: true,
+          count: taken.taken,
+          now: gameInventoryCountItems(current, items, from),
+          ...(revealed ? { revealed } : {}),
+        });
+        if (op.as) {
+          const fakeCount = used ? [...used.values()].reduce((total, each) => total + each, 0) : 0;
+          if (taken.taken > fakeCount)
+            journal.push({ item: op.name.trim(), action: op.as, quantity: taken.taken - fakeCount });
+          for (const [truly, quantity] of used ?? [])
+            journal.push({ item: rules?.itemOf(truly)?.name ?? truly, action: op.as, quantity });
+        }
         break;
       }
       case "charge": {

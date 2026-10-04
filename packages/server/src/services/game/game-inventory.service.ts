@@ -10,6 +10,8 @@ import {
   normalizeCharacterLookupName,
   forgetGameInventoryTelling,
   gameFightItems,
+  gameFightUseEffect,
+  gameInventoryFightSpendStack,
   gameInventoryForTelling,
   normalizeGameInventoryStacks,
   readGameInventoryTurn,
@@ -226,6 +228,26 @@ export async function loadGameFightItems(
   const book =
     resolved?.status === "ok" ? await loadGameInventoryItemBook(db, { metadata, resolved }, "player") : undefined;
   return { ...gameFightItems(stacks, book, native, guessed), ruleset: book !== undefined };
+}
+
+/**
+ * What a fight's next uses of its lines do in this game, for a use that comes out of a fake (1.74):
+ * `effectOf(name, effect, nth)` is what the `nth` use from now (0 for the next) of the line spent by
+ * `name` does, where the line otherwise does `effect`. Null when the party holds no fake, so every use
+ * does what its line says.
+ */
+export async function loadGameFightUseEffects(
+  db: DB,
+  metadata: Record<string, unknown>,
+): Promise<{ effectOf: (name: string, effect: CombatItemEffect, nth?: number) => CombatItemEffect } | null> {
+  const stacks = normalizeGameInventoryStacks(metadata.gameInventory);
+  if (!stacks.some((stack) => stack.truly)) return null;
+  const book = await loadGameInventoryItemBook(db, { metadata }, "player");
+  if (!book) return null;
+  return {
+    effectOf: (name, effect, nth = 0) =>
+      gameFightUseEffect(effect, gameInventoryFightSpendStack(stacks, name, book, nth), book),
+  };
 }
 
 export async function gameRulesetTurnsNativeItemsOff(db: DB, metadata: Record<string, unknown>): Promise<boolean> {

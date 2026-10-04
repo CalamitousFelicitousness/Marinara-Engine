@@ -1008,6 +1008,8 @@ export function rulesetSheetItems(
     if (!stack.item || gameInventoryBagKey(stack.holder) !== bag) return [];
     const item = book.itemOf(stack.item)?.entry.item;
     if (!item) return [];
+    const known = stack.truly ? book.itemOf(stack.truly) : undefined;
+    const truly = known?.entry.item ? { item: known.entry.item, name: known.name } : undefined;
     const takesSlots = Object.values(item.slots ?? {}).some((count) => count > 0);
     const binds = !!item.binds;
     const worn = (takesSlots || binds) && (!takesSlots || stack.equipped === true) && (!binds || stack.bound === true);
@@ -1020,6 +1022,7 @@ export function rulesetSheetItems(
         stack: { id: stack.id, ref: stack.item, ...(stack.holder !== undefined ? { holder: stack.holder } : {}) },
         ...(stack.loaded !== undefined ? { loaded: stack.loaded } : {}),
         ...(stack.charges !== undefined ? { charges: stack.charges } : {}),
+        ...(truly ? { truly } : {}),
       },
     ];
   });

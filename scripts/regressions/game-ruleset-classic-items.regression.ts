@@ -1170,6 +1170,161 @@ try {
     );
   }
 
+  // ── A fake in the Engine's own battles (Capability API 1.74) ──
+  {
+    // A waystone that passes for a poultice, held before two real ones: the battle lists one Poultice
+    // line of three, and the use that comes out of the fake does nothing a battle can use, and says so.
+    const fakeFirst: GameInventoryStack[] = [
+      { id: "st-fake", name: "Poultice", quantity: 1, item: "outfitter/poultice", truly: "outfitter/waystone" },
+      { id: "st-real", name: "Poultice", quantity: 2, item: "outfitter/poultice" },
+    ];
+    const fighter = (id: string, side: "player" | "enemy") => ({
+      id,
+      name: id,
+      side,
+      hp: 20,
+      maxHp: 100,
+      mp: 0,
+      maxMp: 0,
+      attack: 10,
+      defense: 5,
+      speed: 5,
+      level: 1,
+    });
+    const game = await newGame(emberPin);
+    await chats.patchMetadata(game.chatId, { gameInventory: fakeFirst });
+    const meta = JSON.parse((await chats.getById(game.chatId))!.metadata as string);
+    assert.deepEqual(
+      (await loadGameFightItems(db, meta, [])).lines
+        .filter((line) => line.item === "outfitter/poultice")
+        .map((line) => [line.name, line.quantity]),
+      [["Poultice", 3]],
+    );
+    // The Classic round: the leader's use is the fake's, and a second use in the same round the real one's.
+    const answer = await app.inject({
+      method: "POST",
+      url: "/game/combat/round",
+      payload: {
+        chatId: game.chatId,
+        round: 1,
+        combatants: [fighter("hero", "player"), fighter("bram", "player"), fighter("rat", "enemy")],
+        controlledId: "hero",
+        playerAction: { type: "item", itemId: "Poultice", targetId: "hero" },
+        partyActions: { bram: { type: "item", itemId: "Poultice", targetId: "bram" } },
+      },
+    });
+    assert.equal(answer.statusCode, 200, answer.body);
+    const uses = (
+      answer.json().result.actions as Array<{ attackerId: string; skillName?: string; note?: string; isHeal?: boolean }>
+    ).filter((action) => action.skillName === "Poultice");
+    assert.match(
+      uses.find((action) => action.attackerId === "hero")?.note ?? "",
+      /really Waystone, and it did nothing/,
+    );
+    assert.equal(uses.find((action) => action.attackerId === "bram")?.isHeal, true, JSON.stringify(uses));
+
+    // The combat director, Classic and Tactical: Ada's use comes out of the fake, the log says what it
+    // was, and the fake is what was spent.
+    for (const style of ["classic", "tactical"] as const) {
+      const directed = await newGame(emberPin);
+      await chats.patchMetadata(directed.chatId, { gameInventory: fakeFirst });
+      const unit = (id: string, name: string, side: "player" | "enemy") => ({
+        id,
+        name,
+        side,
+        hp: 300,
+        maxHp: 300,
+        attack: side === "enemy" ? 0 : 8,
+        defense: 6,
+        speed: 6,
+        level: 3,
+        skills: [],
+      });
+      const started = await app.inject({
+        method: "POST",
+        url: "/combat/start",
+        payload: {
+          chatId: directed.chatId,
+          anchor: directed.anchor,
+          style,
+          party: [unit("ada", "Ada", "player")],
+          ...(style === "tactical"
+            ? {
+                battlefield: {
+                  exposure: "exposed",
+                  features: [{ terrain: "forest", placement: "center", shape: "patch" }],
+                },
+              }
+            : {}),
+          enemies: [unit("rat", "Rat", "enemy")],
+        },
+      });
+      assert.equal(started.statusCode, 200, started.body);
+      type View = {
+        id: string;
+        instanceId: string;
+        revision: number;
+        stage: string;
+        actorId?: string;
+        window?: unknown;
+        inventory: Array<{ name: string; quantity: number }>;
+        log: Array<{ text: string }>;
+      };
+      let view = started.json().session as View;
+      assert.deepEqual(
+        view.inventory.map((line) => [line.name, line.quantity]),
+        [["Poultice", 3]],
+      );
+      let requests = 0;
+      const command = async (body: Record<string, unknown>) => {
+        const reply = await app.inject({
+          method: "POST",
+          url: "/combat/command",
+          payload: {
+            chatId: directed.chatId,
+            anchor: directed.anchor,
+            id: view.id,
+            instanceId: view.instanceId,
+            revision: view.revision,
+            requestId: `fake-${style}-${++requests}`,
+            command: body,
+          },
+        });
+        assert.equal(reply.statusCode, 200, reply.body);
+        view = reply.json().session as View;
+      };
+      for (let step = 0; step < 40; step++) {
+        if (view.stage === "action" && view.actorId === "ada" && !view.window) break;
+        // A Tactical party's phase waits for the player to pick who acts.
+        await command(
+          style === "tactical" && !view.actorId && !view.window
+            ? { type: "begin", unitId: "ada" }
+            : { type: "continue" },
+        );
+      }
+      await command(
+        style === "classic"
+          ? { type: "classic", action: { type: "item", itemId: "Poultice", targetId: "ada" } }
+          : { type: "tactical", action: { type: "item", unitId: "ada", itemName: "Poultice", targetId: "ada" } },
+      );
+      for (let step = 0; step < 20; step++) {
+        if (view.log.some((entry) => /really Waystone/.test(entry.text))) break;
+        await command({ type: "continue" });
+      }
+      assert.ok(
+        view.log.some((entry) => /really Waystone, and it did nothing/.test(entry.text)),
+        `${style}: the log says what it was: ${view.log.map((entry) => entry.text).join(" | ")}`,
+      );
+      const left = JSON.parse((await chats.getById(directed.chatId))!.metadata as string)
+        .gameInventory as GameInventoryStack[];
+      assert.deepEqual(
+        left.filter((stack) => stack.item === "outfitter/poultice").map((stack) => [stack.id, stack.quantity]),
+        [["st-real", 2]],
+        "the fake is what was spent",
+      );
+    }
+  }
+
   console.info("game ruleset classic items regressions passed.");
 } finally {
   await app.close();

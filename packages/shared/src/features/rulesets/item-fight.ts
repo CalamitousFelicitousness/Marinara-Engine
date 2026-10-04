@@ -9,7 +9,6 @@ import {
   gameInventoryFightEffects,
   gameInventoryFightLines,
   gameInventoryNameKey,
-  gameInventoryStackKind,
   gameInventoryWearMet,
   gameInventoryWearNeeds,
   type GameInventoryFightLine,
@@ -107,16 +106,9 @@ export function gameFightOffers(
       (each) => each.ruleset && gameInventoryNameKey(each.name) === gameInventoryNameKey(line.name),
     );
     if (!effect) return [];
-    // Only the stacks it may be used from: worn and bound where the item asks it. A fake is counted on
-    // its own line, never on the real thing's beside it (1.74).
-    const kind = gameInventoryStackKind({
-      name: line.name,
-      item: line.item,
-      ...(line.truly ? { truly: line.truly } : {}),
-    });
-    const usable = stacks.filter(
-      (stack) => gameInventoryStackKind(stack) === kind && gameInventoryWearMet(stack, effect.wear),
-    );
+    // Only the stacks it may be used from: worn and bound where the item asks it. A fake counts as
+    // what it passes for (1.74).
+    const usable = stacks.filter((stack) => stack.item === line.item && gameInventoryWearMet(stack, effect.wear));
     // A stack without a count of its own is full, and no stack holds more than its item's most.
     const charges = effect.charges;
     const uses = charges
@@ -145,13 +137,8 @@ export function gameFightItems(
   const all = gameInventoryFightLines(stacks);
   const worked = book
     ? all.flatMap((line) => {
-        // A fake does what it truly does, under the name it is shown by (1.74).
-        // ponytail: a fake spent in a fight is not marked as found out, and one whose true item has no
-        // fight use is not offered at all; none of the 5e fakes has one. A fake held beside the real thing
-        // is its own line, so a fight names one of them with a number, and a spend by that name may take
-        // from either. Upgrade: spend by stack kind, and reveal it on the spend.
-        const ref = line.truly ?? line.item;
-        const effect = ref ? rulesetItemFightEffect(line.name, book.itemOf(ref)) : null;
+        // A fake is offered as what it passes for; what one use of it does is `gameFightUseEffect`'s.
+        const effect = line.item ? rulesetItemFightEffect(line.name, book.itemOf(line.item)) : null;
         return effect ? [effect] : [];
       })
     : [];
@@ -169,5 +156,32 @@ export function gameFightItems(
       ...worked,
       ...(book ? matched.filter((effect) => plainNames.has(gameInventoryNameKey(effect.name))) : matched),
     ],
+  };
+}
+
+/**
+ * What one use of a fight's line does, when the stack it comes out of (`gameInventoryFightSpendStack`)
+ * is a fake (1.74): what its true item does, aimed as the line was; and where its true item does
+ * nothing a fight can use, the use is spent for nothing, and the log says what it really was. Unchanged
+ * for any other stack. The use is spent as the line's is, and the inventory's journal names it truly.
+ */
+export function gameFightUseEffect(
+  effect: CombatItemEffect,
+  stack: Pick<GameInventoryStack, "truly"> | undefined,
+  book: Pick<RulesetItemBook, "itemOf">,
+): CombatItemEffect {
+  if (!stack?.truly) return effect;
+  const read = book.itemOf(stack.truly);
+  const name = read?.name ?? stack.truly;
+  const truly = rulesetItemFightEffect(effect.name, read);
+  if (!truly) return { ...effect, failed: `It was really ${name}, and it did nothing.` };
+  const { charges: _charges, wear: _wear, consumes: _consumes, ...does } = truly;
+  return {
+    ...does,
+    target: effect.target,
+    description: effect.description,
+    ...(effect.consumes !== undefined ? { consumes: effect.consumes } : {}),
+    ...(effect.charges ? { charges: effect.charges } : {}),
+    ...(effect.wear ? { wear: effect.wear } : {}),
   };
 }

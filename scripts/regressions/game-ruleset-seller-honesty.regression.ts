@@ -22,6 +22,8 @@ import {
   applyGameInventoryTags,
   defaultRulesetSheetBuild,
   gameFightItems,
+  gameFightUseEffect,
+  gameInventoryFightSpendStack,
   gameInventoryTotals,
   parseRulesetDefinition,
   readResolvedInventoryTags,
@@ -562,10 +564,63 @@ try {
       bells[1],
       "the worn bell is not sold in the fake's place",
     );
-    // A fight counts the real one on its own line, never the fake beside it.
+    // A fight lists the fake as what it passes for, on the real one's line: one line, no number.
     const fight = gameFightItems(realFirst, book, true, []);
-    const realLine = fight.lines.find((line) => line.item === "kit/warming-tonic" && !line.truly);
-    assert.equal(realLine?.quantity, 1, JSON.stringify(fight.lines));
+    const tonicLines = fight.lines.filter((line) => line.item === "kit/warming-tonic");
+    assert.deepEqual(
+      tonicLines.map((line) => [line.name, line.quantity, line.truly ?? null]),
+      [["Warming tonic", 3, null]],
+      JSON.stringify(fight.lines),
+    );
+    // Held fake first, the line still carries no truth.
+    assert.deepEqual(
+      gameFightItems(fakeFirst, book, true, [])
+        .lines.filter((line) => line.item === "kit/warming-tonic")
+        .map((line) => [line.name, line.quantity, line.truly ?? null]),
+      [["Warming tonic", 3, null]],
+    );
+    // Its uses come out of the stacks in the order a take takes them; one out of the fake does what the
+    // fake truly does, which for a bitter tonic is nothing, and says so.
+    assert.deepEqual(
+      [0, 1, 2, 3].map((nth) => gameInventoryFightSpendStack(realFirst, "Warming tonic", book, nth)?.id ?? null),
+      ["w1", "w2", "w2", null],
+    );
+    // Only from a stack the item may be used from: a fake bell in the pack is passed over for the real
+    // one worn and bound.
+    assert.equal(
+      gameInventoryFightSpendStack(
+        [
+          { id: "b-fake", name: "Dawn bell", item: "kit/dawn-bell", quantity: 1, truly: "kit/hexed-ring" },
+          { id: "b-real", name: "Dawn bell", item: "kit/dawn-bell", quantity: 1, equipped: true, bound: true },
+        ],
+        "Dawn bell",
+        book,
+      )?.id,
+      "b-real",
+    );
+    const tonicEffect = fight.effects.find((effect) => effect.name === "Warming tonic")!;
+    assert.equal(gameFightUseEffect(tonicEffect, realTonic, book), tonicEffect);
+    assert.match(gameFightUseEffect(tonicEffect, fakeTonic, book).failed ?? "", /really Bitter tonic/);
+    // Spent, the fake is written by its true name and the answer says what it was; lost, it is not.
+    const drunk = applyGameInventoryOps(
+      fakeFirst,
+      [{ op: "take", name: "Warming tonic", count: 3, as: "used", worn: true }],
+      undefined,
+      book,
+    );
+    assert.deepEqual(drunk.results[0]?.revealed, ["Bitter tonic"]);
+    assert.deepEqual(drunk.journal.map((entry) => [entry.item, entry.action, entry.quantity]).sort(), [
+      ["Bitter tonic", "used", 2],
+      ["Warming tonic", "used", 1],
+    ]);
+    const lost = applyGameInventoryOps(
+      fakeFirst,
+      [{ op: "take", name: "Warming tonic", count: 3, as: "lost" }],
+      undefined,
+      book,
+    );
+    assert.equal(lost.results[0]?.revealed, undefined);
+    assert.ok(!lost.journal.some((entry) => leaks(entry.item)));
   }
   {
     // A use that finds a fake out ends there: the rest of the count is not drunk from the real one.

@@ -442,6 +442,8 @@ export function rulesetCombatEventLine(
       return key("uses", { label: event.label, left: event.left, of: event.of });
     case "broke":
       return key("broke", { label: event.label, roll: event.roll });
+    case "fake":
+      return key(event.dud ? "fakeDud" : "fake", { label: event.label, truly: event.truly });
     case "gate":
       if (event.pool) {
         return key(event.success ? "gatePoolSuccess" : "gatePoolFailure", {

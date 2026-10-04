@@ -1230,6 +1230,8 @@
   "game.combat.ruleset.event.dyingRevived": "{{actor}} is back on their feet.",
   "game.combat.ruleset.event.dyingStable": "{{actor}} is stable.",
   "game.combat.ruleset.event.dyingSuccess": "{{actor}} holds on: {{roll}} against {{difficulty}}. Held {{successes}}, slipped {{failures}}.",
+  "game.combat.ruleset.event.fake": "The {{label}} was really {{truly}}.",
+  "game.combat.ruleset.event.fakeDud": "The {{label}} was really {{truly}}, and it did nothing.",
   "game.combat.ruleset.event.fell": "{{target}} falls {{distance}}.",
   "game.combat.ruleset.event.gateFailure": "{{actor}} rolls {{check}} to use {{label}}: {{roll}} against {{difficulty}}, a failure. It is used up for nothing.",
   "game.combat.ruleset.event.gatePoolFailure": "{{actor}} rolls {{check}} to use {{label}}: {{roll}}, needing {{needed}}, a failure. It is used up for nothing.",

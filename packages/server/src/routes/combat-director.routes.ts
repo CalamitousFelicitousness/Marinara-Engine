@@ -15,10 +15,12 @@ import {
   WORLD_DEFAULT_BATTLEFIELDS,
   gameWorldBattlefields,
   worldSceneLike,
+  type CombatItemEffect,
 } from "@marinara-engine/shared";
 import {
   applyGameInventoryChangeHeld,
   loadGameFightItems,
+  loadGameFightUseEffects,
   loadGameInventoryItemBook,
 } from "../services/game/game-inventory.service.js";
 import { resolveCombatWeather } from "../services/game/weather.service.js";
@@ -993,6 +995,15 @@ export async function combatDirectorRoutes(
           const who = state.party.find((unit) => unit.id === used!.unitId)?.name ?? "";
           const gate = await rollGameFightItemGate(app.db, input.chatId, who, usedLine.item);
           if (gate && !gate.success) (used!.action as { failed?: string }).failed = gate.line;
+        }
+        // A use that comes out of a fake does what the fake truly does (1.74); the fight lists it as what
+        // it passes for, so only the stack it is spent from says so.
+        const usedEffect = usedLine && state.itemEffects.find((effect) => effect.name === usedLine.name);
+        if (usedLine && usedEffect && !usedEffect.charges) {
+          const chat = await chats.getById(input.chatId);
+          const uses = chat ? await loadGameFightUseEffects(app.db, JSON.parse(chat.metadata || "{}")) : null;
+          const truly = uses?.effectOf(usedLine.ownName ?? usedLine.name, usedEffect);
+          if (truly && truly !== usedEffect) (used!.action as { truly?: CombatItemEffect }).truly = truly;
         }
         const refused = step(input.command as DirectedCommand);
         // A refusal changed nothing, so nothing is saved and no request id is spent on it.

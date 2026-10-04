@@ -571,10 +571,13 @@ export function gameInventoryTotals(
   stacks: readonly GameInventoryStack[],
   /** What a stack's item holds of its charges, for an item that holds any. */
   chargesOf?: (stack: GameInventoryStack) => { now: number; max: number } | undefined,
+  /** As the party sees them, as a fight lists them: a fake on the line of what it passes for, with
+   *  no truth on any line (1.74). Without it, a fake is a line of its own that carries its truth. */
+  asSeen = false,
 ): GameInventoryTotal[] {
   const totals = new Map<string, GameInventoryTotal>();
   for (const stack of stacks) {
-    const item = gameInventoryStackKind(stack);
+    const item = asSeen ? gameInventoryItemId(stack) : gameInventoryStackKind(stack);
     const line =
       totals.get(item) ??
       totals
@@ -583,7 +586,7 @@ export function gameInventoryTotals(
           quantity: 0,
           ...(stack.nickname ? { ownName: stack.name } : {}),
           ...(stack.item ? { item: stack.item } : {}),
-          ...(stack.truly ? { truly: stack.truly } : {}),
+          ...(stack.truly && !asSeen ? { truly: stack.truly } : {}),
         })
         .get(item)!;
     line.quantity += stack.quantity;
@@ -608,7 +611,9 @@ export interface GameInventoryFightLine extends GameInventoryTotal {
  * number. `ownName` stays what a spend is taken by.
  */
 export function gameInventoryFightLines(stacks: readonly GameInventoryStack[]): GameInventoryFightLine[] {
-  const totals = gameInventoryTotals(stacks);
+  // A fake is listed as what it passes for, on that item's own line: which use is a fake's is known
+  // only as it is spent (`gameInventoryFightSpendStack`).
+  const totals = gameInventoryTotals(stacks, undefined, true);
   const uses = new Map<string, number>();
   for (const line of totals) {
     const key = gameInventoryNameKey(line.name);
@@ -866,11 +871,17 @@ export function takeFromGameInventory(
   /** Only from stacks of this `gameInventoryStackKind`, so a sale never takes a fake with the real
    *  thing it passes for, or the real thing with a fake (1.74). */
   kind?: string,
-): { stacks: GameInventoryStack[]; taken: number } {
+): {
+  stacks: GameInventoryStack[];
+  taken: number;
+  /** How many of what was taken were fakes, by what each truly is (1.74). */
+  fakes?: Map<string, number>;
+} {
   // Not held to one stack's bound: the stacks of an item together may hold more than one stack can.
   let left = Number.isFinite(count) ? Math.floor(count) : 0;
   if (!gameInventoryNameKey(name) || left < 1) return { stacks, taken: 0 };
   const takeAt = new Map<number, number>();
+  const fakes = new Map<string, number>();
   let taken = 0;
   for (const { stack, index } of stacksNamed(stacks, name, from)) {
     if (left < 1) break;
@@ -880,6 +891,7 @@ export function takeFromGameInventory(
     left -= take;
     taken += take;
     takeAt.set(index, take);
+    if (stack.truly) fakes.set(stack.truly, (fakes.get(stack.truly) ?? 0) + take);
   }
   if (taken === 0) return { stacks, taken: 0 };
   const next = stacks.flatMap((stack, index) => {
@@ -887,7 +899,28 @@ export function takeFromGameInventory(
     if (take === 0) return [stack];
     return stack.quantity - take > 0 ? [{ ...stack, quantity: stack.quantity - take }] : [];
   });
-  return { stacks: next, taken };
+  return { stacks: next, taken, ...(fakes.size > 0 ? { fakes } : {}) };
+}
+
+/**
+ * The stack a fight's next use of an item comes out of, `nth` uses on (0 for the next): a fight spends
+ * by the item's name, from the stacks it may be used from, in the order a take by that name takes them.
+ * What a fake passes for and the real thing are one item to a fight, so whether the use is a fake's is
+ * known only here (1.74). Undefined when there are not that many.
+ */
+export function gameInventoryFightSpendStack(
+  stacks: readonly GameInventoryStack[],
+  name: string,
+  rules?: GameInventoryItemRules,
+  nth = 0,
+): GameInventoryStack | undefined {
+  let left = nth;
+  for (const { stack } of stacksNamed(stacks, name)) {
+    if (keptByCurse(stack, rules) || !gameInventoryUsableStack(stack, rules)) continue;
+    if (left < stack.quantity) return stack;
+    left -= stack.quantity;
+  }
+  return undefined;
 }
 
 /**

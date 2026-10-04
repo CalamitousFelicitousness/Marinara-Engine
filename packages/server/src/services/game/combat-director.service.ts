@@ -540,10 +540,12 @@ function declare(s: CombatDirectorState, action: Action, source: Source, reactio
       item.quantity--;
       s.itemSpends[itemName] = (s.itemSpends[itemName] ?? 0) + 1;
     }
-    // The route rolled its gate for its user and says here when they failed it (#6909).
-    const failed = (action.classic ?? action.tactical) as { failed?: string } | undefined;
+    // The route rolled its gate for its user and says here when they failed it (#6909), and what the use
+    // truly does when it comes out of a fake (1.74).
+    const failed = (action.classic ?? action.tactical) as { failed?: string; truly?: CombatItemEffect } | undefined;
+    const does = failed?.truly ?? effect;
     if (action.classic?.type === "item")
-      action.classic.itemEffect = failed?.failed ? { ...effect, failed: failed.failed } : effect;
+      action.classic.itemEffect = failed?.failed ? { ...does, failed: failed.failed } : does;
   }
   const id = `p${++s.serial}`;
   s.pending[id] = {
@@ -809,8 +811,10 @@ function effect(s: CombatDirectorState, p: Pending) {
       }
     } else if (s.tactical && p.action.tactical?.type === "item") {
       const action = p.action.tactical;
-      const effect = s.itemEffects.find((i) => i.name === action.itemName);
-      const failed = (action as { failed?: string }).failed;
+      const effect =
+        (action as { truly?: CombatItemEffect }).truly ?? s.itemEffects.find((i) => i.name === action.itemName);
+      // A gate failed, or a fake that does nothing a fight can use (1.74): spent, and the log says why.
+      const failed = (action as { failed?: string }).failed ?? effect?.failed;
       const combatants = s.tactical.units.map((c) => ({
         ...c,
         side: side(c) === "party" ? ("player" as const) : ("enemy" as const),

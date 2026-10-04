@@ -970,6 +970,78 @@ try {
     assert.equal(kitGm.itemOf(tonicGm.item)!.entry.item!.use?.consumes, true);
   }
 
+  {
+    // A fake (Capability API 1.74) is offered as what it passes for, spent as that is, and does what it
+    // truly is: a balm that passes for a poultice heals by its own amount; a waystone that passes for one
+    // does nothing. Either way the fight says what it really was, and the journal names it truly.
+    const waystone = itemOf(ember, "outfitter/waystone");
+    const balm: RulesetCatalogItem = { ...poultice, use: { ...poultice.use!, amount: { flat: 3 } } };
+    const fakeOf = (truly: RulesetCatalogItem, name: string): RulesetSheetItem => ({
+      ...held(poultice, "Poultice", false, 2),
+      stack: { id: "fake", ref: "outfitter/poultice" },
+      truly: { item: truly, name },
+    });
+    const strong = fight(ember, [fakeOf(balm, "Balm")], hurt);
+    const offered = optionOf(ember, strong, "use:0");
+    assert.deepEqual([offered?.label, offered?.targets, offered?.left], ["Poultice", { side: "ally", count: 1 }, 2]);
+    const used = take(ember, strong, "use:0", ["ada"], 3);
+    assert.deepEqual(
+      [firstOf(used.events, "heal").rolls, firstOf(used.events, "heal").flat],
+      [[], 3],
+      JSON.stringify(used.events),
+    );
+    assert.deepEqual(firstOf(used.events, "fake"), {
+      type: "fake",
+      actorId: "ada",
+      optionId: "use:0",
+      label: "Poultice",
+      truly: "Balm",
+    });
+    assert.deepEqual(ada(used.state).itemsUsed, { 0: 1 });
+    const dud = take(ember, fight(ember, [fakeOf(waystone, "Waystone")], hurt), "use:0", ["ada"], 3);
+    assert.deepEqual(firstOf(dud.events, "fake"), {
+      type: "fake",
+      actorId: "ada",
+      optionId: "use:0",
+      label: "Poultice",
+      truly: "Waystone",
+      dud: true,
+    });
+    assert.equal(
+      dud.events.some((event) => event.type === "heal"),
+      false,
+    );
+    assert.deepEqual(ada(dud.state).itemsUsed, { 0: 1 });
+    const names = rulesetCombatNames(ember, { combatants: dud.state.combatants } as never, t);
+    assert.equal(
+      rulesetCombatEventLine(firstOf(dud.events, "fake"), names, t),
+      "game.combat.ruleset.event.fakeDud|Poultice|Waystone",
+    );
+    assert.equal(
+      rulesetCombatEventLine(firstOf(used.events, "fake"), names, t),
+      "game.combat.ruleset.event.fake|Poultice|Balm",
+    );
+    const written = applyRulesetFightItemChanges(
+      [{ id: "fake", name: "Poultice", item: "outfitter/poultice", quantity: 2, truly: "outfitter/waystone" }],
+      rulesetFightItemChanges(undefined, dud.state),
+    );
+    assert.deepEqual(written?.journal, [{ item: "Waystone", action: "used", quantity: 1 }]);
+    assert.deepEqual(
+      written?.stacks.map((stack) => [stack.quantity, stack.truly]),
+      [[1, "outfitter/waystone"]],
+      "what is left stays as the fight holds it",
+    );
+    // The sheet reads a fake stack as what it passes for, with its truth beside it.
+    const sheet = rulesetSheetItems(
+      rulesetItemBook(ember, entriesOf(ember)),
+      [{ id: "fake", name: "Poultice", item: "outfitter/poultice", quantity: 2, truly: "outfitter/waystone" }],
+      undefined,
+    );
+    assert.deepEqual(
+      sheet.map((each) => [each.item.use?.kind, each.truly?.name, each.truly?.item.use]),
+      [["heal", "Waystone", undefined]],
+    );
+  }
   console.log(
     "Ruleset item use: import checks, the 1.59 gate, using an item up or spending its charges in a fight, the inventory write-back, the Engine's own party member, and item facts passed.",
   );

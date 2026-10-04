@@ -8263,8 +8263,12 @@ function GameSurfaceComponent({
           );
           return;
         }
+        // One that came out of a fake is found out as it is used (1.74).
+        const truly = result.revealed?.[0];
         showInventoryNotification(
-          localizeUi("ui.game.gamesurfacecomponent.inventoryYouUsed", { item: normalizedItemName }),
+          truly
+            ? localizeUi("ui.game.gamesurfacecomponent.inventoryYouRevealed", { item: normalizedItemName, truly })
+            : localizeUi("ui.game.gamesurfacecomponent.inventoryYouUsed", { item: normalizedItemName }),
           false,
         );
         toast.success(localizeUi("ui.game.gamesurfacecomponent.usedValue1", { value1: normalizedItemName }));

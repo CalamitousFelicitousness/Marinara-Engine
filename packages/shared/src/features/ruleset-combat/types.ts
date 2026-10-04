@@ -370,6 +370,9 @@ export interface RulesetCombatAction {
    *  it spends of it: one off the stack, or some of its charges. */
   itemUse?: {
     item: number;
+    /** A fake used (Capability API 1.74): its true name, and whether its true item has no use, so the
+     *  use is spent for nothing. The fight says what it really was once it is spent. */
+    fake?: { name: string; dud?: true };
     consumes?: true;
     charges?: { cost: number; max: number; breaksOn?: { die: number; atMost: number } };
     /** Its `gate`, read off the user's sheet as the fight began: what is rolled (a skill's id when it
@@ -878,6 +881,8 @@ export type RulesetCombatEvent =
   | { type: "uses"; actorId: string; optionId: string; label: string; left: number; of: number }
   /** An item whose last charge was just spent, and whose die said it breaks. */
   | { type: "broke"; actorId: string; optionId: string; label: string; roll: number }
+  /** A fake just used, found out (1.74): what it truly was, and whether it did nothing. */
+  | { type: "fake"; actorId: string; optionId: string; label: string; truly: string; dud?: true }
   /** An item's gate: the check its user rolled before it could work. A failed one used it up for
    *  nothing. Shaped as a save is, with `check` naming what was rolled. */
   | {

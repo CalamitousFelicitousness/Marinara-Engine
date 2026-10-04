@@ -211,6 +211,9 @@ export interface RulesetSheetItem {
   loaded?: number;
   /** The charges an item holds, as the stack keeps them. Absent reads as full. */
   charges?: number;
+  /** A fake (Capability API 1.74): what it truly is, which `item` passes for. The sheet reads it as
+   *  what it seems; a fight's use of it does what this one does. */
+  truly?: { item: RulesetCatalogItem; name: string };
 }
 
 /** Whether the sheet can read the items a character holds, so a caller can skip reading the

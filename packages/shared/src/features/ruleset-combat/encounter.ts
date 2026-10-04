@@ -751,21 +751,38 @@ function itemUseActions(
       held.name ??
       definition.items?.categories.find((category) => category.id === item.category)?.label ??
       item.category;
-    const action = mechanicsAction(definition, use, {
+    // A fake (1.74) is offered as what it passes for, and spent as that is; what it does is what it
+    // truly does, aimed and timed as offered. One whose true item has no use is spent for nothing.
+    const doer = held.truly?.item.use ? held.truly.item : item;
+    const does = doer.use!;
+    const doerAim =
+      doer === item
+        ? aim
+        : does.toHit
+          ? itemToHit(definition, build, evaluated, doer, does.toHit, pooled)
+          : { toHit: 0 };
+    const doerDifficulty = doer === item ? difficulty : whole(itemAttackValue(doer, does.saveDifficulty));
+    const { budget: _budget, targets: _targets, ...truly } = does;
+    const aimed = {
+      ...truly,
+      ...(use.budget !== undefined ? { budget: use.budget } : {}),
+      ...(use.targets !== undefined ? { targets: use.targets } : {}),
+    };
+    const action = mechanicsAction(definition, doer === item ? use : aimed, {
       id: `use:${index}`,
       kind: "item",
       label,
       budget: use.budget ?? "",
-      toHit: aim.toHit,
-      ...(difficulty !== undefined ? { saveDifficulty: difficulty } : {}),
+      toHit: doerAim.toHit,
+      ...(doerDifficulty !== undefined ? { saveDifficulty: doerDifficulty } : {}),
       build,
       evaluated,
       perCell,
     });
     if (!action) return;
-    if (aim.target !== undefined) action.target = aim.target;
-    const restored = amountOf(use.restore?.amount);
-    if (use.restore && restored) action.restore = { pool: use.restore.pool, amount: restored };
+    if (doerAim.target !== undefined) action.target = doerAim.target;
+    const restored = amountOf(does.restore?.amount);
+    if (does.restore && restored) action.restore = { pool: does.restore.pool, amount: restored };
     // A gate read off a stat the item does not give is a check against nothing, as a save's is.
     const gateDifficulty = use.gate ? rulesetItemGateDifficulty(item, use.gate) : undefined;
     if (use.gate && gateDifficulty === undefined) return;
@@ -775,6 +792,7 @@ function itemUseActions(
         : null;
     action.itemUse = {
       item: index,
+      ...(held.truly ? { fake: { name: held.truly.name, ...(doer === item ? { dud: true as const } : {}) } } : {}),
       ...(use.consumes ? { consumes: true as const } : {}),
       ...(use.charges !== undefined && max !== undefined
         ? {

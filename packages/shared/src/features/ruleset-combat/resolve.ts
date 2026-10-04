@@ -1387,6 +1387,22 @@ export function applyRulesetCombatChoice(
     noteOutcome(ctx);
     return finish();
   }
+  // A fake, spent, is found out (1.74); one whose true item has no use did nothing.
+  const fake = action.itemUse?.fake;
+  if (fake) {
+    ctx.events.push({
+      type: "fake",
+      actorId: working.id,
+      optionId: action.id,
+      label: action.label,
+      truly: fake.name,
+      ...(fake.dud ? { dud: true as const } : {}),
+    });
+    if (fake.dud) {
+      noteOutcome(ctx);
+      return finish();
+    }
+  }
   // An attack with an off-hand weapon lets another one strike on the off-hand budget this turn.
   if (action.pairs !== undefined) working.flags.offHand = action.pairs;
   // A contest is settled between the two of them on the spot, and opens no window: nobody else is

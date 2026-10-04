@@ -6740,7 +6740,38 @@ assert.doesNotMatch(
   /inline-flex h-4 w-7 shrink-0 items-center rounded-full/u,
   "Preset choices must not restore the undersized Android toggle",
 );
-assert.match(gameSurfaceSource, /h-\[min\(42rem,calc\(100dvh-6rem\)\)\]/u);
+// #3624: the Session window embeds the Game Journal, whose tabs scroll only inside a bounded height. The old
+// popover's fixed height cap moved to the control windows: a computer's window has a set height, and a phone's
+// sheet for content that scrolls itself is pinned top and bottom.
+const chatControlWindowSource = readFileSync(
+  new URL("../../packages/client/src/components/chat/ChatControlWindow.tsx", import.meta.url),
+  "utf8",
+);
+const floatingWindowSource = readFileSync(
+  new URL("../../packages/client/src/components/ui/FloatingWindow.tsx", import.meta.url),
+  "utf8",
+);
+assert.match(
+  gameSurfaceSource,
+  /id=\{CHAT_CONTROL_WINDOW_IDS\.session\}[\s\S]{0,400}scroll=\{false\}[\s\S]{0,200}\{renderSessionPanel\(\)\}/u,
+  "The Session window must leave scrolling to the Game Journal inside it",
+);
+assert.match(
+  gameSurfaceSource,
+  /const renderSessionPanel = \(\) => \{[\s\S]{0,300}<div className="flex min-h-0 flex-1 flex-col overflow-hidden">/u,
+  "The Session panel must fill its window as a bounded flex column",
+);
+assert.match(floatingWindowSource, /height: geometry\.height/u, "A computer's control window must have a set height");
+assert.match(
+  chatControlWindowSource,
+  /sheetClassName=\{cn\(PHONE_SHEET_CLASS, !scroll && PHONE_FULL_SHEET_CLASS\)\}/u,
+  "A phone sheet whose content scrolls itself must get a bounded height",
+);
+assert.match(
+  floatingWindowSource,
+  /export const PHONE_SHEET_CLASS =\s*"fixed[^"]*top-\[[^"]*max-h-\[[^"]*";\s*export const PHONE_FULL_SHEET_CLASS =\s*"bottom-\[/u,
+  "Phone sheets must stay on screen, and the full-height one must pin its bottom",
+);
 assert.match(gameSetupWizardSource, /ui\.game\.gamesetupwizard\.adjustGameAssetsForThisGame/u);
 assert.match(gameSetupWizardSource, /selectFoldersByDefault/u);
 assert.match(gameSetupWizardSource, /enableAgents: enableAgents \|\| undefined/u);

@@ -555,6 +555,18 @@ const sword = (state: RulesetEncounterState) => menu(state).find((option) => opt
   const made = walk.step("brute", { optionId: "claw", targetIds: [] }, 15, 3);
   assert.equal(eventsOf(made.events, "attack").length, 1);
   assert.equal(rulesetCombatant(walk.get(), "brute")!.flags.attacks, 1, "not counted on Brenna's turn");
+  // Nor is a reaction through the menu capped there: struck on Brenna's turn, it may riposte.
+  const struckBack = run(capped, "steady");
+  struckBack.step("brute", { optionId: "claw", targetIds: ["brenna"] }, 15, 3);
+  struckBack.step("brute", { optionId: "end-turn", targetIds: [] });
+  const longsword = rulesetCombatOptions(capped, struckBack.get(), "brenna").find(
+    (option) => option.label === "Longsword",
+  )!;
+  struckBack.step("brenna", { optionId: longsword.id, targetIds: ["brute"] }, 15, 4);
+  assert.deepEqual(
+    rulesetWindowOptions(capped, struckBack.get(), "brute").map((option) => option.id),
+    ["riposte"],
+  );
   // Hasted, with its own reaction spent, the brute is not offered a second riposte out of the haste
   // action: that action is one of its own turns.
   const hasted = run(fiveE, "quickened");

@@ -1033,9 +1033,10 @@ export function CharacterEditor() {
         open={avatarGeneratorOpen}
         title={localizeUi("ui.characters.charactereditor.generateCharacterAvatar")}
         entityName={formData.name}
-        defaultAppearance={
-          ((formData.extensions.appearance as string | undefined) || formData.description || formData.personality) ?? ""
-        }
+        defaultAppearance={imageAppearanceGeneratorSeed(
+          formData.extensions,
+          (formData.extensions.appearance as string | undefined) || formData.description || formData.personality,
+        )}
         defaultAvatarUrl={avatarPreview}
         onClose={() => setAvatarGeneratorOpen(false)}
         onUseAvatar={handleGeneratedAvatar}
@@ -1045,9 +1046,10 @@ export function CharacterEditor() {
         mode="character-sheet"
         title={localizeUi("ui.characters.charactersheet.createTitle")}
         entityName={formData.name || localizeUi("ui.characters.charactersheet.characterFallback")}
-        defaultAppearance={
-          ((formData.extensions.appearance as string | undefined) || formData.description || formData.personality) ?? ""
-        }
+        defaultAppearance={imageAppearanceGeneratorSeed(
+          formData.extensions,
+          (formData.extensions.appearance as string | undefined) || formData.description || formData.personality,
+        )}
         defaultAvatarUrl={avatarPreview}
         neutralFullBodyReferenceUrl={characterSheetSprites?.find((sprite) => sprite.expression === "full_neutral")?.url}
         onClose={() => setCharacterSheetGeneratorOpen(false)}
@@ -1209,7 +1211,10 @@ export function CharacterEditor() {
                 <SpritesTab
                   characterId={characterId}
                   characterName={formData.name}
-                  defaultAppearance={(formData.extensions.appearance as string) ?? formData.description}
+                  defaultAppearance={imageAppearanceGeneratorSeed(
+                    formData.extensions,
+                    (formData.extensions.appearance as string) ?? formData.description,
+                  )}
                   defaultAvatarUrl={avatarPreview}
                   characterSheetImageId={
                     typeof formData.extensions.characterSheetImageId === "string"
@@ -1965,6 +1970,20 @@ const VERSION_COMPARE_FIELDS: Array<{ key: string; label: string }> = [
   { key: "system_prompt", label: "System Prompt" },
   { key: "post_history_instructions", label: "Post-History Instructions" },
 ];
+
+/**
+ * #7053: the avatar / character-sheet generator seeds its editable prompt with
+ * the card appearance. It must seed the image override instead when one is on
+ * and filled, or the generated portrait ignores the very tags the user wrote
+ * for image models. Mirrors `readImageAppearanceOverride` in shared, but the
+ * editor holds a draft `extensions` object rather than a stored card.
+ */
+function imageAppearanceGeneratorSeed(extensions: Record<string, unknown>, fallback: string | undefined): string {
+  const enabled = extensions.imageAppearanceEnabled === true;
+  const override = typeof extensions.imageAppearance === "string" ? extensions.imageAppearance.trim() : "";
+  if (enabled && override) return override;
+  return fallback ?? "";
+}
 
 function getVersionFieldValue(data: CharacterData, key: string): string {
   if (key.startsWith("extensions.")) {

@@ -13172,6 +13172,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                                 name: personaName,
                                 avatarPath: persona.avatarPath as string | null,
                                 appearance: personaFields.appearance,
+                                // #7053: identity-source persona, so the override
+                                // is already resolved as a string.
+                                appearanceOverride: persona.imageAppearanceOverride || null,
                                 characterSheetImageId:
                                   typeof persona.characterSheetImageId === "string"
                                     ? persona.characterSheetImageId
@@ -13698,6 +13701,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                           name: personaName,
                           avatarPath: persona.avatarPath as string | null,
                           appearance: personaFields.appearance,
+                          // #7053: image prompts prefer the card override. The
+                          // resolved identity already exposes it as a ready
+                          // string (separate from `appearance`, which stays the
+                          // narrator's text).
+                          appearanceOverride: persona.imageAppearanceOverride || null,
                         }
                       : null,
                   promptConnection: conn,

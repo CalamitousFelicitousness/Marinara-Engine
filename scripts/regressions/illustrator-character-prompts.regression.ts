@@ -352,6 +352,53 @@ console.log("illustrator character prompts regression (manual + executor) passed
     override,
     "a store-row override still wins when the caller omits appearanceOverride",
   );
+
+  // #7053 regression (Chroma / NanoGPT appearance block): personas take the SAME
+  // override-wins rule as characters. `appearanceBlock` is appended verbatim to
+  // the provider prompt by non-NovelAI providers, so a persona that kept sending
+  // raw prose shipped the very text this feature exists to keep away from image
+  // models — while characters in the same block sent clean tags.
+  const personaResolved = await resolveIllustratorCharacterReferences({
+    charactersStore: { list: async () => [] },
+    chatCharacters: [],
+    persona: {
+      id: "persona-1",
+      name: "Fel Lockheart",
+      appearance: normalAppearance,
+      appearanceOverride: override,
+    },
+    requestedNames: ["Fel Lockheart"],
+    promptText: "Fel Lockheart",
+  });
+  assert.equal(
+    personaResolved.appearanceSources.find((source) => source.name === "Fel Lockheart")?.appearance,
+    override,
+    "a persona override wins over the persona's own appearance in the appended block",
+  );
+  assert.match(
+    personaResolved.appearanceBlock ?? "",
+    /Fel Lockheart's Appearance: 1girl, silver hair, green eyes, oversized hoodie/,
+    "the appended persona line uses the override tags, not the Appearance prose",
+  );
+  assert.doesNotMatch(
+    personaResolved.appearanceBlock ?? "",
+    /A tall woman with silver hair/,
+    "the persona's raw Appearance prose must not reach the engine-appended block",
+  );
+
+  // Disabled/empty persona override falls back to the normal appearance.
+  const personaFallback = await resolveIllustratorCharacterReferences({
+    charactersStore: { list: async () => [] },
+    chatCharacters: [],
+    persona: { id: "persona-2", name: "Nadia", appearance: normalAppearance, appearanceOverride: null },
+    requestedNames: ["Nadia"],
+    promptText: "Nadia",
+  });
+  assert.equal(
+    personaFallback.appearanceSources.find((source) => source.name === "Nadia")?.appearance,
+    normalAppearance,
+    "a persona without an override keeps its normal appearance for image prompts",
+  );
 }
 
 // The executor composes the instruction and the appearance reference; both are host-resolved.

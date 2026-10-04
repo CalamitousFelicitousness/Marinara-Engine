@@ -3742,6 +3742,14 @@ async function applyRetryResultEffects(args: {
                             ? agentContext.memory._personaAvatarPath
                             : null,
                       appearance: agentContext.persona.appearance,
+                      // #7053: same override-wins rule as the caption path, so the
+                      // engine-appended appearance block matches the agent's own
+                      // `<character_appearance_reference>` instead of sending prose.
+                      appearanceOverride:
+                        typeof agentContext.memory._personaImageAppearanceOverride === "string" &&
+                        agentContext.memory._personaImageAppearanceOverride.trim()
+                          ? agentContext.memory._personaImageAppearanceOverride.trim()
+                          : null,
                       characterSheetImageId:
                         typeof retryPersonaReference?.characterSheetImageId === "string"
                           ? retryPersonaReference.characterSheetImageId

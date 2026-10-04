@@ -60,6 +60,8 @@ type PersonaReference = {
   name: string;
   avatarPath?: string | null;
   appearance?: string | null;
+  /** Image-prompt appearance override (#7053); wins over `appearance`. */
+  appearanceOverride?: string | null;
 } | null;
 
 const GROUP_SELFIE_REQUEST_RE =

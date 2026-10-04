@@ -39,6 +39,11 @@ export type IllustratorPersonaReference = {
   name: string;
   avatarPath?: string | null;
   appearance?: string | null;
+  /**
+   * Image-prompt appearance override (#7053). Same contract as the character
+   * field: when set it wins over `appearance` for image prompts only.
+   */
+  appearanceOverride?: string | null;
   characterSheetImageId?: string | null;
   useCharacterSheetAsReference?: boolean;
 };
@@ -621,7 +626,14 @@ export async function resolveIllustratorCharacterReferences(args: {
     }
   }
   if (args.persona && personaRequested) {
-    pushAppearanceLine(args.persona.name, args.persona.appearance);
+    // #7053: personas take the same override-wins rule as characters. Without
+    // this the persona half of `appearanceBlock` (the text appended verbatim to
+    // provider prompts, e.g. Chroma/NanoGPT) kept sending the raw Appearance
+    // prose while the character half sent image tags.
+    pushAppearanceLine(
+      args.persona.name,
+      normalizeIllustratorAppearance(args.persona.appearanceOverride) ?? args.persona.appearance,
+    );
   }
 
   return {

@@ -1974,7 +1974,10 @@ export function PersonaEditor() {
         open={avatarGeneratorOpen}
         title={localizeUi("ui.personas.personaeditor.generatePersonaAvatar")}
         entityName={formData.name}
-        defaultAppearance={formData.appearance || formData.description || formData.personality}
+        defaultAppearance={personaImageAppearanceGeneratorSeed(
+          formData,
+          formData.appearance || formData.description || formData.personality,
+        )}
         defaultAvatarUrl={avatarPreview}
         onClose={() => setAvatarGeneratorOpen(false)}
         onUseAvatar={handleGeneratedAvatar}
@@ -1984,7 +1987,10 @@ export function PersonaEditor() {
         mode="character-sheet"
         title={localizeUi("ui.characters.charactersheet.createTitle")}
         entityName={formData.name || localizeUi("ui.characters.charactersheet.characterFallback")}
-        defaultAppearance={formData.appearance || formData.description || formData.personality}
+        defaultAppearance={personaImageAppearanceGeneratorSeed(
+          formData,
+          formData.appearance || formData.description || formData.personality,
+        )}
         defaultAvatarUrl={avatarPreview}
         neutralFullBodyReferenceUrl={characterSheetSprites?.find((sprite) => sprite.expression === "full_neutral")?.url}
         onClose={() => setCharacterSheetGeneratorOpen(false)}
@@ -3981,6 +3987,21 @@ function buildCurrentPersonaSnapshot(formData: PersonaFormData): PersonaCardSnap
         ? JSON.stringify(formData.convoBehavior)
         : "",
   };
+}
+
+/**
+ * #7053: the avatar / character-sheet generator seeds its editable prompt with
+ * the persona appearance. Seed the image override instead when it is on and
+ * filled, or the generated portrait ignores the tags the user wrote for image
+ * models. Personas store the flag as a real boolean in the editor draft.
+ */
+function personaImageAppearanceGeneratorSeed(
+  persona: { imageAppearanceEnabled?: boolean; imageAppearance?: string },
+  fallback: string | undefined,
+): string {
+  const override = typeof persona.imageAppearance === "string" ? persona.imageAppearance.trim() : "";
+  if (persona.imageAppearanceEnabled === true && override) return override;
+  return fallback ?? "";
 }
 
 function formatPersonaVersionValue(data: PersonaCardSnapshot, key: keyof PersonaCardSnapshot): string {

@@ -1499,6 +1499,8 @@ export function BotBrowserView() {
   const [nsfw, setNsfwRaw] = useState(() => getPersistNsfw("chub"));
   const sourceIdRef = useRef(sourceId);
   sourceIdRef.current = sourceId;
+  // Only the newest search may write results, errors or the loading state.
+  const searchSeqRef = useRef(0);
   const setNsfw = useCallback((val: boolean) => {
     setNsfwRaw(val);
     setPersistNsfw(sourceIdRef.current, val);
@@ -1572,6 +1574,8 @@ export function BotBrowserView() {
 
   const performSwitch = useCallback((newId: string) => {
     const newProv = getProvider(newId);
+    searchSeqRef.current += 1;
+    setLoading(false);
     setSourceId(newId);
     setSourceOpen(false);
     setQuery("");
@@ -1642,6 +1646,7 @@ export function BotBrowserView() {
 
   const doSearch = useCallback(async () => {
     if (provider.unavailable) return;
+    const seq = ++searchSeqRef.current;
     setLoading(true);
     setError(null);
     try {
@@ -1659,16 +1664,16 @@ export function BotBrowserView() {
         extraToggles,
       });
 
-      // The user switched source while this search ran; its results belong to the old one.
-      if (sourceIdRef.current !== provider.id) return;
+      // A newer search or a source switch started while this one ran; its results are stale.
+      if (seq !== searchSeqRef.current) return;
       setResults(result.cards);
       setTotalCount(result.totalCount);
     } catch (err) {
-      if (sourceIdRef.current !== provider.id) return;
+      if (seq !== searchSeqRef.current) return;
       setError(err instanceof Error ? err.message : "Search failed");
       setResults([]);
     } finally {
-      setLoading(false);
+      if (seq === searchSeqRef.current) setLoading(false);
     }
   }, [
     provider,

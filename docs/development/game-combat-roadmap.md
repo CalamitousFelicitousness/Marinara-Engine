@@ -41,7 +41,7 @@ The engine should own actual rolls, legal targets, movement, action budgets, res
 
 Start with supported check, turn and resource primitives. A d20-oriented profile and a d10-pool-oriented profile need different resolution rules; one is not a renamed version of the other. Future coverage should include initiative, contested checks, damage/mitigation, conditions and resource use. Document unsupported cases and keep GM adjudication explicit.
 
-Tactical tabletop work also needs shared line-of-sight and cover rules. The current grid blocks movement through walls but distance-based ranged targeting can cross them. Update resolver, AI, counters, forecasts and threat overlays together. Preserve the current party/enemy phase system; individual initiative is a separate selectable rule profile.
+Shared line of sight is in place (combat C6): a wall or a mountain blocks it in the resolver, the AI, counters, areas, forecasts and threat overlays alike. Cover tiers build on the same test. Preserve the current party/enemy phase system; individual initiative is a separate selectable rule profile.
 
 ## Summoning: retain the design, defer the larger system
 

@@ -580,7 +580,9 @@ function threatenedTargets(s: CombatDirectorState, p: Pending): Unit[] {
     return living(s).filter(
       (u) =>
         (skill.friendlyFire || side(u) !== side(caster)) &&
-        Math.abs((u as TacticalUnit).x - center.x) + Math.abs((u as TacticalUnit).y - center.y) <= skill.areaRadius!,
+        Math.abs((u as TacticalUnit).x - center.x) + Math.abs((u as TacticalUnit).y - center.y) <= skill.areaRadius! &&
+        // The blast spreads only as far as it sees from where it lands, as the engine resolves it.
+        hasLineOfSight(s.tactical!.grid, center, u as TacticalUnit),
     );
   }
   return [target];

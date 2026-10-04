@@ -1353,6 +1353,11 @@ function drawn(...rows: string[]): TacticalGrid {
     rulesetCellSentences(at(plain, 2, 1), view, t).join(" "),
     "Wall. Solid. Nothing can walk into it or see through it.",
   );
+  // Water is walked round but seen across (combat C6), and the square says so.
+  assert.equal(
+    rulesetCellSentences({ ...at(plain, 2, 1), terrain: "water" }, view, t).join(" "),
+    "Water. Nothing can walk into it, but it can be seen across.",
+  );
   assert.equal(
     rulesetCellSentences(at(plain, 0, 1), view, t).join(" "),
     "Plains. Brenna stands here, health 60 of 60. On turn.",

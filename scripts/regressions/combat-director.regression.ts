@@ -306,6 +306,48 @@ const witnessed = (walled: boolean) => {
 };
 assert.equal(witnessed(false), true, "the witch in the blast answers a Fireball it sees");
 assert.equal(witnessed(true), false, "and not one cast from behind a wall");
+// A guard is offered only for an ally the blast reaches: one behind a wall from where it lands is safe.
+const guarded = (walled: boolean) => {
+  const fight = createCombatDirector({
+    id: "enc-guard",
+    anchor: "anchor",
+    party: [
+      {
+        ...unit("hero", "player"),
+        skills: [{ ...counter, id: "guard", name: "Interpose", reaction: "guard", spell: false }],
+      },
+      unit("tank", "player"),
+      unit("ally", "player"),
+    ],
+    enemies: [
+      { ...unit("caster", "enemy"), skills: [{ ...fire, areaRadius: 2 }], boss: { points: 0, anticipation: false } },
+    ],
+    style: "tactical",
+    gm: true,
+    difficulty: "normal",
+    seed: 11,
+  });
+  fight.tactical!.grid.tiles = fight.tactical!.grid.tiles.map((row) => row.map(() => "plains"));
+  const at = (id: string, x: number, y: number) =>
+    Object.assign(
+      fight.tactical!.units.find((u) => u.id === id)!,
+      { x, y },
+    );
+  at("hero", 0, 3);
+  at("tank", 1, 1);
+  at("ally", 1, 3);
+  at("caster", 5, 1);
+  if (walled) fight.tactical!.grid.tiles[2]![1] = "wall";
+  commandCombatDirector(fight, { type: "tactical", action: { type: "endTurn" } });
+  const cast = fight.window!.options.find((option) => option.skillName === "Fireball" && option.targetId === "tank")!;
+  commandCombatDirector(fight, { type: "choose", candidateId: cast.id }, "gm");
+  return fight.window?.kind === "reaction" && fight.window.options.some((option) => option.targetId === "ally");
+};
+assert.deepEqual(
+  [guarded(false), guarded(true)],
+  [true, false],
+  "a guard for an ally in the blast, none behind a wall",
+);
 // Depleted MP + no slot gives no reaction, even when the spell would be lethal.
 s = make();
 commandCombatDirector(s, { type: "begin", unitId: "hero" });

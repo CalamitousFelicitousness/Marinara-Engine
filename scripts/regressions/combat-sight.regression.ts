@@ -131,6 +131,20 @@ const arena = (paint: Record<string, TacticalTerrain>) => {
   assert.ok(!mend.ok && /out of sight/.test(mend.error), "a heal through a wall");
   const potion = applyAction(hidden, { type: "item", unitId: "archer", itemName: "Potion", targetId: "friend" });
   assert.ok(!potion.ok && /out of sight/.test(potion.error), "an item through a wall");
+  // A unit aiming at itself is where it walks to: a heal on itself after walking round a wall.
+  const walker = arena({ "2,2": "wall" });
+  Object.assign(
+    walker.units.find((u) => u.id === "archer")!,
+    { movement: 4 },
+  );
+  const selfMend = applyAction(walker, {
+    type: "skill",
+    unitId: "archer",
+    skillName: "Mend",
+    targetId: "archer",
+    to: { x: 3, y: 2 },
+  });
+  assert.ok(selfMend.ok, selfMend.ok ? "" : selfMend.error);
   // An area spreads only as far as it sees from where it lands: the second foe two cells past the first
   // is caught in the open and sheltered by a wall between them.
   const blastHits = (paint: Record<string, TacticalTerrain>) => {
@@ -175,6 +189,39 @@ const arena = (paint: Record<string, TacticalTerrain>) => {
   assert.ok(openShot.type === "attack" && openShot.targetId === "archer", JSON.stringify(openShot));
   const blocked = aiChoice({ "3,2": "wall" });
   assert.ok(!(blocked.type === "attack" && blocked.targetId === "archer"), JSON.stringify(blocked));
+  // The plain AI heals only an ally it sees.
+  const healer = (paint: Record<string, TacticalTerrain>) => {
+    const fight = arena(paint);
+    const foe = fight.units.find((u) => u.id === "foe")!;
+    Object.assign(foe, {
+      tactics: undefined,
+      skills: [{ name: "Mend", mpCost: 5, power: 20, type: "heal", range: 2 }],
+    });
+    Object.assign(
+      fight.units.find((u) => u.id === "other")!,
+      { x: 5, y: 4, hp: 50 },
+    );
+    return decideTacticalAction(fight, foe, () => 0);
+  };
+  assert.deepEqual(
+    [healer({}), healer({ "5,3": "wall" })].map((choice) => choice.type === "skill" && choice.targetId === "other"),
+    [true, false],
+    "a heal in the open, none through a wall",
+  );
+  // An archer with a wall between it and its only foe walks round it rather than waiting for ever.
+  const column: Record<string, TacticalTerrain> = {};
+  for (let y = 0; y < 4; y++) column[`4,${y}`] = "wall";
+  const stuck = arena(column);
+  const shooter = stuck.units.find((u) => u.id === "foe")!;
+  // One step a turn, so no cell it reaches this turn sees round the wall: it heads for the gap.
+  Object.assign(shooter, { x: 3, y: 2, movement: 1, attackRange: { min: 2, max: 3 }, tactics: undefined, skills: [] });
+  for (const id of ["archer", "friend", "other"]) {
+    const other = stuck.units.find((u) => u.id === id)!;
+    if (id === "archer") Object.assign(other, { side: "party", x: 5, y: 2 });
+    else Object.assign(other, { hp: 0 });
+  }
+  const step = decideTacticalAction(stuck, shooter, () => 0.1);
+  assert.ok(step.type === "wait" && step.to !== undefined, `walks round: ${JSON.stringify(step)}`);
 }
 
 // ── Ruleset fights ──

@@ -1,5 +1,5 @@
 import { normalizeGameDifficulty } from "../combat-conditions.js";
-import { decideProfileAction } from "./profile-ai.js";
+import { decideProfileAction, pursueOpponent } from "./profile-ai.js";
 import { applyAction } from "./engine.js";
 // ──────────────────────────────────────────────
 // Tactical Combat — enemy AI (player-phase → enemy-phase resolver)
@@ -8,7 +8,7 @@ import { applyAction } from "./engine.js";
 // profiles retain the legacy policy below. Both policies use the same resolver;
 // AI companions and enemies re-evaluate the accepted state before each action.
 
-import { effectiveSpeed, inReach, manhattan } from "./math.js";
+import { effectiveSpeed, hasLineOfSight, inReach, manhattan } from "./math.js";
 import { deterministicRng } from "./rng.js";
 import {
   aliveUnits,
@@ -119,7 +119,12 @@ function tryHeal(state: TacticalCombatState, unit: TacticalUnit): TacticalAction
   if (!healSkill) return null;
   const allies = aliveUnits(state, unit.side);
   const hurt = allies
-    .filter((a) => a.hp / Math.max(1, a.maxHp) <= 0.6 && manhattan(unit, a) <= (healSkill.range ?? 2))
+    .filter(
+      (a) =>
+        a.hp / Math.max(1, a.maxHp) <= 0.6 &&
+        manhattan(unit, a) <= (healSkill.range ?? 2) &&
+        hasLineOfSight(state.grid, unit, a),
+    )
     .sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)[0];
   if (!hurt) return null;
   return { type: "skill", unitId: unit.id, skillName: healSkill.name, targetId: hurt.id };
@@ -142,6 +147,11 @@ function approach(state: TacticalCombatState, unit: TacticalUnit): TacticalCoord
   }
   if (best && (best.x !== unit.x || best.y !== unit.y)) return best;
   return null;
+}
+
+function pursuedTile(state: TacticalCombatState, unit: TacticalUnit): TacticalCoord | null {
+  const to = pursueOpponent(state, unit)?.to;
+  return to && (to.x !== unit.x || to.y !== unit.y) ? to : null;
 }
 
 export function decideTacticalAction(
@@ -177,8 +187,9 @@ export function decideTacticalAction(
     return { type: "attack", unitId: unit.id, targetId: chosen.targetId, to: chosen.tile };
   }
 
-  // Nothing in reach — approach, then hold.
-  const dest = approach(state, unit);
+  // Nothing in reach: approach, or when already as close as it gets (a wall between), walk round to a
+  // cell it can strike from; then hold.
+  const dest = approach(state, unit) ?? pursuedTile(state, unit);
   if (dest) return { type: "wait", unitId: unit.id, to: dest };
   return { type: "wait", unitId: unit.id };
 }

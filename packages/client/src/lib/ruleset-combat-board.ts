@@ -175,7 +175,15 @@ export function rulesetCellSentences(cell: RulesetBoardCell, view: DirectedRules
       label: t(`ui.game.tacticalcombatui.terrain.${cell.terrain}`, { defaultValue: cell.terrain }),
     }),
   ];
-  if (cell.solid) said.push(t("game.combat.ruleset.board.solid"));
+  // Water is walked round but seen across; a wall or a mountain is neither (combat C6).
+  if (cell.solid)
+    said.push(
+      t(
+        TERRAIN_DATA[cell.terrain]?.blocksSight
+          ? "game.combat.ruleset.board.solid"
+          : "game.combat.ruleset.board.seenAcross",
+      ),
+    );
   const who = cell.occupant;
   if (who) {
     said.push(t("game.combat.ruleset.board.who", { name: who.name, value: who.health.value, max: who.health.max }));

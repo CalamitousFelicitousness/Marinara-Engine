@@ -892,10 +892,11 @@ export function validateTacticalUnitAction(
         const wantAlly = skill.type !== "debuff";
         if (wantAlly && target.side !== unit.side) return { ok: false, error: "That skill targets allies." };
         if (!wantAlly && target.side === unit.side) return { ok: false, error: "That skill targets enemies." };
-        const d = manhattan(fromTile, target);
+        // A unit aiming at itself is where it will stand, not where it stood.
+        const at = target.id === unit.id ? fromTile : target;
+        const d = manhattan(fromTile, at);
         if (d > (skill.range ?? 2)) return { ok: false, error: `${target.name} is out of support range.` };
-        if (!hasLineOfSight(next.grid, fromTile, target))
-          return { ok: false, error: `${target.name} is out of sight.` };
+        if (!hasLineOfSight(next.grid, fromTile, at)) return { ok: false, error: `${target.name} is out of sight.` };
       }
       break;
     }
@@ -903,9 +904,10 @@ export function validateTacticalUnitAction(
     case "item": {
       const target = getUnit(next, action.targetId);
       if (!target || target.hp <= 0) return { ok: false, error: "Invalid item target." };
-      const d = manhattan(fromTile, target);
+      const at = target.id === unit.id ? fromTile : target;
+      const d = manhattan(fromTile, at);
       if (d > 2) return { ok: false, error: `${target.name} is out of item range.` };
-      if (!hasLineOfSight(next.grid, fromTile, target)) return { ok: false, error: `${target.name} is out of sight.` };
+      if (!hasLineOfSight(next.grid, fromTile, at)) return { ok: false, error: `${target.name} is out of sight.` };
       break;
     }
 

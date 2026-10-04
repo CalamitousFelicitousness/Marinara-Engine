@@ -1167,6 +1167,7 @@
   "game.combat.ruleset.board.onTurn": "On turn.",
   "game.combat.ruleset.board.provokes": "Walking here draws a strike from {{names}}.",
   "game.combat.ruleset.board.reachable": "Can be walked to for {{amount}}.",
+  "game.combat.ruleset.board.seenAcross": "Nothing can walk into it, but it can be seen across.",
   "game.combat.ruleset.board.solid": "Solid. Nothing can walk into it or see through it.",
   "game.combat.ruleset.board.stand": "Stand up",
   "game.combat.ruleset.board.targetable": "Can be chosen as a target.",

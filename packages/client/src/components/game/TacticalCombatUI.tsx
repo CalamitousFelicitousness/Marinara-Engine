@@ -57,6 +57,7 @@ import {
   getMovementRange,
   getTargetsInRange,
   forecastAttack,
+  hasLineOfSight,
   buildTacticalSummary,
   type CombatWeather,
   type Combatant,
@@ -514,6 +515,7 @@ export function TacticalCombatUI({
             const tx = tile.x + dx;
             const ty = tile.y + dy;
             if (tx < 0 || ty < 0 || tx >= liveState.grid.width || ty >= liveState.grid.height) continue;
+            if (!hasLineOfSight(liveState.grid, tile, { x: tx, y: ty })) continue;
             keys.add(`${tx},${ty}`);
           }
         }
@@ -544,7 +546,7 @@ export function TacticalCombatUI({
           if (u.side === selectedUnit.side || u.hp <= 0) continue;
           const d = Math.abs(u.x - from.x) + Math.abs(u.y - from.y);
           const max = skill.range ?? Math.max(selectedUnit.attackRange.max, 2);
-          if (d >= 1 && d <= max) ids.push(u.id);
+          if (d >= 1 && d <= max && hasLineOfSight(stagedState.grid, from, u)) ids.push(u.id);
         }
         return new Set(ids);
       }
@@ -556,7 +558,7 @@ export function TacticalCombatUI({
         const isAlly = u.side === selectedUnit.side;
         if (wantAlly !== isAlly) continue;
         const d = Math.abs(u.x - from.x) + Math.abs(u.y - from.y);
-        if (d <= (skill.range ?? 2)) ids.push(u.id);
+        if (d <= (skill.range ?? 2) && hasLineOfSight(stagedState.grid, from, u)) ids.push(u.id);
       }
       return new Set(ids);
     }
@@ -572,7 +574,7 @@ export function TacticalCombatUI({
         )
           continue;
         const d = Math.abs(u.x - from.x) + Math.abs(u.y - from.y);
-        if (d <= 2) ids.push(u.id);
+        if (d <= 2 && hasLineOfSight(stagedState.grid, from, u)) ids.push(u.id);
       }
       return new Set(ids);
     }

@@ -53,7 +53,6 @@ export function isImpassable(grid: TacticalGrid, x: number, y: number): boolean 
   return !!terrainInfoAt(grid, x, y).impassable;
 }
 
-/** Movement points per turn from speed (class moveBonus is applied at unit creation). */
 /** Whether a cell blocks sight (combat C6): a wall or a mountain. Off the board reads as solid; a terrain
  *  word this Engine does not know is seen across. */
 export function blocksSight(grid: TacticalGrid, x: number, y: number): boolean {
@@ -93,6 +92,7 @@ export function inReach(grid: TacticalGrid, from: TacticalCoord, to: TacticalCoo
   return distance >= min && distance <= max && hasLineOfSight(grid, from, to);
 }
 
+/** Movement points per turn from speed (class moveBonus is applied at unit creation). */
 export function deriveMovement(speed: number): number {
   return clamp(3 + Math.floor(speed / 10), 3, 6);
 }

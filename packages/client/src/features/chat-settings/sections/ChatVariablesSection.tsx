@@ -9,6 +9,7 @@ import { chatKeys, useUpdateChatMetadata } from "../../../hooks/use-chats";
 import { useUIStore } from "../../../stores/ui.store";
 import { useChatStore } from "../../../stores/chat.store";
 import { cn } from "../../../lib/utils";
+import { showConfirmDialog } from "../../../lib/app-dialogs";
 import { trackChatMetadataSave } from "../../../lib/chat-metadata-save-barrier";
 import {
   buildCommitPatch,
@@ -42,6 +43,9 @@ export function ChatVariablesSection({ sectionId, order, chatId, variables }: Ch
   const expanded = useUIStore((s) => s.chatSettingsExpandedSections[sectionId]);
 
   const [rows, setRows] = useState<VariableRow[]>(() => toRows(variables));
+  // removeRow waits for an answer; a save that lands meanwhile changes the row it must remove.
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
   const [pendingWrites, setPendingWrites] = useState(0);
   const queuedRowsRef = useRef(
     new Map<string, { savedName: string | null; pendingName: string | null; pendingValue: string; count: number }>(),
@@ -142,8 +146,21 @@ export function ChatVariablesSection({ sectionId, order, chatId, variables }: Ch
     );
   };
 
-  const removeRow = (key: string) => {
-    const row = rows.find((entry) => entry.key === key);
+  const removeRow = async (key: string) => {
+    // Ask first, so one stray tap cannot delete a variable. A blank new row has nothing to lose.
+    const asked = rows.find((entry) => entry.key === key);
+    const name = asked?.name.trim() || asked?.savedName;
+    if (
+      name &&
+      !(await showConfirmDialog({
+        title: localizeUi("ui.chatSettings.chatvariablessection.removeVariable"),
+        message: localizeUi("ui.chatSettings.chatvariablessection.removeNameFromThisChat", { name }),
+        confirmLabel: localizeUi("ui.chatSettings.chatvariablessection.remove"),
+        tone: "destructive",
+      }))
+    )
+      return;
+    const row = rowsRef.current.find((entry) => entry.key === key);
     setRows((current) => current.filter((entry) => entry.key !== key));
     if (!row) return;
     save(row, null, buildRemovePatch);
@@ -209,7 +226,7 @@ export function ChatVariablesSection({ sectionId, order, chatId, variables }: Ch
                     />
                     <button
                       type="button"
-                      onClick={() => removeRow(row.key)}
+                      onClick={() => void removeRow(row.key)}
                       title={localizeUi("ui.chatSettings.chatvariablessection.removeVariable")}
                       aria-label={localizeUi("ui.chatSettings.chatvariablessection.removeVariable")}
                       className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-colors hover:bg-[var(--destructive)]/15 hover:text-[var(--destructive)]"

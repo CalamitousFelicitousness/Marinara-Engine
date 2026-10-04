@@ -671,37 +671,41 @@ test.describe("Chat Settings window on desktop", () => {
   });
 });
 
-test("phones keep Chat Settings, Help and the Tracker Panel launcher in the chat toolbar", async ({
+test("phones open Chat Settings from the topbar as a sheet with Help and the Tracker Panel switch", async ({
   page,
   request,
 }, testInfo) => {
-  test.skip(!testInfo.project.name.includes("mobile"), "Phones keep today's toolbar presentation.");
+  test.skip(!testInfo.project.name.includes("mobile"), "Phones show Chat Settings as a sheet.");
   const chat = await createChat(request, "roleplay", { enableAgents: true });
   try {
     await prepare(page, chat.id, { trackerPanelEnabled: true, trackerPanelOpen: false });
     await page.goto("/");
     await expect(page.locator('[data-chat-mode="roleplay"]')).toBeVisible();
-    await expect(topbarSettings(page).filter({ visible: true })).toHaveCount(0);
-    await expect(page.locator('[data-tracker-panel-toggle="roleplay-hud"]').filter({ visible: true })).toHaveCount(1);
+    // The chat's own menu is gone (#7034); Chat Settings sits in the middle of the topbar.
+    await expect(page.getByRole("button", { name: "More options", exact: true })).toHaveCount(0);
+    await expect(page.locator('[data-chat-toolbar-panel-action="settings"]').filter({ visible: true })).toHaveCount(1);
+    const [topbar, buttonBox] = [await box(page.locator('[data-component="TopBar"]')), await box(topbarSettings(page))];
+    expect(Math.abs(buttonBox.x + buttonBox.width / 2 - (topbar.x + topbar.width / 2))).toBeLessThanOrEqual(2);
 
-    await page.getByRole("button", { name: "More options", exact: true }).click();
-    const menu = page.locator("[data-chat-toolbar-overflow-menu]");
-    await expect(menu.getByRole("button").first()).toHaveAccessibleName("Help");
-    await menu.getByRole("button", { name: "Chat Settings", exact: true }).click();
+    await topbarSettings(page).click();
     const sheet = settingsWindow(page);
     await expect(sheet).toBeVisible();
     // The loading placeholder shares the sheet; measure the real settings, not the one being replaced.
     await expect(sheet.locator("[data-chat-settings-section]").first()).toBeVisible();
     await expect(sheet).toHaveAttribute("data-presentation", "sheet");
     await expect(sheet.locator("[data-window-control]")).toHaveCount(1);
-    await expect(sheet.getByRole("button", { name: "Help", exact: true })).toHaveCount(0);
-    await expect(sheet.getByRole("button", { name: "Reset View", exact: true })).toHaveCount(0);
+    await expect(sheet.getByRole("button", { name: "Help", exact: true })).toBeVisible();
+    await expect(sheet.getByRole("button", { name: "Reset View", exact: true })).toBeVisible();
+    await expect(sheet.locator('[data-tracker-panel-toggle="chat-settings"]')).toBeVisible();
     const sheetBox = await box(sheet);
     const viewport = page.viewportSize()!;
     expect(sheetBox.x).toBeGreaterThanOrEqual(0);
     expect(sheetBox.x + sheetBox.width).toBeLessThanOrEqual(viewport.width);
-    await sheet.getByRole("button", { name: "Close chat settings", exact: true }).click();
+    // Help closes the sheet, which covers the chat, before it labels what is under it.
+    await sheet.getByRole("button", { name: "Help", exact: true }).click();
     await expect(sheet).toHaveCount(0);
+    await expect(page.locator('[data-chat-help-overlay="roleplay"]')).toBeVisible();
+    await expect(page.locator('[data-chat-help-highlight="settings"]')).toBeVisible();
   } finally {
     await request.delete(`/api/chats/${chat.id}?force=true`);
   }

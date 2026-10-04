@@ -105,7 +105,10 @@ function expectSameBox(actual: Box, expected: Box, label: string) {
 
 test.describe("Pop-out drawers on desktop", () => {
   test.beforeEach(({}, testInfo) => {
-    test.skip(!testInfo.project.name.includes("desktop"), "Phones keep every section in place until the mobile step.");
+    test.skip(
+      !testInfo.project.name.includes("desktop"),
+      "Phones pop sections out into bubbles (phone-bubbles.e2e.ts).",
+    );
   });
 
   test("a section pops out with its button, starts pinned, stays alone and goes back when closed", async ({
@@ -416,11 +419,11 @@ test.describe("Pop-out drawers on desktop", () => {
   });
 });
 
-test("phones keep every section in Chat Settings, even in a chat with a popped-out one", async ({
+test("a section popped out on a computer is a bubble on a phone, and its sheet puts it back", async ({
   page,
   request,
 }, testInfo) => {
-  test.skip(!testInfo.project.name.includes("mobile"), "Phones keep today's sheet until the mobile step.");
+  test.skip(!testInfo.project.name.includes("mobile"), "Phones show popped-out sections as bubbles.");
   const chat = await createChat(request, {
     windowLayout: {
       version: 1,
@@ -432,15 +435,19 @@ test("phones keep every section in Chat Settings, even in a chat with a popped-o
     await prepare(page, chat.id);
     await page.goto("/");
     await expect(page.locator('[data-chat-mode="roleplay"]')).toBeVisible({ timeout: 30_000 });
-    await expect(page.locator(`[data-window="${CHAT_NAME_WINDOW}"]`)).toHaveCount(0);
-    await page.getByRole("button", { name: "More options", exact: true }).click();
-    await page
-      .locator("[data-chat-toolbar-overflow-menu]")
-      .getByRole("button", { name: "Chat Settings", exact: true })
-      .click();
+    // The computer's window place is not used: a phone shows the section as a bubble, closed.
+    const bubble = page.locator(`.mari-window-bubble[data-window="${CHAT_NAME_WINDOW}"]`);
+    await expect(bubble).toBeVisible();
+    await expect(page.locator(`.mari-window[data-window="${CHAT_NAME_WINDOW}"]`)).toHaveCount(0);
+    await bubble.click();
+    const drawerSheet = page.locator(`.mari-window[data-window="${CHAT_NAME_WINDOW}"]`);
+    await expect(drawerSheet).toHaveAttribute("data-presentation", "sheet");
+    await drawerSheet.getByRole("button", { name: "Put back in Chat Settings" }).click();
+    await expect(bubble).toHaveCount(0);
+    await page.locator('[data-component="TopBar"]').getByRole("button", { name: "Chat Settings", exact: true }).click();
     const sheet = settingsWindow(page);
     await expect(sheet.locator('[data-drawer="chat-name"]')).toBeVisible();
-    await expect(sheet.locator("[data-drawer-control='pop-out']")).toHaveCount(0);
+    await expect(sheet.locator('[data-drawer="chat-name"] [data-drawer-control="pop-out"]')).toHaveCount(1);
   } finally {
     await request.delete(`/api/chats/${chat.id}?force=true`);
   }

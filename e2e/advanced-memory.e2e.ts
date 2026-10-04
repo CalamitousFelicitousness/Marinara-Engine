@@ -1422,9 +1422,6 @@ test("Advanced Memory keeps routine normal and guided replies quiet while preser
       }
       if (index === 1) {
         // Quiet progress remains available through the normal settings action.
-        if ((page.viewportSize()?.width ?? 0) < 768) {
-          await page.getByRole("button", { name: "More options", exact: true }).click();
-        }
         await page.getByRole("button", { name: "Chat Settings", exact: true }).filter({ visible: true }).click();
         const section = drawer.locator('[data-chat-settings-section="roleplay-memory-recall"]');
         const header = section.locator(':scope > [role="button"]');

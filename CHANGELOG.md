@@ -4,7 +4,9 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
-- On a computer, Game's **Session**, **Volume**, **Assets** and **Game controls** (Retry and the storyboard buttons), the **connected chat** and Roleplay's package toolbars are now small windows that minimize to buttons. The buttons start where the old ones were; drag one anywhere and it lines up with the others (hold Alt to place it freely). Click one to open its window beside it. Each chat remembers where its buttons are and which windows are open, and **Reset View** puts them back. Phones keep these controls in the chat's menu (#7034).
+- On a computer, Game's **Session**, **Volume**, **Assets** and **Game controls** (Retry and the storyboard buttons), the **connected chat** and Roleplay's package toolbars are now small windows that minimize to buttons. The buttons start where the old ones were; drag one anywhere and it lines up with the others (hold Alt to place it freely). Click one to open its window beside it. Each chat remembers where its buttons are and which windows are open, and **Reset View** puts them back. Conversation's package toolbars and Beholder work the same way, and a small dot on the **Chat Settings** button and in the **Trackers** window shows while agents run (#7034).
+
+- On phones, **Chat Settings** opens from the middle of the topbar, and the chat's menus are gone: its controls, any section you pop out of Chat Settings and, when you switch it on there, the **Tracker Panel** become small buttons you can drag anywhere. Tap one to open it; close it to get the button back, or use **Put back** to return a section to Chat Settings. Each chat remembers where they sit (#7034).
 
 - **Chat Branches**, **Chat Summary**, **Active Context**, **Author's Notes**, **Agent activity** (inside **Agents**) and the **Gallery** now live in **Chat Settings**, and **Search messages** sits at its top under the settings profile. Their buttons above the chat are gone, in every chat mode and on phones. While you type in Chat Settings on a phone, it fits above the keyboard (#7034).
 

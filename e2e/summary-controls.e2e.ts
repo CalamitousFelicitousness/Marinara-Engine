@@ -111,10 +111,8 @@ test("Chat Summary range fields fit long message numbers in a quiet box", async 
       { id, version },
     );
     await page.goto("/");
-    if (info.project.name.includes("mobile"))
-      await page.getByRole("button", { name: "More options", exact: true }).click();
-    await page.getByRole("button", { name: "Chat Summary", exact: true }).filter({ visible: true }).click();
-    const panel = page.locator("[data-chat-floating-panel]").filter({ hasText: "Chat Summary" });
+    // Chat Summary is a Chat Settings drawer (#7034).
+    const panel = await openChatSettingsTool(page, "chat-summary");
     const range = panel.getByRole("group", { name: "Range 1", exact: true });
     const from = range.getByRole("spinbutton", { name: "Range 1 from message", exact: true });
     const to = range.getByRole("spinbutton", { name: "Range 1 to message", exact: true });
@@ -197,10 +195,7 @@ test("Chat Summary keeps a remembered range when the message count arrives late"
         await route.continue();
       });
       await page.goto("/");
-      if (info.project.name.includes("mobile"))
-        await page.getByRole("button", { name: "More options", exact: true }).click();
-      await page.getByRole("button", { name: "Chat Summary", exact: true }).filter({ visible: true }).click();
-      const panel = page.locator("[data-chat-floating-panel]").filter({ hasText: "Chat Summary" });
+      const panel = await openChatSettingsTool(page, "chat-summary");
       const from = panel.getByRole("spinbutton", { name: "Range 1 from message", exact: true });
       const to = panel.getByRole("spinbutton", { name: "Range 1 to message", exact: true });
       await expect(from).toBeVisible();

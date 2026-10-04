@@ -106,13 +106,11 @@ test("chat tools live in Chat Settings in every mode and their top buttons are g
       const root = page.locator(`[data-chat-mode="${chat.mode}"]`);
       await expect(root).toBeVisible();
 
-      // Phones open the chat's menu first, so its buttons are on screen too.
+      // Phones have no chat menu any more: Chat Settings is in the topbar, the rest are bubbles.
       if (mobile) {
-        await page
-          .getByRole("button", { name: chat.mode === "game" ? "Game actions" : "More options", exact: true })
-          .filter({ visible: true })
-          .click();
-        await expect(page.locator("[data-chat-toolbar-overflow-menu]")).toBeVisible();
+        await expect(
+          page.getByRole("button", { name: /^(More options|Game actions)$/u }).filter({ visible: true }),
+        ).toHaveCount(0);
       }
       for (const name of REMOVED_BUTTONS) {
         await expect(page.getByRole("button", { name }).filter({ visible: true }), `${chat.mode}: ${name}`).toHaveCount(
@@ -167,12 +165,10 @@ test("chat tools live in Chat Settings in every mode and their top buttons are g
         expect(order, `${chat.mode} drawer order`).toEqual([...order].sort((a, b) => a - b));
       }
 
-      // Each drawer opens its content and, on a computer, can pop out like the other sections.
+      // Each drawer opens its content and can pop out like the other sections (into a bubble on a phone).
       for (const tool of TOOLS[chat.mode]) {
         const drawer = await openChatSettingsTool(page, tool);
-        await expect(drawer.locator(':scope > .mari-drawer__header [data-drawer-control="pop-out"]')).toHaveCount(
-          mobile ? 0 : 1,
-        );
+        await expect(drawer.locator(':scope > .mari-drawer__header [data-drawer-control="pop-out"]')).toHaveCount(1);
         const body = drawer.locator(":scope > .mari-drawer__body");
         await expect(body).toBeVisible();
         if (tool === "chat-branches") await expect(body.getByRole("button", { name: "Stats" })).toBeVisible();

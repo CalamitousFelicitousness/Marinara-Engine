@@ -105,7 +105,7 @@ async function savedWindowLayout(request: APIRequestContext, chatId: string) {
 
 test.describe("chat control windows on desktop", () => {
   test.beforeEach(({}, testInfo) => {
-    test.skip(!testInfo.project.name.includes("desktop"), "Phones keep the chat's menus for these controls.");
+    test.skip(!testInfo.project.name.includes("desktop"), "Phones show these as bubbles (phone-bubbles.e2e.ts).");
   });
 
   test("controls minimize to bubbles that drag, snap, restore and stay with the chat", async ({

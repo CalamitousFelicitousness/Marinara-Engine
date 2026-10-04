@@ -66,7 +66,10 @@ async function openChatSettings(page: Page) {
 
 test.describe("Roleplay trackers on desktop", () => {
   test.beforeEach(({}, testInfo) => {
-    test.skip(!testInfo.project.name.includes("desktop"), "Phones keep the tracker strip until the mobile step.");
+    test.skip(
+      !testInfo.project.name.includes("desktop"),
+      "Phones keep the tracker strip (and a Tracker Panel bubble).",
+    );
   });
 
   test("with the Tracker Panel on, trackers show only in the panel, which has Agent activity", async ({

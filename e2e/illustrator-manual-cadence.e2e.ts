@@ -215,9 +215,6 @@ test("Illustrator manual-only interval saves and survives reopening and chat set
       useUIStore.getState().closeAgentDetail();
     });
 
-    if (testInfo.project.name.includes("mobile")) {
-      await page.getByRole("button", { name: "More options", exact: true }).click();
-    }
     await page.getByRole("button", { name: "Chat Settings", exact: true }).click();
     const drawer = page.locator(".mari-chat-settings-drawer");
     const agents = drawer.locator('[role="button"][aria-expanded]').filter({ hasText: /^Agents/ });

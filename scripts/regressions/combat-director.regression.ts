@@ -268,6 +268,44 @@ assert.throws(
 );
 assert.notEqual(s.window?.kind, "reaction");
 assert.equal(s.enemies[0]!.mp, 30, "a blocked reaction never spends MP");
+// A reaction needs sight of its target too: a caster caught in a Fireball's blast, but behind a wall from
+// the one who cast it, cannot answer it; in the open it can.
+const witnessed = (walled: boolean) => {
+  const fight = createCombatDirector({
+    id: "enc-sight",
+    anchor: "anchor",
+    party: [{ ...hero, skills: [{ ...fire, areaRadius: 2 }, counter] }],
+    // A plain foe, and a witch who can only react. A boss's reaction waits for the GM, so its window stays
+    // open to be read; with no legendary points it opens no other window.
+    enemies: [
+      unit("foe", "enemy"),
+      { ...unit("witch", "enemy"), skills: [counter], boss: { points: 0, anticipation: false } },
+    ],
+    style: "tactical",
+    gm: true,
+    difficulty: "normal",
+    seed: 42,
+  });
+  commandCombatDirector(fight, { type: "begin", unitId: "hero" });
+  if (fight.window) commandCombatDirector(fight, { type: "choose", candidateId: "pass" }, "gm");
+  const at = (id: string, x: number, y: number) =>
+    Object.assign(
+      fight.tactical!.units.find((u) => u.id === id)!,
+      { x, y },
+    );
+  fight.tactical!.grid.tiles = fight.tactical!.grid.tiles.map((row) => row.map(() => "plains"));
+  at("hero", 1, 1);
+  at("foe", 5, 1);
+  at("witch", 5, 3);
+  if (walled) fight.tactical!.grid.tiles[2]![3] = "wall";
+  commandCombatDirector(fight, {
+    type: "tactical",
+    action: { type: "skill", unitId: "hero", skillName: "Fireball", targetId: "foe" },
+  });
+  return fight.window?.kind === "reaction" && fight.window.options.some((option) => option.actorId === "witch");
+};
+assert.equal(witnessed(false), true, "the witch in the blast answers a Fireball it sees");
+assert.equal(witnessed(true), false, "and not one cast from behind a wall");
 // Depleted MP + no slot gives no reaction, even when the spell would be lethal.
 s = make();
 commandCombatDirector(s, { type: "begin", unitId: "hero" });

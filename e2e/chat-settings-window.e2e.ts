@@ -3,6 +3,7 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { seedUIState } from "./ui-state-fixture.js";
+import { resetChatView } from "./chat-settings-tools.js";
 
 type ChatMode = "conversation" | "roleplay" | "game";
 type Box = { x: number; y: number; width: number; height: number };
@@ -75,8 +76,9 @@ async function setActiveChat(page: Page, chatId: string | null) {
   }, chatId);
 }
 
+/** The Chat Settings button in the chat (it used to sit in the topbar). */
 function topbarSettings(page: Page) {
-  return page.locator('[data-component="TopBar"]').getByRole("button", { name: "Chat Settings", exact: true });
+  return page.locator("[data-chat-settings-button]");
 }
 
 function settingsWindow(page: Page) {
@@ -132,7 +134,7 @@ test.describe("Chat Settings window on desktop", () => {
     test.skip(!testInfo.project.name.includes("desktop"), "The movable window is the desktop presentation.");
   });
 
-  test("the topbar Chat Settings button shows only in chats and replaces the old top buttons", async ({
+  test("the Chat Settings button sits in the chat, centred at the top, and only in chats", async ({
     page,
     request,
   }) => {
@@ -151,11 +153,23 @@ test.describe("Chat Settings window on desktop", () => {
         await setActiveChat(page, chat.id);
         const root = page.locator(`[data-chat-mode="${chat.mode}"]`);
         await expect(root).toBeVisible();
+        // The topbar has no Chat Settings button; the chat has its own, a bubble like the other windows'.
+        await expect(
+          page.locator('[data-component="TopBar"]').getByRole("button", { name: "Chat Settings", exact: true }),
+        ).toHaveCount(0);
         const button = topbarSettings(page);
         await expect(button).toBeVisible();
+        await expect(button).toHaveClass(/\bmari-window-bubble\b/u);
+        await expect(button).toHaveAccessibleName("Chat Settings");
+        await expect(button).toHaveAttribute("title", "Chat Settings");
         await expect(button).toHaveAttribute("aria-expanded", "false");
-        const [topbar, buttonBox] = [await box(page.locator('[data-component="TopBar"]')), await box(button)];
-        expect(Math.abs(buttonBox.x + buttonBox.width / 2 - (topbar.x + topbar.width / 2))).toBeLessThanOrEqual(2);
+        const [area, topbar, buttonBox] = [
+          await box(page.locator('[data-component="CenterContent"]')),
+          await box(page.locator('[data-component="TopBar"]')),
+          await box(button),
+        ];
+        expect(Math.abs(buttonBox.x + buttonBox.width / 2 - (area.x + area.width / 2))).toBeLessThanOrEqual(2);
+        expect(Math.abs(buttonBox.y - (topbar.y + topbar.height + MARGIN))).toBeLessThanOrEqual(1);
 
         // Settings, Help layout and the Tracker Panel launcher no longer sit among the chat's top buttons.
         await expect(root.locator('[data-chat-toolbar-panel-action="settings"]').filter({ visible: true })).toHaveCount(
@@ -163,9 +177,6 @@ test.describe("Chat Settings window on desktop", () => {
         );
         await expect(root.locator('[data-chat-help="help"]').filter({ visible: true })).toHaveCount(0);
         await expect(root.getByRole("button", { name: "Help", exact: true }).filter({ visible: true })).toHaveCount(0);
-        await expect(page.locator('[data-tracker-panel-toggle="roleplay-hud"]').filter({ visible: true })).toHaveCount(
-          0,
-        );
       }
 
       // A detail editor takes the chat's place, so the button leaves with it.
@@ -173,7 +184,7 @@ test.describe("Chat Settings window on desktop", () => {
         const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
         module.useUIStore.getState().openAgentCatalog();
       });
-      await expect(topbarSettings(page)).toHaveCount(0);
+      await expect(topbarSettings(page)).toBeHidden();
       await page.evaluate(async () => {
         const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
         module.useUIStore.getState().closeAgentCatalog();
@@ -184,6 +195,59 @@ test.describe("Chat Settings window on desktop", () => {
       await expect(topbarSettings(page)).toHaveCount(0);
     } finally {
       await Promise.all(chats.map((chat) => request.delete(`/api/chats/${chat.id}?force=true`)));
+    }
+  });
+
+  test("the Chat Settings button drags anywhere, stays with the chat and toggles the window", async ({
+    page,
+    request,
+  }) => {
+    const chat = await createChat(request, "conversation");
+    try {
+      await prepare(page, chat.id);
+      await page.goto("/");
+      await expect(page.locator('[data-chat-mode="conversation"]')).toBeVisible();
+      const button = topbarSettings(page);
+      const start = await box(button);
+      await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(start.x + start.width / 2 - 20, start.y + start.height / 2 + 20, { steps: 3 });
+      await page.mouse.move(start.x - 300 + start.width / 2, start.y + 240 + start.height / 2, { steps: 8 });
+      await page.mouse.up();
+      const placed = await box(button);
+      expect(Math.abs(placed.x - (start.x - 300))).toBeLessThanOrEqual(1);
+      expect(Math.abs(placed.y - (start.y + 240))).toBeLessThanOrEqual(1);
+      // A drag does not open Chat Settings; a click does, and a second click closes it again.
+      await expect(settingsWindow(page)).toHaveCount(0);
+      await expect
+        .poll(async () => {
+          const layout = (await readSavedLayout(request, chat.id)) as { bubbles?: Record<string, unknown> } | null;
+          return layout?.bubbles?.["chat-settings-button"] ?? null;
+        })
+        .toEqual({ x: placed.x, y: placed.y });
+      await button.click();
+      await expect(settingsWindow(page)).toBeVisible();
+      await expect(button).toHaveAttribute("aria-expanded", "true");
+      await button.click();
+      await expect(settingsWindow(page)).toHaveCount(0);
+      await expect(button).toBeFocused();
+      // The window's X closes it back to the button too.
+      await button.click();
+      await settingsWindow(page).getByRole("button", { name: "Close chat settings", exact: true }).click();
+      await expect(settingsWindow(page)).toHaveCount(0);
+      await expect(button).toBeFocused();
+
+      await page.reload();
+      await expect(page.locator('[data-chat-mode="conversation"]')).toBeVisible();
+      const reloaded = await box(topbarSettings(page));
+      expect(Math.abs(reloaded.x - placed.x)).toBeLessThanOrEqual(1);
+      expect(Math.abs(reloaded.y - placed.y)).toBeLessThanOrEqual(1);
+      // Reset View brings it back to the top centre.
+      await topbarSettings(page).click();
+      await resetChatView(page);
+      await expect.poll(async () => Math.abs((await box(topbarSettings(page))).x - start.x)).toBeLessThanOrEqual(1);
+    } finally {
+      await request.delete(`/api/chats/${chat.id}?force=true`);
     }
   });
 
@@ -263,12 +327,23 @@ test.describe("Chat Settings window on desktop", () => {
       await openSettingsWindow(page);
       expectSameBox(await box(settings), keyResized, "remembered after reload");
 
-      // Locked: no handles, and neither the pointer nor the keyboard moves it.
+      // A resize cue shows in the corner while the pointer is over the window, and fades away after.
+      const grip = settings.locator(".mari-window__resize-grip");
+      await expect(grip).toHaveCount(1);
+      await page.mouse.move(1, 450);
+      await settings.evaluate((element) => (element as HTMLElement).blur());
+      await expect(grip).toHaveCSS("opacity", "0");
+      await settings.locator(".mari-window__title").hover();
+      await expect(grip).toHaveCSS("opacity", "1");
+      await page.screenshot({ path: test.info().outputPath("resize-grip.png"), animations: "disabled" });
+
+      // Locked: no handles or cue, and neither the pointer nor the keyboard moves it.
       const lock = settings.getByRole("button", { name: "Lock window", exact: true });
       await lock.click();
       await expect(lock).toHaveAttribute("aria-pressed", "true");
       await expect(settings).toHaveAttribute("data-locked", "true");
       await expect(settings.locator(".mari-window__resize-handle")).toHaveCount(0);
+      await expect(settings.locator(".mari-window__resize-grip")).toHaveCount(0);
       await expect(settings.getByRole("group", { name: "Move window with the arrow keys", exact: true })).toHaveCount(
         0,
       );
@@ -332,11 +407,33 @@ test.describe("Chat Settings window on desktop", () => {
       await expect(settings).toHaveCount(0);
       await expect(button).toBeFocused();
 
-      // Reset View puts the window back where it started, unpinned and unlocked.
+      // Reset View, an icon before pin and lock, asks first: Cancel keeps the layout, Reset restores it.
       await openSettingsWindow(page);
       await settings.getByRole("button", { name: "Pin window", exact: true }).click();
       await settings.getByRole("button", { name: "Lock window", exact: true }).click();
-      await settings.getByRole("button", { name: "Reset View", exact: true }).click();
+      const controls = await settings
+        .locator(".mari-window__controls > button")
+        .evaluateAll((elements) =>
+          elements.map(
+            (element) =>
+              element.getAttribute("data-chat-settings-control") ?? element.getAttribute("data-window-control"),
+          ),
+        );
+      expect(controls.filter((control) => control !== "tracker-panel")).toEqual(["reset-view", "pin", "lock", "close"]);
+      const resetIcon = settings.getByRole("button", { name: "Reset View", exact: true });
+      await expect(resetIcon).toHaveAttribute("title", "Reset View");
+      const lockedBox = await box(settings);
+      await resetIcon.click();
+      const confirm = page.getByRole("dialog", { name: "Are you sure you want to reset the view?" });
+      await expect(confirm).toContainText("Every window and section goes back to its default place for this chat.");
+      await confirm.getByRole("button", { name: "Cancel", exact: true }).click();
+      await expect(confirm).toHaveCount(0);
+      await expect(resetIcon).toBeFocused();
+      await expect(settings).toHaveAttribute("data-pinned", "true");
+      await expect(settings).toHaveAttribute("data-locked", "true");
+      expectSameBox(await box(settings), lockedBox, "cancelled reset");
+      await resetChatView(page);
+      await expect(resetIcon).toBeFocused();
       await expect(settings).toHaveAttribute("data-pinned", "false");
       await expect(settings).toHaveAttribute("data-locked", "false");
       expectSameBox(await box(settings), defaultBox, "reset view");
@@ -412,31 +509,61 @@ test.describe("Chat Settings window on desktop", () => {
     }
   });
 
-  test("the Tracker Panel switch in Chat Settings replaces the Roleplay HUD launcher", async ({ page, request }) => {
+  test("the Tracker Panel dice in the Chat Settings title bar turns the panel on and off", async ({
+    page,
+    request,
+  }) => {
     const chats = [
-      await createChat(request, "roleplay", { enableAgents: true }),
+      await createChat(request, "roleplay", { enableAgents: true, activeAgentIds: ["world-state"] }),
       await createChat(request, "conversation", { enableAgents: true }),
       await createChat(request, "game"),
     ];
     try {
       // The panel's default side is the right, where the window opens too.
       await prepare(page, chats[0]!.id, {
-        trackerPanelEnabled: true,
+        trackerPanelEnabled: false,
         trackerPanelOpen: false,
         trackerPanelSide: "right",
+        trackerWindowOpen: true,
       });
       await page.goto("/");
       await expect(page.locator('[data-chat-mode="roleplay"]')).toBeVisible();
+      const trackersWindow = page.locator('.mari-window[data-window="trackers"]');
+      await expect(trackersWindow).toBeVisible();
       const settings = await openSettingsWindow(page);
       const defaultBox = await box(settings);
-      const toggle = settings.locator('[data-tracker-panel-toggle="chat-settings"]');
-      const trackerSwitch = toggle.getByRole("checkbox", { name: "Tracker Panel", exact: true });
-      await expect(trackerSwitch).not.toBeChecked();
-      await toggle.getByText("Tracker Panel", { exact: true }).click();
-      await expect(trackerSwitch).toBeChecked();
+      // No switch row for the Tracker Panel; Reset View and the dice sit before pin and lock.
+      await expect(settings.locator("[data-chat-settings-top-row] [data-tracker-panel-toggle]")).toHaveCount(0);
+      const controls = await settings
+        .locator(".mari-window__controls > button")
+        .evaluateAll((elements) =>
+          elements.map(
+            (element) =>
+              element.getAttribute("data-chat-settings-control") ?? element.getAttribute("data-window-control"),
+          ),
+        );
+      expect(controls).toEqual(["reset-view", "tracker-panel", "pin", "lock", "close"]);
+      const dice = settings.getByRole("button", { name: "Tracker Panel", exact: true });
+      await expect(dice).toHaveAttribute("title", "Tracker Panel");
+      await expect(dice).toHaveAttribute("aria-pressed", "false");
+      // With the panel off the Tracker window switch still brings the Trackers window back.
+      await expect(settings.locator('[data-tracker-window-toggle="chat-settings"]')).toBeVisible();
+
+      // One click: on, highlighted and shown, and the Trackers window gives way.
+      await dice.click();
+      await expect(dice).toHaveAttribute("aria-pressed", "true");
       const tracker = page.locator('[data-component="TrackerDataSidebarDesktop.right"]');
       await expect(tracker).toBeVisible();
+      await expect(trackersWindow).toHaveCount(0);
+      await expect(settings.locator('[data-tracker-window-toggle="chat-settings"]')).toHaveCount(0);
       await expect(settings).toBeVisible();
+      const ui = () =>
+        page.evaluate(async (chatId) => {
+          const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
+          const state = module.useUIStore.getState();
+          return [state.trackerPanelEnabled, state.trackerPanelOpen, state.trackerPanelOpenByChatId[chatId]];
+        }, chats[0]!.id);
+      expect(await ui()).toEqual([true, true, true]);
       // A window the user has not moved makes room for the panel instead of covering it.
       const trackerLeft = async () => tracker.evaluate((element) => (element as HTMLElement).offsetLeft);
       await expect
@@ -450,9 +577,14 @@ test.describe("Chat Settings window on desktop", () => {
         );
       });
       expect(covered, "the Tracker Panel is not under the window").toBe(false);
-      await toggle.getByText("Tracker Panel", { exact: true }).click();
-      await expect(trackerSwitch).not.toBeChecked();
+      await page.screenshot({ path: test.info().outputPath("tracker-dice-on.png"), animations: "disabled" });
+
+      // The next click: off and hidden, and the trackers go back to the Trackers window.
+      await dice.click();
+      await expect(dice).toHaveAttribute("aria-pressed", "false");
       await expect(page.locator('[data-component="TrackerDataSidebar"]:visible')).toHaveCount(0);
+      await expect(trackersWindow).toBeVisible();
+      expect(await ui()).toEqual([false, false, false]);
       await expect.poll(async () => (await box(settings)).x).toBeCloseTo(defaultBox.x, 0);
 
       for (const chat of chats.slice(1)) {
@@ -465,6 +597,68 @@ test.describe("Chat Settings window on desktop", () => {
       }
     } finally {
       await Promise.all(chats.map((chat) => request.delete(`/api/chats/${chat.id}?force=true`)));
+    }
+  });
+
+  test("Chat Settings explains moving it, and a Roleplay tip says so once until dismissed", async ({
+    page,
+    request,
+  }) => {
+    const roleplay = await createChat(request, "roleplay");
+    const conversation = await createChat(request, "conversation");
+    try {
+      await prepare(page, roleplay.id);
+      await page.goto("/");
+      await expect(page.locator('[data-chat-mode="roleplay"]')).toBeVisible();
+      const settings = await openSettingsWindow(page);
+      const hint = settings.locator("[data-chat-settings-top-row]").filter({ hasText: "Drag this window" });
+      await expect(hint).toContainText(
+        "Drag this window's title bar to move it, and drag its edges to resize it. Drag a section's title out",
+      );
+
+      // The tip points at the Chat Settings button: dragging it is the thing to discover.
+      const tip = page.locator("[data-chat-settings-move-tip]");
+      await expect(tip).toHaveText("Drag and drop to place Chat Settings wherever you want.");
+      // It leaves focus alone, sits just under the button and stays clear of the window's buttons.
+      await expect(tip.locator(":focus")).toHaveCount(0);
+      const tipBox = await box(tip);
+      const buttonBox = await box(topbarSettings(page));
+      expect(tipBox.y).toBeGreaterThanOrEqual(buttonBox.y + buttonBox.height);
+      expect(tipBox.y - (buttonBox.y + buttonBox.height)).toBeLessThan(16);
+      const controlsBox = await box(settings.locator(".mari-window__controls"));
+      const overlapsControls =
+        tipBox.x < controlsBox.x + controlsBox.width &&
+        controlsBox.x < tipBox.x + tipBox.width &&
+        tipBox.y < controlsBox.y + controlsBox.height &&
+        controlsBox.y < tipBox.y + tipBox.height;
+      expect(overlapsControls).toBe(false);
+      await page.screenshot({ path: test.info().outputPath("move-tip.png"), animations: "disabled" });
+
+      // Not in other modes.
+      await settings.getByRole("button", { name: "Close chat settings", exact: true }).click();
+      await setActiveChat(page, conversation.id);
+      await expect(page.locator('[data-chat-mode="conversation"]')).toBeVisible();
+      await expect(page.locator("[data-chat-settings-move-tip]")).toHaveCount(0);
+      await setActiveChat(page, roleplay.id);
+      await expect(page.locator('[data-chat-mode="roleplay"]')).toBeVisible();
+      await expect(tip).toBeVisible();
+
+      // Its X dismisses it for good on this device. A fresh page (this one re-seeds its preferences on
+      // every load) shares the device's storage and keeps it hidden after a reload.
+      await tip.getByRole("button", { name: "Dismiss tip", exact: true }).click();
+      await expect(page.locator("[data-chat-settings-move-tip]")).toHaveCount(0);
+      const fresh = await page.context().newPage();
+      await fresh.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: "" } }));
+      await fresh.goto("/");
+      await expect(fresh.locator('[data-chat-mode="roleplay"]')).toBeVisible({ timeout: 30_000 });
+      await fresh.reload();
+      await expect(fresh.locator('[data-chat-mode="roleplay"]')).toBeVisible({ timeout: 30_000 });
+      await expect(fresh.locator("[data-chat-settings-button]")).toBeVisible();
+      await expect(fresh.locator("[data-chat-settings-move-tip]")).toHaveCount(0);
+      await fresh.close();
+    } finally {
+      await request.delete(`/api/chats/${roleplay.id}?force=true`);
+      await request.delete(`/api/chats/${conversation.id}?force=true`);
     }
   });
 
@@ -528,6 +722,7 @@ test.describe("Chat Settings window on desktop", () => {
             "window-lock": '[data-window="chat-settings"] [data-window-control="lock"]',
             "window-close": '[data-window="chat-settings"] [data-window-control="close"]',
             "tracker-panel": '[data-tracker-panel-toggle="chat-settings"]',
+            "agent-activity": '[data-window="chat-settings"] [data-drawer$="-agent-activity"] > .mari-drawer__header',
           };
           overlayElement.style.visibility = "hidden";
           try {
@@ -634,7 +829,7 @@ test.describe("Chat Settings window on desktop", () => {
     }
   });
 
-  test("the topbar button sends an open control window back to its button, as it closed popovers", async ({
+  test("the Chat Settings button sends an open control window back to its button, as it closed popovers", async ({
     page,
     request,
   }) => {
@@ -671,37 +866,48 @@ test.describe("Chat Settings window on desktop", () => {
   });
 });
 
-test("phones keep Chat Settings, Help and the Tracker Panel launcher in the chat toolbar", async ({
+test("phones open Chat Settings from the topbar as a sheet with Help and the Tracker Panel dice", async ({
   page,
   request,
 }, testInfo) => {
-  test.skip(!testInfo.project.name.includes("mobile"), "Phones keep today's toolbar presentation.");
+  test.skip(!testInfo.project.name.includes("mobile"), "Phones show Chat Settings as a sheet.");
   const chat = await createChat(request, "roleplay", { enableAgents: true });
   try {
     await prepare(page, chat.id, { trackerPanelEnabled: true, trackerPanelOpen: false });
     await page.goto("/");
     await expect(page.locator('[data-chat-mode="roleplay"]')).toBeVisible();
-    await expect(topbarSettings(page).filter({ visible: true })).toHaveCount(0);
-    await expect(page.locator('[data-tracker-panel-toggle="roleplay-hud"]').filter({ visible: true })).toHaveCount(1);
+    // The chat's own menu is gone (#7034); the Chat Settings button sits centred at the top of the chat.
+    await expect(page.getByRole("button", { name: "More options", exact: true })).toHaveCount(0);
+    await expect(page.locator('[data-chat-toolbar-panel-action="settings"]').filter({ visible: true })).toHaveCount(1);
+    const [area, buttonBox] = [
+      await box(page.locator('[data-component="CenterContent"]')),
+      await box(topbarSettings(page)),
+    ];
+    expect(Math.abs(buttonBox.x + buttonBox.width / 2 - (area.x + area.width / 2))).toBeLessThanOrEqual(2);
+    await expect(
+      page.locator('[data-component="TopBar"]').getByRole("button", { name: "Chat Settings", exact: true }),
+    ).toHaveCount(0);
 
-    await page.getByRole("button", { name: "More options", exact: true }).click();
-    const menu = page.locator("[data-chat-toolbar-overflow-menu]");
-    await expect(menu.getByRole("button").first()).toHaveAccessibleName("Help");
-    await menu.getByRole("button", { name: "Chat Settings", exact: true }).click();
+    await topbarSettings(page).click();
     const sheet = settingsWindow(page);
     await expect(sheet).toBeVisible();
     // The loading placeholder shares the sheet; measure the real settings, not the one being replaced.
     await expect(sheet.locator("[data-chat-settings-section]").first()).toBeVisible();
     await expect(sheet).toHaveAttribute("data-presentation", "sheet");
     await expect(sheet.locator("[data-window-control]")).toHaveCount(1);
-    await expect(sheet.getByRole("button", { name: "Help", exact: true })).toHaveCount(0);
-    await expect(sheet.getByRole("button", { name: "Reset View", exact: true })).toHaveCount(0);
+    await expect(sheet.getByRole("button", { name: "Help", exact: true })).toBeVisible();
+    // Reset View and the Tracker Panel dice sit in the sheet's title bar, as on a computer.
+    await expect(sheet.getByRole("button", { name: "Reset View", exact: true })).toBeVisible();
+    await expect(sheet.getByRole("button", { name: "Tracker Panel", exact: true })).toBeVisible();
     const sheetBox = await box(sheet);
     const viewport = page.viewportSize()!;
     expect(sheetBox.x).toBeGreaterThanOrEqual(0);
     expect(sheetBox.x + sheetBox.width).toBeLessThanOrEqual(viewport.width);
-    await sheet.getByRole("button", { name: "Close chat settings", exact: true }).click();
+    // Help closes the sheet, which covers the chat, before it labels what is under it.
+    await sheet.getByRole("button", { name: "Help", exact: true }).click();
     await expect(sheet).toHaveCount(0);
+    await expect(page.locator('[data-chat-help-overlay="roleplay"]')).toBeVisible();
+    await expect(page.locator('[data-chat-help-highlight="settings"]')).toBeVisible();
   } finally {
     await request.delete(`/api/chats/${chat.id}?force=true`);
   }

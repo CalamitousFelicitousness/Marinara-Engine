@@ -38,15 +38,17 @@ The **Present Characters** widget shows up to three character emoji plus a "+N" 
 
 ## The Trackers window
 
-On a computer, with the **Tracker Panel** turned off in Settings, a Roleplay chat's trackers show in a **Trackers** window. It opens at the top left of the chat. You can move it by its title bar, resize it from its edges, and use the buttons in its top-right corner:
+On a computer, while the **Tracker Panel** is off, a Roleplay chat's trackers show in a **Trackers** window. It opens at the top left of the chat. You can move it by its title bar, resize it from its edges, and use the buttons in its top-right corner:
 
 - **Pin** keeps it open when you click elsewhere. It starts pinned.
 - **Lock** stops it from moving or resizing.
-- **Close** hides it. To show it again, open **Chat Settings** and turn on **Tracker window** at the top, or press **Reset View** there.
+- **Close** hides it. To show it again, open **Chat Settings** and turn on **Tracker window** at the top, or use **Reset View** (the circular arrow in its title bar).
 
-Each tracker has its own drawer. Click a drawer's header to collapse it to the tracker's small widget preview, and click it again to see the whole tracker. Marinara remembers which drawers you collapsed.
+While agents are working on the chat, a small dot shows beside the window's title (and on the **Chat Settings** button).
 
-A tracker can also get its own window: click the pop-out button beside its arrow, or drag its title out of the Trackers window. The new window starts pinned and stays open when you close the Trackers window. Click its **X** button (**Put back in Trackers**), or drag it back onto the Trackers window, to return it. Each chat remembers which trackers are out and where.
+Each tracker has its own collapsible section, called a drawer. Click a drawer's header to collapse it to the tracker's small widget preview, and click it again to see the whole tracker. Marinara remembers which drawers you collapsed.
+
+A tracker can also get its own window: click the pop-out button beside its arrow, or drag its title out of the Trackers window. The new window starts pinned and stays open when you close the Trackers window. Its **X** shrinks it to a small button with the tracker's icon, which reopens it where you left it. Click **Put back in Trackers** (the curved arrow just left of **X**), or drag it back onto the Trackers window, to return it. Each chat remembers which trackers are out and where.
 
 At the bottom, **Agent activity** shows what the chat's agents did. From there you can re-run the trackers, retry agents that failed, stop running agents, and **Clear Trackers**. The Tracker Panel has the same section at its bottom.
 
@@ -87,15 +89,15 @@ Inside each popover there is a small refresh (circular arrow) button. Click it t
 
 In **Chat Settings → Agents**, **Manual Trackers** moves every enabled tracker to manual control. You can instead leave that switch off and set only selected agents to manual under **Individual tracker schedule**. A refresh button appears whenever at least one tracker is manual: in the HUD row on a phone, and next to the title of the Trackers window on a computer. Click it to run the manual tracker set for the current turn. The refresh button inside each tracker still runs that individual tracker directly.
 
-**Agent activity** sits at the top of **Chat Settings → Agents**, at the bottom of the Tracker Panel, and on a computer at the bottom of the Trackers window. From there you can re-run all trackers, retry any agents that failed, and use **Clear Trackers** to wipe all tracked world state for the chat. **Clear Trackers** cannot be undone, so use it with care.
+**Agent activity** has its own section just below **Agents** in **Chat Settings**, at the bottom of the Tracker Panel, and on a computer at the bottom of the Trackers window. From there you can re-run all trackers, retry any agents that failed, and use **Clear Trackers** to wipe all tracked world state for the chat. **Clear Trackers** cannot be undone, so use it with care.
 
 ## The Tracker Panel
 
 The **Tracker Panel** is a larger side panel that shows the same tracker data as the compact HUD widgets. It gives the tracker cards more room and adds portrait and thought features. You set it up in **Settings**, under the **Appearance** tab, in the **Tracker Panel** section.
 
-To show or hide it in a Roleplay chat on a computer, open **Chat Settings** and use the **Tracker Panel** switch at the top.
+To turn it on in a Roleplay chat, open **Chat Settings** and click the **Tracker Panel** button (the die) in its title bar, next to pin and lock. It stays highlighted while the panel is on, and the panel shows beside the chat. Click it again to turn the panel off and hide it. On a computer, the trackers then show in the Trackers window.
 
-<!-- TODO(#7034 mobile): showing and hiding the Tracker Panel on a phone -->
+On a phone, turning it on puts a Tracker Panel button on the chat that you can drag anywhere. Tap it to open the panel; closing the panel goes back to the button. With the panel off, the HUD row keeps the tracker widgets.
 
 The controls in the panel header also let you customize tracker structure:
 
@@ -108,8 +110,8 @@ Custom field names define the structure and remain stable across tracker runs. T
 
 These settings control it:
 
-- **Tracker Panel**: the master on or off toggle. It is on by default. When on, the label reads "Shown in the Roleplay HUD". When off, it reads "Trackers show in a movable window instead", and trackers show in the Trackers window on a computer.
-- **Replace tracker HUD icons**: hides the compact icon strip on phones and lets the panel dock to the screen edge instead.
+- **Tracker Panel**: the master on or off toggle, the same one the die in Chat Settings turns on and off. It is on by default. When on, the label reads "Shown in the Roleplay HUD". When off, trackers show in the Trackers window on a computer.
+- **Replace tracker HUD icons**: hides the compact icon strip on phones and lets the panel dock to the screen edge instead. The **Agents & Actions** button stays visible.
 - **Use expression sprites for tracker portraits**: lets tracker portraits use a character's expression sprite (their current emotion portrait) instead of the plain avatar, when one exists. Expression sprites are explained in [Character Sprites](../characters/sprites.md).
 - **Panel background**: a color or gradient picker for the panel's background.
 - **Desktop size**: choose the panel width. The options are **Compact**, **Standard**, and **Expanded**.

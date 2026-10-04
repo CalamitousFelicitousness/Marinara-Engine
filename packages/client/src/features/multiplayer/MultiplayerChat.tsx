@@ -1,6 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Settings2 } from "lucide-react";
 import {
   multiplayerErrorCodeSchema,
   type Chat,
@@ -26,7 +25,6 @@ import { useCharacters } from "../../hooks/use-characters";
 import { parseCharacterDisplayData } from "../../lib/character-display";
 import { readChatMetadata } from "../../lib/chat-wizard-defaults";
 import { showAlertDialog, showConfirmDialog } from "../../lib/app-dialogs";
-import { ChatToolbarButton } from "../../components/chat/ChatToolbarControls";
 import { MultiplayerGuestFrame } from "./MultiplayerGuestFrame";
 import { MultiplayerGuestView } from "./MultiplayerGuestView";
 import {
@@ -345,14 +343,7 @@ function HostedMultiplayerChat({ chat }: { chat: Chat }) {
             >
               {t(participantOpen ? "multiplayer.closeControls" : "multiplayer.yourCharacters")}
             </button>
-            {/* Desktop opens Chat Settings from the topbar. */}
-            <ChatToolbarButton
-              icon={<Settings2 size={16} />}
-              title={t("chat.toolbar.settings")}
-              panelAction="settings"
-              className="md:hidden"
-              onClick={(event) => openSettings(null, event.currentTarget)}
-            />
+            {/* Chat Settings opens from the topbar. */}
           </div>
           {participantOpen && (
             <div className="max-h-[50dvh] shrink-0 overflow-y-auto border-b border-[var(--border)]">

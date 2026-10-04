@@ -26,7 +26,14 @@ const questTrackerPanel = readSource(
 );
 const globals = readSource("packages/client/src/styles/globals.css");
 
-assert.ok(roleplayHud.includes("item.id}-beholder-launcher"), "Beholder must still launch from the tracker strip");
+const roleplayTrackerWindow = readSource("packages/client/src/components/chat/RoleplayTrackerWindow.tsx");
+// #7034: Beholder launches from its own control window (a bubble) instead of the tracker strip.
+assert.match(
+  roleplayTrackerWindow,
+  /packages\.beholder\.map[\s\S]*<ChatControlWindow[\s\S]*CHAT_CONTROL_WINDOW_IDS\.beholder\(item\.id\)[\s\S]*<RoleplayTrackerCapability/u,
+  "Beholder must still launch, from its own control window",
+);
+assert.doesNotMatch(roleplayHud, /beholder-launcher/u, "the tracker strip must not keep a second Beholder launcher");
 assert.doesNotMatch(
   roleplayHud,
   /RoleplayHUDActionsMenu/u,

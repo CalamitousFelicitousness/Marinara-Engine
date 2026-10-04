@@ -61,17 +61,17 @@ The first form sets the expression for the scene. The second form targets one na
 
 ## The chat tools
 
-The chat's tools are sections of **Chat Settings**. Open it from the button in the middle of the top bar on a computer, or from **More options** on a phone. In a Roleplay chat you find:
+The chat's tools are sections of **Chat Settings**. Open it with the sliders button inside the chat; the button starts at the top centre and can be dragged to another spot. In a Roleplay chat you find:
 
 - **Search messages**, at the top. Finds a message by its words or its number.
 - **Chat Branches**. Switches, renames, exports and imports the chat's branches. See [Chat Branches](../chats/branches.md).
 - **Chat Summary**. Shows and edits the rolling summary of the chat.
 - **Active Context**. Lists the linked characters, lorebook entries, and preset that fed the last reply. It shows which lorebook entries matched and were injected.
-- **Agent activity**, inside **Agents**. See below.
+- **Agent activity**, just below **Agents**. See below.
 - **Author's Notes**. A free-text note added to the prompt every turn. See below.
 - **Gallery**. The chat's images and videos, where you can generate an illustration or background.
 
-On a computer, you can pop any of these out into its own window. See [Chat Settings Overview](../chats/chat-settings.md).
+You can pop out a section to keep it in a separate window, or open it from its own button on a phone. See [Chat Settings Overview](../chats/chat-settings.md).
 
 ### Author's Notes
 
@@ -85,7 +85,7 @@ Author's Notes also works the same way in Game Mode and Conversation Mode. This 
 
 ## Agent activity
 
-**Agent activity** shows what the chat's agents did. It appears once the chat uses agents or Advanced Memory. Find it at the top of the **Agents** section in **Chat Settings**. It is also at the bottom of the **Tracker Panel** and, on a computer, of the **Trackers** window.
+**Agent activity** shows what the chat's agents did. It appears once the chat uses agents or Advanced Memory. Find its own section just below **Agents** in **Chat Settings**. It is also at the bottom of the **Tracker Panel** and, on a computer, of the **Trackers** window.
 
 Its **Activity** tab lists agent outputs, called thought bubbles. You can dismiss each one or use **Clear all**. Custom agent outputs also appear here.
 

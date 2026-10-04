@@ -52,9 +52,6 @@ for (const scenario of scenarios) {
         return panel;
       }
 
-      if (testInfo.project.name.includes("mobile")) {
-        await page.getByRole("button", { name: "More options", exact: true }).click();
-      }
       await page.getByRole("button", { name: "Chat Settings", exact: true }).filter({ visible: true }).click();
       const drawer = page.locator(".mari-chat-settings-drawer");
       await expect(drawer).toBeVisible();

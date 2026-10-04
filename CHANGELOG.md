@@ -4,15 +4,14 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
-- The chat's tools now live in **Chat Settings** on every device. On a computer, Chat Settings, the trackers and the chat's controls are also windows you can move, resize, pin and arrange:
-  - **Chat Branches**, **Chat Summary**, **Active Context**, **Author's Notes**, **Agent activity** (inside **Agents**) and the **Gallery** are sections of Chat Settings, and **Search messages** sits at its top under the settings profile. Their buttons above the chat are gone in every mode, on phones too. On phones, Chat Settings opens as a sheet that fits above the keyboard while you type.
-  - Chat Settings opens from a button in the middle of the top bar as a window you can move, resize, pin and lock. Unpinned, it closes when you click elsewhere or press Escape outside a text box or open menu. **Help** opens from the **?** beside its title and labels the window too. The **Tracker Panel** or **Tracker window** switch and **Reset View** sit at its top, and the short description of each chat mode is gone.
-  - Any section of Chat Settings, and any tracker in the **Trackers** window, can pop out into its own window with the button beside its **?** or by dragging its title out. It goes back when you close it or drop it on its old window. Each chat remembers its window layout, settings profiles save it, and **Reset View** puts everything back.
-  - A Game's **Game controls** (Retry and the storyboard buttons), **Session**, **Volume** and **Game Assets**, the **connected chat** in every mode and Roleplay's package controls are small windows that shrink to buttons. Drag a button anywhere and it lines up with the others (hold Alt to place it freely), then click it to open its window. Conversation **Calls** stays as it was.
-  - Roleplay trackers no longer sit in a row of icons above the chat on a computer. With the **Tracker Panel** on, they show only in the panel. With it off in Settings, they show in a **Trackers** window with a drawer per tracker that shrinks to its small preview. The window, the Tracker Panel and Chat Settings' **Agents** have an **Agent activity** section to see what agents did, stop or retry them, re-run trackers and clear them.
-  - Custom themes can restyle every chat window, section, button and snap guide with shared `mari-window` and `mari-drawer` classes, data attributes and `--mari-window-*` / `--mari-drawer-*` variables, listed in the theming guide (#7034, #7036).
+- Chat tools now live in **Chat Settings**, which opens from a movable sliders button inside the chat. Each chat remembers where you put its buttons and windows (#7034, #7036).
+  - **Chat Branches**, **Chat Summary**, **Active Context**, **Author's Notes**, **Agent activity** and **Gallery** have their own sections. **Search messages**, **Bookmarks** and **Trash** are together at the top.
+  - On a computer, move and resize Chat Settings or pop a section out into its own window. Pin a window to keep it open, or lock it to prevent accidental moves. Closing a popped-out section shrinks it to a button; **Put back** returns it to its original window.
+  - On phones, Chat Settings and the other chat windows open as full-width panels. Popped-out sections and chat controls have movable buttons, and panels fit above the keyboard while you type.
+  - Game controls, connected chats and package controls open from movable buttons too. In Roleplay, the **Tracker Panel** button in Chat Settings turns the panel on or off. With it off, trackers appear in a **Trackers** window on computers and as compact widgets on phones.
+  - **Help** is beside the Chat Settings title. **Reset View** restores the starting layout after confirmation, and settings profiles can save your layout for reuse.
+  - Custom themes can style windows, drawers and buttons with the shared classes and variables listed in the theming guide.
 
-  <!-- TODO(#7034 mobile): phone behaviour for popped-out sections, the Tracker Panel icon and control buttons -->
 - The Chats sidebar status prompt now reads **What's up?** to fit its field, and Advanced Settings labels the multiplayer section **Multiplayer WIP** (#7051).
 
 - In Roleplay **Advanced Memory**, you can now edit and save a scene summary's **Story timeframe**, or clear it when the story date is unknown (#7047).

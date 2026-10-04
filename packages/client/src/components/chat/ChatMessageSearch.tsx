@@ -85,7 +85,8 @@ export function ChatMessageSearch({ chatId }: { chatId: string }) {
       <div
         role="tablist"
         aria-label={localizeUi("ui.chat.messagemarks.panelViews")}
-        className="flex shrink-0 gap-1 border-b border-[var(--border)] px-3 py-1.5"
+        // One block with the search bar or list below it: no divider between the views and their content.
+        className="flex shrink-0 gap-1 px-3 pb-1 pt-2.5"
       >
         {PANEL_VIEWS.map(({ id, icon: Icon, labelKey }) => (
           <button
@@ -111,7 +112,7 @@ export function ChatMessageSearch({ chatId }: { chatId: string }) {
       </div>
 
       {view === "search" && (
-        <div className="shrink-0 p-3">
+        <div className="shrink-0 px-3 pb-3 pt-1.5">
           <div className="relative">
             <Search
               size="0.875rem"

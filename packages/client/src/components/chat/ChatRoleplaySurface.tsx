@@ -13,7 +13,6 @@ import {
   useState,
   type ComponentProps,
   type CSSProperties,
-  type MouseEvent as ReactMouseEvent,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -40,12 +39,10 @@ import {
   BookOpen,
   FileText,
   Loader2,
-  Settings2,
   ChevronUp,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  ArrowRightLeft,
   User,
   Puzzle,
 } from "lucide-react";
@@ -73,14 +70,10 @@ import { CapabilityElement } from "../capabilities/CapabilityElement";
 import { ChatMessage } from "./ChatMessage";
 import { ChatInput } from "./ChatInput";
 import { CyoaChoices } from "./CyoaChoices";
-import { ChatHelpButton } from "./ChatHelpButton";
 import { CHAT_CONTROL_WINDOW_IDS, ChatConnectedChatWindow, ChatControlWindow } from "./ChatControlWindow";
-import {
-  CHAT_TOOLBAR_ICON_GAP_CLASS,
-  ChatToolbarButton,
-  ChatToolbarMenu,
-  getChatToolbarButtonClass,
-} from "./ChatToolbarControls";
+import { TrackerPanelBubble } from "./TrackerPanelBubble";
+import { useMatchMedia } from "../../hooks/use-match-media";
+import { CHAT_TOOLBAR_ICON_GAP_CLASS, getChatToolbarButtonClass } from "./ChatToolbarControls";
 import { TranscriptWindowControls } from "./TranscriptWindowControls";
 import { EndSceneBar } from "./SceneBanner";
 import { ChatCommonOverlays, type ChatSettingsTools } from "./ChatCommonOverlays";
@@ -784,7 +777,6 @@ type RoleplaySurfaceProps = {
   onAbandonScene: () => void;
   onForkScene: (sceneChatId: string, mode: SceneForkMode) => void;
   isForkingScene?: boolean;
-  onOpenSettings: (event?: ReactMouseEvent<HTMLElement>) => void;
   onOpenScheduleEditor?: ComponentProps<typeof ChatCommonOverlays>["onOpenScheduleEditor"];
   onCloseSettings: (options?: { force?: boolean }) => void;
   onIllustrate?: (prompt?: string, messageRange?: [string, string]) => void;
@@ -898,7 +890,6 @@ export function ChatRoleplaySurface({
   onAbandonScene,
   onForkScene,
   isForkingScene,
-  onOpenSettings,
   onOpenScheduleEditor,
   onCloseSettings,
   onIllustrate,
@@ -970,6 +961,16 @@ export function ChatRoleplaySurface({
     chatCharIds,
     personaInfo,
   };
+  // On a phone the Tracker Panel switch shows a bubble, first in the column of control bubbles.
+  const phoneLayout = useMatchMedia("(max-width: 767px)");
+  const trackerPanelEnabled = useUIStore((s) => s.trackerPanelEnabled);
+  const trackerPanelOpen = useUIStore((s) => s.trackerPanelOpen);
+  const showTrackerPanelBubble =
+    phoneLayout &&
+    trackerPanelEnabled &&
+    trackerPanelOpen &&
+    (chatMeta.enableAgents === true || chatMeta.advancedMemory?.enabled === true);
+  const phoneSlotOffset = showTrackerPanelBubble ? 1 : 0;
   useRenderTimer("rp-surface"); // [#3104 diagnostic]
   const isMobileToolbarViewport = useIsMobileToolbarViewport();
   const streamedMessageId = useChatStore((s) => s.streamedMessageIds.get(activeChatId) ?? null);
@@ -1782,86 +1783,6 @@ export function ChatRoleplaySurface({
                         />
                       </Suspense>
                     </div>
-                    <div
-                      data-roleplay-top-controls="right"
-                      className={cn(
-                        "pointer-events-auto ml-auto flex shrink-0 items-center",
-                        CHAT_TOOLBAR_ICON_GAP_CLASS,
-                      )}
-                    >
-                      {conversationToolbarPackages.map((item) => (
-                        // A computer shows these as windows that minimize to buttons.
-                        <span
-                          key={`${item.id}-compact-toolbar`}
-                          data-chat-help="agent-controls"
-                          className="contents md:hidden"
-                        >
-                          <CapabilityElement
-                            packageId={item.id}
-                            view="toolbar"
-                            capabilityProps={{
-                              ...conversationCapabilityProps,
-                              toolbarButtonClass: getChatToolbarButtonClass({ compact: true }),
-                            }}
-                            className="contents"
-                          />
-                        </span>
-                      ))}
-                      <ChatToolbarMenu>
-                        <ChatHelpButton mode="roleplay" compact className="md:hidden" />
-                        {chat?.connectedChatId && (
-                          <ChatToolbarButton
-                            icon={<ArrowRightLeft size="0.875rem" />}
-                            helpTarget="connected-chat"
-                            title={
-                              linkedChatName
-                                ? t("chat.toolbar.switchTo", { name: linkedChatName })
-                                : t("chat.toolbar.connectedChat")
-                            }
-                            onClick={() => useChatStore.getState().setActiveChatId(chat.connectedChatId!)}
-                            className="md:hidden"
-                          />
-                        )}
-                        {/* Desktop opens Chat Settings from the topbar. */}
-                        <ChatToolbarButton
-                          icon={<Settings2 size="0.875rem" />}
-                          title={t("chat.toolbar.settings")}
-                          panelAction="settings"
-                          onClick={onOpenSettings}
-                          className="md:hidden"
-                        />
-                      </ChatToolbarMenu>
-                    </div>
-                  </div>
-                )}
-                {chat && !chatMeta.enableAgents && (
-                  <div
-                    className={cn("flex w-full items-center justify-end px-2 pb-1 pt-2", CHAT_TOOLBAR_ICON_GAP_CLASS)}
-                  >
-                    <ChatToolbarMenu className="pointer-events-auto">
-                      <ChatHelpButton mode="roleplay" compact className="md:hidden" />
-                      {chat?.connectedChatId && (
-                        <ChatToolbarButton
-                          icon={<ArrowRightLeft size="0.875rem" />}
-                          helpTarget="connected-chat"
-                          title={
-                            linkedChatName
-                              ? t("chat.toolbar.switchTo", { name: linkedChatName })
-                              : t("chat.toolbar.connectedChat")
-                          }
-                          onClick={() => useChatStore.getState().setActiveChatId(chat.connectedChatId!)}
-                          className="md:hidden"
-                        />
-                      )}
-                      {/* Desktop opens Chat Settings from the topbar. */}
-                      <ChatToolbarButton
-                        icon={<Settings2 size="0.875rem" />}
-                        title={t("chat.toolbar.settings")}
-                        panelAction="settings"
-                        onClick={onOpenSettings}
-                        className="md:hidden"
-                      />
-                    </ChatToolbarMenu>
                   </div>
                 )}
               </div>
@@ -2253,7 +2174,8 @@ export function ChatRoleplaySurface({
         </Suspense>
       </div>
 
-      {/* On a computer, package toolbars and the connected chat are windows that minimize to buttons. */}
+      {/* Package toolbars, Beholder and the connected chat are windows that minimize to bubbles. */}
+      {showTrackerPanelBubble && <TrackerPanelBubble />}
       {conversationToolbarPackages.map((item, index) => (
         <ChatControlWindow
           key={`${item.id}-toolbar-window`}
@@ -2261,6 +2183,7 @@ export function ChatRoleplaySurface({
           title={item.manifest.name}
           icon={<Puzzle size={14} />}
           slot={index + 1}
+          phoneSlot={phoneSlotOffset + index + 1}
           width={280}
           height={140}
           helpTarget="agent-controls"
@@ -2279,6 +2202,7 @@ export function ChatRoleplaySurface({
         <ChatConnectedChatWindow
           name={linkedChatName}
           onSwitch={() => useChatStore.getState().setActiveChatId(chat.connectedChatId!)}
+          phoneSlot={phoneSlotOffset}
         />
       )}
 
@@ -2286,6 +2210,8 @@ export function ChatRoleplaySurface({
       {chat && chatMeta.enableAgents && (
         <Suspense fallback={null}>
           <RoleplayTrackerWindow
+            beholderSlot={conversationToolbarPackages.length + 1}
+            beholderPhoneSlot={phoneSlotOffset + conversationToolbarPackages.length + 1}
             chatId={chat.id}
             enabledAgentTypes={enabledAgentTypes}
             isStreaming={isStreaming}

@@ -3,8 +3,9 @@
 //
 // Each target names a control by selector; the overlay skips any that are not
 // visible right now, so one list covers desktop, phones, and the Chat Settings
-// window being open or closed. On a computer, Session, Volume, Assets, the
-// connected chat and package toolbars point at their windows' buttons (bubbles).
+// window being open or closed. Session, Volume, Assets, Game controls, the
+// connected chat, package toolbars and Beholder point at their windows' buttons
+// (bubbles), on phones too, where the Tracker Panel has a bubble as well.
 // Add new chat controls here.
 // ──────────────────────────────────────────────
 import type { ChatMode } from "@marinara-engine/shared";
@@ -23,6 +24,10 @@ export type ChatHelpTargetId =
   | "window-lock"
   | "window-close"
   | "tracker-panel"
+  | "tracker-panel-bubble"
+  | "agent-activity"
+  | "drawer-bubble"
+  | "window-put-back"
   | "reset-view"
   | "messages"
   | "composer"
@@ -63,9 +68,9 @@ const TARGETS = {
   call: chatHelpTarget("call", "call"),
   "agent-controls": chatHelpTarget("agent-controls", "agentControls"),
   "connected-chat": chatHelpTarget("connected-chat", "connectedChat"),
-  // The topbar button on desktop, the toolbar button on phones.
+  // The Chat Settings button in the chat (centred at the top unless moved).
   settings: chatHelpTarget("settings", "settings"),
-  // The ? beside the Chat Settings title on desktop, the toolbar button on phones.
+  // The ? beside the Chat Settings title (a phone closes Chat Settings to show the guide).
   help: chatHelpTarget("help", "help"),
   "window-title": chatHelpTarget("window-title", "windowTitle", `${CHAT_SETTINGS_WINDOW} .mari-window__title`),
   // Controls with their own tooltip reuse its sentence.
@@ -87,7 +92,26 @@ const TARGETS = {
     ...chatHelpTarget("tracker-panel", "trackerPanel", '[data-tracker-panel-toggle="chat-settings"]'),
     bodyKey: "chat.settings.trackerPanelHelp",
   },
+  // On a phone, the bubble the Tracker Panel switch shows.
+  "tracker-panel-bubble": {
+    ...chatHelpTarget("tracker-panel-bubble", "trackerPanelBubble", '[data-tracker-panel-toggle="bubble"]'),
+    titleKey: "chat.help.targets.trackerPanel.title",
+  },
   "reset-view": { ...chatHelpTarget("reset-view", "resetView"), bodyKey: "chat.settings.resetViewHelp" },
+  // Roleplay's Agent activity section, right below Agents in Chat Settings.
+  "agent-activity": {
+    ...chatHelpTarget(
+      "agent-activity",
+      "agentActivity",
+      `${CHAT_SETTINGS_WINDOW} [data-drawer$="-agent-activity"] > .mari-drawer__header`,
+    ),
+    titleKey: "chat.settings.agentActivity",
+    bodyKey: "chat.settings.agentActivityHelp",
+  },
+  // A section popped out of Chat Settings or the Trackers window, shrunk to its button.
+  "drawer-bubble": chatHelpTarget("drawer-bubble", "drawerBubble", ".mari-window-bubble[data-drawer-host]"),
+  // The button beside a popped-out section's X that puts it back.
+  "window-put-back": chatHelpTarget("window-put-back", "windowPutBack", '[data-window-control="put-back"]'),
   map: chatHelpTarget("map", "map", '[data-tour="game-map"]'),
   party: chatHelpTarget("party", "party", '[data-tour="game-party"]'),
   "scene-media": chatHelpTarget("scene-media", "sceneMedia"),
@@ -110,6 +134,8 @@ const CHAT_SETTINGS_TARGETS: ChatHelpTargetDefinition[] = [
   TARGETS["window-close"],
   TARGETS["tracker-panel"],
   TARGETS["reset-view"],
+  TARGETS["drawer-bubble"],
+  TARGETS["window-put-back"],
 ];
 
 const COMPOSER_TARGET: ChatHelpTargetDefinition = {
@@ -136,9 +162,11 @@ const TARGETS_BY_MODE: Record<ChatMode, ChatHelpTargetDefinition[]> = {
   ],
   roleplay: [
     TARGETS.agents,
+    TARGETS["tracker-panel-bubble"],
     TARGETS["agent-controls"],
     TARGETS["connected-chat"],
     ...CHAT_SETTINGS_TARGETS,
+    TARGETS["agent-activity"],
     {
       id: "messages",
       virtual: "messages",

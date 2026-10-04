@@ -37,6 +37,7 @@ import { getCurrentInputSnapshot, useChatStore } from "../../stores/chat.store";
 import { hasActiveTextSelection } from "../../lib/text-selection";
 import { readChatMetadata } from "../../lib/chat-wizard-defaults";
 import { useChatWindowLayout } from "../../hooks/use-chat-window-layout";
+import { ChatSettingsBubble } from "./ChatSettingsBubble";
 import { useGenerate } from "../../hooks/use-generate";
 import { useGenerateGallerySelfie } from "../../hooks/use-gallery";
 import {
@@ -90,7 +91,7 @@ import { useEncounter } from "../../hooks/use-encounter";
 import { useScene } from "../../hooks/use-scene";
 import { useEncounterStore } from "../../stores/encounter.store";
 import { useTranslationStore } from "../../stores/translation.store";
-import { getChatTranslationConfig } from "@marinara-engine/shared";
+import { getChatTranslationConfig, type ChatMode } from "@marinara-engine/shared";
 import { ttsService } from "../../lib/tts-service";
 import { useTTSConfig } from "../../hooks/use-tts";
 import {
@@ -546,6 +547,8 @@ const MultiplayerChat = lazy(() =>
 export const ChatArea = memo(function ChatArea() {
   const activeChatId = useChatStore((state) => state.activeChatId);
   const { data: chat, error, refetch } = useChat(activeChatId);
+  // The Chat Settings button shows while a chat that hosts Chat Settings is open.
+  const chatSettingsHosted = useFloatingWindowStore((state) => (state.hosts[CHAT_SETTINGS_WINDOW_ID] ?? 0) > 0);
   // Windows and popped-out drawers follow the open chat's saved layout.
   useChatWindowLayout(activeChatId && chat?.id === activeChatId ? chat : null);
   useEffect(() => {
@@ -558,10 +561,13 @@ export const ChatArea = memo(function ChatArea() {
       <ChatOpeningState error={error} onRetry={refetch} onBack={() => useChatStore.getState().setActiveChatId(null)} />
     );
   const metadata = chat ? readChatMetadata(chat) : {};
+  const chatSettingsButton =
+    chat && chatSettingsHosted ? <ChatSettingsBubble chatId={chat.id} mode={readChatMode(chat)} /> : null;
   if (chat && (metadata.multiplayerSetup === true || metadata.multiplayer)) {
     return (
       <Suspense fallback={null}>
         <MultiplayerChat key={chat.id} chat={chat} />
+        {chatSettingsButton}
       </Suspense>
     );
   }
@@ -569,9 +575,14 @@ export const ChatArea = memo(function ChatArea() {
     <>
       <LocalChatArea />
       <SelectionLorebookButton />
+      {chatSettingsButton}
     </>
   );
 });
+
+function readChatMode(chat: { mode?: unknown }): ChatMode {
+  return chat.mode === "conversation" || chat.mode === "game" ? chat.mode : "roleplay";
+}
 
 const LocalChatArea = memo(function LocalChatArea() {
   const { t: localizeUi } = useUiTranslation();
@@ -3200,7 +3211,6 @@ const LocalChatArea = memo(function LocalChatArea() {
             personaInfo={personaInfo}
             chatBackground={chatBackground}
             connectedChatName={connectedChatName}
-            onOpenSettings={handleOpenSettingsPanel}
             onCloseSettings={handleCloseSettingsPanel}
             onSwitchChat={chat.connectedChatId ? () => setActiveChatId(chat.connectedChatId!) : undefined}
             onDeleteMessage={handleDelete}
@@ -3445,7 +3455,6 @@ const LocalChatArea = memo(function LocalChatArea() {
           onAbandonScene={() => abandonScene(activeChatId)}
           onForkScene={forkScene}
           isForkingScene={isForking || isStreaming}
-          onOpenSettings={handleOpenSettingsPanel}
           onCloseSettings={handleCloseSettingsPanel}
           onOpenScheduleEditor={handleOpenScheduleEditor}
           onIllustrate={handleIllustrate}

@@ -66,9 +66,17 @@ import {
   GitBranch,
   ScrollText,
   PenLine,
+  Images,
+  LayoutDashboard,
+  Link2,
+  MessagesSquare,
+  ScanText,
+  Shield,
+  Wallpaper,
 } from "lucide-react";
 import { NEUTRAL_PANEL_SCROLL_AREA } from "../ui/neutral-surface-styles";
 import { FloatingWindow } from "../ui/FloatingWindow";
+import { TrackerPanelIcon } from "../ui/TrackerPanelIcon";
 import { type ChatToolbarFloatingPanelAnchor } from "./ChatToolbarControls";
 import { PickerDropdown } from "../../features/chat-settings/PickerDropdown";
 import { PersonaHistoryReassignDropdown } from "../../features/chat-settings/sections/PersonaHistoryReassignDropdown";
@@ -677,6 +685,7 @@ const CHAT_SETTINGS_ORDER = {
   chatSummary: -590,
   activeContext: -580,
   agents: -500,
+  agentActivity: -497,
   authorNotes: -495,
   background: -490,
   gallery: -480,
@@ -971,10 +980,11 @@ export function ChatSettingsDrawer({
   const trackerPanelEnabled = useUIStore((s) => s.trackerPanelEnabled);
   const trackerPanelOpen = useUIStore((s) => s.trackerPanelOpen);
   const trackerPanelSide = useUIStore((s) => s.trackerPanelSide);
-  // Phones keep today's full-width sheet until the mobile step of the window redesign.
+  // Phones show Chat Settings as a full-width sheet.
   const phoneLayout = useMatchMedia("(max-width: 767px)");
   const trackerPanelClearance = useTrackerPanelClearance(!phoneLayout);
   const setTrackerPanelOpen = useUIStore((s) => s.setTrackerPanelOpen);
+  const setTrackerPanelEnabled = useUIStore((s) => s.setTrackerPanelEnabled);
   const trackerWindowOpen = useUIStore((s) => s.trackerWindowOpen);
   const setTrackerWindowOpen = useUIStore((s) => s.setTrackerWindowOpen);
   const resetView = useFloatingWindowStore((s) => s.resetView);
@@ -1030,13 +1040,22 @@ export function ChatSettingsDrawer({
     [chat.metadata],
   );
   const groupChatMode = normalizeGroupChatMode(metadata.groupChatMode);
-  // Same place the Roleplay HUD offered its Tracker Panel launcher.
+  // The dice in the title bar: one click turns the Tracker Panel on and shows it, the next turns it off.
   const trackerPanelToggleAvailable =
-    isRoleplayMode &&
-    trackerPanelEnabled &&
-    (metadata.enableAgents === true || metadata.advancedMemory?.enabled === true);
-  // With the Tracker Panel off in Settings, the trackers show in their own window instead.
-  const trackerWindowToggleAvailable = isRoleplayMode && !trackerPanelEnabled && metadata.enableAgents === true;
+    isRoleplayMode && (metadata.enableAgents === true || metadata.advancedMemory?.enabled === true);
+  const trackerPanelShown = trackerPanelEnabled && trackerPanelOpen;
+  const toggleTrackerPanel = () => {
+    if (trackerPanelShown) {
+      setTrackerPanelOpen(false, chat.id);
+      setTrackerPanelEnabled(false);
+      return;
+    }
+    // Open needs the panel enabled first.
+    setTrackerPanelEnabled(true);
+    setTrackerPanelOpen(true, chat.id);
+  };
+  // With the Tracker Panel off, the trackers show in their own window, which this switch brings back.
+  const trackerWindowToggleAvailable = isRoleplayMode && !trackerPanelShown && metadata.enableAgents === true;
   const summaryRetrievalSettings = normalizeSemanticSummaryRetrievalSettings(metadata);
   // Package integrations only show while their package is installed and usable.
   const noodleInstalled = isCapabilityPackageAvailable(installedCapabilities, "noodle");
@@ -4885,18 +4904,64 @@ export function ChatSettingsDrawer({
   // Only the loaded settings add the Chat Settings classes below; themes and select styling target them.
   const windowProps = getChatSettingsWindowProps(anchor);
   const helpLayoutButton =
-    showHelpLayout && !phoneLayout && !chatHelpButtonHidden ? (
+    showHelpLayout && !chatHelpButtonHidden ? (
       <span data-chat-help="help" className="inline-flex">
         <HelpTooltip
           text={localizeUi("chat.settings.helpLayoutHint")}
           ariaLabel={localizeUi("chat.help.button")}
           side="bottom"
-          buttonClassName="h-6 w-6 justify-center"
-          onActivate={() => requestChatHelp(chatMode)}
+          buttonClassName="h-6 w-6 justify-center max-md:h-9 max-md:w-9"
+          onActivate={() => {
+            // A phone's sheet covers the chat, so it closes first and Help labels what is under it.
+            if (!phoneLayout) requestChatHelp(chatMode);
+            else void requestClose().then((closed) => closed && requestChatHelp(chatMode));
+          }}
         />
       </span>
     ) : null;
 
+  const resetViewLabel = localizeUi("chat.settings.resetView");
+  const trackerPanelLabel = localizeUi("ui.panels.trackerpanelappearancedrawer.trackerPanel");
+  const handleResetView = async (button: HTMLButtonElement) => {
+    const confirmed = await showConfirmDialog({
+      title: localizeUi("chat.settings.resetViewConfirm.title"),
+      message: localizeUi("chat.settings.resetViewConfirm.message"),
+      confirmLabel: localizeUi("chat.settings.resetViewConfirm.confirm"),
+      cancelLabel: localizeUi("chat.delete.dialog.cancel"),
+    });
+    if (confirmed) resetView();
+    if (button.isConnected) button.focus({ preventScroll: true });
+  };
+  // Reset View, then the Tracker Panel dice, before the window's pin, lock and close.
+  const headerControls = (
+    <>
+      <button
+        type="button"
+        data-chat-help="reset-view"
+        data-chat-settings-control="reset-view"
+        aria-label={resetViewLabel}
+        title={resetViewLabel}
+        className="mari-window__control"
+        onClick={(event) => void handleResetView(event.currentTarget)}
+      >
+        <RotateCcw size="0.8125rem" />
+      </button>
+      {trackerPanelToggleAvailable && (
+        <button
+          type="button"
+          data-tracker-panel-toggle="chat-settings"
+          data-chat-settings-control="tracker-panel"
+          aria-pressed={trackerPanelShown}
+          aria-label={trackerPanelLabel}
+          title={trackerPanelLabel}
+          className="mari-window__control"
+          onClick={toggleTrackerPanel}
+        >
+          <TrackerPanelIcon size="0.9375rem" />
+        </button>
+      )}
+    </>
+  );
   return (
     <>
       <FloatingWindow
@@ -4908,6 +4973,7 @@ export function ChatSettingsDrawer({
         title={localizeUi("chat.toolbar.settings")}
         titleIcon={<Settings2 size="0.8125rem" className="shrink-0 text-[var(--muted-foreground)]" />}
         titleAccessory={helpLayoutButton}
+        headerControls={headerControls}
         closeLabel={localizeUi("ui.chat.chatsettingsdrawer.closeChatSettings")}
         {...windowProps}
         // A window the user has not moved opens beside a right-side Tracker Panel, not over it.
@@ -4916,48 +4982,22 @@ export function ChatSettingsDrawer({
         bodyRef={panelRef}
         onRequestClose={() => requestClose()}
       >
-        {!phoneLayout && (
+        {/* With the Tracker Panel off, this brings the Trackers window back after it was closed. */}
+        {trackerWindowToggleAvailable && !phoneLayout && (
           <div
             data-chat-settings-top-row
-            className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-3 py-1.5"
+            data-tracker-window-toggle="chat-settings"
+            className="flex shrink-0 items-center gap-3 border-b border-[var(--border)] px-3 py-1.5"
           >
-            {trackerPanelToggleAvailable ? (
-              <div data-tracker-panel-toggle="chat-settings" className="min-w-0">
-                <SettingsSwitch
-                  label={localizeUi("ui.panels.trackerpanelappearancedrawer.trackerPanel")}
-                  help={localizeUi("chat.settings.trackerPanelHelp")}
-                  checked={trackerPanelOpen}
-                  onChange={(checked) => setTrackerPanelOpen(checked, chat.id)}
-                  labelPosition="start"
-                  className="gap-2 p-1"
-                  labelClassName="text-xs font-medium"
-                />
-              </div>
-            ) : trackerWindowToggleAvailable ? (
-              <div data-tracker-window-toggle="chat-settings" className="min-w-0">
-                <SettingsSwitch
-                  label={localizeUi("chat.settings.trackerWindow")}
-                  help={localizeUi("chat.settings.trackerWindowHelp")}
-                  checked={trackerWindowOpen}
-                  onChange={setTrackerWindowOpen}
-                  labelPosition="start"
-                  className="gap-2 p-1"
-                  labelClassName="text-xs font-medium"
-                />
-              </div>
-            ) : (
-              <span aria-hidden="true" />
-            )}
-            <button
-              type="button"
-              data-chat-help="reset-view"
-              onClick={resetView}
-              title={localizeUi("chat.settings.resetViewHelp")}
-              className="mari-chrome-control mari-chrome-control--small px-2.5 text-[0.6875rem]"
-            >
-              <RotateCcw size="0.75rem" />
-              {localizeUi("chat.settings.resetView")}
-            </button>
+            <SettingsSwitch
+              label={localizeUi("chat.settings.trackerWindow")}
+              help={localizeUi("chat.settings.trackerWindowHelp")}
+              checked={trackerWindowOpen}
+              onChange={setTrackerWindowOpen}
+              labelPosition="start"
+              className="gap-2 p-1"
+              labelClassName="text-xs font-medium"
+            />
           </div>
         )}
 
@@ -4969,7 +5009,8 @@ export function ChatSettingsDrawer({
           <Info size="0.8125rem" className="mt-px shrink-0" />
           {/* The slash-joined list has no spaces, so let it wrap in a narrow window. */}
           <span className="min-w-0 [overflow-wrap:anywhere]">
-            {localizeUi("chat.settings.dragDropHint")} {localizeUi("chat.settings.dragOutHint")}
+            {localizeUi("chat.settings.dragDropHint")} {localizeUi("chat.settings.moveResizeHint")}{" "}
+            {localizeUi("chat.settings.dragOutHint")}
           </span>
         </div>
 
@@ -5289,7 +5330,7 @@ export function ChatSettingsDrawer({
               id="game-party"
               style={{ order: CHAT_SETTINGS_ORDER.persona }}
               label={localizeUi("ui.chat.chatsettingsdrawer.party")}
-              icon={<Users size="0.875rem" />}
+              icon={<Shield size="0.875rem" />}
               count={chatCharacterCount + (chat.personaId ? 1 : 0)}
               help={localizeUi("ui.chat.chatsettingsdrawer.yourInGamePartyPickAPersonaToPlay")}
             >
@@ -6354,7 +6395,7 @@ export function ChatSettingsDrawer({
               id={`${chatMode}-group-chat`}
               style={{ order: CHAT_SETTINGS_ORDER.groupChat }}
               label={localizeUi("ui.chat.chatsettingsdrawer.groupChat")}
-              icon={<Users size="0.875rem" />}
+              icon={<MessagesSquare size="0.875rem" />}
               help={
                 isConversation
                   ? localizeUi("ui.chat.chatsettingsdrawer.chooseOneGroupedResponseOrSeparateCharacterTurnsIndividual")
@@ -7116,7 +7157,7 @@ export function ChatSettingsDrawer({
               id="conversation-connected-chats"
               style={{ order: CHAT_SETTINGS_ORDER.connectedChat }}
               label={localizeUi("ui.chat.chatsettingsdrawer.connectedChats")}
-              icon={<ArrowRightLeft size="0.875rem" />}
+              icon={<Link2 size="0.875rem" />}
               help={localizeUi("ui.chat.chatsettingsdrawer.controlAwarenessOfSiblingChatsOrLinkThisConversation")}
             >
               <div className="space-y-2">
@@ -7231,7 +7272,7 @@ export function ChatSettingsDrawer({
               id="roleplay-connected-chats"
               style={{ order: CHAT_SETTINGS_ORDER.connectedChat }}
               label={localizeUi("ui.chat.chatsettingsdrawer.connectedChats")}
-              icon={<ArrowRightLeft size="0.875rem" />}
+              icon={<Link2 size="0.875rem" />}
               help={localizeUi("ui.chat.chatsettingsdrawer.linkToAnOocConversationAndOptionallyLetRoleplay")}
             >
               <div className="space-y-2">
@@ -7299,7 +7340,7 @@ export function ChatSettingsDrawer({
               id="game-connected-chats"
               style={{ order: CHAT_SETTINGS_ORDER.connectedChat }}
               label={localizeUi("ui.chat.chatsettingsdrawer.connectedChats")}
-              icon={<ArrowRightLeft size="0.875rem" />}
+              icon={<Link2 size="0.875rem" />}
               help={localizeUi("ui.chat.chatsettingsdrawer.linkedToAConversationInfluenceTagsFromTheConversation")}
             >
               <div className="space-y-2">
@@ -7350,7 +7391,7 @@ export function ChatSettingsDrawer({
               id="game-connected-chats"
               style={{ order: CHAT_SETTINGS_ORDER.connectedChat }}
               label={localizeUi("ui.chat.chatsettingsdrawer.connectedChats")}
-              icon={<ArrowRightLeft size="0.875rem" />}
+              icon={<Link2 size="0.875rem" />}
               help={localizeUi("ui.chat.chatsettingsdrawer.linkThisGameToAnOocConversationTheConversation")}
             >
               <div className="space-y-2">
@@ -7471,7 +7512,7 @@ export function ChatSettingsDrawer({
               id={`${chatMode}-active-context`}
               style={{ order: CHAT_SETTINGS_ORDER.activeContext }}
               label={localizeUi("chat.settings.activeContext")}
-              icon={<BookOpen size="0.875rem" />}
+              icon={<ScanText size="0.875rem" />}
               help={localizeUi("chat.settings.activeContextHelp")}
             >
               {chatTools.activeContext ?? (
@@ -7499,7 +7540,7 @@ export function ChatSettingsDrawer({
               id={`${chatMode}-gallery`}
               style={{ order: CHAT_SETTINGS_ORDER.gallery }}
               label={localizeUi("chat.settings.gallery")}
-              icon={<Image size="0.875rem" />}
+              icon={<Images size="0.875rem" />}
               help={localizeUi("chat.settings.galleryHelp")}
               contentClassName="pt-2"
             >
@@ -7508,6 +7549,24 @@ export function ChatSettingsDrawer({
               </Suspense>
             </Section>
           )}
+
+          {/* Agent activity: its own section right below Agents, while agents or Advanced Memory run. */}
+          {chatTools &&
+            isRoleplayMode &&
+            (metadata.enableAgents === true || metadata.advancedMemory?.enabled === true) && (
+              <Section
+                id={`${chatMode}-agent-activity`}
+                style={{ order: CHAT_SETTINGS_ORDER.agentActivity }}
+                label={localizeUi("chat.settings.agentActivity")}
+                icon={<Activity size="0.875rem" />}
+                help={localizeUi("chat.settings.agentActivityHelp")}
+              >
+                <AgentActivitySection
+                  chatId={chat.id}
+                  className="overflow-hidden rounded-lg border border-[var(--border)]"
+                />
+              </Section>
+            )}
 
           {/* Agents */}
           {modeSettingsSurfaces.agentSettingsSurface === "generation" && (
@@ -7519,21 +7578,6 @@ export function ChatSettingsDrawer({
               count={isGame ? gameAgentFeatureCount : visibleActiveAgentIds.length}
               help={localizeUi("ui.chat.chatsettingsdrawer.whenEnabledAiAgentsRunAutomaticallyDuringGenerationTo")}
             >
-              {chatTools &&
-                isRoleplayMode &&
-                (metadata.enableAgents === true || metadata.advancedMemory?.enabled === true) && (
-                  <Section
-                    id={`${chatMode}-agent-activity`}
-                    label={localizeUi("chat.settings.agentActivity")}
-                    icon={<Activity size="0.875rem" />}
-                    help={localizeUi("chat.settings.agentActivityHelp")}
-                  >
-                    <AgentActivitySection
-                      chatId={chat.id}
-                      className="overflow-hidden rounded-lg border border-[var(--border)]"
-                    />
-                  </Section>
-                )}
               {isRoleplayMode && (
                 <RoleplayCommandsSettings
                   chat={chat}
@@ -9464,7 +9508,7 @@ export function ChatSettingsDrawer({
               id={`${chatMode}-background`}
               style={{ order: CHAT_SETTINGS_ORDER.background }}
               label={localizeUi("chat.settings.background")}
-              icon={<Image size="0.875rem" />}
+              icon={<Wallpaper size="0.875rem" />}
               help={localizeUi("chat.settings.backgroundHelp")}
             >
               <ActiveChatBackgroundPicker game={isGame} />
@@ -9476,7 +9520,7 @@ export function ChatSettingsDrawer({
               id="game-widgets"
               style={{ order: CHAT_SETTINGS_ORDER.widgets }}
               label={localizeUi("ui.chat.chatsettingsdrawer.widgets")}
-              icon={<Puzzle size="0.875rem" />}
+              icon={<LayoutDashboard size="0.875rem" />}
               count={gameWidgetDrafts.length}
               help={localizeUi("ui.chat.chatsettingsdrawer.configureTheVisibleGameModeHudWidgetsTheGm")}
             >

@@ -1,6 +1,6 @@
 import { useMemo, type ComponentProps } from "react";
 import type { Message, SpriteSide } from "@marinara-engine/shared";
-import { ConversationView } from "./ConversationView";
+import { ConversationPackageWindows, ConversationView } from "./ConversationView";
 import { ChatCommonOverlays } from "./ChatCommonOverlays";
 import { ChatConnectedChatWindow } from "./ChatControlWindow";
 import { useRenderTimer } from "../../lib/perf-diagnostics";
@@ -197,15 +197,21 @@ export function ChatConversationSurface({
           multiSelectMode={multiSelectMode}
           selectedMessageIds={selectedMessageIds}
           onToggleSelectMessage={onToggleSelectMessage}
-          connectedChatName={connectedChatName}
-          onSwitchChat={onSwitchChat}
           sceneInfo={sceneInfo}
           onConcludeScene={onConcludeScene}
           onAbandonScene={onAbandonScene}
         />
       </div>
 
+      {/* The connected chat and package toolbars are windows that minimize to bubbles. */}
       {onSwitchChat && <ChatConnectedChatWindow name={connectedChatName} onSwitch={onSwitchChat} />}
+      <ConversationPackageWindows
+        chatId={activeChatId}
+        chatMeta={chatMeta}
+        characterMap={characterMap}
+        chatCharIds={chatCharIds}
+        personaInfo={personaInfo}
+      />
 
       <ChatCommonOverlays
         chat={chat}

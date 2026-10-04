@@ -1,69 +1,70 @@
 # Chat Settings Overview
 
-This guide covers the **Chat Settings** window, the place where you tune one chat on its own. It explains how the window works and the basics you set here: chat name, connection, and saved setting bundles. It then points you to the deeper guides for everything else the panel holds.
+Use **Chat Settings** to choose the connection, characters, agents and other settings for the chat you have open. You can also find the chat's search, summaries, branches and gallery here.
 
-Every setting in this panel applies to the current chat only. Changing it does not affect your other chats.
+Most settings here belong to the current chat. Window positions are saved for each chat too. The **Tracker Panel** on/off setting also applies to your other Roleplay chats.
 
 ## Opening Chat Settings
 
-You open Chat Settings from inside an open chat.
+1. Open a chat.
+2. Click or tap the **Chat Settings** button (the sliders icon). It starts at the top centre of the chat, below the app's top bar.
+3. Click a section's title to open it. These sections are also called **drawers**: click the title again to fold one away.
 
-1. Open any chat.
-2. On a computer, click the **Chat Settings** button in the middle of the top bar. It only appears while a chat is open. On a phone, tap **More options** (the three dots) at the top of the chat, or **Game actions** in a Game, then tap **Chat Settings**.
-3. The **Chat Settings** window opens.
+Chat Settings opens automatically when you create a new chat. To close it, click its **X** or click the sliders button again.
 
-When you create a brand new chat, Chat Settings opens automatically so you can set it up right away.
+You can drag the sliders button to a convenient spot. It lines up with nearby chat buttons as you drag; on a computer, hold Alt to place it freely. Each chat remembers its position. A small dot on the button means agents are working.
 
-## The Chat Settings window
+## Moving, pinning and locking the window
 
-On a computer, Chat Settings is a window that floats over the chat. Its contents rearrange to fit its size.
+On a computer, Chat Settings floats over the chat. Its contents rearrange to fit its size.
 
-- **Move it** by dragging its title bar. With the title bar focused, the arrow keys move it too; hold Shift for bigger steps.
-- **Resize it** by dragging any edge or corner. The bottom-right corner can also be focused and resized with the arrow keys.
-- **Pin** (the pin button) keeps the window open when you click elsewhere. Unpinned, it closes when you click outside it, or when you press Escape anywhere except a text box or an open menu.
-- **Lock** (the padlock button) stops the window from moving or resizing until you unlock it.
-- **Close** (the X button) closes the window.
+- **Move it** by dragging its title bar. You can also focus the title bar with the keyboard and use the arrow keys; hold Shift for larger steps.
+- **Resize it** by dragging an edge or corner. You can also focus the bottom-right resize handle and use the arrow keys.
+- **Pin** keeps the window open when you click elsewhere. An unpinned window closes when you click outside it or press Escape, unless you are typing in a text box or using an open menu.
+- **Lock** stops the window from moving or resizing until you unlock it.
+- **Close** (the **X**) hides the window.
 
-The window stays inside the chat area, even when you resize the browser or open a sidebar.
+Windows stay inside the chat area when you resize the browser or open a sidebar.
 
-The top of the window holds a tracker switch and **Reset View**:
+On a phone, Chat Settings opens as a full-width panel. The panel fits above the keyboard while you type.
 
-- **Tracker Panel** shows or hides the Tracker Panel beside a Roleplay chat. It appears when the Tracker Panel is turned on in **Settings → Appearance** and the chat uses agents or Advanced Memory.
-- **Tracker window** shows or hides the **Trackers** window instead. It appears when the Tracker Panel is turned off in **Settings → Appearance** and the Roleplay chat uses agents. See [The Trackers window](../roleplay/hud-and-trackers.md#the-trackers-window).
-- **Reset View** puts every window of the chat back where it started. Chat Settings is unpinned and unlocked again, popped-out sections go back, the chat's control windows shrink back to their buttons in their starting row, and a closed Trackers window opens again.
+## Help, trackers and Reset View
 
-The **?** button beside the **Chat Settings** title opens the chat's Help layout, which labels each part of the chat. On a phone, Help stays in **More options**, or **Game actions** in a Game. You can hide it with **Hide chat Help button** in **Settings → General → App Behavior**.
+The title bar has a few other useful buttons:
 
-On a phone, Chat Settings opens as a sheet instead of a window.
+- **Help** (the **?** beside the title) shows labels explaining the chat's controls. On a phone, it closes Chat Settings first so you can see the chat. You can hide this button in **Settings → General → App Behavior → Hide chat Help button**.
+- **Reset View** (the circular arrow) asks for confirmation, then restores this chat's starting layout. It puts popped-out sections back, returns buttons and windows to their starting positions, and removes window pins and locks.
+- **Tracker Panel** (the die) turns the panel on or off in a Roleplay chat that uses agents or Advanced Memory. On a computer, the panel opens beside the chat. On a phone, a movable button opens it. This setting also changes the Tracker Panel preference in **Settings → Appearance**.
 
-## Popping a section out into its own window
+With the Tracker Panel off, desktop trackers appear in the [Trackers window](../roleplay/hud-and-trackers.md#the-trackers-window). If you close that window, reopen it with the **Tracker window** switch near the top of Chat Settings.
 
-On a computer, any section of Chat Settings can become its own window, so you can keep it open next to the chat.
+## Popping out a section
 
-- Click the pop-out button (the box with an arrow) beside the section's **?**, or drag the section's title out of the Chat Settings window and drop it where you want it.
-- The new window starts pinned. You can move, resize, pin and lock it like Chat Settings, and it stays open when you close Chat Settings.
-- While it is out, the section is gone from Chat Settings, so it is never shown twice.
-- To put it back, click its **X** button (**Put back in Chat Settings**), or drag its title bar onto the Chat Settings window.
+To keep a section close at hand, click its **Pop out** button (the box with an arrow beside its **?**). This gives the section its own window and removes it from Chat Settings until you put it back.
 
-The drawers of the Trackers window pop out the same way. See [The Trackers window](../roleplay/hud-and-trackers.md#the-trackers-window).
+On a computer, you can also drag a section's title out of Chat Settings. The new window starts pinned, so it stays open while you use the chat. Move, resize or lock it just like Chat Settings.
 
-<!-- TODO(#7034 mobile): what popped-out sections do on a phone -->
+- **Close** (**X**) shrinks the section to a small button with its icon. Drag the button where you want it, then click it to reopen the window where you left it.
+- **Put back in Chat Settings** (the curved arrow beside **X**) returns the section to Chat Settings. You can also drag its window onto Chat Settings.
+- An unpinned section shrinks to its button when you click elsewhere or press Escape, unless you are typing in a text box or using an open menu.
 
-## Control windows and their buttons
+On a phone, popping out a section closes Chat Settings and adds a movable button to the chat. Tap the button to open the section as a panel. Close the panel to return to the button, or tap **Put back in Chat Settings** to return the section.
 
-On a computer, some of the chat's controls are small windows that shrink to buttons: a Game's **Game controls** (Retry and the storyboard controls), **Session**, **Volume** and **Game Assets**, the **Connected chat** switch in every mode, and the controls that agent packages add to a Roleplay chat. **Calls** in a Conversation stays a normal button.
+Trackers can pop out of the Trackers window in the same way. Their return button is called **Put back in Trackers**.
 
-- The buttons start in a row at the top right of the chat. Click one, or press Enter or Space on it, to open its window beside it. A pinned or locked window opens where you left it.
-- Drag a button anywhere in the chat. It snaps into line with the other buttons; hold Alt while you drag to place it freely. The arrow keys move a focused button.
-- The window has minimize, pin, lock and close buttons. Minimize, close, Escape and, while it is unpinned, a click elsewhere shrink it back to its button.
+## Other chat buttons
 
-<!-- TODO(#7034 mobile): control buttons on a phone -->
+Some tools open their own small windows: a Game's **Game controls**, **Session**, **Volume** and **Game Assets**; **Connected chat**; and controls added by installed packages.
 
-## Each chat keeps its own window layout
+These buttons start near the top right of the chat. Click or tap one to open its window. Closing or minimizing the window brings the button back. On a phone, the window opens as a full-width panel.
 
-Each chat remembers its own window layout: where each window sits and how big it is, whether it is pinned or locked, which sections are popped out, and which control windows are open and where their buttons sit. When you switch chats, the windows move to that chat's layout.
+Drag a button to move it. Nearby buttons line up as you drag; on a computer, hold Alt to place it freely, or use the arrow keys while the button is focused. Conversation **Calls** remains a regular button.
 
-A settings profile saves this layout too (see [Settings Profiles](#settings-profiles)). **Reset View** returns the chat to the starting layout.
+## Each chat keeps its own layout
+
+Each chat remembers window sizes and positions, pins and locks, popped-out sections, and button positions. Phone button positions are saved separately from desktop positions. Switching chats restores the layout for that chat.
+
+A [settings profile](#settings-profiles) can save the layout for use in other chats. **Reset View** restores the starting layout for the current chat.
 
 ## Chat Name
 
@@ -140,6 +141,7 @@ The **Chat Settings** panel is also the home for many per-chat features. Each ha
 - **Party** appears only in Game chats. It replaces the **Persona** and **Characters** sections and combines both in one place.
 - **Lorebooks** attaches world info to this chat. See [Lorebooks Overview](../lorebooks/overview.md).
 - **Agents** turns on AI helpers for this chat. See [Agents: AI Helpers for Your Chats](../agents/agents-overview.md).
+- **Agent activity**, right below **Agents** in Roleplay chats that use agents or Advanced Memory, shows what the agents did and lets you re-run trackers, retry or stop agents, and clear trackers. It pops out like any other section.
 - **Translation** sets up automatic message translation. See [Message Translation](../integrations/message-translation.md).
 - **Advanced Parameters** overrides the generation settings, such as temperature and max tokens, for this chat. See [Generation Parameters](../prompts/generation-parameters.md).
 

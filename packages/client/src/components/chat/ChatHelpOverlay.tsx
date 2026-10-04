@@ -220,8 +220,9 @@ function isCoveredAtCenter(element: Element, rect: Rect): boolean {
   return !!hit && !containsDeep(element, hit) && !containsDeep(hit, element);
 }
 
+/** Open windows and the bubbles of minimized ones: large callouts stop short of both. */
 function visibleFloatingWindowRects(): Rect[] {
-  return Array.from(document.querySelectorAll(FLOATING_WINDOW_SELECTOR))
+  return Array.from(document.querySelectorAll(`${FLOATING_WINDOW_SELECTOR}, .mari-window-bubble`))
     .map((element) => rectFromDomRect(element.getBoundingClientRect()))
     .filter((rect) => rect.width > 1 && rect.height > 1);
 }

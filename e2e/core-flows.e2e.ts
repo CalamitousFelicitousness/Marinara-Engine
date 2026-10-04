@@ -59,27 +59,22 @@ function collectUnexpectedErrors(page: Page) {
 }
 
 /** Check a sidebar's header help: named after the sidebar, right after its title, its own text on screen, closable. */
-/** Phones show the Tracker Panel from the Roleplay HUD; desktop uses the switch in Chat Settings (#7036). */
+/**
+ * The dice in the Chat Settings title bar turns the Tracker Panel on and shows it (#7034); on a phone it
+ * shows the panel's bubble, which opens it.
+ */
 async function showTrackerPanel(page: Page, testInfo: TestInfo) {
-  if (testInfo.project.name.includes("mobile")) {
-    const toggle = page.locator('[data-tracker-panel-toggle="roleplay-hud"]:visible').first();
-    await expect(toggle).toBeVisible();
-    await toggle.click();
-    return;
-  }
-  await page.locator('[data-component="TopBar"]').getByRole("button", { name: "Chat Settings", exact: true }).click();
+  await page.locator("[data-chat-settings-button]").click();
   const settingsWindow = page.locator('[data-window="chat-settings"]');
-  const trackerSwitch = settingsWindow
-    .locator('[data-tracker-panel-toggle="chat-settings"]')
-    .getByRole("checkbox", { name: "Tracker Panel", exact: true });
-  await expect(trackerSwitch).not.toBeChecked();
-  await settingsWindow
-    .locator('[data-tracker-panel-toggle="chat-settings"]')
-    .getByText("Tracker Panel", { exact: true })
-    .click();
-  await expect(trackerSwitch).toBeChecked();
+  const dice = settingsWindow.locator('[data-tracker-panel-toggle="chat-settings"]');
+  await expect(dice).toHaveAttribute("aria-pressed", "false");
+  await dice.click();
+  await expect(dice).toHaveAttribute("aria-pressed", "true");
   await settingsWindow.getByRole("button", { name: "Close chat settings", exact: true }).click();
   await expect(settingsWindow).toHaveCount(0);
+  if (testInfo.project.name.includes("mobile")) {
+    await page.locator('.mari-window-bubble[data-tracker-panel-toggle="bubble"]').click();
+  }
 }
 
 async function expectSidebarHelp(
@@ -1261,8 +1256,6 @@ test("Game dice outcome narration can be disabled and stays disabled after reloa
     const section = page.locator('[data-chat-settings-section="function-calling"]');
     const openSection = async () => {
       if (!(await section.isVisible())) {
-        if ((page.viewportSize()?.width ?? 0) < 768)
-          await page.getByRole("button", { name: "Game actions", exact: true }).click();
         await page.getByRole("button", { name: "Chat Settings", exact: true }).filter({ visible: true }).click();
       }
       const heading = section.locator('[role="button"][aria-expanded]');
@@ -5641,9 +5634,6 @@ test("character schedules export the live draft and import safely", async ({ pag
     const drawer = page.locator(".mari-chat-settings-drawer");
     if (!(await drawer.isVisible())) {
       const settingsButton = page.getByRole("button", { name: "Chat Settings", exact: true }).filter({ visible: true });
-      if ((page.viewportSize()?.width ?? 0) < 768) {
-        await page.getByRole("button", { name: "More options", exact: true }).click();
-      }
       await settingsButton.click();
     }
     await expect(drawer).toBeVisible();
@@ -9644,10 +9634,7 @@ test("chat Help overlay labels visible controls in every mode", async ({ page, r
     const openChatSettingsWindow = async () => {
       const settingsWindow = page.locator('[data-window="chat-settings"]');
       if (!(await settingsWindow.isVisible())) {
-        await page
-          .locator('[data-component="TopBar"]')
-          .getByRole("button", { name: "Chat Settings", exact: true })
-          .click();
+        await page.locator("[data-chat-settings-button]").click();
       }
       await expect(
         settingsWindow.locator(".mari-window__header").getByRole("button", { name: "Help", exact: true }),
@@ -9656,12 +9643,7 @@ test("chat Help overlay labels visible controls in every mode", async ({ page, r
     const openHelp = async (mode: "conversation" | "roleplay" | "game") => {
       let helpButton = page.getByRole("button", { name: "Help", exact: true }).filter({ visible: true });
       if ((await helpButton.count()) === 0) {
-        if (mobile) {
-          const overflowName = mode === "game" ? "Game actions" : "More options";
-          await page.getByRole("button", { name: overflowName, exact: true }).filter({ visible: true }).click();
-        } else {
-          await openChatSettingsWindow();
-        }
+        await openChatSettingsWindow();
         helpButton = page.getByRole("button", { name: "Help", exact: true }).filter({ visible: true });
       }
       await expect(helpButton).toHaveCount(1);
@@ -9688,26 +9670,18 @@ test("chat Help overlay labels visible controls in every mode", async ({ page, r
         });
       }
 
-      if (mobile) {
-        const overflowName = chat.mode === "game" ? "Game actions" : "More options";
-        await page.getByRole("button", { name: overflowName, exact: true }).filter({ visible: true }).click();
-      } else {
-        await openChatSettingsWindow();
-      }
+      // Help sits beside the Chat Settings title on phones too (#7034).
+      await openChatSettingsWindow();
 
       const helpButton = page.getByRole("button", { name: "Help", exact: true }).filter({ visible: true });
       await expect(helpButton).toHaveCount(1);
-      if (mobile) {
-        await expect(
-          page.locator("[data-chat-toolbar-overflow-menu]").getByRole("button").first(),
-        ).toHaveAccessibleName("Help");
-      } else {
-        await expect(page.locator(`[data-chat-mode="${chat.mode}"] [data-chat-help="help"]:visible`)).toHaveCount(0);
-        await expect(
-          page.locator('[data-window="chat-settings"] .mari-window__header [data-chat-help="help"]'),
-        ).toBeVisible();
-      }
+      await expect(page.locator(`[data-chat-mode="${chat.mode}"] [data-chat-help="help"]:visible`)).toHaveCount(0);
+      await expect(
+        page.locator('[data-window="chat-settings"] .mari-window__header [data-chat-help="help"]'),
+      ).toBeVisible();
       await helpButton.click();
+      // A phone's sheet covers the chat, so it closes to let Help label what is under it.
+      if (mobile) await expect(page.locator('[data-window="chat-settings"]')).toBeHidden();
 
       const overlay = page.locator(`[data-chat-help-overlay="${chat.mode}"]`);
       await expect(overlay).toBeVisible();
@@ -9726,22 +9700,24 @@ test("chat Help overlay labels visible controls in every mode", async ({ page, r
         ).toBeVisible();
       }
       await expect(overlay.locator('[data-chat-help-highlight="settings"]')).toBeVisible();
-      await expect(overlay.locator('[data-chat-help-highlight="help"]')).toBeVisible();
+      if (!mobile) await expect(overlay.locator('[data-chat-help-highlight="help"]')).toBeVisible();
 
       if (mobile) {
-        const toolbarTargets = await page
-          .locator("[data-chat-toolbar-overflow-menu] [data-chat-help]")
+        // Phone controls are bubbles; each callout frames its bubble exactly.
+        const bubbleTargets = await page
+          .locator(".mari-window-bubble[data-chat-help]")
           .filter({ visible: true })
           .evaluateAll((elements) => [
             ...new Set(elements.map((element) => element.getAttribute("data-chat-help")).filter(Boolean)),
           ]);
-        // Chat Branches, Summary, Active Context, Author's Notes, Gallery and Search moved into Chat Settings.
-        expect(toolbarTargets.length).toBeGreaterThanOrEqual(2);
-        for (const target of toolbarTargets) {
+        if (chat.mode === "game") expect(bubbleTargets.length).toBeGreaterThanOrEqual(4);
+        for (const target of bubbleTargets) {
+          const source = await page.locator(`.mari-window-bubble[data-chat-help="${target}"]`).first().boundingBox();
           const box = await overlay.locator(`[data-chat-help-highlight="${target}"]`).boundingBox();
+          expect(source).not.toBeNull();
           expect(box).not.toBeNull();
-          expect(box!.width, `${target} highlight width`).toBe(32);
-          expect(box!.height, `${target} highlight height`).toBe(32);
+          expect(Math.abs(box!.width - source!.width), `${target} highlight width`).toBeLessThanOrEqual(1);
+          expect(Math.abs(box!.height - source!.height), `${target} highlight height`).toBeLessThanOrEqual(1);
         }
       }
 
@@ -9753,10 +9729,8 @@ test("chat Help overlay labels visible controls in every mode", async ({ page, r
         await expect(overlay.locator('[data-chat-help-highlight="messages"]')).toBeVisible();
         await expect(overlay.locator('[data-chat-help-highlight="composer"]')).toBeVisible();
       } else {
-        // On a computer Retry lives in the Game controls window, pointed at through its button.
-        await expect(
-          overlay.locator(`[data-chat-help-highlight="${mobile ? "retry" : "game-controls"}"]`),
-        ).toBeVisible();
+        // Retry lives in the Game controls window, pointed at through its button (a bubble on phones too).
+        await expect(overlay.locator('[data-chat-help-highlight="game-controls"]')).toBeVisible();
         await expect(overlay.locator('[data-chat-help-highlight="session"]')).toBeVisible();
         await expect(overlay.locator('[data-chat-help-highlight="dialogue"]')).toBeVisible();
       }
@@ -9792,12 +9766,10 @@ test("chat Help overlay labels visible controls in every mode", async ({ page, r
         await keyboardTarget.focus();
         await page.keyboard.press("Enter");
         await expect(overlay.locator('[data-chat-help-mobile-detail="settings"]')).toBeVisible();
-        await expect(page.locator("[data-chat-toolbar-overflow-menu]")).toBeVisible();
         await overlay.locator(`[data-chat-help-highlight="${messageTarget}"]`).click();
         const detail = overlay.locator(`[data-chat-help-mobile-detail="${messageTarget}"]`);
         await expect(detail).toBeVisible();
         await expect(detail.locator(`[data-chat-help-action-legend="${chat.mode}"]`)).toBeVisible();
-        await expect(page.locator("[data-chat-toolbar-overflow-menu]")).toBeVisible();
         await expect(overlay.locator('[data-chat-help-highlight="settings"]')).toBeVisible();
         await overlay
           .getByRole("button", {
@@ -9894,13 +9866,8 @@ test("the first conversation opens Help once after setup", async ({ page, reques
     });
     const overlay = page.locator('[data-chat-help-overlay="conversation"]');
     await expect(overlay).toBeVisible({ timeout: 5_000 });
-    // Phones point at the Help button; desktop points at Chat Settings, whose window holds Help.
-    await expect(
-      overlay.locator(`[data-chat-help-highlight="${testInfo.project.name.includes("mobile") ? "help" : "settings"}"]`),
-    ).toBeVisible();
-    if (testInfo.project.name.includes("mobile")) {
-      await expect(page.locator("[data-chat-toolbar-overflow-menu]")).toBeVisible();
-    }
+    // It points at Chat Settings in the topbar, whose window (or phone sheet) holds Help.
+    await expect(overlay.locator('[data-chat-help-highlight="settings"]')).toBeVisible();
 
     if (testInfo.project.name.includes("mobile")) {
       await overlay
@@ -9953,15 +9920,8 @@ test("chat Help can be hidden permanently from the overlay or App Behavior", asy
     await expect(page.locator('[data-chat-mode="conversation"]')).toBeVisible();
     const mobile = testInfo.project.name.includes("mobile");
     const settingsWindowHelp = page.locator('[data-window="chat-settings"] [data-chat-help="help"]');
-    if (mobile) {
-      await page.getByRole("button", { name: "More options", exact: true }).filter({ visible: true }).click();
-    } else {
-      await page
-        .locator('[data-component="TopBar"]')
-        .getByRole("button", { name: "Chat Settings", exact: true })
-        .click();
-      await expect(settingsWindowHelp).toBeVisible();
-    }
+    await page.locator("[data-chat-settings-button]").click();
+    await expect(settingsWindowHelp).toBeVisible();
 
     await page.getByRole("button", { name: "Help", exact: true }).filter({ visible: true }).click();
     const overlay = page.locator('[data-chat-help-overlay="conversation"]');
@@ -9984,19 +9944,16 @@ test("chat Help can be hidden permanently from the overlay or App Behavior", asy
 
     await settingRow.getByText("Hide chat Help button", { exact: true }).click();
     await expect(settingToggle).not.toBeChecked();
-    await expect(page.locator('[data-chat-mode="conversation"] [data-chat-help="help"]')).toHaveCount(1);
+    // Help lives beside the Chat Settings title (#7034); a phone's Settings panel covers the chat and its button.
     if (!mobile) {
       // Pressing the setting is a press outside Chat Settings, which closed the window.
-      await page
-        .locator('[data-component="TopBar"]')
-        .getByRole("button", { name: "Chat Settings", exact: true })
-        .click();
+      await page.locator("[data-chat-settings-button]").click();
       await expect(settingsWindowHelp).toBeVisible();
     }
 
     await settingRow.getByText("Hide chat Help button", { exact: true }).click();
     await expect(settingToggle).toBeChecked();
-    await expect(page.locator('[data-chat-mode="conversation"] [data-chat-help="help"]')).toHaveCount(0);
+    await expect(settingsWindowHelp).toHaveCount(0);
   } finally {
     await request.delete(`/api/chats/${chat.id}`);
   }
@@ -10746,7 +10703,6 @@ test("mobile roleplay quick preset editor keeps marker and metadata controls com
 
   try {
     await page.goto("/");
-    await page.getByRole("button", { name: "More options", exact: true }).click();
     await page.getByRole("button", { name: "Chat Settings", exact: true }).filter({ visible: true }).click();
     const drawer = page.locator(".mari-chat-settings-drawer");
     await expect(drawer).toBeVisible();
@@ -10918,9 +10874,6 @@ test("Chat Settings edits only the selected cards and lorebook entries inline", 
 
   try {
     await page.goto("/");
-    if (testInfo.project.name.includes("mobile")) {
-      await page.getByRole("button", { name: "More options", exact: true }).click();
-    }
     await page.getByRole("button", { name: "Chat Settings", exact: true }).filter({ visible: true }).click();
     const drawer = page.locator(".mari-chat-settings-drawer");
     await expect(drawer).toBeVisible();
@@ -16339,9 +16292,6 @@ test("Roleplay Chat Settings exposes click-to-copy chat ID and square parameter 
   const chat = (await chatResponse.json()) as { id: string };
 
   const openSettings = async () => {
-    if (testInfo.project.name.includes("mobile")) {
-      await page.getByRole("button", { name: "More options", exact: true }).click();
-    }
     await page.getByRole("button", { name: "Chat Settings", exact: true }).filter({ visible: true }).click();
     await expect(page.locator(".mari-chat-settings-drawer")).toBeVisible();
   };
@@ -16444,9 +16394,6 @@ test("Conversation Chat Settings exposes and persists Long-Term Memory activatio
       await expect(section).toHaveAttribute("aria-expanded", "true");
     };
     const openSettings = async () => {
-      if (testInfo.project.name.includes("mobile")) {
-        await page.getByRole("button", { name: "More options", exact: true }).click();
-      }
       await page.getByRole("button", { name: "Chat Settings", exact: true }).filter({ visible: true }).click();
     };
 
@@ -23436,7 +23383,7 @@ test("mobile Game keeps CYOA usable above four HUD widgets", async ({ page, requ
 
     const viewport = { width: 390, height: 700 };
     await page.setViewportSize(viewport);
-    await expect(page.getByTitle("Game actions")).toBeVisible();
+    await expect(page.locator('.mari-window-bubble[data-window="control:game"]')).toBeVisible();
     await expect(page.locator('[data-tour="game-map"]').getByRole("button", { name: "Open map" })).toBeVisible();
 
     await expect

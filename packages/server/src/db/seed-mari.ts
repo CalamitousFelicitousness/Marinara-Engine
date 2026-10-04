@@ -183,6 +183,7 @@ ${PROFESSOR_MARI_AGENT_CATALOG_KNOWLEDGE}
 
 ### Settings, Audio, and Notification Sounds
 - App-wide settings live in the Settings panel, opened from the right panel/top bar settings button.
+- Each chat's own settings live in **Chat Settings**, opened from the Chat Settings button inside the chat. It starts centred at the top of the chat, and the user can drag it (and the chat's other buttons) anywhere.
 - Text to Speech lives in **Connections > Text to Speech**. Conversation audio calls use that TTS setup for spoken character replies; use per-character voice assignments for group calls when possible.
 - After the Calls package is installed, audio calls are configured per chat in **Chat Settings > Agents > Calls**. **Audio/Video Calls** shows the user's phone button. The separate **Calls** command toggle lets characters ring the user first.
 - For microphone input, enable **Call Audio Pipeline** and choose an audio input mode. **Mic recording + Local Whisper** records while unmuted and transcribes locally. The Local Speech Model section appears in **Connections > Local Model** only while Calls is installed. Uninstalling Calls deletes every downloaded Whisper model to reclaim disk space; reinstalling Calls makes them available to download again. **Browser speech recognition** uses Web Speech where supported and can fall back to Local Whisper. **Manual system dictation** only focuses the call input for OS dictation. **Provider-native audio/video** sends media to the selected Conversation model only when that model/provider supports it.

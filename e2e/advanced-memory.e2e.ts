@@ -1090,7 +1090,7 @@ test("Advanced Recall background activity appears without ordinary agents", asyn
   });
   try {
     await openChat(page, fixture.chat.id, false);
-    // Agent activity is a section of the Agents drawer in Chat Settings.
+    // Agent activity is a Chat Settings section below Agents.
     const activity = (await openChatSettingsTool(page, "agent-activity")).locator(
       '[data-component="AdvancedRecallActivity"]',
     );
@@ -1211,7 +1211,7 @@ for (const work of ["scene-check", "summary"] as const)
         if (response.url().endsWith(`/chats/${fixture.chat.id}/advanced-memory`)) polls++;
       });
       await openChat(page, fixture.chat.id, false);
-      // Agent activity, in Chat Settings' Agents drawer, shows Advanced Recall progress.
+      // Agent activity, the Chat Settings section below Agents, shows Advanced Recall progress.
       const activity = (await openChatSettingsTool(page, "agent-activity")).locator(
         '[data-component="AdvancedRecallActivity"]',
       );
@@ -1422,9 +1422,6 @@ test("Advanced Memory keeps routine normal and guided replies quiet while preser
       }
       if (index === 1) {
         // Quiet progress remains available through the normal settings action.
-        if ((page.viewportSize()?.width ?? 0) < 768) {
-          await page.getByRole("button", { name: "More options", exact: true }).click();
-        }
         await page.getByRole("button", { name: "Chat Settings", exact: true }).filter({ visible: true }).click();
         const section = drawer.locator('[data-chat-settings-section="roleplay-memory-recall"]');
         const header = section.locator(':scope > [role="button"]');

@@ -31,7 +31,7 @@ In short: **Cross-Chat Awareness** links a character across its own Conversation
 You start the link from the Conversation chat, or from a Game chat. Follow these steps to start from the Conversation side.
 
 1. Open the Conversation chat you want to link.
-2. Open **Chat Settings** (the button in the middle of the top bar; on a phone, under **More options** in the chat).
+2. Open **Chat Settings** (the **Chat Settings** button in the chat, at the top centre unless you moved it).
 3. Find the **Connected Chats** section.
 4. Click **Link to Roleplay or Game**.
 5. Search for the Roleplay or Game chat in the picker, then click it.
@@ -72,11 +72,9 @@ If no character has saved a note yet, the section explains that notes wrapped in
 
 ## Switching between connected chats
 
-On a computer, a chat with a linked chat shows a **Connected chat** button with a double-arrow icon. It starts in the row of buttons at the top right of the chat, and you can drag it anywhere. Click it to open the **Connected chat** window, then click **Switch to** followed by the other chat's name.
+When a chat has a linked chat, a small **Connected chat** button with a double-arrow icon sits at the top right of the chat. You can drag it anywhere, on a computer or a phone. Click or tap it to open a small window, then click **Switch to** followed by the other chat's name.
 
-<!-- TODO(#7034 mobile): switching to the connected chat on a phone -->
-
-This jumps straight to the connected chat, so you do not have to find it in the chat list by hand. The button appears on both sides of a link.
+This takes you straight to the connected chat. The button appears on both sides of the link.
 
 ## Other controls in this section
 

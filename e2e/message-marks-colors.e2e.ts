@@ -123,9 +123,8 @@ for (const mode of ["conversation", "roleplay"] as const) {
       await page.keyboard.press("Escape");
       const help = page.getByRole("button", { name: "Help", exact: true }).filter({ visible: true });
       if (!(await help.count())) {
-        // Phones keep Help in More options; desktop shows it beside the Chat Settings window title.
-        const opener = info.project.name.includes("mobile") ? "More options" : "Chat Settings";
-        await page.getByRole("button", { name: opener, exact: true }).filter({ visible: true }).click();
+        // Help sits beside the Chat Settings title (on phones it closes the sheet first).
+        await page.getByRole("button", { name: "Chat Settings", exact: true }).filter({ visible: true }).click();
       }
       await help.click();
       const overlay = page.locator(`[data-chat-help-overlay="${mode}"]`);

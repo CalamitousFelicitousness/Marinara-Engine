@@ -94,7 +94,7 @@ Custom theme CSS is cleaned before it runs, for safety. Styles that load a file 
 
 ## Styling chat windows and drawers
 
-On a computer, **Chat Settings**, the **Trackers** window, popped-out sections and the chat's control windows (a Game's Game controls, Session, Volume and Game Assets, the connected chat, and Roleplay package controls) are windows you can move and resize. Their sections are collapsible drawers, and a control window shrinks to a button, called a bubble, that you can place anywhere. On a phone, Chat Settings opens as a sheet. All of them share the class names, data attributes and variables below, so one theme can restyle them all at once. Your theme's rules win over the defaults without `!important`.
+**Chat Settings** opens as a window you can move and resize, and its sections are collapsible drawers. A drawer can pop out into a window of its own. The chat's other top controls (Game's Session, Volume, Assets and Game controls, the connected chat, package toolbars and Beholder) are small windows that minimize to buttons, called bubbles, which you can drag anywhere. On a phone, every popped-out drawer and the Tracker Panel are bubbles too, and windows open as full-width sheets. Every chat window, bubble and drawer uses the same class names, data attributes and variables, so one theme can restyle them all at once. Your theme’s rules override the defaults without `!important`.
 
 ### Classes
 
@@ -104,9 +104,10 @@ On a computer, **Chat Settings**, the **Trackers** window, popped-out sections a
 | Title bar | `.mari-window__header` |
 | Title and its icon | `.mari-window__title-row` |
 | Title | `.mari-window__title` |
-| Minimize, pin, lock and close buttons | `.mari-window__controls` (each button is `.mari-window__control`) |
+| Title bar buttons (Reset View, Tracker Panel, minimize, pin, lock, close) | `.mari-window__controls` (each button is `.mari-window__control`) |
 | Window content | `.mari-window__body` |
 | Resize edges and corners | `.mari-window__resize-handle` |
+| The corner mark shown while the pointer or focus is in a window | `.mari-window__resize-grip` |
 | Drawer | `.mari-drawer` |
 | Drawer header and title | `.mari-drawer__header`, `.mari-drawer__title` |
 | Drawer icon, count badge and **?** | `.mari-drawer__icon`, `.mari-drawer__count`, `.mari-drawer__help` |
@@ -116,6 +117,7 @@ On a computer, **Chat Settings**, the **Trackers** window, popped-out sections a
 | The preview that follows the pointer while a drawer is dragged out | `.mari-drawer-ghost` |
 | A minimized window's button (bubble) | `.mari-window-bubble` |
 | The line shown while a dragged bubble lines up with another | `.mari-window-snap-guide` |
+| The dot shown while agents run (Chat Settings button, Trackers window) | `.mari-agents-running-dot` |
 
 ### Data attributes
 
@@ -123,14 +125,18 @@ On a computer, **Chat Settings**, the **Trackers** window, popped-out sections a
 - `data-drawer` names a drawer, for example `chat-name`. Some names start with the chat mode, such as `roleplay-agents` or `conversation-agents`. Trackers use `tracker-world`, `tracker-persona`, `tracker-characters`, `tracker-quests`, `tracker-inventory`, `tracker-custom` and `agent-activity`.
 - `data-presentation` is `"window"`, or `"sheet"` for Chat Settings on a phone.
 - `data-pinned` and `data-locked` are `"true"` while the window is pinned or locked.
-- `data-window-control` is `"minimize"`, `"pin"`, `"lock"` or `"close"` on each title bar button. A pinned or locked button also has `aria-pressed="true"`.
+- `data-window-control` names each title bar button: `"minimize"`, `"pin"`, `"lock"`, `"close"` or `"put-back"`. A pressed pin or lock button also has `aria-pressed="true"`.
 - `data-edge` is `"n"`, `"s"`, `"e"`, `"w"`, `"ne"`, `"nw"`, `"se"` or `"sw"` on each resize handle.
 - An open drawer's header has `aria-expanded="true"`.
 - `data-drawer-control="pop-out"` marks a drawer's pop-out button.
-- `data-detached` is `"true"` on a popped-out drawer's window and on the drawer inside it, and `data-drawer-host` on that window names the window it came from.
-- `data-dragging` is `"true"` on a drawer while its title is dragged and on a bubble while it is dragged. `data-outside` is `"true"` on the drag preview once dropping it would pop the drawer out, and `data-drop-target` is `"true"` on a window while a popped-out drawer is held over it, ready to go back.
-- A bubble has `data-minimized="true"` and its window's `data-window`, for example `.mari-window-bubble[data-window="control:volume"]`.
+- `data-outside="true"` marks a drag preview that is far enough outside its window to pop out when dropped.
 - `data-axis` is `"x"` on a snap guide that runs up and down, and `"y"` on one that runs across.
+- `data-detached` is `"true"` when a drawer is shown in its own window, on both that window and the drawer inside it. A popped-out drawer's window is named `data-window="drawer:<window>:<drawer>"`, for example `data-window="drawer:chat-settings:chat-name"`, and `data-drawer-host` names the window it came from.
+- `data-dragging` is `"true"` on a drawer while its title is dragged, and `data-drop-target` is `"true"` on a window while a popped-out drawer is held over it, ready to go back.
+- A bubble has the `data-window` of its window and `data-minimized="true"`, for example `.mari-window-bubble[data-window="control:volume"]`. Control windows are named `control:game`, `control:session`, `control:volume`, `control:assets`, `control:connected-chat`, `control:package:<package>` and `control:beholder:<package>`. `data-dragging` is `"true"` on a bubble while it is dragged.
+- On a phone, windows have `data-presentation="sheet"`, and so do their bubbles, which are slightly larger. The Tracker Panel's bubble is `.mari-window-bubble[data-tracker-panel-toggle="bubble"]`.
+- The Chat Settings button is a bubble too: `.mari-window-bubble[data-chat-settings-button]`, with `data-open="true"` while Chat Settings is open.
+- A popped-out section shrinks to a bubble with `data-drawer-host` (the window it came from), and its window's **Put back** button is `[data-window-control="put-back"]`.
 
 ### Variables
 

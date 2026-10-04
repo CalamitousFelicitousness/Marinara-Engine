@@ -247,10 +247,11 @@ const HOME_FAQ_ITEMS: HomeFaqItem[] = [
     category: "Core",
     question: "Where did Chat Settings, Gallery, and Active Context go?",
     answer:
-      "Inside a chat, open Chat Settings from the button in the middle of the top bar. Gallery, Active Context, Chat Branches, Chat Summary and Author's Notes are sections inside it, and Search messages sits at its top.",
+      "Inside a chat, open Chat Settings from its button, which starts at the top centre of the chat. Gallery, Active Context and the other chat tools are sections inside it.",
     bullets: [
-      "On a computer, Chat Settings is a window you can move, resize, pin and lock, and any section can pop out into its own window.",
-      "On mobile, Chat Settings is in the chat's More options menu, or Game actions in a Game.",
+      "Drag the Chat Settings button, or any other chat button, wherever you want it; each chat remembers where.",
+      "Any section can pop out into its own window, and closing that window shrinks it to a button.",
+      "On phones, the same buttons open their windows as full-width panels.",
     ],
   },
   {

@@ -1,6 +1,6 @@
 import { useEffectiveGenerationParameters } from "../../../hooks/use-effective-generation-parameters";
 import { useEffect, useMemo, useState } from "react";
-import { RotateCcw, Save, Settings2 } from "lucide-react";
+import { RotateCcw, Save, Gauge } from "lucide-react";
 import { Drawer } from "../../../components/ui/Drawer";
 import { AgentSettingsActionButton } from "../../../components/chat/AgentSettingsControls";
 import {
@@ -183,7 +183,7 @@ export function AdvancedParametersSection({
     <Drawer
       id="advanced-parameters"
       title={localizeUi("ui.chatSettings.advancedparameterssection.advancedParameters")}
-      icon={<Settings2 size="0.875rem" />}
+      icon={<Gauge size="0.875rem" />}
       help={localizeUi(
         "ui.chatSettings.advancedparameterssection.overrideGenerationParametersForThisChatOnlyChangeThese",
       )}

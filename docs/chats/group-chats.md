@@ -40,7 +40,7 @@ You can also click the **Random** row (labeled **Dice pick**) to add one random 
 
 ## Managing members after creation
 
-You add, remove, and reorder characters in **Chat Settings**. On a computer, open it with the **Chat Settings** button in the middle of the top bar. On a phone, it is under **More options** in the chat.
+You add, remove, and reorder characters in **Chat Settings**. Open it with the **Chat Settings** button in the chat.
 
 Inside Chat Settings, find the **Characters** section. It shows a member count and the help text "Characters in this chat. Each character has their own personality that the AI roleplays as." Each member row has an avatar, the character name, a drag handle, an eye icon, and a trash icon.
 

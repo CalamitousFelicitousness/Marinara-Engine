@@ -9,7 +9,6 @@ import { createPortal } from "react-dom";
 import { MapPin, Users, Backpack, Scroll, Swords, RefreshCw, BarChart3, SlidersHorizontal } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { api } from "../../lib/api-client";
-import { TrackerPanelIcon } from "../ui/TrackerPanelIcon";
 import { WorldCalendarIcon } from "../ui/WorldCalendarIcon";
 import { WorldClockIcon, WorldThermometerIcon } from "../ui/WorldStateInstruments";
 import { useGameStateStore } from "../../stores/game-state.store";
@@ -180,11 +179,7 @@ export function RoleplayHUD({
 
   const enabledAgentTypes = enabledAgentTypesProp ?? EMPTY_AGENT_TYPE_SET;
   const {
-    packages: {
-      memoryNag: memoryNagTrackerPackages,
-      beholder: beholderTrackerPackages,
-      other: otherRoleplayTrackerPackages,
-    },
+    packages: { memoryNag: memoryNagTrackerPackages, other: otherRoleplayTrackerPackages },
     patchField,
     patchPlayerStats,
     editInventoryTracker,
@@ -207,10 +202,8 @@ export function RoleplayHUD({
 
   const isAgentProcessing = useAgentStore((s) => s.processingChatIds.includes(chatId));
   const trackerPanelEnabled = useUIStore((s) => s.trackerPanelEnabled);
-  const trackerPanelOpen = useUIStore((s) => s.trackerPanelOpen);
   const trackerPanelHideHudWidgets = useUIStore((s) => s.trackerPanelHideHudWidgets);
   const trackerTemperatureUnit = useUIStore((s) => s.trackerTemperatureUnit);
-  const toggleTrackerPanel = useUIStore((s) => s.toggleTrackerPanel);
 
   const isTrackerBusy = isAgentProcessing || isStreaming || gameStateRefreshing;
   // Phones only: on a computer, trackers live in the Tracker Panel or the Tracker window.
@@ -250,24 +243,7 @@ export function RoleplayHUD({
   return (
     <TrackerLockProvider {...lockProviderProps}>
       <div className={cn("rpg-hud", "flex items-center", CHAT_TOOLBAR_ICON_GAP_CLASS, mobileCompact && "min-w-0")}>
-        {/* Desktop shows and hides the Tracker Panel from Chat Settings. */}
-        {trackerPanelEnabled && !trackerPanelOpen && (
-          <span className="contents md:hidden">
-            <TrackerPanelToggleButton onToggle={() => toggleTrackerPanel(chatId)} />
-          </span>
-        )}
-
-        {beholderTrackerPackages.map((item) => (
-          <RoleplayTrackerCapability
-            key={`${item.id}-beholder-launcher`}
-            packageId={item.id}
-            chatId={chatId}
-            compact={mobileCompact}
-            onRerunSingleTracker={onRerunSingleTracker}
-            isTrackerRetryBusy={isTrackerBusy}
-          />
-        ))}
-
+        {/* Chat Settings turns the Tracker Panel on, and Beholder has its own window (a bubble). */}
         {/* ── Mobile: combined widgets, grouped with tracker and agent controls ── */}
         {showHudTrackerWidgets && (
           <div
@@ -406,22 +382,6 @@ export function RoleplayTrackerCapability({
 
 function DeferredHUDPanelFallback({ label }: { label: string }) {
   return <div className="px-3 py-4 text-center text-[0.625rem] text-[var(--muted-foreground)]/60">{label}</div>;
-}
-
-function TrackerPanelToggleButton({ onToggle }: { onToggle: () => void }) {
-  const { t: localizeUi } = useUiTranslation();
-  return (
-    <button
-      data-tracker-panel-toggle="roleplay-hud"
-      onClick={onToggle}
-      className={WIDGET}
-      title={localizeUi("ui.chat.trackerpaneltogglebutton.showTrackerPanel")}
-      aria-label={localizeUi("ui.chat.trackerpaneltogglebutton.showTrackerPanel")}
-    >
-      <TrackerPanelIcon size="1.05rem" className="shrink-0" />
-      <span className="sr-only">{localizeUi("ui.panels.trackerpanelappearancedrawer.trackerPanel")}</span>
-    </button>
-  );
 }
 
 // ═══════════════════════════════════════════════

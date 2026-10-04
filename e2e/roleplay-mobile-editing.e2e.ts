@@ -81,12 +81,14 @@ function firstLineTakesTouches(editor: Locator, fractions: number[]) {
   }, fractions);
 }
 
-/** Scroll the transcript until the editor's first line is level with the menu button at the top of the chat. */
-async function levelFirstLineWithMenu(page: Page, editor: Locator, chatSurface: string) {
-  const menu = page.locator(chatSurface).getByRole("button", { name: "More options", exact: true });
-  const menuBox = await menu.boundingBox();
-  expect(menuBox).not.toBeNull();
-  const menuMiddle = menuBox!.y + menuBox!.height / 2;
+/**
+ * Scroll the transcript until the editor's first line is level with the chat's top row of controls (the
+ * see-through strip that held the chat's menu button; bubbles start there now, 8px below the topbar).
+ */
+async function levelFirstLineWithMenu(page: Page, editor: Locator) {
+  const topbar = await page.locator('[data-component="TopBar"]').boundingBox();
+  expect(topbar).not.toBeNull();
+  const menuMiddle = topbar!.y + topbar!.height + 8 + 18;
   await editor.evaluate((element, buttonMiddle) => {
     const transcript = element.closest("[data-chat-scroll]")!;
     transcript.scrollTop += element.getBoundingClientRect().top + 16 - buttonMiddle;
@@ -103,7 +105,7 @@ test("a Roleplay message being edited takes touches along its first line (#6992)
     await expect.poll(() => firstLineTakesTouches(editor, [0.1, 0.5, 0.95])).toEqual([true, true, true]);
 
     // Scrolled up level with the menu button, the line still takes touches beside it.
-    await levelFirstLineWithMenu(page, editor, '[data-component="ChatArea.Roleplay"]');
+    await levelFirstLineWithMenu(page, editor);
     expect(await firstLineTakesTouches(editor, [0.1, 0.5])).toEqual([true, true]);
   });
 });
@@ -118,7 +120,7 @@ test("a Conversation message being edited takes touches under the see-through he
     async (reply) => {
       const editor = await startEditing(reply);
       // Scrolled up level with the menu button, the line takes touches beside it.
-      await levelFirstLineWithMenu(page, editor, '[data-chat-mode="conversation"]');
+      await levelFirstLineWithMenu(page, editor);
       expect(await firstLineTakesTouches(editor, [0.1, 0.5])).toEqual([true, true]);
     },
     // Conversation keeps its editor short, so later messages give room to scroll it under the header.
@@ -174,7 +176,7 @@ test("opening the keyboard to edit the latest Conversation reply keeps its first
       const editor = await startEditing(latest);
       const startTop = await editor.evaluate((element) => element.getBoundingClientRect().top);
       await openKeyboard(page, android);
-      // The keyboard lines the editor up again, below the character card and More options instead of under them.
+      // The keyboard lines the editor up again, below the character card and the top controls instead of under them.
       await expect
         .poll(async () => ({
           moved: (await editor.evaluate((element) => element.getBoundingClientRect().top)) < startTop,

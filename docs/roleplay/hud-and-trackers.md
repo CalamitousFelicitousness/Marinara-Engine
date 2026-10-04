@@ -117,7 +117,7 @@ Custom field names define the structure and remain stable across tracker runs. T
 These settings control it:
 
 - **Tracker Panel**: the master on or off toggle, the same one the die in Chat Settings turns on and off. It is on by default. When on, the label reads "Shown in the Roleplay HUD". When off, trackers show in the Trackers window on a computer.
-- **Replace tracker HUD icons**: hides the compact icon strip on phones and lets the panel dock to the screen edge instead. The **Agents & Actions** button stays visible.
+- **Replace tracker HUD icons**: hides the compact icon strip on phones and lets the panel dock to the screen edge instead.
 - **Use expression sprites for tracker portraits**: lets tracker portraits use a character's expression sprite (their current emotion portrait) instead of the plain avatar, when one exists. Expression sprites are explained in [Character Sprites](../characters/sprites.md).
 - **Panel background**: a color or gradient picker for the panel's background.
 - **Desktop size**: choose the panel width. The options are **Compact**, **Standard**, and **Expanded**.

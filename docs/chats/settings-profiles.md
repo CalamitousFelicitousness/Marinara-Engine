@@ -23,7 +23,7 @@ A profile stores how the chat talks to the AI:
 - Translation
 - Memory Recall
 - Advanced Parameters
-- Window and button layout: window positions and sizes, pins and locks, popped-out sections, open control windows, and button positions on computers and phones. Profiles without a saved layout, such as **Default**, leave the chat's layout as it is.
+- Window and button layout: window positions and sizes, pins and locks, which tools are inside Chat Settings or popped out, open control windows, and button positions on computers and phones. Profiles without a saved layout, such as **Default**, leave the chat's layout as it is.
 - Whether the layout tips in Chat Settings are hidden. Applying **Default**, or an older profile without this choice, shows the tips again.
 - Other reusable chat options
 

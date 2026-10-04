@@ -40,6 +40,8 @@ export interface WindowLayout extends WindowGeometry {
   locked: boolean;
   /** Closed or shown as a small button instead of the window; prevents pinned windows reopening. Older layouts have none. */
   minimized?: boolean;
+  /** A toolbar control rendered as a section in Chat Settings instead of its own window/button. */
+  docked?: boolean;
   /** Where a minimizable window's bubble sits (its top-left corner, viewport pixels). */
   bubble?: WindowPoint;
 }
@@ -212,6 +214,7 @@ function readStoredLayout(value: unknown): WindowLayout | null {
   };
   // Optional (added after version 1 shipped): a bad value is dropped, the rest of the layout kept.
   if (typeof source.minimized === "boolean") layout.minimized = source.minimized;
+  if (typeof source.docked === "boolean") layout.docked = source.docked;
   const bubble = readStoredPoint(source.bubble);
   if (bubble) layout.bubble = bubble;
   return layout;
@@ -247,11 +250,11 @@ export function parseWindowLayoutSnapshot(raw: unknown): WindowLayoutSnapshot {
     const layout = readStoredLayout(value);
     if (layout) windows[id] = layout;
   }
-  // A popped-out drawer needs its place; one without a valid layout goes back to its host.
+  // A migrated drawer may not have been opened yet; its bubble chooses a place on first render.
   const detached = Array.isArray(source.detached)
     ? (source.detached as unknown[]).filter(
         (id, index, list): id is FloatingWindowId =>
-          isStoredWindowId(id) && id.startsWith(DRAWER_WINDOW_PREFIX) && !!windows[id] && list.indexOf(id) === index,
+          isStoredWindowId(id) && id.startsWith(DRAWER_WINDOW_PREFIX) && list.indexOf(id) === index,
       )
     : [];
   return toWindowLayoutSnapshot(
@@ -358,7 +361,7 @@ const BUBBLE_WINDOW_GAP_PX = 8;
 
 /**
  * Where a minimizable window opens from its bubble: below it and lined up with its right edge (left
- * edge near the left side), or above it when there is no room below.
+ * edge near the left side). Shorten the window to fit below; use above only when its minimum height cannot fit.
  */
 export function placeWindowBesideBubble(
   size: { width: number; height: number },
@@ -367,10 +370,13 @@ export function placeWindowBesideBubble(
   limits: WindowSizeLimits,
   bubbleSize = WINDOW_BUBBLE_SIZE_PX,
 ): WindowGeometry {
-  const { width, height } = size;
+  const { width } = size;
   const alignRight = bubble.x + bubbleSize - width;
   const x = alignRight >= bounds.left ? alignRight : bubble.x;
   const below = bubble.y + bubbleSize + BUBBLE_WINDOW_GAP_PX;
-  const y = below + height <= bounds.bottom ? below : bubble.y - BUBBLE_WINDOW_GAP_PX - height;
+  const belowSpace = bounds.bottom - below;
+  const fitsBelow = belowSpace >= Math.min(limits.minHeight, bounds.bottom - bounds.top);
+  const height = fitsBelow ? Math.min(size.height, belowSpace) : size.height;
+  const y = fitsBelow ? below : bubble.y - BUBBLE_WINDOW_GAP_PX - height;
   return clampWindowGeometry({ x, y, width, height }, bounds, limits);
 }

@@ -17,6 +17,8 @@ Your first session is **Session 1**. Ending it and starting again creates **Sess
 3. **Session** opens as a window on a computer or a full-width panel on a phone. Its first line shows **Session** with the current number and status.
 4. It has two tabs: **Session History** and **Journal**. Stay on **Session History** for session controls and setup sharing.
 
+If you used **Put back in Chat Settings** to move this window, open the **Session** section in Chat Settings instead.
+
 ## Sharing the setup that created a game
 
 Game Mode keeps an immutable snapshot of the setup used to create each new campaign. This lets you play first, decide that the combination works well, and share it afterward without manually recording every field before starting.

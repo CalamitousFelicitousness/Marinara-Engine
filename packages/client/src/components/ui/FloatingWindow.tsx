@@ -36,6 +36,7 @@ import {
   clampWindowGeometry,
   getPhoneBubbleSlot,
   moveWindowGeometry,
+  placeWindowBesideBubble,
   resizeWindowGeometry,
   type FloatingWindowId,
   type WindowPoint,
@@ -52,6 +53,7 @@ import { WindowBubble } from "./WindowBubble";
 import {
   FLOATING_WINDOW_Z_BASE,
   PHONE_BUBBLE_Z_INDEX,
+  isPhoneWindowLayout,
   takeFloatingWindowFocusRequest,
   takeFloatingWindowOpener,
   useFloatingWindowStore,
@@ -143,9 +145,19 @@ export function findFreeBubble(
   { size, except }: { size: number; except?: FloatingWindowId },
 ): WindowPoint {
   const gap = BUBBLE_SNAP_GAP_PX;
+  const placements = isPhoneWindowLayout()
+    ? useFloatingWindowStore.getState().phoneBubbles
+    : useFloatingWindowStore.getState().bubbles;
   const taken = Array.from(document.querySelectorAll<HTMLElement>(".mari-window-bubble"))
     .filter((element) => element.dataset.window !== except && element.getClientRects().length > 0)
-    .map((element) => element.getBoundingClientRect());
+    .map((element) => {
+      const rect = element.getBoundingClientRect();
+      const saved = placements[element.dataset.window ?? ""];
+      if (!saved) return rect;
+      // Earlier siblings may have reserved a slot in this layout effect before React paints it.
+      const point = clampWindowBubble(saved, bounds, Math.max(rect.width, rect.height));
+      return { left: point.x, top: point.y, right: point.x + rect.width, bottom: point.y + rect.height };
+    });
   const free = (x: number, y: number) =>
     x >= bounds.left &&
     taken.every((rect) => rect.right <= x || rect.left >= x + size || rect.bottom <= y || rect.top >= y + size);
@@ -402,6 +414,7 @@ export function FloatingWindow({
   const rootRef = useRef<HTMLDivElement | null>(null);
   const sheet = presentation === "sheet";
   const savedLayout = useFloatingWindowStore((state) => state.layouts[id]);
+  const savedDesktopBubble = useFloatingWindowStore((state) => state.bubbles[id]);
   const resetRevision = useFloatingWindowStore((state) => state.resetRevision);
   const stackIndex = useFloatingWindowStore((state) => state.stack.indexOf(id));
   const saveLayout = useFloatingWindowStore((state) => state.saveLayout);
@@ -469,16 +482,16 @@ export function FloatingWindow({
   const defaultLayout = useMemo(
     () => getDefaultLayoutRef.current(bounds, bubbleSize),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the revisions recompute the default on purpose
-    [bounds, bubbleSize, resetRevision, defaultRevision],
+    [bounds, bubbleSize, resetRevision, defaultRevision, openInStore],
   );
   const layout = savedLayout ?? defaultLayout;
   const pinned = !sheet && layout.pinned;
-  const locked = !sheet && layout.locked;
+  const locked = layout.locked;
   const geometry = clampWindowGeometry(liveGeometry ?? layout, bounds, limits);
   const canMinimize = !!minimizable && !sheet;
   const minimized = canMinimize ? layout.minimized === true : phoneBubble && !openInStore;
   const bubblePoint = clampWindowBubble(
-    layout.bubble ?? defaultLayout.bubble ?? { x: bounds.right - bubbleSize, y: bounds.top },
+    savedDesktopBubble ?? layout.bubble ?? defaultLayout.bubble ?? { x: bounds.right - bubbleSize, y: bounds.top },
     bounds,
     bubbleSize,
   );
@@ -491,6 +504,13 @@ export function FloatingWindow({
       .getState()
       .savePhoneBubble(id, findFreeBubble(readPhoneBubbleBounds(), { size: bubbleSize, except: id }));
   }, [bubbleSize, id, needsPhonePlace]);
+
+  // Drawers migrated from old toolbar buttons have no saved window geometry yet.
+  const needsDesktopPlace = canMinimize && minimized && !hidden && !savedDesktopBubble && !layout.bubble;
+  useLayoutEffect(() => {
+    if (!needsDesktopPlace) return;
+    useFloatingWindowStore.getState().saveBubble(id, findFreeBubble(bounds, { size: bubbleSize, except: id }));
+  }, [bounds, bubbleSize, id, needsDesktopPlace]);
 
   // Re-clamp whenever the viewport or the chat area changes, so a window can never be lost off-screen.
   useEffect(() => {
@@ -551,7 +571,17 @@ export function FloatingWindow({
 
   // The window opens where it was last left; its bubble's place is its own.
   const restoreFromBubble = (bubble: HTMLButtonElement) => {
-    saveLayout(id, { ...layoutRef.current, minimized: false });
+    const rect = bubble.getBoundingClientRect();
+    const initialGeometry = savedLayout
+      ? savedLayout
+      : placeWindowBesideBubble(
+          layoutRef.current,
+          { x: rect.left, y: rect.top },
+          readFloatingWindowBounds(),
+          limits,
+          rect.height,
+        );
+    saveLayout(id, { ...layoutRef.current, ...initialGeometry, minimized: false });
     useFloatingWindowStore.getState().openWindow(id, bubble);
   };
 
@@ -715,6 +745,7 @@ export function FloatingWindow({
           onSizeChange={setBubbleSize}
           icon={minimizable.icon}
           label={minimizable.label}
+          locked={layout.locked}
           zIndex={PHONE_BUBBLE_Z_INDEX}
           attributes={{ ...rootAttributes, "data-presentation": "sheet" }}
           onMove={(point) => useFloatingWindowStore.getState().savePhoneBubble(id, point)}
@@ -731,9 +762,10 @@ export function FloatingWindow({
           onSizeChange={setBubbleSize}
           icon={minimizable.icon}
           label={minimizable.label}
+          locked={layout.locked}
           zIndex={FLOATING_WINDOW_Z_BASE}
           attributes={rootAttributes}
-          onMove={(point) => saveLayout(id, { ...layoutRef.current, bubble: point })}
+          onMove={(point) => useFloatingWindowStore.getState().saveBubble(id, point)}
           onOpen={restoreFromBubble}
         >
           {minimizable.bubbleBadge}
@@ -812,31 +844,29 @@ export function FloatingWindow({
               </button>
             )}
             {!sheet && (
-              <>
-                <button
-                  type="button"
-                  data-window-control="pin"
-                  aria-pressed={pinned}
-                  aria-label={t("window.controls.pin")}
-                  title={t(pinned ? "window.controls.unpinHint" : "window.controls.pinHint")}
-                  className="mari-window__control"
-                  onClick={() => commitLayout({ pinned: !pinned })}
-                >
-                  <Pin size="0.875rem" fill={pinned ? "currentColor" : "none"} />
-                </button>
-                <button
-                  type="button"
-                  data-window-control="lock"
-                  aria-pressed={locked}
-                  aria-label={t("window.controls.lock")}
-                  title={t(locked ? "window.controls.unlockHint" : "window.controls.lockHint")}
-                  className="mari-window__control"
-                  onClick={() => commitLayout({ locked: !locked })}
-                >
-                  {locked ? <Lock size="0.875rem" /> : <Unlock size="0.875rem" />}
-                </button>
-              </>
+              <button
+                type="button"
+                data-window-control="pin"
+                aria-pressed={pinned}
+                aria-label={t("window.controls.pin")}
+                title={t(pinned ? "window.controls.unpinHint" : "window.controls.pinHint")}
+                className="mari-window__control"
+                onClick={() => commitLayout({ pinned: !pinned })}
+              >
+                <Pin size="0.875rem" fill={pinned ? "currentColor" : "none"} />
+              </button>
             )}
+            <button
+              type="button"
+              data-window-control="lock"
+              aria-pressed={locked}
+              aria-label={t("window.controls.lock")}
+              title={t(locked ? "window.controls.unlockHint" : "window.controls.lockHint")}
+              className="mari-window__control"
+              onClick={() => commitLayout({ locked: !locked })}
+            >
+              {locked ? <Lock size="0.875rem" /> : <Unlock size="0.875rem" />}
+            </button>
             {closeAccessory}
             <button
               type="button"

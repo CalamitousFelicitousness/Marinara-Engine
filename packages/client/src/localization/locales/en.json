@@ -11802,15 +11802,16 @@
   "ui.ui.trackercardcolorcontrols.value1ChannelIsOff": "{{value1}} channel is off.",
   "window.bubble.hint": "Click to open {{title}}, or drag to move this button.",
   "window.bubble.label": "Open {{title}}",
+  "window.bubble.lockedHint": "Click to open {{title}}. Unlock its window to move this button.",
   "window.controls.close": "Close window",
   "window.controls.lock": "Lock window",
-  "window.controls.lockHint": "Stop this window from moving or resizing.",
+  "window.controls.lockHint": "Stop this window from moving or resizing, and keep its button in place.",
   "window.controls.minimize": "Minimize window",
   "window.controls.minimizeHint": "Shrink this window to a button you can place anywhere.",
   "window.controls.move": "Move window with the arrow keys",
   "window.controls.pin": "Pin window",
   "window.controls.pinHint": "Keep this window open when you click elsewhere.",
   "window.controls.resize": "Resize window with the arrow keys",
-  "window.controls.unlockHint": "Let this window move and resize again.",
+  "window.controls.unlockHint": "Let this window move and resize, and its button move again.",
   "window.controls.unpinHint": "Let this window close when you click elsewhere."
 }

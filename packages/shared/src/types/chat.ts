@@ -276,7 +276,8 @@ export interface ChatMetadata {
   roleplayDisplayStyle?: "classic" | "visual-novel";
   /**
    * This chat's window layout on a computer (window places and sizes, pinned and locked state,
-   * popped-out drawers), owned and validated by the client. Absent or null means the defaults.
+   * popped-out drawers), owned and validated by the client. Absent migrates an older chat's toolbar;
+   * null selects the current defaults, including after Reset View.
    */
   windowLayout?: unknown;
   /** Hide Chat Settings' introductory tips for this chat; included in settings profiles. */

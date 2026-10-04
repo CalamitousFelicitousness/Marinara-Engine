@@ -1,10 +1,16 @@
 // Chat Branches, Chat Summary, Active Context, Author's Notes, Agent activity and Gallery are Chat Settings
-// drawers, and Search messages sits under Profile setup (#7034). These helpers reach them from the topbar
+// drawers, including Search messages under Profile setup (#7034). These helpers reach them from the chat
 // button: a movable window on desktop, a sheet on phones.
 import { expect, type Locator, type Page } from "@playwright/test";
 
 export type ChatSettingsTool =
-  "chat-branches" | "chat-summary" | "active-context" | "author-notes" | "agent-activity" | "gallery";
+  | "chat-branches"
+  | "chat-summary"
+  | "active-context"
+  | "author-notes"
+  | "agent-activity"
+  | "gallery"
+  | "message-search";
 
 export function chatSettingsWindow(page: Page) {
   return page.locator('[data-window="chat-settings"]');
@@ -40,10 +46,10 @@ export async function openChatSettingsTool(page: Page, tool: ChatSettingsTool): 
   return drawer;
 }
 
-/** The inline Search messages control under Profile setup. */
+/** The Search messages section under Profile setup. */
 export async function openChatMessageSearch(page: Page): Promise<Locator> {
-  const settings = await openChatSettings(page);
-  const search = settings.locator("[data-chat-message-search]");
+  const drawer = await openChatSettingsTool(page, "message-search");
+  const search = drawer.locator("[data-chat-message-search]");
   await expect(search).toBeVisible();
   return search;
 }

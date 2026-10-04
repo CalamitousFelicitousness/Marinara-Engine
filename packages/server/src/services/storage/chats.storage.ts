@@ -1546,6 +1546,8 @@ export function createChatsStorage(db: DB) {
         agentOverrides: {},
         activeAgentIds: [],
         activeToolIds: [],
+        // Missing means a pre-window chat whose toolbar needs migrating; null selects the new defaults.
+        windowLayout: null,
       };
       if (hasConversationSchedules(inheritedSchedules)) {
         metadata.conversationSchedulesEnabled = true;

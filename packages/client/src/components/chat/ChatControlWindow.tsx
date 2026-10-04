@@ -6,10 +6,18 @@
 // bubble). They start minimized, their bubbles in a row at the chat's top right where
 // the buttons (and a phone's menu button) used to be. On a phone each opens as a sheet.
 // ──────────────────────────────────────────────
-import type { ReactNode } from "react";
-import { ArrowRightLeft } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { ArrowRightLeft, Undo2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { FloatingWindow, PHONE_FULL_SHEET_CLASS, PHONE_SHEET_CLASS } from "../ui/FloatingWindow";
+import {
+  FloatingWindow,
+  PHONE_FULL_SHEET_CLASS,
+  PHONE_SHEET_CLASS,
+  readFloatingWindowBounds,
+} from "../ui/FloatingWindow";
+import { Drawer } from "../ui/Drawer";
+import { useChatControlDockStore } from "../ui/drawer-host";
 import { NEUTRAL_PANEL_SCROLL_AREA, NEUTRAL_SURFACE_VARIABLES } from "../ui/neutral-surface-styles";
 import { useMatchMedia } from "../../hooks/use-match-media";
 import {
@@ -23,6 +31,7 @@ import {
 import { cn } from "../../lib/utils";
 import { BUBBLE_SNAP_GAP_PX } from "../../lib/window-bubble-snap";
 import { useUIStore } from "../../stores/ui.store";
+import { CHAT_SETTINGS_WINDOW_ID, useFloatingWindowStore } from "../../stores/floating-window.store";
 import { readChatWindowArea, readCssPixels } from "./chat-settings-window";
 
 const TRACKER_CLEARANCE_VARIABLE = "--tracker-panel-overlay-clearance";
@@ -58,7 +67,7 @@ export function getChatControlDefaultLayout(
   const right = Math.min(bounds.right - trackerClearance, area.right);
   const row = getBubbleRowSlot(bounds, slot, { right, size: bubbleSize, gap: BUBBLE_SNAP_GAP_PX });
   const bubble = { x: row.x, y: row.y + rowOffset };
-  const geometry = placeWindowBesideBubble(size, bubble, bounds, { minWidth: 1, minHeight: 1 }, bubbleSize);
+  const geometry = placeWindowBesideBubble(size, bubble, bounds, { minWidth: 200, minHeight: 96 }, bubbleSize);
   return { ...geometry, pinned: false, locked: false, minimized: true, bubble };
 }
 
@@ -106,6 +115,71 @@ export function ChatControlWindow({
 }: ChatControlWindowProps) {
   const { t } = useTranslation();
   const phoneLayout = useMatchMedia("(max-width: 767px)");
+  const savedLayout = useFloatingWindowStore((state) => state.layouts[id]);
+  const dockHost = useChatControlDockStore((state) => state.element);
+  const [sectionOpen, setSectionOpen] = useState(true);
+  const focusDockRef = useRef(false);
+  const docked = savedLayout?.docked === true;
+
+  useEffect(() => {
+    if (!docked || !dockHost || !focusDockRef.current) return;
+    focusDockRef.current = false;
+    dockHost.querySelector<HTMLElement>(`[data-drawer="${CSS.escape(id)}"] [data-drawer-toggle]`)?.focus();
+  }, [docked, dockHost, id]);
+
+  const dock = () => {
+    const windows = useFloatingWindowStore.getState();
+    const layout =
+      windows.layouts[id] ??
+      getChatControlDefaultLayout(readFloatingWindowBounds(), slot, { width, height }, rowOffset);
+    focusDockRef.current = true;
+    setSectionOpen(true);
+    windows.saveLayout(id, { ...layout, docked: true });
+    windows.closeWindow(id);
+    windows.openWindow(CHAT_SETTINGS_WINDOW_ID, null, { focus: false });
+  };
+  const popOut = (layout: WindowLayout) => {
+    const windows = useFloatingWindowStore.getState();
+    windows.saveLayout(id, { ...savedLayout, ...layout, docked: false, minimized: phoneLayout });
+    if (phoneLayout) {
+      windows.closeWindow(id);
+      windows.dismissWindow(CHAT_SETTINGS_WINDOW_ID, { force: true });
+    } else windows.openWindow(id);
+  };
+  const handleDragMove = (point: { x: number; y: number }, phase: "move" | "end") => {
+    const target = dockHost?.closest<HTMLElement>(".mari-window");
+    const rect = target && !target.hidden && target.getClientRects().length > 0 ? target.getBoundingClientRect() : null;
+    const over =
+      !!rect && point.x >= rect.left && point.x <= rect.right && point.y >= rect.top && point.y <= rect.bottom;
+    if (phase === "move") {
+      if (over) target?.setAttribute("data-drop-target", "true");
+      else target?.removeAttribute("data-drop-target");
+      return;
+    }
+    target?.removeAttribute("data-drop-target");
+    if (!over) return;
+    dock();
+    return true;
+  };
+  if (docked) {
+    return dockHost
+      ? createPortal(
+          <Drawer
+            id={id}
+            title={title}
+            icon={icon}
+            open={sectionOpen}
+            onOpenChange={setSectionOpen}
+            onPopOut={popOut}
+            bodyClassName={cn("pt-3", !scroll && "flex h-96 min-h-0 flex-col")}
+            rootAttributes={{ "data-chat-settings-section": id, "data-docked-chat-control": id }}
+          >
+            {children}
+          </Drawer>,
+          dockHost,
+        )
+      : null;
+  }
   return (
     <FloatingWindow
       id={id}
@@ -114,6 +188,18 @@ export function ChatControlWindow({
         <span className="flex shrink-0 text-[var(--muted-foreground)] [&_svg]:h-3.5 [&_svg]:w-3.5">{icon}</span>
       }
       closeLabel={t("window.controls.close")}
+      closeAccessory={
+        <button
+          type="button"
+          data-window-control="put-back"
+          aria-label={t("drawer.popOut.close", { host: t("chat.toolbar.settings") })}
+          title={t("drawer.popOut.close", { host: t("chat.toolbar.settings") })}
+          className="mari-window__control"
+          onClick={dock}
+        >
+          <Undo2 size="0.875rem" />
+        </button>
+      }
       presentation={phoneLayout ? "sheet" : "window"}
       sheetClassName={cn(PHONE_SHEET_CLASS, !scroll && PHONE_FULL_SHEET_CLASS)}
       minimizable={{
@@ -137,6 +223,7 @@ export function ChatControlWindow({
       titleClassName="marinara-chat-popover__title text-xs font-semibold leading-tight"
       rootAttributes={{ "data-chat-help": helpTarget, "data-chat-control-window": id }}
       ignoreOutsidePointer={ignoreControlWindowOutsidePointer}
+      onDragMove={handleDragMove}
     >
       {scroll ? (
         <div className={cn(NEUTRAL_PANEL_SCROLL_AREA, "@container min-h-0 flex-1 overflow-y-auto overscroll-contain")}>

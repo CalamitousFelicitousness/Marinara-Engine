@@ -6,6 +6,7 @@
 // popped-out window borrows the host's look from here.
 // ──────────────────────────────────────────────
 import { createContext, useContext } from "react";
+import { create } from "zustand";
 import type { FloatingWindowId } from "../../lib/floating-window-layout";
 import { selectHasDetachedDrawers, useFloatingWindowStore } from "../../stores/floating-window.store";
 
@@ -26,6 +27,12 @@ export interface DrawerHost {
 }
 
 export const DrawerHostContext = createContext<DrawerHost | null>(null);
+
+/** Chat-owned controls keep their React context while rendering inside this explicit Settings slot. */
+export const useChatControlDockStore = create<{
+  element: HTMLDivElement | null;
+  setElement: (element: HTMLDivElement | null) => void;
+}>()((set) => ({ element: null, setElement: (element) => set({ element }) }));
 
 export function useDrawerHost() {
   return useContext(DrawerHostContext);

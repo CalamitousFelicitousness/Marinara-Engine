@@ -40,10 +40,12 @@ The **Present Characters** widget shows up to three character emoji plus a "+N" 
 
 On a computer, when the **Tracker Panel** is not shown, a Roleplay chat's trackers use the **Trackers** window. If there is room beside your messages, it opens on the left. Otherwise, it starts as a small **Trackers** button at the top left of the chat. Click the button to open it. A chat with a saved layout keeps the arrangement you chose.
 
+When you update an older chat, its desktop tracker widgets are grouped in this window. Its other chat tools keep their icons as movable buttons.
+
 You can move the window by its title bar, resize it from its edges, and use the buttons in its top-right corner:
 
 - **Pin** keeps it open when you click elsewhere. It starts pinned.
-- **Lock** stops it from moving or resizing.
+- **Lock** stops it from moving or resizing and fixes its button in place. The button still opens the window, where you can unlock it again.
 - **Minimize** or **Close** shrinks it to the movable **Trackers** button. Click that button to reopen it where you left it.
 
 To use the Tracker Panel instead, click the die in the Chat Settings title bar. When the panel is not shown, the trackers remain available through their window or button. **Reset View** in Chat Settings clears the saved arrangement and chooses the starting window or button to fit the available space.

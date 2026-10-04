@@ -31,6 +31,7 @@ import {
   TRACKER_WINDOW_ID,
   selectHasDetachedDrawers,
   selectWindowLayoutSnapshot,
+  selectWindowRestored,
   takeFloatingWindowFocusRequest,
   useFloatingWindowStore,
 } from "../../packages/client/src/stores/floating-window.store.js";
@@ -120,6 +121,7 @@ assert.deepEqual(parseWindowLayoutSnapshot(JSON.parse(JSON.stringify(toWindowLay
 // ── Popped-out drawers: ids per host, and a saved list that never trusts bad entries ──
 const settingsDrawer = getDrawerWindowId(CHAT_SETTINGS_WINDOW_ID, "chat-name");
 const trackerDrawer = getDrawerWindowId(TRACKER_WINDOW_ID, "agent-activity");
+const unopenedDrawer = getDrawerWindowId(CHAT_SETTINGS_WINDOW_ID, "no-layout");
 assert.equal(settingsDrawer, "drawer:chat-settings:chat-name");
 assert.notEqual(
   getDrawerWindowId(CHAT_SETTINGS_WINDOW_ID, "agent-activity"),
@@ -132,20 +134,12 @@ assert.equal(isHostDrawerWindowId(CHAT_SETTINGS_WINDOW_ID, CHAT_SETTINGS_WINDOW_
 const withDrawers = {
   version: FLOATING_WINDOW_LAYOUT_VERSION,
   windows: { [settingsDrawer]: valid, [trackerDrawer]: valid, [CHAT_SETTINGS_WINDOW_ID]: valid },
-  detached: [
-    settingsDrawer,
-    settingsDrawer,
-    trackerDrawer,
-    CHAT_SETTINGS_WINDOW_ID,
-    getDrawerWindowId(CHAT_SETTINGS_WINDOW_ID, "no-layout"),
-    42,
-    null,
-  ],
+  detached: [settingsDrawer, settingsDrawer, trackerDrawer, CHAT_SETTINGS_WINDOW_ID, unopenedDrawer, 42, null],
 };
 assert.deepEqual(
   parseWindowLayoutSnapshot(withDrawers).detached,
-  [settingsDrawer, trackerDrawer],
-  "only drawer windows with a saved place stay popped out, once each",
+  [settingsDrawer, trackerDrawer, unopenedDrawer],
+  "valid drawers stay popped out once each, including migrated buttons whose windows have never opened",
 );
 assert.equal(parseWindowLayoutSnapshot({ ...withDrawers, detached: "all" }).detached, undefined);
 assert.equal(
@@ -239,10 +233,12 @@ assert.equal(
   "a drawer restored with its chat leaves focus alone",
 );
 assert.deepEqual(selectWindowLayoutSnapshot(store.getState()).detached, [settingsDrawer, trackerDrawer]);
+store.getState().saveBubble(trackerDrawer, { x: 400, y: 120 });
 store.getState().dockDrawer(trackerDrawer);
 assert.equal(store.getState().detached[trackerDrawer], undefined);
 assert.equal(store.getState().layouts[trackerDrawer], undefined);
 assert.equal(store.getState().open[trackerDrawer], undefined);
+assert.equal(store.getState().bubbles[trackerDrawer], undefined, "putting a drawer back forgets its desktop button");
 assert.equal(selectHasDetachedDrawers(store.getState(), TRACKER_WINDOW_ID), false);
 
 const revision = store.getState().resetRevision;
@@ -254,7 +250,7 @@ assert.equal(isEmptyWindowLayoutSnapshot(selectWindowLayoutSnapshot(store.getSta
 
 // A chat's saved layout replaces the previous one; bad data loads as the defaults.
 store.getState().hydrate(withDrawers);
-assert.deepEqual(Object.keys(store.getState().detached), [settingsDrawer, trackerDrawer]);
+assert.deepEqual(Object.keys(store.getState().detached), [settingsDrawer, trackerDrawer, unopenedDrawer]);
 assert.equal(
   serializeWindowLayoutSnapshot(selectWindowLayoutSnapshot(store.getState())),
   serializeWindowLayoutSnapshot(withDrawers),
@@ -451,6 +447,11 @@ assert.deepEqual(placeWindowBesideBubble({ width: 280, height: 200 }, { x: 1000,
   height: 200,
 });
 assert.equal(placeWindowBesideBubble({ width: 280, height: 300 }, { x: 1000, y: 800 }, bounds, controlLimits).y, 492);
+assert.deepEqual(
+  placeWindowBesideBubble({ width: 280, height: 700 }, { x: 1000, y: 400 }, bounds, controlLimits),
+  { x: 752, y: 440, width: 280, height: 452 },
+  "a tall window shortens to the available space below its button before falling back above it",
+);
 // Near the left edge it lines up with the bubble's left edge instead.
 assert.equal(placeWindowBesideBubble({ width: 280, height: 200 }, { x: 40, y: 64 }, bounds, controlLimits).x, 40);
 
@@ -515,6 +516,32 @@ assert.equal(
   undefined,
   "Reset View restores the defaults",
 );
+
+// Docked controls survive the same serialization used by chats and profiles, without reopening over their host.
+const dockedControl = { ...valid, docked: true, minimized: false };
+const dockedSnapshot = parseWindowLayoutSnapshot({
+  version: FLOATING_WINDOW_LAYOUT_VERSION,
+  windows: { "control:session": dockedControl, "control:assets": { ...valid, docked: "yes" } },
+});
+assert.equal(dockedSnapshot.windows["control:session"]?.docked, true);
+assert.equal(dockedSnapshot.windows["control:assets"]?.docked, undefined, "invalid docking flags are ignored");
+store.getState().openWindow("control:session");
+store.getState().hydrate(JSON.parse(serializeWindowLayoutSnapshot(dockedSnapshot)));
+assert.equal(store.getState().open["control:session"], undefined, "pinning does not reopen a docked control");
+assert.equal(selectWindowLayoutSnapshot(store.getState()).windows["control:session"]?.docked, true);
+store.getState().closeWindow(CHAT_SETTINGS_WINDOW_ID);
+assert.equal(
+  selectWindowRestored(store.getState(), "control:session"),
+  false,
+  "a closed host does not pause Game narration",
+);
+store.getState().openWindow(CHAT_SETTINGS_WINDOW_ID);
+assert.equal(
+  selectWindowRestored(store.getState(), "control:session"),
+  true,
+  "a docked control follows host visibility",
+);
+store.getState().resetView();
 
 // Resolved theme sizes govern default rows, opening geometry and clamping, not only pointer dragging.
 const largeBubbleSize = 78;

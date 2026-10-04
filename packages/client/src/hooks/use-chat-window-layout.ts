@@ -9,6 +9,7 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import type { Chat } from "@marinara-engine/shared";
 import { readChatMetadata } from "../lib/chat-wizard-defaults";
+import { getLegacyChatWindowLayout } from "../lib/chat-window-migration";
 import {
   isEmptyWindowLayoutSnapshot,
   serializeWindowLayoutSnapshot,
@@ -39,7 +40,10 @@ export function useChatWindowLayout(chat: Chat | null | undefined) {
   mutateRef.current = updateMeta.mutate;
   const chatId = chat?.id ?? null;
   const loading = chat === undefined;
-  const savedLayout = chat ? serializeWindowLayoutSnapshot(readChatMetadata(chat).windowLayout) : EMPTY_LAYOUT;
+  const metadata = chat ? readChatMetadata(chat) : {};
+  const legacyLayout = chat ? getLegacyChatWindowLayout(chat.mode, metadata) : null;
+  const needsMigration = legacyLayout !== null;
+  const savedLayout = chat ? serializeWindowLayoutSnapshot(legacyLayout ?? metadata.windowLayout) : EMPTY_LAYOUT;
   // The chat whose layout the store shows, and that layout as last loaded or saved.
   const syncedRef = useRef<{ chatId: string | null; layout: string }>({ chatId: null, layout: EMPTY_LAYOUT });
   const pendingRef = useRef<{ chatId: string; timer: ReturnType<typeof setTimeout> } | null>(null);
@@ -77,7 +81,11 @@ export function useChatWindowLayout(chat: Chat | null | undefined) {
     }
     syncedRef.current = { chatId, layout: savedLayout };
     useFloatingWindowStore.getState().hydrate(savedLayout === EMPTY_LAYOUT ? null : JSON.parse(savedLayout));
-  }, [chatId, savedLayout, loading]);
+    if (needsMigration && chatId) {
+      // Persist once through the same queue as later moves/docking. View-only metadata keeps chat recency intact.
+      mutateRef.current({ id: chatId, windowLayout: JSON.parse(savedLayout) });
+    }
+  }, [chatId, savedLayout, loading, needsMigration]);
 
   // Save the user's changes to the chat whose layout they changed.
   useEffect(() => {

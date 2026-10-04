@@ -60,6 +60,8 @@ export interface WindowBubbleProps {
   tooltip?: string;
   /** Set for a button that toggles its window: whether the window is open. */
   expanded?: boolean;
+  /** The window's lock also keeps its button in place; opening it still works. */
+  locked?: boolean;
   /** The id of text that describes the button (a status shown on it). */
   describedBy?: string;
   zIndex: number;
@@ -83,6 +85,7 @@ export function WindowBubble({
   ariaLabel,
   tooltip,
   expanded,
+  locked = false,
   describedBy,
   zIndex,
   attributes,
@@ -121,7 +124,7 @@ export function WindowBubble({
   const measuredSize = () => renderedSize;
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    if (event.button !== 0 || dragRef.current) return;
+    if (locked || event.button !== 0 || dragRef.current) return;
     event.currentTarget.setPointerCapture?.(event.pointerId);
     const others = Array.from(document.querySelectorAll<HTMLElement>(".mari-window-bubble"))
       .filter((element) => element !== event.currentTarget && element.getClientRects().length > 0)
@@ -155,7 +158,7 @@ export function WindowBubble({
 
   const handlePointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
     const drag = dragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (locked || !drag || drag.pointerId !== event.pointerId) return;
     const distance = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
     if (!drag.moved && distance < drag.threshold) return;
     drag.moved = true;
@@ -170,7 +173,7 @@ export function WindowBubble({
     dragRef.current = null;
     cancelAnimationFrame(frameRef.current);
     setLive(null);
-    if (!drag.moved || event.type === "pointercancel") return;
+    if (locked || !drag.moved || event.type === "pointercancel") return;
     // The click that ends a drag must not open the window too.
     suppressClickRef.current = true;
     // Touch drags may end without a click; do not swallow the next deliberate tap.
@@ -203,6 +206,7 @@ export function WindowBubble({
               : null;
     if (!delta) return;
     event.preventDefault();
+    if (locked) return;
     onMove(clampWindowBubble({ x: placed.x + delta.dx, y: placed.y + delta.dy }, bounds, measuredSize()));
   };
 
@@ -215,12 +219,17 @@ export function WindowBubble({
         data-minimized="true"
         data-dragging={live ? "true" : undefined}
         {...attributes}
+        data-locked={locked ? "true" : "false"}
         className="mari-window-bubble fixed"
         style={{ left: placed.x, top: placed.y, zIndex }}
         aria-label={ariaLabel ?? t("window.bubble.label", { title: label })}
         aria-expanded={expanded}
         aria-describedby={describedBy}
-        title={tooltip ?? t("window.bubble.hint", { title: label })}
+        title={
+          locked
+            ? t("window.bubble.lockedHint", { title: label })
+            : (tooltip ?? t("window.bubble.hint", { title: label }))
+        }
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}

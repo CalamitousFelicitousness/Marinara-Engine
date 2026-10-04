@@ -157,6 +157,7 @@ export const useFloatingWindowStore = create<FloatingWindowState>()((set, get) =
       layouts: withoutKey(state.layouts, id),
       detached: withoutKey(state.detached, id),
       phoneBubbles: withoutKey(state.phoneBubbles, id),
+      bubbles: withoutKey(state.bubbles, id),
       open: withoutKey(state.open, id),
       stack: state.stack.filter((entry) => entry !== id),
     }));
@@ -185,6 +186,10 @@ export const useFloatingWindowStore = create<FloatingWindowState>()((set, get) =
       const open = { ...state.open };
       if (!isPhoneWindowLayout()) {
         for (const [id, layout] of Object.entries(parsed.windows)) {
+          if (layout.docked) {
+            delete open[id];
+            continue;
+          }
           if (!layout.pinned) continue;
           if (layout.minimized) delete open[id];
           else open[id] = true;
@@ -219,6 +224,7 @@ export function selectHasDetachedDrawers(state: Pick<FloatingWindowState, "detac
 
 /** True while a minimizable window shows as a window rather than its bubble (on a phone, as an open sheet). */
 export function selectWindowRestored(state: Pick<FloatingWindowState, "layouts" | "open">, id: FloatingWindowId) {
+  if (state.layouts[id]?.docked) return state.open[CHAT_SETTINGS_WINDOW_ID] === true;
   return isPhoneWindowLayout() ? state.open[id] === true : state.layouts[id]?.minimized === false;
 }
 

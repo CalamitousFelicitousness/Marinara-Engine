@@ -5,7 +5,12 @@
 // in the same place and the placeholder does not jump when the panel arrives.
 // ──────────────────────────────────────────────
 import { useEffect, useState, type CSSProperties } from "react";
-import { WINDOW_MARGIN_PX, type WindowBounds, type WindowLayout } from "../../lib/floating-window-layout";
+import {
+  WINDOW_MARGIN_PX,
+  placeWindowBesideBubble,
+  type WindowBounds,
+  type WindowLayout,
+} from "../../lib/floating-window-layout";
 import { cn } from "../../lib/utils";
 import { isDesktopShellNavigationTarget } from "../../lib/chat-floating-ui-events";
 import { useUIStore } from "../../stores/ui.store";
@@ -51,8 +56,7 @@ export function readChatWindowArea(bounds: WindowBounds) {
 }
 
 /**
- * Today's panel width beside the right edge of the chat (left of a right-side Tracker Panel), between
- * its top controls and its message box.
+ * Open below the Chat Settings button, within the chat and clear of a right-side Tracker Panel.
  */
 export function getChatSettingsDefaultLayout(bounds: WindowBounds): WindowLayout {
   const remPx = readCssPixels(document.documentElement, "font-size") || 16;
@@ -64,6 +68,17 @@ export function getChatSettingsDefaultLayout(bounds: WindowBounds): WindowLayout
       : 0;
   const right = Math.min(bounds.right - trackerClearance, area.right);
   const width = Math.min(CHAT_SETTINGS_WINDOW_WIDTH_REM * remPx, right - bounds.left);
+  const button = document.querySelector<HTMLElement>("[data-chat-settings-button]")?.getBoundingClientRect();
+  if (button && button.width > 1 && button.height > 1) {
+    const geometry = placeWindowBesideBubble(
+      { width, height: area.bottom - area.top },
+      { x: button.left, y: button.top },
+      { ...bounds, right, bottom: area.bottom },
+      { minWidth: 320, minHeight: 240 },
+      button.height,
+    );
+    return { ...geometry, pinned: false, locked: false };
+  }
   return { x: right - width, y: area.top, width, height: area.bottom - area.top, pinned: false, locked: false };
 }
 

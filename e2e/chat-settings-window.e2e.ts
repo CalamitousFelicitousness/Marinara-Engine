@@ -1,6 +1,6 @@
 // #7036: Chat Settings is a movable window opened from its button in the chat, built on the shared
 // FloatingWindow / Drawer components that custom themes can restyle.
-import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Locator, type Page, type Route } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { seedUIState } from "./ui-state-fixture.js";
 import { resetChatView } from "./chat-settings-tools.js";
@@ -310,6 +310,8 @@ test.describe("Chat Settings window on desktop", () => {
       await expect(settings).toHaveAttribute("data-locked", "false");
       await expectInsideViewport(page, settings);
       const defaultBox = await box(settings);
+      const opener = await box(button);
+      expect(defaultBox.y, "the first opening sits below its button").toBeCloseTo(opener.y + opener.height + 8, 0);
       const composer = await box(page.locator("[data-chat-composer]").first());
       expect(defaultBox.y + defaultBox.height, "the window opens above the message box").toBeLessThanOrEqual(
         composer.y,
@@ -321,9 +323,9 @@ test.describe("Chat Settings window on desktop", () => {
       // Move by the title bar.
       const header = settings.locator(".mari-window__header");
       const headerBox = await box(header);
-      await drag(page, { x: headerBox.x + headerBox.width / 2, y: headerBox.y + headerBox.height / 2 }, -220, 0);
+      await drag(page, { x: headerBox.x + headerBox.width / 2, y: headerBox.y + headerBox.height / 2 }, 160, 0);
       const moved = await box(settings);
-      expectSameBox(moved, { ...defaultBox, x: defaultBox.x - 220 }, "moved");
+      expectSameBox(moved, { ...defaultBox, x: defaultBox.x + 160 }, "moved");
 
       // Resize from the bottom-right corner and from the left edge.
       const corner = await box(settings.locator('.mari-window__resize-handle[data-edge="se"]'));
@@ -682,17 +684,16 @@ test.describe("Chat Settings window on desktop", () => {
       await expect(page.locator('[data-chat-mode="roleplay"]')).toBeVisible();
       await expect(tip).toBeVisible();
 
-      // Its X dismisses it for good on this device. A fresh page (this one re-seeds its preferences on
-      // every load) shares the device's storage and keeps it hidden after a reload.
-      await tip.getByRole("button", { name: "Dismiss tip", exact: true }).click();
+      // Closing the page immediately must not lose a dismissal to debounced storage.
+      const savedImmediately = await tip
+        .getByRole("button", { name: "Dismiss tip", exact: true })
+        .evaluate((button) => {
+          (button as HTMLButtonElement).click();
+          return JSON.parse(localStorage.getItem("marinara-engine-ui") ?? "{}").state?.chatSettingsMoveTipDismissed;
+        });
+      expect(savedImmediately).toBe(true);
       await expect(page.locator("[data-chat-settings-move-tip]")).toHaveCount(0);
-      await expect
-        .poll(() =>
-          page.evaluate(
-            () => JSON.parse(localStorage.getItem("marinara-engine-ui") ?? "{}").state?.chatSettingsMoveTipDismissed,
-          ),
-        )
-        .toBe(true);
+      // A fresh page shares persisted storage without this test's per-load preference seed.
       const fresh = await page.context().newPage();
       await fresh.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: "" } }));
       await fresh.goto("/");
@@ -705,6 +706,133 @@ test.describe("Chat Settings window on desktop", () => {
     } finally {
       await request.delete(`/api/chats/${roleplay.id}?force=true`);
       await request.delete(`/api/chats/${conversation.id}?force=true`);
+    }
+  });
+
+  test("launcher tip dismissal survives stale settings, other chats and a fresh browser", async ({
+    page,
+    request,
+    browser,
+  }) => {
+    const chats = [await createChat(request, "roleplay"), await createChat(request, "roleplay")];
+    let serverSettings: Record<string, unknown> = {
+      chatSettingsMoveTipDismissed: false,
+      __updatedAt: Date.now() + 60_000,
+    };
+    let releaseSettings!: () => void;
+    const settingsGate = new Promise<void>((resolve) => {
+      releaseSettings = resolve;
+    });
+    const syncedDismissals: unknown[] = [];
+    const serveSettings = async (route: Route) => {
+      if (route.request().method() === "PUT") {
+        serverSettings = JSON.parse(route.request().postDataJSON().value) as Record<string, unknown>;
+        syncedDismissals.push(serverSettings.chatSettingsMoveTipDismissed);
+        await route.fulfill({ json: { value: JSON.stringify(serverSettings) } });
+        return;
+      }
+      const value = JSON.stringify(serverSettings);
+      await settingsGate;
+      await route.fulfill({ json: { value } });
+    };
+    const waitForSettings = (target: Page) =>
+      expect
+        .poll(() =>
+          target.evaluate(async () => {
+            const module = (await import("/src/stores/ui.store.ts" as string)) as {
+              useUIStore: { getState(): { settingsSyncReady: boolean } };
+            };
+            return module.useUIStore.getState().settingsSyncReady;
+          }),
+        )
+        .toBe(true);
+    const freshContext = await browser.newContext({ viewport: page.viewportSize()! });
+    try {
+      await page.route("**/api/app-settings/ui", serveSettings);
+      await seedUIState(
+        page,
+        {
+          hasCompletedOnboarding: true,
+          sidebarOpen: false,
+          rightPanelOpen: false,
+          chatHelpSeenModes: ["conversation", "roleplay", "game"],
+        },
+        "if-missing",
+      );
+      await page.addInitScript(
+        ({ chatId, version }) => {
+          localStorage.setItem("marinara:whats-new:seen-version", version);
+          localStorage.setItem("marinara-active-chat-id", chatId);
+        },
+        { chatId: chats[0]!.id, version: APP_VERSION },
+      );
+      const settingsRequest = page.waitForRequest(
+        (req) => req.url().endsWith("/api/app-settings/ui") && req.method() === "GET",
+      );
+      await page.goto("/");
+      await settingsRequest;
+      await expect(page.locator('[data-chat-mode="roleplay"]')).toBeVisible();
+      const tip = page.locator("[data-chat-settings-move-tip]");
+      await expect(tip).toBeVisible();
+      // Dismiss while the old server preferences are still loading, with no storage grace period.
+      const savedImmediately = await tip
+        .getByRole("button", { name: "Dismiss tip", exact: true })
+        .evaluate((button) => {
+          (button as HTMLButtonElement).click();
+          return JSON.parse(localStorage.getItem("marinara-engine-ui") ?? "{}").state?.chatSettingsMoveTipDismissed;
+        });
+      expect(savedImmediately).toBe(true);
+      releaseSettings();
+      await waitForSettings(page);
+      await expect(tip).toHaveCount(0);
+      await expect.poll(() => syncedDismissals.at(-1)).toBe(true);
+
+      await setActiveChat(page, chats[1]!.id);
+      await expect(chatSettingsButton(page)).toBeVisible();
+      await expect(tip).toHaveCount(0);
+      await setActiveChat(page, chats[0]!.id);
+      await expect(tip).toHaveCount(0);
+
+      // Even a newer blob from another browser cannot restore the once-dismissed reminder.
+      serverSettings = { ...serverSettings, chatSettingsMoveTipDismissed: false, __updatedAt: Date.now() + 60_000 };
+      const writesBeforeReload = syncedDismissals.length;
+      await page.reload();
+      await waitForSettings(page);
+      await expect(chatSettingsButton(page)).toBeVisible();
+      await expect(tip).toHaveCount(0);
+      expect(syncedDismissals.length).toBeGreaterThan(writesBeforeReload);
+      expect(syncedDismissals.at(-1)).toBe(true);
+
+      // The shared dismissal also wins when a fresh browser has newer, unrelated preferences.
+      await freshContext.route("**/api/app-settings/ui", serveSettings);
+      await seedUIState(freshContext, {
+        hasCompletedOnboarding: true,
+        sidebarOpen: false,
+        chatSettingsMoveTipDismissed: false,
+        chatHelpSeenModes: ["conversation", "roleplay", "game"],
+      });
+      await freshContext.addInitScript(
+        ({ chatId, version }) => {
+          localStorage.setItem("marinara:whats-new:seen-version", version);
+          localStorage.setItem("marinara-active-chat-id", chatId);
+          localStorage.setItem("marinara-engine-ui-updated-at", String(Date.now() + 120_000));
+        },
+        { chatId: chats[0]!.id, version: APP_VERSION },
+      );
+      const fresh = await freshContext.newPage();
+      await fresh.goto(page.url());
+      await waitForSettings(fresh);
+      await expect(chatSettingsButton(fresh)).toBeVisible();
+      await expect(fresh.locator("[data-chat-settings-move-tip]")).toHaveCount(0);
+      expect(
+        await fresh.evaluate(
+          () => JSON.parse(localStorage.getItem("marinara-engine-ui") ?? "{}").state?.chatSettingsMoveTipDismissed,
+        ),
+      ).toBe(true);
+    } finally {
+      releaseSettings();
+      await freshContext.close();
+      await Promise.all(chats.map((chat) => request.delete(`/api/chats/${chat.id}?force=true`)));
     }
   });
 
@@ -943,7 +1071,9 @@ test("phones open Chat Settings from its button as a sheet with Help and the Tra
     // The loading placeholder shares the sheet; measure the real settings, not the one being replaced.
     await expect(sheet.locator("[data-chat-settings-section]").first()).toBeVisible();
     await expect(sheet).toHaveAttribute("data-presentation", "sheet");
-    await expect(sheet.locator("[data-window-control]")).toHaveCount(1);
+    await expect(sheet.locator('[data-window-control="lock"]')).toBeVisible();
+    await expect(sheet.locator('[data-window-control="close"]')).toBeVisible();
+    await expect(sheet.locator('[data-window-control="pin"]')).toHaveCount(0);
     await expect(sheet.getByRole("button", { name: "Help", exact: true })).toBeVisible();
     // Reset View and the Tracker Panel dice sit in the sheet's title bar, as on a computer.
     await expect(sheet.getByRole("button", { name: "Reset View", exact: true })).toBeVisible();

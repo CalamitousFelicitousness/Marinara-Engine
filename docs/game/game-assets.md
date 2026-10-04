@@ -47,6 +47,8 @@ From a game:
 
 The button only appears in chats that use Game Mode. It opens **Game Assets** with the **Asset Browser** inside: a movable window on a computer, or a full-width panel on a phone.
 
+If you used **Put back in Chat Settings** to move this window, open the **Game Assets** section in Chat Settings instead.
+
 The toolbar at the top holds a breadcrumb that starts at **Game Assets**. Next to it are a **Grid view** and **List view** toggle, an **Upload** button, and a **New** button. It also has a **Rescan** button, an **Open in system folder** button, and a **Search in folder** box. A folder tree on the left lets you jump between categories on wider screens.
 
 ## Uploading your own assets

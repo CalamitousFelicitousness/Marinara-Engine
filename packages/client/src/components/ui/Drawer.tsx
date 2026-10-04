@@ -49,6 +49,8 @@ export interface DrawerProps {
   actions?: ReactNode;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** A chat control keeps its existing window id and content owner when leaving its docked section. */
+  onPopOut?: (layout: WindowLayout) => void;
   /** Forces the detached look; a drawer inside a host follows its popped-out state by itself. */
   detached?: boolean;
   className?: string;
@@ -102,6 +104,7 @@ export function Drawer({
   actions,
   open,
   onOpenChange,
+  onPopOut,
   detached = false,
   className,
   style,
@@ -112,8 +115,10 @@ export function Drawer({
   const { t } = useTranslation();
   const bodyId = `mari-drawer-body-${useId().replace(/:/gu, "")}`;
   const host = useDrawerHost();
-  const windowId = host && id ? getDrawerWindowId(host.id, id) : null;
-  const poppedOut = useFloatingWindowStore((state) => (windowId ? state.detached[windowId] === true : false));
+  const windowId = onPopOut ? (id ?? null) : host && id ? getDrawerWindowId(host.id, id) : null;
+  const poppedOut = useFloatingWindowStore((state) =>
+    windowId && !onPopOut ? state.detached[windowId] === true : false,
+  );
   const rootRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{ pointerId: number; startX: number; startY: number; offsetX: number; active: boolean }>(null);
   const suppressClickRef = useRef(false);
@@ -151,6 +156,10 @@ export function Drawer({
     if (!windowId || !drawer) return;
     const bounds = readFloatingWindowBounds();
     const geometry = place(drawer, readDetachedSize(drawer, open, bounds), bounds);
+    if (onPopOut) {
+      onPopOut(popOutLayout(geometry));
+      return;
+    }
     const windows = useFloatingWindowStore.getState();
     const phone = isPhoneWindowLayout();
     windows.detachDrawer(windowId, popOutLayout(geometry), { focus: !phone });
@@ -349,7 +358,7 @@ interface DetachedDrawerWindowProps {
 }
 
 function getDetachedFallbackLayout(bounds: WindowBounds): WindowLayout {
-  return popOutLayout({ x: bounds.left, y: bounds.top, width: 352, height: 352 });
+  return { ...popOutLayout({ x: bounds.left, y: bounds.top, width: 352, height: 352 }), minimized: true };
 }
 
 /** The visible host window, while it can take a drawer back. */

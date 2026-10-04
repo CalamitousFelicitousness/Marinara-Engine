@@ -48,6 +48,7 @@ export function ChatSettingsBubble({ chatId, mode }: { chatId: string; mode: Cha
     phone ? state.phoneBubbles[CHAT_SETTINGS_BUTTON_ID] : state.bubbles[CHAT_SETTINGS_BUTTON_ID],
   );
   const open = useFloatingWindowStore((state) => state.open[CHAT_SETTINGS_WINDOW_ID] === true);
+  const locked = useFloatingWindowStore((state) => state.layouts[CHAT_SETTINGS_WINDOW_ID]?.locked === true);
   const agentsRunning = useAgentStore((state) => state.processingChatIds.includes(chatId));
   const tipDismissed = useUIStore((state) => state.chatSettingsMoveTipDismissed);
   const dismissTip = useUIStore((state) => state.dismissChatSettingsMoveTip);
@@ -79,6 +80,7 @@ export function ChatSettingsBubble({ chatId, mode }: { chatId: string; mode: Cha
         ariaLabel={label}
         tooltip={label}
         expanded={open}
+        locked={locked}
         zIndex={phone ? PHONE_BUBBLE_Z_INDEX : FLOATING_WINDOW_Z_BASE}
         attributes={{
           "data-presentation": phone ? "sheet" : undefined,

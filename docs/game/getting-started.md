@@ -154,6 +154,8 @@ The Game's controls open from buttons near the top right of the chat:
 
 Click or tap a button to open its controls in a movable window on a computer, or a full-width panel on a phone. Drag a button to move it. Closing the window or panel brings the button back. See [Control windows and their buttons](../chats/chat-settings.md#control-windows-and-their-buttons).
 
+You can also keep these controls inside **Chat Settings**. Open a control's window and choose **Put back in Chat Settings**; it then appears as an expandable section there. Its pop-out button makes it a separate window again. Each game saves your choice, and **Reset View** restores the starting buttons.
+
 ## Where each gameplay topic lives
 
 This guide gets you into a game. Each deeper topic has its own guide:

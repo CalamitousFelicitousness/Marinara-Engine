@@ -99,7 +99,11 @@ async function savedWindowLayout(request: APIRequestContext, chatId: string) {
   const metadata =
     typeof chat.metadata === "string" ? (JSON.parse(chat.metadata) as Record<string, unknown>) : chat.metadata;
   return ((metadata as Record<string, unknown> | undefined)?.windowLayout ?? null) as {
-    windows: Record<string, { pinned?: boolean; minimized?: boolean; bubble?: { x: number; y: number } }>;
+    windows: Record<
+      string,
+      { pinned?: boolean; minimized?: boolean; docked?: boolean; bubble?: { x: number; y: number } }
+    >;
+    bubbles?: Record<string, { x: number; y: number }>;
   } | null;
 }
 
@@ -186,6 +190,46 @@ test.describe("chat control windows on desktop", () => {
     }
   });
 
+  test("a never-opened control follows its moved button, then keeps its saved window position", async ({
+    page,
+    request,
+  }) => {
+    const { gameId, partnerId } = await createGameWithConnectedChat(request);
+    try {
+      await prepare(page, gameId);
+      await page.goto("/");
+      const launcher = bubble(page, VOLUME);
+      await expect(launcher).toBeVisible();
+      await dragBubble(page, launcher, { x: 680, y: 220 });
+      const placed = await box(launcher);
+      await expect
+        .poll(async () => (await savedWindowLayout(request, gameId))?.bubbles?.[VOLUME])
+        .toEqual({
+          x: placed.x,
+          y: placed.y,
+        });
+      expect((await savedWindowLayout(request, gameId))?.windows[VOLUME]).toBeUndefined();
+      await page.reload();
+      await expect(launcher).toBeVisible();
+      await launcher.click();
+      const volume = controlWindow(page, VOLUME);
+      await expect.poll(async () => (await box(volume)).y).toBeCloseTo(placed.y + placed.height + 8, 0);
+      const opened = await box(volume);
+      expect(opened.x + opened.width).toBeCloseTo(placed.x + placed.width, 0);
+      await volume.locator('[data-window-control="minimize"]').click();
+      await dragBubble(page, launcher, { x: placed.x - 200, y: placed.y + 100 });
+      await launcher.click();
+      await expect.poll(async () => (await box(volume)).y).toBeCloseTo(opened.y, 0);
+      const reopened = await box(volume);
+      expect(reopened.x).toBeCloseTo(opened.x, 0);
+      expect(reopened.width).toBeCloseTo(opened.width, 0);
+      expect(reopened.height).toBeCloseTo(opened.height, 0);
+    } finally {
+      await request.delete(`/api/chats/${gameId}?force=true`);
+      await request.delete(`/api/chats/${partnerId}?force=true`);
+    }
+  });
+
   test("controls minimize to bubbles that drag, snap, restore and stay with the chat", async ({
     page,
     request,
@@ -224,7 +268,7 @@ test.describe("chat control windows on desktop", () => {
       const controls = await volume
         .locator("[data-window-control]")
         .evaluateAll((elements) => elements.map((element) => element.getAttribute("data-window-control")));
-      expect(controls).toEqual(["minimize", "pin", "lock", "close"]);
+      expect(controls).toEqual(["minimize", "pin", "lock", "put-back", "close"]);
       await volume.locator('[data-window-control="minimize"]').click();
       await expect(volume).toHaveCount(0);
       await expect(bubble(page, VOLUME)).toBeFocused();
@@ -286,7 +330,7 @@ test.describe("chat control windows on desktop", () => {
         .poll(async () => {
           const layout = await savedWindowLayout(request, gameId);
           return [
-            layout?.windows[GAME_CONTROLS]?.bubble ?? null,
+            layout?.bubbles?.[GAME_CONTROLS] ?? null,
             layout?.windows[CONNECTED]?.minimized ?? null,
             layout?.windows[CONNECTED]?.pinned ?? null,
           ];
@@ -316,4 +360,90 @@ test.describe("chat control windows on desktop", () => {
       await request.delete(`/api/chats/${partnerId}?force=true`);
     }
   });
+});
+
+test("Game controls dock as usable Settings sections, persist and pop out again", async ({
+  page,
+  request,
+}, testInfo) => {
+  const { gameId, partnerId } = await createGameWithConnectedChat(request);
+  const desktop = testInfo.project.name.includes("desktop");
+  const ids = [SESSION, VOLUME, ASSETS, GAME_CONTROLS];
+  try {
+    await prepare(page, gameId);
+    await page.goto("/");
+    const settings = page.locator('[data-window="chat-settings"]');
+    for (const id of ids) {
+      await bubble(page, id).click();
+      await controlWindow(page, id).getByRole("button", { name: "Put back in Chat Settings", exact: true }).click();
+      await expect(settings.locator(`[data-docked-chat-control="${id}"]`)).toBeVisible();
+      await expect(controlWindow(page, id)).toHaveCount(0);
+      await expect(bubble(page, id)).toHaveCount(0);
+      await settings.locator('[data-window-control="close"]').click();
+    }
+    await expect
+      .poll(async () => {
+        const layout = await savedWindowLayout(request, gameId);
+        return ids.map((id) => layout?.windows[id]?.docked);
+      })
+      .toEqual([true, true, true, true]);
+    await page.reload();
+    await openChatSettings(page);
+    const volumeSection = settings.locator(`[data-docked-chat-control="${VOLUME}"]`);
+    await expect(
+      settings.locator(`[data-docked-chat-control="${SESSION}"]`).getByRole("button", { name: "Journal", exact: true }),
+    ).toBeVisible();
+    await expect(
+      settings
+        .locator(`[data-docked-chat-control="${ASSETS}"]`)
+        .getByRole("button", { name: "Generate background", exact: true }),
+    ).toBeVisible();
+    await expect(
+      settings
+        .locator(`[data-docked-chat-control="${GAME_CONTROLS}"]`)
+        .getByRole("button", { name: "Retry Turn", exact: true }),
+    ).toBeVisible();
+    const master = volumeSection.getByRole("slider").first();
+    await master.press("End");
+    await expect(master).toHaveValue("100");
+    await volumeSection.getByRole("button", { name: "Open Volume in its own window", exact: true }).click();
+    if (!desktop) await bubble(page, VOLUME).click();
+    const volume = controlWindow(page, VOLUME);
+    await expect(volume.getByRole("slider").first()).toHaveValue("100");
+    await expect(volumeSection).toHaveCount(0);
+
+    if (desktop) {
+      await openChatSettings(page);
+      await settings.locator('[data-window-control="pin"]').click();
+      const target = await box(settings);
+      const header = await box(volume.locator(".mari-window__header"));
+      await page.mouse.move(header.x + 60, header.y + header.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(target.x + target.width / 2, target.y + 100, { steps: 12 });
+      await expect(settings).toHaveAttribute("data-drop-target", "true");
+      await page.mouse.up();
+      await expect(volumeSection).toBeVisible();
+      await expect(volume).toHaveCount(0);
+      await volumeSection.scrollIntoViewIfNeeded();
+      const drawerHeader = await box(volumeSection.locator(".mari-drawer__header"));
+      await page.mouse.move(drawerHeader.x + 60, drawerHeader.y + drawerHeader.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(target.x + target.width + 80, target.y + 100, { steps: 12 });
+      await page.mouse.up();
+      await expect(volume).toBeVisible();
+      await expect(volumeSection).toHaveCount(0);
+    }
+    await expect.poll(async () => (await savedWindowLayout(request, gameId))?.windows[VOLUME]?.docked).toBe(false);
+    await openChatSettings(page);
+    await resetChatView(page);
+    await settings.locator('[data-window-control="close"]').click();
+    for (const id of ids) await expect(bubble(page, id)).toBeVisible();
+    await page.screenshot({
+      path: testInfo.outputPath("game-controls-docked-and-restored.png"),
+      animations: "disabled",
+    });
+  } finally {
+    await request.delete(`/api/chats/${gameId}?force=true`);
+    await request.delete(`/api/chats/${partnerId}?force=true`);
+  }
 });

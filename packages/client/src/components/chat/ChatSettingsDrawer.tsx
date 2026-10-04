@@ -73,6 +73,7 @@ import {
   ScanText,
   Shield,
   Wallpaper,
+  Search,
 } from "lucide-react";
 import { NEUTRAL_PANEL_SCROLL_AREA } from "../ui/neutral-surface-styles";
 import { FloatingWindow } from "../ui/FloatingWindow";
@@ -222,7 +223,7 @@ import { CHAT_SETTINGS_WINDOW_ID, useFloatingWindowStore } from "../../stores/fl
 import { getChatSettingsWindowProps, useTrackerPanelClearance } from "./chat-settings-window";
 import { useMatchMedia } from "../../hooks/use-match-media";
 import { readCurrentWindowLayout } from "../../hooks/use-chat-window-layout";
-import { useHostHasDetachedDrawers } from "../ui/drawer-host";
+import { useChatControlDockStore, useHostHasDetachedDrawers } from "../ui/drawer-host";
 import { useDialogFocusScope } from "../../hooks/use-dialog-focus-scope";
 import { useTouchFolderDrag } from "../../hooks/use-touch-folder-drag";
 import {
@@ -917,6 +918,7 @@ export function ChatSettingsDrawer({
   // Popped-out sections render from here, so the settings stay live while any of them is open.
   const sectionsPoppedOut = useHostHasDetachedDrawers(CHAT_SETTINGS_WINDOW_ID);
   const open = windowOpen || sectionsPoppedOut;
+  const setControlDockHost = useChatControlDockStore((state) => state.setElement);
   const panelRef = useRef<HTMLDivElement | null>(null);
   // On phones the sheet keeps the field being typed in (a summary, the notes) above the keyboard.
   useKeepFocusedFieldAboveKeyboard(panelRef);
@@ -5011,6 +5013,7 @@ export function ChatSettingsDrawer({
           )}
         >
           {/* Settings profile bar — hidden in Game Mode. Scene chats keep it, but scene instructions stay chat-owned. */}
+          <div ref={setControlDockHost} data-chat-control-dock style={{ order: CHAT_SETTINGS_ORDER.search + 1 }} />
           {metadata.multiplayer && (
             <MultiplayerPlayersSection
               chatId={chat.id}
@@ -5175,13 +5178,18 @@ export function ChatSettingsDrawer({
           )}
 
           {chatTools && !isGame && (
-            <div
-              data-chat-settings-search
+            <Section
+              id={`${chatMode}-message-search`}
+              label={localizeUi("chat.toolbar.searchMessages")}
+              icon={<Search size="0.875rem" />}
+              initialOpen
               style={{ order: CHAT_SETTINGS_ORDER.search }}
-              className="shrink-0 border-b border-[var(--border)]"
+              contentClassName="pt-0"
             >
-              <ChatMessageSearch chatId={chat.id} />
-            </div>
+              <div data-chat-settings-search>
+                <ChatMessageSearch chatId={chat.id} />
+              </div>
+            </Section>
           )}
 
           <div style={{ order: CHAT_SETTINGS_ORDER.chatName }}>

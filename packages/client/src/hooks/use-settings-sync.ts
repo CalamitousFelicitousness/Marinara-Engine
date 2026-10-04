@@ -289,6 +289,17 @@ export function useSettingsSync() {
                 );
               }
 
+              // Dismissal is permanent, even if it happened while this request was pending.
+              // A newer preference blob must not restore a tip dismissed on either device.
+              const localMoveTipDismissed = useUIStore.getState().chatSettingsMoveTipDismissed === true;
+              if (localMoveTipDismissed || parsed.settings.chatSettingsMoveTipDismissed === true) {
+                if (parsed.settings.chatSettingsMoveTipDismissed !== true) staleSyncedShape = true;
+                parsed.settings.chatSettingsMoveTipDismissed = true;
+                if (!localMoveTipDismissed) {
+                  useUIStore.setState({ chatSettingsMoveTipDismissed: true });
+                }
+              }
+
               const serverUpdatedAt = parsed.updatedAt;
               const localIsNewer =
                 hasTrustedLocalTimestamp &&

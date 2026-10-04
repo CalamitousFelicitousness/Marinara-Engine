@@ -12,18 +12,22 @@ Most settings here belong to the current chat. Window positions are saved for ea
 
 Chat Settings opens automatically when you create a new chat. To close it, click its **X** or click the sliders button again.
 
+Chats from before this update keep their familiar tool icons as movable buttons. Open a tool with its button, then choose **Put back in Chat Settings** if you would rather keep it inside Chat Settings. Desktop Roleplay trackers are grouped in the **Trackers** window. Existing saved layouts stay as you left them.
+
 You can drag the sliders button to a convenient spot. It lines up with nearby chat buttons as you drag; on a computer, hold Alt to place it freely. Each chat remembers its position. A small dot on the button means agents are working.
+
+The small reminder beside the sliders button in Roleplay only needs to be dismissed once. Its **X** keeps it hidden across chats and page refreshes.
 
 On a computer, click the **X** beside the layout tips (**Hide these tips for this chat**) to keep them hidden in this chat, even after a refresh or Reset View. New chats show the tips unless their settings profile saved them as hidden.
 
 ## Moving, pinning and locking the window
 
-On a computer, Chat Settings floats over the chat. Its contents rearrange to fit its size.
+On a computer, Chat Settings floats over the chat. Its contents rearrange to fit its size. The first time you open a window with its button, it appears below the button, adjusted to fit the chat. If it already has a saved position, it opens there instead.
 
 - **Move it** by dragging its title bar. You can also focus the title bar with the keyboard and use the arrow keys; hold Shift for larger steps.
 - **Resize it** by dragging an edge or corner. You can also focus the bottom-right resize handle and use the arrow keys.
 - **Pin** keeps the window open when you click elsewhere. Pinned windows reopen after you refresh the page. If you close or minimize one first, it stays that way. An unpinned window closes when you click outside it or press Escape, unless you are typing in a text box or using an open menu.
-- **Lock** stops the window from moving or resizing until you unlock it.
+- **Lock** stops the window from moving or resizing and fixes its button in place. You can still click the button to open the window. Unlock the window to move either one again.
 - **Close** (the **X**) hides the window.
 
 Windows stay inside the chat area when you resize the browser or open a sidebar.
@@ -59,6 +63,8 @@ Trackers can pop out of the Trackers window in the same way. Their return button
 Some tools open their own small windows: a Game's **Game controls**, **Session**, **Volume** and **Game Assets**; **Connected chat**; and controls added by installed packages.
 
 These buttons start near the top right of the chat. Click or tap one to open its window. Closing or minimizing the window brings the button back. On a phone, the window opens as a full-width panel.
+
+To keep one of these tools inside Chat Settings, open its window and choose **Put back in Chat Settings**. It becomes an expandable section there. Use that section's pop-out button to give it its own window again, or drag its title out on a computer. **Reset View** returns these tools to their starting buttons.
 
 Drag a button to move it. Nearby buttons line up as you drag; on a computer, hold Alt to place it freely, or use the arrow keys while the button is focused. Conversation **Calls** remains a regular button.
 
@@ -126,7 +132,7 @@ For everything else you can write in double braces, see [Prompt Macros](../promp
 
 The chat's tools are sections of Chat Settings too. Which ones you see depends on the chat mode.
 
-- **Search messages** sits at the top, under the settings profile. Type words or a `#` and a message number to find a message. Its **Bookmarks** and **Trash** tabs list bookmarked and deleted messages. It is not in Game chats.
+- **Search messages** is an expandable section near the top, under the settings profile. Type words or a `#` and a message number to find a message. Its **Bookmarks** and **Trash** tabs list bookmarked and deleted messages. You can pop it out into its own window, just like the other sections. It is not in Game chats.
 - **Chat Branches**, under **Chat Name**, switches, renames, exports and imports this chat's branches. See [Chat Branches](branches.md).
 - **Chat Summary**, under **Lorebooks**, reviews and creates summaries of a Roleplay chat. See [Memory Recall and Chat Summaries](../agents/memory.md#chat-summary-roleplay).
 - **Active Context**, under **Chat Summary**, shows the lorebooks and context active in this chat. See [Token Budgets and Recursion](../lorebooks/token-budgets.md#seeing-skipped-entries-in-active-context).

@@ -6,7 +6,10 @@ import { seedUIState } from "./ui-state-fixture.js";
 import { resetChatView } from "./chat-settings-tools.js";
 
 type Box = { x: number; y: number; width: number; height: number };
-type SavedLayout = { windows?: Record<string, unknown>; detached?: string[] } | null | undefined;
+type SavedLayout =
+  | { windows?: Record<string, unknown>; detached?: string[]; bubbles?: Record<string, { x: number; y: number }> }
+  | null
+  | undefined;
 
 const APP_VERSION = (
   JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }
@@ -110,6 +113,54 @@ test.describe("Pop-out drawers on desktop", () => {
       !testInfo.project.name.includes("desktop"),
       "Phones pop sections out into bubbles (phone-bubbles.e2e.ts).",
     );
+  });
+
+  test("unopened detached drawers get separate buttons and first open below their current button", async ({
+    page,
+    request,
+  }) => {
+    const branchesWindow = "drawer:chat-settings:roleplay-chat-branches";
+    const chat = await createChat(request, {
+      windowLayout: { version: 1, windows: {}, detached: [CHAT_NAME_WINDOW, branchesWindow] },
+    });
+    try {
+      await prepare(page, chat.id);
+      await page.goto("/");
+      const launchers = [CHAT_NAME_WINDOW, branchesWindow].map((id) =>
+        page.locator(`.mari-window-bubble[data-window="${id}"]`),
+      );
+      for (const launcher of launchers) await expect(launcher).toBeVisible();
+      await expect
+        .poll(async () => {
+          const [first, second] = await Promise.all(launchers.map(box));
+          return (
+            first!.x + first!.width <= second!.x ||
+            second!.x + second!.width <= first!.x ||
+            first!.y + first!.height <= second!.y ||
+            second!.y + second!.height <= first!.y
+          );
+        })
+        .toBe(true);
+      await expect
+        .poll(async () => Object.keys((await readSavedLayout(request, chat.id))?.bubbles ?? {}).length)
+        .toBeGreaterThanOrEqual(2);
+      expect((await readSavedLayout(request, chat.id))?.windows?.[CHAT_NAME_WINDOW]).toBeUndefined();
+      const launcher = launchers[0]!;
+      const initial = await box(launcher);
+      await drag(page, centre(initial), { x: 600 + initial.width / 2, y: 180 + initial.height / 2 });
+      const moved = await box(launcher);
+      await launcher.click();
+      const popped = page.locator(`.mari-window[data-window="${CHAT_NAME_WINDOW}"]`);
+      await settle(popped);
+      await expect.poll(async () => (await box(popped)).y).toBeCloseTo(moved.y + moved.height + 8, 0);
+      await expect(popped).toHaveAttribute("data-pinned", "true");
+      await popped.locator('[data-window-control="put-back"]').click();
+      await expect(popped).toHaveCount(0);
+      const settings = await openSettingsWindow(page);
+      await expect(settings.locator('[data-drawer="chat-name"]')).toBeVisible();
+    } finally {
+      await request.delete(`/api/chats/${chat.id}?force=true`);
+    }
   });
 
   test("a section pops out with its button, starts pinned, stays alone and goes back when closed", async ({
@@ -276,9 +327,17 @@ test.describe("Pop-out drawers on desktop", () => {
       // Window, button and minimized state save with the chat and survive a reload.
       await expect
         .poll(async () => {
-          const saved = (await readSavedLayout(request, chat.id))?.windows?.[CHAT_NAME_WINDOW] as
+          const layout = await readSavedLayout(request, chat.id);
+          const saved = layout?.windows?.[CHAT_NAME_WINDOW] as
             (Box & { minimized?: boolean; bubble?: { x: number; y: number } }) | undefined;
-          return saved ? [saved.minimized, saved.bubble, Math.round(saved.x), Math.round(saved.y)] : null;
+          return saved
+            ? [
+                saved.minimized,
+                layout?.bubbles?.[CHAT_NAME_WINDOW] ?? saved.bubble,
+                Math.round(saved.x),
+                Math.round(saved.y),
+              ]
+            : null;
         })
         .toEqual([true, { x: moved.x, y: moved.y }, Math.round(left.x), Math.round(left.y)]);
       await page.reload();

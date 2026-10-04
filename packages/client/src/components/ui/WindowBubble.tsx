@@ -173,6 +173,10 @@ export function WindowBubble({
     if (!drag.moved || event.type === "pointercancel") return;
     // The click that ends a drag must not open the window too.
     suppressClickRef.current = true;
+    // Touch drags may end without a click; do not swallow the next deliberate tap.
+    window.setTimeout(() => {
+      suppressClickRef.current = false;
+    }, 0);
     onMove(readDrop(drag, event).point);
   };
 

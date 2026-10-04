@@ -33,7 +33,7 @@ export function TrackerAgentActivitySection({ chatId }: { chatId: string }) {
         />
         {expanded && (
           <Suspense fallback={null}>
-            <AgentActivitySection chatId={chatId} />
+            <AgentActivitySection chatId={chatId} trackerPanel />
           </Suspense>
         )}
       </div>

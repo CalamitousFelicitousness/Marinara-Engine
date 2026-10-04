@@ -1325,7 +1325,7 @@ export function AppShell() {
         data-tracker-size-profile={trackerPanelSizeProfile}
         aria-label={localizeUi("ui.layout.appshell.trackerDataPanel")}
         className={cn(
-          "mari-tracker-panel fixed z-30 hidden overflow-hidden bg-zinc-950/95 shadow-2xl ring-1 ring-[var(--marinara-app-accent-static)] backdrop-blur-2xl transition-[width] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] will-change-[transform,opacity] md:block",
+          "mari-tracker-panel fixed z-30 hidden overflow-hidden bg-zinc-950/95 shadow-2xl ring-1 ring-[var(--marinara-app-accent-solid)] backdrop-blur-2xl transition-[width] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] will-change-[transform,opacity] md:block",
           side === "left" ? "rounded-r-xl" : "rounded-l-xl",
         )}
         style={{
@@ -1550,7 +1550,7 @@ export function AppShell() {
               data-component="TrackerDataSidebarMobile"
               aria-label={localizeUi("ui.layout.appshell.trackerDataPanel")}
               className={cn(
-                "mari-tracker-panel !fixed bottom-0 z-50 w-screen max-w-none overflow-hidden bg-zinc-950/95 shadow-2xl ring-1 ring-[var(--marinara-app-accent-static)] backdrop-blur-xl",
+                "mari-tracker-panel !fixed bottom-0 z-50 w-screen max-w-none overflow-hidden bg-zinc-950/95 shadow-2xl ring-1 ring-[var(--marinara-app-accent-solid)] backdrop-blur-xl",
                 MOBILE_SHELL_PANEL_TOP_CLASS,
                 MOBILE_SHELL_PANEL_BOTTOM_PADDING_CLASS,
                 trackerPanelSide === "left" ? "left-0" : "right-0",

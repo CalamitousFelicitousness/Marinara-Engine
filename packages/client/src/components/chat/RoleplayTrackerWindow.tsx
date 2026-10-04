@@ -296,11 +296,8 @@ function TrackerWindow({
     tracker.inventoryTrackerEquipped.length +
     tracker.inventoryTrackerInventory.length;
 
-  // The window joins the stacking order while it shows; it opens by itself, so it leaves focus alone.
-  useEffect(() => {
-    useFloatingWindowStore.getState().openWindow(TRACKER_WINDOW_ID, null, { focus: false });
-    return () => useFloatingWindowStore.getState().closeWindow(TRACKER_WINDOW_ID);
-  }, []);
+  // FloatingWindow opens restored windows; leaving this host only clears its runtime state.
+  useEffect(() => () => useFloatingWindowStore.getState().closeWindow(TRACKER_WINDOW_ID), []);
 
   const packageProps = (item: InstalledCapabilityPackage) => ({ item, chatId, onRerunSingleTracker, busy });
   const runTrackersLabel = busy ? t("ui.chat.roleplayhud.trackersRunning") : t("ui.chat.roleplayhud.runTrackers");

@@ -13,6 +13,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
   - Desktop Chat Settings includes tips for arranging windows and sections. Their **X** hides them for this chat; new chats show them unless a settings profile saved them as hidden.
   - **Advanced Parameters** keeps showing the connection's current values when popped out. Rearranging windows no longer moves a chat to the top of the chat list. Windows and buttons stay within reach when sidebars, the keyboard or display size change, and closing windows keeps keyboard focus in the chat.
   - Custom themes can style windows, drawers and buttons with the shared classes and variables listed in the theming guide.
+  - **Agent activity** matches the Tracker Panel's text sizes, spacing and backgrounds. The panel's border follows the pulsing accent color on computers and phones.
 
 - The Chats sidebar status prompt now reads **What's up?** to fit its field, and Advanced Settings labels the multiplayer section **Multiplayer WIP** (#7051).
 

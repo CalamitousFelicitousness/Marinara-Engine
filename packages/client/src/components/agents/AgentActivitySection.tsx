@@ -27,9 +27,17 @@ export interface AgentActivitySectionProps {
   /** Runs after Clear or Re-run, so a host popover can close. */
   onAction?: () => void;
   className?: string;
+  /** Match the Tracker Panel's compact rows and surfaces when embedded there. */
+  trackerPanel?: boolean;
 }
 
-export function AgentActivitySection({ chatId, messages, onAction, className }: AgentActivitySectionProps) {
+export function AgentActivitySection({
+  chatId,
+  messages,
+  onAction,
+  className,
+  trackerPanel,
+}: AgentActivitySectionProps) {
   const runs = useChatAgentRuns(chatId);
   const advancedMemoryEnabled = runs.meta.advancedMemory?.enabled === true;
   const { data: advancedMemoryStatus } = useAdvancedMemoryStatus(chatId, advancedMemoryEnabled);
@@ -47,6 +55,7 @@ export function AgentActivitySection({ chatId, messages, onAction, className }: 
   return (
     <div data-component="AgentActivitySection" className={cn("min-w-0", className)}>
       <RoleplayHUDActionsMenu
+        trackerPanel={trackerPanel}
         chatId={chatId}
         advancedMemoryStatus={memoryActive ? advancedMemoryStatus : undefined}
         injectionSourceMessages={messages ?? cachedMessages}

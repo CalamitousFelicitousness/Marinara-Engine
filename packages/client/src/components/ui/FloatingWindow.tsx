@@ -308,7 +308,7 @@ function useLiveBounds(read: () => WindowBounds, active: boolean): WindowBounds 
     viewport?.addEventListener("scroll", update);
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
     for (const element of document.querySelectorAll(
-      '[data-component="CenterContent"], [data-component="TopBar"], [data-chat-mode] .chat-input-container',
+      '[data-component="CenterContent"], [data-component="TopBar"], [data-chat-mode] .chat-input-container, [data-chat-input-container]',
     )) {
       observer?.observe(element);
     }
@@ -479,7 +479,7 @@ export function FloatingWindow({
     window.addEventListener("resize", update);
     const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(update) : null;
     for (const element of document.querySelectorAll(
-      `${CENTER_CONTENT_SELECTOR}, [data-component="TopBar"], [data-chat-mode] .chat-input-container`,
+      `${CENTER_CONTENT_SELECTOR}, [data-component="TopBar"], [data-chat-mode] .chat-input-container, [data-chat-input-container]`,
     ))
       observer?.observe(element);
     return () => {

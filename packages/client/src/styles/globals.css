@@ -653,16 +653,16 @@
 
 /* ─────────────────────────────────────────────
    4a2. FLOATING WINDOWS AND DRAWERS
-   Every chat window (Chat Settings, and later popped-out drawers and tracker
-   windows) renders through <FloatingWindow>, and every collapsible section
+   Every chat window (Chat Settings, the Trackers window, and later popped-out
+   drawers) renders through <FloatingWindow>, and every collapsible section
    through <Drawer>, so custom themes can restyle them all at once.
 
    Classes:     .mari-window, .mari-window__header, .mari-window__title,
                 .mari-window__controls, .mari-window__control, .mari-window__body,
                 .mari-window__resize-handle; .mari-drawer, .mari-drawer__header,
                 .mari-drawer__icon, .mari-drawer__title, .mari-drawer__count,
-                .mari-drawer__help, .mari-drawer__actions, .mari-drawer__arrow,
-                .mari-drawer__body
+                .mari-drawer__summary, .mari-drawer__help, .mari-drawer__actions,
+                .mari-drawer__arrow, .mari-drawer__body
    Attributes:  [data-window="<id>"], [data-drawer="<id>"], [data-pinned],
                 [data-locked], [data-detached], [data-presentation="window|sheet"],
                 [data-window-control="pin|lock|close"], [data-edge]

@@ -61,6 +61,8 @@ export interface FloatingWindowProps {
   minHeight?: number;
   /** "sheet" is today's phone panel: no move, resize, pin or lock, and it closes on an outside press. */
   presentation?: "window" | "sheet";
+  /** False: the window takes focus only when the user opens it, never just because focus is free. */
+  autoFocus?: boolean;
   className?: string;
   sheetClassName?: string;
   sheetStyle?: CSSProperties;
@@ -126,6 +128,7 @@ export function FloatingWindow({
   minWidth = DEFAULT_MIN_WIDTH,
   minHeight = DEFAULT_MIN_HEIGHT,
   presentation = "window",
+  autoFocus = true,
   className,
   sheetClassName,
   sheetStyle,
@@ -217,7 +220,7 @@ export function FloatingWindow({
   useEffect(() => {
     const requested = takeFloatingWindowFocusRequest(id);
     const focusIsFree = !document.activeElement || document.activeElement === document.body;
-    if (!sheet && (requested || focusIsFree)) rootRef.current?.focus({ preventScroll: true });
+    if (!sheet && (requested || (autoFocus && focusIsFree))) rootRef.current?.focus({ preventScroll: true });
     return () => {
       // A placeholder swapped for the real window unmounts without a close request and keeps the opener.
       if (!restoreFocusOnUnmountRef.current) return;

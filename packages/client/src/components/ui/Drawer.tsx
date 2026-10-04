@@ -16,6 +16,8 @@ export interface DrawerProps {
   icon?: ReactNode;
   count?: number;
   help?: string;
+  /** Shown beside the title while the drawer is closed (a tracker's miniature display). */
+  summary?: ReactNode;
   /** Reserved slot between the help tip and the arrow (the pop-out button, later). */
   actions?: ReactNode;
   open: boolean;
@@ -36,6 +38,7 @@ export function Drawer({
   icon,
   count,
   help,
+  summary,
   actions,
   open,
   onOpenChange,
@@ -73,6 +76,7 @@ export function Drawer({
       >
         {icon && <span className="mari-drawer__icon">{icon}</span>}
         <span className="mari-drawer__title flex-1 text-xs font-semibold">{title}</span>
+        {summary && !open && <span className="mari-drawer__summary flex shrink-0 items-center">{summary}</span>}
         {count != null && count > 0 && (
           <span className="mari-drawer__count rounded-full px-1.5 py-0.5 text-[0.625rem] font-medium">{count}</span>
         )}

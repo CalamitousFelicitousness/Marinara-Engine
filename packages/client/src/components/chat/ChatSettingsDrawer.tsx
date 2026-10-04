@@ -928,6 +928,8 @@ export function ChatSettingsDrawer({
   const phoneLayout = useMatchMedia("(max-width: 767px)");
   const trackerPanelClearance = useTrackerPanelClearance(!phoneLayout);
   const setTrackerPanelOpen = useUIStore((s) => s.setTrackerPanelOpen);
+  const trackerWindowOpen = useUIStore((s) => s.trackerWindowOpen);
+  const setTrackerWindowOpen = useUIStore((s) => s.setTrackerWindowOpen);
   const resetView = useFloatingWindowStore((s) => s.resetView);
 
   const { data: allCharacters } = useCharacters({ includeBuiltIn: true });
@@ -986,6 +988,8 @@ export function ChatSettingsDrawer({
     isRoleplayMode &&
     trackerPanelEnabled &&
     (metadata.enableAgents === true || metadata.advancedMemory?.enabled === true);
+  // With the Tracker Panel off in Settings, the trackers show in their own window instead.
+  const trackerWindowToggleAvailable = isRoleplayMode && !trackerPanelEnabled && metadata.enableAgents === true;
   const summaryRetrievalSettings = normalizeSemanticSummaryRetrievalSettings(metadata);
   // Package integrations only show while their package is installed and usable.
   const noodleInstalled = isCapabilityPackageAvailable(installedCapabilities, "noodle");
@@ -4852,6 +4856,18 @@ export function ChatSettingsDrawer({
                   help={localizeUi("chat.settings.trackerPanelHelp")}
                   checked={trackerPanelOpen}
                   onChange={(checked) => setTrackerPanelOpen(checked, chat.id)}
+                  labelPosition="start"
+                  className="gap-2 p-1"
+                  labelClassName="text-xs font-medium"
+                />
+              </div>
+            ) : trackerWindowToggleAvailable ? (
+              <div data-tracker-window-toggle="chat-settings" className="min-w-0">
+                <SettingsSwitch
+                  label={localizeUi("chat.settings.trackerWindow")}
+                  help={localizeUi("chat.settings.trackerWindowHelp")}
+                  checked={trackerWindowOpen}
+                  onChange={setTrackerWindowOpen}
                   labelPosition="start"
                   className="gap-2 p-1"
                   labelClassName="text-xs font-medium"

@@ -10,7 +10,7 @@
 import type { WorldChangeKind } from "../../schemas/world-kit.schema.js";
 import { worldStream, type WorldPlace } from "./compile.js";
 import { worldPlaceNamed } from "./edits.js";
-import { compileGameWorld, type GameWorld } from "./game-world.js";
+import { worldPreEdit, type GameWorld } from "./game-world.js";
 import { worldFullName } from "./people.js";
 
 /** Days in one step of the world in play. */
@@ -256,7 +256,7 @@ export function stepWorld(game: GameWorld, state: WorldEngineState, step: number
  *  links are the compiled world's: how far word and change travel is the world's own, which hand edits
  *  (W9c) never rewrite for the weeks already played, as they never rewrite its history. */
 export function worldTravelDays(game: GameWorld, from: string): Map<string, number> {
-  const links = game.edits ? compileGameWorld({ ...game, edits: undefined }).links : game.world.links;
+  const links = game.edits ? worldPreEdit(game).links : game.world.links;
   const known = travelCache.get(links);
   const cached = known?.get(from);
   if (cached) return cached;

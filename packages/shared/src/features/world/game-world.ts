@@ -1,8 +1,8 @@
 // ──────────────────────────────────────────────
 // A game's world (worldgen W1): what a game stores (the seed, the generator version, the grounding and
-// the brief, beside the setting kit) and what the Game Master is told of it. Everything else is the
-// compile's, recomputed from those inputs, so a world is small, travels with its chat, and is the same
-// world on every read.
+// the brief, beside the setting kit) and what the Game Master is told of it. The world is made from those
+// inputs once and kept as its snapshot (W11, snapshot.ts), which every read after that uses; a world with
+// no snapshot (one made before W11, on a development build) is compiled from them on every read.
 // ──────────────────────────────────────────────
 import { z } from "zod";
 import { gameWorldKitFromMetadata, type WorldKit } from "../../schemas/world-kit.schema.js";
@@ -48,6 +48,16 @@ export interface GameWorld {
   /** The hand edits kept with it (W9c); `world` already has them applied. */
   edits?: WorldEdits;
   world: CompiledWorld;
+  /** The world as compiled, before the edits: the one its history and its weeks of play were made on. */
+  compiled?: CompiledWorld;
+  /** The snapshot this world was read from (W11): its people, history and towns are the snapshot's, never
+   *  made again. */
+  frozen?: import("./snapshot.js").WorldSnapshot;
+}
+
+/** The world as compiled, before its edits: the snapshot's, or compiled now. */
+export function worldPreEdit(game: GameWorld): CompiledWorld {
+  return game.compiled ?? compileGameWorld({ ...game, edits: undefined });
 }
 
 // A few compiled worlds, by their inputs: a turn reads the world more than once, and the inputs never
@@ -94,7 +104,7 @@ export function gameWorldFromMetadata(metadata: Record<string, unknown> | null |
   // so what the editor's route refuses never reaches a reader by another route.
   const edits = parsed.data.edits && worldEditsFightable(parsed.data.edits).edits;
   const full = edits && worldEditIssues(inputs, edits).length === 0 ? { ...inputs, edits } : inputs;
-  return { ...full, world: compileGameWorld(full) };
+  return { ...full, world: compileGameWorld(full), compiled: compileGameWorld(inputs) };
 }
 
 /** Why an edit layer (W9c) does not fit a world, or nothing: checked against the world as compiled.

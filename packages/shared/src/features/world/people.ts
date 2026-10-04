@@ -142,7 +142,10 @@ export function worldCastSize(place: WorldPlace, settlement: WorldPlace): number
  * The people of one place: a settlement, or a place inside one (its own, fewer). A place above the
  * settlements (a province, a system) has no people of its own. Names are unique within the place.
  */
-export function worldCast({ kit, brief, world, seed, edits }: GameWorld, placeId: string): WorldPerson[] {
+export function worldCast(game: GameWorld, placeId: string): WorldPerson[] {
+  // A world read from its snapshot (W11) keeps its people as they were made.
+  if (game.frozen) return (game.frozen.casts[placeId] ?? []).map((person) => ({ ...person }));
+  const { kit, brief, world, seed, edits } = game;
   const byId = new Map(world.places.map((place) => [place.id, place]));
   const place = byId.get(placeId);
   if (!place) return [];

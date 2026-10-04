@@ -46,6 +46,8 @@ On a computer, with the **Tracker Panel** turned off in Settings, a Roleplay cha
 
 Each tracker has its own drawer. Click a drawer's header to collapse it to the tracker's small widget preview, and click it again to see the whole tracker. Marinara remembers which drawers you collapsed.
 
+A tracker can also get its own window: click the pop-out button beside its arrow, or drag its title out of the Trackers window. The new window starts pinned and stays open when you close the Trackers window. Click its **X** button (**Put back in Trackers**), or drag it back onto the Trackers window, to return it. Each chat remembers which trackers are out and where.
+
 At the bottom, **Agent activity** shows what the chat's agents did. From there you can re-run the trackers, retry agents that failed, stop running agents, and **Clear Trackers**. The Tracker Panel has the same section at its bottom.
 
 ## Editing values in a popover

@@ -283,7 +283,9 @@ import {
 import { gameInventoryItemUser, gameInventoryRestRecharge } from "../services/game/game-item-use.service.js";
 import { gameLootTagRoller } from "../services/game/game-loot.service.js";
 import {
+  GAME_MARKET_PLACE_EXTRA,
   gameMarketDayFor,
+  gameMarketWorldPlace,
   gameRepliesBefore,
   loadGameKitMarket,
   loadGameMarket,
@@ -10676,8 +10678,17 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               data: savedMsg,
             });
           } else if (savedMsg?.id) {
+            // The world-set market place this turn was at (a ruleset's market where the world put the party
+            // and no place tag began a day), saved on the reply so the market day there runs across turns.
+            const marketWorldPlace =
+              chatMode === "game" && turnMarket && !turnKitItems
+                ? // The reply is saved by now, so it is among the replies read.
+                  gameMarketWorldPlace((await gameRepliesBefore(app.db, input.chatId)).scoped, undefined, turnPlace)
+                : undefined;
             const extraUpdate: Record<string, unknown> = {
               ...(chatMode === "game" ? { gameOutcomeNarrationFailed } : {}),
+              // Set, or cleared on a regeneration at a place a tag named.
+              ...(chatMode === "game" ? { [GAME_MARKET_PLACE_EXTRA]: marketWorldPlace ?? null } : {}),
               ...(gameToolPlan && gameToolConnection
                 ? {
                     gameToolPlanning: {

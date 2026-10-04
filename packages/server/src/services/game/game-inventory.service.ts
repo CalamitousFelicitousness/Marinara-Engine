@@ -10,6 +10,11 @@ import {
   normalizeCharacterLookupName,
   forgetGameInventoryTelling,
   gameFightItems,
+  revealGameInventoryFake,
+  rulesetCardItems,
+  rulesetFakesTheSheetShows,
+  rulesetItemSources,
+  readRulesetLive,
   gameFightUseEffect,
   gameInventoryFightSpendStack,
   gameInventoryForTelling,
@@ -34,7 +39,7 @@ import type { DB } from "../../db/connection.js";
 import { logger } from "../../lib/logger.js";
 import { loadRulesetCatalogEntries } from "./ruleset-catalog.service.js";
 import { loadRulesetRegistry, resolveGameRuleset, type ResolvedGameRuleset } from "./ruleset-registry.service.js";
-import { sheetCommandCards } from "./ruleset-sheet-turn.service.js";
+import { loadGameRulesetSheetContext, sheetCommandCards } from "./ruleset-sheet-turn.service.js";
 import { createCharactersStorage } from "../storage/characters.storage.js";
 import { resolveChatUserIdentity } from "../chat-user-identity.js";
 import { createChatsStorage, withChatMetadataPatchQueue } from "../storage/chats.storage.js";
@@ -287,7 +292,13 @@ export async function applyGameInventoryChangeHeld<T>(
   if (!chat) return null;
   const metadata = readMetadata(chat.metadata);
   const before = normalizeGameInventoryStacks(metadata.gameInventory);
-  const outcome = change(before, metadata);
+  const changed = change(before, metadata);
+  // A worn or carried fake that the sheet shows for what it is, is found out with the change that
+  // made it so (1.74, the user's ruling).
+  const found = changed.stacks !== before ? await revealFakesTheSheetShows(db, chatId, metadata, changed.stacks) : null;
+  const outcome = found
+    ? { ...changed, stacks: found.stacks, events: [...(changed.events ?? []), ...found.events] }
+    : changed;
   if (outcome.stacks === before && outcome.journal.length === 0 && !outcome.events?.length && !outcome.metadata) {
     return { stacks: before, value: outcome.value };
   }
@@ -312,6 +323,56 @@ export async function applyGameInventoryChangeHeld<T>(
   if (outcome.stacks === before || target.kind === "none") return { stacks: outcome.stacks, value: outcome.value };
   const playerStats = await followOnRow(db, chatId, before, outcome.stacks, target);
   return { stacks: outcome.stacks, ...(playerStats ? { playerStats } : {}), value: outcome.value };
+}
+
+/**
+ * The fakes a character wears or carries that their sheet shows for what they truly are (a number on
+ * the sheet, or what a check adds, differs from the item they pass for): each found out, as a reveal
+ * finds it, with a journal line saying what it was. Null when there is none (a game with no ruleset,
+ * no fake held, or nothing the sheet tells apart).
+ */
+async function revealFakesTheSheetShows(
+  db: DB,
+  chatId: string,
+  metadata: Record<string, unknown>,
+  stacks: GameInventoryStack[],
+): Promise<{ stacks: GameInventoryStack[]; events: Array<{ title: string; content: string }> } | null> {
+  if (!stacks.some((stack) => stack.truly) || metadata.gameRuleset == null) return null;
+  const resolved = resolveGameRuleset(metadata, await loadRulesetRegistry(db));
+  if (resolved.status !== "ok") return null;
+  const book = await loadGameInventoryItemBook(db, { metadata, resolved }, "player");
+  const context = await loadGameRulesetSheetContext(db, chatId, resolved);
+  if (!book || !context) return null;
+  const { definition } = resolved;
+  const itemsOf = rulesetCardItems(
+    book,
+    stacks,
+    context.cards.map((card) => card.name),
+    context.playerName,
+  );
+  let next = stacks;
+  const events: Array<{ title: string; content: string }> = [];
+  for (const card of context.cards) {
+    const held = itemsOf(card.name);
+    // Read without the live state: what a fake changes is the sheet's arithmetic, not where a pool stands.
+    const live = readRulesetLive(definition, card.build, undefined);
+    for (const index of rulesetFakesTheSheetShows(
+      definition,
+      card.build,
+      held,
+      (items, sheet) => rulesetItemSources(definition, card.build, items, sheet),
+      live,
+    )) {
+      const fake = held[index]!;
+      if (!fake.stack || !fake.truly) continue;
+      next = revealGameInventoryFake(next, fake.stack.id, book);
+      events.push({
+        title: "Found out",
+        content: `${card.name}'s ${fake.name ?? fake.stack.ref} was really ${fake.truly.name}.`,
+      });
+    }
+  }
+  return events.length ? { stacks: next, events } : null;
 }
 
 /** The detailed inventory on one row, moved by the difference between two stack lists. Returns the

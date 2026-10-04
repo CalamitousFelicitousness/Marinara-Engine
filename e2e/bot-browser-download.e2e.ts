@@ -120,9 +120,14 @@ test("CharacterTavern explains it is unavailable without contacting the site", a
       JSON.stringify({ nsfw: { chartavern: true }, logins: { chartavern: true }, lastSource: "chartavern" }),
     );
   }, version);
-  await page.route("**/api/bot-browser/chub/search?*", (route) =>
-    route.fulfill({ json: { data: { count: 0, nodes: [] } } }),
-  );
+  // Hold the opening ChubAI search so it finishes after the user has switched source.
+  let releaseChubSearch = () => {};
+  const chubSearchReleased = new Promise<void>((resolve) => (releaseChubSearch = resolve));
+  await page.route("**/api/bot-browser/chub/search?*", async (route) => {
+    await chubSearchReleased;
+    await route.fulfill({ json: { data: { count: 4321, nodes: [] } } });
+  });
+  await page.route("**/api/bot-browser/wyvern/search?*", (route) => route.fulfill({ json: { results: [], total: 0 } }));
   const openCardBrowser = () =>
     page.evaluate(async () => {
       const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
@@ -132,7 +137,19 @@ test("CharacterTavern explains it is unavailable without contacting the site", a
   await page.goto("/");
   await openCardBrowser();
   const browser = page.locator('[data-component="BotBrowserView"]');
+  const header = browser.locator("header");
   await browser.getByRole("button", { name: /ChubAI/u }).click();
+  const wyvernSearch = page.waitForResponse("**/api/bot-browser/wyvern/search?*");
+  await page.getByRole("button", { name: /Wyvern/u }).click();
+  await wyvernSearch;
+  const staleChubSearch = page.waitForResponse("**/api/bot-browser/chub/search?*");
+  releaseChubSearch();
+  await staleChubSearch;
+  await page.waitForTimeout(300);
+  await expect(header).toContainText("Browsing Wyvern");
+  await expect(header).not.toContainText("4,321");
+
+  await browser.getByRole("button", { name: /Wyvern/u }).click();
   await expect(page.getByRole("button", { name: /CharacterTavern.*Unavailable/u })).toBeVisible();
   await page.getByRole("button", { name: /CharacterTavern/u }).click();
 
@@ -145,6 +162,7 @@ test("CharacterTavern explains it is unavailable without contacting the site", a
   );
   await expect(browser.getByPlaceholder("Search characters")).toHaveCount(0);
   await expect(browser.getByRole("button", { name: "Log In" })).toHaveCount(0);
+  await expect(header).not.toContainText("Browsing CharacterTavern");
   const screenshot = testInfo.outputPath("chartavern-unavailable.png");
   await page.screenshot({ path: screenshot });
   await testInfo.attach("chartavern-unavailable", { path: screenshot, contentType: "image/png" });

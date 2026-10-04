@@ -1659,9 +1659,12 @@ export function BotBrowserView() {
         extraToggles,
       });
 
+      // The user switched source while this search ran; its results belong to the old one.
+      if (sourceIdRef.current !== provider.id) return;
       setResults(result.cards);
       setTotalCount(result.totalCount);
     } catch (err) {
+      if (sourceIdRef.current !== provider.id) return;
       setError(err instanceof Error ? err.message : "Search failed");
       setResults([]);
     } finally {
@@ -2109,12 +2112,14 @@ export function BotBrowserView() {
               {localizeUi("ui.botBrowser.botbrowserview.browseCharacterCardsOnline")}
             </h1>
             <p className="truncate text-xs text-[var(--marinara-chat-chrome-panel-muted)] md:text-sm">
-              {totalCount > 0
-                ? localizeUi("ui.botBrowser.botbrowserview.value1CardsFromValue2", {
-                    value1: totalCount.toLocaleString(),
-                    value2: provider.name,
-                  })
-                : localizeUi("ui.botBrowser.botbrowserview.browsingValue1", { value1: provider.name })}
+              {provider.unavailable
+                ? provider.name
+                : totalCount > 0
+                  ? localizeUi("ui.botBrowser.botbrowserview.value1CardsFromValue2", {
+                      value1: totalCount.toLocaleString(),
+                      value2: provider.name,
+                    })
+                  : localizeUi("ui.botBrowser.botbrowserview.browsingValue1", { value1: provider.name })}
             </p>
           </div>
         </div>

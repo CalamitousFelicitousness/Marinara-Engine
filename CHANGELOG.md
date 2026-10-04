@@ -5,7 +5,22 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 ## [Unreleased]
 
 - Character cards and personas have a new **Image Appearance Override** switch under **Appearance**. Turn it on to write a separate, image-prompt-ready description of that character, and **Attach Card Appearance** sends that instead of the full **Appearance** text, so clothing and other scene-specific detail from the card no longer leaks into illustrations. While the switch is off, or its box is empty, image prompts keep using **Appearance** as before, and the narrator always uses the full **Appearance** text. This covers chat illustrations, conversation selfies, and Game mode, and applies to custom image agents as well as the built-in Illustrator (#7053).
+
 ### Changed
+
+- Chat tools now live in **Chat Settings**, which opens from a movable sliders button inside the chat. The Chat Settings button starts at the top right; saved positions stay where you put them. Each chat remembers where you put its buttons and windows (#7034, #7036).
+  - **Chat Branches**, **Chat Summary**, **Active Context**, **Author's Notes**, **Agent activity**, **Gallery** and **Search messages** have their own sections. Search starts collapsed unless you previously expanded it, with a help tip explaining how to find chat history, bookmarks and removed messages. **Bookmarks** and **Trash** are beside Search.
+  - On a computer, move and resize Chat Settings or pop a section out into its own window. Pin a window to keep it open, or lock it to prevent accidental moves of both the window and its button. Pinned windows reopen after a page refresh unless you closed or minimized them. Closing a popped-out section shrinks it to a button; **Put back** returns it to its original window.
+  - On phones, Chat Settings and the other chat windows open as full-width panels. Popped-out sections and chat controls have movable buttons, and panels fit above the keyboard while you type. In Help, tap Chat Settings for an explanation of its controls and icons.
+  - Game controls, connected chats and package controls open from movable buttons too, and can be put in Chat Settings. In Roleplay, the die in the Chat Settings title bar controls the **Tracker Panel**. When the panel is not shown, trackers appear in a **Trackers** window on computers and as compact widgets on phones. When there is not enough room beside the messages, Trackers starts as a button; saved layouts keep your chosen arrangement.
+  - Existing chats keep their old tools as movable buttons, with trackers grouped in **Trackers**. When you upgrade, that familiar setup is also starred for new chats in each mode. This happens once and preserves any favorite you have already saved or cleared. Windows first open below their buttons; a window you have already placed keeps its saved position.
+  - **Help** is beside the Chat Settings title. **Reset View** restores the starting layout after confirmation, and settings profiles can save your layout for reuse. The **star** beside Reset View saves your arrangement and hidden tips for new chats of the same mode; a profile with its own saved layout takes priority.
+  - Desktop Chat Settings includes tips for arranging windows and sections. Their **X** hides them for this chat; new chats show them unless a favorite layout or settings profile saved them as hidden. Dismissing the separate reminder beside the Chat Settings button keeps it hidden across chats and page refreshes.
+  - **Advanced Parameters** keeps showing the connection's current values when popped out. Rearranging windows no longer moves a chat to the top of the chat list. Windows and buttons stay within reach when sidebars, the keyboard or display size change, and closing windows keeps keyboard focus in the chat.
+  - A short video introduces the customizable chat layout the first time you enter a chat after updating, on computers and phones. **Got it** keeps it dismissed across chats and page refreshes.
+  - Custom themes can style windows, drawers and buttons with the shared classes and variables listed in the theming guide.
+  - In **Settings > Appearance > App**, choose **Dottore** or **Mari** under **Chat widget style** for themed chat buttons, windows and sections in light or dark mode. Dottore has cyan instrument frames and his gold ornament; Mari has rose-and-gold storybook frames with Primogems. Font and Shape can be changed separately. **Default** keeps the current look.
+  - **Agent activity** matches the Tracker Panel's text sizes, spacing and backgrounds. The panel's border follows the pulsing accent color on computers and phones.
 
 - The Characters sidebar has its full-width **New Folder** button again. Removed **Possible duplicates**.
 
@@ -25,7 +40,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 - Professor Mari can now turn **Send without wrapper** on or off for an existing prompt block, instead of failing or reporting success while leaving it unchanged. Asked to do this for a marker, which always keeps its wrapper, she reports that it cannot be done (#7014).
 
-- On phones, **Chat Summary** keeps the summary or prompt you are typing in visible above the keyboard, including sideways. The controls at the bottom of the window are hidden while you type in it and come back when the keyboard closes. A tap while the keyboard is open no longer lands on a different setting (#6993).
+- On phones, **Chat Summary** keeps the summary or prompt you are typing in visible above the keyboard, including sideways. A tap while the keyboard is open no longer lands on a different setting (#6993).
 
 - **Auto-Translate Responses** works in Game mode again. Translations of Game turns with character dialogue or game tags no longer stay hidden, including ones already made, and the translator no longer sees Marinara's internal dialogue tags. A runaway Game reply with long stretches of blank space no longer stalls the Game screen or the server (#7010).
 

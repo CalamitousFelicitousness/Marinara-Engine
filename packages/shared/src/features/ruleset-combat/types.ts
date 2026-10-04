@@ -503,6 +503,9 @@ export interface RulesetCombatant {
   defeated: boolean;
   /** Read from the sheet or the block once, when the fight began. */
   defense: number;
+  /** The lowest natural attack face that is a critical for this fighter, read off their sheet
+   *  (`attackRoll.criticalFrom`, 1.76). The die's highest face when absent. */
+  criticalFrom?: number;
   saves: Record<string, number>;
   /** What this combatant adds in a contest, by check id. Present only when the ruleset has checks. */
   checks?: Record<string, number>;

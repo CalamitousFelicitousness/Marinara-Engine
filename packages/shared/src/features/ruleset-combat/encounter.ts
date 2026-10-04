@@ -1117,7 +1117,10 @@ function mechanicsAction(
   if (mechanics.kind === "utility" && !mechanics.gives && !mechanics.standard && !cancels) return null;
   const { build, evaluated, perCell } = from;
   const resolve = (ref: RulesetValueRef) => resolveRulesetValueRef(definition, build, ref, evaluated);
-  const amount = amountOf(mechanics.amount);
+  // What the sheet adds to it (1.78), read as the entry is put on the menu: 1d10 plus a level.
+  const added = mechanics.amountAdd ? Math.trunc(resolve(mechanics.amountAdd)) : 0;
+  const declared = amountOf(mechanics.amount);
+  const amount = declared && added ? { ...declared, flat: declared.flat + added } : declared;
   // A scaling amount grows in DICE: the table says how many to add at each step of what it reads.
   const extra = mechanics.scales
     ? Math.max(0, Math.trunc(lookupStepTable(mechanics.scales.table, resolve(mechanics.scales.from))))
@@ -1597,6 +1600,13 @@ function sheetCombatant(
     stable: false,
     defeated: false,
     defense: Math.round(resolveRulesetValueRef(definition, build, combat.defense, evaluated)),
+    ...(combat.attackRoll?.criticalFrom
+      ? {
+          criticalFrom: Math.round(
+            resolveRulesetValueRef(definition, build, combat.attackRoll.criticalFrom, evaluated),
+          ),
+        }
+      : {}),
     saves,
     ...(checks ? { checks } : {}),
     ...(soak ? { soak } : {}),

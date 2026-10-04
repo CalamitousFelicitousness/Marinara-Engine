@@ -495,7 +495,8 @@ export function evaluateRulesetSheet(
     else if (entry.op === "stepTable") derived[entry.id] = lookupStepTable(entry.table, resolveRef(entry.from));
     else if (entry.op === "scale") {
       derived[entry.id] = roundRulesetNumber(resolveRef(entry.of) * entry.multiplier, entry.round);
-    } else if (entry.op === "min") derived[entry.id] = Math.min(...entry.of.map(resolveRef));
+    } else if (entry.op === "multiply") derived[entry.id] = entry.of.reduce((total, ref) => total * resolveRef(ref), 1);
+    else if (entry.op === "min") derived[entry.id] = Math.min(...entry.of.map(resolveRef));
     else if (entry.op === "enumTable") {
       // The value it is keyed on: a field as the sheet shows it, or a live state as it stands. With no
       // live state at all (only where the format refuses such a read) there is no value to key on.

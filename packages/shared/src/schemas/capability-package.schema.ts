@@ -625,7 +625,17 @@ const capabilityPackageManifestBaseSchema = z
 //        Not a soft seam, for the same reason as 1.20 through 1.73: an Engine that cannot read these
 //        refuses the whole ruleset or catalog file, so a package that ships any of them declares 1.74.
 //        No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 74 } as const);
+// 1.75: (reserved by Pixelforge: map pack tiles may be an image pack.)
+// 1.76: a ruleset's `combat.attackRoll.criticalFrom`: the lowest natural face of the attack die that
+//        is a critical, read off the attacker's sheet (5e's Champion). Not a soft seam, for the same
+//        reason as 1.20 through 1.74: an Engine that cannot read it refuses the whole ruleset file, so
+//        a package that ships it declares 1.76. No permission.
+// 1.77: a derived value may `multiply` (a 5e hit point maximum's Constitution modifier times the
+//        level). Not a soft seam, for the same reason. No permission.
+// 1.78: a catalog entry's mechanics may `amountAdd` a value read off the user's sheet to its amount
+//        (5e's Second Wind, 1d10 plus the fighter's level). Not a soft seam, for the same reason: an
+//        Engine that cannot read it refuses the catalog. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 78 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

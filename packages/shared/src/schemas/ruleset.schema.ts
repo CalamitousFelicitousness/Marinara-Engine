@@ -615,6 +615,9 @@ export const rulesetDerivedSchema = z.discriminatedUnion("op", [
       round: roundingSchema.default("down"),
     })
     .strict(),
+  /** The values multiplied together (Capability API 1.77): a 5e hit point maximum's Constitution
+   *  modifier times the level. */
+  z.object({ ...derivedBase, op: z.literal("multiply"), of: z.array(rulesetValueRefSchema).min(2).max(6) }).strict(),
   z.object({ ...derivedBase, op: z.literal("min"), of: z.array(rulesetValueRefSchema).min(2).max(12) }).strict(),
   z.object({ ...derivedBase, op: z.literal("max"), of: z.array(rulesetValueRefSchema).min(2).max(12) }).strict(),
   /** A number for each value of an enum field or a live state. A field's value is fixed when the
@@ -640,7 +643,15 @@ export const rulesetDerivedSchema = z.discriminatedUnion("op", [
     })
     .strict(),
 ]);
-export const RULESET_DERIVED_OPS = Object.freeze(["sum", "stepTable", "scale", "min", "max", "enumTable"] as const);
+export const RULESET_DERIVED_OPS = Object.freeze([
+  "sum",
+  "stepTable",
+  "scale",
+  "multiply",
+  "min",
+  "max",
+  "enumTable",
+] as const);
 
 const listSchema = z
   .object({
@@ -1245,6 +1256,7 @@ const RIDER_ENTRY_FORBIDS = [
   "targets",
   "friendlyFire",
   "amount",
+  "amountAdd",
   "damageType",
   "plus",
   "attackRoll",
@@ -1278,6 +1290,9 @@ const catalogMechanicsObject = z
     targets: z.enum(["self", "ally", "enemy", "any"]).optional(),
     friendlyFire: z.boolean().optional(),
     amount: z.object(catalogAmountShape).strict().optional(),
+    /** Added to `amount`, read off the user's sheet as the entry is used (Capability API 1.78): 5e's
+     *  Second Wind heals 1d10 plus the fighter's level. Needs an amount. */
+    amountAdd: rulesetValueRefSchema.optional(),
     damageType: promptSafeText(40).optional(),
     /** More amounts on the same blow, beside `amount`, each rolled and typed on its own. */
     plus: z.array(catalogPlusClauseSchema).max(RULESET_DAMAGE_MAX_PLUS).optional(),
@@ -3325,6 +3340,10 @@ const combatSchema = z
         naturals: combatNaturalsSchema.default({}),
         /** What a critical hit does to the damage: roll the dice twice, or add their highest faces. */
         critical: z.enum(["double-dice", "max-dice", "none"]).default("none"),
+        /** The lowest natural face of the attack die that is a critical, read off the attacker's sheet
+         *  (Capability API 1.76): 19 for a 5e Champion. The die's highest face when left out, or when
+         *  the sheet reads higher; never below 2. Needs `naturals.max: "critical"` and a single die. */
+        criticalFrom: rulesetValueRefSchema.optional(),
       })
       .strict()
       .describe("Required when kind is attack-vs-defense, and refused when it is dice-pool.")
@@ -5003,6 +5022,15 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
     }
     // The same rule the check dice follow: an extreme face is only a face when one die was thrown.
     const naturals = combat.attackRoll?.naturals;
+    if (combat.attackRoll?.criticalFrom) {
+      checkRef(combat.attackRoll.criticalFrom, at("attackRoll", "criticalFrom"), derivedIds);
+      if (naturals?.max !== "critical" || combat.attackRoll.dice.count !== 1) {
+        issue(
+          at("attackRoll", "criticalFrom"),
+          'A critical range needs a single attack die whose highest face is a critical (naturals.max "critical")',
+        );
+      }
+    }
     if (naturals && combat.attackRoll!.dice.count !== 1 && (naturals.max !== "none" || naturals.min !== "none")) {
       issue(at("attackRoll", "naturals"), "Natural results need a single die; with several dice use none");
     }
@@ -6961,6 +6989,12 @@ export function rulesetCatalogEntryIssues(
           add([...path, "actions", actionIndex], `This ruleset does not have the standard action "${action}"`);
         }
       });
+    }
+    if (mechanics?.amountAdd) {
+      if (!mechanics.amount) add([index, "mechanics", "amountAdd"], "amountAdd adds to an amount: give the amount too");
+      for (const refIssue of rulesetValueRefIssues(mechanics.amountAdd, names, names.derived, false)) {
+        add([index, "mechanics", "amountAdd", refIssue.key], refIssue.message);
+      }
     }
     if (mechanics?.scales) {
       // A scaling amount reads the sheet exactly as a scaled column does, so any declared derived

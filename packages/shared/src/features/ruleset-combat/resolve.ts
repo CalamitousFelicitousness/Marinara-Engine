@@ -2592,7 +2592,12 @@ function resolveAction(
         );
         const total = kept + action.toHit + bonusTotal(bonuses);
         let outcome: "hit" | "miss" | "critical" = total >= guarded.defense ? "hit" : "miss";
-        if (single && kept === dice.sides && naturals.max !== "none") {
+        // A critical range the attacker's sheet reads (1.76) widens a critical face down to it.
+        const criticalFrom =
+          naturals.max === "critical"
+            ? Math.max(2, Math.min(dice.sides, actor.criticalFrom ?? dice.sides))
+            : dice.sides;
+        if (single && kept >= criticalFrom && naturals.max !== "none") {
           outcome = naturals.max === "critical" ? "critical" : "hit";
         } else if (single && kept === 1 && naturals.min === "miss") outcome = "miss";
         // A condition that says a blow from the next cell always tells is read last, so a hit that

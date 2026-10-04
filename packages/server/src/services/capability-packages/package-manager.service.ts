@@ -1118,6 +1118,21 @@ function rulesetCarriesMarketDay166(ruleset: { items?: unknown } | undefined): b
 const HONESTY_ISSUE =
   "A ruleset with risky items, fakes or a dishonest seller requires schemaVersion 2 and capabilityApi 1.74 or newer";
 
+const CRITICAL_RANGE_ISSUE =
+  "A ruleset whose attack roll reads a critical range off the sheet requires schemaVersion 2 and capabilityApi 1.76 or newer";
+const MULTIPLY_ISSUE =
+  "A ruleset with a derived value that multiplies requires schemaVersion 2 and capabilityApi 1.77 or newer";
+const AMOUNT_ADD_ISSUE =
+  "A ruleset whose catalog entries add a sheet value to their amount requires schemaVersion 2 and capabilityApi 1.78 or newer";
+
+/** A sheet value added to a catalog entry's amount (1.78): `amountAdd`, a new key on strict mechanics. */
+function entriesCarryAmountAdd(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) &&
+    entries.some((entry) => plainRecord(plainRecord(entry)?.mechanics)?.amountAdd !== undefined)
+  );
+}
+
 /** Seller honesty's item keys (1.74): `risky` and `passesFor`, new keys on the strict item. */
 function entriesCarryHonesty(entries: unknown): boolean {
   return (
@@ -1322,6 +1337,7 @@ export function getCapabilityPackageInstallIssue(
   let carriesCoverlessSaves = false;
   let carriesMarketDay = false;
   let carriesHonesty = false;
+  let carriesAmountAdd = false;
   // Every item by "<catalog>/<entry>", inline and in files, and the fakes among them, so a fake whose
   // target is in another catalog file is checked here, where every file can be read.
   const itemsByRef = new Map<string, RulesetCatalogItem>();
@@ -1414,6 +1430,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryCoverlessSaves(header.entries)) carriesCoverlessSaves = true;
       if (entriesCarryMarketDay(header.entries)) carriesMarketDay = true;
       if (entriesCarryHonesty(header.entries)) carriesHonesty = true;
+      if (entriesCarryAmountAdd(header.entries)) carriesAmountAdd = true;
       collectItems(header.id, header.entries);
       const asset = header.asset;
       if (typeof asset !== "string") continue;
@@ -1456,6 +1473,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryCoverlessSaves(fileEntries)) carriesCoverlessSaves = true;
       if (entriesCarryMarketDay(fileEntries)) carriesMarketDay = true;
       if (entriesCarryHonesty(fileEntries)) carriesHonesty = true;
+      if (entriesCarryAmountAdd(fileEntries)) carriesAmountAdd = true;
       collectItems(header.id, fileEntries);
     }
   }
@@ -1711,6 +1729,21 @@ export function getCapabilityPackageInstallIssue(
   const sellers = plainRecord(plainRecord(ruleset?.items)?.market)?.sellers;
   const dishonest = Array.isArray(sellers) && sellers.some((seller) => plainRecord(seller)?.honest !== undefined);
   if (!declaresApi(74) && (carriesHonesty || dishonest)) return HONESTY_ISSUE;
+  // A critical range off the sheet, 1.76: a new key on the strict attack roll.
+  if (!declaresApi(76) && plainRecord(plainRecord(combatBlock)?.attackRoll)?.criticalFrom !== undefined) {
+    return CRITICAL_RANGE_ISSUE;
+  }
+  // A derived value that multiplies, 1.77: a new op.
+  const derivedValues = plainRecord(ruleset?.sheet)?.derived;
+  if (
+    !declaresApi(77) &&
+    Array.isArray(derivedValues) &&
+    derivedValues.some((entry) => plainRecord(entry)?.op === "multiply")
+  ) {
+    return MULTIPLY_ISSUE;
+  }
+  // A sheet value added to an amount, 1.78: a new key on strict mechanics, inline or in a catalog file.
+  if (!declaresApi(78) && carriesAmountAdd) return AMOUNT_ADD_ISSUE;
   return null;
 }
 

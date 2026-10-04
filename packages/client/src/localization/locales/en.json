@@ -1537,6 +1537,7 @@
   "game.ruleset.catalog.listGain": "{{list}} gains {{adding}}, with room for {{room}}.",
   "game.ruleset.catalog.loadFailed": "This catalog could not be loaded.",
   "game.ruleset.catalog.loading": "Loading the catalog...",
+  "game.ruleset.catalog.mechanics.amountAdd": "{{amount}} + {{value}}",
   "game.ruleset.catalog.mechanics.amountOfType": "{{amount}} {{type}}",
   "game.ruleset.catalog.mechanics.area": "{{shape}} {{distance}}",
   "game.ruleset.catalog.mechanics.attackRoll": "attack roll",

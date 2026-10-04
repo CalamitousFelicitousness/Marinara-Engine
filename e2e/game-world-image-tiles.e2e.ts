@@ -155,6 +155,8 @@ test("an image pack chosen for its setting draws the overworld and the town", as
     await page.screenshot({ path: testInfo.outputPath("image-town.png") });
     // The streets drawn by their edge pieces.
     await expect.poll(() => hasColour(town, [240, 120, 10])).toBe(true);
+    // With street edges but no square edges, the square keeps its own tile.
+    await expect.poll(() => hasColour(town, [180, 175, 165])).toBe(true);
     // Townsfolk drawn as the pack's walking person, facing down.
     await expect
       .poll(async () =>

@@ -133,9 +133,12 @@ export function TownView({
         const pick = cellNoise(x, y)(5);
         // With street edge tiles, streets and the square are under-painted as open ground and drawn by
         // the edge pieces, so they blend into it.
+        // (Square edges alone lay the square over street paving, so it meets the streets as paving.)
         const paved = (cell === "s" && streetEdges) || (cell === "q" && (streetEdges || squareEdges));
         const [id, colour] = paved
-          ? ["town_ground", PLAIN.ground]
+          ? cell === "q" && !streetEdges
+            ? ["street", PLAIN.street]
+            : ["town_ground", PLAIN.ground]
           : cell === "s"
             ? ["street", PLAIN.street]
             : cell === "q"
@@ -160,6 +163,15 @@ export function TownView({
     };
     if (streetEdges) edgePass("street", (x, y) => cellOf(x, y) === "s" || cellOf(x, y) === "q");
     if (squareEdges) edgePass("square", (x, y) => cellOf(x, y) === "q");
+    else if (streetEdges) {
+      // Street edges without square edges: the square is its own tile over the street's pieces.
+      for (let y = 0; y < town.height; y++)
+        for (let x = 0; x < town.width; x++)
+          if (cellOf(x, y) === "q" && !drawTile(ctx, "square", x * T, y * T, cellNoise(x, y)(5))) {
+            ctx.fillStyle = PLAIN.square;
+            ctx.fillRect(x * T, y * T, T, T);
+          }
+    }
     for (const building of town.buildings) {
       standing.push({ bottom: building.y + building.h - 1, draw: () => drawBuilding(building) });
     }

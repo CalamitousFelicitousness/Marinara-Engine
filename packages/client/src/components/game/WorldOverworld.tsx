@@ -222,7 +222,11 @@ export function WorldOverworld({
     // Ways over open ground: as road cells with road edge tiles, else drawn as lines.
     const roadEdges = drawTile.hasEdges("road");
     const roads = new Set<number>();
-    const settled = new Set(settlements.map(({ place }) => place.at.y * width + place.at.x));
+    // Settlements' own cells (from the world, not the list sorted by where the party is, so an arrival
+    // never draws the ground again).
+    const settled = new Set(
+      world.places.filter((place) => place.rank !== undefined).map((place) => place.at.y * width + place.at.x),
+    );
     for (const link of world.links) {
       const from = byId.get(link.from);
       const to = byId.get(link.to);
@@ -237,7 +241,7 @@ export function WorldOverworld({
     }
     if (roads.size) edgePass("road", (x, y) => roads.has(y * width + x));
     return canvas;
-  }, [byId, drawTile, game, kit.travel, resolution, settlements, world]);
+  }, [byId, drawTile, game, kit.travel, resolution, world]);
   const markers = useMemo(() => {
     const canvas = document.createElement("canvas");
     if (drawTile.loading) return canvas;

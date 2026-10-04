@@ -92,6 +92,17 @@ export type GenerationProviderRuntime = GenerationProviderRuntimeArgs["initial"]
   provider: BaseLLMProvider;
 };
 
+/**
+ * Codex (ChatGPT login) follows the reasoning effort only once the connection or the chat picks a level. Until then
+ * it sends none, so existing Codex chats keep the model's own level and plan usage instead of the built-in Maximum.
+ */
+export function keepsCodexDefaultEffort(
+  provider: string | null | undefined,
+  ...layers: Array<{ reasoningEffort?: unknown } | null | undefined>
+): boolean {
+  return provider?.toLowerCase() === "openai_chatgpt" && layers.every((layer) => layer?.reasoningEffort === undefined);
+}
+
 export function resolveGenerationProviderRuntime(args: GenerationProviderRuntimeArgs): GenerationProviderRuntime {
   const connectionParams = parseStoredGenerationParameters(args.connection.defaultParameters);
   const chatParams = parseStoredGenerationParameters(args.chatParameters);
@@ -174,6 +185,10 @@ export function resolveGenerationProviderRuntime(args: GenerationProviderRuntime
 
   const modelLower = (args.connection.model ?? "").toLowerCase();
   const providerLower = (args.connection.provider ?? "").toLowerCase();
+  const isCodex = providerLower === "openai_chatgpt";
+  if (keepsCodexDefaultEffort(providerLower, connectionParams, chatParams)) {
+    forceParameters("defaults", { reasoningEffort: null });
+  }
   let resolvedEffort = resolveProviderReasoningEffort({
     provider: providerLower,
     model: modelLower,
@@ -189,7 +204,9 @@ export function resolveGenerationProviderRuntime(args: GenerationProviderRuntime
     runtime.enabledParameters?.reasoningEffort === false
       ? undefined
       : runtime.reasoningEffort === null
-        ? "none"
+        ? isCodex
+          ? undefined
+          : "none"
         : (resolvedEffort ?? undefined);
   const isClaudeNoSampling = isClaudeAdaptiveOnlyNoSamplingModel(modelLower);
   if (isClaudeNoSampling) {

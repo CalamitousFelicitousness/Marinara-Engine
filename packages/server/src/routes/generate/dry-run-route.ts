@@ -92,6 +92,7 @@ import {
   resolveMemoryRecallEmbeddingSource,
 } from "../../services/memory-recall-embedding.js";
 import { withConnectionAdmissionProvider } from "../../services/generation/connection-admission.js";
+import { keepsCodexDefaultEffort } from "../../services/generation/provider-generation-runtime.js";
 import { getLocalSidecarProvider } from "../../services/llm/local-sidecar.js";
 import {
   assemblePrompt,
@@ -2179,6 +2180,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
     // ── Parameter normalization (mirror /api/generate) ──
     const modelLower = (conn.model ?? "").toLowerCase();
     const providerLower = (conn.provider ?? "").toLowerCase();
+    if (keepsCodexDefaultEffort(providerLower, connectionParams, chatParams)) reasoningEffort = null;
 
     const resolvedEffort = resolveProviderReasoningEffort({
       provider: providerLower,

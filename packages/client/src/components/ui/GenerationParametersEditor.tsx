@@ -571,7 +571,11 @@ export function GenerationParametersFields({
           <div>
             <ParameterHeader
               label={localizeUi("ui.ui.generationparametersfields.reasoningEffort")}
-              help={localizeUi("ui.ui.generationparametersfields.howMuchReasoningWorkTheProviderShouldSpendBefore")}
+              help={localizeUi(
+                provider === "openai_chatgpt"
+                  ? "generationParameters.reasoningEffort.codexHelp"
+                  : "ui.ui.generationparametersfields.howMuchReasoningWorkTheProviderShouldSpendBefore",
+              )}
               effective={effectiveHint("reasoningEffort")}
               sendEnabled={isSendEnabled("reasoningEffort")}
               onSendChange={(enabled) => setSend("reasoningEffort", enabled)}

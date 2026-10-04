@@ -2183,8 +2183,14 @@ export class OpenAIProvider extends BaseLLMProvider {
       if (topP != null) body.top_p = topP;
     }
 
-    if (!isOpenAIChatGPT && !suppressModelParameters && this.shouldSendParameter(options, "reasoningEffort")) {
-      this.applyResponsesReasoning(body, options);
+    if (!suppressModelParameters && this.shouldSendParameter(options, "reasoningEffort")) {
+      if (!isOpenAIChatGPT) {
+        this.applyResponsesReasoning(body, options);
+      } else if (this.isReasoningModel(options.model) && this.hasActiveReasoningEffort(options.reasoningEffort)) {
+        // Codex takes the same thinking levels as its own client. It has no "none" level, so sending nothing keeps
+        // the model's default level.
+        body.reasoning = { effort: options.reasoningEffort };
+      }
     }
 
     // GPT-5+ verbosity and Responses structured output / JSON mode.

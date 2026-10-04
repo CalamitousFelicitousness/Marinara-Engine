@@ -52,6 +52,7 @@ import {
   applyContextMessageLimitWithPins,
   isMessagePinnedToContext,
   normalizeMessageMarkPatch,
+  normalizeGroupChatMode,
   readMessagePrivateNote,
   stripPrivateMessageNote,
   MESSAGE_MARK_EXTRA_KEYS,
@@ -1403,6 +1404,10 @@ export async function chatsRoutes(app: FastifyInstance) {
         return reply.status(400).send({ error: `A chat cannot hold more than ${MAX_CHAT_VARIABLES} variables` });
       }
       return updated ? normalizeChatForResponse(updated) : updated;
+    }
+    if (Object.prototype.hasOwnProperty.call(incoming, "groupChatMode")) {
+      // Store only a mode generation understands, so the drawer and the prompt never read it differently.
+      incoming.groupChatMode = normalizeGroupChatMode(incoming.groupChatMode);
     }
     if (incoming.conversationSchedulesEnabled === false) {
       // Chat-scoped only: drop this chat's cached copy, but leave the character
@@ -3272,7 +3277,11 @@ export async function chatsRoutes(app: FastifyInstance) {
             macroSources: [
               ...sections.map((section) => section.content),
               ...mappedMessages.map((message) => message.content),
+              // Author's notes, a chat's own system or Game prompt, and the preset's mode prompts.
+              JSON.stringify(chatMeta),
+              preset ? JSON.stringify(preset) : "",
             ],
+            nameCharacterReferences: !(preset && chatMode !== "conversation" && chatMode !== "game"),
           });
           const resolvePromptMacros = (value: string, lorebookEntryCounts?: Readonly<Record<string, number>>) => {
             setLorebookEntryCounts(promptMacroContext, lorebookEntryCounts);
@@ -3323,7 +3332,7 @@ export async function chatsRoutes(app: FastifyInstance) {
           const previewDecisionTimers = readDecisionTimers(chatMeta[DECISION_TIMERS_METADATA_KEY]);
           const previewDecisionTurn = decisionTurnFor(previewDecisionTimers, latestTurnDecisionId(filteredMessages));
           const heldDecisions: HeldDecisions = (kind, key, modifiers) =>
-            heldDecision(previewDecisionTimers, previewDecisionTurn, kind, key, modifiers?.every);
+            heldDecision(previewDecisionTimers, previewDecisionTurn, kind, key, modifiers?.every, modifiers?.lasts);
           {
             const texts = collectTurnDecisionTexts({
               // The same sources generation plans from: preset sections only outside
@@ -3626,8 +3635,7 @@ export async function chatsRoutes(app: FastifyInstance) {
           }
 
           // ── Inject group chat speaker tag instructions ──
-          const groupChatMode =
-            chatMode === "conversation" ? "merged" : ((chatMeta.groupChatMode as string) ?? "merged");
+          const groupChatMode = normalizeGroupChatMode(chatMeta.groupChatMode);
           const groupSpeakerColors =
             chatMeta.groupSpeakerColors === true || (chatMode === "conversation" && isGroupChat);
 

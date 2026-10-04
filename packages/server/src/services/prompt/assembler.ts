@@ -90,6 +90,8 @@ export interface AssemblerInput {
     injectionDepth: number;
     injectionOrder: number;
     forbidOverrides: string;
+    /** "true" sends a prompt block without the preset wrapper; ignored for markers; missing means wrapped */
+    skipWrap?: string;
   }>;
   /** All groups for this preset */
   groups: Array<{
@@ -398,12 +400,15 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
 
   const addActivatedLorebookCardReferences = async (result: LorebookScanResult) => {
     let discoveredReferences = false;
+    const activeCharacterIds = input.groupCharacterIds ?? input.characterIds;
     const existingReferenceIds = Object.keys(macroCtx.characterReferences ?? {});
-    const remainingReferenceSlots = Math.max(0, MAX_REFERENCED_CHARACTERS - existingReferenceIds.length);
+    // Names of characters already in the chat take no slot: their cards are not added again.
+    const pulledReferenceCount = existingReferenceIds.filter((id) => !activeCharacterIds.includes(id)).length;
+    const remainingReferenceSlots = Math.max(0, MAX_REFERENCED_CHARACTERS - pulledReferenceCount);
     if (remainingReferenceSlots > 0) {
       const extraContext = await buildReferencedCharacterContext({
         db: input.db,
-        activeCharacterIds: [...(input.groupCharacterIds ?? input.characterIds), ...existingReferenceIds],
+        activeCharacterIds: [...activeCharacterIds, ...existingReferenceIds],
         sources: result.activatedEntries.map((entry) => entry.content),
         chatMessages: input.lorebookScanMessages ?? input.chatMessages,
         macroCtx,
@@ -973,8 +978,9 @@ async function resolveSection(
     content.includes(runtimeAgentText),
   );
 
-  // Auto-wrap in the preset's format
-  const wrapped = wrapContent(content, wrapperName, ctx.wrapFormat);
+  // Auto-wrap in the preset's format unless this prompt block opts out (markers always keep their wrapper)
+  const skipWrap = section.skipWrap === "true" && section.isMarker !== "true";
+  const wrapped = wrapContent(content, wrapperName, skipWrap ? "none" : ctx.wrapFormat);
   const messageContent = shouldWrapRuntimeAgentSection
     ? `${runtimeAgentStartToken}${wrapped || content}${runtimeAgentEndToken}`
     : wrapped || content;

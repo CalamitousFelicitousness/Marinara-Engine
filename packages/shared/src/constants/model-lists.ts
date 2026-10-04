@@ -728,6 +728,9 @@ export const VIDEO_GENERATION_SOURCES: VideoGenSource[] = [
   },
 ];
 
+/** The image model Codex's own image tool uses through a ChatGPT login. */
+export const CODEX_IMAGE_MODEL = "gpt-image-2";
+
 export const IMAGE_GENERATION_SOURCES: ImageGenSource[] = [
   {
     id: "openai",
@@ -735,6 +738,15 @@ export const IMAGE_GENERATION_SOURCES: ImageGenSource[] = [
     description: "DALL-E 2, DALL-E 3, and GPT Image via the OpenAI API.",
     defaultBaseUrl: "https://api.openai.com/v1",
     requiresApiKey: true,
+  },
+  {
+    id: "codex_chatgpt",
+    name: "ChatGPT (Codex login)",
+    description: "Generate images with your ChatGPT plan instead of API credits.",
+    // Saved on the connection so fallbacks and request slots key on the real endpoint. The login
+    // token is only ever sent to this fixed URL, never to a stored or edited one.
+    defaultBaseUrl: "https://chatgpt.com/backend-api/codex",
+    requiresApiKey: false,
   },
   {
     id: "stability",
@@ -1056,6 +1068,7 @@ export function inferImageSource(model: string, baseUrl: string): string {
   }
   if (
     m === "openai" ||
+    m === "codex_chatgpt" ||
     m === "stability" ||
     m === "togetherai" ||
     m === "arli" ||

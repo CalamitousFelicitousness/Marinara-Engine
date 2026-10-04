@@ -129,6 +129,8 @@ const arena = (paint: Record<string, TacticalTerrain>) => {
   const hidden = arena({ "1,1": "wall" });
   const mend = applyAction(hidden, { type: "skill", unitId: "archer", skillName: "Mend", targetId: "friend" });
   assert.ok(!mend.ok && /out of sight/.test(mend.error), "a heal through a wall");
+  const potion = applyAction(hidden, { type: "item", unitId: "archer", itemName: "Potion", targetId: "friend" });
+  assert.ok(!potion.ok && /out of sight/.test(potion.error), "an item through a wall");
   // An area spreads only as far as it sees from where it lands: the second foe two cells past the first
   // is caught in the open and sheltered by a wall between them.
   const blastHits = (paint: Record<string, TacticalTerrain>) => {

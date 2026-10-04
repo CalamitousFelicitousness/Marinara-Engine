@@ -37,6 +37,7 @@ import {
 import { MultiplayerPersonaFields, MULTIPLAYER_BUTTON_CLASS, MULTIPLAYER_INPUT_CLASS } from "./MultiplayerFields";
 import { MultiplayerHostControls, type MultiplayerGameStart } from "./MultiplayerHostControls";
 import { MultiplayerParticipantControls } from "./MultiplayerParticipantControls";
+import { useHostHasDetachedDrawers } from "../../components/ui/drawer-host";
 
 const ChatSetupWizard = lazy(() =>
   import("../../components/chat/ChatSetupWizard").then((module) => ({ default: module.ChatSetupWizard })),
@@ -183,6 +184,7 @@ function HostedMultiplayerChat({ chat }: { chat: Chat }) {
   const metadata = readChatMetadata(chat);
   const [setupComplete, setSetupComplete] = useState(metadata.multiplayerSetupComplete === true);
   const settingsOpen = useFloatingWindowStore((state) => state.open[CHAT_SETTINGS_WINDOW_ID] === true);
+  const settingsSectionsPoppedOut = useHostHasDetachedDrawers(CHAT_SETTINGS_WINDOW_ID);
   // A hosted chat shows Chat Settings, so the topbar offers its button.
   const hosting = Boolean(host);
   useEffect(() => {
@@ -412,11 +414,11 @@ function HostedMultiplayerChat({ chat }: { chat: Chat }) {
               }}
             />
           )}
-          {settingsOpen && (
+          {(settingsOpen || settingsSectionsPoppedOut) && (
             <Suspense fallback={null}>
               <ChatSettingsDrawer
                 chat={chat}
-                open
+                open={settingsOpen}
                 onClose={closeSettings}
                 initialSection={initialSection}
                 multiplayerGameStart={gameStart}

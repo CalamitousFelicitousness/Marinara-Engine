@@ -3,24 +3,52 @@
 //
 // Custom themes style the stable `mari-drawer…` classes, `data-drawer` /
 // `data-detached` and the `--mari-drawer-*` variables documented in globals.css.
+// Inside a drawer host (drawer-host.ts) a drawer with an id can pop out into its
+// own window, with its button or by dragging its header out of the host.
 // ──────────────────────────────────────────────
-import { useId, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
-import { ChevronDown } from "lucide-react";
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
+import { createPortal } from "react-dom";
+import { ChevronDown, ExternalLink } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { cn } from "../../lib/utils";
+import {
+  clampWindowGeometry,
+  getDrawerWindowId,
+  placeDetachedDrawer,
+  type FloatingWindowId,
+  type WindowBounds,
+  type WindowGeometry,
+  type WindowLayout,
+} from "../../lib/floating-window-layout";
+import { useFloatingWindowStore } from "../../stores/floating-window.store";
+import { FloatingWindow, readFloatingWindowBounds } from "./FloatingWindow";
 import { HelpTooltip } from "./HelpTooltip";
+import { useDrawerHost, type DrawerHost } from "./drawer-host";
 
 export interface DrawerProps {
-  /** Stable id, exposed as `data-drawer` for themes and tests. */
+  /** Stable id, exposed as `data-drawer` for themes and tests. Inside a drawer host it also enables pop-out. */
   id?: string;
   title: ReactNode;
   icon?: ReactNode;
   count?: number;
   help?: string;
-  /** Reserved slot between the help tip and the arrow (the pop-out button, later). */
+  /** Shown beside the title while the drawer is closed (a tracker's miniature display). */
+  summary?: ReactNode;
+  /** Extra controls between the help tip and the arrow, before the pop-out button. */
   actions?: ReactNode;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** True while the drawer is popped out into its own window. */
+  /** Forces the detached look; a drawer inside a host follows its popped-out state by itself. */
   detached?: boolean;
   className?: string;
   style?: CSSProperties;
@@ -30,12 +58,38 @@ export interface DrawerProps {
   children: ReactNode;
 }
 
+const DETACHED_LIMITS = { minWidth: 240, minHeight: 160 };
+const DRAG_THRESHOLD_PX = 6;
+// Roughly the popped-out window's title bar, so the window opens with its title under the pointer.
+const WINDOW_HEADER_PX = 40;
+const NO_DRAG_SELECTOR = "button, a, input, select, textarea, [contenteditable='true']";
+
+function toGeometry(rect: DOMRect): WindowGeometry {
+  return { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
+}
+
+/** A popped-out window keeps about the drawer's width and, when it was open, its height. */
+function readDetachedSize(drawer: DOMRect, open: boolean, bounds: WindowBounds) {
+  const remPx = Number.parseFloat(window.getComputedStyle(document.documentElement).fontSize) || 16;
+  const maxHeight = Math.min(32 * remPx, bounds.bottom - bounds.top);
+  return {
+    width: Math.min(Math.max(drawer.width, 18 * remPx), 28 * remPx),
+    height: open ? Math.min(Math.max(drawer.height + WINDOW_HEADER_PX, 14 * remPx), maxHeight) : 22 * remPx,
+  };
+}
+
+function popOutLayout(geometry: WindowGeometry): WindowLayout {
+  // Popped-out drawers start pinned, so they stay while the user works elsewhere.
+  return { ...geometry, pinned: true, locked: false };
+}
+
 export function Drawer({
   id,
   title,
   icon,
   count,
   help,
+  summary,
   actions,
   open,
   onOpenChange,
@@ -46,7 +100,134 @@ export function Drawer({
   rootAttributes,
   children,
 }: DrawerProps) {
+  const { t } = useTranslation();
   const bodyId = `mari-drawer-body-${useId().replace(/:/gu, "")}`;
+  const host = useDrawerHost();
+  const windowId = host && id ? getDrawerWindowId(host.id, id) : null;
+  const poppedOut = useFloatingWindowStore((state) => (windowId ? state.detached[windowId] === true : false));
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef<{ pointerId: number; startX: number; startY: number; offsetX: number; active: boolean }>(null);
+  const suppressClickRef = useRef(false);
+  const [ghost, setGhost] = useState<{ x: number; y: number; outside: boolean; container: Element } | null>(null);
+
+  if (poppedOut && host && windowId && id) {
+    return (
+      <DetachedDrawerWindow
+        host={host}
+        windowId={windowId}
+        drawerId={id}
+        title={title}
+        icon={icon}
+        help={help}
+        className={className}
+        bodyClassName={bodyClassName}
+        rootAttributes={rootAttributes}
+      >
+        {children}
+      </DetachedDrawerWindow>
+    );
+  }
+
+  const titleText = typeof title === "string" ? title : t("drawer.popOut.section");
+  const readHostWindow = () => rootRef.current?.closest<HTMLElement>(".mari-window") ?? null;
+  const isOutsideHost = (x: number, y: number) => {
+    const rect = readHostWindow()?.getBoundingClientRect();
+    return !!rect && (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom);
+  };
+
+  const popOut = (
+    place: (drawer: DOMRect, size: { width: number; height: number }, bounds: WindowBounds) => WindowGeometry,
+  ) => {
+    const drawer = rootRef.current?.getBoundingClientRect();
+    if (!windowId || !drawer) return;
+    const bounds = readFloatingWindowBounds();
+    const geometry = place(drawer, readDetachedSize(drawer, open, bounds), bounds);
+    useFloatingWindowStore.getState().detachDrawer(windowId, popOutLayout(geometry));
+  };
+
+  const handlePopOutClick = () =>
+    popOut((drawer, size, bounds) => {
+      const hostRect = readHostWindow()?.getBoundingClientRect();
+      return placeDetachedDrawer(
+        toGeometry(drawer),
+        hostRect ? toGeometry(hostRect) : null,
+        size,
+        bounds,
+        DETACHED_LIMITS,
+      );
+    });
+
+  // Drag-out: past the host window's edge, the drop point becomes the new window's title bar.
+  const handleHeaderPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!windowId || event.button !== 0 || event.pointerType === "touch") return;
+    if (event.target instanceof Element && event.target.closest(NO_DRAG_SELECTOR)) return;
+    const header = event.currentTarget.getBoundingClientRect();
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      offsetX: event.clientX - header.left,
+      active: false,
+    };
+  };
+
+  const handleHeaderPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    // The button came up somewhere this header did not hear about.
+    if ((event.buttons & 1) === 0) {
+      handleHeaderPointerCancel();
+      return;
+    }
+    if (!drag.active) {
+      if (Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < DRAG_THRESHOLD_PX) return;
+      drag.active = true;
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+    }
+    setGhost({
+      x: event.clientX - drag.offsetX,
+      y: event.clientY,
+      outside: isOutsideHost(event.clientX, event.clientY),
+      // Beside the host window, so the preview takes the chat's theme as the window will.
+      container: readHostWindow()?.parentElement ?? document.body,
+    });
+  };
+
+  const handleHeaderPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    dragRef.current = null;
+    if (!drag.active) return;
+    setGhost(null);
+    // The click that ends a drag must not also open or close the drawer.
+    suppressClickRef.current = true;
+    window.setTimeout(() => {
+      suppressClickRef.current = false;
+    }, 0);
+    if (!isOutsideHost(event.clientX, event.clientY)) return;
+    popOut((_drawer, size, bounds) =>
+      clampWindowGeometry(
+        {
+          x: event.clientX - Math.min(drag.offsetX, size.width - WINDOW_HEADER_PX),
+          y: event.clientY - WINDOW_HEADER_PX / 2,
+          ...size,
+        },
+        bounds,
+        DETACHED_LIMITS,
+      ),
+    );
+  };
+
+  const handleHeaderPointerCancel = () => {
+    dragRef.current = null;
+    setGhost(null);
+  };
+
+  const handleHeaderClick = () => {
+    if (suppressClickRef.current) return;
+    onOpenChange(!open);
+  };
+
   const handleHeaderKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget) return;
     if (event.key !== "Enter" && event.key !== " ") return;
@@ -56,8 +237,10 @@ export function Drawer({
 
   return (
     <div
+      ref={rootRef}
       data-drawer={id}
       data-detached={detached ? "true" : "false"}
+      data-dragging={ghost ? "true" : undefined}
       {...rootAttributes}
       className={cn("mari-drawer", className)}
       style={style}
@@ -67,12 +250,20 @@ export function Drawer({
         tabIndex={0}
         aria-expanded={open}
         aria-controls={open ? bodyId : undefined}
-        onClick={() => onOpenChange(!open)}
+        onClick={handleHeaderClick}
         onKeyDown={handleHeaderKeyDown}
-        className="mari-drawer__header flex w-full items-center gap-2 text-left transition-colors"
+        onPointerDown={handleHeaderPointerDown}
+        onPointerMove={handleHeaderPointerMove}
+        onPointerUp={handleHeaderPointerUp}
+        onPointerCancel={handleHeaderPointerCancel}
+        className={cn(
+          "mari-drawer__header flex w-full items-center gap-2 text-left transition-colors",
+          windowId && "select-none",
+        )}
       >
         {icon && <span className="mari-drawer__icon">{icon}</span>}
         <span className="mari-drawer__title flex-1 text-xs font-semibold">{title}</span>
+        {summary && !open && <span className="mari-drawer__summary flex shrink-0 items-center">{summary}</span>}
         {count != null && count > 0 && (
           <span className="mari-drawer__count rounded-full px-1.5 py-0.5 text-[0.625rem] font-medium">{count}</span>
         )}
@@ -81,9 +272,22 @@ export function Drawer({
             <HelpTooltip text={help} side="left" />
           </span>
         )}
-        {actions && (
+        {(actions || windowId) && (
           <span className="mari-drawer__actions flex items-center" onClick={(event) => event.stopPropagation()}>
             {actions}
+            {windowId && (
+              <button
+                type="button"
+                data-drawer-control="pop-out"
+                data-window-opener={windowId}
+                aria-label={t("drawer.popOut.label", { title: titleText })}
+                title={t("drawer.popOut.hint")}
+                className="mari-drawer__popout inline-flex h-5 w-5 items-center justify-center rounded-md text-[var(--mari-drawer-icon-color,var(--muted-foreground))] opacity-70 transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--marinara-chat-chrome-focus-ring)]"
+                onClick={handlePopOutClick}
+              >
+                <ExternalLink size="0.75rem" />
+              </button>
+            )}
           </span>
         )}
         <ChevronDown size="0.75rem" className={cn("mari-drawer__arrow transition-transform", open && "rotate-180")} />
@@ -93,6 +297,133 @@ export function Drawer({
           {children}
         </div>
       )}
+      {ghost &&
+        createPortal(
+          <div
+            aria-hidden="true"
+            data-outside={ghost.outside ? "true" : "false"}
+            className="mari-drawer-ghost pointer-events-none fixed z-[9500] flex max-w-72 items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold"
+            style={{ left: ghost.x, top: ghost.y - WINDOW_HEADER_PX / 2 }}
+          >
+            {icon && <span className="mari-drawer__icon">{icon}</span>}
+            <span className="truncate">{title}</span>
+          </div>,
+          ghost.container,
+        )}
     </div>
+  );
+}
+
+interface DetachedDrawerWindowProps {
+  host: DrawerHost;
+  windowId: FloatingWindowId;
+  drawerId: string;
+  title: ReactNode;
+  icon?: ReactNode;
+  help?: string;
+  className?: string;
+  bodyClassName?: string;
+  rootAttributes?: Record<`data-${string}`, string | undefined>;
+  children: ReactNode;
+}
+
+function getDetachedFallbackLayout(bounds: WindowBounds): WindowLayout {
+  return popOutLayout({ x: bounds.left, y: bounds.top, width: 352, height: 352 });
+}
+
+/** The visible host window, while it can take a drawer back. */
+function readDockTarget(hostId: FloatingWindowId) {
+  const element = document.querySelector<HTMLElement>(`.mari-window[data-window="${CSS.escape(hostId)}"]`);
+  return element && !element.hidden && element.getClientRects().length > 0 ? element : null;
+}
+
+/**
+ * A popped-out drawer: its body in its own window, rendered from where the drawer was (so it keeps its
+ * state and context) into the host window's container (so it keeps the chat's theme). Closing it, or
+ * dropping it back on the host window, puts it back.
+ */
+function DetachedDrawerWindow({
+  host,
+  windowId,
+  drawerId,
+  title,
+  icon,
+  help,
+  className,
+  bodyClassName,
+  rootAttributes,
+  children,
+}: DetachedDrawerWindowProps) {
+  const { t } = useTranslation();
+  const anchorRef = useRef<HTMLSpanElement | null>(null);
+  const [container, setContainer] = useState<Element | null>(null);
+
+  useLayoutEffect(() => {
+    setContainer(anchorRef.current?.closest(".mari-window")?.parentElement ?? document.body);
+  }, []);
+
+  // The window joins the stacking order while it shows.
+  useEffect(() => {
+    useFloatingWindowStore.getState().openWindow(windowId, null, { focus: false });
+    return () => useFloatingWindowStore.getState().closeWindow(windowId);
+  }, [windowId]);
+
+  const dock = () => useFloatingWindowStore.getState().dockDrawer(windowId);
+
+  const handleDragMove = (point: { x: number; y: number }, phase: "move" | "end") => {
+    const target = readDockTarget(host.id);
+    const rect = target?.getBoundingClientRect();
+    const over =
+      !!rect && point.x >= rect.left && point.x <= rect.right && point.y >= rect.top && point.y <= rect.bottom;
+    if (phase === "move") {
+      if (over) target?.setAttribute("data-drop-target", "true");
+      else target?.removeAttribute("data-drop-target");
+      return;
+    }
+    target?.removeAttribute("data-drop-target");
+    if (!over) return;
+    dock();
+    return true;
+  };
+
+  return (
+    <>
+      <span ref={anchorRef} hidden data-drawer-anchor={drawerId} />
+      {container &&
+        createPortal(
+          <FloatingWindow
+            id={windowId}
+            title={title}
+            titleIcon={icon ? <span className="mari-drawer__icon flex shrink-0">{icon}</span> : undefined}
+            titleAccessory={help ? <HelpTooltip text={help} side="bottom" /> : undefined}
+            closeLabel={t("drawer.popOut.close", { host: host.title })}
+            getDefaultLayout={getDetachedFallbackLayout}
+            minWidth={DETACHED_LIMITS.minWidth}
+            minHeight={DETACHED_LIMITS.minHeight}
+            autoFocus={false}
+            className={host.windowClassName}
+            headerClassName={host.headerClassName}
+            titleClassName={host.titleClassName}
+            rootAttributes={{ ...host.rootAttributes, "data-detached": "true", "data-drawer-host": host.id }}
+            ignoreOutsidePointer={host.ignoreOutsidePointer}
+            onRequestClose={dock}
+            onDragMove={handleDragMove}
+          >
+            <div
+              className={cn("flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain", host.scrollClassName)}
+            >
+              <div
+                data-drawer={drawerId}
+                data-detached="true"
+                {...rootAttributes}
+                className={cn("mari-drawer", className)}
+              >
+                <div className={cn("mari-drawer__body", bodyClassName ?? "pt-3")}>{children}</div>
+              </div>
+            </div>
+          </FloatingWindow>,
+          container,
+        )}
+    </>
   );
 }

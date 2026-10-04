@@ -1,10 +1,12 @@
 # Roleplay HUD and Trackers
 
-This guide explains the Roleplay HUD and the small tracker widgets it shows. You will learn how to edit and lock their values, and how the larger Tracker Panel works. It applies to Roleplay Mode in Marinara Engine.
+This guide explains the Roleplay trackers: the small widgets on phones, the **Trackers** window and the Tracker Panel on a computer. You will learn how to edit and lock their values. It applies to Roleplay Mode in Marinara Engine.
 
 ## What the HUD is
 
-The HUD (heads-up display) is a row of small icon widgets at the top of the chat area. Each widget shows a piece of live story state, such as the time, your stats, or who is present. Marinara keeps these values up to date for you as the story moves.
+The HUD (heads-up display) is the row of buttons at the top of the chat area. On a phone it includes a small icon widget for each tracker. Each widget shows a piece of live story state, such as the time, your stats, or who is present. Marinara keeps these values up to date for you as the story moves.
+
+On a computer, the trackers are not in the HUD row. They show in the **Tracker Panel** when it is on in Settings, and otherwise in the **Trackers** window described below.
 
 The values come from tracker agents. An agent is a small AI helper that runs in the background. Each tracker agent watches the story and updates one part of the HUD after each message. You do not have to ask for it.
 
@@ -34,9 +36,23 @@ To change a quantity that is currently one, turn on **add mode** or **lock mode*
 
 The **Present Characters** widget shows up to three character emoji plus a "+N" count for any extras. The **Inventory** and **Custom Tracker** widgets cycle through their entries one at a time.
 
+## The Trackers window
+
+On a computer, with the **Tracker Panel** turned off in Settings, a Roleplay chat's trackers show in a **Trackers** window. It opens at the top left of the chat. You can move it by its title bar, resize it from its edges, and use the buttons in its top-right corner:
+
+- **Pin** keeps it open when you click elsewhere. It starts pinned.
+- **Lock** stops it from moving or resizing.
+- **Close** hides it. To show it again, open **Chat Settings** and turn on **Tracker window** at the top, or press **Reset View** there.
+
+Each tracker has its own drawer. Click a drawer's header to collapse it to the tracker's small widget preview, and click it again to see the whole tracker. Marinara remembers which drawers you collapsed.
+
+A tracker can also get its own window: click the pop-out button beside its arrow, or drag its title out of the Trackers window. The new window starts pinned and stays open when you close the Trackers window. Click its **X** button (**Put back in Trackers**), or drag it back onto the Trackers window, to return it. Each chat remembers which trackers are out and where.
+
+At the bottom, **Agent activity** shows what the chat's agents did. From there you can re-run the trackers, retry agents that failed, stop running agents, and **Clear Trackers**. The Tracker Panel has the same section at its bottom.
+
 ## Editing values in a popover
 
-Click any widget to open its popover. A popover is a small floating panel. Every field in it is editable, so you can correct a value the AI got wrong. Your edits save right away.
+On a phone, tap any widget to open its popover. On a computer, the same editors are inside the drawers of the Trackers window. A popover is a small floating panel. Every field in it is editable, so you can correct a value the AI got wrong. Your edits save right away.
 
 Here is what each popover lets you edit:
 
@@ -69,9 +85,9 @@ You can force a tracker to update instead of waiting for the next message.
 
 Inside each popover there is a small refresh (circular arrow) button. Click it to re-run just that one tracker for the latest turn. The tooltips name the tracker, for example **Re-run world state tracker only** or **Re-run quest tracker only**.
 
-In **Chat Settings → Agents**, **Manual Trackers** moves every enabled tracker to manual control. You can instead leave that switch off and set only selected agents to manual under **Individual tracker schedule**. A refresh button appears in the HUD row whenever at least one tracker is manual; click it to run the manual tracker set for the current turn. The refresh button inside each tracker popover still runs that individual tracker directly.
+In **Chat Settings → Agents**, **Manual Trackers** moves every enabled tracker to manual control. You can instead leave that switch off and set only selected agents to manual under **Individual tracker schedule**. A refresh button appears whenever at least one tracker is manual: in the HUD row on a phone, and next to the title of the Trackers window on a computer. Click it to run the manual tracker set for the current turn. The refresh button inside each tracker still runs that individual tracker directly.
 
-The sparkle icon at the start of the HUD row opens the **Agents & Actions** menu. From there you can re-run all trackers, retry any agents that failed, and use **Clear Trackers** to wipe all tracked world state for the chat. **Clear Trackers** cannot be undone, so use it with care.
+The sparkle icon at the start of the HUD row opens the **Agents & Actions** menu. From there, or from **Agent activity** in the Trackers window or the Tracker Panel, you can re-run all trackers, retry any agents that failed, and use **Clear Trackers** to wipe all tracked world state for the chat. **Clear Trackers** cannot be undone, so use it with care.
 
 ## The Tracker Panel
 
@@ -90,8 +106,8 @@ Custom field names define the structure and remain stable across tracker runs. T
 
 These settings control it:
 
-- **Tracker Panel**: the master on or off toggle. It is on by default. When on, the label reads "Shown in the Roleplay HUD".
-- **Replace tracker HUD icons**: hides the compact icon strip so the panel can dock to the screen edge instead. The **Agents & Actions** button stays visible.
+- **Tracker Panel**: the master on or off toggle. It is on by default. When on, the label reads "Shown in the Roleplay HUD". When off, trackers show in the Trackers window on a computer.
+- **Replace tracker HUD icons**: hides the compact icon strip on phones and lets the panel dock to the screen edge instead. The **Agents & Actions** button stays visible.
 - **Use expression sprites for tracker portraits**: lets tracker portraits use a character's expression sprite (their current emotion portrait) instead of the plain avatar, when one exists. Expression sprites are explained in [Character Sprites](../characters/sprites.md).
 - **Panel background**: a color or gradient picker for the panel's background.
 - **Desktop size**: choose the panel width. The options are **Compact**, **Standard**, and **Expanded**.

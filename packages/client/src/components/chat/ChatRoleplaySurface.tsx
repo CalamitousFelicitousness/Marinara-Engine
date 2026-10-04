@@ -72,7 +72,6 @@ import { CapabilityElement } from "../capabilities/CapabilityElement";
 import { ChatMessage } from "./ChatMessage";
 import { ChatInput } from "./ChatInput";
 import { CyoaChoices } from "./CyoaChoices";
-import { ChatSettingsAgentActivity } from "./ChatSettingsAgentActivity";
 import { ChatHelpButton } from "./ChatHelpButton";
 import {
   CHAT_TOOLBAR_ICON_GAP_CLASS,
@@ -103,6 +102,10 @@ import {
 
 type ChatData = ComponentProps<typeof ChatCommonOverlays>["chat"];
 
+const RoleplayTrackerWindow = lazy(async () => {
+  const module = await import("./RoleplayTrackerWindow");
+  return { default: module.RoleplayTrackerWindow };
+});
 const RoleplayHUD = lazy(async () => {
   const module = await import("./RoleplayHUD");
   return { default: module.RoleplayHUD };
@@ -774,7 +777,6 @@ type RoleplaySurfaceProps = {
   onToggleSelectMessage: (toggle: MessageSelectionToggle) => void;
   onRerunTrackers: () => void;
   onRerunSingleTracker: (agentType: string) => void;
-  onRetryFailedAgents?: () => void;
   onStartEncounter: () => void;
   onConcludeScene: () => void;
   onAbandonScene: () => void;
@@ -889,7 +891,6 @@ export function ChatRoleplaySurface({
   onToggleSelectMessage,
   onRerunTrackers,
   onRerunSingleTracker,
-  onRetryFailedAgents,
   onStartEncounter,
   onConcludeScene,
   onAbandonScene,
@@ -1647,18 +1648,6 @@ export function ChatRoleplaySurface({
             <AuthorNotesPanel key={chat.id} chatId={chat.id} chatMeta={chatMeta} />
           </Suspense>
         ),
-        agentActivity:
-          chatMeta.enableAgents || chatMeta.advancedMemory?.enabled === true ? (
-            <ChatSettingsAgentActivity
-              chatId={chat.id}
-              advancedMemoryEnabled={chatMeta.advancedMemory?.enabled === true}
-              isStreaming={isStreaming}
-              messages={messages}
-              enabledAgentTypes={enabledAgentTypes}
-              onRetriggerTrackers={onRerunTrackers}
-              onRetryFailedAgents={onRetryFailedAgents}
-            />
-          ) : undefined,
       }
     : {};
 
@@ -2278,6 +2267,21 @@ export function ChatRoleplaySurface({
           <EchoChamberPanel hiddenOnMobile={hideEchoChamberOnMobile} />
         </Suspense>
       </div>
+
+      {/* Outside the isolated chat area, so it stacks with Chat Settings and the other chat windows. */}
+      {chat && chatMeta.enableAgents && (
+        <Suspense fallback={null}>
+          <RoleplayTrackerWindow
+            chatId={chat.id}
+            enabledAgentTypes={enabledAgentTypes}
+            isStreaming={isStreaming}
+            manualTrackers={manualTrackersActive}
+            onRerunTrackers={onRerunTrackers}
+            onRerunSingleTracker={onRerunSingleTracker}
+            messages={messages}
+          />
+        </Suspense>
+      )}
 
       <ChatCommonOverlays
         chat={chat}

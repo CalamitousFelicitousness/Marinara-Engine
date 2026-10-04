@@ -23,6 +23,7 @@ A profile stores how the chat talks to the AI:
 - Translation
 - Memory Recall
 - Advanced Parameters
+- Window layout on a computer: where Chat Settings and the Trackers window sit, their sizes, pin and lock, and which sections are popped out into their own windows. Profiles without a saved layout, such as **Default**, leave the chat's layout as it is.
 - Other reusable chat options
 
 A profile does not replace chat-owned content such as characters, persona, lorebooks, sprites, summary, tags, or scene prompt. It also does not contain the conversation history.

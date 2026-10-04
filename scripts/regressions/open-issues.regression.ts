@@ -5976,12 +5976,9 @@ assert.equal(
   1,
   "The dedicated Roleplay Inventory Tracker widget must suppress mount animations with reduced ambient effects",
 );
-// Clear Trackers lives in Agent activity, in Chat Settings' Agents drawer.
+// Clear Trackers is shared by every Agent activity section (Chat Settings, Trackers window, Tracker Panel).
 assert.match(
-  readFileSync(
-    new URL("../../packages/client/src/components/chat/ChatSettingsAgentActivity.tsx", import.meta.url),
-    "utf8",
-  ),
+  readFileSync(new URL("../../packages/client/src/hooks/use-agent-activity.ts", import.meta.url), "utf8"),
   /latestAssistantMessage[\s\S]{0,240}extra: \{ cyoaChoices: \[\] \}/u,
   "clearing Roleplay tracker state must also clear the persisted active CYOA prompt",
 );

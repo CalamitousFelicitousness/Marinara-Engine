@@ -24,16 +24,27 @@ On a computer, Chat Settings is a window that floats over the chat. Its contents
 - **Lock** (the padlock button) stops the window from moving or resizing until you unlock it.
 - **Close** (the X button) closes the window.
 
-The window stays inside the chat area, even when you resize the browser or open a sidebar. Marinara remembers its size, place, pin and lock on this device.
+The window stays inside the chat area, even when you resize the browser or open a sidebar. Each chat remembers its own window layout: where Chat Settings and the Trackers window sit, their sizes, pin and lock, and which sections are popped out. A settings profile saves this layout too (see [Settings Profiles](#settings-profiles)).
 
 Two controls sit at the top of the window:
 
 - **Tracker Panel** shows or hides the Tracker Panel beside a Roleplay chat. It appears in Roleplay chats when the Tracker Panel is turned on in **Settings → Appearance** and the chat uses agents or Advanced Memory.
-- **Reset View** puts the window back where it started, unpinned and unlocked.
+- **Reset View** puts the window back where it started, unpinned and unlocked, and returns every popped-out section.
 
 The **?** button beside the **Chat Settings** title opens the chat's Help layout, which labels each part of the chat. On a phone, Help stays in **More options**, or **Game actions** in a Game. You can hide it with **Hide chat Help button** in **Settings → General → App Behavior**.
 
 On a phone, Chat Settings opens as a full-width panel instead of a window.
+
+## Popping a section out into its own window
+
+On a computer, any section of Chat Settings can become its own window, so you can keep it open next to the chat.
+
+- Click the pop-out button (the box with an arrow) beside the section's **?**, or drag the section's title out of the Chat Settings window and drop it where you want it.
+- The new window starts pinned. You can move, resize, pin and lock it like Chat Settings, and it stays open when you close Chat Settings.
+- While it is out, the section is gone from Chat Settings, so it is never shown twice.
+- To put it back, click its **X** button (**Put back in Chat Settings**), or drag its title bar onto the Chat Settings window.
+
+The drawers of the Trackers window pop out the same way. See [The Trackers window](../roleplay/hud-and-trackers.md#the-trackers-window).
 
 ## Chat Name
 
@@ -56,7 +67,7 @@ To learn how to create a connection in the first place, see [Connecting to an AI
 
 At the top of the panel is the **Profile** control. A settings profile is a saved bundle of chat settings that you can reuse on other chats. Choose a profile from the dropdown to apply it to the current chat.
 
-A profile bundles this chat's connection, prompt preset, agents, tools, translation, memory recall, advanced parameters, and other settings. It never changes your characters, persona, lorebooks, sprites, summary, tags, or scene prompt. Those stay tied to the chat itself.
+A profile bundles this chat's connection, prompt preset, agents, tools, translation, memory recall, advanced parameters, window layout, and other settings. It never changes your characters, persona, lorebooks, sprites, summary, tags, or scene prompt. Those stay tied to the chat itself. A profile saved before window layouts existed, like the **Default** profile, leaves the chat's window layout as it is.
 
 The bar has a row of small icon buttons with no text labels. Each button shows its name in a tooltip when you hover over it:
 

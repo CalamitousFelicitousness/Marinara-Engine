@@ -36,6 +36,7 @@ import {
 import { getCurrentInputSnapshot, useChatStore } from "../../stores/chat.store";
 import { hasActiveTextSelection } from "../../lib/text-selection";
 import { readChatMetadata } from "../../lib/chat-wizard-defaults";
+import { useChatWindowLayout } from "../../hooks/use-chat-window-layout";
 import { useGenerate } from "../../hooks/use-generate";
 import { useGenerateGallerySelfie } from "../../hooks/use-gallery";
 import {
@@ -70,7 +71,6 @@ import { useGalleryStore } from "../../stores/gallery.store";
 import { toast } from "sonner";
 import { Check, X } from "lucide-react";
 import {
-  BUILT_IN_AGENTS,
   PROFESSOR_MARI_ID,
   buildGuidedGenerationInstructionMessage,
   normalizeAvatarCrop,
@@ -84,7 +84,7 @@ import {
 import { resolveLiveConversationStatus } from "../../lib/conversation-presence-status";
 import { useUIStore } from "../../stores/ui.store";
 import { useAgentStore, EMPTY_AGENT_TYPES } from "../../stores/agent.store";
-import { illustratorRetryTargetsForFailures } from "../../lib/agent-failures";
+import { isBuiltInTrackerAgentType, resolveTrackerRerunTypes } from "../../lib/tracker-agents";
 import { Modal } from "../ui/Modal";
 import { useEncounter } from "../../hooks/use-encounter";
 import { useScene } from "../../hooks/use-scene";
@@ -164,10 +164,6 @@ import { CHAT_SETTINGS_WINDOW_ID, useFloatingWindowStore } from "../../stores/fl
 import { readChatHelpMode } from "../../lib/chat-help-events";
 
 export type { CharacterMap };
-
-const isBuiltInAgentType = (agentType: string) => BUILT_IN_AGENTS.some((agent) => agent.id === agentType);
-const isBuiltInTrackerAgentType = (agentType: string) =>
-  BUILT_IN_AGENTS.some((agent) => agent.id === agentType && agent.category === "tracker" && !agent.libraryHidden);
 
 function compareMessagesByCursor(left: MessageWithSwipes, right: MessageWithSwipes): number {
   const createdAtCompare = left.createdAt.localeCompare(right.createdAt);
@@ -550,6 +546,8 @@ const MultiplayerChat = lazy(() =>
 export const ChatArea = memo(function ChatArea() {
   const activeChatId = useChatStore((state) => state.activeChatId);
   const { data: chat, error, refetch } = useChat(activeChatId);
+  // Windows and popped-out drawers follow the open chat's saved layout.
+  useChatWindowLayout(activeChatId && chat?.id === activeChatId ? chat : null);
   useEffect(() => {
     if (activeChatId && error instanceof ApiError && error.status === 404) {
       useChatStore.getState().setActiveChatId(null);
@@ -2188,28 +2186,9 @@ const LocalChatArea = memo(function LocalChatArea() {
     [activeChatId, isStreaming, generate, guideGenerations, localizeUi],
   );
 
-  const handleRetryAgents = useCallback(async () => {
-    if (!activeChatId || isStreaming || agentProcessing || failedAgentTypes.length === 0) return;
-    const failureState = useAgentStore.getState();
-    const failures =
-      failureState.failedAgentChatId && failureState.failedAgentChatId !== activeChatId
-        ? []
-        : failureState.failedAgentFailures;
-    const illustratorRetryTargets = illustratorRetryTargetsForFailures(failures);
-    await retryAgents(
-      activeChatId,
-      failedAgentTypes,
-      illustratorRetryTargets ? { illustratorRetryTargets } : undefined,
-    );
-  }, [activeChatId, isStreaming, agentProcessing, failedAgentTypes, retryAgents]);
-
   const handleRerunTrackers = useCallback(async () => {
     if (!activeChatId || isStreaming || agentProcessing) return;
-    const manualTypes = Array.from(manualTrackerTypes);
-    const types =
-      manualTypes.length > 0
-        ? manualTypes
-        : Array.from(enabledAgentTypes).filter((type) => isBuiltInTrackerAgentType(type) || !isBuiltInAgentType(type));
+    const types = resolveTrackerRerunTypes(enabledAgentTypes, manualTrackerTypes);
     if (types.length === 0) return;
     await retryAgents(activeChatId, types);
   }, [activeChatId, isStreaming, agentProcessing, enabledAgentTypes, manualTrackerTypes, retryAgents]);
@@ -3461,7 +3440,6 @@ const LocalChatArea = memo(function LocalChatArea() {
           onToggleSelectMessage={handleToggleSelectMessage}
           onRerunTrackers={handleRerunTrackers}
           onRerunSingleTracker={handleRerunSingleTracker}
-          onRetryFailedAgents={handleRetryAgents}
           onStartEncounter={() => startEncounter()}
           onConcludeScene={() => concludeScene(activeChatId)}
           onAbandonScene={() => abandonScene(activeChatId)}

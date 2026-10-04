@@ -13,33 +13,23 @@ import { NEUTRAL_SURFACE_VARIABLES } from "../ui/neutral-surface-styles";
 import { isChatToolbarPanelTrigger, type ChatToolbarFloatingPanelAnchor } from "./ChatToolbarControls";
 
 const CHAT_SETTINGS_WINDOW_WIDTH_REM = 34;
-const CHAT_SETTINGS_WINDOW_GAP_PX = 12;
+const CHAT_WINDOW_GAP_PX = 12;
 
-function readCssPixels(element: Element, property: string) {
+export function readCssPixels(element: Element, property: string) {
   const value = Number.parseFloat(window.getComputedStyle(element).getPropertyValue(property));
   return Number.isFinite(value) ? value : 0;
 }
 
 /**
- * Today's panel width beside the right edge of the chat (left of a right-side Tracker Panel), between
- * its top controls and its message box.
+ * The free part of the visible chat: inside its edges (minus a gap), below its top controls and above its
+ * message box. Chat windows open here by default.
  */
-export function getChatSettingsDefaultLayout(bounds: WindowBounds): WindowLayout {
-  const remPx = readCssPixels(document.documentElement, "font-size") || 16;
+export function readChatWindowArea(bounds: WindowBounds) {
   const chatRoot = Array.from(document.querySelectorAll<HTMLElement>("[data-chat-mode]")).find((element) => {
     const rect = element.getBoundingClientRect();
     return rect.width > 1 && rect.height > 1;
   });
   const rootRect = chatRoot?.getBoundingClientRect();
-  // A right-side Tracker Panel floats over the chat; AppShell publishes its width plus a gap.
-  const trackerClearance =
-    chatRoot && useUIStore.getState().trackerPanelSide === "right"
-      ? readCssPixels(chatRoot, TRACKER_CLEARANCE_VARIABLE)
-      : 0;
-  const right = Math.min(
-    bounds.right - trackerClearance,
-    (rootRect?.right ?? bounds.right + WINDOW_MARGIN_PX) - CHAT_SETTINGS_WINDOW_GAP_PX,
-  );
   const topControlsBottom = Math.max(
     0,
     ...Array.from(chatRoot?.querySelectorAll("[data-chat-help]") ?? [])
@@ -49,10 +39,30 @@ export function getChatSettingsDefaultLayout(bounds: WindowBounds): WindowLayout
   );
   const composer = chatRoot?.querySelector("[data-chat-composer]");
   const composerTop = (composer?.closest("[data-chat-resource-drop-exclude]") ?? composer)?.getBoundingClientRect().top;
-  const top = Math.max(bounds.top, topControlsBottom ? topControlsBottom + WINDOW_MARGIN_PX : bounds.top + 48);
-  const bottom = Math.min(bounds.bottom, composerTop ? composerTop - CHAT_SETTINGS_WINDOW_GAP_PX : bounds.bottom - 132);
+  return {
+    chatRoot,
+    left: Math.max(bounds.left, (rootRect?.left ?? bounds.left - WINDOW_MARGIN_PX) + CHAT_WINDOW_GAP_PX),
+    right: Math.min(bounds.right, (rootRect?.right ?? bounds.right + WINDOW_MARGIN_PX) - CHAT_WINDOW_GAP_PX),
+    top: Math.max(bounds.top, topControlsBottom ? topControlsBottom + WINDOW_MARGIN_PX : bounds.top + 48),
+    bottom: Math.min(bounds.bottom, composerTop ? composerTop - CHAT_WINDOW_GAP_PX : bounds.bottom - 132),
+  };
+}
+
+/**
+ * Today's panel width beside the right edge of the chat (left of a right-side Tracker Panel), between
+ * its top controls and its message box.
+ */
+export function getChatSettingsDefaultLayout(bounds: WindowBounds): WindowLayout {
+  const remPx = readCssPixels(document.documentElement, "font-size") || 16;
+  const area = readChatWindowArea(bounds);
+  // A right-side Tracker Panel floats over the chat; AppShell publishes its width plus a gap.
+  const trackerClearance =
+    area.chatRoot && useUIStore.getState().trackerPanelSide === "right"
+      ? readCssPixels(area.chatRoot, TRACKER_CLEARANCE_VARIABLE)
+      : 0;
+  const right = Math.min(bounds.right - trackerClearance, area.right);
   const width = Math.min(CHAT_SETTINGS_WINDOW_WIDTH_REM * remPx, right - bounds.left);
-  return { x: right - width, y: top, width, height: bottom - top, pinned: false, locked: false };
+  return { x: right - width, y: area.top, width, height: area.bottom - area.top, pinned: false, locked: false };
 }
 
 const TRACKER_CLEARANCE_VARIABLE = "--tracker-panel-overlay-clearance";

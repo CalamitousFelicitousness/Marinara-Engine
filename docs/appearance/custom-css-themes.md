@@ -94,7 +94,7 @@ Custom theme CSS is cleaned before it runs, for safety. Styles that load a file 
 
 ## Styling chat windows and drawers
 
-**Chat Settings** opens as a window you can move and resize, and its sections are collapsible drawers. Every chat window and drawer uses the same class names, data attributes and variables, so one theme can restyle them all at once.
+**Chat Settings** opens as a window you can move and resize, and its sections are collapsible drawers. A drawer can pop out into a window of its own. Every chat window and drawer uses the same class names, data attributes and variables, so one theme can restyle them all at once.
 
 | Part | Class |
 | --- | --- |
@@ -106,13 +106,17 @@ Custom theme CSS is cleaned before it runs, for safety. Styles that load a file 
 | Resize edges and corners | `.mari-window__resize-handle` |
 | Drawer | `.mari-drawer` |
 | Drawer header, title and content | `.mari-drawer__header`, `.mari-drawer__title`, `.mari-drawer__body` |
+| A collapsed drawer's preview (a tracker's small widget) | `.mari-drawer__summary` |
+| A drawer's pop-out button | `.mari-drawer__popout` |
+| The preview that follows the pointer while a drawer is dragged out | `.mari-drawer-ghost` |
 
 These data attributes describe each window or drawer:
 
-- `data-window` names the window, for example `data-window="chat-settings"`.
+- `data-window` names the window, for example `data-window="chat-settings"` or `data-window="trackers"`.
 - `data-drawer` names the drawer, for example `data-drawer="chat-name"`. Some names start with the chat mode, such as `roleplay-agents` or `conversation-agents`.
 - `data-pinned` and `data-locked` are `"true"` while the window is pinned or locked.
-- `data-detached` is `"true"` when a drawer is shown in its own window.
+- `data-detached` is `"true"` when a drawer is shown in its own window, on both that window and the drawer inside it. A popped-out drawer's window is named `data-window="drawer:<window>:<drawer>"`, for example `data-window="drawer:chat-settings:chat-name"`, and `data-drawer-host` names the window it came from.
+- `data-dragging` is `"true"` on a drawer while its title is dragged, and `data-drop-target` is `"true"` on a window while a popped-out drawer is held over it, ready to go back.
 
 The variables below set the default look. Each one falls back to the shared chat chrome colors, so a theme only needs the ones it wants to change.
 

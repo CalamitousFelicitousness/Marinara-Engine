@@ -64,7 +64,10 @@ async function prepare(page: Page, chatId: string | null, ui: Record<string, unk
 async function readSavedLayout(request: APIRequestContext, chatId: string) {
   const chat = (await (await request.get(`/api/chats/${chatId}`)).json()) as { metadata: unknown };
   const metadata = (typeof chat.metadata === "string" ? JSON.parse(chat.metadata) : chat.metadata) as {
-    windowLayout?: { windows?: Record<string, { x: number; y: number; width: number; height: number }> } | null;
+    windowLayout?: {
+      windows?: Record<string, { x: number; y: number; width: number; height: number }>;
+      bubbles?: Record<string, { x: number; y: number }>;
+    } | null;
   };
   return metadata.windowLayout ?? null;
 }
@@ -1201,6 +1204,7 @@ test("sidebars keep saved buttons separately reachable and restore their positio
     await expect(page.locator('[data-component="ChatSidebarSlot"]')).toHaveAttribute("aria-hidden", "false");
     await expect.poll(async () => (await box(page.locator('[data-component="ChatSidebarSlot"]'))).width).toBe(320);
     await expectReachable();
+    await expect.poll(() => readSavedLayout(request, chat.id)).toEqual(layout);
     const locked = page.locator(`.mari-window-bubble[data-window="${ids[0]}"]`);
     await expect(locked).toHaveAttribute("data-locked", "true");
     const lockedPosition = await box(locked);
@@ -1215,7 +1219,9 @@ test("sidebars keep saved buttons separately reachable and restore their positio
     await expectReachable();
     await topbar.getByTitle("Chats", { exact: true }).click();
     await expect.poll(readPositions).toEqual(initial);
-    await expect.poll(() => readSavedLayout(request, chat.id)).toEqual(layout);
+    // Opening/closing a drawer may add its legacy window.bubble fallback; the saved places stay intact.
+    await expect.poll(() => readSavedLayout(request, chat.id)).toMatchObject(layout);
+    await expect.poll(async () => (await readSavedLayout(request, chat.id))?.bubbles).toEqual(layout.bubbles);
   } finally {
     await request.delete(`/api/chats/${chat.id}`);
   }

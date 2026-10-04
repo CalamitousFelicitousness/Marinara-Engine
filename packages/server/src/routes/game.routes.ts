@@ -11056,6 +11056,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     // The game's story (worldgen W10) names places and people: edits that take one away are refused, as
     // the story stands when the edits are written (one saved meanwhile counts).
     let storyRefusal = null as { error: string; issues: string[] } | null;
+    let previous: unknown;
     const updated = await chats.patchMetadata(chatId, (fresh) => {
       // The world is the same one the edits were checked against: a world is written once, at creation.
       if (!fresh.gameWorld || typeof fresh.gameWorld !== "object") {
@@ -11064,13 +11065,20 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       const now = gameWorldFromMetadata(fresh);
       storyRefusal = now ? editsStoryRefusal(now, edits, gameStoryFromMetadata(fresh, now)) : null;
       if (storyRefusal) return {};
+      previous = fresh.gameWorld;
       const { edits: _old, ...stored } = fresh.gameWorld as Record<string, unknown>;
       return { gameWorld: edits ? { ...stored, edits } : stored };
     });
     if (!updated) return reply.status(404).send({ error: "Chat not found" });
     if (storyRefusal) return reply.status(400).send(storyRefusal);
-    // The world with its new edits is the snapshot from now on (W11).
-    await saveGameWorldSnapshot(app.db, chatId, parseMeta(updated.metadata));
+    // The world with its new edits is the snapshot from now on (W11). Edits it could not keep are taken
+    // back, so the recipe and the snapshot never disagree.
+    try {
+      await saveGameWorldSnapshot(app.db, chatId, parseMeta(updated.metadata));
+    } catch (err) {
+      await chats.patchMetadata(chatId, () => ({ gameWorld: previous }));
+      throw err;
+    }
     const world = compileGameWorld({ ...game, edits });
     logger.info("[game/world] %s: hand edits %s", chatId, edits ? "saved" : "cleared");
     return { edits: edits ?? null, links: world.links };

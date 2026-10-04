@@ -39,6 +39,7 @@ import {
   worldPresent,
   worldSnapshot,
   worldTown,
+  worldTownEditIssues,
   worldWhereYouAreText,
   type GameWorld,
   type WorldEdits,
@@ -175,6 +176,62 @@ assert.ok(storyPlaced >= WORLD_STARTER_KITS.length / 2, `the story's place stood
     "a renamed person keeps the name",
   );
   assert.deepEqual(worldSnapshot(frozen), frozen.frozen, "a frozen world's snapshot is the one it was read from");
+
+  // Edits saved on a world read from its snapshot are checked against the world they make: people added
+  // and the new home they need moved, in one save, as a maker sends them.
+  const crowd = [
+    ...edits.addedPeople!,
+    ...[2, 3, 4, 5, 6, 7].map((n) => ({ id: `${city.id}-e${n}`, placeId: city.id, name: `Crowd ${n}` })),
+  ];
+  const crowded = worldTown(made(kit, 31, { ...edits, addedPeople: crowd, towns: [] }), city.id)!;
+  const newHome = crowded.buildings.find(
+    (each) => each.kind === "home" && !laidOut.buildings.some((old) => old.id === each.id),
+  )!;
+  assert.ok(newHome, "the crowd needs a new home");
+  const room = crowded.lots.find((lot) => crowded.buildings.every((each) => !overlaps(each, lot)))!;
+  const moved = worldEditsSchema.parse({
+    ...edits,
+    addedPeople: crowd,
+    towns: [{ settlement: city.id, moves: [{ building: newHome.id, x: room.x, y: room.y, w: room.w }] }],
+  });
+  assert.deepEqual(worldTownEditIssues(frozen, moved), [], "the new home is in the town the edits make");
+
+  // A story's place never opens its door on ground painted since: every free lot's street door painted
+  // with a tree, it takes a lot whose door is still on the street, or an empty home.
+  const doors = new Set(town.buildings.map((building) => building.door.y * town.width + building.door.x));
+  const painted = [...town.ground].fill(".");
+  for (const lot of free) {
+    const cell = lot.door.y * town.width + lot.door.x;
+    if (!doors.has(cell)) painted[cell] = "t";
+  }
+  const treed = made(
+    kit,
+    31,
+    worldEditsSchema.parse({ editsVersion: 1, towns: [{ settlement: city.id, ground: painted.join("") }] }),
+  );
+  const story = worldPresent(treed, []);
+  story.places.push({ id: "x1", name: "The Gilded Gull", parentId: city.id } as never);
+  const treedTown = worldTown(stored(treed), city.id, story)!;
+  const gullAt = treedTown.buildings.find((building) => building.id === "x1");
+  if (gullAt)
+    assert.match(
+      treedTown.ground[gullAt.door.y * treedTown.width + gullAt.door.x]!,
+      /[sq]/,
+      "its door is on the street",
+    );
+}
+
+// ── Two worlds of one recipe keep their own present: one read from its snapshot, one made now ──
+{
+  const parsed = parseWorldKit(WORLD_STARTER_KITS.find((each) => each.id === "high_fantasy")!);
+  assert.ok(parsed.ok);
+  const live = made(parsed.kit, 77);
+  const snapshot = structuredClone(worldSnapshot(live));
+  const changed = snapshot.compiled.places.find((place) => place.prosperity && place.prosperity !== "struggling")!;
+  changed.prosperity = "struggling";
+  const old = gameWorldFromSnapshot(snapshot);
+  assert.notEqual(worldPresent(live, []).fortune[changed.id], 20);
+  assert.equal(worldPresent(old, []).fortune[changed.id], 20, "the snapshot's own present, never the live world's");
 }
 
 // ── A damaged snapshot, or a later one, is refused ──
@@ -195,6 +252,25 @@ assert.ok(storyPlaced >= WORLD_STARTER_KITS.length / 2, `the story's place stood
   refused((value) => (value.extra = true), /extra|Unrecognized/i);
   refused((value) => ((value.kit as { id: unknown }).id = 5), /snapshot\.kit/);
   refused((value) => delete value.history, /history/);
+  // A world that does not hold together: no reader may walk round in it or off it.
+  const places = (value: Record<string, unknown>) =>
+    (value.compiled as { places: Array<Record<string, unknown>> }).places;
+  refused((value) => {
+    const [first, second] = places(value);
+    first!.parentId = second!.id;
+    second!.parentId = first!.id;
+  }, /inside no place above it/);
+  refused((value) => ((value.compiled as { startId: string }).startId = "nowhere"), /start is no place/);
+  refused((value) => {
+    const compiled = value.compiled as { ground: string };
+    compiled.ground = "z" + compiled.ground.slice(1);
+  }, /terrain it does not have/);
+  refused((value) => ((value.casts as Record<string, unknown>).zz9 = []), /people of a place/);
+  refused((value) => {
+    const towns = value.towns as Record<string, unknown>;
+    const [key] = Object.keys(towns);
+    towns.zz9 = towns[key!];
+  }, /town of no settlement/);
   assert.equal(readWorldSnapshot(null).ok, false);
 }
 

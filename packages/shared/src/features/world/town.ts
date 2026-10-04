@@ -154,6 +154,8 @@ function addStoryPlaces(town: WorldTown, places: ReadonlyArray<{ id: string; nam
   const free = (lot: WorldTownLot) => {
     for (let yy = lot.y; yy < lot.y + lot.h; yy++)
       for (let xx = lot.x; xx < lot.x + lot.w; xx++) if (town.ground[yy * town.width + xx] !== ".") return false;
+    // Its door opens on a street or the square, never on ground painted since (a tree, a well).
+    if (!/[sq]/.test(town.ground[lot.door.y * town.width + lot.door.x] ?? "")) return false;
     return !town.buildings.some((building) => overlaps(building, lot));
   };
   for (const place of places) {
@@ -184,7 +186,10 @@ function addStoryPlaces(town: WorldTown, places: ReadonlyArray<{ id: string; nam
  * lays it out (the story's places aside). The edits are a world's whole layer, as a world editor saves it.
  */
 export function worldTownEditIssues(game: GameWorld, edits: WorldEdits): string[] {
-  const next: GameWorld = { ...game, edits, world: compileGameWorld({ ...game, edits }) };
+  // The world these edits make, from its recipe: never a snapshot's people or towns (W11), which are
+  // the edits before these.
+  const { frozen: _frozen, compiled: _compiled, ...recipe } = game;
+  const next: GameWorld = { ...recipe, edits, world: compileGameWorld({ ...recipe, edits }) };
   const issues: string[] = [];
   const seen = new Set<string>();
   for (const entry of edits.towns ?? []) {

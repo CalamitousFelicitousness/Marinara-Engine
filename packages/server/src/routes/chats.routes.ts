@@ -4722,8 +4722,14 @@ export async function chatsRoutes(app: FastifyInstance) {
     });
 
     if (!newChat) return reply.status(500).send({ error: "Failed to create branch" });
-    // A branched game plays in the same world: its snapshot comes with it (worldgen W11).
-    await createGameWorldSnapshotsStorage(app.db).copy(sourceChat.id, newChat.id);
+    // A branched game plays in the same world: its snapshot comes with it (worldgen W11). A branch that
+    // cannot take it is not left behind without its world.
+    try {
+      await createGameWorldSnapshotsStorage(app.db).copy(sourceChat.id, newChat.id);
+    } catch (err) {
+      await storage.remove(newChat.id);
+      throw err;
+    }
 
     // Copy metadata (preset, lorebooks, agents, persona settings, etc.) from source chat
     // but keep branch labels separate from the stable thread name.

@@ -988,6 +988,8 @@ export function useGameWorld(chatId: string, recipe: string | null) {
     select: (data) => data.world,
     enabled: recipe !== null && !!chatId,
     staleTime: Infinity,
+    // The same game's world stays on screen while its edits are read again, never another game's.
+    placeholderData: (previous, previousQuery) => (previousQuery?.queryKey[2] === chatId ? previous : undefined),
   });
 }
 

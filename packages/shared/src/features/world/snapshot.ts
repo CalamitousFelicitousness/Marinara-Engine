@@ -240,7 +240,48 @@ const snapshotShape = z
     casts: z.record(id, z.array(personSchema).max(10_000)),
     towns: z.record(id, townSchema),
   })
-  .strict();
+  .strict()
+  .superRefine((snapshot, ctx) => {
+    // The world holds together as the generator makes it, so no reader walks off it or round in it.
+    const issue = (message: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, message });
+    for (const [label, world] of [
+      ["compiled", snapshot.compiled],
+      ["world", snapshot.world],
+    ] as const) {
+      if (!world) continue;
+      const byId = new Map(world.places.map((place) => [place.id, place]));
+      if (byId.size !== world.places.length) issue(`${label}: two places share an id`);
+      for (const place of world.places) {
+        const parent = place.parentId === null ? undefined : byId.get(place.parentId);
+        if (place.parentId !== null && (!parent || parent.depth >= place.depth)) {
+          issue(`${label}: ${place.id} is inside no place above it`);
+        }
+      }
+      if (!byId.has(world.startId)) issue(`${label}: the start is no place`);
+      if (world.links.some((link) => !byId.has(link.from) || !byId.has(link.to))) issue(`${label}: a way ends nowhere`);
+      if (![...world.ground].every((cell) => parseInt(cell, 36) < world.terrain.length)) {
+        issue(`${label}: the ground names a terrain it does not have`);
+      }
+    }
+    const shown = snapshot.world ?? snapshot.compiled;
+    const places = new Map(shown.places.map((place) => [place.id, place]));
+    for (const [placeId, people] of Object.entries(snapshot.casts)) {
+      if (!places.has(placeId) || people.some((person) => person.placeId !== placeId)) {
+        issue(`casts.${placeId}: people of a place the world does not have`);
+      }
+    }
+    for (const [settlementId, town] of Object.entries(snapshot.towns)) {
+      if (town.settlementId !== settlementId || places.get(settlementId)?.rank === undefined) {
+        issue(`towns.${settlementId}: a town of no settlement`);
+      }
+      const inside = (lot: { x: number; y: number; w: number; h: number }) =>
+        lot.x + lot.w <= town.width && lot.y + lot.h <= town.height;
+      const door = (cell: { x: number; y: number }) => cell.x < town.width && cell.y < town.height;
+      if (![...town.buildings, ...town.lots].every((lot) => inside(lot) && door(lot.door)) || !inside(town.square)) {
+        issue(`towns.${settlementId}: a building or lot outside the town`);
+      }
+    }
+  });
 
 /** A snapshot read back from storage or a file, checked whole, or why it cannot be read. A snapshot of a
  *  later format than this Engine knows is refused; an earlier one is brought up to this format first.

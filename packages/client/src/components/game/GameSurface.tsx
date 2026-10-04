@@ -2310,7 +2310,10 @@ function GameSurfaceComponent({
     () => (chatMeta.gameWorld == null ? null : recipeKey(JSON.stringify(chatMeta.gameWorld))),
     [chatMeta.gameWorld],
   );
-  const gameWorld = useGameWorld(activeChatId, gameWorldRecipe).data ?? null;
+  const gameWorldQuery = useGameWorld(activeChatId, gameWorldRecipe);
+  const gameWorld = gameWorldQuery.data ?? null;
+  // A game with a world waits for it rather than showing the scene for a moment first.
+  const gameWorldPending = gameWorldRecipe !== null && gameWorldQuery.isPending;
   const overworldClockRef = useRef<WorldOverworldHandle | null>(null);
   // The setting's art family (worldgen W6f): another family's art, music and sounds are left out.
   const artFamily = worldKitArtFamily(gameKit);
@@ -8770,7 +8773,11 @@ function GameSurfaceComponent({
   // The overworld (worldgen W8): a game with a world opens on it, and the player can switch to the scene
   // view and back. A fight, a replay and a package that draws the game itself keep their own screens.
   const overworldShown =
-    gameWorld !== null && chatMeta.gameWorldView !== "scene" && !experienceOwnsGame && !combatUiActive && !replayActive;
+    (gameWorld !== null || gameWorldPending) &&
+    chatMeta.gameWorldView !== "scene" &&
+    !experienceOwnsGame &&
+    !combatUiActive &&
+    !replayActive;
   // The town the party is in (worldgen W8b) is the overworld's other side: entered from it, left to it.
   const townShown = overworldShown && chatMeta.gameWorldView === "town";
   const setWorldView = useCallback(

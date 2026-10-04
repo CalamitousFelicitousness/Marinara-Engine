@@ -323,19 +323,22 @@ export function readToldLedger(tags: string): WorldLedgerEntry[] {
   return readWorldLedger([tags.replace(/\]/g, ' result="ok"]')]);
 }
 
-// A few folds, by their world and ledger, as the history keeps its runs: a turn folds the same replies
-// once for the prompt and again for each tag a reply writes.
-const presentCache = new Map<string, WorldPresent>();
+// A few folds of each world, by their ledger, as the history keeps its runs: a turn folds the same replies
+// once for the prompt and again for each tag a reply writes. Keyed by the world itself, never its recipe:
+// a world read from its snapshot (W11) and one made now from the same recipe may differ.
+const presentCache = new WeakMap<object, Map<string, WorldPresent>>();
 const PRESENT_CACHE_SIZE = 16;
 
 /** The world as the history left it, with the ledger folded over it, stepping as time passes. */
 export function worldPresent(game: GameWorld, ledger: readonly WorldLedgerEntry[]): WorldPresent {
-  const key = JSON.stringify([game.seed, game.grounding, game.kit, game.brief, game.edits ?? null, ledger]);
-  const hit = presentCache.get(key);
+  const key = JSON.stringify(ledger);
+  const folds = presentCache.get(game.world) ?? new Map<string, WorldPresent>();
+  presentCache.set(game.world, folds);
+  const hit = folds.get(key);
   if (hit) return structuredClone(hit);
   const present = foldPresent(game, ledger);
-  presentCache.set(key, present);
-  if (presentCache.size > PRESENT_CACHE_SIZE) presentCache.delete(presentCache.keys().next().value!);
+  folds.set(key, present);
+  if (folds.size > PRESENT_CACHE_SIZE) folds.delete(folds.keys().next().value!);
   return structuredClone(present);
 }
 

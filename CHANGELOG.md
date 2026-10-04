@@ -4,7 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
-- Home widgets: the **Daily Encounter** message for an empty library and its **Open character library** link now fit inside the widget on any screen, Professor Mari's head is no longer cut off in **Your guide** (she can now reach over the widget's top edge instead), and hovering a widget no longer makes its glow and edges pop in after the card lifts (#7032).
+- Home widgets: the **Daily Encounter** message for an empty library and its **Open character library** link now fit inside the widget on desktop and phones (only the very largest text sizes can still cut off the link), Professor Mari's head is no longer cut off in **Your guide** (she can now reach over the widget's top edge instead), and hovering a widget no longer makes its glow and edges pop in after the card lifts (#7032).
 
 - Expanded text editors, including message command results and preset variable values, now use the same background as the sidebars in dark and light mode (#7037).
 

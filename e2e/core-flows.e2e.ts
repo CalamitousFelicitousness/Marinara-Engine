@@ -12301,7 +12301,8 @@ test(
         artInsidePanel: inside(artBounds, panelBounds),
         actionInsidePanel: inside(actionBounds, panelBounds),
         preservesGridGap: siblingSeparations.every((separation) => separation >= gap - 1),
-        panelOverflow: getComputedStyle(panel).overflow,
+        // The card lets Mari rise past its top border (#7032), so its text column clips the overflow instead.
+        contentOverflowY: getComputedStyle(content).overflowY,
       };
     });
     expect(guideGeometry).toEqual({
@@ -12310,7 +12311,7 @@ test(
       artInsidePanel: true,
       actionInsidePanel: true,
       preservesGridGap: true,
-      panelOverflow: "hidden",
+      contentOverflowY: "clip",
     });
     const chromeSurfaces = await page.evaluate(() => ({
       app: getComputedStyle(document.querySelector<HTMLElement>('[data-component="TopBar"]')!).backgroundColor,

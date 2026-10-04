@@ -5035,6 +5035,23 @@ const cases: RegressionCase[] = [
       assert.match(personaContextBlock, /Fel Lockheart's Appearance: 1boy, caucasian/u);
       assert.doesNotMatch(personaContextBlock, /velvety voice/u, "persona prose must not reach the game context");
 
+      // The helper call above would still pass if the route stopped loading the
+      // persona, which is the actual defect. Assert the route source wires the
+      // persona into the illustration asset maps, so removing that call fails here.
+      const gameRoutesSource = readFileSync(
+        new URL("../../packages/server/src/routes/game.routes.ts", import.meta.url),
+        "utf8",
+      );
+      const generateAssetsStart = gameRoutesSource.indexOf('app.post("/generate-assets"');
+      assert.ok(generateAssetsStart > 0, "the /game/generate-assets route must exist");
+      const illustrationStart = gameRoutesSource.indexOf("Generate rare VN illustration", generateAssetsStart);
+      assert.ok(illustrationStart > generateAssetsStart, "the illustration section must follow the route");
+      assert.match(
+        gameRoutesSource.slice(illustrationStart, illustrationStart + 4000),
+        /addPersonaIllustrationAssets\(/u,
+        "the Game illustration path must load the chat persona into the appearance maps",
+      );
+
       // Disabled or empty persona override falls back to the persona prose.
       assert.equal(
         readImageAppearanceOverride(

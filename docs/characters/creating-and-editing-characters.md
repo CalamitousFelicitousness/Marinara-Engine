@@ -67,6 +67,7 @@ The **Card** tab is the main writing workspace. It holds the fields the AI reads
 - **Personality**. A short summary of temperament, speech habits, and behavior patterns.
 - **Backstory**. History, origin, and important relationships.
 - **Appearance**. Physical description, clothing, and visual details. Marinara also uses this text to seed an AI avatar prompt.
+- **Image Appearance Override**. An optional switch under **Appearance**, off by default. Turn it on to reveal a second box for an image-prompt-ready description of the character. While it is on and the box is filled, image prompts use that text instead of **Appearance**, and an AI avatar prompt is seeded from it too. The narrator always sees the full **Appearance** text. Leave it off to keep the usual behavior.
 - **Scenario**. The default setting for new chats with this character.
 
 The **Dialogue & Greetings** section sets how a chat opens and how the character sounds:

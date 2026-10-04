@@ -395,6 +395,8 @@ export interface RulesetCombatMode {
 export interface RulesetCombatContest {
   /** The contest's own id in `combat.contests`. */
   id: string;
+  /** It takes the place of one strike of an attack, so a cap on attacks counts it as one. */
+  strike?: true;
   /** Each side rolls the best of the checks it may use here. */
   attacker: string[];
   defender: string[];

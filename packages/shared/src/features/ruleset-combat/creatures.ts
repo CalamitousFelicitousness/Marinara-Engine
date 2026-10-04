@@ -487,8 +487,10 @@ export function clampRulesetStatBlock(
   const conditions = new Set(definition.sheet.live.conditions.map((condition) => condition.id));
   const saves = new Set(definition.sheet.saves.map((save) => save.id));
   const abilities = new Set(definition.sheet.abilities.map((ability) => ability.id));
-  const budgets = combat.economy.budgets.map((budget) => budget.id);
-  const mainBudget = budgets[0]!;
+  // A budget of no count is one only a condition fills (Haste's extra action), so an action on it
+  // would never be on the creature's menu: it is not one an invented creature may spend.
+  const budgets = combat.economy.budgets.filter((budget) => budget.count > 0).map((budget) => budget.id);
+  const mainBudget = budgets[0] ?? combat.economy.budgets[0]!.id;
 
   const keepKnown = <K extends "resist" | "vulnerable" | "immune">(key: K) => {
     const kept = onlyKnown<NonNullable<RulesetStatBlock[K]>[number]>(block[key], types);
@@ -594,7 +596,12 @@ export function clampRulesetStatBlock(
   const difficultyCap = tier.saveDifficulty + RULESET_CLAMP_HEADROOM;
   block.actions = block.actions.flatMap((action) => {
     if (!budgets.includes(action.budget)) {
-      adjusted.push(`"${action.name}" spent a budget this ruleset does not have, so it spends ${mainBudget}.`);
+      const declared = combat.economy.budgets.some((budget) => budget.id === action.budget);
+      adjusted.push(
+        declared
+          ? `"${action.name}" spent a budget only a condition fills, so it spends ${mainBudget}.`
+          : `"${action.name}" spent a budget this ruleset does not have, so it spends ${mainBudget}.`,
+      );
       action.budget = mainBudget;
     }
     if (action.toHit !== undefined && action.toHit > toHitCap) {

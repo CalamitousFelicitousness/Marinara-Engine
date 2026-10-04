@@ -34,6 +34,8 @@ import {
   currentRulesetActor,
   refreshRulesetBudgets,
   rulesetConditionEconomy,
+  rulesetIsAttack,
+  rulesetOnOwnTurn,
   refreshRulesetMovement,
   rulesetCombatant,
   rulesetCombatConditions,
@@ -145,6 +147,9 @@ interface RulesetCombatContext {
   overwhelmed: Set<string>;
   /** The cell an area was aimed at in this step, which a save against it takes cover from. */
   aimedAt?: RulesetCombatCell;
+  /** Whose turn's own start or end is being counted down right now, so a condition left behind in
+   *  the middle of a turn can be told from one left behind as the turn begins or ends. */
+  ticking?: string;
 }
 
 /** A working copy, plus a roller that counts its dice so the state's cursor stays exact. */
@@ -573,10 +578,12 @@ function endConditionsFromSource(ctx: RulesetCombatContext, source: RulesetComba
 
 function dropToZero(ctx: RulesetCombatContext, target: RulesetCombatant): void {
   target.down = true;
+  // Defeated before its concentration ends, so what a spell it held leaves behind as it ends (Haste's
+  // lethargy) is not put on somebody already out of the fight.
+  if (target.side === "enemy") target.defeated = true;
   endConcentration(ctx, target, "down");
   endConditionsFromSource(ctx, target);
   if (target.side === "enemy") {
-    target.defeated = true;
     ctx.events.push({ type: "defeated", actorId: target.id });
     return;
   }
@@ -977,12 +984,16 @@ function spendBudget(ctx: RulesetCombatContext, combatant: RulesetCombatant, bud
 }
 
 /** An attack made, which a condition's cap on attacks a turn counts (combat C6d). */
-function countAttack(combatant: RulesetCombatant): void {
+/** An attack made on the attacker's own turn, which is the only place a cap on attacks a turn (as
+ *  Slow's "during its turn") counts it. A reaction on somebody else's turn is not counted. */
+function countAttack(ctx: RulesetCombatContext, combatant: RulesetCombatant): void {
+  if (!rulesetOnOwnTurn(ctx.state, combatant)) return;
   combatant.flags.attacks = (combatant.flags.attacks ?? 0) + 1;
 }
 
 /** Whether a condition's cap on attacks a turn has been reached (combat C6d). */
 function attacksCapped(ctx: RulesetCombatContext, combatant: RulesetCombatant): boolean {
+  if (!rulesetOnOwnTurn(ctx.state, combatant)) return false;
   const cap = rulesetConditionEconomy(ctx.definition, ctx.combat, combatant, ctx.state).attacksPerTurn;
   return cap !== undefined && (combatant.flags.attacks ?? 0) >= cap;
 }
@@ -1000,7 +1011,15 @@ function removeCondition(
   // replaces it without ending it, so that never comes here.
   const ending = ctx.combat.conditions?.find((entry) => entry.condition === condition)?.onEnd;
   if (ending && !target.defeated) {
-    for (const applied of ending.applies) applyConditionId(ctx, target, applied.condition, applied);
+    // Ended in the middle of its holder's own turn (their own concentration broken, say), the clock
+    // starts with the NEXT turn: "until after its next turn" is never the rest of this one. Ended as
+    // a turn begins or ends, the next turn to count is already the right one.
+    const midTurn = rulesetOnOwnTurn(ctx.state, target) && ctx.ticking !== target.id;
+    for (const applied of ending.applies) {
+      applyConditionId(ctx, target, applied.condition, applied);
+      const left = target.tracked.find((entry) => entry.condition === applied.condition);
+      if (midTurn && left && left.rounds !== null && !left.clock) left.rounds += 1;
+    }
   }
 }
 
@@ -1020,6 +1039,15 @@ function endConditionsOnDamage(ctx: RulesetCombatContext, target: RulesetCombata
 /** The saves that repeat, and the clocks that run out. Both belong to the affected combatant's own
  *  turn, so a condition lasts the same time whoever put it on. */
 function tickConditions(ctx: RulesetCombatContext, actor: RulesetCombatant, at: "turn-start" | "turn-end"): void {
+  ctx.ticking = actor.id;
+  try {
+    tickConditionsNow(ctx, actor, at);
+  } finally {
+    delete ctx.ticking;
+  }
+}
+
+function tickConditionsNow(ctx: RulesetCombatContext, actor: RulesetCombatant, at: "turn-start" | "turn-end"): void {
   for (const entry of [...actor.tracked]) {
     // A save with nothing to be rolled against is not rolled: the condition runs on its clock.
     if (entry.saveEnds?.at === at && entry.difficulty !== undefined) {
@@ -1160,12 +1188,16 @@ function whyNotOffered(
     if ((combat.standard ?? []).some((entry) => entry === standard)) {
       const budget = granted ? granted.budget : rulesetStandardBudget(combat);
       if (optionId.includes("@") && !granted) {
+        const at = optionId.slice(optionId.indexOf("@") + 1);
+        // A condition's grant (combat C6d, Haste's extra action) whose budget is spent for the turn.
+        const conditionGrant = rulesetConditionEconomy(definition, combat, actor).grants.some(
+          (grant) => grant.budget === at && (grant.standard as readonly string[] | undefined)?.includes(standard),
+        );
+        if (conditionGrant) return "no-budget";
         // Told apart, because they are different answers: an ability that grants this really is on
         // the sheet but has nothing left or cannot pay, versus no such permission at all.
         const spent = actor.actions.some(
-          (entry) =>
-            entry.standard?.budget === optionId.slice(optionId.indexOf("@") + 1) &&
-            entry.standard.actions.includes(standard),
+          (entry) => entry.standard?.budget === at && entry.standard.actions.includes(standard),
         );
         return spent ? "insufficient" : "unknown-option";
       }
@@ -1308,7 +1340,7 @@ export function applyRulesetCombatChoice(
   // A spend that buys ONE strike is the spend every fight has always made, so it puts nothing in
   // hand and says nothing: a ruleset whose list declares one strike a spend reads as it always did.
   // An attack a condition's grant paid for is one strike (combat C6d), and puts none in hand.
-  if (striking && !striking.sequence && striking.toHit !== undefined) countAttack(working);
+  if (striking && !striking.sequence && rulesetIsAttack(striking)) countAttack(ctx, working);
   if (striking?.strikes !== undefined && !option.oneStrike && (inHand > 0 || striking.strikes > 1)) {
     const left = inHand > 0 ? inHand - 1 : striking.strikes - 1;
     if (left > 0) working.strikesLeft = left;
@@ -1560,27 +1592,49 @@ function noteOutcome(ctx: RulesetCombatContext): void {
 /** The fight is over: whatever it lifts as it ends, then the outcome. Every way a fight ends says so
  *  through here, so none of them leaves anybody crashed. */
 function pushOutcome(ctx: RulesetCombatContext, outcome: Exclude<RulesetEncounterOutcome, "ongoing">): void {
-  ctx.events.push(...liftRulesetCrashes(ctx.definition, ctx.state));
+  ctx.events.push(...liftRulesetFightEffects(ctx.definition, ctx.state));
   // Only a party that won holds the field long enough to pick up what it shot.
   if (outcome === "victory") ctx.events.push(...recoverRulesetAmmo(ctx.state));
   ctx.events.push({ type: "outcome", outcome });
 }
 
 /**
- * Nobody is crashed once the fight is over, however it ended: the number attacks move means nothing
- * outside it, and a crash condition left on a sheet would outlast the fight it belonged to. Returns
+ * What only meant something inside the fight comes off once it is over, however it ended, because
+ * left on a sheet it would outlast the fight it belonged to:
+ * - nobody is crashed: the number attacks move means nothing outside a fight;
+ * - a condition the fight put on with a clock, one that ends after a use, and one somebody's
+ *   concentration holds (Bless, Haste, the lethargy Haste leaves): the fight's rounds stop counting,
+ *   so nothing would ever take it off. What one leaves behind as it ends (`onEnd`) is not put on,
+ *   since the fight it belonged to is over, and the concentration that held it ends with it.
+ * A condition with no clock (a fall's prone, a dying one) stays: it ends as it always did. Returns
  * what came off, for a log that is still being written.
  */
-export function liftRulesetCrashes(definition: RulesetDefinition, state: RulesetEncounterState): RulesetCombatEvent[] {
-  const condition = definition.combat?.initiative.resource?.crash?.condition;
+export function liftRulesetFightEffects(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+): RulesetCombatEvent[] {
+  const crash = definition.combat?.initiative.resource?.crash?.condition;
+  const concentration = definition.combat?.concentration;
   const events: RulesetCombatEvent[] = [];
-  for (const combatant of state.combatants) {
-    if (combatant.crashedTurns === undefined) continue;
-    delete combatant.crashedTurns;
-    if (!condition || !rulesetCombatConditions(definition, combatant).includes(condition)) continue;
+  const lift = (combatant: RulesetCombatant, condition: string, reason: "recovered" | "expired") => {
     combatant.tracked = combatant.tracked.filter((entry) => entry.condition !== condition);
     if (combatant.sheet) writeRulesetSheet(definition, combatant, { op: "condition", condition, active: false });
-    events.push({ type: "condition", targetId: combatant.id, condition, active: false, reason: "recovered" });
+    events.push({ type: "condition", targetId: combatant.id, condition, active: false, reason });
+  };
+  for (const combatant of state.combatants) {
+    if (combatant.crashedTurns !== undefined) {
+      delete combatant.crashedTurns;
+      if (crash && rulesetCombatConditions(definition, combatant).includes(crash)) lift(combatant, crash, "recovered");
+    }
+    for (const entry of [...combatant.tracked]) {
+      if (entry.rounds !== null || entry.endsAfter || entry.concentration) lift(combatant, entry.condition, "expired");
+    }
+    if (combatant.concentrating) {
+      combatant.concentrating = null;
+      if (concentration && combatant.sheet) {
+        writeRulesetSheet(definition, combatant, { op: "note", field: concentration.text, value: "" });
+      }
+    }
   }
   return events;
 }
@@ -2156,7 +2210,7 @@ function opportunityStrike(
   if (!strike) return;
   ctx.events.push({ type: "opportunity", actorId: striker.id, targetId: mover.id, label: strike.label, budget });
   spendBudget(ctx, striker, budget);
-  countAttack(striker);
+  countAttack(ctx, striker);
   // A strike made in passing keeps the same books as one made on a turn: a use is a use.
   spendAvailability(ctx, striker, strike);
   resolveAction(ctx, striker, strike, [mover]);
@@ -2237,7 +2291,7 @@ function resolveSequence(
       // A cap on attacks a turn (combat C6d) ends the sequence at the attacks it allows.
       if (part.toHit !== undefined && attacksCapped(ctx, actor)) break;
       spendAvailability(ctx, actor, part);
-      if (part.toHit !== undefined) countAttack(actor);
+      if (part.toHit !== undefined) countAttack(ctx, actor);
     }
     const hold = resolveAction(ctx, actor, part, chosen, undefined, resuming, styleId);
     if (hold) return { ...hold, part: index };
@@ -2257,7 +2311,11 @@ function grantBudgets(ctx: RulesetCombatContext, actor: RulesetCombatant, action
     // A budget the economy no longer declares is a catalog read by a later ruleset: it hands over
     // nothing rather than inventing a budget nothing else in the fight knows about.
     if (!declared) continue;
-    const left = Math.min((actor.budgets[gift.budget] ?? 0) + gift.count, declared.count + gift.count);
+    // What a turn holds is what the actor's conditions make of it (combat C6d), so a condition that
+    // raises the budget does not swallow the gift.
+    const change = rulesetConditionEconomy(ctx.definition, ctx.combat, actor, ctx.state).budgets.get(gift.budget) ?? 0;
+    const turn = Math.max(0, declared.count + change);
+    const left = Math.min((actor.budgets[gift.budget] ?? 0) + gift.count, turn + gift.count);
     actor.budgets[gift.budget] = left;
     ctx.events.push({
       type: "gives",

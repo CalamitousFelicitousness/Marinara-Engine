@@ -38,6 +38,8 @@ import {
   rulesetConditionModifiers,
   type RulesetConditionModifier,
   rulesetConditionEconomy,
+  rulesetIsAttack,
+  rulesetOnOwnTurn,
 } from "./encounter.js";
 import {
   rulesetAreaCells,
@@ -1011,6 +1013,8 @@ function optionFrom(
   action: RulesetCombatAction,
   /** The window is asking, so a reaction whose moment this is belongs on the list after all. */
   atItsMoment = false,
+  /** What the actor's conditions do to the economy, worked out once for a whole menu. */
+  economy = rulesetConditionEconomy(definition, combat, actor, state),
 ): RulesetCombatOption | null {
   // A signature action is bought with points at the end of somebody else's turn, so it is never on
   // the actor's own menu. `rulesetSignatureOptions` is where it is offered.
@@ -1024,10 +1028,13 @@ function optionFrom(
   if (action.contest?.from && !rulesetContestHolder(state, actor, action.contest)) return null;
   if (!actionDoesSomething(action)) return null;
   // A cap on attacks a turn (combat C6d, as Slow's): one that has made them all makes no more, however
-  // many strikes an action would give.
-  const economy = rulesetConditionEconomy(definition, combat, actor, state);
-  const attacks = action.toHit !== undefined || !!action.sequence;
-  if (attacks && economy.attacksPerTurn !== undefined && (actor.flags.attacks ?? 0) >= economy.attacksPerTurn) {
+  // many strikes an action would give. It is a cap on the holder's own turn, as Slow's is.
+  if (
+    rulesetIsAttack(action) &&
+    economy.attacksPerTurn !== undefined &&
+    rulesetOnOwnTurn(state, actor) &&
+    (actor.flags.attacks ?? 0) >= economy.attacksPerTurn
+  ) {
     return null;
   }
   // Free of the economy, or paid for out of strikes a spend already bought. Either way no budget is
@@ -1035,20 +1042,25 @@ function optionFrom(
   const free = action.free === true || rulesetFreeStrike(actor, action);
   // Its own budget spent, a condition's grant may pay instead (combat C6d): one weapon attack of a
   // single strike, or an item's use, as Haste's extra action allows. A creature's weapon is an
-  // attack roll of its stat block at one target: its bite as much as a fighter's sword.
+  // attack roll of its stat block at one target: its bite as much as a fighter's sword. Only on the
+  // holder's own turn: the extra action is one of its turn, never a reaction's.
   let budget = action.budget;
   let oneStrike = false;
   if (!free && (actor.budgets[budget] ?? 0) < 1) {
+    if (atItsMoment) return null;
     const weapon =
       (action.kind === "attack" || (action.kind === "block" && action.targets.count === 1)) &&
       action.toHit !== undefined &&
       !action.catalog &&
       !action.itemUse;
+    const tags = action.itemUse ? (actor.sheet?.items?.[action.itemUse.item]?.item.tags ?? []) : [];
     const grant = economy.grants.find(
       (entry) =>
         (actor.budgets[entry.budget] ?? 0) >= 1 &&
         !action.sequence &&
-        ((entry.attacks === true && weapon) || (entry.items === true && !!action.itemUse)),
+        ((entry.attacks === true && weapon) ||
+          (!!action.itemUse &&
+            (entry.items === true || (!!entry.items && entry.items.tags.some((tag) => tags.includes(tag)))))),
     );
     if (!grant) return null;
     budget = grant.budget;
@@ -1318,8 +1330,9 @@ export function rulesetCombatOptions(
 
   const options: RulesetCombatOption[] = [];
   options.push(...movementOptions(definition, combat, state, actor));
+  const economy = rulesetConditionEconomy(definition, combat, actor, state);
   for (const action of actor.actions) {
-    const option = optionFrom(definition, combat, state, actor, action);
+    const option = optionFrom(definition, combat, state, actor, action, false, economy);
     if (option) options.push(option);
   }
   const budget = rulesetStandardBudget(combat);

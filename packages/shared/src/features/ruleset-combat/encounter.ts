@@ -87,6 +87,17 @@ export function currentRulesetActor(state: RulesetEncounterState): RulesetCombat
   return id === undefined ? undefined : rulesetCombatant(state, id);
 }
 
+/** Whether it is this combatant's own turn, which is where a cap on attacks a turn counts. */
+export function rulesetOnOwnTurn(state: RulesetEncounterState, combatant: RulesetCombatant): boolean {
+  return state.order[state.turn] === combatant.id;
+}
+
+/** Whether an action is an attack, as a cap on attacks counts them: it rolls to hit, it is a sequence
+ *  of them, or it is a contest that takes the place of a strike (a grapple, a shove). */
+export function rulesetIsAttack(action: RulesetCombatAction): boolean {
+  return action.toHit !== undefined || !!action.sequence || !!action.contest?.strike;
+}
+
 export interface RulesetCombatHealth {
   value: number;
   max: number;
@@ -1536,6 +1547,7 @@ function contestActions(
       ...(strikes > 0 ? { strikes } : {}),
       contest: {
         id: contest.id,
+        ...(contest.strike ? { strike: true as const } : {}),
         attacker: [...contest.attacker.checks],
         defender: [...contest.defender.checks],
         ties: contest.ties,

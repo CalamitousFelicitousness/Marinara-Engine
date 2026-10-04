@@ -486,7 +486,11 @@ try {
         event.type === "condition" && event.condition === "rattled" ? [[event.active, event.reason]] : [],
       );
     };
-    assert.deepEqual(gripped([]), [[true, "applied"]]);
+    // The grip ends the fight, and the fight's own timed conditions come off with it (combat C6d).
+    assert.deepEqual(gripped([]), [
+      [true, "applied"],
+      [false, "expired"],
+    ]);
     assert.deepEqual(gripped([held(bell, "Dawn bell")]), [[false, "immune"]]);
 
     // Defense, speed, effects and failed saves, from worn items of Ember Roads.

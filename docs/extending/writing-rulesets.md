@@ -1384,21 +1384,32 @@ same keys for a d20 system:
   - `endsWhenSourceDown`: it comes off the moment whoever applied it goes down.
   - The action economy (Capability API 1.71), as Haste and Slow change it:
     - `budgets`: `[{ "budget": "haste", "flat": 1 }]` gives its holder that many more (or fewer) of a
-      turn budget each turn, never below none. A budget may be declared with `"count": 0` for one
-      only a condition fills, and the screen shows it only while somebody has some.
+      turn budget each turn, never below none. Only a budget that refills `per` turn can be changed
+      this way. A budget may be declared with `"count": 0` for one only a condition fills, and the
+      screen shows it only while somebody has some. An invented opponent never spends one.
     - `grants`: `{ "budget": "haste", "standard": ["dash", "disengage", "hide"], "attacks": true,
       "items": true }` says what that budget may be spent on: the standard actions named (from the
-      ruleset's own `standard` list), one weapon attack of a single strike (whatever strikes an
-      action would otherwise put in hand; for a creature, an attack of its stat block at one target,
-      never a multiattack), and an item's use. They are offered once the budget they would usually
-      spend is gone.
+      ruleset's own `standard` list, never on the first budget, where every standard action already
+      is), one weapon attack of a single strike (whatever strikes an action would otherwise put in
+      hand; for a creature, an attack of its stat block at one target, never a multiattack), and an
+      item's use: `true` for any item, or `{ "tags": ["mundane"] }` for only an item with one of
+      those item tags (5e's Use an Object is a mundane item's, never a magic item's activation).
+      They are offered once the budget they would usually spend is gone, and only on the holder's
+      own turn: a grant never pays for a reaction.
     - `exclusive`: `["action", "bonus"]`, two budgets of which a turn spends only one: spending
       either empties the other.
-    - `attacksPerTurn`: how many attacks (actions that roll to hit, and each attacking part of a
-      sequence) its holder makes in a turn, whatever an action would give.
+    - `attacksPerTurn`: how many attacks (actions that roll to hit, each attacking part of a
+      sequence, and a contest that takes the place of a strike, such as a grapple) its holder makes
+      on its own turn, whatever an action would give. A reaction on somebody else's turn is neither
+      capped nor counted.
     - `onEnd`: `{ "applies": [{ "condition": "lethargic", "duration": { "rounds": 1 } }] }`, what it
       leaves behind when it ends for good (it runs out, a save or damage ends it, concentration
-      breaks), never when it is put on again.
+      breaks), never when it is put on again. It lasts some `rounds` (never `"until-save"` or
+      `"instant"`). Left behind in the middle of its holder's own turn, its rounds start with the
+      next turn, so one round is the whole next turn.
+  - When a fight ends, however it ends, every condition it put on with a clock, an `endsAfter` or a
+    concentration comes off the sheet without leaving anything behind, and concentration ends. A
+    condition with no clock (a fall's prone) stays.
 
   `own-saves-advantage` and its opposite roll the save twice and keep one, exactly as an attack is
   rolled, and they cancel each other out. `own-checks-advantage` and its opposite do the same to the

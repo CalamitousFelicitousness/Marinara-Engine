@@ -2810,14 +2810,28 @@ const combatConditionSchema = z
         budget: sheetId,
         standard: z.array(combatStandardActionSchema).min(1).max(6).optional(),
         attacks: z.literal(true).optional(),
-        items: z.literal(true).optional(),
+        /** Any item's use, or only the use of an item with one of these tags (5e's Use an Object is a
+         *  mundane item's, never a magic item's activation). */
+        items: z.union([z.literal(true), z.object({ tags: z.array(sheetId).min(1).max(8) }).strict()]).optional(),
       })
       .strict()
       .optional(),
     exclusive: z.tuple([sheetId, sheetId]).optional(),
     attacksPerTurn: z.number().int().min(0).max(10).optional(),
+    /** What it leaves behind is on a clock of its holder's turns: nothing rolls a save against it (it
+     *  has no difficulty) and an instant one would never come off. */
     onEnd: z
-      .object({ applies: z.array(catalogAppliesSchema).min(1).max(4) })
+      .object({
+        applies: z
+          .array(
+            catalogAppliesSchema.refine((applied) => typeof applied.duration === "object", {
+              message: "What a condition leaves behind lasts some rounds",
+              path: ["duration"],
+            }),
+          )
+          .min(1)
+          .max(4),
+      })
       .strict()
       .optional(),
   })
@@ -4915,10 +4929,40 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       mapped.add(entry.condition);
       effectNameIssues(entry, skills, saves, path, issue);
       // The action economy it changes (1.71) is the ruleset's own: budgets it declares, conditions it has.
-      entry.budgets?.forEach((change, changeIndex) =>
-        checkBudget(change.budget, [...path, "budgets", changeIndex, "budget"]),
-      );
-      if (entry.grants) checkBudget(entry.grants.budget, [...path, "grants", "budget"]);
+      entry.budgets?.forEach((change, changeIndex) => {
+        const where = [...path, "budgets", changeIndex, "budget"];
+        checkBudget(change.budget, where);
+        // A turn's count is what a condition changes, as each turn begins; a budget that refills by the
+        // round has no turn to change it at.
+        const declared = combat.economy.budgets.find((budget) => budget.id === change.budget);
+        if (declared && declared.per !== "turn") issue(where, `"${change.budget}" refills per round, not per turn`);
+      });
+      if (entry.grants) {
+        const grants = entry.grants;
+        checkBudget(grants.budget, [...path, "grants", "budget"]);
+        // The checks a catalog's standard-action permission gets: actions this ruleset has, and not on
+        // the budget every standard action is already taken with.
+        if (grants.standard && grants.budget === combat.economy.budgets[0]?.id) {
+          issue(
+            [...path, "grants", "budget"],
+            `Every standard action is already taken for "${grants.budget}", so this grant gives nothing`,
+          );
+        }
+        grants.standard?.forEach((action, actionIndex) => {
+          if (!(combat.standard ?? []).includes(action)) {
+            issue(
+              [...path, "grants", "standard", actionIndex],
+              `This ruleset does not have the standard action "${action}"`,
+            );
+          }
+        });
+        if (typeof grants.items === "object") {
+          const itemTags = new Set((def.items?.tags ?? []).map((tag) => tag.id));
+          grants.items.tags.forEach((tag, tagIndex) => {
+            if (!itemTags.has(tag)) issue([...path, "grants", "items", "tags", tagIndex], `Unknown item tag "${tag}"`);
+          });
+        }
+      }
       entry.exclusive?.forEach((budget, budgetIndex) => checkBudget(budget, [...path, "exclusive", budgetIndex]));
       entry.onEnd?.applies.forEach((applied, appliedIndex) => {
         if (!conditions.has(applied.condition)) {

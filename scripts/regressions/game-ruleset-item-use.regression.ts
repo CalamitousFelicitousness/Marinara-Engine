@@ -526,6 +526,38 @@ try {
       );
       assert.equal(optionOf(rushedEmber, twice.state, "use:0"), undefined, "and nothing pays for a third");
       assert.equal(optionOf(ember, take(ember, start, "use:0", ["ada"], 3).state, "use:0"), undefined, "without it");
+      // A grant may name the items it pays for by tag (5e's Use an Object is a mundane item's, never a
+      // magic item's activation): a poultice tagged "salve" is paid for, and not by a grant for arrows.
+      for (const [tag, pays] of [
+        ["salve", true],
+        ["arrow", false],
+      ] as const) {
+        const tagged = parsedOrThrow(
+          variant(emberText, (doc) => {
+            doc.items.tags.push({ id: "salve", label: "Salve" });
+            doc.combat.economy.budgets.push({ id: "spare", label: "Spare action", per: "turn", count: 0 });
+            doc.sheet.live.conditions.push({ id: "rushed", label: "Rushed" });
+            doc.combat.conditions = [
+              ...(doc.combat.conditions ?? []),
+              {
+                condition: "rushed",
+                budgets: [{ budget: "spare", flat: 1 }],
+                grants: { budget: "spare", items: { tags: [tag] } },
+              },
+            ];
+          }),
+          `Ember Roads with a spare action for ${tag}`,
+        );
+        const salve = { ...poultice, tags: ["salve"] };
+        const one = take(
+          tagged,
+          fight(tagged, [held(salve, "Poultice", false, 2)], { ...hurt, conditions: ["rushed"] }, { friend: hurt }),
+          "use:0",
+          ["ada"],
+          3,
+        );
+        assert.equal(optionOf(tagged, one.state, "use:0")?.budget, pays ? "spare" : undefined, tag);
+      }
     }
     const names = rulesetCombatNames(ember, { combatants: first.state.combatants } as never, t);
     assert.equal(

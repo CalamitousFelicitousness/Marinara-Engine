@@ -1846,7 +1846,7 @@
   color-scheme: dark;
   border-color: var(--marinara-chat-chrome-input-border);
   background-color: var(--marinara-chat-chrome-panel-bg);
-  color: var(--marinara-chat-chrome-panel-text);
+  color: var(--mari-widget-field-option-text, var(--marinara-chat-chrome-panel-text));
 }
 
 [data-theme="light"] .mari-chat-settings-popover select,

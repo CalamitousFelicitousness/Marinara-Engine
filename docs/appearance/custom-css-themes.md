@@ -133,14 +133,14 @@ The classes, data attributes and variables below let a theme style these parts t
 
 ### Data attributes
 
-- `data-window` names a window and its bubble: `chat-settings`, `trackers`, the control windows `control:game`, `control:session`, `control:volume`, `control:assets`, `control:connected-chat` and `control:package:<package>`, and `drawer:<window>:<drawer>` for a popped-out drawer, for example `drawer:chat-settings:chat-name`.
+- `data-window` names a window and its bubble: `chat-settings`, `trackers`, the control windows `control:game`, `control:session`, `control:volume`, `control:assets`, `control:connected-chat`, `control:package:<package>` and `control:beholder:<package>`, and `drawer:<window>:<drawer>` for a popped-out drawer, for example `drawer:chat-settings:chat-name`.
 - `data-drawer` names a drawer, for example `chat-name`. Some names start with the chat mode, such as `roleplay-agents` or `conversation-agents`. Trackers use `tracker-world`, `tracker-persona`, `tracker-characters`, `tracker-quests`, `tracker-inventory`, `tracker-custom` and `agent-activity`.
 - `data-presentation` is `"window"` on a desktop window or `"sheet"` on a phone panel.
 - `data-pinned` and `data-locked` are `"true"` while the window is pinned or locked.
 - `data-window-control` names each title bar button: `"minimize"`, `"pin"`, `"lock"`, `"close"` or `"put-back"`. A pressed pin or lock button also has `aria-pressed="true"`.
 - `data-chat-settings-control` identifies Chat Settings' extra title bar buttons: `"reset-view"`, `"favorite-layout"` and `"tracker-panel"`. The favorite star has `aria-pressed="true"` and a filled icon when the current layout matches the saved favorite.
 - `data-edge` is `"n"`, `"s"`, `"e"`, `"w"`, `"ne"`, `"nw"`, `"se"` or `"sw"` on each resize handle.
-- An open drawer's header has `aria-expanded="true"`.
+- An open drawer's toggle button inside `.mari-drawer__header` has `aria-expanded="true"`.
 - `data-drawer-control="pop-out"` marks a drawer's pop-out button.
 - `data-outside="true"` marks a drag preview that is far enough outside its window to pop out when dropped.
 - `data-axis` is `"x"` on a snap guide that runs up and down, and `"y"` on one that runs across.

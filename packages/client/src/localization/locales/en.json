@@ -11819,8 +11819,6 @@
   "window.controls.close": "Close window",
   "window.controls.lock": "Lock window",
   "window.controls.lockHint": "Stop this window from moving or resizing, and keep its button in place.",
-  "window.controls.minimize": "Minimize window",
-  "window.controls.minimizeHint": "Shrink this window to a button you can place anywhere.",
   "window.controls.move": "Move window with the arrow keys",
   "window.controls.pin": "Pin window",
   "window.controls.pinHint": "Keep this window open when you click elsewhere.",

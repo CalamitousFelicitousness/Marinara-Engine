@@ -250,8 +250,11 @@ test("Hybrid battlefield preserves landmarks through a flying move, reload and r
       )!;
     expect(destination).toBeTruthy();
     await battle.getByRole("button", { name: /^Flying scout(?:,|$)/ }).click();
+    // A tile by a mountain stands raised and says so (combat C6b): "Wall, height 1, row …".
     await battle
-      .getByRole("button", { name: `Wall, row ${destination.y + 1}, column ${destination.x + 1}`, exact: true })
+      .getByRole("button", {
+        name: new RegExp(`^Wall, (height \\d, )?row ${destination.y + 1}, column ${destination.x + 1}$`),
+      })
       .click();
     await battle.getByRole("button", { name: "Confirm Move", exact: true }).click();
     await expect

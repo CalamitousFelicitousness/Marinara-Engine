@@ -27,6 +27,7 @@ import {
   replaceHomeWidgetCatalog,
 } from "../services/home-widget-catalog.service.js";
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
+import { initializeChatWindowDefaults } from "../services/storage/chat-window-defaults.js";
 import { featureSettingsResponse, loadFeatureSettings } from "../services/features/feature-settings.js";
 
 const ALLOWED_KEYS = new Set([
@@ -42,6 +43,7 @@ const ALLOWED_KEYS = new Set([
 ]);
 
 export async function appSettingsRoutes(app: FastifyInstance) {
+  await initializeChatWindowDefaults(app.db);
   const storage = createAppSettingsStorage(app.db);
   // Prime the in-memory feature switches; storage writes keep them current from here on.
   await loadFeatureSettings(storage);

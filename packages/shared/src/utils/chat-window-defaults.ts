@@ -1,5 +1,36 @@
 import type { ChatMode } from "../types/chat.js";
 
+export const DRAWER_WINDOW_PREFIX = "drawer:";
+
+export function getDrawerWindowId(hostId: string, drawerId: string): string {
+  return `${DRAWER_WINDOW_PREFIX}${hostId}:${drawerId}`;
+}
+
+/** Keep an older chat's toolbar tools available as buttons, without copying screen coordinates. */
+export function getLegacyChatWindowLayout(
+  mode: ChatMode,
+  metadata: Record<string, unknown>,
+): { version: 1; windows: Record<string, never>; detached: string[] } | null {
+  // An explicit layout, including null, is the user's choice. Multiplayer has separate controls.
+  if (Object.hasOwn(metadata, "windowLayout") || metadata.multiplayer || metadata.multiplayerSetup === true)
+    return null;
+  if (mode !== "conversation" && mode !== "roleplay" && mode !== "game") return null;
+  const sections = ["chat-branches", "active-context", "gallery"];
+  if (mode !== "game") sections.push("message-search");
+  if (mode === "roleplay") {
+    sections.push("chat-summary", "author-notes");
+    const memory = metadata.advancedMemory;
+    if (metadata.enableAgents === true || (isPlainRecord(memory) && memory.enabled === true)) {
+      sections.push("agent-activity");
+    }
+  }
+  return {
+    version: 1,
+    windows: {},
+    detached: sections.map((section) => getDrawerWindowId("chat-settings", `${mode}-${section}`)),
+  };
+}
+
 export interface ChatWindowDefault {
   windowLayout: unknown | null;
   chatSettingsHintDismissed: boolean;

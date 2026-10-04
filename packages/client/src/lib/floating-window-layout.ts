@@ -6,6 +6,8 @@
 // current viewport when they render, so a window returns to its place when the
 // viewport grows again.
 // ──────────────────────────────────────────────
+import { DRAWER_WINDOW_PREFIX } from "@marinara-engine/shared";
+export { getDrawerWindowId } from "@marinara-engine/shared";
 
 export const FLOATING_WINDOW_LAYOUT_VERSION = 1 as const;
 /** Gap kept between a window and the viewport edges. */
@@ -15,13 +17,6 @@ export const WINDOW_KEYBOARD_LARGE_STEP_PX = 50;
 
 /** "chat-settings", "trackers", or a popped-out drawer: "drawer:<host window id>:<drawer id>". */
 export type FloatingWindowId = string;
-
-const DRAWER_WINDOW_PREFIX = "drawer:";
-
-/** The window a drawer pops out into. Hosts keep their own ids, so two hosts may reuse a drawer id. */
-export function getDrawerWindowId(hostId: FloatingWindowId, drawerId: string): FloatingWindowId {
-  return `${DRAWER_WINDOW_PREFIX}${hostId}:${drawerId}`;
-}
 
 /** True for the popped-out drawers of one host window. */
 export function isHostDrawerWindowId(id: FloatingWindowId, hostId: FloatingWindowId): boolean {
@@ -49,6 +44,8 @@ export interface WindowLayout extends WindowGeometry {
 export interface WindowPoint {
   x: number;
   y: number;
+  /** A device-chosen starting slot; moving the button replaces it with an explicit point. */
+  automatic?: true;
 }
 
 /** A window bubble is a square this size (px), like the chat's toolbar buttons. */
@@ -222,10 +219,10 @@ function readStoredLayout(value: unknown): WindowLayout | null {
 
 function readStoredPoint(value: unknown): WindowPoint | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const { x, y } = value as Record<string, unknown>;
+  const { x, y, automatic } = value as Record<string, unknown>;
   if (typeof x !== "number" || typeof y !== "number" || !Number.isFinite(x) || !Number.isFinite(y)) return null;
   if (Math.abs(x) > MAX_STORED_COORDINATE || Math.abs(y) > MAX_STORED_COORDINATE) return null;
-  return { x, y };
+  return { x, y, ...(automatic === true ? { automatic: true as const } : {}) };
 }
 
 /**

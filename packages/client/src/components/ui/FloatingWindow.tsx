@@ -500,16 +500,19 @@ export function FloatingWindow({
   const needsPhonePlace = phoneBubble && minimized && !hidden && !savedPhoneBubble && !minimizable?.getPhoneBubble;
   useLayoutEffect(() => {
     if (!needsPhonePlace) return;
-    useFloatingWindowStore
-      .getState()
-      .savePhoneBubble(id, findFreeBubble(readPhoneBubbleBounds(), { size: bubbleSize, except: id }));
+    useFloatingWindowStore.getState().savePhoneBubble(id, {
+      ...findFreeBubble(readPhoneBubbleBounds(), { size: bubbleSize, except: id }),
+      automatic: true,
+    });
   }, [bubbleSize, id, needsPhonePlace]);
 
   // Drawers migrated from old toolbar buttons have no saved window geometry yet.
   const needsDesktopPlace = canMinimize && minimized && !hidden && !savedDesktopBubble && !layout.bubble;
   useLayoutEffect(() => {
     if (!needsDesktopPlace) return;
-    useFloatingWindowStore.getState().saveBubble(id, findFreeBubble(bounds, { size: bubbleSize, except: id }));
+    useFloatingWindowStore
+      .getState()
+      .saveBubble(id, { ...findFreeBubble(bounds, { size: bubbleSize, except: id }), automatic: true });
   }, [bounds, bubbleSize, id, needsDesktopPlace]);
 
   // Re-clamp whenever the viewport or the chat area changes, so a window can never be lost off-screen.

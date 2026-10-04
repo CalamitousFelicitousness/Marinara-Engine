@@ -167,3 +167,72 @@ for (const mode of ["conversation", "roleplay", "game"] as const) {
     }
   });
 }
+
+test("the upgraded default stays starred until an automatically placed button is moved", async ({
+  page,
+  request,
+}, testInfo) => {
+  const mode = "conversation";
+  const original = await readFavorite(request, mode);
+  const detached = ["chat-branches", "active-context", "gallery", "message-search"].map(
+    (section) => `drawer:chat-settings:${mode}-${section}`,
+  );
+  const seeded = { windowLayout: { version: 1, windows: {}, detached }, chatSettingsHintDismissed: false };
+  let chatId: string | undefined;
+  const pointMap = testInfo.project.name.includes("desktop") ? "bubbles" : "phoneBubbles";
+  const readSaved = async () =>
+    JSON.parse((await readFavorite(request, mode)) ?? "null") as {
+      windowLayout: {
+        bubbles?: Record<string, { x: number; y: number; automatic?: boolean }>;
+        phoneBubbles?: Record<string, { x: number; y: number; automatic?: boolean }>;
+      };
+      chatSettingsHintDismissed: boolean;
+    };
+  try {
+    expect((await request.put(favoritePath(mode), { data: { value: JSON.stringify(seeded) } })).ok()).toBeTruthy();
+    const response = await request.post("/api/chats", { data: { name: "Upgrade favorite", mode, characterIds: [] } });
+    expect(response.ok()).toBeTruthy();
+    chatId = ((await response.json()) as { id: string }).id;
+    await prepare(page, chatId);
+    await page.goto("/");
+    const launcher = page.locator(`.mari-window-bubble[data-window="${detached[0]}"]`);
+    await expect(launcher).toBeVisible();
+    const settings = await openChatSettings(page);
+    const star = settings.locator('[data-chat-settings-control="favorite-layout"]');
+    await expect(star).toHaveAttribute("aria-pressed", "true");
+    expect(await readSaved()).toEqual(seeded);
+    await expect
+      .poll(async () => {
+        const metadata = await readMetadata(request, chatId!);
+        const layout = metadata.windowLayout as Record<string, Record<string, { automatic?: boolean }>>;
+        return layout[pointMap]?.[detached[0]!]?.automatic;
+      })
+      .toBe(true);
+
+    await settings.locator('[data-window-control="close"]').click();
+    const before = await launcher.boundingBox();
+    expect(before).not.toBeNull();
+    await launcher.focus();
+    await launcher.press("Shift+ArrowDown");
+    await expect.poll(async () => (await launcher.boundingBox())?.y).toBeCloseTo(before!.y + 50, 0);
+    const moved = await launcher.boundingBox();
+    expect(moved).not.toBeNull();
+    await openChatSettings(page);
+    await expect(star).toHaveAttribute("aria-pressed", "false");
+    await star.click();
+    await expect(star).toHaveAttribute("aria-pressed", "true");
+    await expect
+      .poll(async () => (await readSaved()).windowLayout[pointMap]?.[detached[0]!])
+      .toEqual({
+        x: moved!.x,
+        y: moved!.y,
+      });
+    await page.reload();
+    await expect(launcher).toBeVisible();
+    await openChatSettings(page);
+    await expect(star).toHaveAttribute("aria-pressed", "true");
+  } finally {
+    if (chatId) await request.delete(`/api/chats/${chatId}?force=true`);
+    await request.put(favoritePath(mode), { data: { value: original ?? "" } });
+  }
+});

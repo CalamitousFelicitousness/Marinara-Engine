@@ -12,7 +12,7 @@ Most settings here belong to the current chat. Window positions are saved for ea
 
 Chat Settings opens automatically when you create a new chat. To close it, click its **X** or click the sliders button again.
 
-Chats from before this update keep their familiar tool icons as movable buttons. Open a tool with its button, then choose **Put back in Chat Settings** if you would rather keep it inside Chat Settings. Desktop Roleplay trackers are grouped in the **Trackers** window. Existing saved layouts stay as you left them.
+Chats from before this update keep their familiar tool icons as movable buttons. When you upgrade an existing installation, that familiar arrangement also becomes the favorite layout for new chats in each mode, unless you already chose a favorite. Open a tool with its button, then choose **Put back in Chat Settings** if you would rather keep it inside Chat Settings. Desktop Roleplay trackers are grouped in the **Trackers** window. Existing saved layouts stay as you left them.
 
 You can drag the sliders button to a convenient spot. It lines up with nearby chat buttons as you drag; on a computer, hold Alt to place it freely. Each chat remembers its position. A small dot on the button means agents are working.
 
@@ -78,6 +78,8 @@ A [settings profile](#settings-profiles) can save the layout for use in other ch
 ## Choosing a layout for new chats
 
 Use the star beside **Reset View** to make your current arrangement the starting layout for new chats in the same mode. Conversation, Roleplay and Game each have their own favorite.
+
+After an upgrade, the familiar tool-button layout is already starred for all three modes. New chats keep using it until you replace or clear that favorite. A fresh installation starts with the chat tools inside Chat Settings and no favorite selected. Importing an older chat later keeps that chat's tools available without changing the default for new chats.
 
 1. Arrange the windows and buttons the way you want them. Put tools inside Chat Settings or pop them out as needed.
 2. Hide the layout tips if you want new chats to hide them too.

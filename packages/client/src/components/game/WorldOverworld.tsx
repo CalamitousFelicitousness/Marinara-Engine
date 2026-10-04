@@ -22,6 +22,9 @@ import {
   worldGroundLooks,
   worldRoute,
   type GameWorld,
+  characterFacing,
+  characterFrameAt,
+  type CharacterFacing,
   type TilePack,
   type WorldPlace,
 } from "@marinara-engine/shared";
@@ -242,6 +245,8 @@ export function WorldOverworld({
   const homeAt = here ? byId.get(here) : undefined;
   const partyRef = useRef<Point | null>(null);
   if (!walkingRef.current) partyRef.current = homeAt ? centre(homeAt) : null;
+  /** Which way the party faces: the way it last walked. */
+  const facingRef = useRef<CharacterFacing>("down");
   const camera = useCallback(
     (at: Point) => overworldCamera(at, worldSize, size, scale),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -251,7 +256,8 @@ export function WorldOverworld({
   const [cameraX, cameraY] = [restingCamera.x, restingCamera.y];
 
   const draw = useCallback(
-    (cam: Point, step = false) => {
+    (cam: Point, frame = 1) => {
+      const step = frame !== 1;
       const canvas = canvasRef.current;
       const ctx = canvas?.getContext("2d");
       if (!canvas || !ctx || size.width === 0) return;
@@ -285,7 +291,15 @@ export function WorldOverworld({
       const party = partyRef.current;
       if (party) {
         const [x, y] = [Math.round(party.x) - 8, Math.round(party.y) - 14 - (step ? 1 : 0)];
-        if (!drawTile(ctx, "party", x, y)) paintParty(ctx, x + 1, y + 1, step);
+        const drawn = drawTile.character(
+          ctx,
+          "party",
+          Math.round(party.x) - 8,
+          Math.round(party.y) - 8,
+          facingRef.current,
+          frame,
+        );
+        if (!drawn && !drawTile(ctx, "party", x, y)) paintParty(ctx, x + 1, y + 1, step);
       }
       if (darkness > 0) {
         ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -419,6 +433,8 @@ export function WorldOverworld({
             const share = length === 0 ? 1 : Math.min(1, along / length);
             const [a, b] = [points[index]!, points[index + 1]!];
             at = { x: a.x + (b.x - a.x) * share, y: a.y + (b.y - a.y) * share };
+            // Facing the way the leg goes, by its larger axis.
+            facingRef.current = characterFacing(b.x - a.x, b.y - a.y, facingRef.current);
             break;
           }
           along -= length;
@@ -428,7 +444,7 @@ export function WorldOverworld({
           const day = fromDay + Math.floor((fromMinutes + result.route.days * 24 * 60 * progress) / (24 * 60));
           walkChipRef.current.textContent = t("game.overworld.walking", { day });
         }
-        drawRef.current(cameraOfRef.current(at), Math.floor(now / 180) % 2 === 0);
+        drawRef.current(cameraOfRef.current(at), characterFrameAt(now));
         if (progress < 1) {
           frameRef.current = requestAnimationFrame(frame);
           return;

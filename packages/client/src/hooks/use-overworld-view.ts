@@ -7,6 +7,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   OVERWORLD_SECONDS_PER_GAME_MINUTE,
   tilePackPixels,
+  CHARACTER_FACINGS,
+  type CharacterFacing,
+  type ImageCharacter,
   type ImageTile,
   type ImageTilePack,
   type TilePack,
@@ -138,6 +141,20 @@ export type OverworldTileDrawer = ((
   image: boolean;
   /** Still on its way (the game's own tiles, or an image pack's sheets decoding): draw nothing yet. */
   loading: boolean;
+  /**
+   * Draws a person (by id) or the party walking, from the image pack's characters: the frame (0, 1 or 2:
+   * step, stand, step) of the row it faces, standing on the cell at (x, y), or lying on it (asleep). False
+   * when the pack has no character for them, so the caller draws the `folk` or `party` tile instead.
+   */
+  character: (
+    ctx: CanvasRenderingContext2D,
+    who: "party" | { person: string },
+    x: number,
+    y: number,
+    facing?: CharacterFacing,
+    frame?: number,
+    lying?: boolean,
+  ) => boolean;
 };
 
 /** The tiles a family is drawn with: the pack chosen for it, else the Engine's own for the family, laid
@@ -245,6 +262,34 @@ export function useOverworldAtlas(family: string | undefined, own?: TilePack | n
         const tile = image.tiles[id]?.[0];
         return tile && ((tile.w ?? 1) > 1 || (tile.h ?? 1) > 1) ? { w: tile.w ?? 1, h: tile.h ?? 1 } : null;
       };
+      // The party wears the first character it may; townsfolk one of theirs, by who they are (the party's
+      // own left out when there are others), so a person always wears the same one.
+      const people = ready?.characters ?? [];
+      const partyCharacter = people.find((each) => each.for.includes("party"));
+      const folkAll = people.filter((each) => each.for.includes("folk"));
+      const folk = folkAll.length > 1 ? folkAll.filter((each) => each !== partyCharacter) : folkAll;
+      draw.character = (ctx, who, x, y, facing = "down", frame = 1, lying = false) => {
+        const chosen =
+          who === "party" ? partyCharacter : folk.length ? folk[characterPick(who.person) % folk.length] : undefined;
+        const sheet = ready?.charactersCanvas;
+        if (!chosen || !sheet) return false;
+        const [fw, fh] = [chosen.w * size, chosen.h * size];
+        const row = CHARACTER_FACINGS.indexOf(lying ? "down" : facing);
+        const [sx, sy] = [chosen.sx + Math.min(2, Math.max(0, frame)) * fw, chosen.sy + row * fh];
+        const [dw, dh] = [chosen.w * OVERWORLD_TILE, chosen.h * OVERWORLD_TILE];
+        if (lying) {
+          // On their side across the cell, as small as it takes to lie within it.
+          const scale = OVERWORLD_TILE / Math.max(dw, dh);
+          ctx.save();
+          ctx.translate(x + OVERWORLD_TILE / 2, y + OVERWORLD_TILE / 2);
+          ctx.rotate(-Math.PI / 2);
+          ctx.drawImage(sheet, sx, sy, fw, fh, (-dw * scale) / 2, (-dh * scale) / 2, dw * scale, dh * scale);
+          ctx.restore();
+          return true;
+        }
+        ctx.drawImage(sheet, sx, sy, fw, fh, x + (OVERWORLD_TILE - dw) / 2, y + OVERWORLD_TILE - dh, dw, dh);
+        return true;
+      };
       return draw;
     }
     const draw = ((ctx, id, x, y, pick = 0) => {
@@ -263,6 +308,7 @@ export function useOverworldAtlas(family: string | undefined, own?: TilePack | n
       own === "loading" ||
       (!own && Boolean(family) && (libraryPending || (Boolean(chosen) && !fetched && !fetchFailed)));
     draw.sprite = () => null;
+    draw.character = () => false;
     return draw;
   }, [atlas, chosen, family, fetchFailed, fetched, image, libraryPending, own, ready]);
 }
@@ -285,6 +331,7 @@ function imageFingerprint(pack: ImageTilePack): string {
     for (let at = 0; at < text.length; at += step) hash = Math.imul(hash ^ text.charCodeAt(at), 0x01000193);
   };
   mix(JSON.stringify(pack.tiles));
+  mix(JSON.stringify(pack.characters ?? []));
   for (const sheet of pack.sheets) {
     mix(`${sheet.id}:${sheet.png.length}`);
     mix(sheet.png, 97);
@@ -303,7 +350,15 @@ interface ImageAtlas {
   /** Each tile's variants: where it is on the atlas, and its cells across and down. */
   tiles: Record<string, Array<{ sx: number; sy: number; w: number; h: number }>>;
   size: number;
+  /** The characters' walking blocks, on a canvas of their own (so many big blocks never crowd the
+   *  tiles out), each where it is and its frame's cells. */
+  charactersCanvas?: HTMLCanvasElement | null;
+  characters?: Array<{ id: string; sx: number; sy: number; w: number; h: number; for: Array<"party" | "folk"> }>;
 }
+
+/** A person's pick among the characters: a hash of their id, salted so it is not where they stand. */
+const characterPick = (personId: string) =>
+  [...`look:${personId}`].reduce((h, c) => (Math.imul(h, 31) + c.charCodeAt(0)) >>> 0, 7);
 
 /** An image pack's tiles copied onto one canvas, packed in rows: the sheets are decoded, read once and
  *  let go. */
@@ -346,8 +401,36 @@ async function buildImageAtlas(pack: ImageTilePack): Promise<ImageAtlas> {
     ctx.drawImage(source, tile.x * size, tile.y * size, w * size, h * size, sx, sy, w * size, h * size);
     (tiles[id] ??= [])[index] = { sx, sy, w, h };
   }
+  // The characters' blocks (3 frames by 4 rows each), packed the same way on their own canvas.
+  let charactersCanvas: HTMLCanvasElement | null = null;
+  const characters: NonNullable<ImageAtlas["characters"]> = [];
+  if (pack.characters?.length) {
+    const blocks: Array<{ character: ImageCharacter; sx: number; sy: number; w: number; h: number }> = [];
+    let [cx, cy, crow] = [0, 0, 0];
+    for (const character of pack.characters) {
+      const [w, h] = [character.w ?? 1, character.h ?? 2];
+      const [bw, bh] = [3 * w * size, 4 * h * size];
+      if (cx + bw > ROW) [cx, cy, crow] = [0, cy + crow, 0];
+      blocks.push({ character, sx: cx, sy: cy, w, h });
+      cx += bw;
+      crow = Math.max(crow, bh);
+    }
+    if (cy + crow <= 8192) {
+      charactersCanvas = document.createElement("canvas");
+      charactersCanvas.width = ROW;
+      charactersCanvas.height = Math.max(1, cy + crow);
+      const cctx = charactersCanvas.getContext("2d");
+      for (const { character, sx, sy, w, h } of blocks) {
+        const source = images.get(character.sheet);
+        if (!source || !cctx) continue;
+        const [bw, bh] = [3 * w * size, 4 * h * size];
+        cctx.drawImage(source, character.x * size, character.y * size, bw, bh, sx, sy, bw, bh);
+        characters.push({ id: character.id, sx, sy, w, h, for: character.for ?? ["party", "folk"] });
+      }
+    }
+  }
   images.clear();
-  return { canvas, tiles, size };
+  return { canvas, tiles, size, charactersCanvas, characters };
 }
 
 /** The view's offset in screen pixels so `at` (world pixels) sits at the middle across and a little above

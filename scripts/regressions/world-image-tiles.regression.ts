@@ -17,6 +17,8 @@ import { join } from "node:path";
 
 import {
   TILE_PACK_IMAGE_MAX_BYTES,
+  characterFacing,
+  characterFrameAt,
   parseTilePack,
   pngDataUrlCheck,
   type ImageTilePack,
@@ -166,6 +168,50 @@ try {
   };
   assert.ok(parseTilePack(drawn).ok);
   assert.ok(!parseTilePack(`${JSON.stringify(drawn)}${" ".repeat(1_000_001)}`).ok, "a drawn pack's own limit");
+
+  // ── Characters (Pixelforge characters): walking blocks, RPG Maker's layout ──
+  const people = pngBytes(288, 384, (x, y) => [x % 48 < 4 ? 0 : 120, Math.floor(y / 96) * 60, 90, 255]);
+  const withPeople = (characters: unknown[]) =>
+    imageTilePack({
+      sheets: [...imageTilePack().sheets, { id: "people", png: pngDataUrl(people), width: 288, height: 384 }],
+      characters,
+    } as Partial<ImageTilePack>);
+  const walker = { id: "c1", sheet: "people", x: 0, y: 0 };
+  const walking = parseTilePack(
+    withPeople([
+      walker,
+      { id: "c2", sheet: "people", x: 3, y: 0, for: ["folk"], recolour: { hair: ["#3c2a1e"], skin: ["#f1c9a5"] } },
+      { id: "c3", sheet: "people", x: 3, y: 4, h: 1 },
+    ]),
+  );
+  assert.ok(walking.ok, JSON.stringify(!walking.ok && walking.issues));
+  assert.equal(walking.pack.tilePackVersion === 2 && walking.pack.characters?.length, 3);
+  refused(withPeople([{ ...walker, x: 4 }]), /reaches past the edge/, "a block past its sheet's right edge");
+  refused(withPeople([{ ...walker, y: 1 }]), /reaches past the edge/, "a block of 1 x 2 frames past its bottom");
+  refused(withPeople([{ ...walker, sheet: "nope" }]), /no sheet "nope"/, "an unknown sheet");
+  refused(withPeople([walker, walker]), /Two characters are called "c1"/, "two characters, one id");
+  refused(
+    withPeople([{ ...walker, recolour: { hair: ["#112233"], clothes: ["#112233"] } }]),
+    /both hair and clothes/,
+    "a colour in two regions",
+  );
+  refused(withPeople([{ ...walker, recolour: { eyes: ["blue"] } }]), /colour/i, "a colour that is no colour");
+  refused(withPeople([{ ...walker, h: 4 }]), /h/, "a frame four cells tall");
+  refused(
+    withPeople(Array.from({ length: 65 }, (_, at) => ({ ...walker, id: `c${at}` }))),
+    /characters/,
+    "more than 64",
+  );
+  // How a walk is drawn: step, stand, step, stand; facing the larger axis of the move, the way it went
+  // kept near the diagonal and when it does not move.
+  assert.deepEqual([0, 180, 360, 540, 720].map(characterFrameAt), [0, 1, 2, 1, 0]);
+  assert.equal(characterFacing(5, 1), "right");
+  assert.equal(characterFacing(-5, 1), "left");
+  assert.equal(characterFacing(1, -5), "up");
+  assert.equal(characterFacing(0, 5), "down");
+  assert.equal(characterFacing(5, 5, "left"), "right", "on the diagonal, a sideways walk stays sideways");
+  assert.equal(characterFacing(5, 5, "up"), "down", "on the diagonal, an up-and-down walk stays so");
+  assert.equal(characterFacing(0, 0, "left"), "left", "standing still keeps the facing");
 
   // ── The library ──
   const db = await getDB();

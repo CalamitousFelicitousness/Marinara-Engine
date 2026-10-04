@@ -34,6 +34,9 @@ export const TILE_PACK_IMAGE_CELL = [16, 96] as const;
 export const TILE_PACK_IMAGE_SHEETS = 16;
 export const TILE_PACK_IMAGE_SHEET_PX = 4096;
 export const TILE_PACK_IMAGE_SPAN = 8;
+/** The most characters an image pack has, and colours a character's recolour region lists. */
+export const TILE_PACK_MAX_CHARACTERS = 64;
+export const TILE_PACK_RECOLOUR_COLOURS = 8;
 
 const NINE = ["nw", "n", "ne", "w", "c", "e", "sw", "s", "se"] as const;
 
@@ -144,9 +147,60 @@ export const imageTilePackSchema = z
         .min(1)
         .max(TILE_PACK_MAX_VARIANTS),
     ),
+    /** People who walk (Pixelforge characters): each a block of frames on a sheet, RPG Maker's layout. */
+    characters: z
+      .array(
+        z
+          .object({
+            id: sheetId,
+            sheet: sheetId,
+            /** The block's top-left cell. */
+            x: z.number().int().min(0).max(TILE_PACK_IMAGE_SHEET_PX),
+            y: z.number().int().min(0).max(TILE_PACK_IMAGE_SHEET_PX),
+            /** One frame's size in cells: one wide and two tall by default (48 x 96 at 48 px cells). */
+            w: z.number().int().min(1).max(2).optional(),
+            h: z.number().int().min(1).max(3).optional(),
+            /** Who may wear it: the party, townsfolk, or both (when left out). */
+            for: z
+              .array(z.enum(["party", "folk"]))
+              .min(1)
+              .max(2)
+              .optional(),
+            /** Which of the sheet's colours are hair, eyes, skin and clothes, for recolouring to each person. */
+            recolour: z
+              .object(
+                Object.fromEntries(
+                  ["hair", "eyes", "skin", "clothes"].map((region) => [
+                    region,
+                    z.array(colour).max(TILE_PACK_RECOLOUR_COLOURS).optional(),
+                  ]),
+                ) as Record<"hair" | "eyes" | "skin" | "clothes", z.ZodOptional<z.ZodArray<typeof colour>>>,
+              )
+              .strict()
+              .optional(),
+          })
+          .strict(),
+      )
+      .max(TILE_PACK_MAX_CHARACTERS)
+      .optional(),
   })
   .strict();
 export type ImageTilePack = z.infer<typeof imageTilePackSchema>;
+export type ImageCharacter = NonNullable<ImageTilePack["characters"]>[number];
+/** A character's walking block (RPG Maker's layout): three frames across (step, stand, step) by four rows,
+ *  facing down, left, right and up. */
+export const CHARACTER_FACINGS = Object.freeze(["down", "left", "right", "up"] as const);
+export type CharacterFacing = (typeof CHARACTER_FACINGS)[number];
+
+/** The frame a walk shows at a time: step, stand, step, stand (RPG Maker's 0-1-2-1). */
+export const characterFrameAt = (now: number) => [0, 1, 2, 1][Math.floor(now / 180) % 4]!;
+/** Which way a move faces, by its larger axis (`was` kept within a few degrees of the diagonal). */
+export function characterFacing(dx: number, dy: number, was: CharacterFacing = "down"): CharacterFacing {
+  if (dx === 0 && dy === 0) return was;
+  const horizontal =
+    Math.abs(dx) > Math.abs(dy) * 1.15 || (Math.abs(dy) <= Math.abs(dx) * 1.15 && (was === "left" || was === "right"));
+  return horizontal ? (dx < 0 ? "left" : "right") : dy < 0 ? "up" : "down";
+}
 export type ImageTile = ImageTilePack["tiles"][string][number];
 
 /** A tile pack: drawn (16 px rows on a palette) or made of images. */
@@ -303,6 +357,29 @@ function parseImageTilePack(value: unknown): TilePackRead {
         issues.push(`${id} variant ${index + 1} reaches past the edge of the sheet "${sheet.id}".`);
     });
     tiles[id] = variants;
+  }
+  const characterIds = new Set<string>();
+  for (const character of pack.characters ?? []) {
+    if (characterIds.has(character.id)) issues.push(`Two characters are called "${character.id}".`);
+    characterIds.add(character.id);
+    const sheet = sheets.get(character.sheet);
+    if (!sheet) {
+      issues.push(`The character "${character.id}": no sheet "${character.sheet}".`);
+      continue;
+    }
+    const [w, h] = [character.w ?? 1, character.h ?? 2];
+    if ((character.x + 3 * w) * pack.tileSize > sheet.width || (character.y + 4 * h) * pack.tileSize > sheet.height)
+      issues.push(`The character "${character.id}" reaches past the edge of the sheet "${sheet.id}".`);
+    const seen = new Map<string, string>();
+    for (const [region, colours] of Object.entries(character.recolour ?? {})) {
+      for (const value of colours ?? []) {
+        const key = value.slice(0, 7).toLowerCase();
+        const other = seen.get(key);
+        if (other && other !== region)
+          issues.push(`The character "${character.id}" lists ${key} as both ${other} and ${region}.`);
+        seen.set(key, region);
+      }
+    }
   }
   if (issues.length) return { ok: false, issues: issues.slice(0, 20) };
   return { ok: true, pack: { ...pack, tiles }, notes };

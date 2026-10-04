@@ -71,6 +71,9 @@ test("an image pack chosen for its setting draws the overworld and the town", as
               ? [0, 0, 0, 0]
               : [190, 80, 60, 255],
     );
+    const people = pngOf(144, 384, (x, y) =>
+      x % 48 < 8 || x % 48 >= 40 ? [0, 0, 0, 0] : y < 96 ? [20, 200, 220, 255] : [220, 200, 20, 255],
+    );
     const pack = {
       tilePackVersion: 2,
       id: "e2e-art",
@@ -78,7 +81,12 @@ test("an image pack chosen for its setting draws the overworld and the town", as
       family: "fantasy",
       version: 1,
       tileSize: 48,
-      sheets: [{ id: "town", png: `data:image/png;base64,${sheet.toString("base64")}`, width: 336, height: 144 }],
+      sheets: [
+        { id: "town", png: `data:image/png;base64,${sheet.toString("base64")}`, width: 336, height: 144 },
+        // One walking person: its facing-down row a colour of its own, the other rows another.
+        { id: "people", png: `data:image/png;base64,${people.toString("base64")}`, width: 144, height: 384 },
+      ],
+      characters: [{ id: "walker", sheet: "people", x: 0, y: 0 }],
       tiles: {
         grass: [{ sheet: "town", x: 0, y: 0 }],
         town_ground: [{ sheet: "town", x: 0, y: 0 }],
@@ -127,6 +135,25 @@ test("an image pack chosen for its setting draws the overworld and the town", as
     const town = page.getByRole("region", { name: "Town", exact: true });
     await expect(town).toHaveAttribute("data-tiles", "image");
     await page.screenshot({ path: testInfo.outputPath("image-town.png") });
+    // Townsfolk drawn as the pack's walking person, facing down.
+    await expect
+      .poll(async () =>
+        town
+          .locator("canvas")
+          .first()
+          .evaluate((canvas: HTMLCanvasElement) => {
+            const { data } = canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height);
+            for (let at = 0; at < data.length; at += 4 * 3)
+              if (
+                Math.abs(data[at]! - 20) < 6 &&
+                Math.abs(data[at + 1]! - 200) < 6 &&
+                Math.abs(data[at + 2]! - 220) < 6
+              )
+                return true;
+            return false;
+          }),
+      )
+      .toBe(true);
     // The house sprite's colour is on the town's canvas.
     await expect
       .poll(async () =>

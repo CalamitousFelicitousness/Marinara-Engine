@@ -5,7 +5,8 @@
 // until the next day. Drives the real /autonomous/check route and pins:
 //   - one quiet stretch produces one check-in, not a burst to the limit,
 //   - the next quiet stretch still checks in, from another character,
-//   - a long-absence check-in is not repeated by every character,
+//   - with mixed talkativeness, the chattiest character does not take every turn,
+//   - a long-absence check-in is not repeated by every character, even after a restart,
 //   - Grouped mode, which counts each character separately, is unchanged.
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -31,6 +32,10 @@ const { buildAutonomousDailyBudgetPatch, getAutonomousDailyBudget, recordAssista
 const { characterDataSchema } = await import("../../packages/shared/dist/index.js");
 
 const HOUR = 60 * 60 * 1000;
+// Follow-up waits are measured with Date.now(); shift it forward to let them pass.
+const realNow = Date.now;
+let elapsed = 0;
+Date.now = () => realNow() + elapsed;
 const db = await getDB();
 const chats = createChatsStorage(db);
 const app = Fastify();
@@ -46,8 +51,8 @@ try {
     cast.push(character!.id);
   }
 
-  const createChat = async (groupChatMode: "individual" | "merged") => {
-    const chat = await chats.create({ name: groupChatMode, mode: "conversation", characterIds: cast });
+  const createChat = async (groupChatMode: "individual" | "merged", characterIds = cast) => {
+    const chat = await chats.create({ name: groupChatMode, mode: "conversation", characterIds });
     await chats.patchMetadata(chat!.id, {
       autonomousMessages: true,
       conversationSchedulesEnabled: false,
@@ -118,6 +123,31 @@ try {
     const away = await pollQuietStretch(chatId, 6);
     assert.equal(away.speakers.length, 1, "a long absence brings one check-in, not one per character");
     assert.equal(await usedToday(chatId), 1);
+
+    // A restart forgets the in-memory follow-up counts while the user is still away.
+    recordUserActivity(chatId, { occurredAt: Date.now() - 20 * HOUR });
+    recordAssistantActivity(chatId);
+    const afterRestart = await pollQuietStretch(chatId, 3);
+    assert.deepEqual(afterRestart.speakers, [], "another character does not repeat the long-absence check-in");
+    assert.equal(afterRestart.last.reason, "intent_cooldown");
+  }
+
+  {
+    const mixed: string[] = [];
+    for (const talkativeness of [0.9, 0.5, 0.5]) {
+      const character = await createCharactersStorage(db).create(
+        characterDataSchema.parse({ name: `Talkativeness ${talkativeness}`, extensions: { talkativeness } }),
+      );
+      mixed.push(character!.id);
+    }
+    const chatId = await createChat("individual", mixed);
+    recordUserActivity(chatId, { occurredAt: Date.now() - 4 * HOUR });
+    const first = await pollQuietStretch(chatId, 1);
+    assert.deepEqual(first.speakers, [mixed[0]], "the chattiest character checks in first");
+    elapsed += HOUR; // past its follow-up wait, but not the quieter characters' own follow-up waits
+    const second = await pollQuietStretch(chatId, 1);
+    assert.equal(second.speakers.length, 1, "the shared follow-up comes due");
+    assert.notEqual(second.speakers[0], mixed[0], "a quieter character whose own wait has passed takes the turn");
   }
 
   {
@@ -128,6 +158,7 @@ try {
     assert.notEqual(grouped.speakers[0], grouped.speakers[1]);
   }
 } finally {
+  Date.now = realNow;
   await app.close();
   await closeDB();
   rmSync(dir, { recursive: true, force: true });

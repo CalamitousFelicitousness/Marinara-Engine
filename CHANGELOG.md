@@ -4,7 +4,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
-- Conversation groups in **Individual** mode no longer go silent for the rest of the day after a burst of autonomous messages. The group shares one daily check-in limit, but as soon as you went quiet, every character could check in one after another and use up the day's limit within minutes, often right after midnight or after starting Marinara. Now, once a character checks in, the next check-in waits longer, as in a one-on-one chat, and the characters take turns. A check-in after a long absence comes from one character instead of each in turn, and @mention replies during a check-in stay within the limit (#7055).
+- Conversation groups in **Individual** mode no longer go silent for the rest of the day after a burst of autonomous messages. The group shares one daily check-in limit, but as soon as you went quiet, every character could check in one after another and use up the day's limit within minutes, often right after midnight or after starting Marinara. Now, once a character checks in, the next check-in waits longer, as in a one-on-one chat, and the characters who have waited long enough take turns instead of the chattiest one sending them all. A check-in after a long absence comes from one character instead of each in turn, and @mention replies during a check-in stay within the limit (#7055).
 
 - The Chats sidebar status prompt now reads **What's up?** to fit its field, and Advanced Settings labels the multiplayer section **Multiplayer WIP** (#7051).
 

@@ -113,7 +113,13 @@ function readAutonomousDailyCapOverride(value: unknown): number | null {
   return Math.max(1, Math.floor(value));
 }
 
-export function dailyCapForCharacter(schedule: WeekSchedule | undefined, chatMeta?: Record<string, unknown>): number {
+/** Only these fields set the cap, so a scheduleless character can pass its card talkativeness. */
+type DailyCapSchedule = Pick<WeekSchedule, "talkativeness" | "autonomousDailyCapOverride">;
+
+export function dailyCapForCharacter(
+  schedule: DailyCapSchedule | undefined,
+  chatMeta?: Record<string, unknown>,
+): number {
   const chatCap = chatMeta ? readAutonomousDailyCapOverride(chatMeta.autonomousDailyCapOverride) : null;
   const characterCap = readAutonomousDailyCapOverride(schedule?.autonomousDailyCapOverride);
   if (chatCap != null && characterCap != null) return Math.min(chatCap, characterCap);
@@ -135,7 +141,7 @@ export function sharesAutonomousDailyBudget(chatMeta: Record<string, unknown>): 
 
 export function isAutonomousDailyBudgetExhausted(
   characterId: string,
-  schedule: WeekSchedule | undefined,
+  schedule: DailyCapSchedule | undefined,
   chatMeta: Record<string, unknown>,
   now: Date = new Date(),
 ): boolean {
@@ -365,8 +371,9 @@ export function checkAutonomousMessaging(
     scheduleNow?: Date;
     /**
      * Pace the whole chat like one character: once anyone checks in, the next
-     * check-in from any character waits the doubled follow-up time. Used where
-     * the daily limit is shared, so it is not spent in one burst (#7055).
+     * check-in waits the doubled follow-up time, and anyone whose own first wait
+     * has passed may take it. Used where the daily limit is shared, so it is not
+     * spent in one burst (#7055).
      */
     sharedCadence?: boolean;
   } = {},
@@ -404,6 +411,8 @@ export function checkAutonomousMessaging(
 
   // ── Check each character for inactivity threshold ──
   const eligibleCharacters: Array<{ id: string; priority: number; reactionDriven: boolean }> = [];
+  // Shared cadence: characters whose own first wait has passed may take a turn once one is due.
+  const readyForSharedTurn: typeof eligibleCharacters = [];
 
   // Maximum autonomous follow-ups before a character stops messaging
   const maxFollowups = Math.max(1, Math.min(3, Math.floor(opts.maxFollowups ?? 3)));
@@ -471,17 +480,21 @@ export function checkAutonomousMessaging(
       const followUpThresholdMs = baseThresholdMs * cooldownMultiplier;
       const timeSinceLastAutonomous = now - lastSentAt;
 
-      if (timeSinceLastAutonomous >= followUpThresholdMs) {
-        eligibleCharacters.push({
-          id: charId,
-          priority: schedule.talkativeness + (status === "online" ? 20 : 0) - ownSentCount * 10, // Lower priority for repeat messages
-          reactionDriven: false,
-        });
+      const candidate = {
+        id: charId,
+        priority: schedule.talkativeness + (status === "online" ? 20 : 0) - ownSentCount * 10, // Lower priority for repeat messages
+        reactionDriven: false,
+      };
+      if (timeSinceLastAutonomous >= followUpThresholdMs) eligibleCharacters.push(candidate);
+      else if (opts.sharedCadence && state.lastUserMessageAt > 0 && inactivityMs >= baseThresholdMs) {
+        readyForSharedTurn.push(candidate);
       }
     }
   }
 
   if (eligibleCharacters.length === 0) return noTrigger;
+  // The chattiest character sets the shared pace; it doesn't get every turn (#7055).
+  eligibleCharacters.push(...readyForSharedTurn);
 
   // Sort by priority (highest first)
   eligibleCharacters.sort((a, b) => b.priority - a.priority);

@@ -175,11 +175,16 @@ function resolveAutonomousIntentPayload(
   const msSinceUserLastSpoke = state?.lastUserMessageAt ? Date.now() - state.lastUserMessageAt : 0;
   const hadUnansweredUserMessage = state ? state.lastUserMessageAt > state.lastAssistantMessageAt : false;
   const intent = resolveIntent(schedule, msSinceUserLastSpoke, hadUnansweredUserMessage, now);
+  // A shared-limit group checks in after a long absence once, not once per character (#7055).
+  const cooldownIds =
+    intent === "long_absence_check_in" && sharesAutonomousDailyBudget(meta)
+      ? Object.keys((meta.intentCooldowns as object | undefined) ?? {})
+      : [characterId];
   return {
     autonomousIntent: getIntentHint(intent),
     autonomousIntentPrompt: `What prompted this message: ${getIntentHint(intent)}`,
     autonomousIntentKey: intent,
-    onCooldown: isIntentOnCooldown(meta, characterId, intent),
+    onCooldown: cooldownIds.some((id) => isIntentOnCooldown(meta, id, intent)),
   };
 }
 
@@ -211,17 +216,12 @@ function resolveLongAbsenceCandidate(
   meta: Record<string, unknown>,
   now = new Date(),
   scheduleNow = now,
-  sharedCadence = false,
 ):
   | { characterId: string; intent: AutonomousIntentPayload }
   | { blockedReason: "daily_budget_exhausted" | "intent_cooldown" }
   | null {
   const state = getActivityState(chatId);
   if (!state?.lastUserMessageAt || state.lastUserMessageAt > state.lastAssistantMessageAt) return null;
-  // A shared-limit group checks in after a long absence once, not once per character (#7055).
-  if (sharedCadence && Object.keys(schedules).some((id) => isIntentOnCooldown(meta, id, "long_absence_check_in"))) {
-    return { blockedReason: "intent_cooldown" };
-  }
 
   const candidates = Object.entries(schedules)
     .filter(([characterId, schedule]) => {
@@ -1142,7 +1142,6 @@ export async function conversationRoutes(app: FastifyInstance) {
       meta,
       nowInstant,
       promptNow,
-      sharedCadence,
     );
     if (longAbsence) {
       if ("blockedReason" in longAbsence) return reply.send(blockedAutonomousResponse(longAbsence.blockedReason));

@@ -10732,7 +10732,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 const { schedules } = await chats.resolveConversationPresenceState(input.chatId);
                 let projectedMeta = chatMeta;
                 const reserve = (id: string) => {
-                  if (isAutonomousDailyBudgetExhausted(id, schedules[id], projectedMeta)) return false;
+                  // Like /autonomous/check, a character without a schedule uses its card talkativeness.
+                  const capSchedule = schedules[id] ?? {
+                    talkativeness: Math.round((charInfo.find((c) => c.id === id)?.talkativeness ?? 0.5) * 100),
+                  };
+                  if (isAutonomousDailyBudgetExhausted(id, capSchedule, projectedMeta)) return false;
                   projectedMeta = { ...projectedMeta, ...buildAutonomousDailyBudgetPatch(projectedMeta, id) };
                   return true;
                 };

@@ -363,9 +363,9 @@ function parseImageTilePack(value: unknown): TilePackRead {
       const [w, h] = [tile.w ?? 1, tile.h ?? 1];
       if ((tile.x + w) * pack.tileSize > sheet.width || (tile.y + h) * pack.tileSize > sheet.height)
         issues.push(`${id} variant ${index + 1} reaches past the edge of the sheet "${sheet.id}".`);
-      // An edge tile is a block of sixteen pieces, four cells by four.
-      if (id.startsWith("edge_") && (w !== 4 || h !== 4))
-        issues.push(`${id} variant ${index + 1} is ${w} by ${h} cells; an edge tile's block is 4 by 4.`);
+      // An edge tile is a block of sixteen pieces, four cells by four, or four by six with its slanted corners.
+      if (id.startsWith("edge_") && (w !== 4 || (h !== 4 && h !== 6)))
+        issues.push(`${id} variant ${index + 1} is ${w} by ${h} cells; an edge tile's block is 4 by 4, or 4 by 6.`);
     });
     tiles[id] = variants;
   }

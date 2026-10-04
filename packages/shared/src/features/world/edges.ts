@@ -3,7 +3,8 @@
 // around them. A dual grid: each piece sits on a corner where four cells meet, and which of the four are
 // the terrain (a 4-bit mask) picks one of a block's sixteen pieces, laid out four by four as SpriteCook's
 // top-down tilesets are (mask bits: top-left 1, top-right 2, bottom-left 4, bottom-right 8). An image pack
-// carries a terrain's blocks as the tile `edge_<terrain>`, each variant a block four cells by four.
+// carries a terrain's blocks as the tile `edge_<terrain>`, each variant a block four cells by four, or four by
+// six with two more rows of slanted corners (see WORLD_EDGE_SLANT_PIECE_BY_MASK).
 // ──────────────────────────────────────────────
 
 /** The blending terrains, in the order they are drawn: water before roads, a town's streets before its
@@ -17,12 +18,52 @@ export const WORLD_EDGE_PIECE_BY_MASK: readonly number[] = Object.freeze([
   -1, 15, 8, 9, 0, 11, 14, 7, 13, 4, 1, 10, 3, 2, 5, 6,
 ]);
 
-/** A terrain's variant blocks that have all sixteen pieces (a block whose sheet did not load is left out
+/** A terrain's variant blocks that have all their pieces, sixteen or twenty-four (a block whose sheet did not load is left out
  *  rather than drawn with holes). */
 export function worldWholeEdgeBlocks<T>(blocks: ReadonlyArray<ReadonlyArray<T | undefined> | undefined>): T[][] {
   return blocks.filter(
-    (block): block is T[] => !!block && block.length === 16 && Array.from(block).every((piece) => piece !== undefined),
+    (block): block is T[] =>
+      !!block &&
+      (block.length === 16 || block.length === 24) &&
+      Array.from(block).every((piece) => piece !== undefined),
   );
+}
+
+/** Slanted corners (user, 2026-10-05: "a soft slant edge" instead of every corner rounded): a corner where
+ *  one cell is the terrain (an outer corner) or one is not (an inner corner) may be cut by a 45 degree line
+ *  instead, crossing the piece's borders where the rounded piece does, so either fits beside any piece. A
+ *  block four by six carries them on its last two rows: the outer corners, then the inner ones, each in the
+ *  order of the odd cell (top-left, top-right, bottom-left, bottom-right). -1 for masks with none. */
+export const WORLD_EDGE_SLANT_PIECE_BY_MASK: readonly number[] = Object.freeze([
+  -1, 16, 17, -1, 18, -1, -1, 23, 19, -1, -1, 22, -1, 21, 20, -1,
+]);
+
+/**
+ * Whether the corner at (x, y), of the mask `mask`, takes its slanted piece: an outer or inner corner on a
+ * step that carries on diagonally (a staircase of cells), so the run reads as one slanted edge instead of a
+ * zigzag. The corner of a plain rectangle keeps its rounded piece. Cells outside the map count as the
+ * nearest edge cell, as in worldEdgeMask.
+ */
+export function worldEdgeSlanted(
+  filled: (x: number, y: number) => boolean,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  mask: number,
+): boolean {
+  const single = [1, 2, 4, 8].indexOf(mask);
+  const gap = [14, 13, 11, 7].indexOf(mask);
+  if (single < 0 && gap < 0) return false;
+  const at = (cx: number, cy: number) =>
+    filled(Math.min(width - 1, Math.max(0, cx)), Math.min(height - 1, Math.max(0, cy)));
+  const q = single >= 0 ? single : gap;
+  // The odd cell, and the direction from it toward the corner's other three.
+  const [ox, oy] = [x - 1 + (q & 1), y - 1 + (q >> 1)];
+  const [dx, dy] = [q & 1 ? -1 : 1, q >> 1 ? -1 : 1];
+  // An outer corner's step carries on where a cell past it, diagonally, is the terrain too; an inner
+  // corner's where a cell past it is not.
+  return single >= 0 ? at(ox - dx, oy + dy) || at(ox + dx, oy - dy) : !at(ox + dx, oy - dy) || !at(ox - dx, oy + dy);
 }
 
 /**

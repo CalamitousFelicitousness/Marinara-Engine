@@ -21,6 +21,7 @@ import {
   worldEdgeMask,
   worldGroundCells,
   worldRoadCells,
+  worldEdgeSlanted,
   worldGroundLooks,
   worldRoute,
   type GameWorld,
@@ -215,6 +216,7 @@ export function WorldOverworld({
               x * OVERWORLD_TILE,
               y * OVERWORLD_TILE,
               cellNoise(x, y)(terrain === "water" ? 71 : 73),
+              worldEdgeSlanted(filled, x, y, width, height, mask),
             );
         }
     };

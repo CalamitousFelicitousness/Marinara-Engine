@@ -25,6 +25,8 @@ import {
   worldEdgeMask,
   worldRoadCells,
   worldWholeEdgeBlocks,
+  worldEdgeSlanted,
+  WORLD_EDGE_SLANT_PIECE_BY_MASK,
   type ImageTilePack,
   type TilePack,
 } from "../../packages/shared/src/index.js";
@@ -230,18 +232,23 @@ try {
   assert.equal(characterFacing(0, 0, "left"), "left", "standing still keeps the facing");
 
   // ── Edge tiles: a terrain's blocks of sixteen pieces, four cells by four ──
-  const blocks = pngBytes(192, 192, () => [10, 60, 250, 255]);
+  const blocks = pngBytes(192, 288, () => [10, 60, 250, 255]);
   const withEdges = (tiles: Record<string, unknown[]>) =>
     imageTilePack({
-      sheets: [...imageTilePack().sheets, { id: "edges", png: pngDataUrl(blocks), width: 192, height: 192 }],
+      sheets: [...imageTilePack().sheets, { id: "edges", png: pngDataUrl(blocks), width: 192, height: 288 }],
       tiles: { ...imageTilePack().tiles, ...tiles },
     } as Partial<ImageTilePack>);
   assert.ok(parseTilePack(withEdges({ edge_water: [{ sheet: "edges", x: 0, y: 0, w: 4, h: 4 }] })).ok, "a 4 x 4 block");
+  assert.ok(
+    parseTilePack(withEdges({ edge_water: [{ sheet: "edges", x: 0, y: 0, w: 4, h: 6 }] })).ok,
+    "a 4 x 6 block, with its slanted corners",
+  );
   refused(
     withEdges({ edge_water: [{ sheet: "edges", x: 0, y: 0, w: 4, h: 3 }] }),
-    /an edge tile's block is 4 by 4/,
+    /an edge tile's block is 4 by 4, or 4 by 6/,
     "a block of the wrong size",
   );
+  refused(withEdges({ edge_water: [{ sheet: "edges", x: 0, y: 0, w: 4, h: 5 }] }), /4 by 6/, "nor five rows");
   // A drawn pack has no edge tiles (their blocks are image sprites): left out and noted.
   const drawnEdges = parseTilePack({
     tilePackVersion: 1,
@@ -260,6 +267,23 @@ try {
   assert.equal(worldEdgeMask(inLake, 3, 3, 6, 6), 15, "its middle: all four");
   assert.equal(worldEdgeMask(inLake, 4, 3, 6, 6), 5, "its right side: the two cells to the left");
   assert.equal(worldEdgeMask(inLake, 0, 0, 6, 6), 0, "away from it: none");
+  // Slanted corners: a rectangle's corners stay rounded; a staircase's steps slant.
+  assert.equal(worldEdgeSlanted(inLake, 2, 2, 6, 6, 8), false, "a rectangle's outer corner stays rounded");
+  const stairs = (x: number, y: number) => x + y >= 6;
+  assert.equal(worldEdgeMask(stairs, 3, 3, 8, 8), 8, "(a step's outer corner)");
+  assert.equal(worldEdgeSlanted(stairs, 3, 3, 8, 8, 8), true, "a staircase's outer corner slants");
+  assert.equal(worldEdgeMask(stairs, 4, 3, 8, 8), 14, "(a step's inner corner)");
+  assert.equal(worldEdgeSlanted(stairs, 4, 3, 8, 8, 14), true, "and its inner corner");
+  const ell = (x: number, y: number) => x >= 3 || y >= 3;
+  assert.equal(worldEdgeMask(ell, 3, 3, 8, 8), 14, "(an L's inner corner)");
+  assert.equal(worldEdgeSlanted(ell, 3, 3, 8, 8, 14), false, "an L's inner corner stays rounded");
+  assert.equal(worldEdgeSlanted(stairs, 4, 4, 8, 8, 15), false, "only single cells and gaps slant");
+  // Every outer and inner corner has its own slanted piece on the block's last two rows.
+  assert.deepEqual(
+    [1, 2, 4, 8, 14, 13, 11, 7].map((mask) => WORLD_EDGE_SLANT_PIECE_BY_MASK[mask]),
+    [16, 17, 18, 19, 20, 21, 22, 23],
+  );
+  assert.equal(WORLD_EDGE_SLANT_PIECE_BY_MASK.filter((piece) => piece >= 0).length, 8);
   const sea = (x: number) => x === 0;
   assert.equal(
     worldEdgeMask((x) => sea(x), 0, 0, 6, 6),
@@ -294,6 +318,8 @@ try {
     "whole blocks only",
   );
   assert.deepEqual(worldWholeEdgeBlocks([holed]), [], "none whole");
+  const slanting = Array.from({ length: 24 }, () => piece);
+  assert.deepEqual(worldWholeEdgeBlocks([slanting, slanting.slice(0, 20)]), [slanting], "with its slants, or without");
   const there = worldRoadCells({ x: 1, y: 1 }, { x: 4, y: 4 }, () => false);
   const back = worldRoadCells({ x: 4, y: 4 }, { x: 1, y: 1 }, () => false);
   assert.deepEqual(back, [...there].reverse(), "a way and its way back lie on the same cells");

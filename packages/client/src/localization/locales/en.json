@@ -1144,6 +1144,7 @@
   "game.combat.event.move": "{{actor}} moves to ({{x}}, {{y}}).",
   "game.combat.event.prepare": "{{actor}} prepares an action.",
   "game.combat.event.resisted": "(Resisted)",
+  "game.combat.event.round": "Round {{round}}",
   "game.combat.event.roundEffect": "{{actor}}: {{effect}} → {{target}} ({{amount}} HP).",
   "game.combat.event.statusCast": "{{actor}} casts {{skill}} on {{target}}, applying {{effect}}.",
   "game.combat.event.statusContinues": "{{actor}}: {{effect}} continues.",

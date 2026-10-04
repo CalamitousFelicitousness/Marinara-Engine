@@ -153,4 +153,29 @@ const fight = (order: string[], party = ["hero"], enemies = ["foe"]): TacticalCo
   assert.deepEqual([acted("foe"), acted("ally")], [true, false]);
 }
 
+// A unit whose turn comes while it cannot act (frozen) loses its guard all the same: the turn came.
+{
+  const director = createCombatDirector({
+    id: "enc-frozen",
+    anchor: "anchor",
+    party: [unit("hero"), unit("ally")],
+    enemies: [unit("foe", "enemy", 1)],
+    style: "tactical",
+    gm: false,
+    difficulty: "normal",
+    seed: 3,
+    turnOrder: "initiative",
+  });
+  const ally = () => director.tactical!.units.find((u) => u.id === "ally")!;
+  for (let step = 0; director.actorId !== "ally" && step < 6; step++)
+    commandCombatDirector(director, { type: "tactical", action: { type: "wait", unitId: director.actorId! } });
+  commandCombatDirector(director, { type: "tactical", action: { type: "defend", unitId: "ally" } });
+  assert.equal(ally().defending, true);
+  ally().statusEffects = [{ name: "frozen", stat: "speed", modifier: 0, turnsLeft: 3 }];
+  for (let step = 0; director.tactical!.round < 3 && step < 12; step++)
+    commandCombatDirector(director, { type: "tactical", action: { type: "wait", unitId: director.actorId! } });
+  assert.equal(ally().statusEffects.length > 0, true, "still frozen");
+  assert.equal(ally().defending, false, "the guard dropped at the turn it could not take");
+}
+
 console.log("Combat initiative: a seeded order, one unit at a time, rounds that tick once, in both fights.");

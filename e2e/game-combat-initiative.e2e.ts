@@ -163,3 +163,70 @@ for (const turnOrder of ["initiative", "side"] as const) {
     }
   });
 }
+
+test("a fight by initiative plays out the turns taken before the party's first", async ({
+  page,
+  request,
+}, testInfo) => {
+  test.setTimeout(120_000);
+  let chatId: string | undefined;
+  try {
+    const created = await request.post("/api/game/create", {
+      data: {
+        name: "Turns opening",
+        setupConfig: {
+          genre: "Fantasy",
+          setting: "A ruined gate",
+          tone: "Adventure",
+          difficulty: "normal",
+          playerGoals: "Hold the gate",
+          gmMode: "standalone",
+          rating: "sfw",
+          partyCharacterIds: [],
+          combatStyle: "tactical",
+          tacticalBattlefield: { seed: 1, size: "small" },
+          tacticalTurnOrder: "initiative",
+        },
+      },
+    });
+    expect(created.ok(), await created.text()).toBeTruthy();
+    chatId = (await created.json()).sessionChat.id as string;
+    const message = await request.post(`/api/chats/${chatId}/messages`, {
+      data: { role: "assistant", content: "The raider charges the gate. [state: combat]" },
+    });
+    expect(message.ok(), await message.text()).toBeTruthy();
+    // No saved board: the screen starts the fight itself, as a GM's [combat] does.
+    const patched = await request.patch(`/api/chats/${chatId}/metadata`, {
+      data: {
+        gameSessionStatus: "active",
+        gameIntroPresented: true,
+        gameActiveState: "combat",
+        gameImageAutoGenerationEnabled: false,
+        gameStoryboardAutoIllustrationsEnabled: false,
+        gameCombatStyle: "tactical",
+        gameCombatState: {
+          party,
+          // A raider this fast rolls ahead of everybody whatever the dice: a d20 plus a fifth of 100.
+          enemies: [{ ...enemies[0], speed: 100 }],
+          startMessageId: (await message.json()).id,
+          combatStyle: "tactical",
+          sceneEnvironmentType: "ruins",
+          formation: "line",
+        },
+      },
+    });
+    expect(patched.ok(), await patched.text()).toBeTruthy();
+    const started = page.waitForResponse((response) => response.url().endsWith("/api/game/combat/tactical/start"));
+    await openGame(page, chatId, testInfo);
+    const body = await (await started).json();
+    expect(body.state.initiative.order[0]).toBe("turn-raider");
+    expect(body.opening?.events.length).toBeGreaterThan(0);
+    const battle = page.locator('[data-component="TacticalCombatUI"]');
+    // The raider's turn is played on the board, then it is a party unit's.
+    await expect(battle.getByText("Resolving")).toBeVisible({ timeout: 40_000 });
+    await expect(battle.getByText("Resolving")).toHaveCount(0, { timeout: 20_000 });
+    await expect(battle.getByText(/^Turn (Scout|Guard)'s turn$/)).toBeVisible();
+  } finally {
+    if (chatId) await request.delete(`/api/chats/${chatId}?force=true`).catch(() => undefined);
+  }
+});

@@ -4,7 +4,7 @@ This guide explains combat in Marinara Engine Game Mode. Choose **Classic** menu
 
 ## Tactical battles and terrain
 
-Tactical combat places your party and enemies on a battlefield. Select a party unit, inspect its movement range, choose a destination and action, then confirm. Each party unit can act before the enemy phase. Attack forecasts show expected consequences before you commit.
+Tactical combat places your party and enemies on a battlefield. Select a party unit, inspect its movement range, choose a destination and action, then confirm. Units take their turns by initiative or by side, as described below. Attack forecasts show expected consequences before you commit.
 
 When creating a Tactical game, optional battlefield settings let you choose a seed, a size and terrain guidance for the GM. Leave the seed blank for a generated seed. A seed is a whole number from 0 to 4294967295, including zero. It reproduces the board when the encounter's combatants, terrain brief and other generation inputs are the same; it does not force the GM to generate the same story or enemies.
 

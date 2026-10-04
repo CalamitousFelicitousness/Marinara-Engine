@@ -354,6 +354,7 @@ import type {
   HudWidget,
   Combatant,
   TacticalCombatState,
+  TacticalEvent,
   TacticalAction,
   StoryboardAnimationSuitability,
 } from "@marinara-engine/shared";
@@ -10559,6 +10560,11 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       log: z.array(z.record(z.unknown())).max(2000),
       difficulty: z.string(),
       outcome: z.enum(["victory", "defeat", "fled"]).optional(),
+      // The order a fight by initiative takes turns in (combat C6c): ids, at most one a unit.
+      initiative: z
+        .object({ order: z.array(z.string().min(1).max(200)).max(40) })
+        .strict()
+        .optional(),
     })
     .passthrough();
 
@@ -10622,6 +10628,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       parsed.data.environment;
 
     let state: TacticalCombatState;
+    let opening: { before: TacticalCombatState; events: TacticalEvent[] } | undefined;
     try {
       state = createTacticalCombat(party as unknown as Combatant[], enemies as unknown as Combatant[], {
         seed: preferences.seed,
@@ -10644,8 +10651,14 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
           ? { turnOrder: "initiative" as const }
           : {}),
       });
-      // By initiative everybody before the first unit the player commands takes their turn at once.
-      if (state.initiative) state = runInitiativeTurns(state).state;
+      // By initiative everybody before the first unit the player commands takes their turn at once, and
+      // the screen is sent those turns to play out from the board as it was laid out.
+      if (state.initiative) {
+        const before = state;
+        const turns = runInitiativeTurns(state);
+        state = turns.state;
+        if (turns.events.length > 0) opening = { before, events: turns.events };
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unable to generate the requested battlefield.";
       logger.warn(err, "Tactical battlefield generation failed for chat %s", chatId);
@@ -10661,7 +10674,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       preferences.seed,
     );
 
-    return { state };
+    return { state, ...(opening ? { opening } : {}) };
   });
 
   // ── POST /game/combat/tactical/action ──

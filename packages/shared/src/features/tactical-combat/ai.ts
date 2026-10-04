@@ -278,7 +278,12 @@ export function runInitiativeTurns(state: TacticalCombatState): {
       tickRound(next, events);
       if (checkTerminal(next, events)) break;
       next.round += 1;
-      events.push({ kind: "phase", text: `Round ${next.round}`, phase: "player" });
+      events.push({
+        kind: "phase",
+        text: `Round ${next.round}`,
+        phase: "player",
+        message: { key: "game.combat.event.round", params: { round: next.round } },
+      });
       continue;
     }
     const leaderId = aliveUnits(next, "party")[0]?.id;

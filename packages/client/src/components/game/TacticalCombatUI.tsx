@@ -287,6 +287,15 @@ export function TacticalCombatUI({
   const { data: manifest } = useGameAssetManifest();
   const assets = manifest?.assets ?? null;
   const startMut = useTacticalCombatStart();
+  const playEventsRef = useRef<
+    | ((
+        events: TacticalEvent[],
+        finalState: TacticalCombatState,
+        preState: TacticalCombatState,
+        onSettled?: (final: TacticalCombatState) => void,
+      ) => void)
+    | null
+  >(null);
   const actionMut = useTacticalCombatAction();
   const updateMeta = useUpdateChatMetadata();
 
@@ -403,12 +412,23 @@ export function TacticalCombatUI({
           if (isCancelled()) return;
           // Engine does NOT set isPlayer — the client marks the persona's combatant.
           const playerId = playerCombatantId ?? party[0]?.id ?? null;
-          const marked: TacticalCombatState = {
-            ...res.state,
-            units: res.state.units.map((u) =>
+          const mark = (from: TacticalCombatState): TacticalCombatState => ({
+            ...from,
+            units: from.units.map((u) =>
               u.side === "party" && (playerId ? u.id === playerId : false) ? { ...u, isPlayer: true } : u,
             ),
-          };
+          });
+          const marked = mark(res.state);
+          // By initiative, whoever rolled ahead of the party has already gone: play those turns out from
+          // the board as it was laid out, then settle on the fight as it stands.
+          if (res.opening) {
+            const before = mark(res.opening.before);
+            setState(before);
+            setStarting(false);
+            playSfx(SFX.start);
+            playEventsRef.current?.(res.opening.events, marked, before, (final) => onBattlefieldReady?.(final));
+            return;
+          }
           setState(marked);
           setStarting(false);
           persistSnapshot(marked);
@@ -621,7 +641,10 @@ export function TacticalCombatUI({
         }
         case "phase": {
           const tone: PhaseBanner["tone"] = ev.phase === "enemy" || /enemy/i.test(ev.text) ? "enemy" : "player";
-          setBanner({ text: ev.text, tone });
+          setBanner({
+            text: ev.message ? localizeUi(ev.message.key, { ...ev.message.params, defaultValue: ev.text }) : ev.text,
+            tone,
+          });
           break;
         }
         case "damage":
@@ -797,6 +820,9 @@ export function TacticalCombatUI({
   );
 
   // ── Reset transient UI selection ──
+  // Read by launchBattle, which is made before the player of events is.
+  playEventsRef.current = playEvents;
+
   const resetSelection = useCallback(() => {
     setUi({ kind: "idle" });
     setStagedMove(null);
@@ -1436,7 +1462,13 @@ export function TacticalCombatUI({
               const isSel = selectedUnitId === unit.id;
               const isTarget = ui.kind === "target" && targetIds.has(unit.id);
               const isForecastTarget = forecastTargetId === unit.id;
-              const ready = !isSel && isPlayerPhase && unit.side === "party" && !unit.hasActed && !unit.hasMoved;
+              const ready =
+                !isSel &&
+                isPlayerPhase &&
+                unit.side === "party" &&
+                !unit.hasActed &&
+                !unit.hasMoved &&
+                (!liveState.initiative || unit.id === currentActor?.id);
               return (
                 <UnitToken
                   key={unit.id}

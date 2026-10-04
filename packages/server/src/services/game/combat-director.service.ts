@@ -1025,7 +1025,12 @@ export function advanceCombatDirector(s: CombatDirectorState) {
     }
     const u = get(s, task.unitId);
     if (!u || !canAct(u)) {
-      if (task.kind === "activate" && u && s.tactical) (u as TacticalUnit).hasActed = true;
+      if (task.kind === "activate" && u && s.tactical) {
+        (u as TacticalUnit).hasActed = true;
+        // Its turn came and went: a guard lasts until its holder's own turn, taken or not (combat C6c).
+        (u as TacticalUnit).defending = false;
+        s.defending = s.defending.filter((id) => id !== u.id);
+      }
       continue;
     }
     if (task.kind === "activate") {

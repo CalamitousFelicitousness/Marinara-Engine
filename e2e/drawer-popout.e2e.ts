@@ -3,6 +3,7 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { seedUIState } from "./ui-state-fixture.js";
+import { resetChatView } from "./chat-settings-tools.js";
 
 type Box = { x: number; y: number; width: number; height: number };
 type SavedLayout = { windows?: Record<string, unknown>; detached?: string[] } | null | undefined;
@@ -171,7 +172,7 @@ test.describe("Pop-out drawers on desktop", () => {
       await expect(popped).toHaveAttribute("data-locked", "true");
       await popped.locator('[data-window-control="lock"]').click();
 
-      // Closing puts it back in Chat Settings and focus on its pop-out button.
+      // Put back (beside X) returns it to Chat Settings and focus to its pop-out button.
       await popped.getByRole("button", { name: "Put back in Chat Settings", exact: true }).click();
       await expect(popped).toHaveCount(0);
       const docked = settings.locator('[data-drawer="chat-name"]');
@@ -182,10 +183,102 @@ test.describe("Pop-out drawers on desktop", () => {
       await docked.getByRole("button", { name: "Open Chat Name in its own window", exact: true }).click();
       await expect(popped).toBeVisible();
       await expect.poll(async () => (await readSavedLayout(request, chat.id))?.detached).toEqual([CHAT_NAME_WINDOW]);
-      await settings.getByRole("button", { name: "Reset View", exact: true }).click();
+      await resetChatView(page);
       await expect(popped).toHaveCount(0);
       await expect(settings.locator('[data-drawer="chat-name"]')).toBeVisible();
       await expect.poll(() => readSavedLayout(request, chat.id)).toBeNull();
+    } finally {
+      await request.delete(`/api/chats/${chat.id}?force=true`);
+    }
+  });
+
+  test("a popped-out section minimizes to a button with its icon, and only Put back docks it", async ({
+    page,
+    request,
+  }) => {
+    const chat = await createChat(request);
+    try {
+      await prepare(page, chat.id);
+      await page.goto("/");
+      await expect(page.locator('[data-chat-mode="roleplay"]')).toBeVisible({ timeout: 30_000 });
+      const settings = await openSettingsWindow(page);
+      await settings
+        .locator('[data-drawer="chat-name"]')
+        .getByRole("button", { name: "Open Chat Name in its own window", exact: true })
+        .click();
+      const popped = page.locator(`.mari-window[data-window="${CHAT_NAME_WINDOW}"]`);
+      const bubble = page.locator(`.mari-window-bubble[data-window="${CHAT_NAME_WINDOW}"]`);
+      await settle(popped);
+      // Put back sits just left of X.
+      const controls = await popped
+        .locator("[data-window-control]")
+        .evaluateAll((elements) => elements.map((element) => element.getAttribute("data-window-control")));
+      expect(controls).toEqual(["minimize", "pin", "lock", "put-back", "close"]);
+      await expect(popped.locator('[data-window-control="put-back"]')).toHaveAttribute(
+        "title",
+        "Put back in Chat Settings",
+      );
+      const titleBar = popped.locator(".mari-window__title");
+      await drag(page, centre(await box(titleBar)), { x: centre(await box(titleBar)).x - 140, y: 420 });
+      const left = await box(popped);
+
+      // X minimizes it to a button showing the section's icon alone; it stays out of Chat Settings.
+      await popped.locator('[data-window-control="close"]').click();
+      await expect(popped).toHaveCount(0);
+      await expect(bubble).toBeVisible();
+      await expect(bubble).toHaveAccessibleName("Open Chat Name");
+      await expect(bubble.locator("svg")).toHaveCount(1);
+      await expect(bubble).toBeFocused();
+      await expect(settings.locator('[data-drawer="chat-name"]')).toHaveCount(0);
+      await page.screenshot({ path: test.info().outputPath("drawer-bubble.png"), animations: "disabled" });
+
+      // The button moves on its own; clicking it reopens the window exactly where it was left.
+      const start = await box(bubble);
+      await drag(page, centre(start), { x: centre(start).x - 200, y: centre(start).y + 300 });
+      const moved = await box(bubble);
+      expect(moved.x).toBeLessThan(start.x - 150);
+      await bubble.click();
+      await settle(popped);
+      expectSameBox(await box(popped), left, "reopened where it was left");
+
+      // Unpinned, a press elsewhere or Escape only minimizes it again; it never goes back on its own.
+      await popped.locator('[data-window-control="pin"]').click();
+      await expect(popped).toHaveAttribute("data-pinned", "false");
+      await page.locator("[data-chat-scroll]").click({ position: { x: 40, y: 200 } });
+      await expect(popped).toHaveCount(0);
+      await expect(bubble).toBeVisible();
+      await expect.poll(async () => (await readSavedLayout(request, chat.id))?.detached).toEqual([CHAT_NAME_WINDOW]);
+      await bubble.click();
+      await settle(popped);
+      await popped.locator(".mari-window__title").click();
+      await page.keyboard.press("Escape");
+      await expect(popped).toHaveCount(0);
+      await expect(bubble).toBeVisible();
+      // Closing Chat Settings leaves it out too.
+      await openSettingsWindow(page);
+      await settings.getByRole("button", { name: "Close chat settings", exact: true }).click();
+      await expect(bubble).toBeVisible();
+
+      // Window, button and minimized state save with the chat and survive a reload.
+      await expect
+        .poll(async () => {
+          const saved = (await readSavedLayout(request, chat.id))?.windows?.[CHAT_NAME_WINDOW] as
+            (Box & { minimized?: boolean; bubble?: { x: number; y: number } }) | undefined;
+          return saved ? [saved.minimized, saved.bubble, Math.round(saved.x), Math.round(saved.y)] : null;
+        })
+        .toEqual([true, { x: moved.x, y: moved.y }, Math.round(left.x), Math.round(left.y)]);
+      await page.reload();
+      await expect(page.locator('[data-chat-mode="roleplay"]')).toBeVisible({ timeout: 30_000 });
+      await expect(bubble).toBeVisible();
+      expectSameBox(await box(bubble), moved, "button after reload");
+
+      // Put back returns it to Chat Settings.
+      await bubble.click();
+      await settle(popped);
+      await popped.getByRole("button", { name: "Put back in Chat Settings", exact: true }).click();
+      await expect(popped).toHaveCount(0);
+      await expect(bubble).toHaveCount(0);
+      await expect.poll(async () => (await readSavedLayout(request, chat.id))?.detached ?? []).toEqual([]);
     } finally {
       await request.delete(`/api/chats/${chat.id}?force=true`);
     }
@@ -270,7 +363,7 @@ test.describe("Pop-out drawers on desktop", () => {
       await expect(popped).toBeVisible();
       await expect(popped.getByText("Harbor market", { exact: true })).toBeVisible();
 
-      // Closing it puts it back; turning the Trackers window on shows it there.
+      // Put back returns it; turning the Trackers window on shows it there.
       await popped.getByRole("button", { name: "Put back in Trackers", exact: true }).click();
       await expect(popped).toHaveCount(0);
       await expect(trackerWindow).toHaveCount(0);
@@ -398,7 +491,7 @@ test.describe("Pop-out drawers on desktop", () => {
       await expect(settings).toHaveAttribute("data-pinned", "true");
 
       // Reset View puts everything back; applying the saved profile brings its layout back.
-      await settings.getByRole("button", { name: "Reset View", exact: true }).click();
+      await resetChatView(page);
       await expect(popped).toHaveCount(0);
       await expect(settings).toHaveAttribute("data-pinned", "false");
       await expect.poll(() => readSavedLayout(request, chat.id)).toBeNull();

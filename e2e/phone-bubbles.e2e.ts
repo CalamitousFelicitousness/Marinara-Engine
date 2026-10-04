@@ -289,7 +289,7 @@ test.describe("phone bubbles", () => {
     }
   });
 
-  test("the Tracker Panel switch shows a bubble that opens the phone Tracker Panel", async ({
+  test("the Tracker Panel dice shows a bubble that opens the phone Tracker Panel", async ({
     page,
     request,
   }, testInfo) => {
@@ -298,7 +298,7 @@ test.describe("phone bubbles", () => {
       activeAgentIds: ["world-state", "persona-stats"],
     });
     try {
-      await prepare(page, chat.id, { trackerPanelEnabled: true, trackerPanelOpen: false });
+      await prepare(page, chat.id, { trackerPanelEnabled: false, trackerPanelOpen: false });
       await page.goto("/");
       await expect(page.locator('[data-chat-mode="roleplay"]')).toBeVisible({ timeout: 30_000 });
       const trackerBubble = page.locator('.mari-window-bubble[data-tracker-panel-toggle="bubble"]');
@@ -308,10 +308,9 @@ test.describe("phone bubbles", () => {
       await expect(page.getByRole("button", { name: "World State" })).toBeVisible();
 
       const settings = await openSettingsSheet(page);
-      const toggle = settings.locator('[data-tracker-panel-toggle="chat-settings"]');
-      const trackerSwitch = toggle.getByRole("checkbox", { name: "Tracker Panel", exact: true });
-      await toggle.getByText("Tracker Panel", { exact: true }).click();
-      await expect(trackerSwitch).toBeChecked();
+      const dice = settings.getByRole("button", { name: "Tracker Panel", exact: true });
+      await dice.click();
+      await expect(dice).toHaveAttribute("aria-pressed", "true");
       // Switching it on leaves the panel closed: it waits behind its bubble.
       await settings.locator('[data-window-control="close"]').click();
       await expect(trackerBubble).toBeVisible();
@@ -337,9 +336,10 @@ test.describe("phone bubbles", () => {
 
       // Switching it off removes the bubble.
       const reopened = await openSettingsSheet(page);
-      const reopenedToggle = reopened.locator('[data-tracker-panel-toggle="chat-settings"]');
-      await expect(reopenedToggle.getByRole("checkbox", { name: "Tracker Panel", exact: true })).toBeChecked();
-      await reopenedToggle.getByText("Tracker Panel", { exact: true }).click();
+      const reopenedDice = reopened.getByRole("button", { name: "Tracker Panel", exact: true });
+      await expect(reopenedDice).toHaveAttribute("aria-pressed", "true");
+      await reopenedDice.click();
+      await expect(reopenedDice).toHaveAttribute("aria-pressed", "false");
       await reopened.locator('[data-window-control="close"]').click();
       await expect(trackerBubble).toHaveCount(0);
     } finally {

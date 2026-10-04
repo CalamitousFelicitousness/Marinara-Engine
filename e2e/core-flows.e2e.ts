@@ -60,21 +60,16 @@ function collectUnexpectedErrors(page: Page) {
 
 /** Check a sidebar's header help: named after the sidebar, right after its title, its own text on screen, closable. */
 /**
- * The switch in Chat Settings shows the Tracker Panel (#7036); on a phone it shows the panel's bubble,
- * which opens it (#7034).
+ * The dice in the Chat Settings title bar turns the Tracker Panel on and shows it (#7034); on a phone it
+ * shows the panel's bubble, which opens it.
  */
 async function showTrackerPanel(page: Page, testInfo: TestInfo) {
   await page.locator('[data-component="TopBar"]').getByRole("button", { name: "Chat Settings", exact: true }).click();
   const settingsWindow = page.locator('[data-window="chat-settings"]');
-  const trackerSwitch = settingsWindow
-    .locator('[data-tracker-panel-toggle="chat-settings"]')
-    .getByRole("checkbox", { name: "Tracker Panel", exact: true });
-  await expect(trackerSwitch).not.toBeChecked();
-  await settingsWindow
-    .locator('[data-tracker-panel-toggle="chat-settings"]')
-    .getByText("Tracker Panel", { exact: true })
-    .click();
-  await expect(trackerSwitch).toBeChecked();
+  const dice = settingsWindow.locator('[data-tracker-panel-toggle="chat-settings"]');
+  await expect(dice).toHaveAttribute("aria-pressed", "false");
+  await dice.click();
+  await expect(dice).toHaveAttribute("aria-pressed", "true");
   await settingsWindow.getByRole("button", { name: "Close chat settings", exact: true }).click();
   await expect(settingsWindow).toHaveCount(0);
   if (testInfo.project.name.includes("mobile")) {

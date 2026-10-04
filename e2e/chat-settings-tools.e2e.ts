@@ -147,15 +147,17 @@ test("chat tools live in Chat Settings in every mode and their top buttons are g
       });
       expect(nextAfterName).toBe(`${chat.mode}-chat-branches`);
 
-      // Chat Summary under Lorebooks, Active Context under Chat Summary, Author's Notes under Agents.
+      // Chat Summary under Lorebooks, Active Context under Chat Summary, then Agents, Agent activity (its own
+      // section) and Author's Notes.
       const lorebooks = settings.locator('[data-chat-settings-section="lorebooks"]');
       const activeContext = chatSettingsDrawer(page, "active-context");
       const gallery = chatSettingsDrawer(page, "gallery");
       if (chat.mode === "roleplay") {
         const summary = chatSettingsDrawer(page, "chat-summary");
         const agents = chatSettingsDrawer(page, "agents");
+        const activity = chatSettingsDrawer(page, "agent-activity");
         const notes = chatSettingsDrawer(page, "author-notes");
-        const order = await tops([lorebooks, summary, activeContext, agents, notes, gallery]);
+        const order = await tops([lorebooks, summary, activeContext, agents, activity, notes, gallery]);
         expect(order, "roleplay drawer order").toEqual([...order].sort((a, b) => a - b));
       } else {
         await expect(chatSettingsDrawer(page, "chat-summary")).toHaveCount(0);
@@ -177,9 +179,8 @@ test("chat tools live in Chat Settings in every mode and their top buttons are g
           await expect(body.getByRole("textbox", { name: "Author's Notes", exact: true })).toBeVisible();
         }
         if (tool === "agent-activity") {
-          await expect(chatSettingsDrawer(page, "agents").locator(":scope > .mari-drawer__body")).toContainText(
-            "Agent activity",
-          );
+          // Not nested in Agents any more.
+          await expect(chatSettingsDrawer(page, "agents").locator("[data-drawer$='-agent-activity']")).toHaveCount(0);
           await expect(body).toContainText("No agent activity yet");
         }
         if (tool === "gallery") {

@@ -4,7 +4,7 @@
 import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { seedUIState } from "./ui-state-fixture.js";
-import { openChatSettings } from "./chat-settings-tools.js";
+import { openChatSettings, resetChatView } from "./chat-settings-tools.js";
 
 const APP_VERSION = (
   JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }
@@ -221,8 +221,8 @@ test.describe("chat control windows on desktop", () => {
       await page.screenshot({ path: testInfo.outputPath("game-controls-window.png"), animations: "disabled" });
 
       // Reset View puts every bubble back in its row, minimized.
-      const settings = await openChatSettings(page);
-      await settings.locator('[data-chat-help="reset-view"]').click();
+      await openChatSettings(page);
+      await resetChatView(page);
       for (const id of ids) await expect(bubble(page, id)).toBeVisible();
       const reset = await box(bubble(page, GAME_CONTROLS));
       expect(Math.abs(reset.y - row[0]!.y)).toBeLessThanOrEqual(1);

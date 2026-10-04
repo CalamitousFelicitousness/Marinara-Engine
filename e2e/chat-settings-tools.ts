@@ -26,7 +26,7 @@ async function expand(drawer: Locator) {
   await expect(header).toHaveAttribute("aria-expanded", "true");
 }
 
-/** The drawer for a chat tool in Chat Settings (its id starts with the chat mode). */
+/** The drawer for a chat tool in Chat Settings (its id starts with the chat mode). Agent activity sits below Agents. */
 export function chatSettingsDrawer(page: Page, tool: ChatSettingsTool | "agents") {
   return chatSettingsWindow(page).locator(`[data-drawer$="-${tool}"]`).first();
 }
@@ -34,8 +34,6 @@ export function chatSettingsDrawer(page: Page, tool: ChatSettingsTool | "agents"
 /** Opens Chat Settings, expands a chat tool's drawer and returns it. */
 export async function openChatSettingsTool(page: Page, tool: ChatSettingsTool): Promise<Locator> {
   await openChatSettings(page);
-  // Agent activity is a section inside the Agents drawer.
-  if (tool === "agent-activity") await expand(chatSettingsDrawer(page, "agents"));
   const drawer = chatSettingsDrawer(page, tool);
   await drawer.scrollIntoViewIfNeeded();
   await expand(drawer);
@@ -48,6 +46,14 @@ export async function openChatMessageSearch(page: Page): Promise<Locator> {
   const search = settings.locator("[data-chat-message-search]");
   await expect(search).toBeVisible();
   return search;
+}
+
+/** Reset View: the icon in the Chat Settings title bar, then Reset in its confirmation. */
+export async function resetChatView(page: Page) {
+  await chatSettingsWindow(page).locator('[data-chat-settings-control="reset-view"]').click();
+  const dialog = page.getByRole("dialog", { name: "Are you sure you want to reset the view?" });
+  await dialog.getByRole("button", { name: "Reset", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
 }
 
 /** Closes Chat Settings with its own close control (a pinned window closes too). */

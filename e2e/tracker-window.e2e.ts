@@ -3,6 +3,7 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { seedUIState } from "./ui-state-fixture.js";
+import { resetChatView } from "./chat-settings-tools.js";
 
 const APP_VERSION = (
   JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }
@@ -109,9 +110,12 @@ test.describe("Roleplay trackers on desktop", () => {
       await header.click();
       await expect(section).toHaveCount(0);
 
-      // Chat Settings offers the Tracker Panel switch, not the Tracker window one.
+      // Chat Settings offers the Tracker Panel dice (on here), not the Tracker window switch.
       const settings = await openChatSettings(page);
-      await expect(settings.locator('[data-tracker-panel-toggle="chat-settings"]')).toBeVisible();
+      await expect(settings.locator('[data-tracker-panel-toggle="chat-settings"]')).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
       await expect(settings.locator('[data-tracker-window-toggle="chat-settings"]')).toHaveCount(0);
     } finally {
       await request.delete(`/api/chats/${chat.id}?force=true`);
@@ -196,7 +200,7 @@ test.describe("Roleplay trackers on desktop", () => {
       await trackerWindow.getByRole("button", { name: "Close Trackers", exact: true }).click();
       await expect(trackerWindow).toHaveCount(0);
       await expect(windowSwitch).not.toBeChecked();
-      await settings.getByRole("button", { name: "Reset View", exact: true }).click();
+      await resetChatView(page);
       await expect(trackerWindow).toBeVisible();
       await expect(trackerWindow).toHaveAttribute("data-pinned", "true");
     } finally {

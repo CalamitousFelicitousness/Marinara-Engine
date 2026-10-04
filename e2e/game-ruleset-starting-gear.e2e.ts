@@ -125,7 +125,14 @@ test("starting gear is taken into the bag on the player's word, with its choices
     await dialog.getByRole("radio", { name: "A hand axe", exact: true }).check();
     await dialog.getByRole("radio", { name: "A second weapon", exact: true }).check();
     await expect(take).toBeDisabled();
-    await dialog.getByRole("combobox", { name: "Pick one", exact: true }).selectOption({ label: "Boar spear" });
+    const pick = dialog.getByRole("combobox", { name: "Pick one", exact: true });
+    await pick.selectOption({ label: "Boar spear" });
+    // Another option's lists are its own: switching away and back clears the pick.
+    await dialog.getByRole("radio", { name: "A leather coat", exact: true }).check();
+    await dialog.getByRole("radio", { name: "A second weapon", exact: true }).check();
+    await expect(pick).toHaveValue("");
+    await expect(take).toBeDisabled();
+    await pick.selectOption({ label: "Boar spear" });
     // What it weighs, against what the player can still carry.
     await expect(dialog.getByText(/^Weighs 6\.05; .* can carry 12 more\.$/)).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath("starting-gear-dialog.png") });

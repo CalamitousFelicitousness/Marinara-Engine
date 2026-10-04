@@ -206,6 +206,18 @@ export function StartingGearPicker({
     </label>
   );
 
+  // Gear for any character follows the gear this sheet fits; with none that fits, it follows the rest.
+  const anyoneSection = anyone.length > 0 && (
+    <fieldset className="space-y-1.5">
+      <legend className={labelClass}>
+        {fitting.length > 0 || others.length > 0
+          ? t("game.ruleset.startingGear.anyone")
+          : t("game.ruleset.startingGear.all")}
+      </legend>
+      {anyone.map(renderGear)}
+    </fieldset>
+  );
+
   return (
     <Modal
       open={open}
@@ -247,16 +259,7 @@ export function StartingGearPicker({
               {fitting.map(renderGear)}
             </fieldset>
           )}
-          {anyone.length > 0 && (
-            <fieldset className="space-y-1.5">
-              <legend className={labelClass}>
-                {fitting.length > 0 || others.length > 0
-                  ? t("game.ruleset.startingGear.anyone")
-                  : t("game.ruleset.startingGear.all")}
-              </legend>
-              {anyone.map(renderGear)}
-            </fieldset>
-          )}
+          {fitting.length > 0 && anyoneSection}
           {others.length > 0 && (
             <fieldset className="space-y-1.5">
               <legend className={labelClass}>
@@ -270,6 +273,7 @@ export function StartingGearPicker({
               {others.map(renderGear)}
             </fieldset>
           )}
+          {fitting.length === 0 && anyoneSection}
 
           {chosen && (
             <div className="space-y-3 rounded-lg border border-[var(--border)] p-2">

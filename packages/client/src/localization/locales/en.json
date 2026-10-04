@@ -621,6 +621,7 @@
   "chat.settings.resetViewConfirm.message": "Every window and section goes back to its default place for this chat.",
   "chat.settings.resetViewConfirm.title": "Are you sure you want to reset the view?",
   "chat.settings.resetViewHelp": "Put every window and section back where it started.",
+  "chat.settings.searchMessagesHelp": "Search for messages in the chat history, bookmarks, or removed messages.",
   "chat.settings.summary": "Chat Summary",
   "chat.settings.summaryHelp": "Review or create summaries of this chat.",
   "chat.settings.toolLoading": "Loading…",

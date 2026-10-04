@@ -5186,7 +5186,7 @@ export function ChatSettingsDrawer({
               id={`${chatMode}-message-search`}
               label={localizeUi("chat.toolbar.searchMessages")}
               icon={<Search size="0.875rem" />}
-              initialOpen
+              help={localizeUi("chat.settings.searchMessagesHelp")}
               style={{ order: CHAT_SETTINGS_ORDER.search }}
               contentClassName="pt-0"
             >

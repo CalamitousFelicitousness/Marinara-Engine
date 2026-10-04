@@ -130,6 +130,17 @@ test("chat tools live in Chat Settings in every mode and their top buttons are g
       if (chat.mode === "game") {
         await expect(search).toHaveCount(0);
       } else {
+        const searchDrawer = chatSettingsDrawer(page, "message-search");
+        const toggle = searchDrawer.locator(":scope > .mari-drawer__header [data-drawer-toggle]");
+        await expect(toggle).toHaveAttribute("aria-expanded", "false");
+        await expect(search).toHaveCount(0);
+        const help = searchDrawer.getByRole("button", { name: "Show help", exact: true });
+        await help.click();
+        await expect(
+          page.getByText("Search for messages in the chat history, bookmarks, or removed messages.", { exact: true }),
+        ).toBeVisible();
+        await help.press("Escape");
+        await openChatSettingsTool(page, "message-search");
         await expect(search.getByRole("searchbox", { name: "Search messages in this chat" })).toBeVisible();
         const [searchTop, nameTop] = await tops([search, chatName]);
         expect(searchTop, `${chat.mode}: Search sits above Chat Name`).toBeLessThan(nameTop!);

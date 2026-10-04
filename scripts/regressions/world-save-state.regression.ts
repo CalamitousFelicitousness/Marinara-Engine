@@ -491,6 +491,11 @@ try {
     "an imported session keeps its checkpoint",
   );
   assert.deepEqual((await get(second, "world")).world, asMade.world, "the new session's world");
+  // A branch of it starts from the same living world.
+  const secondBranch = await app.inject({ method: "POST", url: `/api/chats/${second}/branch`, payload: {} });
+  assert.equal(secondBranch.statusCode, 200, secondBranch.body);
+  const secondBranchId = (secondBranch.json().id ?? secondBranch.json().chat?.id) as string;
+  assert.equal((await snapshots.getFold(secondBranchId))?.present.day, 20, "a branch keeps the checkpoint");
 
   // A branch, and an export imported again, too.
   const branched = await app.inject({ method: "POST", url: `/api/chats/${chatId}/branch`, payload: {} });

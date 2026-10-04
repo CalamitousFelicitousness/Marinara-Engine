@@ -14417,6 +14417,19 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
           const allChars = await charStore.list();
           const illustrationCharacterAssets = emptyIllustrationCharacterAssetMaps();
           await addCharacterRowsIllustrationAssets(illustrationCharacterAssets, allChars, characterGallery);
+          // #7053: the chat persona is a visible participant like any character,
+          // but only character rows were loaded here, so the persona never
+          // reached `charDescriptionByName` and produced no appearance line at
+          // all — with or without an override. Mirrors buildStoryboardCharacterContext.
+          const illustrationPersonaId = chat.personaId || readTrimmedString(setupCfg?.personaId);
+          if (illustrationPersonaId) {
+            try {
+              const persona = await charStore.getPersona(illustrationPersonaId);
+              await addPersonaIllustrationAssets(illustrationCharacterAssets, persona, personaGallery);
+            } catch {
+              /* skip unresolvable persona */
+            }
+          }
           const { charReferenceByName, charReferenceSourceByName, charAvatarByName, charDescriptionByName } =
             illustrationCharacterAssets;
 

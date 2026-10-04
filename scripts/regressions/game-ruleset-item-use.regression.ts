@@ -998,6 +998,32 @@ try {
       truly: "Balm",
     });
     assert.deepEqual(ada(used.state).itemsUsed, { 0: 1 });
+    // Offered exactly as a real poultice is, even when what it truly is harms: aimed at an ally, and
+    // the harm lands on whoever it was pressed on.
+    const acid: RulesetCatalogItem = {
+      ...poultice,
+      use: { kind: "attack", budget: "act", range: 0, amount: { flat: 2 }, damageType: "acid", consumes: true },
+    };
+    const real = optionOf(ember, fight(ember, [held(poultice, "Poultice", false, 2)], hurt), "use:0");
+    const harmful = fight(ember, [fakeOf(acid, "Acid")], hurt);
+    const seen = optionOf(ember, harmful, "use:0");
+    assert.deepEqual(
+      [seen?.label, seen?.targets, seen?.budget, seen?.heals],
+      [real?.label, real?.targets, real?.budget, real?.heals],
+    );
+    const burned = take(ember, harmful, "use:0", ["ada"], 3);
+    assert.equal(
+      burned.events.some((event) => event.type === "heal"),
+      false,
+    );
+    assert.ok(
+      burned.events.some((event) => event.type === "damage" && event.targetId === "ada"),
+      JSON.stringify(burned.events),
+    );
+    // A true use whose save reads a stat its item does not give is a save against nothing: spent for nothing.
+    const blank: RulesetCatalogItem = { ...acid, use: { ...acid.use!, saveDifficulty: { stat: "missing" } } };
+    const unread = take(ember, fight(ember, [fakeOf(blank, "Blank acid")], hurt), "use:0", ["ada"], 3);
+    assert.equal(firstOf(unread.events, "fake").dud, true);
     const dud = take(ember, fight(ember, [fakeOf(waystone, "Waystone")], hurt), "use:0", ["ada"], 3);
     assert.deepEqual(firstOf(dud.events, "fake"), {
       type: "fake",

@@ -53,6 +53,7 @@ import {
   rulesetMovementAllowance,
   rulesetSaveMode,
   rulesetCombatHide,
+  rulesetActionAsUsed,
   rulesetImmuneToCondition,
   writeRulesetSheet,
   type RulesetConditionModifier,
@@ -1442,8 +1443,9 @@ export function applyRulesetCombatChoice(
       resume,
     ) || openAimed(ctx, resume, action.label, action.catalog);
   if (!held) {
-    harmedBy(ctx, working, action, resume, () =>
-      resolveAction(ctx, working, action, workingTargets, choice.payWith, undefined, styleId, spend),
+    const used = rulesetActionAsUsed(action);
+    harmedBy(ctx, working, used, resume, () =>
+      resolveAction(ctx, working, used, workingTargets, choice.payWith, undefined, styleId, spend),
     );
   }
   noteOutcome(ctx);
@@ -2087,7 +2089,9 @@ function openAimed(
 
 function resumeAction(ctx: RulesetCombatContext, resume: RulesetActionResume): void {
   const actor = rulesetCombatant(ctx.state, resume.actorId);
-  const own = actor?.actions.find((entry) => entry.id === resume.optionId);
+  const found = actor?.actions.find((entry) => entry.id === resume.optionId);
+  // A fake does what it truly does (1.74).
+  const own = found && rulesetActionAsUsed(found);
   // Picked up in the mode it was made in.
   const action = own && resume.mode ? (rulesetModedAction(ctx.definition, own, resume.mode) ?? own) : own;
   if (!actor || !action) return;

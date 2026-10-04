@@ -1200,7 +1200,9 @@ try {
         .map((line) => [line.name, line.quantity]),
       [["Poultice", 3]],
     );
-    // The Classic round: the leader's use is the fake's, and a second use in the same round the real one's.
+    // The Classic round, sent as the screen sends it: every member's order among the party's, the
+    // leader's last and again as its own command. The uses come out of the stacks in that order, once
+    // each: Bram's out of the fake, the leader's out of a real one.
     const answer = await app.inject({
       method: "POST",
       url: "/game/combat/round",
@@ -1210,7 +1212,10 @@ try {
         combatants: [fighter("hero", "player"), fighter("bram", "player"), fighter("rat", "enemy")],
         controlledId: "hero",
         playerAction: { type: "item", itemId: "Poultice", targetId: "hero" },
-        partyActions: { bram: { type: "item", itemId: "Poultice", targetId: "bram" } },
+        partyActions: {
+          bram: { type: "item", itemId: "Poultice", targetId: "bram" },
+          hero: { type: "item", itemId: "Poultice", targetId: "hero" },
+        },
       },
     });
     assert.equal(answer.statusCode, 200, answer.body);
@@ -1218,10 +1223,28 @@ try {
       answer.json().result.actions as Array<{ attackerId: string; skillName?: string; note?: string; isHeal?: boolean }>
     ).filter((action) => action.skillName === "Poultice");
     assert.match(
-      uses.find((action) => action.attackerId === "hero")?.note ?? "",
+      uses.find((action) => action.attackerId === "bram")?.note ?? "",
       /really Waystone, and it did nothing/,
     );
-    assert.equal(uses.find((action) => action.attackerId === "bram")?.isHeal, true, JSON.stringify(uses));
+    assert.equal(uses.find((action) => action.attackerId === "hero")?.isHeal, true, JSON.stringify(uses));
+    // Without the party's orders, the leader's command is the round's one use, out of the fake.
+    const alone = await app.inject({
+      method: "POST",
+      url: "/game/combat/round",
+      payload: {
+        chatId: game.chatId,
+        round: 1,
+        combatants: [fighter("hero", "player"), fighter("rat", "enemy")],
+        playerAction: { type: "item", itemId: "Poultice", targetId: "hero" },
+      },
+    });
+    assert.equal(alone.statusCode, 200, alone.body);
+    assert.match(
+      (alone.json().result.actions as Array<{ skillName?: string; note?: string }>).find(
+        (action) => action.skillName === "Poultice",
+      )?.note ?? "",
+      /really Waystone/,
+    );
 
     // The combat director, Classic and Tactical: Ada's use comes out of the fake, the log says what it
     // was, and the fake is what was spent.

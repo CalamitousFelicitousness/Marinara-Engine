@@ -370,9 +370,10 @@ export interface RulesetCombatAction {
    *  it spends of it: one off the stack, or some of its charges. */
   itemUse?: {
     item: number;
-    /** A fake used (Capability API 1.74): its true name, and whether its true item has no use, so the
+    /** A fake used (Capability API 1.74): its true name, and what its true item does in place of what
+     *  the action says (`rulesetActionAsUsed`), or `dud` where it does nothing a fight can use, so the
      *  use is spent for nothing. The fight says what it really was once it is spent. */
-    fake?: { name: string; dud?: true };
+    fake?: { name: string; dud?: true; does?: Partial<RulesetCombatAction> };
     consumes?: true;
     charges?: { cost: number; max: number; breaksOn?: { die: number; atMost: number } };
     /** Its `gate`, read off the user's sheet as the fight began: what is rolled (a skill's id when it

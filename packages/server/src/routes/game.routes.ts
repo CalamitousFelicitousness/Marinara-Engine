@@ -10410,15 +10410,20 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       // Who uses each item, for the check a gated one asks first: the leader for the player's own
       // command, as the round gives it to them, and each party member for theirs.
       const leader = controlledId ?? combatants.find((c) => c.hp > 0 && c.side === "player")?.id;
-      const users = new Map<object, string | undefined>([
-        ...(playerAction?.type === "item" ? [[playerAction, leader] as const] : []),
-        ...Object.entries(partyActions ?? {}).map(([id, action]) => [action, id] as const),
-      ]);
+      // Each member's order once, in the order the screen spends them: the party's orders as sent, then
+      // the leader's own command, unless it is the same use as the leader's order among them (the screen
+      // sends both).
+      const own = partyActions?.[leader ?? ""];
+      const twice = own?.type === "item" && playerAction?.type === "item" && own.itemId === playerAction.itemId;
+      const orders = [
+        ...Object.entries(partyActions ?? {}).map(([id, action]) => ({ action, user: id as string | undefined })),
+        ...(playerAction && !twice ? [{ action: playerAction, user: leader }] : []),
+      ].filter(({ action }) => action.type === "item");
       // A use that comes out of a fake does what the fake truly does (1.74): the round's uses of a line
       // come out of its stacks one after another, as the screen spends them.
       const uses = await loadGameFightUseEffects(app.db, meta);
       const spent = new Map<string, number>();
-      for (const action of itemActions) {
+      for (const { action, user } of orders) {
         const line = fight.lines.find(
           (entry) => gameInventoryNameKey(entry.name) === gameInventoryNameKey(action.itemId ?? ""),
         );
@@ -10428,13 +10433,16 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         );
         if (!worked) continue;
         // ponytail: one that holds charges spends them from whichever stack has enough, not in this order,
-        // so a fake's charges do what they seem. Upgrade: spend charges in take order too.
+        // so a fake's charges do what they seem; and an order whose member falls before acting is not spent
+        // by the screen, so later uses of its line in that round read one stack on. Upgrade: work the
+        // effect out as each use resolves.
         const nth = spent.get(line.name) ?? 0;
         if (worked.consumes !== false) spent.set(line.name, nth + 1);
         const does = uses && !worked.charges ? uses.effectOf(line.ownName ?? line.name, worked, nth) : worked;
-        const who = combatants.find((c) => c.id === users.get(action))?.name ?? "";
+        const who = combatants.find((c) => c.id === user)?.name ?? "";
         const gate = line.item ? await rollGameFightItemGate(app.db, chatId, who, line.item) : null;
         action.itemEffect = gate && !gate.success ? { ...does, failed: gate.line } : does;
+        if (twice && action === own && playerAction) playerAction.itemEffect = action.itemEffect;
       }
     }
     const difficulty = normalizeGameDifficulty((meta.gameSetupConfig as Record<string, unknown>)?.difficulty);

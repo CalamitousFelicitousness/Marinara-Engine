@@ -751,38 +751,25 @@ function itemUseActions(
       held.name ??
       definition.items?.categories.find((category) => category.id === item.category)?.label ??
       item.category;
-    // A fake (1.74) is offered as what it passes for, and spent as that is; what it does is what it
-    // truly does, aimed and timed as offered. One whose true item has no use is spent for nothing.
-    const doer = held.truly?.item.use ? held.truly.item : item;
-    const does = doer.use!;
-    const doerAim =
-      doer === item
-        ? aim
-        : does.toHit
-          ? itemToHit(definition, build, evaluated, doer, does.toHit, pooled)
-          : { toHit: 0 };
-    const doerDifficulty = doer === item ? difficulty : whole(itemAttackValue(doer, does.saveDifficulty));
-    const { budget: _budget, targets: _targets, ...truly } = does;
-    const aimed = {
-      ...truly,
-      ...(use.budget !== undefined ? { budget: use.budget } : {}),
-      ...(use.targets !== undefined ? { targets: use.targets } : {}),
-    };
-    const action = mechanicsAction(definition, doer === item ? use : aimed, {
+    const action = mechanicsAction(definition, use, {
       id: `use:${index}`,
       kind: "item",
       label,
       budget: use.budget ?? "",
-      toHit: doerAim.toHit,
-      ...(doerDifficulty !== undefined ? { saveDifficulty: doerDifficulty } : {}),
+      toHit: aim.toHit,
+      ...(difficulty !== undefined ? { saveDifficulty: difficulty } : {}),
       build,
       evaluated,
       perCell,
     });
     if (!action) return;
-    if (doerAim.target !== undefined) action.target = doerAim.target;
-    const restored = amountOf(does.restore?.amount);
-    if (does.restore && restored) action.restore = { pool: does.restore.pool, amount: restored };
+    if (aim.target !== undefined) action.target = aim.target;
+    const restored = amountOf(use.restore?.amount);
+    if (use.restore && restored) action.restore = { pool: use.restore.pool, amount: restored };
+    // A fake (1.74) is offered as what it passes for, aimed, timed and spent as that is, so nothing on
+    // the menu tells them apart; what it does is what it truly does. One whose true item does nothing a
+    // fight can use is spent for nothing.
+    const real = held.truly ? fakeUseAction(definition, held.truly.item, build, evaluated, perCell, pooled) : null;
     // A gate read off a stat the item does not give is a check against nothing, as a save's is.
     const gateDifficulty = use.gate ? rulesetItemGateDifficulty(item, use.gate) : undefined;
     if (use.gate && gateDifficulty === undefined) return;
@@ -792,7 +779,7 @@ function itemUseActions(
         : null;
     action.itemUse = {
       item: index,
-      ...(held.truly ? { fake: { name: held.truly.name, ...(doer === item ? { dud: true as const } : {}) } } : {}),
+      ...(held.truly ? { fake: { name: held.truly.name, ...(real ? { does: real } : { dud: true as const }) } } : {}),
       ...(use.consumes ? { consumes: true as const } : {}),
       ...(use.charges !== undefined && max !== undefined
         ? {
@@ -817,6 +804,69 @@ function itemUseActions(
     actions.push(action);
   });
   return actions;
+}
+
+/** What one use does, as an action holds it: the parts a fake takes from what it truly is (1.74). */
+export const RULESET_FAKE_EFFECT_KEYS = [
+  "toHit",
+  "target",
+  "autoHit",
+  "damage",
+  "heal",
+  "temporary",
+  "restore",
+  "save",
+  "saveDifficulty",
+  "applies",
+  "concentration",
+] as const satisfies ReadonlyArray<keyof RulesetCombatAction>;
+
+/** The action a use resolves as: for a fake (1.74), the one offered with what it truly does in place
+ *  of what it seemed to, so the menu, the forecast and the aim stay what the real thing's are. */
+export function rulesetActionAsUsed(action: RulesetCombatAction): RulesetCombatAction {
+  const does = action.itemUse?.fake?.does;
+  if (!does) return action;
+  const used: RulesetCombatAction = { ...action };
+  for (const key of RULESET_FAKE_EFFECT_KEYS) delete used[key];
+  return { ...used, ...does };
+}
+
+/** What a fake's use truly does: its true item's use, read off that item, as the parts of an action
+ *  in `RULESET_FAKE_EFFECT_KEYS`; null where it does nothing a fight can use (no use, one no menu holds, or a
+ *  save whose number reads a stat the item does not give). */
+function fakeUseAction(
+  definition: RulesetDefinition,
+  item: RulesetCatalogItem,
+  build: RulesetSheetBuild,
+  evaluated: EvaluatedRulesetSheet,
+  perCell: number | undefined,
+  pooled: boolean,
+): Partial<RulesetCombatAction> | null {
+  const use = item.use;
+  if (!use) return null;
+  const read = itemAttackValue(item, use.saveDifficulty);
+  const difficulty = typeof read === "number" && Number.isFinite(read) ? Math.trunc(read) : undefined;
+  if (use.saveDifficulty !== undefined && difficulty === undefined) return null;
+  const aim = use.toHit ? itemToHit(definition, build, evaluated, item, use.toHit, pooled) : { toHit: 0 };
+  const action = mechanicsAction(definition, use, {
+    id: "fake",
+    kind: "item",
+    label: "",
+    budget: "",
+    toHit: aim.toHit,
+    ...(difficulty !== undefined ? { saveDifficulty: difficulty } : {}),
+    build,
+    evaluated,
+    perCell,
+  });
+  if (!action) return null;
+  if (aim.target !== undefined) action.target = aim.target;
+  const restored = amountOf(use.restore?.amount);
+  if (use.restore && restored) action.restore = { pool: use.restore.pool, amount: restored };
+  const does: Partial<RulesetCombatAction> = {};
+  for (const key of RULESET_FAKE_EFFECT_KEYS)
+    if (action[key] !== undefined) Object.assign(does, { [key]: action[key] });
+  return does;
 }
 
 /**

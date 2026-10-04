@@ -81,7 +81,8 @@ export function useChatWindowLayout(chat: Chat | null | undefined) {
       if (
         state.layouts === previous.layouts &&
         state.detached === previous.detached &&
-        state.phoneBubbles === previous.phoneBubbles
+        state.phoneBubbles === previous.phoneBubbles &&
+        state.bubbles === previous.bubbles
       ) {
         return;
       }

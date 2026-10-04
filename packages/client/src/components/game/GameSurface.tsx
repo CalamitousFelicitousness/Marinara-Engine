@@ -12408,9 +12408,8 @@ function GameSurfaceComponent({
                 {/* Top-left: Map + Party portraits side by side, clear of a phone's row of control bubbles */}
                 <div
                   className={cn(
-                    "pointer-events-auto absolute left-3 z-20 flex min-w-0 items-start gap-2 md:right-auto",
-                    // 8px margin plus 44px per bubble: Game controls, Session, Volume, Assets (and the connected chat).
-                    onSwitchChat ? "right-[228px]" : "right-[184px]",
+                    // On a phone it stops short of the Chat Settings button centred at the top of the chat.
+                    "pointer-events-auto absolute left-3 right-[calc(50%+1.625rem)] z-20 flex min-w-0 items-start gap-2 md:right-auto",
                     tacticalCombatActive ? "top-14" : topOverlayOffsetClass,
                     replayActive && "hidden",
                     // The package draws its own header and party bar, so the built-in ones would collide.

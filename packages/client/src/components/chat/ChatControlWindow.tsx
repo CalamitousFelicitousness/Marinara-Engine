@@ -14,6 +14,7 @@ import { NEUTRAL_PANEL_SCROLL_AREA, NEUTRAL_SURFACE_VARIABLES } from "../ui/neut
 import { useMatchMedia } from "../../hooks/use-match-media";
 import {
   WINDOW_BUBBLE_SIZE_PX,
+  getBubbleRowSlot,
   getPhoneBubbleSlot,
   placeWindowBesideBubble,
   type WindowBounds,
@@ -54,10 +55,7 @@ export function getChatControlDefaultLayout(
       ? readCssPixels(area.chatRoot, TRACKER_CLEARANCE_VARIABLE)
       : 0;
   const right = Math.min(bounds.right - trackerClearance, area.right);
-  const bubble = {
-    x: right - WINDOW_BUBBLE_SIZE_PX - slot * (WINDOW_BUBBLE_SIZE_PX + BUBBLE_ROW_GAP_PX),
-    y: bounds.top,
-  };
+  const bubble = getBubbleRowSlot(bounds, slot, { right, size: WINDOW_BUBBLE_SIZE_PX, gap: BUBBLE_ROW_GAP_PX });
   const geometry = placeWindowBesideBubble(size, bubble, bounds, { minWidth: 1, minHeight: 1 });
   return { ...geometry, pinned: false, locked: false, minimized: true, bubble };
 }

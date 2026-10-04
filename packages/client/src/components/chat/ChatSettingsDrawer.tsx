@@ -985,8 +985,6 @@ export function ChatSettingsDrawer({
   const trackerPanelClearance = useTrackerPanelClearance(!phoneLayout);
   const setTrackerPanelOpen = useUIStore((s) => s.setTrackerPanelOpen);
   const setTrackerPanelEnabled = useUIStore((s) => s.setTrackerPanelEnabled);
-  const moveTipDismissed = useUIStore((s) => s.chatSettingsMoveTipDismissed);
-  const dismissMoveTip = useUIStore((s) => s.dismissChatSettingsMoveTip);
   const trackerWindowOpen = useUIStore((s) => s.trackerWindowOpen);
   const setTrackerWindowOpen = useUIStore((s) => s.setTrackerWindowOpen);
   const resetView = useFloatingWindowStore((s) => s.resetView);
@@ -4964,33 +4962,6 @@ export function ChatSettingsDrawer({
       )}
     </>
   );
-  // A one-time tip beside the title on a computer, in Roleplay chats, until it is dismissed.
-  const moveTip =
-    windowOpen && !phoneLayout && isRoleplayMode && !moveTipDismissed ? (
-      <span
-        role="note"
-        data-chat-settings-move-tip
-        data-window-no-drag
-        // Presses go through the tip to the window below it; only its close button takes them.
-        className="pointer-events-none absolute left-0 top-[calc(100%+0.625rem)] z-20 flex w-60 items-start gap-2 rounded-lg bg-[var(--popover)] py-2 pl-3 pr-1.5 text-left text-[0.6875rem] font-normal leading-relaxed text-[var(--popover-foreground)] shadow-xl ring-1 ring-[var(--border)]"
-      >
-        <span
-          aria-hidden="true"
-          className="absolute -top-1 left-4 h-2 w-2 rotate-45 bg-[var(--popover)] ring-1 ring-[var(--border)] [clip-path:polygon(0_0,100%_0,0_100%)]"
-        />
-        <span className="min-w-0 flex-1">{localizeUi("chat.settings.moveTip")}</span>
-        <button
-          type="button"
-          aria-label={localizeUi("chat.settings.moveTipDismiss")}
-          title={localizeUi("chat.settings.moveTipDismiss")}
-          onClick={dismissMoveTip}
-          className="mari-window__control pointer-events-auto !h-6 !w-6 shrink-0"
-        >
-          <X size="0.75rem" />
-        </button>
-      </span>
-    ) : null;
-
   return (
     <>
       <FloatingWindow
@@ -5001,14 +4972,7 @@ export function ChatSettingsDrawer({
         presentation={phoneLayout ? "sheet" : "window"}
         title={localizeUi("chat.toolbar.settings")}
         titleIcon={<Settings2 size="0.8125rem" className="shrink-0 text-[var(--muted-foreground)]" />}
-        titleAccessory={
-          helpLayoutButton || moveTip ? (
-            <span className="relative inline-flex">
-              {helpLayoutButton}
-              {moveTip}
-            </span>
-          ) : null
-        }
+        titleAccessory={helpLayoutButton}
         headerControls={headerControls}
         closeLabel={localizeUi("ui.chat.chatsettingsdrawer.closeChatSettings")}
         {...windowProps}

@@ -68,15 +68,32 @@ export function clampWindowBubble(
   };
 }
 
+/** The Chat Settings button's default place: centred at the top of the chat area. */
+export function getCentredBubblePoint(bounds: WindowBounds, size: number): WindowPoint {
+  return { x: Math.round((bounds.left + bounds.right - size) / 2), y: bounds.top };
+}
+
 /**
- * A phone bubble's default place: a row along the top of the chat, where its toolbar and menu buttons
- * were, `slot` 0 at the right edge (like the computer's row).
+ * A row of bubbles from `right` leftwards along the top, `slot` 0 at the right edge, wrapping to the
+ * next row before it reaches the Chat Settings button in the middle.
  */
-export function getPhoneBubbleSlot(bounds: WindowBounds, slot: number): WindowPoint {
+export function getBubbleRowSlot(
+  bounds: WindowBounds,
+  slot: number,
+  { right = bounds.right, size, gap }: { right?: number; size: number; gap: number },
+): WindowPoint {
+  const step = size + gap;
+  const centre = getCentredBubblePoint(bounds, size);
+  const perRow = Math.max(1, Math.floor((right - (centre.x + size + PHONE_BUBBLE_GAP_PX) + gap) / step));
   return {
-    x: bounds.right - PHONE_BUBBLE_SIZE_PX - slot * (PHONE_BUBBLE_SIZE_PX + PHONE_BUBBLE_GAP_PX),
-    y: bounds.top,
+    x: right - size - (slot % perRow) * step,
+    y: bounds.top + Math.floor(slot / perRow) * step,
   };
+}
+
+/** A phone bubble's default place: a row along the top of the chat, where its toolbar and menu buttons were. */
+export function getPhoneBubbleSlot(bounds: WindowBounds, slot: number): WindowPoint {
+  return getBubbleRowSlot(bounds, slot, { size: PHONE_BUBBLE_SIZE_PX, gap: PHONE_BUBBLE_GAP_PX });
 }
 
 /** Saved with each chat (`chat.metadata.windowLayout`) and in chat settings profiles. */
@@ -87,6 +104,8 @@ export interface WindowLayoutSnapshot {
   detached?: FloatingWindowId[];
   /** Where each bubble sits on a phone, apart from the computer's places. Older snapshots have none. */
   phoneBubbles?: Record<FloatingWindowId, WindowPoint>;
+  /** Buttons with no window layout of their own (the Chat Settings button) on a computer. Older snapshots have none. */
+  bubbles?: Record<FloatingWindowId, WindowPoint>;
 }
 
 /** The area a window may occupy, with the margin already applied. */
@@ -213,7 +232,13 @@ function readStoredPoint(value: unknown): WindowPoint | null {
 export function parseWindowLayoutSnapshot(raw: unknown): WindowLayoutSnapshot {
   const empty: WindowLayoutSnapshot = { version: FLOATING_WINDOW_LAYOUT_VERSION, windows: {} };
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return empty;
-  const source = raw as { version?: unknown; windows?: unknown; detached?: unknown; phoneBubbles?: unknown };
+  const source = raw as {
+    version?: unknown;
+    windows?: unknown;
+    detached?: unknown;
+    phoneBubbles?: unknown;
+    bubbles?: unknown;
+  };
   if (source.version !== FLOATING_WINDOW_LAYOUT_VERSION) return empty;
   if (!source.windows || typeof source.windows !== "object" || Array.isArray(source.windows)) return empty;
   const windows: Record<FloatingWindowId, WindowLayout> = {};
@@ -229,14 +254,22 @@ export function parseWindowLayoutSnapshot(raw: unknown): WindowLayoutSnapshot {
           isStoredWindowId(id) && id.startsWith(DRAWER_WINDOW_PREFIX) && !!windows[id] && list.indexOf(id) === index,
       )
     : [];
-  const phoneBubbles: Record<FloatingWindowId, WindowPoint> = {};
-  if (source.phoneBubbles && typeof source.phoneBubbles === "object" && !Array.isArray(source.phoneBubbles)) {
-    for (const [id, value] of Object.entries(source.phoneBubbles as Record<string, unknown>)) {
-      const point = isStoredWindowId(id) ? readStoredPoint(value) : null;
-      if (point) phoneBubbles[id] = point;
-    }
+  return toWindowLayoutSnapshot(
+    windows,
+    detached,
+    readStoredPoints(source.phoneBubbles),
+    readStoredPoints(source.bubbles),
+  );
+}
+
+function readStoredPoints(value: unknown): Record<FloatingWindowId, WindowPoint> {
+  const points: Record<FloatingWindowId, WindowPoint> = {};
+  if (!value || typeof value !== "object" || Array.isArray(value)) return points;
+  for (const [id, entry] of Object.entries(value as Record<string, unknown>)) {
+    const point = isStoredWindowId(id) ? readStoredPoint(entry) : null;
+    if (point) points[id] = point;
   }
-  return toWindowLayoutSnapshot(windows, detached, phoneBubbles);
+  return points;
 }
 
 function isStoredWindowId(id: unknown): id is FloatingWindowId {
@@ -247,10 +280,12 @@ export function toWindowLayoutSnapshot(
   windows: Record<FloatingWindowId, WindowLayout>,
   detached: FloatingWindowId[] = [],
   phoneBubbles: Record<FloatingWindowId, WindowPoint> = {},
+  bubbles: Record<FloatingWindowId, WindowPoint> = {},
 ): WindowLayoutSnapshot {
   const snapshot: WindowLayoutSnapshot = { version: FLOATING_WINDOW_LAYOUT_VERSION, windows };
   if (detached.length > 0) snapshot.detached = detached;
   if (Object.keys(phoneBubbles).length > 0) snapshot.phoneBubbles = phoneBubbles;
+  if (Object.keys(bubbles).length > 0) snapshot.bubbles = bubbles;
   return snapshot;
 }
 
@@ -259,7 +294,8 @@ export function isEmptyWindowLayoutSnapshot(snapshot: WindowLayoutSnapshot): boo
   return (
     Object.keys(snapshot.windows).length === 0 &&
     !snapshot.detached?.length &&
-    Object.keys(snapshot.phoneBubbles ?? {}).length === 0
+    Object.keys(snapshot.phoneBubbles ?? {}).length === 0 &&
+    Object.keys(snapshot.bubbles ?? {}).length === 0
   );
 }
 

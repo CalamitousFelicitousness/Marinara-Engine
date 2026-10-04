@@ -246,10 +246,12 @@ const HOME_FAQ_ITEMS: HomeFaqItem[] = [
     id: "chat-settings-location",
     category: "Core",
     question: "Where did Chat Settings, Gallery, and Active Context go?",
-    answer: "Inside chats, those live in the top toolbar as expandable windows instead of sidebars.",
+    answer:
+      "Inside a chat, open Chat Settings from its button, which starts at the top centre of the chat. Gallery, Active Context and the other chat tools are sections inside it.",
     bullets: [
-      "Conversation, Roleplay, and Game Mode share the same compact button style for these windows.",
-      "On mobile, the overflow menu groups buttons when the screen cannot fit them in one row.",
+      "Drag the Chat Settings button, or any other chat button, wherever you want it; each chat remembers where.",
+      "Any section can pop out into its own window, and closing that window shrinks it to a button.",
+      "On phones, the same buttons open their windows as full-width panels.",
     ],
   },
   {

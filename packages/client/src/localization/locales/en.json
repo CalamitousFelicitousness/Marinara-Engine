@@ -444,7 +444,7 @@
   "chat.help.targets.sceneMedia.title": "Scene media",
   "chat.help.targets.session.body": "Open session history, journal, and session controls.",
   "chat.help.targets.session.title": "Session",
-  "chat.help.targets.settings.body": "Open settings for this chat.",
+  "chat.help.targets.settings.body": "Open settings for this chat. Drag the button to move it.",
   "chat.help.targets.settings.title": "Chat Settings",
   "chat.help.targets.trackerPanel.title": "Tracker Panel",
   "chat.help.targets.trackerPanelBubble.body": "Open the Tracker Panel. Drag this button to move it.",

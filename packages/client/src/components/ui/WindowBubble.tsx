@@ -52,6 +52,13 @@ export interface WindowBubbleProps {
   icon: ReactNode;
   /** Names the window it opens. */
   label: string;
+  /** Replaces the "Open {label}" name and its drag hint (a button that toggles its window, say). */
+  ariaLabel?: string;
+  tooltip?: string;
+  /** Set for a button that toggles its window: whether the window is open. */
+  expanded?: boolean;
+  /** The id of text that describes the button (a status shown on it). */
+  describedBy?: string;
   zIndex: number;
   attributes?: Record<`data-${string}`, string | boolean | undefined>;
   /** The button, so its window can move focus to it. */
@@ -69,6 +76,10 @@ export function WindowBubble({
   size = WINDOW_BUBBLE_SIZE_PX,
   icon,
   label,
+  ariaLabel,
+  tooltip,
+  expanded,
+  describedBy,
   zIndex,
   attributes,
   buttonRef,
@@ -182,8 +193,10 @@ export function WindowBubble({
         {...attributes}
         className="mari-window-bubble fixed"
         style={{ left: placed.x, top: placed.y, zIndex }}
-        aria-label={t("window.bubble.label", { title: label })}
-        title={t("window.bubble.hint", { title: label })}
+        aria-label={ariaLabel ?? t("window.bubble.label", { title: label })}
+        aria-expanded={expanded}
+        aria-describedby={describedBy}
+        title={tooltip ?? t("window.bubble.hint", { title: label })}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}

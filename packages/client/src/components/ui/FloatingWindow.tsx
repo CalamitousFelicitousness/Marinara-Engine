@@ -134,9 +134,9 @@ export const PHONE_FULL_SHEET_CLASS =
   "bottom-[calc(0.75rem+var(--mari-safe-area-inset-bottom,env(safe-area-inset-bottom)))]";
 
 /**
- * The first free place for a new bubble: just left of the row of bubbles along the top (the chat's
- * control bubbles), a snapping gap away; otherwise the first free spot along the top rows from the
- * right edge. `except` is the bubble being placed.
+ * The first free place for a new bubble: in the row of bubbles along the top, just left of the
+ * rightmost run of them (the chat's control bubbles), a snapping gap away; otherwise the first free
+ * spot along the top rows from the right edge. `except` is the bubble being placed.
  */
 export function findFreeBubble(
   bounds: WindowBounds,
@@ -151,7 +151,12 @@ export function findFreeBubble(
     taken.every((rect) => rect.right <= x || rect.left >= x + size || rect.bottom <= y || rect.top >= y + size);
   const topRow = taken.filter((rect) => Math.abs(rect.top - bounds.top) <= 1);
   if (topRow.length > 0) {
-    const x = Math.min(...topRow.map((rect) => rect.left)) - gap - size;
+    let x = Math.max(...topRow.map((rect) => rect.left)) - gap - size;
+    while (x >= bounds.left && !free(x, bounds.top)) {
+      const blocking = topRow.find((rect) => rect.left < x + size && rect.right > x);
+      if (!blocking) break;
+      x = blocking.left - gap - size;
+    }
     if (free(x, bounds.top)) return { x, y: bounds.top };
   }
   for (let y = bounds.top; y + size <= bounds.bottom; y += size + gap) {
@@ -239,16 +244,27 @@ function sameBounds(left: WindowBounds, right: WindowBounds) {
 
 /** Phone bubble bounds, kept current through rotation, the keyboard and the message box growing. */
 export function usePhoneBubbleBounds(active: boolean): WindowBounds {
+  return useLiveBounds(readPhoneBubbleBounds, active);
+}
+
+/** Where a computer's buttons may sit (the chat area below the topbar), kept current. */
+export function useWindowBubbleBounds(active: boolean): WindowBounds {
+  return useLiveBounds(readFloatingWindowBounds, active);
+}
+
+function useLiveBounds(read: () => WindowBounds, active: boolean): WindowBounds {
   const [bounds, setBounds] = useState(() =>
-    typeof window === "undefined" ? { left: 0, top: 0, right: 390, bottom: 844 } : readPhoneBubbleBounds(),
+    typeof window === "undefined" ? { left: 0, top: 0, right: 390, bottom: 844 } : read(),
   );
+  const readRef = useRef(read);
+  readRef.current = read;
   useEffect(() => {
     if (!active) return;
     let frame = 0;
     const update = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
-        const next = readPhoneBubbleBounds();
+        const next = readRef.current();
         setBounds((current) => (sameBounds(current, next) ? current : next));
       });
     };

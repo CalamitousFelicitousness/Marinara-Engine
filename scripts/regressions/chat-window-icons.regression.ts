@@ -97,6 +97,13 @@ assert.match(headerControls, /data-chat-settings-control="reset-view"[\s\S]*<Rot
 record("RotateCcw", "Reset View");
 assert.match(headerControls, /data-chat-settings-control="tracker-panel"[\s\S]*<TrackerPanelIcon/u);
 record("TrackerPanelIcon", "Tracker Panel");
+// The Chat Settings button in the chat.
+assert.match(
+  read("packages/client/src/components/chat/ChatSettingsBubble.tsx"),
+  /<WindowBubble[\s\S]*?icon=\{<Settings2/u,
+  "the Chat Settings button shows the Chat Settings icon",
+);
+record("Settings2", "Chat Settings");
 // The phone Tracker Panel bubble is the same Tracker Panel.
 assert.match(
   read("packages/client/src/components/chat/TrackerPanelBubble.tsx"),

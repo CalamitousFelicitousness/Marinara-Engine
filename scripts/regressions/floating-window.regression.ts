@@ -20,6 +20,8 @@ import {
   serializeWindowLayoutSnapshot,
   toWindowLayoutSnapshot,
   clampWindowBubble,
+  getBubbleRowSlot,
+  getCentredBubblePoint,
   getPhoneBubbleSlot,
   placeWindowBesideBubble,
   PHONE_BUBBLE_SIZE_PX,
@@ -476,6 +478,10 @@ assert.equal(
 const phoneBounds = { left: 8, top: 64, right: 382, bottom: 700 };
 assert.deepEqual(getPhoneBubbleSlot(phoneBounds, 0), { x: 382 - PHONE_BUBBLE_SIZE_PX, y: 64 });
 assert.deepEqual(getPhoneBubbleSlot(phoneBounds, 2), { x: 382 - PHONE_BUBBLE_SIZE_PX - 2 * 44, y: 64 });
+// The Chat Settings button starts centred at the top; a row wraps below rather than run into it.
+assert.deepEqual(getCentredBubblePoint(phoneBounds, PHONE_BUBBLE_SIZE_PX), { x: 177, y: 64 });
+assert.deepEqual(getPhoneBubbleSlot(phoneBounds, 3), { x: 382 - PHONE_BUBBLE_SIZE_PX, y: 64 + 44 });
+assert.deepEqual(getBubbleRowSlot(bounds, 4, { size: 32, gap: 4 }), { x: 1432 - 32 - 4 * 36, y: 56 });
 // A phone bubble is larger, so it clamps further from the far edges.
 assert.deepEqual(clampWindowBubble({ x: 900, y: 900 }, phoneBounds, PHONE_BUBBLE_SIZE_PX), { x: 346, y: 664 });
 const withPhoneBubbles = parseWindowLayoutSnapshot({
@@ -512,8 +518,20 @@ phoneStore.detachDrawer(phoneDrawer, { x: 8, y: 64, width: 300, height: 300, pin
 phoneStore.savePhoneBubble(phoneDrawer, { x: 346, y: 152 });
 useFloatingWindowStore.getState().dockDrawer(phoneDrawer);
 assert.equal(useFloatingWindowStore.getState().phoneBubbles[phoneDrawer], undefined);
+// The Chat Settings button's place (a button with no window layout of its own) saves too.
+const withButton = parseWindowLayoutSnapshot({
+  version: FLOATING_WINDOW_LAYOUT_VERSION,
+  windows: {},
+  bubbles: { "chat-settings-button": { x: 400, y: 120 }, broken: { x: Number.NaN, y: 1 } },
+});
+assert.deepEqual(withButton.bubbles, { "chat-settings-button": { x: 400, y: 120 } });
+useFloatingWindowStore.getState().saveBubble("chat-settings-button", { x: 420, y: 130 });
+assert.deepEqual(selectWindowLayoutSnapshot(useFloatingWindowStore.getState()).bubbles, {
+  "chat-settings-button": { x: 420, y: 130 },
+});
 useFloatingWindowStore.getState().resetView();
 assert.deepEqual(useFloatingWindowStore.getState().phoneBubbles, {}, "Reset View puts phone bubbles back too");
+assert.deepEqual(useFloatingWindowStore.getState().bubbles, {}, "Reset View puts the Chat Settings button back");
 
 // The bubble draws with its theming hooks; the window keeps the header controls in order.
 const floatingWindowSource = read("packages/client/src/components/ui/FloatingWindow.tsx");

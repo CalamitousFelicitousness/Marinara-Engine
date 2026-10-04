@@ -75,3 +75,14 @@ export function imageTilePack(extra: Partial<ImageTilePack> = {}): ImageTilePack
     ...extra,
   };
 }
+
+/** The fixture's sheet, whole as a PNG (every chunk's CRC right) but with image data that does not
+ *  decode: only decoding it finds that out. */
+export function undecodablePng(): string {
+  const bytes = Buffer.from(imageTilePack().sheets[0]!.png.slice("data:image/png;base64,".length), "base64");
+  const idat = bytes.indexOf(Buffer.from("IDAT"));
+  const length = bytes.readUInt32BE(idat - 4);
+  bytes.fill(0x41, idat + 4, idat + 4 + length);
+  bytes.writeUInt32BE(crc32(bytes.subarray(idat, idat + 4 + length)), idat + 4 + length);
+  return pngDataUrl(bytes);
+}

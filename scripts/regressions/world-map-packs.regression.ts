@@ -28,7 +28,7 @@ import {
   worldKitFile,
   type TilePack,
 } from "../../packages/shared/src/index.js";
-import { imageTilePack } from "./fixtures/image-tile-pack.js";
+import { imageTilePack, undecodablePng } from "./fixtures/image-tile-pack.js";
 
 const dataDir = mkdtempSync(join(tmpdir(), "marinara-world-map-packs-"));
 process.env.DATA_DIR = dataDir;
@@ -178,6 +178,19 @@ const installed = [
     undefined,
     75,
   ),
+  // Whole as a PNG, but its pixels do not decode: refused where the Engine decodes sheets.
+  install(
+    "badimagetiles",
+    {
+      "kit.worldkit.json": text(worldKitFile(kit)),
+      "tiles.tilepack.json": text(
+        imageTilePack({ sheets: [{ ...imageTilePack().sheets[0]!, png: undecodablePng() }] }),
+      ),
+    },
+    { kit: "kit.worldkit.json", tiles: "tiles.tilepack.json" },
+    undefined,
+    75,
+  ),
   install(
     "oldimagetiles",
     { "kit.worldkit.json": text(worldKitFile(kit)), "tiles.tilepack.json": text(imageTilePack()) },
@@ -256,6 +269,11 @@ try {
   const imageTiles = await readMapPack("imagetiles");
   assert.ok(imageTiles?.ok && imageTiles.pack.tiles?.tilePackVersion === 2, JSON.stringify(imageTiles));
   assert.deepEqual(await readMapPack("imagetiles"), imageTiles, "read again from what was checked");
+  const badImageTiles = await readMapPack("badimagetiles");
+  assert.ok(
+    badImageTiles && !badImageTiles.ok && /does not decode/.test(badImageTiles.reason),
+    JSON.stringify(badImageTiles),
+  );
   const oldImageTiles = await readMapPack("oldimagetiles");
   assert.ok(
     oldImageTiles && !oldImageTiles.ok && /needs capabilityApi 1\.75/.test(oldImageTiles.reason),

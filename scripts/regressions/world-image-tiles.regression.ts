@@ -63,6 +63,21 @@ try {
     /after its end/,
   );
   assert.match((pngDataUrlCheck("data:image/png;base64,R0lGODlhAQABAAAAACw=") as { issue: string }).issue, /not a PNG/);
+  // Its header first: a whole PNG with a chunk before its header is refused.
+  const padded = pngBytes(192, 96, () => [0, 0, 0, 0], 8);
+  const ihdrAt = padded.indexOf(Buffer.from("IHDR")) - 4;
+  const textAt = padded.indexOf(Buffer.from("tEXt")) - 4;
+  const textEnd = padded.indexOf(Buffer.from("IDAT")) - 4;
+  const reordered = Buffer.concat([
+    padded.subarray(0, 8),
+    padded.subarray(textAt, textEnd),
+    padded.subarray(ihdrAt, textAt),
+    padded.subarray(textEnd),
+  ]);
+  assert.match(
+    (pngDataUrlCheck(pngDataUrl(reordered)) as { issue?: string } | null)?.issue ?? "",
+    /does not begin with its header/,
+  );
   const withSheet = (png: string, width = 192, height = 96) =>
     imageTilePack({ sheets: [{ id: "town", png, width, height }] });
   refused(withSheet(pngDataUrl(damaged)), /damaged/, "a damaged sheet");

@@ -40,9 +40,9 @@ You can also click the **Random** row (labeled **Dice pick**) to add one random 
 
 ## Managing members after creation
 
-You add, remove, and reorder characters from the **Chat Settings** drawer. Open it with the gear icon in the chat header. The gear tooltip reads **Chat Settings**.
+You add, remove, and reorder characters in **Chat Settings**. Open it with the **Chat Settings** button in the chat.
 
-Inside the drawer, find the **Characters** section. It shows a member count and the help text "Characters in this chat. Each character has their own personality that the AI roleplays as." Each member row has an avatar, the character name, a drag handle, an eye icon, and a trash icon.
+Inside Chat Settings, find the **Characters** section. It shows a member count and the help text "Characters in this chat. Each character has their own personality that the AI roleplays as." Each member row has an avatar, the character name, a drag handle, an eye icon, and a trash icon.
 
 - To add one more character, click **Add Character** and search for them.
 - To add a whole Folder, click **Add from Folder** and pick one.

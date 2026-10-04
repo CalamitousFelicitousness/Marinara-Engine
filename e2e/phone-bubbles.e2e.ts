@@ -88,8 +88,7 @@ async function readSavedLayout(request: APIRequestContext, chatId: string): Prom
 
 const bubble = (page: Page, id: string) => page.locator(`.mari-window-bubble[data-window="${id}"]`);
 const sheet = (page: Page, id: string) => page.locator(`.mari-window[data-window="${id}"]`);
-const topbarSettings = (page: Page) =>
-  page.locator('[data-component="TopBar"]').getByRole("button", { name: "Chat Settings", exact: true });
+const topbarSettings = (page: Page) => page.locator("[data-chat-settings-button]");
 
 async function box(locator: Locator): Promise<Box> {
   const value = await locator.boundingBox();
@@ -158,11 +157,12 @@ test.describe("phone bubbles", () => {
       await prepare(page, chat.id);
       await page.goto("/");
       await expect(page.locator('[data-chat-mode="roleplay"]')).toBeVisible({ timeout: 30_000 });
-      // The old "More options" menu is gone; Chat Settings sits in the middle of the topbar.
+      // The old "More options" menu is gone; the Chat Settings button sits centred at the top of the chat.
       await expect(page.getByRole("button", { name: "More options", exact: true })).toHaveCount(0);
-      const topbar = await box(page.locator('[data-component="TopBar"]'));
+      const area = await box(page.locator('[data-component="CenterContent"]'));
       const settingsButton = await box(topbarSettings(page));
-      expect(Math.abs(settingsButton.x + settingsButton.width / 2 - (topbar.x + topbar.width / 2))).toBeLessThan(2);
+      expect(Math.abs(settingsButton.x + settingsButton.width / 2 - (area.x + area.width / 2))).toBeLessThan(2);
+      await expect(topbarSettings(page)).toHaveAttribute("data-presentation", "sheet");
       await expect(bubble(page, CONNECTED)).toBeVisible();
       await expectComposerClearAndNoSideScroll(page);
 
@@ -359,22 +359,35 @@ test.describe("phone bubbles", () => {
       await expect(game).toBeVisible({ timeout: 30_000 });
       await expect(page.getByRole("button", { name: "Game actions", exact: true })).toHaveCount(0);
 
-      // A tidy row at the top right, where the menu button was, in the computer's order.
+      // A tidy row at the top right, where the menu button was, in the computer's order; it wraps to a
+      // second row rather than run into the Chat Settings button centred at the top.
       for (const id of GAME_CONTROLS) await expect(bubble(page, id)).toBeVisible();
       const row = await Promise.all(GAME_CONTROLS.map((id) => box(bubble(page, id))));
       const viewport = page.viewportSize()!;
-      for (const rect of row) {
-        expect(Math.abs(rect.y - row[0]!.y)).toBeLessThanOrEqual(1);
+      const settingsButton = await box(topbarSettings(page));
+      const rects = [...row, settingsButton];
+      for (const [index, rect] of rects.entries()) {
         expect(rect.x).toBeGreaterThanOrEqual(0);
         expect(rect.x + rect.width).toBeLessThanOrEqual(viewport.width);
+        for (const other of rects.slice(index + 1)) {
+          const apart =
+            rect.x + rect.width <= other.x ||
+            other.x + other.width <= rect.x ||
+            rect.y + rect.height <= other.y ||
+            other.y + other.height <= rect.y;
+          expect(apart, "bubbles never overlap").toBe(true);
+        }
       }
-      expect(row.map((rect) => rect.x)).toEqual([...row.map((rect) => rect.x)].sort((a, b) => a - b));
-      // The map stays clear of the row.
+      const connectedBox = row.at(-1)!;
+      expect(Math.abs(connectedBox.y - settingsButton.y)).toBeLessThanOrEqual(1);
+      expect(connectedBox.x).toBeGreaterThan(settingsButton.x);
+      for (const rect of row) expect([0, 44]).toContain(Math.round(rect.y - settingsButton.y));
+      // The map stays clear of the bubbles.
       const map = await box(game.locator('[data-tour="game-map"]').first());
-      expect(map.x + map.width).toBeLessThan(row[0]!.x);
+      for (const rect of rects) expect(map.x + map.width <= rect.x || map.y + map.height <= rect.y).toBe(true);
       await expectComposerClearAndNoSideScroll(page);
       const input = await box(game.getByPlaceholder("What do you do?"));
-      for (const rect of row) expect(rect.y + rect.height).toBeLessThan(input.y);
+      for (const rect of rects) expect(rect.y + rect.height).toBeLessThan(input.y);
       await page.screenshot({ path: testInfo.outputPath("game-bubbles.png"), animations: "disabled" });
 
       const opens: Array<[string, (window: Locator) => Locator]> = [

@@ -64,7 +64,7 @@ function collectUnexpectedErrors(page: Page) {
  * shows the panel's bubble, which opens it.
  */
 async function showTrackerPanel(page: Page, testInfo: TestInfo) {
-  await page.locator('[data-component="TopBar"]').getByRole("button", { name: "Chat Settings", exact: true }).click();
+  await page.locator("[data-chat-settings-button]").click();
   const settingsWindow = page.locator('[data-window="chat-settings"]');
   const dice = settingsWindow.locator('[data-tracker-panel-toggle="chat-settings"]');
   await expect(dice).toHaveAttribute("aria-pressed", "false");
@@ -9634,10 +9634,7 @@ test("chat Help overlay labels visible controls in every mode", async ({ page, r
     const openChatSettingsWindow = async () => {
       const settingsWindow = page.locator('[data-window="chat-settings"]');
       if (!(await settingsWindow.isVisible())) {
-        await page
-          .locator('[data-component="TopBar"]')
-          .getByRole("button", { name: "Chat Settings", exact: true })
-          .click();
+        await page.locator("[data-chat-settings-button]").click();
       }
       await expect(
         settingsWindow.locator(".mari-window__header").getByRole("button", { name: "Help", exact: true }),
@@ -9923,7 +9920,7 @@ test("chat Help can be hidden permanently from the overlay or App Behavior", asy
     await expect(page.locator('[data-chat-mode="conversation"]')).toBeVisible();
     const mobile = testInfo.project.name.includes("mobile");
     const settingsWindowHelp = page.locator('[data-window="chat-settings"] [data-chat-help="help"]');
-    await page.locator('[data-component="TopBar"]').getByRole("button", { name: "Chat Settings", exact: true }).click();
+    await page.locator("[data-chat-settings-button]").click();
     await expect(settingsWindowHelp).toBeVisible();
 
     await page.getByRole("button", { name: "Help", exact: true }).filter({ visible: true }).click();
@@ -9950,10 +9947,7 @@ test("chat Help can be hidden permanently from the overlay or App Behavior", asy
     // Help lives beside the Chat Settings title (#7034); a phone's Settings panel covers the chat and its button.
     if (!mobile) {
       // Pressing the setting is a press outside Chat Settings, which closed the window.
-      await page
-        .locator('[data-component="TopBar"]')
-        .getByRole("button", { name: "Chat Settings", exact: true })
-        .click();
+      await page.locator("[data-chat-settings-button]").click();
       await expect(settingsWindowHelp).toBeVisible();
     }
 

@@ -72,7 +72,7 @@ async function settle(window: Locator) {
 }
 
 async function openSettingsWindow(page: Page) {
-  await page.locator('[data-component="TopBar"]').getByRole("button", { name: "Chat Settings", exact: true }).click();
+  await page.locator("[data-chat-settings-button]").click();
   const settings = settingsWindow(page);
   await expect(settings).toBeVisible();
   await expect(settings.locator("[data-chat-settings-section]").first()).toBeVisible();
@@ -537,7 +537,7 @@ test("a section popped out on a computer is a bubble on a phone, and its sheet p
     await expect(drawerSheet).toHaveAttribute("data-presentation", "sheet");
     await drawerSheet.getByRole("button", { name: "Put back in Chat Settings" }).click();
     await expect(bubble).toHaveCount(0);
-    await page.locator('[data-component="TopBar"]').getByRole("button", { name: "Chat Settings", exact: true }).click();
+    await page.locator("[data-chat-settings-button]").click();
     const sheet = settingsWindow(page);
     await expect(sheet.locator('[data-drawer="chat-name"]')).toBeVisible();
     await expect(sheet.locator('[data-drawer="chat-name"] [data-drawer-control="pop-out"]')).toHaveCount(1);

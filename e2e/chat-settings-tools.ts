@@ -14,7 +14,7 @@ export function chatSettingsWindow(page: Page) {
 export async function openChatSettings(page: Page): Promise<Locator> {
   const settings = chatSettingsWindow(page);
   if (await settings.isVisible()) return settings;
-  await page.locator('[data-component="TopBar"]').getByRole("button", { name: "Chat Settings", exact: true }).click();
+  await page.locator("[data-chat-settings-button]").click();
   await expect(settings.locator("[data-chat-settings-section]").first()).toBeVisible();
   return settings;
 }

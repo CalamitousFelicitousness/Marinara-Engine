@@ -59,7 +59,7 @@ async function prepare(page: Page, chatId: string, ui: Record<string, unknown>) 
 }
 
 async function openChatSettings(page: Page) {
-  await page.locator('[data-component="TopBar"]').getByRole("button", { name: "Chat Settings", exact: true }).click();
+  await page.locator("[data-chat-settings-button]").click();
   const settings = page.locator('[data-window="chat-settings"]');
   await expect(settings.locator("[data-chat-settings-section]").first()).toBeVisible();
   return settings;

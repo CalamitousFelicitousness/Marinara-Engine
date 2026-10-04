@@ -483,6 +483,21 @@ assert.deepEqual(
   originalButtonPositions,
   "temporary placement never rewrites saved points",
 );
+// The remaining space can fit a button even when it cannot also fit the usual snapping gap.
+const tightBounds = { left: 0, top: 0, right: 100, bottom: 32 };
+const tightPositions = placeWindowBubbles(
+  new Map([
+    ["left", { point: { x: 0, y: 0 }, bounds: tightBounds, size: 32 }],
+    ["right", { point: { x: 68, y: 0 }, bounds: tightBounds, size: 32 }],
+    ["overflow", { point: { x: 200, y: 0 }, bounds: tightBounds, size: 32 }],
+  ]),
+);
+assert.equal(tightPositions.get("left")?.x, 0);
+assert.equal(tightPositions.get("right")?.x, 68);
+assert.ok(
+  tightPositions.get("overflow")!.x >= 32 && tightPositions.get("overflow")!.x <= 36,
+  "use the remaining narrow gap before overlapping a button",
+);
 const defaultCollisionBounds = { left: 8, top: 56, right: 960, bottom: 700 };
 const defaultCollision = placeWindowBubbles(
   new Map([

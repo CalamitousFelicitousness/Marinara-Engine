@@ -1,6 +1,6 @@
 # Roleplay HUD and Trackers
 
-This guide explains the Roleplay trackers: the small widgets on phones, the **Trackers** window and the Tracker Panel on a computer. You will learn how to edit and lock their values. It applies to Roleplay Mode in Marinara Engine.
+This guide explains the Roleplay trackers: the movable buttons and panels on phones, the **Trackers** window and the Tracker Panel on a computer. You will learn how to edit and lock their values. It applies to Roleplay Mode in Marinara Engine.
 
 ## What the HUD is
 
@@ -58,11 +58,11 @@ A tracker can also get its own window: click the pop-out button beside its arrow
 
 At the bottom, **Agent activity** shows what the chat's agents did. From there you can re-run the trackers, retry agents that failed, stop running agents, and **Clear Trackers**. The Tracker Panel has the same section at its bottom.
 
-## Editing values in a popover
+## Editing tracker values
 
 On a phone, drag the **World State** and **Player & Tracker** buttons wherever you want in the chat. Tap a button to open its panel, and use **X** to close it. The buttons and panels follow your **Chat widget style** in **Settings → Appearance → App**. Your chat remembers where you put each button. On a computer, the same editors are inside the drawers of the Trackers window. Every field is editable, so you can correct a value the AI got wrong. Your edits save right away.
 
-Here is what each popover lets you edit:
+Here is what each tracker lets you edit:
 
 - **World State**: the **Location**, **Date**, **Time**, **Weather**, **Temperature**, and custom world-field rows.
 - **Persona Stats**: a **Status** line, plus named stat bars with a current value and a max value. You can add or remove bars.
@@ -80,18 +80,18 @@ When a field is locked, the next automatic tracker run leaves it alone. Locked f
 
 To lock a field:
 
-1. Open the widget's popover.
-2. Click the lock toggle near the top of the popover. Its tooltip reads **Enter lock mode**.
+1. Open the tracker you want to edit.
+2. Click the lock toggle near the top of the tracker. Its tooltip reads **Enter lock mode**.
 3. A small lock button now appears next to each editable value.
 4. Click the lock button beside the value you want to pin. Its tooltip reads **Lock field**.
 
-To unlock, click the same button again (tooltip **Unlock field**). To leave lock mode, click the top toggle again (tooltip **Exit lock mode**). Lock mode is shared across the whole HUD, so turning it on in one popover reveals the lock buttons everywhere.
+To unlock, click the same button again (tooltip **Unlock field**). To leave lock mode, click the top toggle again (tooltip **Exit lock mode**). Lock mode is shared across the whole HUD, so turning it on in one tracker reveals the lock buttons everywhere.
 
 ## Re-running a tracker
 
 You can force a tracker to update instead of waiting for the next message.
 
-Inside each popover there is a small refresh (circular arrow) button. Click it to re-run just that one tracker for the latest turn. The tooltips name the tracker, for example **Re-run world state tracker only** or **Re-run quest tracker only**.
+Inside each tracker there is a small refresh (circular arrow) button. Click it to re-run just that one tracker for the latest turn. The tooltips name the tracker, for example **Re-run world state tracker only** or **Re-run quest tracker only**.
 
 In **Chat Settings → Agents**, **Manual Trackers** moves every enabled tracker to manual control. You can instead leave that switch off and set only selected agents to manual under **Individual tracker schedule**. A refresh button appears whenever at least one tracker is manual: in the HUD row on a phone, and next to the title of the Trackers window on a computer. Click it to run the manual tracker set for the current turn. The refresh button inside each tracker still runs that individual tracker directly.
 
@@ -103,7 +103,7 @@ The **Tracker Panel** is a larger side panel that shows the same tracker data as
 
 To turn it on in a Roleplay chat, open **Chat Settings** and click the **Tracker Panel** button (the die) in its title bar, next to pin and lock. It stays highlighted while the panel is on, and the panel shows beside the chat. Click it again to turn the panel off and hide it. On a computer, the trackers then show in the Trackers window.
 
-On a phone, turning it on puts a Tracker Panel button on the chat that you can drag anywhere. Tap it to open the panel; closing the panel goes back to the button. With the panel off, the HUD row keeps the tracker widgets.
+On a phone, turning it on puts a Tracker Panel button on the chat that you can drag anywhere. Tap it to open the panel; closing the panel goes back to the button. With the panel off, use the separate **World State** and **Player & Tracker** buttons.
 
 The controls in the panel header also let you customize tracker structure:
 
@@ -117,7 +117,7 @@ Custom field names define the structure and remain stable across tracker runs. T
 These settings control it:
 
 - **Tracker Panel**: the master on or off toggle, the same one the die in Chat Settings turns on and off. It is on by default. When on, the label reads "Shown in the Roleplay HUD". When off, trackers show in the Trackers window on a computer.
-- **Replace tracker HUD icons**: hides the compact icon strip on phones and lets the panel dock to the screen edge instead.
+- **Replace tracker HUD icons**: hides the separate tracker buttons on phones and lets the panel dock to the screen edge instead.
 - **Use expression sprites for tracker portraits**: lets tracker portraits use a character's expression sprite (their current emotion portrait) instead of the plain avatar, when one exists. Expression sprites are explained in [Character Sprites](../characters/sprites.md).
 - **Panel background**: a color or gradient picker for the panel's background.
 - **Desktop size**: choose the panel width. The options are **Compact**, **Standard**, and **Expanded**.

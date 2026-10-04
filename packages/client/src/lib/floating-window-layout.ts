@@ -96,26 +96,32 @@ export function placeWindowBubbles(
           candidate.y >= other.y + other.height,
       );
     if (movable && !free(next)) {
-      const xs = new Set([clamped.x, bounds.left, bounds.right - size]);
-      const ys = new Set([clamped.y, bounds.top, bounds.bottom - size]);
-      for (const other of occupied) {
-        xs.add(other.x - size - BUBBLE_SNAP_GAP_PX);
-        xs.add(other.x + other.width + BUBBLE_SNAP_GAP_PX);
-        ys.add(other.y - size - BUBBLE_SNAP_GAP_PX);
-        ys.add(other.y + other.height + BUBBLE_SNAP_GAP_PX);
-      }
-      const candidates = [...xs].flatMap((x) => [...ys].map((y) => ({ x, y })));
-      const distance = (candidate: WindowPoint) => (candidate.x - clamped.x) ** 2 + (candidate.y - clamped.y) ** 2;
-      candidates.sort((a, b) => distance(a) - distance(b));
-      next =
-        candidates.find(
+      // Keep the snapping gap when possible; a tight space should not hide a button just to keep the gap.
+      for (const gap of [BUBBLE_SNAP_GAP_PX, 0]) {
+        const xs = new Set([clamped.x, bounds.left, bounds.right - size]);
+        const ys = new Set([clamped.y, bounds.top, bounds.bottom - size]);
+        for (const other of occupied) {
+          xs.add(other.x - size - gap);
+          xs.add(other.x + other.width + gap);
+          ys.add(other.y - size - gap);
+          ys.add(other.y + other.height + gap);
+        }
+        const candidates = [...xs].flatMap((x) => [...ys].map((y) => ({ x, y })));
+        const distance = (candidate: WindowPoint) => (candidate.x - clamped.x) ** 2 + (candidate.y - clamped.y) ** 2;
+        candidates.sort((a, b) => distance(a) - distance(b));
+        const available = candidates.find(
           (candidate) =>
             candidate.x >= bounds.left &&
             candidate.x + size <= bounds.right &&
             candidate.y >= bounds.top &&
             candidate.y + size <= bounds.bottom &&
             free(candidate),
-        ) ?? clamped;
+        );
+        if (available) {
+          next = available;
+          break;
+        }
+      }
     }
     placed.set(id, next);
     occupied.push({ ...next, width: size, height: size });

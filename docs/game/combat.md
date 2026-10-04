@@ -60,7 +60,7 @@ On that battlefield the ruleset's own numbers decide everything. How far a turn 
 
 The battlefield is on screen. Every square is its own button, so the board can be walked with the pointer or with the arrow keys, and each one says what it is, who is standing on it and what it would cost to walk there. Choosing **Move** lights up the squares you can reach with their cost in the ruleset's own distance, draws the way there as you hover or focus one, and marks in amber any square whose path someone would strike at, naming them under the board. Choosing something that needs a target lights up who may be chosen and lets you click them on the board as well as in the list, and an attack that reaches nobody says **Nobody is in reach. Move closer.** rather than offering a swing at nothing. Something that lands as a shape is aimed at a square: the squares it may be aimed at are lit, and the one under your pointer says who it would catch, friends included. Movement may be spent before and after an action, so the menu simply comes back with what is left, and the panel below shows it as **Movement** in the ruleset's own unit. Escape leaves a half-made choice and puts the keyboard back on the menu.
 
-Elevation, flying over obstacles, hiding, forced movement other than a contest's push (dragging somebody you hold, for one) and choosing whether to take a strike at somebody walking away are all separate future work.
+Elevation, flying over obstacles, hiding and forced movement other than a contest's push (dragging somebody you hold, for one) are separate future work. A strike at somebody walking away already waits for whoever may take it, who can take it or pass.
 
 ### Games that use a ruleset
 

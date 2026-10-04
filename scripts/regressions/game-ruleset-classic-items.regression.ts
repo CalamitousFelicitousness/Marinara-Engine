@@ -48,7 +48,8 @@ const { createGameEngineStateStorage } =
 const { createGameRulesetsStorage } =
   await import("../../packages/server/src/services/storage/game-rulesets.storage.js");
 const { resolveCombatRound } = await import("../../packages/server/src/services/game/combat.service.js");
-const { loadGameFightItems } = await import("../../packages/server/src/services/game/game-inventory.service.js");
+const { loadGameFightItems, loadGameInventoryItemBook } =
+  await import("../../packages/server/src/services/game/game-inventory.service.js");
 const { encounterRoutes } = await import("../../packages/server/src/routes/encounter.routes.js");
 const { gameRoutes } = await import("../../packages/server/src/routes/game.routes.js");
 const { gameInventoryRoutes } = await import("../../packages/server/src/routes/game-inventory.routes.js");
@@ -1062,6 +1063,45 @@ try {
       (charged.json().inventory as GameInventoryStack[]).find((stack) => stack.id === "st-bell")?.charges,
       1,
     );
+
+    // A fake bell (truly a grave spade, which a fight cannot use) holds charges as the bell it passes for:
+    // the round's use comes out of it and does nothing, and spending its charge names it truly (1.74).
+    {
+      const fakeBell = await graveGame(gravePin, 3);
+      // A real bell rung empty comes first: the charge is the fake's, the one with a charge left.
+      const stacks = [
+        { ...kit[1]!, id: "st-empty-bell", charges: 0 },
+        { ...kit[1]!, id: "st-fake-bell", truly: "kit/grave-spade" },
+      ];
+      await chats.patchMetadata(fakeBell.chatId, { gameInventory: stacks });
+      const rang = await app.inject({
+        method: "POST",
+        url: "/game/combat/round",
+        payload: {
+          chatId: fakeBell.chatId,
+          round: 1,
+          combatants,
+          playerAction: { type: "item", itemId: "Dawn bell", targetId: "rat" },
+        },
+      });
+      assert.equal(rang.statusCode, 200, rang.body);
+      const bell = (rang.json().result.actions as Array<{ skillName?: string; note?: string }>).find(
+        (action) => action.skillName === "Dawn bell",
+      );
+      assert.match(
+        bell?.note ?? "",
+        /really Grave spade, and it did nothing/,
+        JSON.stringify(rang.json().result.actions),
+      );
+      const charged = applyGameInventoryOps(
+        stacks as never,
+        [{ op: "charge", name: "Dawn bell", count: 1 }],
+        undefined,
+        (await loadGameInventoryItemBook(db, { chatId: fakeBell.chatId }, "player"))!,
+      );
+      assert.deepEqual(charged.results[0], { ok: true, count: 1, revealed: ["Grave spade"] });
+      assert.deepEqual(charged.journal, [{ item: "Grave spade", action: "used", quantity: 1 }]);
+    }
 
     // The combat director: the bell is offered by its uses and spends a charge; a failed page is spent
     // for nothing and the log says so. The page is worn, with a spare in the bag before it: only the

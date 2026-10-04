@@ -11,7 +11,9 @@ import {
   forgetGameInventoryTelling,
   gameFightItems,
   gameFightUseEffect,
+  gameInventoryChargeStack,
   gameInventoryFightSpendStack,
+  gameInventoryItemsOwnNamed,
   gameInventoryForTelling,
   normalizeGameInventoryStacks,
   readGameInventoryTurn,
@@ -245,8 +247,16 @@ export async function loadGameFightUseEffects(
   const book = await loadGameInventoryItemBook(db, { metadata }, "player");
   if (!book) return null;
   return {
+    // One that holds charges spends them from the stack a charge takes them from, the next use only:
+    // a stack keeps its charges between uses.
     effectOf: (name, effect, nth = 0) =>
-      gameFightUseEffect(effect, gameInventoryFightSpendStack(stacks, name, book, nth), book),
+      gameFightUseEffect(
+        effect,
+        effect.charges
+          ? gameInventoryChargeStack(stacks, gameInventoryItemsOwnNamed(stacks, name), book)
+          : gameInventoryFightSpendStack(stacks, name, book, nth),
+        book,
+      ),
   };
 }
 

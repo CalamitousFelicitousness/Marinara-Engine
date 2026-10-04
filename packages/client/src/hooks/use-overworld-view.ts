@@ -9,6 +9,7 @@ import {
   tilePackPixels,
   CHARACTER_FACINGS,
   WORLD_EDGE_PIECE_BY_MASK,
+  worldWholeEdgeBlocks,
   type WorldEdgeTerrain,
   type CharacterFacing,
   type ImageCharacter,
@@ -311,8 +312,8 @@ export function useOverworldAtlas(family: string | undefined, own?: TilePack | n
         const variants = ready?.edges?.[`edge_${terrain}`];
         const piece = WORLD_EDGE_PIECE_BY_MASK[mask] ?? -1;
         if (!variants?.length || piece < 0 || !ready?.canvas) return false;
-        const block = variants[Math.min(variants.length - 1, Math.floor(pick * variants.length))]!;
-        const at = block[piece]!;
+        const at = variants[Math.min(variants.length - 1, Math.floor(pick * variants.length))]?.[piece];
+        if (!at) return false;
         const half = OVERWORLD_TILE / 2;
         ctx.drawImage(ready.canvas, at.sx, at.sy, size, size, x - half, y - half, OVERWORLD_TILE, OVERWORLD_TILE);
         return true;
@@ -456,6 +457,12 @@ async function buildImageAtlas(pack: ImageTilePack): Promise<ImageAtlas> {
     ctx.drawImage(canvas, sx - 1, sy, size + 2, 1, sx - 1, sy - 1, size + 2, 1);
     ctx.drawImage(canvas, sx - 1, sy + size - 1, size + 2, 1, sx - 1, sy + size, size + 2, 1);
     ((edges[id] ??= [])[index] ??= [])[piece] = { sx, sy };
+  }
+  // Only whole blocks are drawn (a variant whose sheet did not load is left out, not drawn with holes).
+  for (const id of Object.keys(edges)) {
+    const whole = worldWholeEdgeBlocks(edges[id]!);
+    if (whole.length) edges[id] = whole;
+    else delete edges[id];
   }
   // The characters' blocks (3 frames by 4 rows each), packed the same way on their own canvas.
   let charactersCanvas: HTMLCanvasElement | null = null;

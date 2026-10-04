@@ -24,6 +24,7 @@ import {
   pngDataUrlCheck,
   worldEdgeMask,
   worldRoadCells,
+  worldWholeEdgeBlocks,
   type ImageTilePack,
   type TilePack,
 } from "../../packages/shared/src/index.js";
@@ -283,6 +284,20 @@ try {
   for (let at = 1; at < road.length; at++)
     assert.equal(Math.abs(road[at]!.x - road[at - 1]!.x) + Math.abs(road[at]!.y - road[at - 1]!.y), 1, "4-connected");
   assert.ok(!worldRoadCells({ x: 0, y: 0 }, { x: 4, y: 0 }, (x) => x === 2).some((cell) => cell.x === 2), "skipped");
+  const piece = { sx: 0, sy: 0 };
+  const whole = Array.from({ length: 16 }, () => piece);
+  const holed: Array<typeof piece | undefined> = [...whole];
+  holed[5] = undefined;
+  assert.deepEqual(
+    worldWholeEdgeBlocks([whole, holed, whole.slice(1), undefined, whole]),
+    [whole, whole],
+    "whole blocks only",
+  );
+  assert.deepEqual(worldWholeEdgeBlocks([holed]), [], "none whole");
+  const there = worldRoadCells({ x: 1, y: 1 }, { x: 4, y: 4 }, () => false);
+  const back = worldRoadCells({ x: 4, y: 4 }, { x: 1, y: 1 }, () => false);
+  assert.deepEqual(back, [...there].reverse(), "a way and its way back lie on the same cells");
+  assert.deepEqual(back[0], { x: 4, y: 4 }, "listed from where it starts");
 
   // ── The library ──
   const db = await getDB();

@@ -17,6 +17,14 @@ export const WORLD_EDGE_PIECE_BY_MASK: readonly number[] = Object.freeze([
   -1, 15, 8, 9, 0, 11, 14, 7, 13, 4, 1, 10, 3, 2, 5, 6,
 ]);
 
+/** A terrain's variant blocks that have all sixteen pieces (a block whose sheet did not load is left out
+ *  rather than drawn with holes). */
+export function worldWholeEdgeBlocks<T>(blocks: ReadonlyArray<ReadonlyArray<T | undefined> | undefined>): T[][] {
+  return blocks.filter(
+    (block): block is T[] => !!block && block.length === 16 && Array.from(block).every((piece) => piece !== undefined),
+  );
+}
+
 /**
  * The mask of the corner at (x, y), where the cells (x-1, y-1), (x, y-1), (x-1, y) and (x, y) meet, from
  * whether each is the terrain. Outside the map a cell counts as the nearest cell on its edge, so the
@@ -38,13 +46,16 @@ export function worldEdgeMask(
  * The cells a way between two settlements passes through on the overworld, walked four-connected (each
  * step one cell across or down, never a corner-to-corner step, so a road never pinches to a diagonal),
  * from the middle of one cell to the middle of the other. `skip` leaves cells out (water, a settlement's
- * own cell).
+ * own cell). Walked the same way whichever end it starts from (ties between the two axes would otherwise
+ * lay a way and its way back side by side), and listed from `from`.
  */
 export function worldRoadCells(
-  from: { x: number; y: number },
-  to: { x: number; y: number },
+  start: { x: number; y: number },
+  end: { x: number; y: number },
   skip: (x: number, y: number) => boolean,
 ): Array<{ x: number; y: number }> {
+  const flip = start.y > end.y || (start.y === end.y && start.x > end.x);
+  const [from, to] = flip ? [end, start] : [start, end];
   const out: Array<{ x: number; y: number }> = [];
   let [x, y] = [from.x, from.y];
   const [dx, dy] = [Math.abs(to.x - from.x), Math.abs(to.y - from.y)];
@@ -65,5 +76,5 @@ export function worldRoadCells(
     }
     push();
   }
-  return out;
+  return flip ? out.reverse() : out;
 }

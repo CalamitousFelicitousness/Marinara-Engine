@@ -22,6 +22,8 @@ import {
   resolveRulesetStartingGear,
   rulesetItemBook,
   rulesetStartingGearFits,
+  rulesetStartingGearKind,
+  rulesetStartingGearTakenBy,
   type GameInventoryStack,
   type RulesetCatalogEntry,
   type RulesetDefinition,
@@ -151,6 +153,7 @@ try {
         /"road-rations" is a service/,
       ],
       [(doc: Record<string, any>) => (gear(doc).lines[0].item = "outfitter/hand-axe"), /one of them/],
+      [(doc: Record<string, any>) => (doc.items.startingGear[1].lines[0].name = "Lucky [charm]"), /square brackets/],
     ] as const) {
       assert.match(refusal(withGear(edit)), message);
     }
@@ -272,6 +275,44 @@ try {
       coats.adds.map((add) => [add.item, add.count, add.equip ?? false]),
       [["outfitter/leather-coat", 2, true]],
     );
+    // Gear of which nothing is left in this game is refused, so it is never marked as taken for nothing.
+    assert.equal(
+      (resolveRulesetStartingGear(twoCoats, hidden, { gear: "tailor", choices: [], picks: {} }) as { reason: string })
+        .reason,
+      "empty",
+    );
+    // A list all of whose items a layer took out is left out and named, rather than blocking the gear.
+    const noWeapons: RulesetItemBook = {
+      ...book,
+      entries: book.entries.filter(
+        (entry) => entry.item !== "outfitter/hand-axe" && entry.item !== "outfitter/boar-spear",
+      ),
+    };
+    const unarmed = resolve([0, 1], {}, noWeapons);
+    assert.ok(unarmed.ok);
+    assert.deepEqual(unarmed.dropped, ["Hand axe", "Hand axe or Boar spear"]);
+    // A service is never offered from a list.
+    const spearService: RulesetItemBook = {
+      ...book,
+      entries: book.entries.map((entry) =>
+        entry.item === "outfitter/boar-spear" ? { ...entry, service: true as const } : entry,
+      ),
+    };
+    assert.equal(
+      (resolve([0, 1], { "1.0": "outfitter/boar-spear" }, spearService) as { reason: string }).reason,
+      "pick",
+    );
+    // The marker is read by a bag's own key: a bag named "constructor" has taken nothing.
+    assert.deepEqual(rulesetStartingGearTakenBy({}, "constructor"), []);
+    assert.deepEqual(rulesetStartingGearTakenBy({ constructor: ["pilgrim"] }, "constructor"), ["pilgrim"]);
+    // A gear's id and another gear's group are different kinds.
+    const named = parsedOrThrow(
+      withGear((doc) =>
+        doc.items.startingGear.push({ id: "background", label: "Background", lines: [{ name: "Hat" }] }),
+      ),
+    );
+    assert.notEqual(rulesetStartingGearKind(named, "background"), rulesetStartingGearKind(named, "pilgrim"));
+    assert.equal(rulesetStartingGearKind(named, "traveller"), rulesetStartingGearKind(named, "hoarder"));
   }
 
   // ── The route ──
@@ -280,16 +321,30 @@ try {
     rulesetId: RULESET_ID,
     version: 1,
     sourceKind: "local",
-    definition: JSON.stringify({ ...withGear(), id: "ember-gear" }),
+    // With a layer that takes out marks, and a coat to wear, for the games below that ask for them.
+    definition: JSON.stringify({
+      ...withGear((doc) => {
+        doc.layers.push({ id: "no_marks", label: "No marks", currencies: { removeUnits: ["mark"] } });
+        doc.items.startingGear.push({
+          id: "coat",
+          label: "Coat",
+          lines: [{ item: "outfitter/leather-coat", equip: true }],
+        });
+      }),
+      id: "ember-gear",
+    }),
   });
   const chats = createChatsStorage(db);
   const states = createGameStateStorage(db);
-  const newGame = async (inventory: GameInventoryStack[] = []) => {
+  const newGame = async (
+    inventory: GameInventoryStack[] = [],
+    { cards = ["Ada", "Juno"], options = {} }: { cards?: string[]; options?: Record<string, unknown> } = {},
+  ) => {
     const chat = await chats.create({ name: "Gear", mode: "game", characterIds: [] });
     const anchor = await chats.createMessage({ chatId: chat.id, role: "assistant", content: "The road." });
     await chats.patchMetadata(chat.id, {
-      gameRuleset: { id: RULESET_ID, version: 1, packageId: null, options: {} },
-      gameCharacterCards: [{ name: "Ada" }, { name: "Juno" }],
+      gameRuleset: { id: RULESET_ID, version: 1, packageId: null, options },
+      gameCharacterCards: cards.map((name) => ({ name })),
       gameInventory: inventory,
     });
     await states.create({
@@ -381,6 +436,46 @@ try {
       selection: { gear: "traveller", choices: [0, 1], picks: { "1.0": "outfitter/hunting-bow" } },
     });
     assert.equal(forged.json().reason, "pick");
+  }
+  {
+    // A party member named after an object's built-in keeps their own bag and marker.
+    const chatId = await newGame([], { cards: ["Ada", "Constructor"] });
+    const builder = await take({
+      chatId,
+      holder: "Constructor",
+      selection: { gear: "pilgrim", choices: [], picks: {} },
+    });
+    assert.equal(builder.statusCode, 200, builder.body);
+    assert.deepEqual(builder.json().taken, { constructor: ["pilgrim"] });
+    const builderAgain = await take({
+      chatId,
+      holder: "Constructor",
+      selection: { gear: "pilgrim", choices: [], picks: {} },
+    });
+    assert.equal(builderAgain.json().reason, "taken");
+  }
+  {
+    // A layer that takes out marks: the gear's 5 marks come as 50 bits, in the same write.
+    const chatId = await newGame([], { options: { "layer.no_marks": true } });
+    const paid = await take({ chatId, selection: { gear: "traveller", choices: [0, 0], picks: {} } });
+    assert.equal(paid.statusCode, 200, paid.body);
+    const coins = (paid.json().inventory as GameInventoryStack[]).filter((stack) => stack.item?.startsWith("coin:"));
+    assert.deepEqual(
+      coins.map((stack) => [stack.item, stack.quantity]),
+      [["coin:bit", 50]],
+    );
+  }
+  {
+    // Armor goes on where its slot is free; a second coat, taken again, stays in the bag.
+    const chatId = await newGame();
+    const first = await take({ chatId, selection: { gear: "coat", choices: [], picks: {} } });
+    assert.equal(first.statusCode, 200, first.body);
+    const second = await take({ chatId, selection: { gear: "coat", choices: [], picks: {} }, again: true });
+    assert.equal(second.statusCode, 200, second.body);
+    const coats = (second.json().inventory as GameInventoryStack[]).filter(
+      (stack) => stack.item === "outfitter/leather-coat",
+    );
+    assert.deepEqual(coats.map((stack) => Boolean(stack.equipped)).sort(), [false, true]);
   }
 
   console.log("Ruleset starting gear: schema and gate, fits, the resolver, and the route into one bag, once a group.");

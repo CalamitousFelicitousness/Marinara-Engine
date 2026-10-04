@@ -7,6 +7,8 @@ import {
   gameInventoryBagKey,
   normalizeCharacterLookupName,
   resolveRulesetStartingGear,
+  rulesetStartingGearKind,
+  rulesetStartingGearTakenBy,
   type GameInventoryOp,
   type GameInventoryStack,
   type RulesetStartingGearRefusal,
@@ -31,13 +33,15 @@ export const GAME_STARTING_GEAR_TAKEN_KEY = "gameStartingGearTaken";
 
 export function readGameStartingGearTaken(raw: unknown): GameStartingGearTaken {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
-  const taken: GameStartingGearTaken = {};
-  for (const [key, ids] of Object.entries(raw as Record<string, unknown>)) {
-    if (!Array.isArray(ids)) continue;
-    const kept = ids.filter((id): id is string => typeof id === "string" && id.length <= 64).slice(0, 40);
-    if (kept.length > 0) taken[key] = kept;
-  }
-  return taken;
+  // Built from entries, so a bag key such as "__proto__" stays a key; read it with
+  // rulesetStartingGearTakenBy.
+  return Object.fromEntries(
+    Object.entries(raw as Record<string, unknown>).flatMap(([key, ids]) => {
+      if (!Array.isArray(ids)) return [];
+      const kept = ids.filter((id): id is string => typeof id === "string" && id.length <= 64).slice(0, 40);
+      return kept.length > 0 ? [[key, kept]] : [];
+    }),
+  );
 }
 
 export type GameStartingGearRefusal =
@@ -74,11 +78,6 @@ export async function takeGameStartingGear(
   }
   const { definition } = resolved;
 
-  // Whose bag: the player's own, or one party member's by the name their card has.
-  const cards = (Array.isArray(metadata.gameCharacterCards) ? metadata.gameCharacterCards : [])
-    .map((card) => (card && typeof card === "object" ? (card as { name?: unknown }).name : undefined))
-    .filter((name): name is string => typeof name === "string" && name.trim().length > 0)
-    .map((name) => name.trim());
   const identity =
     roomHostIdentity() ??
     (await resolveChatUserIdentity(createCharactersStorage(db), {
@@ -88,31 +87,41 @@ export async function takeGameStartingGear(
     }));
   const playerName = identity?.name ?? null;
   const playerKey = playerName ? normalizeCharacterLookupName(playerName) : "";
-  const playerCard =
-    (playerKey ? cards.find((name) => normalizeCharacterLookupName(name) === playerKey) : undefined) ?? cards[0];
-  let holder: string | undefined;
-  if (input.holder !== undefined) {
+  // Whose bag: the player's own, or one party member's by the name their card has, read from the
+  // metadata the write holds, so a rename cannot land between the check and the write.
+  const bagOf = (
+    current: Record<string, unknown>,
+  ): { holder: string | undefined; who: string } | { refused: GameStartingGearRefusal; error: string } => {
+    const cards = (Array.isArray(current.gameCharacterCards) ? current.gameCharacterCards : [])
+      .map((card) => (card && typeof card === "object" ? (card as { name?: unknown }).name : undefined))
+      .filter((name): name is string => typeof name === "string" && name.trim().length > 0)
+      .map((name) => name.trim());
+    const playerCard =
+      (playerKey ? cards.find((name) => normalizeCharacterLookupName(name) === playerKey) : undefined) ?? cards[0];
+    if (input.holder === undefined) return { holder: undefined, who: playerCard ?? playerName ?? "the player" };
     const named = cards.find(
       (name) => normalizeCharacterLookupName(name) === normalizeCharacterLookupName(input.holder!),
     );
-    if (!named) return refuse(409, "unknown-holder", `Nobody in the party is named ${input.holder}`);
-    holder = named === playerCard ? undefined : named;
-  }
+    if (!named) return { refused: "unknown-holder", error: `Nobody in the party is named ${input.holder}` };
+    return named === playerCard ? { holder: undefined, who: named } : { holder: named, who: named };
+  };
 
   const book = await loadGameInventoryItemBook(db, { metadata, resolved, playerName }, "player");
   if (!book) return refuse(409, "no-gear", "This game's items could not be read");
   const resolution = resolveRulesetStartingGear(definition, book, input.selection, gameRulesetLayerOptions(resolved));
   if (!resolution.ok) return refuse(409, resolution.reason, resolution.detail);
   const { gear } = resolution;
-  const groupOf = (id: string) => definition.items?.startingGear?.find((entry) => entry.id === id)?.group ?? id;
-  const group = gear.group ?? gear.id;
-  const bagKey = gameInventoryBagKey(holder);
-  const who = holder ?? playerCard ?? playerName ?? "the player";
+  const kind = rulesetStartingGearKind(definition, gear.id);
 
   type Value = { refused: GameStartingGearRefusal; error: string } | { taken: GameStartingGearTaken };
   const committed = await commitGameInventoryChange<Value>(db, input.chatId, (stacks, current) => {
+    const bag = bagOf(current);
+    if ("refused" in bag) return { stacks, journal: [], value: bag };
+    const { holder, who } = bag;
+    const bagKey = gameInventoryBagKey(holder);
     const taken = readGameStartingGearTaken(current[GAME_STARTING_GEAR_TAKEN_KEY]);
-    const already = (taken[bagKey] ?? []).find((id) => groupOf(id) === group);
+    const takenHere = rulesetStartingGearTakenBy(taken, bagKey);
+    const already = takenHere.find((id) => rulesetStartingGearKind(definition, id) === kind);
     if (already && !input.again) {
       return {
         stacks,
@@ -162,7 +171,7 @@ export async function takeGameStartingGear(
     const worn = equips.length > 0 ? applyGameInventoryOps(added.stacks, equips, undefined, book) : added;
     const next: GameStartingGearTaken = {
       ...taken,
-      [bagKey]: [...(taken[bagKey] ?? []).filter((id) => groupOf(id) !== group), gear.id],
+      [bagKey]: [...takenHere.filter((id) => rulesetStartingGearKind(definition, id) !== kind), gear.id],
     };
     // Written as the bag writes a stack: "Handaxe x2".
     const list = resolution.adds.map((add) => (add.count > 1 ? `${add.name} x${add.count}` : add.name)).join(", ");

@@ -2018,8 +2018,9 @@ const startingGearLineSchema = z
     item: rulesetItemRefSchema.optional(),
     coins: sheetId.optional(),
     oneOf: z.array(rulesetItemRefSchema).min(2).max(48).optional(),
-    /** A plain item by name, where the ruleset lets items be plain (`freeform`). */
-    name: z.string().trim().min(1).max(80).optional(),
+    /** A plain item by name, where the ruleset lets items be plain (`freeform`). It becomes a stack's
+     *  name the Game Master reads, so it is held to the ruleset's label rules. */
+    name: promptSafeText(80).optional(),
     count: z.number().int().min(1).max(999).default(1),
     /** Put on as it is taken, where its slots are free: armor and a shield are worn from the start. */
     equip: z.literal(true).optional(),

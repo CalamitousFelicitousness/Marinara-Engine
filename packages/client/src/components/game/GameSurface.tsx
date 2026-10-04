@@ -9008,16 +9008,18 @@ function GameSurfaceComponent({
             : undefined;
         const reason = typeof payload?.reason === "string" ? payload.reason : undefined;
         toast.error(
-          reason === "too-heavy" && typeof payload?.error === "string"
-            ? payload.error
-            : localizeUi(
-                reason === "taken"
-                  ? "game.ruleset.startingGear.refusedTaken"
-                  : reason === "pick" || reason === "choice"
-                    ? "game.ruleset.startingGear.refusedChoice"
+          localizeUi(
+            reason === "taken"
+              ? "game.ruleset.startingGear.refusedTaken"
+              : reason === "pick" || reason === "choice"
+                ? "game.ruleset.startingGear.refusedChoice"
+                : reason === "too-heavy"
+                  ? "game.ruleset.startingGear.refusedHeavy"
+                  : reason === "empty"
+                    ? "game.ruleset.startingGear.refusedEmpty"
                     : "game.ruleset.startingGear.refused",
-                { gear: gearLabel },
-              ),
+            { gear: gearLabel },
+          ),
         );
         return false;
       }
@@ -9045,12 +9047,29 @@ function GameSurfaceComponent({
     },
     [activeChatId, gameRuleset, localizeUi, queryClient, sendInventory, showInventoryNotification],
   );
+  // Gear goes into the bag of a party member with a card, as the server checks.
+  const startingGearHolders = useMemo(
+    () =>
+      new Set(
+        (Array.isArray(chatMeta.gameCharacterCards) ? chatMeta.gameCharacterCards : []).flatMap((card) => {
+          const name = card && typeof card === "object" ? (card as { name?: unknown }).name : undefined;
+          return typeof name === "string" && name.trim() ? [gameInventoryBagKey(name.trim())] : [];
+        }),
+      ),
+    [chatMeta.gameCharacterCards],
+  );
   const inventoryStartingGear = useMemo(
     () =>
       gameRuleset.status === "ok" && gameRuleset.definition.items?.startingGear?.length
-        ? { taken: startingGearTaken, sheets: inventorySheets, onTake: handleTakeStartingGear }
+        ? {
+            taken: startingGearTaken,
+            sheets: inventorySheets,
+            layerOptions: gameRuleset.layerOptions,
+            holders: startingGearHolders,
+            onTake: handleTakeStartingGear,
+          }
         : undefined,
-    [gameRuleset, handleTakeStartingGear, inventorySheets, startingGearTaken],
+    [gameRuleset, handleTakeStartingGear, inventorySheets, startingGearHolders, startingGearTaken],
   );
 
   // Who an item added in the shared view may go to, in order: the player, then the party.

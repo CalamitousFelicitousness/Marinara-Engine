@@ -35,7 +35,7 @@ export interface RulesetStartingGearAdd {
   equip?: true;
 }
 
-export type RulesetStartingGearRefusal = "unknown-gear" | "choice" | "pick" | "unknown-item";
+export type RulesetStartingGearRefusal = "unknown-gear" | "choice" | "pick" | "unknown-item" | "empty";
 
 export type RulesetStartingGearResolution =
   | {
@@ -50,6 +50,41 @@ export type RulesetStartingGearResolution =
 /** The ruleset's starting gear, in the order it lists them. */
 export function rulesetStartingGear(definition: RulesetDefinition): readonly RulesetStartingGear[] {
   return definition.items?.startingGear ?? [];
+}
+
+/** The gear a bag has taken, by gear id. Read by the bag's own key only, so a bag named after an
+ *  object's built-in ("constructor") reads as having taken nothing. */
+export function rulesetStartingGearTakenBy(
+  taken: Readonly<Record<string, readonly string[]>>,
+  bagKey: string,
+): readonly string[] {
+  return Object.hasOwn(taken, bagKey) ? (taken[bagKey] ?? []) : [];
+}
+
+/** The kind a gear is taken once of: its group, or the gear alone. A gear's id and another's group
+ *  never stand for the same kind. */
+export function rulesetStartingGearKind(definition: RulesetDefinition, gearId: string): string {
+  const gear = rulesetStartingGear(definition).find((entry) => entry.id === gearId);
+  return gear?.group !== undefined ? `group:${gear.group}` : `gear:${gearId}`;
+}
+
+/** What a coin line pays in this game: its own coin, or, where a layer takes that coin out, the same
+ *  worth in the largest coin of its family left that pays it exactly, as a price is. Null where a
+ *  layer takes out the whole family (or the ruleset has no such coin). */
+export function rulesetStartingGearCoins(
+  definition: RulesetDefinition,
+  line: Pick<RulesetStartingGearLine, "coins" | "count">,
+  layerOptions?: RulesetLayerOptions | null,
+): { unit: string; label: string; count: number } | null {
+  const family = (definition.items?.currencies ?? []).find((each) => each.units.some((unit) => unit.id === line.coins));
+  const named = family?.units.find((unit) => unit.id === line.coins);
+  const kept = family && rulesetLayeredCurrencies(definition, layerOptions).find((each) => each.id === family.id);
+  if (!named || !kept) return null;
+  // The family's smallest coin, worth 1, is always left, so some coin pays the worth exactly.
+  const unit = kept.units.some((each) => each.id === named.id)
+    ? named
+    : [...kept.units].sort((a, b) => b.value - a.value).find((each) => (line.count * named.value) % each.value === 0)!;
+  return { unit: unit.id, label: unit.label, count: (line.count * named.value) / unit.value };
 }
 
 /** Whether a character's sheet is what the gear is for. Gear that names nobody fits nobody in
@@ -81,10 +116,11 @@ function selectedLines(
 
 /**
  * A selection as the things it adds, merged by item so two picks of the same weapon are one add of
- * two. A fixed item a layer takes out of the game, and coins of a family a layer takes out, are left
- * out and named in `dropped`; coins of a single coin a layer takes out are paid at the same worth in
- * the largest coin left, as a price is. Refused: an unknown gear, a choice without an option, a pick
- * that is not one of its list or not one of the game's items, and an item the ruleset does not have.
+ * two. A fixed item a layer takes out of the game, a list all of whose items it takes out, and coins
+ * of a family it takes out are left out and named in `dropped`; coins of a single coin it takes out
+ * are paid at the same worth in another (`rulesetStartingGearCoins`). Refused: an unknown gear, a
+ * choice without an option, a pick that is not one of its list or not one of the game's items, an
+ * item the ruleset does not have, and gear of which nothing is left to add.
  */
 export function resolveRulesetStartingGear(
   definition: RulesetDefinition,
@@ -97,9 +133,9 @@ export function resolveRulesetStartingGear(
   const selected = selectedLines(gear, selection.choices);
   if ("refused" in selected) return { ok: false, reason: "choice", detail: selected.refused };
 
-  // The game's own catalog items: what a layer hides is not among them, and nor is a coin or an item
-  // the Game Master invented.
-  const offered = new Map(book.entries.map((entry) => [entry.item, entry]));
+  // The game's own catalog items: what a layer hides is not among them, and nor is a coin, an item the
+  // Game Master invented or a service, which is never carried.
+  const offered = new Map(book.entries.filter((entry) => !entry.service).map((entry) => [entry.item, entry]));
   const adds = new Map<string, RulesetStartingGearAdd>();
   const dropped: string[] = [];
   const add = (key: string, next: RulesetStartingGearAdd) => {
@@ -108,11 +144,16 @@ export function resolveRulesetStartingGear(
     else adds.set(key, { ...next });
     if (next.equip) adds.get(key)!.equip = true;
   };
-  const families = definition.items?.currencies ?? [];
-  const left = rulesetLayeredCurrencies(definition, layerOptions);
-
   for (const { key, line } of selected.lines) {
     if (line.oneOf) {
+      if (!line.oneOf.some((ref) => offered.has(ref))) {
+        const known = line.oneOf.map((ref) => book.itemOf(ref));
+        if (known.some((entry) => !entry)) {
+          return { ok: false, reason: "unknown-item", detail: `An item of line ${key} is not in this ruleset` };
+        }
+        dropped.push(known.map((entry) => entry!.name).join(" or "));
+        continue;
+      }
       const picked = selection.picks[key];
       const entry = picked !== undefined && line.oneOf.includes(picked) ? offered.get(picked) : undefined;
       if (!entry) return { ok: false, reason: "pick", detail: `Pick one of the list for line ${key}` };
@@ -137,25 +178,20 @@ export function resolveRulesetStartingGear(
         ...(line.equip ? { equip: true } : {}),
       });
     } else if (line.coins) {
-      const family = families.find((each) => each.units.some((unit) => unit.id === line.coins));
-      const named = family?.units.find((unit) => unit.id === line.coins);
-      const kept = family && left.find((each) => each.id === family.id);
-      if (!family || !named || !kept) {
+      const paid = rulesetStartingGearCoins(definition, line, layerOptions);
+      if (!paid) {
+        const named = definition.items?.currencies
+          ?.flatMap((family) => family.units)
+          .find((unit) => unit.id === line.coins);
         dropped.push(named?.label ?? line.coins);
         continue;
       }
-      // The family's smallest coin, worth 1, is always left, so some coin pays the worth exactly.
-      const unit = kept.units.some((each) => each.id === named.id)
-        ? named
-        : [...kept.units]
-            .sort((a, b) => b.value - a.value)
-            .find((each) => (line.count * named.value) % each.value === 0)!;
-      const count = (line.count * named.value) / unit.value;
-      const item = gameInventoryCoinRef(unit.id);
-      add(item, { item, name: unit.label, count });
+      const item = gameInventoryCoinRef(paid.unit);
+      add(item, { item, name: paid.label, count: paid.count });
     } else if (line.name) {
       add(`name:${line.name.toLowerCase()}`, { name: line.name, count: line.count });
     }
   }
+  if (adds.size === 0) return { ok: false, reason: "empty", detail: `Nothing of "${gear.label}" is in this game` };
   return { ok: true, gear, adds: [...adds.values()], dropped };
 }

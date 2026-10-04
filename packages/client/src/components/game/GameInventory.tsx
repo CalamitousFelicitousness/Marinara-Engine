@@ -28,6 +28,8 @@ import {
 } from "lucide-react";
 import {
   gameInventoryBagKey,
+  rulesetStartingGearKind,
+  rulesetStartingGearTakenBy,
   gameInventoryBearerStatus,
   gameInventoryItemId,
   gameInventoryStackLabel,
@@ -37,6 +39,7 @@ import {
   type RulesetItemBook,
   type RulesetItemBookEntry,
   type RulesetItemBookSheets,
+  type RulesetLayerOptions,
   type RulesetStartingGearSelection,
 } from "@marinara-engine/shared";
 import { cn } from "../../lib/utils";
@@ -123,10 +126,13 @@ interface GameInventoryProps {
   /** Whether the player can interact (input phase) */
   canInteract?: boolean;
   /** The ruleset's starting gear (Capability API 1.73): what each bag has taken, each character's
-   *  sheet, and how to take some. With it, a row offers the gear while a bag has some kind left. */
+   *  sheet, the game's layers, whose bags it may go into (by bag key: the party members with a card),
+   *  and how to take some. With it, a row offers the gear while a bag has some kind left. */
   startingGear?: {
     taken: StartingGearTaken;
     sheets?: RulesetItemBookSheets;
+    layerOptions?: RulesetLayerOptions | null;
+    holders: ReadonlySet<string>;
     onTake: (holder: string | undefined, selection: RulesetStartingGearSelection, again: boolean) => Promise<boolean>;
   };
 }
@@ -288,17 +294,31 @@ export function GameInventory({
   // Starting gear: offered wherever the ruleset has some, and named as taken once every kind of it is
   // in the bag in view (any bag, in the shared view), when it can still be taken again.
   const gearKinds = useMemo(
-    () => new Set((rulesetDefinition?.items?.startingGear ?? []).map((each) => each.group ?? each.id)),
+    () =>
+      rulesetDefinition
+        ? new Set(
+            (rulesetDefinition.items?.startingGear ?? []).map((each) =>
+              rulesetStartingGearKind(rulesetDefinition, each.id),
+            ),
+          )
+        : new Set<string>(),
     [rulesetDefinition],
   );
   const gearOffered = Boolean(startingGear && itemBook && gearKinds.size > 0);
+  // Gear goes into the player's bag or a party member's with a card, which the server checks too.
+  const gearBags = useMemo(() => {
+    const allowed = bags.filter((bag) => !bag.holder || startingGear?.holders.has(gameInventoryBagKey(bag.holder)));
+    return allowed.length > 0 ? allowed : [{ name: "" }];
+  }, [bags, startingGear?.holders]);
   const kindsTaken = (holder: string | undefined) =>
     new Set(
-      (startingGear?.taken[gameInventoryBagKey(holder)] ?? []).map(
-        (id) => rulesetDefinition?.items?.startingGear?.find((each) => each.id === id)?.group ?? id,
+      rulesetStartingGearTakenBy(startingGear?.taken ?? {}, gameInventoryBagKey(holder)).map((id) =>
+        rulesetDefinition ? rulesetStartingGearKind(rulesetDefinition, id) : id,
       ),
     );
-  const gearLeft = (activeBag ? [activeBag] : bags.length > 0 ? bags : [{ name: "" }]).some((bag) => {
+  const gearBagInView =
+    activeBag && gearBags.find((bag) => gameInventoryBagKey(bag.holder) === gameInventoryBagKey(activeBag.holder));
+  const gearLeft = (activeBag ? (gearBagInView ? [gearBagInView] : []) : gearBags).some((bag) => {
     const taken = kindsTaken(bag.holder);
     return [...gearKinds].some((kind) => !taken.has(kind));
   });
@@ -1105,9 +1125,10 @@ export function GameInventory({
           open
           onClose={() => setGearOpen(false)}
           definition={rulesetDefinition}
+          layerOptions={startingGear.layerOptions}
           book={itemBook}
-          bags={bags.length > 0 ? bags : [{ name: "" }]}
-          holder={activeHolder}
+          bags={gearBags}
+          holder={gearBagInView ? activeHolder : undefined}
           stacks={items}
           sheets={startingGear.sheets}
           taken={startingGear.taken}

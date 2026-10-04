@@ -266,7 +266,7 @@ export async function applyGameInventoryChangeHeld<T>(
   const metadata = readMetadata(chat.metadata);
   const before = normalizeGameInventoryStacks(metadata.gameInventory);
   const outcome = change(before, metadata);
-  if (outcome.stacks === before && outcome.journal.length === 0 && !outcome.metadata) {
+  if (outcome.stacks === before && outcome.journal.length === 0 && !outcome.events?.length && !outcome.metadata) {
     return { stacks: before, value: outcome.value };
   }
 

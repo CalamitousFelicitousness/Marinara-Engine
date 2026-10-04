@@ -1060,7 +1060,7 @@ Your `currencies` are the party's money. A coin is an item in the bags, a stack 
 
 ### Starting gear
 
-`items.startingGear` (Capability API 1.73) lists gear a character may take into their bag at the start: a class's kit, a background's, a calling's. It is never given on its own. The inventory shows a **Starting gear** row, and the player picks a gear, an option for each of its choices and an item from each list, then takes it into the bag in view. Gear the character's sheet `fits` is listed first; every gear is offered, because a character's concept is the player's and the Game Master's to agree.
+`items.startingGear` (Capability API 1.73) lists gear a character may take into their bag at the start: a class's kit, a background's, a calling's. It is never given on its own. The inventory shows a **Starting gear** row, and the player picks a gear, an option for each of its choices and an item from each list, then takes it into the player's bag or a party member's. Gear the character's sheet `fits` is listed first, then gear without `fits` (for any character, such as a background's); every gear is offered, because a character's concept is the player's and the Game Master's to agree.
 
 ```json
 "startingGear": [
@@ -1089,11 +1089,11 @@ Your `currencies` are the party's money. A coin is an item in the bags, a stack 
 ]
 ```
 
-- A line is one of the ruleset's items (`item`), coins (`coins`, a unit id), one item the player picks from a fixed list (`oneOf`, 2 to 48 items), or a plain item by name (`name`, where `freeform` allows plain items). `count` is 1 to 999; `equip: true` puts an item on as it is taken, where its slots are free, so armor counts from the start.
+- A line is one of the ruleset's items (`item`), coins (`coins`, a unit id), one item the player picks from a fixed list (`oneOf`, 2 to 48 items), or a plain item by name (`name`, where `freeform` allows plain items; held to the rules of a label, so no brackets, `{{` or line breaks). `count` is 1 to 999; `equip: true` puts an item on as it is taken, where its slots are free, so armor counts from the start.
 - `choices` are 0 to 8, each with 2 to 6 options of their own lines.
-- `group`: the gear a character takes once of each group (a class's and a background's). Taking the same group again is a choice the player makes in the dialog. Gear with no group is its own group.
+- `group`: the gear a character takes once of each group (a class's and a background's). Taking the same group again is a choice the player makes in the dialog, and adds to what is already in the bag. Gear with no group is its own group, never the same as a group of the same name.
 - `fits` reads the sheet without its live state, as carrying does. It only orders the list.
-- Taking is all or nothing: gear too heavy for its bearer is refused whole, and the dialog says what it weighs against what they can still carry. An item a layer takes out of the game is left out and named; coins of a coin a layer takes out are paid in the largest coin left of the same worth.
+- Taking is all or nothing: gear too heavy for its bearer is refused whole, and the dialog says what it weighs against what they can still carry. An item a layer takes out of the game is left out and named, and so is a list all of whose items it takes out; coins of a coin a layer takes out are paid in the largest coin left of the same worth, and the dialog shows them that way. Gear of which nothing is left is refused, so it is never marked as taken for nothing. A service is never offered from a list.
 - The import checks every item (in an inline catalog; a catalog in its own file is checked when the gear is taken), coin, plain item and `fits` reference, refuses a service, and refuses a count that would need more stacks than a bag takes at once.
 
 ### Markets

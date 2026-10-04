@@ -11,11 +11,15 @@ import {
   gameInventoryBagKey,
   gameInventoryBearerStatus,
   resolveRulesetStartingGear,
+  rulesetStartingGearCoins,
   rulesetStartingGearFits,
+  rulesetStartingGearKind,
+  rulesetStartingGearTakenBy,
   type GameInventoryStack,
   type RulesetDefinition,
   type RulesetItemBook,
   type RulesetItemBookSheets,
+  type RulesetLayerOptions,
   type RulesetStartingGear,
   type RulesetStartingGearLine,
   type RulesetStartingGearSelection,
@@ -37,6 +41,7 @@ export function StartingGearPicker({
   open,
   onClose,
   definition,
+  layerOptions,
   book,
   bags,
   holder: initialHolder,
@@ -48,8 +53,10 @@ export function StartingGearPicker({
   open: boolean;
   onClose: () => void;
   definition: RulesetDefinition;
+  /** The game's layers, which may take items and coins out of the gear, as they do on the server. */
+  layerOptions?: RulesetLayerOptions | null;
   book: RulesetItemBook;
-  /** Whose bags there are, the player's first. */
+  /** Whose bags gear may go into, the player's first: the party members with a card. */
   bags: readonly InventoryBag[];
   /** The bag the inventory has open: absent for the player's. */
   holder?: string;
@@ -75,8 +82,7 @@ export function StartingGearPicker({
     () => new Set(gear.filter((each) => rulesetStartingGearFits(definition, each, build)).map((each) => each.id)),
     [build, definition, gear],
   );
-  const groupOf = (id: string) => gear.find((each) => each.id === id)?.group ?? id;
-  const takenHere = taken[bagKey] ?? [];
+  const takenHere = rulesetStartingGearTakenBy(taken, bagKey);
 
   const [gearId, setGearId] = useState<string | null>(null);
   const [choices, setChoices] = useState<number[]>([]);
@@ -91,14 +97,16 @@ export function StartingGearPicker({
     setAgain(false);
   };
   // The gear this bag took of the chosen one's kind, which taking it again replaces.
-  const replaces = chosen ? takenHere.find((id) => groupOf(id) === (chosen.group ?? chosen.id)) : undefined;
+  const replaces = chosen
+    ? takenHere.find((id) => rulesetStartingGearKind(definition, id) === rulesetStartingGearKind(definition, chosen.id))
+    : undefined;
   const replacedLabel = replaces ? (gear.find((each) => each.id === replaces)?.label ?? replaces) : undefined;
 
   const selection: RulesetStartingGearSelection | null = chosen ? { gear: chosen.id, choices, picks } : null;
   const resolved = useMemo(
-    () => (selection ? resolveRulesetStartingGear(definition, book, selection) : null),
+    () => (selection ? resolveRulesetStartingGear(definition, book, selection, layerOptions) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [book, definition, gearId, choices, picks],
+    [book, definition, layerOptions, gearId, choices, picks],
   );
   // What the gear weighs against what this bag's bearer can still carry, where the ruleset says.
   const status = useMemo(() => gameInventoryBearerStatus(stacks, holder, book), [book, holder, stacks]);
@@ -119,19 +127,20 @@ export function StartingGearPicker({
   const lineText = (line: RulesetStartingGearLine): string => {
     if (line.item) return counted(book.itemOf(line.item)?.name ?? line.item, line.count);
     if (line.coins) {
-      const unit = definition.items?.currencies
-        ?.flatMap((family) => family.units)
-        .find((each) => each.id === line.coins);
-      return `${line.count} ${unit?.label ?? line.coins}`;
+      // In the coin the game pays it in; coins a layer takes out are named as left out instead.
+      const paid = rulesetStartingGearCoins(definition, line, layerOptions);
+      return paid ? `${paid.count} ${paid.label}` : "";
     }
     if (line.name) return counted(line.name, line.count);
     return "";
   };
   const renderLine = (line: RulesetStartingGearLine, key: string) => {
     if (!line.oneOf) {
+      const text = lineText(line);
+      if (!text) return null;
       return (
         <li key={key} className="text-[0.6875rem] text-[var(--foreground)]">
-          {lineText(line)}
+          {text}
         </li>
       );
     }
@@ -139,6 +148,8 @@ export function StartingGearPicker({
       const entry = book.entries.find((each) => each.item === ref);
       return entry ? [entry] : [];
     });
+    // A list the game's layers took every item of is left out, and named as such.
+    if (options.length === 0) return null;
     const picked = options.find((entry) => entry.item === picks[key]);
     const stats = picked ? rulesetItemStatsLine(picked.facts) : "";
     return (
@@ -169,8 +180,10 @@ export function StartingGearPicker({
     );
   };
 
+  // Gear this sheet fits, gear for anyone (it names nobody), and gear for another kind of character.
   const fitting = gear.filter((each) => fits.has(each.id));
-  const others = gear.filter((each) => !fits.has(each.id));
+  const anyone = gear.filter((each) => !each.fits);
+  const others = gear.filter((each) => each.fits && !fits.has(each.id));
   const renderGear = (each: RulesetStartingGear) => (
     <label
       key={each.id}
@@ -234,6 +247,16 @@ export function StartingGearPicker({
               {fitting.map(renderGear)}
             </fieldset>
           )}
+          {anyone.length > 0 && (
+            <fieldset className="space-y-1.5">
+              <legend className={labelClass}>
+                {fitting.length > 0 || others.length > 0
+                  ? t("game.ruleset.startingGear.anyone")
+                  : t("game.ruleset.startingGear.all")}
+              </legend>
+              {anyone.map(renderGear)}
+            </fieldset>
+          )}
           {others.length > 0 && (
             <fieldset className="space-y-1.5">
               <legend className={labelClass}>
@@ -257,20 +280,26 @@ export function StartingGearPicker({
                 </div>
               )}
               {chosen.choices.map((choice, choiceIndex) => (
-                <fieldset key={choice.label} className="space-y-1.5">
+                <fieldset key={choiceIndex} className="space-y-1.5">
                   <legend className={labelClass}>{choice.label}</legend>
                   {choice.options.map((option, optionIndex) => (
-                    <div key={option.label} className="space-y-1">
+                    <div key={optionIndex} className="space-y-1">
                       <label className="flex items-start gap-2 text-xs text-[var(--foreground)]">
                         <input
                           type="radio"
                           name={`starting-gear-choice-${choiceIndex}`}
                           checked={choices[choiceIndex] === optionIndex}
-                          onChange={() =>
+                          onChange={() => {
                             setChoices((current) =>
                               current.map((value, index) => (index === choiceIndex ? optionIndex : value)),
-                            )
-                          }
+                            );
+                            // Another option's lists are its own: a pick made for the last one goes.
+                            setPicks((current) =>
+                              Object.fromEntries(
+                                Object.entries(current).filter(([key]) => !key.startsWith(`${choiceIndex}.`)),
+                              ),
+                            );
+                          }}
                           className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--primary)]"
                         />
                         <span className="min-w-0 flex-1">{option.label}</span>
@@ -284,6 +313,9 @@ export function StartingGearPicker({
                   ))}
                 </fieldset>
               ))}
+              {resolved?.ok === false && resolved.reason === "empty" && (
+                <p className="text-[0.6875rem] text-[var(--destructive)]">{t("game.ruleset.startingGear.empty")}</p>
+              )}
               {resolved?.ok === true && resolved.dropped.length > 0 && (
                 <p className="text-[0.6875rem] text-[var(--muted-foreground)]">
                   {t("game.ruleset.startingGear.dropped", { items: resolved.dropped.join(", ") })}

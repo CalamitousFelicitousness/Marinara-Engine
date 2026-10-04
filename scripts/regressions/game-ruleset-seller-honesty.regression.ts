@@ -21,6 +21,7 @@ import {
   applyGameInventoryOps,
   applyGameInventoryTags,
   defaultRulesetSheetBuild,
+  gameFightItems,
   gameInventoryTotals,
   parseRulesetDefinition,
   readResolvedInventoryTags,
@@ -493,6 +494,127 @@ try {
     const [answer] = readResolvedInventoryTags(tagged.content);
     assert.equal(answer?.revealed, "Bitter tonic", tagged.content);
     assert.ok(tagged.stacks.some((stack) => stack.item === "kit/bitter-tonic" && !stack.truly));
+  }
+  // ── A fake beside the real thing ──
+  {
+    const realTonic: GameInventoryStack = { id: "w1", name: "Warming tonic", item: "kit/warming-tonic", quantity: 1 };
+    const fakeTonic: GameInventoryStack = { ...fake, id: "w2" };
+    const realFirst = [...coins(5), realTonic, fakeTonic];
+    const fakeFirst = [...coins(5), fakeTonic, realTonic];
+    const tonics = (stacks: GameInventoryStack[]) =>
+      stacks
+        .filter((stack) => stack.item?.startsWith("kit/"))
+        .map((stack) => [stack.id, stack.item, stack.quantity, stack.truly ?? null]);
+
+    // A reveal by name finds the fake, though the real one comes first.
+    const revealed = run('[inventory: action="reveal" item="Warming tonic"]', realFirst);
+    assert.equal(readResolvedInventoryTags(revealed.content)[0]?.revealed, "Bitter tonic", revealed.content);
+    assert.deepEqual(tonics(revealed.stacks), [
+      ["w1", "kit/warming-tonic", 1, null],
+      ["w2", "kit/bitter-tonic", 2, null],
+    ]);
+
+    // A sale takes only the kind it was priced by: never the fake with the real thing.
+    const mixed = run('[inventory: action="sell" item="Warming tonic" count="2" seller="chandler"]', realFirst);
+    assert.equal(readResolvedInventoryTags(mixed.content)[0]?.ok, false, mixed.content);
+    assert.deepEqual(tonics(mixed.stacks), tonics(realFirst), "nothing sold, the fake still a fake");
+    // Nor the real thing with the fake: seen through, the fake alone is what the honest buyer prices.
+    const seen = run('[inventory: action="sell" item="Warming tonic" count="3" seller="chandler"]', fakeFirst);
+    assert.equal(readResolvedInventoryTags(seen.content)[0]?.ok, false, seen.content);
+    assert.deepEqual(tonics(seen.stacks), [
+      ["w2", "kit/bitter-tonic", 2, null],
+      ["w1", "kit/warming-tonic", 1, null],
+    ]);
+    // The fence takes the fake it was offered and leaves the real one.
+    const fenced = run('[inventory: action="sell" item="Warming tonic" count="2" seller="fence"]', fakeFirst);
+    assert.equal(readResolvedInventoryTags(fenced.content)[0]?.ok, true, fenced.content);
+    assert.deepEqual(tonics(fenced.stacks), [["w1", "kit/warming-tonic", 1, null]]);
+
+    // A sale is about the stack the take takes first: a worn real bell comes after the fake in the
+    // pack, so the honest buyer is offered the fake and sees through it, and the worn bell stays.
+    const bells: GameInventoryStack[] = [
+      ...coins(5),
+      { id: "b1", name: "Dawn bell", item: "kit/dawn-bell", quantity: 1, equipped: true },
+      { id: "b2", name: "Dawn bell", item: "kit/dawn-bell", quantity: 1, truly: "kit/hexed-ring" },
+    ];
+    const bellDefinition = parsedOrThrow(
+      honesty((doc) =>
+        doc.items.market.sellers
+          .find((seller: { id: string }) => seller.id === "chandler")
+          .sells.push({ category: "token" }),
+      ),
+    );
+    const bellBook = rulesetItemBook(bellDefinition, entriesOf(bellDefinition));
+    const bellSale = applyGameInventoryTags(
+      '[inventory: action="sell" item="Dawn bell" count="1" seller="chandler"]',
+      bells,
+      party,
+      undefined,
+      bellBook,
+      undefined,
+      undefined,
+      rulesetMarketQuoter(bellDefinition, bellBook, town, () => true, undefined, day),
+    );
+    assert.equal(readResolvedInventoryTags(bellSale.content)[0]?.revealed, "Hexed ring", bellSale.content);
+    assert.deepEqual(
+      bellSale.stacks.find((stack) => stack.id === "b1"),
+      bells[1],
+      "the worn bell is not sold in the fake's place",
+    );
+    // A fight counts the real one on its own line, never the fake beside it.
+    const fight = gameFightItems(realFirst, book, true, []);
+    const realLine = fight.lines.find((line) => line.item === "kit/warming-tonic" && !line.truly);
+    assert.equal(realLine?.quantity, 1, JSON.stringify(fight.lines));
+  }
+  {
+    // A use that finds a fake out ends there: the rest of the count is not drunk from the real one.
+    const user = gameInventoryItemUser(
+      {
+        definition,
+        packageId: null,
+        cards: [{ name: "Ada", build: defaultRulesetSheetBuild(definition) }],
+        playerName: "Ada",
+      },
+      book.itemOf,
+      {},
+      1,
+    );
+    const stacks: GameInventoryStack[] = [
+      { ...fake, id: "w2", quantity: 1 },
+      { id: "w1", name: "Warming tonic", item: "kit/warming-tonic", quantity: 1 },
+    ];
+    const tagged = applyGameInventoryTags(
+      '[inventory: action="use" item="Warming tonic" count="2"]',
+      stacks,
+      party,
+      undefined,
+      book,
+      user.useItem,
+    );
+    assert.equal(readResolvedInventoryTags(tagged.content)[0]?.revealed, "Bitter tonic", tagged.content);
+    assert.equal(tagged.stacks.find((stack) => stack.id === "w1")?.quantity, 1, tagged.content);
+  }
+  {
+    // A bind the Game Master writes finds a fake out too, and the curse then holds it.
+    const ringFake: GameInventoryStack[] = [
+      { id: "r1", name: "Dawn bell", item: "kit/dawn-bell", quantity: 1, truly: "kit/hexed-ring", equipped: true },
+    ];
+    const rules = { ...book, actor: "player" as const };
+    const bound = applyGameInventoryTags(
+      '[inventory: action="bind" item="Dawn bell"]',
+      ringFake,
+      party,
+      undefined,
+      rules,
+    );
+    const [answer] = readResolvedInventoryTags(bound.content);
+    assert.deepEqual([answer?.ok, answer?.revealed], [true, "Hexed ring"], bound.content);
+    assert.deepEqual(
+      bound.stacks.map((stack) => [stack.item, stack.bound ?? false, stack.truly ?? null]),
+      [["kit/hexed-ring", true, null]],
+    );
+    const unbound = applyGameInventoryOps(bound.stacks, [{ op: "unbind", id: "r1" }], undefined, rules);
+    assert.equal(unbound.results[0]?.ok, false, "the curse holds it");
   }
   // A client op can never make a fake: the strict schema refuses `truly`.
   {

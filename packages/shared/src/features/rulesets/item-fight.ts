@@ -9,6 +9,7 @@ import {
   gameInventoryFightEffects,
   gameInventoryFightLines,
   gameInventoryNameKey,
+  gameInventoryStackKind,
   gameInventoryWearMet,
   gameInventoryWearNeeds,
   type GameInventoryFightLine,
@@ -106,8 +107,16 @@ export function gameFightOffers(
       (each) => each.ruleset && gameInventoryNameKey(each.name) === gameInventoryNameKey(line.name),
     );
     if (!effect) return [];
-    // Only the stacks it may be used from: worn and bound where the item asks it.
-    const usable = stacks.filter((stack) => stack.item === line.item && gameInventoryWearMet(stack, effect.wear));
+    // Only the stacks it may be used from: worn and bound where the item asks it. A fake is counted on
+    // its own line, never on the real thing's beside it (1.74).
+    const kind = gameInventoryStackKind({
+      name: line.name,
+      item: line.item,
+      ...(line.truly ? { truly: line.truly } : {}),
+    });
+    const usable = stacks.filter(
+      (stack) => gameInventoryStackKind(stack) === kind && gameInventoryWearMet(stack, effect.wear),
+    );
     // A stack without a count of its own is full, and no stack holds more than its item's most.
     const charges = effect.charges;
     const uses = charges
@@ -138,7 +147,9 @@ export function gameFightItems(
     ? all.flatMap((line) => {
         // A fake does what it truly does, under the name it is shown by (1.74).
         // ponytail: a fake spent in a fight is not marked as found out, and one whose true item has no
-        // fight use is not offered at all; none of the 5e fakes has one. Upgrade: reveal it on the spend.
+        // fight use is not offered at all; none of the 5e fakes has one. A fake held beside the real thing
+        // is its own line, so a fight names one of them with a number, and a spend by that name may take
+        // from either. Upgrade: spend by stack kind, and reveal it on the spend.
         const ref = line.truly ?? line.item;
         const effect = ref ? rulesetItemFightEffect(line.name, book.itemOf(ref)) : null;
         return effect ? [effect] : [];

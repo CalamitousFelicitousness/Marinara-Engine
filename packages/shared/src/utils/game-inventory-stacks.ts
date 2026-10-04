@@ -493,19 +493,17 @@ function itemsNamed(stacks: readonly GameInventoryStack[], name: string): Set<st
   return new Set(nicknamed.length > 0 ? nicknamed.map(gameInventoryItemId) : [own]);
 }
 
-/** The first stack a name finds in one bag (the player's when `from` is absent), in the bag's order,
- *  as a take by name takes them: the one a sale or a reveal by name is about. */
+/** The stack a name finds in one bag (the player's when `from` is absent) that a take by name takes
+ *  first: the one a sale by name is about. With `fake`, a fake the name finds comes before the real
+ *  thing, as a reveal by name wants. */
 export function gameInventoryStackNamed(
   stacks: readonly GameInventoryStack[],
   name: string,
   from?: GameInventoryBagRef,
+  fake = false,
 ): GameInventoryStack | undefined {
-  const bag = from ?? {};
-  const items = itemsNamed(
-    stacks.filter((stack) => inBag(stack, bag)),
-    name,
-  );
-  return stacks.find((stack) => inBag(stack, bag) && items.has(gameInventoryItemId(stack)));
+  const found = stacksNamed(stacks, name, from ?? {}).map(({ stack }) => stack);
+  return (fake ? found.find((stack) => stack.truly) : undefined) ?? found[0];
 }
 
 /** A fake shown for what it truly is (Capability API 1.74): the stack becomes its true item, by that
@@ -865,6 +863,9 @@ export function takeFromGameInventory(
   rules?: GameInventoryItemRules,
   /** Only from stacks the item may be used from, as a fight uses it (`gameInventoryUsableStack`). */
   worn = false,
+  /** Only from stacks of this `gameInventoryStackKind`, so a sale never takes a fake with the real
+   *  thing it passes for, or the real thing with a fake (1.74). */
+  kind?: string,
 ): { stacks: GameInventoryStack[]; taken: number } {
   // Not held to one stack's bound: the stacks of an item together may hold more than one stack can.
   let left = Number.isFinite(count) ? Math.floor(count) : 0;
@@ -874,6 +875,7 @@ export function takeFromGameInventory(
   for (const { stack, index } of stacksNamed(stacks, name, from)) {
     if (left < 1) break;
     if (keptByCurse(stack, rules) || (worn && !gameInventoryUsableStack(stack, rules))) continue;
+    if (kind !== undefined && gameInventoryStackKind(stack) !== kind) continue;
     const take = Math.min(left, stack.quantity);
     left -= take;
     taken += take;
@@ -1173,6 +1175,9 @@ export function wearGameInventoryStack(
 ): { stacks: GameInventoryStack[]; id: string } | { refused: GameInventoryWearRefusal } | null {
   const index = stacks.findIndex((stack) => stack.id === id);
   if (index < 0) return null;
+  // A fake bound is found out (1.74), however the bind is asked for: binding is attuning, and a curse
+  // shows itself. It is bound as what it truly is.
+  if (wear === "bind" && stacks[index]!.truly) stacks = revealGameInventoryFake(stacks, id, rules);
   const stack = stacks[index]!;
   const flag = wear === "equip" || wear === "unequip" ? "equipped" : "bound";
   if (wear === "unequip" || wear === "unbind") {

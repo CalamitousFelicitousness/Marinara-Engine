@@ -1034,11 +1034,16 @@ function optionFrom(
   // asked for, and the option says so by carrying none.
   const free = action.free === true || rulesetFreeStrike(actor, action);
   // Its own budget spent, a condition's grant may pay instead (combat C6d): one weapon attack of a
-  // single strike, or an item's use, as Haste's extra action allows.
+  // single strike, or an item's use, as Haste's extra action allows. A creature's weapon is an
+  // attack roll of its stat block at one target: its bite as much as a fighter's sword.
   let budget = action.budget;
   let oneStrike = false;
   if (!free && (actor.budgets[budget] ?? 0) < 1) {
-    const weapon = action.kind === "attack" && action.toHit !== undefined && !action.catalog && !action.itemUse;
+    const weapon =
+      (action.kind === "attack" || (action.kind === "block" && action.targets.count === 1)) &&
+      action.toHit !== undefined &&
+      !action.catalog &&
+      !action.itemUse;
     const grant = economy.grants.find(
       (entry) =>
         (actor.budgets[entry.budget] ?? 0) >= 1 &&

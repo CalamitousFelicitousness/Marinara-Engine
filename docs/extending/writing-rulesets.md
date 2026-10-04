@@ -1389,8 +1389,9 @@ same keys for a d20 system:
     - `grants`: `{ "budget": "haste", "standard": ["dash", "disengage", "hide"], "attacks": true,
       "items": true }` says what that budget may be spent on: the standard actions named (from the
       ruleset's own `standard` list), one weapon attack of a single strike (whatever strikes an
-      action would otherwise put in hand), and an item's use. They are offered once the budget they
-      would usually spend is gone.
+      action would otherwise put in hand; for a creature, an attack of its stat block at one target,
+      never a multiattack), and an item's use. They are offered once the budget they would usually
+      spend is gone.
     - `exclusive`: `["action", "bonus"]`, two budgets of which a turn spends only one: spending
       either empties the other.
     - `attacksPerTurn`: how many attacks (actions that roll to hit, and each attacking part of a

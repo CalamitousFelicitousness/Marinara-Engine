@@ -224,6 +224,72 @@ const sword = (state: RulesetEncounterState) => menu(state).find((option) => opt
   assert.equal(mauled(["sluggish"]), 1, "one, slowed");
 }
 
+// ── A hasted creature's extra action: one attack of its stat block at one target, after its multiattack ──
+{
+  let state = createRulesetEncounter({
+    definition: fiveE,
+    seed: 3,
+    combatants: [
+      brenna(),
+      {
+        id: "brute",
+        name: "Brute",
+        side: "enemy",
+        block: {
+          health: 200,
+          defense: 5,
+          initiativeModifier: 20,
+          speed: 30,
+          actions: [
+            { id: "claw", name: "Claw", budget: "action", toHit: 4, damage: { count: 1, sides: 6, flat: 0 } },
+            {
+              id: "sweep",
+              name: "Sweep",
+              budget: "action",
+              toHit: 4,
+              targetCount: 2,
+              damage: { count: 1, sides: 6, flat: 0 },
+            },
+            { id: "maul", name: "Multiattack", budget: "action", sequence: [{ action: "claw", times: 2 }] },
+          ],
+        },
+      },
+    ],
+    roller: dice(1, 20),
+  });
+  rulesetCombatant(state, "brute")!.tracked.push({ condition: "quickened", rounds: null });
+  for (const actorId of ["brute", "brenna"]) {
+    state = applyRulesetCombatChoice(fiveE, state, { actorId, optionId: "end-turn", targetIds: [] }, dice()).state;
+  }
+  assert.equal(rulesetCombatant(state, "brute")!.budgets.haste, 1, "its turn came round hasted");
+  state = applyRulesetCombatChoice(
+    fiveE,
+    state,
+    { actorId: "brute", optionId: "maul", targetIds: ["brenna", "brenna"] },
+    dice(15, 3, 15, 3),
+  ).state;
+  const options = rulesetCombatOptions(fiveE, state, "brute");
+  const claw = options.find((option) => option.id === "claw");
+  assert.equal(claw?.budget, "haste", "a claw on the haste action");
+  assert.equal(claw?.oneStrike, true);
+  assert.equal(
+    options.find((option) => option.id === "sweep"),
+    undefined,
+    "an attack at two is not one weapon attack",
+  );
+  const extra = applyRulesetCombatChoice(
+    fiveE,
+    state,
+    { actorId: "brute", optionId: "claw", targetIds: ["brenna"] },
+    dice(15, 3),
+  );
+  assert.equal(eventsOf(extra.events, "attack").length, 1);
+  assert.deepEqual(
+    eventsOf(extra.events, "budget").map((event) => event.budget),
+    ["haste"],
+  );
+}
+
 // ── No reactions (Slow): a foe walking away is struck at by the fighter, not by a slowed one ──
 {
   const walkAway = (conditions: string[]) => {

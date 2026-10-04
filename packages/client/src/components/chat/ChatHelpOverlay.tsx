@@ -56,6 +56,8 @@ const FLOATING_WINDOW_SELECTOR = ".mari-window";
 const TARGET_PADDING = 5;
 const HIGHLIGHT_GAP = 5;
 const MOBILE_TOOLBAR_HIGHLIGHT_SIZE = 32;
+const SMALL_TARGET_PX = 40;
+const SMALL_TARGET_BADGE_OFFSET = 12;
 const PADDED_TARGET_IDS = new Set<ChatHelpTargetId>([
   "agents",
   "messages",
@@ -482,6 +484,20 @@ function getHoverCardStyle(point: { x: number; y: number }): CSSProperties {
   };
 }
 
+/**
+ * Number badges sit inside large regions. On small controls, such as the window's pin, lock and close
+ * buttons, they sit on the top-left corner instead, so the icon or label underneath stays readable.
+ */
+function getBadgeOffset(rect: Rect, mobile: boolean): CSSProperties {
+  // Phones keep the badge inside: their toolbar controls sit in a tight column.
+  if (mobile || (rect.width >= SMALL_TARGET_PX && rect.height >= SMALL_TARGET_PX)) return { left: 4, top: 4 };
+  // Kept on screen for controls at the very edge, such as the topbar button.
+  return {
+    left: Math.max(-SMALL_TARGET_BADGE_OFFSET, 2 - rect.left),
+    top: Math.max(-SMALL_TARGET_BADGE_OFFSET, 2 - rect.top),
+  };
+}
+
 function targetIncludesActionLegend(mode: ChatMode, id: ChatHelpTargetId): boolean {
   return id === "messages" || (mode === "game" && id === "dialogue");
 }
@@ -636,9 +652,10 @@ export function ChatHelpOverlay({
   useEffect(() => {
     if (!open) return;
     previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    overlayRef.current?.focus({ preventScroll: true });
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        // Captured on the document and marked handled, so a window under the overlay keeps this press.
+        event.preventDefault();
         markChatHelpSeen(mode);
         closeChatHelp(mode);
         return;
@@ -662,12 +679,18 @@ export function ChatHelpOverlay({
         first.focus();
       }
     };
-    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("keydown", handleKeyDown, true);
     return () => {
-      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("keydown", handleKeyDown, true);
       previousFocusRef.current?.focus({ preventScroll: true });
     };
   }, [markChatHelpSeen, mode, open]);
+
+  // The overlay renders once the chat is measured, which can be a render after it opens.
+  const overlayShown = open && rootRect !== null;
+  useEffect(() => {
+    if (overlayShown) overlayRef.current?.focus({ preventScroll: true });
+  }, [overlayShown]);
 
   const dismiss = useCallback(() => {
     markChatHelpSeen(mode);
@@ -796,7 +819,10 @@ export function ChatHelpOverlay({
             setHoverPoint(null);
           }}
         >
-          <span className="pointer-events-none absolute left-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--marinara-chat-chrome-button-bg-active)] px-1 text-[0.5625rem] font-bold leading-none text-[var(--marinara-chat-chrome-button-text-active)] ring-1 ring-[var(--marinara-chat-chrome-focus-ring)]">
+          <span
+            className="pointer-events-none absolute flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--marinara-chat-chrome-button-bg-active)] px-1 text-[0.5625rem] font-bold leading-none text-[var(--marinara-chat-chrome-button-text-active)] ring-1 ring-[var(--marinara-chat-chrome-focus-ring)]"
+            style={getBadgeOffset(target.rect, mobile)}
+          >
             {index + 1}
           </span>
         </button>

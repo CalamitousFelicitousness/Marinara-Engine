@@ -709,7 +709,7 @@ const LocalChatArea = memo(function LocalChatArea() {
   );
 
   const handleCloseGalleryPanel = useCallback(() => {
-    blurActiveChatFloatingUiControl();
+    blurActiveChatFloatingUiControl({ keepWindowFocus: true });
     setGalleryOpen(false);
     setGalleryAnchor(null);
   }, []);
@@ -724,7 +724,7 @@ const LocalChatArea = memo(function LocalChatArea() {
     (event?: Event) => {
       const preservedPanel = event ? readAnnouncedChatToolbarPanelAction(event) : null;
       if (preservedPanel !== "settings") handleCloseSettingsPanel();
-      blurActiveChatFloatingUiControl();
+      blurActiveChatFloatingUiControl({ keepWindowFocus: true });
       if (preservedPanel !== "gallery") {
         setGalleryOpen(false);
         setGalleryAnchor(null);

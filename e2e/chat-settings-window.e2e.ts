@@ -445,6 +445,7 @@ test.describe("Chat Settings window on desktop", () => {
         await help.click();
         const overlay = page.locator(`[data-chat-help-overlay="${chat.mode}"]`);
         await expect(overlay).toBeVisible();
+        await expect(overlay).toBeFocused();
         await expect(settings).toBeVisible();
 
         const expected = [
@@ -496,10 +497,20 @@ test.describe("Chat Settings window on desktop", () => {
         });
         expect(misplaced, `${chat.mode} callouts without a visible control`).toEqual([]);
 
-        // Dismissing the overlay leaves the unpinned window open.
-        await overlay.dispatchEvent("pointerdown");
+        // Number badges sit beside small controls, so their icons stay readable.
+        for (const control of ["pin", "lock", "close"]) {
+          const badge = await box(overlay.locator(`[data-chat-help-highlight="window-${control}"] > span`));
+          const icon = await box(settings.locator(`[data-window-control="${control}"] svg`));
+          const overlapX = Math.min(badge.x + badge.width, icon.x + icon.width) - Math.max(badge.x, icon.x);
+          const overlapY = Math.min(badge.y + badge.height, icon.y + icon.height) - Math.max(badge.y, icon.y);
+          expect(overlapX <= 0 || overlapY <= 0, `${chat.mode} ${control} badge clear of its icon`).toBe(true);
+        }
+
+        // Escape closes only the overlay: the unpinned window stays open and the ? gets focus back.
+        await page.keyboard.press("Escape");
         await expect(overlay).toHaveCount(0);
         await expect(settings).toBeVisible();
+        await expect(help).toBeFocused();
 
         // With the window closed, the Chat Settings callout points at the topbar button.
         await settings.getByRole("button", { name: "Close chat settings", exact: true }).click();

@@ -77,16 +77,26 @@ const TARGETS = {
   // The ? beside the Chat Settings title on desktop, the toolbar button on phones.
   help: chatHelpTarget("help", "help"),
   "window-title": chatHelpTarget("window-title", "windowTitle", `${CHAT_SETTINGS_WINDOW} .mari-window__title`),
-  "window-pin": chatHelpTarget("window-pin", "windowPin", `${CHAT_SETTINGS_WINDOW} [data-window-control="pin"]`),
-  "window-lock": chatHelpTarget("window-lock", "windowLock", `${CHAT_SETTINGS_WINDOW} [data-window-control="lock"]`),
+  // Controls with their own tooltip reuse its sentence.
+  "window-pin": {
+    ...chatHelpTarget("window-pin", "windowPin", `${CHAT_SETTINGS_WINDOW} [data-window-control="pin"]`),
+    bodyKey: "window.controls.pinHint",
+  },
+  "window-lock": {
+    ...chatHelpTarget("window-lock", "windowLock", `${CHAT_SETTINGS_WINDOW} [data-window-control="lock"]`),
+    bodyKey: "window.controls.lockHint",
+  },
   "window-close": chatHelpTarget(
     "window-close",
     "windowClose",
     `${CHAT_SETTINGS_WINDOW} [data-window-control="close"]`,
   ),
   // The whole switch row, not just its ? button.
-  "tracker-panel": chatHelpTarget("tracker-panel", "trackerPanel", '[data-tracker-panel-toggle="chat-settings"]'),
-  "reset-view": chatHelpTarget("reset-view", "resetView"),
+  "tracker-panel": {
+    ...chatHelpTarget("tracker-panel", "trackerPanel", '[data-tracker-panel-toggle="chat-settings"]'),
+    bodyKey: "chat.settings.trackerPanelHelp",
+  },
+  "reset-view": { ...chatHelpTarget("reset-view", "resetView"), bodyKey: "chat.settings.resetViewHelp" },
   map: chatHelpTarget("map", "map", '[data-tour="game-map"]'),
   party: chatHelpTarget("party", "party", '[data-tour="game-party"]'),
   "scene-media": chatHelpTarget("scene-media", "sceneMedia"),

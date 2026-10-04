@@ -1,4 +1,4 @@
-// #7034 step 6: on phones, Chat Settings opens from the topbar, and popped-out drawers, the chat's controls
+// #7034 step 6: on phones, Chat Settings opens from its button in the chat, and popped-out drawers, the chat's controls
 // and the Tracker Panel are bubbles the user places anywhere; each opens as a sheet. On a computer,
 // package toolbars and Beholder become control windows, and a dot shows while agents run.
 import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
@@ -88,7 +88,7 @@ async function readSavedLayout(request: APIRequestContext, chatId: string): Prom
 
 const bubble = (page: Page, id: string) => page.locator(`.mari-window-bubble[data-window="${id}"]`);
 const sheet = (page: Page, id: string) => page.locator(`.mari-window[data-window="${id}"]`);
-const topbarSettings = (page: Page) => page.locator("[data-chat-settings-button]");
+const chatSettingsButton = (page: Page) => page.locator("[data-chat-settings-button]");
 
 async function box(locator: Locator): Promise<Box> {
   const value = await locator.boundingBox();
@@ -97,7 +97,7 @@ async function box(locator: Locator): Promise<Box> {
 }
 
 async function openSettingsSheet(page: Page) {
-  await topbarSettings(page).click();
+  await chatSettingsButton(page).click();
   const settings = sheet(page, "chat-settings");
   await expect(settings.locator("[data-chat-settings-section]").first()).toBeVisible();
   await expect(settings).toHaveAttribute("data-presentation", "sheet");
@@ -160,9 +160,9 @@ test.describe("phone bubbles", () => {
       // The old "More options" menu is gone; the Chat Settings button sits centred at the top of the chat.
       await expect(page.getByRole("button", { name: "More options", exact: true })).toHaveCount(0);
       const area = await box(page.locator('[data-component="CenterContent"]'));
-      const settingsButton = await box(topbarSettings(page));
+      const settingsButton = await box(chatSettingsButton(page));
       expect(Math.abs(settingsButton.x + settingsButton.width / 2 - (area.x + area.width / 2))).toBeLessThan(2);
-      await expect(topbarSettings(page)).toHaveAttribute("data-presentation", "sheet");
+      await expect(chatSettingsButton(page)).toHaveAttribute("data-presentation", "sheet");
       await expect(bubble(page, CONNECTED)).toBeVisible();
       await expectComposerClearAndNoSideScroll(page);
 
@@ -364,7 +364,7 @@ test.describe("phone bubbles", () => {
       for (const id of GAME_CONTROLS) await expect(bubble(page, id)).toBeVisible();
       const row = await Promise.all(GAME_CONTROLS.map((id) => box(bubble(page, id))));
       const viewport = page.viewportSize()!;
-      const settingsButton = await box(topbarSettings(page));
+      const settingsButton = await box(chatSettingsButton(page));
       const rects = [...row, settingsButton];
       for (const [index, rect] of rects.entries()) {
         expect(rect.x).toBeGreaterThanOrEqual(0);
@@ -466,7 +466,7 @@ test.describe("phone bubbles", () => {
         expect(rect.x + rect.width).toBeLessThanOrEqual(portrait.height);
         expect(rect.y + rect.height).toBeLessThanOrEqual(portrait.width);
       }
-      await expect(topbarSettings(page)).toBeVisible();
+      await expect(chatSettingsButton(page)).toBeVisible();
       await expectComposerClearAndNoSideScroll(page);
       // Back upright, they are a phone's bubbles again.
       await page.setViewportSize(portrait);
@@ -561,7 +561,7 @@ test.describe("chat windows on desktop (step 6)", () => {
       await prepare(page, chat.id, { trackerPanelEnabled: false, trackerWindowOpen: true });
       await page.goto("/");
       await expect(page.locator('[data-chat-mode="roleplay"]')).toBeVisible({ timeout: 30_000 });
-      const button = topbarSettings(page);
+      const button = chatSettingsButton(page);
       const trackers = sheet(page, "trackers");
       await expect(trackers).toBeVisible();
       await expect(button.locator("[data-agents-running]")).toHaveCount(0);

@@ -72,6 +72,7 @@ import { ChatInput } from "./ChatInput";
 import { CyoaChoices } from "./CyoaChoices";
 import { CHAT_CONTROL_WINDOW_IDS, ChatConnectedChatWindow, ChatControlWindow } from "./ChatControlWindow";
 import { TrackerPanelBubble } from "./TrackerPanelBubble";
+import { PHONE_BUBBLE_SIZE_PX, WINDOW_BUBBLE_SIZE_PX, WINDOW_MARGIN_PX } from "../../lib/floating-window-layout";
 import { useMatchMedia } from "../../hooks/use-match-media";
 import { CHAT_TOOLBAR_ICON_GAP_CLASS, getChatToolbarButtonClass } from "./ChatToolbarControls";
 import { TranscriptWindowControls } from "./TranscriptWindowControls";
@@ -1187,7 +1188,9 @@ export function ChatRoleplaySurface({
 
   useLayoutEffect(() => {
     const measure = () => {
-      let top = Math.ceil(topChromeRef.current?.getBoundingClientRect().height ?? 0);
+      // The Chat Settings button starts in a row at the top of the chat, so text starts below that row.
+      const buttonRow = WINDOW_MARGIN_PX + (phoneLayout ? PHONE_BUBBLE_SIZE_PX : WINDOW_BUBBLE_SIZE_PX);
+      let top = Math.max(buttonRow, Math.ceil(topChromeRef.current?.getBoundingClientRect().height ?? 0));
       let bottom = Math.ceil(inputChromeRef.current?.getBoundingClientRect().height ?? 0);
       if (vnMediaTarget) {
         vnMediaTarget.style.top = `${top + 8}px`;
@@ -1222,6 +1225,7 @@ export function ChatRoleplaySurface({
   }, [
     activeChatId,
     centerCompact,
+    phoneLayout,
     chatMeta.enableAgents,
     chatMeta.sceneStatus,
     combatAgentEnabled,

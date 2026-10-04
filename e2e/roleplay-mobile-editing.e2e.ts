@@ -101,12 +101,13 @@ async function levelFirstLineWithMenu(page: Page, editor: Locator) {
 test("a Roleplay message being edited takes touches along its first line (#6992)", async ({ page, request }) => {
   await withLongReply(page, request, async (latest) => {
     const editor = await startEditing(latest);
-    // Editing starts below the floating top controls, so the whole first line can be pressed.
+    // Editing starts below the floating top controls and the Chat Settings button's row, so the whole
+    // first line can be pressed.
     await expect.poll(() => firstLineTakesTouches(editor, [0.1, 0.5, 0.95])).toEqual([true, true, true]);
 
-    // Scrolled up level with the menu button, the line still takes touches beside it.
+    // Scrolled up level with the Chat Settings button in the middle, the line still takes touches beside it.
     await levelFirstLineWithMenu(page, editor);
-    expect(await firstLineTakesTouches(editor, [0.1, 0.5])).toEqual([true, true]);
+    expect(await firstLineTakesTouches(editor, [0.1, 0.3])).toEqual([true, true]);
   });
 });
 

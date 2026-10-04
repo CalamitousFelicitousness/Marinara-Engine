@@ -1,4 +1,4 @@
-// #7036: Chat Settings is a movable window opened from the centre of the topbar, built on the shared
+// #7036: Chat Settings is a movable window opened from its button in the chat, built on the shared
 // FloatingWindow / Drawer components that custom themes can restyle.
 import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
@@ -76,8 +76,8 @@ async function setActiveChat(page: Page, chatId: string | null) {
   }, chatId);
 }
 
-/** The Chat Settings button in the chat (it used to sit in the topbar). */
-function topbarSettings(page: Page) {
+/** The Chat Settings button in the chat (#7034; it used to sit in the topbar). */
+function chatSettingsButton(page: Page) {
   return page.locator("[data-chat-settings-button]");
 }
 
@@ -86,7 +86,7 @@ function settingsWindow(page: Page) {
 }
 
 async function openSettingsWindow(page: Page) {
-  await topbarSettings(page).click();
+  await chatSettingsButton(page).click();
   const settings = settingsWindow(page);
   await expect(settings).toBeVisible();
   await expect(settings).toHaveAttribute("data-presentation", "window");
@@ -147,7 +147,7 @@ test.describe("Chat Settings window on desktop", () => {
       await prepare(page, null, { trackerPanelEnabled: true, trackerPanelOpen: false });
       await page.goto("/");
       await expect(page.locator('[data-component="TopBar"]')).toBeVisible();
-      await expect(topbarSettings(page)).toHaveCount(0);
+      await expect(chatSettingsButton(page)).toHaveCount(0);
 
       for (const chat of chats) {
         await setActiveChat(page, chat.id);
@@ -157,7 +157,7 @@ test.describe("Chat Settings window on desktop", () => {
         await expect(
           page.locator('[data-component="TopBar"]').getByRole("button", { name: "Chat Settings", exact: true }),
         ).toHaveCount(0);
-        const button = topbarSettings(page);
+        const button = chatSettingsButton(page);
         await expect(button).toBeVisible();
         await expect(button).toHaveClass(/\bmari-window-bubble\b/u);
         await expect(button).toHaveAccessibleName("Chat Settings");
@@ -184,15 +184,15 @@ test.describe("Chat Settings window on desktop", () => {
         const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
         module.useUIStore.getState().openAgentCatalog();
       });
-      await expect(topbarSettings(page)).toBeHidden();
+      await expect(chatSettingsButton(page)).toBeHidden();
       await page.evaluate(async () => {
         const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
         module.useUIStore.getState().closeAgentCatalog();
       });
-      await expect(topbarSettings(page)).toBeVisible();
+      await expect(chatSettingsButton(page)).toBeVisible();
 
       await page.locator('[data-component="TopBar"]').getByRole("button", { name: "Home", exact: true }).click();
-      await expect(topbarSettings(page)).toHaveCount(0);
+      await expect(chatSettingsButton(page)).toHaveCount(0);
     } finally {
       await Promise.all(chats.map((chat) => request.delete(`/api/chats/${chat.id}?force=true`)));
     }
@@ -207,7 +207,7 @@ test.describe("Chat Settings window on desktop", () => {
       await prepare(page, chat.id);
       await page.goto("/");
       await expect(page.locator('[data-chat-mode="conversation"]')).toBeVisible();
-      const button = topbarSettings(page);
+      const button = chatSettingsButton(page);
       const start = await box(button);
       await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2);
       await page.mouse.down();
@@ -239,13 +239,13 @@ test.describe("Chat Settings window on desktop", () => {
 
       await page.reload();
       await expect(page.locator('[data-chat-mode="conversation"]')).toBeVisible();
-      const reloaded = await box(topbarSettings(page));
+      const reloaded = await box(chatSettingsButton(page));
       expect(Math.abs(reloaded.x - placed.x)).toBeLessThanOrEqual(1);
       expect(Math.abs(reloaded.y - placed.y)).toBeLessThanOrEqual(1);
       // Reset View brings it back to the top centre.
-      await topbarSettings(page).click();
+      await chatSettingsButton(page).click();
       await resetChatView(page);
-      await expect.poll(async () => Math.abs((await box(topbarSettings(page))).x - start.x)).toBeLessThanOrEqual(1);
+      await expect.poll(async () => Math.abs((await box(chatSettingsButton(page))).x - start.x)).toBeLessThanOrEqual(1);
     } finally {
       await request.delete(`/api/chats/${chat.id}?force=true`);
     }
@@ -262,7 +262,7 @@ test.describe("Chat Settings window on desktop", () => {
       await expect(page.locator('[data-chat-mode="roleplay"]')).toBeVisible();
 
       const settings = await openSettingsWindow(page);
-      const button = topbarSettings(page);
+      const button = chatSettingsButton(page);
       await expect(button).toHaveAttribute("aria-expanded", "true");
       await expect(page.getByRole("dialog", { name: "Chat Settings", exact: true })).toHaveAttribute(
         "aria-modal",
@@ -383,7 +383,7 @@ test.describe("Chat Settings window on desktop", () => {
       await pin.click();
       await expect(settings).toHaveAttribute("data-pinned", "false");
 
-      // Escape and the close button close an unpinned window and return focus to the topbar button.
+      // Escape and the close button close an unpinned window and return focus to the Chat Settings button.
       await settings.focus();
       await page.keyboard.press("Escape");
       await expect(settings).toHaveCount(0);
@@ -622,7 +622,7 @@ test.describe("Chat Settings window on desktop", () => {
       // It leaves focus alone, sits just under the button and stays clear of the window's buttons.
       await expect(tip.locator(":focus")).toHaveCount(0);
       const tipBox = await box(tip);
-      const buttonBox = await box(topbarSettings(page));
+      const buttonBox = await box(chatSettingsButton(page));
       expect(tipBox.y).toBeGreaterThanOrEqual(buttonBox.y + buttonBox.height);
       expect(tipBox.y - (buttonBox.y + buttonBox.height)).toBeLessThan(16);
       const controlsBox = await box(settings.locator(".mari-window__controls"));
@@ -752,7 +752,7 @@ test.describe("Chat Settings window on desktop", () => {
         await expect(settings).toBeVisible();
         await expect(help).toBeFocused();
 
-        // With the window closed, the Chat Settings callout points at the topbar button.
+        // With the window closed, the Chat Settings callout points at the Chat Settings button.
         await settings.getByRole("button", { name: "Close chat settings", exact: true }).click();
         await expect(settings).toHaveCount(0);
         await page.evaluate((mode) => {
@@ -761,8 +761,8 @@ test.describe("Chat Settings window on desktop", () => {
         await expect(overlay).toBeVisible();
         expectSameBox(
           await box(overlay.locator('[data-chat-help-highlight="settings"]')),
-          await box(topbarSettings(page)),
-          `${chat.mode} topbar callout`,
+          await box(chatSettingsButton(page)),
+          `${chat.mode} button callout`,
         );
         await expect(overlay.locator('[data-chat-help-highlight="window-pin"]')).toHaveCount(0);
         await overlay.dispatchEvent("pointerdown");
@@ -842,7 +842,7 @@ test.describe("Chat Settings window on desktop", () => {
       const sessionWindow = page.locator('.mari-window[data-window="control:session"]');
       await sessionBubble.click();
       await expect(sessionWindow).toBeVisible();
-      await topbarSettings(page).click();
+      await chatSettingsButton(page).click();
       await expect(settingsWindow(page)).toBeVisible();
       await expect(sessionWindow).toHaveCount(0);
       await expect(sessionBubble).toBeVisible();
@@ -866,7 +866,7 @@ test.describe("Chat Settings window on desktop", () => {
   });
 });
 
-test("phones open Chat Settings from the topbar as a sheet with Help and the Tracker Panel dice", async ({
+test("phones open Chat Settings from its button as a sheet with Help and the Tracker Panel dice", async ({
   page,
   request,
 }, testInfo) => {
@@ -881,14 +881,14 @@ test("phones open Chat Settings from the topbar as a sheet with Help and the Tra
     await expect(page.locator('[data-chat-toolbar-panel-action="settings"]').filter({ visible: true })).toHaveCount(1);
     const [area, buttonBox] = [
       await box(page.locator('[data-component="CenterContent"]')),
-      await box(topbarSettings(page)),
+      await box(chatSettingsButton(page)),
     ];
     expect(Math.abs(buttonBox.x + buttonBox.width / 2 - (area.x + area.width / 2))).toBeLessThanOrEqual(2);
     await expect(
       page.locator('[data-component="TopBar"]').getByRole("button", { name: "Chat Settings", exact: true }),
     ).toHaveCount(0);
 
-    await topbarSettings(page).click();
+    await chatSettingsButton(page).click();
     const sheet = settingsWindow(page);
     await expect(sheet).toBeVisible();
     // The loading placeholder shares the sheet; measure the real settings, not the one being replaced.

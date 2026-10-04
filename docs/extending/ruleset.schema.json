@@ -4842,7 +4842,7 @@
               }
             ]
           },
-          "maxItems": 60,
+          "maxItems": 120,
           "default": []
         },
         "lists": {

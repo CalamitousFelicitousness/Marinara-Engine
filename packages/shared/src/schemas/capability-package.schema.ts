@@ -635,7 +635,10 @@ const capabilityPackageManifestBaseSchema = z
 // 1.78: a catalog entry's mechanics may `amountAdd` a value read off the user's sheet to its amount
 //        (5e's Second Wind, 1d10 plus the fighter's level). Not a soft seam, for the same reason: an
 //        Engine that cannot read it refuses the catalog. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 78 } as const);
+// 1.79: a sheet may have up to 120 derived values (60 before). Not a soft seam: an Engine that cannot
+//        read it refuses the whole ruleset file, so a package with more than 60 declares 1.79.
+//        No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 79 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

@@ -1,5 +1,5 @@
 /**
- * Three ruleset keys 5e needed (Capability API 1.76, 1.77, 1.78):
+ * Ruleset keys 5e needed (Capability API 1.76 to 1.79):
  *
  *   - 1.76 `combat.attackRoll.criticalFrom`: a critical range off the attacker's sheet (its fight is
  *     proven in game-ruleset-combat-core). Gated here.
@@ -8,6 +8,7 @@
  *   - 1.78 a catalog entry's `amountAdd`: a sheet value added to its amount (Second Wind's 1d10 plus the
  *     fighter's level; its fight is proven in game-ruleset-combat-core). Refused without an amount and
  *     on a rider; the catalog's line names it; gated inline and in a catalog file.
+ *   - 1.79 up to 120 derived values on a sheet (60 before); more than 60 is gated.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -79,7 +80,11 @@ try {
   {
     const definition = parsed(JSON.parse(fiveEText));
     const issues = (entry: Record<string, any>) =>
-      rulesetCatalogEntryIssues(definition, definition.catalogs!.find((catalog) => catalog.id === "feats")!, [entry as never])
+      rulesetCatalogEntryIssues(
+        definition,
+        definition.catalogs!.find((catalog) => catalog.id === "feats")!,
+        [entry as never],
+      )
         .map((issue) => issue.message)
         .join("; ");
     assert.equal(issues(secondWind), "");
@@ -131,7 +136,9 @@ try {
     assert.equal(issue(76, critical), null);
     assert.match(issue(76, multiplied) ?? "", /multiplies.*1\.77/);
     assert.equal(issue(77, multiplied), null);
-    const inline = variant((doc) => doc.catalogs.find((catalog: { holds?: string }) => !catalog.holds).entries.push(secondWind));
+    const inline = variant((doc) =>
+      doc.catalogs.find((catalog: { holds?: string }) => !catalog.holds).entries.push(secondWind),
+    );
     assert.match(issue(77, inline) ?? "", /add a sheet value to their amount.*1\.78/);
     assert.equal(issue(78, inline), null);
     // In a catalog file, read at install.
@@ -145,6 +152,18 @@ try {
     assert.match(issue(77, filed, files, paths) ?? "", /1\.78/);
     assert.equal(issue(78, filed, files, paths), null);
     assert.equal(issue(74, variant()), null, "an older package still validates");
+    // 1.79: more than 60 derived values, up to 120.
+    const many = (count: number) =>
+      variant((doc) => {
+        const have = doc.sheet.derived.length;
+        for (let i = have; i < count; i++)
+          doc.sheet.derived.push({ id: `extra_${i}`, label: `Extra ${i}`, op: "sum", of: [{ const: 1 }] });
+      });
+    assert.equal(parseRulesetDefinition(many(120)).ok, true, "120 derived values read");
+    assert.equal(parseRulesetDefinition(many(121)).ok, false, "121 do not");
+    assert.match(issue(78, many(61)) ?? "", /more than 60 derived values.*1\.79/);
+    assert.equal(issue(79, many(61)), null);
+    assert.equal(issue(78, many(60)), null, "60 is still 1.78's");
   }
 
   console.log(

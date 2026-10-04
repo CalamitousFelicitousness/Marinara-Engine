@@ -31,7 +31,7 @@ In short: **Cross-Chat Awareness** links a character across its own Conversation
 You start the link from the Conversation chat, or from a Game chat. Follow these steps to start from the Conversation side.
 
 1. Open the Conversation chat you want to link.
-2. Open **Chat Settings** (the gear).
+2. Open **Chat Settings** (the button in the middle of the top bar; on a phone, under **More options** in the chat).
 3. Find the **Connected Chats** section.
 4. Click **Link to Roleplay or Game**.
 5. Search for the Roleplay or Game chat in the picker, then click it.

@@ -110,7 +110,7 @@ Custom theme CSS is cleaned before it runs, for safety. Styles that load a file 
 These data attributes describe each window or drawer:
 
 - `data-window` names the window, for example `data-window="chat-settings"`.
-- `data-drawer` names the drawer, for example `data-drawer="chat-name"`.
+- `data-drawer` names the drawer, for example `data-drawer="chat-name"`. Some names start with the chat mode, such as `roleplay-agents` or `conversation-agents`.
 - `data-pinned` and `data-locked` are `"true"` while the window is pinned or locked.
 - `data-detached` is `"true"` when a drawer is shown in its own window.
 
@@ -149,7 +149,7 @@ Set a variable in `:root` to change every window, or on a selector to change one
   --mari-window-header-bg: rgb(0 0 0 / 0.25);
 }
 
-.mari-drawer[data-drawer="agents"] {
+.mari-drawer[data-drawer="chat-name"] {
   --mari-drawer-border: transparent;
 }
 ```

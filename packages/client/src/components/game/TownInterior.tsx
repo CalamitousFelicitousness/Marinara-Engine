@@ -41,20 +41,20 @@ export function TownInterior({ chatId, town, buildingId, hour, darkness, drawTil
   const [selected, setSelected] = useState<string | null>(null);
 
   const people = useMemo(() => (interior ? worldInteriorPeopleAt(town, interior, hour) : []), [hour, interior, town]);
+  // The rooms fit above the narration, which covers the lower part of the view, under the top bar.
+  const top = 96;
+  const room = { width: size.width - 32, height: Math.max(120, size.height * 0.58 - top) };
   const scale = interior
     ? Math.max(
-        2,
-        Math.min(
-          6,
-          Math.floor(Math.min(size.width / (interior.width * T), (size.height - 80) / (interior.height * T))),
-        ),
+        1,
+        Math.min(6, Math.floor(Math.min(room.width / (interior.width * T), room.height / (interior.height * T)))),
       )
     : 2;
   const cell = T * scale;
   const origin = interior
     ? {
         x: Math.round((size.width - interior.width * cell) / 2),
-        y: Math.round((size.height - interior.height * cell) / 2),
+        y: Math.round(top + Math.max(0, (room.height - interior.height * cell) / 2)),
       }
     : { x: 0, y: 0 };
 
@@ -154,10 +154,17 @@ export function TownInterior({ chatId, town, buildingId, hour, darkness, drawTil
         ))}
       {chosen && interior && (
         <div
-          className="absolute z-10 w-56 -translate-x-1/2 -translate-y-full rounded-xl border border-white/15 bg-black/80 p-3 text-xs text-white/85 shadow-xl backdrop-blur-md"
+          className={cn(
+            "absolute z-10 w-56 -translate-x-1/2 rounded-xl border border-white/15 bg-black/80 p-3 text-xs text-white/85 shadow-xl backdrop-blur-md",
+            // Above the person, or below them when they stand near the top.
+            origin.y + chosen.at.y * cell > 220 && "-translate-y-full",
+          )}
           style={{
             left: Math.min(Math.max(origin.x + chosen.at.x * cell + cell / 2, 120), size.width - 120),
-            top: Math.max(origin.y + chosen.at.y * cell - 8, 150),
+            top:
+              origin.y + chosen.at.y * cell > 220
+                ? origin.y + chosen.at.y * cell - 8
+                : origin.y + (chosen.at.y + 1) * cell + 8,
           }}
           data-component="TownInterior.Card"
         >

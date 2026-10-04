@@ -1615,6 +1615,10 @@ export function getCapabilityPackageInstallIssue(
   if (!declaresApi(72) && sharedRest) {
     return "A ruleset whose rest shares a pool group's fraction requires schemaVersion 2 and capabilityApi 1.72 or newer";
   }
+  // Starting gear, 1.73 (P1-6): a new key on the strict items block.
+  if (!declaresApi(73) && plainRecord(ruleset?.items)?.startingGear !== undefined) {
+    return "A ruleset with starting gear requires schemaVersion 2 and capabilityApi 1.73 or newer";
+  }
   return null;
 }
 

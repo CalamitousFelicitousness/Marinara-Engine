@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { GAME_INVENTORY_MAX_QUANTITY } from "../utils/game-inventory-stacks.js";
+import { GAME_INVENTORY_MAX_NEW_STACKS, GAME_INVENTORY_MAX_QUANTITY } from "../utils/game-inventory-stacks.js";
 
 // Game Mode rulesets. A ruleset is validated DATA: it parameterises one of a closed set of
 // Engine-owned resolution kinds and declares a character sheet from a closed set of primitives.
@@ -2005,6 +2005,75 @@ const lootEntrySchema = z
     }
   });
 
+/** One of the ruleset's items, named as `<catalog>/<entry>`. */
+const rulesetItemRefSchema = z
+  .string()
+  .max(81)
+  .regex(/^[a-z][a-z0-9_]{0,39}\/[a-z0-9]+(?:-[a-z0-9]+)*$/, "An item is named as <catalog>/<entry>");
+
+/** One line of starting gear (Capability API 1.73): one of the ruleset's items, coins, one item the
+ *  player picks from a fixed list, or a plain item the ruleset's catalogs do not have. */
+const startingGearLineSchema = z
+  .object({
+    item: rulesetItemRefSchema.optional(),
+    coins: sheetId.optional(),
+    oneOf: z.array(rulesetItemRefSchema).min(2).max(48).optional(),
+    /** A plain item by name, where the ruleset lets items be plain (`freeform`). */
+    name: z.string().trim().min(1).max(80).optional(),
+    count: z.number().int().min(1).max(999).default(1),
+    /** Put on as it is taken, where its slots are free: armor and a shield are worn from the start. */
+    equip: z.literal(true).optional(),
+  })
+  .strict()
+  .superRefine((line, ctx) => {
+    if (line.equip && line.item === undefined && line.oneOf === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["equip"],
+        message: "Only one of the ruleset's items is put on",
+      });
+    }
+    if ([line.item, line.coins, line.oneOf, line.name].filter((kind) => kind !== undefined).length !== 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "A starting gear line names an item, coins, a list to pick one from or a plain item, one of them",
+      });
+    }
+  });
+
+/** Gear a character may take into their bag at the start (Capability API 1.73), never on their own:
+ *  the player asks for it, once for each `group` (a class's gear beside a background's). `fits` says
+ *  which characters it is for, read off the sheet; it orders the list and refuses nobody. */
+const startingGearSchema = z
+  .object({
+    id: sheetId,
+    label,
+    summary: z.string().trim().max(300).optional(),
+    group: sheetId.optional(),
+    fits: z.object({ value: rulesetValueRefSchema, atLeast: z.number().finite() }).strict().optional(),
+    lines: z.array(startingGearLineSchema).max(40).default([]),
+    choices: z
+      .array(
+        z
+          .object({
+            label,
+            options: z
+              .array(z.object({ label, lines: z.array(startingGearLineSchema).min(1).max(40) }).strict())
+              .min(2)
+              .max(6),
+          })
+          .strict(),
+      )
+      .max(8)
+      .default([]),
+  })
+  .strict()
+  .superRefine((gear, ctx) => {
+    if (gear.lines.length === 0 && gear.choices.length === 0) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Starting gear gives something: lines or choices" });
+    }
+  });
+
 /** What a treasure hoard or a creature's pockets hold: `rolls` picks (a number or dice, none at all
  *  allowed), each a line drawn by weight. */
 const lootTableSchema = z
@@ -2115,6 +2184,8 @@ const itemsSchema = z
     /** What an item the player types in becomes: a plain item, or nothing at all. */
     freeform: z.enum(["plain", "refuse"]).default("plain"),
     market: marketSchema.optional(),
+    /** Gear a character may take at the start, never given on its own (Capability API 1.73). */
+    startingGear: z.array(startingGearSchema).min(1).max(40).optional(),
   })
   .strict();
 
@@ -4573,6 +4644,45 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         }
       });
     });
+    // Starting gear (1.73): every item one of the ruleset's (a catalog kept in its own file is checked
+    // when the gear is taken), never a service, and few enough stacks to fit a bag; coins it declares;
+    // a plain item only where items may be plain; `fits` read off the sheet without the live state,
+    // as carrying is.
+    unique(items.startingGear ?? [], at("startingGear"), "starting gear");
+    const checkGearItem = (ref: string, count: number, path: (string | number)[]) => {
+      const [catalogId, entryId] = ref.split("/") as [string, string];
+      const catalog = def.catalogs?.find((each) => each.id === catalogId);
+      if (!catalog || catalog.holds !== "items") return issue(path, `No item catalog "${catalogId}"`);
+      if (layersApplied || !catalog.entries) return;
+      const entry = catalog.entries.find((each) => each.id === entryId && each.item);
+      if (!entry?.item) return issue(path, `No item "${entryId}" in catalog "${catalogId}"`);
+      if (entry.item.service) issue(path, `"${entryId}" is a service, which is never carried`);
+      if (entry.item.stack && Math.ceil(count / entry.item.stack) > GAME_INVENTORY_MAX_NEW_STACKS) {
+        issue(path, `${count} of "${entryId}" is more stacks than one bag takes at once`);
+      }
+    };
+    const checkGearLine = (line: z.infer<typeof startingGearLineSchema>, path: (string | number)[]) => {
+      if (line.item) checkGearItem(line.item, line.count, [...path, "item"]);
+      line.oneOf?.forEach((ref, refIndex) => checkGearItem(ref, line.count, [...path, "oneOf", refIndex]));
+      if (line.coins && !items.currencies?.some((family) => family.units.some((unit) => unit.id === line.coins))) {
+        issue([...path, "coins"], `Unknown currency unit "${line.coins}"`);
+      }
+      if (line.name !== undefined && items.freeform === "refuse") {
+        issue([...path, "name"], "This ruleset refuses plain items, so starting gear names its own");
+      }
+    };
+    items.startingGear?.forEach((gear, gearIndex) => {
+      const path = at("startingGear", gearIndex);
+      if (gear.fits) checkRef(gear.fits.value, [...path, "fits", "value"], derivedIds, false);
+      gear.lines.forEach((line, lineIndex) => checkGearLine(line, [...path, "lines", lineIndex]));
+      gear.choices.forEach((choice, choiceIndex) =>
+        choice.options.forEach((option, optionIndex) =>
+          option.lines.forEach((line, lineIndex) =>
+            checkGearLine(line, [...path, "choices", choiceIndex, "options", optionIndex, "lines", lineIndex]),
+          ),
+        ),
+      );
+    });
     const market = items.market;
     if (market) {
       // A filter picks by the items block's own words, and says at least one of them.
@@ -5572,6 +5682,8 @@ export type RulesetCatalogItem = z.infer<typeof catalogItemSchema>;
 /** One item as a catalog entry writes it, for reading an invented item back off a game. */
 export const rulesetCatalogItemSchema = catalogItemSchema;
 export type RulesetItems = z.infer<typeof itemsSchema>;
+export type RulesetStartingGear = z.infer<typeof startingGearSchema>;
+export type RulesetStartingGearLine = z.infer<typeof startingGearLineSchema>;
 export type RulesetItemStat = z.infer<typeof rulesetItemStatSchema>;
 export type RulesetCurrencyFamily = z.infer<typeof currencyFamilySchema>;
 export type RulesetCatalogEntryRow = z.infer<typeof catalogEntryRowSchema>;

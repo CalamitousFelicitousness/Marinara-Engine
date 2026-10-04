@@ -602,10 +602,14 @@ const capabilityPackageManifestBaseSchema = z
 // 1.72: a ruleset's `sheet.migrations` say how a sheet stored on an older layout reads on this one
 //        (C6e-0): fields, abilities, skills and saves renamed, one field routed by another's text, and
 //        a live pool or track routed to the one the migrated sheet shows. A rest's poolGroup restore
-//        may also be `shared` (C6e): its fraction worked out on the whole group. Not a soft seam, for the same
+//        may also be `shared` (C6e): its fraction worked out on the whole group.
+// 1.73: a ruleset's `items.startingGear` (P1-6): gear a character may take into their bag at the start,
+//        never on its own, with choices and lists to pick from. Not a soft seam, for the same reason as
+//        1.20 through 1.72: an Engine that cannot read it refuses the whole ruleset file, so a package
+//        that ships it declares 1.73. No permission. Not a soft seam, for the same
 //        reason as 1.20 through 1.71: an Engine that cannot read it refuses the whole ruleset file, so a
 //        package that ships it declares 1.72. No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 72 } as const);
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 73 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

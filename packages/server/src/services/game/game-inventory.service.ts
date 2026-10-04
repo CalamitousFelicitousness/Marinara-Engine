@@ -38,13 +38,15 @@ import { resolveChatUserIdentity } from "../chat-user-identity.js";
 import { createChatsStorage, withChatMetadataPatchQueue } from "../storage/chats.storage.js";
 import { createGameStateStorage } from "../storage/game-state.storage.js";
 import { resolveVisibleGameStateAnchor } from "../../routes/generate/generate-route-utils.js";
-import { addInventoryEntry, createJournal, type Journal } from "./journal.service.js";
+import { addEventEntry, addInventoryEntry, createJournal, type Journal } from "./journal.service.js";
 
 /** What a change works out from the stacks it is given. The same stacks and nothing else leave
  *  everything as it was. */
 export interface GameInventoryChange<T> {
   stacks: GameInventoryStack[];
   journal: readonly GameInventoryJournalEntry[];
+  /** Journal events beside the inventory entries (starting gear taken), saved in the same write. */
+  events?: ReadonlyArray<{ title: string; content: string }>;
   /** Other metadata that belongs with this change, saved in the same write (a turn's record). */
   metadata?: Record<string, unknown>;
   value: T;
@@ -273,11 +275,12 @@ export async function applyGameInventoryChangeHeld<T>(
     (current) => {
       const patch: Record<string, unknown> = { ...outcome.metadata };
       if (outcome.stacks !== before) patch.gameInventory = outcome.stacks;
-      if (outcome.journal.length > 0) {
+      if (outcome.journal.length > 0 || outcome.events?.length) {
         let journal = (current.gameJournal as Journal | undefined) ?? createJournal();
         for (const entry of outcome.journal) {
           journal = addInventoryEntry(journal, entry.item, entry.action, entry.quantity);
         }
+        for (const event of outcome.events ?? []) journal = addEventEntry(journal, event.title, event.content);
         patch.gameJournal = journal;
       }
       return patch;

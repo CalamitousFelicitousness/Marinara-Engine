@@ -251,6 +251,7 @@ export * from "./features/rulesets/invented-items.js";
 export * from "./features/rulesets/item-use.js";
 export * from "./features/rulesets/loot.js";
 export * from "./features/rulesets/market.js";
+export * from "./features/rulesets/starting-gear.js";
 export * from "./features/ruleset-combat/index.js";
 
 export * from "./constants/request-timeouts.js";

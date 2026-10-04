@@ -170,6 +170,11 @@ assert.match(
   /\[data-marinara-chat-chrome-accent-mode="gradient"\] \.marinara-chat-popover:not\(\.mari-window\)/u,
   "gradient chrome must not override the window variables",
 );
+assert.match(
+  globals,
+  /@layer components \{\s*\.mari-window \{[\s\S]*?\.mari-drawer__body \{[^}]*\}\s*\}/u,
+  "window and drawer defaults sit in the components layer, so classes passed to them win",
+);
 
 // Chat Settings renders through the shared window and its sections through the shared drawer.
 assert.match(read("packages/client/src/components/chat/ChatSettingsDrawer.tsx"), /<FloatingWindow\b/u);

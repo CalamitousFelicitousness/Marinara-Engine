@@ -6611,7 +6611,7 @@ export function ChatSettingsDrawer({
                   </div>
 
                   <div className="rounded-lg bg-[var(--secondary)]/55 px-3 py-2.5 ring-1 ring-[var(--border)]/80">
-                    <ConversationTimeZoneSelect compact />
+                    <ConversationTimeZoneSelect compact containerQueries />
                   </div>
 
                   {hasGeneratedConversationSchedules && onOpenScheduleEditor && (
@@ -9388,6 +9388,7 @@ export function ChatSettingsDrawer({
                 )}
                 {import.meta.env.VITE_MARINARA_LITE !== "true" && (
                   <SemanticSummaryRetrievalControls
+                    containerQueries
                     enabled={metadata.semanticSummaryRetrievalEnabled === true}
                     recentCount={summaryRetrievalSettings.semanticSummaryRecentCount}
                     olderCount={summaryRetrievalSettings.semanticSummaryOlderCount}

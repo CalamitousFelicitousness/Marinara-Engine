@@ -562,6 +562,13 @@ test.describe("Chat Settings window on desktop", () => {
       await expect(drawer).toHaveAttribute("data-detached", "false");
       await expect(drawer.locator(".mari-drawer__header")).toHaveAttribute("role", "button");
       await expect(drawer.locator(".mari-drawer__title")).toHaveText("Chat Name");
+      const sectionsOutsideDrawers = await settings.evaluate((element) =>
+        Array.from(element.querySelectorAll("[data-chat-settings-section]"))
+          .filter((section) => !section.matches(".mari-drawer"))
+          .map((section) => section.getAttribute("data-chat-settings-section")),
+      );
+      expect(sectionsOutsideDrawers, "every Chat Settings section renders through the shared drawer").toEqual([]);
+      await expect(settings.locator('.mari-drawer[data-drawer="advanced-parameters"]')).toHaveCount(1);
       const defaultBorder = await settings.evaluate((element) => getComputedStyle(element).borderTopColor);
       const defaultDrawerBorder = await drawer.evaluate((element) => getComputedStyle(element).borderBottomColor);
       expect(defaultBorder).not.toBe("rgb(255, 0, 0)");

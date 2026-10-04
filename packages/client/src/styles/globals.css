@@ -702,170 +702,174 @@
      --mari-drawer-body-padding-inline  1rem
      --mari-drawer-body-padding-bottom  0.75rem
    ───────────────────────────────────────────── */
-.mari-window {
-  border: var(--mari-window-border-width, 1px) solid
-    var(--mari-window-border, var(--marinara-chat-chrome-panel-border));
-  border-radius: var(--mari-window-radius, calc(var(--radius) + 0.25rem));
-  background: var(--mari-window-bg, var(--marinara-chat-chrome-panel-bg));
-  color: var(--mari-window-text, var(--marinara-chat-chrome-panel-text));
-  box-shadow: var(--mari-window-shadow, 0 25px 50px -12px rgb(0 0 0 / 0.4));
-  -webkit-backdrop-filter: var(--mari-window-backdrop-filter, blur(12px));
-  backdrop-filter: var(--mari-window-backdrop-filter, blur(12px));
-}
-
-.mari-window__header {
-  border-bottom: 1px solid var(--mari-window-header-border, var(--marinara-chat-chrome-panel-divider));
-  border-top-left-radius: inherit;
-  border-top-right-radius: inherit;
-  background: var(--mari-window-header-bg, transparent);
-  padding: var(--mari-window-header-padding, 0.625rem 0.75rem);
-}
-
-.mari-window__header:focus-visible {
-  outline: none;
-  box-shadow: inset 0 0 0 2px var(--mari-window-focus-ring, var(--marinara-chat-chrome-focus-ring));
-}
-
-.mari-window__title {
-  color: var(--mari-window-header-text, var(--marinara-chat-chrome-panel-title));
-}
-
-.mari-window__controls {
-  gap: var(--mari-window-control-gap, 0.125rem);
-}
-
-.mari-window__control {
-  display: inline-flex;
-  width: 1.75rem;
-  height: 1.75rem;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--mari-window-control-radius, var(--radius));
-  color: var(--mari-window-control-color, var(--marinara-chat-chrome-panel-muted));
-  transition:
-    background-color 150ms ease,
-    color 150ms ease;
-}
-
-.mari-window__control[aria-pressed="true"] {
-  background: var(--mari-window-control-bg-active, var(--marinara-chat-chrome-highlight-bg));
-  color: var(--mari-window-control-color-active, var(--marinara-chat-chrome-button-text-active));
-}
-
-@media (hover: hover) {
-  .mari-window__control:hover {
-    background: var(--mari-window-control-bg-hover, var(--marinara-chat-chrome-highlight-bg));
-    color: var(--mari-window-control-color-hover, var(--marinara-chat-chrome-panel-text));
+/* In the components layer, so Tailwind classes passed to <FloatingWindow> or <Drawer> (className,
+   bodyClassName…) override these defaults; custom theme CSS, which is not layered, overrides both. */
+@layer components {
+  .mari-window {
+    border: var(--mari-window-border-width, 1px) solid
+      var(--mari-window-border, var(--marinara-chat-chrome-panel-border));
+    border-radius: var(--mari-window-radius, calc(var(--radius) + 0.25rem));
+    background: var(--mari-window-bg, var(--marinara-chat-chrome-panel-bg));
+    color: var(--mari-window-text, var(--marinara-chat-chrome-panel-text));
+    box-shadow: var(--mari-window-shadow, 0 25px 50px -12px rgb(0 0 0 / 0.4));
+    -webkit-backdrop-filter: var(--mari-window-backdrop-filter, blur(12px));
+    backdrop-filter: var(--mari-window-backdrop-filter, blur(12px));
   }
-}
 
-.mari-window__control:focus-visible,
-.mari-window__resize-handle:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--mari-window-focus-ring, var(--marinara-chat-chrome-focus-ring));
-}
-
-/* The body clips its content to the window's rounded corners; the root does not
-   clip, so the resize handles can sit on the border, clear of the scrollbar. */
-.mari-window__body {
-  overflow: hidden;
-  border-bottom-left-radius: inherit;
-  border-bottom-right-radius: inherit;
-}
-
-.mari-window__resize-handle {
-  --mari-window-resize-hit: var(--mari-window-resize-handle-size, 0.5rem);
-  --mari-window-resize-offset: calc(2px - var(--mari-window-resize-hit));
-  position: absolute;
-  z-index: 1;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  touch-action: none;
-}
-
-.mari-window__resize-handle[data-edge="n"],
-.mari-window__resize-handle[data-edge="s"] {
-  left: var(--mari-window-resize-hit);
-  right: var(--mari-window-resize-hit);
-  height: var(--mari-window-resize-hit);
-  cursor: ns-resize;
-}
-
-.mari-window__resize-handle[data-edge="e"],
-.mari-window__resize-handle[data-edge="w"] {
-  top: var(--mari-window-resize-hit);
-  bottom: var(--mari-window-resize-hit);
-  width: var(--mari-window-resize-hit);
-  cursor: ew-resize;
-}
-
-.mari-window__resize-handle:is([data-edge="ne"], [data-edge="nw"], [data-edge="se"], [data-edge="sw"]) {
-  width: calc(var(--mari-window-resize-hit) * 1.5);
-  height: calc(var(--mari-window-resize-hit) * 1.5);
-}
-
-.mari-window__resize-handle:is([data-edge="n"], [data-edge="ne"], [data-edge="nw"]) {
-  top: var(--mari-window-resize-offset);
-}
-
-.mari-window__resize-handle:is([data-edge="s"], [data-edge="se"], [data-edge="sw"]) {
-  bottom: var(--mari-window-resize-offset);
-}
-
-.mari-window__resize-handle:is([data-edge="e"], [data-edge="ne"], [data-edge="se"]) {
-  right: var(--mari-window-resize-offset);
-}
-
-.mari-window__resize-handle:is([data-edge="w"], [data-edge="nw"], [data-edge="sw"]) {
-  left: var(--mari-window-resize-offset);
-}
-
-.mari-window__resize-handle:is([data-edge="ne"], [data-edge="sw"]) {
-  cursor: nesw-resize;
-}
-
-.mari-window__resize-handle:is([data-edge="nw"], [data-edge="se"]) {
-  cursor: nwse-resize;
-}
-
-.mari-drawer {
-  border-bottom: 1px solid var(--mari-drawer-border, var(--border));
-  background: var(--mari-drawer-bg, transparent);
-}
-
-.mari-drawer__header {
-  padding: var(--mari-drawer-header-padding, 0.75rem 1rem);
-  background: var(--mari-drawer-header-bg, transparent);
-}
-
-@media (hover: hover) {
-  .mari-drawer__header:hover {
-    background: var(--mari-drawer-header-bg-hover, color-mix(in oklab, var(--accent) 50%, transparent));
+  .mari-window__header {
+    border-bottom: 1px solid var(--mari-window-header-border, var(--marinara-chat-chrome-panel-divider));
+    border-top-left-radius: inherit;
+    border-top-right-radius: inherit;
+    background: var(--mari-window-header-bg, transparent);
+    padding: var(--mari-window-header-padding, 0.625rem 0.75rem);
   }
-}
 
-.mari-drawer__icon {
-  color: var(--mari-drawer-icon-color, var(--muted-foreground));
-}
+  .mari-window__header:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 2px var(--mari-window-focus-ring, var(--marinara-chat-chrome-focus-ring));
+  }
 
-.mari-drawer__title {
-  color: var(--mari-drawer-title-color, inherit);
-}
+  .mari-window__title {
+    color: var(--mari-window-header-text, var(--marinara-chat-chrome-panel-title));
+  }
 
-.mari-drawer__count {
-  background: var(--mari-drawer-count-bg, color-mix(in oklab, var(--primary) 15%, transparent));
-  color: var(--mari-drawer-count-text, var(--primary));
-}
+  .mari-window__controls {
+    gap: var(--mari-window-control-gap, 0.125rem);
+  }
 
-.mari-drawer__arrow {
-  color: var(--mari-drawer-arrow-color, var(--muted-foreground));
-}
+  .mari-window__control {
+    display: inline-flex;
+    width: 1.75rem;
+    height: 1.75rem;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--mari-window-control-radius, var(--radius));
+    color: var(--mari-window-control-color, var(--marinara-chat-chrome-panel-muted));
+    transition:
+      background-color 150ms ease,
+      color 150ms ease;
+  }
 
-.mari-drawer__body {
-  padding-inline: var(--mari-drawer-body-padding-inline, 1rem);
-  padding-bottom: var(--mari-drawer-body-padding-bottom, 0.75rem);
+  .mari-window__control[aria-pressed="true"] {
+    background: var(--mari-window-control-bg-active, var(--marinara-chat-chrome-highlight-bg));
+    color: var(--mari-window-control-color-active, var(--marinara-chat-chrome-button-text-active));
+  }
+
+  @media (hover: hover) {
+    .mari-window__control:hover {
+      background: var(--mari-window-control-bg-hover, var(--marinara-chat-chrome-highlight-bg));
+      color: var(--mari-window-control-color-hover, var(--marinara-chat-chrome-panel-text));
+    }
+  }
+
+  .mari-window__control:focus-visible,
+  .mari-window__resize-handle:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--mari-window-focus-ring, var(--marinara-chat-chrome-focus-ring));
+  }
+
+  /* The body clips its content to the window's rounded corners; the root does not
+     clip, so the resize handles can sit on the border, clear of the scrollbar. */
+  .mari-window__body {
+    overflow: hidden;
+    border-bottom-left-radius: inherit;
+    border-bottom-right-radius: inherit;
+  }
+
+  .mari-window__resize-handle {
+    --mari-window-resize-hit: var(--mari-window-resize-handle-size, 0.5rem);
+    --mari-window-resize-offset: calc(2px - var(--mari-window-resize-hit));
+    position: absolute;
+    z-index: 1;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    touch-action: none;
+  }
+
+  .mari-window__resize-handle[data-edge="n"],
+  .mari-window__resize-handle[data-edge="s"] {
+    left: var(--mari-window-resize-hit);
+    right: var(--mari-window-resize-hit);
+    height: var(--mari-window-resize-hit);
+    cursor: ns-resize;
+  }
+
+  .mari-window__resize-handle[data-edge="e"],
+  .mari-window__resize-handle[data-edge="w"] {
+    top: var(--mari-window-resize-hit);
+    bottom: var(--mari-window-resize-hit);
+    width: var(--mari-window-resize-hit);
+    cursor: ew-resize;
+  }
+
+  .mari-window__resize-handle:is([data-edge="ne"], [data-edge="nw"], [data-edge="se"], [data-edge="sw"]) {
+    width: calc(var(--mari-window-resize-hit) * 1.5);
+    height: calc(var(--mari-window-resize-hit) * 1.5);
+  }
+
+  .mari-window__resize-handle:is([data-edge="n"], [data-edge="ne"], [data-edge="nw"]) {
+    top: var(--mari-window-resize-offset);
+  }
+
+  .mari-window__resize-handle:is([data-edge="s"], [data-edge="se"], [data-edge="sw"]) {
+    bottom: var(--mari-window-resize-offset);
+  }
+
+  .mari-window__resize-handle:is([data-edge="e"], [data-edge="ne"], [data-edge="se"]) {
+    right: var(--mari-window-resize-offset);
+  }
+
+  .mari-window__resize-handle:is([data-edge="w"], [data-edge="nw"], [data-edge="sw"]) {
+    left: var(--mari-window-resize-offset);
+  }
+
+  .mari-window__resize-handle:is([data-edge="ne"], [data-edge="sw"]) {
+    cursor: nesw-resize;
+  }
+
+  .mari-window__resize-handle:is([data-edge="nw"], [data-edge="se"]) {
+    cursor: nwse-resize;
+  }
+
+  .mari-drawer {
+    border-bottom: 1px solid var(--mari-drawer-border, var(--border));
+    background: var(--mari-drawer-bg, transparent);
+  }
+
+  .mari-drawer__header {
+    padding: var(--mari-drawer-header-padding, 0.75rem 1rem);
+    background: var(--mari-drawer-header-bg, transparent);
+  }
+
+  @media (hover: hover) {
+    .mari-drawer__header:hover {
+      background: var(--mari-drawer-header-bg-hover, color-mix(in oklab, var(--accent) 50%, transparent));
+    }
+  }
+
+  .mari-drawer__icon {
+    color: var(--mari-drawer-icon-color, var(--muted-foreground));
+  }
+
+  .mari-drawer__title {
+    color: var(--mari-drawer-title-color, inherit);
+  }
+
+  .mari-drawer__count {
+    background: var(--mari-drawer-count-bg, color-mix(in oklab, var(--primary) 15%, transparent));
+    color: var(--mari-drawer-count-text, var(--primary));
+  }
+
+  .mari-drawer__arrow {
+    color: var(--mari-drawer-arrow-color, var(--muted-foreground));
+  }
+
+  .mari-drawer__body {
+    padding-inline: var(--mari-drawer-body-padding-inline, 1rem);
+    padding-bottom: var(--mari-drawer-body-padding-bottom, 0.75rem);
+  }
 }
 
 /* ─────────────────────────────────────────────

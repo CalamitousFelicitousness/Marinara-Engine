@@ -33,6 +33,8 @@ export function readChatWindowArea(bounds: WindowBounds) {
   const topControlsBottom = Math.max(
     0,
     ...Array.from(chatRoot?.querySelectorAll("[data-chat-help]") ?? [])
+      // Top controls and their bubbles count; an open control window does not.
+      .filter((element) => !element.closest(".mari-window"))
       .map((element) => element.getBoundingClientRect())
       .filter((rect) => rect.width > 1 && rect.height > 1 && rect.top < (rootRect?.top ?? 0) + 80)
       .map((rect) => rect.bottom),

@@ -94,14 +94,14 @@ Custom theme CSS is cleaned before it runs, for safety. Styles that load a file 
 
 ## Styling chat windows and drawers
 
-**Chat Settings** opens as a window you can move and resize, and its sections are collapsible drawers. A drawer can pop out into a window of its own. Every chat window and drawer uses the same class names, data attributes and variables, so one theme can restyle them all at once.
+**Chat Settings** opens as a window you can move and resize, and its sections are collapsible drawers. A drawer can pop out into a window of its own. On a computer, the chat's other top controls (Game's Session, Volume, Assets and Game controls, the connected chat, Roleplay's package toolbars) are small windows that minimize to buttons, called bubbles, which you can drag anywhere. Every chat window, bubble and drawer uses the same class names, data attributes and variables, so one theme can restyle them all at once.
 
 | Part | Class |
 | --- | --- |
 | Window | `.mari-window` |
 | Title bar | `.mari-window__header` |
 | Title | `.mari-window__title` |
-| Pin, lock and close buttons | `.mari-window__controls` (each button is `.mari-window__control`) |
+| Minimize, pin, lock and close buttons | `.mari-window__controls` (each button is `.mari-window__control`) |
 | Window content | `.mari-window__body` |
 | Resize edges and corners | `.mari-window__resize-handle` |
 | Drawer | `.mari-drawer` |
@@ -109,6 +109,8 @@ Custom theme CSS is cleaned before it runs, for safety. Styles that load a file 
 | A collapsed drawer's preview (a tracker's small widget) | `.mari-drawer__summary` |
 | A drawer's pop-out button | `.mari-drawer__popout` |
 | The preview that follows the pointer while a drawer is dragged out | `.mari-drawer-ghost` |
+| A minimized window's button (bubble) | `.mari-window-bubble` |
+| The line shown while a dragged bubble lines up with another | `.mari-window-snap-guide` |
 
 These data attributes describe each window or drawer:
 
@@ -117,6 +119,7 @@ These data attributes describe each window or drawer:
 - `data-pinned` and `data-locked` are `"true"` while the window is pinned or locked.
 - `data-detached` is `"true"` when a drawer is shown in its own window, on both that window and the drawer inside it. A popped-out drawer's window is named `data-window="drawer:<window>:<drawer>"`, for example `data-window="drawer:chat-settings:chat-name"`, and `data-drawer-host` names the window it came from.
 - `data-dragging` is `"true"` on a drawer while its title is dragged, and `data-drop-target` is `"true"` on a window while a popped-out drawer is held over it, ready to go back.
+- A bubble has the `data-window` of its window and `data-minimized="true"`, for example `.mari-window-bubble[data-window="control:volume"]`. Control windows are named `control:game`, `control:session`, `control:volume`, `control:assets`, `control:connected-chat` and `control:package:<package>`. `data-dragging` is `"true"` on a bubble while it is dragged.
 
 The variables below set the default look. Each one falls back to the shared chat chrome colors, so a theme only needs the ones it wants to change.
 
@@ -135,6 +138,10 @@ The variables below set the default look. Each one falls back to the shared chat
 | `--mari-window-control-radius`, `--mari-window-control-gap` | Button rounding and spacing |
 | `--mari-window-focus-ring` | Keyboard focus outline |
 | `--mari-window-resize-handle-size` | Width of the resize edges |
+| `--mari-window-bubble-size`, `--mari-window-bubble-radius`, `--mari-window-bubble-shadow` | Bubble size, rounding and shadow |
+| `--mari-window-bubble-bg`, `--mari-window-bubble-bg-hover`, `--mari-window-bubble-border` | Bubble background and border |
+| `--mari-window-bubble-text`, `--mari-window-bubble-text-hover` | Bubble icon color |
+| `--mari-window-snap-guide` | The line shown while a bubble snaps into line |
 | `--mari-drawer-bg`, `--mari-drawer-border` | Drawer background and divider |
 | `--mari-drawer-header-bg`, `--mari-drawer-header-bg-hover` | Drawer header colors |
 | `--mari-drawer-header-padding`, `--mari-drawer-body-padding-inline`, `--mari-drawer-body-padding-bottom` | Drawer spacing |

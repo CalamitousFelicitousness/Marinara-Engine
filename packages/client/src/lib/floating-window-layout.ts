@@ -38,6 +38,26 @@ export interface WindowGeometry {
 export interface WindowLayout extends WindowGeometry {
   pinned: boolean;
   locked: boolean;
+  /** Minimizable windows: shown as a small button (its bubble) instead of the window. Older layouts have none. */
+  minimized?: boolean;
+  /** Where a minimizable window's bubble sits (its top-left corner, viewport pixels). */
+  bubble?: WindowPoint;
+}
+
+export interface WindowPoint {
+  x: number;
+  y: number;
+}
+
+/** A window bubble is a square this size (px), like the chat's toolbar buttons. */
+export const WINDOW_BUBBLE_SIZE_PX = 32;
+
+/** Keeps a bubble inside `bounds`, so it can never be lost off-screen. */
+export function clampWindowBubble(point: WindowPoint, bounds: WindowBounds): WindowPoint {
+  return {
+    x: clamp(finiteOr(point.x, bounds.left), bounds.left, bounds.right - WINDOW_BUBBLE_SIZE_PX),
+    y: clamp(finiteOr(point.y, bounds.top), bounds.top, bounds.bottom - WINDOW_BUBBLE_SIZE_PX),
+  };
 }
 
 /** Saved with each chat (`chat.metadata.windowLayout`) and in chat settings profiles. */
@@ -142,7 +162,27 @@ function readStoredLayout(value: unknown): WindowLayout | null {
   if (width! <= 0 || height! <= 0) return null;
   if (numbers.some((entry) => Math.abs(entry as number) > MAX_STORED_COORDINATE)) return null;
   if (typeof source.pinned !== "boolean" || typeof source.locked !== "boolean") return null;
-  return { x: x!, y: y!, width: width!, height: height!, pinned: source.pinned, locked: source.locked };
+  const layout: WindowLayout = {
+    x: x!,
+    y: y!,
+    width: width!,
+    height: height!,
+    pinned: source.pinned,
+    locked: source.locked,
+  };
+  // Optional (added after version 1 shipped): a bad value is dropped, the rest of the layout kept.
+  if (typeof source.minimized === "boolean") layout.minimized = source.minimized;
+  const bubble = readStoredPoint(source.bubble);
+  if (bubble) layout.bubble = bubble;
+  return layout;
+}
+
+function readStoredPoint(value: unknown): WindowPoint | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const { x, y } = value as Record<string, unknown>;
+  if (typeof x !== "number" || typeof y !== "number" || !Number.isFinite(x) || !Number.isFinite(y)) return null;
+  if (Math.abs(x) > MAX_STORED_COORDINATE || Math.abs(y) > MAX_STORED_COORDINATE) return null;
+  return { x, y };
 }
 
 /**
@@ -214,4 +254,24 @@ export function placeDetachedDrawer(
     x = host.x + host.width + DETACHED_GAP_PX;
   }
   return clampWindowGeometry({ x, y: source.y, width, height }, bounds, limits);
+}
+
+const BUBBLE_WINDOW_GAP_PX = 8;
+
+/**
+ * Where a minimizable window opens from its bubble: below it and lined up with its right edge (left
+ * edge near the left side), or above it when there is no room below.
+ */
+export function placeWindowBesideBubble(
+  size: { width: number; height: number },
+  bubble: WindowPoint,
+  bounds: WindowBounds,
+  limits: WindowSizeLimits,
+): WindowGeometry {
+  const { width, height } = size;
+  const alignRight = bubble.x + WINDOW_BUBBLE_SIZE_PX - width;
+  const x = alignRight >= bounds.left ? alignRight : bubble.x;
+  const below = bubble.y + WINDOW_BUBBLE_SIZE_PX + BUBBLE_WINDOW_GAP_PX;
+  const y = below + height <= bounds.bottom ? below : bubble.y - BUBBLE_WINDOW_GAP_PX - height;
+  return clampWindowGeometry({ x, y, width, height }, bounds, limits);
 }

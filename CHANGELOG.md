@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- On a computer, Game's **Session**, **Volume**, **Assets** and **Game controls** (Retry and the storyboard buttons), the **connected chat** and Roleplay's package toolbars are now small windows that minimize to buttons. The buttons start where the old ones were; drag one anywhere and it lines up with the others (hold Alt to place it freely). Click one to open its window beside it. Each chat remembers where its buttons are and which windows are open, and **Reset View** puts them back. Phones keep these controls in the chat's menu (#7034).
+
 - **Chat Branches**, **Chat Summary**, **Active Context**, **Author's Notes**, **Agent activity** (inside **Agents**) and the **Gallery** now live in **Chat Settings**, and **Search messages** sits at its top under the settings profile. Their buttons above the chat are gone, in every chat mode and on phones. While you type in Chat Settings on a phone, it fits above the keyboard (#7034).
 
 - On a computer, any section of **Chat Settings** and any tracker in the **Trackers** window can pop out into its own window, with the new button beside its **?** or by dragging its title out. These windows start pinned, move, resize and lock like Chat Settings, and go back when you close them or drop them on their old window. Each chat remembers its own window layout, settings profiles save it, and **Reset View** puts everything back (#7034).

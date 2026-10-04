@@ -2,6 +2,7 @@ import { useMemo, type ComponentProps } from "react";
 import type { Message, SpriteSide } from "@marinara-engine/shared";
 import { ConversationView } from "./ConversationView";
 import { ChatCommonOverlays } from "./ChatCommonOverlays";
+import { ChatConnectedChatWindow } from "./ChatControlWindow";
 import { useRenderTimer } from "../../lib/perf-diagnostics";
 import { useProvideChatGalleryActions } from "../../hooks/use-chat-gallery-actions";
 import type { CharacterMap, MessageSelectionToggle, PeekPromptData, PersonaInfo } from "./chat-area.types";
@@ -203,6 +204,8 @@ export function ChatConversationSurface({
           onAbandonScene={onAbandonScene}
         />
       </div>
+
+      {onSwitchChat && <ChatConnectedChatWindow name={connectedChatName} onSwitch={onSwitchChat} />}
 
       <ChatCommonOverlays
         chat={chat}

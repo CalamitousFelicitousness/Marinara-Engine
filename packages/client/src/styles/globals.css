@@ -663,10 +663,14 @@
                 .mari-drawer__icon, .mari-drawer__title, .mari-drawer__count,
                 .mari-drawer__summary, .mari-drawer__help, .mari-drawer__actions,
                 .mari-drawer__popout, .mari-drawer__arrow, .mari-drawer__body;
-                .mari-drawer-ghost (the preview while a drawer is dragged out)
+                .mari-drawer-ghost (the preview while a drawer is dragged out);
+                .mari-window-bubble (a minimized window's button) and
+                .mari-window-snap-guide (the line shown while a bubble snaps)
    Attributes:  [data-window="<id>"], [data-drawer="<id>"], [data-pinned],
                 [data-locked], [data-detached], [data-presentation="window|sheet"],
-                [data-window-control="pin|lock|close"], [data-edge],
+                [data-window-control="minimize|pin|lock|close"], [data-edge],
+                [data-minimized="true"] with [data-window] on a bubble, [data-axis="x|y"]
+                on a snap guide,
                 [data-drawer-control="pop-out"], [data-drawer-host="<id>"] and
                 [data-detached="true"] on a popped-out drawer's window
                 (data-window="drawer:<host id>:<drawer id>"), [data-dragging]
@@ -695,6 +699,15 @@
      --mari-window-control-gap          0.125rem
      --mari-window-focus-ring           var(--marinara-chat-chrome-focus-ring)
      --mari-window-resize-handle-size   0.5rem
+     --mari-window-bubble-size          2rem
+     --mari-window-bubble-bg            var(--marinara-chat-chrome-button-bg)
+     --mari-window-bubble-bg-hover      var(--marinara-chat-chrome-button-bg-hover)
+     --mari-window-bubble-text          var(--marinara-chat-chrome-button-text)
+     --mari-window-bubble-text-hover    var(--marinara-chat-chrome-button-text-hover)
+     --mari-window-bubble-border        var(--marinara-chat-chrome-button-border)
+     --mari-window-bubble-radius        calc(var(--radius) + 0.125rem)
+     --mari-window-bubble-shadow        0 4px 12px rgb(0 0 0 / 0.25)
+     --mari-window-snap-guide           var(--marinara-chat-chrome-focus-ring)
      --mari-drawer-bg                   transparent
      --mari-drawer-border               var(--border)
      --mari-drawer-header-bg            transparent
@@ -769,6 +782,46 @@
     }
   }
 
+  /* A minimized window: a small button the user places anywhere, like the chat's toolbar buttons. */
+  .mari-window-bubble {
+    display: inline-flex;
+    width: var(--mari-window-bubble-size, 2rem);
+    height: var(--mari-window-bubble-size, 2rem);
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--mari-window-bubble-border, var(--marinara-chat-chrome-button-border));
+    border-radius: var(--mari-window-bubble-radius, calc(var(--radius) + 0.125rem));
+    background: var(--mari-window-bubble-bg, var(--marinara-chat-chrome-button-bg));
+    color: var(--mari-window-bubble-text, var(--marinara-chat-chrome-button-text));
+    box-shadow: var(--mari-window-bubble-shadow, 0 4px 12px rgb(0 0 0 / 0.25));
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    cursor: pointer;
+    touch-action: none;
+    user-select: none;
+    transition:
+      background-color 150ms ease,
+      color 150ms ease;
+  }
+
+  @media (hover: hover) {
+    .mari-window-bubble:hover {
+      background: var(--mari-window-bubble-bg-hover, var(--marinara-chat-chrome-button-bg-hover));
+      color: var(--mari-window-bubble-text-hover, var(--marinara-chat-chrome-button-text-hover));
+    }
+  }
+
+  .mari-window-bubble[data-dragging="true"] {
+    cursor: grabbing;
+  }
+
+  .mari-window-snap-guide {
+    position: fixed;
+    background: var(--mari-window-snap-guide, var(--marinara-chat-chrome-focus-ring));
+    pointer-events: none;
+  }
+
+  .mari-window-bubble:focus-visible,
   .mari-window__control:focus-visible,
   .mari-window__resize-handle:focus-visible {
     outline: none;

@@ -509,8 +509,10 @@ export function ConversationView({
   const renderToolbarActions = (compact = false) => (
     <>
       <ChatHelpButton mode="conversation" compact={compact} className="md:hidden" />
+      {/* A computer shows the connected chat as a window that minimizes to a button. */}
       {onSwitchChat && (
         <ChatToolbarButton
+          className="md:hidden"
           icon={<ArrowRightLeft size="0.875rem" />}
           helpTarget="connected-chat"
           title={

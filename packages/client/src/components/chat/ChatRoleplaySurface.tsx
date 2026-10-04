@@ -47,6 +47,7 @@ import {
   ChevronRight,
   ArrowRightLeft,
   User,
+  Puzzle,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useRenderTimer } from "../../lib/perf-diagnostics";
@@ -73,6 +74,7 @@ import { ChatMessage } from "./ChatMessage";
 import { ChatInput } from "./ChatInput";
 import { CyoaChoices } from "./CyoaChoices";
 import { ChatHelpButton } from "./ChatHelpButton";
+import { CHAT_CONTROL_WINDOW_IDS, ChatConnectedChatWindow, ChatControlWindow } from "./ChatControlWindow";
 import {
   CHAT_TOOLBAR_ICON_GAP_CLASS,
   ChatToolbarButton,
@@ -1743,31 +1745,7 @@ export function ChatRoleplaySurface({
                       CHAT_TOOLBAR_ICON_GAP_CLASS,
                     )}
                   >
-                    {conversationToolbarPackages.map((item) => (
-                      <span key={`${item.id}-toolbar`} data-chat-help="agent-controls" className="contents">
-                        <CapabilityElement
-                          packageId={item.id}
-                          view="toolbar"
-                          capabilityProps={{
-                            ...conversationCapabilityProps,
-                            toolbarButtonClass: getChatToolbarButtonClass(),
-                          }}
-                          className="contents"
-                        />
-                      </span>
-                    ))}
-                    {chat?.connectedChatId && (
-                      <ChatToolbarButton
-                        icon={<ArrowRightLeft size="0.875rem" />}
-                        helpTarget="connected-chat"
-                        title={
-                          linkedChatName
-                            ? t("chat.toolbar.switchTo", { name: linkedChatName })
-                            : t("chat.toolbar.connectedChat")
-                        }
-                        onClick={() => useChatStore.getState().setActiveChatId(chat.connectedChatId!)}
-                      />
-                    )}
+                    {/* Package toolbars and the connected chat are windows that minimize to buttons. */}
                   </div>
                 </div>
               )}
@@ -1812,7 +1790,12 @@ export function ChatRoleplaySurface({
                       )}
                     >
                       {conversationToolbarPackages.map((item) => (
-                        <span key={`${item.id}-compact-toolbar`} data-chat-help="agent-controls" className="contents">
+                        // A computer shows these as windows that minimize to buttons.
+                        <span
+                          key={`${item.id}-compact-toolbar`}
+                          data-chat-help="agent-controls"
+                          className="contents md:hidden"
+                        >
                           <CapabilityElement
                             packageId={item.id}
                             view="toolbar"
@@ -1836,6 +1819,7 @@ export function ChatRoleplaySurface({
                                 : t("chat.toolbar.connectedChat")
                             }
                             onClick={() => useChatStore.getState().setActiveChatId(chat.connectedChatId!)}
+                            className="md:hidden"
                           />
                         )}
                         {/* Desktop opens Chat Settings from the topbar. */}
@@ -1866,6 +1850,7 @@ export function ChatRoleplaySurface({
                               : t("chat.toolbar.connectedChat")
                           }
                           onClick={() => useChatStore.getState().setActiveChatId(chat.connectedChatId!)}
+                          className="md:hidden"
                         />
                       )}
                       {/* Desktop opens Chat Settings from the topbar. */}
@@ -2267,6 +2252,35 @@ export function ChatRoleplaySurface({
           <EchoChamberPanel hiddenOnMobile={hideEchoChamberOnMobile} />
         </Suspense>
       </div>
+
+      {/* On a computer, package toolbars and the connected chat are windows that minimize to buttons. */}
+      {conversationToolbarPackages.map((item, index) => (
+        <ChatControlWindow
+          key={`${item.id}-toolbar-window`}
+          id={CHAT_CONTROL_WINDOW_IDS.package(item.id)}
+          title={item.manifest.name}
+          icon={<Puzzle size={14} />}
+          slot={index + 1}
+          width={280}
+          height={140}
+          helpTarget="agent-controls"
+        >
+          <div className={cn("flex flex-wrap items-center p-2", CHAT_TOOLBAR_ICON_GAP_CLASS)}>
+            <CapabilityElement
+              packageId={item.id}
+              view="toolbar"
+              capabilityProps={{ ...conversationCapabilityProps, toolbarButtonClass: getChatToolbarButtonClass() }}
+              className="contents"
+            />
+          </div>
+        </ChatControlWindow>
+      ))}
+      {chat?.connectedChatId && (
+        <ChatConnectedChatWindow
+          name={linkedChatName}
+          onSwitch={() => useChatStore.getState().setActiveChatId(chat.connectedChatId!)}
+        />
+      )}
 
       {/* Outside the isolated chat area, so it stacks with Chat Settings and the other chat windows. */}
       {chat && chatMeta.enableAgents && (

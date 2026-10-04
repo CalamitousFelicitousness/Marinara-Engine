@@ -3,7 +3,9 @@
 //
 // Each target names a control by selector; the overlay skips any that are not
 // visible right now, so one list covers desktop, phones, and the Chat Settings
-// window being open or closed. Add new chat controls here.
+// window being open or closed. On a computer, Session, Volume, Assets, the
+// connected chat and package toolbars point at their windows' buttons (bubbles).
+// Add new chat controls here.
 // ──────────────────────────────────────────────
 import type { ChatMode } from "@marinara-engine/shared";
 import { CHAT_SETTINGS_WINDOW_ID } from "../stores/floating-window.store";
@@ -27,6 +29,7 @@ export type ChatHelpTargetId =
   | "map"
   | "party"
   | "scene-media"
+  | "game-controls"
   | "retry"
   | "session"
   | "volume"
@@ -88,6 +91,8 @@ const TARGETS = {
   map: chatHelpTarget("map", "map", '[data-tour="game-map"]'),
   party: chatHelpTarget("party", "party", '[data-tour="game-party"]'),
   "scene-media": chatHelpTarget("scene-media", "sceneMedia"),
+  // On a computer, Retry and the storyboard controls share the Game controls window and its button.
+  "game-controls": chatHelpTarget("game-controls", "gameControls"),
   retry: chatHelpTarget("retry", "retry"),
   session: chatHelpTarget("session", "session"),
   volume: chatHelpTarget("volume", "volume"),
@@ -146,6 +151,7 @@ const TARGETS_BY_MODE: Record<ChatMode, ChatHelpTargetDefinition[]> = {
     TARGETS.map,
     TARGETS.party,
     TARGETS["scene-media"],
+    TARGETS["game-controls"],
     TARGETS.retry,
     TARGETS.session,
     TARGETS.volume,

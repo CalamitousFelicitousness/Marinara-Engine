@@ -1,5 +1,6 @@
 // #7036: shared floating windows keep a valid, on-screen layout and a stable theming contract.
 // #7034 step 4: drawers pop out into windows, and each chat saves its own layout.
+// #7034 step 3: chat control windows minimize to bubbles that snap into line and save with the chat.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -16,6 +17,8 @@ import {
   resizeWindowGeometry,
   serializeWindowLayoutSnapshot,
   toWindowLayoutSnapshot,
+  clampWindowBubble,
+  placeWindowBesideBubble,
 } from "../../packages/client/src/lib/floating-window-layout.js";
 import {
   CHAT_SETTINGS_WINDOW_ID,
@@ -25,6 +28,7 @@ import {
   takeFloatingWindowFocusRequest,
   useFloatingWindowStore,
 } from "../../packages/client/src/stores/floating-window.store.js";
+import { snapBubble } from "../../packages/client/src/lib/window-bubble-snap.js";
 
 const repositoryRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const read = (path: string) => readFileSync(join(repositoryRoot, path), "utf8");
@@ -349,5 +353,129 @@ assert.match(
   read("packages/client/src/features/multiplayer/MultiplayerChat.tsx"),
   /useEffect\(\(\) => \{\s*if \(!settingsOpen\) setInitialSection\(null\);\s*\}, \[settingsOpen\]\);/u,
 );
+
+// ── Window bubbles ──
+// Snapping: each axis on its own, within 8px, the nearest match winning; side by side it keeps an 8px gap.
+const anchorBubble = { x: 100, y: 100, width: 32, height: 32 };
+const bubbleSize = { width: 32, height: 32 };
+// Centre (and so both edges, at equal sizes) in line: x snaps, y stays free.
+assert.deepEqual(snapBubble({ ...bubbleSize, x: 106, y: 300 }, [anchorBubble]), {
+  x: 100,
+  y: 300,
+  guides: [{ axis: "x", at: 100, from: 100, to: 332 }],
+});
+// An edge lining up with a differently sized bubble's edge: its right edge to the other's left.
+assert.equal(snapBubble({ ...bubbleSize, x: 63, y: 300 }, [{ x: 100, y: 100, width: 64, height: 32 }]).x, 68);
+// Outside the threshold nothing moves, and no guide shows.
+// (Equal sizes: 150 is 18px past the right edge and 34px past the centre.)
+assert.deepEqual(snapBubble({ ...bubbleSize, x: 150, y: 300 }, [anchorBubble]), { x: 150, y: 300, guides: [] });
+// Just inside the threshold it still snaps: its left edge to the other's centre.
+assert.equal(snapBubble({ ...bubbleSize, x: 109, y: 300 }, [anchorBubble]).x, 116);
+assert.deepEqual(snapBubble({ ...bubbleSize, x: 300, y: 300 }, [anchorBubble]), { x: 300, y: 300, guides: [] });
+// Beside it (touching, or near the gap): an 8px gap, with tops in line.
+assert.deepEqual((({ x, y }) => ({ x, y }))(snapBubble({ ...bubbleSize, x: 134, y: 104 }, [anchorBubble])), {
+  x: 140,
+  y: 100,
+});
+assert.equal(snapBubble({ ...bubbleSize, x: 100 - 32 - 2, y: 100 }, [anchorBubble]).x, 100 - 32 - 8);
+// Below it in a column: the gap on y, the centres in line on x.
+assert.deepEqual((({ x, y }) => ({ x, y }))(snapBubble({ ...bubbleSize, x: 103, y: 135 }, [anchorBubble])), {
+  x: 100,
+  y: 140,
+});
+// The gap beats a closer edge match with another bubble (which would make the two touch).
+assert.equal(
+  snapBubble({ ...bubbleSize, x: 135, y: 98 }, [anchorBubble, { x: 100, y: 300, width: 32, height: 32 }]).x,
+  140,
+);
+// The nearest of several matches wins.
+assert.equal(
+  snapBubble({ ...bubbleSize, x: 205, y: 400 }, [anchorBubble, { x: 203, y: 100, width: 32, height: 32 }]).x,
+  203,
+);
+// Bubbles stay on screen; a window opens below its bubble, or above it near the bottom.
+assert.deepEqual(clampWindowBubble({ x: -50, y: 5000 }, bounds), { x: 8, y: 860 });
+const controlLimits = { minWidth: 200, minHeight: 96 };
+assert.deepEqual(placeWindowBesideBubble({ width: 280, height: 200 }, { x: 1000, y: 64 }, bounds, controlLimits), {
+  x: 752,
+  y: 104,
+  width: 280,
+  height: 200,
+});
+assert.equal(placeWindowBesideBubble({ width: 280, height: 300 }, { x: 1000, y: 800 }, bounds, controlLimits).y, 492);
+// Near the left edge it lines up with the bubble's left edge instead.
+assert.equal(placeWindowBesideBubble({ width: 280, height: 200 }, { x: 40, y: 64 }, bounds, controlLimits).x, 40);
+
+// Minimized state and bubble places save with the chat (still version 1; older layouts have neither).
+const withBubble = parseWindowLayoutSnapshot({
+  version: FLOATING_WINDOW_LAYOUT_VERSION,
+  windows: {
+    "control:volume": {
+      x: 1,
+      y: 2,
+      width: 300,
+      height: 200,
+      pinned: false,
+      locked: false,
+      minimized: true,
+      bubble: { x: 640, y: 64 },
+    },
+    "control:session": {
+      x: 1,
+      y: 2,
+      width: 300,
+      height: 200,
+      pinned: false,
+      locked: false,
+      minimized: "yes",
+      bubble: { x: "a" },
+    },
+  },
+});
+assert.deepEqual(withBubble.windows["control:volume"], {
+  x: 1,
+  y: 2,
+  width: 300,
+  height: 200,
+  pinned: false,
+  locked: false,
+  minimized: true,
+  bubble: { x: 640, y: 64 },
+});
+assert.deepEqual(withBubble.windows["control:session"], {
+  x: 1,
+  y: 2,
+  width: 300,
+  height: 200,
+  pinned: false,
+  locked: false,
+});
+useFloatingWindowStore.getState().hydrate(withBubble);
+assert.deepEqual(selectWindowLayoutSnapshot(useFloatingWindowStore.getState()).windows["control:volume"]?.bubble, {
+  x: 640,
+  y: 64,
+});
+useFloatingWindowStore.getState().saveLayout("control:volume", {
+  ...useFloatingWindowStore.getState().layouts["control:volume"]!,
+  minimized: false,
+});
+useFloatingWindowStore.getState().minimizeWindow("control:volume");
+assert.equal(useFloatingWindowStore.getState().layouts["control:volume"]?.minimized, true);
+useFloatingWindowStore.getState().resetView();
+assert.equal(
+  useFloatingWindowStore.getState().layouts["control:volume"],
+  undefined,
+  "Reset View restores the defaults",
+);
+
+// The window draws the bubble with its theming hooks and keeps the header controls in order.
+const floatingWindowSource = read("packages/client/src/components/ui/FloatingWindow.tsx");
+assert.match(floatingWindowSource, /className="mari-window-bubble fixed"/u);
+assert.match(floatingWindowSource, /data-minimized="true"/u);
+assert.match(
+  floatingWindowSource,
+  /data-window-control="minimize"[\s\S]*data-window-control="pin"[\s\S]*data-window-control="lock"[\s\S]*data-window-control="close"/u,
+);
+assert.match(read("packages/client/src/styles/globals.css"), /--mari-window-bubble-bg[\s\S]*--mari-window-snap-guide/u);
 
 console.log("floating window regression passed");

@@ -46,6 +46,8 @@ interface FloatingWindowState {
   detachDrawer: (id: FloatingWindowId, layout: WindowLayout, options?: { focus?: boolean }) => void;
   /** Puts a popped-out drawer back in its host and forgets its window. */
   dockDrawer: (id: FloatingWindowId) => void;
+  /** Shrinks a minimizable window back to its bubble (one never opened is minimized already). */
+  minimizeWindow: (id: FloatingWindowId) => void;
   /** Restores the default view: every window back in place and every drawer back in its host. */
   resetView: () => void;
   /** Loads a chat's saved layout, replacing the previous chat's. */
@@ -133,6 +135,16 @@ export const useFloatingWindowStore = create<FloatingWindowState>()((set, get) =
       stack: state.stack.filter((entry) => entry !== id),
     }));
   },
+  minimizeWindow: (id) =>
+    set((state) => {
+      const layout = state.layouts[id];
+      return {
+        layouts:
+          layout && !layout.minimized ? { ...state.layouts, [id]: { ...layout, minimized: true } } : state.layouts,
+        open: withoutKey(state.open, id),
+        stack: state.stack.filter((entry) => entry !== id),
+      };
+    }),
   resetView: () => set((state) => ({ layouts: {}, detached: {}, resetRevision: state.resetRevision + 1 })),
   hydrate: (snapshot) => {
     const parsed = parseWindowLayoutSnapshot(snapshot);
@@ -153,6 +165,11 @@ export function selectWindowLayoutSnapshot(
 /** True while any drawer of `hostId` is popped out, so the host stays mounted (hidden) to render it. */
 export function selectHasDetachedDrawers(state: Pick<FloatingWindowState, "detached">, hostId: FloatingWindowId) {
   return Object.keys(state.detached).some((id) => isHostDrawerWindowId(id, hostId));
+}
+
+/** True while a minimizable window shows as a window rather than its bubble. */
+export function selectWindowRestored(state: Pick<FloatingWindowState, "layouts">, id: FloatingWindowId) {
+  return state.layouts[id]?.minimized === false;
 }
 
 /** Pinned windows ignore outside presses and other panels. Phones show windows as sheets, which never pin. */

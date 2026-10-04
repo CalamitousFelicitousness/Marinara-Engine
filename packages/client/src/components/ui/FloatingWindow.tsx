@@ -1,10 +1,11 @@
 // ──────────────────────────────────────────────
-// Shared floating window: move, resize, pin, lock, close
+// Shared floating window: move, resize, minimize, pin, lock, close
 //
-// Every chat window (Chat Settings now; popped-out drawers and tracker windows
-// later) renders through this component so they behave and theme alike. Custom
-// themes style the stable `mari-window…` classes, the data attributes and the
-// `--mari-window-*` variables documented in globals.css.
+// Every chat window (Chat Settings, popped-out drawers, the Trackers window, the
+// chat's control windows) renders through this component so they behave and theme
+// alike. A minimizable window shrinks to a small button (its bubble) the user can
+// place anywhere. Custom themes style the stable `mari-window…` classes, the data
+// attributes and the `--mari-window-*` variables documented in globals.css.
 // ──────────────────────────────────────────────
 import {
   useCallback,
@@ -19,24 +20,29 @@ import {
   type ReactNode,
   type Ref,
 } from "react";
-import { Lock, Pin, Unlock, X } from "lucide-react";
+import { Lock, Minus, Pin, Unlock, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../../lib/utils";
 import {
   RESIZE_EDGES,
   WINDOW_KEYBOARD_LARGE_STEP_PX,
   WINDOW_KEYBOARD_STEP_PX,
+  WINDOW_BUBBLE_SIZE_PX,
   WINDOW_MARGIN_PX,
+  clampWindowBubble,
   clampWindowGeometry,
   moveWindowGeometry,
+  placeWindowBesideBubble,
   resizeWindowGeometry,
   type FloatingWindowId,
+  type WindowPoint,
   type ResizeEdge,
   type WindowBounds,
   type WindowGeometry,
   type WindowLayout,
 } from "../../lib/floating-window-layout";
 import { isModalOverlayOpen } from "../../lib/modal-overlay-registry";
+import { snapBubble, type SnapGuide } from "../../lib/window-bubble-snap";
 import { DrawerHostContext, type DrawerHost } from "./drawer-host";
 import {
   FLOATING_WINDOW_Z_BASE,
@@ -74,6 +80,12 @@ export interface FloatingWindowProps {
    * this window on their close buttons; `scrollClassName` styles their scrolling body.
    */
   drawerHost?: { title: string; scrollClassName?: string };
+  /**
+   * The window can shrink to a small button you place anywhere (its bubble), showing `icon`; `label`
+   * names it. Closing it, Escape and, while unpinned, a press elsewhere shrink it back too.
+   * `getDefaultLayout` says whether it starts minimized and where its bubble starts.
+   */
+  minimizable?: { icon: ReactNode; label: string };
   className?: string;
   sheetClassName?: string;
   sheetStyle?: CSSProperties;
@@ -84,8 +96,11 @@ export interface FloatingWindowProps {
   rootAttributes?: Record<`data-${string}`, string | boolean | undefined>;
   /** Presses on these targets do not count as "outside" (portalled menus, related dialogs…). */
   ignoreOutsidePointer?: (target: Element) => boolean;
-  /** May resolve to `false` when a guard keeps the window open; focus then stays where it is. */
-  onRequestClose: (reason: FloatingWindowCloseReason) => void | Promise<boolean>;
+  /**
+   * May resolve to `false` when a guard keeps the window open; focus then stays where it is. A
+   * minimizable window minimizes instead and does not call it.
+   */
+  onRequestClose?: (reason: FloatingWindowCloseReason) => void | Promise<boolean>;
   /** Follows the pointer while the title bar is dragged; returning true at "end" keeps the window where it was. */
   onDragMove?: (point: { x: number; y: number }, phase: "move" | "end") => boolean | void;
   children: ReactNode;
@@ -93,6 +108,8 @@ export interface FloatingWindowProps {
 
 const DEFAULT_MIN_WIDTH = 320;
 const DEFAULT_MIN_HEIGHT = 240;
+/** A press on a bubble that moves less than this (px) opens its window instead of dragging it. */
+const BUBBLE_DRAG_START_PX = 4;
 const NO_DRAG_SELECTOR = "button, a, input, select, textarea, [contenteditable='true'], [data-window-no-drag]";
 // Escape in a text field belongs to the field (many cancel an edit with it); anywhere else in the
 // window it closes an unpinned window. Controls that use Escape themselves call preventDefault.
@@ -122,6 +139,16 @@ function sameGeometry(left: WindowGeometry, right: WindowGeometry) {
   return left.x === right.x && left.y === right.y && left.width === right.width && left.height === right.height;
 }
 
+type BubbleDrag = {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  start: WindowPoint;
+  moved: boolean;
+  /** The other bubbles on screen, measured once when the drag starts. */
+  others: { x: number; y: number; width: number; height: number }[];
+};
+
 type PointerSession = {
   pointerId: number;
   startX: number;
@@ -144,6 +171,7 @@ export function FloatingWindow({
   autoFocus = true,
   hidden = false,
   drawerHost,
+  minimizable,
   className,
   sheetClassName,
   sheetStyle,
@@ -179,6 +207,12 @@ export function FloatingWindow({
   ignoreOutsidePointerRef.current = ignoreOutsidePointer;
   const onDragMoveRef = useRef(onDragMove);
   onDragMoveRef.current = onDragMove;
+  const bubbleRef = useRef<HTMLButtonElement | null>(null);
+  const bubbleDragRef = useRef<BubbleDrag | null>(null);
+  const bubbleFrameRef = useRef(0);
+  const suppressBubbleClickRef = useRef(false);
+  const focusBubbleRef = useRef(false);
+  const [liveBubble, setLiveBubble] = useState<{ point: WindowPoint; guides: SnapGuide[] } | null>(null);
 
   const limits = useMemo(() => ({ minWidth, minHeight }), [minHeight, minWidth]);
   // Phones show every drawer in place, so a sheet hosts none.
@@ -227,6 +261,14 @@ export function FloatingWindow({
   const pinned = !sheet && layout.pinned;
   const locked = !sheet && layout.locked;
   const geometry = clampWindowGeometry(liveGeometry ?? layout, bounds, limits);
+  const canMinimize = !!minimizable && !sheet;
+  const minimized = canMinimize && layout.minimized === true;
+  const bubblePoint = clampWindowBubble(
+    liveBubble?.point ??
+      layout.bubble ??
+      defaultLayout.bubble ?? { x: bounds.right - WINDOW_BUBBLE_SIZE_PX, y: bounds.top },
+    bounds,
+  );
 
   // Re-clamp whenever the viewport or the chat area changes, so a window can never be lost off-screen.
   useEffect(() => {
@@ -252,20 +294,47 @@ export function FloatingWindow({
     };
   }, [sheet]);
 
-  const requestClose = useCallback((reason: FloatingWindowCloseReason) => {
-    restoreFocusOnUnmountRef.current = reason !== "outside-pointer";
-    const result = onRequestCloseRef.current(reason);
-    void result?.then((closed) => {
-      // A guard kept the window open, so a later unmount must not move focus.
-      if (!closed) restoreFocusOnUnmountRef.current = false;
-    });
-  }, []);
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
+  const minimizeRef = useRef<(focusBubble: boolean) => void>(() => {});
+  minimizeRef.current = (focusBubble) => {
+    restoreFocusOnUnmountRef.current = false;
+    focusBubbleRef.current = focusBubble;
+    saveLayout(id, { ...layoutRef.current, minimized: true });
+    useFloatingWindowStore.getState().closeWindow(id);
+  };
+
+  const requestClose = useCallback(
+    (reason: FloatingWindowCloseReason) => {
+      // A minimizable window goes back to its bubble; focus follows it unless the user pressed elsewhere.
+      if (canMinimize) {
+        minimizeRef.current(reason !== "outside-pointer");
+        return;
+      }
+      restoreFocusOnUnmountRef.current = reason !== "outside-pointer";
+      const result = onRequestCloseRef.current?.(reason);
+      void result?.then((closed) => {
+        // A guard kept the window open, so a later unmount must not move focus.
+        if (!closed) restoreFocusOnUnmountRef.current = false;
+      });
+    },
+    [canMinimize],
+  );
+
+  // An unpinned window opens next to its bubble; a pinned or locked one where it was left.
+  const restoreFromBubble = () => {
+    const current = layoutRef.current;
+    const placed =
+      current.pinned || current.locked ? current : placeWindowBesideBubble(current, bubblePoint, bounds, limits);
+    saveLayout(id, { ...current, ...placed, minimized: false });
+    useFloatingWindowStore.getState().openWindow(id, bubbleRef.current);
+  };
 
   // Focus moves into the window when it opens and back to its opener when it closes. A remount (a
   // chat switch, or the loading placeholder giving way) only takes focus if nothing else has it.
   // Hiding and showing a kept-mounted window count as closing and opening it.
   useEffect(() => {
-    if (hidden) return;
+    if (hidden || minimized) return;
     restoreFocusOnUnmountRef.current = false;
     const requested = takeFloatingWindowFocusRequest(id);
     const focusIsFree = !document.activeElement || document.activeElement === document.body;
@@ -280,11 +349,25 @@ export function FloatingWindow({
     };
     // Mount and unmount only; switching presentation keeps focus where it is.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, hidden]);
+  }, [id, hidden, minimized]);
+
+  // A restored minimizable window stacks with the others; a minimized one hands focus to its bubble.
+  useEffect(() => {
+    if (!canMinimize || hidden) return;
+    if (!minimized) {
+      if (!useFloatingWindowStore.getState().stack.includes(id)) {
+        useFloatingWindowStore.getState().openWindow(id, null, { focus: false });
+      }
+      return;
+    }
+    if (!focusBubbleRef.current) return;
+    focusBubbleRef.current = false;
+    bubbleRef.current?.focus({ preventScroll: true });
+  }, [canMinimize, hidden, id, minimized]);
 
   // An unpinned window closes when the user presses anywhere else.
   useEffect(() => {
-    if (pinned || hidden) return;
+    if (pinned || hidden || minimized) return;
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target;
       if (!(target instanceof Element)) return;
@@ -297,9 +380,15 @@ export function FloatingWindow({
     };
     document.addEventListener("pointerdown", handlePointerDown, true);
     return () => document.removeEventListener("pointerdown", handlePointerDown, true);
-  }, [id, pinned, hidden, requestClose]);
+  }, [id, pinned, hidden, minimized, requestClose]);
 
-  useEffect(() => () => cancelAnimationFrame(frameRef.current), []);
+  useEffect(
+    () => () => {
+      cancelAnimationFrame(frameRef.current);
+      cancelAnimationFrame(bubbleFrameRef.current);
+    },
+    [],
+  );
 
   // Drag and keyboard pass geometry that is already clamped. Pin and lock keep the saved geometry, so a
   // window squeezed by a small viewport still returns to its place when the viewport grows again.
@@ -394,6 +483,134 @@ export function FloatingWindow({
     }, 0);
   };
 
+  // ── Bubble: a minimized window's button, dragged anywhere and snapped into line with the others ──
+  const commitBubble = (point: WindowPoint) => saveLayout(id, { ...layoutRef.current, bubble: point });
+
+  const handleBubblePointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (event.button !== 0 || bubbleDragRef.current) return;
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    const others = Array.from(document.querySelectorAll<HTMLElement>(".mari-window-bubble"))
+      .filter((element) => element !== event.currentTarget && element.getClientRects().length > 0)
+      .map((element) => {
+        const rect = element.getBoundingClientRect();
+        return { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
+      });
+    bubbleDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      start: bubblePoint,
+      moved: false,
+      others,
+    };
+  };
+
+  /** Where the bubble lands for this pointer position; Alt places it freely, without snapping. */
+  const readBubbleDrop = (drag: BubbleDrag, event: ReactPointerEvent<HTMLButtonElement>) => {
+    const raw = clampWindowBubble(
+      { x: drag.start.x + event.clientX - drag.startX, y: drag.start.y + event.clientY - drag.startY },
+      bounds,
+    );
+    if (event.altKey) return { point: raw, guides: [] };
+    const size = bubbleRef.current?.getBoundingClientRect();
+    const snapped = snapBubble(
+      { ...raw, width: size?.width ?? WINDOW_BUBBLE_SIZE_PX, height: size?.height ?? WINDOW_BUBBLE_SIZE_PX },
+      drag.others,
+    );
+    return { point: clampWindowBubble(snapped, bounds), guides: snapped.guides };
+  };
+
+  const handleBubblePointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const drag = bubbleDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const distance = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
+    if (!drag.moved && distance < BUBBLE_DRAG_START_PX) return;
+    drag.moved = true;
+    const next = readBubbleDrop(drag, event);
+    cancelAnimationFrame(bubbleFrameRef.current);
+    bubbleFrameRef.current = requestAnimationFrame(() => setLiveBubble(next));
+  };
+
+  const handleBubblePointerUp = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const drag = bubbleDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    bubbleDragRef.current = null;
+    cancelAnimationFrame(bubbleFrameRef.current);
+    setLiveBubble(null);
+    if (!drag.moved || event.type === "pointercancel") return;
+    // The click that ends a drag must not open the window too.
+    suppressBubbleClickRef.current = true;
+    commitBubble(readBubbleDrop(drag, event).point);
+  };
+
+  const handleBubbleClick = () => {
+    if (suppressBubbleClickRef.current) {
+      suppressBubbleClickRef.current = false;
+      return;
+    }
+    restoreFromBubble();
+  };
+
+  // Arrow keys move the bubble like the window's title bar (no snapping); Enter and Space open it.
+  const handleBubbleKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    const delta = readArrowDelta(event);
+    if (!delta) return;
+    event.preventDefault();
+    commitBubble(clampWindowBubble({ x: bubblePoint.x + delta.dx, y: bubblePoint.y + delta.dy }, bounds));
+  };
+
+  if (minimized && minimizable && !hidden) {
+    return (
+      <>
+        <button
+          ref={bubbleRef}
+          type="button"
+          data-window={id}
+          data-minimized="true"
+          data-dragging={liveBubble ? "true" : undefined}
+          {...rootAttributes}
+          className="mari-window-bubble fixed"
+          style={{ left: bubblePoint.x, top: bubblePoint.y, zIndex: FLOATING_WINDOW_Z_BASE }}
+          aria-label={t("window.bubble.label", { title: minimizable.label })}
+          title={t("window.bubble.hint", { title: minimizable.label })}
+          onPointerDown={handleBubblePointerDown}
+          onPointerMove={handleBubblePointerMove}
+          onPointerUp={handleBubblePointerUp}
+          onPointerCancel={handleBubblePointerUp}
+          onClick={handleBubbleClick}
+          onKeyDown={handleBubbleKeyDown}
+        >
+          {minimizable.icon}
+        </button>
+        {liveBubble?.guides.map((guide) => (
+          <div
+            key={`${guide.axis}:${guide.at}`}
+            aria-hidden="true"
+            data-axis={guide.axis}
+            className="mari-window-snap-guide"
+            style={
+              guide.axis === "x"
+                ? {
+                    left: guide.at,
+                    top: guide.from,
+                    width: 1,
+                    height: guide.to - guide.from,
+                    zIndex: FLOATING_WINDOW_Z_BASE,
+                  }
+                : {
+                    left: guide.from,
+                    top: guide.at,
+                    width: guide.to - guide.from,
+                    height: 1,
+                    zIndex: FLOATING_WINDOW_Z_BASE,
+                  }
+            }
+          />
+        ))}
+      </>
+    );
+  }
+
   const rootStyle: CSSProperties | undefined = sheet
     ? sheetStyle
     : {
@@ -448,6 +665,18 @@ export function FloatingWindow({
           {titleAccessory}
         </span>
         <div className="mari-window__controls flex shrink-0 items-center">
+          {canMinimize && (
+            <button
+              type="button"
+              data-window-control="minimize"
+              aria-label={t("window.controls.minimize")}
+              title={t("window.controls.minimizeHint")}
+              className="mari-window__control"
+              onClick={() => minimizeRef.current(true)}
+            >
+              <Minus size="0.875rem" />
+            </button>
+          )}
           {!sheet && (
             <>
               <button

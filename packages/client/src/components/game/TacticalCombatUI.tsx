@@ -708,7 +708,7 @@ export function TacticalCombatUI({
           break;
       }
     },
-    [playSfx, spawnPopup],
+    [localizeUi, playSfx, spawnPopup],
   );
 
   // ── End-of-battle handoff ──

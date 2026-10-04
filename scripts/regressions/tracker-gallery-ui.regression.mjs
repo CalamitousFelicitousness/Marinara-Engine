@@ -22,7 +22,6 @@ const uiStore = readSource("packages/client/src/stores/ui.store.ts");
 const chatGallery = readSource("packages/client/src/components/chat/ChatGallery.tsx");
 const chatSettingsDrawer = readSource("packages/client/src/components/chat/ChatSettingsDrawer.tsx");
 const chatSidebar = readSource("packages/client/src/components/layout/ChatSidebar.tsx");
-const chatBranchSelector = readSource("packages/client/src/components/chat/ChatBranchSelector.tsx");
 const homeBrowserHub = readSource("packages/client/src/components/chat/HomeBrowserHub.tsx");
 const storyboardChatSettings = readSource("packages/client/src/components/chat/StoryboardChatSettingsPanel.tsx");
 const conversationView = readSource("packages/client/src/components/chat/ConversationView.tsx");
@@ -109,11 +108,6 @@ assert.match(
   roleplayHud,
   /className: compact \? CHAT_TOOLBAR_MOBILE_OVERFLOW_HEIGHT_CLASS : undefined/u,
   "downloadable tracker controls must receive the built-in mobile toolbar height",
-);
-assert.match(
-  roleplayHud,
-  /const left =\s*window\.innerWidth < 768\s*\? Math\.max\(8, Math\.round\(\(window\.innerWidth - dropdownWidth\) \/ 2\)\)[\s\S]*?style=\{\{ top: pos\.top, left: pos\.left \}\}/u,
-  "the mobile Agents menu must center with layout coordinates, avoiding a conflict with its transform animation",
 );
 assert.match(
   roleplayHud,
@@ -249,11 +243,6 @@ assert.match(
   chatSidebar,
   /mari-chrome-muted-badge flex shrink-0 items-center gap-0\.5/u,
   "chat-list branch counts must use the shared compact tag treatment",
-);
-assert.match(
-  chatBranchSelector,
-  /mari-chrome-muted-badge absolute -right-1 -top-1/u,
-  "the active-chat branch count must use the same shared compact tag treatment",
 );
 assert.match(
   globalStyles,

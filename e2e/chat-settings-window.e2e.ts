@@ -286,10 +286,11 @@ test.describe("Chat Settings window on desktop", () => {
       await expect(settings).toHaveAttribute("data-pinned", "true");
       await page.locator("[data-chat-scroll]").click({ position: { x: 40, y: 200 } });
       await expect(settings).toBeVisible();
-      const gallery = page.getByRole("button", { name: "Gallery", exact: true }).filter({ visible: true });
-      await gallery.click();
+      // Another chat panel opening announces itself the way a toolbar button does.
+      await page.evaluate(() =>
+        window.dispatchEvent(new CustomEvent("mari-chat-toolbar-action", { detail: { panelAction: null } })),
+      );
       await expect(settings).toBeVisible();
-      await gallery.click();
       await settings.focus();
       await page.keyboard.press("Escape");
       await expect(settings).toBeVisible();
@@ -617,26 +618,15 @@ test.describe("Chat Settings window on desktop", () => {
   });
 
   test("the topbar button closes the chat's popovers, as the old toolbar button did", async ({ page, request }) => {
-    const chats = [await createChat(request, "conversation"), await createChat(request, "game")];
-    const popovers = page.locator(".marinara-chat-popover:not(.mari-window)").filter({ visible: true });
+    const chat = await createChat(request, "game");
+    const popovers = page.locator("[data-chat-floating-panel]:not(.mari-window)").filter({ visible: true });
     try {
-      await prepare(page, chats[0]!.id);
+      await prepare(page, chat.id);
       await page.goto("/");
-      const conversation = page.locator('[data-chat-mode="conversation"]');
-      await expect(conversation).toBeVisible();
-      for (const name of ["Switch branch (1 branch)", "Active Context"]) {
-        await conversation.getByRole("button", { name, exact: true }).filter({ visible: true }).click();
-        await expect(popovers).toHaveCount(1);
-        await openSettingsWindow(page);
-        await expect(popovers, `${name} closes`).toHaveCount(0);
-        await settingsWindow(page).getByRole("button", { name: "Close chat settings", exact: true }).click();
-      }
-
-      await setActiveChat(page, chats[1]!.id);
       const game = page.locator('[data-chat-mode="game"]');
       await expect(game).toBeVisible();
       for (const activate of ["pointer", "keyboard"] as const) {
-        await game.getByRole("button", { name: "Gallery", exact: true }).filter({ visible: true }).click();
+        await game.getByRole("button", { name: "Session", exact: true }).filter({ visible: true }).click();
         await expect(popovers).toHaveCount(1);
         if (activate === "pointer") await topbarSettings(page).click();
         else {
@@ -644,11 +634,11 @@ test.describe("Chat Settings window on desktop", () => {
           await page.keyboard.press("Enter");
         }
         await expect(settingsWindow(page)).toBeVisible();
-        await expect(popovers, `Game Gallery closes (${activate})`).toHaveCount(0);
+        await expect(popovers, `Game Session closes (${activate})`).toHaveCount(0);
         await settingsWindow(page).getByRole("button", { name: "Close chat settings", exact: true }).click();
       }
     } finally {
-      await Promise.all(chats.map((chat) => request.delete(`/api/chats/${chat.id}?force=true`)));
+      await request.delete(`/api/chats/${chat.id}?force=true`);
     }
   });
 

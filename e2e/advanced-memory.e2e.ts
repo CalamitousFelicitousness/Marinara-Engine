@@ -12,6 +12,7 @@ import { createServer, type ServerResponse } from "node:http";
 import type { AdvancedMemoryStatus, Message } from "@marinara-engine/shared";
 import { DEFAULT_ADVANCED_MEMORY_SETTINGS, createChatSummaryEntry } from "@marinara-engine/shared";
 import { seedUIState } from "./ui-state-fixture.js";
+import { openChatSettingsTool } from "./chat-settings-tools.js";
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version as string;
 test.use({ actionTimeout: 10_000 });
@@ -720,7 +721,9 @@ test("Advanced Memory stays in Chat Settings with confirmed knowledge, resumable
     await expect.poll(() => status.records[0]?.enabled).toBe(false);
     const saveButton = inspector.getByRole("button", { name: "Save correction", exact: true });
     const sourceButton = inspector.getByRole("button", { name: "Inspect source messages", exact: true });
-    await expect(inspector.getByText(/Check the source messages, the summary, and which characters know it/)).toBeVisible();
+    await expect(
+      inspector.getByText(/Check the source messages, the summary, and which characters know it/),
+    ).toBeVisible();
     await expect(saveButton).toBeEnabled();
     await saveButton.scrollIntoViewIfNeeded();
     await captureThemes(page, info, "advanced-memory-review-correction");
@@ -730,7 +733,9 @@ test("Advanced Memory stays in Chat Settings with confirmed knowledge, resumable
     await saveButton.click();
     expect((await correctionRequest).postDataJSON()).toEqual({ content: "Correction: the notebook is green." });
     await expect(saveButton).toBeDisabled();
-    await expect(inspector.getByText(/Check the source messages, the summary, and which characters know it/)).toHaveCount(0);
+    await expect(
+      inspector.getByText(/Check the source messages, the summary, and which characters know it/),
+    ).toHaveCount(0);
     const saveBounds = await saveButton.boundingBox();
     const sourceBounds = await sourceButton.boundingBox();
     expect(saveBounds).not.toBeNull();
@@ -895,10 +900,10 @@ test("Advanced Recall background activity appears without ordinary agents", asyn
   });
   try {
     await openChat(page, fixture.chat.id, false);
-    const agents = page.getByRole("button", { name: /^Agents & Actions/ }).filter({ visible: true });
-    await expect(agents.locator(".lucide-loader-circle")).toBeVisible();
-    await agents.click();
-    const activity = page.locator('[data-component="AdvancedRecallActivity"]');
+    // Agent activity is a section of the Agents drawer in Chat Settings.
+    const activity = (await openChatSettingsTool(page, "agent-activity")).locator(
+      '[data-component="AdvancedRecallActivity"]',
+    );
     await expect(activity).toContainText("Advanced Recall");
     await expect(activity).toContainText("Summarizing scenes");
     await expect(activity.getByRole("progressbar")).toHaveAttribute("value", "1");
@@ -910,8 +915,6 @@ test("Advanced Recall background activity appears without ordinary agents", asyn
     await expect(activity).toContainText("Indexing messages and scenes");
     status.job = { ...status.job, status: "ready", stage: "ready", completed: 2 };
     await expect(activity).toContainText("Memory is ready");
-    await expect(agents.locator(".lucide-loader-circle")).toHaveCount(0);
-    await expect(page.locator(".mari-chat-settings-drawer")).toBeHidden();
   } finally {
     await fixture.cleanup();
   }
@@ -1018,6 +1021,10 @@ for (const work of ["scene-check", "summary"] as const)
         if (response.url().endsWith(`/chats/${fixture.chat.id}/advanced-memory`)) polls++;
       });
       await openChat(page, fixture.chat.id, false);
+      // Agent activity, in Chat Settings' Agents drawer, shows Advanced Recall progress.
+      const activity = (await openChatSettingsTool(page, "agent-activity")).locator(
+        '[data-component="AdvancedRecallActivity"]',
+      );
       await expect.poll(() => polls).toBeGreaterThan(0);
       const idlePolls = polls;
       // Observe beyond the former five-second interval: an idle archive must stay idle.
@@ -1044,10 +1051,8 @@ for (const work of ["scene-check", "summary"] as const)
       await expect(page.getByText(firstChunk + lastChunk, { exact: true })).toBeVisible();
       await expect(page.locator("button.mari-chat-send-btn .lucide-send")).toBeVisible();
       await expect.poll(() => !!pendingMemory).toBe(true);
-      const agents = page.getByRole("button", { name: /^Agents & Actions/ }).filter({ visible: true });
-      await expect(agents.locator(".lucide-loader-circle")).toBeVisible();
-      await agents.click();
-      const activity = page.locator('[data-component="AdvancedRecallActivity"]');
+      // Typing in the composer closed the unpinned Chat Settings window.
+      await openChatSettingsTool(page, "agent-activity");
       await expect(activity).toContainText(work === "scene-check" ? "Finding scene boundaries" : "Updating continuity");
       const sceneCheckRun = page.locator('[data-agent-activity="advanced-recall"]');
       await expect(sceneCheckRun).toContainText("Advanced Recall");
@@ -1077,7 +1082,6 @@ for (const work of ["scene-check", "summary"] as const)
           ],
         }),
       );
-      await expect(agents.locator(".lucide-loader-circle")).toHaveCount(0);
       await expect(activity).toContainText("Memory is ready");
       await expect(sceneCheckRun).toBeVisible();
       await expect.poll(() => statusRequests.size).toBe(0);

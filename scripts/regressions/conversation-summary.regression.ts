@@ -151,7 +151,7 @@ assert.match(
 );
 
 const summaryPopoverSource = await readFile(
-  new URL("../../packages/client/src/components/chat/SummaryPopover.tsx", import.meta.url),
+  new URL("../../packages/client/src/components/chat/ChatSummaryPanel.tsx", import.meta.url),
   "utf8",
 );
 assert.match(
@@ -167,8 +167,8 @@ assert.match(
 );
 assert.match(
   summaryPopoverSource,
-  /grid-cols-1 gap-1\.5 sm:grid-cols-2/u,
-  "Batch ranges should use one column on mobile and two on desktop",
+  /grid-cols-1 gap-1\.5 @md:grid-cols-2/u,
+  "Batch ranges should use one column in a narrow Chat Settings window and two in a wide one",
 );
 assert.match(
   summaryPopoverSource,
@@ -231,8 +231,8 @@ assert.match(
 );
 assert.match(
   summaryPopoverSource,
-  /if \(batchRun !== null \|\| batchAbortControllerRef\.current\)[\s\S]*?batchAbortControllerRef\.current\?\.abort\(\)[\s\S]*?onClose\(\)/u,
-  "Closing during a batch should abort and discard active work",
+  /useEffect\(\s*\(\) => \(\) => \{\s*batchRunTokenRef\.current \+= 1;\s*batchAbortControllerRef\.current\?\.abort\(\);/u,
+  "Collapsing the drawer or closing Chat Settings during a batch should abort and discard active work",
 );
 assert.match(
   chatsRouteSource,

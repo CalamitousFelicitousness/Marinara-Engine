@@ -2,6 +2,7 @@ import { expect, test, type APIRequestContext, type Locator, type Page, type Tes
 import { readFileSync } from "node:fs";
 import { createChatSummaryEntry } from "@marinara-engine/shared";
 import { seedUIState } from "./ui-state-fixture.js";
+import { chatSettingsWindow, openChatSettingsTool } from "./chat-settings-tools.js";
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 
@@ -47,13 +48,8 @@ test("summary toggles keep other entries usable and toggle all in one save", asy
       { id, version },
     );
     await page.goto("/");
-    if (info.project.name.includes("mobile"))
-      await page.getByRole("button", { name: "More options", exact: true }).click();
-    await page
-      .getByRole("button", { name: "Chat Summary (19 active summaries)", exact: true })
-      .filter({ visible: true })
-      .click();
-    const panel = page.locator("[data-chat-floating-panel]").filter({ hasText: "Chat Summary" });
+    const panel = await openChatSettingsTool(page, "chat-summary");
+    await expect(panel.locator(".mari-drawer__count")).toHaveText("19");
     const toggles = panel.getByRole("button", { name: "Disable summary", exact: true });
     await expect(toggles).toHaveCount(19);
     await toggles.nth(0).click();
@@ -109,6 +105,7 @@ test("Chat Summary keeps the field being edited above the phone keyboard", ({ pa
   keepsFieldAboveKeyboard(page, request, info, false));
 
 // Turned sideways, a summary is taller than the room left above the keyboard.
+// A sideways phone is wide enough for the Chat Settings window, which fits above the keyboard while you type.
 test("Chat Summary keeps the field being edited above the phone keyboard in landscape", ({ page, request }, info) =>
   keepsFieldAboveKeyboard(page, request, info, true));
 
@@ -153,13 +150,9 @@ async function keepsFieldAboveKeyboard(page: Page, request: APIRequestContext, i
     const upright = page.viewportSize()!;
     if (landscape) await page.setViewportSize({ width: upright.height, height: upright.width });
     await page.goto("/");
-    // Sideways, the Android phone is wide enough to show Chat Summary in the top bar.
-    if (!landscape || iPhone) await page.getByRole("button", { name: "More options", exact: true }).click();
-    await page
-      .getByRole("button", { name: "Chat Summary (4 active summaries)", exact: true })
-      .filter({ visible: true })
-      .click();
-    const panel = page.locator("[data-chat-floating-panel]").filter({ hasText: "Chat Summary" });
+    // Chat Summary is a drawer in Chat Settings: a sheet upright, a window when the phone is wide enough.
+    await openChatSettingsTool(page, "chat-summary");
+    const panel = chatSettingsWindow(page);
     await expect(panel).toBeVisible();
 
     const phone = page.viewportSize()!;
@@ -229,16 +222,13 @@ async function keepsFieldAboveKeyboard(page: Page, request: APIRequestContext, i
       // Here the tap moves focus into the summary list, scrolled to its end.
       await panel.getByLabel("Messages", { exact: true }).focus();
       await setKeyboard(true);
-      await panel.evaluate((element) => {
-        const area = [...element.querySelectorAll("*")].find(
-          (node) => node.scrollHeight > node.clientHeight && /auto|scroll/.test(getComputedStyle(node).overflowY),
-        )!;
-        area.scrollTop = area.scrollHeight;
-      });
-      await tap(panel.getByRole("button", { name: "Edit summary entry", exact: true }).last());
+      const lastEdit = panel.getByRole("button", { name: "Edit summary entry", exact: true }).last();
+      await lastEdit.evaluate((element) => element.scrollIntoView({ block: "center" }));
+      await tap(lastEdit);
       if (!iPhone) await expect(summaryField).toBeFocused();
       await setKeyboard(false);
-      if (!iPhone) await panel.getByRole("button", { name: "Cancel", exact: true }).click();
+      const cancel = panel.getByRole("button", { name: "Cancel", exact: true });
+      if (await cancel.isVisible()) await cancel.click();
     }
 
     await panel.getByRole("button", { name: "Edit summary entry", exact: true }).last().click();
@@ -256,11 +246,14 @@ async function keepsFieldAboveKeyboard(page: Page, request: APIRequestContext, i
     // Sideways, message ranges fill the window before the keyboard opens, so they are checked upright.
     if (landscape) return;
     // Message ranges stay listed under the summaries after a run, and with several of them those
-    // controls alone are taller than the room the keyboard leaves. They are hidden while you type.
+    // controls alone are taller than the room the keyboard leaves. They scroll with the drawer, so the
+    // field being typed in still shows.
     await panel.getByRole("button", { name: "Range", exact: true }).click();
     const addRange = panel.getByRole("button", { name: "Add range", exact: true });
     await panel.getByRole("spinbutton", { name: "Range 1 to message", exact: true }).fill("1");
     await setKeyboard(true);
+    // The range controls scroll with the drawer, so the finger finds Add range where it shows.
+    await addRange.evaluate((element) => element.scrollIntoView({ block: "center" }));
     await tap(addRange);
     if (!iPhone) await expect(panel.getByRole("spinbutton", { name: "Range 2 to message", exact: true })).toBeVisible();
     await setKeyboard(false);

@@ -11,7 +11,6 @@ const roleplayHud = readSource("packages/client/src/components/chat/RoleplayHUD.
 const roleplayPanels = readSource("packages/client/src/components/chat/RoleplayHUDPanels.tsx");
 const chatHelp = readSource("packages/client/src/components/chat/ChatHelpOverlay.tsx");
 const chatSidebar = readSource("packages/client/src/components/layout/ChatSidebar.tsx");
-const branchSelector = readSource("packages/client/src/components/chat/ChatBranchSelector.tsx");
 const cardLibrary = readSource("packages/client/src/components/characters/CardLibraryPreview.tsx");
 const agentCatalog = readSource("packages/client/src/components/agents/AgentCatalogView.tsx");
 const agentSettingsControls = readSource("packages/client/src/components/chat/AgentSettingsControls.tsx");
@@ -27,11 +26,11 @@ const questTrackerPanel = readSource(
 );
 const globals = readSource("packages/client/src/styles/globals.css");
 
-const beholderLauncher = roleplayHud.indexOf("item.id}-beholder-launcher");
-const agentsGroup = roleplayHud.indexOf("<ActionsGroup");
-assert.ok(
-  beholderLauncher >= 0 && beholderLauncher < agentsGroup,
-  "Beholder must launch between Tracker Panel and Agents",
+assert.ok(roleplayHud.includes("item.id}-beholder-launcher"), "Beholder must still launch from the tracker strip");
+assert.doesNotMatch(
+  roleplayHud,
+  /RoleplayHUDActionsMenu/u,
+  "Agent activity lives in Chat Settings' Agents drawer, not behind a tracker-strip button",
 );
 assert.doesNotMatch(
   roleplayHud,
@@ -72,16 +71,6 @@ assert.match(
   chatHelp,
   /fixedMobileToolbarRects[\s\S]*fixedMobileToolbarRects\.get\(target\.id\) \?\? target\.rect/u,
   "collision separation must preserve the equal square frames around mobile toolbar buttons",
-);
-assert.match(
-  roleplayHud,
-  /dropdownRef\.current\?\.offsetWidth[\s\S]*Math\.max\(8, Math\.round\(\(window\.innerWidth - dropdownWidth\) \/ 2\)\)/u,
-  "the mobile Agents menu must center from its rendered width with an eight-pixel viewport inset",
-);
-assert.match(
-  roleplayHud,
-  /style=\{\{ top: pos\.top, left: pos\.left \}\}/u,
-  "the Agents menu must leave transform to its entrance animation instead of overriding pixel centering",
 );
 assert.match(
   roleplayHud,
@@ -132,11 +121,6 @@ assert.doesNotMatch(
   chatSidebar,
   /mari-chrome-muted-badge mari-chrome-tag/u,
   "chat branch badges must use the exact shared character-tag badge",
-);
-assert.match(
-  branchSelector,
-  /mari-chrome-muted-badge absolute/u,
-  "toolbar branch counts must use the same shared badge shape",
 );
 assert.match(
   cardLibrary,

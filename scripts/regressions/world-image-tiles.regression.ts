@@ -202,6 +202,18 @@ try {
     /characters/,
     "more than 64",
   );
+  // More characters than one canvas can hold are refused (64 blocks of 96 px cells, 2 by 3 frames).
+  const bigPeople = pngBytes(576, 1152, () => [0, 0, 0, 0]);
+  refused(
+    imageTilePack({
+      tileSize: 96,
+      sheets: [{ id: "people", png: pngDataUrl(bigPeople), width: 576, height: 1152 }],
+      tiles: { grass: [{ sheet: "people", x: 0, y: 0 }] },
+      characters: Array.from({ length: 64 }, (_, at) => ({ id: `c${at}`, sheet: "people", x: 0, y: 0, w: 2, h: 3 })),
+    } as Partial<ImageTilePack>),
+    /more room than a pack can draw/,
+    "characters that would not fit their canvas",
+  );
   // How a walk is drawn: step, stand, step, stand; facing the larger axis of the move, the way it went
   // kept near the diagonal and when it does not move.
   assert.deepEqual([0, 180, 360, 540, 720].map(characterFrameAt), [0, 1, 2, 1, 0]);

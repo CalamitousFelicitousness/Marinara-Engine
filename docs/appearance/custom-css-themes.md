@@ -106,10 +106,11 @@ Custom theme CSS is cleaned before it runs, for safety. Styles that load a file 
 | Resize edges and corners | `.mari-window__resize-handle` |
 | Drawer | `.mari-drawer` |
 | Drawer header, title and content | `.mari-drawer__header`, `.mari-drawer__title`, `.mari-drawer__body` |
+| A collapsed drawer's preview (a tracker's small widget) | `.mari-drawer__summary` |
 
 These data attributes describe each window or drawer:
 
-- `data-window` names the window, for example `data-window="chat-settings"`.
+- `data-window` names the window, for example `data-window="chat-settings"` or `data-window="trackers"`.
 - `data-drawer` names the drawer, for example `data-drawer="chat-name"`. Some names start with the chat mode, such as `roleplay-agents` or `conversation-agents`.
 - `data-pinned` and `data-locked` are `"true"` while the window is pinned or locked.
 - `data-detached` is `"true"` when a drawer is shown in its own window.

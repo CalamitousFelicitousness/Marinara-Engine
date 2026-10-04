@@ -4,6 +4,8 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
+- On a computer, Roleplay trackers no longer sit in a row of icons at the top of the chat. With the **Tracker Panel** on, they show only in the panel. With it off in Settings, they show in a **Trackers** window you can move, resize, pin and lock, with a drawer per tracker that shrinks to its small preview. Closed, it comes back from the **Tracker window** switch in Chat Settings or **Reset View**. The window and the Tracker Panel also have an **Agent activity** section to see what agents did, re-run trackers and clear them (#7034).
+
 - On a computer, **Chat Settings** now opens from a button in the middle of the top bar, shown while a chat is open, as a window you can move, resize, pin and lock. Unpinned, it closes when you click elsewhere or press Escape outside a text box or open menu; pinned, it stays open. It stays inside the chat area and remembers its place on this device. **Help** now opens from the **?** beside the Chat Settings title, and the Help layout labels the window and its buttons too. The **Tracker Panel** switch and **Reset View**, which puts the window back where it started, sit at the top of the window. The short description of each chat mode is gone. On phones, Chat Settings, Help and the Tracker Panel button stay where they were. Custom themes can restyle chat windows and their sections with shared classes and `--mari-window-*` / `--mari-drawer-*` variables (#7036).
 
 - Chats, Characters, Personas, Lorebooks, Presets, Connections, Agents, Settings and the Tracker Panel now each have a **?** at the top. Hover over it, or tap it on mobile, to read what that sidebar is for and what you can do there (#7002).

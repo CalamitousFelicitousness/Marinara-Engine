@@ -1182,8 +1182,9 @@ async function executeAgentWithTools(
   startTime: number,
   context: AgentContext,
 ): Promise<AgentResult> {
-  // An agent looks something up and answers: a few rounds, never the general limit, so a model that
-  // keeps calling tools (a proxy that loses the results) costs a few calls, not a hundred.
+  // An agent works with its tools, then answers: enough rounds for one that saves an entry per call on a
+  // backend that calls one tool a round, never the general limit, so a model that keeps calling tools
+  // (a proxy that loses the results) costs a bounded number of calls, not a hundred.
   const maxToolRounds = Math.min(getMaxToolRounds(), AGENT_MAX_TOOL_ROUNDS);
   const loopMessages = [...initialMessages];
   let totalTokens = 0;

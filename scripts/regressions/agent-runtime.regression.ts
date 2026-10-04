@@ -1047,12 +1047,16 @@ assert.doesNotMatch(groupHistory, /<\/?script/i, "nested markup must not reassem
       tools: [{ type: "function", function: { name: "look_up", description: "look up", parameters: {} } }],
       executeToolCall: async () => JSON.stringify({ found: "nothing" }),
     });
-    assert.equal(provider.calls, 9, "eight tool rounds, then the answer without tools");
+    assert.equal(provider.calls, 17, "sixteen tool rounds, then the answer without tools");
     assert.equal(result.success, true);
     const last = provider.messages.at(-1)!;
     assert.equal(provider.options.at(-1)?.tools, undefined);
     assert.ok(!last.some((message) => message.role === "tool" || message.tool_calls?.length));
-    assert.match(String(last.at(-1)?.content), /look_up: \{"found":"nothing"\}/);
+    assert.equal(
+      (String(last.at(-1)?.content).match(/look_up: \{"found":"nothing"\}/g) ?? []).length,
+      16,
+      "every round retold",
+    );
     assert.match(
       String(last.at(-1)?.content),
       /No more tool calls: give your answer now, in the format you were asked for\.$/,

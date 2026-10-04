@@ -4,7 +4,13 @@
 // ──────────────────────────────────────────────
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { OVERWORLD_SECONDS_PER_GAME_MINUTE, tilePackPixels, type TilePack } from "@marinara-engine/shared";
+import {
+  OVERWORLD_SECONDS_PER_GAME_MINUTE,
+  tilePackPixels,
+  type ImageTile,
+  type ImageTilePack,
+  type TilePack,
+} from "@marinara-engine/shared";
 import { ApiError, api } from "../lib/api-client";
 import { OVERWORLD_TILE } from "../lib/overworld-paint";
 import { useAdvanceTime } from "./use-game";
@@ -90,7 +96,7 @@ export function useOverworldClock(
 
 /** The stored tile packs, the families with a built-in pack, and the pack each family is drawn with. */
 export interface TilePackLibrary {
-  packs: Array<{ id: string; name: string; family: string; version: number }>;
+  packs: Array<{ id: string; name: string; family: string; version: number; tilePackVersion?: 1 | 2 }>;
   builtIn: string[];
   selection: Record<string, string>;
 }
@@ -111,26 +117,40 @@ export function useTilePackLibrary() {
 }
 
 /** Draws a family's tile at (x, y), the variant by `pick` (0..1); false while the tiles load, when the
- *  family has none, or when it lacks that tile, so the caller draws it plain. */
-export type OverworldTileDrawer = (
+ *  family has none, or when it lacks that tile, so the caller draws it plain. A tile of one cell fills
+ *  the 16-unit cell at (x, y). A sprite of an image pack (several cells) is drawn that many cells big,
+ *  its bottom row on the cell and centred across it, or fills `box` (in units, from (x, y)) when given,
+ *  as a building fills its lot. */
+export type OverworldTileDrawer = ((
   ctx: CanvasRenderingContext2D,
   id: string,
   x: number,
   y: number,
   pick?: number,
-) => boolean;
+  box?: { w: number; h: number },
+) => boolean) & {
+  /** How many canvas pixels a unit is worth drawing at: 1 for a drawn pack, the image pack's cell size
+   *  over 16 for an image pack, so a base canvas made that much bigger keeps its detail. */
+  resolution: number;
+  /** Whether the pack has this tile, drawn whole as a sprite of more than one cell. */
+  sprite: (id: string) => { w: number; h: number } | null;
+  /** An image pack (art scaled down: drawn smooth when shrunk), not a drawn one. */
+  image: boolean;
+  /** Still on its way (the game's own tiles, or an image pack's sheets decoding): draw nothing yet. */
+  loading: boolean;
+};
 
 /** The tiles a family is drawn with: the pack chosen for it, else the Engine's own for the family, laid
  *  out once on a canvas. A family with neither is drawn plain. */
 /** `own`: the game's own tiles (an Experience's map pack), drawn instead of the family's; "loading" while
  *  they are still on their way, so the family's are never fetched and drawn first. */
 export function useOverworldAtlas(family: string | undefined, own?: TilePack | null | "loading"): OverworldTileDrawer {
-  const { data: library } = useTilePackLibrary();
+  const { data: library, isPending: libraryPending } = useTilePackLibrary();
   const chosen = (family && library?.selection[family]) || null;
   // By version, so a pack saved again is drawn anew.
   const version = (chosen && library?.packs.find((pack) => pack.id === chosen)?.version) || null;
   const builtIn = Boolean(family && library?.builtIn.includes(family));
-  const { data: fetched } = useQuery({
+  const { data: fetched, isError: fetchFailed } = useQuery({
     queryKey: tilePackKeys.pack(family ?? "", chosen, version),
     queryFn: async () => {
       if (chosen) {
@@ -152,10 +172,12 @@ export function useOverworldAtlas(family: string | undefined, own?: TilePack | n
     staleTime: Infinity,
   });
   const pack = own === "loading" ? null : (own ?? fetched);
+  const drawn = pack && pack.tilePackVersion !== 2 ? pack : null;
+  const image = pack && pack.tilePackVersion === 2 ? pack : null;
   const atlas = useMemo(() => {
-    if (!pack) return null;
-    const ids = Object.keys(pack.tiles);
-    const total = ids.reduce((sum, id) => sum + pack.tiles[id]!.length, 0);
+    if (!drawn) return null;
+    const ids = Object.keys(drawn.tiles);
+    const total = ids.reduce((sum, id) => sum + drawn.tiles[id]!.length, 0);
     const canvas = document.createElement("canvas");
     canvas.width = ATLAS_COLUMNS * OVERWORLD_TILE;
     canvas.height = Math.max(1, Math.ceil(total / ATLAS_COLUMNS)) * OVERWORLD_TILE;
@@ -164,27 +186,165 @@ export function useOverworldAtlas(family: string | undefined, own?: TilePack | n
     const index: Record<string, number[]> = {};
     let next = 0;
     for (const id of ids) {
-      index[id] = pack.tiles[id]!.map((rows) => {
+      index[id] = drawn.tiles[id]!.map((rows) => {
         const at = next++;
-        const image = new ImageData(tilePackPixels(pack, rows), OVERWORLD_TILE, OVERWORLD_TILE);
-        ctx.putImageData(image, (at % ATLAS_COLUMNS) * OVERWORLD_TILE, Math.floor(at / ATLAS_COLUMNS) * OVERWORLD_TILE);
+        const data = new ImageData(tilePackPixels(drawn, rows), OVERWORLD_TILE, OVERWORLD_TILE);
+        ctx.putImageData(data, (at % ATLAS_COLUMNS) * OVERWORLD_TILE, Math.floor(at / ATLAS_COLUMNS) * OVERWORLD_TILE);
         return at;
       });
     }
     return { canvas, index };
-  }, [pack]);
-  return useCallback(
-    (ctx, id, x, y, pick = 0) => {
-      const variants = atlas?.index[id];
-      if (!atlas || !variants?.length) return false;
-      const at = variants[Math.min(variants.length - 1, Math.floor(pick * variants.length))]!;
+  }, [drawn]);
+  // An image pack's tiles, copied out of its decoded sheets into one compact atlas (only the cells its
+  // tiles use), so the sheets themselves are not kept. Until they are in, the drawer says it is loading
+  // and nothing is drawn, never the code-drawn look first.
+  // The pack's id and version, and a fingerprint of its tiles and sheets: two packs that share an id and a
+  // version (two Experiences' map packs, a package installed again) are never drawn from one atlas.
+  const imageKey = image ? `${image.id}@${image.version}#${imageFingerprint(image)}` : null;
+  const [compact, setCompact] = useState<{ key: string; atlas: ImageAtlas } | null>(null);
+  useEffect(() => {
+    if (!image || !imageKey) return;
+    let live = true;
+    void buildImageAtlas(image)
+      .then((atlas) => {
+        if (live) setCompact({ key: imageKey, atlas });
+      })
+      .catch(() => {
+        // Sheets that do not decode leave the pack drawn plain.
+        if (live) setCompact({ key: imageKey, atlas: { canvas: null, tiles: {}, size: image.tileSize } });
+      });
+    return () => {
+      live = false;
+    };
+    // The key stands for the pack: the same pack read again is not decoded again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [imageKey]);
+  const ready = image && compact?.key === imageKey ? compact.atlas : null;
+  return useMemo(() => {
+    const variantOf = <T>(variants: readonly T[] | undefined, pick: number) =>
+      variants?.length ? variants[Math.min(variants.length - 1, Math.floor(pick * variants.length))]! : null;
+    if (image) {
+      const size = image.tileSize;
+      const draw = ((ctx, id, x, y, pick = 0, box) => {
+        const tile = ready?.canvas ? variantOf(ready.tiles[id], pick) : null;
+        if (!tile || !ready?.canvas) return false;
+        const [dw, dh] = box
+          ? fitInside(tile.w * OVERWORLD_TILE, tile.h * OVERWORLD_TILE, box.w, box.h)
+          : [tile.w * OVERWORLD_TILE, tile.h * OVERWORLD_TILE];
+        // A sprite stands on its cell, centred across it; in a box, at the box's bottom, centred.
+        const [dx, dy] = box
+          ? [x + (box.w - dw) / 2, y + box.h - dh]
+          : [x + (OVERWORLD_TILE - dw) / 2, y + OVERWORLD_TILE - dh];
+        ctx.drawImage(ready.canvas, tile.sx, tile.sy, tile.w * size, tile.h * size, dx, dy, dw, dh);
+        return true;
+      }) as OverworldTileDrawer;
+      draw.resolution = size / OVERWORLD_TILE;
+      draw.image = true;
+      draw.loading = !ready;
+      draw.sprite = (id) => {
+        const tile = image.tiles[id]?.[0];
+        return tile && ((tile.w ?? 1) > 1 || (tile.h ?? 1) > 1) ? { w: tile.w ?? 1, h: tile.h ?? 1 } : null;
+      };
+      return draw;
+    }
+    const draw = ((ctx, id, x, y, pick = 0) => {
+      const at = variantOf(atlas?.index[id], pick);
+      if (!atlas || at === null) return false;
       const sx = (at % ATLAS_COLUMNS) * OVERWORLD_TILE;
       const sy = Math.floor(at / ATLAS_COLUMNS) * OVERWORLD_TILE;
       ctx.drawImage(atlas.canvas, sx, sy, OVERWORLD_TILE, OVERWORLD_TILE, x, y, OVERWORLD_TILE, OVERWORLD_TILE);
       return true;
-    },
-    [atlas],
-  );
+    }) as OverworldTileDrawer;
+    draw.resolution = 1;
+    draw.image = false;
+    // Still finding out which pack to draw with (the library, or a pack chosen from it), so an image pack
+    // is never preceded by the drawn look.
+    draw.loading =
+      own === "loading" ||
+      (!own && Boolean(family) && (libraryPending || (Boolean(chosen) && !fetched && !fetchFailed)));
+    draw.sprite = () => null;
+    return draw;
+  }, [atlas, chosen, family, fetchFailed, fetched, image, libraryPending, own, ready]);
+}
+
+/** Canvas pixels per unit for a view's base canvases (the ground and buildings drawn once): an image
+ *  pack's cell size over 16, but no more than the view shows them at, and small enough that the view's
+ *  base canvases (`units`, their total area in units) stay under 16 megapixels together, as a phone's
+ *  browser allows. 1 for a drawn pack. */
+export function overworldBaseResolution(drawTile: OverworldTileDrawer, units: number, shown: number): number {
+  if (!drawTile.image) return 1;
+  const most = Math.sqrt(16_000_000 / Math.max(1, units));
+  return Math.max(1, Math.min(drawTile.resolution, Math.ceil(shown), Math.floor(most)));
+}
+
+/** A short fingerprint of an image pack's tiles and sheets (FNV-1a over its tiles and a sample of each
+ *  sheet's data), so a pack changed under the same id and version is decoded again. */
+function imageFingerprint(pack: ImageTilePack): string {
+  let hash = 0x811c9dc5;
+  const mix = (text: string, step = 1) => {
+    for (let at = 0; at < text.length; at += step) hash = Math.imul(hash ^ text.charCodeAt(at), 0x01000193);
+  };
+  mix(JSON.stringify(pack.tiles));
+  for (const sheet of pack.sheets) {
+    mix(`${sheet.id}:${sheet.png.length}`);
+    mix(sheet.png, 97);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+/** A width and height scaled to fit inside a box, keeping their proportions. */
+function fitInside(width: number, height: number, boxWidth: number, boxHeight: number): [number, number] {
+  const scale = Math.min(boxWidth / width, boxHeight / height);
+  return [width * scale, height * scale];
+}
+
+interface ImageAtlas {
+  canvas: HTMLCanvasElement | null;
+  /** Each tile's variants: where it is on the atlas, and its cells across and down. */
+  tiles: Record<string, Array<{ sx: number; sy: number; w: number; h: number }>>;
+  size: number;
+}
+
+/** An image pack's tiles copied onto one canvas, packed in rows: the sheets are decoded, read once and
+ *  let go. */
+async function buildImageAtlas(pack: ImageTilePack): Promise<ImageAtlas> {
+  const size = pack.tileSize;
+  const images = new Map<string, HTMLImageElement>();
+  for (const sheet of pack.sheets) {
+    const element = new Image();
+    element.src = sheet.png;
+    await element.decode();
+    images.set(sheet.id, element);
+  }
+  const ROW = 2048;
+  const placed: Array<{ id: string; index: number; tile: ImageTile; sx: number; sy: number }> = [];
+  let [x, y, rowHeight] = [0, 0, 0];
+  for (const [id, variants] of Object.entries(pack.tiles)) {
+    variants.forEach((tile, index) => {
+      const [w, h] = [(tile.w ?? 1) * size, (tile.h ?? 1) * size];
+      if (x + w > ROW) [x, y, rowHeight] = [0, y + rowHeight, 0];
+      placed.push({ id, index, tile, sx: x, sy: y });
+      x += w;
+      rowHeight = Math.max(rowHeight, h);
+    });
+  }
+  // Larger than a browser can hold on one canvas: drawn plain rather than invisibly.
+  if (y + rowHeight > 8192) return { canvas: null, tiles: {}, size };
+  const canvas = document.createElement("canvas");
+  canvas.width = ROW;
+  canvas.height = Math.max(1, y + rowHeight);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return { canvas: null, tiles: {}, size };
+  const tiles: ImageAtlas["tiles"] = {};
+  for (const { id, index, tile, sx, sy } of placed) {
+    const source = images.get(tile.sheet);
+    if (!source) continue;
+    const [w, h] = [tile.w ?? 1, tile.h ?? 1];
+    ctx.drawImage(source, tile.x * size, tile.y * size, w * size, h * size, sx, sy, w * size, h * size);
+    (tiles[id] ??= [])[index] = { sx, sy, w, h };
+  }
+  images.clear();
+  return { canvas, tiles, size };
 }
 
 /** The view's offset in screen pixels so `at` (world pixels) sits at the middle across and a little above

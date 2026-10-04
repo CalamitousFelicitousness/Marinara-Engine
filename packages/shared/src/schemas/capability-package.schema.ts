@@ -625,7 +625,11 @@ const capabilityPackageManifestBaseSchema = z
 //        Not a soft seam, for the same reason as 1.20 through 1.73: an Engine that cannot read these
 //        refuses the whole ruleset or catalog file, so a package that ships any of them declares 1.74.
 //        No permission.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 74 } as const);
+// 1.75: an Experience's map pack may ship an image tile pack (tile pack v2, Pixelforge image tiles): PNG
+//        sheets on a grid of cells, sprites of several cells. Not a soft seam: an Engine that cannot read
+//        an image pack refuses the whole map pack, so a package whose map pack tiles are an image pack
+//        declares 1.75. No permission.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 75 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

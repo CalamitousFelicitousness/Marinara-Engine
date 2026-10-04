@@ -21,6 +21,7 @@ import {
 } from "@marinara-engine/shared";
 import { useTown, useTownVisit } from "../../hooks/use-game";
 import {
+  overworldBaseResolution,
   overworldCamera,
   useOverworldAtlas,
   useOverworldClock,
@@ -100,17 +101,26 @@ export function TownView({
   const peopleById = useMemo(() => new Map((town?.people ?? []).map((person) => [person.id, person])), [town]);
 
   // ── What the town is drawn from, once: its ground, streets, square, buildings and stalls ──
+  // Drawn in town units (16 a cell) at `resolution` canvas pixels a unit, so an image pack's detail
+  // survives; ground first, then everything standing on it (trees, wells, buildings, stalls) from the
+  // back row to the front, so a sprite taller than its cell is drawn over what stands behind it.
+  const shownAt = scale * (typeof window === "undefined" ? 1 : window.devicePixelRatio || 1);
+  const resolution = town ? overworldBaseResolution(drawTile, town.width * T * town.height * T, shownAt) : 1;
   const base = useMemo(() => {
     const canvas = document.createElement("canvas");
-    if (!town) return canvas;
-    canvas.width = town.width * T;
-    canvas.height = town.height * T;
+    if (!town || drawTile.loading) return canvas;
+    canvas.width = town.width * T * resolution;
+    canvas.height = town.height * T * resolution;
     const ctx = canvas.getContext("2d");
     if (!ctx) return canvas;
+    ctx.scale(resolution, resolution);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
     const plain = (colour: string, x: number, y: number) => {
       ctx.fillStyle = colour;
       ctx.fillRect(x, y, T, T);
     };
+    const standing: Array<{ bottom: number; draw: () => void }> = [];
     for (let y = 0; y < town.height; y++) {
       for (let x = 0; x < town.width; x++) {
         const cell = town.ground[y * town.width + x];
@@ -124,11 +134,23 @@ export function TownView({
         if (!drawTile(ctx, id, x * T, y * T, pick)) plain(colour, x * T, y * T);
         // A tree here and there on the open ground away from the streets, and where a hand layout
         // (worldgen W9h) planted one or dug a well; "o" is open ground kept clear.
-        if (cell === "t" || (cell === "." && pick > 0.86)) drawTile(ctx, "tree", x * T, y * T);
-        if (cell === "w") drawTile(ctx, "well", x * T, y * T);
+        if (cell === "t" || (cell === "." && pick > 0.86))
+          standing.push({ bottom: y, draw: () => drawTile(ctx, "tree", x * T, y * T) });
+        if (cell === "w") standing.push({ bottom: y, draw: () => drawTile(ctx, "well", x * T, y * T) });
       }
     }
     for (const building of town.buildings) {
+      standing.push({ bottom: building.y + building.h - 1, draw: () => drawBuilding(building) });
+    }
+    function drawBuilding(building: WorldTownBuilding) {
+      // An image pack's whole-building sprite, fitted inside the lot; else roofs and a front.
+      const sprite = building.kind === "home" ? "house" : "hall";
+      const box = { w: building.w * T, h: building.h * T };
+      if (
+        drawTile.image &&
+        drawTile(ctx!, sprite, building.x * T, building.y * T, (hash(building.id) % 100) / 100, box)
+      )
+        return;
       const roof = building.kind === "home" ? "roof" : "hall";
       const roofRows = building.h - 1;
       for (let row = 0; row < building.h; row++) {
@@ -138,7 +160,7 @@ export function TownView({
             const v = roofRows === 1 ? "n" : row === 0 ? "n" : row === roofRows - 1 ? "s" : "";
             const h = col === 0 ? "w" : col === building.w - 1 ? "e" : "";
             const at = v + h || "c";
-            if (!drawTile(ctx, `${roof}_${at}`, x, y)) plain(roof === "roof" ? PLAIN.roof : PLAIN.hall, x, y);
+            if (!drawTile(ctx!, `${roof}_${at}`, x, y)) plain(roof === "roof" ? PLAIN.roof : PLAIN.hall, x, y);
           } else {
             // The front: the door on the side of its street, windows between.
             const doorCol =
@@ -148,17 +170,22 @@ export function TownView({
                   ? building.w - 1
                   : building.door.x - building.x;
             const id = col === doorCol ? "wall_door" : col % 2 ? "wall_window" : "wall";
-            if (!drawTile(ctx, id, x, y)) plain(col === doorCol ? PLAIN.door : PLAIN.wall, x, y);
+            if (!drawTile(ctx!, id, x, y)) plain(col === doorCol ? PLAIN.door : PLAIN.wall, x, y);
           }
         }
       }
     }
-    for (const stall of town.stalls) drawTile(ctx, "stall", stall.x * T, stall.y * T);
+    for (const stall of town.stalls)
+      standing.push({ bottom: stall.y, draw: () => drawTile(ctx, "stall", stall.x * T, stall.y * T) });
     const well = worldTownDoor(town, "square");
     if (well && town.stalls.every((stall) => stall.x !== well.x || stall.y !== well.y))
-      drawTile(ctx, "well", well.x * T, well.y * T);
+      standing.push({ bottom: well.y, draw: () => drawTile(ctx, "well", well.x * T, well.y * T) });
+    // Stable: things on one row keep the order above.
+    standing.sort((a, b) => a.bottom - b.bottom);
+    for (const each of standing) each.draw();
     return canvas;
-  }, [drawTile, town]);
+  }, [drawTile, resolution, town]);
+  const townSize = town ? { width: town.width * T, height: town.height * T } : { width: 0, height: 0 };
 
   // ── Where people are at the hour: one at each place of work's door, the rest of the square's around it ──
   const crowd = useMemo(() => {
@@ -186,10 +213,11 @@ export function TownView({
   const restingSpot = town ? worldTownDoor(town, town.at) : null;
   if (!walkingRef.current) partyRef.current = restingSpot ? centreOf(restingSpot) : null;
   const camera = useCallback(
-    (at: Point) => overworldCamera(at, { width: base.width, height: base.height }, size, scale),
-    [base, scale, size],
+    (at: Point) => overworldCamera(at, townSize, size, scale),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [townSize.width, townSize.height, scale, size],
   );
-  const resting = camera(lookAt ?? partyRef.current ?? { x: base.width / 2, y: base.height / 2 });
+  const resting = camera(lookAt ?? partyRef.current ?? { x: townSize.width / 2, y: townSize.height / 2 });
   /** Chooses a spot, and brings it into view. */
   const setSelected = (next: string | null) => {
     setSelectedState(next);
@@ -215,7 +243,10 @@ export function TownView({
       ctx.fillStyle = "#05060a";
       ctx.fillRect(0, 0, width, height);
       ctx.setTransform(scale * dpr, 0, 0, scale * dpr, -cam.x * dpr, -cam.y * dpr);
-      ctx.drawImage(base, 0, 0);
+      // Smooth only where the base is shown smaller than it was drawn (an image pack's art).
+      ctx.imageSmoothingEnabled = drawTile.image && resolution > scale * dpr;
+      ctx.drawImage(base, 0, 0, base.width / resolution, base.height / resolution);
+      ctx.imageSmoothingEnabled = false;
       for (const { person, at } of crowd) {
         const pick = (hash(person.id) % 100) / 100;
         if (!drawTile(ctx, "folk", at.x * T, at.y * T - 4, pick)) paintParty(ctx, at.x * T + 1, at.y * T - 3, false);
@@ -233,7 +264,7 @@ export function TownView({
         ctx.globalCompositeOperation = "source-over";
       }
     },
-    [base, crowd, darkness, drawTile, scale, size.height, size.width],
+    [base, crowd, darkness, drawTile, resolution, scale, size.height, size.width],
   );
   const drawRef = useRef(draw);
   drawRef.current = draw;
@@ -374,6 +405,7 @@ export function TownView({
         role="region"
         aria-label={t("game.town.region")}
         data-component="TownView"
+        data-tiles={drawTile.loading ? "loading" : drawTile.image ? "image" : "drawn"}
       >
         <canvas ref={canvasRef} className="absolute inset-0 h-full w-full [image-rendering:pixelated]" />
         {inside && (

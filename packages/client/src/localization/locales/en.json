@@ -1835,6 +1835,7 @@
   "game.tilePacks.family.scifi": "Science fiction",
   "game.tilePacks.family.wasteland": "Wasteland",
   "game.tilePacks.family.wuxia": "Wuxia",
+  "game.tilePacks.imagePackFor": "Image tiles for {{family}}, version {{version}}",
   "game.tilePacks.import": "Import a tile pack",
   "game.tilePacks.imported": "Imported {{name}}.",
   "game.tilePacks.importFailed": "The tile pack could not be imported.",

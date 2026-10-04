@@ -72,7 +72,7 @@ export function TownInterior({ chatId, town, buildingId, hour, darkness, drawTil
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
-    if (!canvas || !ctx || !interior || size.width === 0) return;
+    if (!canvas || !ctx || !interior || size.width === 0 || drawTile.loading) return;
     const dpr = window.devicePixelRatio || 1;
     const [width, height] = [Math.round(size.width * dpr), Math.round(size.height * dpr)];
     if (canvas.width !== width || canvas.height !== height) [canvas.width, canvas.height] = [width, height];
@@ -81,6 +81,8 @@ export function TownInterior({ chatId, town, buildingId, hour, darkness, drawTil
     ctx.fillStyle = "#05060a";
     ctx.fillRect(0, 0, width, height);
     ctx.setTransform(scale * dpr, 0, 0, scale * dpr, origin.x * dpr, origin.y * dpr);
+    // An image pack's art is drawn smooth where it is shown smaller than it was made.
+    ctx.imageSmoothingEnabled = drawTile.image && drawTile.resolution > scale * dpr;
     const plain = (colour: string, x: number, y: number, inset = 0) => {
       ctx.fillStyle = colour;
       ctx.fillRect(x + inset, y + inset, T - inset * 2, T - inset * 2);

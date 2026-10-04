@@ -29,6 +29,17 @@ export class TilePackVersionConflictError extends Error {
   }
 }
 
+export class TilePackVersionTooOldError extends Error {
+  constructor(packId: string, version: number) {
+    super(
+      `Version ${version} of ${packId} is older than the ${IMAGE_PACK_VERSIONS_KEPT} versions kept. Save it as a new version.`,
+    );
+  }
+}
+
+/** The newest versions of an image pack kept (older ones are dropped as a new one is saved). */
+export const IMAGE_PACK_VERSIONS_KEPT = 8;
+
 export function createGameTilePacksStorage(db: DB) {
   const all = async () => (await db.select().from(gameTilePacks)) as GameTilePackRow[];
   return {
@@ -59,6 +70,14 @@ export function createGameTilePacksStorage(db: DB) {
           .from(gameTilePacks)
           .where(and(eq(gameTilePacks.packId, pack.id), eq(gameTilePacks.version, pack.version)))) as GameTilePackRow[];
         const existing = rows[0];
+        // An image pack keeps its newest versions only, so one older than all of them would be dropped as
+        // soon as it was kept: refused instead.
+        if (!existing && pack.tilePackVersion === 2) {
+          const newer = (
+            (await tx.select().from(gameTilePacks).where(eq(gameTilePacks.packId, pack.id))) as GameTilePackRow[]
+          ).filter((row) => row.version > pack.version);
+          if (newer.length >= IMAGE_PACK_VERSIONS_KEPT) throw new TilePackVersionTooOldError(pack.id, pack.version);
+        }
         if (existing) {
           if (existing.sha256 !== sha256) throw new TilePackVersionConflictError(pack.id, pack.version);
           return { status: "unchanged" as const, row: existing };
@@ -74,6 +93,16 @@ export function createGameTilePacksStorage(db: DB) {
           createdAt: now(),
         };
         await tx.insert(gameTilePacks).values(row);
+        // An image pack keeps its newest versions only: each can be megabytes, and every row stays in
+        // memory and in every backup.
+        if (pack.tilePackVersion === 2) {
+          const versions = (await tx
+            .select()
+            .from(gameTilePacks)
+            .where(eq(gameTilePacks.packId, pack.id))) as GameTilePackRow[];
+          const dropped = versions.sort((a, b) => b.version - a.version).slice(IMAGE_PACK_VERSIONS_KEPT);
+          for (const old of dropped) await tx.delete(gameTilePacks).where(eq(gameTilePacks.id, old.id));
+        }
         return { status: "added" as const, row };
       });
     },

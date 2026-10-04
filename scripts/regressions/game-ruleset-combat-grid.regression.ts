@@ -1035,6 +1035,17 @@ const cellsOf = (cells: Array<{ x: number; y: number }>) =>
     ),
     /Unknown condition "flat"/,
   );
+  assert.match(
+    refusalOf(
+      variant(fiveEText, (doc) => {
+        doc.combat.elevation = {
+          levelHeight: 5,
+          falling: { per: 10, dice: { count: 1, sides: 6 }, max: 20, type: "bludgeonig" },
+        };
+      }),
+    ),
+    /Unknown damage type "bludgeonig"/,
+  );
 }
 
 // ── A wall between them stops a shot and says which rule it broke ──

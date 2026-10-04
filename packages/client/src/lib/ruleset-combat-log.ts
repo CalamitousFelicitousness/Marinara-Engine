@@ -86,7 +86,7 @@ export function rulesetCombatNames(
       const unit = definition.combat?.distance?.label;
       return levelHeight && unit
         ? (t("game.combat.ruleset.board.distance", { amount: levels * levelHeight, unit }) as string)
-        : String(levels);
+        : (t("game.combat.ruleset.board.levels", { count: levels }) as string);
     },
     combatant: (id) => (id ? (combatants.get(id) ?? "") : ""),
     condition: lookup(definition.sheet.live.conditions),

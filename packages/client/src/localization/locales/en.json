@@ -1162,6 +1162,7 @@
   "game.combat.ruleset.board.cell": "Cell {{x}}, {{y}}.",
   "game.combat.ruleset.board.distance": "{{amount}} {{unit}}",
   "game.combat.ruleset.board.height": "Height {{height}}.",
+  "game.combat.ruleset.board.levels": "{{count}} levels",
   "game.combat.ruleset.board.movementCost": "Costs {{amount}}",
   "game.combat.ruleset.board.movementLeft": "Movement {{amount}}",
   "game.combat.ruleset.board.movePrompt": "Choose where {{name}} walks to, then press Enter. Escape goes back.",

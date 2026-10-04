@@ -62,7 +62,12 @@ function buildAttackOptions(state: TacticalCombatState, unit: TacticalUnit): Att
       area?: boolean;
     },
   ): void => {
-    if (!inReach(state.grid, tile, target, opts.rangeMin, opts.rangeMax)) return;
+    // Higher ground carries a basic attack one cell further (combat C6b), never a skill, as validation has it.
+    const distance = manhattan(tile, target);
+    const reached = opts.skillName
+      ? distance >= opts.rangeMin && distance <= opts.rangeMax && hasLineOfSight(state.grid, tile, target)
+      : inReach(state.grid, tile, target, opts.rangeMin, opts.rangeMax);
+    if (!reached) return;
     const fc = forecastFrom(state, unit, target, tile, {
       power: opts.power,
       element: opts.element,

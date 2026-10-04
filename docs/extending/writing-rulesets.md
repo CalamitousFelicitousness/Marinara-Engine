@@ -2133,8 +2133,10 @@ what its system adds with `elevation` (Capability API 1.70, and it needs `distan
 - `rangeBonus` is how many cells further a shot carries from higher ground.
 - `falling` is what a fall does: somebody shoved off a step of two levels or more lands below and takes
   `dice` for every `per` of the drop (levels times `levelHeight`), at most `max` dice, of `type`, and
-  takes the `prone` condition after, when there is one. The log says how far they fell. Without
-  `falling` the fall is noted and does nothing.
+  takes the `prone` condition after, when there is one. The dice are thrown as the system throws harm:
+  added up, or under `dice-pool` counted as successes with soak taken off. A fall is a blow like any
+  other, so it can put somebody down or break their concentration. The log says how far they fell.
+  Without `falling` the fall is noted and does nothing.
 
 **Strikes at somebody walking away.** Declare `opportunity.budget` and, when a combatant walks out
 of the reach of a standing enemy who can act, has that budget and has something melee to strike

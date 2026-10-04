@@ -4845,6 +4845,15 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
     if (prone !== undefined && !conditions.has(prone)) {
       issue(at("elevation", "falling", "prone"), `Unknown condition "${prone}"`);
     }
+    // A fall's harm is one of the ruleset's kinds, as every other harm is, or it misses what resists it.
+    const fallType = combat.elevation?.falling?.type;
+    if (
+      fallType !== undefined &&
+      combat.damageTypes &&
+      !combat.damageTypes.some((type) => type.trim().toLowerCase() === fallType.trim().toLowerCase())
+    ) {
+      issue(at("elevation", "falling", "type"), `Unknown damage type "${fallType}"`);
+    }
 
     const mapped = new Set<string>();
     combat.conditions?.forEach((entry, index) => {

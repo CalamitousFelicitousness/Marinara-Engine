@@ -56,6 +56,7 @@ import {
   CLASS_PROFILES,
   getMovementRange,
   getTargetsInRange,
+  currentTacticalActor,
   forecastAttack,
   hasLineOfSight,
   buildTacticalSummary,
@@ -952,6 +953,7 @@ export function TacticalCombatUI({
         unit.hp > 0 &&
         !unit.hasActed &&
         liveState.phase === "player" &&
+        (!liveState.initiative || currentTacticalActor(liveState)?.id === unit.id) &&
         (!directed || (directed.canAct && directed.actorId === unit.id))
       ) {
         playSfx(SFX.select);
@@ -1163,6 +1165,8 @@ export function TacticalCombatUI({
   // stay visible-but-disabled during resolution instead of vanishing — dropped
   // clicks then read as "greyed out", not "the button disappeared".
   const playerPhase = liveState.phase === "player";
+  // By initiative (combat C6c): whose turn it is, and the order the round goes in.
+  const currentActor = currentTacticalActor(liveState);
 
   return (
     <div
@@ -1197,9 +1201,11 @@ export function TacticalCombatUI({
                 : "bg-[var(--destructive)]/25 text-[var(--destructive)]",
             )}
           >
-            {liveState.phase === "player"
-              ? localizeUi("ui.game.tacticalcombatui.playerPhase")
-              : localizeUi("ui.game.tacticalcombatui.enemyPhase")}
+            {currentActor
+              ? localizeUi("ui.game.tacticalcombatui.unitsTurn", { name: currentActor.name })
+              : liveState.phase === "player"
+                ? localizeUi("ui.game.tacticalcombatui.playerPhase")
+                : localizeUi("ui.game.tacticalcombatui.enemyPhase")}
           </span>
           <span className="text-xs font-semibold text-white/60">
             {localizeUi("ui.game.gamecombatui.round")} {liveState.round}
@@ -1291,6 +1297,37 @@ export function TacticalCombatUI({
           )}
         </div>
       </div>
+
+      {/* The round's order, by initiative: who has gone, whose turn it is, and who is still to come. */}
+      {liveState.initiative && (
+        <ol
+          aria-label={localizeUi("ui.game.tacticalcombatui.turnOrder")}
+          className="z-20 flex shrink-0 items-center gap-1 overflow-x-auto border-b border-[var(--border)] bg-black/30 px-3 py-1.5"
+        >
+          {liveState.initiative.order.map((id) => {
+            const unit = liveState.units.find((u) => u.id === id);
+            if (!unit) return null;
+            const current = unit.id === currentActor?.id;
+            return (
+              <li
+                key={id}
+                aria-current={current ? "step" : undefined}
+                className={cn(
+                  "shrink-0 rounded-md px-2 py-0.5 text-[0.65rem] font-semibold",
+                  unit.side === "party"
+                    ? "bg-[var(--primary)]/15 text-[var(--primary)]"
+                    : "bg-[var(--destructive)]/15 text-[var(--destructive)]",
+                  current && "ring-1 ring-current",
+                  (unit.hasActed || unit.hp <= 0) && !current && "opacity-45",
+                  unit.hp <= 0 && "line-through",
+                )}
+              >
+                {unit.name}
+              </li>
+            );
+          })}
+        </ol>
+      )}
 
       {/* Battlefield */}
       <div className="relative z-10 flex min-h-0 flex-1 items-center justify-center overflow-auto p-2 sm:p-4">

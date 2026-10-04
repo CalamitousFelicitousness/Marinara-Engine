@@ -36,7 +36,7 @@ The maintainer's second hypothesis is closest: each active combat engine has a c
 
 | Area                    | Classic Game Mode                                                         | Tactical Game Mode                                                            |
 | ----------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| Turn order              | Initiative rolls plus speed; all combatants participate                   | Player phase, then enemies in effective-speed order                           |
+| Turn order              | Initiative rolls plus speed; all combatants participate                   | By initiative in new games (one unit at a time, an order rolled once, combat C6c); by side in older ones (player phase, then enemies by speed) |
 | Enemy policy            | Shared skill heuristic, otherwise random living opposing target           | Shared heal-first, scored attack, then approach policy                        |
 | Class differences       | No class-specific decision policy                                         | Six classes change range, movement and crit; all use the same decision policy |
 | Personality/proficiency | No stored tactical personality or training model                          | No stored tactical personality or training model                              |

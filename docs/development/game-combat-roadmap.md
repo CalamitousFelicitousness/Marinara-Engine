@@ -41,7 +41,7 @@ The engine should own actual rolls, legal targets, movement, action budgets, res
 
 Start with supported check, turn and resource primitives. A d20-oriented profile and a d10-pool-oriented profile need different resolution rules; one is not a renamed version of the other. Future coverage should include initiative, contested checks, damage/mitigation, conditions and resource use. Document unsupported cases and keep GM adjudication explicit.
 
-Shared line of sight is in place (combat C6): a wall or a mountain blocks it in the resolver, the AI, counters, areas, forecasts and threat overlays alike. Cover tiers build on the same test. Preserve the current party/enemy phase system; individual initiative is a separate selectable rule profile.
+Shared line of sight is in place (combat C6): a wall or a mountain blocks it in the resolver, the AI, counters, areas, forecasts and threat overlays alike. Cover tiers build on the same test. Individual initiative is a game setting (combat C6c): new games roll an order once per fight and take one unit's turn at a time, in the engine and in the combat director alike; older games keep the party/enemy phases.
 
 ## Summoning: retain the design, defer the larger system
 

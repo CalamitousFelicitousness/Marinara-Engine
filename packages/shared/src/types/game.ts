@@ -230,6 +230,9 @@ export interface GameSetupConfig {
   gmBossControl?: boolean;
   /** Optional tactical battlefield preferences used for newly-created encounters. */
   tacticalBattlefield?: TacticalBattlefieldSetup;
+  /** Who acts when in a new tactical fight (combat C6c): one unit at a time in a rolled order, or the
+   *  party's phase then the enemies'. Absent means by side, as every game before it was. */
+  tacticalTurnOrder?: "side" | "initiative";
   /** Optional user prompt used to create the initial hierarchical world map draft. */
   spatialMapInstructions?: string;
   /** Campaign-scale map authority selected during New Game. Older saves default to "standard". */

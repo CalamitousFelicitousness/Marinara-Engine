@@ -245,6 +245,9 @@ export interface TacticalEvent {
 // ── State ──
 
 export type TacticalPhase = "player" | "enemy";
+/** Who acts when in a tactical fight (combat C6c): the party's phase then the enemies', or one unit at a
+ *  time in an order rolled at the start. */
+export type TacticalTurnOrder = "side" | "initiative";
 export type TacticalOutcome = "victory" | "defeat" | "fled";
 export type TacticalDifficulty = GameDifficulty;
 
@@ -269,6 +272,10 @@ export interface TacticalCombatState {
   formation?: TacticalFormation;
   /** Provenance for a generated grid. Optional so legacy snapshots remain valid. */
   battlefield?: TacticalBattlefieldProvenance;
+  /** Individual initiative (combat C6c): the order units take their turns in every round, rolled once
+   *  at the start. The unit whose turn it is is the first standing one in it that has not acted. Absent
+   *  on fights by side, which every fight before this was. */
+  initiative?: { order: string[] };
 }
 
 // ── Forecast (shown FE-style before confirming an attack) ──

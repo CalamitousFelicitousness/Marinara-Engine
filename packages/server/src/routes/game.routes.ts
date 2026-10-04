@@ -299,6 +299,7 @@ import {
   STORYBOARD_AGENT_ID,
   SPOTIFY_RECENT_TRACK_HISTORY_LIMIT,
   createTacticalCombat,
+  runInitiativeTurns,
   applyTacticalTurn,
   TERRAIN_DATA,
   extractLeadingThinkingBlocks,
@@ -1915,6 +1916,7 @@ const gameSetupConfigSchema = z.object({
   combatDirector: z.boolean().optional(),
   gmBossControl: z.boolean().optional(),
   tacticalBattlefield: tacticalBattlefieldSetupSchema.optional(),
+  tacticalTurnOrder: z.enum(["side", "initiative"]).optional(),
   spatialMapInstructions: z.string().max(4000).optional(),
   gameWorldMapMode: z.enum(["standard", "hierarchical"]).optional(),
   spatialMapDraftSize: z.enum(["small", "medium", "large"]).optional(),
@@ -10637,7 +10639,13 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         environment,
         formation,
         ...(here ? { made: here } : { battlefield: preferences.battlefield }),
+        // One unit at a time in a rolled order, when the game says so (combat C6c).
+        ...((meta.gameTacticalTurnOrder ?? setupConfig?.tacticalTurnOrder) === "initiative"
+          ? { turnOrder: "initiative" as const }
+          : {}),
       });
+      // By initiative everybody before the first unit the player commands takes their turn at once.
+      if (state.initiative) state = runInitiativeTurns(state).state;
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unable to generate the requested battlefield.";
       logger.warn(err, "Tactical battlefield generation failed for chat %s", chatId);

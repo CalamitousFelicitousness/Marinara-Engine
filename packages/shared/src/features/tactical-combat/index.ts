@@ -10,6 +10,8 @@ export { TACTICAL_ENVIRONMENTS, TACTICAL_TERRAINS } from "./environments.js";
 
 export {
   createTacticalCombat,
+  currentTacticalActor,
+  rollTacticalInitiative,
   getUnit,
   getMovementRange,
   getTargetsInRange,
@@ -24,7 +26,7 @@ export {
   performUnitAction as performTacticalUnitAction,
   tickRound as tickTacticalRound,
 } from "./engine.js";
-export { decideTacticalAction, runEnemyPhase, applyTacticalTurn } from "./ai.js";
+export { decideTacticalAction, runEnemyPhase, runInitiativeTurns, applyTacticalTurn } from "./ai.js";
 
 export { summarizeTacticalBattlefield } from "./battlefield-summary.js";
 

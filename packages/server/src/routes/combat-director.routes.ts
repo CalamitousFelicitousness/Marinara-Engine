@@ -823,6 +823,10 @@ export async function combatDirectorRoutes(
           seed: battlefield.seed,
           battlefield: here ? undefined : battlefield.battlefield,
           ...(here ? { made: here } : {}),
+          // One unit at a time in a rolled order, when the game says so (combat C6c).
+          ...((meta.gameTacticalTurnOrder ?? setup.tacticalTurnOrder) === "initiative"
+            ? { turnOrder: "initiative" as const }
+            : {}),
         });
         let session: RulesetSession | null = null;
         if (input.style === "ruleset" && resolved) {

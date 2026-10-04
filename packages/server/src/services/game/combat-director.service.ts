@@ -10,6 +10,7 @@ import {
   assignCombatTactics,
   combatAiHash,
   createTacticalCombat,
+  currentTacticalActor,
   getMovementRange,
   validateTacticalUnitAction,
   performTacticalUnitAction,
@@ -30,6 +31,7 @@ import {
   type CombatItemEffect,
   type TacticalBattlefieldBrief,
   type TacticalMadeBattlefield,
+  type TacticalTurnOrder,
   type RulesetCombatBoard,
 } from "@marinara-engine/shared";
 import { chooseClassicAction, estimateClassicAttack } from "./combat-ai.service.js";
@@ -227,6 +229,8 @@ export function createCombatDirector(input: {
   battlefield?: TacticalBattlefieldBrief;
   /** A board painted for the fight's place (worldgen W9g), fought on as painted. */
   made?: TacticalMadeBattlefield;
+  /** One unit at a time in a rolled order (combat C6c); by side when absent. */
+  turnOrder?: TacticalTurnOrder;
   itemEffects?: CombatItemEffect[];
   mechanics?: CombatMechanic[];
   inventory?: CombatDirectorState["inventory"];
@@ -279,6 +283,7 @@ export function createCombatDirector(input: {
       formation: input.formation,
       battlefield: input.battlefield,
       ...(input.made ? { made: input.made } : {}),
+      ...(input.turnOrder ? { turnOrder: input.turnOrder } : {}),
     });
   for (const u of directorUnits(s))
     s.budgets[u.id] = { legendary: side(u) === "enemy" ? (u.boss?.points ?? 0) : 0, reaction: 1 };
@@ -923,16 +928,18 @@ export function advanceCombatDirector(s: CombatDirectorState) {
     if (!task) {
       s.actorId = undefined;
       if (s.tactical) {
+        // By initiative (combat C6c) the next unit is the order's, whoever commands it; by side the
+        // party chooses among its own first, then everybody else goes by speed.
         const remaining = living(s).filter((u) => !(u as TacticalUnit).hasActed);
         const party = remaining.filter((u) => side(u) === "party");
-        if (!s.skipParty && party.some((u) => manual(s, u))) {
+        if (!s.tactical.initiative && !s.skipParty && party.some((u) => manual(s, u))) {
           s.tactical.phase = "player";
           s.stage = "select";
           return;
         }
-        const next = (party.length ? party : remaining).sort(
-          (a, b) => b.speed - a.speed || a.id.localeCompare(b.id),
-        )[0];
+        const next = s.tactical.initiative
+          ? currentTacticalActor(s.tactical)
+          : (party.length ? party : remaining).sort((a, b) => b.speed - a.speed || a.id.localeCompare(b.id))[0];
         if (next) {
           s.tasks.push({ kind: "activate", unitId: next.id });
           continue;
@@ -1134,7 +1141,8 @@ export function commandCombatDirector(s: CombatDirectorState, command: DirectedC
     s.tasks.push({ kind: "activate", unitId: u.id });
   } else if (command.type === "tactical" && command.action.type === "endTurn") {
     if (s.window) throw new Error("Resolve the interruption first.");
-    s.skipParty = true;
+    // By side it ends the party's phase; by initiative only the turn of the unit whose turn it is.
+    if (!s.tactical?.initiative) s.skipParty = true;
     if (s.actorId) declare(s, asAction(s, get(s, s.actorId)!, "wait"), "manual");
   } else if (command.type === "classic" || command.type === "tactical") {
     if (s.stage !== "action" || s.window || !s.actorId) throw new Error("Wait for the active unit.");

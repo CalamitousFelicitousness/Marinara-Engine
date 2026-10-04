@@ -1,6 +1,6 @@
 import { normalizeGameDifficulty } from "../combat-conditions.js";
 import { decideProfileAction, pursueOpponent } from "./profile-ai.js";
-import { applyAction } from "./engine.js";
+import { applyAction, currentTacticalActor } from "./engine.js";
 // ──────────────────────────────────────────────
 // Tactical Combat — enemy AI (player-phase → enemy-phase resolver)
 // ──────────────────────────────────────────────
@@ -259,7 +259,56 @@ export function runPartyAiPhase(
   return { state: next, events };
 }
 
+/**
+ * A fight by initiative (combat C6c): the turns of everybody the player does not command, in order,
+ * until it is the turn of a party unit the player commands, or the fight ends. A round ends when
+ * everybody has acted: it ticks, and the order starts again. Each unit's guard drops as its own turn
+ * starts. Pure: clones the input state.
+ */
+export function runInitiativeTurns(state: TacticalCombatState): {
+  state: TacticalCombatState;
+  events: TacticalEvent[];
+} {
+  const next = clone(state);
+  const events: TacticalEvent[] = [];
+  // Bounded so a state nobody can finish (every unit unable to act) cannot hang the server.
+  for (let guard = 0; guard < 400 && !next.outcome; guard++) {
+    const current = currentTacticalActor(next);
+    if (!current) {
+      tickRound(next, events);
+      if (checkTerminal(next, events)) break;
+      next.round += 1;
+      events.push({ kind: "phase", text: `Round ${next.round}`, phase: "player" });
+      continue;
+    }
+    const leaderId = aliveUnits(next, "party")[0]?.id;
+    if (current.side === "party" && (current.controller !== "ai" || current.id === leaderId)) {
+      next.phase = "player";
+      current.defending = false;
+      break;
+    }
+    next.phase = current.side === "party" ? "player" : "enemy";
+    current.defending = false;
+    const action = decideTacticalAction(next, current, deterministicRng(next.seed, next.actionCounter++));
+    if ("unitId" in action) performUnitAction(next, current, action, events);
+    // Its turn is over whatever it chose, so the order always moves on.
+    current.hasActed = true;
+    if (checkTerminal(next, events)) break;
+  }
+  appendLog(next, events);
+  return { state: next, events };
+}
+
 export function applyTacticalTurn(state: TacticalCombatState, action: TacticalAction) {
+  if (state.initiative) {
+    const applied = applyAction(state, action);
+    if (!applied.ok) return applied;
+    // A move alone leaves the turn open; anything else, or End Turn, closes it.
+    const current = applied.state.units.find((u) => u.id === ("unitId" in action ? action.unitId : undefined));
+    if (current && action.type !== "move" && action.type !== "control") current.hasActed = true;
+    const turns = runInitiativeTurns(applied.state);
+    return { ok: true as const, state: turns.state, events: [...applied.events, ...turns.events] };
+  }
   const pre = action.type === "endTurn" ? runPartyAiPhase(state, true) : { state, events: [] as TacticalEvent[] };
   if (pre.state.outcome) return { ok: true as const, ...pre };
   const applied = applyAction(pre.state, action);

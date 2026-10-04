@@ -25,6 +25,7 @@ import {
   computeHeal,
   critChance,
   deriveMovement,
+  effectiveSpeed,
   elementMultiplier,
   hitChance,
   inBounds,
@@ -48,6 +49,7 @@ import type {
   TacticalForecast,
   TacticalFormation,
   TacticalMadeBattlefield,
+  TacticalTurnOrder,
   TacticalUnit,
 } from "./types.js";
 
@@ -127,6 +129,8 @@ export function createTacticalCombat(
     battlefield?: TacticalBattlefieldBrief;
     /** A board painted by hand for the fight's place (worldgen W9g): fought on as painted, the brief unused. */
     made?: TacticalMadeBattlefield;
+    /** One unit at a time in a rolled order (combat C6c); by side when absent. */
+    turnOrder?: TacticalTurnOrder;
   },
 ): TacticalCombatState {
   const difficulty = normalizeGameDifficulty(opts.difficulty);
@@ -177,8 +181,34 @@ export function createTacticalCombat(
     formation,
     battlefield: generated.battlefield,
     ...(environment ? { environment } : {}),
+    ...(opts.turnOrder === "initiative" ? { initiative: { order: rollTacticalInitiative(units, seed) } } : {}),
   };
   return state;
+}
+
+/** The order units take their turns in (combat C6c): a d20 plus a fifth of speed each, as Classic
+ *  rolls initiative, from the fight's seed on a stream of its own, so the same fight always rolls
+ *  the same order. Ties go to the faster unit, then by id. */
+export function rollTacticalInitiative(units: readonly TacticalUnit[], seed: number): string[] {
+  const rng = deterministicRng(seed >>> 0, -2);
+  return units
+    .map((unit) => ({ unit, total: 1 + Math.floor(rng() * 20) + Math.floor(effectiveSpeed(unit) / 5) }))
+    .sort(
+      (a, b) =>
+        b.total - a.total || effectiveSpeed(b.unit) - effectiveSpeed(a.unit) || a.unit.id.localeCompare(b.unit.id),
+    )
+    .map((entry) => entry.unit.id);
+}
+
+/** Whose turn it is in a fight by initiative: the first standing unit in the order that has not acted
+ *  this round. None when everybody has, which is the round's end; always none in a fight by side. */
+export function currentTacticalActor(state: TacticalCombatState): TacticalUnit | undefined {
+  if (!state.initiative) return undefined;
+  for (const id of state.initiative.order) {
+    const unit = getUnit(state, id);
+    if (unit && unit.hp > 0 && !unit.hasActed) return unit;
+  }
+  return undefined;
 }
 
 // ── Lookups ──
@@ -805,7 +835,9 @@ function tickRound(state: TacticalCombatState, events: TacticalEvent[]): void {
 
     u.hasMoved = false;
     u.hasActed = false;
-    u.defending = false;
+    // By initiative a guard lasts until its holder's own next turn, which may come late in the next
+    // round; by side every guard drops as the round turns.
+    if (!state.initiative) u.defending = false;
   }
 }
 
@@ -958,6 +990,12 @@ export function applyAction(state: TacticalCombatState, action: TacticalAction):
 
   if (action.type === "endTurn") {
     if (next.phase !== "player") return { ok: false, error: "Not the player phase." };
+    // By initiative it ends the turn of the one unit whose turn it is; the rest come round in order.
+    if (next.initiative) {
+      const current = currentTacticalActor(next);
+      if (current) current.hasActed = true;
+      return { ok: true, state: next, events };
+    }
     for (const u of aliveUnits(next, "party")) u.hasActed = true;
     next.phase = "enemy";
     events.push({ kind: "phase", text: "Enemy Phase", phase: "enemy" });
@@ -972,6 +1010,10 @@ export function applyAction(state: TacticalCombatState, action: TacticalAction):
   if (unit.hp <= 0) return { ok: false, error: `${unit.name} is defeated.` };
   if (unit.side !== "party") return { ok: false, error: "You can only command party units." };
   if (unit.hasActed) return { ok: false, error: `${unit.name} has already acted this turn.` };
+  if (next.initiative && action.type !== "control") {
+    const current = currentTacticalActor(next);
+    if (current?.id !== unit.id) return { ok: false, error: `It is ${current?.name ?? "nobody"}'s turn.` };
+  }
 
   if (action.type === "control") {
     if (action.controller !== "manual" && action.controller !== "ai")
@@ -989,9 +1031,10 @@ export function applyAction(state: TacticalCombatState, action: TacticalAction):
 
   // Terminal check (an attack may have wiped the enemy team mid-phase).
   if (!checkTerminal(next, events)) {
-    // Auto-advance to enemy phase once every living party unit has acted.
+    // Auto-advance to enemy phase once every living party unit has acted. By initiative the turns are
+    // run in order by applyTacticalTurn instead.
     const anyPending = aliveUnits(next, "party").some((u) => !u.hasActed);
-    if (!anyPending) {
+    if (!anyPending && !next.initiative) {
       next.phase = "enemy";
       events.push({ kind: "phase", text: "Enemy Phase", phase: "enemy" });
     }

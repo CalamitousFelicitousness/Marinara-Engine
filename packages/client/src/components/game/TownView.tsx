@@ -418,7 +418,11 @@ export function TownView({
             drawTile={drawTile}
           />
         )}
-        <div className="absolute left-0 top-0" style={{ transform: `translate(${-resting.x}px, ${-resting.y}px)` }}>
+        <div
+          className="absolute left-0 top-0"
+          style={{ transform: `translate(${-resting.x}px, ${-resting.y}px)` }}
+          hidden={Boolean(inside)}
+        >
           {[{ id: "square", ...town.square }, ...town.buildings].map((spot) => (
             <button
               key={spot.id}

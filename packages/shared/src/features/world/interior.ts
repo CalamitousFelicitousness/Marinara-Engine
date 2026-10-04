@@ -78,7 +78,7 @@ const USE_WORDS: ReadonlyArray<readonly [WorldInteriorUse, RegExp]> = [
   ],
   [
     "workshop",
-    /\b(smiths?|blacksmiths?|forges?|smith(?:y|ies)|workshops?|carpenters?|joiners?|masons?|potters?|weavers?|tailors?|tanners?|cobblers?|crafters?|craftsm[ae]n|artisans?|mechanics?|engineers?|garages?|factor(?:y|ies)|mills?|millers?|foundr(?:y|ies)|fabricators?|machinists?|tinkers?|tinkerers?|technicians?|repair|armou?rers?|weaponsmiths?|jewell?ers?|workers?|labou?rers?|builders?|shipwrights?|wrights?|dock(?:s|yards?)?)\b/i,
+    /\b(smiths?|blacksmiths?|forges?|smith(?:y|ies)|workshops?|carpenters?|joiners?|masons?|potters?|weavers?|tailors?|tanners?|cobblers?|crafters?|craftsm[ae]n|artisans?|mechanics?|engineers?|garages?|factor(?:y|ies)|mills?|millers?|foundr(?:y|ies)|fabricators?|machinists?|tinkers?|tinkerers?|technicians?|repair|armou?rers?|weaponsmiths?|jewell?ers?|workers?|labou?rers?|builders?|shipwrights?|wrights?|dockyards?)\b/i,
   ],
   [
     "shop",

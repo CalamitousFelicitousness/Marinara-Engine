@@ -500,9 +500,13 @@ const usesOfTown = new WeakMap<WorldTown, { taverns: Set<string>; firstTavern: s
 function townUses(town: WorldTown) {
   let found = usesOfTown.get(town);
   if (!found) {
-    // A building's own use; a town from a snapshot made before W13 has none, so its trade and name say.
+    // A building's own use. A town from a snapshot made before W13 has none at all, so its trades and
+    // names say; in a W13 town a building with none is a part of town, never a tavern.
+    const legacy = !town.buildings.some((building) => building.use !== undefined);
     const taverns = town.buildings
-      .filter((building) => building.kind !== "home" && (building.use ?? worldInteriorUse(building)) === "tavern")
+      .filter(
+        (building) => building.kind !== "home" && (legacy ? worldInteriorUse(building) : building.use) === "tavern",
+      )
       .map((building) => building.id);
     found = { taverns: new Set(taverns), firstTavern: taverns[0] ?? null };
     usesOfTown.set(town, found);

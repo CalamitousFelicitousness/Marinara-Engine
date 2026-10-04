@@ -124,6 +124,10 @@ export function TownInterior({ chatId, town, buildingId, hour, darkness, drawTil
   }, [darkness, drawTile, interior, origin.x, origin.y, people, scale, size.height, size.width]);
 
   const chosen = selected ? people.find((each) => each.person.id === selected) : undefined;
+  // Someone who has left (the hour turned) is no longer chosen.
+  useEffect(() => {
+    if (selected && !chosen) setSelected(null);
+  }, [chosen, selected]);
 
   return (
     <div

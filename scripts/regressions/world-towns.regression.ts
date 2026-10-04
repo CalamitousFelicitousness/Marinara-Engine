@@ -118,11 +118,10 @@ try {
   assert.ok(worker, "someone works in the city");
   assert.equal(worldTownWhere(town, worker.id, 10), town.workOf[worker.id], "at work by day");
   // At dusk in the square, at a tavern or home (worldgen W13 split the evening).
+  const taverns = town.buildings.filter((building) => building.use === "tavern").map((building) => building.id);
   assert.ok(
-    ["square", town.homeOf[worker.id], ...town.buildings.map((building) => building.id)].includes(
-      worldTownWhere(town, worker.id, 19),
-    ),
-    "somewhere in town at dusk",
+    ["square", town.homeOf[worker.id], ...taverns].includes(worldTownWhere(town, worker.id, 19)),
+    "in the square, home or at a tavern at dusk",
   );
   assert.equal(worldTownWhere(town, worker.id, 23), town.homeOf[worker.id], "home at night");
   const known = game.kit.people?.roles.find((role) => role.tags?.some((tag) => city.tags.includes(tag)));

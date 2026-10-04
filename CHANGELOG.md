@@ -4,7 +4,9 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 
 ## [Unreleased]
 
-- The Characters sidebar restores the full-width **New Folder** button and removes **Possible duplicates**. Bulk tag editing remains available (#7056).
+### Changed
+
+- The Characters sidebar has its full-width **New Folder** button again. Removed **Possible duplicates**.
 
 - The Chats sidebar status prompt now reads **What's up?** to fit its field, and Advanced Settings labels the multiplayer section **Multiplayer WIP** (#7051).
 

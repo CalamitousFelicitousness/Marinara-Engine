@@ -180,6 +180,7 @@ const sword = (state: RulesetEncounterState) => menu(state).find((option) => opt
     ],
     "the action spent empties the bonus action",
   );
+  assert.equal(rulesetCombatant(state, "brenna")!.budgets.bonus, 0, "the bonus action is gone with it");
   assert.equal(sword(state), undefined, "one attack a turn, whatever Extra Attack gives");
   // Dash is still there? No: it is on the action, which is spent. Nothing on the bonus action either.
   assert.ok(!menu(state).some((option) => option.budget === "bonus"));

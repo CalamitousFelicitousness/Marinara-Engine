@@ -5,6 +5,9 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 ## [Unreleased]
 
 - Character cards and personas have a new **Image Appearance Override** switch under **Appearance**. Turn it on to write a separate, image-prompt-ready description of that character, and **Attach Card Appearance** sends that instead of the full **Appearance** text, so clothing and other scene-specific detail from the card no longer leaks into illustrations. While the switch is off, or its box is empty, image prompts keep using **Appearance** as before, and the narrator always uses the full **Appearance** text. This covers chat illustrations, conversation selfies, and Game mode, and applies to custom image agents as well as the built-in Illustrator (#7053).
+### Changed
+
+- The Characters sidebar has its full-width **New Folder** button again. Removed **Possible duplicates**.
 
 - The Chats sidebar status prompt now reads **What's up?** to fit its field, and Advanced Settings labels the multiplayer section **Multiplayer WIP** (#7051).
 

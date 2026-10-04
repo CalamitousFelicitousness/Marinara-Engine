@@ -7083,7 +7083,7 @@
   "ui.dice.diceglyph.dValue1ShowingValue2": "d{{value1}} showing {{value2}}",
   "ui.faq.answers": "answers",
   "ui.faq.beforeBug": "Before You Post A Bug",
-  "ui.faq.chatSettings.answer": "Open Chat Settings with the sliders button inside your chat. It starts at the top centre, below the app’s top bar. Gallery, Active Context and the other chat tools are sections inside it.",
+  "ui.faq.chatSettings.answer": "Open Chat Settings with the sliders button inside your chat. It starts at the top right, below the app’s top bar. Gallery, Active Context and the other chat tools are sections inside it.",
   "ui.faq.chatSettings.moveButton": "Drag the sliders button to a convenient spot. Each chat remembers where you put it.",
   "ui.faq.chatSettings.phone": "On phones, the same buttons open their windows as full-width panels.",
   "ui.faq.chatSettings.popOut": "Use a section’s Pop out button to give it its own window. Closing that window shrinks it to a button; Put back returns it to Chat Settings.",

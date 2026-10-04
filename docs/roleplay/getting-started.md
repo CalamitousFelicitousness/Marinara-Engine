@@ -61,7 +61,7 @@ The first form sets the expression for the scene. The second form targets one na
 
 ## The chat tools
 
-The chat's tools are sections of **Chat Settings**. Open it with the sliders button inside the chat; the button starts at the top centre and can be dragged to another spot. In a Roleplay chat you find:
+The chat's tools are sections of **Chat Settings**. Open it with the sliders button inside the chat; the button starts at the top right and can be dragged to another spot. In a Roleplay chat you find:
 
 - **Search messages**, an expandable section near the top. Finds a message by its words or its number, with tabs for bookmarks and deleted messages.
 - **Chat Branches**. Switches, renames, exports and imports the chat's branches. See [Chat Branches](../chats/branches.md).

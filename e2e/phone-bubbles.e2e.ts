@@ -157,11 +157,11 @@ test.describe("phone bubbles", () => {
       await prepare(page, chat.id);
       await page.goto("/");
       await expect(page.locator('[data-chat-mode="roleplay"]')).toBeVisible({ timeout: 30_000 });
-      // The old "More options" menu is gone; the Chat Settings button sits centred at the top of the chat.
+      // The old "More options" menu is gone; Chat Settings starts at the chat's top right.
       await expect(page.getByRole("button", { name: "More options", exact: true })).toHaveCount(0);
       const area = await box(page.locator('[data-component="CenterContent"]'));
       const settingsButton = await box(chatSettingsButton(page));
-      expect(Math.abs(settingsButton.x + settingsButton.width / 2 - (area.x + area.width / 2))).toBeLessThan(2);
+      expect(Math.abs(settingsButton.x + settingsButton.width - (area.x + area.width - 8))).toBeLessThanOrEqual(1);
       await expect(chatSettingsButton(page)).toHaveAttribute("data-presentation", "sheet");
       await expect(bubble(page, CONNECTED)).toBeVisible();
       await expectComposerClearAndNoSideScroll(page);
@@ -376,8 +376,7 @@ test.describe("phone bubbles", () => {
       await expect(game).toBeVisible({ timeout: 30_000 });
       await expect(page.getByRole("button", { name: "Game actions", exact: true })).toHaveCount(0);
 
-      // A tidy row at the top right, where the menu button was, in the computer's order; it wraps to a
-      // second row rather than run into the Chat Settings button centred at the top.
+      // Settings owns the first top-right slot; controls start to its left and wrap below it.
       for (const id of GAME_CONTROLS) await expect(bubble(page, id)).toBeVisible();
       const row = await Promise.all(GAME_CONTROLS.map((id) => box(bubble(page, id))));
       const viewport = page.viewportSize()!;
@@ -397,7 +396,7 @@ test.describe("phone bubbles", () => {
       }
       const connectedBox = row.at(-1)!;
       expect(Math.abs(connectedBox.y - settingsButton.y)).toBeLessThanOrEqual(1);
-      expect(connectedBox.x).toBeGreaterThan(settingsButton.x);
+      expect(connectedBox.x + connectedBox.width).toBeLessThan(settingsButton.x);
       for (const rect of row) expect([0, 44]).toContain(Math.round(rect.y - settingsButton.y));
       // The map stays clear of the bubbles.
       const map = await box(game.locator('[data-tour="game-map"]').first());

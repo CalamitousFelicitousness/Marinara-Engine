@@ -2,7 +2,7 @@
 // Chat Settings button: the way into Chat Settings, placed in the chat
 //
 // A bubble like the chat's other window buttons, shown while a chat is open. It
-// starts centred at the top of the chat and can be dragged anywhere; its place
+// starts at the top right of the chat and can be dragged anywhere; its place
 // saves with the chat (a phone keeps its own). A click opens Chat Settings, or
 // closes it, and focus comes back here when the window closes. It never hides
 // while the chat is open, and shows a dot while the chat's agents run. A
@@ -22,7 +22,7 @@ import {
   PHONE_BUBBLE_SIZE_PX,
   WINDOW_BUBBLE_SIZE_PX,
   clampWindowBubble,
-  getCentredBubblePoint,
+  getTopRightBubblePoint,
 } from "../../lib/floating-window-layout";
 import {
   CHAT_SETTINGS_BUTTON_ID,
@@ -54,8 +54,8 @@ export function ChatSettingsBubble({ chatId, mode }: { chatId: string; mode: Cha
   const dismissTip = useUIStore((state) => state.dismissChatSettingsMoveTip);
   const agentsRunningId = useId();
   const label = t("chat.toolbar.settings");
-  // It starts centred at the top of the chat.
-  const point = clampWindowBubble(saved ?? getCentredBubblePoint(bounds, size), bounds, size);
+  // Saved places take precedence over the top-right default.
+  const point = clampWindowBubble(saved ?? getTopRightBubblePoint(bounds, size), bounds, size);
   const showTip = !phone && mode === "roleplay" && !tipDismissed;
   const tipLeft = Math.max(8, Math.min(point.x + size / 2 - 24, window.innerWidth - TIP_WIDTH_PX - 8));
 

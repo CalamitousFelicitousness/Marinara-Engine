@@ -68,7 +68,7 @@ const TARGETS = {
   call: chatHelpTarget("call", "call"),
   "agent-controls": chatHelpTarget("agent-controls", "agentControls"),
   "connected-chat": chatHelpTarget("connected-chat", "connectedChat"),
-  // The Chat Settings button in the chat (centred at the top unless moved).
+  // The Chat Settings button in the chat (at the top right unless moved).
   settings: chatHelpTarget("settings", "settings"),
   // The ? beside the Chat Settings title (a phone closes Chat Settings to show the guide).
   help: chatHelpTarget("help", "help"),

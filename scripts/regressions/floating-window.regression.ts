@@ -21,7 +21,7 @@ import {
   toWindowLayoutSnapshot,
   clampWindowBubble,
   getBubbleRowSlot,
-  getCentredBubblePoint,
+  getTopRightBubblePoint,
   getPhoneBubbleSlot,
   placeWindowBesideBubble,
   PHONE_BUBBLE_SIZE_PX,
@@ -610,12 +610,13 @@ assert.ok(
 
 // ── Phone bubbles: a row along the top from the right edge, places kept apart from the computer's ──
 const phoneBounds = { left: 8, top: 64, right: 382, bottom: 700 };
-assert.deepEqual(getPhoneBubbleSlot(phoneBounds, 0), { x: 382 - PHONE_BUBBLE_SIZE_PX, y: 64 });
-assert.deepEqual(getPhoneBubbleSlot(phoneBounds, 2), { x: 382 - PHONE_BUBBLE_SIZE_PX - 2 * 44, y: 64 });
-// The Chat Settings button starts centred at the top; a row wraps below rather than run into it.
-assert.deepEqual(getCentredBubblePoint(phoneBounds, PHONE_BUBBLE_SIZE_PX), { x: 177, y: 64 });
-assert.deepEqual(getPhoneBubbleSlot(phoneBounds, 3), { x: 382 - PHONE_BUBBLE_SIZE_PX, y: 64 + 44 });
-assert.deepEqual(getBubbleRowSlot(bounds, 4, { size: 32, gap: 4 }), { x: 1432 - 32 - 4 * 36, y: 56 });
+assert.deepEqual(getPhoneBubbleSlot(phoneBounds, 0), { x: 382 - PHONE_BUBBLE_SIZE_PX - 44, y: 64 });
+assert.deepEqual(getPhoneBubbleSlot(phoneBounds, 2), { x: 382 - PHONE_BUBBLE_SIZE_PX, y: 64 + 44 });
+// Settings owns the first top-right slot; other controls wrap without overlapping it or the map.
+assert.deepEqual(getTopRightBubblePoint(phoneBounds, PHONE_BUBBLE_SIZE_PX), { x: 346, y: 64 });
+assert.deepEqual(getTopRightBubblePoint(bounds, 32), { x: 1400, y: 56 });
+assert.deepEqual(getPhoneBubbleSlot(phoneBounds, 3), { x: 382 - PHONE_BUBBLE_SIZE_PX - 44, y: 64 + 44 });
+assert.deepEqual(getBubbleRowSlot(bounds, 4, { size: 32, gap: 4 }), { x: 1432 - 32 - 5 * 36, y: 56 });
 // A phone bubble is larger, so it clamps further from the far edges.
 assert.deepEqual(clampWindowBubble({ x: 900, y: 900 }, phoneBounds, PHONE_BUBBLE_SIZE_PX), { x: 346, y: 664 });
 const withPhoneBubbles = parseWindowLayoutSnapshot({

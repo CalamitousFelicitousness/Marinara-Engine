@@ -12416,7 +12416,7 @@ function GameSurfaceComponent({
                 {/* Top-left: Map + Party portraits side by side, clear of a phone's row of control bubbles */}
                 <div
                   className={cn(
-                    // On a phone it stops short of the Chat Settings button centred at the top of the chat.
+                    // On a phone it stops short of the control-button rows in the right half of the chat.
                     "pointer-events-auto absolute left-3 right-[calc(50%+1.625rem)] z-20 flex min-w-0 items-start gap-2 md:right-auto",
                     tacticalCombatActive ? "top-14" : topOverlayOffsetClass,
                     replayActive && "hidden",

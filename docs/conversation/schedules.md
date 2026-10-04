@@ -18,7 +18,7 @@ Schedules are optional. With autonomous messages on but schedules off, character
 You control this from the chat, not the character card. All of these controls live in the **Autonomous Messaging** section of **Chat Settings**.
 
 1. Open a Conversation chat.
-2. Open **Chat Settings** (the **Chat Settings** button in the chat, at the top centre unless you moved it).
+2. Open **Chat Settings** (the **Chat Settings** button in the chat, at the top right unless you moved it).
 3. Find the **Autonomous Messaging** section.
 4. Turn on the **Autonomous Messages** toggle.
 

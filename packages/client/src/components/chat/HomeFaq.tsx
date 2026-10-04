@@ -247,7 +247,7 @@ const HOME_FAQ_ITEMS: HomeFaqItem[] = [
     category: "Core",
     question: "Where did Chat Settings, Gallery, and Active Context go?",
     answer:
-      "Open Chat Settings with the sliders button inside your chat. It starts at the top centre, below the app’s top bar. Gallery, Active Context and the other chat tools are sections inside it.",
+      "Open Chat Settings with the sliders button inside your chat. It starts at the top right, below the app’s top bar. Gallery, Active Context and the other chat tools are sections inside it.",
     bullets: [
       "Drag the sliders button to a convenient spot. Each chat remembers where you put it.",
       "Use a section’s Pop out button to give it its own window. Closing that window shrinks it to a button; Put back returns it to Chat Settings.",

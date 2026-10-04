@@ -67,14 +67,14 @@ export function clampWindowBubble(
   };
 }
 
-/** The Chat Settings button's default place: centred at the top of the chat area. */
-export function getCentredBubblePoint(bounds: WindowBounds, size: number): WindowPoint {
-  return { x: Math.round((bounds.left + bounds.right - size) / 2), y: bounds.top };
+/** The Chat Settings button's default place: the top-right slot of the chat area. */
+export function getTopRightBubblePoint(bounds: WindowBounds, size: number): WindowPoint {
+  return { x: bounds.right - size, y: bounds.top };
 }
 
 /**
- * A row of bubbles from `right` leftwards along the top, `slot` 0 at the right edge, wrapping to the
- * next row before it reaches the Chat Settings button in the middle.
+ * Controls fill the right half of the chat and wrap below, leaving room for Game's map on the left.
+ * The first top-right slot belongs to Chat Settings; control `slot` 0 starts just to its left.
  */
 export function getBubbleRowSlot(
   bounds: WindowBounds,
@@ -82,11 +82,12 @@ export function getBubbleRowSlot(
   { right = bounds.right, size, gap }: { right?: number; size: number; gap: number },
 ): WindowPoint {
   const step = size + gap;
-  const centre = getCentredBubblePoint(bounds, size);
-  const perRow = Math.max(1, Math.floor((right - (centre.x + size + PHONE_BUBBLE_GAP_PX) + gap) / step));
+  const leftLimit = Math.round((bounds.left + bounds.right - size) / 2) + size + PHONE_BUBBLE_GAP_PX;
+  const perRow = Math.max(1, Math.floor((right - leftLimit + gap) / step));
+  const position = slot + 1;
   return {
-    x: right - size - (slot % perRow) * step,
-    y: bounds.top + Math.floor(slot / perRow) * step,
+    x: right - size - (position % perRow) * step,
+    y: bounds.top + Math.floor(position / perRow) * step,
   };
 }
 

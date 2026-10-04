@@ -15,7 +15,7 @@ The **Background** agent is an optional helper that chooses a scene backdrop for
 The **Background** agent is off by default. To turn it on:
 
 1. Open your Roleplay chat.
-2. Open **Chat Settings** (the **Chat Settings** button in the chat, at the top centre unless you moved it).
+2. Open **Chat Settings** (the **Chat Settings** button in the chat, at the top right unless you moved it).
 3. Open the **Agents** section.
 4. Enable the **Background** agent.
 

@@ -134,7 +134,7 @@ test.describe("Chat Settings window on desktop", () => {
     test.skip(!testInfo.project.name.includes("desktop"), "The movable window is the desktop presentation.");
   });
 
-  test("the Chat Settings button sits in the chat, centred at the top, and only in chats", async ({
+  test("the Chat Settings button starts at the chat's top right and only appears in chats", async ({
     page,
     request,
   }) => {
@@ -168,7 +168,7 @@ test.describe("Chat Settings window on desktop", () => {
           await box(page.locator('[data-component="TopBar"]')),
           await box(button),
         ];
-        expect(Math.abs(buttonBox.x + buttonBox.width / 2 - (area.x + area.width / 2))).toBeLessThanOrEqual(2);
+        expect(Math.abs(buttonBox.x + buttonBox.width - (area.x + area.width - MARGIN))).toBeLessThanOrEqual(1);
         expect(Math.abs(buttonBox.y - (topbar.y + topbar.height + MARGIN))).toBeLessThanOrEqual(1);
 
         // Settings, Help layout and the Tracker Panel launcher no longer sit among the chat's top buttons.
@@ -279,7 +279,7 @@ test.describe("Chat Settings window on desktop", () => {
       const reloaded = await box(chatSettingsButton(page));
       expect(Math.abs(reloaded.x - placed.x)).toBeLessThanOrEqual(1);
       expect(Math.abs(reloaded.y - placed.y)).toBeLessThanOrEqual(1);
-      // Reset View brings it back to the top centre.
+      // Reset View brings it back to the top right, while refresh above preserved its custom position.
       await chatSettingsButton(page).click();
       await resetChatView(page);
       await expect.poll(async () => Math.abs((await box(chatSettingsButton(page))).x - start.x)).toBeLessThanOrEqual(1);
@@ -323,9 +323,9 @@ test.describe("Chat Settings window on desktop", () => {
       // Move by the title bar.
       const header = settings.locator(".mari-window__header");
       const headerBox = await box(header);
-      await drag(page, { x: headerBox.x + headerBox.width / 2, y: headerBox.y + headerBox.height / 2 }, 160, 0);
+      await drag(page, { x: headerBox.x + headerBox.width / 2, y: headerBox.y + headerBox.height / 2 }, -160, 0);
       const moved = await box(settings);
-      expectSameBox(moved, { ...defaultBox, x: defaultBox.x + 160 }, "moved");
+      expectSameBox(moved, { ...defaultBox, x: defaultBox.x - 160 }, "moved");
 
       // Resize from the bottom-right corner and from the left edge.
       const corner = await box(settings.locator('.mari-window__resize-handle[data-edge="se"]'));
@@ -1063,14 +1063,14 @@ test("phones open Chat Settings from its button as a sheet with Help and the Tra
     await prepare(page, chat.id, { trackerPanelEnabled: true, trackerPanelOpen: false });
     await page.goto("/");
     await expect(page.locator('[data-chat-mode="roleplay"]')).toBeVisible();
-    // The chat's own menu is gone (#7034); the Chat Settings button sits centred at the top of the chat.
+    // The chat's own menu is gone (#7034); Chat Settings starts at the chat's top right.
     await expect(page.getByRole("button", { name: "More options", exact: true })).toHaveCount(0);
     await expect(page.locator('[data-chat-toolbar-panel-action="settings"]').filter({ visible: true })).toHaveCount(1);
     const [area, buttonBox] = [
       await box(page.locator('[data-component="CenterContent"]')),
       await box(chatSettingsButton(page)),
     ];
-    expect(Math.abs(buttonBox.x + buttonBox.width / 2 - (area.x + area.width / 2))).toBeLessThanOrEqual(2);
+    expect(Math.abs(buttonBox.x + buttonBox.width - (area.x + area.width - MARGIN))).toBeLessThanOrEqual(1);
     await expect(
       page.locator('[data-component="TopBar"]').getByRole("button", { name: "Chat Settings", exact: true }),
     ).toHaveCount(0);

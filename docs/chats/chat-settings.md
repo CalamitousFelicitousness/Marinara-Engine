@@ -7,7 +7,7 @@ Most settings here belong to the current chat. Window positions are saved for ea
 ## Opening Chat Settings
 
 1. Open a chat.
-2. Click or tap the **Chat Settings** button (the sliders icon). It starts at the top centre of the chat, below the app's top bar.
+2. Click or tap the **Chat Settings** button (the sliders icon). It starts at the top right of the chat, below the app's top bar.
 3. Click a section's title to open it. These sections are also called **drawers**: click the title again to fold one away.
 
 Chat Settings opens automatically when you create a new chat. To close it, click its **X** or click the sliders button again.

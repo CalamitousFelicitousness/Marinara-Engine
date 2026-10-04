@@ -19,7 +19,7 @@ You can use both systems at the same time. They do different jobs and do not con
 
 ### Turning Memory Recall on
 
-1. Open a chat and click the **Chat Settings** button in the chat (it starts at the top centre).
+1. Open a chat and click the **Chat Settings** button in the chat (it starts at the top right).
 2. Find the **Memory Recall** section (it has a brain icon).
 3. Turn on the **Enable Memory Recall** toggle.
 
